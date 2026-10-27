@@ -74,8 +74,8 @@
 #   --source-key <tag> Stable dedup identity for one SOURCE; see
 #                      the --help text.
 #   --limit-reset <tag> Mark a usage-limit arm and key it on this handover plus
-#                      the limit's reset time: replaying the same pair is a
-#                      no-op (rc 0), and a fourth restart of the handover inside
+#                      the limit's reset time: replaying a pair whose arm already
+#                      fired is a no-op (rc 0), and a fourth restart inside
 #                      5 minutes is refused (rc=23). --force bypasses both.
 #   --dry-run          Print what would be scheduled, touch nothing.
 #
@@ -260,8 +260,9 @@
 #   23 restart cap refused — a --limit-reset arm found three `armed-resume`
 #      start rows for this handover's task in the flow-run ledger inside the
 #      last 5 minutes (a crash loop). --force overrides. A --limit-reset
-#      replay of an already-armed (handover, reset) pair is NOT an error: it
-#      exits 0 without arming (the limit-resume key).
+#      replay of a (handover, reset) pair whose arm already FIRED is NOT an
+#      error: it exits 0 without arming (the limit-resume key). A pair whose
+#      arm never fired (cancelled, reaped) re-arms.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -484,9 +485,10 @@ Optional:
                      or --force replaces it) even if the handover path
                      differs. [A-Za-z0-9_-], 1-64 chars.
   --limit-reset <tag> Mark a usage-limit arm; keyed on this handover plus the
-                     limit's reset time, so replaying the same pair is a
-                     no-op (rc 0) and a fourth restart of the handover inside
-                     5 minutes is refused (rc=23). --force bypasses both.
+                     limit's reset time, so replaying a pair whose arm already
+                     fired is a no-op (rc 0) and a fourth restart of the
+                     handover inside 5 minutes is refused (rc=23). --force
+                     bypasses both.
                      [A-Za-z0-9_.:-], 1-64 chars.
   --dry-run          Print what would be scheduled, touch nothing
   --list-temp-arms   Read-only sweep: report every armed
@@ -3199,8 +3201,11 @@ if [ -n "$SOURCE_KEY" ]; then
 fi
 # Usage-limit keys (--limit-reset): the scheduler and the rc 15 ledger probe both
 # read clean once a fired session has ended, so a replayed limit resume would
-# fire a second session. The limit-resume key (task name + reset time, recorded
-# beside the flow-run ledger when the arm succeeds) makes the replay a no-op.
+# fire a second session. The limit-resume key (task name + reset time + the time
+# it was recorded, beside the flow-run ledger when the arm succeeds) makes the
+# replay a no-op ONLY once the ledger shows this task started at or after that
+# time: a key whose arm was cancelled or reaped never fired, so it is stale and
+# the re-arm goes ahead (a job the scheduler still holds meets the rc 3 dedup).
 # The restart cap counts this task's `armed-resume` start rows in the last 5
 # minutes and refuses the fourth. Non-limit arms never reach either check.
 if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ]; then
@@ -3210,17 +3215,26 @@ if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ];
     _lim_ledger=$(flow_run_ledger_path 2>/dev/null) || _lim_ledger=""  # swallow-ok: no ledger path means no limit keys; the arm proceeds as before
     if [ -n "$_lim_ledger" ]; then
         _lim_keys="$(dirname "$_lim_ledger")/limit-keys.txt"
-        if [ "$FORCE" -eq 0 ] && grep -qxF -- "$TASK_NAME:$LIMIT_RESET" "$_lim_keys" 2>/dev/null; then
-            echo "arm-resume: limit-resume key $TASK_NAME:$LIMIT_RESET already armed -- replay is a no-op (--force re-arms)"
-            exit 0
+        _lim_rows=""
+        if [ -f "$_lim_ledger" ]; then
+            _lim_rows=$(grep -F '"flow":"armed-resume"' "$_lim_ledger" 2>/dev/null | grep -F '"ev":"start"' \
+                | grep -F "\"task_name\":\"$TASK_NAME\"" | sed -n 's/.*"fired_at":"\([^"]*\)".*/\1/p') || _lim_rows=""  # swallow-ok: no readable ledger means no fire evidence; the key then reads stale and the cap is skipped (fail open)
         fi
-        if [ "$FORCE" -eq 0 ] && [ -f "$_lim_ledger" ]; then
+        if [ "$FORCE" -eq 0 ]; then
+            _lim_rec=$(awk -v k="$TASK_NAME:$LIMIT_RESET" '$1 == k { t = $2 } END { print t }' "$_lim_keys" 2>/dev/null) || _lim_rec=""  # swallow-ok: no key file means nothing was recorded; the arm proceeds
+            if [ -n "$_lim_rec" ]; then
+                while read -r _lim_at; do
+                    [ -n "$_lim_at" ] || continue
+                    if ! [[ "$_lim_at" < "$_lim_rec" ]]; then
+                        echo "arm-resume: limit-resume key $TASK_NAME:$LIMIT_RESET already fired ($_lim_at) -- replay is a no-op (--force re-arms)"
+                        exit 0
+                    fi
+                done <<< "$_lim_rows"
+            fi
             _lim_cutoff=$(date -u -d "@$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
                 || date -u -r "$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _lim_cutoff=""  # swallow-ok: no date form works, so the cap is skipped (fail open)
             _lim_n=0
             if [ -n "$_lim_cutoff" ]; then
-                _lim_rows=$(grep -F '"flow":"armed-resume"' "$_lim_ledger" 2>/dev/null | grep -F '"ev":"start"' \
-                    | grep -F "\"task_name\":\"$TASK_NAME\"" | sed -n 's/.*"fired_at":"\([^"]*\)".*/\1/p') || _lim_rows=""
                 while read -r _lim_at; do
                     [ -n "$_lim_at" ] || continue
                     [[ "$_lim_at" < "$_lim_cutoff" ]] || _lim_n=$((_lim_n + 1))
@@ -3237,8 +3251,9 @@ if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ];
                 fi
                 exit 23
             fi
-            unset _lim_cutoff _lim_n _lim_at _lim_rows
+            unset _lim_rec _lim_cutoff _lim_n _lim_at
         fi
+        unset _lim_rows
     fi
 fi
 
@@ -6665,11 +6680,17 @@ fi
 # smart/auto sentinel arms, which never derive _GAP_SEC (no measured park).
 telemetry_emit handover-arm-resume armed "time=$RESUME_TIME" "force=$FORCE" "long_gap=$LONG_GAP" "gap_sec=${_GAP_SEC:-0}"
 
-# Record the limit-resume key (best-effort: a write failure must not fail an arm
-# that already succeeded; the worst case is the pre-key behavior).
+# Record the limit-resume key with its time (best-effort: a write failure must not
+# fail an arm that already succeeded; the worst case is the pre-key behavior).
+# A re-arm of the same key replaces its line, and keys older than a week go.
 if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
+    _lim_prune=$(date -u -d "@$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -r "$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _lim_prune=""  # swallow-ok: no date form works, so nothing is pruned
     mkdir -p "$(dirname "$_lim_keys")" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
-    printf '%s\n' "$TASK_NAME:$LIMIT_RESET" >> "$_lim_keys" 2>/dev/null || true
+    {
+        [ ! -f "$_lim_keys" ] || awk -v k="$TASK_NAME:$LIMIT_RESET" -v p="$_lim_prune" '$1 != k && $2 >= p' "$_lim_keys"
+        printf '%s %s\n' "$TASK_NAME:$LIMIT_RESET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "$_lim_keys.tmp" 2>/dev/null && mv "$_lim_keys.tmp" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
 fi
 
 # record this arm in the cross-machine arms registry, same

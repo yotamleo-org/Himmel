@@ -5590,6 +5590,74 @@ rc=$?
 assert_rc "7757 a non-limit arm is untouched by the limit keys and the restart cap (rc=0)" 0 "$rc"
 assert_not_contains "7757 no limit-key message on a non-limit arm" "limit-resume key" "$out"
 
+# The key is only a no-op once its arm FIRED; a cancelled or reaped arm re-arms.
+# The restart window is 5 minutes: rows older than that do not count. --force
+# with the SAME tag as a recorded key arms again. One fresh handover and ledger.
+LEDGER_7757B="$TMP/7757b.jsonl"
+: > "$DB_1879"; : > "$LEDGER_7757B"
+HO_7757B="$(make_handover "$WORK_REPO")"
+arm_7757b() {
+    TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757B" \
+        SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+        bash "$ARM" --time "$(future_time)" --handover "$HO_7757B" "$@" 2>&1
+}
+slots_7757b() { OSTYPE=msys count_slots "$DB_1879" "$DBD_1879"; }
+out=$(arm_7757b --limit-reset R1)
+rc=$?
+assert_rc "7757 window: first limit arm on a fresh handover (rc=0)" 0 "$rc"
+TASK_7757B=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
+for _n in 1 2 3; do
+    _run=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757B" bash "$FR_LIB" \
+        --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757B" "" 7758$_n)
+    HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757B" bash "$FR_LIB" \
+        --append-end "armed-resume" "$_run" "" 0 "complete" "" "limit hit again" >/dev/null
+done
+# Age every seeded start row to 2020: three restarts, none inside the window.
+sed 's/"fired_at":"[^"]*"/"fired_at":"2020-01-01T00:00:00Z"/' "$LEDGER_7757B" > "$LEDGER_7757B.aged" \
+    && mv "$LEDGER_7757B.aged" "$LEDGER_7757B"
+: > "$DB_1879"
+out=$(arm_7757b --limit-reset R2)
+rc=$?
+assert_rc "7757 window: three restarts older than 5 minutes do not trip the cap (rc=0)" 0 "$rc"
+assert_not_contains "7757 window: no restart-cap refusal for old rows" "restarted" "$out"
+# R2 is keyed and its job is still queued: the scheduler dedup answers, not the key.
+out=$(arm_7757b --limit-reset R2)
+rc=$?
+assert_rc "7757 stale key: a job the scheduler still holds meets the rc 3 dedup" 3 "$rc"
+assert_not_contains "7757 stale key: a queued job is not a silent key no-op" "limit-resume key" "$out"
+# The arm is cancelled before it fires: no start row after the key, so it re-arms.
+: > "$DB_1879"
+out=$(arm_7757b --limit-reset R2)
+rc=$?
+assert_rc "7757 stale key: a cancelled arm that never fired re-arms (rc=0)" 0 "$rc"
+assert_not_contains "7757 stale key: the re-arm is not dropped as a replay" "limit-resume key" "$out"
+if [ "$(slots_7757b)" = "1" ]; then
+    echo "PASS 7757 stale key: the re-arm queued one session"
+else
+    echo "FAIL 7757 stale key: the re-arm queued $(slots_7757b) sessions, want 1"
+    FAILED=$((FAILED + 1))
+fi
+# R2 fires and ends: now the replay is the no-op, and --force with the SAME tag re-arms.
+_run=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757B" bash "$FR_LIB" \
+    --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757B" "" 77589)
+HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757B" bash "$FR_LIB" \
+    --append-end "armed-resume" "$_run" "" 0 "complete" "" "limit hit again" >/dev/null
+: > "$DB_1879"
+out=$(arm_7757b --limit-reset R2)
+rc=$?
+assert_rc "7757 force: the replay of a fired key is a no-op (rc=0)" 0 "$rc"
+assert_contains "7757 force: the replay names the limit-resume key" "limit-resume key" "$out"
+out=$(arm_7757b --limit-reset R2 --force)
+rc=$?
+assert_rc "7757 force: --force with the SAME recorded tag arms again (rc=0)" 0 "$rc"
+assert_not_contains "7757 force: --force skips the recorded key" "limit-resume key" "$out"
+if [ "$(slots_7757b)" = "1" ]; then
+    echo "PASS 7757 force: --force queued one session"
+else
+    echo "FAIL 7757 force: --force queued $(slots_7757b) sessions, want 1"
+    FAILED=$((FAILED + 1))
+fi
+
 # --- 1879e: the post-arm existence verify on the POSIX at backend -----------
 # The verify asks list_existing, which is per-platform. Windows is covered by
 # every case above (win_env); force the `at` backend once so a POSIX host is not
