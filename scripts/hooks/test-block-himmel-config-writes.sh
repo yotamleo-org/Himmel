@@ -103,9 +103,12 @@ bsd_patch_case "apply_patch project file without readlink -m -> block" block "**
 mkdir -p "$T/w/a" && ln -s "$T/w/a" "$T/w/abs" && ln -s ../a "$T/w/a/rel" && ln -s "$T/w/none/deep" "$T/w/dangle"
 # shellcheck source=lib/resolve-path.sh
 . "$HOOKS/lib/resolve-path.sh"
-for wp in "$T/w/abs/x" "$T/w/a/rel/f/../g" "$T/w/dangle/z" "$T/w/missing/../a/q" "$T//w///a/./"; do
-    if [ "$(_hrp_walk "$wp")" = "$(readlink -m -- "$wp")" ]; then ok "7120 walk equals readlink -m: $wp"; else bad "7120 walk differs from readlink -m: $wp"; fi
-done
+# The comparison needs a GNU readlink -m to compare against; a BSD host proves the walk through the rows below.
+if [ "$(readlink -m -- / 2>/dev/null)" = "/" ]; then # swallow-ok: a readlink without -m reads empty and skips the GNU comparison
+    for wp in "$T/w/abs/x" "$T/w/a/rel/f/../g" "$T/w/dangle/z" "$T/w/missing/../a/q" "$T//w///a/./"; do
+        if [ "$(_hrp_walk "$wp")" = "$(readlink -m -- "$wp")" ]; then ok "7120 walk equals readlink -m: $wp"; else bad "7120 walk differs from readlink -m: $wp"; fi
+    done
+fi
 bsd_file_case "7120 no readlink -m: symlink alias of the config -> block" block "$T/alias.json"
 bsd_file_case "7120 no readlink -m: .. segment to the config -> block" block "$HOME/.himmel/x/../config.json"
 bsd_file_case "7120 no readlink -m: unrelated file -> allow" allow "$T/other/config.json"
