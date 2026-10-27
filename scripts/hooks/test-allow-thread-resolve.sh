@@ -207,6 +207,8 @@ expect_none 'malformed registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yo
 expect_allow 'malformed registry: himmel still allowed' "$WT" "$GOOD"
 printf '%s\n' '{"nwo": "yotamleo-org/himmel-voice"}' >"$ADAPTERS" || exit 1
 expect_none 'registry not an array: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+printf '%s\n' '{"entry": {"nwo": "yotamleo-org/himmel-voice"}}' >"$ADAPTERS" || exit 1
+expect_none 'registry an object of rows: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 : >"$ADAPTERS" || exit 1
 expect_none 'empty registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 rm "$ADAPTERS" || exit 1
