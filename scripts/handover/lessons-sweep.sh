@@ -85,5 +85,9 @@ printf '## Digest\n'
 if [ -z "$digest" ]; then
   printf '_No resolved bugs or CR findings yet._\n'
 else
+  # Check share: lessons carrying "check: <name>" / "guardrail: <name>"; "none" names no check.
+  total="$(printf '%s' "$digest" | grep -c '^- ')"
+  named="$(printf '%s' "$digest" | grep -Ei '(check|guardrail): *[^ )]' | grep -Eivc '(check|guardrail): *none\b')"
+  printf 'Check share: %s/%s lessons (%s%%) name a check or guardrail\n\n' "$named" "$total" "$((named * 100 / total))"
   printf '%s' "$digest"
 fi

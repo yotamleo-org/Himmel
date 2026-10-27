@@ -42,3 +42,5 @@ Backed by `<repo-root>/scripts/handover/lessons-sweep.sh`:
 ```bash
 bash <repo-root>/scripts/handover/lessons-sweep.sh
 ```
+
+When you write a lesson, ask: **which check or guardrail would have caught this, and does it exist?** Write the answer on the lesson as `check: <name>` or `check: none`. The sweep prints `Check share: N/M lessons (P%) name a check or guardrail` (a `guardrail: <name>` tag counts too; `none` does not).

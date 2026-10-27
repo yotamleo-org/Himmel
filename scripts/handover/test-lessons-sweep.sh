@@ -72,6 +72,19 @@ cout="$(bash "$L" --root "$rootc")"; crc=$?
 check "no-cr rc 0"               "$crc" "0"
 check "no-cr: no cr digest lines" "$(printf '%s' "$cout" | grep -c '^- cr · ')" "0"
 
+# Check share: the share of lessons naming a check or guardrail.
+rootk="$tmp/chk"; mkdir -p "$rootk/epics/HIMMEL-1-a"
+bash "$B" add --bugs "$rootk/epics/HIMMEL-1-a/bugs.md" --symptom "stale lock (check: test-queue-lock.sh)" >/dev/null
+bash "$B" status --bugs "$rootk/epics/HIMMEL-1-a/bugs.md" --id BUG-1 --to resolved
+bash "$B" add --bugs "$rootk/epics/HIMMEL-1-a/bugs.md" --symptom "no guard existed (check: none)" >/dev/null
+bash "$B" status --bugs "$rootk/epics/HIMMEL-1-a/bugs.md" --id BUG-2 --to resolved
+printf '%s\n' '## CR Findings' '### 2026-06-20 — HEAD abc (PR 1)' \
+  '- 🟠 Important [k-1] f.sh:9 — unquoted var (guardrail: block-unquoted-var) (real) <!-- cr:abc:k-1 -->' \
+  '- 🟠 Important [k-2] f.sh:9 — plain finding (real) <!-- cr:abc:k-2 -->' > "$rootk/epics/HIMMEL-1-a/reviewer-notes.md"
+kout="$(bash "$L" --root "$rootk")"
+check "share line counts named checks" "$(printf '%s' "$kout" | grep -c '^Check share: 2/4 lessons (50%) name a check or guardrail$')" "1"
+check "share: none-lesson not counted" "$(printf '%s' "$out" | grep -c '^Check share: 0/4 lessons (0%) ')" "1"
+
 # Empty root -> digest placeholder, rc 0.
 root3="$tmp/s3"; mkdir -p "$root3"
 out3="$(bash "$L" --root "$root3")"; rc3=$?
