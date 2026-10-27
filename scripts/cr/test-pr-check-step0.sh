@@ -69,10 +69,10 @@ check_rc "$rc3" 0 "T3 set HIMMEL_REPO exits 0 (stub's own exit)"
 # adopter lane must still be told to review against origin/<base> rather than stop.
 REPO_ROOT="$(cd "$DIR/../.." && pwd)"
 adopter="$tmp/adopter"
-# shellcheck source=../lib/git-clean.sh
-. "$DIR/../lib/git-clean.sh"
-git_env_scrub
 setup_fail() { echo "FAIL: adopter fixture setup: $1"; exit 1; }
+# shellcheck source=../lib/git-clean.sh
+. "$DIR/../lib/git-clean.sh" || setup_fail "git-clean.sh"
+git_env_scrub || setup_fail "git_env_scrub"
 git init -q -b main "$adopter" || setup_fail init
 git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "init" || setup_fail "initial commit"
 git clone -q --bare "$adopter" "$tmp/adopter-origin.git" || setup_fail "bare clone"
