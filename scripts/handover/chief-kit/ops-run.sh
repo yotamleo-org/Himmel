@@ -43,7 +43,7 @@ refuse() {
 }
 
 case "$name" in
-    ready-check.sh|close-wrapped-worker.sh|worker-event.sh|wrap-merged.sh|action-zero.sh|next-dispatchable.sh|board.mjs|check-ci.sh) ;;
+    ready-check.sh|close-wrapped-leg.sh|close-wrapped-worker.sh|worker-event.sh|wrap-merged.sh|action-zero.sh|next-dispatchable.sh|board.mjs|check-ci.sh) ;;
     *) refuse "not-on-allowlist" ;;
 esac
 if [ "$name" = "action-zero.sh" ]; then

@@ -348,7 +348,7 @@ $V4B_ROWS
 EOF
 # The V4b and V5 script forwarders are removed; their registry rows stay.
 for gone in scripts/handover/chief/console.sh \
-  scripts/handover/chief-kit/close-wrapped-leg.sh scripts/handover/chief-kit/headed-arm-leg.sh \
+  scripts/handover/chief-kit/headed-arm-leg.sh \
   scripts/handover/chief-kit/leg-digest-step.sh scripts/handover/chief-kit/leg-doc-lock.sh \
   scripts/handover/chief-kit/leg-event.sh scripts/handover/chief-kit/leg-jira-status.sh \
   scripts/handover/chief-kit/leg-pretrust.sh scripts/handover/chief-kit/leg-transcripts.sh \

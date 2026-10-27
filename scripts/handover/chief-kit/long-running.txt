@@ -6,6 +6,7 @@
 # more than about 30 s; leave short scripts (append-results.sh, go.sh,
 # write-verdict.sh, fleet-manifest.sh) out.
 wrap-merged.sh
+close-wrapped-leg.sh
 close-wrapped-worker.sh
 ready-check.sh
 verdict-go.sh
