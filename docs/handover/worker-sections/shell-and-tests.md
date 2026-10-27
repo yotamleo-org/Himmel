@@ -37,8 +37,8 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   review reply) opens with an attribution callout, with the reply below it
   and outside the note. The comment posts under the operator's account, so
   the callout is the only sign an agent wrote it:
-  `> [!NOTE]` then `> 🤖 **<model id from your env> responding on behalf of <gh login>**`.
-  Never guess the model. Check the body file with
+  `> [!NOTE]` then `> 🤖 **<model> responding on behalf of <gh login>**`.
+  `<model>` is the `model=` id of your LIVE bullet; never guess it. Check the body file with
   `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>` before posting.
   Lead with the conclusion, cite the file:line, check or output, and keep
   verified fact apart from judgement. Two kinds of comment carry no callout: a

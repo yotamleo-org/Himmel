@@ -147,8 +147,8 @@ template_version: 3
 > implementation: name the smallest rewrite in a `FINDING` and wait for the
 > ruling); **CLOSE** (superseded, obsolete or no longer worth its cost: cite
 > the evidence in a `FINDING` and stop; the chief closes it, never you).
-> Upstream checks a rebase with `git range-diff`; himmel merges forward and
-> refuses a force-push, so compare the PR's own diff before and after instead
+> Upstream checks a rebase with `git range-diff`; a himmel worker merges the
+> base forward and never force-pushes, so compare the PR's own diff before and after instead
 > (`git diff <old merge-base> <old head>` against
 > `git diff <new merge-base> HEAD`). Confirm that nothing it intended was lost
 > and that nothing already on the base came back. **Keep the credit:** build on
