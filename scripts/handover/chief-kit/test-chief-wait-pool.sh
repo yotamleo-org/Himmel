@@ -157,7 +157,7 @@ check "(rp-ok) a new streak after capacity=ok wakes at once (rc 0)" "0" "$rc"
 # --- (rp-real) the waiter's pool output is the hand run's, drop summary included -----------
 M="$WORK/mirror/HIMMEL"; mkdir -p "$M"
 mk() { # <key> <labels json> <title> <body>
-    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "Medium"\nlabels: %s\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' \
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "Medium"\nlabels: %s\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' \
         "$1" "$2" "$1" "$3" "$4" > "$M/$1.md"
 }
 mk HIMMEL-1 '["ps3-blocker"]' "pool head" "Edit scripts/lib/alpha.sh only."

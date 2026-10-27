@@ -532,9 +532,16 @@ worker saw it: delivery needs the worker's `HIMMEL_BUS_NAME` hooks, so the
 successor's `WAKE succession partial` is the backstop for one that never quotes back. The worker
 session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's
 waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. That run is the
-relay: never re-run it (a retry resends the claudex inbox relays). It never carries a fresh
-token, and a relay with none is complete (the worker keeps its own): native and claudex
-workers are not rotated on a bus succession. It prints `RELAYED <n> of <m>` last, and n
+relay: never re-run it (a retry resends the claudex inbox relays). Unless you pass
+`--fresh <label>=<token>`, it never carries a fresh token, and a relay with none is
+complete (the worker keeps its own): native and claudex workers are not rotated on a
+bus succession, and `WAKE relay-on-live` passes no `--fresh`. A successor that issued fresh
+tokens has the outgoing chief run `relay-batch.sh <this doc> --successor <it>` with one
+`--fresh <label>=<token>` per worker instead: the `SENDMESSAGE` line and the claudex inbox
+relay quote the held token and the fresh one, and a native worker owed a fresh token gets
+that `SENDMESSAGE` rather than a bus record (a bus record is token-free). A claudex worker's
+bus record is sent right after its inbox relay. `FRESH-UNUSED <label>` means no relayed
+worker took that token: hand it over. It prints `RELAYED <n> of <m>` last, and n
 counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor,
 naming every worker still unrelayed (n alone does not say which). A batch that fails or
 times out (`WAKE relay-on-live ... relay-failed rc=<n>`) prints its partial output and no

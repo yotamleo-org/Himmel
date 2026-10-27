@@ -210,7 +210,7 @@ function sameToken(a: string | null, b: string): boolean {
   return d === 0;
 }
 
-// the login file next to the service-mode token.
+// the pre-keyring login file, next to the service-mode token: read once as a fallback and moved into the keyring.
 export const loginPath = (env: Env) => join(env.HOME || homedir(), ".himmel", "state", "ui-login");
 
 // Operator override CONFIG_UI_HIMMELCTL: replaces the himmelctl
@@ -290,8 +290,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
   const lockPath = join(stateDir, "write.lock");
   const auditPath = join(stateDir, "actions.jsonl");
-  const auth = createAuth(loginPath(env), now);
-  const accountOpts = { loginPath: loginPath(env), serviceMode: !!opts.noIdle };
+  const auth = createAuth(loginPath(env), now, env);
+  const accountOpts = { loginPath: loginPath(env), serviceMode: !!opts.noIdle, env };
   const reprobeMs = opts.reprobeBudgetMs ?? REPROBE_BUDGET_MS;
   // Operator override HIMMEL_REPORT_CADENCE_ROOT (shared with
   // `report`, so the feed and the actions agree): the tree the cadence scripts
@@ -713,7 +713,7 @@ async function readPassword(): Promise<string> {
 }
 
 if (import.meta.main && process.argv.includes("--set-login")) {
-  // --set-login <user>: writes the UI login (user + scrypt hash) and exits; a running server reads it on the next login.
+  // --set-login <user>: stores the UI login (user + scrypt hash) in the keyring and exits; a running server reads it on the next login.
   const user = process.argv[process.argv.indexOf("--set-login") + 1] ?? "";
   try {
     writeLogin(loginPath(process.env), user, await readPassword());

@@ -242,14 +242,14 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
    `FAILED-INBOX` and `UNRESOLVED` too; on `relay-failed`, any undelivered.
    Never re-run it (it resends). It carries no fresh token: native and claudex
-   workers are not rotated on a bus succession. Then send the successor
+   workers are not rotated on bus succession; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any workers that
    did not quote back, and why. Relay any worker it names as not relayed, then
    wrap with **one** command, which writes `WRAPPED` and releases the lock:
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
-   It refuses (exit 4) while any subagent of yours, a judge subagent above all, is
+   It refuses (exit 4) while any subagent of yours is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.
 
 Write every bullet below with
