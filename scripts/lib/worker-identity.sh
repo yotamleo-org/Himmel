@@ -144,7 +144,9 @@ worker_description() {
         fi
     fi
     if [ -z "$val" ] && [ -r "$doc" ]; then
-        pr="$(sed -nE 's/^- .*(READY[^0-9a-f]*|PR #)([0-9]+).*/\2/p' "$doc" | tail -n 1)"
+        pr="$(awk '/^## Results/ { inr = 1; next } inr && /^## / { inr = 0 } inr' < "$doc" \
+            | grep -E '^- ([0-9]{1,2}:[0-9]{2} +)?(LIVE *(-|–|—|:)? *PR *#?[0-9]{2,} +open|READY +#?[0-9]{2,} +[0-9a-f]{7,}|MERGED +#[0-9]{2,})' \
+            | tail -n 1 | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} +)?//' | grep -oE '[0-9]{2,}' | head -n 1)" || pr=""
         if [ -n "$pr" ]; then
             command -v forge_change_view >/dev/null 2>&1 || . "$_WI_LIB_DIR/forge.sh" 2>/dev/null
             json="$(forge_change_view "$pr" 2>/dev/null)" || json=""

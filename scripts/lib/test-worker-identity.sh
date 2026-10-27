@@ -187,9 +187,13 @@ d_tt="$(mkdoc "$fx_id-N20-a-2026-10-07.md" '---' 'resume_cwd: /x' '---' "# $fx_i
 d_pt="$(mkdoc HIMMEL-1-N21-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — H1 scope — worker N21 (opus, native), 2026-10-07' '## Results' '- 10:00 READY 4001 0123456789abcdef0123456789abcdef01234567 GREEN')"
 d_tsp="$(mkdoc HIMMEL-1-N22-a-2026-10-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 trailing scope \xe2\x80\x94 worker N22 (opus, native), 2026-10-07   ')"
 d_old="$(mkdoc HIMMEL-1-N57-a-2026-09-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 older scope \xe2\x80\x94 leg N57 (claudex), 2026-09-07')"
+d_pnote="$(mkdoc HIMMEL-1-N23-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — Note scope — worker N23 (opus, native), 2026-10-07' '- Prior art: PR #4001 was the first attempt' '## Results' '- 10:00 LIVE — started')"
+d_pnum="$(mkdoc HIMMEL-1-N24-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — H1 scope — worker N24 (opus, native), 2026-10-07' '## Results' '- 10:00 LIVE — PR 4001 open')"
 resolve_fx() { ( TRACKER=local TRACKER_STORE="$fx_store" FORGE=github GH_CMD="$fx_gh" worker_description "$1" ); }
 check_eq 'resolve: no field -> the ticket title from the tracker' "$(resolve_fx "$d_tt")" 'Ticket title from the tracker'
 check_eq 'resolve: no field, no ticket title -> the PR title, goalOf-stripped' "$(resolve_fx "$d_pt")" 'PR title from the forge'
+check_eq 'resolve: a PR named outside the Results section is not the worker PR' "$(resolve_fx "$d_pnote")" 'Note scope'
+check_eq 'resolve: a "LIVE — PR 4001 open" Results bullet names the PR' "$(resolve_fx "$d_pnum")" 'PR title from the forge'
 check_eq 'resolve: the field still wins over the ticket title' "$(resolve_fx "$d_fm")" 'Add a description line to every worker brief'
 check_eq 'resolve: no ticket, no PR -> the H1 scope' "$(resolve_fx "$d_body")" 'body scope'
 check_eq 'resolve: trailing spaces on the H1 do not defeat the suffix strip' "$(worker_description "$d_tsp")" 'trailing scope'
