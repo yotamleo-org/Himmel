@@ -808,7 +808,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   let refused: JudgeReplyError | undefined;
   // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
   const current = l.decl.current;
-  const mirrorIssues = readMirror(ctx.mirrorRoot).issues;
+  let mirrorIssues: ReturnType<typeof readMirror>['issues'] = null;
   let moved = 0;
   const bulkHeld = (key: string, op: Op, operatorRef: boolean): boolean => {
     if (!['add', 'remove', 'move'].includes(op.kind) || (op.from_v !== current && op.to_v !== current)) return false;
@@ -819,6 +819,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   };
   const heldNote = `bulk guard: ${current} already takes ${BULK_MOVE_LIMIT} open moves in one run; rerun with --ruling <decision-ref> or --chief-override "<reason>"`;
   try {
+    mirrorIssues = readMirror(ctx.mirrorRoot).issues;
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       try {
         const row = loadOrThrow(ctx).rulings.verified.filter((r) => r.id === id).pop();

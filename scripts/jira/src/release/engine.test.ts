@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -912,6 +912,15 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
     await expect(rmRun(ctx(), admitAll, { chiefOverride: 'because' })).rejects.toThrow(/HIMMEL_CONSOLE=1/);
     expect(state(ctx()).requests).toMatchObject({ claimed: [] });
     expect(overrideRows()).toEqual([]);
+  });
+
+  it('an unreadable mirror aborts the run without leaving the lease held', async () => {
+    askMany(2);
+    mirror([]);
+    mkdirSync(join(root, 'mirror', 'bad.md'));
+    await expect(rmRun(ctx(), admitAll)).rejects.toThrow();
+    rmSync(join(root, 'mirror', 'bad.md'), { recursive: true });
+    expect(rulings(await rmRun(ctx(), admitAll))).toHaveLength(2);
   });
 
   it('operator-authority rulings with a ref are covered and do not count', async () => {
