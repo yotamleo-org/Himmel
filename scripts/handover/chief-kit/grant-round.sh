@@ -102,7 +102,7 @@ GH="${GRANT_ROUND_GH:-gh}"
 LOCK_LIB="${GRANT_ROUND_LOCK_LIB:-$LIB/shared-branch-lock.sh}"
 
 # --- the PR ----------------------------------------------------------------
-pr_json() { (cd "$PRIMARY" && "$GH" pr view "$PR" --json headRefName,headRefOid,isCrossRepository,state 2>/dev/null); }
+pr_json() { (cd "$PRIMARY" && "$GH" pr view "$PR" ${VREPO:+--repo "$VREPO"} --json headRefName,headRefOid,isCrossRepository,state 2>/dev/null); }
 view="$(pr_json)" || { echo "grant-round: gh pr view $PR failed" >&2; exit 13; }
 branch="$(printf '%s' "$view" | jq -r '.headRefName // empty')"
 live_head="$(printf '%s' "$view" | jq -r '.headRefOid // empty')"

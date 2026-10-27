@@ -61,6 +61,7 @@ mkdir -p "$state" || exit 1
 cat > "$tmp/gh" <<'EOF'
 #!/usr/bin/env bash
 n=0
+if [ -n "${GH_ARGS_LOG:-}" ]; then echo "$*" >> "$GH_ARGS_LOG"; fi
 if [ -n "${GH_COUNT:-}" ]; then n="$(cat "$GH_COUNT" 2>/dev/null || echo 0)"; n=$((n+1)); echo "$n" > "$GH_COUNT"; fi
 # A waiter reclaiming a lock while this (in-lock) read stalls: swap the holder record.
 if [ -n "${GH_STEAL_OWNER:-}" ] && [ "$n" -ge 2 ]; then printf '{"pid":1,"lane":"thief"}\n' > "$GH_STEAL_OWNER"; fi
@@ -315,6 +316,19 @@ GR_ARGS=(501 "$SHA_A" qadoptbr --repo o/other-repo)
 rc=0; out=$(run 2>&1) || rc=$?
 check "adopter record naming another branch refuses" "$rc" 4
 check "the branch refusal changes nothing" "$(cat "$state/$BRANCH.round")" 3
+# the PR itself is read from the adopter repo, not the checkout the script runs in
+reset_state 3
+ghlog="$tmp/gh-args.log"; : > "$ghlog"
+GR_ARGS=(501 "$SHA_A" qadopt --repo o/other-repo)
+rc=0; out=$(run GH_ARGS_LOG="$ghlog" 2>&1) || rc=$?
+check "adopter grant reads the PR from its --repo" "$rc" 0
+check "every gh pr view names the adopter repo" "$(grep -c -v -e '--repo o/other-repo' "$ghlog")" 0
+check "the PR is read again under the lock" "$(wc -l < "$ghlog" | tr -d ' ')" 2
+reset_state 3
+: > "$ghlog"
+GR_ARGS=(501 "$SHA_A" qadopt)
+rc=0; out=$(run GH_ARGS_LOG="$ghlog" 2>&1) || rc=$?
+check "no --repo: the gh lookup carries no repo flag" "$(grep -c -e '--repo' "$ghlog")" 0
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
