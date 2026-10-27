@@ -1032,7 +1032,7 @@ grade_pass() {
 # [--cap-factor F] [--max-usd U] [--timeout S] [--json] [--no-ledger]: the grader calls happen
 # here (budget-capped like the sweep); the maths is lq_stats.py.
 cmd_calibration() {
-  local dirs=() json="" noledger="" sample="" d l stem list stop=0 nopacket=0 l1="" l2="" lt="" m g1=() under=() stored=()
+  local dirs=() json="" noledger="" sample="" d l stem list stop=0 nopacket=0 rdirs=() l1="" l2="" lt="" m g1=() under=() stored=()
   local j1model="" j1effort="" j1lane=native j2model="" j2effort="" j2lane=native tbmodel="" tbeffort="" tblane=native
   MAX_USD=1; TIMEOUT=600; SPENT=0; CAP_FACTOR=""
   while [ $# -gt 0 ]; do
@@ -1119,11 +1119,15 @@ cmd_calibration() {
     list="$(mktemp "${TMPDIR:-/tmp}/lq-calibration.XXXXXX")" || die "mktemp failed"
     # --sample lists the packets to grade, so a listed one that is missing stops
     # the pass; without it, a run the sweep never judged has no packet and is left out.
+    # Its lines are matched as lq_stats.py reads them: absolute from the caller's directory.
+    [ -z "$sample" ] || python3 -c 'import os, sys; [print(os.path.abspath(l.strip())) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]' \
+      "$sample" >"$list.sample" || die "cannot read --sample '$sample'"
     for d in "${dirs[@]}"; do
       d="$(cd "$d" && pwd)" || die "cannot resolve $d"
+      rdirs+=("$d")
       while IFS= read -r stem; do
         if [ -n "$sample" ]; then
-          grep -qxF "$d/$stem.judge-packet.md" "$sample" || continue
+          grep -qxF "$d/$stem.judge-packet.md" "$list.sample" || continue
         elif ! [ -s "$d/$stem.judge-packet.md" ]; then
           nopacket=$((nopacket + 1)); continue
         fi
@@ -1136,10 +1140,12 @@ cmd_calibration() {
     if [ -n "$tbmodel" ] && [ "$stop" = 0 ]; then
       # only the runs the two graders give different verdicts go to the tie-breaker
       python3 "$HERE/lq_stats.py" disagreements --judge2-label "$l2" ${l1:+--judge1-label "$l1"} \
-        ${sample:+--sample "$sample"} "${dirs[@]}" >"$list" || die "cannot list the graders' disagreements"
-      grade_pass "$tbmodel" "$tbeffort" "$tblane" "$lt" "$list" || stop=1
+        ${sample:+--sample "$sample"} "${rdirs[@]}" >"$list.tb" || die "cannot list the graders' disagreements"
+      # a run the grading list left out (no packet, or not in --sample) is not sent either
+      awk 'NR == FNR { k[$0]; next } $0 in k' "$list" "$list.tb" >"$list.keep"
+      grade_pass "$tbmodel" "$tbeffort" "$tblane" "$lt" "$list.keep" || stop=1
     fi
-    rm -f "$list"
+    rm -f "$list" "$list.sample" "$list.tb" "$list.keep"
     echo "lane-quality: graders spent $SPENT USD (cap $MAX_USD)" >&2
     if [ "$stop" = 1 ] && [ -z "$noledger" ]; then
       echo "lane-quality: the pass stopped short, so this calibration is not recorded; a rerun reuses the stored grades" >&2

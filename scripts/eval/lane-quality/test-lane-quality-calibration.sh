@@ -206,7 +206,7 @@ fresh
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>&1
 rm "$TMP/fx2/t3.judge-packet.md"; : >"$TMP/fake.log"
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --sample "$TMP/sample-all.txt" --json --no-ledger >"$TMP/reuse.json" 2>/dev/null; rc=$?
-check "a stored grader result is reused when its packet is missing" '[ "$rc" -eq 0 ] && [ ! -s "$TMP/fake.log" ] && jq -e ".metrics.n_verdict == 6" "$TMP/reuse.json" >/dev/null'
+check "a stored grader result is reused when its packet is missing" '[ ! -e "$TMP/fx2/t3.judge-packet.md" ] && [ "$rc" -eq 0 ] && [ ! -s "$TMP/fake.log" ] && jq -e ".metrics.n_verdict == 6" "$TMP/reuse.json" >/dev/null'
 fresh
 printf 't1 4\nt2 4\nt3 noscore\nt4 4\nt5 3\nt6 2\n' >"$TMP/grades/gpt-bad"
 # shellcheck disable=SC2034  # rows0 is read by check's eval
@@ -225,6 +225,19 @@ echo '{"type": "result", "is_error": false, "total_cost_usd": 0.01, "structured_
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >"$TMP/regrade.json" 2>/dev/null; rc=$?
 check "a stored result with no claims is graded again" '[ "$rc" -eq 0 ] && [ "$(cat "$TMP/fake.log")" = "gpt-x t3" ] && jq -e ".metrics.n_verdict == 6" "$TMP/regrade.json" >/dev/null'
+fresh
+for s in t1 t2 t3 t4 t5 t6; do echo "fx2/$s.judge-packet.md"; done >"$TMP/sample-rel.txt"
+(cd "$TMP" && bash "$RUN" calibration fx2 "${G1[@]}" "${G2[@]}" --sample sample-rel.txt --json --no-ledger) >"$TMP/rel.json" 2>/dev/null; rc=$?
+check "a relative --sample line names its packet from the caller's directory" '[ "$rc" -eq 0 ] && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 6 ] && jq -e ".metrics.n_verdict == 6" "$TMP/rel.json" >/dev/null'
+fresh
+for s in t1 t2 t3 t4 t5 t6; do echo "$TMP/./fx2/$s.judge-packet.md"; done >"$TMP/sample-dot.txt"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --sample "$TMP/sample-dot.txt" --json --no-ledger >"$TMP/dot.json" 2>/dev/null; rc=$?
+check "a --sample line with a ./ segment names its packet" '[ "$rc" -eq 0 ] && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 6 ] && jq -e ".metrics.n_verdict == 6" "$TMP/dot.json" >/dev/null'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>&1
+rm -f "$TMP/fx2/t4.judge-packet.md"; : >"$TMP/fake.log"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" "${TB[@]}" --json --no-ledger >/dev/null 2>"$TMP/tbnopk.err"; rc=$?
+check "without --sample a packetless disagreement is left out of the tie-breaker pass" '[ ! -e "$TMP/fx2/t4.judge-packet.md" ] && [ "$rc" -eq 0 ] && grep -qF "1 run(s) have no judge packet" "$TMP/tbnopk.err" && [ "$(cat "$TMP/fake.log")" = "deepseek/deepseek-x t6" ]'
 
 echo "test-lane-quality-calibration: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
