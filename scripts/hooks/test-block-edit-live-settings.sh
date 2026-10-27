@@ -1362,14 +1362,21 @@ ${LONG_BODY}EOF"
     # never names a settings file) survives the same word repeating, and a
     # word differing only in case is still judged when the launch
     # environment imported nocasematch. COO-Link must exist so it reaches the
-    # memoized fork (a missing non-settings leaf returns before it); on a
-    # case-insensitive disk it already is coo-link, so it is not created.
+    # memoized fork (a missing non-settings leaf returns before it). On a
+    # case-insensitive disk the two names are one file, so 7912e is skipped;
+    # a distinct regular file that cannot be created fails the row's setup.
     ln -s "$PRIMARY/.claude/settings.json" "$WT2/coo-link"
-    [ -e "$WT2/COO-Link" ] || : > "$WT2/COO-Link"
     assert_rc "7912d a symlink operand repeated still denies" 2 \
         "$(bash_rc_of "$WT2" "cp /tmp/x coo-link; echo ok; cp /tmp/x coo-link" HOME="$FAKEHOME")"
-    assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \
-        "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
+    if [ -e "$WT2/COO-Link" ]; then
+        echo "SKIP 7912e (case-insensitive filesystem)"
+    elif : > "$WT2/COO-Link" && [ -f "$WT2/COO-Link" ] && [ ! -L "$WT2/COO-Link" ]; then
+        assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \
+            "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
+    else
+        echo "FAIL 7912e could not create a distinct regular COO-Link"
+        FAILED=$((FAILED + 1))
+    fi
 else
     echo "SKIP 7912a-e (node not installed)"
 fi
