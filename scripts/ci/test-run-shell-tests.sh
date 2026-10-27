@@ -1231,8 +1231,8 @@ else
   # cap and manufacture the exact false CAP EXCEEDED the table exists to
   # delete. Asserted rather than merely deleted so that re-adding one is a
   # deliberate act with a measurement behind it.
-  # (test-run-shell-tests.sh itself keeps 600 on Linux but has a Darwin arm: its
-  # rows are with the other Darwin arms below, on a stubbed uname.)
+  # (test-run-shell-tests.sh itself has a Linux arm and a Darwin arm: its rows
+  # are with the other per-OS arms below, on a stubbed uname.)
   for p2267 in test-run-shell-tests-timing \
                test-run-shell-tests-discovery \
                test-run-shell-tests-rotation \
@@ -1285,8 +1285,10 @@ else
   # on both attempts of macOS run 40408566333 (129s on the Linux ledger, so the
   # last case was still pending). Its five siblings measured under the cap there
   # or are unmeasured on macOS, so they keep the default.
-  check_os_timeout_2267 Linux "scripts/ci/test-run-shell-tests.sh" "600"
-  check_os_timeout_2267 Linux "/repo/scripts/ci/test-run-shell-tests.sh" "600"
+  # Linux CI killed it at 603s with 129s on the ledger (main run 40441105007, PR
+  # 4021 job 121981449917), a 4.7x loaded-runner factor; 1500s is the 603s x 2.5.
+  check_os_timeout_2267 Linux "scripts/ci/test-run-shell-tests.sh" "1500"
+  check_os_timeout_2267 Linux "/repo/scripts/ci/test-run-shell-tests.sh" "1500"
   check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "2000"
   check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "2000"
   check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "600"
