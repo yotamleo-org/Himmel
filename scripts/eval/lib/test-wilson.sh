@@ -17,6 +17,7 @@ CALLERS = (
     LIB.parent / "judge-accuracy/judge_accuracy.py",
     LIB.parent / "review-panel/score.py",
     LIB.parent / "worker-digest/pdd_share.py",
+    LIB.parent.parent / "cr/evals-page-gen.py",
 )
 
 

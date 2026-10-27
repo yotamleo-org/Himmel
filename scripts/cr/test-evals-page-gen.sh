@@ -303,6 +303,8 @@ eq "data: a probe without its verdict line is refused" "$rc" "2"
 eq "page: committed README is the render of the committed data file" \
   "$(python3 -I "$GEN" render --data "$DATA" --out "$TMP/committed.md" > /dev/null 2>&1; cmp -s "$TMP/committed.md" "$PAGE" && echo same || echo differ)" "same"
 eq "page: no bare percentage" "$(bare_pct "$PAGE")" ""
+eq "page: this suite runs in PR CI, so a hand edit of the page fails the PR" \
+  "$(awk -F'\t' '$1 == "scripts/cr/test-evals-page-gen.sh" { print $2 " " $3 }' "$ROOT/scripts/ci/suite-tiers.tsv")" "pr static-gate"
 lacks "page: no draft marker" "$(head -5 "$PAGE")" "draft:"
 eq "page: on the site allowlist" "$(grep -cx 'evals/README.md' "$ROOT/site/allowlist.txt")" "1"
 eq "page: in the site nav" "$(grep -cF "slug: 'evals' }" "$ROOT/site/astro.config.mjs")" "1"
