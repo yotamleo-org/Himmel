@@ -2,7 +2,7 @@
 # scripts/cr/cr-trigger-ledger.sh — the per-head CI-RELEASE ledger.
 #
 # NOT the CodeRabbit trigger ledger. scripts/lib/coderabbit-trigger-ledger.sh
-# (and its deprecated alias scripts/lib/cr-trigger-ledger.sh) records the
+# records the
 # `@coderabbitai review` comments a worker posts; this file records the heads
 # whose `ci:go` label scripts/lib/cr-first-release.sh released, with the
 # reviewer verdicts that justified it. Same words, two ledgers.

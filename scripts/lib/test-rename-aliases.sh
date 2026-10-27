@@ -261,12 +261,23 @@ fi
 # --- slice V2b: the CodeRabbit and review libs, each old path a sourcing alias ---
 V2B_ROWS='cr-available.sh|coderabbit-available.sh|identifier|old-to-new|V2|X
 cr-body-findings.sh|coderabbit-body-findings.sh|identifier|old-to-new|V2|X
-cr-default-base.sh|review-default-base.sh|identifier|old-to-new|V2|X
-cr-high-risk-diff.sh|review-high-risk-diff.sh|identifier|old-to-new|V2|X
 cr-ledger-evidence.sh|review-ledger-evidence.sh|identifier|old-to-new|V2|X
 cr-merge-gate.sh|review-merge-gate.sh|identifier|old-to-new|V2|X
-cr-signal.sh|coderabbit-signal.sh|identifier|old-to-new|V2|X
+cr-signal.sh|coderabbit-signal.sh|identifier|old-to-new|V2|X'
+# These three aliases are removed; their registry rows stay and the new file is the only one.
+V2B_GONE_ROWS='cr-default-base.sh|review-default-base.sh|identifier|old-to-new|V2|X
+cr-high-risk-diff.sh|review-high-risk-diff.sh|identifier|old-to-new|V2|X
 cr-trigger-ledger.sh|coderabbit-trigger-ledger.sh|identifier|old-to-new|V2|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V2b row '$old'" "$tabbed" "$got"
+  new="$(printf '%s' "$want" | cut -d'|' -f2)"
+  check "scripts/lib/$new exists" "yes" "$([ -f "$ROOT/scripts/lib/$new" ] && echo yes || echo no)"
+done <<EOF
+$V2B_GONE_ROWS
+EOF
 while IFS= read -r want; do
   tabbed="$(printf '%s' "$want" | tr '|' '\t')"
   old="${want%%|*}"
@@ -352,7 +363,8 @@ for gone in scripts/handover/chief/console.sh \
   scripts/handover/chief-kit/leg-digest-step.sh scripts/handover/chief-kit/leg-doc-lock.sh \
   scripts/handover/chief-kit/leg-event.sh scripts/handover/chief-kit/leg-jira-status.sh \
   scripts/handover/chief-kit/leg-pretrust.sh scripts/handover/chief-kit/leg-transcripts.sh \
-  scripts/graphify/leg-graph.sh scripts/lib/leg-identity.sh; do
+  scripts/graphify/leg-graph.sh scripts/lib/leg-identity.sh \
+  scripts/lib/cr-default-base.sh scripts/lib/cr-high-risk-diff.sh scripts/lib/cr-trigger-ledger.sh; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
 forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
