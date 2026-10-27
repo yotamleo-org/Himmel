@@ -9,7 +9,7 @@
 // 2026-08-29). The predicate is a property of the target
 // DIRECTORY — is it PHI-marked or egress-denied — so it outlives any one lane.
 //
-// KEEP IN SYNC with scripts/claude-glm{,.ps1} path_under_any / guard block.
+// KEEP IN SYNC with scripts/claude-codex path_under_any / guard block.
 // Fail-closed: unreadable guard config refuses.
 // No --force override on this path (unattended lane; force stays interactive).
 //
