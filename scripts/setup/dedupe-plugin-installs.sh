@@ -6,7 +6,7 @@
 #
 # Default plugin: atlassian@claude-plugins-official (Jira is CLI-first, so the MCP
 # plugin should not load). Dry-run unless --apply. Each removal is
-# `claude plugin uninstall <id> --scope <scope>` run from the install's projectPath,
+# `claude plugin uninstall <id> --scope <scope> --keep-data` run from the install's projectPath,
 # because a local/project uninstall acts on the project of the cwd. A projectPath
 # that no longer exists is created empty for the call and removed again.
 #
@@ -53,7 +53,7 @@ while IFS=$'\t' read -r scope ppath; do
     fi
     made=""
     if [ ! -d "$ppath" ]; then mkdir -p "$ppath" && made=1; fi
-    if ( cd "$ppath" && "$BIN" plugin uninstall "$PLUGIN" --scope "$scope" ) >/dev/null 2>&1; then
+    if ( cd "$ppath" && "$BIN" plugin uninstall "$PLUGIN" --scope "$scope" --keep-data ) >/dev/null 2>&1; then
         printf 'removed  %-7s %s\n' "$scope" "$ppath"; removed=$((removed + 1))
     else
         printf 'FAIL  %-7s %s\n' "$scope" "$ppath"; failed=$((failed + 1))

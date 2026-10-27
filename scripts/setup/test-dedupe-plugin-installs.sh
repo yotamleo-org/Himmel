@@ -55,6 +55,9 @@ if [ "$(wc -l < "$T/log" | tr -d ' ')" = 3 ] \
    && [[ "$log" == *"$T/wt-b|plugin uninstall $ATL --scope local"* ]] \
    && [[ "$log" == *"$T/gone|plugin uninstall $ATL --scope project"* ]]; then _pass "$NAME"; else _fail "$NAME" "log=[$log] out=[$out]"; fi
 
+NAME="--apply passes --keep-data on every uninstall, so the plugin's data directory survives"
+if [ "$(grep -c -- ' --keep-data' "$T/log")" = 3 ]; then _pass "$NAME"; else _fail "$NAME" "log=[$log]"; fi
+
 NAME="--apply never uninstalls the user-scope entry or another plugin"
 if [[ "$log" != *"--scope user"* && "$log" != *other@himmel* ]]; then _pass "$NAME"; else _fail "$NAME" "log=[$log]"; fi
 
