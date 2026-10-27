@@ -21,7 +21,9 @@
 #
 # Refuses (exit 1): on `main`, when the branch has no upstream, on an empty
 # body file, or when opening (not updating) a PR before /pr-check finished: a
-# cr-pending marker still held, or no `avail ... ok` ledger row at that head.
+# cr-pending marker still held, or no `avail ... ok` ledger row at that head (a
+# repo listed in scripts/guardrails/himmel-adapters.json needs no ledger row, only
+# the marker hold: its CI, the chief's judge and the signed GO stand in).
 # No retry logic — a classifier denial of THIS invocation is
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
@@ -244,9 +246,24 @@ if [ -z "$existing_pr" ]; then
         echo "ERR worker-pr-open: /pr-check is still pending for branch '$branch' (cr-pending marker present) — finish /pr-check until it clears the marker, then open the PR" >&2
         exit 1
     fi
+    # A PR on a registered adopter repo (origin nwo in himmel-adapters.json, read from this
+    # harness's primary checkout) has no CR ledger here: the repo's CI, the chief's judge and
+    # the signed GO stand in for the record. The pending-marker hold above still applies.
+    adopter_repo=0
+    origin_url=$(git remote get-url origin 2>/dev/null) || origin_url="" # swallow-ok: no origin means not an adopter, the record check below applies
+    harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
+    if [ -n "$harness_common" ] && [ -r "$harness_common/../scripts/guardrails/himmel-adapters.json" ] \
+        && WT_URL="$origin_url" WT_REG="$harness_common/../scripts/guardrails/himmel-adapters.json" node -e '
+            const m = /github\.com[:\/]([^\/]+\/[^\/]+?)(\.git)?\/?$/.exec(process.env.WT_URL || "");
+            if (!m) process.exit(1);
+            const want = m[1].toLowerCase();
+            const reg = JSON.parse(require("fs").readFileSync(process.env.WT_REG, "utf8"));
+            process.exit(Array.isArray(reg) && reg.some((e) => String(e.nwo).toLowerCase() === want) ? 0 : 1);' 2>/dev/null; then
+        adopter_repo=1
+    fi
     ledger="$common_dir/cr-critic-scores.jsonl"
-    if ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
-        'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; then
+    if [ "$adopter_repo" -eq 0 ] && { ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
+        'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; }; then
         echo "ERR worker-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (order: commit, push the branch, /pr-check, then open)" >&2
         exit 1
     fi

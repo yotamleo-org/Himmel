@@ -8,11 +8,14 @@
 # there is no separate hooks-approval key in the CLI), so the one
 # projects[<dir>].hasTrustDialogAccepted write covers both prompts.
 #
-# Only two kinds of directory qualify; anything else is REFUSED (exit 3) and
+# Only three kinds of directory qualify; anything else is REFUSED (exit 3) and
 # nothing is written:
 #   (a) a linked git worktree strictly under <primary checkout>/.claude/worktrees/
 #   (b) a path strictly under $HOME/.himmel/eval/
-# Never $HOME, /, the primary checkout itself, or /tmp.
+#   (c) the primary checkout of an adopter repo: its origin nwo is in
+#       scripts/guardrails/himmel-adapters.json and its realpath is in the handover
+#       registry (a sibling dir named like the adopter is in neither)
+# Never $HOME, /, himmel's own primary checkout, or /tmp.
 #
 # The config file is the one the lane's claude reads: native -> ~/.claude.json,
 # claudex/openrouter/deepseek -> ~/.claude-<lane dir>/.claude.json. It is shared
@@ -66,9 +69,29 @@ if [ "$ok" -eq 0 ]; then
         case "$abs/" in
             "$primary/.claude/worktrees/"?*) [ -n "$primary" ] && ok=1 ;;
         esac
+    elif [ -n "$common" ]; then
+        # (c) the primary checkout of an adopter repo: origin nwo in himmel-adapters.json
+        # (read from THIS harness's primary checkout, which a worker never edits) AND the
+        # realpath listed in the handover registry. Both must hold: a clone anywhere with a
+        # copied origin, or a sibling dir named like the adopter, is not in the registry.
+        top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" || top="" # swallow-ok: empty top fails the adopter match, the path stays refused
+        top="$(cd -P "$top" 2>/dev/null && pwd -P)" || top="" # swallow-ok: same, an unresolvable top is never matched
+        harness_common="$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || harness_common="" # swallow-ok: no harness root, no registry, the path stays refused
+        harness_root="$(cd -P "$harness_common/.." 2>/dev/null && pwd -P)" || harness_root="" # swallow-ok: same
+        origin_url="$(git -C "$abs" remote get-url origin 2>/dev/null)" || origin_url="" # swallow-ok: no origin is no adopter match
+        if [ -n "$top" ] && [ "$top" = "$abs" ] && [ -n "$harness_root" ] \
+            && WT_URL="$origin_url" WT_REG="$harness_root/scripts/guardrails/himmel-adapters.json" node -e '
+                const m = /github\.com[:\/]([^\/]+\/[^\/]+?)(\.git)?\/?$/.exec(process.env.WT_URL || "");
+                if (!m) process.exit(1);
+                const want = m[1].toLowerCase();
+                const reg = JSON.parse(require("fs").readFileSync(process.env.WT_REG, "utf8"));
+                process.exit(Array.isArray(reg) && reg.some((e) => String(e.nwo).toLowerCase() === want) ? 0 : 1);' 2>/dev/null \
+            && bash "$(dirname "$0")/../register-state.sh" --check --repo-path "$abs" >/dev/null 2>&1; then
+            ok=1
+        fi
     fi
 fi
-[ "$ok" -eq 1 ] || refuse "not a linked worktree under <primary>/.claude/worktrees/ nor a path under \$HOME/.himmel/eval/"
+[ "$ok" -eq 1 ] || refuse "not a linked worktree under <primary>/.claude/worktrees/, a registered adopter's primary checkout, nor a path under \$HOME/.himmel/eval/"
 
 case "$lane" in
     native) cfg="$home/.claude.json" ;;

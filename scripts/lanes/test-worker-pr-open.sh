@@ -460,6 +460,32 @@ STUB_OPEN_PR=42 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1;
 assert_eq "update path without a record still exits 0" "0" "$rc_r4"
 contains "update path edits the PR" "$(cat "$ARGV_LOG")" "pr edit 42"
 
+echo "TEST: an open on a registered adopter repo needs no /pr-check record; any other repo still does"
+: > "$ARGV_LOG"
+reset_ledger
+orig_url=$(git -C "$REPO" remote get-url origin)
+git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/himmel-voice.git
+REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_ad=$?
+assert_eq "adopter repo, no record: opens (rc=0)" "0" "$rc_ad"
+contains "adopter repo, no record: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+: > "$ARGV_LOG"
+echo "2026-10-25T00:00:00Z | $head_r" > "$MARKER"
+err_ad=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_ad2=$?
+assert_eq "adopter repo, pending marker: still refused (rc=1)" "1" "$rc_ad2"
+contains "adopter repo, pending marker: says pending" "$err_ad" "still pending"
+rm -f "$MARKER"
+git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/himmel-voice-evil.git
+: > "$ARGV_LOG"
+err_ad3=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_ad3=$?
+assert_eq "lookalike repo name, no record: refused (rc=1)" "1" "$rc_ad3"
+contains "lookalike repo name: says no /pr-check record" "$err_ad3" "no /pr-check record"
+git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/Himmel.git
+err_ad4=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_ad4=$?
+assert_eq "himmel itself, no record: refused (rc=1)" "1" "$rc_ad4"
+contains "himmel itself: says no /pr-check record" "$err_ad4" "no /pr-check record"
+git -C "$REPO" remote set-url origin "$orig_url"
+not_contains "no PR is created for a refused open" "$(cat "$ARGV_LOG")" "pr create"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

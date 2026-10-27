@@ -303,6 +303,48 @@ else
   check "11k short write: no temp file left" "$(find "$swh" -maxdepth 1 -name "*tmp-pretrust*" | wc -l | tr -d " ")" "0"
 fi
 
+# 12. the PRIMARY checkout of an adopter repo is trusted when the repo is in
+# scripts/guardrails/himmel-adapters.json (origin nwo) AND its realpath is in the handover
+# registry. Anything else stays refused: an unregistered path, a sibling dir named like the
+# adopter, an origin outside the registry, and himmel's own primary checkout.
+adopter="$tmp/adopter-voice"
+git init -q "$adopter"
+git -C "$adopter" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$adopter" remote add origin https://github.com/yotamleo-org/himmel-voice.git
+reg12="$tmp/reg12.json"; printf '{"repos":{"voice":{"path":"%s"}}}\n' "$adopter" > "$reg12"
+rm -f "$cfg"
+rc=0; HANDOVER_REGISTRY="$reg12" bash "$SCRIPT" native "$adopter" >/dev/null 2>&1 || rc=$?
+check "12a registered adopter primary checkout: exit 0" "$rc" "0"
+check "12a registered adopter primary checkout: trusted" "$(trusted "$cfg" "$adopter")" "true"
+ln -s "$adopter" "$tmp/adopter-link"
+rm -f "$cfg"
+rc=0; HANDOVER_REGISTRY="$reg12" bash "$SCRIPT" native "$tmp/adopter-link" >/dev/null 2>&1 || rc=$?
+check "12b a symlink to the registered checkout: exit 0" "$rc" "0"
+check "12b the trust key is the real path, not the link" "$(trusted "$cfg" "$adopter")" "true"
+check "12b no key for the link" "$(trusted "$cfg" "$tmp/adopter-link")" "absent"
+rm -f "$cfg"
+rc=0; HANDOVER_REGISTRY="$tmp/no-such-registry.json" bash "$SCRIPT" native "$adopter" >/dev/null 2>&1 || rc=$?
+check "12c adopter checkout absent from the handover registry: exit 3" "$rc" "3"
+sibling="$tmp/adopter-voice-evil"
+git init -q "$sibling"
+git -C "$sibling" remote add origin https://github.com/yotamleo-org/himmel-voice.git
+rc=0; HANDOVER_REGISTRY="$reg12" bash "$SCRIPT" native "$sibling" >/dev/null 2>&1 || rc=$?
+check "12d sibling dir named like the adopter, same origin: exit 3" "$rc" "3"
+other="$tmp/adopter-other"
+git init -q "$other"
+git -C "$other" remote add origin https://github.com/yotamleo-org/not-in-the-registry.git
+reg12b="$tmp/reg12b.json"; printf '{"repos":{"other":{"path":"%s"}}}\n' "$other" > "$reg12b"
+rc=0; HANDOVER_REGISTRY="$reg12b" bash "$SCRIPT" native "$other" >/dev/null 2>&1 || rc=$?
+check "12e registered path but origin outside himmel-adapters.json: exit 3" "$rc" "3"
+reg12c="$tmp/reg12c.json"; printf '{"repos":{"p":{"path":"%s"}}}\n' "$primary" > "$reg12c"
+rc=0; HANDOVER_REGISTRY="$reg12c" bash "$SCRIPT" native "$primary" >/dev/null 2>&1 || rc=$?
+check "12f a registered himmel-style primary (no adapter origin): exit 3" "$rc" "3"
+git -C "$adopter" worktree add -q -b adopter-wt "$tmp/adopter-wt-outside"
+reg12d="$tmp/reg12d.json"; printf '{"repos":{"w":{"path":"%s"}}}\n' "$tmp/adopter-wt-outside" > "$reg12d"
+rc=0; HANDOVER_REGISTRY="$reg12d" bash "$SCRIPT" native "$tmp/adopter-wt-outside" >/dev/null 2>&1 || rc=$?
+check "12g a registered LINKED worktree outside .claude/worktrees: exit 3" "$rc" "3"
+check "12 refusals wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-worker-pretrust.sh"; exit 0; fi
 echo "FAIL - test-worker-pretrust.sh ($fails failure(s))"; exit 1
