@@ -713,7 +713,11 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
             { print }')"
         count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
     fi
-    printf 'WAKE %s capacity=%s%s%s\n%s\n' "$wake" "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+    if [ "$wake" = pool-unresolved ]; then
+        printf 'WAKE pool-unresolved capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+    else
+        printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
+    fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"

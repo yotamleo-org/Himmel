@@ -874,7 +874,7 @@
       "from": "c.wait",
       "to": "c.pick",
       "kind": "decision",
-      "condition": "tick capacity=UNDERFILLED:<n>: live below cap and no worker launched recently",
+      "condition": "tick capacity=UNDERFILLED:<n> without a recent launch, or unresolved current-version tickets even with a full fleet",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/chief-wait.sh",
@@ -2162,6 +2162,7 @@
       "mapped": {
         "worker-event": "c.legevent",
         "underfilled": "e.wake.underfilled",
+        "pool-unresolved": "e.wake.underfilled",
         "succession complete": "e.next.complete",
         "handover-budget": "e.next.fill"
       },
