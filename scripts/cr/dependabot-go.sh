@@ -81,7 +81,7 @@ common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || c
 
 # sweep_one <pr> <head> <auto-merge on: true|false> - merge when every guard holds; 0 = merged
 sweep_one() {
-    local pr="$1" sha="$2" qid q state buckets row judged="$common/dependabot-judged"
+    local pr="$1" sha="$2" qid q state buckets now row judged="$common/dependabot-judged"
     skip() { echo "dependabot-go sweep: #$pr skipped - $*"; }
     case "$pr" in ''|0*|*[!0123456789]*) skip "not a PR number"; return 1 ;; esac
     [ "$3" = false ] || { skip "auto-merge is already on"; return 1; }
@@ -94,18 +94,22 @@ sweep_one() {
         skip "a required check is not pass"; return 1
     fi
     qid="dbot-$pr-$(printf '%.12s' "$sha")"
-    if ! grep -qxF "$qid" "$judged" 2>/dev/null; then
+    if [ ! -d "$judged/$qid" ]; then
         q=$(mktemp "${TMPDIR:-/tmp}/dependabot-judge.XXXXXX") || { skip "mktemp failed"; return 1; }
         {
             printf 'Dependabot PR #%s at head %s changes only dependency manifests and lockfiles (the allowlist was checked). Its full diff follows.\n' "$pr" "$sha"
             printf 'Rule GO only if the diff is a plain version bump: changed versions, hashes, integrity and resolved URLs on the same registry. Rule NO-GO for a new or changed install script or lifecycle hook, a git, URL, file or tarball dependency, a new registry or index URL, a new package that is not a transitive of the bumped one, or anything you cannot account for.\n\n'
             "$GH" pr diff "$pr" 2>/dev/null || echo "DIFF-UNREADABLE"
         } > "$q"
+        # the diff is read from the PR, not the head: a head that moved since is not the head judged
+        now=$("$GH" pr view "$pr" --json headRefOid 2>/dev/null | jq -r '.headRefOid // empty' 2>/dev/null) || now=""  # swallow-ok: empty fails the equality below
+        [ "$now" = "$sha" ] || { rm -f "$q"; skip "the head moved to '${now:-unknown}' while its diff was read"; return 1; }
         if grep -qx DIFF-UNREADABLE "$q" || [ "$(wc -c < "$q")" -gt 60000 ]; then
             rm -f "$q"; skip "the diff is unreadable or too big for one judge question"; return 1
         fi
-        # recorded before the call: a head gets one judge spend, a failed call included
-        printf '%s\n' "$qid" >> "$judged" || { rm -f "$q"; skip "cannot record the judged head"; return 1; }
+        # claimed before the call by one atomic mkdir, so sweeps sharing this ledger pay one judge
+        # spend per head, a failed call included
+        { mkdir -p "$judged" && mkdir "$judged/$qid"; } 2>/dev/null || { rm -f "$q"; skip "the head is claimed by another sweep or the claim cannot be made"; return 1; }  # swallow-ok: a failed claim refuses here
         bash "${DEPENDABOT_JUDGE_CALL:-$ANCHOR/scripts/api-lane/judge-call.sh}" --qid "$qid" --pr "$pr" --head "$sha" --question-file "$q" \
             --model claude-sonnet-5-5 --max-budget-usd 0.50 --effort medium --timeout 600 --judge dbot-judge >/dev/null 2>&1 || :  # swallow-ok: the record step below refuses without a signed GO
         rm -f "$q"

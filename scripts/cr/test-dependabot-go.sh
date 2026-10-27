@@ -23,7 +23,8 @@ export HOME="$tmp/home"; mkdir -p "$HOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
 
 # gh stub: STUB_PR_JSON is the `gh pr view` body, STUB_FILES the names the files
-# endpoint's --jq prints; STUB_PR_FAIL makes the PR read fail.
+# endpoint's --jq prints; STUB_PR_FAIL makes the PR read fail; once `pr diff` has
+# run, a set STUB_DIFF_MOVES makes every later `pr view` print STUB_PR_JSON_LATER.
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -32,13 +33,14 @@ case "$*" in
         [ -z "${STUB_PR_FAIL:-}" ] || exit 1
         n=$(cat "$STUB_COUNT" 2>/dev/null || echo 0); echo $((n + 1)) > "$STUB_COUNT"
         # STUB_PR_JSON_LATER is what every read after the first sees (a head that moved)
-        if [ "$n" -ge 1 ] && [ -n "${STUB_PR_JSON_LATER:-}" ]; then printf '%s\n' "$STUB_PR_JSON_LATER"; else printf '%s\n' "$STUB_PR_JSON"; fi ;;
+        if [ -n "${STUB_DIFF_MOVES:-}" ] && [ -e "$STUB_DIFF_MOVES" ]; then printf '%s\n' "$STUB_PR_JSON_LATER"
+        elif [ -z "${STUB_DIFF_MOVES:-}" ] && [ "$n" -ge 1 ] && [ -n "${STUB_PR_JSON_LATER:-}" ]; then printf '%s\n' "$STUB_PR_JSON_LATER"; else printf '%s\n' "$STUB_PR_JSON"; fi ;;
     "repo view"*) printf 'o/r\n' ;;
     "api --paginate"*"/files"*previous_filename*) printf '%s\n' "${STUB_PREV:-}" ;;
     "api --paginate"*"/files"*) printf '%s\n' "$STUB_FILES" ;;
     "pr list"*) printf '%s\n' "${STUB_LIST:-}" ;;
     "pr checks"*) printf '%s\n' "${STUB_CHECKS:-}"; exit "${STUB_CHECKS_RC:-0}" ;;
-    "pr diff"*) printf '%s\n' "${STUB_DIFF:-+numpy==2.5.4}" ;;
+    "pr diff"*) [ -z "${STUB_DIFF_MOVES:-}" ] || : > "$STUB_DIFF_MOVES"; printf '%s\n' "${STUB_DIFF:-+numpy==2.5.4}" ;;
     "pr merge"*) printf '%s\n' "$*" >> "$STUB_MERGED" ;;
     *) exit 91 ;;
 esac
@@ -82,7 +84,7 @@ pr_json() { # pr_json <login> <state> <head> <changedFiles> [mergeStateStatus]
 }
 reset() {
     export STUB_PR_JSON; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1)"
-    export STUB_FILES="$FILE" STUB_PREV="" STUB_COUNT="$tmp/pr-view-count"; unset STUB_PR_FAIL STUB_PR_JSON_LATER
+    export STUB_FILES="$FILE" STUB_PREV="" STUB_COUNT="$tmp/pr-view-count"; unset STUB_PR_FAIL STUB_PR_JSON_LATER STUB_DIFF_MOVES
     rm -f "$STUB_COUNT"
     : > "$LEDGER"
 }
@@ -225,7 +227,7 @@ GREEN='pass
 pass'
 sreset() {
     reset; rm -rf "$HDIR/$VSCOPE/verdicts/dbot-"*
-    rm -f "$STUB_JUDGED" "$STUB_MERGED" "$(dirname "$LEDGER")/dependabot-judged"
+    rm -rf "$STUB_JUDGED" "$STUB_MERGED" "$tmp/moved" "$(dirname "$LEDGER")/dependabot-judged"
     export STUB_LIST="$PR $SHA false" STUB_CHECKS="$GREEN" STUB_CHECKS_RC=0 STUB_JUDGE=GO
 }
 sweep() { rc=0; out="$(bash "$WRITER" --sweep 2>&1)" || rc=$?; }
@@ -292,12 +294,24 @@ sweep
 check    "5: a GO with no dependabot-go row is never merged" "$(merged)" ""
 rmdir "$LEDGER"
 
-# a directory where the judged-head record goes: the record fails, so no judge is paid for
-sreset; mkdir "$(dirname "$LEDGER")/dependabot-judged"
+# a file where the judged-head claims go: no claim is made, so no judge is paid for
+sreset; : > "$(dirname "$LEDGER")/dependabot-judged"
 sweep
 check    "5: an unrecordable judged head spends no judge" "$(judged)" "0"
 check    "5: an unrecordable judged head is never merged" "$(merged)" ""
-rmdir "$(dirname "$LEDGER")/dependabot-judged"
+rm -f "$(dirname "$LEDGER")/dependabot-judged"
+
+# a head another sweep already claimed is never judged twice, and is merged only on its row
+sreset; mkdir -p "$(dirname "$LEDGER")/dependabot-judged/dbot-$PR-$(printf '%.12s' "$SHA")"
+sweep
+check    "5: a head another sweep claimed spends no judge" "$(judged)" "0"
+check    "5: a claimed head with no verdict is never merged" "$(merged)" ""
+
+# a push between the head check and the diff read: the diff is not the judged head's
+sreset; export STUB_DIFF_MOVES="$tmp/moved" STUB_PR_JSON_LATER; STUB_PR_JSON_LATER="$(pr_json app/dependabot OPEN "$OTHER" 1)"
+sweep
+check    "5: a head that moves while its diff is read spends no judge" "$(judged)" "0"
+check    "5: a head that moves while its diff is read is never merged" "$(merged)" ""
 
 sreset; STUB_LIST="$PR $OTHER false"
 sweep
