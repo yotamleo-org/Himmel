@@ -109,6 +109,9 @@
 #       an existing git worktree is refused with exit 2 (dry-run and real) and
 #       the refusal prints the clean-garden create command; an existing
 #       worktree, judge scratch and a doc with no resume_cwd launch unchanged.
+#   47. a doc whose resume_cwd is a worktree of a repo in the handover
+#       registry launches with that worktree as its cwd; an unregistered repo
+#       and an explicit WORKER_SESSION_REPO launch as before.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
 # itself (konsole is Linux/KDE-only) - no .ps1 twin.
@@ -4805,6 +4808,41 @@ empty_row_out="$(real_scope_row "" "$tmp/loud-sysd/systemd-run")"
 contains "memcap: an empty recording skips the real scope row" "$empty_row_out" "real scope row skipped (no user-scope argv recorded)"
 check "memcap: an empty recording never invokes systemd-run" "$([ -e "$tmp/loud-sysd/called" ] && echo called || echo not-called)" "not-called"
 real_scope_row "$sysd6119" /usr/bin/systemd-run
+
+# --- 47. A doc whose resume_cwd is a worktree of a REGISTERED adopter repo (the
+# handover registry lists the repo's primary checkout) launches with that worktree
+# as its cwd, so a step never runs against the adopter's main. Fixture repos only.
+# An unregistered repo and an explicit WORKER_SESSION_REPO are left as they were.
+adopter47="$tmp/adopter47"; mkdir -p "$adopter47"
+git -C "$adopter47" init -q
+git -C "$adopter47" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$adopter47" worktree add -q -b fix/adopter-47 "$adopter47/.claude/worktrees/fix+adopter-47"
+wt47="$adopter47/.claude/worktrees/fix+adopter-47"
+reg47="$tmp/reg47.json"; printf '{"repos":{"adopter47":{"path":"%s"}}}\n' "$adopter47" > "$reg47"
+reg47_none="$tmp/reg47-none.json"; printf '{"repos":{}}\n' > "$reg47_none"
+doc47="$tmp/c47-doc.md"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt47" > "$doc47"
+some_doc_47="$some_doc"; some_doc="$doc47"
+d47="$tmp/c47"; mk_launch_stubs "$d47" "HIMMEL-47-adopter"
+rc=0
+HANDOVER_REGISTRY="$reg47" RUN_WORKER_ARGS=--no-profile run_worker "$d47" "" "HIMMEL-47-adopter" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d47" || true
+check "47a a registered adopter worktree launch: exit 0" "$rc" "0"
+contains "47a the session cwd is the adopter worktree, not its main" "$(cat "$d47/record" 2>/dev/null || true)" "--workdir $wt47"
+d47b="$tmp/c47b"; mk_launch_stubs "$d47b" "HIMMEL-47-unreg"
+rc=0
+HANDOVER_REGISTRY="$reg47_none" RUN_WORKER_ARGS=--no-profile run_worker "$d47b" "" "HIMMEL-47-unreg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d47b" || true
+check "47b an unregistered repo's worktree launch: exit 0" "$rc" "0"
+contains "47b an unregistered repo's launch still recorded a session cwd" "$(cat "$d47b/record" 2>/dev/null || true)" "--workdir "
+not_contains "47b an unregistered repo's worktree is not taken as the cwd" "$(cat "$d47b/record" 2>/dev/null || true)" "--workdir $wt47"
+d47c="$tmp/c47c"; mk_launch_stubs "$d47c" "HIMMEL-47-explicit"; mkdir -p "$tmp/repo47c"
+rc=0
+HANDOVER_REGISTRY="$reg47" RUN_WORKER_ARGS=--no-profile run_worker "$d47c" "$tmp/repo47c" "HIMMEL-47-explicit" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d47c" || true
+check "47c an explicit WORKER_SESSION_REPO launch: exit 0" "$rc" "0"
+contains "47c an explicit WORKER_SESSION_REPO still wins" "$(cat "$d47c/record" 2>/dev/null || true)" "--workdir $tmp/repo47c"
+some_doc="$some_doc_47"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
