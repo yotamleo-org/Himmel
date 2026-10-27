@@ -83,7 +83,7 @@ printf '%s\n' '## CR Findings' '### 2026-06-20 — HEAD abc (PR 1)' \
   '- 🟠 Important [k-2] f.sh:9 — plain finding (real) <!-- cr:abc:k-2 -->' > "$rootk/epics/HIMMEL-1-a/reviewer-notes.md"
 kout="$(bash "$L" --root "$rootk")"
 check "share line counts named checks" "$(printf '%s' "$kout" | grep -c '^Check share: 2/4 lessons (50%) name a check or guardrail$')" "1"
-check "share: none-lesson not counted" "$(printf '%s' "$out" | grep -c '^Check share: 0/4 lessons (0%) ')" "1"
+check "share: untagged fixture is 0/4" "$(printf '%s' "$out" |grep -c '^Check share: 0/4 lessons (0%) ')" "1"
 
 # Empty root -> digest placeholder, rc 0.
 root3="$tmp/s3"; mkdir -p "$root3"
