@@ -27,20 +27,23 @@ can still draw on extra usage if your plan has it turned on.
 - **Before it launches.** Every scheduled or armed run, and every worker the
   chief starts, first runs `scripts/lib/usage-preflight.sh`. It refuses to start
   when either window is at or over the ceiling (`CADENCE_USAGE_MAX_PCT`, 85 % by
-  default), or when `HIMMEL_FLEET_CAP` sessions are already running. When it
-  cannot read fresh figures it lets the run go ahead and says so.
-- **Before it hands out implementation work.** A session that dispatches an
-  implementing subagent is refused at 80 % of the 5-hour window or 85 % of the
-  weekly one (`IMPL_GUARD_HARD`, `IMPL_GUARD_WEEKLY_HARD`). Read-only helpers and
-  haiku are exempt. When it cannot see when the window resets, it only warns.
+  default). Armed runs and workers the chief starts are also refused when
+  `HIMMEL_FLEET_CAP` sessions are already running; other scheduled runs check
+  only usage. When it cannot read fresh figures it lets the run go ahead and
+  says so.
+- **Before it hands out implementation work.** A session that dispatches a
+  `general-purpose`, `claude` or `Plan` subagent on sonnet, opus or fable, or
+  with no model named, is refused at 80 % of the 5-hour window or 85 % of the
+  weekly one (`IMPL_GUARD_HARD`, `IMPL_GUARD_WEEKLY_HARD`). Other subagent types
+  and haiku are exempt. When it cannot see when the window resets, it only warns.
 - **A usage lift you set** lets runs spend the weekly window up to 100 %; a
   standing lift does the same for the 5-hour window unless you set
   `CADENCE_USAGE_MAX_PCT`. Even then a run does not start on a full window.
 
 Run `bash scripts/lib/usage-preflight.sh` yourself to see both figures and the
 usage verdict a run would get now. A manual run reports how many sessions are
-running but is never refused at `HIMMEL_FLEET_CAP`; only a real launch is, so
-compare that count with the cap yourself.
+running but is never refused at `HIMMEL_FLEET_CAP`; only an armed run or a
+worker launch is, so compare that count with the cap yourself.
 
 ## For maintainers
 

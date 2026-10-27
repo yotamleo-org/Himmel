@@ -29,7 +29,7 @@ it a GO it merges, closes the ticket and ends.
 
 The chief starts workers in parallel waves: a group dispatched together, after
 it checks that no two of them will change the same files. `HIMMEL_FLEET_CAP`
-caps how many sessions run at once; a launch past it is refused.
+caps how many sessions run at once; a worker launch past it is refused.
 
 ## Your approval: the GO
 
