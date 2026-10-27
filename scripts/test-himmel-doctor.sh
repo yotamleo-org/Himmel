@@ -7093,7 +7093,7 @@ chmod +x "$c76_t/claude-stub"
 c76_run() { HIMMEL_DOCTOR_CLAUDE_BIN="$c76_t/claude-stub" DOCTOR_MCP_PLUGINS_GLOB="$c76_t/none/*.mcp.json" CLAUDE_DIR="$c76_t/claude" HOME="$c76_t/home" bash "$DOC" --no-color 2>&1; }
 echo "== C76: a plugin installed more than 3 times -> WARN naming it, its count and the cleanup =="
 out="$(C76_DUP=1 c76_run)"
-if grepq "$out" 'WARN C76-duplicate-plugin-installs' && grepq "$out" -F 'atlassian@claude-plugins-official x4' && grepq "$out" -F 'dedupe-plugin-installs.sh --plugin atlassian@claude-plugins-official' && ! printf '%s' "$out" | grep -F 'C76-duplicate-plugin-installs' | grep -qF 'kept@himmel'; then pass "C76 duplicate installs -> WARN"; else fail "C76 duplicate -> $(printf '%s' "$out" | grep -A1 C76)"; fi
+if grepq "$out" 'WARN C76-duplicate-plugin-installs' && grepq "$out" -F 'atlassian@claude-plugins-official x4' && grepq "$out" -F 'dedupe-plugin-installs.sh" --plugin atlassian@claude-plugins-official' && ! printf '%s' "$out" | grep -F 'C76-duplicate-plugin-installs' | grep -qF 'kept@himmel'; then pass "C76 duplicate installs -> WARN"; else fail "C76 duplicate -> $(printf '%s' "$out" | grep -A1 C76)"; fi
 echo "== C76: no plugin over the limit -> OK =="
 out="$(C76_DUP=0 c76_run)"
 if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
