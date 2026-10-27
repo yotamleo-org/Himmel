@@ -1,4 +1,48 @@
-# Token economy — per-boundary optimizer policy
+# Usage and cost
+
+Everything himmel runs on Claude draws from your Claude subscription's usage.
+This page says how to read it, and what a run checks before it spends it.
+
+## The 5-hour and weekly gauges
+
+Your subscription has two usage windows, and himmel's status line shows how
+much of each you have used:
+
+- **5h %**: the 5-hour window.
+- **7d %**: the weekly window.
+
+Each one resets on its own clock, and the status line counts down to the
+reset.
+
+Every Claude session counts against both: the one you type in, a chief, its
+workers, their subagents, and headless `claude -p` runs. A long AFK shift or a
+wide parallel wave can fill the 5-hour window in a few hours. Extra usage, the
+paid overflow some plans carry once a window is full, is shown separately and
+is never spent by an automated run.
+
+## What a run checks before heavy work
+
+- **Before it launches.** Every scheduled or armed run, and every worker the
+  chief starts, first runs `scripts/lib/usage-preflight.sh`. It refuses to start
+  when either window is at or over the ceiling (`CADENCE_USAGE_MAX_PCT`, 85 % by
+  default), or when `HIMMEL_FLEET_CAP` sessions are already running. When it
+  cannot read fresh figures it lets the run go ahead and says so.
+- **Before it hands out implementation work.** A session that dispatches an
+  implementing subagent is refused at 80 % of the 5-hour window or 85 % of the
+  weekly one (`IMPL_GUARD_HARD`, `IMPL_GUARD_WEEKLY_HARD`). Read-only helpers and
+  haiku are exempt. When it cannot see when the window resets, it only warns.
+- **A usage lift you set** lets runs spend the weekly window up to 100 %; a
+  standing lift does the same for the 5-hour window unless you set
+  `CADENCE_USAGE_MAX_PCT`. Even then a full window refuses, and no run spends
+  extra usage.
+
+Run `bash scripts/lib/usage-preflight.sh` yourself to see both figures and the
+verdict a run would get now.
+
+## For maintainers
+
+The full policy: which optimizer owns which token boundary, its invariants,
+decision records and measured deltas.
 
 > Operative reference (load-on-trigger instead of a CLAUDE.md rule, by
 > layer selection). Single source of truth for **who owns which token

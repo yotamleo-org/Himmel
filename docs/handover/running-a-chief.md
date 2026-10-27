@@ -1,4 +1,70 @@
-# Running a chief
+# The chief and its workers
+
+A chief is one long-running Claude session that keeps several tickets moving
+at once. You talk to the chief; the chief runs the workers.
+
+## What the chief does
+
+- It picks tickets from the queue and writes a brief for each one it starts.
+- It starts one worker per ticket, each in a terminal window, worktree and
+  branch of its own.
+- It answers the workers' questions, and brings you the ones only you can
+  answer.
+- It checks every finished PR itself before it lets it merge: CI green at that
+  exact commit, no open review threads, the required commit trailers.
+- It hands itself over to a fresh chief before its context fills, so a shift
+  outlives any one session.
+
+The chief writes no code itself. Today the chief always runs from the himmel
+clone, whichever repo its workers change.
+
+## What workers do
+
+A worker is one ticket, one worktree and one PR. It makes the change with
+tests, reviews it with `/pr-check`, opens the PR, and reports to the chief at
+each milestone: live, a question, ready, blocked, wrapped. When the chief gives
+it a GO it merges, closes the ticket and ends.
+
+## Parallel waves
+
+The chief starts workers in parallel waves: a group dispatched together, after
+it checks that no two of them will change the same files. `HIMMEL_FLEET_CAP`
+caps how many sessions run at once; a launch past it is refused.
+
+## Your approval: the GO
+
+A worker never merges on its own say-so. When it reports ready, the chief
+re-checks the PR at that exact commit, and only then writes a GO file for that
+one PR at that one commit. A push after the GO needs a new one. The GO is
+written on your authority: tell the chief to hold a PR, change a ticket's scope
+or stop a worker, and it acts on that. Your rulings reach the chief from you
+directly, in its terminal or from Telegram with `/chief <session> <text>`.
+
+## Start one and hand it over
+
+```bash
+/chief new           # writes the chief's document, takes its lock, prints the launch line
+/chief new --arm     # also arms the launch for you
+/chief next          # hands the shift to a fresh chief
+```
+
+Paste the printed launch line, whole, into a terminal of its own.
+
+## Where the shift board is
+
+The chief renders its board, one static page, from its own state and
+republishes it as it changes: the fleet against its cap, each worker's stage,
+and what needs a decision. The same board shows on the Fleet page of
+`himmelctl ui` when you start it with `HANDOVER_DIR` set. Both are in
+[The local dashboard](../ui.md#the-chiefs-board-and-roadmap-tracker).
+
+For a fixed list of well-scoped tickets you want done unattended in one
+session, an AFK shift is simpler: [AFK (unattended) runs](afk-mode.md).
+
+## For maintainers
+
+The full runbook: starting, dispatching, rulings, merges and handing over, step
+by step.
 
 A chief is how a single operator keeps several tickets moving at once across
 sessions that each forget everything at the end. What a chief, worker, judge,

@@ -1,4 +1,68 @@
-# AFK (unattended) mode — Autonomous Pipeline
+# AFK (unattended) runs
+
+An AFK shift works through a short list of tickets while you are away and
+leaves you one report to read when you come back.
+
+## What an AFK shift does
+
+`/afk-shift` pulls the top tickets from your Jira queue (five by default, To Do
+and In Progress), writes a plan, and shows it to you. Nothing starts until you
+confirm. Then it gives each ticket its own subagent in its own worktree. Each
+subagent plans the change, writes it with tests, reviews it with `/pr-check`,
+and opens a PR. One session runs the whole shift, and the shift ends when the
+list is done.
+
+A shift belongs to the project you start it in. Its lane router and Jira CLI
+always run from the himmel clone.
+
+## What it refuses
+
+A shift stops and asks for you, rather than guessing, when:
+
+- a design decision is not covered by the ticket or its plan;
+- a ticket needs a call on its Jira project or priority;
+- the work needs a destructive step outside its worktree, such as a force-push
+  to main or deleting a branch you own;
+- a merge is blocked by real branch protection.
+
+The guardrails stay on for every subagent: no edits on main, no reads of secret
+files, and a ticket that reads as destructive (delete, drop, force-push and the
+like) is refused as ordinary work and comes back to you. By default
+a shift stops at a green, reviewed PR and leaves the merge to you. It merges by
+itself only in a private repo where you opted in with `ARMAUTOMERGE=1`.
+
+## Start and stop a shift
+
+```bash
+/afk-shift                 # top 5 To Do / In Progress tickets, plan first, then your yes
+/afk-shift --limit 3       # a shorter list
+/stop                      # start no new ticket; the running ones finish
+/stop --hard               # also stop the running ones now
+/stop --reset              # clear the stop before your next shift
+```
+
+A stop never drops a ticket silently. Every ticket that did not start shows in
+the report as `blocked`, with the reason.
+
+## What you read in the morning
+
+The shift writes one file, `overnight-report-YYYY-MM-DD.md`, in your handover
+folder. It has one row per ticket (branch, PR link, `done`, `blocked` or
+`partial`, and a one-line outcome). Anything that needs your decision sits in a
+**Decisions needed** block at the top. Work that block first, then review the
+PRs in report order.
+
+A typical shift runs three to four hours and makes 50 to 60 subagent
+dispatches, all drawn from your Claude subscription usage. The gauges and the
+checks a run makes before heavy work are in [Usage and cost](../token-economy.md).
+
+For work that needs decisions mid-way, or that will outlive one session, run a
+chief instead: [The chief and its workers](running-a-chief.md).
+
+## For maintainers
+
+The full runbook: the phases a shift runs, its launch preamble, the park
+protocol and the failure modes.
 
 > **Trigger phrase:** when a user prompt includes the phrase **"overnight mode"** alongside a `next-session-*.md` path (e.g. `load handovers/<USER_SLUG>/himmel/epics/HIMMEL-XX-…/next-session-N.md overnight mode`), execute this pipeline end-to-end without pausing for confirmation between phases.
 
