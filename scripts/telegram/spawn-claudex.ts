@@ -14,7 +14,7 @@
 // side-effect and before the auth preflight, instead of only at launch —
 // still nothing re-implemented, since it is the launcher's own verdict.
 //
-// Lane-agnostic helpers are IMPORTED from spawn-glm.ts (transcriptDirFor,
+// Lane-agnostic helpers are IMPORTED from spawn-common.ts (transcriptDirFor,
 // preflightWindowCheck, measureOverheadChars, finalMeta) rather than
 // copy-pasted. Everything GLM-branded (worker
 // prompt, plan functions, args parser, the shared-dispatch lock lifecycle,
@@ -32,7 +32,7 @@ import { spawn } from "bun";
 import { BASH_BIN, REPO_ROOT, killTree, detectContentFilter, NON_INTERACTIVE_EDITOR_ENV, type PermissionMode } from "./run";
 import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { legacyNamesOn } from "../lib/env-alias.mjs";
-import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, mintSpawnStamp, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-glm";
+import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, mintSpawnStamp, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-common";
 // symptom-brief loop breaker, two-stage — shared with spawn-glm
 // so both worker lanes carry one decision table: invariant required at the
 // warn stage, cheap lane refused at the escalate stage. Thresholds live in

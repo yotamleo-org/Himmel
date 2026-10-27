@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { writeFileSync } from "node:fs";
 import { GIT_TEST_TIMEOUT_MS, fixtureDir, initHermeticRepo, removeFixture } from "./fixture-repo";
-import { composeDispatchGitState } from "./spawn-glm";
+import { composeDispatchGitState } from "./spawn-common";
 
 const git = (cwd: string, args: string[]) => {
   const r = Bun.spawnSync(["git", "-C", cwd, "-c", "user.email=t@t", "-c", "user.name=t", ...args], { stdout: "pipe", stderr: "pipe" });
