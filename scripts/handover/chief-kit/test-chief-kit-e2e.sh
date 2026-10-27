@@ -70,6 +70,8 @@ export CADENCE_BANK_LEDGER=/dev/null
 export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
 # no wt-orphans probe: the real worktree.sh would read this checkout's fleet
 export TICK_WORKTREE_ORPHANS_PROBE="$W/no-wt-orphans-probe"
+# no doctor probe: the real himmel-doctor.sh is never run from a suite
+export TICK_DOCTOR_TTL_MIN=0
 export HIMMEL_FAILURE_ROUTES_LOG="$W/routes.jsonl" SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=ck-e2e
 export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 # No bus identity, so append-results never adopts on the real himmel-bus store.

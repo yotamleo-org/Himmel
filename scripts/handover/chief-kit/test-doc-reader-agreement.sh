@@ -61,6 +61,7 @@ GEN="$HERE/fixtures/doc-reader-agreement/gen.py"
 REPLAY="${DRA_READERS:-}"
 READERS="${DRA_READERS:-$REPO}"
 CK="$READERS/scripts/handover/chief-kit"
+export TICK_DOCTOR_TTL_MIN=0  # the real himmel-doctor.sh is never run from a suite
 SEED="${DRA_SEED:-20261020}"
 N_CHIEF=24
 N_WORKER=176

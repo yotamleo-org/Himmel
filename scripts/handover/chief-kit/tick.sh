@@ -267,7 +267,9 @@ doctor=<id>[,<id>...] (HIMMEL-7849) is the WARN and FAIL check ids of `himmel-do
 sorted. Absent when the doctor is clean, TICK_DOCTOR_TTL_MIN is 0 or the doctor script
 (TICK_DOCTOR_CMD, default $REPO/scripts/himmel-doctor.sh) is missing. The doctor is slow, so the
 ids are cached TICK_DOCTOR_TTL_MIN minutes (default 30) in TICK_DOCTOR_CACHE, a failed run too: it
-reads the last cached ids, else ?. chief-wait.sh wakes once per id new to its marker and keeps its
+reads the last cached ids, else ?. A cold run outlasts the 120 s a tick gets, so it runs detached:
+a tick waits up to TICK_DOCTOR_WAIT_SEC (default 45) for it, else answers from the cache and the
+next tick folds the finished run in. chief-wait.sh wakes once per id new to its marker and keeps its
 saved set on ?.
 
 crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:go`
@@ -2203,16 +2205,46 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
     doctor_fresh=""
     # swallow-ok: an unreadable cache reads as stale and the doctor runs
     [ -f "$doctor_cache" ] && [ -n "$(find "$doctor_cache" -mmin "-$doctor_ttl" 2>/dev/null)" ] && doctor_fresh=1
-    if [ -z "$doctor_fresh" ]; then
+    # The run is detached (a full cold run outlasts the 120 s the waiter gives a tick): it writes
+    # $doctor_cache.out, then .rc last. A tick folds a finished run into the cache and, when the cache
+    # is stale and no run is live, starts one and waits up to TICK_DOCTOR_WAIT_SEC for it.
+    doctor_harvest() {
+        [ -f "$doctor_cache.rc" ] || return 0
+        doctor_rc="$(cat "$doctor_cache.rc" 2>/dev/null)"  # swallow-ok: an unreadable rc reads as a failed run
         # The doctor exits 1 when a FAIL row exists; that run still answered. Any other code, or no rows, did not.
         # --json still prints a banner and a Summary line around the one-object-per-line rows: keep the object lines only.
-        doctor_raw="$(timeout -k 2 120 bash "$doctor_cmd" --json --no-color 2>/dev/null </dev/null)"; doctor_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: a failed run keeps the last cached value
-        doctor_rows="$(printf '%s\n' "$doctor_raw" | sed -n '/^{/p')"
-        if [ "$doctor_rc" -le 1 ] && [ -n "$doctor_rows" ] && doctor_ids="$(printf '%s\n' "$doctor_rows" | jq -r 'select(type == "object" and (.sev == "WARN" or .sev == "FAIL")) | .id' 2>/dev/null)"; then  # swallow-ok: unparsable rows keep the last cached value
-            doctor_val="$(printf '%s\n' "$doctor_ids" | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
-        fi
+        doctor_rows="$(sed -n '/^{/p' "$doctor_cache.out" 2>/dev/null)"  # swallow-ok: a missing output reads as no rows
+        case "$doctor_rc" in
+            0|1) if [ -n "$doctor_rows" ] && doctor_ids="$(printf '%s\n' "$doctor_rows" | jq -r 'select(type == "object" and (.sev == "WARN" or .sev == "FAIL")) | .id' 2>/dev/null)"; then  # swallow-ok: unparsable rows keep the last cached value
+                     doctor_val="$(printf '%s\n' "$doctor_ids" | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
+                 fi ;;
+        esac
         # swallow-ok: a cache that cannot be written only costs the next tick a doctor run
         { mkdir -p "${doctor_cache%/*}" && printf '%s' "$doctor_val" > "$doctor_cache.$$" && mv "$doctor_cache.$$" "$doctor_cache"; } 2>/dev/null || true
+        rm -f "$doctor_cache.rc" "$doctor_cache.out" "$doctor_cache.pid"
+        doctor_fresh=1
+    }
+    if [ -z "$doctor_fresh" ]; then
+        doctor_harvest
+    fi
+    if [ -z "$doctor_fresh" ]; then
+        doctor_pid="$(cat "$doctor_cache.pid" 2>/dev/null)"  # swallow-ok: no pid file means no live run
+        # A pid file older than 15 min is a lost run (the run itself is capped at 10 min), so start a new one.
+        if [ -z "$doctor_pid" ] || ! kill -0 "$doctor_pid" 2>/dev/null || [ -n "$(find "$doctor_cache.pid" -mmin +15 2>/dev/null)" ]; then  # swallow-ok: a dead pid starts a new run
+            mkdir -p "${doctor_cache%/*}" 2>/dev/null  # swallow-ok: an unwritable state dir leaves the value unknown
+            rm -f "$doctor_cache.rc"
+            # gnu-ok: console kit is Linux-only (setsid, timeout -k)
+            # shellcheck disable=SC2016  # $1 and $2 expand in the inner shell, not here
+            setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"' _ "$doctor_cmd" "$doctor_cache" </dev/null >/dev/null 2>&1 &
+            printf '%s' "$!" > "$doctor_cache.pid" 2>/dev/null  # swallow-ok: no pid file only lets a second run start
+        fi
+        case "${TICK_DOCTOR_WAIT_SEC:-45}" in ""|*[!0-9]*) doctor_wait=45 ;; *) doctor_wait=$((10#${TICK_DOCTOR_WAIT_SEC:-45})) ;; esac
+        doctor_polls=0
+        while [ ! -f "$doctor_cache.rc" ] && [ "$doctor_polls" -lt $((doctor_wait * 5)) ]; do
+            sleep 0.2  # gnu-ok: fractional sleep on the Linux-only console kit
+            doctor_polls=$((doctor_polls + 1))
+        done
+        doctor_harvest
     fi
     case "$doctor_val" in ""|*[!0-9A-Za-z_,?.-]*) ;; *) doctor_tail=" doctor=$doctor_val" ;; esac
 fi

@@ -2867,7 +2867,7 @@ same 'two ticks inside the TTL run the probe once (HIMMEL-6049)' "$(wc -l < "$st
 dr7849="$W/doctor7849"
 mkdir -p "$dr7849"
 # shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
-printf '%s\n' '#!/bin/sh' 'echo run >> "$DR_COUNT"' 'if [ -n "$DR_FAIL" ]; then echo "doctor crashed" >&2; exit 3; fi' \
+printf '%s\n' '#!/bin/sh' 'echo run >> "$DR_COUNT"' '[ -n "$DR_SLEEP" ] && sleep "$DR_SLEEP"' 'if [ -n "$DR_FAIL" ]; then echo "doctor crashed" >&2; exit 3; fi' \
     'echo "himmel-doctor — Linux — checkout: /x"; echo' \
     'if [ -n "$DR_CLEAN" ]; then echo "{\"sev\":\"OK\",\"id\":\"C1\",\"msg\":\"fine\",\"remedy\":\"\"}"; echo; echo "Summary: 0 FAIL  0 WARN  0 INFO"; exit 0; fi' \
     'echo "{\"sev\":\"OK\",\"id\":\"C1-guardrail\",\"msg\":\"fine\",\"remedy\":\"\"}"' \
@@ -2890,6 +2890,14 @@ same 'two ticks inside the TTL run the doctor once (HIMMEL-7849)' "$(wc -l < "$d
 touch -d '3 hours ago' "$dr7849/cache"
 same 'a failing doctor after the TTL emits the last cached ids (HIMMEL-7849)' "$(DR_FAIL=1 DR_COUNT="$dr7849/count" TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/cache" bash "$SUT" 2>/dev/null | doctor_of)" 'C16-hooks,C76-bridge-stale'
 same 'a missing doctor script leaves doctor= off the line (HIMMEL-7849)' "$(TICK_DOCTOR_CMD="$dr7849/no-such-doctor" TICK_DOCTOR_CACHE="$dr7849/none" bash "$SUT" 2>/dev/null | doctor_of)" ''
+# A doctor slower than the tick's wait budget runs detached: the tick answers `?` at once, the
+# run finishes on its own, and the next tick folds the finished rows in without a second run.
+rm -f "$dr7849/count" "$dr7849/slow".*
+DR_SLEEP=3 DR_COUNT="$dr7849/count" TICK_DOCTOR_WAIT_SEC=1 TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/slow" bash "$SUT" > "$dr7849/slow-line" 2>/dev/null
+same 'a doctor slower than the wait budget reads doctor=? on that tick (HIMMEL-7849)' "$(doctor_of < "$dr7849/slow-line")" '?'
+sleep 5
+same 'the next tick folds in the finished slow run (HIMMEL-7849)' "$(DR_COUNT="$dr7849/count" TICK_DOCTOR_WAIT_SEC=1 TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/slow" bash "$SUT" 2>/dev/null | doctor_of)" 'C16-hooks,C76-bridge-stale'
+same 'the slow run was started once, not once per tick (HIMMEL-7849)' "$(wc -l < "$dr7849/count" | tr -d ' ')" '1'
 
 # --- parked=<worker>:<age>m: a worker on an unanswered permission prompt -----
 # Absent unless a worker's newest trust-ledger row is a permission prompt older than
