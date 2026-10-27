@@ -101,6 +101,20 @@ test("an advisory reviewer returned by GET can be saved without changing the sha
   expect(sha(base)).toBe(before);
 });
 
+test("saving a precision-promoted reviewer preserves its configured advisory mode", async () => {
+  writeFileSync(base, readFileSync(REAL_BASE));
+  writeFileSync(local, JSON.stringify({ advisory_precision_floor: 0.40, panel: [] }));
+  const port = boot();
+  const first = await (await get(port)).json();
+  expect((await post(port, { reviewers: reviewGateDraft(first) })).status).toBe(200);
+  const overlay = JSON.parse(readFileSync(local, "utf8"));
+  overlay.advisory_precision_floor = 0.60;
+  writeFileSync(local, JSON.stringify(overlay));
+  const restored = await (await get(port)).json();
+  expect(restored.reviewers.find((x: { slug: string }) => x.slug === "claude").mode).toBe("advisory");
+  expect(overlay.panel).toEqual([]);
+});
+
 test("the card selects advisory and explains its precision policy instead of showing an unknown mode", () => {
   const advisory = { ...data, reviewers: [{ ...data.reviewers[0], slug: "claude", mode: "advisory", required: false }] };
   const html: string = renderReviewGate({ data: advisory, error: null, draft: null, msg: null });

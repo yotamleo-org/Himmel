@@ -208,16 +208,20 @@ precision_out=$(CRITICS_JSON="" CRITICS_BASE_JSON="$tmp/mode-advisory.json" CRIT
 check "mode: local precision and floor restore hard" "$(printf '%s' "$precision_out" | jq -r '.panel[0].mode')" "hard"
 check "mode: outside precision overlay preserved" "$(printf '%s' "$precision_out" | jq -r '.coderabbit_outside_precision')" "0.7"
 for bad in '"0.60"' null -0.1 1.1; do
-    jq --argjson bad "$bad" '.advisory_precision_floor=$bad' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json"
+    jq --argjson bad "$bad" '.advisory_precision_floor=$bad' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json" || exit 1
+    [ -s "$tmp/precision-bad.json" ] || exit 1
     mode_rc=0
     CRITICS_JSON="$tmp/precision-bad.json" critics_config_resolve > "$tmp/precision-bad.out" 2>&1 || mode_rc=$?
     check "mode: invalid precision floor $bad rejected" "$mode_rc" "2"
+    check "mode: invalid precision floor $bad reason" "$(grep -c 'advisory_precision_floor must be a number from 0 to 1' "$tmp/precision-bad.out")" "1"
 done
 for field in precision coderabbit_outside_precision; do
-    jq --arg field "$field" 'if $field == "precision" then .panel[0].precision="invalid" else .coderabbit_outside_precision="invalid" end' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json"
+    jq --arg field "$field" 'if $field == "precision" then .panel[0].precision="invalid" else .coderabbit_outside_precision="invalid" end' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json" || exit 1
+    [ -s "$tmp/precision-bad.json" ] || exit 1
     mode_rc=0
     CRITICS_JSON="$tmp/precision-bad.json" critics_config_resolve > "$tmp/precision-bad.out" 2>&1 || mode_rc=$?
     check "mode: invalid $field rejected" "$mode_rc" "2"
+    check "mode: invalid $field reason" "$(grep -c "$field must be a number from 0 to 1" "$tmp/precision-bad.out")" "1"
 done
 
 if [ "$fails" -eq 0 ]; then

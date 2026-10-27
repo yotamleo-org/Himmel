@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
 type Env = Record<string, string | undefined>;
-type Row = { slug: string; provider?: string; model?: string; effort?: string; tier?: string; mode: string; required: boolean };
+type Row = { slug: string; provider?: string; model?: string; effort?: string; tier?: string; mode: string; configured_mode: string; required: boolean };
 type Shared = { mode: string; required: boolean; provider?: string; model?: string; effort?: string };
 type Resolved = { review: string | null; panel: Row[]; files: { base: string; local: string | null } };
 export type GateResult = { status: number; body: Record<string, unknown> };
@@ -63,7 +63,7 @@ function baseSettings(env: Env): Map<string, Shared> | null {
     const empty = join(d, "critics.local.json");
     writeFileSync(empty, '{"panel":[]}\n');
     const b = resolveGate(env, empty);
-    return b.ok ? new Map(b.r.panel.map((x) => [x.slug, { mode: x.mode, required: x.required, provider: x.provider, model: x.model, effort: x.effort }])) : null;
+    return b.ok ? new Map(b.r.panel.map((x) => [x.slug, { mode: x.configured_mode, required: x.required, provider: x.provider, model: x.model, effort: x.effort }])) : null;
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 
@@ -96,9 +96,9 @@ export function readGate(env: Env): GateResult {
       rateLimit: RATE_LIMIT,
       efforts: EFFORTS,
       reviewers: g.r.panel.map((row, i) => ({
-        slug: row.slug, order: i + 1, provider: row.provider ?? "", mode: row.mode, required: row.required, enabled: true,
+        slug: row.slug, order: i + 1, provider: row.provider ?? "", mode: row.configured_mode, required: row.required, enabled: true,
         hasModel: row.provider !== "github-app", hasEffort: EFFORT_PROVIDERS.includes(row.provider ?? ""), model: row.model ?? "", effort: row.effort ?? "",
-        recommended: RECOMMENDED[row.slug] ?? { mode: row.mode, required: row.required, enabled: true },
+        recommended: RECOMMENDED[row.slug] ?? { mode: row.configured_mode, required: row.required, enabled: true },
       })),
       env: ENV_KNOBS.map((k) => ({ ...k, value: env[k.name] ?? null })),
     },

@@ -9,8 +9,8 @@
 #   stdout: the effective config as one JSON line:
 #             {"review":"no_code_review"|null,"panel":[row,...],
 #              "files":{"base":<path>,"local":<path>|null}}
-#           every row carries `mode` (hard | best-effort | advisory) and `required`
-#           (boolean), defaults filled in.
+#           every row carries effective `mode` (hard | best-effort | advisory),
+#           pre-promotion `configured_mode`, and `required` (boolean), defaults filled in.
 #   rc 0 = resolved; rc 2 = config error, `<file>: <why>` on stderr;
 #   rc 3 = cannot evaluate (no node found), reason on stderr.
 #
@@ -166,6 +166,7 @@ const panel = out.filter(Boolean).map((r) => {
     if (r.mode === undefined) r.mode = r.provider === "github-app" ? "best-effort" : "hard";
     else if (r.mode !== "hard" && r.mode !== "best-effort" && r.mode !== "advisory")
         fail(from("mode"), "row " + r.slug + " has mode " + JSON.stringify(r.mode) + " (want hard, best-effort or advisory)");
+    r.configured_mode = r.mode;
     if (r.precision !== undefined) fraction(r.precision, from("precision"), "row " + r.slug + " precision");
     if (r.mode === "advisory" && r.precision !== undefined && r.precision >= advisory_precision_floor)
         r.mode = "hard";
