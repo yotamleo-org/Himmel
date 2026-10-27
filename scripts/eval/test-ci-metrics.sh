@@ -218,7 +218,7 @@ has "live run: queue wait from the job's own created_at" "$O" "| job queue wait 
 has "live run: 5 cancelled-in-queue jobs" "$O" "| jobs cancelled before a runner took them | 5 |"
 
 # Merged-PR fetch: a merge commit (two parents) on the PR branch is one round; PR 7 has two.
-jq -n '{data: {search: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+jq -n '{data: {search: {issueCount: 2, pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
   {number: 7, mergedAt: "2026-10-20T05:00:00Z", commits: {totalCount: 4, nodes: [{commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}, {commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}]}},
   {number: 8, mergedAt: "2026-10-20T05:30:00Z", commits: {totalCount: 1, nodes: [{commit: {parents: {totalCount: 1}}}]}}]}}}' > "$TMP/prs-page.json"
 : > "$TMP/gh-prs.log"
@@ -228,6 +228,21 @@ has "merged-PR fetch: PR 7 shows its two rounds" "$O" "| #7 | 2 |"
 has "merged-PR fetch: two merged PRs" "$O" "| PRs merged in the window | 2 |"
 eq "merged-PR fetch: --keep saves prs.json" "$(jq -c 'map([.number, .rounds])' "$TMP/kept/prs.json")" "[[7,2],[8,0]]"
 has "merged-PR fetch: search is limited to merged PRs of the repo" "$(cat "$TMP/gh-prs.log")" "s=is:pr is:merged repo:yotamleo-org/Himmel merged:>="
+case "$O" in *"API cap"*"merge-forward"*) fail "merged-PR fetch: no cap warning under 1000 results";; *) pass "merged-PR fetch: no cap warning under 1000 results";; esac
+
+# A search that hit GitHub's 1000-result cap warns that the window is truncated.
+jq '.data.search.issueCount = 1000' "$TMP/prs-page.json" > "$TMP/prs-page-cap.json"
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-cap.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1)
+has "merged-PR fetch: 1000 results warns the window is truncated" "$O" "WARN merged PRs search returned 1000 results"
+
+# A failed merged-PR fetch into a reused --keep dir drops the older prs.json instead of replaying it.
+mkdir -p "$TMP/nosleep"; printf '#!/bin/sh\nexit 0\n' > "$TMP/nosleep/sleep"; chmod +x "$TMP/nosleep/sleep"
+echo 'not json' > "$TMP/prs-bad.json"
+O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-bad.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1)
+has "merged-PR fetch: a failed fetch is reported as not measured" "$O" "Not measured"
+eq "merged-PR fetch: --keep drops the stale prs.json after a failed fetch" "$([ -e "$TMP/kept/prs.json" ] && echo present || echo absent)" "absent"
 
 echo "ci-metrics: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

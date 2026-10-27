@@ -122,9 +122,9 @@ fi
 if [ "${1:-}" = "--prs" ]; then
   repo="$2"; since="$3"; out="$4"; after=""; : > "$out.all"
   # shellcheck disable=SC2016  # GraphQL text, $ is not shell
-  q='query($s:String!,$after:String){ search(query:$s,type:ISSUE,first:25,after:$after){ pageInfo{hasNextPage endCursor} nodes{ ... on PullRequest { number mergedAt commits(first:100){ totalCount nodes{ commit{ parents{ totalCount } } } } } } } }'
+  q='query($s:String!,$after:String){ search(query:$s,type:ISSUE,first:25,after:$after){ issueCount pageInfo{hasNextPage endCursor} nodes{ ... on PullRequest { number mergedAt commits(first:100){ totalCount nodes{ commit{ parents{ totalCount } } } } } } } }'
   # shellcheck disable=SC2016  # jq program, $ is not shell
-  f='{next: (if .data.search.pageInfo.hasNextPage then .data.search.pageInfo.endCursor else null end),
+  f='{issues: .data.search.issueCount, next: (if .data.search.pageInfo.hasNextPage then .data.search.pageInfo.endCursor else null end),
       rows: [.data.search.nodes[] | select(. != null and .number != null)
              | {number, merged_at: .mergedAt, commits: .commits.totalCount,
                 rounds: ([.commits.nodes[] | select(.commit.parents.totalCount > 1)] | length), truncated: (.commits.totalCount > 100)}]}'
@@ -149,6 +149,10 @@ if [ "${1:-}" = "--prs" ]; then
       sleep "$PACE"
     fi
     jq -c '.rows[]' "$out.page" >> "$out.all"
+    # GitHub search returns at most 1000 results, so a larger window is cut short.
+    if [ -z "$after" ] && jq -e '.issues >= 1000' "$out.page" >/dev/null; then
+      echo "ci-metrics: WARN merged PRs search returned 1000 results (API cap): the merge-forward window is truncated" >&2
+    fi
     after=$(jq -r '.next // empty' "$out.page")
     [ -n "$after" ] || break
   done
@@ -291,7 +295,8 @@ else
   fi
   if [ -n "$KEEP" ]; then
     mkdir -p "$KEEP" && cp "$RUNS" "$KEEP/runs.json" && cp "$JOBS" "$KEEP/jobs.json"
-    if [ "$PRS" != "$WORK/none.json" ]; then cp "$PRS" "$KEEP/prs.json"; fi
+    # A reused --keep dir must not replay an older prs.json beside the fresh runs/jobs.
+    if [ "$PRS" != "$WORK/none.json" ]; then cp "$PRS" "$KEEP/prs.json"; else rm -f "$KEEP/prs.json"; fi
   fi
 fi
 
