@@ -63,6 +63,7 @@
     "enabled": [
       "ai-image-prompts@himmel",
       "handover@himmel",
+      "higgsfield@himmel",
       "himmel-ops@himmel",
       "lean-skills@himmel",
       "i-have-adhd@himmel",

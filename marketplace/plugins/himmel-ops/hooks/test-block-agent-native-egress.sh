@@ -59,6 +59,21 @@ expect 2 "salus cwd -> agent-native call denied" \
 expect 0 "himmel cwd -> agent-native call allowed" \
     "$(payload "$TOOL" "$HIMMEL" "make a landing page")"
 
+# --- Higgsfield hosted MCP: the same fence, a second provider -----------------
+HF_TOOL='mcp__plugin_higgsfield_higgsfield__generate_image'
+expect 2 "salus cwd -> higgsfield call denied" \
+    "$(payload "$HF_TOOL" "$SALUS" "a product shot")"
+expect 2 "salus path in a higgsfield payload from a himmel cwd -> denied" \
+    "$(payload "$HF_TOOL" "$HIMMEL" "animate /home/x/github/salus/scan.png")"
+expect 0 "himmel cwd -> higgsfield call allowed" \
+    "$(payload "$HF_TOOL" "$HIMMEL" "a product shot")"
+expect 2 "directly-registered higgsfield server, salus cwd -> denied" \
+    "$(payload 'mcp__higgsfield__generate_video' "$SALUS" "hello")"
+expect 2 "mixed-case Higgsfield server, salus cwd -> denied" \
+    "$(payload 'mcp__plugin_Higgsfield_HIGGSFIELD__x' "$SALUS" "hello")"
+expect 2 "malformed JSON naming higgsfield -> denied" \
+    '{"tool_name":"mcp__higgsfield__generate_image", oops'
+
 # --- salus detection signals --------------------------------------------------
 expect 2 "subdir of a salus checkout -> denied (git toplevel)" \
     "$(payload "$TOOL" "$SALUS/src/app" "hello")"
@@ -346,7 +361,8 @@ else
 fi
 # Claude Code's matcher is case-sensitive while the hook lowercases, so the
 # matcher must spell its own case-insensitivity.
-for name in 'mcp__Agent-Native__x' 'mcp__plugin_builder-visual_AGENT_NATIVE-dispatch__y' 'mcp__agent_Native__z'; do
+for name in 'mcp__Agent-Native__x' 'mcp__plugin_builder-visual_AGENT_NATIVE-dispatch__y' 'mcp__agent_Native__z' \
+    "$HF_TOOL" 'mcp__plugin_Higgsfield_HIGGSFIELD__x'; do
     if [ -n "$matcher" ] && printf '%s\n' "$name" | grep -Eq "^(${matcher})$"; then
         pass=$((pass + 1))
     else

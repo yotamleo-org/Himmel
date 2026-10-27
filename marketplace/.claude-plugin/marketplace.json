@@ -569,6 +569,21 @@
       ]
     },
     {
+      "name": "higgsfield",
+      "source": "./plugins/higgsfield",
+      "description": "[himmel-owned wrapper, no upstream repo] Registers the hosted Higgsfield MCP (https://mcp.higgsfield.ai/mcp, HTTP, browser OAuth, no API key) for image and video generation. Every tool argument goes to Higgsfield; block-agent-native-egress.sh denies it for salus. Design kit, design-imagegen add-on (HIMMEL-7826).",
+      "author": {
+        "name": "yotamleo"
+      },
+      "license": "MIT",
+      "keywords": [
+        "himmel",
+        "design",
+        "higgsfield",
+        "mcp"
+      ]
+    },
+    {
       "name": "obsidian-second-brain",
       "source": {
         "source": "url",

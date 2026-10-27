@@ -67,6 +67,7 @@
     "platform-design-skills@himmel": false,
     "diagram-design@himmel": false,
     "builder-visual@himmel": false,
+    "higgsfield@himmel": false,
     "frontend-slides@himmel": false,
     "design-dna@himmel": false,
     "anydesign@himmel": false,
@@ -186,6 +187,9 @@
     },
     "builder-visual@himmel": {
       "neededBy": "Design kit (HIMMEL-4012 PR2b) via the `design` core (HIMMEL-4326: ships the OAuth-hosted `agent-native-dispatch` MCP) and the `design-diagram` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable builder-visual@himmel`."
+    },
+    "higgsfield@himmel": {
+      "neededBy": "Design kit (HIMMEL-7826) via the `design-imagegen` lane profile (scripts/lanes/plugin-profiles.json): registers the OAuth-hosted `higgsfield` MCP (image and video generation, egress to Higgsfield, one-time operator login). Installed but disabled by default - reachable via `/profile enable higgsfield@himmel`."
     },
     "frontend-slides@himmel": {
       "neededBy": "Design kit (HIMMEL-4012 PR2b) via the `design-slides` lane profile (scripts/lanes/plugin-profiles.json). Installed but disabled by default - reachable via `/profile enable frontend-slides@himmel`."
