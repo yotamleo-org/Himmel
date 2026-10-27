@@ -3,16 +3,15 @@
 # subcommand (§5.5 locked decision). Mirrors
 # test-wizard-derive.sh conventions: a stub PATH via scripts/lib/hermetic-path.sh,
 # a fake HOME, node launched by absolute path, HIMMELCTL_REPO_ROOT pointed at a
-# throwaway fixture carrying no-op uninstall.sh/uninstall.ps1 stubs so a real
+# throwaway fixture carrying a no-op uninstall.sh stub so a real
 # uninstall (killing the telegram bridge, removing scheduled tasks, uninstalling
 # plugins/hooks, unwiring ~/.claude/settings.json) is never triggered against
 # the real machine. The flag-assertion case is the one that deliberately reads
-# the REAL uninstall.sh/uninstall.ps1.
+# the REAL uninstall.sh.
 #
 # Covers:
-#   A. flag-assertion guard: uninstall.sh's --help / uninstall.ps1's usage
-#      comment both still document the --yes/-Yes flag the wizard always
-#      derives (script-flag drift guard).
+#   A. flag-assertion guard: uninstall.sh's --help still documents the --yes
+#      flag the wizard always derives (script-flag drift guard).
 #   B. --dry-run -> prints the derived plan (the platform-appropriate
 #      launcher + --yes/-Yes) without asking or executing anything.
 #   C. piped "n" without --yes -> the uninstall script is NOT invoked,
@@ -53,9 +52,9 @@ trap cleanup EXIT
 
 # cmdUninstall now removes PATH launchers from binDir.
 # Isolate binDir for the WHOLE suite so an accept-case never touches the
-# operator's real ~/.local/bin (on win32 himmelctlBinDir() ignores HOME and
-# would otherwise resolve to the real home). A per-case inline HIMMELCTL_BIN_DIR
-# still overrides this (see caseF). winpath'd so win32 node resolves it cleanly.
+# operator's real ~/.local/bin (himmelctlBinDir() would otherwise
+# resolve to the real home). A per-case inline HIMMELCTL_BIN_DIR
+# still overrides this (see caseF). winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
@@ -77,18 +76,8 @@ build_path() {
   printf '%s:%s' "$_stub" "$_scrubbed"
 }
 
-# is_win32 — true iff the platform branch bin.js's deriveUninstallCommand()
-# will take is the powershell one (mirrors test-wizard-derive.sh's caseE
-# platform switch).
-is_win32() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 # build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
-# uninstall.sh/uninstall.ps1 stubs, each logging its argv to
+# uninstall.sh stub logging its argv to
 # <dir>/uninstall-calls.log, PLUS a minimal scripts/install/manifest.json
 # (cmdUninstall now loadManifests + partitions by
 # `offboard` before asking/executing — without this file that load throws
@@ -102,14 +91,6 @@ printf 'uninstall.sh: %s HIMMEL_UNINSTALL_REAL_HOME=%s\n' "\$*" "\${HIMMEL_UNINS
 exit 0
 STUB
   chmod +x "$_d/scripts/uninstall.sh"
-  # PowerShell is a native Windows process — it needs the Windows-form path
-  # (winpath), not the MSYS /tmp-style path bash sees for the same file.
-  local _dw; _dw="$(winpath "$_d")"
-  cat > "$_d/scripts/uninstall.ps1" <<STUB
-param([switch]\$Yes,[switch]\$DryRun)
-Add-Content -Path '$_dw/uninstall-calls.log' -Value "uninstall.ps1: Yes=\$Yes DryRun=\$DryRun"
-exit 0
-STUB
   cat > "$_d/scripts/install/manifest.json" <<'JSON'
 {
   "schemaVersion": 2,
@@ -130,12 +111,8 @@ grepq "$sh_help" -F -- '--yes' \
 echo "ok: caseA flag-assertion guard -- uninstall.sh usage carries the --yes flag the wizard always derives"
 
 # ── Case B: --dry-run -> prints the plan, asks/executes nothing ────────────
-# win32 launches uninstall.ps1 through resolvePowershell, which
-# now PREFERS pwsh over PowerShell 5.1 — so pwsh is scrubbed from PATH here
-# (this box's own pwsh must not leak in) to pin the loud-fallback branch;
-# caseB2 below covers the pwsh-preferred branch with pwsh injected instead.
 stubB="$work/caseB"; mkdir -p "$stubB"
-cB=$(build_path "$stubB" bash git jq python3 npm -- pwsh)
+cB=$(build_path "$stubB" bash git jq python3 npm -- )
 hB="$work/hB"; mkdir -p "$hB"
 fixtureB="$work/caseB-fixture"; build_fixture "$fixtureB"
 set +e
@@ -145,19 +122,8 @@ out=$(PATH="$cB" HOME="$hB" USERPROFILE="$(winpath "$hB")" HIMMELCTL_CACHE_DIR="
       </dev/null 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseB: dry-run should exit 0 (got rc=$rc): $out"
-if is_win32; then
-  grepq "$out" -iE 'derived:.*powershell' \
-    || fail "caseB(win32): expected a PowerShell 5.1 fallback (pwsh scrubbed) (got: $out)"
-  grepq "$out" -F -- '-ExecutionPolicy Bypass -File' \
-    || fail "caseB(win32): expected -ExecutionPolicy Bypass -File (got: $out)"
-  grepq "$out" -F -- 'uninstall.ps1 -DryRun' \
-    || fail "caseB(win32): expected uninstall.ps1 -DryRun (got: $out)"
-  grepq "$out" -F -- 'uninstall.ps1 -Yes' \
-    && fail "caseB(win32): --dry-run must NOT derive -Yes (got: $out)"
-else
-  grepq "$out" -E 'derived:.*bash .*uninstall\.sh --dry-run$' \
-    || fail "caseB(posix): expected 'bash .../uninstall.sh --dry-run' (got: $out)"
-fi
+grepq "$out" -E 'derived:.*bash .*uninstall\.sh --dry-run$' \
+  || fail "caseB(posix): expected 'bash .../uninstall.sh --dry-run' (got: $out)"
 grepq "$out" 'Proceed?' \
   && fail "caseB: --dry-run must NOT show the confirm prompt (got: $out)"
 # --dry-run RUNS the executor in its own dry-run mode (the plan it
@@ -166,42 +132,9 @@ grepq "$out" 'Proceed?' \
 [ -f "$fixtureB/uninstall-calls.log" ] \
   || fail "caseB: --dry-run must run the executor in dry-run mode (no call log)"
 callsB=$(cat "$fixtureB/uninstall-calls.log")
-if is_win32; then
-  grepq "$callsB" -F -- 'DryRun=True' \
-    || fail "caseB(win32): the executor must see -DryRun (got: $callsB)"
-  grepq "$callsB" -F -- 'Yes=True' \
-    && fail "caseB(win32): the executor must NOT see -Yes on a dry-run (got: $callsB)"
-else
-  grepq "$callsB" -F -- 'uninstall.sh: --dry-run HIMMEL_UNINSTALL_REAL_HOME=unset' \
-    || fail "caseB(posix): expected exactly '--dry-run' with the real-home fence unset (got: $callsB)"
-fi
+grepq "$callsB" -F -- 'uninstall.sh: --dry-run HIMMEL_UNINSTALL_REAL_HOME=unset' \
+  || fail "caseB(posix): expected exactly '--dry-run' with the real-home fence unset (got: $callsB)"
 echo "ok: caseB --dry-run -> derived plan printed, executor run with --dry-run only, nothing asked, HIMMEL_UNINSTALL_REAL_HOME never set"
-
-# ── Case B2: --dry-run on win32 prefers pwsh when it is
-# resolvable — a stub pwsh is injected onto PATH (posix is a no-op: caseB
-# already covers it, and there is no pwsh/powershell branch there).
-if is_win32; then
-  stubB2="$work/caseB2"; mkdir -p "$stubB2"
-  cB2=$(build_path "$stubB2" bash git jq python3 npm pwsh -- )
-  hB2="$work/hB2"; mkdir -p "$hB2"
-  fixtureB2="$work/caseB2-fixture"; build_fixture "$fixtureB2"
-  set +e
-  outB2=$(PATH="$cB2" HOME="$hB2" USERPROFILE="$(winpath "$hB2")" HIMMELCTL_CACHE_DIR="$(winpath "$hB2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hB2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
-        HIMMELCTL_REPO_ROOT="$(winpath "$fixtureB2")" \
-        "$node_bin" "$wizard" uninstall --dry-run \
-        </dev/null 2>&1); rcB2=$?
-  set -e
-  [ "$rcB2" -eq 0 ] || fail "caseB2: dry-run should exit 0 (got rc=$rcB2): $outB2"
-  grepq "$outB2" -F -- 'pwsh' \
-    || fail "caseB2(win32): expected pwsh to be preferred when resolvable (got: $outB2)"
-  grepq "$outB2" -F -- '-ExecutionPolicy Bypass -File' \
-    || fail "caseB2(win32): expected -ExecutionPolicy Bypass -File (got: $outB2)"
-  grepq "$outB2" -F -- 'uninstall.ps1 -DryRun' \
-    || fail "caseB2(win32): expected uninstall.ps1 -DryRun (got: $outB2)"
-  echo "ok: caseB2 win32 -> pwsh preferred over PowerShell 5.1 when resolvable"
-else
-  echo "ok: caseB2 -> (skipped: posix has no pwsh/powershell branch, covered by caseB)"
-fi
 
 # ── Case C: piped n without --yes -> uninstall NOT invoked ───────────
 stubC="$work/caseC"; mkdir -p "$stubC"
@@ -222,7 +155,7 @@ grepq "$out" -F 'non-interactive run without --yes — aborting (fail-closed)' \
 grepq "$out" -F 'declined; nothing run' \
   && fail "caseC: piped n must NOT be reported as a human decline (got: $out)"
 [ -f "$fixtureC/uninstall-calls.log" ] \
-  && fail "caseC: piped n must NOT invoke uninstall.sh/uninstall.ps1 (got: $(cat "$fixtureC/uninstall-calls.log"))"
+  && fail "caseC: piped n must NOT invoke uninstall.sh (got: $(cat "$fixtureC/uninstall-calls.log"))"
 echo "ok: caseC piped n without --yes -> uninstall script not invoked, rc=2"
 
 # ── Case D: explicit --yes accept (closed stdin) -> uninstall invoked ──
@@ -238,19 +171,14 @@ out=$(PATH="$cD" HOME="$hD" USERPROFILE="$(winpath "$hD")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseD: accept should exit 0 (got rc=$rc): $out"
 [ -f "$fixtureD/uninstall-calls.log" ] \
-  || fail "caseD: an explicit --yes accept should invoke uninstall.sh/uninstall.ps1 (out: $out)"
-if is_win32; then
-  grep -q 'Yes=True' "$fixtureD/uninstall-calls.log" \
-    || fail "caseD(win32): expected uninstall.ps1 to be called with -Yes (got: $(cat "$fixtureD/uninstall-calls.log"))"
-else
-  grep -q -- '--yes' "$fixtureD/uninstall-calls.log" \
-    || fail "caseD(posix): expected uninstall.sh to be called with --yes (got: $(cat "$fixtureD/uninstall-calls.log"))"
-  # this confirmed WET spawn must pass HIMMEL_UNINSTALL_REAL_HOME=1
-  # so uninstall.sh's own live-operator-HOME fence doesn't refuse the machine
-  # the operator just confirmed offboarding.
-  grep -q 'HIMMEL_UNINSTALL_REAL_HOME=1' "$fixtureD/uninstall-calls.log" \
-    || fail "caseD(posix): expected HIMMEL_UNINSTALL_REAL_HOME=1 in the child env (got: $(cat "$fixtureD/uninstall-calls.log"))"
-fi
+  || fail "caseD: an explicit --yes accept should invoke uninstall.sh (out: $out)"
+grep -q -- '--yes' "$fixtureD/uninstall-calls.log" \
+  || fail "caseD(posix): expected uninstall.sh to be called with --yes (got: $(cat "$fixtureD/uninstall-calls.log"))"
+# this confirmed WET spawn must pass HIMMEL_UNINSTALL_REAL_HOME=1
+# so uninstall.sh's own live-operator-HOME fence doesn't refuse the machine
+# the operator just confirmed offboarding.
+grep -q 'HIMMEL_UNINSTALL_REAL_HOME=1' "$fixtureD/uninstall-calls.log" \
+  || fail "caseD(posix): expected HIMMEL_UNINSTALL_REAL_HOME=1 in the child env (got: $(cat "$fixtureD/uninstall-calls.log"))"
 echo "ok: caseD explicit --yes accept (closed stdin) -> uninstall script invoked with --yes/-Yes, HIMMEL_UNINSTALL_REAL_HOME=1"
 
 # ── Case E: closed stdin (no answer) -> refuses with rc=2, never runs unattended ─
@@ -325,20 +253,12 @@ hG="$work/hG"; mkdir -p "$hG"
 fixtureG="$work/caseG-fixture"; build_fixture "$fixtureG"
 # Overwrite the platform-appropriate teardown stub to FAIL (exit 1) instead of
 # build_fixture's default exit 0 — keep the call log so we can still prove it ran.
-if is_win32; then
-  cat > "$fixtureG/scripts/uninstall.ps1" <<STUB
-param([switch]\$Yes,[switch]\$DryRun)
-Add-Content -Path '$(winpath "$fixtureG")/uninstall-calls.log' -Value "uninstall.ps1: Yes=\$Yes DryRun=\$DryRun FAIL"
-exit 1
-STUB
-else
-  cat > "$fixtureG/scripts/uninstall.sh" <<STUB
+cat > "$fixtureG/scripts/uninstall.sh" <<STUB
 #!/usr/bin/env bash
 printf 'uninstall.sh FAIL: %s\n' "\$*" >> "$fixtureG/uninstall-calls.log"
 exit 1
 STUB
-  chmod +x "$fixtureG/scripts/uninstall.sh"
-fi
+chmod +x "$fixtureG/scripts/uninstall.sh"
 binG="$work/caseG-bin"; mkdir -p "$binG"
 # MARKED launchers present — must survive the failed teardown (retry needs them).
 cat > "$binG/himmelctl.js" <<'STUB'
@@ -369,8 +289,7 @@ echo "ok: caseG failed teardown preserves marked PATH launchers + warns (no stra
 # ── Case H: the banner's operator-state claim is DERIVED from the
 # manifest classes, the same per-row way uninstall.sh's step-2 plan is. A
 # hand-edited manifest that re-classes a telegram row keep must not be
-# described as "--purge-state removes it". posix only: uninstall.ps1 keeps its
-# own targets and does not read the manifest, so win32 keeps the shipped text.
+# described as "--purge-state removes it".
 # banner_for <case> <purge:0|1> <sed-expr|""> — runs `uninstall --dry-run` against a
 # fixture whose uninstall-manifest.tsv is the REAL one with <sed-expr> applied
 # (empty = unedited; "none" = no manifest file at all) and prints the banner.
@@ -389,45 +308,41 @@ banner_for() {
     HIMMELCTL_REPO_ROOT="$(winpath "$_fx")" \
     "$node_bin" "$wizard" "${_args[@]}" </dev/null 2>&1
 }
-if ! is_win32; then
-  KEEP_CH=$'s/^telegram-channel\tstate/telegram-channel\tkeep/'
-  # H1: channel re-classed keep, no --purge-state -> named keep, never "removes it".
-  outH1=$(banner_for h1 0 "$KEEP_CH")
-  grepq "$outH1" -F 'telegram pairing (telegram-channel): KEPT (manifest class keep)' \
-    || fail "caseH1: a keep-classed telegram-channel must be named KEPT by class (got: $outH1)"
-  grepq "$outH1" -F 'bridge state (telegram-bridge): KEPT (manifest class state; --purge-state removes it)' \
-    || fail "caseH1: the state-classed bridge row must say --purge-state removes it (got: $outH1)"
-  grepq "$outH1" -F 'is KEPT — pass --purge-state to remove it' \
-    && fail "caseH1: the blanket 'pass --purge-state to remove it' claim must not survive a keep row (got: $outH1)"
-  # H2: same manifest WITH --purge-state -> the keep row is still kept, never "REMOVED too".
-  outH2=$(banner_for h2 1 "$KEEP_CH")
-  grepq "$outH2" -F 'telegram pairing (telegram-channel): KEPT (manifest class keep)' \
-    || fail "caseH2: --purge-state must not claim a keep row is removed (got: $outH2)"
-  grepq "$outH2" -F 'bridge state (telegram-bridge): REMOVED (--purge-state)' \
-    || fail "caseH2: the state row IS removed by --purge-state (got: $outH2)"
-  grepq "$outH2" -F 'is REMOVED too' \
-    && fail "caseH2: the blanket 'REMOVED too' claim must not survive a keep row (got: $outH2)"
-  # H3: a code-classed row is removed with or without --purge-state.
-  outH3=$(banner_for h3 0 $'s/^telegram-bridge\tstate/telegram-bridge\tcode/')
-  grepq "$outH3" -F 'bridge state (telegram-bridge): REMOVED (manifest class code)' \
-    || fail "caseH3: a code-classed row is always removed (got: $outH3)"
-  # H4: the shipped manifest (both state) keeps the original two banner lines.
-  outH4=$(banner_for h4 0 "")
-  grepq "$outH4" -F 'operator state (telegram pairing, bridge state) is KEPT — pass --purge-state to remove it.' \
-    || fail "caseH4: shipped default banner (no purge) changed (got: $outH4)"
-  outH4p=$(banner_for h4p 1 "")
-  grepq "$outH4p" -F -- '--purge-state: operator state (telegram pairing, bridge state) is REMOVED too.' \
-    || fail "caseH4: shipped default banner (--purge-state) changed (got: $outH4p)"
-  # H5: no readable manifest -> no per-class claim, points at the plan instead.
-  outH5=$(banner_for h5 1 none)
-  grepq "$outH5" -F 'see the plan uninstall.sh prints' \
-    || fail "caseH5: an unreadable manifest must defer to the uninstall.sh plan (got: $outH5)"
-  grepq "$outH5" -F 'is REMOVED too' \
-    && fail "caseH5: an unreadable manifest must not produce a removal claim (got: $outH5)"
-  echo "ok: caseH banner derives per-row telegram state from the manifest classes (keep/code/state/unreadable)"
-else
-  echo "ok: caseH -> (skipped: uninstall.ps1 does not read the manifest; win32 keeps the shipped banner)"
-fi
+KEEP_CH=$'s/^telegram-channel\tstate/telegram-channel\tkeep/'
+# H1: channel re-classed keep, no --purge-state -> named keep, never "removes it".
+outH1=$(banner_for h1 0 "$KEEP_CH")
+grepq "$outH1" -F 'telegram pairing (telegram-channel): KEPT (manifest class keep)' \
+  || fail "caseH1: a keep-classed telegram-channel must be named KEPT by class (got: $outH1)"
+grepq "$outH1" -F 'bridge state (telegram-bridge): KEPT (manifest class state; --purge-state removes it)' \
+  || fail "caseH1: the state-classed bridge row must say --purge-state removes it (got: $outH1)"
+grepq "$outH1" -F 'is KEPT — pass --purge-state to remove it' \
+  && fail "caseH1: the blanket 'pass --purge-state to remove it' claim must not survive a keep row (got: $outH1)"
+# H2: same manifest WITH --purge-state -> the keep row is still kept, never "REMOVED too".
+outH2=$(banner_for h2 1 "$KEEP_CH")
+grepq "$outH2" -F 'telegram pairing (telegram-channel): KEPT (manifest class keep)' \
+  || fail "caseH2: --purge-state must not claim a keep row is removed (got: $outH2)"
+grepq "$outH2" -F 'bridge state (telegram-bridge): REMOVED (--purge-state)' \
+  || fail "caseH2: the state row IS removed by --purge-state (got: $outH2)"
+grepq "$outH2" -F 'is REMOVED too' \
+  && fail "caseH2: the blanket 'REMOVED too' claim must not survive a keep row (got: $outH2)"
+# H3: a code-classed row is removed with or without --purge-state.
+outH3=$(banner_for h3 0 $'s/^telegram-bridge\tstate/telegram-bridge\tcode/')
+grepq "$outH3" -F 'bridge state (telegram-bridge): REMOVED (manifest class code)' \
+  || fail "caseH3: a code-classed row is always removed (got: $outH3)"
+# H4: the shipped manifest (both state) keeps the original two banner lines.
+outH4=$(banner_for h4 0 "")
+grepq "$outH4" -F 'operator state (telegram pairing, bridge state) is KEPT — pass --purge-state to remove it.' \
+  || fail "caseH4: shipped default banner (no purge) changed (got: $outH4)"
+outH4p=$(banner_for h4p 1 "")
+grepq "$outH4p" -F -- '--purge-state: operator state (telegram pairing, bridge state) is REMOVED too.' \
+  || fail "caseH4: shipped default banner (--purge-state) changed (got: $outH4p)"
+# H5: no readable manifest -> no per-class claim, points at the plan instead.
+outH5=$(banner_for h5 1 none)
+grepq "$outH5" -F 'see the plan uninstall.sh prints' \
+  || fail "caseH5: an unreadable manifest must defer to the uninstall.sh plan (got: $outH5)"
+grepq "$outH5" -F 'is REMOVED too' \
+  && fail "caseH5: an unreadable manifest must not produce a removal claim (got: $outH5)"
+echo "ok: caseH banner derives per-row telegram state from the manifest classes (keep/code/state/unreadable)"
 
 # ── Case I: qmd ids in the dry-run advisory plan carry a
 # resolved path + on-disk size. manifest.json's real qmd-binary defaults to
@@ -496,8 +411,8 @@ outI1=$(PATH="$cI" HOME="$hI" USERPROFILE="$(winpath "$hI")" HIMMELCTL_CACHE_DIR
        </dev/null 2>&1); rcI1=$?
 set -e
 [ "$rcI1" -eq 0 ] || fail "caseI1: dry-run should exit 0 (got rc=$rcI1): $outI1"
-# separator-tolerant: node's path.join on the printed path may use '\' on
-# win32 even though $hI is a forward-slash MSYS path (codex/coderabbit).
+# separator-tolerant: node's path.join on the printed path may use '\'
+# even though $hI is a forward-slash path (codex/coderabbit).
 grepq "$outI1" -E -- "qmd-binary \\(${hI}[/\\\\]\\.himmel[/\\\\]qmd-fork, 10 B\\)" \
   || fail "caseI1: expected qmd-binary's resolved path + size (got: $outI1)"
 grepq "$outI1" -E -- "qmd-index \\(${hI}[/\\\\]\\.himmel[/\\\\]qmd-fork, 10 B\\)" \
@@ -530,9 +445,7 @@ echo "ok: caseI2 dry-run advisory plan prints 'absent' when the qmd-fork path do
 # chmod 000 is a POSIX-only way to force that error: on Windows (MSYS/MINGW)
 # it does not restrict access the same way, so this case would false-red a
 # platform quirk rather than test the code.
-if is_win32; then
-  echo "ok: caseI3 -> (skipped: chmod 000 does not deny access on win32, covered by caseI1/I2's non-error paths)"
-elif [ "$(id -u)" = 0 ]; then
+if [ "$(id -u)" = 0 ]; then
   echo "SKIP - caseI3 needs a non-root permission error (root reads mode-000 dirs)"
 else
   hI3="$work/hI3"; mkdir -p "$hI3/.himmel/qmd-fork"

@@ -94,10 +94,8 @@ function versionGte(actual, min) {
   return true;
 }
 
-// osKey(platform) -> "linux" | "macos" | "win32", the three keys every
-// dep.install object carries.
+// osKey(platform) -> "linux" | "macos", the install-recipe keys himmelctl reads.
 function osKey(platform) {
-  if (platform === 'win32') return 'win32';
   if (platform === 'darwin') return 'macos';
   return 'linux';
 }
@@ -114,18 +112,14 @@ function osKey(platform) {
 // shell metacharacters, could execute unintended commands. Passed as a
 // POSITIONAL arg ($1) instead, mirroring qmdPullModelsEntry's own `. "$1"
 // && has_qmd && qmd_cmd pull` shape and install-engine.js's buildEntry()
-// winget/brew/apt-dep cases — no value is ever interpolated into the -c
+// brew/apt-dep cases — no value is ever interpolated into the -c
 // string.
 // isExecutableFile(p) -> bool. (CodeRabbit MAJOR): a PATH entry which
 // resolved must be a regular file the caller can actually EXECUTE before it
 // counts as present — a DIRECTORY named like the tool, or a present-but-non-
 // executable file (POSIX mode 0644), used to read as present (probePresence
 // returned true for any which() hit, and which() only checks existence). isFile()
-// rejects dirs / dir-symlinks / devices on every platform. The execute-permission
-// check (X_OK) is meaningful only on POSIX — Windows has no POSIX exec bit, so
-// executability there is conveyed by the PATHEXT extensions which() already
-// resolved (.exe/.cmd/.bat); X_OK is skipped on win32, where libuv's access() is
-// not a reliable exec check and would false-negative on a real .exe.
+// rejects dirs / dir-symlinks / devices.
 function isExecutableFile(p) {
   let st;
   try {
@@ -134,7 +128,6 @@ function isExecutableFile(p) {
     return false;
   }
   if (!st.isFile()) return false;
-  if (process.platform === 'win32') return true;
   try {
     fs.accessSync(p, fs.constants.X_OK);
   } catch (_e) {
@@ -168,12 +161,8 @@ function probePresence(dep, ctx) {
 // treat null as "can't verify", never as a crash. depStatus reports
 // "degraded" for it only when a minVersion floor is declared. Always routed through `bash -c` (never a raw
 // spawnSync(dep.cmd, ...)) — same reason bin.js's installMissing()/
-// runPluginEnable() all do the same: Node's non-shell
-// spawnSync does its own PATH resolution on win32 and can silently prefer
-// an unrelated same-named binary, or simply fail to launch a .cmd/.bat/
-// shebang-script tool at all (CreateProcess requires bash's own
-// interpreter-aware exec for those), whereas bash's PATH search resolves
-// the right one regardless of extension.
+// runPluginEnable() all do the same: bash's PATH search resolves the right
+// binary regardless of extension, and a hermetic test can stub it.
 // resolverPath/dep.cmd/versionArgs
 // used to be string-interpolated into the -c line (same class of bug as
 // probePresence above — breaks on a spacey repoRoot, unhardened against
@@ -282,7 +271,7 @@ const UPGRADE_APT_DNF_BREW_NO_SUDO_PASSWORD_SNIPPET = 'if command -v apt-get >/d
 // Every branch shells out via `bash -c` with the variable part passed as a
 // POSITIONAL arg ($1), never interpolated into the -c string — the same
 // injection-hardening convention install-engine.js's buildEntry() already
-// uses for its own winget/brew/apt-dep cases. Returned entries are handed
+// uses for its own brew/apt-dep cases. Returned entries are handed
 // straight to install-engine.js's runInstall() — this function never spawns.
 function buildDepEntry(dep, ctx, opts) {
   const upgrade = Boolean(opts && opts.upgrade);
@@ -329,13 +318,6 @@ function buildDepEntry(dep, ctx, opts) {
     case 'brew': {
       const line = upgrade ? 'brew upgrade "$1" 2>/dev/null || brew install "$1"' : 'brew install "$1"';
       return { id: dep.id, type: 'dep', cmd: 'bash', args: ['-c', line, 'himmel-dep', recipe.pkg] };
-    }
-    case 'winget': {
-      const verb = upgrade ? 'upgrade' : 'install';
-      return {
-        id: dep.id, type: 'dep', cmd: 'bash',
-        args: ['-c', `winget ${verb} --id "$1" -e --silent --disable-interactivity --accept-source-agreements --accept-package-agreements`, 'himmel-dep', recipe.id],
-      };
     }
     case 'pip': {
       const line = upgrade ? 'python3 -m pip install --user --upgrade "$1"' : 'python3 -m pip install --user "$1"';

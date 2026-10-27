@@ -19,8 +19,7 @@
 #      never contains the --force-unstamped literal.
 #   B. adopter + vault=none --dry-run -> `adopt.sh --profile core --scope
 #      project`, no --luna-target.
-#   E. contributor --dry-run -> the platform-appropriate launcher (setup.sh /
-#      setup.ps1 on win32), never adopt.sh.
+#   E. contributor --dry-run -> the setup.sh launcher, never adopt.sh.
 #   F. interactive confirm decline ("n") -> adopt.sh NOT invoked, rc=0, no
 #      uninstall footer.
 #   G. interactive confirm accept (blank Enter = the [Y/n] default) -> adopt.sh
@@ -120,9 +119,9 @@ derive_cwd="$work/suite-cwd"; mkdir -p "$derive_cwd"; cd "$derive_cwd"
 
 # a non-dry-run install (the stamped accept cases, e.g. caseM)
 # reaches applyHimmelctlPathShim(), whose default binDir is the operator's REAL
-# ~/.local/bin (win32 ignores HOME entirely). Isolate binDir for the WHOLE
+# ~/.local/bin. Isolate binDir for the WHOLE
 # suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
-# test-wizard-uninstall.sh. winpath'd so win32 node resolves it cleanly.
+# test-wizard-uninstall.sh. winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
@@ -156,7 +155,7 @@ JSON
 }
 
 # build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
-# adopt.sh/setup.sh/setup.ps1/wire-luna-vault.sh/luna-upgrade-all.sh stubs
+# adopt.sh/setup.sh/wire-luna-vault.sh/luna-upgrade-all.sh stubs
 # (each logs its argv to <dir>/*-calls.log) plus a real copy of
 # scripts/handover/set-handover-dir.sh (self-contained — no further sourcing —
 # so the T4.5 handover-write case exercises the actual production script
@@ -180,10 +179,6 @@ printf 'setup.sh: %s\n' "\$*" >> "$_d/setup-calls.log"
 exit 0
 STUB
   chmod +x "$_d/scripts/setup.sh"
-  cat > "$_d/scripts/setup.ps1" <<'STUB'
-Write-Host "setup.ps1 stub"
-exit 0
-STUB
   cp "$repo_root/scripts/handover/set-handover-dir.sh" "$_d/scripts/handover/set-handover-dir.sh"
   cp "$repo_root/scripts/lib/env-append.sh" "$_d/scripts/lib/env-append.sh"
   chmod +x "$_d/scripts/handover/set-handover-dir.sh"
@@ -429,7 +424,7 @@ grep -q -- '--profile core --scope user' "$fixtureM/adopt-calls.log" \
   || fail "caseM: accept should invoke luna-upgrade-all.sh"
 grep -q -- 'apply --vault' "$fixtureM/luna-upgrade-all-calls.log" \
   || fail "caseM: luna-upgrade-all.sh should be called with apply --vault (got: $(cat "$fixtureM/luna-upgrade-all-calls.log"))"
-# Path separators differ (backslash on win32-node vs the forward-slash $hM),
+# Path separators may differ from the forward-slash $hM,
 # so match on the unique temp-dir basename rather than the full literal path.
 grep -q 'hM' "$fixtureM/wire-luna-vault-calls.log" \
   || fail "caseM: user-scope wire-luna-vault.sh should target the FAKE HOME's settings.json, not the real one (got: $(cat "$fixtureM/wire-luna-vault-calls.log"))"
@@ -551,15 +546,10 @@ echo "ok: caseQ2 a himmel.conf.local HANDOVER_DIR override receives the wizard w
 
 # ── Case E: a legacy contributor cache migrates to devOverlay ─
 # =true — deriveCommand ALWAYS derives adopt.sh now (ONE execution engine);
-# the old contributor role's setup.sh/setup.ps1 is layered on TOP as the dev
+# the old contributor role's setup.sh is layered on TOP as the dev
 # overlay's OWN additional command, never a substitute for adopt.sh.
-# win32 launches the overlay's setup.ps1 through
-# resolvePowershell(), which PREFERS pwsh over PowerShell 5.1 — so pwsh is
-# scrubbed from PATH here (this box's own pwsh must not leak in) to pin the
-# loud-fallback branch; caseE2 below covers the pwsh-preferred branch with
-# pwsh injected instead.
 stubE="$work/caseE"; mkdir -p "$stubE"
-cE=$(build_path "$stubE" bash git jq python3 npm -- pwsh)
+cE=$(build_path "$stubE" bash git jq python3 npm -- )
 hE="$work/hE"; mkdir -p "$hE"
 fixtureE="$work/caseE-fixture"; build_fixture "$fixtureE"
 cacheE="$work/caseE-profile.json"
@@ -573,55 +563,12 @@ set -e
 [ "$rc" -eq 0 ] || fail "caseE: dry-run should succeed (got rc=$rc): $out"
 grepq "$out" -E 'derived:.*adopt\.sh --profile core --scope user$' \
   || fail "caseE: a migrated legacy contributor cache (devOverlay=true) must still derive adopt.sh as the primary command (got: $out)"
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    grepq "$out" -iE 'derived \(dev overlay\):.*powershell' \
-      || fail "caseE(win32): expected a PowerShell 5.1 fallback overlay line (pwsh scrubbed) (got: $out)"
-    grepq "$out" -F -- '-ExecutionPolicy Bypass -File' \
-      || fail "caseE(win32): expected -ExecutionPolicy Bypass -File (got: $out)"
-    grepq "$out" -F -- 'setup.ps1' \
-      || fail "caseE(win32): expected setup.ps1 (got: $out)"
-    ;;
-  *)
-    grepq "$out" -E 'derived \(dev overlay\):.*bash .*setup\.sh$' \
-      || fail "caseE(posix): expected an overlay 'bash .../setup.sh' line (got: $out)"
-    ;;
-esac
+grepq "$out" -E 'derived \(dev overlay\):.*bash .*setup\.sh$' \
+  || fail "caseE: expected an overlay 'bash .../setup.sh' line (got: $out)"
 # --dry-run now shells out to adopt.sh itself with --dry-run.
 grep -q -- '--profile core --scope user --dry-run' "$fixtureE/adopt-calls.log" \
   || fail "caseE (HIMMEL-3308): adopt.sh should have been called with --profile core --scope user --dry-run (got: $(cat "$fixtureE/adopt-calls.log" 2>&1))"
-echo "ok: caseE a migrated legacy contributor cache (devOverlay=true) derives adopt.sh AS the primary command plus the setup.sh/ps1 overlay"
-
-# ── Case E2: the dev overlay on win32 prefers pwsh when
-# it is resolvable — a stub pwsh is injected onto PATH (posix is a no-op:
-# caseE already covers it, and there is no pwsh/powershell branch there).
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    stubE2="$work/caseE2"; mkdir -p "$stubE2"
-    cE2=$(build_path "$stubE2" bash git jq python3 npm pwsh -- )
-    hE2="$work/hE2"; mkdir -p "$hE2"
-    fixtureE2="$work/caseE2-fixture"; build_fixture "$fixtureE2"
-    cacheE2="$work/caseE2-profile.json"
-    write_cache "$cacheE2" contributor user none "" inline "" lean
-    set +e
-    outE2=$(PATH="$cE2" HOME="$hE2" USERPROFILE="$(winpath "$hE2")" HIMMELCTL_CACHE_DIR="$(winpath "$hE2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hE2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
-          HIMMELCTL_REPO_ROOT="$(winpath "$fixtureE2")" \
-          "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$cacheE2")" \
-          </dev/null 2>&1); rcE2=$?
-    set -e
-    [ "$rcE2" -eq 0 ] || fail "caseE2: dry-run should succeed (got rc=$rcE2): $outE2"
-    grepq "$outE2" -F -- 'derived (dev overlay):' \
-      || fail "caseE2(win32): expected the overlay derived-line marker (got: $outE2)"
-    grepq "$outE2" -F -- 'pwsh' \
-      || fail "caseE2(win32): expected pwsh to be preferred when resolvable (got: $outE2)"
-    grepq "$outE2" -F -- '-ExecutionPolicy Bypass -File' \
-      || fail "caseE2(win32): expected -ExecutionPolicy Bypass -File (got: $outE2)"
-    grepq "$outE2" -F -- 'setup.ps1' \
-      || fail "caseE2(win32): expected setup.ps1 (got: $outE2)"
-    echo "ok: caseE2 dev overlay on win32 -> pwsh preferred over PowerShell 5.1 when resolvable"
-    ;;
-  *) echo "ok: caseE2 -> (skipped: posix has no pwsh/powershell branch, covered by caseE)" ;;
-esac
+echo "ok: caseE a migrated legacy contributor cache (devOverlay=true) derives adopt.sh AS the primary command plus the setup.sh overlay"
 
 # ── Case F: interactive confirm decline -> adopt.sh NOT invoked ────────────
 stubF="$work/caseF"; mkdir -p "$stubF"
@@ -1142,19 +1089,9 @@ set -e
 [ "$rc" -eq 0 ] || fail "caseV: devOverlay=true applied install should succeed (got rc=$rc): $out"
 [ -f "$fixtureV/adopt-calls.log" ] \
   || fail "caseV: adopt.sh should have run (got: $out)"
-# build_fixture's setup.ps1 stub (win32) doesn't log calls the way setup.sh
-# does — it prints its own sentinel line instead.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    grepq "$out" -F 'setup.ps1 stub' \
-      || fail "caseV(win32): the dev overlay's setup.ps1 should ALSO have run (got: $out)"
-    ;;
-  *)
-    [ -f "$fixtureV/setup-calls.log" ] \
-      || fail "caseV(posix): the dev overlay's setup.sh should ALSO have run (got: $out)"
-    ;;
-esac
-echo "ok: caseV a v2 devOverlay=true cache runs adopt.sh AND the setup.sh/ps1 overlay on an applied install"
+[ -f "$fixtureV/setup-calls.log" ] \
+  || fail "caseV: the dev overlay's setup.sh should ALSO have run (got: $out)"
+echo "ok: caseV a v2 devOverlay=true cache runs adopt.sh AND the setup.sh overlay on an applied install"
 
 # caseV2: adopt.sh failing must abort BEFORE the overlay ever runs.
 stubV2="$work/caseV2"; mkdir -p "$stubV2"
@@ -1176,20 +1113,18 @@ set -e
 [ "$rc2" -eq 1 ] || fail "caseV2: a failed adopt.sh should propagate rc=1 (got rc=$rc2): $out2"
 [ -f "$fixtureV2/setup-calls.log" ] \
   && fail "caseV2: a failed adopt.sh must abort BEFORE the dev overlay runs (got: $(cat "$fixtureV2/setup-calls.log"))"
-grepq "$out2" -F 'setup.ps1 stub' \
-  && fail "caseV2: a failed adopt.sh must abort BEFORE the dev overlay (setup.ps1) runs (got: $out2)"
 echo "ok: caseV2 a failed adopt.sh aborts before the dev overlay ever runs"
 
 # ── Case W: --contribute outside a himmel checkout -> clear ────
 # error, nothing shells out. HIMMELCTL_REPO_ROOT points at a fixture that
-# carries NEITHER setup.sh nor setup.ps1 — the exact signal contributeCheckoutOk()
+# carries NO setup.sh — the exact signal contributeCheckoutOk()
 # reads — so this is a targeted unit of the "clear error elsewhere" spec line,
 # independent of whatever the real host's own himmel checkout looks like.
 stubW="$work/caseW"; mkdir -p "$stubW"
 cW=$(build_path "$stubW" bash git jq python3 npm -- )
 hW="$work/hW"; mkdir -p "$hW"
 fixtureW="$work/caseW-fixture"; mkdir -p "$fixtureW/scripts"
-# Deliberately no scripts/adopt.sh, no scripts/setup.sh, no scripts/setup.ps1.
+# Deliberately no scripts/adopt.sh, no scripts/setup.sh.
 set +e
 outW=$(PATH="$cW" HOME="$hW" USERPROFILE="$(winpath "$hW")" HIMMELCTL_CACHE_DIR="$(winpath "$hW.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hW.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
       HIMMELCTL_REPO_ROOT="$(winpath "$fixtureW")" \

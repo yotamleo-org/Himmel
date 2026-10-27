@@ -65,7 +65,6 @@ new_case() {
   git init -q "$c/fx"; printf '.env\n' > "$c/fx/.gitignore"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$c/fx/scripts/adopt.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$c/fx/scripts/setup.sh"
-  printf 'exit 0\n' > "$c/fx/scripts/setup.ps1"
   chmod +x "$c/fx"/scripts/*.sh
   printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "%s"\n' "$c/launches" "$node_bin" "$work/fake-server.js" > "$c/stub/bun"
   # shellcheck disable=SC2016

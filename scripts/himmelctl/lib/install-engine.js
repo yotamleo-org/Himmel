@@ -28,7 +28,6 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 const { parseDotEnv, scopeConfigPathToCtx } = require('./probes.js');
 const lunaConfig = require('./luna-config.js');
-const { resolvePowershell } = require('./helpers.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // own launcher uses to pick a real, usable Git Bash on Windows (never bare
 // 'bash', which can silently resolve to the WSL launcher or a 0-byte
@@ -40,10 +39,8 @@ const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash
 // deliberately absent — config-type items are hint-only pre-sub-ticket-D; the
 // caller (ensure, A5) must exclude them from the item list handed to
 // planInstall in the first place, never rely on this engine to skip them.
-// 'observability' added — its own switch case in buildEntry
-// dispatches to install-stack.ps1 (win32-only in Phase A; posix returns an
-// `unrunnable` entry naming the gap, never a doomed spawn of
-// install-stack.sh's loud placeholder).
+// 'observability' added — its own switch case in buildEntry dispatches to
+// install-stack.sh, opt-in only.
 const RUNNABLE_INSTALL_TYPES = ['adopt', 'setup', 'wire', 'plugins', 'qmd', 'dep', 'build', 'observability'];
 
 // The closed `target` vocabulary each target-bearing install type dispatches
@@ -75,23 +72,9 @@ const COALESCE_TYPES = new Set(['adopt', 'setup']);
 // marketplaces) — a hooks repair must not re-adopt the user scope.
 const ADOPT_ONLY_HOOKS_ITEMS = new Set(['pre-commit-hooks']);
 
-// win32 has no bare-name package-manager fallback (unlike brew/apt) — mirror
-// bin.js's own WINGET_IDS map for the 5 tools it documents a winget id for;
-// every other `dep` item has no known win32 install path (same limitation
-// bin.js's installMissing() already documents) and surfaces as a failed
-// primitive with a clear reason rather than a doomed spawn.
-const WINGET_IDS = {
-  git: 'Git.Git',
-  jq: 'jqlang.jq',
-  python3: 'Python.Python.3.12',
-  node: 'OpenJS.NodeJS.LTS',
-  npm: 'OpenJS.NodeJS.LTS',
-};
-
 function depToolName(item, ctx) {
   const probe = item.probe || {};
-  const platform = (ctx && ctx.platform) || process.platform;
-  return probe.cmd || (platform === 'win32' ? probe.win32 : probe.posix);
+  return probe.cmd || probe.posix;
 }
 
 // Resolve HIMMELCTL_SUDO_PASSWORD: process.env wins, else the primary
@@ -118,9 +101,8 @@ function resolveSudoPassword(repoRoot) {
 // Build one plan entry's {cmd,args} for a given manifest item + its install
 // descriptor. `ctx` = { repoRoot, scope, profile, targetPath, platform? }.
 // `ctx.platform` overrides process.platform when present — the ONLY way
-// this file's platform-branched logic (win32/darwin/linux) is testable
-// deterministically from a single host (the hermetic suite runs on
-// Windows Git Bash and needs to exercise the linux/darwin branches too).
+// this file's platform-branched logic (darwin/linux) is testable
+// deterministically from a single host.
 // `diagnosticState` (optional, shared across every buildEntry() call within
 // ONE planInstall() run — see planInstall()'s own header) tracks whether
 // the "no HIMMELCTL_SUDO_PASSWORD configured" diagnostic has already
@@ -215,7 +197,7 @@ function buildEntry(item, ctx, diagnosticState) {
       // `qmd_register_collection "" luna` — registering an empty/wrong dir
       // AFTER consent/state persistence — and qmd-index STILL could never go
       // green (the luna collection has no real path). Return a hint-only
-      // unrunnable entry (mirrors the winget branch's own `!id` guard above)
+      // unrunnable entry (the same hint-only shape as the other unrunnable entries)
       // so ensure surfaces the real fix (configure a vault via 'himmelctl
       // install', then re-run) instead of a corrupt registration. Do NOT
       // register only `himmel` and call it converged: the probe needs BOTH
@@ -239,17 +221,8 @@ function buildEntry(item, ctx, diagnosticState) {
       };
     }
     case 'observability': {
-      // install-stack.ps1 (winget/scoop packages +
-      // Register-LogonTask per exporter) is Phase A's ONLY
-      // installer. scripts/observability/install-stack.sh is an 11-line
-      // loud placeholder that `exit 2`s — cross-platform packaging is
-      // a known gap, not built here.
-      // ponytail: no cross-platform observability packaging, tracked in HIMMEL-2333.
-      // Mirrors the WINGET_IDS posix-gap posture above: never a
-      // doomed spawn of the placeholder.
-      //
-      // posix now runs install-stack.sh (the exporter
-      // only, as a systemd user unit / launchd agent), but ONLY when the
+      // install-stack.sh runs the exporter only, as a systemd user unit /
+      // launchd agent, and ONLY when the
       // operator opted in (observability.enabled in ~/.himmel/config.json) —
       // every profile desires this item, and `ensure` must never enable a
       // service unasked.
@@ -258,7 +231,7 @@ function buildEntry(item, ctx, diagnosticState) {
         // far), opt-in via observability.grafana — `ensure` never downloads and
         // starts servers unasked.
         if (platform !== 'linux') {
-          return { unrunnable: 'the Prometheus + Grafana user units are Linux-only so far (macOS and Windows are not supported yet)' };
+          return { unrunnable: 'the Prometheus + Grafana user units are Linux-only so far (macOS is not supported yet)' };
         }
         let cfg;
         try {
@@ -271,45 +244,22 @@ function buildEntry(item, ctx, diagnosticState) {
         }
         return { cmd: 'bash', args: [path.join(scriptsDir, 'observability', 'install-grafana.sh'), 'install'] };
       }
-      if (platform !== 'win32') {
-        let cfg;
-        try {
-          cfg = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
-        } catch (e) {
-          return { unrunnable: `cannot read ~/.himmel/config.json (${e.message}) — fix it, then re-run` };
-        }
-        if (!(cfg.observability && cfg.observability.enabled === true)) {
-          return { unrunnable: 'observability stack is opt-in on this platform — set "observability": {"enabled": true} in ~/.himmel/config.json, then re-run himmelctl ensure (installs the flow exporter as a user service)' };
-        }
-        return { cmd: 'bash', args: [path.join(scriptsDir, 'observability', 'install-stack.sh'), 'install'] };
+      let cfg;
+      try {
+        cfg = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
+      } catch (e) {
+        return { unrunnable: `cannot read ~/.himmel/config.json (${e.message}) — fix it, then re-run` };
       }
-      const psBin = resolvePowershell(ctx.env || process.env);
-      const scriptPath = path.join(scriptsDir, 'observability', 'install-stack.ps1');
-      return { cmd: psBin, args: ['-NoProfile', '-NonInteractive', '-File', scriptPath, '-RepoRoot', ctx.repoRoot] };
+      if (!(cfg.observability && cfg.observability.enabled === true)) {
+        return { unrunnable: 'observability stack is opt-in on this platform — set "observability": {"enabled": true} in ~/.himmel/config.json, then re-run himmelctl ensure (installs the flow exporter as a user service)' };
+      }
+      return { cmd: 'bash', args: [path.join(scriptsDir, 'observability', 'install-stack.sh'), 'install'] };
     }
     case 'dep': {
       const tool = depToolName(item, ctx);
-      if (platform === 'win32') {
-        const id = WINGET_IDS[tool];
-        if (!id) return { unrunnable: `no winget id known for '${tool}' — install it manually` };
-        // --silent + --disable-interactivity + the two --accept-*
-        // flags — without them winget PROMPTS (source/package agreements),
-        // which hangs an unattended `ensure` (the whole point is running
-        // outside a Claude session, non-interactively).
-        //
-        // consistency): `id` used to be interpolated straight into the -c
-        // string (`` `winget install --id ${id} ...` ``) — the SAME class
-        // of shell-injection surface the 'qmd'/'build' cases above were
-        // already hardened against, just missed here. `id` comes from the
-        // lint-gated WINGET_IDS map (real risk low), but the fix is cheap
-        // and keeps every buildEntry() case consistent: pass it as a bash
-        // POSITIONAL arg ($1), never re-interpolated into the script text.
-        return { cmd: 'bash', args: ['-c', 'winget install --id "$1" -e --silent --disable-interactivity --accept-source-agreements --accept-package-agreements', 'himmel-dep', id] };
-      }
       const pkg = platform === 'darwin' && tool === 'npm' ? 'node' : tool;
       if (platform === 'darwin') {
-        // consistency): same fix as the winget branch above — `pkg` as a
-        // positional arg, not interpolated into the -c string.
+        // `pkg` as a positional arg, not interpolated into the -c string.
         return { cmd: 'bash', args: ['-c', 'brew install "$1"', 'himmel-dep', pkg] };
       }
       // Linux: prefer a configured HIMMELCTL_SUDO_PASSWORD, passed to sudo
@@ -360,7 +310,7 @@ function buildEntry(item, ctx, diagnosticState) {
         );
       }
       // consistency): `pkg` as a positional arg, not interpolated into the
-      // -c string — same fix as the winget/brew branches above.
+      // -c string — same fix as the brew branch above.
       return { cmd: 'bash', args: ['-c', 'sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y "$1"', 'himmel-dep', pkg] };
     }
     default:
@@ -614,8 +564,7 @@ function runHardenedSpawn(entry) {
   // for every shell primitive (adopt/setup/wire/plugins/qmd/dep). Spawning
   // that bare name resolves through PATH — on Windows to
   // C:\WINDOWS\system32\bash.exe, the WSL launcher, which cannot read the
-  // Windows-form script path in entry.args at all; the win32 branch relays
-  // entry.cmd on to job-run.ps1, so PowerShell resolves the same WSL stub.
+  // Windows-form script path in entry.args at all.
   // Only the guardrail-block-global wire target had the rule (it needed an
   // ABSOLUTE --bash to hand onward); resolving here covers every other
   // primitive at the single spawn seam, and leaves PLAN output ('bash')
@@ -688,10 +637,7 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
     // that deliberately left it — setsid()/setpgid() into a new session or
     // group, or a double-fork daemonization — survives, and so does a
     // descendant re-parented to init while sitting in another group. This
-    // is the one real asymmetry with the win32 branch: a Job Object is
-    // escape-proof by construction (membership is inherited and cannot be
-    // renounced), which is precisely why that side is worth its complexity.
-    // POSIX has no equivalent primitive here, so this path is best-effort
+    // There is no escape-proof primitive here, so this path is best-effort
     // BY DESIGN and cannot promise the tree is gone — only that everything
     // still in the group was signalled. The timeout is still reported as a
     // failure either way (fail-closed), so an escaped straggler degrades
@@ -756,7 +702,7 @@ function logEnabledPluginsWrites(entry, before) {
 // runInstall(plan, {dryRun}) -> {ran:[{id,type}], failed:[{id,type,reason}]}
 // dryRun:true returns BEFORE any spawnSync — a --dry-run plan is provably
 // zero-exec. A plan entry that couldn't be built into a runnable command
-// (buildEntry's `unrunnable` case, e.g. an unmapped win32 dep) lands in
+// (buildEntry's `unrunnable` case, e.g. an unmapped dep) lands in
 // failed[] without ever spawning. Every actually-spawned entry goes through
 // runHardenedSpawn() (see its own header for the full hardening list —
 // timeout+tree-kill, env-scrubbed credential, signal/ETIMEDOUT

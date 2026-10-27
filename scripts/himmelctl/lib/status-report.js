@@ -504,8 +504,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // makes it desired:true for every target, so the probe marks the
       // not-opted-in absence `cleanAbsence` and it reads n/a here — never a
       // nag. An opted-in host that reads absent (service not installed) or
-      // degraded carries no flag and stays a true alarm; win32 never sets it
-      // either (its installer is `himmelctl ensure`-convergeable).
+      // degraded carries no flag and stays a true alarm.
       if (item.id === 'observability-stack' && probe.cleanAbsence) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set "observability": {"enabled": true} in ~/.himmel/config.json, then run himmelctl ensure, to run the flow exporter as a user service)`;

@@ -1,6 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/contributor-profile.js — contributor-dev reporting for
-// `himmelctl install`. setup.sh/setup.ps1 remains the one
+// `himmelctl install`. setup.sh remains the one
 // idempotent mutation primitive; this module only reads actual state after (or
 // before, for --dry-run) that primitive. It composes the existing manifest
 // probe engine, version-aware deps engine, and adopter profile's canonical

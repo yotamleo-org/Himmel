@@ -89,12 +89,7 @@ const CADENCE_REGISTRY = require('./cadence-registry.json').cadences;
 // for the --lanes/interactive refusal wording that points at that door.
 //
 // BOTH `install` and `note` are per-platform maps resolved through
-// pickByPlatform. `note` used to be a bare string
-// while `install` was already platform-aware, so a Linux adopter got a correct
-// install command followed by completion guidance naming a .ps1 script and a
-// Windows-only runbook — able to install the binary, unable to finish. Every
-// path named below is verified to exist in this repo; a POSIX entry pointing at
-// a Windows-only artifact would just be a different lie.
+// pickByPlatform. Every path named below is verified to exist in this repo.
 const V1_LANES = [
   {
     id: 'codex',
@@ -106,11 +101,9 @@ const V1_LANES = [
     // installed.
     manifestItem: 'codex-cli',
     install: {
-      win32: 'winget install OpenAI.Codex',
       default: 'npm install -g @openai/codex',
     },
     note: {
-      win32: 'then `pwsh -File scripts/codex/install-himmel-codex.ps1` (pwsh/PowerShell 7 preferred — `winget install Microsoft.PowerShell`; powershell.exe also works for this step); auth lives in ~/.codex/auth.json',
       default: 'then `bash scripts/codex/install-himmel-codex.sh`; auth lives in ~/.codex/auth.json',
     },
   },
@@ -119,11 +112,9 @@ const V1_LANES = [
     registryId: 'hermes-oneshot',
     optIn: true,
     install: {
-      win32: 'git clone + uv venv + pip install -e . (Windows is dropped; see docs/hermes-runbook.md)',
       default: 'see docs/hermes-runbook.md § "Install hermes (upstream)" — the Linux / macOS / WSL2 branch',
     },
     note: {
-      win32: 'then `pwsh -File scripts/hermes/install-himmel-profile.ps1` (pwsh/PowerShell 7 preferred — `winget install Microsoft.PowerShell`; powershell.exe also works for this step). Do NOT auto-start the gateway — same-token platform pollers conflict across machines',
       default: 'then `bash scripts/hermes/install-himmel-profile.sh`. Do NOT auto-start the gateway — same-token platform pollers conflict across machines',
     },
   },
@@ -215,7 +206,7 @@ function laneById(id) {
   return V1_LANES.filter((l) => l.id === id)[0] || null;
 }
 
-// Resolve a per-platform map ({ win32, darwin, default }) for one platform,
+// Resolve a per-platform map ({ darwin, default }) for one platform,
 // falling back to `default` when there is no platform-specific entry. ONE
 // resolver for both maps so an entry can never be platform-aware in the
 // install column and platform-blind in the guidance column again.
@@ -545,16 +536,11 @@ const EVALUABLE_PROBE_KINDS = ['always', 'never', 'path', 'env', 'installed', 'c
 // Human-readable detail for a decided probe. Presentation ONLY — the verdict
 // comes from evalProbe; nothing here re-implements detection.
 function probeDetail(probe, ok, platform) {
-  const p = platform || process.platform;
   switch (probe.kind) {
     case 'path': return ok ? `${probe.cli} found on PATH` : `${probe.cli} not on PATH`;
     case 'installed': {
       if (ok) return `${probe.tool} installation detected`;
-      // %LOCALAPPDATA% is meaningless off Windows, and
-      // naming a location the operator cannot have is worse than naming none.
-      const where = p === 'win32'
-        ? '$HERMES_PY, or a venv under $HERMES_HOME / %LOCALAPPDATA%\\hermes'
-        : '$HERMES_PY, or a venv under $HERMES_HOME';
+      const where = '$HERMES_PY, or a venv under $HERMES_HOME';
       return `no ${probe.tool} installation found (checked ${where})`;
     }
     case 'env': return ok ? `${probe.name} is set` : `${probe.name} is not set`;
@@ -773,118 +759,16 @@ function probeSelection(selected, ctx) {
 
 // ── always-on hardening checklist (PRINTED, never executed) ─────────────────
 //
-// Transcribed from the removed Windows clean-machine runbook, Phase 0 + Phase 6.
-// These are machine-wide, need elevation, and `himmelctl uninstall` cannot
-// undo them — which is exactly why they are a checklist and not a step.
-const HARDENING_CHECKLIST = [
-  {
-    title: 'Power profile — never sleep, never hibernate',
-    why: 'a sleeping machine drops scheduled claude relaunches and any inbound SSH',
-    platform: 'win32',
-    commands: [
-      'powercfg /change standby-timeout-ac 0',
-      'powercfg /change standby-timeout-dc 0',
-      'powercfg /change hibernate-timeout-ac 0',
-      'powercfg /change hibernate-timeout-dc 0',
-      'powercfg /change disk-timeout-ac 0',
-      'powercfg /hibernate off',
-      'powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0',
-      'powercfg /setdcvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0',
-      'powercfg /S SCHEME_CURRENT',
-    ],
-  },
-  {
-    title: 'No lock screen on wake',
-    why: 'a locked console blocks GUI-attached tools (Obsidian) in the auto-logon session',
-    platform: 'win32',
-    commands: [
-      'powercfg /setacvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0',
-      'powercfg /setdcvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0',
-      'powercfg /S SCHEME_CURRENT',
-    ],
-  },
-  // this used to be ONE step that installed the
-  // capability and started the service in two lines. Installing Windows
-  // OpenSSH opens an inbound port-22 firewall rule and the default config
-  // accepts PASSWORD auth — so that ordering stood up a password-reachable
-  // remote shell on the very machine this checklist is configuring for
-  // unattended auto-logon, before any access policy existed. The policy now
-  // comes first and the service is started last, after `sshd -t` validates
-  // the config. Still printed, never executed.
-  {
-    title: 'SSH access policy — do ALL of this BEFORE enabling the service',
-    why: 'installing OpenSSH opens inbound 22 and defaults to password auth; on an auto-logon box that is a password-reachable shell',
-    platform: 'win32',
-    commands: [
-      '# 1. install the component ONLY (do not start it yet)',
-      'Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0',
-      '',
-      '# 2. put your PUBLIC key in place. For an ADMIN account Windows uses one',
-      '#    shared file, and sshd REFUSES it unless the ACL is locked down:',
-      '#      C:\\ProgramData\\ssh\\administrators_authorized_keys',
-      'icacls C:\\ProgramData\\ssh\\administrators_authorized_keys /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"',
-      '#    (a NON-admin account uses %USERPROFILE%\\.ssh\\authorized_keys instead)',
-      '',
-      '# 3. restrict WHO may log in — edit C:\\ProgramData\\ssh\\sshd_config:',
-      '#      PubkeyAuthentication yes',
-      '#      PasswordAuthentication no',
-      '#      KbdInteractiveAuthentication no',
-      '#      AllowGroups <your-ssh-group>          # or AllowUsers <you>',
-      '#    and confirm the Match block at the end does not re-open password auth',
-      '',
-      '# 4. scope the firewall rule to the networks you actually use —',
-      '#    the rule the capability adds allows ANY remote address',
-      '#    (e.g. 192.168.1.0/24 for a typical home LAN)',  // leak-allow: private-lan-ip doc example RFC1918 CIDR for the firewall-rule snippet
-      'Set-NetFirewallRule -Name OpenSSH-Server-In-TCP -RemoteAddress <your-lan-subnet>',
-      '',
-      '# 5. validate the config BEFORE starting anything (prints nothing if OK)',
-      'C:\\Windows\\System32\\OpenSSH\\sshd.exe -t',
-    ],
-  },
-  {
-    title: 'Enable sshd — only once every step above is done',
-    why: 'remote-over-SSH adopter installs are HIMMEL-1424 — v1 installs LOCAL only, so enable this only if you will drive the machine remotely',
-    platform: 'win32',
-    commands: [
-      'Set-Service -Name sshd -StartupType Automatic',
-      '',
-      '# sshd reads its config at START. `Start-Service` on an ALREADY-RUNNING',
-      '# daemon is a silent no-op, so the OLD config (password auth and all)',
-      '# would stay live and the policy above would never take effect. RESTART a',
-      '# running service; only START a stopped one.',
-      "if ((Get-Service sshd).Status -eq 'Running') { Restart-Service sshd } else { Start-Service sshd }",
-      '',
-      '# confirm it came back with the config you just validated',
-      'Get-Service sshd | Select-Object Name, Status, StartType',
-      '',
-      '# verify from ANOTHER machine that key auth works and password auth is refused:',
-      '#   ssh -o PreferredAuthentications=password <user>@<host>   -> must FAIL',
-    ],
-  },
-  {
-    title: 'Auto-logon (so scheduled claude relaunches get a desktop session)',
-    why: 'schtasks-armed claude needs an interactive session, not just a logon token',
-    platform: 'win32',
-    commands: [
-      "Set-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\PasswordLess\\Device' -Name DevicePasswordLessBuildVersion -Value 0",
-      'then use Sysinternals Autologon (https://live.sysinternals.com/Autologon64.exe)',
-      '  — it stores the password LSA-encrypted; the DefaultPassword registry value is PLAINTEXT. Do not use it.',
-    ],
-  },
-  {
-    title: 'Vault app on the auto-logon session (optional)',
-    why: 'Obsidian must be running for the luna vault sync/plugins to tick',
-    platform: 'win32',
-    commands: [
-      "Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name Obsidian -Value \"`\"$env:LOCALAPPDATA\\Programs\\Obsidian\\Obsidian.exe`\"\"",
-    ],
-  },
-];
+// Machine-wide steps need elevation and `himmelctl uninstall` cannot undo them,
+// which is why they are a checklist and not a step. Every step that was
+// published was Windows-only, so none is left; add one as
+// { title, why, platform: 'linux'|'darwin', commands: [...] }.
+const HARDENING_CHECKLIST = [];
 
 // Render the checklist as lines. Returns an array of strings so the caller
 // owns the writing (and a test can assert on the content without capturing
-// stdout). `platform` filters to the steps that apply; a non-win32 host gets
-// the honest "these are Windows-only" note rather than commands it cannot run.
+// stdout). `platform` filters to the steps that apply; a platform with none
+// gets the honest "no steps published" note rather than commands it cannot run.
 function hardeningChecklistLines(platform) {
   const p = platform || process.platform;
   const lines = [];
@@ -896,8 +780,7 @@ function hardeningChecklistLines(platform) {
   const applicable = HARDENING_CHECKLIST.filter((s) => s.platform === p);
   if (applicable.length === 0) {
     lines.push('');
-    lines.push(`  (no hardening steps are published for platform '${p}' — the runbook`);
-    lines.push('   Phase 6 is Windows-only so far)');
+    lines.push(`  (no hardening steps are published for platform '${p}' yet)`);
     lines.push('');
     return lines;
   }
@@ -983,9 +866,8 @@ function phiChecklistLines() {
 }
 
 // RETASK stage1-build-6d2e — CR finding treated as more than a Suggestion:
-// bridge persistence installs a DIFFERENT artifact per platform (a Windows
-// scheduled task; a Linux systemd --user unit + linger; nothing anywhere
-// else), and THREE user-facing sites need to agree on which: bin.js's
+// bridge persistence installs a DIFFERENT artifact per platform (a Linux
+// systemd --user unit + linger; nothing anywhere else), and THREE user-facing sites need to agree on which: bin.js's
 // interactive consent prompt, bin.js's --dry-run preview (via
 // attemptBridgePersistence itself, already correct), and this module's own
 // buildSummary --dry-run wording below. an earlier fix fixed the preview
@@ -998,7 +880,6 @@ function phiChecklistLines() {
 // platform — a caller must not offer/claim an install in that case.
 function bridgePersistenceArtifact(platform) {
   const p = platform || process.platform;
-  if (p === 'win32') return 'a HimmelTelegramBridge scheduled task';
   if (p === 'linux') return 'a systemd --user unit (telegram-bridge.service) + linger';
   return null;
 }
@@ -1143,7 +1024,7 @@ function buildSummary(answers, laneRows, opts) {
   // row above.
   //
   // `null` (dry-run, or an install with no dev overlay, where no step resolved
-  // a slug) and `applicable:false` (win32, whose setup.ps1 has no such step)
+  // a slug) and `applicable:false` (a non-repo target)
   // both produce no row: a summary must not report on a check nobody ran.
   if (o.userSlug && o.userSlug.applicable && o.userSlug.verified === false) {
     manual.push({

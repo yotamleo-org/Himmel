@@ -418,6 +418,32 @@ These tools show up in only one script, easy to drop if not on PATH (the affecte
 - **Obsidian:** https://obsidian.md (for luna vault).
 - **Claude Code CLI:** see foundational table above.
 
+### The .env split: what moves, what stays, and a mismatch
+
+On a new machine, put behaviour and policy settings in `~/.himmel`, not
+`.env`:
+
+- **`~/.himmel/himmel.conf`** holds the behaviour keys: `USER_SLUG`,
+  `HANDOVER_DIR`, `LUNA_VAULT_PATH`, `CR_PROFILE`, the `HIMMEL_INITIATIVE`
+  family and the non-secret Jira identifiers `JIRA_EMAIL`, `JIRA_PROJECT_KEY`,
+  `JIRA_PROJECTS` and `JIRA_CLOUD_ID`. Copy
+  [`himmel.conf.example`](himmel.conf.example) to start. `--fill-env` writes
+  its answers for these keys there, even though the table below lists them.
+- **`~/.himmel/config.json` `.policy`** holds the gate policy:
+  `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`
+  ([template](himmel-config.example.json)).
+- **`.env`** keeps the secrets (`JIRA_BASE_URL`, `JIRA_API_TOKEN`, provider
+  keys, Telegram keys) and any key not yet classified as config, until the
+  keyring work (HIMMEL-7147, HIMMEL-7576) is complete. Never empty it.
+
+A machine set up from an older `.env` moves its keys with the update's
+`.env` migration. When `.env` and `~/.himmel` hold different values for a key,
+the migration names the key and both files, never the values, and asks which
+to keep; with no answer it removes nothing from `.env`
+([updating.md](updating.md#the-env-split-what-moves-what-stays-and-a-mismatch)).
+The full key list:
+[config-layers.md](../internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch).
+
 ### Required `.env` values (per-variable walkthrough)
 
 `scripts/setup.sh` copies `.env.example` → `.env` for you (§4); you

@@ -141,9 +141,9 @@ snapshot_dir() {
 }
 
 # ── hermetic stub PATH: bash (real, needed to launch every stub primitive)
-# + winget/brew/sudo (stubs, intercept the dep-a win32/darwin/linux install
+# + brew/sudo (stubs, intercept the dep-a darwin/linux install
 # lines respectively — install-engine.js's `dep` dispatch is platform-
-# branched, so ALL THREE possible host package managers must be
+# branched, so BOTH possible host package managers must be
 # intercepted, not just whichever this CI host happens to be, or the case
 # is not actually hermetic: a darwin run would reach the REAL `brew`, a
 # linux run could fall through to REAL `sudo apt-get`, either capable of

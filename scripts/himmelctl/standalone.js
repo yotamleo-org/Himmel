@@ -78,9 +78,8 @@ async function main() {
     }
   };
 
-  const bashPath = process.platform === 'win32' ? helpersLib.resolvePowershell() : 'bash';
   const rc = await uninstallWrapperLib.runUninstallWrapper(args, {
-    bashPath,
+    bashPath: 'bash',
     repoRoot: bundleRoot,
     header,
     afterRun,

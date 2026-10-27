@@ -8,10 +8,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// Resolve <tool> on PATH like `command -v` would, checking the bare name plus
-// the Windows executable extensions so the same scan works on win32/posix.
+// Resolve <tool> on PATH like `command -v` would, checking the bare name.
 // Uses path.delimiter, which is the separator Node actually sees in
-// process.env.PATH (';' on win32, ':' on posix).
+// process.env.PATH.
 //
 // optional `env` param, defaulting to
 // process.env when omitted — preserves probeDep's documented exception
@@ -20,26 +19,23 @@ const path = require('path');
 // caller that already threads a fully-controlled ctx.env (probeMcpRegistered's
 // bin check) resolve PATH from THAT env instead of silently falling back to
 // the real process env. The `env.Path` fallback mirrors scripts/lanes/
-// resolve.mjs's pathHasFactory() — a manually-constructed env object built by
-// spreading process.env can carry either casing on Windows.
+// resolve.mjs's pathHasFactory() — a manually-constructed env object can carry
+// either casing.
 //
 // pick the first KEY PRESENT, not the
 // first TRUTHY value. `e.PATH || e.Path || ''` treated a deliberately
 // scrubbed `PATH: ''` as falsy and fell through to `e.Path` — so a hermetic
 // caller that explicitly empties PATH (to prove "nothing resolves") silently
-// resolved from an inherited Windows `Path` instead, defeating the scrub.
+// resolved from an inherited `Path` instead, defeating the scrub.
 function which(tool, env) {
   const e = env || process.env;
-  const exts = process.platform === 'win32' ? ['', '.exe', '.cmd', '.bat'] : [''];
   const rawPath = ('PATH' in e) ? e.PATH : (('Path' in e) ? e.Path : '');
   const dirs = String(rawPath || '').split(path.delimiter);
   for (const dir of dirs) {
     if (!dir) continue;
-    for (const ext of exts) {
-      try {
-        if (fs.existsSync(path.join(dir, tool + ext))) return path.join(dir, tool + ext);
-      } catch (_e) { /* unreadable dir — skip */ }
-    }
+    try {
+      if (fs.existsSync(path.join(dir, tool))) return path.join(dir, tool);
+    } catch (_e) { /* unreadable dir — skip */ }
   }
   return null;
 }
@@ -66,48 +62,8 @@ function profileForVault(answers) {
   return mode === 'default-template' ? 'all' : 'core';
 }
 
-// resolvePowershell(env) -> preferred PowerShell executable.
-//
-// WHY: Windows PowerShell 5.1 (powershell.exe/bare 'powershell') has a trap
-// class pwsh (PowerShell 7) does not — it reads a BOM-less UTF-8 script as
-// cp1252, mojibaking an em-dash into a phantom token that throws a
-// ParserError at the WRONG line; it has its own reserved-variable quirks;
-// and it strips jq-style quoting differently than pwsh. Operator ruling
-// (2026-08-26): ALWAYS invoke pwsh unless a named reason exists — 5.1 is a
-// loud, named fallback only, never a silent default.
-//
-// HIMMELCTL_POWERSHELL overrides everything (nonstandard install OR a
-// hermetic test pinning a specific interpreter) — same seam class as
-// HIMMELCTL_BASH; no warning is printed for an explicit override. Otherwise
-// prefers `pwsh` on PATH; falling back to `powershell` prints ONE warning to
-// stderr naming the trap class + so the fallback is never
-// silent. Returns a bare command name (`pwsh`/`powershell`) when `which`
-// finds nothing, so a caller relying on PATH resolution at spawn time still
-// gets a sane default and an honest ENOENT if truly absent.
-function resolvePowershell(env) {
-  const e = env || process.env;
-  if (e.HIMMELCTL_POWERSHELL) return e.HIMMELCTL_POWERSHELL;
-  // Probe pwsh.exe explicitly too: which's
-  // executable-extension walk is win32-only, so a pwsh.exe-only PATH entry
-  // (WSL interop, POSIX test fixtures) needs the explicit second name.
-  const pwsh = which('pwsh', e) || which('pwsh.exe', e);
-  if (pwsh) return pwsh;
-  const ps51 = which('powershell', e) || 'powershell';
-  process.stderr.write(
-    'himmelctl: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 -- '
-    + 'HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token '
-    + 'ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting '
-    + 'differently than pwsh. Install pwsh (PowerShell 7) to silence this.\n'
-  );
-  return ps51;
-}
-
 // Forward-slash a path for DISPLAY in a diagnostic that tells the operator to
-// run something. path.join/resolve emit
-// native separators, so on Windows the printed `bash C:\\...\\scripts\\setup.sh`
-// is not pasteable into the Git Bash shell the same line names — the shell eats
-// `\s` — and it is the same collapse wire-pretooluse-hooks.sh forward-slashes
-// its hook commands to avoid. Display only; nothing compares against this.
+// run something. Display only; nothing compares against this.
 function displayPath(p) {
   return String(p).split(path.sep).join('/');
 }
@@ -157,4 +113,4 @@ function himmelIdentity(root) {
   return { version, describe: git('describe', '--tags', '--always'), commit: git('rev-parse', 'HEAD'), checkout: root };
 }
 
-module.exports = { himmelIdentity, cacheDir, profileForVault, which, resolvePowershell, displayPath, shellQuote, nodeScriptCmd };
+module.exports = { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd };

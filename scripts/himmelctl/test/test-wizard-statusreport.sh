@@ -665,12 +665,7 @@ echo "ok: case h — a malformed config.json surfaces at severity for all three 
 # branch (probe.actual:'absent'), never on 'degraded'. Runs the REAL
 # bridge-persistence probe end-to-end (statusReport -> probes.js), not a
 # file-exists fixture — ctxForItem() threads no `platform`, so this exercises
-# the actual host platform's branch; a stubbed `pwsh` on PATH covers the
-# win32 case this test host runs under (probes.js queries Get-ScheduledTask
-# via helpers.js's resolvePowershell(), which PREFERS pwsh over powershell,
-# as of retask stage1-build-6d2e an earlier fix — a hardcoded 'powershell' binary
-# name would never resolve on a PowerShell-7-only machine; an earlier fix already
-# moved this off schtasks' locale-dependent text output). ─────────────────
+# the actual host platform's branch. ─────────────────
 manifestI="$work/manifestI.json"
 cat > "$manifestI" <<'JSON'
 {
@@ -1246,8 +1241,7 @@ echo "$outN" | jq -e '[.items[].detail | contains("whole-run deadline")] | any' 
   || fail "case n: probes never reached must name the whole-run deadline (got: $outN)"
 echo "ok: case n — a sweep over hung probes ends near the whole-run deadline and reports every probe degraded"
 
-# ── case o: a cadence-runs row for a Windows-only script, read off Windows, is n/a and offers no arm command ──
-case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *)
+# ── case o: a cadence-runs row for another platform's script is n/a and offers no arm command ──
 manifestO="$work/manifestO.json"
 cat > "$manifestO" <<'JSON'
 {
@@ -1255,12 +1249,12 @@ cat > "$manifestO" <<'JSON'
   "harness": "claude",
   "items": [
     {
-      "id": "cadence-runs-win-only",
+      "id": "cadence-runs-other-platform",
       "kind": "scheduler",
       "scopes": ["project"],
       "profiles": ["core", "all"],
       "deps": [],
-      "probe": { "type": "cadence-runs", "script": "scripts/win-only-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-WinOnly", "intervalHours": 4}] }
+      "probe": { "type": "cadence-runs", "script": "scripts/other-platform-cadence.sh", "platform": "freebsd", "tasks": [{"task": "HIMMEL-OtherOnly", "intervalHours": 4}] }
     }
   ]
 }
@@ -1280,8 +1274,7 @@ const answers = {
 console.log(JSON.stringify(statusReport({ manifest, scope: 'project', targetPath: process.cwd(), answers })));
 ")
 echo "$outO" | jq -e '.items[0].severity == "n/a" and (.items[0].detail | contains("n/a on this platform")) and ((.items[0].detail | contains("arm it with")) | not)' >/dev/null \
-  || fail "case o: a Windows-only cadence-runs row off Windows must read n/a without an arm instruction (got: $outO)"
-echo "ok: case o — a Windows-only cadence row off Windows is n/a and does not tell the operator to arm it"
-;; esac
+  || fail "case o: a cadence-runs row for another platform must read n/a without an arm instruction (got: $outO)"
+echo "ok: case o — a cadence row for another platform is n/a and does not tell the operator to arm it"
 
 echo "PASS"

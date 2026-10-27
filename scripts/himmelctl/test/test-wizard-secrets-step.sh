@@ -143,9 +143,9 @@ out=$(cd "$t/j4/proj" && HOME="$t/j4/home" USERPROFILE="$t/j4/home" HIMMEL_LUNA_
 printf '%s' "$out" | grep -qF "$canary" && fail "loadProfile: the refusal message echoed the value"
 printf '%s' "$out" | grep -qF "secrets" || fail "loadProfile: refusal does not name the secrets field"
 echo "ok: loadProfile refuses anything but a status under secrets"
-# ── manifest: plan 3.4 card rows exist; no row names a Windows script or binary ──
+# ── manifest: plan 3.4 card rows exist; no row names a Windows binary ──
 manifest="$repo_root/scripts/himmelctl/lib/secrets-manifest.json"
-grep -qE '\.ps1|\.exe' "$manifest" && fail "manifest: a row still names a .ps1 or .exe"
+grep -qE '\.exe' "$manifest" && fail "manifest: a row still names an .exe"
 for k in GEMINI_API_KEY PERPLEXITY_API_KEY XAI_API_KEY; do
   jq -e --arg k "$k" '.secrets[] | select(.name == $k and .collect == "card")' "$manifest" >/dev/null \
     || fail "manifest: no card row for $k"

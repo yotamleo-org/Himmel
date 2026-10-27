@@ -61,15 +61,6 @@
 #   l. HIMMELCTL_SUDO_PASSWORD unset -> the fail-fast `sudo -n
 #      DEBIAN_FRONTEND=noninteractive apt-get install -y <pkg>` form, no
 #      `input` field at all.
-#   m. runInstall()'s spawnSync call for an `input`-bearing entry, proven
-#      via a child_process.spawnSync monkey-patch (a real-process stub is
-#      unreliable on Windows — see the case's own comment). On THIS suite's
-#      real host platform (win32), routes through job-run.ps1 (Job
-#      Object round): cmd is 'powershell', entry.cmd/entry.args travel via
-#      -Command/-CommandArgsB64, and opts.input still carries the password
-#      / opts.stdio is still ['pipe','inherit','inherit'] (Node pipes it
-#      into POWERSHELL's stdin; job-run.ps1 relays it onward) — no secret
-#      material anywhere in the captured argv, under any encoding.
 #   n. the exact `DRY: ${cmd} ${args.join(' ')}` string bin.js's dry-run
 #      printer builds for a password-bearing entry contains no secret
 #      material (mirrors bin.js's own print line so a plan-shape change
@@ -93,19 +84,14 @@
 #      stdin back proves the var is ABSENT (a different, unrelated env var
 #      survives, proving this isn't just "the whole env is stripped"),
 #      while the password STILL arrives via stdin (the sudo/stdin transport
-#      from cases k/m is unaffected by the fix).
+#      from case k is unaffected by the fix).
 #   s. timeout kills the WHOLE process tree, not just the direct
 #      child: a wedged primitive that backgrounds a grandchild (and records
 #      its pid) is timed out at 1s — the grandchild is verified GENUINELY
 #      DEAD afterward (kill -0), not merely orphaned/still running in the
-#      background. Exercises the REAL mechanism for whichever platform this
-#      suite actually runs on (win32's job-run.ps1 Windows Job Object,
-#      verified here — see case v for the harder RE-PARENTING scenario that
-#      actually discriminates it from the old taskkill /T /F; the POSIX
-#      detached-process-group mechanism can't be exercised for real on a
-#      Windows host — see cases t/u for a portable, deterministic proof of
-#      BOTH mechanisms' exact shape via a spawnSync/process.kill
-#      monkey-patch, the same technique case h/m already established).
+#      background. Exercises the REAL POSIX detached-process-group mechanism; case t proves
+#      its exact shape via a spawnSync/process.kill monkey-patch (the technique
+#      case h established).
 #   t. process-group-kill mechanism, POSIX branch (process.platform
 #      monkey-patched to 'linux'): on a monkey-patched ETIMEDOUT, runInstall
 #      calls process.kill(-pid, 'SIGKILL') (the NEGATIVE pid — the whole
@@ -113,37 +99,6 @@
 #      monkey-patched spawnSync carried detached:true (required so that
 #      negative-pid kill can never reach OUR OWN process group) and an env
 #      with HIMMELCTL_SUDO_PASSWORD already stripped.
-#   u. (Job Object round) win32 dispatch mechanism (process.platform
-#      monkey-patched to 'win32'): runInstall issues exactly ONE spawnSync
-#      call — cmd:'powershell', routed through job-run.ps1, entry.cmd/
-#      entry.args carried via -Command/-CommandArgsB64, NO `detached` flag —
-#      and job-run.ps1's own TIMEOUT_EXIT_CODE (4217, simulated here)
-#      classifies as the standard "timed out after Ns" failure, the SAME
-#      shape case t proves for POSIX. Supersedes this case's PRE-Job-Object
-#      shape (a second spawnSync('taskkill', ...) call), which no longer
-#      exists — win32 cleanup now lives entirely inside job-run.ps1.
-#   v. (Job Object round — THE discriminating test) a genuinely
-#      RE-PARENTED grandchild (backgrounded inside a `(...)` subshell that
-#      exits WITHOUT waiting, so its recorded parent is already dead by the
-#      time the timeout fires — exactly how a real installer's postinst/
-#      daemon-spawning script behaves) is verified GENUINELY DEAD after the
-#      timeout. Verified EMPIRICALLY during development that this exact
-#      construction defeats the OLD taskkill /T /F mechanism (the
-#      grandchild survived); job-run.ps1's Windows Job Object does not (every
-#      descendant joins the SAME job at creation, independent of whether its
-#      immediate parent is still alive at kill time) — see the case's own
-#      comment and job-run.ps1's header for the full account.
-#      of case v) a primitive that exits 0 after legitimately backgrounding
-#      a descendant that KEEPS RUNNING (a real Windows installer starting a
-#      service/daemon/helper) must NOT have that descendant killed just
-#      because job-run.ps1's own wrapper process exited successfully —
-#      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is exactly right on the timeout
-#      path and exactly wrong here. Also uncovered (and fixed in the same
-#      round) a SEPARATE, deeper bug this case's own comment documents in
-#      full: a PowerShell nested-struct-field assignment that never
-#      actually persisted, silently making KILL_ON_JOB_CLOSE inert since
-#      the very first shipped version — the timeout path only ever worked
-#      via the independent, unconditional TerminateJobObject() call.
 
 set -euo pipefail
 
@@ -210,10 +165,8 @@ const items = [
 // HIMMELCTL_SUDO_PASSWORD (ambient env, or the primary checkout's .env) as
 // entry.input... which this very test then JSON.stringify's to stdout. Same
 // credential-exposure class as the earlier env-dump fixture fix. 'darwin' is
-// the right seam here (not 'win32'): it yields a normal brew-install entry,
-// preserving the entry shape these ordering assertions read, whereas win32
-// would hit an unmapped WINGET_IDS lookup and return an {unrunnable} entry
-// instead. This test is about ORDER, not the dep payload.
+// the right seam here: it yields a normal brew-install entry, preserving
+// the entry shape these ordering assertions read. This test is about ORDER, not the dep payload.
 // (NB: no backticks in this comment -- it lives inside a double-quoted
 // node -e string, where the shell would treat them as command substitution
 // and run them before node ever sees the script. shellcheck SC2006 caught
@@ -688,10 +641,8 @@ echo "ok: case s — a timeout kills the WHOLE process tree on this host's real 
 # direct child) + 'SIGKILL', the spawnOpts captured detached:true (required
 # so the negative-pid kill can never reach OUR OWN process group), and the
 # captured env already had HIMMELCTL_SUDO_PASSWORD stripped. ─────────────
-# HIMMELCTL_BASH pins the resolved bash, exactly as
-# HIMMELCTL_POWERSHELL pins the interpreter in case m/u. runHardenedSpawn now
-# resolves a `cmd:'bash'` entry to a CONCRETE Git Bash (never the bare name —
-# on Windows PATH resolves that to the System32 WSL launcher) and refuses to
+# HIMMELCTL_BASH pins the resolved bash. runHardenedSpawn resolves a
+# `cmd:'bash'` entry to a CONCRETE bash (never the bare name) and refuses to
 # run when nothing resolves. Without the pin, `process.platform` monkey-
 # patched to the OTHER platform makes the resolver scan candidate locations
 # that cannot exist on the host actually running the suite, so the entry is
@@ -731,15 +682,12 @@ echo "ok: case t — POSIX (simulated) timeout-cleanup: process.kill(-pid,'SIGKI
 # ── case y: runHardenedSpawn REFUSES a cmd:'bash' entry when no
 # usable bash resolves, instead of spawning the bare name. buildEntry() emits
 # the literal cmd:'bash' for every shell primitive; spawning that bare name
-# resolves through PATH — on Windows to C:\WINDOWS\system32\bash.exe, the WSL
-# launcher, which cannot read the Windows-form script path in entry.args at
-# all (and the win32 branch relays entry.cmd onward to job-run.ps1, so
-# PowerShell resolves the same stub). The refusal mirrors buildEntry()'s own
+# resolves through PATH, which can pick up the wrong binary. The refusal mirrors buildEntry()'s own
 # `unrunnable` refusal for the guardrail-block-global target.
 #
 # Un-resolving bash PORTABLY is the whole difficulty: neither an empty PATH
 # nor a scrubbed env does it — resolveBash() probes hardcoded
-# Git-for-Windows locations on win32 and /bin/bash, /usr/bin/bash on posix,
+# /bin/bash and /usr/bin/bash locations,
 # none of them PATH-gated (the trap list), and HIMMELCTL_BASH can
 # only PIN a bash, never remove one. So stub the resolver at the module
 # boundary: require run-hook-with-bash.js FIRST, overwrite its exported

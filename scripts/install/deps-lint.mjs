@@ -12,7 +12,7 @@
 //   (b) versionProbe is an object with 'args' (non-empty string array).
 //   (c) minVersion is null or a dotted-version string (x.y or x.y.z).
 //   (d) bootstrap is a boolean.
-//   (e) install has EXACTLY the three keys linux/macos/win32, each a recipe
+//   (e) install has EXACTLY the two keys linux/macos, each a recipe
 //       object whose shape matches its 'manager' (below).
 //   (f) ids are unique.
 //
@@ -21,7 +21,6 @@
 //   ---------------|--------------------------------------------------
 //   ensure-tools   | (none — dispatches via ensure_tools(dep.cmd))
 //   brew           | pkg: non-empty string
-//   winget         | id: string
 //   pip            | pkg: non-empty string
 //   script         | script: non-empty string; args: string[] (optional, default [])
 //   hint           | detail: string
@@ -43,8 +42,8 @@ const TOP_LEVEL_KEYS = ['schemaVersion', 'deps'];
 const OPTIONAL_TOP_LEVEL_KEYS = ['_comment'];
 const DEP_KEYS = ['id', 'cmd', 'versionProbe', 'minVersion', 'bootstrap', 'install'];
 const OPTIONAL_DEP_KEYS = ['resolver'];
-const OS_KEYS = ['linux', 'macos', 'win32'];
-const MANAGERS = ['ensure-tools', 'brew', 'winget', 'pip', 'script', 'hint'];
+const OS_KEYS = ['linux', 'macos'];
+const MANAGERS = ['ensure-tools', 'brew', 'pip', 'script', 'hint'];
 
 function resolveDepsPath() {
   const argPath = process.argv[2];
@@ -96,10 +95,6 @@ function checkRecipe(recipe, label, osKey, errors) {
     case 'brew':
       if (!isNonBlankString(recipe.pkg)) errors.push(`${label}: install.${osKey} manager 'brew' requires 'pkg' (non-empty string)`);
       reportExtra(['pkg']);
-      break;
-    case 'winget':
-      if (!isNonBlankString(recipe.id)) errors.push(`${label}: install.${osKey} manager 'winget' requires 'id' (non-empty string)`);
-      reportExtra(['id']);
       break;
     case 'pip':
       if (!isNonBlankString(recipe.pkg)) errors.push(`${label}: install.${osKey} manager 'pip' requires 'pkg' (non-empty string)`);

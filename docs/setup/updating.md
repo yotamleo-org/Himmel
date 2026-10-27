@@ -160,8 +160,11 @@ release yet reads `n/a` and does not change the exit code. Then:
 - **The .env migration failed its check.** `.env` is unchanged: each
   `MISMATCH <key> (<reader>)` line names a reader that sees a different value
   after the move, or a value `~/.himmel` already holds that differs from
-  `.env`. Make them agree, then run
-  `bash ~/himmel/scripts/himmel-update.sh --only env_migration`.
+  `.env`. For the second kind the apply asks which side to keep
+  ([mismatch](#the-env-split-what-moves-what-stays-and-a-mismatch)); for the
+  first, or with no answer, make them agree, then run
+  `bash ~/himmel/scripts/himmel-update.sh --only env_migration`. Do not empty
+  `.env` to get past it.
 - **You want the old `.env` back.** Run the `restore:` command the migration
   printed (`cp <backup> <your .env>`). After a move that passed its check,
   the copies in `~/.himmel` can stay: they hold the same values. After a
@@ -509,7 +512,8 @@ a cron job, a hook) it moves nothing, prints that command and exits 3.
 2. **Backup.** `.env` is copied to `~/.himmel/env-backups/env.<UTC time>.<pid>`,
    mode 600, before anything else is written; the path is printed.
 3. **Copy.** Each key is copied to its new place. A key already set there is
-   left alone.
+   left alone; if its value differs, the check asks which one to keep
+   ([mismatch](#the-env-split-what-moves-what-stays-and-a-mismatch)).
 4. **Check.** The real readers run twice, once with the keys only in `.env`
    and once with them only in their new place: the shell `load_dotenv` and
    `load_policy`, the Jira CLI's config, handover-root and release-state
@@ -532,6 +536,36 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
   at your own prompt, writes nothing, and its status row reads `pending`.
 - The secrets store is one mode-600 file for now; a keyring store replaces it
   once that ships.
+
+#### The .env split: what moves, what stays, and a mismatch
+
+- **Moves.** Behaviour keys (`HANDOVER_DIR`, `USER_SLUG`, `LUNA_VAULT_PATH`,
+  `CR_PROFILE`, the `HIMMEL_INITIATIVE` and `HIMMEL_AFK` families, the
+  non-secret Jira identifiers `JIRA_EMAIL`, `JIRA_PROJECT_KEY`,
+  `JIRA_PROJECTS`, `JIRA_CLOUD_ID`, and the rest of the
+  [list](../internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch))
+  go to `~/.himmel/himmel.conf`. Gate policy (`CR_REQUIRE_CROSS_MODEL`,
+  `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
+  `.policy`. A himmel secret that nothing in himmel reads goes to
+  `~/.config/secrets/himmel.env`.
+- **Stays.** Every secret something reads (API tokens, `JIRA_BASE_URL`,
+  Telegram keys), every name in `~/.himmel/env-keep.txt` and every other
+  tool's key stay in `.env` until the keyring work (HIMMEL-7147, HIMMEL-7576)
+  is complete. The report lists them on a `secrets stay in .env:` line. Never
+  empty `.env`: Jira, Telegram and the lanes still read it.
+- **Mismatch.** When `~/.himmel` already held a different value for a key, the
+  apply prints `these keys hold different values in .env and in ~/.himmel
+  (values not shown):`, then one `<KEY>: <.env path>  vs  <~/.himmel file>`
+  line per key and asks `[e/h]`. `e` writes the `.env` value to `~/.himmel`;
+  `h` keeps the `~/.himmel` value, and the `.env` line is removed with the
+  other moved lines. The check then runs again, and lines leave `.env` only
+  when it passes. Any other answer, or none, prints
+  `no choice for <KEY>: nothing was removed from .env.` and stops. If any
+  failure is of another kind (a reader that disagrees on a key `~/.himmel`
+  did not hold, or a `verify:` line), there is no prompt: the apply ends in
+  `verify failed` with every line still in `.env`. Fix the reader or make the
+  two agree, then run
+  `bash ~/himmel/scripts/himmel-update.sh --only env_migration`.
 
 ### Release channels
 

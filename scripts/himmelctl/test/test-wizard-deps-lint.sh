@@ -7,8 +7,8 @@
 #   a. a dep with an unknown extra key -> exit 1, naming the key.
 #   b. minVersion not null and not a dotted version string -> exit 1.
 #   c. install.<os>.manager not in the closed vocabulary -> exit 1.
-#   d. install missing one of linux/macos/win32 -> exit 1.
-#   e. manager:"winget" missing its required 'id' field -> exit 1.
+#   d. install missing one of linux/macos -> exit 1.
+#   e. manager:"brew" missing its required 'pkg' field -> exit 1.
 #   f. manager:"script" with a non-array 'args' -> exit 1.
 #   g. duplicate dep ids -> exit 1.
 #   h. the real deps.json lints clean -> exit 0.
@@ -16,9 +16,8 @@
 #   j. manager:"ensure-tools" with an unexpected extra field -> exit 1.
 #   k. a whitespace-only 'pkg' (brew) -> exit 1 (identifier fields pkg/
 #      script/resolver must be non-blank, not merely string-typed).
-#   l. a whitespace-only winget 'id' AND a whitespace-only dep 'cmd' -> exit 1
-#      (the winget id and the dep-level cmd are identifier fields too —
-#      non-blank, not merely string-typed).
+#   l. a whitespace-only dep 'cmd' -> exit 1 (the dep-level cmd is an
+#      identifier field too — non-blank, not merely string-typed).
 
 set -euo pipefail
 
@@ -63,8 +62,7 @@ base_deps() {
       "bootstrap": false,
       "install": {
         "linux": { "manager": "ensure-tools" },
-        "macos": { "manager": "ensure-tools" },
-        "win32": { "manager": "winget", "id": "Fake.A" }
+        "macos": { "manager": "ensure-tools" }
       }
     }
   ]
@@ -123,25 +121,25 @@ set -e
 grepq "$errC" -i 'manager' || fail "case c: error should mention manager (got: $errC)"
 echo "ok: case c — an install manager outside the closed vocabulary exits 1"
 
-# ── case d: install missing one of linux/macos/win32 -> exit 1 ────────────
+# ── case d: install missing one of linux/macos -> exit 1 ──────────────────
 caseD="$work/case-d.json"
-mutate_base "$caseD" "delete m.deps[0].install.win32;"
+mutate_base "$caseD" "delete m.deps[0].install.macos;"
 set +e
 errD=$(run_lint "$caseD" 2>&1); rcD=$?
 set -e
-[ "$rcD" -eq 1 ] || fail "case d: install missing win32 should exit 1 (got rc=$rcD): $errD"
-grepq "$errD" -F 'missing=[win32]' || fail "case d: error should name the missing OS key (got: $errD)"
-echo "ok: case d — install missing one of linux/macos/win32 exits 1, naming it"
+[ "$rcD" -eq 1 ] || fail "case d: install missing macos should exit 1 (got rc=$rcD): $errD"
+grepq "$errD" -F 'missing=[macos]' || fail "case d: error should name the missing OS key (got: $errD)"
+echo "ok: case d — install missing one of linux/macos exits 1, naming it"
 
-# ── case e: manager:winget missing 'id' -> exit 1 ──────────────────────────
+# ── case e: manager:brew missing 'pkg' -> exit 1 ───────────────────────────
 caseE="$work/case-e.json"
-mutate_base "$caseE" "m.deps[0].install.win32 = { manager: 'winget' };"
+mutate_base "$caseE" "m.deps[0].install.macos = { manager: 'brew' };"
 set +e
 errE=$(run_lint "$caseE" 2>&1); rcE=$?
 set -e
-[ "$rcE" -eq 1 ] || fail "case e: winget without 'id' should exit 1 (got rc=$rcE): $errE"
-grepq "$errE" -F "requires 'id'" || fail "case e: error should name the missing 'id' field (got: $errE)"
-echo "ok: case e — manager:winget without 'id' exits 1"
+[ "$rcE" -eq 1 ] || fail "case e: brew without 'pkg' should exit 1 (got rc=$rcE): $errE"
+grepq "$errE" -F "requires 'pkg'" || fail "case e: error should name the missing 'pkg' field (got: $errE)"
+echo "ok: case e — manager:brew without 'pkg' exits 1"
 
 # ── case f: manager:script with a non-array 'args' -> exit 1 ──────────────
 caseF="$work/case-f.json"
@@ -201,19 +199,11 @@ set -e
 grepq "$errK" -i 'pkg' || fail "case k: error should mention pkg (got: $errK)"
 echo "ok: case k — a whitespace-only 'pkg' exits 1 (non-blank identifier check)"
 
-# ── case l: whitespace-only winget 'id' / dep 'cmd' -> exit 1 ───────────────
-# CodeRabbit: the winget id and the dep-level cmd are IDENTIFIER fields too —
+# ── case l: whitespace-only dep 'cmd' -> exit 1 ─────────────────────────────
+# CodeRabbit: the dep-level cmd is an IDENTIFIER field too —
 # a whitespace-only value is string-typed (so the old typeof check let it
 # through) but names nothing to install/resolve. Both must fail the same
 # non-blank (empty-after-trim) check pkg/script/resolver do (case k).
-caseL="$work/case-l.json"
-mutate_base "$caseL" "m.deps[0].install.win32 = { manager: 'winget', id: '   ' };"
-set +e
-errL=$(run_lint "$caseL" 2>&1); rcL=$?
-set -e
-[ "$rcL" -eq 1 ] || fail "case l: a whitespace-only winget id should exit 1 (got rc=$rcL): $errL"
-grepq "$errL" -F "requires 'id'" || fail "case l: error should name the winget 'id' field (got: $errL)"
-
 caseL2="$work/case-l2.json"
 mutate_base "$caseL2" "m.deps[0].cmd = '  ';"
 set +e
@@ -221,6 +211,6 @@ errL2=$(run_lint "$caseL2" 2>&1); rcL2=$?
 set -e
 [ "$rcL2" -eq 1 ] || fail "case l: a whitespace-only cmd should exit 1 (got rc=$rcL2): $errL2"
 grepq "$errL2" -F "'cmd'" || fail "case l: error should name the 'cmd' field (got: $errL2)"
-echo "ok: case l — whitespace-only winget 'id' AND dep 'cmd' exit 1 (non-blank identifier check)"
+echo "ok: case l — whitespace-only dep 'cmd' exits 1 (non-blank identifier check)"
 
 echo "PASS"

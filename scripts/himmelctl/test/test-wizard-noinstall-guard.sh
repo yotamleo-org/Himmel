@@ -6,7 +6,7 @@
 # plugin-install / hook-wire / settings-merge logic of its own.
 #
 # Covers:
-#   A. every *.sh/*.ps1 script-literal referenced anywhere in bin.js is a
+#   A. every *.sh script-literal referenced anywhere in bin.js is a
 #      member of the documented allow-set (script-target guard).
 #   B. NEGATIVE proof the guard actually constrains: removing ANY single name
 #      from the allow-set makes case A's checker fail.
@@ -50,7 +50,7 @@ trap cleanup EXIT
 # shell out to. bin.js's own comments name the non-script exec surfaces this
 # guard does NOT enumerate here (the platform pkg-mgr via `bash -c` [T1] and
 # the documented `claude plugin ...` commands [T4.5/config]) — those never
-# carry a .sh/.ps1/.mjs literal, so extract_script_targets() below can't
+# carry a .sh/.mjs literal, so extract_script_targets() below can't
 # confuse them with a NEW script reference.
 #
 # set-lane-override.mjs (the `config` lanes.local.json writer) added — an
@@ -63,12 +63,6 @@ trap cleanup EXIT
 # engine `himmelctl update` (deriveUpdateCommand) delegates to. Same class:
 # an enumerated existing-script shell-out, not new inline logic. It was
 # omitted when `update` landed (#1279), leaving this guard red; added here.
-#
-# himmelctl.ps1 — NOT a script bin.js shells out to; it is the
-# PATH-launcher FILENAME the shim (writeMarkedLauncher/removeMarkedLauncher)
-# writes/removes in the user's binDir. Listed here only because
-# extract_script_targets()'s conservative quoted-*.ps1 scan catches the
-# literal — the trip-wire still fires on any genuinely-new shell-out script.
 #
 # wire-trust-hooks.mjs — the `trust on|off|status` verb's
 # existing-primitive shell-out (cmdTrust -> scripts/trust/wire-trust-hooks.mjs
@@ -120,14 +114,11 @@ cat > "$allow_full" <<'NAMES'
 check-user-slug.sh
 preflight-adopter.sh
 setup.sh
-setup.ps1
 adopt.sh
 wire-luna-vault.sh
 luna-upgrade-all.sh
 uninstall.sh
-uninstall.ps1
 himmel-update.sh
-himmelctl.ps1
 set-lane-override.mjs
 wire-trust-hooks.mjs
 remove-retired-plugin.sh
@@ -138,12 +129,12 @@ vm-mode.sh
 register-state.sh
 NAMES
 
-# extract_script_targets — every 'name.sh' / "name.sh" / 'name.ps1' /
+# extract_script_targets — every 'name.sh' / "name.sh" /
 # 'name.mjs' quoted literal referenced anywhere in bin.js (source text, so a
 # rogue reference even inside a comment still trips the guard — a
 # conservative trip-wire)..mjs joined (set-lane-override.mjs).
 extract_script_targets() {
-  grep -ohE "['\"][A-Za-z0-9_.-]+\.(sh|ps1|mjs)['\"]" "${script_exec_files[@]}" | tr -d "'\"" | sort -u
+  grep -ohE "['\"][A-Za-z0-9_.-]+\.(sh|mjs)['\"]" "${script_exec_files[@]}" | tr -d "'\"" | sort -u
 }
 
 # check_allow_set <allow-set-file> — 0 iff every script target bin.js

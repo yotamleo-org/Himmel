@@ -127,7 +127,7 @@ run_ctl() { # <case-dir> <args...>  — always through `current`
     PATH="$stubbin:$PATH" \
     HIMMELCTL_BASH="$bash_bin" HIMMELCTL_INTERACTIVE=0 \
     HIMMELCTL_CACHE_DIR="$(winpath "$td/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$td/cache/luna-config.json")" \
-    HIMMELCTL_BIN_DIR="$td/bin" HIMMELCTL_SHIM_PLATFORM=linux \
+    HIMMELCTL_BIN_DIR="$td/bin" \
     HIMMEL_PROVENANCE_DIR="$td/prov" \
     INSTALL_CALL_LOG="$td/install-calls.log" \
     FAKE_CURL_LOG="$td/curl.log" FAKE_RELEASE_DIR="$td/rel" \
@@ -174,7 +174,7 @@ grepq "$out" -F 'himmel-update.sh' && fail "caseB: dry-run on a versioned instal
 [ "$(readlink "$td/share/current")" = 0.3.0 ] || fail "caseB: dry-run moved current"
 clone_out=$(HOME="$td/home" USERPROFILE="$(winpath "$td/home")" HIMMELCTL_BASH="$bash_bin" \
   HIMMELCTL_CACHE_DIR="$(winpath "$td/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$td/cache/luna-config.json")" \
-  HIMMELCTL_BIN_DIR="$td/bin" HIMMELCTL_SHIM_PLATFORM=linux HIMMEL_PROVENANCE_DIR="$td/prov" \
+  HIMMELCTL_BIN_DIR="$td/bin" HIMMEL_PROVENANCE_DIR="$td/prov" \
   "$node_bin" "$repo_root/scripts/himmelctl/bin.js" update --dry-run 2>&1)
 grepq "$clone_out" -Fx "derived: $bash_bin $repo_root/scripts/himmel-update.sh" \
   || fail "caseB: a git clone's update is no longer the himmel-update.sh line: $clone_out"

@@ -65,7 +65,7 @@ run_install() {
     HIMMELCTL_BASH="$bash_bin" HIMMELCTL_INTERACTIVE=0 \
     HIMMELCTL_CACHE_DIR="$td/cache" HIMMEL_LUNA_CONFIG_PATH="$td/cache-luna-config.json" \
     HIMMELCTL_REPO_ROOT="$td/himmel" \
-    HIMMELCTL_BIN_DIR="$td/bin" HIMMELCTL_SHIM_PLATFORM=linux \
+    HIMMELCTL_BIN_DIR="$td/bin" \
     HIMMEL_PROVENANCE_DIR="$td/prov" \
     INSTALL_CALL_LOG="$td/install-calls.log" \
     "$node_bin" "$td/himmel/scripts/himmelctl/bin.js" install --from-profile "$td/profile.json" </dev/null 2>&1
@@ -125,7 +125,7 @@ echo "ok: caseB launcher falls back to standalone.js once the clone is gone (dry
 provC="$work/caseC-prov"
 mkdir -p "$provC" "$work/caseC-elsewhere"
 ln -s "$work/caseC-elsewhere" "$provC/uninstall"
-out=$(HIMMEL_PROVENANCE_DIR="$provC" HIMMELCTL_SHIM_PLATFORM=linux \
+out=$(HIMMEL_PROVENANCE_DIR="$provC" \
   "$node_bin" -e "const b=require('$repo_root/scripts/himmelctl/lib/standalone-bundle.js'); process.stdout.write(String(b.writeStandaloneBundle('$repo_root')));")
 [ "$out" = 'false' ] || fail "caseC: writeStandaloneBundle should refuse a symlinked bundle dir, got: $out"
 [ -L "$provC/uninstall" ] || fail "caseC: symlink was replaced instead of left alone"
@@ -135,7 +135,7 @@ echo "ok: caseC a symlinked bundle dir is refused and left untouched"
 # ── D: a bundle.json with a higher version is never downgraded. ─────────────
 provD="$work/caseD-prov"
 mkdir -p "$provD"
-rc1=$(HIMMEL_PROVENANCE_DIR="$provD" HIMMELCTL_SHIM_PLATFORM=linux \
+rc1=$(HIMMEL_PROVENANCE_DIR="$provD" \
   "$node_bin" -e "const b=require('$repo_root/scripts/himmelctl/lib/standalone-bundle.js'); process.stdout.write(String(b.writeStandaloneBundle('$repo_root')));")
 [ "$rc1" = 'true' ] || fail "caseD: first write should succeed, got: $rc1"
 node -e "
@@ -145,7 +145,7 @@ const meta = JSON.parse(fs.readFileSync(p, 'utf8'));
 meta.version = '99.0.0';
 fs.writeFileSync(p, JSON.stringify(meta, null, 2) + '\n');
 "
-rc2=$(HIMMEL_PROVENANCE_DIR="$provD" HIMMELCTL_SHIM_PLATFORM=linux \
+rc2=$(HIMMEL_PROVENANCE_DIR="$provD" \
   "$node_bin" -e "const b=require('$repo_root/scripts/himmelctl/lib/standalone-bundle.js'); process.stdout.write(String(b.writeStandaloneBundle('$repo_root')));")
 [ "$rc2" = 'false' ] || fail "caseD: second write should be refused as a downgrade, got: $rc2"
 grep -Fq '"version": "99.0.0"' "$provD/uninstall/bundle.json" \

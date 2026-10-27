@@ -52,21 +52,6 @@ const BUNDLE_FILES_POSIX = [
   'VERSION',
 ];
 
-// design §8: the .ps1 twin's own closure (S14 extends this). Exported now
-// per the plan so the list has one home, even though S13 never writes a
-// win32 bundle (Q2: POSIX only).
-const BUNDLE_FILES_WIN32 = [
-  'scripts/uninstall.ps1',
-  'scripts/machine-setup/uninstall-plugins.ps1',
-  'docs/setup/settings-template.json',
-  'scripts/himmelctl/standalone.js',
-  'scripts/himmelctl/lib/uninstall-wrapper.js',
-  'scripts/himmelctl/lib/launcher.js',
-  'scripts/himmelctl/lib/helpers.js',
-  'scripts/himmelctl/lib/provenance.js',
-  'VERSION',
-];
-
 function bundleDir() {
   return path.join(provLib.ledgerDir(), 'uninstall');
 }
@@ -83,10 +68,6 @@ function destRel(rel) {
 
 function warn(msg) {
   console.error(`himmelctl: WARN: ${msg}`);
-}
-
-function shimPlatform() {
-  return process.env.HIMMELCTL_SHIM_PLATFORM || process.platform;
 }
 
 function readMarker(dir) {
@@ -170,15 +151,6 @@ function sweepStaleSiblings(parent, ownPid) {
 // throws — the launcher write must proceed regardless (design §3.3: "never
 // fails install or update").
 function writeStandaloneBundle(repoRoot) {
-  const platform = shimPlatform();
-  // Q2: POSIX only. BUNDLE_FILES_WIN32 is
-  // exported so the win32 closure list has one home ahead of S14
-  // but that closure is unverified -- writing an incomplete
-  // win32 bundle would route a post-checkout-deletion `uninstall` at an
-  // uninstall.ps1 that has never been proven to run from a bundle dir the
-  // way S12 proved for uninstall.sh. No-op here until S14 does that work.
-  if (platform === 'win32') return false;
-
   const dir = bundleDir();
   const parent = path.dirname(dir);
   const files = BUNDLE_FILES_POSIX;
@@ -198,7 +170,7 @@ function writeStandaloneBundle(repoRoot) {
       warn(`refusing to write standalone uninstaller bundle: ${dir} is a symlink (remove it first if you want himmelctl to manage it)`);
       return false;
     }
-    if (process.platform !== 'win32' && typeof process.getuid === 'function' && st.uid !== process.getuid()) {
+    if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
       warn(`refusing to write standalone uninstaller bundle: ${dir} is not owned by the current user`);
       return false;
     }
@@ -253,7 +225,7 @@ function writeStandaloneBundle(repoRoot) {
     version: incomingVersion,
     himmel_head: gitHead(repoRoot),
     himmel_root: repoRoot,
-    platform,
+    platform: process.platform,
     files,
     written: new Date().toISOString(),
   };
@@ -304,7 +276,6 @@ function writeStandaloneBundle(repoRoot) {
 module.exports = {
   BUNDLE_MARKER,
   BUNDLE_FILES_POSIX,
-  BUNDLE_FILES_WIN32,
   bundleDir,
   writeStandaloneBundle,
 };
