@@ -60,8 +60,8 @@
 #   K. --dry-run never mutates anything (combined legacy-full/external/
 #      default-template plan): no adopt.sh call, no claude call, no .env
 #      write, no plugin DRY line — only the HANDOVER_DIR preview line.
-#   R. CR r1 FIX 3: a FAILED handover write aborts fail-closed BEFORE the
-#      core install shell-out (adopt.sh never invoked).
+#   R. a FAILED config write aborts fail-closed BEFORE the core install
+#      shell-out (adopt.sh never invoked).
 #   S. there is no plugin-enable step left to fail — a legacy
 #      pluginSet=full profile against a `claude` stub that always exits 1
 #      still succeeds (rc=0), because `claude` is never invoked at all.
@@ -910,7 +910,7 @@ grepq "$out2" 'HANDOVER_DIR ->' \
   && fail "caseJ(inline): handover.mode=inline must not write .env (got: $(cat "$fixtureJ2/.env"))"
 echo "ok: caseJ(inline) handover.mode=inline -> no HANDOVER_DIR line, new config file stays empty"
 
-# ── Case R: a FAILED handover write aborts BEFORE the core install (FIX 3) ─
+# ── Case R: a FAILED config write aborts BEFORE the core install ─────────
 stubR="$work/caseR"; mkdir -p "$stubR"
 cR=$(build_path "$stubR" bash git jq python3 npm -- )
 hR="$work/hR"; mkdir -p "$hR"
@@ -926,12 +926,12 @@ out=$(PATH="$cR" HOME="$hR" USERPROFILE="$(winpath "$hR")" HIMMELCTL_CACHE_DIR="
       "$node_bin" "$wizard" install --from-profile "$(winpath "$cacheR")" \
       </dev/null 2>&1); rc=$?
 set -e
-[ "$rc" -ne 0 ] || fail "caseR: a failed handover write should abort with non-zero rc (got rc=$rc): $out"
-grepq "$out" -i 'failed to write HANDOVER_DIR' \
-  || fail "caseR: expected the handover-write failure message (got: $out)"
+[ "$rc" -ne 0 ] || fail "caseR: a failed config write should abort with non-zero rc (got rc=$rc): $out"
+grepq "$out" -E 'ENOTDIR:.*himmel\.conf' \
+  || fail "caseR: expected ENOTDIR naming himmel.conf (got: $out)"
 [ -f "$fixtureR/adopt-calls.log" ] \
-  && fail "caseR: a failed handover write must abort BEFORE the core install shell-out (adopt.sh was invoked: $(cat "$fixtureR/adopt-calls.log"))"
-echo "ok: caseR a failed handover write aborts fail-closed BEFORE the core install shell-out (rc!=0, adopt.sh never invoked)"
+  && fail "caseR: a failed config write must abort BEFORE the core install shell-out (adopt.sh was invoked: $(cat "$fixtureR/adopt-calls.log"))"
+echo "ok: caseR a failed config write aborts fail-closed BEFORE the core install shell-out (rc!=0, adopt.sh never invoked)"
 
 # ── Case T: malformed --from-profile replays -> rc=2, zero shell-outs (r5) ──
 stubT="$work/caseT"; mkdir -p "$stubT"
