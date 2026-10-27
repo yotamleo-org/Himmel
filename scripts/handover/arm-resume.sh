@@ -881,7 +881,7 @@ EOF
     }
     echo "arm-resume --list-temp-arms: armed HIMMEL-Resume-* entries targeting a temp/scratch path"
     case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        *)
+        linux*|Linux*|darwin*|Darwin*)
             if command -v atq >/dev/null 2>&1; then
                 while IFS= read -r _lta_line; do
                     [ -n "$_lta_line" ] || continue
@@ -902,6 +902,11 @@ EOF
 $(crontab -l 2>/dev/null)
 EOF
             fi
+            ;;
+        *)
+            echo "ERR arm-resume: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
+            echo "    Supported: Linux, macOS" >&2
+            exit 2
             ;;
     esac
     if [ "$_lta_hits" -eq 0 ]; then

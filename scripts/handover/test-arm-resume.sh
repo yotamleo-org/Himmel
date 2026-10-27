@@ -600,6 +600,11 @@ out=$(bash "$ARM" --wsl-distro ubuntu --dry-run 2>&1)
 rc=$?
 assert_rc "T1 removed WSL flag is refused" 1 "$rc"
 assert_contains "T1 removed WSL flag is unknown" "unknown arg: --wsl-distro" "$out"
+out=$(OSTYPE=msys PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --list-temp-arms 2>&1)
+rc=$?
+assert_rc "T1 temp-arm sweep refuses an unsupported platform" 2 "$rc"
+assert_contains "T1 temp-arm sweep names unsupported platform" "unsupported platform" "$out"
+assert_not_contains "T1 unsupported sweep never reports clean" "none — no armed resume entry" "$out"
 HO=$(make_handover "$HANDOVER_DIR")   # resume_cwd set to $HANDOVER_DIR itself
 # $WORK_REPO is the explicit --cwd; it should win.
 out=$(PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --cwd "$WORK_REPO" --dry-run 2>&1)
