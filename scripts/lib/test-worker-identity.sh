@@ -124,6 +124,9 @@ done
 # worker_description_field reads the doc's `description:` front-matter
 # line; worker_description falls back to the H1 scope, then the stem, never empty;
 # worker_doc_has_run tells a launched doc (a Results bullet) from a fresh brief.
+# worker_description reads the tracker and forge seams: pin both off so a row never
+# reaches the real Jira or GitHub; the rows below set their own fixtures.
+export TRACKER=none FORGE=none
 dtmp="$(mktemp -d "${TMPDIR:-/tmp}/worker-identity.XXXXXX")" || exit 1
 trap 'rm -rf "$dtmp"' EXIT
 mkdoc() { local f="$dtmp/$1"; shift; printf '%s\n' "$@" > "$f"; printf '%s' "$f"; }
@@ -171,6 +174,41 @@ check_eq 'resolve: the terminal worker suffix is stripped after a subject naming
 mkdoc 'k=v.md' '---' 'description: Assign-shaped name' '---' '## Results' '- 10:00 LIVE — started' >/dev/null
 check_eq 'field: an assignment-shaped relative path is read as a file' "$(cd "$dtmp" && worker_description_field 'k=v.md' </dev/null)" 'Assign-shaped name'
 if (cd "$dtmp" && worker_doc_has_run 'k=v.md' </dev/null); then ok 'has_run: an assignment-shaped relative path is read as a file'; else bad 'has_run: an assignment-shaped relative path is read as a file'; fi
+
+# No field -> the ticket title (tracker seam), then the PR title (forge
+# seam, goalOf's strip), then the H1, then the stem. Fixtures: a local tracker store
+# and a GH_CMD stub; each is a subshell so the seams never leak into later rows.
+fx_store="$dtmp/tracker-store"; mkdir -p "$fx_store"
+fx_id="$( . "$HERE/tracker.sh"; TRACKER=local TRACKER_STORE="$fx_store" tracker_id_new Task 'Ticket title from the tracker' )"
+fx_gh="$dtmp/gh-stub.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "{\"id\":\"4001\",\"head\":\"abc\",\"base\":\"main\",\"title\":\"feat(handover): [HIMMEL-1] PR title from the forge\",\"state\":\"OPEN\",\"merged\":false}"' > "$fx_gh"
+chmod +x "$fx_gh"
+d_tt="$(mkdoc "$fx_id-N20-a-2026-10-07.md" '---' 'resume_cwd: /x' '---' "# $fx_id — H1 scope — worker N20 (opus, native), 2026-10-07")"
+d_pt="$(mkdoc HIMMEL-1-N21-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — H1 scope — worker N21 (opus, native), 2026-10-07' '## Results' '- 10:00 READY 4001 0123456789abcdef0123456789abcdef01234567 GREEN')"
+d_tsp="$(mkdoc HIMMEL-1-N22-a-2026-10-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 trailing scope \xe2\x80\x94 worker N22 (opus, native), 2026-10-07   ')"
+d_old="$(mkdoc HIMMEL-1-N57-a-2026-09-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 older scope \xe2\x80\x94 leg N57 (claudex), 2026-09-07')"
+d_pnote="$(mkdoc HIMMEL-1-N23-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — Note scope — worker N23 (opus, native), 2026-10-07' '- Prior art: PR #4001 was the first attempt' '## Results' '- 10:00 LIVE — started')"
+d_pnum="$(mkdoc HIMMEL-1-N24-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — H1 scope — worker N24 (opus, native), 2026-10-07' '## Results' '- 10:00 LIVE — PR 4001 open')"
+resolve_fx() { ( TRACKER=local TRACKER_STORE="$fx_store" FORGE=github GH_CMD="$fx_gh" worker_description "$1" ); }
+check_eq 'resolve: no field -> the ticket title from the tracker' "$(resolve_fx "$d_tt")" 'Ticket title from the tracker'
+check_eq 'resolve: no field, no ticket title -> the PR title, goalOf-stripped' "$(resolve_fx "$d_pt")" 'PR title from the forge'
+check_eq 'resolve: a PR named outside the Results section is not the worker PR' "$(resolve_fx "$d_pnote")" 'Note scope'
+check_eq 'resolve: a "LIVE — PR 4001 open" Results bullet names the PR' "$(resolve_fx "$d_pnum")" 'PR title from the forge'
+check_eq 'resolve: the field still wins over the ticket title' "$(resolve_fx "$d_fm")" 'Add a description line to every worker brief'
+check_eq 'resolve: no ticket, no PR -> the H1 scope' "$(resolve_fx "$d_body")" 'body scope'
+check_eq 'resolve: trailing spaces on the H1 do not defeat the suffix strip' "$(worker_description "$d_tsp")" 'trailing scope'
+check_eq 'resolve: an older "leg N57 (lane)" H1 suffix strips' "$(worker_description "$d_old")" 'older scope'
+# The real archived H1 shapes (luna archive/2026-09, handovers/2026-10) the shape above never was.
+d_real1="$(mkdoc HIMMEL-2786-codex-exec-stdin-legN57-claudex-2026-09-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2786 \xe2\x80\x94 dispatch-codex-exec.sh: default the child\'s stdin to /dev/null \xe2\x80\x94 leg N57 on the CLAUDEX lane, 2026-09-07')"
+d_real2="$(mkdoc HIMMEL-2197-N1667-headless-stale-reap-model-2026-10-09.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2197 + HIMMEL-2198 \xe2\x80\x94 claude-headless dispatch registry reaps SIGKILLed rows, and requires an explicit model \xe2\x80\x94 leg N1667 (claude-sonnet-5-5, native), 2026-10-09')"
+d_real3="$(mkdoc HIMMEL-2756-trust-on-refusal-text-legN77c-2026-09-08-RESUME.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2756 \xe2\x80\x94 trust on refusal text \xe2\x80\x94 leg N77c (Sonnet, native) \xe2\x80\x94 CERTIFY + SHIP the claudex-built branch, 2026-09-08')"
+check_eq 'resolve: a real "leg N57 on the CLAUDEX lane, <date>" H1 strips' "$(worker_description "$d_real1")" "dispatch-codex-exec.sh: default the child's stdin to /dev/null"
+check_eq 'resolve: a real "KEY + KEY" H1 keeps its scope and drops the leg suffix' "$(worker_description "$d_real2")" 'claude-headless dispatch registry reaps SIGKILLed rows, and requires an explicit model'
+check_eq 'resolve: a real "leg N77c (lane) — <task>, <date>" H1 strips the whole tail' "$(worker_description "$d_real3")" 'trust on refusal text'
+d_real4="$(mkdoc HIMMEL-1033-N826-drop-atlassian-2026-09-30-RESUME.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1033 - drop atlassian from every enable path - leg N826 (claude-sonnet-5-5, native), 2026-09-30')"
+d_real5="$(mkdoc HIMMEL-3059-N467-s6-aur-mode-2026-09-24-RESUME.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-3059 S6 \xe2\x80\x94 provenance round trip \xe2\x80\x94 leg N467 (claude-sonnet-5, native), 2026-09-24')"
+check_eq 'resolve: a real "KEY - <scope> - leg N826 (lane), <date>" H1 strips both ends' "$(worker_description "$d_real4")" 'drop atlassian from every enable path'
+check_eq 'resolve: a real "KEY S6 — <scope> — leg N467 (lane), <date>" H1 still drops the leg suffix' "$(worker_description "$d_real5")" 'HIMMEL-3059 S6 — provenance round trip'
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

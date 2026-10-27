@@ -33,6 +33,21 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   the corrected call is denied too, send the chief
   `BLOCKED resolve <pr> <thread ids>` and do not retry: the chief
   verifies each thread against the head and resolves it itself.
+- **A PR comment you write yourself** (`gh pr comment --body-file`, or a
+  thread reply through `/gh-pr-reply`) opens with an attribution callout, with
+  the reply below it and outside the note. The comment posts under the
+  operator's account, so the callout is the only sign an agent wrote it:
+  `> [!NOTE]` then `> 🤖 **<model> responding on behalf of <gh login>**`.
+  `<model>` is the `model=` id of your LIVE bullet; never guess it. Write the
+  final body to a file and check it with
+  `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>` before posting:
+  pass that file to `--body-file`, or its exact text as `/gh-pr-reply`'s body.
+  Lead with the conclusion, cite the file:line, check or output, and keep
+  verified fact apart from judgement. Two kinds of comment carry no callout: a
+  marker comment whose first line a script parses (`CLOUD-DONE`,
+  `CLOUD-BLOCKED`), and the thread-resolve reply above, whose body the CLI
+  builds from the reason and posts before it resolves the thread (tstack
+  leaving-pr-comments @ 7de017b3 :8-24, :35-44).
 - **Never pipe into a gate script.** Write the input to a file with `Write`,
   then pass it as an argument if the script takes one; otherwise pipe into
   the bare unquoted literal only — never `printf ... | bash "..."`.

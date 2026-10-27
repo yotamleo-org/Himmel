@@ -601,7 +601,7 @@ EOF_PINS
         fi
         for f in "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" \
                  "${served:+$served/hooks/hooks.json}" \
-                 "${cache_hooks[@]}" \
+                 ${cache_hooks[@]+"${cache_hooks[@]}"} \
                  "$CLAUDE_DIR_R"/plugins/repos/*/himmel-ops/hooks/hooks.json; do
             [ -f "$f" ] && hooks_files+=("$f")
         done

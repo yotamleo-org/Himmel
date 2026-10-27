@@ -32,7 +32,6 @@ import argparse
 import datetime
 import importlib.util
 import json
-import math
 import os
 import re
 import shlex
@@ -44,12 +43,12 @@ sys.path.insert(0, os.path.join(HERE, "..", "eval", "cr-ledger"))
 sys.path.insert(0, os.path.join(HERE, "..", "eval", "lib"))
 import cr_ledger_eval  # noqa: E402
 import eval_runs  # noqa: E402
+from wilson import wilson  # noqa: E402
 
 DATA_DEFAULT = os.path.join(HERE, "..", "..", "docs", "evals", "evals-data.json")
 CRITICS_DEFAULT = os.path.join(HERE, "critics.json")
 D158 = os.path.join(HERE, "..", "eval", "decision-158-answers.py")
 REVIEW_PAGE = os.path.join(HERE, "..", "eval", "review-page.py")
-Z95 = 1.959964
 BAR = 20
 MIN_RULED = 30
 CACHE_CMD = ("bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 "
@@ -68,19 +67,14 @@ def die(msg):
     sys.exit(2)
 
 
-def wilson_pct(k, n):
-    """95% Wilson score interval for k of n, in percent to one decimal (unrounded until the end)."""
-    if not n:
-        return None
-    p = k / n
-    den = 1 + Z95 * Z95 / n
-    mid = (p + Z95 * Z95 / (2 * n)) / den
-    half = Z95 * math.sqrt(p * (1 - p) / n + Z95 * Z95 / (4 * n * n)) / den
-    return {"lo": round(max(0.0, mid - half) * 100, 1), "hi": round(min(1.0, mid + half) * 100, 1)}
-
-
 def pct1(x):
     return None if x is None else round(x * 100, 1)
+
+
+def wilson_pct(k, n):
+    """95% Wilson score interval for k of n, in percent to one decimal."""
+    c = wilson(k, n, digits=None)
+    return None if c is None else {"lo": pct1(c["lo"]), "hi": pct1(c["hi"])}
 
 
 def group(findings):

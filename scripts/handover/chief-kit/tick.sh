@@ -739,6 +739,7 @@ leg_effort_mismatch() {
 }
 
 legs_summary=""
+descs_summary=""
 tails_summary=""
 acts_summary=""
 holds_summary=""
@@ -891,6 +892,13 @@ for leg in $WORKERS_SPLIT; do
     leg_candmap="$leg_candmap$label"$'\t'"$lock_status"$'\t'"$leg_cands"$'\n'
     if [ -f "$leg_doc" ] && leg_effort_mismatch "$leg_doc" "$label"; then
         effort_summary="$(csv_add "$effort_summary" "MISMATCH:$label")"
+    fi
+    # --verbose prints "<label>  <description>" (worker_description: the field,
+    # the ticket title, the PR title, the H1, the stem). Skipped unless verbose, so the
+    # compact line never pays the tracker/forge lookups.
+    if [ "$verbose" -eq 1 ] && [ -f "$leg_doc" ]; then
+        leg_desc="$(worker_description "$leg_doc" | tr -s '\t\n' '  ')"
+        [ -z "$leg_desc" ] || descs_summary="${descs_summary:+$descs_summary | }$label  $leg_desc"
     fi
 done
 [ -n "$effort_summary" ] || effort_summary=ok
@@ -2681,6 +2689,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'subscription usage budget: %s\n' "$bank"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
+    [ -z "$descs_summary" ] || printf 'worker-session descriptions: %s\n' "$descs_summary"
     [ -z "$cachettl_summary" ] || printf 'cachettl: %s\n' "$cachettl_summary"
     printf 'worker-session newest actionable bullets: %s\n' "$acts_summary"
     [ -z "$holds_summary" ] || printf 'worker-session holds: %s\n' "$holds_summary"

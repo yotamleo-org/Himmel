@@ -2513,7 +2513,9 @@ _infer_ticket_strict() {
     # (Ubuntu's default awk) silently skips; the rest is plain
     # POSIX awk (string concat, printf, exit-to-END).
     _fm_rc=0
-    _fm=$(awk 'NR==1{sub(/^\357\273\277/,"")} NR==1 && /^---[[:space:]]*$/{c=1; next} c==1 && /^---[[:space:]]*$/{printf "%s",b; c=2; exit} c==1{b=b $0 "\n"} END{if(c==1) exit 3}' "$_ho") || _fm_rc=$?
+    # The BOM is passed as a -v value and cut with index/substr, not named in a
+    # regex: BSD awk (macOS) does not match an octal-escaped multibyte BOM there.
+    _fm=$(awk -v bom="$(printf '\357\273\277')" 'NR==1 && index($0,bom)==1{$0=substr($0,length(bom)+1)} NR==1 && /^---[[:space:]]*$/{c=1; next} c==1 && /^---[[:space:]]*$/{printf "%s",b; c=2; exit} c==1{b=b $0 "\n"} END{if(c==1) exit 3}' "$_ho") || _fm_rc=$?
     if [ "$_fm_rc" -eq 3 ]; then
         echo "ERR arm-resume: unclosed YAML frontmatter in $_ho -- an opening --- with no closing ---. Refusing to arm: a truncated frontmatter ticket would silently bypass the ticket mutex. Close the frontmatter block (or remove the stray opening ---) and re-arm." >&2
         exit 1

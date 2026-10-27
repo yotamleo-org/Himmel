@@ -203,7 +203,10 @@ STUB
 chmod +x "$W/repo/scripts/handover/queue-lock.sh" "$W/repo/scripts/context-fill.sh" "$W/repo/scripts/lanes/worker-burn.sh" "$W/repo/scripts/lanes/ceiling-conformance.sh" "$W/repo/scripts/lib/usage-preflight.sh" "$W/bin/"*
 
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
-printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-111-legN61.md"
+# N61 has no PR; its description field is what --verbose prints beside the label.
+# worker_description reads the tracker and forge seams: pin both off so no row reaches Jira or GitHub.
+export TRACKER=none FORGE=none
+printf '%s\n' '---' 'description: Add a login form' '---' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-111-legN61.md"
 printf '%s\n' '# worker' '- READY — done' > "$W/handover/HIMMEL-222-legN65.md"
 printf '123456789\n' > "$W/handover/inbox/N61.md"
 printf '1234567\n' > "$W/handover/inbox/N65.md"
@@ -513,6 +516,8 @@ else
     fail "--verbose emits multiple lines (rc=$rc lines=$verbose_lines)"
 fi
 contains '--verbose labels worker locks' "$verbose" 'worker-session locks: N61:FRESH,N65:FREE'
+contains '--verbose prints the description next to the label of a no-PR worker (HIMMEL-4749)' "$verbose" 'worker-session descriptions: N61  Add a login form'
+not_contains 'the compact tick line carries no descriptions (HIMMEL-4749)' "$(bash "$SUT")" 'Add a login form'
 contains '--verbose labels context fill' "$verbose" 'fill: 28'
 contains '--verbose labels worker models (HIMMEL-2976, HIMMEL-3145)' "$verbose" 'worker-session models: sonnet:1'
 

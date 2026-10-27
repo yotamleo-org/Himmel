@@ -22,6 +22,8 @@ fi
 W="$(mktemp -d "${TMPDIR:-/tmp}/fleet-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
+# worker_description reads the tracker and forge seams: pin both off so no row reaches Jira or GitHub.
+export TRACKER=none FORGE=none
 
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
@@ -66,6 +68,8 @@ mkleg HIMMEL-9004-N4-delta-2026-09-22 claude-opus-5 \
     '- 10:40 BLOCKED — classifier denied `git push`, need a ruling'
 mkleg HIMMEL-9005-N5-eps-2026-09-22 claude-opus-5 \
     '- 10:22 FINDING — <script>alert(1)</script> and <img src=x onerror=alert(2)> in a bullet'
+# N5 has no PR; its brief carries a description field, which the row must print.
+{ printf -- '---\ndescription: Add a login form\n---\n'; cat "$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md"; } > "$W/n5.tmp" && mv "$W/n5.tmp" "$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md"
 mkleg HIMMEL-9006-N6-zeta-2026-09-22 claude-opus-5 \
     '- 10:23 LIVE — PR 2001 open, watching CI' \
     '- 10:50 READY 2001 0123456789abcdef0123456789abcdef01234567 GREEN'
@@ -251,6 +255,8 @@ eq "headed leg: ticket" "$(printf '%s' "$J" | q 'L("N1").ticket')" "HIMMEL-9001"
 eq "headed leg: lock FRESH" "$(printf '%s' "$J" | q 'L("N1").lock.state')" "FRESH"
 eq "headed leg: status token is the newest marker bullet" "$(printf '%s' "$J" | q 'L("N1").status.token')" "LIVE"
 eq "headed leg: PR joined on the ticket in the open PR title" "$(printf '%s' "$J" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
+eq "no-PR worker: the description field sits on the row beside the label" "$(printf '%s' "$J" | q 'L("N5").label+"|"+L("N5").description+"|"+String(L("N5").pr)')" "N5|Add a login form|null"
+contains "a worker with no field still carries a description (the H1 fallback)" "$(printf '%s' "$J" | q 'L("N4").description')" "worker"
 eq "headless leg: mode from the launch log" "$(printf '%s' "$J" | q 'L("N2").mode')" "headless"
 eq "headless leg: alive" "$(printf '%s' "$J" | q 'L("N2").alive')" "true"
 eq "headless leg: model" "$(printf '%s' "$J" | q 'L("N2").model')" "claude-sonnet-5"
@@ -372,6 +378,7 @@ eq "sweep rc=20: every row still renders" "$(printf '%s' "$J7" | q 's.legs.lengt
 # ------------------------------------------------------------------ server
 cat > "$W/srv-test.mjs" <<'JS'
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
@@ -409,6 +416,13 @@ say((await get('/api/fleet', { method: 'DELETE' })).status === 405, 'DELETE is 4
 say((await get('/api/fleet', { headers: { host: 'evil.example:' + port } })).status === 403, 'a foreign Host header is refused (DNS rebinding)');
 say(/no-store/.test(api.headers['cache-control'] || ''), 'responses are no-store');
 say(/default-src 'none'/.test(page.headers['content-security-policy'] || ''), 'the page carries a locked-down CSP');
+// A brief edited after the first snapshot shows its new description once the 5 s snapshot cache lapses.
+const n5 = (s) => (s.legs.find((l) => l.label === 'N5') || {}).description;
+say(n5(snap) === 'Add a login form', 'the first snapshot carries the N5 description');
+fs.writeFileSync(process.env.N5_DOC, fs.readFileSync(process.env.N5_DOC, 'utf8').replace('Add a login form', 'Add a signup form'));
+await new Promise((r) => setTimeout(r, 5500));
+let snap2 = null; try { snap2 = JSON.parse((await get('/api/fleet')).body); } catch { /* reported below */ }
+say(snap2 && n5(snap2) === 'Add a signup form', 'an edited brief shows its new description in a later snapshot');
 // Bound to loopback only: the same port must refuse on every non-loopback address.
 const ext = Object.values(os.networkInterfaces()).flat().filter((i) => i && !i.internal && i.family === 'IPv4').map((i) => i.address);
 if (!ext.length) say(true, 'no non-loopback interface on this host (loopback-only probe skipped)');
@@ -426,6 +440,7 @@ SRV_RC=0
 SRV="$(FLEET_QUEUE_LOCK="$W/bin/queue-lock" FLEET_BANK="$W/bin/bank" FLEET_GH="$W/bin/gh" \
     FLEET_AGENTS="$W/bin/agents" AG_JSON="$W/agents.json" \
     FLEET_PROC="$W/proc" GH_OPEN="$W/open.json" HANDOVER_DIR="$ROOT" \
+    N5_DOC="$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md" \
     node "$W/srv-test.mjs" "$SUT" "${COMMON[@]}" 2>&1)" || SRV_RC=$?
 printf '%s\n' "$SRV"
 # an uncaught error in the probe exits non-zero without printing FAIL; do not let that pass

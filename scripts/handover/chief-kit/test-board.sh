@@ -38,6 +38,8 @@ B="$W/bucket"
 mkdir -p "$B" "$W/bin" "$W/repo"
 # the failures panel reads these ledgers; never the operator's own.
 unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
+# worker_description reads the tracker and forge seams: pin both off so no worker row reaches Jira or GitHub.
+export TRACKER=none FORGE=none
 export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" # old name, read both ways
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 # the usage lift row reads the lift's `show` output through this stub,
@@ -132,6 +134,8 @@ mkleg() {  # mkleg <name> <bullet>...
 # A lock token that straddles the 130-char clip must not survive as a fragment.
 pad190="$(printf '%190s' '' | tr ' ' x)"
 mkleg HIMMEL-3340-N1-alpha "- 12:00 LIVE — working ${pad190:0:93} lock cachyos-x8664-pid424242 after"
+# N1 has no PR; its brief carries a description field the board prints beside the label.
+{ printf -- '---\ndescription: Add a login form\n---\n'; cat "$B/HIMMEL-3340-N1-alpha-2026-09-21-RESUME.md"; } > "$W/n1.tmp" && mv "$W/n1.tmp" "$B/HIMMEL-3340-N1-alpha-2026-09-21-RESUME.md"
 # A later section's bullet naming another (merged) PR must not overwrite the worker's PR.
 printf '%s\n' '# leg' '## Results' '- 12:00 LIVE — PR 2002 open, watching CI' '' '## Notes' \
     '- 13:00 unrelated later-section bullet: see PR 1990 merged' \
@@ -232,6 +236,7 @@ lacks 'a <b> in a Results bullet is escaped' "$html" '<b>bold</b>'
 
 # --- phases: LIVE -> READY-TO-OPEN -> PR open -> READY -> MERGED -> WRAPPED
 contains 'no PR, no marker: LIVE' "$html" 'data-label="N1" data-phase="LIVE"'
+contains 'a no-PR worker card prints its description next to the label (HIMMEL-4749)' "$html" '<p class="ds">Add a login form</p>'
 contains 'an open PR the leg names: PR open' "$html" 'data-label="N2" data-phase="PR open"'
 contains 'READY tail + open PR: READY' "$html" 'data-label="N3" data-phase="READY"'
 contains 'the leg names a merged PR: MERGED (archive)' "$(cat "$B/chief-board-archive.html")" 'N4 HIMMEL-3348 MERGED'
@@ -1336,7 +1341,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='f24cd57dca4cfa05c111e988bd7c9f36e4fea3b3b7ebb7f293464c0283ce0097'
+GOLDEN_OPERATOR_SHA='1ffa109dab23d347328091a2a8b79bc9d13d0519ab2a936ae868979fe2e5ee13'  # the card gained its description line
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"
@@ -1363,6 +1368,7 @@ contains 'a READY leg is a GO row with its PR (HIMMEL-6879)' "$(section_of waiti
 contains 'a waiting row names the ticket (HIMMEL-6879)' "$(section_of waiting)" 'HIMMEL-3332'
 contains 'an open operator decision is a waiting row (HIMMEL-6879)' "$(section_of waiting)" 'widen the fleet cap to 20?'
 contains 'a running row names the ticket (HIMMEL-6879)' "$(section_of running)" 'HIMMEL-3340'
+contains 'a running worker with no PR shows its description as the goal (HIMMEL-4749)' "$(section_of running)" 'Add a login form'
 contains 'a shipped row names the merged PR (HIMMEL-6879)' "$(section_of shipped)" 'PR #1995'
 for hidden in 'Failure classes' 'Phase ladder' 'data-label=' 'data-phase=' 'data-need=' 'Fleet' 'lane' '>N3<' '>N12<' 'READY-TO-OPEN' 'chief-board-fp'; do
     lacks "the user view leaves out '$hidden' (HIMMEL-6879)" "$uhtml" "$hidden"

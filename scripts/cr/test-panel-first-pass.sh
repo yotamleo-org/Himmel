@@ -286,6 +286,8 @@ out="$( (cd "$repo" && FAKE_RC=6 FAKE_ERR='critic-panel.sh: could not record cer
 err="$(cat "$tmp/err")"
 if [ "$rc" -eq 7 ]; then ok "T6c unrecorded refusal aborts at exit 7"; else bad "T6c unrecorded refusal exit (got $rc, want 7)"; fi
 assert_has "$err" "could not be recorded" "T6c abort names the unrecorded refusal"
+if [ "$(cat "$repo/.git/cr-review-rounds/feature.round" 2>/dev/null)" = "0" ]; then ok "T6c the unrecorded refusal gives the round back"; else bad "T6c round after the unrecorded refusal (got $(cat "$repo/.git/cr-review-rounds/feature.round" 2>/dev/null), want 0)"; fi
+if [ ! -e "$repo/.git/cr-review-rounds/feature.head" ]; then ok "T6c the unrecorded refusal leaves no unreviewed .head"; else bad "T6c .head after the unrecorded refusal still names $(cat "$repo/.git/cr-review-rounds/feature.head")"; fi
 rm -rf "$repo/.git/cr-review-rounds"
 
 # T6d: an exit-6 refusal is never retried through rtk;

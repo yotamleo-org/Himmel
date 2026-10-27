@@ -50,8 +50,9 @@
 #       here before any git command consumes it; (b)
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
 #       independently on the rtk retry. ABORT: nothing was reviewed, nothing
-#       was recorded. Never degrades to claude-only - re-run /pr-check from
-#       step 1.
+#       was recorded, and a round already started is given back
+#       (review-round.sh abort). Never degrades to claude-only - re-run
+#       /pr-check from step 1.
 #   Every other critic-panel.sh failure fails OPEN to claude-only (this
 #   script still exits 0; panel findings are empty and a loud note went to
 #   stderr). Panel exit 6 (a refusal to certify) gets its own note
@@ -201,6 +202,16 @@ else
         echo "panel-first-pass ABORT - could not persist the review round for $BRANCH (rc=$round_rc). Nothing was reviewed." >&2
         exit "$round_rc"
     fi
+    # give_back <rc>: an abort from here on reviewed nothing, so the round
+    # just started is given back before the exit.
+    give_back() {
+        if gb_out="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" abort --branch "$BRANCH" --head "$HEAD_SHA")"; then
+            echo "panel-first-pass: the aborted round was given back (round, reviewed head: $gb_out)" >&2
+        else
+            echo "panel-first-pass: the aborted round was NOT given back (review-round.sh abort rc=$?, reason above)" >&2
+        fi
+        exit "$1"
+    }
     case "$review_round" in
         *" delta "*)
             # the one delta round reviews only last-reviewed
@@ -211,7 +222,7 @@ else
             diff_out=$(git diff "$diff_range") || diff_rc=$?
             if [ "$diff_rc" -ne 0 ] || [ -z "$diff_out" ]; then
                 echo "panel-first-pass ABORT - could not read the delta diff $diff_range (rc=$diff_rc). Nothing was reviewed." >&2
-                exit 5
+                give_back 5
             fi
             printf 'pr-check: delta round %s on %s (from %s)\n' "$review_round" "$BRANCH" "$delta_from"
             echo "delta round blocking set: Critical or escape-class only - every other finding is deferred at step 4.9."
@@ -240,7 +251,7 @@ step 1, so the review inputs no longer match the branch/SHA/base the ledger woul
 stamp. Nothing was reviewed and nothing was recorded.
 Re-run /pr-check from step 1.
 PINABORT
-        exit 7
+        give_back 7
     fi
     if [ "$panel_rc" -ne 0 ]; then
         # rc=1 collapses two causes: a genuine all-critics-failed panel, OR
@@ -274,7 +285,7 @@ diff base moved mid-run, so the review inputs no longer match the branch/SHA/bas
 the ledger would stamp. Nothing was reviewed. Re-run
 /pr-check from step 1.
 PINABORTRETRY
-                    exit 7
+                    give_back 7
                 fi
             fi
         fi
@@ -288,7 +299,7 @@ PINABORTRETRY
                 case "$panel_avail_lines" in
                 *"could not record certify-refused"*)
                     echo "/pr-check ABORT - critic-panel.sh exit 6 and the refusal could not be recorded on the CR ledger, so nothing would hold the CR marker closed. Fix the ledger path and re-run /pr-check from step 1." >&2
-                    exit 7
+                    give_back 7
                     ;;
                 esac
                 echo "critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum) - claude-only review; the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2

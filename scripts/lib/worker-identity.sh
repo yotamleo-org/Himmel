@@ -123,20 +123,45 @@ worker_description_field() {
 }
 
 # worker_description <worker doc path> -- the line a surface prints next to the label.
-# Fallback, never empty: the description field; then the brief's H1 scope
+# Fallback, never empty: the description field; then the ticket's title (the tracker
+# seam, keyed by the doc stem's ticket); then the title of the PR the doc's Results
+# name (the forge seam, stripped by board-user.mjs's goalOf, the one copy); then the
+# brief's H1 scope
 # (`# <TICKET> — <scope> — worker N<k> (...)`, and the `# <TICKET>: <scope>. Worker
 # N<k> (...)` chiefs also write, give <scope>; an H1 not led by a ticket key
 # is used whole);
-# then the doc stem.
-# ponytail: the ticket-title and PR-title fallbacks HIMMEL-4749 orders between
-# the field and the H1 need the tracker/forge seams; slot them in
-# here when WP2/WP4 land.
+# then the doc stem. A seam that fails or answers nothing is skipped, never fatal.
+_WI_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 worker_description() {
-    local doc="$1" val stem
+    local doc="$1" val stem key pr json
     val="$(worker_description_field "$doc")"
+    if [ -z "$val" ]; then
+        stem="${doc##*/}"
+        key="$(printf '%s' "$stem" | sed -nE 's/^([A-Za-z][A-Za-z0-9]*-[0-9]+).*/\1/p')"
+        if [ -n "$key" ]; then
+            command -v tracker_title >/dev/null 2>&1 || . "$_WI_LIB_DIR/tracker.sh" 2>/dev/null
+            val="$(tracker_title "$key" 2>/dev/null | head -n 1)" || val=""
+        fi
+    fi
+    if [ -z "$val" ] && [ -r "$doc" ]; then
+        # read-sink-ok: $doc is the handover doc the caller asks about, read-only
+        pr="$(awk '/^## Results/ { inr = 1; next } inr && /^## / { inr = 0 } inr' < "$doc" \
+            | grep -E '^- ([0-9]{1,2}:[0-9]{2} +)?(LIVE *(-|–|—|:)? *PR *#?[0-9]{2,} +open|READY +#?[0-9]{2,} +[0-9a-f]{7,}|MERGED +#[0-9]{2,})' \
+            | tail -n 1 | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} +)?//' | grep -oE '[0-9]{2,}' | head -n 1)" || pr=""
+        if [ -n "$pr" ]; then
+            command -v forge_change_view >/dev/null 2>&1 || . "$_WI_LIB_DIR/forge.sh" 2>/dev/null
+            json="$(forge_change_view "$pr" 2>/dev/null)" || json=""
+            # shellcheck disable=SC2016  # the node program is single-quoted on purpose
+            [ -z "$json" ] || val="$(printf '%s' "$json" | node --input-type=module -e '
+                const { goalOf } = await import(`file://${process.argv[1]}`);
+                let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => {
+                    try { process.stdout.write(goalOf(JSON.parse(s).title)); } catch { /* no title */ }
+                });' "$_WI_LIB_DIR/../handover/chief-kit/board-user.mjs" 2>/dev/null)"
+        fi
+    fi
     if [ -z "$val" ] && [ -r "$doc" ]; then
         val="$(sed -n -E '/^# /{s/^# +//;p;q;}' "$doc" \
-            | sed -E '/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) /{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) //; s/( —|\.)? ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//;}; s/[[:space:]]+$//')"
+            | sed -E 's/[[:space:]]+$//; /^[A-Za-z][A-Za-z0-9]*-[0-9]+[ :]/{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( \+ [A-Za-z][A-Za-z0-9]*-[0-9]+)*( \([^)]*\))?( —| -|:) //; s/( —| -|\.)? ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//; s/( —|\.|,| -) ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( .*)?$//;}; s/[[:space:]]+$//')"
     fi
     if [ -z "$val" ]; then
         stem="${doc##*/}"

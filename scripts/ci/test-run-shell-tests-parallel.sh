@@ -406,8 +406,10 @@ fi
 
 echo "== P14: a deny-list whose last line has no final newline still keeps its suite alone =="
 if sb=$(mk_sandbox); then
-  # The committed deny-list with its final newline removed.
-  printf '%s' "$(cat "$RST_FIXTURE_DIR/parallel-deny.txt")" > "$sb/deny.txt"
+  # The committed deny-list plus one entry of our own as its unterminated last
+  # line: the committed last entry can be a SKIP_LIST_NON_LINUX suite, which the
+  # runner skips on macOS before it ever reaches the deny-list.
+  printf '%s\n%s' "$(cat "$RST_FIXTURE_DIR/parallel-deny.txt")" '*/scripts/test-p14-last-entry.sh' > "$sb/deny.txt"
   last=$(tail -n 1 "$sb/deny.txt"); glob=${last%%[[:space:]]*}; rel=${glob#\*/}
   case "$glob" in
     \*/scripts/*)

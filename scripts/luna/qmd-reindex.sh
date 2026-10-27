@@ -552,7 +552,9 @@ EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)
 remaining_hashes() {
     local out n
     out=$(run_qmd update 2>&1) || true
-    n=$(sed -nE '/[0-9]+ unique hashes need vectors/{s/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p;q}' <<<"$out")
+    # No `{…;q}`: BSD sed (macOS) rejects it; keep the first match in bash.
+    n=$(sed -nE 's/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p' <<<"$out")
+    n=${n%%$'\n'*}
     if [ -n "$n" ]; then printf '%s unique hashes still need vectors' "$n"; else printf 'unknown (the recount printed no pending-hash line)'; fi
 }
 
@@ -628,7 +630,8 @@ while :; do
         [ "$SESSION" -ge 2 ] && break
         continue    # nothing pending after session 1; session 2 still verifies it
     elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$SESSION_OUT"; then
-        CHUNKS=$(sed -nE '/Embedded [0-9]+ chunks?/{s/.*Embedded ([0-9]+) chunks?.*/\1/p;q}' <<<"$SESSION_OUT")
+        CHUNKS=$(sed -nE 's/.*Embedded ([0-9]+) chunks?.*/\1/p' <<<"$SESSION_OUT")
+        CHUNKS=${CHUNKS%%$'\n'*}
         if [ "${CHUNKS:-0}" -gt 0 ]; then STALLS=0; else STALLS=$((STALLS + 1)); fi
     else
         break    # neither sentinel: the unreadable-verifier report below
