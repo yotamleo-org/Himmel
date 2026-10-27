@@ -1278,6 +1278,9 @@ pad_to() { # pad_to PREFIX FILLER SUFFIX BYTES — PREFIX FILLER… SUFFIX, abou
 # 12 s: macOS runners measured 9.2 s for row 190 (Linux ~1 s); the bound only
 # has to stay under the runner's 15 s member timeout (HIMMEL-3699).
 TIMING_BUDGET_MS=12000
+# macOS measured 13.3 s for row 190 on a loaded runner: the budget rises to 14.5 s there, still
+# under the 15 s member timeout.
+[ "$(uname -s)" = Darwin ] && TIMING_BUDGET_MS=14500 # prim-ok: Darwin timing budget
 if command -v node >/dev/null 2>&1; then
     RUNNER="$(dirname "$HOOK")/run-hook-with-bash.js"
     for sz in 8190 13600; do

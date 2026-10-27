@@ -61,7 +61,8 @@ sweep_all() {
   local n sd i r rc=0 plan
   [ $# -eq 0 ] || subset=$1
   t_lint=$SECONDS
-  n=$(nproc 2>/dev/null) || n=1 # swallow-ok: no nproc means no parallelism, the serial sweep runs
+  # macOS has no nproc; sysctl hw.ncpu is its CPU count
+  n=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null) || n=1 # swallow-ok: no CPU count means no parallelism, the serial sweep runs
   [ "${n:-1}" -gt 1 ] 2>/dev/null || serial_sweep
   sd=$(mktemp -d "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") || serial_sweep
   if [ -n "$subset" ]; then plan=$subset; else plan=$(git ls-files) || serial_sweep; fi
@@ -178,9 +179,11 @@ cmd_pos() {
   local l b
   # one left-to-right scan, so an apostrophe inside a double-quoted span opens nothing; a
   # double-quoted span holding $( or a backtick is executable, so the scan stops there
-  local prog=':a; s/^(([^"\x27\\]|\\.)*)("([^"\\$`]|\\.|\$[^("\\])*"|\x27[^\x27]*\x27)/\1_/; ta'
+  # (no \x27 and no ;-joined label: BSD sed has neither, so the apostrophe is spliced in and
+  # the label loop is three -e pieces)
+  local prog='s/^(([^"'"'"'\\]|\\.)*)("([^"\\$`]|\\.|\$[^("\\])*"|'"'"'[^'"'"']*'"'"')/\1_/'
   while IFS= read -r l; do
-    b=$(printf '%s\n' "$l" | sed -E "$prog")
+    b=$(printf '%s\n' "$l" | sed -E -e ':a' -e "$prog" -e 'ta')
     printf '%s\n' "$b" | grep -qE -e "$src_re" && printf '%s\n' "$l"
   done
   return 0
@@ -217,7 +220,7 @@ while IFS= read -r f; do
   # target (the directive loop above added that edge); comment lines in between, such as a stacked
   # `# shellcheck disable=`, do not break the cover, a blank or code line does
   mark=$(printf '\001')
-  lines=$(sed -E "/^[[:space:]]*#[[:space:]]*shellcheck[[:space:]].*source=[^[:space:]]+\.(sh|bash)([[:space:]]|\$)/{:a;n;/^[[:space:]]*#/ba;s/^/$mark/;}" "$f" 2>/dev/null | grep -E -e "$src_re" | grep -v "^$mark" | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]#.*$//' | cmd_pos)
+  lines=$(sed -E -e "/^[[:space:]]*#[[:space:]]*shellcheck[[:space:]].*source=[^[:space:]]+\.(sh|bash)([[:space:]]|\$)/{" -e ':a' -e 'n' -e '/^[[:space:]]*#/ba' -e "s/^/$mark/" -e '}' "$f" 2>/dev/null | grep -E -e "$src_re" | grep -v "^$mark" | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]#.*$//' | cmd_pos)
   [ -n "$lines" ] || continue
   # every source line must name a *.sh/*.bash, else the neighbour set is uncertain
   printf '%s\n' "$lines" | grep -qvE '[A-Za-z0-9_.+-]+\.(sh|bash)' && run_all "dynamic source line in $f"

@@ -1196,6 +1196,8 @@ deny "2082 gate || exit 0 loses the failure" 'bash scripts/check-ci.sh 12 || exi
 
 # Cost: the trailing scan is linear. A 10 KB chain used to take tens of seconds
 # (stmt_runs_gate re-ran, a subprocess each, on every later statement).
+# The macOS runner is 2-5x slower on the same work, so its budgets scale 3x.
+perf_x=1; [ "$(uname -s)" = Darwin ] && perf_x=3 # prim-ok: Darwin scale for the timing budgets
 perf_chain=''
 perf_k=0
 while [ "${#perf_chain}" -lt 9500 ]; do
@@ -1204,18 +1206,18 @@ while [ "${#perf_chain}" -lt 9500 ]; do
 done
 perf_chain="${perf_chain}echo end"
 perf_start=$SECONDS
-perf_rc=$(printf '%s' "$(j_bash "$perf_chain")" | timeout -s KILL 20 bash "$HOOK" >/dev/null 2>&1; echo $?)
+perf_rc=$(printf '%s' "$(j_bash "$perf_chain")" | timeout -s KILL $((20 * perf_x)) bash "$HOOK" >/dev/null 2>&1; echo $?)
 perf_gate_chain=''
 while [ "${#perf_gate_chain}" -lt 9500 ]; do
     perf_gate_chain="${perf_gate_chain}bash scripts/check-ci.sh 1 && "
 done
 perf_gate_chain="${perf_gate_chain}bash scripts/check-ci.sh 2"
-perf_gate_rc=$(printf '%s' "$(j_bash "$perf_gate_chain")" | timeout -s KILL 20 bash "$HOOK" >/dev/null 2>&1; echo $?)
+perf_gate_rc=$(printf '%s' "$(j_bash "$perf_gate_chain")" | timeout -s KILL $((20 * perf_x)) bash "$HOOK" >/dev/null 2>&1; echo $?)
 perf_secs=$((SECONDS - perf_start))
 # The last statement of the first chain is `echo end` after an RC read of a gate
 # that was itself followed by `echo RC` only: every gate is surfaced, but the
 # final `echo end` follows the last RC read, not a gate, so the chain is allowed.
-if [ "$perf_rc" = 0 ] && [ "$perf_gate_rc" = 0 ] && [ "$perf_secs" -lt 8 ]; then
+if [ "$perf_rc" = 0 ] && [ "$perf_gate_rc" = 0 ] && [ "$perf_secs" -lt $((8 * perf_x)) ]; then
     pass "2082 10 KB chains scan in linear time (${perf_secs}s, $perf_k gates)"
 else
     fail "2082 10 KB chains scan in linear time: rc=$perf_rc/$perf_gate_rc after ${perf_secs}s"

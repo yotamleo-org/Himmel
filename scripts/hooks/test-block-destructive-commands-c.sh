@@ -12,6 +12,10 @@ set -uo pipefail
 # shellcheck source=lib-test-block-destructive.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib-test-block-destructive.sh"
 
+# The macOS runner runs these guards 2-5x slower (same work, bash 3.2); the linear-time
+# budgets scale there so a quadratic regression (20s+) still fails.
+BX=1; [ "$(uname -s)" = Darwin ] && BX=4 # prim-ok: Darwin scale for the timing budgets
+
 # The find-family deletes the parity_guard.py twin denies too.
 # A launcher that runs its argument as a command (busybox, command, eval, a
 # shell's -c) keeps find at command position.
@@ -126,8 +130,8 @@ assert_rc 'commit "a xargs rm b" ok'     0 "$(run_case "$(j_bash 'git commit -m 
 printf -v pad '; find x%.0s' $(seq 1 12500)
 t0=$SECONDS
 assert_rc 'find anchors x12500 then shutdown (linear)' 2 "$(run_case "$(j_bash "echo hi$pad; shutdown now")")"
-if [ $((SECONDS - t0)) -gt 4 ]; then
-    echo "FAIL find anchors x12500 took $((SECONDS - t0))s (budget 4s)"; FAILED=$((FAILED + 1)); fi
+if [ $((SECONDS - t0)) -gt $((4 * BX)) ]; then
+    echo "FAIL find anchors x12500 took $((SECONDS - t0))s (budget $((4 * BX))s)"; FAILED=$((FAILED + 1)); fi
 # The CMDPOS path prefix stops at `(`, so a 10 KB run of open parens is
 # scanned once per anchor, not to the run's end from every one (quadratic: ~20s at
 # base). Budget 4s; the pad is built before the clock starts.
@@ -135,14 +139,14 @@ if [ $((SECONDS - t0)) -gt 4 ]; then
 printf -v pad '(%.0s' $(seq 1 10000)
 t0=$SECONDS
 assert_rc 'open-paren run x10000 then shutdown (linear)' 2 "$(run_case "$(j_bash "echo hi$pad; shutdown now")")"
-if [ $((SECONDS - t0)) -gt 4 ]; then
-    echo "FAIL open-paren run x10000 took $((SECONDS - t0))s (budget 4s)"; FAILED=$((FAILED + 1)); fi
+if [ $((SECONDS - t0)) -gt $((4 * BX)) ]; then
+    echo "FAIL open-paren run x10000 took $((SECONDS - t0))s (budget $((4 * BX))s)"; FAILED=$((FAILED + 1)); fi
 # A `()` pair run was the other quadratic shape (`)` then a consumed `(`).
 pad=$(awk 'BEGIN{for(i=0;i<5000;i++) printf "()"}')
 t0=$SECONDS
 assert_rc 'paren-pair run x5000 then shutdown (linear)' 2 "$(run_case "$(j_bash "echo hi$pad; shutdown now")")"
-if [ $((SECONDS - t0)) -gt 4 ]; then
-    echo "FAIL paren-pair run x5000 took $((SECONDS - t0))s (budget 4s)"; FAILED=$((FAILED + 1)); fi
+if [ $((SECONDS - t0)) -gt $((4 * BX)) ]; then
+    echo "FAIL paren-pair run x5000 took $((SECONDS - t0))s (budget $((4 * BX))s)"; FAILED=$((FAILED + 1)); fi
 # A `(` or `)` inside a path prefix must not hide the program name
 # (the first EXEPFX cut consumed the `/` terminator after a `)`).
 assert_rc 'quoted path with (b) then shutdown'   2 "$(run_case "$(j_bash '"/tmp/a(b)/shutdown" now')")"
@@ -192,8 +196,8 @@ for pad_name in o b; do
         label=${shape%%|*}; body=${shape#*|}
         t0=$SECONDS
         assert_rc "$label 10KB pad_$pad_name path run (linear, denied)" 2 "$(run_case "$(j_bash "${body//PAD/$pad}")")"
-        if [ $((SECONDS - t0)) -gt 4 ]; then
-            echo "FAIL $label pad_$pad_name took $((SECONDS - t0))s (budget 4s)"; FAILED=$((FAILED + 1)); fi
+        if [ $((SECONDS - t0)) -gt $((4 * BX)) ]; then
+            echo "FAIL $label pad_$pad_name took $((SECONDS - t0))s (budget $((4 * BX))s)"; FAILED=$((FAILED + 1)); fi
     done
 done
 # A value word may be built from quoted ('…', "…", $'…'),
