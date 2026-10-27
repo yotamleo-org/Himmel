@@ -12,6 +12,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/ci-metrics.sh"
 FIX="$HERE/fixtures/ci-metrics"
+. "$HERE/../lib/portable-timeout.sh"
 NOW="2026-10-14T12:00:00Z"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics-test.XXXXXX")" || { echo "test-ci-metrics: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
@@ -248,14 +249,17 @@ eq "merged-PR fetch: --keep drops the stale prs.json after a failed fetch" "$([ 
 
 # A search page that hands back the cursor it was asked from is a failed fetch, not an endless loop.
 jq '.data.search.pageInfo = {hasNextPage: true, endCursor: "CUR"}' "$TMP/prs-page.json" > "$TMP/prs-page-loop.json"
+rc=0
 O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-loop.json" \
-  timeout 60 bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || true
+  timeout 60 bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || rc=$?
+eq "merged-PR fetch: a cursor that does not advance ends the run (no timeout kill)" "$rc" "0"
 has "merged-PR fetch: a cursor that does not advance stops the fetch" "$O" "pagination did not advance"
 
 # The cap check never renders merged PRs, so it does not fetch them.
 : > "$TMP/gh-capcheck.log"
-PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-capcheck.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
-  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --cap-check > /dev/null 2>&1 || true
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-capcheck.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --cap-check 2>&1)
+has "cap check: the run reaches its verdict" "$O" "Verdict:"
 eq "cap check: no merged-PR search is made" "$(grep -c 'is:pr is:merged' "$TMP/gh-capcheck.log")" "0"
 
 echo "ci-metrics: $PASS passed, $FAIL failed"
