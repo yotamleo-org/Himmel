@@ -701,6 +701,19 @@ got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_po
 assert_eq "P9 a policy key without = is reported, not silently dropped" "0|0|1" "$got|$(grep -c 'CR_REQUIRE_CROSS_MODEL.*no =' "$TMP/p9.err")"
 rm -f "$PCONF"
 
+# K: the plain-config keys resolve from himmel.conf when .env is empty and the
+# process env is unset.
+mkdir -p "$TMP/k-config"
+for k in HIMMEL_REPO CLAUDE_HUD_ALLOW_EXTRA_CMD HIMMEL_WHERE_ARE_WE_ROLLUP_TTL \
+    HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT HIMMEL_JIRA_NUDGE CR_APP CR_PUBLIC_REPO \
+    CLAUDE_END_SESSION_WIKI SKILL_INDEX_DIR ALIBABA_ANTHROPIC_BASE_URL \
+    ALIBABA_CODING_PLAN_BASE_URL ALIBABA_DASHSCOPE_BASE_URL ALIBABA_OPENAI_BASE_URL \
+    JIRA_PROJECTS; do
+    printf '%s=k-from-conf\n' "$k" >"$TMP/k-config/himmel.conf"
+    got=$( cd "$REPO" && unset "$k" && HIMMEL_CONFIG_DIR="$TMP/k-config" load_dotenv "$k" 2>/dev/null; printf '%s' "${!k:-<unset>}" )
+    assert_eq "K $k resolves from himmel.conf" "k-from-conf" "$got"
+done
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "All load-dotenv tests passed."

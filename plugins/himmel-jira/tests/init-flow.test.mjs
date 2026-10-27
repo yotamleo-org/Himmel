@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureEnvKeys, appendEnvKeys, UNSAFE_VALUE_RE, loadEnvIntoProcess, resolveProjects, runInit } from '../lib/init-flow.mjs';
@@ -195,5 +195,46 @@ describe('loadEnvIntoProcess quote stripping', () => {
     } finally {
       delete process.env.JIRA_HIMMEL101_MISMATCH;
     }
+  });
+});
+
+describe('loadEnvIntoProcess reads JIRA_PROJECTS from himmel.conf (HIMMEL-7427)', () => {
+  const saved = { cfg: process.env.HIMMEL_CONFIG_DIR, proj: process.env.JIRA_PROJECTS };
+  const restore = (k, v) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; };
+  const setup = (conf, local, dotenv) => {
+    const cfg = join(dir, 'cfg');
+    mkdirSync(cfg, { recursive: true });
+    rmSync(join(cfg, 'himmel.conf.local'), { force: true });
+    if (conf) writeFileSync(join(cfg, 'himmel.conf'), conf);
+    if (local) writeFileSync(join(cfg, 'himmel.conf.local'), local);
+    const env = join(dir, '.env');
+    writeFileSync(env, dotenv ?? '# no jira keys\n');
+    process.env.HIMMEL_CONFIG_DIR = cfg;
+    delete process.env.JIRA_PROJECTS;
+    return env;
+  };
+  afterEach(() => { restore('HIMMEL_CONFIG_DIR', saved.cfg); restore('JIRA_PROJECTS', saved.proj); });
+
+  it('takes it from himmel.conf when .env lacks it', () => {
+    loadEnvIntoProcess(setup('JIRA_PROJECTS=A,B\n'));
+    expect(process.env.JIRA_PROJECTS).toBe('A,B');
+  });
+
+  it('himmel.conf.local beats himmel.conf, and himmel.conf beats a legacy .env line', () => {
+    loadEnvIntoProcess(setup('JIRA_PROJECTS=A\n', 'JIRA_PROJECTS=L\n', 'JIRA_PROJECTS=E\n'));
+    expect(process.env.JIRA_PROJECTS).toBe('L');
+    loadEnvIntoProcess(setup('JIRA_PROJECTS=A\n', null, 'JIRA_PROJECTS=E\n'));
+    expect(process.env.JIRA_PROJECTS).toBe('A');
+  });
+
+  it('keeps a non-empty process value and reads conf even when the .env file is missing', () => {
+    process.env.JIRA_PROJECTS = 'P';
+    const env = setup('JIRA_PROJECTS=A\n');
+    process.env.JIRA_PROJECTS = 'P';
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_PROJECTS).toBe('P');
+    delete process.env.JIRA_PROJECTS;
+    loadEnvIntoProcess(join(dir, 'no-such.env'));
+    expect(process.env.JIRA_PROJECTS).toBe('A');
   });
 });

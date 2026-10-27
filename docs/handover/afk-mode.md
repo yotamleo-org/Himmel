@@ -1,4 +1,75 @@
-# AFK (unattended) mode — Autonomous Pipeline
+# AFK (unattended) runs
+
+An AFK shift works through a short list of tickets while you are away and
+leaves you one report to read when you come back.
+
+## What an AFK shift does
+
+`/afk-shift` pulls the top tickets from your Jira queue (five by default, To Do
+and In Progress), writes a plan, and shows it to you. Nothing starts until you
+confirm. Then it gives each ticket its own subagent in its own worktree. Each
+subagent plans the change, writes it with tests, reviews it with `/pr-check`,
+and opens a PR. One session runs the whole shift, and the shift ends when the
+list is done.
+
+A shift belongs to the project you start it in. Its lane router and Jira CLI
+always run from the himmel clone.
+
+## What it refuses
+
+A shift stops and asks for you, rather than guessing, when:
+
+- a design decision is not covered by the ticket or its plan;
+- a ticket needs a call on its Jira project or priority;
+- the work needs a destructive step outside its worktree, such as a force-push
+  to main or deleting a branch you own;
+- a merge is blocked by real branch protection.
+
+The guardrails stay on for every subagent: no edits on main, no reads of secret
+files, and a ticket that reads as destructive (delete, drop, force-push and the
+like) is refused as ordinary work and comes back to you. By default
+a shift stops at a green, reviewed PR and leaves the merge to you. It merges by
+itself only when you opted in with `ARMAUTOMERGE=1`, and then only in a private
+repo or in the configured public origin, the himmel repo, when its branch
+protection requires status checks and nobody can bypass them. Any other public
+repo stays manual.
+
+## Start and stop a shift
+
+```bash
+/afk-shift                 # top 5 To Do / In Progress tickets, plan first, then your yes
+/afk-shift --limit 3       # a shorter list
+/stop                      # start no new ticket; the running ones finish
+/stop --hard               # also stop the running ones now
+/stop --reset              # clear the stop before your next shift
+```
+
+In a project you adopted, `/stop` and `/stop --reset` act on that project only.
+A stop set in the himmel clone halts every project's shift, so lift it with
+`/stop --reset` in the clone.
+
+A stop never drops a ticket silently. Every ticket that did not start shows in
+the report as `blocked`, with the reason.
+
+## What you read in the morning
+
+The shift writes one file, `overnight-report-YYYY-MM-DD.md`, in your handover
+folder. It has one row per ticket (branch, PR link, `done`, `blocked` or
+`partial`, and a one-line outcome). Anything that needs your decision sits in a
+**Decisions needed** block at the top. Work that block first, then review the
+PRs in report order.
+
+A typical shift runs three to four hours and makes 50 to 60 subagent
+dispatches, all drawn from your Claude subscription usage. The gauges and the
+checks a run makes before heavy work are in [Usage and cost](../token-economy.md).
+
+For work that needs decisions mid-way, or that will outlive one session, run a
+chief instead: [The chief and its workers](running-a-chief.md).
+
+## For maintainers
+
+The full runbook: the phases a shift runs, its launch preamble, the park
+protocol and the failure modes.
 
 > **Trigger phrase:** when a user prompt includes the phrase **"overnight mode"** alongside a `next-session-*.md` path (e.g. `load handovers/<USER_SLUG>/himmel/epics/HIMMEL-XX-…/next-session-N.md overnight mode`), execute this pipeline end-to-end without pausing for confirmation between phases.
 
@@ -84,7 +155,7 @@ For work that will need mid-flight decisions or will outlive one context window,
    Security reviewed: <pr-review-toolkit|manual|claude-code-security-review>   # only for non-docs code
    ```
    Then the push passes the `platforms-tested` / security-reviewed gates first-try with no amend. **Do NOT commit first, hit the gate, then `git commit --amend` to add the trailer**: the auto-mode classifier flags that reactive amend as security-gate circumvention and HARD-blocks it (uncleable, even with operator approval).
-9. **Merge** — `gh pr merge --squash` once automated review is clean. **Default to a PLAIN squash merge — do NOT add `--admin`**. `--admin` exists to bypass *branch protection*; this repo has none (the protection API returns 403 on a free private repo, and `reviewDecision` is empty), so `--admin` bypasses nothing useful yet it trips the auto-mode classifier's "bypassing the approval gate = destructive op outside the worktree" HARD-veto (see § Block-only criteria) — which is exactly what stalled an earlier run. Only reach for `--admin` if the repo *actually* has branch protection that blocks the plain merge, and then only with `GH_ADMIN_MERGE_OK=1` set in the launching shell (the `scripts/handover/pr-merge.sh` helper encodes this plain-first/admin-fallback logic). **If the merge is blocked for any reason, load the `himmel-ops:stuck-playbook` skill** (§ "a PR merge was blocked"), then — rather than guessing or routing around the block — record the merge as a one-action operator step in the Phase 11 handover. Retrying a blocked merge via a different command path is flagged as evasion and hardens the block. **Armed dependency chains that auto-merge on green:** a *self-run* merge worker is denied by the classifier ("Merge Without Review"), so an armed/overnight dependency chain stops at a green, review-clean PR by default. To let a dependency chain merge unattended — **PRIVATE repo only** — the sanctioned path is `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"` (the anchored spelling; the PROJECT and worker-profile relative `bash scripts/handover/merge-on-green.sh` standing allow-rules were retired — a user-scope settings rule may still admit the relative spelling on a given station, but the project and worker-profile registries no longer pre-approve it, so a station with no user-scope rule of its own loses the relative fallback and must type the anchored or absolute spelling): it merges ONLY when `ARMAUTOMERGE=1` is opted in (launching shell), the PR's own repo is private, `check-ci.sh` returns 0 (green + all threads resolved + no changes-requested), and the certified head SHA is still the PR head (`--match-head-commit`), logging every attempt (certified SHA + gate verdict). It is **not** a blanket `--dangerously-skip-permissions` (every other guard stays live). Activation is two **operator** steps (the agent cannot self-modify settings): add the specific standing allow-rule `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` and launch/arm the dependency chain with `ARMAUTOMERGE=1`. Public propagation stays a separate one-go operator/bridge step.
+9. **Merge** — `gh pr merge --squash` once automated review is clean. **Default to a PLAIN squash merge — do NOT add `--admin`**. `--admin` exists to bypass *branch protection*; this repo has none (the protection API returns 403 on a free private repo, and `reviewDecision` is empty), so `--admin` bypasses nothing useful yet it trips the auto-mode classifier's "bypassing the approval gate = destructive op outside the worktree" HARD-veto (see § Block-only criteria) — which is exactly what stalled an earlier run. Only reach for `--admin` if the repo *actually* has branch protection that blocks the plain merge, and then only with `GH_ADMIN_MERGE_OK=1` set in the launching shell (the `scripts/handover/pr-merge.sh` helper encodes this plain-first/admin-fallback logic). **If the merge is blocked for any reason, load the `himmel-ops:stuck-playbook` skill** (§ "a PR merge was blocked"), then — rather than guessing or routing around the block — record the merge as a one-action operator step in the Phase 11 handover. Retrying a blocked merge via a different command path is flagged as evasion and hardens the block. **Armed dependency chains that auto-merge on green:** a *self-run* merge worker is denied by the classifier ("Merge Without Review"), so an armed/overnight dependency chain stops at a green, review-clean PR by default. To let a dependency chain merge unattended — **a PRIVATE repo, or the configured public origin under branch protection** — the sanctioned path is `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"` (the anchored spelling; the PROJECT and worker-profile relative `bash scripts/handover/merge-on-green.sh` standing allow-rules were retired — a user-scope settings rule may still admit the relative spelling on a given station, but the project and worker-profile registries no longer pre-approve it, so a station with no user-scope rule of its own loses the relative fallback and must type the anchored or absolute spelling): it merges ONLY when `ARMAUTOMERGE=1` is opted in (launching shell), the PR's own repo is private (or is the configured public origin with at least one required status check, under classic protection with `enforce_admins` on or under rulesets that are all `active` with no bypass actor), `check-ci.sh` returns 0 (green + all threads resolved + no changes-requested), and the certified head SHA is still the PR head (`--match-head-commit`), logging every attempt (certified SHA + gate verdict). It is **not** a blanket `--dangerously-skip-permissions` (every other guard stays live). Activation is two **operator** steps (the agent cannot self-modify settings): add the specific standing allow-rule `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` and launch/arm the dependency chain with `ARMAUTOMERGE=1`. Public propagation stays a separate one-go operator/bridge step.
 10. **Jira:** invoke the CLI as `node scripts/jira/dist/index.js transition <KEY> "<state>"` (NOT the global `jira` shim; it points at an unrelated, often-broken `jira-cli` package). This runs autonomously **provided the specific standing allow-rule `Bash(node scripts/jira/dist/index.js:*)` is present**. A generic `Bash(node *)` is NOT enough to authorize an external write (see § Auto-mode classifier). If the rule is missing, a transition is classifier-blocked; do NOT retry via a different path (evasion); record it as an operator action in Phase 11 and have the operator add the rule once (it then works for all future runs).
 11. **Handover** — write `next-session-<N+1>.md` (or whichever increment) in the right dir, file followup tickets for non-blocking findings, record any classifier-blocked Jira transitions as explicit operator actions (a classifier-blocked review-thread resolve is never an operator action: it goes to the chief as `BLOCKED resolve <pr> <thread ids>`, which verifies it against the head and resolves it), update `status.md` + `roadmap.md`, commit + push (trailers in the first commit per Phase 8). **Release the step-0 queue lock** (`bash scripts/handover/queue-lock.sh release <handover-path> <release-token>` — the token captured from the step-0 acquire output; if the transcript line was lost to an autocompact, drop the token argument and the persisted per-session copy is used instead — it says `queue-lock: token read from <path>` on stderr, and it exists only when a session scope was resolvable at acquire time (`QUEUE_LOCK_SESSION_SCOPE` or `CLAUDE_CODE_SESSION_ID`; see Phase 0); only when that is gone too does `QUEUE_LOCK_FORCE_RELEASE=1 bash scripts/handover/queue-lock.sh release <handover-path>` force-release loudly and log the override — that log is the audit trail for genuine takeovers, so a routine wrap should never land in it) as part of this phase — the TTL is a safety net for a crashed session, not a substitute for releasing on a clean wrap.
 

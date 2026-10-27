@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { jiraFetch, envFilePath } from './jira-fetch.mjs';
 import { writeMetadata } from './metadata.mjs';
 
@@ -15,7 +16,24 @@ function loadEnvFile(path) {
   return out;
 }
 
+// Behaviour keys this reader takes from ~/.himmel/himmel.conf{,.local} (config
+// class in scripts/lib/load-dotenv.sh): the conf files win over a legacy .env
+// line, an empty value reads as unset, and the process env wins over both.
+const CONF_KEYS = ['JIRA_PROJECTS'];
+
+function loadConfIntoProcess() {
+  const dir = process.env.HIMMEL_CONFIG_DIR || join(homedir(), '.himmel');
+  for (const file of ['himmel.conf.local', 'himmel.conf']) {
+    const conf = loadEnvFile(join(dir, file));
+    for (const key of CONF_KEYS) {
+      const value = (conf[key] ?? '').replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+      if (value && !process.env[key]) process.env[key] = value;
+    }
+  }
+}
+
 export function loadEnvIntoProcess(envPath) {
+  loadConfIntoProcess();
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const t = line.trim();

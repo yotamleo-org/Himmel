@@ -395,6 +395,9 @@ const PHASE: Record<NonNullable<Row["cloud"]>["phase"], string> = {
   merged: "PR merged", closed: "PR closed", unknown: "GitHub status unknown (read failed or throttled)",
 };
 
+// the server's worker_description for the row's doc (fleet.ts); Row (fleet-model.ts) does not carry it, so it is read here.
+const descriptionOf = (row: Row) => (row as Row & { description?: string }).description?.trim() ?? "";
+
 function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops: Row[]; token: string; now: number }) {
   const [open, setOpen] = useOpen(`row:${chainKey(row.name) ?? row.name}`, false);
   const failed = row.agents.filter((a) => a.state === "failed").length;
@@ -404,6 +407,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
   const cls = row.marker === "BLOCKED" || row.cloud?.phase === "blocked" ? "blocked" : CLS[row.state];
   const href = rowHref(token, row);
   const bctx = useBoardCtx(), card = cardOf(bctx, row.name);
+  const desc = descriptionOf(row);
   return (
     <div className={`fleet-row ${cls}${open ? " open" : ""}`} id={rowId(row.name)} tabIndex={-1}>
       <div className="fleet-line">
@@ -411,6 +415,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
         <span className={`fleet-dot ${cls}`} aria-hidden="true" />
         <span className="fleet-who">
           <NameLink row={row} token={token} />
+          {desc && <span className="fleet-desc fleet-age" title={desc}>{desc}</span>}
           {row.ticket && <span className="fleet-chip">{row.ticket}</span>}
           {row.pr !== null && <span className="fleet-age">{`PR ${row.pr}`}</span>}
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}

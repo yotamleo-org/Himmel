@@ -73,12 +73,15 @@ hardcodes `HIMMEL` as a fallback in `projectKey()`. Operators must set
 `scripts/setup.sh` step 0.4 verifies this at install time and fails
 loud when unset.
 
-**Do NOT pass `--project` or export `JIRA_*` when running from the repo
-root.** The CLI calls `loadEnv()` at startup, which reads the repo-root
-`.env` into `process.env` (via `??=`, never clobbering an already-set
-var). So `JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN / JIRA_PROJECT_KEY /
-JIRA_CLOUD_ID` are all picked up automatically — `node
-scripts/jira/dist/index.js list` works with an empty shell environment.
+**Do NOT pass `--project` or export `JIRA_*`, from any cwd.** The CLI loads
+its `.env` at startup from its own install path (the checkout that holds
+`scripts/jira/dist`), never from the cwd; a worktree install, which has no
+`.env` of its own, falls back to the primary checkout and then to
+`HIMMEL_REPO`. The values go into `process.env` (never clobbering an
+already-set var). So `JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN /
+JIRA_PROJECT_KEY / JIRA_CLOUD_ID` are all picked up automatically — `node
+<himmel>/scripts/jira/dist/index.js list` works with an empty shell
+environment, from the himmel checkout or any other repo.
 A `JIRA_PROJECT_KEY` *unset in your shell* is irrelevant and is **not**
 the cause of a `projectKey()` error; check the repo-root `.env` instead.
 Only pass `--project FOO` for a one-off call against a different project.

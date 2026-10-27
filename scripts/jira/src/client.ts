@@ -2,27 +2,29 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-function repoRoot(): string {
+// The .env is found from this file's own install path, never the cwd: a run
+// from another repo must still reach the credentials. A worktree install has
+// no .env of its own, so the primary checkout (git's common dir, asked from the
+// script's directory) and then HIMMEL_REPO are tried in turn.
+function envFilePath(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const own = join(here, '..', '..', '..', '.env');
+  if (existsSync(own)) return own;
+  const candidates: string[] = [];
   try {
-    const gitCommonDir = execFileSync(
+    const common = execFileSync(
       'git',
-      ['rev-parse', '--git-common-dir'],
-      { encoding: 'utf8' },
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { encoding: 'utf8', cwd: here, stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim();
-    return dirname(gitCommonDir);
-  } catch (e) {
-    // Falling back to cwd here would silently mask the case
-    // where a corrupt/bare/missing local git state caused jira CLI to load
-    // the WRONG .env (cwd) or no creds at all (cwd has no .env) → 401 with
-    // no clue why. Surface the underlying error so an operator can diagnose.
-    process.stderr.write(
-      `jira: warning: git rev-parse --git-common-dir failed (${(e as Error).message}); ` +
-        `falling back to cwd=${process.cwd()} for .env lookup. ` +
-        `Set JIRA_API_TOKEN/JIRA_BASE_URL via env vars to bypass.\n`,
-    );
-    return process.cwd();
+    candidates.push(join(dirname(common), '.env'));
+  } catch {
+    // not inside a git checkout: HIMMEL_REPO is the only other anchor
   }
+  if (process.env.HIMMEL_REPO) candidates.push(join(process.env.HIMMEL_REPO, '.env'));
+  return candidates.find((c) => existsSync(c)) ?? own;
 }
 
 const DOTENV_KEYS = new Set([
@@ -106,7 +108,7 @@ export function normalizeEnv(): void {
   }
 }
 
-loadEnvFile(`${repoRoot()}/.env`);
+loadEnvFile(envFilePath());
 normalizeEnv();
 
 export const baseUrl = (): string => {
