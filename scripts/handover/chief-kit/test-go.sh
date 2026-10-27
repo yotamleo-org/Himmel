@@ -773,7 +773,8 @@ printf '[{"nwo":"acme/gadget","merge_allowed":true,"himmel_branch":"main"}]\n' >
 averdict u/acme--gadget G1 "repo: acme/gadget"
 rc=0; out="$(a23 --repo acme/gadget --trust-reviewed G1 88 "$SHA" 2>&1)" || rc=$?
 check    "7885: adapter trust GO from the adapter's bucket -> exit 0" "$rc" "0"
-contains "7885: the adapter GO carries the judge's qid" "$(cat "$ROOT23/.locks/go/88.$SHA" 2>/dev/null)" "trust-reviewed=G1"
+rc=0; out=$(go_trust_gate 88 "$SHA" "$ROOT23" acme/gadget) || rc=$?
+check    "7885: go_trust_gate accepts the adapter GO for acme/gadget" "$rc:$out" "0:G1"
 rm -f "$GO23"
 averdict "$VSCOPE" G2 "repo: acme/gadget"
 t23 "an adapter verdict in the harness bucket" 5 --repo acme/gadget --trust-reviewed G2 88 "$SHA"
