@@ -506,9 +506,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   const archived: [string, string][] = [];
   for (const file of census.consoleDocs ?? []) {
     const name = plain(basename(file, ".md"));
-    if (!name || taken.has(name)) continue;
-    taken.add(name);
-    archived.push([file, name]);
+    if (name && !taken.has(name)) archived.push([file, name]);
   }
   const built = await mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
     try {
@@ -527,7 +525,8 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       };
     } catch { return null; /* archived console moved or unreadable */ }
   });
-  built.forEach((row, i) => { if (row) { rows.push(row); described.push([row, archived[i][0]]); } });
+  // the first readable doc of a name wins, in census order; an expired or unreadable one never hides a later one
+  built.forEach((row, i) => { if (row && !taken.has(row.name)) { taken.add(row.name); rows.push(row); described.push([row, archived[i][0]]); } });
   const descOf = await describe(described.map(([, f]) => f), opts.script, opts.env);
   for (const [r, f] of described) {
     const text = descOf(f);
