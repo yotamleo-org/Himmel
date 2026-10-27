@@ -22,6 +22,8 @@ the brief gets the `> **Context:** ab-<arm> — operator-ruling: HIMMEL-5193` li
 launcher exports WORKER_SESSION_AUTOCOMPACT_AB, the printed manifest add line passes --arm),
 platform_removal (true: the worker removes Windows/WSL code and its title says remove/drop/delete/retire/sweep/clean; without
 it a title, desc, why or scope naming a dropped platform, per platform-dropped.re, is refused),
+profile (HIMMEL-7935: the --profile the launcher arms; default worker-impl, or worker-e2e when the scope's
+Writes name scripts/config-ui/, which adds the Playwright MCP server and a brief line on running himmelctl ui),
 model (default claude-sonnet-5-5; a non-native lane with no model key takes its LANE_MODELS default and
 the launcher passes no model argument, so headed-arm-worker.sh's lane default applies; an opus or fable model is
 refused on a non-native lane), effort (low|medium|high|xhigh: the launcher exports WORKER_SESSION_EFFORT),
@@ -93,6 +95,11 @@ ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fi
 VM_RE = re.compile(r'\b(?:VMs?|vmsdk|launch-guest)\b', re.I)
 VM_LINE = ("> **VM work:** drive the guest only through guest-exec.sh: `bash scripts/vm/guest-exec.sh <vm> -- '<cmd>'`. "
            "Raw `ssh -p <vm port>` from a worker is denied by the destructive-command hook.\n")
+# worker-e2e is worker-impl plus the Playwright MCP server; a leg that writes the config UI gets it.
+UI_PROFILE = 'worker-e2e'
+UI_PATH_RE = re.compile(r'(?:^|\s)scripts/config-ui(?:/|\s|$)')
+UI_LINE = ("> **UI work:** run `node scripts/himmelctl/bin.js ui --port 0`, open the printed URL with the browser MCP headless, "
+           "and save screenshots to your scratch dir.\n")
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 # Mirrors headed-arm-worker.sh's claudex default (`[ -z "$MODEL" ] && MODEL="gpt-6.1-sol"`).
@@ -292,6 +299,8 @@ def validate(worker, i, repo):
         die('worker %s: slug %r must be kebab-case' % (worker['label'], worker['slug']))
     if worker.get('ab_arm') not in (None, '200k', '400k'):
         die('worker %s: ab_arm %r must be 200k or 400k' % (worker['label'], worker['ab_arm']))
+    if worker.get('profile') is not None and (not isinstance(worker['profile'], str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', worker['profile'])):
+        die('worker %s: profile %r must be a lowercase profile name (worker-impl, worker-e2e, ...)' % (worker['label'], worker['profile']))
     lane = worker.get('lane', 'native')
     if not isinstance(lane, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', lane):
         die('worker %s: lane %r must be a lowercase word (native, claudex, ...)' % (worker['label'], worker['lane']))
@@ -546,7 +555,7 @@ template_version: 3
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-cr-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the chief quoting your token. {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
-{inhblock}{vmline}> **Writes:** {scope_line}
+{inhblock}{vmline}{uiline}> **Writes:** {scope_line}
 
 > **Scope / do not:** writes confined to {scope}. Other live workers and their files: {others}{also}. Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the chief first). Remove any fixture you create under the real HOME before you wrap.
 {grants}
@@ -564,6 +573,7 @@ template_version: 3
            ctline=completes_line(l['scope']), grants=grants_block(l),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
+           uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
@@ -636,8 +646,8 @@ def render_launcher(l, ctx, doc):
     lines += [
         'W=%s' % q(w),
         'mkdir -p "$W"',
-        'setsid nohup bash %s%s --profile worker-impl --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
-            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+        'setsid nohup bash %s%s --profile %s --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
+            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(l['profile']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -721,6 +731,8 @@ def main():
         l['hook'] = bool(l.get('hook'))
         l['judge'] = bool(l.get('judge'))
         l['model_key'] = bool(l.get('model'))
+        if l.get('kind') != 'rm':
+            l['profile'] = l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l['scope'])) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))
         if rm:
