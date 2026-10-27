@@ -78,7 +78,7 @@ expect 2 "upper-case HIGGSFIELD in a salus cwd -> denied" \
 expect 2 "malformed JSON naming higgsfield -> denied" \
     '{"tool_name":"Bash","tool_input":{"command":"higgsfield generate create x"}, oops'
 expect 2 "higgsfield spelled with a JSON unicode escape in a salus cwd -> denied" \
-    '{"cwd":"'"$SALUS"'","tool_name":"Bash","tool_input":{"command":"higgsfield model list"}}'
+    '{"cwd":"'"$SALUS"'","tool_name":"Bash","tool_input":{"command":"\u0068iggsfield model list"}}'
 
 # Every Bash call in the fleet reaches this hook, so a call that names none of
 # the providers must exit 0 on bash builtins alone. An empty PATH makes any
