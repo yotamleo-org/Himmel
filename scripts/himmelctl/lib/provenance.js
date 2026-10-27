@@ -105,7 +105,6 @@ const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch (_) { 
 // (canon-path.sh canon_path_partial).
 function canonPartial(p) {
   if (!p) throw fail('cannot resolve an empty path');
-  p = fwd(p);
   let rest = '';
   while (!isDir(p)) {
     const i = p.lastIndexOf('/');
@@ -117,13 +116,12 @@ function canonPartial(p) {
       if (!isDir(p)) throw fail(`cannot resolve ${p}`);
     }
   }
-  return fwd(fs.realpathSync(p)).replace(/\/$/, '') + rest;
+  return fs.realpathSync(p).replace(/\/$/, '') + rest;
 }
 
 // absolute, parent chain resolved, basename left as given (a link stays a link).
 function absPath(p) {
-  p = fwd(p);
-  if (!(p.startsWith('/') || /^[A-Za-z]:\//.test(p))) p = fwd(process.cwd()) + '/' + p;
+  if (!(p.startsWith('/') || /^[A-Za-z]:\//.test(p))) p = process.cwd() + '/' + p;
   while (p.length > 1 && p.endsWith('/') && !/^[A-Za-z]:\/$/.test(p)) p = p.slice(0, -1);
   if (/^[A-Za-z]:\/$/.test(p)) return canonPartial(p) + '/'; // a drive root is its own path
   const i = p.lastIndexOf('/');
@@ -205,7 +203,7 @@ function beginRow(iid, writer, target, root, argv) {
   try { version = fs.readFileSync(root + '/VERSION', 'utf8').replace(/[ \r\n]/g, ''); } catch (_) { /* none */ }
   const h = homeDir();
   let home = h;
-  try { home = fwd(fs.realpathSync(h)); } catch (_) { /* raw */ }
+  try { home = fs.realpathSync(h); } catch (_) { /* raw */ }
   const cfgRaw = process.env.CLAUDE_CONFIG_DIR || (h + '/.claude');
   let cfg = cfgRaw;
   try { cfg = canonPartial(cfgRaw); } catch (_) { /* raw */ }
