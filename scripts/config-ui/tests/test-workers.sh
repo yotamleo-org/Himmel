@@ -10,6 +10,7 @@
 # scripts/lib/*, scripts/handover/chief-kit/fleet-manifest.sh copied verbatim)
 # so workers.sh's anchor resolution lands on it and reads its fixture .env only.
 set -uo pipefail
+export TRACKER=none FORGE=none
 REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
 PASS=0; FAIL=0
 W="$(mktemp -d -t config-ui-workers.XXXXXX)" || { echo "FAIL - mktemp" >&2; exit 1; }
