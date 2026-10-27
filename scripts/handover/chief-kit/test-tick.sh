@@ -1653,12 +1653,18 @@ contains 'a chief doc with no Live state section reads workerset=unknown (HIMMEL
 
 # --- unwatched= is scoped to THIS chief. The worker's environ carries
 # HIMMEL_CONSOLE_NAME (its launching chief); the chief's name is its doc stem. N302 belongs
-# to another chief (dropped), N303 to this one (kept), N301 is armed.
+# to another LIVE chief (dropped), N303 to this one (kept), N301 is armed.
+mkcmdline 134 claude --model claude-opus-5 -n other-chief work
+mk_pgrep_x "$W/bin-7811" 130 131 132 133 134
 printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=other-chief\0' > "$W/proc/131/environ"
 printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=chief\0' > "$W/proc/132/environ"
-o7811="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
-contains "(7811) another chief's worker is not unwatched, this chief's is" "$o7811" 'procs=1,unwatched=N303 '
-rm -f "$W/proc/131/environ" "$W/proc/132/environ"
+o7811="$(PATH="$W/bin-7811:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
+contains "(7811) another live chief's worker is not unwatched, this chief's is" "$o7811" 'procs=1,unwatched=N303 '
+# A named chief that is no longer a live session (a succession): the worker is inherited.
+printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=gone-chief\0' > "$W/proc/131/environ"
+o7811="$(PATH="$W/bin-7811:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
+contains '(7811) a worker whose named chief is gone stays unwatched (inherited)' "$o7811" 'procs=1,unwatched=N302+N303 '
+rm -f "$W/proc/131/environ" "$W/proc/132/environ" "$W/proc/134/cmdline"
 o7811="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
 contains '(7811) a worker with no readable owner stays unwatched (fail open)' "$o7811" 'procs=1,unwatched=N302+N303 '
 

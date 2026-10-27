@@ -1275,11 +1275,12 @@ leg_names_wrapped=",${leg_names},"
 # session with no aged wrapper never appears in it at all.
 # Another chief's workers are dropped: a worker's process environ carries
 # HIMMEL_CONSOLE_NAME (its launching chief), and the chief's name is its doc stem, so with
-# --doc a worker whose environ names a different chief is not this chief's to watch.
+# --doc a worker whose environ names a different, still-LIVE chief is not this chief's to
+# watch. A named chief that is no longer a live session (a succession) leaves the worker
+# listed: its owner is gone, so it is inherited.
 # ponytail: a worker whose environ is unreadable, or that names no chief, stays listed
-# (fail open: an unwatched worker must not be hidden); after a chief succession the
-# predecessor's workers still name the old chief and read as foreign here until a
-# relaunch re-stamps them.
+# (fail open: an unwatched worker must not be hidden); while a predecessor chief is still
+# alive its workers read as foreign here.
 unwatched_csv=""
 re_unwatched_label='^N[0-9]+[a-z]*$'
 this_chief=""
@@ -1292,7 +1293,9 @@ while IFS=$'\t' read -r u_name u_pid; do
     [[ $u_label =~ $re_unwatched_label ]] || continue
     if [ -n "$this_chief" ] && [ -n "$u_pid" ]; then
         u_owner="$(tr '\0' '\n' < "${CLAUDE_SESSIONS_PROC:-/proc}/$u_pid/environ" 2>/dev/null | sed -n 's/^HIMMEL_CONSOLE_NAME=//p' | head -n 1)" || u_owner=""  # swallow-ok: an unreadable environ keeps the worker listed
-        [ -z "$u_owner" ] || [ "$u_owner" = "$this_chief" ] || continue
+        if [ -n "$u_owner" ] && [ "$u_owner" != "$this_chief" ] && grep -Fxq -- "$u_owner" <<< "$census_names"; then
+            continue
+        fi
     fi
     unwatched_csv="$(csv_add "$unwatched_csv" "$u_label")"
 done <<< "$census_pairs"
