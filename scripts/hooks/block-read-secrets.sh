@@ -1739,8 +1739,6 @@ case "$tool" in
             echo "block-read-secrets: cannot load $_gee_lib - failing closed" >&2
             exit 2
         fi
-        guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
-
         # re-read the forms the shell actually runs (quotes
         # removed, wrappers stripped, `bash -c`/`eval` bodies) through this
         # same hook. The lib is a must-run dependency: if it cannot be
@@ -1766,6 +1764,21 @@ case "$tool" in
             fi
         fi
 
+        # The clause split (see below) is computed here, ahead of the recheck,
+        # so each re-run of this hook on a stripped or defaulted form
+        # (up to 2^5 of them) can skip the clauses this pass scans anyway
+        # instead of rescanning a long heredoc body every time.
+        # The list leads with this pass's GU_TOKENIZED so a re-run knows
+        # whether this pass also ran g4_clause on every clause.
+        normalized=$(sed -e 's/[;|&()`]/\
+/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
+        # ponytail: a command over 60 KB hands its re-runs no skip list (one
+        # exec argument is capped near 128 KB), so they rescan in full;
+        # upgrade path: a temp file for the list.
+        _rs_skip=
+        if [ "${#normalized}" -le 60000 ]; then _rs_skip=${GU_TOKENIZED:-0}$'\n'$normalized; fi
+        RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
+
         # Split the command into CLAUSES at shell separators so a reader and a
         # secret in UNRELATED parts of the command don't cross-trip (the old
         # global-OR did — it blocked any reader-named token anywhere plus any
@@ -1776,10 +1789,8 @@ case "$tool" in
         # and GNU sed; do NOT use GNU-only `\n` in the replacement). `<`/`>`
         # are spaced into their own tokens so a `< secretfile` redirect stays
         # detectable. Shell quoting is intentionally NOT parsed (see header).
-        # sed reads via `<<<` (no `printf` fork feeding it).
-        normalized=$(sed -e 's/[;|&()`]/\
-/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
-
+        # sed reads via `<<<` (no `printf` fork feeding it). `normalized` is
+        # built above, before the expansion recheck.
         block=0
         # the glued token that tripped glued_opt_secret, named in
         # the denial via glued_hint. Declared once (not per-clause) so it
@@ -1797,8 +1808,25 @@ case "$tool" in
         # Iterate clause-by-clause. bash 3.2-safe: a while-read heredoc, NOT
         # mapfile (bash 4) and NOT a for-loop over unquoted $normalized (which
         # would re-split on spaces and destroy clause boundaries).
+        # A re-run of this hook on an expansion-stripped form (the recheck above
+        # sets the depth and the list) skips a clause that equals the first
+        # pass's clause at the same index: scan_clause reads only the clause
+        # text and GU_TOKENIZED, and the first pass runs every check this one
+        # does, so it denies the clause if it would. A clause the expansion
+        # changed differs from its first-pass twin and is scanned, and so is
+        # every clause after a line the expansion merged (the indexes shift).
+        # Not skipped at all: a re-run that did not tokenize while the first
+        # pass did, since it adds g4_clause, which that pass did not run.
+        rs_base=() rs_skip_on=0 rs_ci=0
+        if [ -n "${RS_SKIP_CLAUSES:-}" ] && [ "${GUARD_EXPANSION_DEPTH:-0}" != 0 ] \
+            && { [ "${RS_SKIP_CLAUSES%%$'\n'*}" != 1 ] || [ "${GU_TOKENIZED:-0}" = 1 ]; }; then
+            rs_skip_on=1
+            while IFS= read -r clause; do rs_base[${#rs_base[@]}]=$clause; done <<<"${RS_SKIP_CLAUSES#*$'\n'}"
+        fi
         while IFS= read -r clause; do
+            rs_ci=$((rs_ci + 1))
             if [ -z "$clause" ]; then continue; fi
+            if [ "$rs_skip_on" = 1 ] && [ "${rs_base[rs_ci - 1]-}" = "$clause" ]; then continue; fi
             scan_clause "$clause" 0
         done <<EOF
 $normalized
