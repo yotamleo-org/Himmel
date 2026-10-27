@@ -507,6 +507,8 @@ bump_fixture "$W_REN/big" foo
 bump_quoted_edit "$W_REN/big"
 for i in $(seq 1 20000); do : > "$W_REN/big/$P/foo/$(printf 'z%0200d' "$i").md"; done
 (cd "$W_REN/big" && git add -A)
+big_bytes="$(git -C "$W_REN/big" -c core.quotePath=false diff --cached --name-only -- "$P" | wc -c)"
+if [ "$big_bytes" -gt 4194304 ]; then ok "--bump-required: big changed-path fixture exceeds 4 MiB"; else bad "--bump-required: big changed-path fixture is not over 4 MiB ($big_bytes bytes)"; fi
 bump_run "$W_REN/big"
 if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a quoted path ahead of a changed list over 4 MiB still fails closed"; else bad "--bump-required (staged): quoted path in a big list passed: $br_out"; fi
 rm -rf -- "$W_REN"
