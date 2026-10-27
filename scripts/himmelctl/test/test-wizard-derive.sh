@@ -62,6 +62,8 @@
 #      write, no plugin DRY line — only the HANDOVER_DIR preview line.
 #   R. a FAILED config write aborts fail-closed BEFORE the core install
 #      shell-out (adopt.sh never invoked).
+#   R2. a FAILED external handover directory aborts before the core install
+#       even when the config directory is valid.
 #   S. there is no plugin-enable step left to fail — a legacy
 #      pluginSet=full profile against a `claude` stub that always exits 1
 #      still succeeds (rc=0), because `claude` is never invoked at all.
@@ -932,6 +934,29 @@ grepq "$out" -E 'ENOTDIR:.*himmel\.conf' \
 [ -f "$fixtureR/adopt-calls.log" ] \
   && fail "caseR: a failed config write must abort BEFORE the core install shell-out (adopt.sh was invoked: $(cat "$fixtureR/adopt-calls.log"))"
 echo "ok: caseR a failed config write aborts fail-closed BEFORE the core install shell-out (rc!=0, adopt.sh never invoked)"
+
+# ── Case R2: a FAILED handover directory aborts BEFORE the core install ───
+stubR2="$work/caseR2"; mkdir -p "$stubR2"
+cR2=$(build_path "$stubR2" bash git jq python3 npm -- )
+hR2="$work/hR2"; mkdir -p "$hR2/.himmel"
+fixtureR2="$work/caseR2-fixture"; build_fixture "$fixtureR2"
+handoverParentR2="$work/caseR2-handover-parent"
+printf 'not a directory\n' > "$handoverParentR2"
+handoverTargetR2="$handoverParentR2/state"
+cacheR2="$work/caseR2-profile.json"
+write_cache "$cacheR2" adopter project none "" external "$(winpath "$handoverTargetR2")" lean
+set +e
+out=$(PATH="$cR2" HOME="$hR2" USERPROFILE="$(winpath "$hR2")" HIMMELCTL_CACHE_DIR="$(winpath "$hR2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hR2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
+      HIMMELCTL_REPO_ROOT="$(winpath "$fixtureR2")" \
+      "$node_bin" "$wizard" install --from-profile "$(winpath "$cacheR2")" \
+      </dev/null 2>&1); rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "caseR2: a failed handover directory should abort with non-zero rc (got rc=$rc): $out"
+grepq "$out" -F 'failed to create handover dir' \
+  || fail "caseR2: expected the handover directory failure message (got: $out)"
+[ -f "$fixtureR2/adopt-calls.log" ] \
+  && fail "caseR2: a failed handover directory must abort BEFORE the core install shell-out (adopt.sh was invoked: $(cat "$fixtureR2/adopt-calls.log"))"
+echo "ok: caseR2 a failed handover directory aborts BEFORE the core install (rc!=0, adopt.sh never invoked)"
 
 # ── Case T: malformed --from-profile replays -> rc=2, zero shell-outs (r5) ──
 stubT="$work/caseT"; mkdir -p "$stubT"
