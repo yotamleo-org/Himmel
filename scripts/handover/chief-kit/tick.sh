@@ -342,6 +342,14 @@ in a frozen version with no frozen-set membership and no admissions-ledger row. 
 (then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
 or the active version is not frozen. Read-only, and not part of chief-wait's wake key.
 
+pool=<open>/<in-flight>/<dispositioned>/<undispositioned> counts every open ticket
+of the current version from next-dispatchable.sh --dispositions. In-flight is
+included in dispositioned. A listed row or unexplained drop is not a decision.
+Live-state pool-disposition: KEY slice|close|question <named target> lines record
+explicit chief decisions. Malformed, duplicate or unknown decisions stay unresolved.
+--pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
+and unresolved keys by class; it does not take a tick or perform network reads.
+
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
 non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
@@ -369,8 +377,65 @@ on a wake-up budget and this reads every project's transcripts.
 USAGE
 }
 
+# One interpretation for both the tick and waiter; stdin is a complete
+# next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
+pool_dispositions() {
+    python3 -I - "$1" 3<&0 <<'PY'
+import re, sys
+rows = {}
+text = open(3).read()
+for line in text.splitlines():
+    m = re.fullmatch(r"# disposition ([A-Z]+-\d+) (.+)", line)
+    if m:
+        rows[m[1]] = m[2]
+decisions, invalid = {}, {}
+if sys.argv[1]:
+    try:
+        doc = open(sys.argv[1]).read().splitlines()
+    except OSError:
+        print("# pool-counts ?")
+        sys.exit(0)
+    live = False
+    for line in doc:
+        if line.startswith("## "):
+            live = line == "## Live state"
+        if not live or not line.startswith("pool-disposition:"):
+            continue
+        value = line.split(":", 1)[1].strip()
+        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
+        key = value.split()[0] if value else "?"
+        if not m or key not in rows or key in decisions or key in invalid:
+            invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        else:
+            decisions[key] = value
+if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
+    print("# pool-counts ?")
+    sys.exit(0)
+inflight = disposed = 0
+unresolved = []
+for key, reason in rows.items():
+    owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
+    inflight += int(owned)
+    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
+    blocker = reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?!Done,|Closed,)[^()]+, live\)", reason))
+    if key in invalid:
+        unresolved.append(("invalid", key, invalid[key]))
+    elif owned or holder or blocker or key in decisions:
+        disposed += 1
+    else:
+        unresolved.append((reason.split()[0], key, reason))
+print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
+for cls, key, reason in sorted(unresolved):
+    print("# pool-unresolved %s %s %s" % (cls, key, reason))
+for key, reason in sorted(invalid.items()):
+    if key not in rows:
+        print("# pool-unresolved invalid %s %s" % (key, reason))
+PY
+}
+
 verbose=0
 burn=0
+pool_mode=0
 emit_fp=0
 ready_mode=0
 ready_dir=""
@@ -386,6 +451,7 @@ while [ "$#" -gt 0 ]; do
         --burn) burn=1; shift ;;
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
+        --pool-dispositions) pool_mode=1; shift ;;
         --doc|--token|--workers|--workers-from|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
             case "$1" in --legs) legacy_flag --legs --workers || { usage >&2; exit 2; } ;; --legs-from) legacy_flag --legs-from --workers-from || { usage >&2; exit 2; } ;; esac
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
@@ -404,6 +470,8 @@ while [ "$#" -gt 0 ]; do
         *) usage >&2; exit 2 ;;
     esac
 done
+
+if [ "$pool_mode" -eq 1 ]; then pool_dispositions "$DOC"; exit $?; fi
 
 # queue-lock.sh is a child process and must resolve the same external root when
 # --handover-dir (rather than an already-exported env var) supplied it.
@@ -1864,6 +1932,19 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
+pool_summary=skip
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
+    [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
+    if pd_rows="$(timeout -k 2 60 bash "$HERE/next-dispatchable.sh" "${pd_args[@]}" 2>/dev/null)"; then  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed snapshot reads unknown below, never an all-clear
+        pd_summary="$(printf '%s\n' "$pd_rows" | pool_dispositions "$console_doc")"
+        pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
+        [ -n "$pool_summary" ] || pool_summary='?'
+    else
+        pool_summary='?'
+    fi
+fi
+
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in chief-wait's wake key.
 pool_closed=skip
@@ -2852,6 +2933,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
+    printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
@@ -2910,6 +2992,7 @@ else
     compact_field vault "$vault_summary"
     compact_field cloud "$cloud_summary"
     compact_field orphans-wip "$orphans_wip"
+    compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"

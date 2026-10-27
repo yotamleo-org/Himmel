@@ -223,6 +223,27 @@ html="$(cat "$board" 2>/dev/null)"
 lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'leg labels unavailable'
 lacks 'a healthy label lookup renders no unavailable banner (HIMMEL-3369)' "$html" 'labels-unavailable'
 
+# Current-version pool counts come from the tick, not a second Jira census.
+cat > "$W/bin/tick-stub-pool" <<'STUB'
+#!/usr/bin/env bash
+"$(dirname "$0")/tick-stub" "$@" | sed "s|^TICK .*|& pool=$TICK_STUB_POOL|"
+STUB
+chmod +x "$W/bin/tick-stub-pool"
+run_pool() {
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-pool" TICK_STUB_POOL="$1" TICK_ARGV_LOG="$W/argv-pool.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$W/pool-board.html" --json "$W/pool-board.json" --changed 2>"$W/stderr.log"
+}
+run_pool 56/4/21/35 >/dev/null
+pool_html="$(cat "$W/pool-board.html")"
+contains 'current-version pool shows open, in flight, dispositioned and undispositioned' "$pool_html" '56 open · 4 in flight · 21 dispositioned · 35 undispositioned'
+contains 'pool counts are also in the board model' "$(node -p "JSON.stringify(JSON.parse(require('fs').readFileSync('$W/pool-board.json')).pool)")" '{"open":56,"in_flight":4,"dispositioned":21,"undispositioned":35}'
+contains 'pool-only changes make --changed report CHANGED' "$(run_pool 56/4/22/34)" 'CHANGED '
+contains 'unchanged pool counts stay quiet' "$(run_pool 56/4/22/34)" 'UNCHANGED '
+run_pool '?' >/dev/null
+contains 'unavailable pool is never presented as zero unresolved' "$(cat "$W/pool-board.html")" 'version pool unavailable'
+
 # --- secrets: a board is published to a URL, so no nonce or lock token may reach it
 for secret in aaaa1111 bbbb2222 cccc3333 dddd4444 eeee5555 ffff6666 pid111111 pid222222 pid333333 pid830420 pid4242 'V-N1-' 'x8664' abcdef12 cafe0123 'AA-N1-' aaaa0808 bbbb0909 aaaa1616 aaaa1313 aaaa1818 cafe1919 pid808080 pid181818 aaaa1212 pid121212; do
     lacks "no nonce/lock-token text in the board: $secret" "$html" "$secret"
@@ -1341,7 +1362,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='1ffa109dab23d347328091a2a8b79bc9d13d0519ab2a936ae868979fe2e5ee13'  # the card gained its description line
+GOLDEN_OPERATOR_SHA='7f18b45bb435aa3e86be23191f05292ab6c7a0206bc7a0e7a9eb158893e05c39'  # current-version pool availability and fingerprint
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"

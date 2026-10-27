@@ -199,9 +199,17 @@ bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>`
 ## Standing rules
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
-- **Idle capacity is a duty.** `WAKE underfilled`: `gen-briefs.py` the pool,
-  launch `<slack>`; `POOL-EMPTY`: unblock, draft specs, `NEXT-TIER` if ruled;
-  `capacity=unknown` = census failed. [prose]
+- **Idle capacity is a duty.** `WAKE underfilled` or `WAKE pool-unresolved`:
+  disposition **every listed key**, including dropped tickets, before idling.
+  Dispatch (`gen-briefs.py`, launch `<slack>`), slice to a named ticket, close
+  shipped work, or name an operator question; only an owner/in-flight ticket or
+  a named live blocker/file holder already has a disposition. A listed candidate,
+  generic BLOCKED/drop label or `POOL-EMPTY` is not one. Record each other decision
+  in `## Live state` as `pool-disposition: <KEY> slice|close|question <named target>`
+  (one line per key; remove it when stale). Unknown, duplicate and malformed lines
+  stay unresolved. `pool=<open>/<in-flight>/<dispositioned>/<undispositioned>`
+  includes in-flight in dispositioned; unresolved keys re-wake on the bounded
+  pool-probe cadence even with a full fleet. `capacity=unknown` = census failed. [prose]
 - **A worker's BLOCKED, permission prompt, or question comes to the chief first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite

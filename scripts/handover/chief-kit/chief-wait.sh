@@ -34,6 +34,11 @@
 #                               dispatchable=<n>, the count of dispatchable To Do
 #                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
+#   WAKE pool-unresolved capacity=<value> pool=<open>/<in-flight>/<dispositioned>/<undispositioned>
+#                               --dispositions still has unresolved tickets: list their keys
+#                               by class, even at full capacity; re-wake on the bounded
+#                               pool-probe cadence until every ticket has a disposition.
+#                               tick.sh --pool-dispositions owns the interpretation.
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
@@ -680,16 +685,23 @@ unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
     local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}"
-    pool_lf=(); pool_out=""; pool_sig=""
+    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""
     [ -r "$dispatch_cmd" ] || return 0
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live legs' files must reach the collision check
-    pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
+    pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
     pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
+    pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
+    pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
+    pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
 }
 underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" extra="" count=""
+    local back="" extra="" count="" wake=underfilled
+    if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
+    else
+        case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
+    fi
     # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
     # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
     if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
@@ -701,8 +713,9 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
             { print }')"
         count="$(printf '%s\n%s\n' "$pool_out" "$back" | awk -F'\t' '$1 ~ /^(LOCAL\??|CLOUD)$/ && $2 ~ /^[A-Z]+-[0-9]+$/ { k[$2] = 1 } END { n = 0; for (i in k) n++; print n }')"
     fi
-    printf 'WAKE underfilled capacity=%s%s\n%s\n' "$cap_val" "${count:+ dispatchable=$count}" "$tick_line"
+    printf 'WAKE %s capacity=%s%s%s\n%s\n' "$wake" "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
+    [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
@@ -717,6 +730,10 @@ underfill_repool() {
     saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
     heartbeat sampling
     pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
+    if [ -n "$pool_unresolved" ]; then
+        printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+        return 0
+    fi
     if [ -n "$pool_out" ] && [ "$pool_sig" != "$saved_sig" ]; then
         printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
         [ -n "$pool_sig" ] && return 0
@@ -1218,14 +1235,24 @@ while :; do
                     if [ ! -e "$underfill_file" ]; then
                         pool_probe
                         printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
-                        underfill_wake
-                        exit_reason='wake-underfilled'; exit 0
+                        if underfill_wake; then exit_reason='wake-pool'; exit 0; fi
                     elif underfill_repool; then
-                        underfill_wake
-                        exit_reason='wake-underfilled'; exit 0
+                        if underfill_wake; then exit_reason='wake-pool'; exit 0; fi
                     fi ;;
-                ok) rm -f "$underfill_file" ;;
+                *)
+                    rm -f "$underfill_file"
+                    # Even a full fleet may have silently dropped version tickets.
+                    pool_watch="$inbox.wait.pool"
+                    if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
+                        pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
+                        touch "$pool_watch" 2>/dev/null
+                        if [ -n "$pool_unresolved" ]; then
+                            underfill_wake
+                            exit_reason='wake-pool-unresolved'; exit 0
+                        fi
+                    fi ;;
             esac
+            case "$cap_val" in UNDERFILLED:*) rm -f "$inbox.wait.pool" ;; esac
             unowned_val="$(field unowned-prs "$tick_line")"
             case "$unowned_val" in
                 '') unowned_none_streak=0 ;;

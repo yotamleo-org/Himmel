@@ -463,7 +463,7 @@ fi
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
+expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip pool=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -2991,6 +2991,44 @@ owj="$(ow_of "$(OW_MERGED_ROWS="$OW_MERGED_ROWS" OW_PR_ROWS='4401\tfix: [HIMMEL-
 owk="$(ow_of "$(OW_MERGED_FAIL=1 ow_tick)")"
 [ "$owk" = "?" ] && pass 'orphans-wip= is ? when the merged-PR read fails, not an all-clear' || fail "orphans-wip= on merged read failure is '$owk'"
 OW="$OW_SAVE"
+
+# The same read-only interpreter serves the tick field and the waiter's wake.
+pd_doc="$W/handover/pool-chief.md"
+printf '%s\n' '# chief' '' '## Live state' \
+    'pool-disposition: HIMMEL-4 question operator decision 268' \
+    'pool-disposition: HIMMEL-5 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-6 close PR 3905' \
+    'pool-disposition: HIMMEL-7 question' \
+    'pool-disposition: HIMMEL-999 question operator decision 268' \
+    '' '## Results' 'pool-disposition: HIMMEL-8 question not live state' > "$pd_doc"
+printf '%s\n' \
+    '# disposition HIMMEL-1 in-flight owned by worker N1' \
+    '# disposition HIMMEL-2 collision scripts/a.sh held by PR #20' \
+    '# disposition HIMMEL-3 blocker HIMMEL-900 (In Progress, live)' \
+    '# disposition HIMMEL-4 label operator-decision' \
+    '# disposition HIMMEL-5 classification BLOCKED: broad task' \
+    '# disposition HIMMEL-6 listed MERGED-NOT-CLOSED' \
+    '# disposition HIMMEL-7 listed LOCAL' \
+    '# disposition HIMMEL-8 below --top 7' \
+    '# disposition HIMMEL-9 blocker HIMMEL-901 (not in mirror)' \
+    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' > "$W/pool.rows"
+pd_out="$(bash "$SUT" --pool-dispositions --doc "$pd_doc" < "$W/pool.rows" 2>/dev/null)"
+contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 10/1/6/4'
+contains 'malformed chief decisions remain named and unresolved' "$pd_out" '# pool-unresolved invalid HIMMEL-7 '
+contains 'a non-Live-state decision never dispositions a key' "$pd_out" '# pool-unresolved below HIMMEL-8 '
+contains 'an unread blocker is not a named live blocker' "$pd_out" '# pool-unresolved blocker HIMMEL-9 '
+contains 'a listed candidate is not a live file holder' "$pd_out" '# pool-unresolved collision HIMMEL-10 '
+contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '# pool-unresolved invalid HIMMEL-999 '
+
+PD="$W/pd-mirror/HIMMEL"; mkdir -p "$PD"
+for n in 901 902 904; do sed 's/fixVersions: \[\]/fixVersions: ["v1.1.3"]/' "$OW/HIMMEL-$n.md" > "$PD/HIMMEL-$n.md"; done
+printf 'v1.1.3\tfalse\t\n' > "$W/pd-mirror/HIMMEL.versions.tsv"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-904 question operator decision 268\n' > "$pd_doc"
+# shellcheck disable=SC2016  # the fixture expands arguments when the classifier runs
+printf '#!/bin/sh\nfor k in "$@"; do printf "%%s\\tLOCAL-NATIVE\\tstub\\n" "$k"; done\n' > "$W/pd-classify"
+chmod +x "$W/pd-classify"
+pd_tick="$(NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TOKEN='' bash "$SUT" --doc "$pd_doc" 2>/dev/null)"
+contains 'a real tick uses the shared pool interpretation with PR ownership and chief decisions' "$pd_tick" ' pool=3/1/2/1 '
 
 # --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
 mk_ow 911 "Done" Task
