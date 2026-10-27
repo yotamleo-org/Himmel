@@ -3225,7 +3225,7 @@ if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ];
             if [ -n "$_lim_rec" ]; then
                 while read -r _lim_at; do
                     [ -n "$_lim_at" ] || continue
-                    if ! [[ "$_lim_at" < "$_lim_rec" ]]; then
+                    if ! [[ "$_lim_at" < "$_lim_rec" ]]; then  # read-sink-ok: string comparison of two timestamps, no file is read
                         echo "arm-resume: limit-resume key $TASK_NAME:$LIMIT_RESET already fired ($_lim_at) -- replay is a no-op (--force re-arms)"
                         exit 0
                     fi
