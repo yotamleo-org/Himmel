@@ -3520,15 +3520,6 @@ if [ "$list_only" -eq 0 ]; then
   # "Exit codes:" block at the top of this file. Propagate it verbatim rather
   # than collapsing both refusal shapes back into one hardcoded exit 2.
   [ "$lock_rc" -eq 0 ] || exit "$lock_rc"
-  # Then one slot of the machine-wide suite budget for the whole
-  # sweep (the scan lock above only serialises sweeps of THIS tree). Busy = 75;
-  # a runner under quiet-run's slot is its descendant and re-enters.
-  # shellcheck source=../lib/suite-semaphore.sh
-  # shellcheck disable=SC1091
-  . "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
-  sem_rc=0
-  suite_sem_acquire run-shell-tests "bash scripts/ci/run-shell-tests.sh <same arguments>" || sem_rc=$?
-  [ "$sem_rc" -eq 0 ] || exit "$sem_rc"
   # First re-stat. A queued run can sit in the wait loop for
   # hours before this line; the tree it is about to walk may not have survived.
   scan_root_abort_if_vanished
@@ -4837,6 +4828,42 @@ _lanes_stop() {
     lane_pid[_i]=""
   done
 }
+
+# Record the selected plan, not raw discovery, so a long-held slot names the
+# work it actually covers. The scan lock is already held; no suite has run yet.
+if [ "$list_only" -eq 0 ]; then
+  slot_suite_count=0
+  slot_run_index=0
+  while IFS= read -r slot_suite <&4; do
+    [ -n "$slot_suite" ] || continue
+    slot_rel="${slot_suite#"${scan}"/}"
+    if suite_filter_reason "$slot_rel" "${scan_resolved}/${slot_rel}"; then
+      continue
+    fi
+    if [ "$shard_total" -gt 0 ]; then
+      if [ "$shard_binpack" -eq 1 ]; then
+        case "$shard_assignment" in
+          *"${_shard_nl}${slot_suite}${_shard_nl}"*) slot_suite_count=$((slot_suite_count + 1)) ;;
+        esac
+      elif [ "$((slot_run_index % shard_total))" -eq "$shard_offset" ]; then
+        slot_suite_count=$((slot_suite_count + 1))
+      fi
+    else
+      slot_suite_count=$((slot_suite_count + 1))
+    fi
+    slot_run_index=$((slot_run_index + 1))
+  done 4< "$suites_file"
+  # One machine-wide budget slot for the sweep. A quiet-run descendant
+  # re-enters its ancestor's slot without replacing that holder's detail.
+  # shellcheck source=../lib/suite-semaphore.sh
+  # shellcheck disable=SC1091
+  . "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
+  sem_rc=0
+  HIMMEL_SUITE_SLOT_DETAIL="worker=${HIMMEL_BUS_NAME:-${REPO_ROOT##*/}} range=${impacted_range:-all} suites=$slot_suite_count" \
+    suite_sem_acquire run-shell-tests "bash scripts/ci/run-shell-tests.sh <same arguments>" || sem_rc=$?
+  [ "$sem_rc" -eq 0 ] || exit "$sem_rc"
+  scan_root_abort_if_vanished
+fi
 
 while IFS= read -r suite <&3; do
   [ -n "$suite" ] || continue
