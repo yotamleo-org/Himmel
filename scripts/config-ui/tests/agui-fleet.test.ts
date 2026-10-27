@@ -75,6 +75,19 @@ test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", asyn
   expect((await (await fleet(port)).json()).processOrphans).toBeNull();
 });
 
+// a worker row carries worker_description (worker-identity.sh) beside its unchanged label: the doc's
+// description field, else the H1 (the whole stem-like title here); a session with no doc has none. TRACKER/FORGE pinned off so no row reaches Jira or GitHub.
+test("a worker row carries its description and its name is unchanged; a session with no doc has none", async () => {
+  const { port, dir } = boot({ TRACKER: "none", FORGE: "none" });
+  const doc = join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`);
+  writeFileSync(doc, `---\ndescription: Show each worker's description on the fleet page\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
+  expect(by[FLEET.leg.name].description).toBe("Show each worker's description on the fleet page");
+  expect(by[FLEET.leg.name].name).toBe(FLEET.leg.name);
+  expect(by[FLEET.wrapped.name].description).toBe(FLEET.wrapped.name); // no field: the H1
+  expect(by[FLEET.idle.name].description).toBe("");
+});
+
 test("a session whose journal went quiet past the window is not listed; one with no journal is listed bare", async () => {
   const s = boot();
   const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000;

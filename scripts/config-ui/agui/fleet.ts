@@ -55,6 +55,8 @@ export type FleetRow = {
   // the doc's last Results marker (worker_tail_status), the doc's last write, and the PR's URL.
   marker: string | null; lastSeenAt: number | null; prUrl: string | null;
   bus: BusCounts;
+  // worker_description (worker-identity.sh) for the row's doc, tabs and newlines folded; "" when it has no doc or the lookup failed.
+  description: string;
 };
 // unacked: rulings (c=1) sent to the row that it has not answered; undelivered: messages it has not yet seen;
 // unbound: registered with the bus but never bound to a process.
@@ -212,9 +214,29 @@ async function cloudRows(logs: string[], env: Record<string, string | undefined>
       parent: await consoleOf(r), predecessor: null, agents: [], usage: null, cloud: { url: p.url, phase: p.phase },
       runtime: p.phase === "merged" || p.phase === "closed" ? null : { startedAt: r.at, endedAt: null, elapsedMs: Math.max(0, now - r.at) },
       console: await consoleOf(r), live: p.phase !== "merged" && p.phase !== "closed", lock: "unknown", lane: "cloud", laneFrom: null, backendModel: null, cost: null, eval: null,
-      marker: null, lastSeenAt: null, prUrl: null, bus: NO_BUS,
+      marker: null, lastSeenAt: null, prUrl: null, bus: NO_BUS, description: "",
     };
   }));
+}
+
+// A row's description is the resolver's (the doc's field, the ticket title, the PR title, the H1, the stem), read by
+// one bash call per request for every doc not already cached on its mtime; never a second derivation here. A failed
+// lookup leaves the description empty and the name alone on its row.
+const descs = new Map<string, { mtime: number; text: string }>();
+async function describe(docs: string[], script: string, env: Record<string, string | undefined>): Promise<(doc: string) => string> {
+  const mtimeOf = async (f: string) => stat(f).then((s) => s.mtimeMs, () => 0);
+  const todo = [];
+  for (const f of new Set(docs)) if (f && descs.get(f)?.mtime !== (await mtimeOf(f))) todo.push(f);
+  if (todo.length) {
+    const lib = join(dirname(script), "../lib/worker-identity.sh");
+    const out = await new Promise<string | null>((ok) => {
+      execFile("bash", ["-c", 'source "$1" || exit 1; shift; for f in "$@"; do worker_description "$f" | tr -s "\\t\\n" "  "; printf "\\n"; done', "bash", lib, ...todo],
+        { env: env as NodeJS.ProcessEnv, timeout: SCRIPT_TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout) => ok(err ? null : stdout));
+    });
+    const lines = out?.split("\n") ?? [];
+    for (const [i, f] of todo.entries()) if (lines[i]) descs.set(f, { mtime: await mtimeOf(f), text: lines[i].trim() });
+  }
+  return (doc) => descs.get(doc)?.text ?? "";
 }
 
 const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
@@ -355,6 +377,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       }
     } catch { /* malformed or unreadable manifest: no edge */ }
   }
+  const descOf = await describe([...census.sessions.map((c) => c.doc), ...(census.consoleDocs ?? [])], opts.script, opts.env);
   const seen = new Set<string>();
   const rows = await Promise.all(census.sessions.map(async (c): Promise<FleetRow | null> => {
     let launch: Record<string, string> = {};
@@ -413,7 +436,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
       ...graph, parent, console: role === "console" ? name : parent, live, lock,
-      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
+      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS, description: descOf(c.doc),
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
       cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && !wrapped ? codex : null }) : null,
@@ -436,7 +459,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
         lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
-        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS,
+        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: descOf(file),
       });
     } catch { /* archived console moved or unreadable */ }
   }
