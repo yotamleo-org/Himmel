@@ -390,8 +390,7 @@ fi
 
 # --- a torn JSONL tail ------------------
 # An interrupted earlier append leaves the file ending mid-line. Appending onto
-# it would concatenate the new JSON into that partial line — consumers
-# (fleet-control/aggregator/escalations.ts jsonl()) skip the combined invalid
+# it would concatenate the new JSON into that partial line — JSONL readers skip the combined invalid
 # line, while deny_recorded still tells the worker the report was saved. The new
 # record must land as its own independently parseable line.
 TORN_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-torn-8"

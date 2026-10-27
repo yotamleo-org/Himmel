@@ -442,24 +442,19 @@ if [ "$rc" -eq 1 ] && grepq "$out" 'ambiguous'; then pass "a line naming two run
 # observability node tests. The guard prefixes are extracted from the REAL
 # ci.yml and executed in a scratch tree, so the row tracks the live step text.
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
-bun_guard="$(sed -nE 's/^[ -]*run:(.*) && (bun test scripts\/fleet-control |bash scripts\/ci\/run-bun-tests\.sh scripts\/fleet-control\+observability ).*/\1/p' "$CI_YML")"
+bun_guard="$(sed -nE 's/^[ -]*run:(.*) && bash scripts\/ci\/run-bun-tests\.sh scripts\/observability .*/\1/p' "$CI_YML")"
 node_guard="$(sed -n 's/^[ -]*run:\(.*\) && node --test .*scripts\/observability\/\*\.test\.mjs.*/\1/p' "$CI_YML")"
 if [ -n "$bun_guard" ]; then pass "bun step's presence guard extracted from real ci.yml"; else fail "bun step guard not found in ci.yml"; fi
 if [ -n "$node_guard" ]; then pass "node step globs scripts/observability/*.test.mjs in real ci.yml"; else fail "node step does not glob scripts/observability/*.test.mjs"; fi
 GT="$FX/guard-tree"
 guard_rc() { ( cd "$GT" && bash -c "$1" >/dev/null 2>&1 ); }
-rm -rf "$GT"; mkdir -p "$GT/scripts/fleet-control/tests" "$GT/scripts/observability"
-: > "$GT/scripts/fleet-control/tests/a.test.ts"
+rm -rf "$GT"; mkdir -p "$GT/scripts/observability"
 : > "$GT/scripts/observability/.gitkeep"
 guard_rc "$bun_guard"; rc=$?
 if [ "$rc" -ne 0 ]; then pass "bun guard fails when observability has no test files"; else fail "bun guard passed with an empty observability dir"; fi
 : > "$GT/scripts/observability/a.test.ts"
-rm -f "$GT/scripts/fleet-control/tests/a.test.ts"
 guard_rc "$bun_guard"; rc=$?
-if [ "$rc" -ne 0 ]; then pass "bun guard fails when fleet-control has no test files"; else fail "bun guard passed with an empty fleet-control dir"; fi
-: > "$GT/scripts/fleet-control/tests/a.test.ts"
-guard_rc "$bun_guard"; rc=$?
-if [ "$rc" -eq 0 ]; then pass "bun guard passes when both directories have tests"; else fail "bun guard failed with both populated: rc=$rc"; fi
+if [ "$rc" -eq 0 ]; then pass "bun guard passes when observability has tests"; else fail "bun guard failed with observability populated: rc=$rc"; fi
 rm -f "$GT"/scripts/observability/*.test.*
 : > "$GT/scripts/op-env-parity.test.mjs"
 guard_rc "$node_guard"; rc=$?

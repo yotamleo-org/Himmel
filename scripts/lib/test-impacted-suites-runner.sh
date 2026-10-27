@@ -19,6 +19,14 @@ failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
+retired="fleet""-control"
+references=$(git -C "$REPO_ROOT" grep -l "$retired" -- .github scripts); rc=$?
+if [ "$rc" -eq 1 ] && [ ! -e "$REPO_ROOT/scripts/$retired" ]; then
+    pass "the retired fleet page has no source directory or source/CI references"
+else
+    fail "the retired fleet page still exists or has source/CI references (grep rc=$rc): $references"
+fi
+
 assert_runner() {
     local label="$1" path="$2" expect="$3" out rc
     out=$(bash "$IS" --runner "$path" 2>/dev/null); rc=$?
@@ -85,7 +93,7 @@ assert_runner "marketplace/plugins/telegram-himmel .test.ts -> bun test, own cwd
     "cd marketplace/plugins/telegram-himmel && bun test tests/foo.test.ts"
 
 # --- unmapped path: refuse, never guess -----------------------------------
-out=$(bash "$IS" --runner scripts/fleet-control/tests/foo.test.mjs 2>&1 >/dev/null); rc=$?
+out=$(bash "$IS" --runner scripts/unmapped-runner/tests/foo.test.mjs 2>&1 >/dev/null); rc=$?
 if [ "$rc" -ne 0 ] && [ -n "$out" ]; then
     pass "unmapped path refuses (rc=$rc) with a message"
 else
@@ -120,12 +128,12 @@ if fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites-fixture.XXXXXX"); th
 jobs:
   test:
     steps:
-      - run: node --test scripts/fleet-control/tests/foo.test.mjs
+      - run: node --test scripts/unmapped-runner/tests/foo.test.mjs
 EOF
     out=$(cd "$fixture_dir" && bash "$IS" --runner-check 2>&1 >/dev/null); rc=$?
     rm -rf "$fixture_dir"
     case "$out" in
-        *fleet-control*) matched=1 ;;
+        *unmapped-runner*) matched=1 ;;
         *) matched=0 ;;
     esac
     if [ "$rc" -ne 0 ] && [ "$matched" -eq 1 ]; then
