@@ -61,7 +61,7 @@ assert pct(1, 1) == {"lo": 20.7, "hi": 100.0}, pct(1, 1)
 seen = []
 pct.__globals__["wilson"] = lambda *a, **kw: seen.append((a, kw)) or {"lo": 0.1, "hi": 0.2}
 assert pct(3, 7) == {"lo": 10.0, "hi": 20.0}, pct(3, 7)
-assert seen and seen[0][0] == (3, 7), seen
+assert seen == [((3, 7), {"digits": None})], seen
 '''
         result = subprocess.run(
             [sys.executable, "-I", "-c", code, str(LIB.parent.parent / "cr/evals-page-gen.py")],
