@@ -1090,6 +1090,22 @@ case "$_worker_rcwd" in
         echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree. Create it first, from the repo's primary checkout: bash scripts/worktree.sh new ${_worker_wt_base/+//} --no-prune" >&2
         exit 2
     fi
+    # With no repo override, a worktree of ANOTHER repo in the handover registry is the
+    # session cwd: without it the session starts in the harness checkout and a step can
+    # run against the wrong tree. himmel's own worktrees, an unregistered repo and
+    # --consult (which refuses a worktree cwd) launch as before.
+    # ponytail: registered = the registry lists the worktree's primary checkout, upgrade
+    # path: read himmel-adopted.json once it carries local repo paths.
+    if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ]; then
+        _worker_rc_common="$(git_clean -C "$_worker_rcwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_rc_common="" # swallow-ok: empty means no registry match, the launch keeps the harness cwd
+        _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: empty leaves the harness cwd rule to the registry match alone
+        if [ -n "$_worker_rc_common" ] && [ "$_worker_rc_common" != "$_worker_self_common" ] \
+            && bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; then
+            HEADED_ARM_REPO="$_worker_wt_phys"
+            export HEADED_ARM_REPO
+        fi
+        unset -v _worker_rc_common _worker_self_common
+    fi
     ;;
 esac
 # the judge's own doc and qid, resolved while _worker_phys_path
