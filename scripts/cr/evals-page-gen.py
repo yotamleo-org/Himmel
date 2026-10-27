@@ -70,7 +70,7 @@ def pct1(x):
 
 def wilson_pct(k, n):
     """95% Wilson score interval for k of n, in percent to one decimal."""
-    c = wilson(k, n)
+    c = wilson(k, n, digits=None)
     return None if c is None else {"lo": pct1(c["lo"]), "hi": pct1(c["hi"])}
 
 

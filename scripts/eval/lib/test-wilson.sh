@@ -48,6 +48,27 @@ class WilsonTest(unittest.TestCase):
     def test_explicit_z(self):
         self.assertEqual(self.interval(5, 10, z=1), {"lo": 0.3492, "hi": 0.6508})
 
+    def test_unrounded_bounds(self):
+        lo = self.interval(1, 1, digits=None)["lo"]
+        self.assertAlmostEqual(lo, 0.20655, places=5)
+        self.assertNotEqual(lo, round(lo, 4))
+
+    def test_evals_page_percent_delegates_without_double_rounding(self):
+        code = '''import runpy, sys
+scope = runpy.run_path(sys.argv[1])
+pct = scope["wilson_pct"]
+assert pct(1, 1) == {"lo": 20.7, "hi": 100.0}, pct(1, 1)
+seen = []
+pct.__globals__["wilson"] = lambda *a, **kw: seen.append((a, kw)) or {"lo": 0.1, "hi": 0.2}
+assert pct(3, 7) == {"lo": 10.0, "hi": 20.0}, pct(3, 7)
+assert seen and seen[0][0] == (3, 7), seen
+'''
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", code, str(LIB.parent.parent / "cr/evals-page-gen.py")],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_callers_share_helper_from_own_and_unrelated_directories(self):
         code = '''import runpy, sys
 scope = runpy.run_path(sys.argv[1])
