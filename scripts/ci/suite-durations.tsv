@@ -621,6 +621,7 @@ scripts/hooks/test-block-subagent-park.sh	0
 scripts/hooks/test-block-tail-pipe-on-gates.sh	19
 scripts/hooks/test-block-terminal-write-fence.sh	8
 scripts/hooks/test-block-unresolved-cr-merge.sh	406
+scripts/hooks/test-block-write-into-main-checkout-adopted.sh	7
 scripts/hooks/test-block-write-into-main-checkout-ast.sh	1
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	50
 scripts/hooks/test-block-write-into-main-checkout-evaldata.sh	151
