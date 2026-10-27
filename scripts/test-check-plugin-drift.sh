@@ -382,6 +382,7 @@ rm -rf -- "$W_BUMP"
 #       the gate. Each case seeds a throwaway repo with plugin `foo` (0.1.0),
 #       applies <mutation> and stages it, then runs the staged gate.
 bump_fixture() { # <dir> <plugin-dir-name>
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
   (
     set -e
     mkdir -p "$1" && cd "$1"
@@ -500,14 +501,14 @@ bump_quoted_edit "$W_REN/rq"
 bump_range_run "$W_REN/rq"
 if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (range):RED — a git-quoted changed path fails closed"; else bad "--bump-required (range): quoted path passed: $br_out"; fi
 
-# (j) the same quoted path first in a changed list over 64 KiB: the guard must
+# (j) the same quoted path first in a changed list over 4 MiB: the guard must
 # not depend on a pipe reader that can exit early and SIGPIPE the writer.
 bump_fixture "$W_REN/big" foo
 bump_quoted_edit "$W_REN/big"
-for i in $(seq 1 1100); do : > "$W_REN/big/$P/foo/$(printf 'z%070d' "$i").md"; done
+for i in $(seq 1 20000); do : > "$W_REN/big/$P/foo/$(printf 'z%0200d' "$i").md"; done
 (cd "$W_REN/big" && git add -A)
 bump_run "$W_REN/big"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a quoted path ahead of a changed list over 64 KiB still fails closed"; else bad "--bump-required (staged): quoted path in a big list passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a quoted path ahead of a changed list over 4 MiB still fails closed"; else bad "--bump-required (staged): quoted path in a big list passed: $br_out"; fi
 rm -rf -- "$W_REN"
 
 # Two PRs edit himmel-ops from the same base, as #2331/#2334 did (and #3670,
