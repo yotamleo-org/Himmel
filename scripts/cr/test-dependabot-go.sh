@@ -36,6 +36,10 @@ case "$*" in
     "repo view"*) printf 'o/r\n' ;;
     "api --paginate"*"/files"*previous_filename*) printf '%s\n' "${STUB_PREV:-}" ;;
     "api --paginate"*"/files"*) printf '%s\n' "$STUB_FILES" ;;
+    "pr list"*) printf '%s\n' "${STUB_LIST:-}" ;;
+    "pr checks"*) printf '%s\n' "${STUB_CHECKS:-}" ;;
+    "pr diff"*) printf '%s\n' "${STUB_DIFF:-+numpy==2.5.4}" ;;
+    "pr merge"*) printf '%s\n' "$*" >> "$STUB_MERGED" ;;
     *) exit 91 ;;
 esac
 STUB
@@ -73,8 +77,8 @@ SHA=9d87a2790a6b7d12146a113a17ad8a612446fba1
 OTHER=1111111111111111111111111111111111111111
 BRANCH=dependabot/pip/marketplace/plugins/obsidian-triage/tools/numpy-2.5.4
 FILE=marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt
-pr_json() { # pr_json <login> <state> <head> <changedFiles>
-    printf '{"author":{"is_bot":true,"login":"%s"},"changedFiles":%s,"headRefName":"%s","headRefOid":"%s","state":"%s"}' "$1" "$4" "$BRANCH" "$3" "$2"
+pr_json() { # pr_json <login> <state> <head> <changedFiles> [mergeStateStatus]
+    printf '{"author":{"is_bot":true,"login":"%s"},"changedFiles":%s,"headRefName":"%s","headRefOid":"%s","mergeStateStatus":"%s","state":"%s"}' "$1" "$4" "$BRANCH" "$3" "${5:-CLEAN}" "$2"
 }
 reset() {
     export STUB_PR_JSON; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1)"
@@ -199,6 +203,120 @@ check    "4: a short head -> exit 2" "$rc" "2"
 ALLOW='(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$'
 check    "4: ready-check.sh holds the same allowlist" "$(grep -cF -e "$ALLOW" "$HERE/../handover/chief-kit/ready-check.sh")" "1"
 check    "4: dependabot-go.sh holds the same allowlist" "$(grep -cF -e "$ALLOW" "$WRITER")" "1"
+
+# --- 5. --sweep: arm GitHub auto-merge only behind every guard ----------------
+# The judge is a stub of judge-call.sh: it logs its argv and records a signed
+# STUB_JUDGE verdict (GO or NO-GO) for the qid and head it is given.
+cat > "$tmp/bin/judge-call" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_JUDGED"
+while [ "$#" -gt 0 ]; do case "$1" in --qid) q=$2 ;; --pr) p=$2 ;; --head) h=$2 ;; esac; shift 2; done
+d="$HANDOVER_DIR/$VSCOPE/verdicts/$q"; f="$d/api-judge.md"; mkdir -p "$d"
+printf '# VERDICT %s - judge\n\n## Verdict\n\n**%s** for head `%s`.\n\npr: %s\n\nreason\n' "$q" "$STUB_JUDGE" "$h" "$p" > "$f"
+printf 'mac: %s\n' "$(bash -c '. "$1"; go_verdict_mac "$2" "$3" api-judge' _ "$GO_GATE" "$VSCOPE" "$q" < "$f")" >> "$f"
+STUB
+chmod +x "$tmp/bin/judge-call"
+export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call" GO_GATE="$HERE/../lib/go-gate.sh" VSCOPE
+export STUB_JUDGED="$tmp/judged" STUB_MERGED="$tmp/merged"
+# STUB_LIST lines take the shape the sweep's `pr list --jq` printed on the real repo
+# (`3960 5d509ca9090a644424d7d0245538175a2c93ec10 true`); GREEN is `pr checks --required
+# --json bucket --jq '.[].bucket'` on a green PR (4071: one `pass` per required check).
+GREEN='pass
+pass'
+sreset() {
+    reset; rm -rf "$HDIR/$VSCOPE/verdicts/dbot-"*
+    rm -f "$STUB_JUDGED" "$STUB_MERGED" "$(dirname "$LEDGER")/dependabot-judged"
+    export STUB_LIST="$PR $SHA false" STUB_CHECKS="$GREEN" STUB_JUDGE=GO
+}
+sweep() { rc=0; out="$(bash "$WRITER" --sweep 2>&1)" || rc=$?; }
+armed() { cat "$STUB_MERGED" 2>/dev/null; }
+judged() { grep -c . "$STUB_JUDGED" 2>/dev/null || echo 0; }
+
+sreset
+sweep
+check    "5: sweep exits 0" "$rc" "0"
+check    "5: a green dependency-only PR is judged once" "$(judged)" "1"
+contains "5: the judge runs on sonnet with a 0.50 budget" "$(cat "$STUB_JUDGED")" "--model claude-sonnet-5-5 --max-budget-usd 0.50"
+check    "5: the dependabot-go row is recorded" "$(jq -r 'select(.kind=="dependabot-go") | "\(.pr) \(.head)"' "$LEDGER")" "$PR $SHA"
+check    "5: auto-merge is armed at the judged head" "$(armed)" "pr merge $PR --auto --squash --match-head-commit $SHA"
+contains "5: the summary counts it" "$out" "dependabot-go sweep: armed=1 skipped=0"
+sweep
+check    "5: a second sweep does not judge the head again" "$(judged)" "1"
+
+# RED controls, one per guard: any miss means no arm
+sreset; STUB_FILES="$FILE
+scripts/x/run.sh"; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 2)"
+sweep
+check    "5: a non-manifest file is never armed" "$(armed)" ""
+check    "5: a non-manifest file spends no judge" "$(judged)" "0"
+contains "5: the summary counts the skip" "$out" "armed=0 skipped=1"
+
+sreset; STUB_CHECKS='pass
+pending'
+sweep
+check    "5: a pending required check is never armed" "$(armed)" ""
+check    "5: a pending required check spends no judge" "$(judged)" "0"
+
+sreset; STUB_CHECKS='pass
+fail'
+sweep
+check    "5: a failed required check is never armed" "$(armed)" ""
+
+sreset; STUB_CHECKS=''
+sweep
+check    "5: no required checks read is never armed" "$(armed)" ""
+
+sreset; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1 BLOCKED)"
+sweep
+check    "5: a merge state other than CLEAN is never armed" "$(armed)" ""
+
+sreset; STUB_JUDGE=NO-GO
+sweep
+check    "5: a judge NO-GO is never armed" "$(armed)" ""
+check    "5: a judge NO-GO records no row" "$(rows)" "0"
+sweep
+check    "5: a NO-GO head is not judged again" "$(judged)" "1"
+
+sreset; export DEPENDABOT_JUDGE_CALL="$tmp/bin/no-such-judge"
+sweep
+check    "5: a judge that records nothing is never armed" "$(armed)" ""
+export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
+
+# a directory where the ledger file goes: the row write fails, as root too
+sreset; rm -f "$LEDGER"; mkdir "$LEDGER"
+sweep
+check    "5: a GO with no dependabot-go row is never armed" "$(armed)" ""
+rmdir "$LEDGER"
+
+sreset; STUB_LIST="$PR $OTHER false"
+sweep
+check    "5: a listed head that is not the PR's head is never armed" "$(armed)" ""
+
+sreset; STUB_PR_JSON="$(pr_json yotamleo OPEN "$SHA" 1)"
+sweep
+check    "5: a human PR is never armed" "$(armed)" ""
+
+sreset; STUB_LIST="$PR $SHA true"
+sweep
+check    "5: an already-armed PR is left alone" "$(armed)" ""
+check    "5: an already-armed PR spends no judge" "$(judged)" "0"
+
+sreset; export STUB_DIFF; STUB_DIFF="$(head -c 70000 /dev/zero | tr '\0' x)"
+sweep
+check    "5: a diff too big for one judge question is never armed" "$(armed)" ""
+check    "5: a diff too big spends no judge" "$(judged)" "0"
+unset STUB_DIFF
+
+sreset; STUB_LIST=""
+sweep
+check    "5: no open Dependabot PR -> exit 0" "$rc" "0"
+contains "5: no open Dependabot PR summary" "$out" "armed=0 skipped=0"
+
+# --- 6. the tick launches the sweep only when DEPENDABOT_AUTOLAND=on -----------
+TICK="$HERE/../handover/chief-kit/tick.sh"
+# shellcheck disable=SC2016  # the literal tick.sh text, not an expansion
+check    "6: tick.sh gates the sweep on DEPENDABOT_AUTOLAND=on" "$(grep -c '"${DEPENDABOT_AUTOLAND:-off}" = on' "$TICK")" "1"
+check    "6: tick.sh launches dependabot-go.sh --sweep" "$(grep -c 'dependabot-go.sh" --sweep' "$TICK")" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

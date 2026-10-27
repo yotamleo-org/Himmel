@@ -1834,6 +1834,34 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
+# dbot=<armed>/<skipped>[,run]: with DEPENDABOT_AUTOLAND=on (default off) the
+# tick launches ONE detached `dependabot-go.sh --sweep` per TICK_DBOT_MIN_SECS (default 900),
+# under flock so sweeps never overlap; the sweep judges each green dependency-only Dependabot
+# PR and arms GitHub auto-merge behind its guards. The counts are the previous sweep's, read
+# from its log. Off, the field is absent.
+dbot_summary=""
+if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-go.sh" ]; then
+    dbot_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    dbot_base="$dbot_dir/tick-dbot-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
+    dbot_summary="$(sed -n 's/^dependabot-go sweep: armed=\([0-9]*\) skipped=\([0-9]*\)$/\1\/\2/p' "$dbot_base.log" 2>/dev/null | tail -n 1)"  # swallow-ok: no log yet reads none
+    [ -n "$dbot_summary" ] || dbot_summary=none
+    dbot_gap="${TICK_DBOT_MIN_SECS:-900}"
+    case "$dbot_gap" in '' | *[!0-9]*) dbot_gap=900 ;; esac
+    dbot_age=999999999
+    if [ -e "$dbot_base.stamp" ]; then
+        dbot_m="$(stat -c %Y "$dbot_base.stamp" 2>/dev/null)" || dbot_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
+        case "$dbot_m" in '' | *[!0-9]*) ;; *) dbot_age=$(( $(date +%s) - dbot_m )) ;; esac
+    fi
+    if [ "$dbot_age" -ge "$dbot_gap" ] && mkdir -p "$dbot_dir" 2>/dev/null && touch "$dbot_base.stamp" 2>/dev/null; then
+        dbot_tmp="$dbot_base.log.$$"
+        # a running sweep holds the lock, so this launch is a no-op that keeps the last log
+        ( cd "$REPO" || exit 0
+          if setsid nohup flock -n "$dbot_base.lock" bash "$REPO/scripts/cr/dependabot-go.sh" --sweep >"$dbot_tmp" 2>&1; then mv -f "$dbot_tmp" "$dbot_base.log"; else rm -f "$dbot_tmp"; fi  # prim-ok: Linux-only nonblocking lock; a per-pid tmp log, and only the tick reads the log
+        ) </dev/null >/dev/null 2>&1 &
+        dbot_summary="$dbot_summary,run"
+    fi
+fi
+
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in chief-wait's wake key.
 pool_closed=skip
@@ -2809,6 +2837,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'version mismatch: %s\n' "$vmismatch_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
+    [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -2892,6 +2921,7 @@ else
     compact_field vmismatch "$vmismatch_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
+    compact_field dbot "$dbot_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
