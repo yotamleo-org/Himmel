@@ -965,14 +965,18 @@ refuse_vendor() {
 # --max-usd (an openrouter call at --cap-factor times it). An openrouter call
 # counts the larger of its reported cost and the metered balance it took; an
 # unpriced one, whose reported cost is no real spend, needs the meter read on
-# both sides. Returns 1 when the budget or an unknown cost stops it.
+# both sides. Returns 1 when the budget or an unknown cost stops it, or when a
+# selected run has no packet or its grader returns no decodable score.
 grade_pass() {
   local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining budget cost tok b0 b1 unpriced=""
   [ "$lane" = openrouter ] && ! jq -e --arg m "$model" 'has($m)' <<<"$PRICES" >/dev/null && unpriced=1
   while IFS=$'\t' read -r d stem; do
     packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
-    [ -s "$packet" ] || continue
     [ "$(judge_scores "$out")" = null ] || continue
+    if ! [ -s "$packet" ]; then
+      echo "lane-quality: $d/$stem has no judge packet, so it cannot be graded (name the packets to grade with --sample); stopping" >&2
+      return 1
+    fi
     remaining="$(awk -v m="$MAX_USD" -v s="$SPENT" 'BEGIN{printf "%.2f", m - s}')"
     if ! awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}'; then
       echo "lane-quality: grader budget spent ($SPENT of $MAX_USD USD); stopping, the rest stay ungraded" >&2
@@ -1010,6 +1014,10 @@ grade_pass() {
       return 1
     fi
     SPENT="$(awk -v s="$SPENT" -v c="$cost" 'BEGIN{printf "%.4f", s + c}')"
+    if [ "$(judge_scores "$out")" = null ]; then
+      echo "lane-quality: grader $model on $stem returned no decodable score; stopping" >&2
+      return 1
+    fi
   done <"$list"
 }
 

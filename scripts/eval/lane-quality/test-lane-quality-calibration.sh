@@ -35,6 +35,7 @@ for a in "$@"; do [ "$prev" != --model ] || model="$a"; prev="$a"; done
 stem="$(sed -n 's/^packet //p' | head -1)"
 echo "$model $stem" >>"$LQ_FAKE_LOG"
 held="$(awk -v s="$stem" '$1 == s { print $2 }' "$LQ_FAKE_GRADES/$(printf '%s' "$model" | tr '/' '_')")"
+[ "$held" != noscore ] || { echo '{"type": "result", "is_error": false, "total_cost_usd": 0.01}'; exit 0; }
 jq -cn --argjson h "${held:-0}" --arg cost "${LQ_FAKE_COST:-0.01}" '{type: "result", is_error: false}
   + (if $cost == "none" then {} else {total_cost_usd: ($cost | tonumber)} end)
   + {structured_output: {claims: ([range(1; 5) | {key: "C\(.)", value: {holds: (. <= $h), evidence: "e"}}]
@@ -187,6 +188,19 @@ check "an unpriced openrouter grader whose meter goes unreadable after a call st
 fresh
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --cap-factor 1.2.3 --json --no-ledger >/dev/null 2>"$TMP/cfx.err"; rc=$?
 check "a malformed --cap-factor is refused before any call" '[ "$rc" -eq 64 ] && grep -qF -- "--cap-factor must be a positive number" "$TMP/cfx.err" && [ ! -s "$TMP/fake.log" ]'
+
+echo "6. a selected run left ungraded stops the pass"
+fresh; rm "$TMP/fx2/t3.judge-packet.md"
+# shellcheck disable=SC2034  # rows0 is read by check's eval
+rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json >/dev/null 2>"$TMP/nopk.err"; rc=$?
+check "a selected run with no judge packet stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "t3 has no judge packet" "$TMP/nopk.err" && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 2 ] && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
+fresh
+printf 't1 4\nt2 4\nt3 noscore\nt4 4\nt5 3\nt6 2\n' >"$TMP/grades/gpt-bad"
+# shellcheck disable=SC2034  # rows0 is read by check's eval
+rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
+bash "$RUN" calibration "$TMP/fx2" --judge1-model gpt-bad --judge1-effort high --judge1-lane claudex "${G2[@]}" --json >/dev/null 2>"$TMP/nosc.err"; rc=$?
+check "a grader that exits 0 with no decodable score stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "gpt-bad on t3 returned no decodable score" "$TMP/nosc.err" && [ "$(grep -c "^gpt-bad " "$TMP/fake.log")" -eq 3 ] && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
 
 echo "test-lane-quality-calibration: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
