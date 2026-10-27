@@ -220,7 +220,7 @@ STUB
 chmod +x "$tmp/bin/judge-call"
 export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call" GO_GATE="$HERE/../lib/go-gate.sh" VSCOPE
 # the CR merge gate stands down (no_code_review) outside its own row, so no row reaches the real repo
-export CR_PROFILE=none
+export CR_PROFILE=none; unset CR_MERGE_GATE_OK
 export STUB_JUDGED="$tmp/judged" STUB_MERGED="$tmp/merged"
 # STUB_LIST lines take the shape the sweep's `pr list --jq` printed on the real repo
 # (`3960 5d509ca9090a644424d7d0245538175a2c93ec10 true`); GREEN is `pr checks --required
@@ -261,7 +261,15 @@ sreset; export CR_PROFILE="" CRITICS_JSON="$tmp/critics-bad.json"
 sweep
 export CR_PROFILE=none; unset CRITICS_JSON
 check    "5: a PR the CR merge gate holds is never merged" "$(merged)" ""
-contains "5: the gate's hold is logged" "$out" "the CR merge gate holds: cr-reviewer-gate: config error"
+contains "5: the gate's hold is logged" "$out" "the CR merge gate did not allow the merge (rc=2): cr-reviewer-gate: config error"
+
+# a gate that cannot read the PR (rc 3) has checked nothing, so it holds an unattended merge too
+mkdir -p "$tmp/gatebin"; printf '#!/bin/sh\nexit 1\n' > "$tmp/gatebin/gh"; chmod +x "$tmp/gatebin/gh"
+sreset; export CR_PROFILE="" CRITICS_JSON="$HERE/critics.json"
+PATH="$tmp/gatebin:$PATH" sweep
+export CR_PROFILE=none; unset CRITICS_JSON
+check    "5: a PR the CR merge gate cannot read is never merged" "$(merged)" ""
+contains "5: the unread gate is logged" "$out" "the CR merge gate did not allow the merge (rc=3)"
 
 sreset; STUB_CHECKS='pass
 pending'

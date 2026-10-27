@@ -127,9 +127,9 @@ sweep_one() {
     row=$(jq -cR --arg h "$sha" --argjson p "$pr" 'fromjson? | select(.kind == "dependabot-go" and .head == $h and .pr == $p and .status == "ok")' "$common/cr-critic-scores.jsonl" 2>/dev/null) || row=""  # swallow-ok: an unreadable ledger reads as no row and refuses below
     [ -n "$row" ] || { skip "the dependabot-go row is not in the ledger"; return 1; }
     # the CR merge gate every other merge passes: it reads the row above for the hard reviewers,
-    # and holds on an open CodeRabbit thread or outside-diff finding
+    # and holds on an open CodeRabbit thread or outside-diff finding; unattended, only rc 0 merges
     gate=$(cr_merge_gate "$pr") || grc=$?
-    [ "$grc" -ne 2 ] || { skip "the CR merge gate holds: ${gate%%$'\n'*}"; return 1; }
+    [ "$grc" -eq 0 ] || { skip "the CR merge gate did not allow the merge (rc=$grc): ${gate%%$'\n'*}"; return 1; }
     "$GH" pr merge "$pr" --squash --match-head-commit "$sha" >/dev/null 2>&1 || { skip "GitHub refused the merge"; return 1; }
     echo "dependabot-go sweep: #$pr merged at $sha (judge:$qid)"
 }
