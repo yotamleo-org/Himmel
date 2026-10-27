@@ -186,7 +186,8 @@ row becomes `retired`.
 `docs_remarks.py harvest` (beside this file) drafts those rows. It reads the
 chief's recorded remarks (`--remarks-file`, `date<TAB>source<TAB>quote`) and
 the operator's comments on merged docs PRs (`--author <login>`). It prints one
-`candidate` row per quote the table lacks, and `--write` appends them. Each
+`candidate` row per quote and source the table lacks (so a repeat from a new
+source is its own row), and `--write` appends them. Each
 new row's rule reads `pending: the chief writes the rule` until the chief
 writes it, in the same PR.
 

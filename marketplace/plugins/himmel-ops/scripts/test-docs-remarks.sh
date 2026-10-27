@@ -37,6 +37,18 @@ check "harvest: earlier rows untouched" "$(head -3 "$td/r.tsv" | md5sum)" "$(rul
 python3 "$tool" harvest --rules "$td/r.tsv" --remarks-file "$td/chief.tsv" --write >"$td/h2.out" 2>&1
 check "harvest: a quote already in the table adds no row" "$(grep -c . "$td/r.tsv")" 4
 
+rules "$td/rep.tsv"
+printf '2026-10-28\tdecisions 360\talot of the docs are non relevent\n' >"$td/rep-in.tsv"
+python3 "$tool" harvest --rules "$td/rep.tsv" --remarks-file "$td/rep-in.tsv" --write >"$td/rep.out" 2>&1
+check "harvest: the same words from another source are a repeat row" "$(grep -c $'^M03\tcandidate\t.*decisions 360' "$td/rep.tsv")" 1
+
+rules "$td/mal.tsv"
+printf '2026-10-27\tdecisions 350\tfirst\n2026-10-27 no tabs here\n' >"$td/mal-in.tsv"
+python3 "$tool" harvest --rules "$td/mal.tsv" --remarks-file "$td/mal-in.tsv" --write >"$td/mal.out" 2>&1
+check "harvest: a malformed remarks line exits 1" "$?" 1
+has "harvest: it names the file and line" "$td/mal.out" 'mal-in.tsv:2'
+check "harvest: a malformed file writes nothing" "$(grep -c . "$td/mal.tsv")" 3
+
 rules "$td/dry.tsv"
 python3 "$tool" harvest --rules "$td/dry.tsv" --remarks-file "$td/chief.tsv" >"$td/dry.out" 2>&1
 check "harvest: dry run leaves the table alone" "$(grep -c . "$td/dry.tsv")" 3

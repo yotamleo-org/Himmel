@@ -9,7 +9,9 @@ usage:
 harvest: the learn step's intake. Each new operator remark becomes one
 `candidate` row of the rules table (default: remarks.tsv beside this file),
 with the next id, the rule `pending: the chief writes the rule`, its date,
-source and quote. A quote already in the table is skipped. Whitespace runs
+source and quote. A quote the table already holds from the same source is
+skipped; from another source it is a repeat and gets its own row. A malformed
+--remarks-file line exits 1 and writes nothing. Whitespace runs
 (newlines, tabs) in a quote become one space, so a row stays one TSV line.
 Sources:
   --remarks-file  the chief's recorded docs remarks, `date<TAB>source<TAB>quote`
@@ -89,12 +91,13 @@ def from_gh(author, repo, limit):
 
 def from_file(path):
     with open(path, encoding="utf-8") as f:
-        for l in f:
+        for n, l in enumerate(f, 1):
             if not l.strip() or l.startswith("#"):
                 continue
             parts = l.rstrip("\n").split("\t", 2)
-            if len(parts) == 3:
-                yield parts[0], parts[1], parts[2]
+            if len(parts) != 3 or not parts[2].strip():
+                raise ValueError(f"{path}:{n}: not date<TAB>source<TAB>quote")
+            yield parts[0], parts[1], parts[2]
 
 
 def harvest(a):
@@ -102,19 +105,25 @@ def harvest(a):
         print("harvest: give --remarks-file and/or --author", file=sys.stderr)
         return 2
     _, rows = read_rows(a.rules)
-    seen = {flat(r[5]) for r in rows if len(r) == 6}
+    # One row per occurrence: the same words from another source are a repeat,
+    # which SKILL.md counts as a remark made more than once.
+    seen = {(flat(r[4]), flat(r[5])) for r in rows if len(r) == 6}
     nums = [int(r[0][1:]) for r in rows if re.fullmatch(r"M[0-9]+", r[0])]
     nxt = max(nums, default=0) + 1
-    remarks = list(from_file(a.remarks_file)) if a.remarks_file else []
+    try:
+        remarks = list(from_file(a.remarks_file)) if a.remarks_file else []
+    except ValueError as e:
+        print(f"harvest: {e}; nothing written", file=sys.stderr)
+        return 1
     if a.author:
         remarks += list(from_gh(a.author, a.repo, a.limit))
     new = []
     for date, source, quote in remarks:
-        quote = flat(quote)
-        if quote in seen:
+        key = (flat(source), flat(quote))
+        if key in seen:
             continue
-        seen.add(quote)
-        new.append("\t".join([f"M{nxt:02d}", "candidate", PENDING, date, flat(source), quote]))
+        seen.add(key)
+        new.append("\t".join([f"M{nxt:02d}", "candidate", PENDING, date, *key]))
         nxt += 1
     for row in new:
         print(row)
