@@ -1291,6 +1291,11 @@ else
   check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "2000"
   check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "2000"
   check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "600"
+  # macOS runs 40457809286 and 40514166576 killed it at 603s with all 995 rows
+  # reached; the Linux ledger is 151s, so only the Darwin arm moves.
+  check_os_timeout_2267 Linux "scripts/hooks/test-block-edit-live-settings.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/hooks/test-block-edit-live-settings.sh" "1800"
+  check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-edit-live-settings.sh" "1800"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"

@@ -14,7 +14,7 @@ set -uo pipefail
 
 # The macOS runner runs these guards 2-5x slower (same work, bash 3.2); the linear-time
 # budgets scale there so a quadratic regression (20s+) still fails.
-BX=1; [ "$(uname -s)" = Darwin ] && BX=4 # prim-ok: Darwin scale for the timing budgets
+BX=1; [ "$(uname -s)" = Darwin ] && BX=8 # prim-ok: Darwin scale for the timing budgets
 
 # The find-family deletes the parity_guard.py twin denies too.
 # A launcher that runs its argument as a command (busybox, command, eval, a

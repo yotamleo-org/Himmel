@@ -359,6 +359,11 @@ _suite_timeout_for() {
         # pending. Run 40413314701 ran it to the end in 911s. 2000s is that
         # figure x2 (the loaded-budget rule); the Linux default is untouched.
         printf '2000'; return 0 ;;
+      scripts/hooks/test-block-edit-live-settings.sh|*/scripts/hooks/test-block-edit-live-settings.sh)
+        # macOS runs 40457809286 and 40514166576: killed at 603s with every
+        # row passing (995 rows reached), against 151s on the Linux ledger.
+        # 1800s is the cap x3 (the loaded-budget rule); Linux keeps the default.
+        printf '1800'; return 0 ;;
     esac
   fi
 
