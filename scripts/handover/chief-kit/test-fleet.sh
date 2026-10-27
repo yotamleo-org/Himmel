@@ -378,6 +378,7 @@ eq "sweep rc=20: every row still renders" "$(printf '%s' "$J7" | q 's.legs.lengt
 # ------------------------------------------------------------------ server
 cat > "$W/srv-test.mjs" <<'JS'
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
@@ -415,6 +416,13 @@ say((await get('/api/fleet', { method: 'DELETE' })).status === 405, 'DELETE is 4
 say((await get('/api/fleet', { headers: { host: 'evil.example:' + port } })).status === 403, 'a foreign Host header is refused (DNS rebinding)');
 say(/no-store/.test(api.headers['cache-control'] || ''), 'responses are no-store');
 say(/default-src 'none'/.test(page.headers['content-security-policy'] || ''), 'the page carries a locked-down CSP');
+// A brief edited after the first snapshot shows its new description once the 5 s snapshot cache lapses.
+const n5 = (s) => (s.legs.find((l) => l.label === 'N5') || {}).description;
+say(n5(snap) === 'Add a login form', 'the first snapshot carries the N5 description');
+fs.writeFileSync(process.env.N5_DOC, fs.readFileSync(process.env.N5_DOC, 'utf8').replace('Add a login form', 'Add a signup form'));
+await new Promise((r) => setTimeout(r, 5500));
+let snap2 = null; try { snap2 = JSON.parse((await get('/api/fleet')).body); } catch { /* reported below */ }
+say(snap2 && n5(snap2) === 'Add a signup form', 'an edited brief shows its new description in a later snapshot');
 // Bound to loopback only: the same port must refuse on every non-loopback address.
 const ext = Object.values(os.networkInterfaces()).flat().filter((i) => i && !i.internal && i.family === 'IPv4').map((i) => i.address);
 if (!ext.length) say(true, 'no non-loopback interface on this host (loopback-only probe skipped)');
@@ -432,6 +440,7 @@ SRV_RC=0
 SRV="$(FLEET_QUEUE_LOCK="$W/bin/queue-lock" FLEET_BANK="$W/bin/bank" FLEET_GH="$W/bin/gh" \
     FLEET_AGENTS="$W/bin/agents" AG_JSON="$W/agents.json" \
     FLEET_PROC="$W/proc" GH_OPEN="$W/open.json" HANDOVER_DIR="$ROOT" \
+    N5_DOC="$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md" \
     node "$W/srv-test.mjs" "$SUT" "${COMMON[@]}" 2>&1)" || SRV_RC=$?
 printf '%s\n' "$SRV"
 # an uncaught error in the probe exits non-zero without printing FAIL; do not let that pass

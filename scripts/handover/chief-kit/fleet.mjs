@@ -217,15 +217,17 @@ const primeIdentities = async (names) => {
 const idOf = (name) => identities.get(name) || { label: '', names: [] };
 // The same resolver gives each worker its description (the field, the ticket
 // title, the PR title, the H1, the stem). One bash call for every doc; a failed lookup
-// leaves the descriptions empty and the label alone on its row. Cached per doc path.
+// leaves the descriptions empty and the label alone on its row. Cached per doc path and
+// mtime: an edited brief is read again, an untouched one is not.
 const descs = new Map();
+const mtimeOf = (f) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
 const primeDescriptions = async (files) => {
-    const todo = [...new Set(files)].filter((f) => f && !descs.has(f));
+    const todo = [...new Set(files)].filter((f) => f && descs.get(f)?.mtime !== mtimeOf(f));
     if (!todo.length) return;
     const r = await sh('bash', ['-c', 'source "$1" || exit 1; shift; for f in "$@"; do worker_description "$f" | tr -s "\\t\\n" "  "; printf "\\n"; done', 'bash', LEGID, ...todo], { timeout: 60000 });
     if (!r.ok) return;
     const lines = r.out.split('\n');
-    todo.forEach((f, i) => { if (lines[i]) descs.set(f, lines[i].trim()); });
+    todo.forEach((f, i) => { if (lines[i]) descs.set(f, { mtime: mtimeOf(f), text: lines[i].trim() }); });
 };
 
 // ---------------------------------------------------------------- worker docs
@@ -535,7 +537,7 @@ const buildSnapshot = async () => {
         let lastLine = '';
         if (launch && launch.sessionLog) lastLine = safe(tailLine(launch.sessionLog), 200);
         workers.push({
-            label, description: safe(descs.get(file) || '', 120), ticket, model: safe(model, 60), mode, pid, alive: proc.alive, uptimeSec: proc.uptimeSec,
+            label, description: safe(descs.get(file)?.text || '', 120), ticket, model: safe(model, 60), mode, pid, alive: proc.alive, uptimeSec: proc.uptimeSec,
             lock: { state: lockState, ageSec: lockAge, idle },
             agent: ag ? { kind: ag.kind, state: safe(ag.state || ag.status || '', 30) } : null,
             status: doc ? doc.status : null, pr, lastLine, listed, hasDoc: !!file,
