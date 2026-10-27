@@ -153,6 +153,10 @@ fi
 CHUNK_TOKENS=""
 if [ "$BACKEND" = "claude-api" ]; then
   CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 30000); if (t > 60000) t = 60000; print t }')"
+  # A batch answer that hits max_tokens makes graphify split the chunk on replay, and the halves are prompts the
+  # batch never held (the shim exits 1, the files stay unstamped): half the sync cap keeps the answer inside it.
+  # ponytail: 15000 is half the sync cap, not measured from stop_reason; lower it if replays still split, HIMMEL-7922.
+  if [ "$BATCH_MODE" -eq 1 ] && [ "$CHUNK_TOKENS" -gt 15000 ]; then CHUNK_TOKENS=15000; fi
   if [ "$CHUNK_TOKENS" -lt 1000 ]; then
     echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.04)" >&2
     exit 1

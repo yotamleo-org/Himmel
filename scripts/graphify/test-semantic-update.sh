@@ -988,5 +988,13 @@ python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "moved.
   && pass "T84 the stub is neither stamped nor stuck" || fail "T84 manifest: $(cat "$C84/graphify-out/semantic-manifest.json")"
 [ "$(lastrun "$C84" backed_off)" = 0 ] && [ "$(lastrun "$C84" failed)" = 0 ] && pass "T84 the run row carries no failed or backed-off file" || fail "T84 run row: $(tail -1 "$C84/graphify-out/semantic-runs.jsonl")"
 
+echo "T85: a batch run caps its chunk at 15000 tokens, so a batch answer fits max_tokens and graphify never splits into a prompt the batch lacks"
+C85="$WS/c85"; new_corpus "$C85"; batch_reset
+out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t85 --corpus-root "$C85" --corpus-class himmel-code --backend claude-api); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in
+  *"--token-budget 15000"*) pass "T85 default 1.00 in batch mode -> 15000" ;;
+  *) fail "T85 (rc=$rc) '$(grep '^graphify extract' "$WS/calls.log")': $out" ;;
+esac
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
