@@ -504,6 +504,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
+  let fleetRun: ReturnType<typeof readFleet> | null = null;
   async function route(req: Request): Promise<Response> {
     const origin = `http://${LOOPBACK}:${server.port}`;
     if (req.headers.get("host") !== `${LOOPBACK}:${server.port}`) return new Response("bad host", { status: 403 });
@@ -575,10 +576,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
         const literals = envValues(raw, parseDotEnv, env);
-        return json(await readFleet({
+        // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
+        fleetRun ??= readFleet({
           script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
           redact: (v) => String(redactDeep(v, { literals })),
-        }));
+        }).finally(() => { fleetRun = null; });
+        return json(await fleetRun);
       }
       // the chief board (board.mjs --json, schema himmel.board/1) for the Fleet page, and a worker's doc for its brief link.
       if (path === "/api/agui/board" || path === "/api/agui/brief") {
