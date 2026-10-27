@@ -135,12 +135,13 @@ _load_dotenv_envfile() {
 }
 
 load_dotenv() {
-    # A policy key absent on entry is checked against the project file once
-    # every layer has run, so this reader agrees with load_policy.
+    # Every policy key is checked against the project file once every layer
+    # has run, even one the process env set, so this reader agrees with
+    # load_policy; tightening can only make the value stricter.
     local _ldp_key _ldp_pol=() _ldp_first=1
     [ "${1:-}" = "--root" ] && _ldp_first=3
     for _ldp_key in "${@:$_ldp_first}"; do
-        if [ "$(_himmel_key_class "$_ldp_key")" = policy ] && [ -z "${!_ldp_key:-}" ]; then
+        if [ "$(_himmel_key_class "$_ldp_key")" = policy ]; then
             _ldp_pol[${#_ldp_pol[@]}]="$_ldp_key"
         fi
     done
@@ -454,7 +455,7 @@ _himmel_policy_strict() {
 _himmel_project_tighten() {
     local _pt_file _pt_line _pt_key _pt_val _pt_new _pt_cur
     _pt_file=$(_himmel_project_conf)
-    [ -n "$_pt_file" ] && [ -e "$_pt_file" ] || return 0
+    [ -n "$_pt_file" ] && { [ -e "$_pt_file" ] || [ -L "$_pt_file" ]; } || return 0
     if [ ! -r "$_pt_file" ]; then
         printf 'himmel: %s exists but is unreadable; gate policy fails closed\n' "$_pt_file" >&2
         return 1

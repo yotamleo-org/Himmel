@@ -97,8 +97,9 @@ never the project file. Outside a git repo there is no project file.
   on the loose side, while your user value is strict, is ignored with one
   line on stderr:
   `himmel: ignoring CR_FLOOR_FALLBACK from <file>: a project file may only tighten gate policy, never loosen it`.
-  `load_dotenv` applies the same rule to the policy keys it serves, so
-  `pr-check-env.sh` shows what the gate enforces.
+  `load_dotenv` applies the same rule to the policy keys it serves, even
+  one the process environment set, so `pr-check-env.sh` shows the project
+  file's tightening the gate enforces.
 - **Secret keys** are never read from the project file. A token written there
   is skipped and the resolver order below applies.
 - **Writes**: `block-himmel-config-writes.sh` refuses an agent's Edit, Write
@@ -106,8 +107,9 @@ never the project file. Outside a git repo there is no project file.
   a Bash command that names one, except a plain read. A session therefore
   cannot change its own repo's settings; the maintainers change the file by
   hand, and through review like any other tracked file.
-- A project file that exists but cannot be read makes `load_policy` return
-  non-zero, so the gate refuses instead of guessing.
+- A project file that exists but cannot be read, including a symlink whose
+  target is gone, makes `load_policy` return non-zero, so the gate refuses
+  instead of guessing.
 
 ### Failure behaviour
 

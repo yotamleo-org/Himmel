@@ -239,15 +239,18 @@ $patch
 EOF
         if [ "${#cand[@]}" -gt 0 ]; then
             cfg_res=$(readlink -m -- "$CFG_REAL" 2>/dev/null) || cfg_res=""
-            # A failed batch (e.g. one path over the OS argument limit) must
-            # DENY: an empty result would read as "nothing resolves to it".
-            resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
-            while IFS= read -r r; do
-                [ -n "$cfg_res" ] && [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
-                case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
-            done <<EOF
+            # No readlink -m (BSD/macOS): only the literal headers above are checked.
+            if [ -n "$cfg_res" ]; then
+                # A failed batch (e.g. one path over the OS argument limit) must
+                # DENY: an empty result would read as "nothing resolves to it".
+                resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
+                while IFS= read -r r; do
+                    [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
+                    case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
+                done <<EOF
 $resolved
 EOF
+            fi
         fi
         exit 0
         ;;

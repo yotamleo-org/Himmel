@@ -79,6 +79,20 @@ patch_case "apply_patch U+3000-led symlink alias header (no .himmel literal) -> 
 patch_case "apply_patch trailing-space benign header -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt   ${NL}+hi${NL}*** End Patch"
 run "apply_patch relative config.json with payload cwd in .himmel -> block" block "$(jq -nc --arg d "$HOME/.himmel" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
 run "apply_patch relative config.json with payload cwd elsewhere -> allow" allow "$(jq -nc --arg d "$T" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
+# BSD readlink (macOS) has no -m: path resolution is skipped, the literal
+# header check still runs.
+mkdir -p "$T/bsd-bin"
+printf '#!/bin/sh\nexit 1\n' >"$T/bsd-bin/readlink"
+chmod +x "$T/bsd-bin/readlink"
+bsd_patch_case() {
+    local rc got
+    jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}' | PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
+}
+bsd_patch_case "apply_patch benign file without readlink -m -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
+bsd_patch_case "apply_patch project file without readlink -m -> block" block "*** Begin Patch${NL}*** Update File: $T/r/.himmel/project.conf${NL}@@${NL}*** End Patch"
 
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"

@@ -645,6 +645,8 @@ got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERG
 assert_eq "P3 the project file tightens a policy key (load_policy)" "1|off|0" "$got"
 got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_dotenv --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
 assert_eq "P3 the project file tightens a policy key (load_dotenv)" "1" "$got"
+got=$( cd "$PREPO" && export CR_REQUIRE_CROSS_MODEL=0 && HOME="$TMP/p-home" load_dotenv --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "P3 the project file tightens a policy key the process env set loose (load_dotenv)" "1" "$got"
 
 # P4: a secret key in the project file is never loaded, while a behaviour key
 # beside it is.
@@ -662,6 +664,13 @@ printf 'HANDOVER_DIR=/p5/from-worktree\n' >"$PWT/.himmel/project.conf"
 got=$( cd "$PWT" && unset HANDOVER_DIR && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
 assert_eq "P5 a worktree reads the primary checkout's project file" "/p5/from-primary" "$got"
 git -C "$PREPO" worktree remove --force "$PWT" 2>/dev/null || true
+
+# P6: a project file that is a dangling symlink fails closed in the gate reader.
+rm -f "$PCONF"
+ln -s "$TMP/p6-gone" "$PCONF"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>"$TMP/p6.err"; printf '%s' "$?" )
+assert_eq "P6 a dangling project-file symlink fails closed" "1|1" "$got|$(grep -c 'unreadable' "$TMP/p6.err")"
+rm -f "$PCONF"
 
 echo
 if [ "$FAILED" -eq 0 ]; then
