@@ -960,5 +960,28 @@ out=$(run --name t83 --corpus-root "$C83" --corpus-class himmel-code --seed-mani
 n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C83/graphify-out/semantic-manifest.json" 2>/dev/null)
 [ "$rc" -eq 0 ] && [ "$n" = "60-Maps/hand.md a.md b.md sub/c.md" ] && pass "T83 export dir excluded, hand.md kept" || fail "T83 (rc=$rc) '$n': $out"
 
+echo "T84: a '# Moved' pointer stub is never planned (the model omits it, so it backed off and stayed stuck); its old nodes go with it"
+C84="$WS/c84"; new_corpus "$C84"
+printf '# Moved: AFK mode\n\nThis page moved to [afk-mode.md](afk-mode.md).\n' > "$C84/moved.md"
+printf '# Moved on\n\nA real page that merely starts with the word.\n' > "$C84/real.md"
+out=$(run --name t84 --corpus-root "$C84" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C84/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md b.md real.md sub/c.md" ] && pass "T84 the stub is out of the corpus, a page that merely starts with 'Moved' stays" || fail "T84 (rc=$rc) '$n': $out"
+python3 - "$C84/graphify-out" <<'PY'
+import json, os, sys
+out = sys.argv[1]
+g = json.load(open(os.path.join(out, "graph.json")))
+g["nodes"].append({"id": "stale_moved", "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "moved.md"})
+json.dump(g, open(os.path.join(out, "graph.json"), "w"))
+m = json.load(open(os.path.join(out, "semantic-manifest.json")))
+m["files"]["moved.md"] = "0" * 64
+json.dump(m, open(os.path.join(out, "semantic-manifest.json"), "w"))
+PY
+out=$(GRAPHIFY_STUB_SKIP=moved.md run --name t84 --corpus-root "$C84" --corpus-class himmel-code); rc=$?
+case " $(ids "$C84") " in *" stale_moved "*) fail "T84 the stub's old nodes stayed (rc=$rc): $out" ;; *) pass "T84 the stub's old nodes are dropped" ;; esac
+python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "moved.md" not in m["files"] and "moved.md" not in m.get("stuck", {}) else 1)' "$C84/graphify-out/semantic-manifest.json" \
+  && pass "T84 the stub is neither stamped nor stuck" || fail "T84 manifest: $(cat "$C84/graphify-out/semantic-manifest.json")"
+[ "$(lastrun "$C84" backed_off)" = 0 ] && [ "$(lastrun "$C84" failed)" = 0 ] && pass "T84 the run row carries no failed or backed-off file" || fail "T84 run row: $(tail -1 "$C84/graphify-out/semantic-runs.jsonl")"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

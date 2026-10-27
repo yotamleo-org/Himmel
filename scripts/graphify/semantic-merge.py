@@ -118,6 +118,17 @@ def ignored_dirs(root):
     return dirs
 
 
+def moved_stub(full):
+    # A pointer page ("# Moved: ..." + a link) holds no facts: the model omits it, so it
+    # backed off, kept its old nodes and read as stuck on every run.
+    # ponytail: the first line starting "# Moved:" (colon), as docs/handover/overnight-mode.md is written; another stub style needs .graphify-corpus-ignore.
+    try:
+        with open(full, encoding="utf-8", errors="replace") as f:
+            return f.read(256).lstrip().startswith("# Moved:")
+    except OSError:
+        return False
+
+
 def corpus_files(root, out_name):
     # git ls-files when the root is a work tree: honours .gitignore and skips
     # nested worktrees (.claude/worktrees/) a bare walk would graph N times.
@@ -140,7 +151,7 @@ def corpus_files(root, out_name):
         if any(rel.startswith(d) for d in skip) or SEMANTIC_SKIP_DIRS & set(rel.split("/")[:-1]):
             continue
         full = os.path.join(root, rel)
-        if os.path.isfile(full) and not os.path.islink(full):
+        if os.path.isfile(full) and not os.path.islink(full) and not moved_stub(full):
             keep.append(rel)
     return sorted(set(keep))
 
