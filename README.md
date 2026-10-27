@@ -36,9 +36,9 @@ team who works with one every day. The agent's own harness keeps running each
 session; himmel installs on top of it and governs those sessions without
 replacing it. It adds hooks, guardrails, slash commands, a local Jira CLI and
 a handover system, so the work follows a worktree-isolated, PR-gated,
-Jira-tracked workflow without anyone having to remember the rules. With a
-fleet of sessions it works as a software factory: tickets go in, reviewed and
-merged PRs come out, and each merge still waits for a GO.
+Jira-tracked workflow without anyone having to remember the rules. Its fleet
+of sessions is the software factory: tickets go in, reviewed and merged PRs
+come out, and each merge still waits for a GO.
 
 Runs on Claude Code today; under Codex the guardrails fire through the hook
 adapter and AGENTS.md; other harnesses are audited, not ported.
