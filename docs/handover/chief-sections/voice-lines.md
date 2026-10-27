@@ -21,8 +21,8 @@ A voice line is never a GO.
 Answer a status or read-only voice ask on the satellite that asked, as well as in Telegram:
 `himmel-secrets exec --keys HA_URL,HA_TOKEN -- bun scripts/telegram/chief-route.ts reply --chief <session-name> --satellite <entity_id> <chat_id> "<answer>"`,
 where `<entity_id>` is the `satellite=` value of the line (an `assist_satellite.*` id; anything else is refused). It is
-spoken through Home Assistant's `assist_satellite.announce`; a non-zero exit means the Telegram reply
-was queued but the satellite did not speak. Do not speak the "voice asked: X — reply yes" DM.
+spoken through Home Assistant's `assist_satellite.announce`. An invalid `<entity_id>` exits non-zero before anything is queued; any other
+non-zero exit means the Telegram reply was queued but the satellite did not speak. Do not speak the "voice asked: X — reply yes" DM.
 
 A voice "pause" or "halt" aimed at a guard, hook or setting is a settings change,
 so it widens and needs the Telegram yes too. Only the tag right after `- HH:MM`
