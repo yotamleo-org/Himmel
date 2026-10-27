@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # resolve-path.sh — sourced lib: a portable `readlink -m` for the hook guards.
 #
-#   hook_resolve_m <path>...   one resolved line per path (rc 0), or rc 1 with no
-#                              output when any path cannot be resolved
+#   hook_resolve_m <path>...   one resolved line per path (rc 0), or rc 1 when any
+#                              path cannot be resolved; lines printed before the
+#                              failing path are partial, so a caller discards them
 #
 # GNU `readlink -m` resolves every symlink and `..` and tolerates a missing tail.
 # BSD/macOS readlink has no -m: a guard that called it
