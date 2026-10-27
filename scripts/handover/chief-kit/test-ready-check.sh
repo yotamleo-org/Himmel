@@ -959,6 +959,82 @@ printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","fi
 seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend of another branch does not defer a finding at the reviewed head: exit 1" "$rc" "1"
+
+# --- carry: a deferral at an earlier reviewed head counts at a later head when a
+# clean full round (an ok critic avail row, no finding row) ran there after it ---
+# seed_clean [branch] [model]: a critic's ok avail row at the PR head, a full round that found nothing
+seed_clean() {
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:03Z","branch":"%s","head":"%s","model":"%s","status":"ok","artifact":"diff","perspective":"off"}\n' "${1:-$SEED_BRANCH}" "$SHA" "${2:-codex}" >> "$LEDGER"
+}
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a deferral at an earlier head counts after a clean round at the PR head: exit 0" "$rc" "0"
+contains "carry: clean round: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: done\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a carried deferral absent from the body: exit 1" "$rc" "1"
+contains "carry: absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "carry: no round at the PR head, the earlier deferral does not carry: exit 1" "$rc" "1"
+contains "carry: no round: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean "" claude
+rc=0; out="$(run)" || rc=$?
+check "carry: a claude (non-critic) row is not a clean round: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean other
+rc=0; out="$(run)" || rc=$?
+check "carry: a clean round of another branch does not carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_clean; seed_deferral HIMMEL-50 "$REVHEAD"
+rc=0; out="$(run)" || rc=$?
+check "carry: a round written before the deferral does not carry it: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+SEED_BRANCH=other seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a deferral of another branch does not carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-HIMMEL-50","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$SHA" >> "$LEDGER"
+seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a finding re-raised at the PR head blocks the carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-other","severity":"sug","verdict":"fixed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$SHA" >> "$LEDGER"
+seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: any finding row at the PR head makes the round not clean: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"
+printf '{"kind":"amend","ts":"2026-01-01T00:00:04Z","branch":"%s","target_head":"%s","finding_id":"codex-HIMMEL-50","artifact":"diff","perspective":"off","set":{"verdict":"fixed"}}\n' "$SEED_BRANCH" "$REVHEAD" >> "$LEDGER"
+seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a deferral later amended to fixed does not carry: exit 1" "$rc" "1"
 unset SEED_BRANCH
 
 reset_stubs
