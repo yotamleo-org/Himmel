@@ -103,7 +103,7 @@ function hangingForge(tag: string) {
   const calls = join(bin, "gh-calls");
   writeFileSync(join(bin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\nsleep ${tag}\n`);
   chmodSync(join(bin, "gh"), 0o755);
-  const s = boot({ TRACKER: "none", FORGE: "github", PATH: `${bin}:${process.env.PATH}`, HIMMEL_FLEET_DESC_TIMEOUT_MS: "300" });
+  const s = boot({ TRACKER: "none", FORGE: "github", PATH: `${bin}:${process.env.PATH}`, HIMMEL_FLEET_DESC_TIMEOUT_MS: "1000" });
   cleanups.push(() => { spawnSync("pkill", ["-f", `sleep ${tag}`]); rmSync(bin, { recursive: true, force: true }); });
   const bucket = join(s.dir, "handover", "yotam", "himmel");
   const seen = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "").split("\n").filter(Boolean);

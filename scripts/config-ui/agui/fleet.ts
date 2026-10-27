@@ -235,6 +235,7 @@ function lookup(doc: string, mtime: number, lib: string, env: Record<string, str
     const child = spawn("bash", ["-c", 'source "$1" || exit 1; worker_description "$2" | tr -s "\\t\\n" "  "', "bash", lib, doc],
       { env: env as NodeJS.ProcessEnv, detached: true, stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
+    child.stdout.setEncoding("utf8");
     child.stdout.on("data", (b) => { if (out.length < 64 * 1024) out += b; });
     const timer = setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ } }, Number(env.HIMMEL_FLEET_DESC_TIMEOUT_MS) || DESC_TIMEOUT_MS);
     timer.unref();
