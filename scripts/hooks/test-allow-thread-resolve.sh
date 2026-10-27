@@ -174,6 +174,7 @@ g -C "$EVIL" add plugins && g -C "$EVIL" commit -q -m planted || exit 1
 printf 'gitdir: %s/.git\n' "$EVIL" >"$WT2/.git" || exit 1
 HOOK_SAVED="$HOOK"; HOOK="$WT2/scripts/hooks/allow-thread-resolve.sh"
 expect_none 'forged worktree gitfile, planted cli' "$WT2" "node $EVIL/$REL $TAIL"
+expect_none 'forged worktree gitfile, its own cli' "$WT2" "node $WT2/$REL $TAIL"
 HOOK="$HOOK_SAVED"
 
 # non-Bash tool, empty and unparseable stdin: no decision, exit 0
