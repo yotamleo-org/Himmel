@@ -66,8 +66,8 @@ _load_dotenv_root() {
 #                                    .env exists; emit ONE advisory line to stderr
 #   otherwise                      → echo <dir> (caller's missing-.env path applies
 #                                    — load_dotenv then no-ops, rc 0)
-# Mirrors glm-env.ts mainCheckoutRoot() for the bash side. Returns the
-# path on stdout; the advisory is the helper's ONLY stderr output.
+# Shared reference for primary-checkout .env resolution. Returns the path on
+# stdout; the advisory is the helper's ONLY stderr output.
 _load_dotenv_primary_for() {  # $1 = candidate root dir
     local dir="${1:-}" common primary dir_abs toplevel gitdir dir_phys
     [ -n "$dir" ] || dir="$(_load_dotenv_root)"

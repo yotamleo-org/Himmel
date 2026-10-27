@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 // Named-key readers do not export a parsed dictionary. Config display and
 // redaction readers are deliberately excluded: they must see all values.
 const NAMED_READERS = {
-  'scripts/telegram/glm-env.ts': ['ZAI_API_KEY'],
   'scripts/telegram/poller.ts': ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_AUTO_ACTIONS'],
   'scripts/telegram/session-status.ts': ['TELEGRAM_BOT_TOKEN'],
   'scripts/observability/luna-sync-alert.ts': ['TELEGRAM_BOT_TOKEN'],

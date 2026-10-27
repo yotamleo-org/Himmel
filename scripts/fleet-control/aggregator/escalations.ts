@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 
 export type Escalation = { escalation_id: string; resume_token: string; sessionDir: string; capability: string; step: string | number; ts: string; shape: "read" | "write"; raw: Record<string, unknown> };
 
@@ -24,48 +22,11 @@ export function capabilityShape(capability: string): "read" | "write" {
 
 export type EscalationsResult = { escalations: Escalation[]; parseErrors: number };
 
-// A dropped (malformed) escalation line = an invisible blocked worker. Skip the
-// bad line but COUNT it, so the incompleteness is surfaced rather than hidden.
-function jsonl(path: string, onParseError: () => void): Record<string, unknown>[] {
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8").split(/\r?\n/).filter((l) => l.trim() !== "").flatMap((l) => {
-    try {
-      const parsed: unknown = JSON.parse(l);
-      return typeof parsed === "object" && parsed !== null ? [parsed as Record<string, unknown>] : [];
-    } catch {
-      onParseError();
-      return [];
-    }
-  });
+// Compatibility for the server and poller after the GLM escalation source retired.
+export function readEscalations(_bridgeRoot: string): EscalationsResult {
+  return { escalations: [], parseErrors: 0 };
 }
 
-function scan(bridgeRoot: string): { all: { escalation: Escalation; closed: boolean }[]; parseErrors: number } {
-  const root = join(bridgeRoot, "glm-sessions");
-  if (!existsSync(root)) return { all: [], parseErrors: 0 };
-  const all: { escalation: Escalation; closed: boolean }[] = [];
-  let parseErrors = 0;
-  const bump = () => { parseErrors++; };
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const sessionDir = join(root, entry.name);
-    const closed = new Set(jsonl(join(sessionDir, "grants.jsonl"), bump).map((r) => r.escalation_id).filter(Boolean));
-    for (const row of jsonl(join(sessionDir, "outbox.jsonl"), bump)) {
-      if (row.type !== "escalation" || typeof row.capability !== "string") continue;
-      const step = (typeof row.step === "string" || typeof row.step === "number") ? row.step : "";
-      const ts = String(row.ts ?? "");
-      const escalation_id = escalationId({ sessionDir, step, capability: row.capability, ts });
-      all.push({ escalation: { escalation_id, resume_token: resumeToken(escalation_id), sessionDir, capability: row.capability, step, ts, shape: capabilityShape(row.capability), raw: row }, closed: closed.has(escalation_id) });
-    }
-  }
-  return { all, parseErrors };
-}
-
-export function readEscalations(bridgeRoot: string): EscalationsResult {
-  const { all, parseErrors } = scan(bridgeRoot);
-  return { escalations: all.filter((r) => !r.closed).map((r) => r.escalation), parseErrors };
-}
-
-export function findByResumeToken(bridgeRoot: string, token: string): { state: "open" | "closed"; escalation: Escalation } | undefined {
-  const hit = scan(bridgeRoot).all.find((r) => r.escalation.resume_token === token);
-  return hit && { state: hit.closed ? "closed" : "open", escalation: hit.escalation };
+export function findByResumeToken(_bridgeRoot: string, _token: string): { state: "open" | "closed"; escalation: Escalation } | undefined {
+  return undefined;
 }

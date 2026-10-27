@@ -2,7 +2,7 @@
 # scripts/handover/worker-timeline.sh
 #
 # Reconstruct a per-worker critical-path timeline from data that already exists:
-#   - worker dispatches : ~/.claude/handover/bridge/glm-sessions/*/meta.json, claudex-sessions/*/meta.json (see lanes/claudex-session-root.mjs)
+#   - worker dispatches : claudex-sessions/*/meta.json (see lanes/claudex-session-root.mjs)
 #                         (started_at = dispatch; meta.json mtime = exit/land stamp,
 #                          since NO meta.json carries an explicit end timestamp —
 #                          verified across every session; the file's mtime is the
@@ -28,7 +28,7 @@
 #     (total worker time + % waiting).
 #
 # Source paths are env-overridable (see test-worker-timeline.sh):
-#   WORKER_SESSION_TIMELINE_WORKER_GLM, WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
+#   WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
 #   WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 #
 # Tooling: jq (JSONL field extraction) + node. node is the ONLY portable
@@ -62,7 +62,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/env-alias.sh"
 # old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_TIMELINE_WORKER_GLM LEG_TIMELINE_WORKER_GLM
 alias_env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX LEG_TIMELINE_WORKER_CLAUDEX
 alias_env WORKER_SESSION_TIMELINE_CHAIN_LEDGER LEG_TIMELINE_CHAIN_LEDGER
 alias_env WORKER_SESSION_TIMELINE_CR_LEDGER LEG_TIMELINE_CR_LEDGER
@@ -71,7 +70,6 @@ alias_env WORKER_SESSION_TIMELINE_CR_LEDGER LEG_TIMELINE_CR_LEDGER
 # bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
-glm_dir="${WORKER_SESSION_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}"
 claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-}"
 claudex_legacy=""
 if [ -z "$claudex_dir" ]; then
@@ -114,7 +112,7 @@ Reconstruct a per-worker critical-path timeline (HIMMEL-1485).
   <since-ts>  ISO-8601 lower bound (UTC assumed when no offset), e.g.
               '2026-08-03T00:00'.
 
-Env overrides: WORKER_SESSION_TIMELINE_WORKER_GLM, WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
+Env overrides: WORKER_SESSION_TIMELINE_WORKER_CLAUDEX,
                WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 EOF
 }
@@ -181,7 +179,7 @@ gather_workers() {
       return m ? (m[1].toUpperCase() + ":/" + m[2]) : q;
     }
     // "blocked" is a real terminal status (content-filter) emitted by
-    // spawn-glm.ts finalMeta alongside done/timeout/failed/capped; without it a
+    // spawn-common.ts finalMeta alongside done/timeout/failed/capped; without it a
     // blocked session never gets a land row. "aborted" is NOT a finalMeta status.
     const TERM = new Set(["done","timeout","failed","capped","blocked"]);
     const dirs = process.argv.slice(1).map(win);
@@ -207,7 +205,7 @@ gather_workers() {
         }
       }
     }
-  ' -- "$glm_dir" "$claudex_dir" "$claudex_legacy"
+  ' -- "$claudex_dir" "$claudex_legacy"
 }
 
 # --- source 2: gate renders (jq over the CR ledger JSONL) ---
@@ -258,8 +256,7 @@ gather_ledger() {
 }
 
 # Track which sources contributed (for the summary's gap report).
-w_glm=0; w_claudex=0; w_gate=0; w_ledger=0; w_gate_malformed=0
-[ -d "$glm_dir" ]     && w_glm=1
+w_claudex=0; w_gate=0; w_ledger=0; w_gate_malformed=0
 { [ -d "$claudex_dir" ] || { [ -n "$claudex_legacy" ] && [ -d "$claudex_legacy" ]; }; } && w_claudex=1
 [ -f "$cr_ledger" ]   && w_gate=1
 [ -f "$chain_ledger" ] && w_ledger=1
@@ -371,7 +368,6 @@ echo "=== Summary ==="
 
 # Source-gap report: which configured sources were missing.
 gap=""
-[ "$w_glm" -eq 0 ]     && gap="${gap}  - worker(glm) dir missing: $glm_dir"$'\n'
 [ "$w_claudex" -eq 0 ] && gap="${gap}  - worker(claudex) dir missing: $claudex_dir"$'\n'
 [ "$w_gate" -eq 0 ]    && gap="${gap}  - CR ledger missing: $cr_ledger"$'\n'
 [ "$w_gate_malformed" -gt 0 ] && gap="${gap}  - CR ledger malformed rows skipped: $w_gate_malformed"$'\n'

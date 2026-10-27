@@ -1,6 +1,5 @@
 import { beforeEach, expect, test } from "bun:test";
-import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, detectGlmCap, buildPrompt, killTree, REPO_ROOT, glmChildEnv, sessionEnv, laneModel, spawnSpec, laneEffort } from "./run";
-import { GLM_MODEL_ALIAS } from "./glm-env";
+import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort } from "./run";
 import { spawn } from "bun";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -193,7 +192,7 @@ test("buildPrompt sanctions non-destructive Jira ticket ops (HIMMEL-424 followup
   expect(p).toMatch(/do NOT use [`']?move/i);             // no move (closes the source ticket)
   expect(p).toContain("project-create");                  // admin op named in the exclusion
 });
-// --- GLM lane seam — modelOverride pin + per-lane child env ---
+// --- explicit model overrides ---
 test("buildRunArgs modelOverride wins and ignores TELEGRAM_CLAUDE_MODEL", () => {
   process.env.TELEGRAM_CLAUDE_MODEL = "claude-raw-anthropic-id";
   const { cmd } = buildRunArgs("hi", undefined, "opus");
@@ -205,109 +204,40 @@ test("buildRunArgs without override keeps resolveModel behavior", () => {
   expect(buildRunArgs("hi").cmd).toEqual(["claude", "--model", "sonnet", "hi"]);
 });
 
-test("glmChildEnv merges GLM block and strips TELEGRAM_OWN_POLLER", () => {
-  process.env.ZAI_API_KEY = "k-merge";
-  process.env.TELEGRAM_OWN_POLLER = "1";
-  try {
-    const env = glmChildEnv();
-    expect(env.ANTHROPIC_BASE_URL).toBe("https://api.z.ai/api/anthropic");
-    expect(env.ANTHROPIC_AUTH_TOKEN).toBe("k-merge");
-    expect("TELEGRAM_OWN_POLLER" in env).toBe(false);
-  } finally {
-    delete process.env.ZAI_API_KEY;
-    delete process.env.TELEGRAM_OWN_POLLER;
-  }
-});
-
-// Context diet is only useful if the diet values OVERRIDE an
-// operator-exported gate in the child env — the whole point is that a worker
-// launched from a shell with HIMMEL_INITIATIVE=1 still gets the injection off.
-// This pins the spread ORDER at the glmChildEnv seam: flip it to
-// {...buildGlmEnv(), ...process.env} and buildGlmEnv's own unit test still
-// passes while the diet is silently defeated — this test is what catches that.
-test("glmChildEnv: diet values override an operator-exported gate", () => {
-  process.env.ZAI_API_KEY = "k-diet";
-  process.env.HIMMEL_INITIATIVE = "1";
-  try {
-    expect(glmChildEnv().HIMMEL_INITIATIVE).toBe("0");
-  } finally {
-    delete process.env.ZAI_API_KEY;
-    delete process.env.HIMMEL_INITIATIVE;
-  }
-});
-
-// the operator's guard-override for a hooks-touching worker
-// (HIMMEL_HOOK_INTEGRITY_BYPASS_OK) must never ride the parent's env into a
-// dispatched worker — the worker would inherit a lever that disables its own
-// pin-dir and anchor fences. Every worker-env builder strips it, ambient or not.
-test("glmChildEnv strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK (HIMMEL-3396)", () => {
-  process.env.ZAI_API_KEY = "k-bypass";
+test("sessionEnv strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK (HIMMEL-3396)", () => {
+  const prior = process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK = "1";
   try {
-    expect("HIMMEL_HOOK_INTEGRITY_BYPASS_OK" in glmChildEnv()).toBe(false);
+    expect("HIMMEL_HOOK_INTEGRITY_BYPASS_OK" in sessionEnv()).toBe(false);
   } finally {
-    delete process.env.ZAI_API_KEY;
-    delete process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
-  }
-});
-
-test("sessionEnv strips HIMMEL_HOOK_INTEGRITY_BYPASS_OK on both lanes (HIMMEL-3396)", () => {
-  process.env.ZAI_API_KEY = "k-bypass";
-  process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK = "1";
-  try {
-    for (const lane of [undefined, "glm"] as const) {
-      expect("HIMMEL_HOOK_INTEGRITY_BYPASS_OK" in sessionEnv(lane)).toBe(false);
-    }
-  } finally {
-    delete process.env.ZAI_API_KEY;
-    delete process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
+    if (prior === undefined) delete process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
+    else process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK = prior;
   }
 });
 
 test("REPO_ROOT resolves to the himmel checkout root (Windows-safe)", () => {
-  // exercises the fileURLToPath derivation the ZAI-key .env fallback depends on
   expect(existsSync(join(REPO_ROOT, "scripts", "telegram", "run.ts"))).toBe(true);
-});
-
-test("laneModel pins the GLM alias for the glm lane and nothing otherwise (HIMMEL-654)", () => {
-  expect(laneModel("glm")).toBe(GLM_MODEL_ALIAS); // import the constant, don't hardcode "opus"
-  expect(laneModel(undefined)).toBeUndefined();
-});
-
-test("sessionEnv routes glm lane through glmChildEnv", () => {
-  process.env.ZAI_API_KEY = "k-lane";
-  delete process.env.ANTHROPIC_BASE_URL; // hermetic: guard against ambient value
-  try {
-    expect(sessionEnv("glm").ANTHROPIC_BASE_URL).toBe("https://api.z.ai/api/anthropic");
-    expect(sessionEnv(undefined).ANTHROPIC_BASE_URL).toBeUndefined();
-    expect("TELEGRAM_OWN_POLLER" in sessionEnv(undefined)).toBe(false);
-  } finally { delete process.env.ZAI_API_KEY; }
 });
 
 // --- LUNA-101: extraEnv merge (the GGS marker channel) ---
 test("sessionEnv merges extraEnv over the inherited env", () => {
-  const e = sessionEnv(undefined, { HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
+  const e = sessionEnv({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
   expect(e.HERMES_BOUNDED_RUN).toBe("1");
   expect(e.GGS_ROLE).toBe("readonly");
 });
 test("sessionEnv without extraEnv carries no GGS markers (default posture)", () => {
-  const e = sessionEnv(undefined);
+  const e = sessionEnv();
   expect(e.HERMES_BOUNDED_RUN).toBeUndefined();
   expect(e.GGS_ROLE).toBeUndefined();
 });
 
 // --- no spawned worker may block behind an editor window ---
-test("sessionEnv pins every editor hook to a no-op on both lanes", () => {
-  process.env.ZAI_API_KEY = "k-editor";
-  try {
-    for (const lane of [undefined, "glm"] as const) {
-      const e = sessionEnv(lane);
-      expect(e.GIT_EDITOR).toBe("true");
-      expect(e.EDITOR).toBe("true");
-      expect(e.VISUAL).toBe("true");
-      expect(e.GH_PROMPT_DISABLED).toBe("1");
-    }
-  } finally { delete process.env.ZAI_API_KEY; }
+test("sessionEnv pins every editor hook to a no-op", () => {
+  const e = sessionEnv();
+  expect(e.GIT_EDITOR).toBe("true");
+  expect(e.EDITOR).toBe("true");
+  expect(e.VISUAL).toBe("true");
+  expect(e.GH_PROMPT_DISABLED).toBe("1");
 });
 // The poller is launched by a scheduled task whose env carries no GIT_EDITOR,
 // so inheriting is not enough — an ambient INTERACTIVE editor must be overridden.
@@ -315,13 +245,13 @@ test("sessionEnv overrides an inherited interactive editor", () => {
   const prior = process.env.GIT_EDITOR;
   process.env.GIT_EDITOR = "notepad";
   try {
-    expect(sessionEnv(undefined).GIT_EDITOR).toBe("true");
+    expect(sessionEnv().GIT_EDITOR).toBe("true");
   } finally {
     if (prior === undefined) delete process.env.GIT_EDITOR; else process.env.GIT_EDITOR = prior;
   }
 });
 test("sessionEnv lets an explicit extraEnv editor override win", () => {
-  expect(sessionEnv(undefined, { GIT_EDITOR: "code --wait" }).GIT_EDITOR).toBe("code --wait");
+  expect(sessionEnv({ GIT_EDITOR: "code --wait" }).GIT_EDITOR).toBe("code --wait");
 });
 // The markers are set by the ROUTE, never inherited (CR CodeRabbit): a poller
 // whose own env carries them must not hand every unrouted session a false
@@ -331,11 +261,11 @@ test("sessionEnv strips INHERITED GGS markers on an unrouted session", () => {
   process.env.HERMES_BOUNDED_RUN = "1";
   process.env.GGS_ROLE = "operator";
   try {
-    const e = sessionEnv(undefined);
+    const e = sessionEnv();
     expect(e.HERMES_BOUNDED_RUN).toBeUndefined();
     expect(e.GGS_ROLE).toBeUndefined();
     // ...but the cwd route still grants them.
-    const routed = sessionEnv(undefined, { HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
+    const routed = sessionEnv({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
     expect(routed.GGS_ROLE).toBe("readonly");
   } finally {
     if (priorRun === undefined) delete process.env.HERMES_BOUNDED_RUN; else process.env.HERMES_BOUNDED_RUN = priorRun;
@@ -345,83 +275,17 @@ test("sessionEnv strips INHERITED GGS markers on an unrouted session", () => {
 test("sessionEnv still strips TELEGRAM_OWN_POLLER when extraEnv is present", () => {
   process.env.TELEGRAM_OWN_POLLER = "1";
   try {
-    expect("TELEGRAM_OWN_POLLER" in sessionEnv(undefined, { GGS_ROLE: "readonly" })).toBe(false);
+    expect("TELEGRAM_OWN_POLLER" in sessionEnv({ GGS_ROLE: "readonly" })).toBe(false);
   } finally { delete process.env.TELEGRAM_OWN_POLLER; }
 });
-// The strip must run BEFORE the merge, so an ambient TELEGRAM_OWN_POLLER can
-// never survive — and a marker can never be stripped by it.
-test("sessionEnv: extraEnv cannot be clobbered by the poller-var strip", () => {
-  // Seed the var (CR codex-1): without it the strip assertion below passes even
-  // if the glm branch leaks the poller marker — a vacuous test on exactly the
-  // half it exists to cover.
-  // ZAI_API_KEY must be seeded too: the glm branch runs
-  // buildGlmEnv, which THROWS with no key, so this test passed only on a machine
-  // that happened to have one — it would fail on a clean checkout / in CI.
-  // Save-and-restore rather than an unconditional delete, so a real ambient key
-  // survives for later tests in the file.
-  const priorKey = process.env.ZAI_API_KEY, priorPoller = process.env.TELEGRAM_OWN_POLLER;
-  process.env.ZAI_API_KEY = "k-hermetic";
-  process.env.TELEGRAM_OWN_POLLER = "1";
-  try {
-    const e = sessionEnv("glm", { GGS_ROLE: "readonly" });
-    expect(e.GGS_ROLE).toBe("readonly");
-    expect("TELEGRAM_OWN_POLLER" in e).toBe(false);
-  } finally {
-    if (priorKey === undefined) delete process.env.ZAI_API_KEY; else process.env.ZAI_API_KEY = priorKey;
-    if (priorPoller === undefined) delete process.env.TELEGRAM_OWN_POLLER; else process.env.TELEGRAM_OWN_POLLER = priorPoller;
-  }
-});
-
-const T5H = "API Error: 429 {\"error\":{\"code\":1316,\"message\":\"Usage limit reached for the past 5 hours. Insufficient balance for extra usage\"}}";
-const T7D = "429 {\"error\":{\"code\":1317,\"message\":\"Usage limit reached for the past 7 days. Insufficient balance for extra usage\"}}";
-const TRESET = "429 Usage limit reached for 100 prompts. Your limit will reset at 1783118400000";
-const TWEEKLY = "429 Weekly/Monthly Limit Exhausted. Your limit will reset at 2026-07-10T00:00:00Z";
-const TBAL = "429 Insufficient balance or no resource package. Please recharge.";
-const TEXP = "429 Your GLM Coding Plan package has expired and is temporarily unavailable";
-const T1305 = "429 The service may be temporarily overloaded, please try again later";
-const BENIGN = "fix the quota logic in #1316; see docs/tooling-catalog.md limit section";
-
-test("detectGlmCap classifies 5h vs long windows", () => {
-  expect(detectGlmCap(T5H)).toEqual({ window: "5h" });
-  expect(detectGlmCap(TRESET)).toEqual({ window: "5h" });
-  expect(detectGlmCap(T7D)).toEqual({ window: "long" });
-  expect(detectGlmCap(TWEEKLY)).toEqual({ window: "long" });
-  expect(detectGlmCap(TBAL)).toEqual({ window: "long" });
-  expect(detectGlmCap(TEXP)).toEqual({ window: "long" });
-  expect(detectGlmCap(T1305)).toBeNull();
-  expect(detectGlmCap(BENIGN)).toBeNull();
-  // TIE: matches a long sentinel AND the 5h pair rule — long must win, else a
-  // 7-day cap is mislabeled 5h and armed for a resume that instantly re-caps
-  // (CR round: the ordering was claimed in code but untested).
-  expect(detectGlmCap("Usage limit reached for the past 7 days. Your limit will reset at 1783118400000")).toEqual({ window: "long" });
-});
-
-test("detectCap lane semantics", () => {
-  expect(detectCap(T5H, "glm")).toBe(true);           // GLM sentinel
-  expect(detectCap(T1305, "glm")).toBe(false);        // transient 1305: try-again-later DROPPED on-lane
-  expect(detectCap(T1305)).toBe(true);                // off-lane base set unchanged
-  expect(detectCap("Claude usage limit reached", "glm")).toBe(true); // base usage-limit kept on-lane
-  expect(detectCap(BENIGN, "glm")).toBe(false);
-});
-
 // --- a model: tag's opus/sonnet alias is pinned to the 5.5 full id ---
-test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves haiku and the GLM alias alone (HIMMEL-3848)", () => {
+test("spawnSpec pins the opus/sonnet tier aliases to the 5.5 ids, leaves other models alone (HIMMEL-3848)", () => {
   const model = (s: { cmd: string[] }) => s.cmd[s.cmd.indexOf("--model") + 1];
   expect(model(spawnSpec("p", undefined, undefined, "opus"))).toBe("claude-opus-5-5");
   expect(model(spawnSpec("p", undefined, undefined, "sonnet"))).toBe("claude-sonnet-5-5");
   expect(model(spawnSpec("p", undefined, undefined, "haiku"))).toBe("haiku");
   // an inherited Object.prototype name is not a tier alias
   expect(model(spawnSpec("p", undefined, undefined, "constructor"))).toBe("constructor");
-  // GLM's "opus" is a Z.ai alias (ANTHROPIC_DEFAULT_OPUS_MODEL), never an Anthropic id;
-  // the glm lane needs a key (CI has none), so set one and put the ambient value back
-  const ambientKey = process.env.ZAI_API_KEY;
-  process.env.ZAI_API_KEY = "k-3848";
-  try {
-    expect(model(spawnSpec("p", undefined, "glm"))).toBe(GLM_MODEL_ALIAS);
-  } finally {
-    if (ambientKey === undefined) delete process.env.ZAI_API_KEY;
-    else process.env.ZAI_API_KEY = ambientKey;
-  }
 });
 
 // --- the lane registry's effort reaches a native dispatch ---
@@ -460,7 +324,7 @@ test("spawnSpec: a route's extraEnv effort wins over the lane's (HIMMEL-3482)", 
   expect(spawnSpec("p", undefined, undefined, undefined, undefined, { CLAUDE_CODE_EFFORT_LEVEL: "low" }).env.CLAUDE_CODE_EFFORT_LEVEL).toBe("low");
 });
 test("laneEffort ignores a non-tier lane and a prose effort value (HIMMEL-3482)", () => {
-  expect(laneEffort("glm-4.6", REAL_LANES)).toBeUndefined();
+  expect(laneEffort("some-other-model", REAL_LANES)).toBeUndefined();
   expect(laneEffort("opus", { lanes: [{ id: "opus", class: "claude-tier", effort: "codex weekly bank" }] })).toBeUndefined();
 });
 test("laneEffort falls back to no effort on a registry that parses to the wrong shape (HIMMEL-3482)", () => {

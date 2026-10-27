@@ -1548,7 +1548,7 @@ async function resolveTelegramProfileSettings(cwd: string, lanesDir: string): Pr
   return settings === null ? undefined : JSON.stringify(settings);
 }
 
-export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: "glm", modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes")): RunFn {
+export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes")): RunFn {
   const retryAt = () => new Date(Date.now() + RETRY_MS).toISOString();
   const noticed = new Set<string>();
   const safeNotify = async (session: string, retryAtIso: string, kind: NotifyKind) => {

@@ -61,8 +61,8 @@ function staticResponse(path: string, contentType: string): Response {
 }
 
 export function eventsResponse(watchRoots: string | string[], watchFactory: typeof watch = watch): Response {
-  // Watch every distinct root (fleet-control state dir AND the bridge root,
-  // where glm-sessions/ lives) so all lane changes ping a refetch. A root
+  // Watch every distinct root (fleet-control state dir AND the bridge root)
+  // so all lane changes ping a refetch. A root
   // nested inside an already-watched recursive root is skipped as redundant.
   const requested = (Array.isArray(watchRoots) ? watchRoots : [watchRoots]).filter(Boolean);
   const isUnder = (child: string, parent: string) => child.startsWith(parent + "/") || child.startsWith(parent + "\\");
@@ -132,9 +132,8 @@ export function startServer(opts: ServerOpts): { server: import("bun").Server; p
 }
 
 export function resolveServeRoots(env: Record<string, string | undefined> = process.env): { stateRoot: string; bridgeRoot: string } {
-  // glm-sessions/ lives under the BRIDGE root; fleet-control state is its
-  // child dir. Deriving bridgeRoot from stateRoot's default parent (or the
-  // explicit envs) keeps the GLM/escalation readers pointed at the right tree.
+  // Fleet-control state is a child of the bridge root. Keep the roots distinct
+  // so the state readers and bridge watchers use their respective trees.
   const bridgeRoot = env.FLEET_CONTROL_BRIDGE_ROOT ?? env.BRIDGE_ROOT ?? join(env.HOME ?? process.cwd(), ".claude", "handover", "bridge");
   const stateRoot = env.FLEET_CONTROL_STATE_ROOT ?? join(bridgeRoot, "fleet-control");
   return { stateRoot, bridgeRoot };

@@ -167,7 +167,7 @@ export function resolveBankTargets(base, local, bankIds) {
   return { withBank, without };
 }
 
-// Parse a KEY=VALUE from a .env line (one surrounding quote-pair stripped), matching glm-env.ts semantics.
+// Parse a KEY=VALUE from a .env line (one surrounding quote-pair stripped), matching scripts/lib/load-dotenv.sh semantics.
 function parseDotenv(file) {
   const out = {};
   if (!existsSync(file)) return out;
@@ -182,7 +182,7 @@ function parseDotenv(file) {
 }
 
 // When run from a git WORKTREE, repoRoot's own .env is gitignored/absent — the real
-// .env lives in the MAIN checkout. Mirror glm-env.ts:27-57 (git-common-dir → parent).
+// .env lives in the MAIN checkout. Mirror scripts/lib/load-dotenv.sh (git-common-dir → parent).
 // Returns undefined for non-git / not-a-worktree.
 function mainCheckoutRoot(repoRoot) {
   try {

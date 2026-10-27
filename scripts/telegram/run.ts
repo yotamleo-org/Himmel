@@ -1,6 +1,5 @@
 import { spawn } from "bun";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { buildGlmEnv, GLM_MODEL_ALIAS } from "./glm-env";
 import { isTicketKey } from "./router";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +11,7 @@ import { fileURLToPath } from "node:url";
 // TELEGRAM_OWN_POLLER from the child env so the spawned session never owns the
 // poller. NO -p/--print/--channels — interactive billing + behaviour only.
 // PermissionMode: "bypassPermissions" is the vault-session mode
-// (see runSession). "dontAsk" is the GLM/claudex WORKER default —
+// (see runSession). "dontAsk" is the claudex WORKER default —
 // verified (`claude --help`, v2.1.220) as one of the CLI's native
 // --permission-mode values, and the one Claude Code docs confirm auto-DENIES
 // any tool call not explicitly allow-listed rather than ever prompting. That
@@ -20,7 +19,7 @@ import { fileURLToPath } from "node:url";
 // prompt it cannot answer would otherwise hang until the external timeout
 // kills it (the native-permission-matcher-bails shape this hook
 // comment documents: scripts/hooks/auto-approve-safe-bash.sh). bypassPermissions
-// is NEVER used for an unattended worker (forbidden — see spawn-glm.ts's
+// is NEVER used for an unattended worker (forbidden — see spawn-common.ts's
 // REFUSE_BYPASS_PERMISSIONS) precisely because it strips every guardrail
 // instead of narrowing to what the worker legitimately needs. A union (not
 // bare string) makes a typo a compile error instead of a malformed
@@ -42,12 +41,10 @@ function resolveModel(): string {
 }
 // permissionMode: when set, injected as `--permission-mode <mode>`
 // BEFORE the prompt.
-// modelOverride (GLM lane): GLM runs pin their alias explicitly and
-// MUST NOT consult TELEGRAM_CLAUDE_MODEL — a poller-pinned raw Anthropic model
-// id must never leak to the Z.ai endpoint (spec D3).
+// modelOverride: an explicit per-dispatch model wins over TELEGRAM_CLAUDE_MODEL.
 // settings (plugin profiles): when set, injected as
 // `--settings <json>` before the prompt — the lever-b per-dispatch plugin-profile
-// payload spawn-glm resolves. Highest non-managed precedence, so a lane runs the
+// payload spawn-claudex resolves. Highest non-managed precedence, so a lane runs the
 // lean profile while ~/.claude (shared, no CLAUDE_CONFIG_DIR) stays full for the
 // operator. Omitted (operator profile / unset) => no flag, inherits ~/.claude.
 // mcpConfig: when set, injected as `--mcp-config <json>
@@ -108,16 +105,6 @@ export function resolveBash(): string {
 }
 export const BASH_BIN = resolveBash();
 
-// glmChildEnv: the GLM lane's child env — the current process env
-// with the GLM block (buildGlmEnv) merged over it, and TELEGRAM_OWN_POLLER
-// stripped so the spawned session never owns the poller.
-export function glmChildEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...process.env, ...buildGlmEnv(REPO_ROOT) };
-  delete env.TELEGRAM_OWN_POLLER;
-  delete env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK; // HIMMEL-3396: an operator lever, never a worker's
-  return env;
-}
-
 // a spawned worker runs with stdin CLOSED (see runSession), so it
 // can never answer an interactive editor or prompt. Any tool that falls back to
 // $EDITOR (git commit without -m, gh pr create without --body, ...) would open a
@@ -138,30 +125,19 @@ export const NON_INTERACTIVE_EDITOR_ENV: Record<string, string> = {
   GH_PROMPT_DISABLED: "1",
 };
 
-// env selection per lane — exported so the lane wiring itself is unit-tested
-// (not only the glmChildEnv helper).
 // extraEnv (LUNA-101): per-route child-env additions, merged LAST so the
-// TELEGRAM_OWN_POLLER strip (which both branches do) can never remove a marker,
-// and an ambient poller var can never survive a marker merge. This is the only
-// channel by which a route reaches the child env — the env is built here, not
-// in the poller.
-export function sessionEnv(lane?: "glm", extraEnv?: Record<string, string>): Record<string, string | undefined> {
-  const base: Record<string, string | undefined> = lane === "glm" ? glmChildEnv() : { ...process.env };
-  // Reads asymmetric but is not: glmChildEnv() ALREADY deletes it (see above), so
-  // the glm branch's base arrives stripped and re-deleting would be dead code.
-  // Both branches end up without it — asserted by a test that seeds the var and
-  // calls sessionEnv("glm"). (Two independent critics have now read this line as
-  // a glm leak; the note is here so a third does not.)
-  if (lane !== "glm") delete base.TELEGRAM_OWN_POLLER;
+// TELEGRAM_OWN_POLLER strip can never remove a marker. This is the only channel
+// by which a route reaches the child env — the env is built here, not in the poller.
+export function sessionEnv(extraEnv?: Record<string, string>): Record<string, string | undefined> {
+  const base: Record<string, string | undefined> = { ...process.env };
+  delete base.TELEGRAM_OWN_POLLER;
   // The GGS markers are SET BY THE ROUTE, never inherited (CR CodeRabbit): if the
   // poller's own environment happens to carry them, every unrouted session would
   // silently claim to be a bounded read-only GGS run. Same posture as the
   // TELEGRAM_OWN_POLLER strip above — clear first, then let extraEnv grant them.
   delete base.HERMES_BOUNDED_RUN;
   delete base.GGS_ROLE;
-  // the operator's hook-integrity bypass never reaches a worker —
-  // the default lane spreads process.env, so it is stripped here as well as in
-  // glmChildEnv (claudexChildEnv, spawn-claudex.ts, is the third builder).
+  // The operator's hook-integrity bypass never reaches a worker.
   delete base.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   // NON_INTERACTIVE_EDITOR_ENV before extraEnv: a route may override an editor
   // key deliberately, but nothing ambient can reinstate an interactive one.
@@ -227,28 +203,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
 
 // Cap / rate-limit detection default = output sentinel (per spec).
 const CAP_SENTINELS = [/usage limit reached/i, /Claude usage limit/i, /try again later/i];
-// GLM lane (cap guard): z.ai official 429 message substrings
-// (docs.z.ai/api-reference/api-code; fixtures promoted from the Task-0 live
-// capture). Exact substrings only — the tail carries task text/diffs/issue
-// numbers like #1316, so no bare code-number matching. `try again later` is
-// DROPPED on-lane: z.ai 1305 is documented-transient and would otherwise arm
-// a resume up to 5h out for a seconds-transient condition.
-export type GlmCapWindow = "5h" | "long";
-const GLM_LONG = [/usage limit reached for the past 7 days/i, /weekly\/monthly limit exhausted/i, /insufficient balance or no resource package/i, /glm coding plan package has expired/i];
-export function detectGlmCap(output: string): { window: GlmCapWindow } | null {
-  if (GLM_LONG.some(r => r.test(output))) return { window: "long" };
-  if (/usage limit reached for the past 5 hours/i.test(output)) return { window: "5h" };
-  // 1308 shape: the reset phrase alone is NOT enough (spec defines the PAIR) —
-  // co-require the usage-limit prefix so an unrelated "reset at" line can't
-  // classify as a cap. 1318-1321 verbatim strings are undocumented; per the
-  // research they are "past 5 hours / past 7 days" variants, so the two
-  // substring rules above are expected to catch them — Task 0/criterion 7
-  // live captures are the guard if they don't.
-  if (/usage limit reached for/i.test(output) && /your limit will reset at/i.test(output)) return { window: "5h" };
-  return null;
-}
-export function detectCap(output: string, lane?: "glm"): boolean {
-  if (lane === "glm") return detectGlmCap(output) !== null || /usage limit reached/i.test(output) || /Claude usage limit/i.test(output);
+export function detectCap(output: string): boolean {
   return CAP_SENTINELS.some(r => r.test(output));
 }
 
@@ -275,17 +230,10 @@ export function detectContentFilter(output: string): boolean { return FILTER_SEN
 // with SPAWN_OWN_GROUP — see that file for the measured matrix.
 export { killTree };
 
-// Lane → model pin: the GLM lane pins its alias (→ glm-5.2[1m] via
-// ANTHROPIC_DEFAULT_OPUS_MODEL) and MUST NOT inherit TELEGRAM_CLAUDE_MODEL; any
-// other lane leaves the model to resolveModel. Extracted so the seam is unit-tested.
-export function laneModel(lane?: "glm"): string | undefined {
-  return lane === "glm" ? GLM_MODEL_ALIAS : undefined;
-}
-
 // Observability hooks: a silently-hung worker (native permission
 // matcher bails to an unanswerable prompt on stdin="ignore") used
 // to be INVISIBLE for the entire RUN_TIMEOUT_MS window — run.log was appended
-// only from the FINAL tail (spawn-glm.ts executeRun), post-exit, so a session
+// only from the FINAL tail, post-exit, so a session
 // that never exits leaves zero trace until its caller's timeout fires. onSpawn
 // fires once, synchronously after spawn, with the real child pid (meta.json
 // previously stayed pid:0 for the whole "running" window — no way for an
@@ -333,22 +281,20 @@ export function laneEffort(model: string, registry: LaneRegistry = loadLanes()):
 }
 
 // argv + env of a bounded run, split out of runSession so the spawned env is
-// testable. The GLM lane is left alone: its alias names no claude tier.
+// testable. The reserved lane slot keeps callers' later argument positions stable.
 // A `model:opus|sonnet` tag reaches here as a bare alias, which the CLI
 // resolves to the previous generation (Opus 5 / Sonnet 5). Pin the two tiers
 // to their 5.5 full ids; haiku has no 5.5 twin and stays an alias.
 const TIER_PIN: Record<string, string> = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5" };
-export function spawnSpec(prompt: string, permissionMode?: PermissionMode, lane?: "glm", modelOverride?: string, settings?: string, extraEnv?: Record<string, string>, mcpConfig?: string, registry?: LaneRegistry) {
-  const picked = modelOverride ?? laneModel(lane);
-  // the GLM alias is a Z.ai mapping (ANTHROPIC_DEFAULT_OPUS_MODEL), never an Anthropic id
-  const model = lane === "glm" || picked === undefined ? picked : (Object.hasOwn(TIER_PIN, picked) ? TIER_PIN[picked] : picked);
+export function spawnSpec(prompt: string, permissionMode?: PermissionMode, _lane?: undefined, modelOverride?: string, settings?: string, extraEnv?: Record<string, string>, mcpConfig?: string, registry?: LaneRegistry) {
+  const model = modelOverride === undefined ? undefined : (Object.hasOwn(TIER_PIN, modelOverride) ? TIER_PIN[modelOverride] : modelOverride);
   const { cmd } = buildRunArgs(prompt, permissionMode, model, settings, mcpConfig);
-  const effort = lane === "glm" ? undefined : laneEffort(cmd[2], registry);
-  const env = sessionEnv(lane, effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort, ...(extraEnv ?? {}) } : extraEnv);
+  const effort = laneEffort(cmd[2], registry);
+  const env = sessionEnv(effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort, ...(extraEnv ?? {}) } : extraEnv);
   return { cmd, env };
 }
 
-export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: "glm", modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string }> {
+export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string }> {
   const { cmd, env } = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
   // PERMISSION POSTURE:
   // the bounded run inherits the operator's default permission mode (accept-edits)
@@ -383,5 +329,5 @@ export async function runSession(prompt: string, cwd: string, permissionMode?: P
   }
   const tail = (out + err).slice(-65536);
   // tail returned for run.log persistence
-  return { code: timedOut ? -1 : code, capped: detectCap(tail, lane), blocked: detectContentFilter(tail), timedOut, pid, tail };
+  return { code: timedOut ? -1 : code, capped: detectCap(tail), blocked: detectContentFilter(tail), timedOut, pid, tail };
 }

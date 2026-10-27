@@ -358,7 +358,7 @@ census_paths=""
 claudex_roots=$(node "$SCRIPT_DIR/../lanes/claudex-session-root.mjs" all ${WORKER_BRIDGE_ROOT:+--bridge-root "$WORKER_BRIDGE_ROOT"}) || claudex_roots="$BRIDGE/claudex-sessions"
 claudex_dirs=()
 while read -r d; do [ -n "$d" ] && claudex_dirs+=("$d"); done <<< "$claudex_roots"
-for lane_dir in "$BRIDGE/glm-sessions" "${claudex_dirs[@]}"; do
+for lane_dir in "${claudex_dirs[@]}"; do
     for meta in "$lane_dir"/*/meta.json; do
         [ -f "$meta" ] || continue
         census_paths="$census_paths$meta"$'\n'
