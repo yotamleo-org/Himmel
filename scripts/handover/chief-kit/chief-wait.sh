@@ -765,6 +765,23 @@ unwatched_wake() {
     set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
 }
 
+doctor_file="$inbox.wait.doctor"
+# doctor_wake: <doctor= ids, comma-joined> — a doctor WARN/FAIL id the marker does not hold. Prints
+# the new ids (comma-joined) and succeeds; the marker then holds the whole current set. No re-wake
+# window: an unchanged set never wakes however old the marker. An id that leaves and rejoins is new
+# again, because the marker shrinks to the current set on every sample.
+doctor_wake() {
+    local ids new
+    ids="$(printf '%s\n' "$1" | tr ',' '\n')"
+    if [ -e "$doctor_file" ]; then
+        new="$(printf '%s\n' "$ids" | grep -vxFf "$doctor_file" | paste -sd, -)"  # swallow-ok: no new id is an empty list, grep's no-match rc
+    else
+        new="$1"
+    fi
+    printf '%s\n' "$ids" > "$doctor_file" 2>/dev/null
+    [ -n "$new" ] || return 1
+    printf '%s\n' "$new"
+}
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
 # wakes once (above); after the first STALE the class never moves again, so the
 # marker holds the epoch the streak was first seen and the wake fires once the
@@ -1231,6 +1248,16 @@ while :; do
                 printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
                 exit_reason='wake-unwatched'; exit 0
             fi
+            doctor_val="$(field doctor "$tick_line")"
+            case "$doctor_val" in
+                '') rm -f "$doctor_file" ;;
+                '?') ;;
+                *)
+                    if doctor_new="$(doctor_wake "$doctor_val")"; then
+                        printf 'WAKE doctor %s\n%s\n' "$doctor_new" "$tick_line"
+                        exit_reason='wake-doctor'; exit 0
+                    fi ;;
+            esac
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0

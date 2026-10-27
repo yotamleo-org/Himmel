@@ -1148,6 +1148,51 @@ wait_exit "$WPID"
 check "(dp4) the same run gaining a new flag wakes" "0" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (7849) doctor=<id>,...: a WARN/FAIL check id new to the waiter's marker wakes it once
+# and names only the new ids; an unchanged set never re-wakes, however old the marker; a set
+# that shrinks wakes nothing; doctor=? keeps the marker. RED control (chief-wait.sh before this
+# change): none woke.
+doctor_line() { sed -e 's/ doctor=[^ ]*//' ${1:+-e "s/\$/ doctor=$1/"} "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+doctor_line "C16-hooks,C76-bridge-stale"
+I="$(new_inbox w7849)"
+start "$I" "$WORK/w7849.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(7849) a new doctor WARN set wakes on first sight" "0" "$rc"
+check "(7849) the wake names the doctor ids" "WAKE doctor C16-hooks,C76-bridge-stale" "$(head -n1 "$WORK/w7849.out")"
+
+start "$I" "$WORK/w7849b.out" --workers "N1.md"
+wait_hb "$I" || fail "(7849-2) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7849-2) the same set does not wake again" "running" "$rc"
+touch -d '5 hours ago' "$I.wait.doctor"
+wait_exit "$WPID"
+check "(7849-2) nor after the marker is hours old" "running" "$rc"
+doctor_line "C16-hooks,C35-other,C76-bridge-stale"
+wait_exit "$WPID"
+check "(7849-3) a set gaining a member wakes naming only the new id" "WAKE doctor C35-other" "$(head -n1 "$WORK/w7849b.out")"
+
+doctor_line "C35-other"
+start "$I" "$WORK/w7849c.out" --workers "N1.md"
+wait_hb "$I" || fail "(7849-4) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7849-4) a set that only shrinks wakes nothing" "running" "$rc"
+doctor_line "C16-hooks,C35-other"
+wait_exit "$WPID"
+check "(7849-4) an id that left and rejoins is new again" "WAKE doctor C16-hooks" "$(head -n1 "$WORK/w7849c.out")"
+
+doctor_line "?"
+start "$I" "$WORK/w7849d.out" --workers "N1.md"
+wait_hb "$I" || fail "(7849-5) no baseline heartbeat"
+sleep 2
+check "(7849-5) doctor=? keeps the marker" "present" "$([ -e "$I.wait.doctor" ] && echo present)"
+check "(7849-5) and wakes nothing" "" "$(head -n1 "$WORK/w7849d.out")"
+doctor_line ""
+n=0
+while [ "$n" -lt 50 ] && [ -e "$I.wait.doctor" ]; do sleep 0.1; n=$((n + 1)); done
+check "(7849-6) a tick line with no doctor= clears the marker" "" "$([ -e "$I.wait.doctor" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"
 (cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?

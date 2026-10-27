@@ -1961,10 +1961,11 @@ fake_task_probe() {
 #         query is read as UNDETERMINED, never as a live "MainPID=0".
 # shellcheck disable=SC2016  # $state/$mainpid/$nrestarts are meant to reach the fake binary's own /bin/sh unexpanded
 fake_systemctl() {
-    local dir="$1" state="$2" mainpid="${3:-0}" nrestarts="${4:-0}"
+    local dir="$1" state="$2" mainpid="${3:-0}" nrestarts="${4:-0}" enter_ts="${5:-}"
     mkdir -p "$dir"
     {
         printf '#!/bin/sh\n'
+        printf 'enter_ts=%s\n' "'$enter_ts'"
         printf 'state=%s\n' "$state"
         printf 'mainpid=%s\n' "$mainpid"
         printf 'nrestarts=%s\n' "$nrestarts"
@@ -1998,6 +1999,7 @@ elif [ "$1" = "--user" ] && [ "$2" = "show" ]; then
             else
                 printf '%s\n' "$mainpid"
             fi ;;
+        ActiveEnterTimestamp) printf '%s\n' "$enter_ts" ;;
         NRestarts)
             if [ "$nrestarts" = "FAIL" ]; then
                 echo "Failed to get properties: Transport endpoint is not connected" >&2
@@ -2218,6 +2220,38 @@ if grepq "$c30_line" -F 'probe output unrecognised (invented future state)' && !
     pass "C30 -> INFO (unrecognised output reports only its first line, without inventing a bus failure)"
 else
     fail "C30 unrecognised-output cause -> $(printf '%s' "$out" | grep -A1 C30)"
+fi
+rm -rf "$t"
+
+echo "== C76 (HIMMEL-7849): bridge poller started before the newest commit to scripts/telegram, scripts/lanes or scripts/lib -> WARN C76-bridge-stale =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c76.XXXXXX")" || { fail "C76: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/probe" "$t/repo/scripts/telegram" "$t/repo/scripts/lib"; write_settings "$t/claude" "$WRAPPER"
+git -C "$t/repo" init -q
+printf 'x\n' > "$t/repo/scripts/lib/a.sh"
+git -C "$t/repo" add -A
+GIT_AUTHOR_DATE='2026-10-27T10:00:00Z' GIT_COMMITTER_DATE='2026-10-27T10:00:00Z' git -C "$t/repo" -c user.name=t -c user.email=t@t commit -q -m 'fix: lib change'
+fake_systemctl "$t/probe" enabled 424242 0 '@1792000000'
+# 1792000000 = 2026-10-14: the poller started well before the 10-27 commit
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C76 --root "$t/repo" 2>&1)"
+if grepq "$out" 'WARN C76-bridge-stale' && grepq "$out" -F 'fix: lib change'; then
+    pass "C76 -> WARN (poller started before the newest commit touching the bridge's import graph)"
+else
+    fail "C76 stale poller -> $(printf '%s' "$out" | grep -A1 C76)"
+fi
+fake_systemctl "$t/probe" enabled 424242 0 '@1893000000'
+# 1893000000 = 2029: the poller started after the newest commit
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C76 --root "$t/repo" 2>&1)"
+if grepq "$out" 'OK   C76-bridge-stale' && ! grepq "$out" 'WARN C76-bridge-stale'; then
+    pass "C76 -> OK (poller started after the newest bridge commit)"
+else
+    fail "C76 fresh poller -> $(printf '%s' "$out" | grep -A1 C76)"
+fi
+fake_systemctl "$t/probe" notfound
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C76 --root "$t/repo" 2>&1)"
+if ! grepq "$out" 'WARN C76-bridge-stale' && ! grepq "$out" 'FAIL C76-bridge-stale'; then
+    pass "C76 -> no finding when no bridge unit is installed (most adopters have none)"
+else
+    fail "C76 no unit -> $(printf '%s' "$out" | grep -A1 C76)"
 fi
 rm -rf "$t"
 

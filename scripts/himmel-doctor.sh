@@ -4622,6 +4622,40 @@ check_c65_git_gates() {
     fi
 }
 
+# --- C76: telegram-bridge poller older than its code ---
+# The 10-27 AI TODO outage: a pull changed scripts/telegram, scripts/lanes and scripts/lib while the
+# bridge process kept the code it started with, and a group went unanswered for 12 h. C30 only asks
+# whether the unit is alive. This asks whether the live poller started after the newest commit to the
+# directories it imports from. Read-only like C30 (systemctl show / git log only, never a restart).
+# Silent when no bridge unit is enabled here (C24/C30 speak to that) or its start time is unknown.
+# Seam: HIMMEL_DOCTOR_SYSTEMCTL (shared with C24/C30); --root picks the checkout whose git log is read.
+# ponytail: the commit time (not the pull time) is compared, so a commit authored before the poller
+# started but pulled after it reads fresh; upgrade is the HEAD reflog's last pull time.
+check_c76_bridge_stale() {
+    local systemctl_bin="${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" unit="telegram-bridge.service"
+    local started started_ts commit_ts subject started_fmt commit_fmt
+    command -v "$systemctl_bin" >/dev/null 2>&1 || return 0
+    [ "$(_systemd_user_unit_state "$systemctl_bin" "$unit")" = enabled ] || return 0
+    started="$("$systemctl_bin" --user show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null)" || return 0
+    [ -n "$started" ] || return 0
+    started_ts="$(date -d "$started" +%s 2>/dev/null)" || {  # gnu-ok: systemd on Linux prints the timestamp; macOS has no user bridge unit, so the unreadable branch below covers it
+        emit INFO C76-bridge-stale "$unit start time '$started' is unreadable — bridge staleness undetermined" \
+            "verify manually: $systemctl_bin --user show $unit -p ActiveEnterTimestamp --value"
+        return 0
+    }
+    commit_ts="$(git -C "$REPO_ROOT" log -1 --format=%ct -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)" || return 0
+    [ -n "$commit_ts" ] || return 0
+    if [ "$commit_ts" -gt "$started_ts" ]; then
+        subject="$(git -C "$REPO_ROOT" log -1 --format=%s -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)"
+        started_fmt="$(date -d "@$started_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: only reached after the GNU parse above succeeded
+        commit_fmt="$(date -d "@$commit_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: same Linux-only path
+        emit WARN C76-bridge-stale "$unit started $started_fmt before the newest commit to scripts/telegram, scripts/lanes or scripts/lib ($commit_fmt: $subject) — the poller runs stale code" \
+            "systemctl --user restart $unit   # an OPERATOR decision, this check never restarts it"
+        return 0
+    fi
+    emit OK C76-bridge-stale "$unit started after the newest commit to scripts/telegram, scripts/lanes and scripts/lib"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4768,6 +4802,7 @@ run_check C72 check_c72_design_mcp_auth
 run_check C73 check_c73_bun_compiled
 run_check C74 check_c74_config_split
 run_check C75 check_c75_keyring
+run_check C76 check_c76_bridge_stale
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

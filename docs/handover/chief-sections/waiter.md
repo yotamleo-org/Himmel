@@ -53,6 +53,16 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `bank-preflight.sh` verdict word. Heartbeat, procs, fill, fleet, gql and
     orphans never wake (`capacity=` wakes only through `WAKE underfilled`). An idle chief therefore takes **zero** turns.
 
+    **`WAKE doctor <new ids>`** (HIMMEL-7849): the tick runs `himmel-doctor.sh`
+    about every 30 min (cached; `TICK_DOCTOR_TTL_MIN`, 0 = off) and reports the
+    WARN/FAIL check ids as `doctor=<id,id>`. The waiter wakes only when that set
+    gains an id it has not shown you, naming just the new ones; an unchanged or
+    shrinking set never wakes, and an id that leaves and comes back wakes again.
+    `doctor=?` (the doctor failed with nothing cached) keeps the saved set. A WARN
+    usually means a real issue, so work each new id the turn it wakes you: **fix
+    it, ticket it, or record a ruling** that it is acceptable. Never leave it
+    unread because the next wake will not repeat it.
+
     **Re-start it at the end of the turn that handles each wake** — the waiter
     has exited, so a turn that does not re-start it leaves you deaf to Telegram
     and to the tick. Start it in the same turn as your other work, never as a

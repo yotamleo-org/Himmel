@@ -263,6 +263,13 @@ probe reads the last cached value, else ?. The value (a failure too) is cached
 TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in TICK_STALL_CACHE. chief-wait.sh wakes once
 per new conflict or no-ci token and keeps its saved set on ?.
 
+doctor=<id>[,<id>...] (HIMMEL-7849) is the WARN and FAIL check ids of `himmel-doctor.sh --json`,
+sorted. Absent when the doctor is clean, TICK_DOCTOR_TTL_MIN is 0 or the doctor script
+(TICK_DOCTOR_CMD, default $REPO/scripts/himmel-doctor.sh) is missing. The doctor is slow, so the
+ids are cached TICK_DOCTOR_TTL_MIN minutes (default 30) in TICK_DOCTOR_CACHE, a failed run too: it
+reads the last cached ids, else ?. chief-wait.sh wakes once per id new to its marker and keeps its
+saved set on ?.
+
 crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:go`
 label the reviewer gate has not released, with the hold reason, plus `#<pr>:manual-release` for
 a head labelled by hand. The tick calls scripts/lib/cr-first-release.sh once per unreleased head
@@ -2180,6 +2187,33 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     fi
     case "$stall_val" in ""|*[!0-9a-z:,?-]*) ;; *) stall_tail=" stall=$stall_val" ;; esac
 fi
+# doctor=<id>[,<id>...]: the WARN and FAIL check ids of himmel-doctor --json, sorted.
+# ABSENT when the doctor is clean, TICK_DOCTOR_TTL_MIN is 0, or the doctor script is missing. The run
+# is slow (about 10 s warm), so the id list is cached TICK_DOCTOR_TTL_MIN minutes (default 30) in
+# TICK_DOCTOR_CACHE, a failure too: a failed run reads the last cached ids, else `?` (unknown,
+# never "clean"): the waiter keeps its saved set on `?`.
+doctor_tail=""
+doctor_cmd="${TICK_DOCTOR_CMD:-$REPO/scripts/himmel-doctor.sh}"
+doctor_cache="${TICK_DOCTOR_CACHE:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-doctor.cache}"
+case "${TICK_DOCTOR_TTL_MIN:-30}" in ""|*[!0-9]*) doctor_ttl=30 ;; *) doctor_ttl=$((10#${TICK_DOCTOR_TTL_MIN:-30})) ;; esac
+if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2>&1; then
+    doctor_val="?"
+    # swallow-ok: an unreadable cache reads as unknown
+    [ -f "$doctor_cache" ] && doctor_val="$(cat "$doctor_cache" 2>/dev/null)"
+    doctor_fresh=""
+    # swallow-ok: an unreadable cache reads as stale and the doctor runs
+    [ -f "$doctor_cache" ] && [ -n "$(find "$doctor_cache" -mmin "-$doctor_ttl" 2>/dev/null)" ] && doctor_fresh=1
+    if [ -z "$doctor_fresh" ]; then
+        # The doctor exits 1 when a FAIL row exists; that run still answered. Any other code, or no rows, did not.
+        doctor_rows="$(timeout -k 2 120 bash "$doctor_cmd" --json --no-color 2>/dev/null </dev/null)"; doctor_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: a failed run keeps the last cached value
+        if [ "$doctor_rc" -le 1 ] && [ -n "$doctor_rows" ] && doctor_ids="$(printf '%s\n' "$doctor_rows" | jq -r 'select(type == "object" and (.sev == "WARN" or .sev == "FAIL")) | .id' 2>/dev/null)"; then  # swallow-ok: unparsable rows keep the last cached value
+            doctor_val="$(printf '%s\n' "$doctor_ids" | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
+        fi
+        # swallow-ok: a cache that cannot be written only costs the next tick a doctor run
+        { mkdir -p "${doctor_cache%/*}" && printf '%s' "$doctor_val" > "$doctor_cache.$$" && mv "$doctor_cache.$$" "$doctor_cache"; } 2>/dev/null || true
+    fi
+    case "$doctor_val" in ""|*[!0-9A-Za-z_,?.-]*) ;; *) doctor_tail=" doctor=$doctor_val" ;; esac
+fi
 # crfirst=#<pr>:<reason>:<age>[,...]: non-fork heads whose `ci:go` the
 # reviewer gate has not released yet, with the reason it holds, and `#<pr>:manual-release`
 # for a head labelled by hand. This is event point 5 of the CI release: the tick calls
@@ -2752,6 +2786,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans-wip: %s\n' "$orphans_wip"
     printf 'pool-closed: %s\n' "$pool_closed"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
+    [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
@@ -2824,7 +2859,7 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"
