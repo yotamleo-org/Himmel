@@ -56,7 +56,6 @@ benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
 benign          ^marketplace/plugins/(luna-correlate|telegram-himmel)/
 benign          ^\.bun-version$
 benign          ^docs/setup/settings-template\.json$
-benign          ^tests/fixtures/glm-cap/
 benign          (^|/)bun\.lock$
 benign          (^|/)package(-lock)?\.json$
 

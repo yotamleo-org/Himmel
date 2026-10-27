@@ -32,7 +32,7 @@ classify() {
 check "1: rc=124 -> timeout" "$(classify 124 '' 'exceeded your allocated quota')" "timeout"
 check "2: rc=137 -> timeout" "$(classify 137 '' '')" "timeout"
 
-# ── quota-5h: Z.ai 5h sentinel (glm-cap fixture cli-tail-0b.txt) ───────────
+# ── quota-5h: the 5h sentinel ───────────────────────────────────────────────
 check "3: Z.ai 5h phrase -> quota-5h" \
     "$(classify 1 '' 'API Error: Request rejected (429) · [1316][Usage limit reached for the past 5 hours. Insufficient balance for extra usage][mock0b]')" \
     "quota-5h"

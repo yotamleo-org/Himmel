@@ -245,12 +245,9 @@ class TestGateAndLedger(unittest.TestCase):
             ledger = Path(td) / "led.jsonl"
             os.environ["GRAPHIFY_LEDGER"] = str(ledger)
             try:
-                # zai-glm as the ledger SHAPE fixture. Its cell is deny, but
-                # ledger_append is a pure formatter — it never
-                # consults the matrix — so the egress id here only has to be a
-                # real one. The gate's refusal of zai-glm is covered by
-                # test-egress-matrix.mjs and test_gate_deny_refuses_before_any_call.
-                ok = mod.ledger_append(Path("/v/chats"), 7, 200, "zai-glm")
+                # ledger_append is a pure formatter — it never consults the
+                # matrix — so the egress id here only has to be a real one.
+                ok = mod.ledger_append(Path("/v/chats"), 7, 200, "openai-codex")
             finally:
                 del os.environ["GRAPHIFY_LEDGER"]
             self.assertTrue(ok)
@@ -258,7 +255,7 @@ class TestGateAndLedger(unittest.TestCase):
             self.assertEqual(rec["purpose"], "enrichment")
             self.assertEqual(rec["tool"], "enrich-chat-notes")
             self.assertEqual(rec["corpus"], "luna-personal")
-            self.assertEqual(rec["provider"], "zai-glm")
+            self.assertEqual(rec["provider"], "openai-codex")
             self.assertEqual(rec["verdict"], "allow+log")
             self.assertEqual(rec["notes"], 7)
             self.assertEqual(rec["vocab_tags"], 200)
@@ -817,10 +814,10 @@ class TestMain(unittest.TestCase):
 
 
 class TestProviderRegistry(unittest.TestCase):
-    """The 4 providers resolve to the right api_style/url/model/key_env/egress
+    """The 3 providers resolve to the right api_style/url/model/key_env/egress
     (HIMMEL-1167). Anthropic-style providers also carry an auth scheme."""
-    def test_all_four_providers_present_and_default(self):
-        self.assertEqual(set(mod.PROVIDERS), {"deepseek", "codex", "glm", "claude"})
+    def test_all_providers_present_and_default(self):
+        self.assertEqual(set(mod.PROVIDERS), {"deepseek", "codex", "claude"})
         # DeepSeek de-listed; shipped default is Claude-only
         # (anthropic is the always-allowed operating substrate on luna-personal).
         self.assertEqual(mod.DEFAULT_PROVIDER, "claude")
@@ -842,15 +839,6 @@ class TestProviderRegistry(unittest.TestCase):
         self.assertEqual(c["key_env"], "OPENAI_API_KEY")
         self.assertEqual(c["egress"], "openai-codex")
 
-    def test_glm(self):
-        c = mod.PROVIDERS["glm"]
-        self.assertEqual(c["api_style"], "anthropic")
-        self.assertEqual(c["url"], "https://api.z.ai/api/anthropic/v1/messages")
-        self.assertEqual(c["model"], "glm-5.2")
-        self.assertEqual(c["key_env"], "ZAI_API_KEY")
-        self.assertEqual(c["egress"], "zai-glm")
-        self.assertEqual(c["auth"], "bearer")
-
     def test_claude(self):
         c = mod.PROVIDERS["claude"]
         self.assertEqual(c["api_style"], "anthropic")
@@ -862,7 +850,7 @@ class TestProviderRegistry(unittest.TestCase):
 
 
 class TestAnthropicClient(unittest.TestCase):
-    """call_anthropic (glm/claude Messages-API path) parses content[0].text JSON
+    """call_anthropic (Messages-API path) parses content[0].text JSON
     — including a ```json fence — and feeds the SAME validate_result as the
     openai path. Mock all HTTP (no network)."""
     def _resp(self, text):
@@ -876,7 +864,7 @@ class TestAnthropicClient(unittest.TestCase):
             seen["url"], seen["body"], seen["headers"] = url, body, headers
             return {"content": [{"text":
                 json.dumps({"summary": "s.", "tags": ["jira"]})}]}
-        got = mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "zai-key", "glm-5.2",
+        got = mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "bearer-key", "claude-haiku-5-5",
                                  "T", "hello", ["jira", "poetry"], "bearer",
                                  post=fake_post)
         self.assertEqual(got, {"summary": "s.", "tags": ["jira"]})
@@ -884,26 +872,26 @@ class TestAnthropicClient(unittest.TestCase):
         # one user message carrying vocab + title + transcript.
         self.assertNotIn("response_format", seen["body"])
         self.assertEqual(seen["body"]["system"], mod.SYSTEM_PROMPT)
-        self.assertEqual(seen["body"]["model"], "glm-5.2")
+        self.assertEqual(seen["body"]["model"], "claude-haiku-5-5")
         self.assertEqual(len(seen["body"]["messages"]), 1)
         self.assertEqual(seen["body"]["messages"][0]["role"], "user")
         user = seen["body"]["messages"][0]["content"]
         self.assertIn("jira, poetry", user)
         self.assertIn("Title: T", user)
-        # z.ai compat -> bearer; common headers present
-        self.assertEqual(seen["headers"]["Authorization"], "Bearer zai-key")
+        # bearer auth mode; common headers present
+        self.assertEqual(seen["headers"]["Authorization"], "Bearer bearer-key")
         self.assertEqual(seen["headers"]["anthropic-version"], "2023-06-01")
         self.assertEqual(seen["headers"]["Content-Type"], "application/json")
 
     def test_thinking_budget_is_at_least_1024(self):
-        # CR codex-adv-2: GLM-5 thinking is on by default and max_tokens bounds
+        # CR codex-adv-2: thinking can be on by default and max_tokens bounds
         # thinking + answer combined; a 500 budget can truncate the JSON answer.
-        # The anthropic path must send z.ai's recommended >=1024 min.
+        # The anthropic path must send a >=1024 budget.
         seen = {}
         def fake_post(url, body, headers):
             seen["body"] = body
             return {"content": [{"text": "{}"}]}
-        mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2", "T",
+        mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5", "T",
                            "p", [], "bearer", post=fake_post)
         self.assertGreaterEqual(seen["body"]["max_tokens"], 1024)
 
@@ -920,7 +908,7 @@ class TestAnthropicClient(unittest.TestCase):
 
     def test_strips_json_fence_then_validate(self):
         fenced = '```json\n{"summary": "fenced summary", "tags": ["jira"]}\n```'
-        got = mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2", "T",
+        got = mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5", "T",
                                  "p", ["jira", "poetry"], "bearer",
                                  post=self._resp(fenced))
         # same validate_result the openai client's output flows through
@@ -928,7 +916,7 @@ class TestAnthropicClient(unittest.TestCase):
                          {"summary": "fenced summary", "tags": ["jira"]})
 
     def test_strips_bare_fence(self):
-        got = mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2", "T",
+        got = mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5", "T",
                                  "p", [], "bearer", post=self._resp('```\n{}\n```'))
         self.assertEqual(got, {})
 
@@ -942,7 +930,7 @@ class TestAnthropicClient(unittest.TestCase):
         orig = mod.time.sleep
         mod.time.sleep = lambda s: None
         try:
-            got = mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2",
+            got = mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5",
                                      "t", "p", [], "bearer", post=flaky)
         finally:
             mod.time.sleep = orig
@@ -950,7 +938,7 @@ class TestAnthropicClient(unittest.TestCase):
         self.assertEqual(calls["n"], 3)
 
     def test_thinking_block_first_is_skipped(self):
-        # GLM-5 enables thinking by default (z.ai): a valid Messages response
+        # A valid Messages response with thinking on
         # leads with a thinking block (no `text` key) before the final text
         # block. Blindly indexing content[0]["text"] KeyErrors and double-bills
         # the note on retry; call_anthropic must pick the text block instead.
@@ -959,7 +947,7 @@ class TestAnthropicClient(unittest.TestCase):
                 {"type": "thinking", "thinking": "let me summarize..."},
                 {"type": "text",
                  "text": json.dumps({"summary": "s.", "tags": ["jira"]})}]}
-        got = mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2",
+        got = mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5",
                                  "t", "p", ["jira"], "bearer", post=thinking_first)
         self.assertEqual(got, {"summary": "s.", "tags": ["jira"]})
 
@@ -968,12 +956,12 @@ class TestAnthropicClient(unittest.TestCase):
         def empty(url, body, headers):
             return {"content": []}
         with self.assertRaises(ValueError):
-            mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2", "t",
+            mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5", "t",
                                "p", [], "bearer", post=empty)
         def thinking_only(url, body, headers):
             return {"content": [{"type": "thinking", "thinking": "..."}]}
         with self.assertRaises(ValueError):
-            mod.call_anthropic(mod.PROVIDERS["glm"]["url"], "k", "glm-5.2", "t",
+            mod.call_anthropic(mod.PROVIDERS["claude"]["url"], "k", "claude-haiku-5-5", "t",
                                "p", [], "bearer", post=thinking_only)
 
 
@@ -990,7 +978,7 @@ class TestProviderEgressWiring(unittest.TestCase):
         orig = mod.subprocess.run
         mod.subprocess.run = fake_run
         try:
-            for egress in ("deepseek", "zai-glm", "anthropic"):
+            for egress in ("deepseek", "openai-codex", "anthropic"):
                 mod._run_gate_eval(Path("/repo"), egress)
                 self.assertEqual(seen["argv"][-3:],
                                  ["luna-personal", egress, "enrichment"])
@@ -1006,71 +994,25 @@ class TestProviderEgressWiring(unittest.TestCase):
         orig = mod._run_gate_eval
         mod._run_gate_eval = fake_eval
         try:
-            self.assertEqual(mod.egress_gate(Path("/repo"), "zai-glm"),
+            self.assertEqual(mod.egress_gate(Path("/repo"), "openai-codex"),
                              ("allow+log", "ok"))
         finally:
             mod._run_gate_eval = orig
-        self.assertEqual(seen["egress"], "zai-glm")
+        self.assertEqual(seen["egress"], "openai-codex")
 
     def test_ledger_records_provider_egress_id(self):
         with tempfile.TemporaryDirectory() as td:
             ledger = Path(td) / "led.jsonl"
             os.environ["GRAPHIFY_LEDGER"] = str(ledger)
             try:
-                ok = mod.ledger_append(Path("/v/chats"), 3, 50, "zai-glm")
+                ok = mod.ledger_append(Path("/v/chats"), 3, 50, "openai-codex")
             finally:
                 del os.environ["GRAPHIFY_LEDGER"]
             self.assertTrue(ok)
             rec = json.loads(ledger.read_text(encoding="utf-8").strip())
-            self.assertEqual(rec["provider"], "zai-glm")
+            self.assertEqual(rec["provider"], "openai-codex")
             self.assertEqual(rec["corpus"], "luna-personal")
             self.assertEqual(rec["purpose"], "enrichment")
-
-    def test_main_glm_provider_end_to_end(self):
-        # --provider glm dispatches through call_anthropic, writes
-        # enriched_model = glm-5.2, ledgers provider=zai-glm, and SKIPS the
-        # deepseek-only off-peak advisory. The egress gate is MOCKED here, so
-        # this pins the anthropic-api_style DISPATCH path only — it is not a
-        # claim that zai-glm is permitted. It is not (its cell is deny);
-        # with the real gate this run refuses at rc=2, which is what
-        # test_gate_deny_refuses_before_any_call covers.
-        with tempfile.TemporaryDirectory() as td:
-            vault = _mk_vault(td)
-            os.environ["LUNA_VAULT_PATH"] = str(vault)
-            led = Path(td) / "led.jsonl"
-            os.environ["GRAPHIFY_LEDGER"] = str(led)
-            orig = (mod.classify_vault, mod.egress_gate, mod.resolve_api_key,
-                    mod.call_anthropic, mod.offpeak_warn)
-            called = {"anthropic": 0, "offpeak": 0}
-            mod.classify_vault = lambda v: ("luna-personal", "")
-            mod.egress_gate = lambda root, egress: ("allow+log", "ok")
-            mod.resolve_api_key = lambda d, key_env: "zai-key"
-
-            def fake_anthropic(*a, **k):
-                called["anthropic"] += 1
-                return {"summary": "s.", "tags": ["jira"]}
-
-            def fake_offpeak():
-                called["offpeak"] += 1
-            mod.call_anthropic = fake_anthropic
-            mod.offpeak_warn = fake_offpeak
-            try:
-                rc = mod.main(["--vault", str(vault), "--provider", "glm"])
-            finally:
-                (mod.classify_vault, mod.egress_gate, mod.resolve_api_key,
-                 mod.call_anthropic, mod.offpeak_warn) = orig
-                os.environ.pop("LUNA_VAULT_PATH", None)
-                os.environ.pop("GRAPHIFY_LEDGER", None)
-            self.assertEqual(rc, 0)
-            self.assertEqual(called["anthropic"], 1)
-            self.assertEqual(called["offpeak"], 0)
-            text = (vault / "chats" / "gpt" / "2025-08" / "a.md").read_text(encoding="utf-8")
-            fm, _ = mod.split_frontmatter(text)
-            self.assertEqual(mod.fm_value(fm, "enriched"), "true")
-            self.assertEqual(mod.fm_value(fm, "enriched_model"), "glm-5.2")
-            rec = json.loads(led.read_text(encoding="utf-8").strip())
-            self.assertEqual(rec["provider"], "zai-glm")
-
 
     def test_main_claude_honors_plain_allow_verdict(self):
         # CR coderabbit: the anthropic egress cell returns plain `allow` (not

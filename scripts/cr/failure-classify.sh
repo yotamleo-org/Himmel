@@ -93,9 +93,9 @@ $(cat "$_cf_err" 2>/dev/null)"
     _cf_broke="$(printf '%s' "$_cf_blob" | grep '^critic-first-pass.sh: claude critic BROKE (')"
     if [ -n "$_cf_broke" ]; then echo critic-broke; return 0; fi
 
-    # quota-5h: the existing exhaustion table, the Z.ai 5-hour
-    # sentinel (tests/fixtures/glm-cap/cli-tail-0b.txt: "Usage limit reached
-    # for the past 5 hours"), or a bare 429 paired with quota-ish wording.
+    # quota-5h: the existing exhaustion table, the 5-hour sentinel
+    # ("Usage limit reached for the past 5 hours"), or a bare 429 paired with
+    # quota-ish wording.
     if is_quota_exhaustion "$_cf_out" "$_cf_err"; then echo quota-5h; return 0; fi
     if _cf_has 'past 5 hours'; then echo quota-5h; return 0; fi
     if _cf_has '(^|[^0-9])429([^0-9]|$)' && _cf_has 'quota|usage limit|insufficient balance|exceeded'; then

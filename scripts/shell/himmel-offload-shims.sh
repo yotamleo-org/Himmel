@@ -21,10 +21,6 @@ if [ -n "$__himmel_root" ] && [ -f "$__himmel_root/scripts/claude-codex" ]; then
   cc-codex() { bash "$__himmel_root/scripts/claude-codex" "$@"; }
 fi
 
-if [ -n "$__himmel_root" ] && [ -f "$__himmel_root/scripts/claude-glm" ]; then
-  cc-glm() { bash "$__himmel_root/scripts/claude-glm" "$@"; }
-fi
-
 himmel_offload_shims_install() {
   local shim_path bashrc esc_path source_line
   shim_path="$__himmel_shim_dir/$(basename -- "${BASH_SOURCE[0]}")"

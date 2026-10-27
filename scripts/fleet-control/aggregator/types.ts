@@ -1,7 +1,7 @@
 export type WorkerStatus = "running" | "done" | "failed" | "dead" | "capped" | "blocked" | "timeout" | "armed" | "queued" | "unknown";
 
 export type Worker = {
-  lane: "glm" | "codex" | "hermes" | "armed";
+  lane: "codex" | "hermes" | "armed";
   name: string;
   status: WorkerStatus;
   branch?: string;

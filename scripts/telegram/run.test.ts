@@ -396,11 +396,6 @@ test("detectGlmCap classifies 5h vs long windows", () => {
   expect(detectGlmCap("Usage limit reached for the past 7 days. Your limit will reset at 1783118400000")).toEqual({ window: "long" });
 });
 
-test("detectGlmCap fires on the Task-0 captured CLI tail", () => {
-  const tail = readFileSync("tests/fixtures/glm-cap/cli-tail-0b.txt", "utf8");
-  expect(detectGlmCap(tail)).toEqual({ window: "5h" });
-});
-
 test("detectCap lane semantics", () => {
   expect(detectCap(T5H, "glm")).toBe(true);           // GLM sentinel
   expect(detectCap(T1305, "glm")).toBe(false);        // transient 1305: try-again-later DROPPED on-lane

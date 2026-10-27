@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { readGlmWorkers } from "./glm";
 import { readCodexJobs } from "./codex";
 import { readHermes, type HermesCoverage } from "./hermes";
 import { readArmedSlots } from "./armed";
@@ -11,7 +10,7 @@ import type { Worker } from "./types";
 // second dispatch authority. Phase-1 read surfaces (GET /fleet) are designed
 // with a programmatic consumer in mind (stable JSON contract, no HTML-only state).
 export type FleetRoots = { bridgeRoot: string; stateRoot: string; pluginDataRoot: string };
-type Lane = "glm" | "codex" | "hermes" | "armed";
+type Lane = "codex" | "hermes" | "armed";
 export type FleetDoc = { lanes: Record<Lane, Worker[]>; feeds: Feeds; coverage: HermesCoverage; generatedAt: string };
 
 function errMessage(e: unknown): string {
@@ -54,7 +53,6 @@ export function buildFleet(roots: FleetRoots): FleetDoc {
 
   return {
     lanes: {
-      glm: safeLane("glm", () => readGlmWorkers(roots.bridgeRoot)),
       codex: safeLane("codex", () => readCodexJobs(roots.pluginDataRoot)),
       hermes: hermesWorkers,
       armed: safeLane("armed", () => readArmedSlots()),

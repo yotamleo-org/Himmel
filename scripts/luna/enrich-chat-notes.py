@@ -2,7 +2,7 @@
 """enrich-chat-notes — provider-pluggable enrichment pass over enriched:false chat-import notes.
 
 HIMMEL-833 (DeepSeek, original); HIMMEL-1167 generalizes the LLM backend to a
-selectable provider (--provider deepseek|codex|glm|claude, default deepseek).
+selectable provider (--provider deepseek|codex|claude, default deepseek).
 Sibling of fold-chat-history.py. Per note: one provider call
 (up to 2 attempts on invalid response shape) (summary + vocab-constrained
 tags); each request also carries the vault-wide top-200 tag vocabulary
@@ -71,14 +71,6 @@ PROVIDERS = {
         "model": "gpt-5.6",
         "key_env": "OPENAI_API_KEY",
         "egress": "openai-codex",
-    },
-    "glm": {
-        "api_style": "anthropic",
-        "url": "https://api.z.ai/api/anthropic/v1/messages",
-        "model": "glm-5.2",
-        "key_env": "ZAI_API_KEY",
-        "egress": "zai-glm",
-        "auth": "bearer",
     },
     "claude": {
         "api_style": "anthropic",
@@ -298,7 +290,7 @@ def primary_root(script_dir):
 def resolve_api_key(script_dir, key_env):
     """Env var named `key_env` wins; else the PRIMARY checkout's .env.
     Never resolves from the process CWD (HIMMEL-460 trap). `key_env` is the
-    provider's key env var (DEEPSEEK_API_KEY / OPENAI_API_KEY / ZAI_API_KEY /
+    provider's key env var (DEEPSEEK_API_KEY / OPENAI_API_KEY /
     ANTHROPIC_API_KEY)."""
     key = os.environ.get(key_env)
     if key:
@@ -327,7 +319,7 @@ def _run_gate_eval(repo_root, egress):
 
 def egress_gate(repo_root, egress):
     """(verdict, note). ('error', msg) on subprocess failure/nonzero exit.
-    `egress` is the provider's egress-matrix id (deepseek/zai-glm/...)."""
+    `egress` is the provider's egress-matrix id (deepseek/openai-codex/...)."""
     try:
         rc, stdout, stderr = _run_gate_eval(repo_root, egress)
     except (OSError, subprocess.SubprocessError) as e:
@@ -343,7 +335,7 @@ def ledger_append(chats_root, count, vocab_count, provider):
 
     `count` = notes egressed this run; `vocab_count` = number of vault-wide
     tag names carried with each request (the allowed-tags vocabulary);
-    `provider` = the provider's egress-matrix id (deepseek/zai-glm/...)."""
+    `provider` = the provider's egress-matrix id (deepseek/openai-codex/...)."""
     path = Path(os.environ.get("GRAPHIFY_LEDGER")
                 or Path.home() / ".claude" / "graphify-egress.jsonl")
     rec = {
@@ -464,8 +456,7 @@ def _anthropic_text(data):
 
 
 def call_anthropic(url, api_key, model, title, payload, vocab, auth, post=None):
-    """One enrichment call over an Anthropic Messages API endpoint (glm via
-    z.ai anthropic-compat, claude). Same payload/vocab contract as
+    """One enrichment call over an Anthropic Messages API endpoint (claude). Same payload/vocab contract as
     call_openai; the Messages API has no response_format, so JSON-only output
     relies on SYSTEM_PROMPT and the response text is parsed (with a markdown
     ```/```json fence stripped if present). `auth` is "x-api-key" (Anthropic
@@ -595,7 +586,7 @@ def main(argv=None):
     ap.add_argument("--vault", required=True, help="vault root (contains chats/)")
     ap.add_argument("--provider", choices=sorted(PROVIDERS),
                     default=DEFAULT_PROVIDER,
-                    help="LLM backend (deepseek|codex|glm|claude); each gated "
+                    help="LLM backend (deepseek|codex|claude); each gated "
                          "by its own egress-matrix cell. Default: claude (deepseek de-listed)")
     ap.add_argument("--limit", type=int, default=None, help="max notes this run")
     ap.add_argument("--dry-run", action="store_true",
@@ -638,9 +629,9 @@ def main(argv=None):
         # Accept BOTH permitted verdicts: `allow+log` (a cell carrying the
         # matrix ledger obligation) and plain `allow` (the anthropic cell —
         # Claude is the operating substrate). Only the
-        # anthropic cell is open here: deepseek and zai-glm are de-listed, so
-        # `--provider deepseek|glm` reaches this
-        # branch and is refused. Their PROVIDERS entries stay so the refusal is
+        # anthropic cell is open here: deepseek is de-listed, so
+        # `--provider deepseek` reaches this
+        # branch and is refused. Its PROVIDERS entry stays so the refusal is
         # legible rather than a KeyError. This tool calls
         # ledger_append UNCONDITIONALLY below regardless of which verdict, so
         # the audit trail holds even for a plain-allow provider — accepting

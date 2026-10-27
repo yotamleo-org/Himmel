@@ -192,33 +192,24 @@ else
     REG="$_REG_BASE"
 fi
 
-# load the Z.ai critic credential from the primary checkout's .env so
-# the paid glm panel row (provider zai / route_provider glm)
-# authenticates with NO manual env export — but ONLY when the resolved registry
-# actually contains a Z.ai critic (a "zai"/"glm" provider, route_provider, or
-# slug). load_dotenv forks a subshell per .env line (≈1.5s on Git Bash over a
-# large .env), so gating on need keeps that cost off every free-only / glm-less
-# panel run (the common path). load_dotenv sets a key ONLY when currently UNSET
-# (a live env value wins) and never sources/logs the .env — it extracts only the
-# requested KEY= lines (block-read-secrets safe). Scoped to the CR panel per the
-# Z.ai-key compliance note; deliberately NOT loaded at the hermes
-# chokepoint (invoke.sh stays auth-agnostic). load_dotenv exports each
-# key it sets, so the child critic-first-pass.sh -> invoke.sh processes inherit it.
+# Load the codex critic credential from the primary checkout's .env, but ONLY
+# when the resolved registry actually contains a codex critic. load_dotenv forks
+# a subshell per .env line (about 1.5s on Git Bash over a large .env), so gating
+# on need keeps that cost off every codex-less panel run. load_dotenv sets a key
+# ONLY when currently UNSET (a live env value wins) and never sources/logs the
+# .env: it extracts only the requested KEY= lines (block-read-secrets safe).
+# Deliberately NOT loaded at the hermes chokepoint (invoke.sh stays
+# auth-agnostic). load_dotenv exports each key it sets, so the child
+# critic-first-pass.sh -> invoke.sh processes inherit it.
 # CLIPROXY_API_KEY is the codex critic's auth credential. The codex
 # member runs via critic-first-pass.sh -> hermes/invoke.sh, whose openai-codex
 # provider defers auth to the INHERITED env (invoke.sh loads no dotenv itself),
 # so it must be exported here. Without this load a worktree run (no .env of its
 # own) leaves it unset, the codex critic dies rc=2, critic-first-pass.sh fails
-# OPEN, and the panel prints a 0/0/0 "clean" review. It is gated on its OWN
-# provider probe, NOT on the Z.ai one: a codex-only registry (CRITICS_JSON, or a
-# local overlay that drops the GLM row) is a supported shape, and folding the key
-# into the zai/glm gate would leave exactly that shape unauthenticated — the same
-# fail-open this ticket exists to close. Both probes read the FULL registry (set
-# before tier filtering), so each fires whenever its critic is present at all.
+# OPEN, and the panel prints a 0/0/0 "clean" review. The probe reads the FULL
+# registry (set before tier filtering), so it fires whenever a codex critic is
+# present at all.
 _CRED_KEYS=""
-if grep -Eq '"(zai|glm)"' "$REG" 2>/dev/null; then
-    _CRED_KEYS="$_CRED_KEYS GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY"
-fi
 if grep -Eq '"(openai-codex|codex)"' "$REG" 2>/dev/null; then
     _CRED_KEYS="$_CRED_KEYS CLIPROXY_API_KEY"
 fi

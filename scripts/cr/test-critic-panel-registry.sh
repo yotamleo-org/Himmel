@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # scripts/cr/test-critic-panel-registry.sh — regression guards:
-#   T1  the Z.ai critic credential is loaded from the primary checkout's .env and
-#       reaches the dispatched critic (credential-path guard).
 #   T2  critics.local.json MERGES per-slug over critics.json (override / append /
 #       drop-tombstone), instead of wholesale replacement.
 #   T3  CRITICS_JSON env still wins outright (no merge) — the tests/CI contract.
@@ -32,7 +30,7 @@ check() {
         echo "FAIL - $1: got [$2] want [$3]"; fails=$((fails + 1)); fi
 }
 
-# A stub critic: records "slug=<slug> model=<model> zai=<ZAI_API_KEY or MISSING>"
+# A stub critic: records "slug=<slug> model=<model>"
 # to $PANEL_TEST_LOG, then emits a valid empty findings block so the panel counts
 # it as responded. Ignores stdin (the diff).
 STUB="$tmp/stub.sh"
@@ -46,7 +44,7 @@ while [ $# -gt 0 ]; do
         *) shift ;;
     esac
 done
-printf 'slug=%s model=%s zai=%s\n' "$slug" "$model" "${ZAI_API_KEY:-MISSING}" >> "$PANEL_TEST_LOG"
+printf 'slug=%s model=%s\n' "$slug" "$model" >> "$PANEL_TEST_LOG"
 printf '# %s First-Pass Review\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n' "$slug"
 STUBEOF
 chmod +x "$STUB"
@@ -60,35 +58,6 @@ index 0000000..1111111 100644
 +added one
 +added two
 +added three'
-
-# ---------------------------------------------------------------------------
-# T1 — credential path: .env ZAI_API_KEY reaches the dispatched critic, with NO
-# manual export. critic-panel.sh's credential load_dotenv is pinned to
-# SCRIPT-ROOT resolution (`load_dotenv --root "$(_load_dotenv_primary_for
-# "$SCRIPT_DIR/../..")"`), so the loader reads the .env at the PANEL's own
-# himmel root, NOT the process cwd's. This block therefore plants its .env
-# where the pinned loader actually resolves: a fake himmel-root tree with the
-# panel (and scripts/lib/load-dotenv.sh) copied in so $SCRIPT_DIR/../.. lands on
-# the fixture root, and the .env planted THERE (mirrors test-critic-panel.sh's
-# credential block; failure-classify.sh / triviality-gate.sh are [ -r ]-guarded
-# fail-open sources, so they degrade when absent and the panel still runs). The
-# sentinel value proves the panel read THIS .env, not himmel's.
-# ---------------------------------------------------------------------------
-T1_ROOT="$tmp/t1-root"; mkdir -p "$T1_ROOT/scripts/cr" "$T1_ROOT/scripts/lib"
-cp "$PANEL" "$T1_ROOT/scripts/cr/critic-panel.sh"
-cp "$HERE/../lib/load-dotenv.sh" "$T1_ROOT/scripts/lib/load-dotenv.sh"
-cp "$HERE/../lib/prim.sh" "$T1_ROOT/scripts/lib/prim.sh"
-SENTINEL="sentinel-zai-9f3a7c"
-printf 'ZAI_API_KEY=%s\n' "$SENTINEL" > "$T1_ROOT/.env"
-printf '%s' '{"panel":[{"slug":"glm","model":"glm-5.2","provider":"zai","tier":"free","route_provider":"glm"}]}' > "$tmp/t1-reg.json"
-LOG1="$tmp/t1.log"; : > "$LOG1"
-# Unset every alias so load_dotenv actually loads from the temp .env.
-( env -u ZAI_API_KEY -u GLM_API_KEY -u Z_AI_API_KEY -u CR_PROFILE -u CRITIC_PANEL_TIERS \
-    PANEL_TEST_LOG="$LOG1" CRITICS_JSON="$tmp/t1-reg.json" CRITIC_FIRST_PASS="$STUB" \
-    bash "$T1_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 <<< "$DIFF" )
-check "T1: glm critic was dispatched"                 "$(grep -c 'slug=glm ' "$LOG1")" "1"
-check "T1: .env ZAI_API_KEY reached the critic env"   "$(grep -c "zai=$SENTINEL" "$LOG1")" "1"
-check "T1: credential was NOT missing"                "$(grep -c 'zai=MISSING' "$LOG1")" "0"
 
 # ---------------------------------------------------------------------------
 # T2 — merge semantics: BASE {glm, dup(base), keepme} + LOCAL {dup(local override),

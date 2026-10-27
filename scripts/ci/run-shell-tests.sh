@@ -970,7 +970,7 @@ scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructiv
 scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
 scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
 scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-glm vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
+scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-codex vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not

@@ -13,8 +13,8 @@ cat > "$tmp/cr.txt" <<'EOF'
 * lib/bar.ts:10: IMPORTANT: missing null check. Guard it.
 EOF
 
-# cheap-glm branch → blocking findings emitted, NIT dropped
-bash "$SCRIPT" --session-dir "$tmp" --input "$tmp/cr.txt" --branch glm/spike >/dev/null
+# cheap-codex branch → blocking findings emitted, NIT dropped
+bash "$SCRIPT" --session-dir "$tmp" --input "$tmp/cr.txt" --branch codex/spike >/dev/null
 n="$(wc -l < "$tmp/gate-report.jsonl" | tr -d ' ')"
 check "$n" "2"
 grep -q 'CRITICAL' "$tmp/gate-report.jsonl" || { echo "FAIL: CRITICAL missing"; fail=1; }
@@ -22,7 +22,7 @@ grep -q 'scripts/foo.sh:42' "$tmp/gate-report.jsonl" || { echo "FAIL: file:line 
 grep -q 'NIT' "$tmp/gate-report.jsonl" && { echo "FAIL: NIT should be excluded"; fail=1; }
 
 # idempotent: second run does not duplicate
-bash "$SCRIPT" --session-dir "$tmp" --input "$tmp/cr.txt" --branch glm/spike >/dev/null
+bash "$SCRIPT" --session-dir "$tmp" --input "$tmp/cr.txt" --branch codex/spike >/dev/null
 n2="$(wc -l < "$tmp/gate-report.jsonl" | tr -d ' ')"
 check "$n2" "2"
 

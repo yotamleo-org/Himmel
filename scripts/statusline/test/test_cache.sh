@@ -153,12 +153,8 @@ get_model_savings_rate "claude-mythos-5"
 assert_eq "mythos read_savings_rate"   "$read_savings_rate"   "0.00000900"
 assert_eq "mythos write_overhead_rate" "$write_overhead_rate" "0.00001000"
 
-# glm-* / gpt-5*: cache_write == input, so write_overhead must be exactly 0
-# (z.ai free-write / no-write-premium boundary). Guard the zero-diff case.
-get_model_savings_rate "glm-4.6"
-assert_eq "glm read_savings_rate"      "$read_savings_rate"   "0.00000114"
-assert_eq "glm write_overhead_rate"    "$write_overhead_rate" "0.00000000"
-
+# gpt-5*: cache_write == input, so write_overhead must be exactly 0
+# (no-write-premium boundary). Guard the zero-diff case.
 get_model_savings_rate "gpt-5.5"
 assert_eq "gpt5 read_savings_rate"     "$read_savings_rate"   "0.00000450"
 assert_eq "gpt5 write_overhead_rate"   "$write_overhead_rate" "0.00000000"

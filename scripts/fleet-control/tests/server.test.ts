@@ -98,9 +98,6 @@ test("passivity: starting the server and serving /fleet + /escalations never reg
   globalThis.setTimeout = ((...args: any[]) => { timeoutCalls++; return origTimeout(...(args as [any, any])); }) as typeof setTimeout;
   try {
     const root = mkdtempSync(join(tmpdir(), "fleet-passivity-"));
-    const glm = join(root, "glm-sessions", "demo");
-    mkdirSync(glm, { recursive: true });
-    writeFileSync(join(glm, "meta.json"), JSON.stringify({ task_name: "demo", branch: "glm/demo", status: "running" }));
     const logs = join(root, "logs");
     mkdirSync(logs, { recursive: true });
     writeFileSync(join(logs, "hermes-foo.log"), "ok\n");

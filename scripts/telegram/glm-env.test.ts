@@ -1,6 +1,6 @@
 // scripts/telegram/glm-env.test.ts
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildGlmEnv, findSettingsConflicts, formatConflict, GLM_MODEL_ALIAS, pickFiveHourLimit, fetchGlmUsage, glmContextPreset } from "./glm-env";
@@ -191,16 +191,6 @@ test("pickFiveHourLimit picks the SMALLEST <=5h future entry", () => {
   expect(pickFiveHourLimit({ code: 200, data: { limits: [{ type: "TOKENS_LIMIT", percentage: 5, nextResetTime: NOW - 1 }] } }, NOW)).toBeNull(); // past reset = drift
   expect(pickFiveHourLimit({ nonsense: true }, NOW)).toBeNull();
   expect(pickFiveHourLimit(null, NOW)).toBeNull();
-});
-
-test("pickFiveHourLimit parses the Task-0c live capture", () => {
-  // real captured schema (redacted); capture-time NOW_0C is recorded in the fixture README
-  const cap = JSON.parse(readFileSync("tests/fixtures/glm-cap/monitor-0c.json", "utf8"));
-  const NOW_0C = Number(readFileSync("tests/fixtures/glm-cap/monitor-0c.captured-at", "utf8").trim());
-  const got = pickFiveHourLimit(cap, NOW_0C);
-  expect(got).not.toBeNull();
-  expect(got!.percentage).toBeGreaterThanOrEqual(0);
-  expect(got!.percentage).toBeLessThanOrEqual(100);
 });
 
 test("fetchGlmUsage: null on blank key, non-200, network throw, drift; value on 200", async () => {

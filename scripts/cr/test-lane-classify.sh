@@ -8,12 +8,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DIR/lane-classify.sh"
 fail=0
 check() { [ "$1" = "$2" ] || { echo "FAIL: got '$1' want '$2'"; fail=1; }; }
-check "$(lane_classify glm/spike-a)"        cheap-glm
-check "$(lane_classify glm/nested/slug)"    cheap-glm
+check "$(lane_classify glm/spike-a)"        claude   # glm/* is no longer a cheap-lane marker
 check "$(lane_classify codex/hermes-task)"  cheap-codex
 check "$(lane_classify feat/himmel-654)"    claude
 check "$(lane_classify main)"               claude
 check "$(lane_classify glmfoo)"             claude   # prefix must be a path segment, not substring
 # CLI form matches sourced form
-check "$(bash "$DIR/lane-classify.sh" glm/x)" cheap-glm
+check "$(bash "$DIR/lane-classify.sh" codex/x)" cheap-codex
 [ "$fail" -eq 0 ] && echo "PASS test-lane-classify" || exit 1

@@ -2218,64 +2218,14 @@ PATH="$tmp/bin:$PATH" TO_LOG="$_to_floor" bash -c 'printf "%s" "$1" | CRITICS_JS
 check "W7c: the clamp never emits a 0 or negative timeout" \
     "$(cat "$tmp"/to-*.log 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(index($i,"secs=")==1){v=$i; sub(/^secs=/,"",v); if(v+0 < 1) n++}} END{print n+0}')" "0"
 
-# --- panel credential load_dotenv is pinned to script-root ---------
-# resolution (load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")"),
-# so a panel invoked from an UNRELATED git repo reads himmel's .env, not THAT
-# repo's. The fixture copies the panel + load-dotenv.sh into a fake himmel root
-# (so $SCRIPT_DIR/../.. resolves THERE) carrying GLM_API_KEY ONLY in its .env; the
-# process cwd is a DIFFERENT git repo whose .env holds a DECOY value. A registry
-# with a zai/glm row trips the load gate; the glm member (stubbed) must observe
-# the himmel-root key, never the cwd decoy — pre-fix CWD-anchored resolution read
-# the decoy. A live process value still wins (only-when-unset).
-P1648_ROOT="$tmp/p1648-root"; mkdir -p "$P1648_ROOT/scripts/cr" "$P1648_ROOT/scripts/lib"
-cp "$PANEL" "$P1648_ROOT/scripts/cr/critic-panel.sh"
-cp "$HERE/../lib/load-dotenv.sh" "$P1648_ROOT/scripts/lib/load-dotenv.sh"
-cp "$HERE/../lib/prim.sh" "$P1648_ROOT/scripts/lib/prim.sh"
-printf 'GLM_API_KEY=zk-himmel-root\n' > "$P1648_ROOT/.env"
-P1648_CWX="$tmp/p1648-cwd"; mkdir -p "$P1648_CWX"; git init -q "$P1648_CWX"
-git -C "$P1648_CWX" config user.name test
-git -C "$P1648_CWX" config user.email t@e.invalid
-printf 'x\n' > "$P1648_CWX/README"; git -C "$P1648_CWX" add README; git -C "$P1648_CWX" commit -q -m init
-printf 'GLM_API_KEY=DECOY-cwd-value\n' > "$P1648_CWX/.env"
-P1648_JSON="$tmp/p1648-glm.json"
-printf '%s' '{"panel":[{"slug":"glm","model":"glm/glm-5.2","provider":"zai","tier":"free"}]}' > "$P1648_JSON"
-P1648_KEY="$tmp/p1648-key"
-P1648_STUB="$tmp/p1648-cfp.sh"
-cat > "$P1648_STUB" <<EOS
-#!/usr/bin/env bash
-printf '%s' "\${GLM_API_KEY:-}" > "$P1648_KEY"
-echo "# glm First-Pass Review"
-echo ""
-echo "## Critical Issues (0 found)"
-echo ""
-echo "## Important Issues (0 found)"
-echo ""
-echo "## Suggestions (0 found)"
-EOS
-chmod +x "$P1648_STUB"
-# glm panel from an UNRELATED cwd repo: the himmel-root key wins over the cwd decoy.
-: > "$P1648_KEY"
-( cd "$P1648_CWX" && unset GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY \
-    && printf '%s' "$DIFF" | CRITICS_JSON="$P1648_JSON" CRITIC_FIRST_PASS="$P1648_STUB" \
-       bash "$P1648_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1648: panel loads the himmel-root .env key (not the cwd repo's decoy)" "$(cat "$P1648_KEY" 2>/dev/null)" "zk-himmel-root"
-# A live process value still wins (only-when-unset): the .env value must NOT overwrite it.
-: > "$P1648_KEY"
-( cd "$P1648_CWX" && export GLM_API_KEY=process-key \
-    && printf '%s' "$DIFF" | CRITICS_JSON="$P1648_JSON" CRITIC_FIRST_PASS="$P1648_STUB" \
-       bash "$P1648_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1648: panel preserves the live process env key over .env" "$(cat "$P1648_KEY" 2>/dev/null)" "process-key"
-
 # --- codex critic credential (CLIPROXY_API_KEY) ---------
 # resolves from the PRIMARY checkout's .env via the same script-root-pinned
-# load_dotenv as the Z.ai keys, so a worktree run (no .env of its own) still
+# load_dotenv, so a worktree run (no .env of its own) still
 # authenticates the codex critic (which runs critic-first-pass.sh ->
 # hermes/invoke.sh, whose openai-codex provider defers auth to the inherited env).
 # Same fixture shape as the credential load_dotenv block above: a fake himmel root carries the key ONLY in
 # its .env; the process cwd is a DIFFERENT git repo with a DECOY. The registry is
-# the default codex+glm shape (the glm row's "zai"/"glm" trips the load gate,
-# which reads the FULL registry before tier filtering); a stubbed member captures
-# the inherited CLIPROXY_API_KEY. A live process value still wins (only-when-unset).
+# a codex registry; a stubbed member captures the inherited CLIPROXY_API_KEY. A live process value still wins (only-when-unset).
 P1065_ROOT="$tmp/p1065-root"; mkdir -p "$P1065_ROOT/scripts/cr" "$P1065_ROOT/scripts/lib"
 cp "$PANEL" "$P1065_ROOT/scripts/cr/critic-panel.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$P1065_ROOT/scripts/lib/load-dotenv.sh"
@@ -2287,7 +2237,7 @@ git -C "$P1065_CWX" config user.email t@e.invalid
 printf 'x\n' > "$P1065_CWX/README"; git -C "$P1065_CWX" add README; git -C "$P1065_CWX" commit -q -m init
 printf 'CLIPROXY_API_KEY=DECOY-cwd-value\n' > "$P1065_CWX/.env"
 P1065_JSON="$tmp/p1065-reg.json"
-printf '%s' '{"panel":[{"slug":"codex","model":"gpt-5.5","provider":"openai-codex","tier":"paid"},{"slug":"glm","model":"glm-5.2","provider":"zai","tier":"paid"}]}' > "$P1065_JSON"
+printf '%s' '{"panel":[{"slug":"codex","model":"gpt-5.5","provider":"openai-codex","tier":"paid"}]}' > "$P1065_JSON"
 P1065_KEY="$tmp/p1065-key"
 P1065_STUB="$tmp/p1065-cfp.sh"
 cat > "$P1065_STUB" <<EOS
@@ -2306,7 +2256,7 @@ chmod +x "$P1065_STUB"
 # the process env. The codex critic must inherit the himmel-root key, never the
 # cwd decoy (pre-fix the key was never loaded at all -> codex died rc=2).
 : > "$P1065_KEY"
-( cd "$P1065_CWX" && unset CLIPROXY_API_KEY GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY \
+( cd "$P1065_CWX" && unset CLIPROXY_API_KEY \
     && printf '%s' "$DIFF" | CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
 check "HIMMEL-1065: codex credential resolves from the primary .env (not the cwd repo's decoy)" "$(cat "$P1065_KEY" 2>/dev/null)" "cpx-himmel-root"
@@ -2316,44 +2266,6 @@ check "HIMMEL-1065: codex credential resolves from the primary .env (not the cwd
     && printf '%s' "$DIFF" | CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
 check "HIMMEL-1065: live process CLIPROXY_API_KEY wins over the .env value" "$(cat "$P1065_KEY" 2>/dev/null)" "process-key"
-# ...and on a codex-ONLY registry. The fixture above carries a glm row, which
-# trips the Z.ai load gate — so it CANNOT distinguish "the codex key is loaded
-# because a codex critic is present" from "because a Z.ai critic happens to be
-# present too". A codex-only registry is a supported shape (CRITICS_JSON, or a
-# local overlay that drops the GLM row); folding the codex key into the Z.ai gate
-# left exactly that shape unauthenticated -> codex rc=2 -> the fail-open 0/0/0
-# this ticket closes. This fixture removes the mask: no zai/glm row anywhere.
-P1065_CODEX_ONLY="$tmp/p1065-codex-only.json"
-printf '%s' '{"panel":[{"slug":"codex","model":"gpt-5.5","provider":"openai-codex","tier":"paid"}]}' > "$P1065_CODEX_ONLY"
-: > "$P1065_KEY"
-( cd "$P1065_CWX" && unset CLIPROXY_API_KEY GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY \
-    && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_CODEX_ONLY" CRITIC_FIRST_PASS="$P1065_STUB" \
-       bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1065: codex-ONLY registry still loads the codex credential (no zai/glm row to trip the gate)" "$(cat "$P1065_KEY" 2>/dev/null)" "cpx-himmel-root"
-# Converse: a registry with NO codex critic must not need the codex key to load
-# for the Z.ai keys to resolve — the two probes are independent, not coupled.
-P1065_GLM_ONLY="$tmp/p1065-glm-only.json"
-printf '%s' '{"panel":[{"slug":"glm","model":"glm-5.2","provider":"zai","tier":"paid"}]}' > "$P1065_GLM_ONLY"
-printf 'GLM_API_KEY=glm-himmel-root\n' >> "$P1065_ROOT/.env"
-P1065_GKEY="$tmp/p1065-glm-key"
-P1065_GSTUB="$tmp/p1065-glm-stub.sh"
-cat > "$P1065_GSTUB" <<EOS
-#!/usr/bin/env bash
-printf '%s' "\${GLM_API_KEY:-}" > "$P1065_GKEY"
-echo "# glm First-Pass Review"
-echo ""
-echo "## Critical Issues (0 found)"
-echo ""
-echo "## Important Issues (0 found)"
-echo ""
-echo "## Suggestions (0 found)"
-EOS
-chmod +x "$P1065_GSTUB"
-: > "$P1065_GKEY"
-( cd "$P1065_CWX" && unset CLIPROXY_API_KEY GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY \
-    && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_GLM_ONLY" CRITIC_FIRST_PASS="$P1065_GSTUB" \
-       bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1065: glm-ONLY registry still loads the Z.ai credential (codex probe does not gate it)" "$(cat "$P1065_GKEY" 2>/dev/null)" "glm-himmel-root"
 
 # --- zero-responder fail-closed output ------------------
 # When EVERY critic is unavailable, the panel must emit NO "(N found)" findings

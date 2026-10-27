@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # lane-classify — positive cheap-lane provenance classifier (WS7,
 # spec D1.1). A branch is a cheap lane IFF it carries a POSITIVE marker:
-#   glm/*   → cheap-glm   (spawn-glm PR #843 names glm/<slug>; session meta corroborates)
 #   codex/* → cheap-codex (hermes-Codex convention, adopted in harness-compat.md)
 # Everything else → claude. Absence is never cheap-lane: an unmarked branch is
 # indistinguishable from ordinary Claude work, so it takes the Claude chain
@@ -15,7 +14,6 @@ set -euo pipefail
 
 lane_classify() {
   case "$1" in
-    glm/*)   printf 'cheap-glm\n' ;;
     codex/*) printf 'cheap-codex\n' ;;
     *)       printf 'claude\n' ;;
   esac
