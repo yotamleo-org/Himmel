@@ -67,7 +67,7 @@ prog='
     if (!edgeset && match($0, /^[ \t]*([-*+][ \t]+)?(\*\*|__)?[Ee][Dd][Gg][Ee][Ss](\*\*|__)?:(\*\*|__)?[ \t]*/)) { edgeset = 1; ev = tolower(substr($0, RLENGTH + 1)); sub(/[ \t.]*$/, "", ev) }
     k = norm($0)
     if (k in want) { cur = k; seen[k] = 1; plvl = lvl($0); next }
-    if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { if (!(cur == "plan" && plvl > 0 && lvl($0) > plvl)) cur = ""; next }
+    if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { if (cur == "plan" && plvl > 0 && lvl($0) > plvl) { addkeys($0); next } cur = ""; next }
     if (cur != "" && real($0)) have[cur] = 1
     if (cur == "plan") addkeys($0)
   }

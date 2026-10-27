@@ -380,6 +380,13 @@ edraft "$td/e12.md" '### Step one
 2. Then HIMMEL-101.'
 printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e12.md"
 run Task "$td/e12.md" "$q" --sector X; check "Plan whose whole body sits under subheadings passes with Edges" "$rc" 0
+edraft "$td/e13.md" '### First, ABC-100
+Land this one first.
+### Then, ABC-101
+Then this one.'
+run Task "$td/e13.md" "$q" --sector X; check "ticket keys in Plan subheadings count" "$rc" 1
+printf '%s\n' 'Edges: none' >>"$td/e13.md"
+run Task "$td/e13.md" "$q" --sector X; check "keyed Plan subheadings pass with Edges" "$rc" 0
 run Epic "$td/e1.md" "$q" --sector X; check "Epic without Edges only warns" "$rc" 0
 has "Epic warns about Edges" "$out" "Edges:"
 
