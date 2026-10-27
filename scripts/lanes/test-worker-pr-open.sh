@@ -483,6 +483,10 @@ git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/Himmel.git
 err_ad4=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_ad4=$?
 assert_eq "himmel itself, no record: refused (rc=1)" "1" "$rc_ad4"
 contains "himmel itself: says no /pr-check record" "$err_ad4" "no /pr-check record"
+git -C "$REPO" remote set-url origin https://evilgithub.com/yotamleo-org/himmel-voice.git
+err_ad5=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_ad5=$?
+assert_eq "lookalike host (evilgithub.com), no record: refused (rc=1)" "1" "$rc_ad5"
+contains "lookalike host: says no /pr-check record" "$err_ad5" "no /pr-check record"
 git -C "$REPO" remote set-url origin "$orig_url"
 not_contains "no PR is created for a refused open" "$(cat "$ARGV_LOG")" "pr create"
 

@@ -81,7 +81,7 @@ if [ "$ok" -eq 0 ]; then
         origin_url="$(git -C "$abs" remote get-url origin 2>/dev/null)" || origin_url="" # swallow-ok: no origin is no adopter match
         if [ -n "$top" ] && [ "$top" = "$abs" ] && [ -n "$harness_root" ] \
             && WT_URL="$origin_url" WT_REG="$harness_root/scripts/guardrails/himmel-adapters.json" node -e '
-                const m = /github\.com[:\/]([^\/]+\/[^\/]+?)(\.git)?\/?$/.exec(process.env.WT_URL || "");
+                const m = /^(?:https:\/\/(?:[^\/@]+@)?|ssh:\/\/git@|git@)github\.com[:\/]([^\/]+\/[^\/]+?)(?:\.git)?\/?$/.exec(process.env.WT_URL || "");
                 if (!m) process.exit(1);
                 const want = m[1].toLowerCase();
                 const reg = JSON.parse(require("fs").readFileSync(process.env.WT_REG, "utf8"));

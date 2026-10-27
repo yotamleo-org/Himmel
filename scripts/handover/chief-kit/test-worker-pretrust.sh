@@ -339,6 +339,19 @@ check "12e registered path but origin outside himmel-adapters.json: exit 3" "$rc
 reg12c="$tmp/reg12c.json"; printf '{"repos":{"p":{"path":"%s"}}}\n' "$primary" > "$reg12c"
 rc=0; HANDOVER_REGISTRY="$reg12c" bash "$SCRIPT" native "$primary" >/dev/null 2>&1 || rc=$?
 check "12f a registered himmel-style primary (no adapter origin): exit 3" "$rc" "3"
+evil="$tmp/adopter-evilhost"
+git init -q "$evil"
+git -C "$evil" remote add origin https://evilgithub.com/yotamleo-org/himmel-voice.git
+reg12e="$tmp/reg12e.json"; printf '{"repos":{"e":{"path":"%s"}}}\n' "$evil" > "$reg12e"
+rc=0; HANDOVER_REGISTRY="$reg12e" bash "$SCRIPT" native "$evil" >/dev/null 2>&1 || rc=$?
+check "12h a lookalike host (evilgithub.com), registered path: exit 3" "$rc" "3"
+ssh12="$tmp/adopter-ssh"
+git init -q "$ssh12"
+git -C "$ssh12" remote add origin git@github.com:yotamleo-org/himmel-voice.git
+reg12f="$tmp/reg12f.json"; printf '{"repos":{"s":{"path":"%s"}}}\n' "$ssh12" > "$reg12f"
+rc=0; HANDOVER_REGISTRY="$reg12f" bash "$SCRIPT" native "$ssh12" >/dev/null 2>&1 || rc=$?
+check "12i an scp-style github.com origin, registered path: exit 0" "$rc" "0"
+rm -f "$cfg"
 git -C "$adopter" worktree add -q -b adopter-wt "$tmp/adopter-wt-outside"
 reg12d="$tmp/reg12d.json"; printf '{"repos":{"w":{"path":"%s"}}}\n' "$tmp/adopter-wt-outside" > "$reg12d"
 rc=0; HANDOVER_REGISTRY="$reg12d" bash "$SCRIPT" native "$tmp/adopter-wt-outside" >/dev/null 2>&1 || rc=$?

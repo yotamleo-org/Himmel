@@ -254,7 +254,7 @@ if [ -z "$existing_pr" ]; then
     harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
     if [ -n "$harness_common" ] && [ -r "$harness_common/../scripts/guardrails/himmel-adapters.json" ] \
         && WT_URL="$origin_url" WT_REG="$harness_common/../scripts/guardrails/himmel-adapters.json" node -e '
-            const m = /github\.com[:\/]([^\/]+\/[^\/]+?)(\.git)?\/?$/.exec(process.env.WT_URL || "");
+            const m = /^(?:https:\/\/(?:[^\/@]+@)?|ssh:\/\/git@|git@)github\.com[:\/]([^\/]+\/[^\/]+?)(?:\.git)?\/?$/.exec(process.env.WT_URL || "");
             if (!m) process.exit(1);
             const want = m[1].toLowerCase();
             const reg = JSON.parse(require("fs").readFileSync(process.env.WT_REG, "utf8"));
