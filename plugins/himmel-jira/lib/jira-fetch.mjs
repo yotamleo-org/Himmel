@@ -1,41 +1,28 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-function repoRoot() {
-  try {
-    const dir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
-    return dirname(dir);
-  } catch (e) {
-    // Falling back to cwd silently would mask a corrupt/bare/missing local git
-    // state: the plugin would load the WRONG .env (cwd) or no creds at all
-    // (cwd has no .env) → 401 with no clue why. Mirrors scripts/jira/src/client.ts:
-    // surface every non-ENOENT failure with the underlying error message so
-    // an operator can diagnose, and keep the ENOENT branch specific so the
-    // "git not on PATH" case stays distinguishable in logs.
-    if (e.code === 'ENOENT') {
-      process.stderr.write(
-        '[jira-fetch] warning: git not found on PATH — falling back to ' +
-          `cwd=${process.cwd()} for .env lookup. ` +
-          'Set JIRA_API_TOKEN/JIRA_BASE_URL via env vars to bypass.\n',
-      );
-    } else {
-      process.stderr.write(
-        `[jira-fetch] warning: git rev-parse --git-common-dir failed (${e.message}); ` +
-          `falling back to cwd=${process.cwd()} for .env lookup. ` +
-          'Set JIRA_API_TOKEN/JIRA_BASE_URL via env vars to bypass.\n',
-      );
-    }
-    return process.cwd();
-  }
-}
-
+// Match the Jira CLI: own install, primary checkout, then HIMMEL_REPO.
 export function envFilePath(override) {
   if (override) return override;
-  const root = repoRoot();
-  const inRepo = join(root, '.env');
-  if (existsSync(inRepo)) return inRepo;
-  return join(process.env.HOME || process.env.USERPROFILE || '.', '.config', 'himmel-cli', 'jira.env');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const own = join(here, '..', '..', '..', '.env');
+  if (existsSync(own)) return own;
+  const candidates = [];
+  try {
+    const common = execFileSync(
+      'git',
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { encoding: 'utf8', cwd: here, stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    candidates.push(join(dirname(common), '.env'));
+  } catch {
+    // An install outside git can still use HIMMEL_REPO or the home fallback.
+  }
+  if (process.env.HIMMEL_REPO) candidates.push(join(process.env.HIMMEL_REPO, '.env'));
+  return candidates.find((c) => existsSync(c)) ??
+    join(process.env.HOME || process.env.USERPROFILE || '.', '.config', 'himmel-cli', 'jira.env');
 }
 
 export async function jiraFetch(method, path, body) {

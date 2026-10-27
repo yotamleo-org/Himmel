@@ -1,86 +1,81 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { tmpdir, platform } from 'node:os';
-import { join, resolve } from 'node:path';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { envFilePath, jiraFetch } from '../lib/jira-fetch.mjs';
 
-// envFilePath behaviour depends on:
-//   1. git rev-parse --git-common-dir (to find repo root)
-//   2. existsSync(join(repoRoot, '.env'))
-//   3. HOME / USERPROFILE env for the fallback path
-//
-// We test the explicit-override path (trivially safe) and the fallback path
-// (where no .env exists in the git root and we just check the returned value
-// is deterministic — we do NOT write to the real ~/.config).
-
 describe('envFilePath', () => {
+  let root;
+  let cwd;
+  let home;
+  let modulePath;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'himmel-jira-own-path-'));
+    cwd = join(root, 'unrelated');
+    home = join(root, 'home');
+    const installed = join(root, 'plugins', 'himmel-jira', 'lib');
+    mkdirSync(installed, { recursive: true });
+    mkdirSync(cwd);
+    mkdirSync(home);
+    modulePath = join(installed, 'jira-fetch.mjs');
+    copyFileSync(new URL('../lib/jira-fetch.mjs', import.meta.url), modulePath);
+  });
+
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  function runEnvPath(read = false) {
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { envFilePath } from ${JSON.stringify(pathToFileURL(modulePath).href)};
+       import { readFileSync } from 'node:fs';
+       const path = envFilePath();
+       process.stdout.write(${read ? "readFileSync(path, 'utf8')" : 'path'});`,
+    ], { cwd, env: { PATH: process.env.PATH, HOME: home }, encoding: 'utf8', timeout: 30000 });
+    expect(run.error).toBeUndefined();
+    expect(run.status, run.stderr).toBe(0);
+    return run;
+  }
+
   it('returns the custom path when an explicit override is given', () => {
     expect(envFilePath('/custom/path/jira.env')).toBe('/custom/path/jira.env');
   });
 
   it('returns a non-null string for undefined override (no crash)', () => {
-    // This runs in a git repo (the himmel worktree), so git rev-parse succeeds.
-    // The result is either the in-repo .env (if present) or the home fallback.
     const result = envFilePath(undefined);
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
   });
 
-  it('returns HOME-based fallback when HOME is set and cwd is outside any git repo', () => {
-    // Deterministic fallback branch: chdir into a fresh, non-git mktemp dir so
-    // repoRoot()'s `git rev-parse --git-common-dir` fails (not a repository)
-    // and falls back to cwd itself, which has no .env — guaranteeing the
-    // HOME-fallback branch runs, rather than depending on whether the real
-    // checkout happens to have a .env (previously a no-op pass either way).
-    const fakeHome = mkdtempSync(join(tmpdir(), 'himmel-jira-home-'));
-    const nonRepoDir = mkdtempSync(join(tmpdir(), 'himmel-jira-norepo-'));
-    const origHome = process.env.HOME;
-    const origUserProfile = process.env.USERPROFILE;
-    const origCwd = process.cwd();
-    process.env.HOME = fakeHome;
-    process.env.USERPROFILE = fakeHome;
-    process.chdir(nonRepoDir);
-    try {
-      const result = envFilePath(undefined);
-      expect(result).toBe(join(fakeHome, '.config', 'himmel-cli', 'jira.env'));
-    } finally {
-      process.chdir(origCwd);
-      if (origHome === undefined) delete process.env.HOME;
-      else process.env.HOME = origHome;
-      if (origUserProfile === undefined) delete process.env.USERPROFILE;
-      else process.env.USERPROFILE = origUserProfile;
-    }
+  it('returns HOME-based fallback when the install has no .env and cwd is outside any git repo', () => {
+    expect(runEnvPath().stdout).toBe(join(home, '.config', 'himmel-cli', 'jira.env'));
   });
 
-  it('returns the in-repo .env when one exists, taking precedence over the HOME fallback', () => {
-    // Repository precedence, tested independently of the HOME-fallback branch
-    // above: a real git repo whose root has a committed .env must win even
-    // when HOME points elsewhere.
-    const fakeHome = mkdtempSync(join(tmpdir(), 'himmel-jira-home2-'));
-    const repoDir = mkdtempSync(join(tmpdir(), 'himmel-jira-repo-'));
-    const origHome = process.env.HOME;
-    const origUserProfile = process.env.USERPROFILE;
-    const origCwd = process.cwd();
-    execFileSync('git', ['init', '-q'], { cwd: repoDir });
-    writeFileSync(join(repoDir, '.env'), 'JIRA_BASE_URL=https://example.atlassian.net\n');
-    process.env.HOME = fakeHome;
-    process.env.USERPROFILE = fakeHome;
-    process.chdir(repoDir);
-    try {
-      const result = envFilePath(undefined);
-      // repoRoot() derives the root from `git rev-parse --git-common-dir`,
-      // which git may print relative (".git") to the invoking cwd — resolve
-      // against repoDir (the cwd at call time) rather than assume an
-      // absolute path, then confirm it lands on the exact fixture file.
-      expect(resolve(repoDir, result)).toBe(join(repoDir, '.env'));
-    } finally {
-      process.chdir(origCwd);
-      if (origHome === undefined) delete process.env.HOME;
-      else process.env.HOME = origHome;
-      if (origUserProfile === undefined) delete process.env.USERPROFILE;
-      else process.env.USERPROFILE = origUserProfile;
-    }
+  it('returns the primary checkout .env when the plugin is installed in a worktree', () => {
+    const primary = join(root, 'primary');
+    mkdirSync(primary);
+    execFileSync('git', ['init', '-q', primary]);
+    writeFileSync(join(primary, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'fixture'], { cwd: primary });
+    const worktree = join(root, 'worktree');
+    execFileSync('git', ['worktree', 'add', '-qb', 'fixture', worktree], { cwd: primary });
+    const installed = join(worktree, 'plugins', 'himmel-jira', 'lib');
+    mkdirSync(installed, { recursive: true });
+    copyFileSync(modulePath, join(installed, 'jira-fetch.mjs'));
+    modulePath = join(installed, 'jira-fetch.mjs');
+    writeFileSync(join(primary, '.env'), 'JIRA_BASE_URL=https://fixture.invalid\n');
+    expect(runEnvPath().stdout).toBe(join(primary, '.env'));
+  });
+
+  it('finds the install .env from an unrelated cwd with no JIRA variables exported', () => {
+    const fixture = 'JIRA_BASE_URL=https://fixture.invalid\nJIRA_EMAIL=fixture@example.invalid\nJIRA_API_TOKEN=dummy\n';
+    writeFileSync(join(root, '.env'), fixture);
+    writeFileSync(join(cwd, '.env'), 'JIRA_BASE_URL=https://wrong.invalid\n');
+    const run = runEnvPath(true);
+    expect(run.stdout).toBe(fixture);
+    expect(run.stderr).toBe('');
   });
 });
 
