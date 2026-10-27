@@ -236,6 +236,10 @@
 #   pr-check-context: anchor_lane=<himmel|adopter, from the HIMMEL_REPO
 #     git-common-dir comparison above - NOT the same field as lane= above,
 #     which is the marker's own 3rd field and means something unrelated>
+#   pr-check-context: no_marker_review=<yes|no - "yes" only on the adopter lane
+#     with no CR marker (an adopted repo has no pre-push hook to write one):
+#     the runbook reviews against origin/<base> instead of
+#     stopping at "nothing to do". The default branch never gets here (exit 4)>
 #   pr-check-context: delegated=<yes|no - "yes" only on the run that IS the
 #     verified delegate (PR_CHECK_ANCHOR_DELEGATED carries a capability this
 #     run's own (branch, head, and the one-time nonce recorded on disk) all
@@ -1132,6 +1136,14 @@ if [ -f "$marker" ]; then
     lane=$(awk -F' [|] ' '{print $3; exit}' "$marker" 2>/dev/null)
 fi
 
+# An adopted repo has no himmel pre-push hook, so no marker is ever
+# written there. On the adopter lane (the default branch already exited 4 above)
+# an absent marker means "review against origin/<base>", not "nothing to do".
+no_marker_review=no
+if [ "$anchor_lane" = adopter ] && [ ! -f "$marker" ]; then
+    no_marker_review=yes
+fi
+
 # Repo + branch FIRST, so the reviewer sees what this run is
 # certifying before anything else (himmel_dir, delegation, etc.) scrolls by.
 printf 'pr-check-context: repo=%s\n' "$repo"
@@ -1142,6 +1154,7 @@ printf 'pr-check-context: base=%s\n' "$base"
 printf 'pr-check-context: marker=%s\n' "$marker"
 printf 'pr-check-context: lane=%s\n' "$lane"
 printf 'pr-check-context: anchor_lane=%s\n' "$anchor_lane"
+printf 'pr-check-context: no_marker_review=%s\n' "$no_marker_review"
 printf 'pr-check-context: delegated=%s\n' "$delegated"
 # The exact set this run decided on (comma-joined, empty when
 # cr_diff_state is no or unknown): the runbook points at this line instead

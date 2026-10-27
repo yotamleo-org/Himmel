@@ -64,6 +64,33 @@ rc3=$?
 check "$out3" "stub-pr-check-context: HIMMEL_REPO=$fixture" "T3 set HIMMEL_REPO hands off to pr-check-context.sh"
 check_rc "$rc3" 0 "T3 set HIMMEL_REPO exits 0 (stub's own exit)"
 
+# T4-T6: the real pr-check-context.sh against a scratch ADOPTER repo
+# (a temp clone, never HOME, never a real repo). No CR marker exists there, and the
+# adopter lane must still be told to review against origin/<base> rather than stop.
+REPO_ROOT="$(cd "$DIR/../.." && pwd)"
+adopter="$tmp/adopter"
+git init -q -b main "$adopter" || { echo "FAIL: adopter init"; exit 1; }
+git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "init"
+git clone -q --bare "$adopter" "$tmp/adopter-origin.git"
+git -C "$adopter" remote add origin "$tmp/adopter-origin.git"
+git -C "$adopter" fetch -q origin
+git -C "$adopter" checkout -q -b feat/x
+git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "feature"
+
+out4="$(cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" 2>/dev/null)"
+rc4=$?
+check_rc "$rc4" 0 "T4 adopter feature branch, no marker: step 0 exits 0"
+case "$out4" in *"pr-check-context: anchor_lane=adopter"*) a_ok=yes ;; *) a_ok=no ;; esac
+check "$a_ok" "yes" "T4 fixture resolves to the adopter lane"
+case "$out4" in *"pr-check-context: no_marker_review=yes"*) nm=yes ;; *) nm=no ;; esac
+check "$nm" "yes" "T5 adopter lane with no marker prints no_marker_review=yes"
+
+# T6: on the default branch step 0 still refuses (exit 4), no marker or not.
+git -C "$adopter" checkout -q main
+(cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" >/dev/null 2>&1)
+rc6=$?
+check_rc "$rc6" 4 "T6 adopter default branch still refused with exit 4"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
