@@ -175,7 +175,7 @@ An rc 3 is not a failure — it means the entry is gated to the operator. Surfac
 it as a line they can act on:
 `<tool> <old> -> <new> available; operator-triggered: bash scripts/upstreams/apply-tool-upgrade.sh <tool>`
 
-No entry is gated today (both probe entries are `unattended: true`), so rc 3
+No entry is gated today (rtk is `unattended: true`), so rc 3
 should not appear from the cadence — if it does, someone gated an entry
 deliberately and the run summary is how they learn it fired.
 
