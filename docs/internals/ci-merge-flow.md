@@ -39,10 +39,10 @@ unless the PR is the declared fix (`Fixes-main-red:` line or a fix-GO; see the
 attempt, so a red under re-run still blocks. The gate reads the failed log and prints
 `main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
 passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
-passes. Every failed job must be a shell-unit shard that failed only through the runner: its
-`Failed suites:` rows, then `home-canary: FAIL runner exited rc=1`, no job may fail in
-more than one step, and the rollup job may fail only in its shard-result step. Every job
-of the run that did not succeed or skip (`gh run view --json jobs`) must also show in the
+passes. Every failed job must be a shell-unit job, and no job may fail in more than one
+step. A shard must fail only through the runner: its `Failed suites:` rows, then
+`home-canary: FAIL runner exited rc=1`. The rollup job may fail only in its shard-result
+step. Every job of the run that did not succeed or skip (`gh run view --json jobs`) must also show in the
 failed log, so a shard that stayed queued, was cancelled or timed out is not missed. A
 honeytoken leak or read, a timeout, a shard with no rows, a failed lint job, a job that
 failed in a second step, a rollup that failed in another step, the runner's
