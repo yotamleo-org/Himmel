@@ -5,8 +5,8 @@ profile installer. The split:
 
 | Side | Installer | Manages |
 |------|-----------|---------|
-| hermes (CR/model orchestrator) | `scripts/hermes/install-himmel-profile.{sh,ps1}` | the `himmel_agent` hermes profile |
-| **codex CLI (harness/plugins)** | `scripts/codex/install-himmel-codex.{sh,ps1}` | himmel plugin enablement in `~/.codex/config.toml` |
+| hermes (CR/model orchestrator) | `scripts/hermes/install-himmel-profile.sh` | the `himmel_agent` hermes profile |
+| **codex CLI (harness/plugins)** | `scripts/codex/install-himmel-codex.sh` | himmel plugin enablement in `~/.codex/config.toml` |
 
 `~/.codex/config.toml` is user-global and not repo-tracked, so — like the hermes
 profile and like the Claude `~/.claude/settings.json` wiring in `setup.sh` — it
@@ -123,7 +123,7 @@ refuses `<branch>` being `main`/`master` outright (checked first), refuses if
 the worktree isn't actually checked out on `<branch>`, and refuses a dirty
 tree (shared handoff starts from committed state).
 
-Once the gate and the ACL preflight both pass, the wrapper acquires the
+Once the gate and the hook-trust preflight both pass, the wrapper acquires the
 repo-wide single-writer lock (`scripts/lib/shared-branch-lock.sh`) for
 `<branch>` before running codex, and releases it on every CATCHABLE exit path
 (success, codex failure, or a crash mid-run) so exactly one worker writes
