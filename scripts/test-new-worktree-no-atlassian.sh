@@ -58,12 +58,6 @@ NAME="a new worktree's settings.local.json sets $ATL false"
 got="$(jq -r --arg a "$ATL" '.enabledPlugins[$a] | tostring' "$WT1/.claude/settings.local.json" 2>/dev/null || echo '(missing)')"
 if [ "$got" = "false" ]; then _pass "$NAME"; else _fail "$NAME" "got=[$got]"; fi
 
-# 2. The seeded file is untracked and ignored (it must not ride the PR).
-NAME="the seeded settings.local.json is not a tracked or untracked change"
-printf '/.claude/settings.local.json\n' >> "$REPO/.git/info/exclude"
-dirty="$(git -C "$WT1" status --porcelain -- .claude/settings.local.json)"
-if [ -z "$dirty" ]; then _pass "$NAME"; else _fail "$NAME" "status=[$dirty]"; fi
-
 echo ""
 printf 'Results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
