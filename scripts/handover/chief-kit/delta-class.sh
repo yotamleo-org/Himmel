@@ -129,7 +129,10 @@ if [ "$anc" -eq 1 ]; then
         blob_of() { local o; o=$(git --literal-pathspecs ls-tree "$1" -- "$2" 2>/dev/null) || return 1; printf '%s' "${o%%$'\t'*}"; } # swallow-ok: a failed read returns 1 and every caller fails closed to trust
         : > "$work/trust-names.txt"
         while IFS= read -r p; do
-            if ! grep -qxF -- "$p" "$work/authored.txt"; then
+            grep -qxF -- "$p" "$work/authored.txt" 2>/dev/null
+            g=$?
+            [ "$g" -le 1 ] || trust
+            if [ "$g" -eq 1 ]; then
                 bn=$(blob_of "$N" "$p") || trust
                 bmn=$(blob_of "$mbN" "$p") || trust
                 bj=$(blob_of "$J" "$p") || trust

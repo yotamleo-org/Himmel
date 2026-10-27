@@ -220,6 +220,46 @@ check "8b: a merge-forward with a conflict resolved in a trust path -> trust" "$
 git update-ref -d refs/remotes/origin/main
 J=$J8
 git checkout -q "$base_branch"
+
+# 8e: the PR's own edit to a trust path (after the judged head) is dropped by resolving to main's exact side
+git checkout -q -b main8e "$J8"; echo "mainx" > scripts/ci/x.sh; M=$(step main-x)
+git checkout -q -b pr8e "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged)
+echo "prx" > scripts/ci/x.sh; step pr-x >/dev/null
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8e >/dev/null 2>&1
+echo "mainx" > scripts/ci/x.sh; N=$(step resolved-to-main)
+J=$Jp; mkv GO
+check "8e: a conflict resolved to main's exact side -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8f: the PR changed a trust path by the judged head, then reverts it to main's content after the merge-forward
+git checkout -q -b main8f "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y)
+git checkout -q -b pr8f "$J8"; echo "prx" > scripts/ci/x.sh; Jp=$(step pr-x)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8f >/dev/null 2>&1
+echo "x" > scripts/ci/x.sh; N=$(step revert-to-main)
+J=$Jp; mkv GO
+check "8f: a trust-path edit reverted to main's content after the merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8g/8h: the PR deletes, then adds, a trust path after a pure merge-forward
+git checkout -q -b main8g "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y2)
+git checkout -q -b pr8g "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged2)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8g >/dev/null 2>&1
+rm scripts/ci/x.sh; N=$(step delete-trust)
+J=$Jp; mkv GO
+check "8g: a trust path the PR deletes after the merge-forward -> trust" "$(cls "$N")" trust
+git reset -q --hard "${N}~1"
+echo "n" > scripts/ci/new.sh; N=$(step add-trust)
+check "8h: a trust path the PR adds after the merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
 mkv GO 'finding: src/a.txt:3-4'
 
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
