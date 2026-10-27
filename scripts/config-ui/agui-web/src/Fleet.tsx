@@ -407,6 +407,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
   const cls = row.marker === "BLOCKED" || row.cloud?.phase === "blocked" ? "blocked" : CLS[row.state];
   const href = rowHref(token, row);
   const bctx = useBoardCtx(), card = cardOf(bctx, row.name);
+  const desc = descriptionOf(row);
   return (
     <div className={`fleet-row ${cls}${open ? " open" : ""}`} id={rowId(row.name)} tabIndex={-1}>
       <div className="fleet-line">
@@ -414,7 +415,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
         <span className={`fleet-dot ${cls}`} aria-hidden="true" />
         <span className="fleet-who">
           <NameLink row={row} token={token} />
-          {descriptionOf(row) && <span className="fleet-desc fleet-age" title={descriptionOf(row)}>{descriptionOf(row)}</span>}
+          {desc && <span className="fleet-desc fleet-age" title={desc}>{desc}</span>}
           {row.ticket && <span className="fleet-chip">{row.ticket}</span>}
           {row.pr !== null && <span className="fleet-age">{`PR ${row.pr}`}</span>}
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}

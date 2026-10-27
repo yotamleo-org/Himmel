@@ -95,6 +95,31 @@ test("a worker row carries its description and its name is unchanged; a session 
   expect(again[FLEET.leg.name].description).toBe("Edited description");
 });
 
+// a forge that never answers (a gh stub that sleeps) must not hold the page: archived console docs past the
+// window are never looked up, the one listed worker's lookup is bounded and is not started again on the next poll.
+test("descriptions resolve only for listed rows, and a hanging forge leaves the fleet call fast", async () => {
+  const bin = mkdtempSync(join(tmpdir(), "agui-hang-"));
+  const calls = join(bin, "gh-calls");
+  writeFileSync(join(bin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\nsleep 30\n`);
+  chmodSync(join(bin, "gh"), 0o755);
+  const { port, dir } = boot({ TRACKER: "none", FORGE: "github", PATH: `${bin}:${process.env.PATH}` });
+  cleanups.push(() => rmSync(bin, { recursive: true, force: true }));
+  const old = Date.now() / 1000 - 100 * 60 * 60;
+  for (let i = 0; i < 30; i++) {
+    const f = join(dir, "handover", "yotam", "himmel", `OLD${i}-console.md`);
+    writeFileSync(f, `# OLD${i} console\n\n## Results\n\n- 09:00 MERGED #4100\n`);
+    utimesSync(f, old, old);
+  }
+  const t0 = Date.now();
+  const first = await (await fleet(port)).json();
+  expect(Date.now() - t0).toBeLessThan(6000);
+  expect(first.sessions.some((s: any) => s.name === FLEET.leg.name)).toBe(true);
+  await fleet(port);
+  const seen = existsSync(calls) ? readFileSync(calls, "utf8") : "";
+  expect(seen).not.toContain("4100");
+  expect(seen.trim().split("\n").filter(Boolean).length).toBeLessThanOrEqual(1);
+});
+
 test("a session whose journal went quiet past the window is not listed; one with no journal is listed bare", async () => {
   const s = boot();
   const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000;

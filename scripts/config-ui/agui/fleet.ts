@@ -219,28 +219,52 @@ async function cloudRows(logs: string[], env: Record<string, string | undefined>
   }));
 }
 
-// A row's description is the resolver's (the doc's field, the ticket title, the PR title, the H1, the stem), read by
-// one bash call per request for every doc not already cached on its mtime; never a second derivation here. A failed
-// lookup leaves the description empty and the name alone on its row.
+// A row's description is the resolver's (the doc's field, the ticket title, the PR title, the H1, the stem); never a
+// second derivation here. The resolver can reach Jira and GitHub, so a lookup is one bash call per listed row, run in
+// the background: it is killed with its process group after DESC_TIMEOUT_MS, a request waits at most DESC_WAIT_MS for
+// the ones it started and starts at most DESC_BATCH, and the outcome (a failure is "") is cached on the doc's mtime read
+// BEFORE the call, so a poll never repeats one. A row with no answer yet shows its name alone.
+const DESC_TIMEOUT_MS = 10_000;
+const DESC_WAIT_MS = 2_000;
+const DESC_BATCH = 8;
 const descs = new Map<string, { mtime: number; text: string }>();
+const inflight = new Map<string, Promise<void>>();
+function lookup(doc: string, mtime: number, lib: string, env: Record<string, string | undefined>): Promise<void> {
+  return new Promise((done) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const child = execFile("bash", ["-c", 'source "$1" || exit 1; worker_description "$2" | tr -s "\\t\\n" "  "', "bash", lib, doc],
+      { env: env as NodeJS.ProcessEnv, detached: true, maxBuffer: 64 * 1024 }, (err, stdout) => {
+        clearTimeout(timer);
+        descs.set(doc, { mtime, text: err ? "" : stdout.trim() });
+        inflight.delete(doc);
+        done();
+      });
+    timer = setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ } }, DESC_TIMEOUT_MS);
+    timer.unref();
+  });
+}
 async function describe(docs: string[], script: string, env: Record<string, string | undefined>): Promise<(doc: string) => string> {
-  const mtimeOf = async (f: string) => stat(f).then((s) => s.mtimeMs, () => 0);
-  const todo: string[] = [];
-  const before = new Map<string, number>();
-  for (const f of new Set(docs)) {
-    if (!f) continue;
-    const m = await mtimeOf(f);
-    before.set(f, m);
-    if (descs.get(f)?.mtime !== m) { descs.delete(f); todo.push(f); }
+  const wanted = new Set(docs.filter(Boolean));
+  for (const f of descs.keys()) if (!wanted.has(f)) descs.delete(f);
+  const lib = join(dirname(script), "../lib/worker-identity.sh");
+  const waiting: Promise<void>[] = [];
+  let started = 0;
+  for (const f of wanted) {
+    const m = await stat(f).then((s) => s.mtimeMs, () => 0);
+    if (descs.get(f)?.mtime === m) continue;
+    let p = inflight.get(f);
+    if (!p) {
+      if (started >= DESC_BATCH) continue;
+      started++;
+      p = lookup(f, m, lib, env);
+      inflight.set(f, p);
+    }
+    waiting.push(p);
   }
-  if (todo.length) {
-    const lib = join(dirname(script), "../lib/worker-identity.sh");
-    const out = await new Promise<string | null>((ok) => {
-      execFile("bash", ["-c", 'source "$1" || exit 1; shift; for f in "$@"; do worker_description "$f" | tr -s "\\t\\n" "  "; printf "\\n"; done', "bash", lib, ...todo],
-        { env: env as NodeJS.ProcessEnv, timeout: SCRIPT_TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout) => ok(err ? null : stdout));
-    });
-    const lines = out?.split("\n") ?? [];
-    for (const [i, f] of todo.entries()) if (lines[i]) descs.set(f, { mtime: before.get(f)!, text: lines[i].trim() });
+  if (waiting.length) {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([Promise.all(waiting), new Promise((ok) => { t = setTimeout(ok, DESC_WAIT_MS); })]);
+    clearTimeout(t);
   }
   return (doc) => descs.get(doc)?.text ?? "";
 }
@@ -383,7 +407,6 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       }
     } catch { /* malformed or unreadable manifest: no edge */ }
   }
-  const descOf = await describe([...census.sessions.map((c) => c.doc), ...(census.consoleDocs ?? [])], opts.script, opts.env);
   const seen = new Set<string>();
   const rows = await Promise.all(census.sessions.map(async (c): Promise<FleetRow | null> => {
     let launch: Record<string, string> = {};
@@ -442,7 +465,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
       ...graph, parent, console: role === "console" ? name : parent, live, lock,
-      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS, description: descOf(c.doc),
+      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS, description: "",
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
       cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && !wrapped ? codex : null }) : null,
@@ -450,6 +473,9 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, wrapped, opts.now, docAt),
     };
   }));
+  // the rows that show a doc: only these get their description looked up
+  const described: [FleetRow, string][] = [];
+  census.sessions.forEach((c, i) => { const r = rows[i]; if (r && c.doc) described.push([r, c.doc]); });
   for (const file of census.consoleDocs ?? []) {
     const name = plain(basename(file, ".md"));
     if (!name || rows.some((r) => r?.name === name)) continue;
@@ -459,16 +485,20 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       const doc = await readFile(file, "utf8");
       const lock = await lockOf(file, doc);
       const wrapped = ownWrap(doc) && lock === "released";
-      rows.push({
+      const row: FleetRow = {
         name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
         lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
-        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: descOf(file),
-      });
+        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
+      };
+      rows.push(row);
+      described.push([row, file]);
     } catch { /* archived console moved or unreadable */ }
   }
+  const descOf = await describe(described.map(([, f]) => f), opts.script, opts.env);
+  for (const [r, f] of described) r.description = descOf(f);
   const cloud = await cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
   // A local worker on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the chief.
   for (const r of rows) {
