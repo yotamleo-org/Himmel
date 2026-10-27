@@ -134,6 +134,30 @@ template_version: 3
 > (HIMMEL-5233). At the 2nd NO-GO in the same class, ask again: stop the rounds
 > and land with the ceiling.
 
+> **Inherited PR (the resume of an `ORPHAN PR`, or a takeover of another
+> author's PR; drop otherwise):** PR `<n>` at head `<full sha>`, by
+> `<author(s)>`. The hand-off is context, not proof: read the PR, its threads
+> and its current head before trusting it. **Before the first push, decide a
+> disposition** from what changed on the base since the PR diverged, not from
+> its conflicts. Ask whether the problem is already solved, whether two owners
+> now hold one invariant, and whether landing it would restore old behaviour.
+> A clean merge does not make a PR current. The three dispositions:
+> **MODERNIZE** (the goal holds and the shape is right: merge the base forward,
+> test, push); **REWORK** (the goal holds, but merging forward keeps the wrong
+> implementation: name the smallest rewrite in a `FINDING` and wait for the
+> ruling); **CLOSE** (superseded, obsolete or no longer worth its cost: cite
+> the evidence in a `FINDING` and stop; the chief closes it, never you).
+> Upstream checks a rebase with `git range-diff`; himmel merges forward and
+> refuses a force-push, so compare the PR's own diff before and after instead
+> (`git diff <old merge-base> <old head>` against
+> `git diff <new merge-base> HEAD`). Confirm that nothing it intended was lost
+> and that nothing already on the base came back. **Keep the credit:** build on
+> the original commits and add your fixes as new commits, keep their authors and
+> every `Co-Authored-By:` trailer, and name the original authors in the PR body
+> with identities read from their commits, never guessed. Model attribution is
+> not contributor credit (tstack @ 7de017b3: modernize :38-70, :81-87; takeover
+> :12-25).
+
 > **Contract:**
 > 1. LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write
 >    the bullet with `scripts/handover/chief-kit/append-results.sh <doc>
@@ -245,6 +269,7 @@ template_version: 3
 | RETASK token | Any text reaching the worker could re-task it; the nonce is what makes a revision authentic. |
 | Queue lock + release token | Two sessions edit one handover doc, and the later write wins silently. |
 | Explicit do-nots | Scope widens into a neighbouring worker's files and the fan-out collides. |
+| Inherited PR block (resume or takeover only) | A resumed worker merges forward and pushes a PR the base has since made obsolete, because "no conflicts" reads as "still current". A takeover that rewrites the branch drops the original authors' credit (HIMMEL-7702). |
 | `description:` line (required) | A worker is named everywhere by its label and ticket (`N1452`, `PROJ-123`), which says nothing about what it is doing, least of all with no tracker or forge to fetch a title from. The front-matter line is the one plain-language description a surface shows NEXT TO the label (never instead: tooling keys on the label); `worker_description` in `scripts/lib/worker-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-worker.sh` refuses the launch (no flag skips it). A doc whose `## Results` already holds a bullet has run, so it resumes without one. |
 | Prior art line (required) | In the 7 days to 2026-10-06 the qmd query tool was called 93 times, 85 of them by 16 of 565 workers and none by a chief or judge: nothing in the brief asked for retrieval, so work was re-derived or duplicated (audit; graphify non-adoption was measured before). The chief runs the retrieval once at dispatch and every worker inherits it. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-worker.sh` refuses the launch unless `--no-prior-art-check` is passed. |
 | Exemplar line (optional) | A worker told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/chief-kit/test-ready-check.sh`) makes the worker imitate that. Instructional only, no validator: judge it by drift before anyone gates it. |
