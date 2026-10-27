@@ -12,11 +12,12 @@
 #   PENDING  pages held for a later sweep; the list only shrinks. A pending
 #            page that is now clean fails too, so its entry is removed in the
 #            PR that cleans it.
-#   ALLOW    file<TAB>substring: one line a page keeps on purpose (a dated
-#            measurement, a guard that still parses the spelling, a sentence
-#            saying the platform or lane is dropped), mostly the whole line.
-#            An entry no line carries any more fails, so an edited kept line
-#            is reviewed again.
+#   ALLOW    file<TAB>line: the whole of one line a page keeps on purpose (a
+#            dated measurement, a guard that still parses the spelling, a
+#            sentence saying the platform or lane is dropped). An entry no
+#            line carries any more fails, so an edited kept line is reviewed
+#            again. A third field `prefix` matches the line's start instead,
+#            for a line whose full text the shell lint would misread as code.
 #
 # Platform guard: bash 3.2+, git, grep, awk.
 # Usage: bash scripts/docs/test-docs-dropped-terms.sh
@@ -91,7 +92,7 @@ docs/handover/running-a-chief.md	`[1m]` is appended to the model only for the 4.
 docs/handover/running-a-chief.md	`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
 docs/handover/running-a-chief.md	and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
 docs/handover/running-a-chief.md	  `/Windows/1 newSession`), titled with the worker's session name.
-docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.
+docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.	prefix
 docs/operator-conventions.md	- **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs an operator decision that can't be pre-teed. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
 docs/operator-conventions.md	  prompting guide flags that Fable 5.1 can write denser than Fable 5
 docs/operator-conventions.md	qmd bun-install Windows hotfix (already a structural fix in
@@ -318,7 +319,7 @@ docs/internals/lane-calibration.md	**Known stale rows.** The `[1m]` suffix table
 docs/internals/lane-calibration.md	`anthropic/claude-haiku-4.5` stays selectable via `OPENROUTER_HAIKU`. Haiku 4.5 retirement is "not sooner than 2026-10-15" (no notice yet).
 docs/internals/lane-calibration.md	vs. ruled, and the gpt-5.5 conflict on three of the five); this table only
 docs/internals/lane-calibration.md	| `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
-docs/internals/lane-calibration.md	| `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
+docs/internals/lane-calibration.md	| `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default that `hermes-oneshot`/dispatch-trusted rides; not yet wired into the `/pr-check` gate |
 docs/internals/lane-calibration.md	| `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 docs/internals/lane-calibration.md	| `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 — raised by operator ruling (2026-08-17) despite the 360K rejection hermes measured on the gpt-5.5 pin it carried then (codex-exec now follows the `codex` critic's model, `gpt-6.1-sol` (`gpt-6-sol` before it; `gpt-6-astra` before that); that probe was not repeated there); least-verified of the four raised lanes | codex | calibrated |
 docs/internals/lane-calibration.md	| `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
@@ -458,11 +459,11 @@ done < "$tmp/scope"
 # A hit no ALLOW entry of its page covers goes to found; an entry that covers
 # no hit goes to stale.
 awk -F '\t' -v found="$tmp/found" -v stale="$tmp/stale" '
-  NR == FNR { file[NR] = $1; text[NR] = substr($0, length($1) + 2); n = NR; next }
+  NR == FNR { file[NR] = $1; text[NR] = $2; prefix[NR] = ($3 == "prefix"); n = NR; next }
   {
     line = substr($0, length($1) + 2); covered = 0
     for (i = 1; i <= n; i++)
-      if (file[i] == $1 && index(line, text[i])) { covered = 1; used[i] = 1 }
+      if (file[i] == $1 && (prefix[i] ? index(line, text[i]) == 1 : line == text[i])) { covered = 1; used[i] = 1 }
     if (!covered) print > found
   }
   END { for (i = 1; i <= n; i++) if (!(i in used)) print file[i] "\t" text[i] > stale }
