@@ -299,7 +299,7 @@ PINABORTRETRY
                 case "$panel_avail_lines" in
                 *"could not record certify-refused"*)
                     echo "/pr-check ABORT - critic-panel.sh exit 6 and the refusal could not be recorded on the CR ledger, so nothing would hold the CR marker closed. Fix the ledger path and re-run /pr-check from step 1." >&2
-                    exit 7
+                    give_back 7
                     ;;
                 esac
                 echo "critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum) - claude-only review; the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
