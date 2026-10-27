@@ -480,6 +480,64 @@ printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-l
 printf '%s\tX\n' "$SHP" > "$tmp/pr-cases"
 run "a PR job with no failing case recorded still REFUSEs under the renamed jobs" 1 'REFUSE.*shell-unit.*no failing case'
 
+# --- the chain-s2 reason: a green PR merges main forward after the S2 predecessor chain-plan.sh named.
+# The checker reads no flag: the evidence is the plan file chain-plan.sh writes, and with chain_merge_plan off that
+# file holds no MERGE-FORWARD line, so the reason has nothing to stand on.
+CHAIN_PLAN="${CHAIN_PLAN:-$HERE/chief-kit/chain-plan.sh}"
+git init -q --bare -b main "$tmp/o2.git"
+git init -q -b main "$tmp/w2"
+git -C "$tmp/w2" config user.name t; git -C "$tmp/w2" config user.email t@t
+git -C "$tmp/w2" commit -q --allow-empty -m base
+git -C "$tmp/w2" remote add origin "$tmp/o2.git"
+git -C "$tmp/w2" push -q origin main 2>/dev/null
+git clone -q "$tmp/o2.git" "$tmp/cs" 2>/dev/null
+git -C "$tmp/cs" config user.name t; git -C "$tmp/cs" config user.email t@t
+git -C "$tmp/w2" commit -q --allow-empty -m "feat: [HIMMEL-1] the predecessor (#10)"
+git -C "$tmp/w2" push -q origin main 2>/dev/null
+PRED="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" commit -q --allow-empty -m "feat: [HIMMEL-2] an unrelated merge (#99)"
+git -C "$tmp/w2" push -q origin main 2>/dev/null
+OTHER="$(git -C "$tmp/w2" rev-parse HEAD)"
+printf '{"nodes":[{"id":"#10"},{"id":"#11"}],"edges":[{"from":"#10","to":"#11","kind":"S2","det":"D6","evidence":"x","files":[],"source":"derived","cycle":false}]}\n' > "$tmp/graph.json"
+HIMMEL_FLAG_CHAIN_MERGE_PLAN=1 bash "$CHAIN_PLAN" --graph "$tmp/graph.json" > "$tmp/plan-on" 2>&1
+HIMMEL_FLAG_CHAIN_MERGE_PLAN=0 bash "$CHAIN_PLAN" --graph "$tmp/graph.json" > "$tmp/plan-off" 2>&1
+printf 'a\tsuccess\nb\tsuccess\n' > "$tmp/cs-pr"
+CSHEAD="$(git -C "$tmp/cs" rev-parse HEAD)"
+cs() {
+  local d="$1" want="$2" re="$3" out rc; shift 3
+  out=$(cd "$tmp/cs" && bash "$MF" --chain-s2 11 --chain-plan "$tmp/plan-on" --chain-after-sha "$PRED" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" "$@" 2>&1); rc=$?
+  if [ "$rc" -eq "$want" ] && grep -Eq -- "$re" <<< "$out"; then ok "$d"; else bad "$d (rc=$rc, want $want)" "$out"; fi
+}
+cs "chain-s2: a plan naming 11 after 10, 10's merge on origin/main and not in HEAD, a green PR: ALLOW, and says it proves only that predecessor" 0 'ALLOW chain-s2 11.*after #?10.*proves only #?10'
+printf 'a\tskipped\nb\tneutral\n' > "$tmp/cs-skipped"
+cs "chain-s2: a run with no success row (only skipped or neutral): REFUSE" 1 'REFUSE.*no (passing|success)' --pr "$tmp/cs-skipped"
+cs "chain-s2: the flag-off plan carries no MERGE-FORWARD line: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-off"
+: > "$tmp/plan-empty"
+cs "chain-s2: an empty plan file: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-empty"
+grep -v '^chain-plan:' "$tmp/plan-on" > "$tmp/plan-nohdr"
+cs "chain-s2: a plan without the chain-plan header: REFUSE" 1 'REFUSE.*header' --chain-plan "$tmp/plan-nohdr"
+cs "chain-s2: the PR the plan does not name: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-s2 12
+cs "chain-s2: the sha is not the predecessor's merge (subject names #99): REFUSE" 1 'REFUSE.*#10' --chain-after-sha "$OTHER"
+git -C "$tmp/cs" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "feat: local only (#10)"
+LOCAL="$(git -C "$tmp/cs" rev-parse HEAD)"
+cs "chain-s2: the sha is not on origin/main: REFUSE" 1 'REFUSE.*origin/main' --chain-after-sha "$LOCAL" --pr-sha "$LOCAL"
+git -C "$tmp/cs" reset -q --hard "$CSHEAD"
+cs "chain-s2: an ancestor of HEAD that is not the predecessor's merge: REFUSE, never 'already merged'" 1 'REFUSE.*#10' --chain-after-sha "$CSHEAD"
+git -C "$tmp/cs" fetch -q origin
+git -C "$tmp/cs" -c user.name=t -c user.email=t@t merge -q --no-edit "$PRED" 2>/dev/null
+MERGED="$(git -C "$tmp/cs" rev-parse HEAD)"
+cs "chain-s2: the predecessor is already in HEAD: nothing to merge forward (exit 3)" 3 'nothing to merge forward' --pr-sha "$MERGED"
+git -C "$tmp/cs" reset -q --hard "$CSHEAD"
+printf 'a\tsuccess\nb\tfailure\n' > "$tmp/cs-red"
+cs "chain-s2: a red on the PR is the inherited-red path, not this reason: REFUSE" 1 'REFUSE.*red' --pr "$tmp/cs-red"
+cs "chain-s2: the PR run is for another head: REFUSE" 1 'REFUSE.*HEAD' --pr-sha "$PRED"
+cs "chain-s2: a short after-sha: usage error" 2 'usage' --chain-after-sha "${PRED:0:12}"
+cs "chain-s2: mixing the inherited-red flags in: usage error" 2 'usage' --main-base "$tmp/cs-pr"
+out=$(cd "$tmp/cs" && bash "$MF" --chain-s2 11 --chain-plan "$tmp/plan-on" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then ok "chain-s2: missing --chain-after-sha: usage error"; else bad "chain-s2 missing args exits 2 (rc=$rc)" "$out"; fi
+set3 'shell-tests\tfailure\n' 'shell-tests\tsuccess\n' 'shell-tests\tsuccess\n'
+run "chain-s2 present in the file does not loosen the inherited-red rule (own red still REFUSEs)" 1 'REFUSE.*shell-tests.*not inherited'
+
 bash "$MF" --pr "$tmp/pr" --main "$tmp/pr" >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 2 ]; then ok "the old 2-file --main form is refused (exit 2)"; else bad "the old --main form exits 2 (rc=$rc)"; fi
