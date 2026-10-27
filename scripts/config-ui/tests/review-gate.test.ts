@@ -87,6 +87,29 @@ test("POST writes the overlay only, and a read back equals what was written", as
   expect(sha(base)).toBe(before);
 });
 
+test("an advisory reviewer returned by GET can be saved without changing the shared base", async () => {
+  writeFileSync(base, readFileSync(REAL_BASE));
+  const before = sha(base);
+  const port = boot();
+  const first = await (await get(port)).json();
+  expect(first.reviewers.find((x: { slug: string }) => x.slug === "claude").mode).toBe("advisory");
+  const r = await post(port, { reviewers: reviewGateDraft(first) });
+  expect(r.status).toBe(200);
+  const saved = await (await get(port)).json();
+  expect(saved.reviewers.find((x: { slug: string }) => x.slug === "claude").mode).toBe("advisory");
+  expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([]);
+  expect(sha(base)).toBe(before);
+});
+
+test("the card selects advisory and explains its precision policy instead of showing an unknown mode", () => {
+  const advisory = { ...data, reviewers: [{ ...data.reviewers[0], slug: "claude", mode: "advisory", required: false }] };
+  const html: string = renderReviewGate({ data: advisory, error: null, draft: null, msg: null });
+  expect(html).toContain('<option value="advisory" selected>advisory</option>');
+  expect(html).toMatch(/precision/);
+  expect(html).toMatch(/review threads still hold/);
+  expect(html).not.toContain("undefined");
+});
+
 test("a dropped reviewer keeps its shared settings, so turning it back on restores them", async () => {
   const port = boot();
   await post(port, { reviewers: [{ slug: "claude", mode: "best-effort", required: false, enabled: false }] });
@@ -109,12 +132,13 @@ test("a reviewer left as the base has it is not copied into the overlay, so base
 test("with the base read from main (CRITICS_BASE_JSON unset), a turned-off reviewer comes back with the base settings and writes nothing extra", async () => {
   const port = boot({ CRITICS_BASE_JSON: "" });
   const first = await (await get(port)).json();
-  expect(first.reviewers.find((x: { slug: string }) => x.slug === "claude")).toMatchObject({ mode: "hard", required: false });
+  const shared = first.reviewers.find((x: { slug: string }) => x.slug === "claude");
+  expect(shared).toMatchObject({ required: false });
   await post(port, { reviewers: [{ slug: "claude", mode: "best-effort", required: false, enabled: false }] });
   const j = await (await get(port)).json();
-  expect(j.droppedBase.claude).toEqual({ mode: "hard", required: false });
+  expect(j.droppedBase.claude).toEqual({ mode: shared.mode, required: false });
   const back = reviewGateDraft(j).find((x: { slug: string }) => x.slug === "claude");
-  expect(back).toEqual({ slug: "claude", mode: "hard", required: false, enabled: false });
+  expect(back).toEqual({ slug: "claude", mode: shared.mode, required: false, enabled: false });
   expect((await post(port, { reviewers: [{ ...back, enabled: true }] })).status).toBe(200);
   expect(JSON.parse(readFileSync(local, "utf8")).panel).toEqual([]);
 });

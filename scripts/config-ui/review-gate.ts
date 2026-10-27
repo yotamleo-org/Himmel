@@ -14,7 +14,7 @@ type Resolved = { review: string | null; panel: Row[]; files: { base: string; lo
 export type GateResult = { status: number; body: Record<string, unknown> };
 
 const RESOLVER = resolve(import.meta.dir, "../lib/critics-config.sh");
-const MODES: readonly string[] = ["hard", "best-effort"];
+const MODES: readonly string[] = ["hard", "best-effort", "advisory"];
 const EFFORTS: readonly string[] = ["low", "medium", "high", "xhigh", "max"]; // the values critic-first-pass.sh accepts
 // only the Claude critic reads an effort (critic-first-pass.sh); the codex reviewer is dispatched through hermes, which takes none yet.
 const EFFORT_PROVIDERS: readonly string[] = ["claude-api", "claude-subscription"];
