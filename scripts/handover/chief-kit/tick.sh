@@ -1834,17 +1834,19 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
-# dbot=<merged>/<skipped>[,run]: with DEPENDABOT_AUTOLAND=on (default off) the
+# dbot=<merged>/<skipped>[,err][,run]: with DEPENDABOT_AUTOLAND=on (default off) the
 # tick launches ONE detached `dependabot-go.sh --sweep` per TICK_DBOT_MIN_SECS (default 900),
 # under flock so sweeps never overlap; the sweep judges each green dependency-only Dependabot
 # PR and merges it at the judged head behind its guards. The counts are the previous sweep's,
-# read from its log; a failed sweep's output is kept in tick-dbot-*.err. Off, the field is absent.
+# read from its log; a sweep that failed after it shows err, its output kept in tick-dbot-*.err.
+# Off, the field is absent.
 dbot_summary=""
 if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-go.sh" ]; then
     dbot_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
     dbot_base="$dbot_dir/tick-dbot-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
     dbot_summary="$(sed -n 's/^dependabot-go sweep: merged=\([0-9]*\) skipped=\([0-9]*\)$/\1\/\2/p' "$dbot_base.log" 2>/dev/null | tail -n 1)"  # swallow-ok: no log yet reads none
     [ -n "$dbot_summary" ] || dbot_summary=none
+    [ "$dbot_base.err" -nt "$dbot_base.log" ] && dbot_summary="$dbot_summary,err"
     dbot_gap="${TICK_DBOT_MIN_SECS:-900}"
     case "$dbot_gap" in '' | *[!0-9]*) dbot_gap=900 ;; esac
     dbot_age=999999999

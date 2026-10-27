@@ -267,6 +267,7 @@ check    "5: a failed required check is never merged" "$(merged)" ""
 sreset; STUB_CHECKS=''
 sweep
 check    "5: no required checks read is never merged" "$(merged)" ""
+contains "5: no required checks read is refused at the checks guard" "$out" "a required check is not pass"
 
 sreset; STUB_CHECKS_RC=1
 sweep
@@ -288,10 +289,26 @@ sweep
 check    "5: a judge that records nothing is never merged" "$(merged)" ""
 export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
 
+# a judge call that exits 3 with no verdict, as judge-call.sh does on a lane that is off
+# shellcheck disable=SC2016  # the stub's own text, expanded when the stub runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$STUB_JUDGED"\necho "judge-call: HIMMEL_API_LANE is off" >&2\nexit 3\n' > "$tmp/bin/judge-fail"
+chmod +x "$tmp/bin/judge-fail"
+sreset; export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-fail"
+sweep
+contains "5: a failed judge call logs its error" "$out" "HIMMEL_API_LANE is off"
+sweep
+check    "5: a failed judge call releases the head for one retry" "$(judged)" "2"
+sweep
+check    "5: a head whose retry failed too is not judged again" "$(judged)" "2"
+check    "5: a failed judge call is never merged" "$(merged)" ""
+export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
+
 # a directory where the ledger file goes: the row write fails, as root too
 sreset; rm -f "$LEDGER"; mkdir "$LEDGER"
 sweep
 check    "5: a GO with no dependabot-go row is never merged" "$(merged)" ""
+check    "5: the GO head is judged before the row write fails" "$(judged)" "1"
+contains "5: a GO with no row is refused at the row guard" "$out" "no dependabot-go row"
 rmdir "$LEDGER"
 
 # a file where the judged-head claims go: no claim is made, so no judge is paid for
@@ -344,6 +361,8 @@ check    "6: tick.sh gates the sweep on DEPENDABOT_AUTOLAND=on" "$(grep -c '"${D
 check    "6: tick.sh launches dependabot-go.sh --sweep" "$(grep -c 'dependabot-go.sh" --sweep' "$TICK")" "1"
 # shellcheck disable=SC2016  # the literal tick.sh text, not an expansion
 check   "6: tick.sh keeps a failed sweep's output" "$(grep -c 'mv -f "$dbot_tmp" "$dbot_base.err"' "$TICK")" "1"
+# shellcheck disable=SC2016  # the literal tick.sh text, not an expansion
+check   "6: tick.sh shows err when the last sweep failed" "$(grep -c '\[ "$dbot_base.err" -nt "$dbot_base.log" \] && dbot_summary="$dbot_summary,err"' "$TICK")" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

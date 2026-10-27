@@ -81,7 +81,7 @@ common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || c
 
 # sweep_one <pr> <head> <auto-merge on: true|false> - merge when every guard holds; 0 = merged
 sweep_one() {
-    local pr="$1" sha="$2" qid q state buckets now row judged="$common/dependabot-judged"
+    local pr="$1" sha="$2" qid q jout state buckets now row judged="$common/dependabot-judged"
     skip() { echo "dependabot-go sweep: #$pr skipped - $*"; }
     case "$pr" in ''|0*|*[!0123456789]*) skip "not a PR number"; return 1 ;; esac
     [ "$3" = false ] || { skip "auto-merge is already on"; return 1; }
@@ -108,10 +108,19 @@ sweep_one() {
             rm -f "$q"; skip "the diff is unreadable or too big for one judge question"; return 1
         fi
         # claimed before the call by one atomic mkdir, so sweeps sharing this ledger pay one judge
-        # spend per head, a failed call included
+        # spend per head; a call that records no verdict releases the claim once, so a lane that is
+        # down for one sweep does not park the head, and one that keeps failing is not paid every tick
         { mkdir -p "$judged" && mkdir "$judged/$qid"; } 2>/dev/null || { rm -f "$q"; skip "the head is claimed by another sweep or the claim cannot be made"; return 1; }  # swallow-ok: a failed claim refuses here
-        bash "${DEPENDABOT_JUDGE_CALL:-$ANCHOR/scripts/api-lane/judge-call.sh}" --qid "$qid" --pr "$pr" --head "$sha" --question-file "$q" \
-            --model claude-sonnet-5-5 --max-budget-usd 0.50 --effort medium --timeout 600 --judge dbot-judge >/dev/null 2>&1 || :  # swallow-ok: the record step below refuses without a signed GO
+        if ! jout=$(bash "${DEPENDABOT_JUDGE_CALL:-$ANCHOR/scripts/api-lane/judge-call.sh}" --qid "$qid" --pr "$pr" --head "$sha" --question-file "$q" \
+            --model claude-sonnet-5-5 --max-budget-usd 0.50 --effort medium --timeout 600 --judge dbot-judge 2>&1); then
+            rm -f "$q"
+            if { mkdir "$judged/$qid.failed" && rmdir "$judged/$qid"; } 2>/dev/null; then  # swallow-ok: a held claim is the safe side
+                skip "the judge call recorded no verdict, released for one retry: ${jout##*$'\n'}"
+            else
+                skip "the judge call recorded no verdict on its retry too, so the head stays claimed: ${jout##*$'\n'}"
+            fi
+            return 1
+        fi
         rm -f "$q"
     fi
     bash "$0" "$pr" "$sha" --judge "$qid" || { skip "no dependabot-go row (judge $qid)"; return 1; }
