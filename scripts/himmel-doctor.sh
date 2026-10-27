@@ -4688,6 +4688,26 @@ check_c77_bridge_stale() {
     emit OK C77-bridge-stale "$unit started after the newest commit to scripts/telegram, scripts/lanes and scripts/lib"
 }
 
+# --- C78: shfmt on PATH (the Bash guards parse commands with it) -------------------
+# Without shfmt the PreToolUse guards that read a command's AST deny every
+# command naming a stash, ref-plumbing or graphify verb, so the operator first
+# hears of it as a refusal mid-session. Same up-front shape as C38/C39. WARN only.
+# Test seam: HIMMEL_DOCTOR_SHFMT (the shfmt command to probe, default `shfmt`).
+check_c78_shfmt() {
+    local shfmt_bin="${HIMMEL_DOCTOR_SHFMT:-shfmt}"
+    if command -v "$shfmt_bin" >/dev/null 2>&1; then
+        emit OK C78-shfmt "shfmt on PATH (the Bash guards can parse commands)"
+        return
+    fi
+    local hint
+    case "$(uname -s 2>/dev/null || echo x)" in
+        Darwin) hint="brew install shfmt" ;;
+        *) hint="sudo apt-get install -y shfmt (or pacman -S shfmt)" ;;
+    esac
+    emit WARN C78-shfmt "shfmt not on PATH — the Bash guards that parse commands with it deny any command that names a stash, ref-plumbing or graphify verb" \
+        "$hint (see docs/setup/new-machine.md)"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4836,6 +4856,7 @@ run_check C74 check_c74_config_split
 run_check C75 check_c75_keyring
 run_check C76 check_c76_duplicate_plugin_installs
 run_check C77 check_c77_bridge_stale
+run_check C78 check_c78_shfmt
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

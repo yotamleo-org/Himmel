@@ -318,6 +318,20 @@ assert_contains "plugins: older installed copy -> behind, names the drift" "^ *p
 out=$(plugins_row "") || true
 assert_contains "plugins: declared but not installed -> behind" "^ *plugins  *behind  *0/1 installed" "$out"
 
+# installed_plugins.json holds one entry per scope; a stale project-scope pin
+# listed before the user install must not read as drift.
+pin_row() {   # <installed-json> -> the --versions output
+    printf '%s\n' "$1" > "$TMP/installed-pin.json"
+    HIMMEL_MARKETPLACE_JSON="$TMP/market.json" HIMMEL_INSTALLED_PLUGINS_JSON="$TMP/installed-pin.json" \
+        LUNA_VAULT_PATH="$TMP/vault" run_update "$fh6" "$TMP/claude-versions" --versions
+}
+out=$(pin_row '{"plugins":{"alpha@himmel":[{"scope":"project","projectPath":"/x","version":"1.0.0"},{"scope":"user","version":"2.0.0"}]}}') || true
+assert_contains "plugins: user install behind a stale project pin -> current" "^ *plugins  *current  *1/1 installed" "$out"
+out=$(pin_row '{"plugins":{"alpha@himmel":[{"scope":"project","projectPath":"/x","version":"2.0.0"},{"scope":"user","version":"1.0.0"}]}}') || true
+assert_contains "plugins: older user install behind a current project pin -> behind" "^ *plugins  *behind .*alpha(1\\.0\\.0->2\\.0\\.0)" "$out"
+out=$(pin_row '{"plugins":{"alpha@himmel":[{"scope":"project","projectPath":"/x","version":"1.0.0"}]}}') || true
+assert_contains "plugins: no user install -> falls back to the first entry" "^ *plugins  *behind .*alpha(1\\.0\\.0->2\\.0\\.0)" "$out"
+
 # an unreadable installed OR source version must report unknown,
 # never claim "current" (version equality was never established).
 printf '{"plugins":{"alpha@himmel":[{}]}}\n' > "$TMP/installed-noiv.json"

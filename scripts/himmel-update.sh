@@ -107,6 +107,11 @@ report_plugin_gap() {
     fi
 
     local total=0 ok=0 missing="" shadowed="" drifted="" unknown_ver="" name other iv sv
+    # .plugins[$k] holds one entry per scope/project, first-written first; a
+    # stale project-scope pin can precede the user install, so read the user
+    # entry and fall back to the first only when there is none.
+    # shellcheck disable=SC2016  # $k is a jq --arg, not a shell variable
+    local entry_q='(.plugins[$k] // []) | (map(select(.scope == "user"))[0] // .[0])'
     while IFS= read -r name; do
         [ -z "$name" ] && continue
         total=$((total + 1))
@@ -124,7 +129,7 @@ report_plugin_gap() {
             # --versions only: an installed @himmel copy whose version differs
             # from the marketplace source is an update the re-sync has not landed.
             if [ -n "${VER_FILE:-}" ]; then
-                iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].version // empty' "$installed_json" 2>/dev/null | tr -d '\r' || true)
+                iv=$(jq -r --arg k "$name@$mp_name" "$entry_q | .version // empty" "$installed_json" 2>/dev/null | tr -d '\r' || true)
                 # Source version read order: the local plugin.json,
                 # then the marketplace entry's .version (an external plugin has no
                 # local dir). With neither, nothing declares a source, so there is
@@ -145,7 +150,7 @@ report_plugin_gap() {
                     unknown_ver="$unknown_ver $name"
                 elif [ -z "$sv" ]; then
                     if [ -z "$iv" ]; then
-                        iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].gitCommitSha // empty' "$installed_json" 2>/dev/null | tr -d '\r' | cut -c1-7 || true)
+                        iv=$(jq -r --arg k "$name@$mp_name" "$entry_q | .gitCommitSha // empty" "$installed_json" 2>/dev/null | tr -d '\r' | cut -c1-7 || true)
                     fi
                     # No declared source: a readable installed version/sha is current.
                     if [ -z "$iv" ]; then
