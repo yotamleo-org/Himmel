@@ -301,8 +301,8 @@ fi
 EXIT_RC="$RC"
 REJECTED=""
 if [ "$RC" -ne 0 ]; then
-  if grep -qi 'credit balance is too low' "$OUT" 2>/dev/null; then REJECTED=exhausted
-  elif grep -qi 'invalid api key' "$OUT" 2>/dev/null; then REJECTED=key_invalid; fi
+  # only the error envelope's own result text counts: a denial or tool output elsewhere in the JSON may quote the phrase
+  REJECTED="$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const t=r&&r.is_error===true&&typeof r.result==="string"?r.result.toLowerCase():"";if(t.includes("credit balance is too low"))console.log("exhausted");else if(t.includes("invalid api key"))console.log("key_invalid")}catch{}' "$OUT" 2>/dev/null)" || REJECTED=""
 fi
 if [ -n "$REJECTED" ]; then
   OUTCOME="$REJECTED"; EXIT_RC=6

@@ -594,6 +594,23 @@ test('HIMMEL-7161: a plain failure that is neither rejection keeps the call exit
   assert.equal(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'failed');
 });
 
+test('HIMMEL-7161: a failed call whose permission denials quote the phrase, but whose result does not, is not a rejection', () => {
+  const f = fixture();
+  const quoted = JSON.stringify({ type: 'result', is_error: true, result: 'boom', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'echo invalid api key; echo credit balance is too low' } }] });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-quote-1', STUB_OUT: quoted, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'failed');
+  assert.equal(existsSync(f.paths.state) && JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts?.B?.exhausted_at !== undefined, false);
+});
+
+test('HIMMEL-7161: a successful call whose result text mentions an invalid API key is not a rejection', () => {
+  const f = fixture();
+  const ok = JSON.stringify({ type: 'result', is_error: false, result: 'The message was: Invalid API key', total_cost_usd: 0.01 });
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'B', HIMMEL_API_JOB_ID: 'job-quote-2', STUB_OUT: ok, STUB_RC: '0' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.notEqual(JSON.parse(f.record().trim().split('\n').pop()).outcome, 'key_invalid');
+});
+
 test('HIMMEL-5433: auto routing refuses a caller-supplied key, which cannot follow the pick', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto' });
