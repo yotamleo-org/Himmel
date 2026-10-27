@@ -5565,8 +5565,10 @@ assert_rc "7757 a different reset time is a different key and arms (rc=0)" 0 "$r
 # The R1 fire is restart one; seed two more fired rows inside the window, then
 # the next arm is the fourth restart.
 for _n in 2 3; do
+    _run=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" bash "$FR_LIB" \
+        --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757" "" 775$_n)
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" bash "$FR_LIB" \
-        --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757" "" 775$_n >/dev/null
+        --append-end "armed-resume" "$_run" "" 0 "complete" "" "limit hit again" >/dev/null
 done
 out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
     SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
@@ -5583,9 +5585,9 @@ assert_rc "7757 --force overrides the restart cap (rc=0)" 0 "$rc"
 : > "$DB_1879"
 out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
     SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
-    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --force 2>&1)
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" 2>&1)
 rc=$?
-assert_rc "7757 a non-limit arm is untouched by the limit keys (rc=0)" 0 "$rc"
+assert_rc "7757 a non-limit arm is untouched by the limit keys and the restart cap (rc=0)" 0 "$rc"
 assert_not_contains "7757 no limit-key message on a non-limit arm" "limit-resume key" "$out"
 
 # --- 1879e: the post-arm existence verify on the POSIX at backend -----------
