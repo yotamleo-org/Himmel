@@ -3063,6 +3063,9 @@ assert_has "$jgo_out" "jga-1/judge" "7828 (a) the verb names the adopter record"
 git -C "$repo" checkout -q jg7828b
 jgo_out="$(jgo_verb jg7828b "$jga_hb")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "1" "7828 (b) an adopter PR does not take a GO from the harness bucket ($jgo_out)"
+git -C "$repo" checkout -q jg7828c
+jgo_out="$(jgo_verb jg7828c "$jga_hc")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "7828 (d) control: the adopter GO of a harness PR is found under its own adopter origin ($jgo_out)"
 git -C "$repo" remote set-url origin https://github.com/yotamleo-org/Himmel.git
 if [ -n "$jga_fx_origin" ]; then git -C "$fx" remote set-url origin git@github.com:yotamleo-org/himmel.git; else git -C "$fx" remote add origin git@github.com:yotamleo-org/himmel.git; fi
 git -C "$repo" checkout -q jg7828b
