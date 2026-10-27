@@ -293,6 +293,23 @@ test("setting the login keeps a pre-keyring file when the keyring does not hold 
   expect(readFileSync(f, "utf8").trim()).toBe(line);
 });
 
+test("setting the login says so when the old login file cannot be removed, since it would serve the old password again", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-stuck-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir), f = join(dir, "ui-login");
+  mkdirSync(f);
+  expect(() => writeLogin(f, USER, secret(), { env: k.env })).toThrow(/could not be removed/);
+});
+
+test("a secret-tool that exits 1 with nothing printed on an empty search still means no login", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-rc1-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir), env = { ...k.env, KSTUB_LOOKUP_FAIL: "1", KSTUB_SEARCH_RC1: "1" };
+  expect(readLogin(join(dir, "ui-login"), env)).toBeNull();
+  k.put(KEY, loginLine(USER, secret()));
+  expect(() => readLogin(join(dir, "ui-login"), env)).toThrow(/keyring/i);
+});
+
 test("a project-scoped item of the checkout the server runs in never shadows the user-scope login", () => {
   const dir = mkdtempSync(join(tmpdir(), "ui-login-cwd-"));
   const cwd = process.cwd();

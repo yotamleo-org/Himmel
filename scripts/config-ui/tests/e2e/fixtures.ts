@@ -128,6 +128,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}),
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };
+  if (!env.KSTUB_STORE) env.HIMMEL_SECRETS_KEYRING = "off"; // no spec reads the operator's keyring; the Setup account spec brings its own stub
   delete env.CADENCE_BANK_LEDGER; // the operator's own ledger, root and monitoring never reach the child
   delete env.TELEGRAM_ENV; delete env.TELEGRAM_BOT_TOKEN; // the Setup page writes a Telegram token under the temp HOME, never the operator's
   for (const k of Object.keys(env)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete env[k];

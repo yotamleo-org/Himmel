@@ -36,7 +36,9 @@ function keyringHoldsItem(env: Env): boolean {
   if (env.HIMMEL_SECRETS_KEYRING === "off") return false;
   const r = spawnSync("secret-tool", ["search", "--all", "service", "himmel", "key", KEY, "scope", "user"], { env: childEnv(env), cwd: CWD, encoding: "utf8", timeout: 5_000 });
   if ((r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return false; // no keyring tooling at all: nothing to hide a login in
-  if (r.error || r.status !== 0) throw new Error(`the keyring could not be searched, so the login cannot be read: ${r.error?.message ?? `exit ${r.status}`}`);
+  // some secret-tool builds exit 1 with nothing printed on no match; any other nonzero exit, a kill, or an error message is a failure.
+  const silentNoMatch = r.status === 1 && !r.stdout.trim() && !r.stderr.trim();
+  if (r.error || (r.status !== 0 && !silentNoMatch)) throw new Error(`the keyring could not be searched, so the login cannot be read: ${r.error?.message ?? `exit ${r.status}`}`);
   return `${r.stdout}\n${r.stderr}`.split("\n").some((l) => l.trim() === `attribute.key = ${KEY}`);
 }
 
@@ -66,8 +68,12 @@ function vaultPut(env: Env, line: string): void {
 function legacyExists(path: string): boolean {
   try { lstatSync(path); return true; } catch { return false; }
 }
+// A file that stays would serve the old password again whenever the keyring cannot be read, so a failed removal is loud.
 function removeLegacy(path: string): void {
-  try { unlinkSync(path); } catch { /* absent, or not removable: the keyring item wins on read */ }
+  try { unlinkSync(path); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new Error(`the login was stored in the keyring, but the old login file ${path} could not be removed (${(e as Error).message}); remove it by hand`);
+  }
 }
 
 // createOnly refuses when a login is already stored. ponytail: the check and the put are two steps, so a --set-login
