@@ -146,6 +146,11 @@ fresh
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --max-usd 0.02 --json --no-ledger >/dev/null 2>"$TMP/cap.err"
 check "the grader budget stops the pass once --max-usd is spent" '[ "$(wc -l <"$TMP/fake.log")" -eq 2 ] && grep -qF "grader budget spent" "$TMP/cap.err"'
 fresh
+# shellcheck disable=SC2034  # rows0 is read by check's eval
+rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --max-usd 0.02 --json >/dev/null 2>"$TMP/part.err"
+check "a stopped pass records no calibration row, so a partial result never heads the page" '[ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ] && grep -qF "not recorded" "$TMP/part.err"'
+fresh
 LQ_FAKE_COST=none bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/unk.err"
 check "a claudex grader with no reported cost stops the pass, never counted as 0" '[ "$(wc -l <"$TMP/fake.log")" -eq 1 ] && grep -qF "left its cost unknown" "$TMP/unk.err"'
 fresh

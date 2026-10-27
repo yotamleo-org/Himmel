@@ -47,7 +47,7 @@
 # grader results are reused, so a rerun makes no call. A claudex grader needs
 # CLAUDEX_LANE_OK=1 (exit 3 without it); an openrouter grader without a PRICES
 # row needs --cap-factor and a readable balance meter around each call; a
-# grader that reports no cost stops the pass.
+# grader that reports no cost stops the pass. A stopped pass records no row.
 #
 # Task sets: the synthetic tasks are the regression set (the default). A real
 # task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
@@ -1117,6 +1117,10 @@ cmd_calibration() {
     fi
     rm -f "$list"
     echo "lane-quality: graders spent $SPENT USD (cap $MAX_USD)" >&2
+    if [ "$stop" = 1 ] && [ -z "$noledger" ]; then
+      echo "lane-quality: the pass stopped short, so this calibration is not recorded; a rerun reuses the stored grades" >&2
+      noledger=--no-ledger
+    fi
   fi
   python3 "$HERE/lq_stats.py" calibration ${l2:+--judge2-label "$l2"} ${l1:+--judge1-label "$l1"} \
     ${lt:+--tiebreak-label "$lt"} ${sample:+--sample "$sample"} $json $noledger "${dirs[@]}"
