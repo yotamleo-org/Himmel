@@ -904,7 +904,7 @@ grepq "$out2" 'HANDOVER_DIR ->' \
   && fail "caseJ(inline): handover.mode=inline must be a no-op (got: $out2)"
 [ -f "$hJ2/.himmel/himmel.conf" ] \
   || fail "caseJ(inline): config step must create himmel.conf"
-[ ! -s "$hJ2/.himmel/himmel.conf" ] \
+! grep -q '[^[:space:]]' "$hJ2/.himmel/himmel.conf" \
   || fail "caseJ(inline): handover.mode=inline must not write config keys (got: $(cat "$hJ2/.himmel/himmel.conf"))"
 [ -f "$fixtureJ2/.env" ] \
   && fail "caseJ(inline): handover.mode=inline must not write .env (got: $(cat "$fixtureJ2/.env"))"

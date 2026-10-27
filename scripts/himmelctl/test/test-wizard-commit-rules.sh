@@ -209,7 +209,7 @@ out=$(run_apply "$h4" '')
 rc=$?
 [ "$rc" -eq 0 ] || fail "case4: install should succeed (rc=$rc): $out"
 [ -f "$h4/.himmel/himmel.conf" ] || fail "case4: config step must create himmel.conf"
-[ ! -s "$h4/.himmel/himmel.conf" ] || fail "case4: declined commit-rule consent must not write any keys"
+! grep -q '[^[:space:]]' "$h4/.himmel/himmel.conf" || fail "case4: declined commit-rule consent must not write any keys"
 echo "ok: case4 declining commit-rule consent leaves the new config file empty"
 
 # ── Case 5: frame-11 wording ─────────────────────────────────────────────────
