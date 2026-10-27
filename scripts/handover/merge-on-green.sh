@@ -309,7 +309,7 @@ _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "merge-on-green.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "merge-on-green.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/merge-on-green.sh || exit 96
@@ -578,7 +578,7 @@ command -v "$GH" >/dev/null 2>&1 || { echo "merge-on-green: required tool 'gh' n
 # all refuse with exit 19, never a fallback to the sibling. Resolved BEFORE any
 # helper is sourced — see GATE INTEGRITY above.
 if ! himmel_repo=$(printenv HIMMEL_REPO | grep .); then
-    echo "merge-on-green: HIMMEL_REPO is unset or empty — cannot resolve the anchor for check-ci.sh. This merge gate no longer trusts its own worktree sibling (HIMMEL-3475): set HIMMEL_REPO to the primary himmel checkout in the launching shell." >&2
+    echo "merge-on-green: HIMMEL_REPO is unset or empty — cannot resolve the anchor for check-ci.sh. This merge gate no longer trusts its own worktree sibling: set HIMMEL_REPO to the primary himmel checkout in the launching shell." >&2
     audit "REFUSED reason=no-anchor selector=${selector:-<cwd-branch>}"
     exit 19
 fi
@@ -1760,7 +1760,7 @@ clear_cr_marker_for_branch() {
         MARKER_RESULT="cleared"
     else
         MARKER_RESULT="clear-rc=$rc"
-        echo "merge-on-green: could not clear the CR marker for '$branch' (clear-cr-marker exit $rc) — it stays in $common/cr-pending and will block \`gh pr create\` for any branch resolved from a session cwd in this checkout until it is cleared (HIMMEL-1346)." >&2
+        echo "merge-on-green: could not clear the CR marker for '$branch' (clear-cr-marker exit $rc) — it stays in $common/cr-pending and will block \`gh pr create\` for any branch resolved from a session cwd in this checkout until it is cleared." >&2
     fi
     return 0
 }

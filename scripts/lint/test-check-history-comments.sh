@@ -260,5 +260,16 @@ git -C "$E" add -A; git -C "$E" commit -q -m add-ticket || exit 1
 OUT="$(cd "$E" && bash "$GATE" --range "$edit_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/new/a.sh:6" && ! has "scripts/new/a.sh:2"; then pass "--range: the edited line adding a ticket comment is flagged alone"; else fail "moved+edited new comment -> rc=$RC: $OUT"; fi
 
+echo "== 18. the ship-gate and CI writers print no ticket id =="
+REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
+for f in scripts/check-ci.sh scripts/ci/run-shell-tests.sh scripts/lib/go-gate.sh \
+         scripts/handover/merge-on-green.sh scripts/handover/chief-kit/go.sh \
+         scripts/handover/chief-kit/write-verdict.sh; do
+    OUT="$(grep -n -E "(echo|printf|die|warn).*${H}-[0-9]+" "$REPO_ROOT/$f" | grep -v 'ponytail:')"
+    if [ -z "$OUT" ]; then pass "$f: no output line carries a ticket id"; else fail "$f: $(printf '%s' "$OUT" | cut -c1-120 | head -3)"; fi
+done
+OUT="$(bash "$REPO_ROOT/scripts/check-ci.sh" --help 2>&1 | grep -n -E "${H}-[0-9]+" | cut -c1-100)"
+if [ -z "$OUT" ]; then pass "check-ci.sh --help prints no ticket id"; else fail "check-ci.sh --help: $(printf '%s' "$OUT" | head -3)"; fi
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

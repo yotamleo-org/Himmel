@@ -201,8 +201,8 @@ run mode: foreground workflow/job wait, no PR merge/review gates or settle.
           CHECK_CI_RUN_HEARTBEAT overrides the per-process cache-dir heartbeat.
 exit codes: 0 = checks green + all review threads resolved
                 + no outside-diff-range body finding left undispositioned (an exact-head ledger
-                  deferred/disproved disposition counts, HIMMEL-3124 — see exit 3).
-                CodeRabbit is best effort (HIMMEL-3360): if armed, its own status is read and printed
+                  deferred/disproved disposition counts — see exit 3).
+                CodeRabbit is best effort: if armed, its own status is read and printed
                   as an advisory NOTE on any state other than success — it never changes this exit code,
             1 = a check failed,
             64 = usage error — bad flag / missing or non-numeric value / two PR selectors; NO gate ran (the PR
@@ -211,23 +211,23 @@ exit codes: 0 = checks green + all review threads resolved
                 / body-findings reader failed — CodeRabbit's own status never produces this code),
             3 = checks green but unresolved review threads remain, a review requests changes, or (if armed)
                 CodeRabbit's review body reports an outside-diff-range finding with no exact-head ledger
-                disposition (HIMMEL-3124; the message prints the deferred/disproved recipe, and a
+                disposition (the message prints the deferred/disproved recipe, and a
                 disposition never carries to a new head),
-            4 = retired (HIMMEL-3360) — no longer emitted,
-            5 = GitHub will block this merge (HIMMEL-3381): a required check never reported within --grace, or the
+            4 = retired — no longer emitted,
+            5 = GitHub will block this merge: a required check never reported within --grace, or the
                 required-check set could not be read (fails closed). One MERGE-BLOCKED line + one operator DM.
             6 = every gate passed but GitHub's mergeStateStatus refuses the merge (BLOCKED/BEHIND/DIRTY/DRAFT
-                through --grace; HIMMEL-3473). CLEAN/HAS_HOOKS/UNSTABLE pass; UNKNOWN or unreadable = 2.
-            7 = only under CHECK_CI_DISTINCT_DEADLINE=1 (HIMMEL-4136): checks still pending at the --max-wait
+                through --grace). CLEAN/HAS_HOOKS/UNSTABLE pass; UNKNOWN or unreadable = 2.
+            7 = only under CHECK_CI_DISTINCT_DEADLINE=1: checks still pending at the --max-wait
                 deadline (the DEADLINE-PENDING verdict that is otherwise 2). Never a red.
-            --max-wait below --settle is a usage error (64, HIMMEL-4136).
+            --max-wait below --settle is a usage error (64).
 env: CR_PROFILE=none skips reading CodeRabbit's status + body findings entirely (repos without CodeRabbit)
      CR_APP=1|0 forces that same read on/off, overriding the automatic probe (see scripts/lib/coderabbit-available.sh)
      CHECK_CI_SLEEP_CMD replaces the command every wall-clock wait runs (default sleep; hermetic suites set it to :)
-     CHECK_CI_MAX_WAIT sets --max-wait's default (default 900 seconds, 0 = unbounded; HIMMEL-2062, raised in HIMMEL-2907)
-     CHECK_CI_DISTINCT_DEADLINE=1 makes a DEADLINE-PENDING verdict exit 7 instead of 2 (HIMMEL-4136)
+     CHECK_CI_MAX_WAIT sets --max-wait's default (default 900 seconds, 0 = unbounded)
+     CHECK_CI_DISTINCT_DEADLINE=1 makes a DEADLINE-PENDING verdict exit 7 instead of 2
      CHECK_CI_WATCH_INTERVAL / CHECK_CI_PROBE_INTERVAL set the watch poll (default 30 s) and the early-stop probe (default 60 s)
-       cadence — the GitHub GraphQL budget is shared by every worker on the box (HIMMEL-3190)
+       cadence — the GitHub GraphQL budget is shared by every worker on the box
      GraphQL budget exhausted: check-ci sleeps until X-Ratelimit-Reset (bounded by --max-wait) instead of failing; exit
        codes keep their meaning (a reset beyond what is left of --max-wait is exit 2). GH_BUDGET_PREFLIGHT=0 skips the one preflight call.
 note: "armed" above means CodeRabbit's status + body findings are read at the head — DISARMED by default. On a
@@ -237,11 +237,11 @@ note: "armed" above means CodeRabbit's status + body findings are read at the he
       unresolved-review-thread requirement (exit 3) is NOT keyed on this and applies to everyone.
       A repo that never arms is SILENT about CodeRabbit — nothing was configured, so nothing is
       missing, and an adopter who does not use CodeRabbit is never told about it. The ONE exception
-      (HIMMEL-2380) is a marker set to a value git cannot parse as a boolean: that repo meant to have
+      is a marker set to a value git cannot parse as a boolean: that repo meant to have
       the gates, silently lost them, and would otherwise certify greens asserting a review nobody
       checked for. It gets a loud WARNING naming the fix — and still exits 0, because a config typo
       must not wedge a merge.
-      MACHINE-GENERATED PRs (HIMMEL-2278) tolerate an ABSENT App review, and only that: a dependabot-authored
+      MACHINE-GENERATED PRs tolerate an ABSENT App review, and only that: a dependabot-authored
       PR, or one whose every changed path is a tracked graphify-out artifact. The App never reviews that class,
       so silence is its expected state — but a FAILED or PENDING App status, any body finding the App does
       post, checks-green, CHANGES_REQUESTED and unresolved threads all still gate it, and no other PR class is
@@ -1741,7 +1741,7 @@ _cr_outside_gate() {
     if [ "$n_ok" -lt "$n_all" ]; then
         local prefix=""
         if [ "$gate_head" != "$head0" ]; then
-            prefix="this head $head0 carries no CodeRabbit review (best effort, HIMMEL-3360: nothing waits or re-triggers), so the gate reads the latest review at prior head $gate_head: "
+            prefix="this head $head0 carries no CodeRabbit review (best effort: nothing waits or re-triggers), so the gate reads the latest review at prior head $gate_head: "
         fi
         echo "check-ci: ${ctx}${prefix}CodeRabbit's review body reports $n_all outside-diff-range finding(s) on head $gate_head of PR #$num, $((n_all - n_ok)) not dispositioned — these carry no thread to resolve; address them, or record an explicit disposition at head $gate_head (deferred needs a tracked ticket AND a reason; a disposition never carries to a new head), then re-run:$msg" >&2
         if [ -n "$defer" ]; then _cog_blocked=1; return 0; fi

@@ -275,7 +275,7 @@ go_trust_verdict() {
         # A record that cannot be read whole (unreadable, empty, NUL byte) vetoes:
         # it may be a NO-GO main would honour, so it is never skipped.
         if ! go_verdict_snapshot "$f"; then
-            printf 'the verdict in %s cannot be read whole (unreadable, empty or holds a NUL byte) — refusing rather than skip a record that may be a NO-GO (HIMMEL-4984).\n' "$f"
+            printf 'the verdict in %s cannot be read whole (unreadable, empty or holds a NUL byte) — refusing rather than skip a record that may be a NO-GO.\n' "$f"
             return 2
         fi
         snap=$GO_VERDICT_SNAP
@@ -296,11 +296,11 @@ go_trust_verdict() {
         # never merge trust.
         name=${f##*/}; name=${name%.md}
         if ! go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name"; then
-            printf 'the verdict in %s carries no valid mac (HIMMEL-4984) — only a record written by write-verdict.sh counts; the judge rewrites it.\n' "$f"
+            printf 'the verdict in %s carries no valid mac — only a record written by write-verdict.sh counts; the judge rewrites it.\n' "$f"
             return 2
         fi
         if printf '%s' "$snap" | grep -qE '^delta-(scope|from): '; then
-            printf 'the verdict in %s is a post-cap scope record (delta-scope:/delta-from:), not merge trust (HIMMEL-4984) — pass the qid of a judge that ruled GO on the PR itself.\n' "$f"
+            printf 'the verdict in %s is a post-cap scope record (delta-scope:/delta-from:), not merge trust — pass the qid of a judge that ruled GO on the PR itself.\n' "$f"
             return 2
         fi
         vpr=$(printf '%s' "$snap" | tr -d '\r' | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }' \

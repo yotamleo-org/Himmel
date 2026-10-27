@@ -539,7 +539,7 @@ _suite_timeout_for() {
       # 1500.
       printf '1500' ;;
     scripts/graphify/test-refresh-graph-map.sh|*/scripts/graphify/test-refresh-graph-map.sh)
-      printf '550' ;;  # measured 251s idle 2026-08-27 (rc=1 unrelated, HIMMEL-2160)
+      printf '550' ;;  # measured 251s idle 2026-08-27 (rc=1 unrelated)
     scripts/hooks/test-guard-implementor-dispatch.sh|*/scripts/hooks/test-guard-implementor-dispatch.sh)
       # Loaded re-benchmark (2026-09-02): worst observed loaded
       # 344s (155/0 passing, alone under 8 concurrent sessions), against the
@@ -830,7 +830,7 @@ SKIP_LIST_NON_LINUX="
 scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
-scripts/release/test-tarball-vs-clone.sh     # HIMMEL-3699: skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design; precedent HIMMEL-3203
+scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
 scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; precedent HIMMEL-3203
 scripts/handover/chief-kit/test-chief-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
 scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
