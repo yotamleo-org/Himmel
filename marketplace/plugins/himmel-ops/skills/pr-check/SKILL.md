@@ -11,7 +11,7 @@ repo does not load it. This skill is the same runbook, reached through the
 
 1. Read the runbook and follow it step by step, from the adopted repo's cwd:
 
-   ```
+   ```text
    Read $HIMMEL_REPO/.claude/commands/pr-check.md
    ```
 
