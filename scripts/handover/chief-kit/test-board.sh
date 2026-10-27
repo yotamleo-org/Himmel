@@ -239,8 +239,8 @@ run_pool 56/4/21/35 >/dev/null
 pool_html="$(cat "$W/pool-board.html")"
 contains 'current-version pool shows open, in flight, dispositioned and undispositioned' "$pool_html" '56 open · 4 in flight · 21 dispositioned · 35 undispositioned'
 contains 'pool counts are also in the board model' "$(node -p "JSON.stringify(JSON.parse(require('fs').readFileSync('$W/pool-board.json')).pool)")" '{"open":56,"in_flight":4,"dispositioned":21,"undispositioned":35}'
-contains 'pool-only changes make --changed report CHANGED' "$(run_pool 56/4/22/34)" 'CHANGED '
-contains 'unchanged pool counts stay quiet' "$(run_pool 56/4/22/34)" 'UNCHANGED '
+same 'pool-only changes make --changed report CHANGED' "$(run_pool 56/4/22/34)" "CHANGED $W/pool-board.html"
+same 'unchanged pool counts stay quiet' "$(run_pool 56/4/22/34)" "UNCHANGED $W/pool-board.html"
 run_pool '?' >/dev/null
 contains 'unavailable pool is never presented as zero unresolved' "$(cat "$W/pool-board.html")" 'version pool unavailable'
 
