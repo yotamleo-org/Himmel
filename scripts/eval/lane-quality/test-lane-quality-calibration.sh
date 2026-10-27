@@ -154,6 +154,18 @@ chmod +x "$TMP/bin/orcost-drop"
 LQ_FAKE_BAL="$TMP/bal" LQ_METERED_PROBE="$TMP/bin/orcost-drop" bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" \
   --max-usd 0.16 --json --no-ledger >/dev/null 2>"$TMP/delta.err"
 check "an openrouter call counts the metered drop when it exceeds the reported cost" '[ "$(grep -c "^google/gemini-x " "$TMP/fake.log")" -eq 2 ] && grep -qF "graders spent 0.1600 USD" "$TMP/delta.err"'
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/orcost-dead"
+printf '#!/usr/bin/env bash\nn=$(cat "$LQ_FAKE_BAL" 2>/dev/null || echo 0); echo $((n + 1)) >"$LQ_FAKE_BAL"\n[ "$n" -eq 0 ] || exit 1\necho "balance=9.5:credit spend=?"\n' >"$TMP/bin/orcost-once"
+chmod +x "$TMP/bin/orcost-dead" "$TMP/bin/orcost-once"
+fresh
+LQ_METERED_PROBE="$TMP/bin/orcost-dead" bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/dead.err"
+check "an unpriced openrouter grader with an unreadable meter stops before its call" '[ "$(grep -c "^google/gemini-x " "$TMP/fake.log")" -eq 0 ] && grep -qF "meter is unreadable" "$TMP/dead.err"'
+fresh; rm -f "$TMP/bal"
+LQ_FAKE_BAL="$TMP/bal" LQ_METERED_PROBE="$TMP/bin/orcost-once" bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/once.err"
+check "an unpriced openrouter grader whose meter goes unreadable after a call stops the pass" '[ "$(grep -c "^google/gemini-x " "$TMP/fake.log")" -eq 1 ] && grep -qF "meter is unreadable after google/gemini-x" "$TMP/once.err" && ! grep -qF "stopping before" "$TMP/once.err"'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --cap-factor 1.2.3 --json --no-ledger >/dev/null 2>"$TMP/cfx.err"; rc=$?
+check "a malformed --cap-factor is refused before any call" '[ "$rc" -eq 64 ] && grep -qF -- "--cap-factor must be a positive number" "$TMP/cfx.err" && [ ! -s "$TMP/fake.log" ]'
 
 echo "test-lane-quality-calibration: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

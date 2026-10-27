@@ -46,7 +46,8 @@
 # the launcher; --sample keeps only the listed judge-packet paths. Stored
 # grader results are reused, so a rerun makes no call. A claudex grader needs
 # CLAUDEX_LANE_OK=1 (exit 3 without it); an openrouter grader without a PRICES
-# row needs --cap-factor; a grader that reports no cost stops the pass.
+# row needs --cap-factor and a readable balance meter around each call; a
+# grader that reports no cost stops the pass.
 #
 # Task sets: the synthetic tasks are the regression set (the default). A real
 # task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
@@ -961,10 +962,12 @@ refuse_vendor() {
 # line of <list> whose result is not stored yet, into <stem>.judge2.<label>.json.
 # A native call is bank-preflighted; every call is capped at what is left of
 # --max-usd (an openrouter call at --cap-factor times it). An openrouter call
-# counts the larger of its reported cost and the metered balance it took.
-# Returns 1 when the budget or an unknown cost stops it.
+# counts the larger of its reported cost and the metered balance it took; an
+# unpriced one, whose reported cost is no real spend, needs the meter read on
+# both sides. Returns 1 when the budget or an unknown cost stops it.
 grade_pass() {
-  local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining budget cost tok b0 b1
+  local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining budget cost tok b0 b1 unpriced=""
+  [ "$lane" = openrouter ] && ! jq -e --arg m "$model" 'has($m)' <<<"$PRICES" >/dev/null && unpriced=1
   while IFS=$'\t' read -r d stem; do
     packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
     [ -s "$packet" ] || continue
@@ -984,6 +987,10 @@ grade_pass() {
     budget="$remaining"
     if [ "$lane" = openrouter ]; then
       b0="$(metered_read)"
+      if [ -n "$unpriced" ] && ! [[ "$b0" =~ ^[0-9.]+$ ]]; then
+        echo "lane-quality: the openrouter meter is unreadable and $model has no PRICES row; stopping before $stem, its cost could not be counted" >&2
+        return 1
+      fi
       budget="$(awk -v r="$remaining" -v f="${CAP_FACTOR:-4}" 'BEGIN{printf "%.2f", r * f}')"
     fi
     judge_call "$packet" "$out" "$d/$stem.judge2.$label.err" "$model" "$budget" "$effort" single "$lane" \
@@ -991,6 +998,10 @@ grade_pass() {
     cost="$(jq -r '.total_cost_usd // empty' "$out" 2>/dev/null)"
     if [ "$lane" = openrouter ] && [ -n "$cost" ]; then
       b1="$(metered_read)"
+      if [ -n "$unpriced" ] && ! [[ "$b1" =~ ^[0-9.]+$ ]]; then
+        echo "lane-quality: the openrouter meter is unreadable after $model on $stem, which has no PRICES row; stopping, spend so far is a lower bound" >&2
+        return 1
+      fi
       cost="$(awk -v c="$cost" -v a="$b0" -v b="$b1" 'BEGIN{d = (a ~ /^[0-9.]+$/ && b ~ /^[0-9.]+$/) ? a - b : 0; printf "%.4f", (d > c ? d : c)}')"
     fi
     if [ -z "$cost" ]; then
@@ -1044,7 +1055,7 @@ cmd_calibration() {
   awk -v m="$MAX_USD" 'BEGIN{exit !(m+0 > 0)}' || die "--max-usd must be a positive number"
   case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
   [ "$((10#$TIMEOUT))" -gt 0 ] || die "--timeout must be positive whole seconds"
-  [ -z "$CAP_FACTOR" ] || awk -v f="$CAP_FACTOR" 'BEGIN{exit !(f ~ /^[0-9.]+$/ && f+0 > 0)}' || die "--cap-factor must be a positive number"
+  [ -z "$CAP_FACTOR" ] || awk -v f="$CAP_FACTOR" 'BEGIN{exit !(f ~ /^([0-9]+\.?[0-9]*|\.[0-9]+)$/ && f+0 > 0)}' || die "--cap-factor must be a positive number"
   if [ -n "$j2model" ]; then
     # the graders are refused by vendor before any call: never a vendor under
     # test, and every grader from a vendor of its own.
