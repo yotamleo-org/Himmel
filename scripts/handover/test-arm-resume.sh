@@ -2567,7 +2567,10 @@ esac
 # S9: template renders EMPTY ({session} on a non-chained handover) -> fail-open:
 # no -n (claude auto-titles) and the task name falls back to the plain
 # path-only form. This is the fail-open contract S2 used to pin pre-716.
-HO=$(make_handover_titled "Test handover")
+# Keep the 72-character readable tail alphanumeric: a random path can clip at
+# a legal leading hyphen and make the doubled-separator assertion lie.
+HO="$HANDOVER_DIR/abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.md"
+printf -- '---\nsession_kind: test\n---\n# Test handover\n' > "$HO"
 out=$(ARM_NAME_TEMPLATE='{session}' PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --dry-run 2>&1)
 rc=$?
 assert_rc "S9 empty-render template arm exits 0" 0 "$rc"
@@ -4297,6 +4300,91 @@ rc=$?
 assert_rc "1879e an at queue that swallowed the job -> FAILURE (rc=2)" 2 "$rc"
 assert_contains "1879e the POSIX ERR names the missing entry" "post-arm verify found NO scheduler entry" "$out"
 
+# A create can outlive its explicit target. Use the stateful at backend, with
+# the real clock crossing the target while at -t is blocked (no fake date).
+make_lapse_stub() { # <dir> <deadline> [<fire-delay>] [keep-snapshot]
+    local dir="$1" deadline="$2" delay="${3:-}" keep="${4:-0}"
+    make_stateful_sched "$dir"
+    mv "$dir/at" "$dir/at-stateful"
+    cat > "$dir/at" <<EOF
+#!/usr/bin/env bash
+bash "$dir/at-stateful" "\$@" || exit
+[ "\${1:-}" = -t ] || exit 0
+while [ "\$(date +%s)" -le $deadline ]; do sleep 1; done
+[ "$keep" = 1 ] || rm -f "\$SCHED_DB_DIR"/job-*
+if [ -n "$delay" ]; then
+    # The runner self-deletes first; its ledger write can lag behind at's return.
+    ( sleep "${delay:-0}"; HIMMEL_FLOW_RUNS_LEDGER="\$HIMMEL_FLOW_RUNS_LEDGER" \\
+        bash "$FR_LIB" --append-start armed-resume '' testhost claude '' \\
+        "$TASK_1879F" '' 4247 >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
+fi
+exit 0
+EOF
+    chmod +x "$dir/at"
+}
+lapse_hhmm() {
+    python3 -c 'import datetime; n=datetime.datetime.now(); print((n+datetime.timedelta(minutes=1 if n.second < 45 else 2)).strftime("%H:%M"))'
+}
+lapse_epoch() {
+    python3 -c 'import datetime,sys; h,m=map(int,sys.argv[1].split(":")); n=datetime.datetime.now().astimezone(); t=n.replace(hour=h,minute=m,second=0,microsecond=0); print(int((t if t>n else t+datetime.timedelta(days=1)).timestamp()))' "$1"
+}
+: > "$DB_1879"; rm -f "$DBD_1879"/job-*
+HO_1879F="$(make_handover "$WORK_REPO")"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$TMP/1879f-seed.jsonl" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_1879F" 2>&1)
+rc=$?
+assert_rc "1879f seed arm succeeds" 0 "$rc"
+TASK_1879F=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
+assert_contains "1879f seed reports a real task identity" "HIMMEL-Resume-" "$TASK_1879F"
+LEDGER_1879F="$TMP/1879f.jsonl"
+
+for scenario in 1879f-empty 1879f-fired 1879h 1879j 1999a 1999b; do
+    : > "$DB_1879"; rm -f "$DBD_1879"/job-*; : > "$LEDGER_1879F"
+    LAPSE_HHMM=$(lapse_hhmm); LAPSE_EPOCH=$(lapse_epoch "$LAPSE_HHMM")
+    delay=""; keep=0
+    case "$scenario" in
+        1879f-fired|1879j) delay=0 ;;
+        1999a) delay=1 ;;
+    esac
+    [ "$scenario" != 1879j ] || keep=1
+    case "$scenario" in
+        1879h|1999b)
+            stamp=2020-01-01T00:00:00Z
+            if [ "$scenario" = 1999b ]; then
+                stamp=$(python3 -c 'import datetime,sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]),datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$LAPSE_EPOCH")
+            fi
+            prior=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
+                --append-start armed-resume "$stamp" testhost claude '' "$TASK_1879F" '' 4245)
+            HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" bash "$FR_LIB" \
+                --append-end armed-resume "$prior" '' 0 complete '' 'prior run finished' >/dev/null ;;
+    esac
+    LAPSE_STUB="$TMP/$scenario-stub"
+    make_lapse_stub "$LAPSE_STUB" "$((LAPSE_EPOCH + 3))" "$delay" "$keep"
+    find "$TMP" -name arms.jsonl -delete 2>/dev/null || true
+    out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879F" \
+        SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" posix_env "$LAPSE_STUB" \
+        bash "$ARM" --time "$LAPSE_HHMM" --handover "$HO_1879F" 2>&1)
+    rc=$?
+    case "$scenario" in
+        1879f-empty|1879h|1999b)
+            assert_rc "$scenario no evidence of this arm's fire refuses" 2 "$rc"
+            assert_contains "$scenario names the failed create" "REGISTERED NOTHING" "$out"
+            assert_not_contains "$scenario never claims consumed" "RESUME CONSUMED" "$out" ;;
+        *)
+            assert_rc "$scenario this arm's own start row proves consumption" 0 "$rc"
+            assert_contains "$scenario reports consumed" "RESUME CONSUMED" "$out"
+            assert_not_contains "$scenario never calls a fired arm a failed create" "REGISTERED NOTHING" "$out"
+            REG_1879F=$(find "$TMP" -name arms.jsonl -exec grep -lF "$TASK_1879F" {} + 2>/dev/null || true)
+            if [ -z "$REG_1879F" ]; then rc=0; else rc=1; fi
+            assert_rc "$scenario consumed arm publishes no arms-registry record" 0 "$rc" ;;
+    esac
+    assert_not_contains "$scenario never claims armed" "RESUME ARMED" "$out"
+    if [ "$scenario" = 1879j ]; then
+        if [ -f "$DBD_1879/job-$(cat "$DBD_1879/.counter")" ]; then rc=0; else rc=1; fi
+        assert_rc "1879j consumed snapshot is not reaped" 0 "$rc"
+    fi
+done
 fi
 
 # ---------------------------------------------------------------------------
@@ -4320,6 +4408,38 @@ out=$(env -u ARM_TEMP_CWD_OK ARM_FIXTURE_OK=1 TMPDIR="$TMP" \
 rc=$?
 assert_rc "1879-1365 ARM_FIXTURE_OK=1 opts in (rc=0)" 0 "$rc"
 
+# Sweep both scheduler stores through their real POSIX readers. Report-only
+# means neither the at job nor the crontab entry may be changed.
+LTA="$TMP/lta-stub-bin"; LTA_DB="$TMP/lta-atdir"
+make_stateful_sched "$LTA"
+mkdir -p "$LTA_DB"
+for target in "$TMP/scratchpad/work2" /tmp /srv/himmel; do
+    printf '# HIMMEL-Resume-sweep\ncd %s || exit 1\n' "$target" > "$LTA_DB/job-1"
+    before=$(cat "$LTA_DB/job-1")
+    out=$(SCHED_DB_DIR="$LTA_DB" posix_env "$LTA" bash "$ARM" --list-temp-arms 2>&1)
+    rc=$?
+    if [ "$target" = /srv/himmel ]; then
+        assert_rc "LTA clean at sweep exits 0" 0 "$rc"
+        assert_contains "LTA clean at sweep reports no suspect entry" "none — no armed resume entry" "$out"
+    else
+        assert_rc "LTA at sweep reports $target" 16 "$rc"
+        assert_contains "LTA at sweep names its target" "target: $target" "$out"
+        assert_contains "LTA at sweep names its job" "at-job-1" "$out"
+        assert_contains "LTA at sweep is report-only" "REPORT ONLY" "$out"
+    fi
+    if [ "$(cat "$LTA_DB/job-1")" = "$before" ]; then rc=0; else rc=1; fi
+    assert_rc "LTA at sweep preserves $target job" 0 "$rc"
+done
+rm -f "$LTA_DB/job-1"
+printf '* * * * * cd /tmp && true # HIMMEL-Resume-sweep\n' > "$LTA_DB/crontab.fixture"
+before=$(cat "$LTA_DB/crontab.fixture")
+out=$(SCHED_DB_DIR="$LTA_DB" posix_env "$LTA" bash "$ARM" --list-temp-arms 2>&1)
+rc=$?
+assert_rc "LTA cron sweep reports a bare-root hit" 16 "$rc"
+assert_contains "LTA cron sweep sees mid-line cd target" "target: /tmp" "$out"
+assert_contains "LTA cron sweep is report-only" "REPORT ONLY" "$out"
+if [ "$(cat "$LTA_DB/crontab.fixture")" = "$before" ]; then rc=0; else rc=1; fi
+assert_rc "LTA cron sweep preserves the entry" 0 "$rc"
 fi
 
 # ---------------------------------------------------------------------------
