@@ -244,9 +244,10 @@ the keyring work (HIMMEL-7147, HIMMEL-7576) is complete.
 `scripts/setup/migrate-env.sh` leaves in `.env` every secret a tracked himmel
 file other than docs still reads, every secret
 named in `~/.himmel/env-keep.txt` and every key `.env.example` and the registry
-do not name (another tool's key). Only a himmel secret nothing in this checkout
-reads moves, to `~/.config/secrets/himmel.env` (mode 600). The migration
-report lists the secrets that stay; `.env` is never emptied, and
+do not name (another tool's key). Only a himmel secret that nothing in this
+checkout reads moves, to `~/.config/secrets/himmel.env` (mode 600). The migration
+report lists the secrets that stay. It removes only the moved lines, so a
+`.env` that held nothing else ends up with no keys, and
 `himmel-secrets import-env` copies secrets into the keyring without removing
 them from `.env`.
 
@@ -382,8 +383,10 @@ move without writing.
 3. For gate-policy keys it prints one command per key. Run each at your own
    prompt: it reads the value from `.env` and writes it into
    `~/.himmel/config.json`, so the value is never shown.
-4. Start a session. When no `DEPRECATED` notice appears, delete the moved
-   lines from `.env`, and only those: the secrets in it are still read.
+4. Start a session. When no `DEPRECATED: … read from .env, which is for
+   secrets only` notice appears, delete the moved lines from `.env`, and only
+   those: the secrets in it are still read, and their
+   `DEPRECATED: secret … read from` notice is expected.
    Rebuild the Jira CLI first (`scripts/jira/dist` is not
    tracked): an older build reads `HANDOVER_DIR` from the process env or
    `.env` only, not from `himmel.conf`.

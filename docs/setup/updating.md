@@ -546,7 +546,7 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
   [list](../internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch))
   go to `~/.himmel/himmel.conf`. Gate policy (`CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
-  `.policy`. A himmel secret nothing in himmel reads goes to
+  `.policy`. A himmel secret that nothing in himmel reads goes to
   `~/.config/secrets/himmel.env`.
 - **Stays.** Every secret something reads (API tokens, `JIRA_BASE_URL`,
   Telegram keys), every name in `~/.himmel/env-keep.txt` and every other

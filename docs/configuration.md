@@ -550,7 +550,7 @@ each bridged var's own comment there names its bridging reader.
 - **Stays in `.env`:** the secrets, until the keyring work (HIMMEL-7147,
   HIMMEL-7576) is complete: API tokens, `JIRA_BASE_URL`, the Telegram keys and
   every key not yet classified as config, plus other tools' keys. Only a
-  himmel secret nothing in the checkout reads moves, to
+  himmel secret that nothing in the checkout reads moves, to
   `~/.config/secrets/himmel.env`. Never empty `.env`: Jira, Telegram and the
   lanes still read it.
 - **On a mismatch:** when `.env` and `~/.himmel` hold different values for a
