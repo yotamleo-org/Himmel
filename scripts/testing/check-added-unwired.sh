@@ -11,7 +11,8 @@
 #          is on scripts/testing/unwired-hooks-allowlist.txt.
 #   suite  test-*.sh: scripts/ci/run-shell-tests.sh finds it (scan roots scripts,
 #          templates, marketplace, packaging) and suite-coverage.sh does not call it
-#          SKIP_LIST. *.test.*: another WIRED file names it (a wrapper suite runs
+#          SKIP_LIST; outside the scan roots, a .github/workflows run step names its
+#          path (an adopter repo runs its suites from CI). *.test.*: another WIRED file names it (a wrapper suite runs
 #          it), a .github/workflows job runs bun test (or scripts/ci/run-bun-tests.sh) /
 #          node --test / vitest / jest
 #          on a directory above it, or a package.json above it has a "test" script
@@ -104,6 +105,28 @@ brace_expand() {
   done
 }
 
+# workflow_runs <path> — a .github/workflows file at <ref> names <path> in a run step:
+# on the step's own run: line, or on a line of its block scalar (run: |)
+workflow_runs() {
+  local esc wf
+  esc=$(printf '%s' "$1" | sed 's/[][\.*^$+?(){}|]/\\&/g')
+  while IFS= read -r wf; do
+    case "$wf" in *.yml|*.yaml) ;; *) continue ;; esac
+    show "$wf" | RE="(^|[ '\"(=]|\./)$esc([^A-Za-z0-9._/-]|\$)" awk '
+      function ind(s) { match(s, /^ */); return RLENGTH }
+      /^ *(- +)?run:/ {
+        k = index($0, "run:") - 1
+        if (substr($0, k + 5) ~ ENVIRON["RE"]) found = 1
+        inrun = 1; next
+      }
+      inrun && /^ *$/ { next }
+      inrun && ind($0) > k { if ($0 ~ ENVIRON["RE"]) found = 1; next }
+      { inrun = 0 }
+      END { exit !found }' && return 0
+  done < <(git ls-tree -r --name-only "$ref" -- .github/workflows)
+  return 1
+}
+
 # one flag before node's --test: only these take a value word (--import tsx, -r ./x.js);
 # any other flag is bare, so `node --no-warnings build.js --test` is not a runner
 node_flag='(--(import|loader|experimental-loader|require|conditions)([ =][^ -][^ ]*)|-r +[^ -][^ ]*|--[a-z-]+(=[^ ]*)?)'
@@ -193,7 +216,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
     suite)
       case "$b" in
         test-*.sh)
-          case "$p" in scripts/*|templates/*|marketplace/*|packaging/*) ;; *) echo "outside the runner's scan roots, so run-shell-tests.sh never finds it"; return 0 ;; esac
+          case "$p" in scripts/*|templates/*|marketplace/*|packaging/*) ;; *) workflow_runs "$p" && return 0; echo "outside the runner's scan roots, so run-shell-tests.sh never finds it"; return 0 ;; esac
           [ -s "$runner" ] || { echo "cannot read scripts/ci/run-shell-tests.sh at $ref"; return 0; }
           cov=$(bash "$HERE/../handover/suite-coverage.sh" --runner "$runner" --root "$top" "$p" 2>&1)
           printf '%s\n' "$cov" | grep -qE 'runs in PR CI|nightly only|superseded by' \
