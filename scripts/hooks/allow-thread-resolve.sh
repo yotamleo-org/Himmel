@@ -93,7 +93,7 @@ registered() {  # registered <owner/repo>
     reg="${reg%/}/scripts/guardrails/himmel-adapters.json"
     case "$reg" in /*) ;; *) return 1 ;; esac
     [ -f "$reg" ] && [ ! -L "$reg" ] || return 1
-    names=$(jq -r 'arrays | .[].nwo | strings | select(contains("\n") | not)' "$reg" 2>/dev/null) || return 1  # swallow-ok: a failed read returns "not registered", no allow
+    names=$(jq -rs 'if length == 1 and (.[0] | type) == "array" then .[0][].nwo | strings | select(contains("\n") | not) else empty end' "$reg" 2>/dev/null) || return 1  # swallow-ok: a failed read returns "not registered", no allow
     while IFS= read -r line; do [ "$line" = "$1" ] && return 0; done <<<"$names"
     return 1
 }

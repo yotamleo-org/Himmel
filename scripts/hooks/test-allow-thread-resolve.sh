@@ -209,6 +209,10 @@ printf '%s\n' '{"nwo": "yotamleo-org/himmel-voice"}' >"$ADAPTERS" || exit 1
 expect_none 'registry not an array: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 printf '%s\n' '{"entry": {"nwo": "yotamleo-org/himmel-voice"}}' >"$ADAPTERS" || exit 1
 expect_none 'registry an object of rows: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+printf '%s\n%s\n' '{"x": 1}' '[{"nwo": "yotamleo-org/himmel-voice"}]' >"$ADAPTERS" || exit 1
+expect_none 'registry an object then an array: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+printf '%s\n%s\n' '[{"nwo": "yotamleo-org/qmd"}]' '[{"nwo": "yotamleo-org/himmel-voice"}]' >"$ADAPTERS" || exit 1
+expect_none 'registry of two arrays: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 : >"$ADAPTERS" || exit 1
 expect_none 'empty registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 rm "$ADAPTERS" || exit 1
