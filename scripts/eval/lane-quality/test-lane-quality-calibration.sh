@@ -36,6 +36,7 @@ stem="$(sed -n 's/^packet //p' | head -1)"
 echo "$model $stem" >>"$LQ_FAKE_LOG"
 held="$(awk -v s="$stem" '$1 == s { print $2 }' "$LQ_FAKE_GRADES/$(printf '%s' "$model" | tr '/' '_')")"
 [ "$held" != noscore ] || { echo '{"type": "result", "is_error": false, "total_cost_usd": 0.01}'; exit 0; }
+[ "$held" != empty ] || { echo '{"type": "result", "is_error": false, "total_cost_usd": 0.01, "structured_output": {}}'; exit 0; }
 jq -cn --argjson h "${held:-0}" --arg cost "${LQ_FAKE_COST:-0.01}" '{type: "result", is_error: false}
   + (if $cost == "none" then {} else {total_cost_usd: ($cost | tonumber)} end)
   + {structured_output: {claims: ([range(1; 5) | {key: "C\(.)", value: {holds: (. <= $h), evidence: "e"}}]
@@ -212,6 +213,18 @@ printf 't1 4\nt2 4\nt3 noscore\nt4 4\nt5 3\nt6 2\n' >"$TMP/grades/gpt-bad"
 rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
 bash "$RUN" calibration "$TMP/fx2" --judge1-model gpt-bad --judge1-effort high --judge1-lane claudex "${G2[@]}" --json >/dev/null 2>"$TMP/nosc.err"; rc=$?
 check "a grader that exits 0 with no decodable score stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "gpt-bad on t3 returned no decodable score" "$TMP/nosc.err" && [ "$(grep -c "^gpt-bad " "$TMP/fake.log")" -eq 3 ] && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
+fresh
+printf 't1 4\nt2 4\nt3 empty\nt4 4\nt5 3\nt6 2\n' >"$TMP/grades/gpt-empty"
+# shellcheck disable=SC2034  # rows0 is read by check's eval
+rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
+bash "$RUN" calibration "$TMP/fx2" --judge1-model gpt-empty --judge1-effort high --judge1-lane claudex "${G2[@]}" --json >/dev/null 2>"$TMP/empty.err"; rc=$?
+check "a grader whose output has no claims stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "gpt-empty on t3 returned no decodable score" "$TMP/empty.err" && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>&1
+echo '{"type": "result", "is_error": false, "total_cost_usd": 0.01, "structured_output": {}}' >"$TMP/fx2/t3.judge2.gpt-x__high__claudex.json"
+: >"$TMP/fake.log"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >"$TMP/regrade.json" 2>/dev/null; rc=$?
+check "a stored result with no claims is graded again" '[ "$rc" -eq 0 ] && [ "$(cat "$TMP/fake.log")" = "gpt-x t3" ] && jq -e ".metrics.n_verdict == 6" "$TMP/regrade.json" >/dev/null'
 
 echo "test-lane-quality-calibration: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

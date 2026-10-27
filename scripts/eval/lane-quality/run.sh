@@ -311,6 +311,11 @@ judge_scores() {
   echo "${s:-null}"
 }
 
+# judge_graded <result file>: true when the result carries a numeric correctness score.
+judge_graded() {
+  judge_scores "$1" | jq -e '.correctness | type == "number"' >/dev/null 2>&1
+}
+
 rubric() { # rubric single|pair: that section of judge-claims-rubric.md
   awk -v want="$1" '/^<!-- pair -->$/ { part = "pair"; next } (part ? part : "single") == want' "$HERE/judge-claims-rubric.md"
 }
@@ -972,7 +977,7 @@ grade_pass() {
   [ "$lane" = openrouter ] && ! jq -e --arg m "$model" 'has($m)' <<<"$PRICES" >/dev/null && unpriced=1
   while IFS=$'\t' read -r d stem; do
     packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
-    [ "$(judge_scores "$out")" = null ] || continue
+    ! judge_graded "$out" || continue
     if ! [ -s "$packet" ]; then
       echo "lane-quality: $d/$stem has no judge packet, so it cannot be graded; stopping" >&2
       return 1
@@ -1014,7 +1019,7 @@ grade_pass() {
       return 1
     fi
     SPENT="$(awk -v s="$SPENT" -v c="$cost" 'BEGIN{printf "%.4f", s + c}')"
-    if [ "$(judge_scores "$out")" = null ]; then
+    if ! judge_graded "$out"; then
       echo "lane-quality: grader $model on $stem returned no decodable score; stopping" >&2
       return 1
     fi
