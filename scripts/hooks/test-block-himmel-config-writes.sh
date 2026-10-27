@@ -89,7 +89,7 @@ REAL_READLINK="$(command -v readlink)"
   chmod +x "$T/bsd-bin/readlink"; } || { echo "FAIL: cannot create the fake readlink" >&2; exit 1; }
 bsd_case() {
     local rc got
-    printf '%s' "$3" | PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
+    printf '%s' "$3" | HOME="${BSD_HOME:-$HOME}" PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
@@ -100,7 +100,7 @@ bsd_patch_case "apply_patch benign file without readlink -m -> allow" allow "***
 if [ -s "$T/bsd-bin/calls" ]; then ok "the fake readlink ran"; else bad "the fake readlink ran - GNU readlink answered instead"; fi
 bsd_patch_case "apply_patch project file without readlink -m -> block" block "*** Begin Patch${NL}*** Update File: $T/r/.himmel/project.conf${NL}@@${NL}*** End Patch"
 # The portable walk answers like GNU readlink -m (symlink, dangling link, .., missing tail).
-mkdir -p "$T/w/a" && ln -s "$T/w/a" "$T/w/abs" && ln -s ../a "$T/w/a/rel" && ln -s "$T/w/none/deep" "$T/w/dangle"
+{ mkdir -p "$T/w/a" && ln -s "$T/w/a" "$T/w/abs" && ln -s ../a "$T/w/a/rel" && ln -s "$T/w/none/deep" "$T/w/dangle"; } || { echo "FAIL: cannot build the walk fixtures" >&2; exit 1; }
 # shellcheck source=lib/resolve-path.sh
 . "$HOOKS/lib/resolve-path.sh"
 # The comparison needs a GNU readlink -m to compare against; a BSD host proves the walk through the rows below.
@@ -114,6 +114,18 @@ bsd_file_case "7120 no readlink -m: .. segment to the config -> block" block "$H
 bsd_file_case "7120 no readlink -m: unrelated file -> allow" allow "$T/other/config.json"
 bsd_patch_case "7120 no readlink -m: apply_patch symlink alias of the config -> block" block "*** Begin Patch${NL}*** Update File: $T/alias.json${NL}@@${NL}*** End Patch"
 bsd_patch_case "7120 no readlink -m: apply_patch .. segment to the config -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/x/../config.json${NL}+{}${NL}*** End Patch"
+# A path the resolver cannot resolve (a symlink loop) or an unresolvable config path denies; it never reads as "resolves nowhere".
+{ mkdir -p "$T/loop" "$T/loophome" && ln -s l2 "$T/loop/l1" && ln -s l1 "$T/loop/l2" && ln -s "$T/loop/l1" "$T/loophome/.himmel"; } || { echo "FAIL: cannot build the symlink-loop fixtures" >&2; exit 1; }
+bsd_file_case "7120 symlink loop in the target path -> block (fail-closed)" block "$T/loop/l1/x"
+bsd_patch_case "7120 symlink loop in an apply_patch path -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/loop/l1/x${NL}+{}${NL}*** End Patch"
+BSD_HOME="$T/loophome"
+bsd_file_case "7120 unresolvable config path (loop under HOME) -> block (fail-closed)" block "$T/other.txt"
+bsd_patch_case "7120 unresolvable config path, apply_patch -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
+BSD_HOME=""
+# The resolver lib missing beside the hook denies (a copy of the hook with no lib/).
+{ mkdir -p "$T/nolib" && cp "$HOOK" "$T/nolib/"; } || { echo "FAIL: cannot copy the hook" >&2; exit 1; }
+nolib_out="$(jq -nc --arg p "$T/other.txt" '{tool_name:"Write",tool_input:{file_path:$p}}' | bash "$T/nolib/block-himmel-config-writes.sh" 2>&1)"; nolib_rc=$?
+case "$nolib_rc:$nolib_out" in 2:*resolve-path*) ok "7120 resolver lib missing -> block (fail-closed)" ;; *) bad "7120 resolver lib missing - expected block naming resolve-path, got rc=$nolib_rc" ;; esac
 
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"

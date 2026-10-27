@@ -326,10 +326,15 @@ expect_row noprobe-new-file 0 "$(run_relay_with noprobe-new-file "$(write_payloa
 
 echo ""
 echo "=== TMPDIR is a symlink with a trailing slash (macOS /var/folders is under the /var symlink) ==="
-mkdir "$TMP/tmpreal" && ln -s "$TMP/tmpreal" "$TMP/tmplink" && mkdir "$TMP/tmpreal/himmel-chief-7120" "$TMP/tmpreal/himmel-other-7120"
+{ mkdir "$TMP/tmpreal" && ln -s "$TMP/tmpreal" "$TMP/tmplink" && mkdir "$TMP/tmpreal/himmel-chief-7120" "$TMP/tmpreal/himmel-other-7120"; } || { echo "FAIL: cannot build the TMPDIR symlink fixtures" >&2; exit 1; }
 LINK_TMP="TMPDIR=$TMP/tmplink/"
 expect_row symlinked-tmpdir-chief-rundir 2 "$(run_relay_with symlinked-tmpdir-chief-rundir "$(write_payload Write "$TMP/tmplink/himmel-chief-7120/state.json")" "$LINK_TMP")" chief-rundir-write
 expect_row symlinked-tmpdir-other-dir 0 "$(run_relay_with symlinked-tmpdir-other-dir "$(write_payload Write "$TMP/tmplink/himmel-other-7120/state.json")" "$LINK_TMP")"
+# TMPDIR=/ trims to an empty base; the root is a real base, so a chief rundir directly under / still denies.
+expect_row root-tmpdir-chief-rundir 2 "$(run_relay_with root-tmpdir-chief-rundir "$(write_payload Write "/himmel-chief-7120")" "TMPDIR=/")" chief-rundir-write
+# A TMPDIR link that was removed names nothing, so a write to its former target cannot be
+# known; a write through the link path itself still denies (its parent is gone: unresolved-path).
+expect_row removed-tmpdir-link-write 2 "$(run_relay_with removed-tmpdir-link-write "$(write_payload Write "$TMP/removedlink/himmel-chief-7120")" "TMPDIR=$TMP/removedlink")" unresolved-path
 
 # ponytail: on a GNU host the BSD readlink is modelled as `readlink -e` (every
 # component must exist, as realpath(3) requires), not BSD's exact errno set;

@@ -88,6 +88,14 @@ mkdir -p "$SCR/bsd-bin" && printf '#!/bin/sh\ncase "$1" in -m) echo "readlink: i
 deny "7120 no readlink -m: Write through a symlink alias" "$(file_json Write "$SCR/alias/peers/x.json")" PATH="$SCR/bsd-bin:$PATH"
 deny "7120 no readlink -m: Edit through a .. segment to the alias" "$(file_json Edit "$SCR/state/../alias/peers/x.json")" PATH="$SCR/bsd-bin:$PATH"
 allow "7120 no readlink -m: Write to a real non-bus path" "$(file_json Write "$SCR/other.txt")" PATH="$SCR/bsd-bin:$PATH"
+# A path or cwd the resolver cannot resolve (a symlink loop, an empty path) denies; it never reads as "resolves nowhere".
+{ mkdir -p "$SCR/loop" && ln -s l2 "$SCR/loop/l1" && ln -s l1 "$SCR/loop/l2"; } || { echo "FAIL: cannot build the symlink-loop fixtures" >&2; exit 1; }
+deny "7120 symlink loop in a Write path (fail-closed)" "$(file_json Write "$SCR/loop/l1/x")" PATH="$SCR/bsd-bin:$PATH"
+deny "7120 symlink loop in the Bash cwd (fail-closed)" "$(cwd_json 'cat bus/x' "$SCR/loop/l1")" PATH="$SCR/bsd-bin:$PATH"
+deny "7120 empty Edit path (fail-closed)" "$(file_json Edit "")" PATH="$SCR/bsd-bin:$PATH"
+{ mkdir -p "$SCR/nolib" && cp "$HOOK" "$SCR/nolib/"; } || { echo "FAIL: cannot copy the hook" >&2; exit 1; }
+nolib_out="$(printf '%s' "$(file_json Write "$SCR/other.txt")" | env -u BUS_STORE_GUARD_OK bash "$SCR/nolib/guard-bus-store.sh" 2>/dev/null)"; nolib_rc=$?
+case "$nolib_rc:$nolib_out" in 2:*resolve-path*) ok "7120 resolver lib missing (fail-closed)" ;; *) bad "7120 resolver lib missing - expected a deny naming resolve-path, rc=$nolib_rc out=$nolib_out" ;; esac
 
 echo "== T5: reads under the bus root =="
 deny "cat a log" "$(bash_json "cat $ROOT/log/other.jsonl")"

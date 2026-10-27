@@ -115,13 +115,14 @@ MAX_HEADER_LINE_BYTES=4096
 # check_path TOOL PATH: deny when PATH is, or resolves to, the config or a
 # project file.
 check_path() {
-    local t="$1" p="$2" r
+    local t="$1" p="$2" r cfg_r
     [ -n "$p" ] || return 0
     case "$p" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
     esac
     r=$(hook_resolve_m "$p" 2>/dev/null) || deny "$t target $p could not be resolved (fail-closed)"
-    if [ -n "$r" ] && [ "$r" = "$(hook_resolve_m "$CFG_REAL" 2>/dev/null)" ]; then
+    cfg_r=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || deny "$t: the config path could not be resolved (fail-closed)"
+    if [ -n "$r" ] && [ "$r" = "$cfg_r" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
     fi
     case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
@@ -182,8 +183,8 @@ case "$tool" in
         # MCP hook error/timeout "can fail the hook without blocking"), so a
         # padded patch must DENY here instead of running out the clock. The
         # header loop is fork-free (a case glob pre-filters header lines before
-        # the pure-bash trim; paths are collected and resolved by ONE readlink
-        # -m afterwards) and the caps bound what is left.
+        # the pure-bash trim; paths are collected and resolved by ONE
+        # hook_resolve_m call afterwards) and the caps bound what is left.
         # Byte length, not ${#patch}: under a multibyte locale that counts characters.
         plen=$(printf '%s' "$patch" | LC_ALL=C wc -c 2>/dev/null) || plen=$((MAX_PATCH_BYTES + 1))
         plen=$((plen + 0))

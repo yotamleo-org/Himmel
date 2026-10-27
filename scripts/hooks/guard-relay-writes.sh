@@ -257,8 +257,10 @@ case "$tool" in
         # prim-ok: the same readlink -f as the destination above.
         tmp_resolved="$(readlink -f -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_resolved="" # gnu-ok: the same readlink -f as the destination above; swallow-ok: an unresolvable base leaves the as-written base, which still denies
         for tmp_base in "${TMPDIR:-/tmp}" "$tmp_resolved"; do
-            tmp_base="${tmp_base%/}"
+            # "/" trims to "", the filesystem root: "/himmel-console-*" must still match,
+            # so only an empty RAW base (an unresolved one) is skipped.
             [ -n "$tmp_base" ] || continue
+            tmp_base="${tmp_base%/}"
             case "$path_resolved" in
                 "$tmp_base/himmel-console-"* | "$tmp_base/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
             esac

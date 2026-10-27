@@ -34,7 +34,8 @@
 #         Mentioning one (`echo $HIMMEL_BUS_NAME`,
 #         `git grep HIMMEL_BUS_NAME`) is not an assignment and stays allowed.
 #   Edit|Write|MultiEdit|NotebookEdit — file_path (notebook_path) names the bus
-#     root textually, or resolves to it (`readlink -m`: `..` segments and
+#     root textually, or resolves to it (`hook_resolve_m`, lib/resolve-path.sh,
+#     which is `readlink -m` where the host has it: `..` segments and
 #     symlinked components).
 # ALLOWS: `bus status|peers|wait|send|adopt` (the CLI stamps `f` from its own
 #   process ancestry, so no role check is needed here) and everything else —
@@ -47,6 +48,9 @@
 # tool for a hook bug (scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
 # A missing bash-ast lib or shfmt, a shfmt parse failure or a jq failure in the
 # model leaves (b) to the word walker, so the model never changes this fail mode.
+# A missing lib/resolve-path.sh, an empty Edit/Write path, and a path or working
+# directory the resolver cannot resolve (a symlink loop, over 40 hops) are DENIED:
+# resolution is the guard's own subject for those tools, so it fails closed there.
 #
 # RESIDUAL (deliberate, plan T6, threat model T3/T5/T6): this is text matching,
 # not a shell parser or a sandbox. An interpreter that assembles the path
