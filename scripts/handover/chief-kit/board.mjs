@@ -224,6 +224,21 @@ const primeLabels = (names) => {
     if (!labelFailure && got < todo.length) labelFailure = `the lookup returned ${got} of ${todo.length} labels`;
 };
 const labelOf = (name) => legLabel.get(name) || '';
+// A worker's description comes from worker_description (worker-identity.sh): the field, then
+// the ticket title, the PR title, the H1, the stem. One bash call describes every doc; a
+// failed lookup leaves the descriptions empty and the label alone on its row.
+const descOf = new Map();
+const primeDescriptions = (files) => {
+    const todo = [...new Set(files)].filter((f) => existsSync(f));
+    if (!todo.length) return;
+    let out = '';
+    try {
+        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for f in "$@"; do worker_description "$f"; printf "\\n"; done', 'bash', LEGID, ...todo],
+            { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch { return; }
+    const lines = out.split('\n');
+    todo.forEach((f, i) => descOf.set(f, (lines[i] || '').trim()));
+};
 const ticketOf = (file) => (/^([A-Z][A-Z0-9]*-\d+)/.exec(basename(file)) || [])[1] || '';
 const newer = (a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b);
 // with no --workers, the chief's fleet manifest (<chief doc stem>.fleet.json,
@@ -269,6 +284,7 @@ if (opt.workers !== undefined || manifestDocs) {
 }
 if (labelFailure) console.error(`board: warning: leg labels unavailable — ${labelFailure}; the board renders the unavailable state, not an empty fleet`);
 const liveLabels = [...new Set(liveEntries.map((e) => labelOf(e.stem)).filter(Boolean))];
+primeDescriptions(legFiles);
 const legInfo = new Map();
 const markerOf = (b) => (/^- (?:\d{1,2}:\d{2}\s+)?([A-Z][A-Z-]*[A-Z])\b/.exec(b) || [])[1] || '';
 for (const f of legFiles) {
@@ -286,7 +302,7 @@ for (const f of legFiles) {
         if (m) pr = Number(m[1] || m[2] || m[3]);
     }
     const last = bullets.length ? bullets[bullets.length - 1] : '';
-    legInfo.set(label, { file: f, ticket: ticketOf(f), last: last.slice(2), marker: markerOf(last), bullets, pr });
+    legInfo.set(label, { file: f, ticket: ticketOf(f), desc: descOf.get(f) || '', last: last.slice(2), marker: markerOf(last), bullets, pr });
 }
 
 // ---------------------------------------------------------------- tick
@@ -454,7 +470,7 @@ const legs = labels.map((label) => {
     const pr = info.pr ? openByNum.get(info.pr) : null;
     const lostLock = ['STALE', 'FREE', 'MISSING', 'CORRUPT'].includes(lock) && phase !== 'WRAPPED' && phase !== 'MERGED';
     const needs = phase === 'READY' || phase === 'READY-TO-OPEN' || phase === 'BLOCKED' || tail === 'FINDING' || lostLock;
-    return { label, ticket: info.ticket, phase, tail, lock, prNum: info.pr, ci: pr ? ciOf(pr) : '', last: info.last, needs, lostLock };
+    return { label, ticket: info.ticket, desc: info.desc || '', phase, tail, lock, prNum: info.pr, ci: pr ? ciOf(pr) : '', last: info.last, needs, lostLock };
 });
 
 // ------------------------------------------------- WRAPPED window still open
@@ -540,11 +556,11 @@ if (opt.view === 'user') {
         && (l.phase === 'READY' || l.phase === 'BLOCKED' || l.tail === 'FINDING'));
     const waitingSet = new Set(waitingLegs.map((l) => l.label));
     const running = legs.filter((l) => (l.phase === 'LIVE' || l.phase === 'PR open') && !waitingSet.has(l.label))
-        .map((l) => ({ ticket: l.ticket || 'worker session', goal: goalOf(prTitle(l.prNum)), tag: l.phase === 'PR open' ? 'in review' : 'building' }));
+        .map((l) => ({ ticket: l.ticket || 'worker session', goal: goalOf(prTitle(l.prNum)) || l.desc, tag: l.phase === 'PR open' ? 'in review' : 'building' }));
     const waiting = [
         ...waitingLegs.map((l) => (l.phase === 'READY'
-            ? { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)), tag: `GO · PR #${l.prNum}` }
-            : { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)), tag: 'question', text: l.last.replace(/^(?:\d{1,2}:\d{2}\s+)?[A-Z][A-Z-]*[A-Z]\s*[—–:-]*\s*/, '') })),
+            ? { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: `GO · PR #${l.prNum}` }
+            : { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: 'question', text: l.last.replace(/^(?:\d{1,2}:\d{2}\s+)?[A-Z][A-Z-]*[A-Z]\s*[—–:-]*\s*/, '') })),
         ...decisions.map((d) => ({ tag: 'decision', text: d })),
     ];
     const shipped = (mergedPrs || []).map((p) => ({ ticket: (/\[([A-Z][A-Z0-9]*-\d+)\]/.exec(p.title) || [])[1] || '', goal: goalOf(p.title), tag: `PR #${p.number}` }));
@@ -556,8 +572,9 @@ if (opt.view === 'user') {
     process.exit(0);
 }
 
-// One compact card per live leg: a 25-worker fleet must fit the 15 KB page.
-const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, 130) : '<i>no handover bullet yet</i>'}</p></li>`;
+// One compact card per live leg: a 25-worker fleet must fit the 15 KB page. The description
+// The description takes its bytes out of the bullet's clip, so a card never grows past its budget.
+const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, l.desc ? Math.max(40, 108 - Math.min(l.desc.length, 60)) : 130) : '<i>no handover bullet yet</i>'}</p>${l.desc ? `<p class="ds">${safe(l.desc, 60)}</p>` : ''}</li>`;
 const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${legs.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${legs.filter((l) => l.phase === p).length}</b></li>`).join('\n');
 const needRows = legs.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
@@ -1201,8 +1218,8 @@ const legModel = (l) => {
                 : l.phase === 'READY' ? (l.prNum && lastGo.startsWith(`${l.prNum}:`) ? 'merging' : 'ready-for-go')
                     : l.phase === 'PR open' ? 'in-review' : 'building';
     const pr = l.prNum ? openByNum.get(l.prNum) : null;
-    const goal = pr ? redact(String(pr.title).replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/i, '').replace(/\[[A-Z][A-Z0-9]*-\d+\]\s*/g, '')) : '';
-    return { leg: l.label, ticket: l.ticket || '', goal, state, stage, stages: Object.fromEntries(STAGES.map((s) => [s, isoOf(stages[s] ?? NaN)])),
+    const goal = pr ? goalOf(pr.title) : '';
+    return { leg: l.label, ticket: l.ticket || '', goal, description: redact(info.desc || ''), state, stage, stages: Object.fromEntries(STAGES.map((s) => [s, isoOf(stages[s] ?? NaN)])),
         pr: l.prNum ? { number: l.prNum, url: prGh ? `${prGh.base}/pull/${l.prNum}` : null } : null,
         links: { ticket: l.ticket && process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${l.ticket}` : null, brief: briefUrl(info.file) },
         timeline, lastAt: [...times].reverse().find((t) => t !== null) ?? null };

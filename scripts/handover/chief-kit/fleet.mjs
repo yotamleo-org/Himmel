@@ -215,6 +215,18 @@ const primeIdentities = async (names) => {
     return r.ok && todo.every((n) => identities.has(n));
 };
 const idOf = (name) => identities.get(name) || { label: '', names: [] };
+// The same resolver gives each worker its description (the field, the ticket
+// title, the PR title, the H1, the stem). One bash call for every doc; a failed lookup
+// leaves the descriptions empty and the label alone on its row. Cached per doc path.
+const descs = new Map();
+const primeDescriptions = async (files) => {
+    const todo = [...new Set(files)].filter((f) => f && !descs.has(f));
+    if (!todo.length) return;
+    const r = await sh('bash', ['-c', 'source "$1" || exit 1; shift; for f in "$@"; do worker_description "$f" | tr -s "\\t\\n" "  "; printf "\\n"; done', 'bash', LEGID, ...todo], { timeout: 60000 });
+    if (!r.ok) return;
+    const lines = r.out.split('\n');
+    todo.forEach((f, i) => { if (lines[i]) descs.set(f, lines[i].trim()); });
+};
 
 // ---------------------------------------------------------------- worker docs
 const STATUS_RE = /^- (?:(\d{1,2}):(\d{2})\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE)(?![A-Za-z0-9_])(.*)$/;
@@ -452,6 +464,7 @@ const buildSnapshot = async () => {
         }
     }
 
+    await primeDescriptions([...picked.values()].map((p) => p.file));
     const logs = indexLogs();
     const openByNum = new Map((openPrs || []).map((p) => [p.number, p]));
     const workers = [];
@@ -522,7 +535,7 @@ const buildSnapshot = async () => {
         let lastLine = '';
         if (launch && launch.sessionLog) lastLine = safe(tailLine(launch.sessionLog), 200);
         workers.push({
-            label, ticket, model: safe(model, 60), mode, pid, alive: proc.alive, uptimeSec: proc.uptimeSec,
+            label, description: safe(descs.get(file) || '', 120), ticket, model: safe(model, 60), mode, pid, alive: proc.alive, uptimeSec: proc.uptimeSec,
             lock: { state: lockState, ageSec: lockAge, idle },
             agent: ag ? { kind: ag.kind, state: safe(ag.state || ag.status || '', 30) } : null,
             status: doc ? doc.status : null, pr, lastLine, listed, hasDoc: !!file,
@@ -642,6 +655,7 @@ function row(l) {
   if (l.lock.state === 'WRAPPED') li.dataset.wrapped = '1';
   li.dataset.label = l.label;
   const worker = [el('span', 'lbl', l.label), document.createTextNode(' '), el('span', 'tk', l.ticket || '')];
+  if (l.description) worker.push(el('div', 'sub', l.description));
   if (!l.listed) worker.push(el('div', 'sub', 'not in Live state'));
   if (!l.hasDoc) worker.push(el('div', 'sub', 'no handover doc'));
   for (const a of l.attention) worker.push(el('div', 'flag', a.text));

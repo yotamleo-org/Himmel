@@ -22,6 +22,8 @@ fi
 W="$(mktemp -d "${TMPDIR:-/tmp}/fleet-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
+# worker_description reads the tracker and forge seams: pin both off so no row reaches Jira or GitHub.
+export TRACKER=none FORGE=none
 
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
@@ -66,6 +68,8 @@ mkleg HIMMEL-9004-N4-delta-2026-09-22 claude-opus-5 \
     '- 10:40 BLOCKED — classifier denied `git push`, need a ruling'
 mkleg HIMMEL-9005-N5-eps-2026-09-22 claude-opus-5 \
     '- 10:22 FINDING — <script>alert(1)</script> and <img src=x onerror=alert(2)> in a bullet'
+# N5 has no PR; its brief carries a description field, which the row must print.
+{ printf -- '---\ndescription: Add a login form\n---\n'; cat "$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md"; } > "$W/n5.tmp" && mv "$W/n5.tmp" "$B/HIMMEL-9005-N5-eps-2026-09-22-RESUME.md"
 mkleg HIMMEL-9006-N6-zeta-2026-09-22 claude-opus-5 \
     '- 10:23 LIVE — PR 2001 open, watching CI' \
     '- 10:50 READY 2001 0123456789abcdef0123456789abcdef01234567 GREEN'
@@ -251,6 +255,8 @@ eq "headed leg: ticket" "$(printf '%s' "$J" | q 'L("N1").ticket')" "HIMMEL-9001"
 eq "headed leg: lock FRESH" "$(printf '%s' "$J" | q 'L("N1").lock.state')" "FRESH"
 eq "headed leg: status token is the newest marker bullet" "$(printf '%s' "$J" | q 'L("N1").status.token')" "LIVE"
 eq "headed leg: PR joined on the ticket in the open PR title" "$(printf '%s' "$J" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
+eq "no-PR worker: the description field sits on the row beside the label" "$(printf '%s' "$J" | q 'L("N5").label+"|"+L("N5").description+"|"+String(L("N5").pr)')" "N5|Add a login form|null"
+contains "a worker with no field still carries a description (the H1 fallback)" "$(printf '%s' "$J" | q 'L("N4").description')" "worker"
 eq "headless leg: mode from the launch log" "$(printf '%s' "$J" | q 'L("N2").mode')" "headless"
 eq "headless leg: alive" "$(printf '%s' "$J" | q 'L("N2").alive')" "true"
 eq "headless leg: model" "$(printf '%s' "$J" | q 'L("N2").model')" "claude-sonnet-5"

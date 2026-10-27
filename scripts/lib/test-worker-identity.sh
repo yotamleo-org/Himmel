@@ -124,6 +124,9 @@ done
 # worker_description_field reads the doc's `description:` front-matter
 # line; worker_description falls back to the H1 scope, then the stem, never empty;
 # worker_doc_has_run tells a launched doc (a Results bullet) from a fresh brief.
+# worker_description reads the tracker and forge seams: pin both off so a row never
+# reaches the real Jira or GitHub; the rows below set their own fixtures.
+export TRACKER=none FORGE=none
 dtmp="$(mktemp -d "${TMPDIR:-/tmp}/worker-identity.XXXXXX")" || exit 1
 trap 'rm -rf "$dtmp"' EXIT
 mkdoc() { local f="$dtmp/$1"; shift; printf '%s\n' "$@" > "$f"; printf '%s' "$f"; }
@@ -171,6 +174,26 @@ check_eq 'resolve: the terminal worker suffix is stripped after a subject naming
 mkdoc 'k=v.md' '---' 'description: Assign-shaped name' '---' '## Results' '- 10:00 LIVE — started' >/dev/null
 check_eq 'field: an assignment-shaped relative path is read as a file' "$(cd "$dtmp" && worker_description_field 'k=v.md' </dev/null)" 'Assign-shaped name'
 if (cd "$dtmp" && worker_doc_has_run 'k=v.md' </dev/null); then ok 'has_run: an assignment-shaped relative path is read as a file'; else bad 'has_run: an assignment-shaped relative path is read as a file'; fi
+
+# No field -> the ticket title (tracker seam), then the PR title (forge
+# seam, goalOf's strip), then the H1, then the stem. Fixtures: a local tracker store
+# and a GH_CMD stub; each is a subshell so the seams never leak into later rows.
+fx_store="$dtmp/tracker-store"; mkdir -p "$fx_store"
+fx_id="$( . "$HERE/tracker.sh"; TRACKER=local TRACKER_STORE="$fx_store" tracker_id_new Task 'Ticket title from the tracker' )"
+fx_gh="$dtmp/gh-stub.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "{\"id\":\"4001\",\"head\":\"abc\",\"base\":\"main\",\"title\":\"feat(handover): [HIMMEL-1] PR title from the forge\",\"state\":\"OPEN\",\"merged\":false}"' > "$fx_gh"
+chmod +x "$fx_gh"
+d_tt="$(mkdoc "$fx_id-N20-a-2026-10-07.md" '---' 'resume_cwd: /x' '---' "# $fx_id — H1 scope — worker N20 (opus, native), 2026-10-07")"
+d_pt="$(mkdoc HIMMEL-1-N21-a-2026-10-07.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1 — H1 scope — worker N21 (opus, native), 2026-10-07' '## Results' '- 10:00 READY 4001 0123456789abcdef0123456789abcdef01234567 GREEN')"
+d_tsp="$(mkdoc HIMMEL-1-N22-a-2026-10-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 trailing scope \xe2\x80\x94 worker N22 (opus, native), 2026-10-07   ')"
+d_old="$(mkdoc HIMMEL-1-N57-a-2026-09-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-1 \xe2\x80\x94 older scope \xe2\x80\x94 leg N57 (claudex), 2026-09-07')"
+resolve_fx() { ( TRACKER=local TRACKER_STORE="$fx_store" FORGE=github GH_CMD="$fx_gh" worker_description "$1" ); }
+check_eq 'resolve: no field -> the ticket title from the tracker' "$(resolve_fx "$d_tt")" 'Ticket title from the tracker'
+check_eq 'resolve: no field, no ticket title -> the PR title, goalOf-stripped' "$(resolve_fx "$d_pt")" 'PR title from the forge'
+check_eq 'resolve: the field still wins over the ticket title' "$(resolve_fx "$d_fm")" 'Add a description line to every worker brief'
+check_eq 'resolve: no ticket, no PR -> the H1 scope' "$(resolve_fx "$d_body")" 'body scope'
+check_eq 'resolve: trailing spaces on the H1 do not defeat the suffix strip' "$(worker_description "$d_tsp")" 'trailing scope'
+check_eq 'resolve: an older "leg N57 (lane)" H1 suffix strips' "$(worker_description "$d_old")" 'older scope'
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
