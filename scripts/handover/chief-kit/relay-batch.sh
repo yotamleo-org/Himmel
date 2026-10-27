@@ -66,6 +66,7 @@ while [ "$#" -gt 0 ]; do
         --fresh) [ "$#" -ge 2 ] || usage
             case "$2" in ?*=?*) ;; *) usage ;; esac
             case "${2#*=}" in *[\`[:space:]]*) usage ;; esac
+            case $'\n'"$fresh" in *$'\n'"${2%%=*}="*) usage ;; esac
             fresh="${fresh}$2"$'\n'; shift 2 ;;
         *) usage ;;
     esac
@@ -103,7 +104,7 @@ notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no 
 notice_dir=""; notice_t0=0
 # send_notice <label> <session>: a claudex worker's bus record, sent as soon as its inbox
 # relay lands. The notices share ONE deadline (RELAY_BATCH_BUS_TIMEOUT), so a stalled store
-# cannot outlast relay-on-live's kill; a send past it gets one second. Fail-soft: a failure
+# cannot outlast relay-on-live's kill; a notice past it is skipped. Fail-soft: a failure
 # prints BUS-RELAY-FAIL only, the worker already has its inbox relay.
 send_notice() {
     local label="$1" session="$2" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rem err rc wait_for=""
@@ -112,7 +113,8 @@ send_notice() {
         notice_dir="$(tmpdir)" || { notice_dir=""; echo "BUS-RELAY-FAIL $label (mktemp failed)"; return 0; }
         notice_text > "$notice_dir/notice"; notice_t0=$SECONDS
     fi
-    rem=$((10#$limit - (SECONDS - notice_t0))); [ "$rem" -ge 1 ] || rem=1
+    rem=$((10#$limit - (SECONDS - notice_t0)))
+    [ "$rem" -ge 1 ] || { echo "BUS-RELAY-FAIL $label (bus deadline spent)"; return 0; }
     command -v timeout >/dev/null 2>&1 && wait_for="timeout $rem"
     if err="$($wait_for "$bus" send "$session" "$notice_dir/notice" 2>&1 >/dev/null)"; then
         echo "BUS-RELAY $label ok"

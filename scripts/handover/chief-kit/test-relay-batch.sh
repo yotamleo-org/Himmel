@@ -374,5 +374,15 @@ printf '# chief\n\n## Live state\n\nlegs: `N70:tok-a:l:1` `N71:tok-b:l:2`\nqueue
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","lane":"claudex"},{"doc":"%s","label":"N71","lane":"claudex"}]}\n' "$LEGQ1" "$LEGQ2" > "${DOC12%.md}.fleet.json"
 INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OBUS" HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 >/dev/null 2>&1
 check "a claudex bus record is sent right after its inbox relay, before the next worker" "inbox DEMO-20-N70-cdxa-2026-10-27 bus DEMO-20-N70-cdxa-2026-10-27 inbox DEMO-21-N71-cdxb-2026-10-27 bus DEMO-21-N71-cdxb-2026-10-27" "$(tr '\n' ' ' < "$ORDER" | sed 's/ $//')"
+# a stalled bus store spends the shared deadline once: later notices are skipped, not each given a second
+: > "$ORDER"
+OSLOW="$WORK/oslow.sh"
+# shellcheck disable=SC2016  # $2 expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "bus %%s\\n" "$2" >> "%s"\nsleep 5\n' "$ORDER" > "$OSLOW"
+chmod +x "$OSLOW"
+outslow="$(INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OSLOW" RELAY_BATCH_BUS_TIMEOUT=1 HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 2>&1)"
+check "a spent bus deadline skips the later notices" "1" "$(grep -c '^bus ' "$ORDER")"
+check "a skipped notice is reported" "1" "$(printf '%s\n' "$outslow" | grep -c '^BUS-RELAY-FAIL N71 (bus deadline spent)')"
+check "--fresh: a repeated label is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-a --fresh N7=fresh-b >/dev/null 2>&1; echo $?)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
