@@ -458,7 +458,6 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | fork:yotamleo-org/graphify | — | Graphify-Labs | Apache-2.0 | — |
 | fork:yotamleo-org/claude-video | — | bradautomates | MIT | — |
 | fork:yotamleo-org/obsidian-skills | — | Steph Ango | MIT | — |
-| fork:yotamleo-org/twitter-cli | — | public-clis | Apache-2.0 | — |
 | fork:yotamleo-org/claude-obsidian | — | AgriciDaniel | MIT | — |
 | fork:yotamleo-org/codex-plugin-cc | — | OpenAI | Apache-2.0 | — |
 | fork:yotamleo-org/obsidian-second-brain | — | Eugeniu Ghelbur | MIT | — |

@@ -4,13 +4,13 @@
 #
 # Before this ticket the updater never called apply-tool-upgrade.sh, so an
 # operator running /himmel-update got "everything current" while the drift guard
-# still showed rtk / twitter-cli BEHIND until the nightly cadence ran.
+# still showed rtk BEHIND until the nightly cadence ran.
 #
 # Hermetic: the mock clone gets a STUB check-plugin-drift.sh (reads the stub
 # tool's version, prints the guard's own BEHIND/CURRENT line shape), the REAL
 # apply-tool-upgrade.sh (so the re-probe verdict is exercised end to end), and a
 # private registry whose probe entries name fake tools on a private PATH. The
-# real rtk / twitter-cli are never probed or upgraded.
+# real rtk is never probed or upgraded.
 #
 # Bash 3.2 compatible.
 

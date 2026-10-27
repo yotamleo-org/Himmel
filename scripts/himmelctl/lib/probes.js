@@ -2728,8 +2728,7 @@ function probeDistinctTokens(item, ctx) {
 // error"). fetch-health.py's REASON strings are distinctive when the
 // credential/artifact is simply ABSENT — verified against that file's own
 // probe_* functions: probe_reddit's "reddit cookie file missing",
-// probe_gallery_dl's "<source> cookie file missing", probe_twitter_cli's
-// "twitter CLI credentials missing", probe_youtube's "youtube Playwright
+// probe_gallery_dl's "<source> cookie file missing", probe_youtube's "youtube Playwright
 // storage state missing", probe_bitbucket's "Bitbucket credentials
 // missing", probe_firecrawl's "Firecrawl API key missing" — every one of
 // them carries status auth-or-cookie-expired AND ends in the literal word

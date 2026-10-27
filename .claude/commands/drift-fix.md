@@ -113,13 +113,13 @@ not for this runbook. Skip them here; a bump held back on purpose is recorded in
 
 Do not read "installed 0.9.25" as a probe of the installed binary. That message
 is one shared template (`"$repo latest tag $latest; installed $local_ver"`)
-printed for EVERY `tag_release` BEHIND case. For `mode: probe` (rtk,
-twitter-cli) `$local_ver` really is a live binary read; for `mode: base`
+printed for EVERY `tag_release` BEHIND case. For `mode: probe` (rtk)
+`$local_ver` really is a live binary read; for `mode: base`
 (graphify, cli-proxy-api) it is the `synced_base` literal from the registry. The
 installed artifact on this machine is step 1A's business, never the guard's.
 
 Also collect every `BEHIND` line whose name is a **`tag_release` / `mode: probe`**
-entry (rtk, twitter-cli). Those have no repo pin at all — their drift is an
+entry (rtk). Those have no repo pin at all — their drift is an
 out-of-date binary on THIS machine, repaired in step A below. This is the half a
 CI job could never do, and the reason the cadence runs locally.
 
@@ -155,9 +155,8 @@ marked `upgrade.unattended: true` in the registry. Dropping the flag would
 silently overrule an operator decision, in either direction.
 
 Read the flag from the registry — do not assume which entries are gated. As of
-2026-07-28 BOTH probe entries are `unattended: true`: `twitter-cli` (Tier A, no
-caveat) and `rtk`, which the operator explicitly approved that day, overriding
-its Tier B default. rtk's entry note records why the reservation existed (BEHIND
+2026-07-28 `rtk` is `unattended: true`: the operator explicitly approved that
+day, overriding its Tier B default. rtk's entry note records why the reservation existed (BEHIND
 is normally its intended steady state; HIMMEL-270 is unfixed upstream) and what
 makes unattended acceptable anyway (`upgrade-rtk.sh` backs up, smoke-tests, and
 rolls back; `rtk-hook-guard.sh` is fail-OPEN so a broken rtk stops rewriting

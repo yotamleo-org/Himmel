@@ -28,7 +28,7 @@ Batch tooling for the obsidian-triage plugin. Several flavors:
   description via Scrapling in `~/.himmel/scrapling-venv`, transcript via
   `yt-dlp` subtitles, `crawl_skill: scrapling-youtube`). HIMMEL-4709 removed
   the logged-in Playwright fallback, `playwright-crawl-x.mjs`,
-  `playwright-auth-save.mjs` and `twitter-cli-enrich.mjs`: no tool here sends
+  `playwright-auth-save.mjs` and the cookie-backed X thread enricher: no tool here sends
   a cookie.
 - **Dedup sweep** (`dedup-sweep.mjs`) — LUNA-37. URL-canonical +
   content-hash dupe detection across a luna-style vault. Mutates
