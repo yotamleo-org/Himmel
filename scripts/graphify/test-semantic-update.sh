@@ -978,7 +978,9 @@ m["files"]["moved.md"] = "0" * 64
 json.dump(m, open(os.path.join(out, "semantic-manifest.json"), "w"))
 PY
 out=$(GRAPHIFY_STUB_SKIP=moved.md run --name t84 --corpus-root "$C84" --corpus-class himmel-code); rc=$?
-case " $(ids "$C84") " in *" stale_moved "*) fail "T84 the stub's old nodes stayed (rc=$rc): $out" ;; *) pass "T84 the stub's old nodes are dropped" ;; esac
+got=$(ids "$C84")
+[ "$rc" -eq 0 ] && [[ " $got " == *" code_a "* ]] && ! [[ " $got " == *" stale_moved "* ]] \
+  && pass "T84 the stub's old nodes are dropped" || fail "T84 the stub's old nodes (rc=$rc) '$got': $out"
 python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "moved.md" not in m["files"] and "moved.md" not in m.get("stuck", {}) else 1)' "$C84/graphify-out/semantic-manifest.json" \
   && pass "T84 the stub is neither stamped nor stuck" || fail "T84 manifest: $(cat "$C84/graphify-out/semantic-manifest.json")"
 [ "$(lastrun "$C84" backed_off)" = 0 ] && [ "$(lastrun "$C84" failed)" = 0 ] && pass "T84 the run row carries no failed or backed-off file" || fail "T84 run row: $(tail -1 "$C84/graphify-out/semantic-runs.jsonl")"
