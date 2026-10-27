@@ -370,6 +370,11 @@ printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himme
 apply_tty $'y\nh'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = 0 ]; then pass "keep ~/.himmel: the policy value stays"; else fail "keep ~/.himmel on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
 lacks "keep ~/.himmel: the policy line left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
+# A kept policy value with a space and a hash survives the dotenv copy it is checked through.
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"a # b"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\nh'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = "a # b" ]; then pass "keep ~/.himmel: a policy value with a hash is kept whole"; else fail "keep ~/.himmel on a policy value with a hash: rc $rc, policy '$(policy_val)'"; fi
 # A chosen side still has to pass the readers: a held key whose handover root
 # is read from .env only fails the re-verify whichever side is kept, and .env
 # stays whole. The faulty reader is the real one with only that lookup changed.

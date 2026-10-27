@@ -417,7 +417,10 @@ if has_bad; then
             fi || { echo "migrate-env: could not apply the choice for $key; no lines were removed from .env." >&2; restore_hint; exit 1; }
         done
         for key in $keep_him; do
-            if [ "$(_himmel_key_class "$key")" = policy ]; then keptline="$key=$(value_of "$policy_before" "$key")"
+            if [ "$(_himmel_key_class "$key")" = policy ]; then
+                keptvalue=$(value_of "$policy_before" "$key")
+                case "$keptvalue" in *' #'*) keptvalue="\"$keptvalue\"" ;; esac   # an unquoted ' #' reads as a comment
+                keptline="$key=$keptvalue"
             else keptline=$(_load_dotenv_extract "$confdir/himmel.conf" "$key"); fi
             if set_line "$verify_env" "$key" "$keptline" "$work/env.verify.new" && mv -f "$work/env.verify.new" "$work/env.verify"; then
                 verify_env="$work/env.verify"
