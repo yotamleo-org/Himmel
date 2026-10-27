@@ -220,6 +220,10 @@
 #       ceiling. A textual conflict is not refused here: it defers to the
 #       behind-main path. After the plugin-bump gate, before any mutation, on
 #       --dry-run too.
+#   25  local-commit guard: run from a checkout on the PR's head branch whose
+#       HEAD carries commits the PR head does not (`git rev-list <head>..HEAD`
+#       non-empty), or whose HEAD cannot be compared with the PR head. Checked
+#       right after the PR metadata read, before any gate, on --dry-run too.
 #
 # Environment:
 #   ARMAUTOMERGE           Must be truthy (1/true/on/yes) to enable at all.
@@ -764,6 +768,27 @@ if [ "$meta_shape_ok" -ne 1 ] || [ -z "$head_branch" ]; then
     echo "merge-on-green: PR metadata line is malformed (expected six pipe-joined fields, got '$meta') — cannot certify a merge target. Re-run." >&2
     audit "REFUSED reason=malformed-meta repo=$nwo pr=#$pr_num"
     exit 13
+fi
+
+# 2-local. Local-commit guard — run from a checkout on the PR's head branch, the
+# merge refuses while that HEAD carries commits the PR head does not: a squash
+# merge of the PR head would leave them behind on a branch GitHub then deletes.
+# Mirrors worker-pr-open.sh's unpushed-HEAD refusal. A checkout on any other
+# branch (the primary on main, a selector run) is not the PR's branch and is skipped.
+# swallow-ok: a detached HEAD or a non-repo cwd is not on the PR's branch, so the guard does not apply
+cur_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || cur_branch=""
+if [ -n "$cur_branch" ] && [ "$cur_branch" = "$head_branch" ]; then
+    if ! local_ahead=$(git rev-list "$sha..HEAD"); then
+        echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2
+        audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
+        exit 25
+    fi
+    if [ -n "$local_ahead" ]; then
+        ahead_n=$(printf '%s\n' "$local_ahead" | wc -l | tr -d ' ')
+        echo "merge-on-green: this checkout's $head_branch is $ahead_n commit(s) ahead of PR #$pr_num's head ${sha:0:12} ($(printf '%s\n' "$local_ahead" | cut -c1-12 | tr '\n' ' ')) — refusing: the merge would leave them behind. Either push them (a fresh review, then a new GO at the new head), or move them off this branch and file them on a follow-up ticket; then re-run." >&2
+        audit "REFUSED reason=local-commits-not-in-pr ahead=$ahead_n repo=$nwo pr=#$pr_num sha=$sha"
+        exit 25
+    fi
 fi
 
 # 2a. Same-repo guard — bind the merge target to the CURRENT checkout's repo.

@@ -1979,6 +1979,24 @@ MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
 if [ -d "$P_WT" ]; then pass; else fail "11k: worktree with post-merge commits was removed"; fi
 assert_audit_has "11k: audit records the tip mismatch" "prune=tip-differs-kept"
 
+# 11k1. A commit made in the worker's worktree after the PR head (the 4023 /
+# 7f2eb545f sequence) is refused BEFORE any gate or merge, so the commit is
+# never left behind on a branch whose PR merged without it.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+printf 'after the GO head\n' >> "$P_WT/work.txt"
+git -C "$P_WT" commit -q -am "unpushed after the GO head"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 25 "11k1: worktree HEAD ahead of the PR head → exit 25"
+assert_gh_lacks "11k1: no merge attempted" "pr merge"
+assert_audit_has "11k1: refusal audited" "REFUSED reason=local-commits-not-in-pr ahead=1"
+if grepq "$LAST_ERR" -F 'push them' && grepq "$LAST_ERR" -F 'follow-up'; then pass; else fail "11k1: refusal does not name both remedies (err: $LAST_ERR)"; fi
+
+# 11k1b. The same worktree with HEAD == PR head still merges.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "11k1b: worktree HEAD == PR head → merges, exit 0"
+assert_gh_has "11k1b: merge fired" "pr merge"
+
 # 11k2. POSITIVE CONTROL: a worktree held open by a live native
 # process is detected BEFORE the remove and skipped WHOLE. This is the case
 # that FAILS before the fix (the old code let git's non-atomic-on-Windows
