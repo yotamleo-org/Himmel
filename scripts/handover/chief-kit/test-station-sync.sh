@@ -262,6 +262,22 @@ run_bridge docs/x.md scripts/handover/foo.sh
 lacks "21 outside the three dirs: no restart" "$sc" " restart "
 contains "21 skip names the reason" "$out" "SKIP bridge_restart no-bridge-path"
 if [ ! -e "$W/bridge-restart.ts" ]; then echo "ok - 21 no stamp"; else echo "FAIL - 21 no stamp"; fails=$((fails+1)); fi
+rm -f "$W/bridge-restart.ts"
+run_bridge scripts/lib/qmd-bin.sh
+contains "23 a scripts/lib pin path also restarts the bridge" "$sc" "systemctl --user restart $unit"
+contains "23 and still runs its own step" "$(cat "$SS_CALLS")" "update --only qmd_fork"
+cat > "$W/systemctl-fail" <<'EOF2'
+#!/usr/bin/env bash
+[ "$2" = "restart" ] && exit 1
+exit 0
+EOF2
+chmod +x "$W/systemctl-fail"
+rm -f "$W/bridge-restart.ts"
+SS_SYSTEMCTL="$W/systemctl-fail" run_bridge scripts/lanes/a.json
+contains "24 failed restart is reported" "$out" "STEP bridge_restart rc=1"
+contains "24 failed restart is not OK" "$out" "STATION=BEHIND:bridge_restart-failed"
+if [ ! -e "$W/bridge-restart.ts" ]; then echo "ok - 24 no stamp after a failed restart"; else echo "FAIL - 24 no stamp after a failed restart"; fails=$((fails+1)); fi
+rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
 SS_T_ENABLED=1 run_bridge scripts/lanes/a.json
 lacks "22 unit not enabled: no restart" "$sc" " restart "
 contains "22 skip names the reason" "$out" "SKIP bridge_restart unit-not-enabled"

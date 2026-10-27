@@ -92,6 +92,8 @@ while IFS= read -r p; do
         scripts/lib/qmd-bin.sh) add qmd_fork ;;
         scripts/lib/graphify-bin.sh) add graphify ;;
         templates/luna-second-brain/*) add luna_template ;;
+    esac
+    case "$p" in
         scripts/telegram/*|scripts/lanes/*|scripts/lib/*) bridge=1 ;;
     esac
 done <<EOF
@@ -165,7 +167,8 @@ else
     else
         "$SC" --user restart "$BRIDGE_UNIT" >/dev/null 2>&1; rc=$?
         echo "STEP bridge_restart rc=$rc"
-        [ "$rc" -ne 0 ] || echo "$now" > "$BRIDGE_STAMP" 2>/dev/null
+        if [ "$rc" -eq 0 ]; then echo "$now" > "$BRIDGE_STAMP" 2>/dev/null
+        else failed="${failed:+$failed,}bridge_restart-failed"; fi
     fi
 fi
 
