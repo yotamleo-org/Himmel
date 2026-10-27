@@ -1066,6 +1066,7 @@ cmd_calibration() {
       while IFS= read -r m; do under+=("$m"); done < <(jq -r '.model // empty' "$d/runs.jsonl" | sort -u)
       while IFS= read -r m; do stored+=("$m"); done < <(jq -r '.judge_model // empty' "$d/runs.jsonl" | sort -u)
     done
+    [ "${#under[@]}" -ge 1 ] || die "the runs name no model under test, so no grader's vendor can be checked"
     if [ -n "$j1model" ]; then
       refuse_vendor "first grader" "$j1model" "model under test" "${under[@]}"
       g1=("$j1model")

@@ -91,6 +91,10 @@ refused "a tie-breaker from either grader's vendor exits 64" "same vendor (googl
 refused "a tie-breaker needs a second grader" "--tiebreak-model needs --judge2-model" "${G1[@]}" "${TB[@]}"
 check "vendor is the maker, not the model: opus, sonnet and haiku are one vendor" '[ "$(python3 "$HERE/lq_stats.py" vendor claude-opus-5-5 sonnet claude-haiku-5-5 gpt-6.1-sol google/gemini-3-pro deepseek/deepseek-v4 | tr "\n" " ")" = "anthropic anthropic anthropic openai google deepseek " ]'
 check "an unmapped openrouter slug's vendor is its maker prefix" '[ "$(python3 "$HERE/lq_stats.py" vendor nvidia/nemotron-a NVIDIA/nemotron-b | tr "\n" " ")" = "nvidia nvidia " ]'
+mkdir -p "$TMP/fxempty"; : >"$TMP/fxempty/runs.jsonl"; cp "$FX"/*.judge-packet.md "$TMP/fxempty/"
+: >"$TMP/fake.log"
+bash "$RUN" calibration "$TMP/fxempty" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/empty.err"; rc=$?
+check "an empty runs.jsonl is refused before any call" '[ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/empty.err" && [ ! -s "$TMP/fake.log" ]'
 mkdir -p "$TMP/fxnomodel"; cp "$FX"/*.judge-packet.md "$TMP/fxnomodel/"
 # one run with no model and one with an empty model, beside four named runs
 jq -c 'if .task == "t1" then del(.model) elif .task == "t2" then .model = "" else . end' "$FX/runs.jsonl" >"$TMP/fxnomodel/runs.jsonl"
