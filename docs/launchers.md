@@ -105,6 +105,6 @@ behaviour.
 ## See also
 
 - [setup/codex.md](setup/codex.md): running himmel under `codex-cli` itself.
-- [hermes-runbook.md](hermes-runbook.md): the hermes junior-tier model lane.
+- [hermes-runbook.md](hermes-runbook.md): the hermes CR-critic lane and the alpha `himmel_agent` main tier.
 - [orchestration-patterns.md](orchestration-patterns.md): which work goes to which lane.
 - [configuration.md](configuration.md): every knob and off-switch.

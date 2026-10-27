@@ -67,7 +67,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 
 - [jira-projects.md](jira-projects.md) — Jira project setup + conventions.
 - [telegram-bridge.md](telegram-bridge.md) · [internals/telegram-bridge.md](internals/telegram-bridge.md) — the Telegram bridge.
-- [hermes-runbook.md](hermes-runbook.md) — the hermes junior-tier model lane.
+- [hermes-runbook.md](hermes-runbook.md) — the hermes CR-critic lane and the alpha `himmel_agent` main tier.
 - [luna/README.md](luna/README.md) — the luna companion second-brain vault guides (incl. [end-session-wiki](luna/end-session-wiki.md) + its [schema](luna/end-session-wiki-schema.md), [pr-lane-guard](luna/pr-lane-guard.md), [compounding](luna/compounding.md), [google-health-connector-setup](luna/google-health-connector-setup.md)).
 
 ## Setup (continued)

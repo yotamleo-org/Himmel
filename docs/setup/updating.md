@@ -450,7 +450,7 @@ in a closing status table:
    to take effect.
 4. **qmd fork update:** qmd ships from a himmel-pinned fork outside this
    checkout, so `git pull` here never touches it.
-5. **hermes junior-tier update:** hermes is a separate editable
+5. **hermes update:** hermes is a separate editable
    git checkout outside this repo; pulls + reinstalls it, skipping cleanly
    when hermes isn't installed.
 6. **luna template upgrade** (`LUNA_VAULT_PATH`): content-preserving refresh
