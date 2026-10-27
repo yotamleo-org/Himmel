@@ -18,8 +18,7 @@ rubric forces every eval to name its goal, pick a trust posture
 proportional to blast radius, and end in a recorded decision (ADR).
 
 **Open tool-eval tickets route through this file** before any
-install/measure: skill-factory, token-savior, tdd-guard, context-mode,
-engram.
+install/measure: skill-factory, tdd-guard, engram.
 Each should cite this rubric's decision states + measurement protocol in
 its ADR.
 
@@ -158,7 +157,7 @@ model has changed since it was measured, plus up to **2 new candidates**.
 Timebox: one small worker. It counts against the sprint's planned capacity,
 not the surprise margin.
 
-**Each re-check answers four questions** (first case: caveman, which was removed):
+**Each re-check answers four questions:**
 
 1. **Upstream alive?** Last push, open issues, licence. A "dead upstream"
    reason expires when upstream resumes.
