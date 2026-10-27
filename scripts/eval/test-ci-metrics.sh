@@ -12,6 +12,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/ci-metrics.sh"
 FIX="$HERE/fixtures/ci-metrics"
+. "$HERE/../lib/portable-timeout.sh"
 NOW="2026-10-14T12:00:00Z"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics-test.XXXXXX")" || { echo "test-ci-metrics: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
@@ -164,6 +165,21 @@ has "cap-check INCONCLUSIVE: verdict" "$O" "Verdict: INCONCLUSIVE"
 eq "cap-check INCONCLUSIVE: exit 0" "$RC" "0"
 bash "$SCRIPT" --data-dir "$TMP/cap-inc" --days 1 --hours 1 >/dev/null 2>&1; eq "--days with --hours exits 2" "$?" "2"
 
+# ---- merge-forward rounds per merged PR (prs.json beside runs.json / jobs.json) ----
+# PR 101 merged after two merge-forward rounds, 102 after none, 103 after one, 104 merged before the window.
+mkdir -p "$TMP/mf"
+echo '[]' > "$TMP/mf/runs.json"; echo '[]' > "$TMP/mf/jobs.json"
+echo '[{"number":101,"merged_at":"2026-10-20T10:00:00Z","commits":5,"rounds":2,"truncated":false},{"number":102,"merged_at":"2026-10-20T10:30:00Z","commits":1,"rounds":0,"truncated":false},{"number":103,"merged_at":"2026-10-20T11:00:00Z","commits":3,"rounds":1,"truncated":false},{"number":104,"merged_at":"2026-10-10T11:00:00Z","commits":3,"rounds":9,"truncated":false}]' > "$TMP/mf/prs.json"
+O=$(bash "$SCRIPT" --data-dir "$TMP/mf" "${M20[@]}" 2>&1)
+has "merge-forward: PR merged after two rounds prints 2" "$O" "| #101 | 2 |"
+has "merge-forward: merged PRs in the window" "$O" "| PRs merged in the window | 3 |"
+has "merge-forward: PRs that needed a round" "$O" "| PRs merged after at least one round | 2 (66.7%) |"
+has "merge-forward: rounds mean / median / max" "$O" "| rounds per merged PR mean / median / max | 1.0 / 1 / 2 |"
+case "$O" in *"#104"*) fail "merge-forward: out-of-window PR listed";; *) pass "merge-forward: out-of-window PR not listed";; esac
+case "$O" in *"#102"*) fail "merge-forward: zero-round PR listed as offender";; *) pass "merge-forward: zero-round PR not an offender";; esac
+O=$(bash "$SCRIPT" --data-dir "$TMP/never" "${M20[@]}" 2>&1)
+has "merge-forward: a dataset without prs.json says not measured" "$O" "Not measured"
+
 # ---- fetch path against a fake gh: the REST/GraphQL shapes are recordings of CI run 39374772228 ----
 LIVE="$HERE/fixtures/ci-metrics-live"
 mkdir -p "$TMP/bin"
@@ -171,6 +187,7 @@ cat > "$TMP/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
 case "$*" in
+  "api graphql"*"search("*) if [ -n "${GH_PRS:-}" ]; then cat "$GH_PRS"; else echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; fi;;
   "api graphql"*) if [ -n "${GH_GQL:-}" ]; then cat "$GH_GQL"; else echo "GRAPHQL CALLED" >&2; exit 1; fi;;
   *"/actions/runs/"*"/jobs"*) cat "$GH_REST_JOBS";;
   *"/actions/runs?"*) cat "$GH_RUNS";;
@@ -186,7 +203,7 @@ echo '[{"workflow_runs":[]}]' > "$TMP/empty-runs.json"
 O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-empty.log" GH_RUNS="$TMP/empty-runs.json" bash "$SCRIPT" --days 1 --now 2026-10-20T12:00:00Z 2>&1); RC=$?
 eq "empty window: exit code" "$RC" "0"
 has "empty window: zero runs" "$O" "| runs | 0 |"
-eq "empty window: no GraphQL call" "$(grep -c graphql "$TMP/gh-empty.log")" "0"
+eq "empty window: no GraphQL jobs call" "$(grep -c 'ids\[\]' "$TMP/gh-empty.log")" "0"
 has "default repo is the org slug" "$(cat "$TMP/gh-empty.log")" "repos/yotamleo-org/Himmel/actions/runs?"
 
 : > "$TMP/gh-live.log"
@@ -200,6 +217,54 @@ has "live run: 50 jobs" "$O" "| jobs | 50 |"
 has "live run: runner-min from the 20 jobs that ran (2298 s)" "$O" "| runner-min total | 38.3 |"
 has "live run: queue wait from the job's own created_at" "$O" "| job queue wait p50 / p90 / max (s) | 2 / 2 / 2 |"
 has "live run: 5 cancelled-in-queue jobs" "$O" "| jobs cancelled before a runner took them | 5 |"
+
+# Merged-PR fetch: a merge commit (two parents) on the PR branch is one round; PR 7 has two.
+jq -n '{data: {search: {issueCount: 2, pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+  {number: 7, mergedAt: "2026-10-20T05:00:00Z", commits: {totalCount: 4, nodes: [{commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}, {commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}]}},
+  {number: 8, mergedAt: "2026-10-20T05:30:00Z", commits: {totalCount: 1, nodes: [{commit: {parents: {totalCount: 1}}}]}}]}}}' > "$TMP/prs-page.json"
+: > "$TMP/gh-prs.log"
+rc=0
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1) || rc=$?
+eq "merged-PR fetch: the --keep run exits 0" "$rc" "0"
+has "merged-PR fetch: PR 7 shows its two rounds" "$O" "| #7 | 2 |"
+has "merged-PR fetch: two merged PRs" "$O" "| PRs merged in the window | 2 |"
+eq "merged-PR fetch: --keep saves prs.json" "$(jq -c 'map([.number, .rounds])' "$TMP/kept/prs.json")" "[[7,2],[8,0]]"
+has "merged-PR fetch: search is limited to merged PRs of the repo inside the window, both ends" "$(cat "$TMP/gh-prs.log")" "s=is:pr is:merged repo:yotamleo-org/Himmel merged:2026-10-20T04:47:24Z..2026-10-20T05:45:00Z"
+case "$O" in *"API cap"*"merge-forward"*) fail "merged-PR fetch: no cap warning under 1000 results";; *) pass "merged-PR fetch: no cap warning under 1000 results";; esac
+
+# A search that hit GitHub's 1000-result cap warns that the window is truncated.
+jq '.data.search.issueCount = 1000' "$TMP/prs-page.json" > "$TMP/prs-page-cap.json"
+rc=0
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-cap.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || rc=$?
+eq "merged-PR fetch: the cap-warning run exits 0" "$rc" "0"
+has "merged-PR fetch: 1000 results warns the window is truncated" "$O" "WARN merged PRs search returned 1000 results"
+
+# A failed merged-PR fetch into a reused --keep dir drops the older prs.json instead of replaying it.
+mkdir -p "$TMP/nosleep"; printf '#!/bin/sh\nexit 0\n' > "$TMP/nosleep/sleep"; chmod +x "$TMP/nosleep/sleep"
+echo 'not json' > "$TMP/prs-bad.json"
+rc=0
+O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-bad.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1) || rc=$?
+eq "merged-PR fetch: a failed fetch leaves the run successful" "$rc" "0"
+has "merged-PR fetch: a failed fetch is reported as not measured" "$O" "Not measured"
+eq "merged-PR fetch: --keep drops the stale prs.json after a failed fetch" "$([ -e "$TMP/kept/prs.json" ] && echo present || echo absent)" "absent"
+
+# A search page that hands back the cursor it was asked from is a failed fetch, not an endless loop.
+jq '.data.search.pageInfo = {hasNextPage: true, endCursor: "CUR"}' "$TMP/prs-page.json" > "$TMP/prs-page-loop.json"
+rc=0
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-loop.json" \
+  timeout 60 bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || rc=$?
+eq "merged-PR fetch: a cursor that does not advance ends the run (no timeout kill)" "$rc" "0"
+has "merged-PR fetch: a cursor that does not advance stops the fetch" "$O" "pagination did not advance"
+
+# The cap check never renders merged PRs, so it does not fetch them.
+: > "$TMP/gh-capcheck.log"
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-capcheck.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --cap-check 2>&1)
+has "cap check: the run reaches its verdict" "$O" "Verdict:"
+eq "cap check: no merged-PR search is made" "$(grep -c 'is:pr is:merged' "$TMP/gh-capcheck.log")" "0"
 
 echo "ci-metrics: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

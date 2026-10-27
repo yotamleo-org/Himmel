@@ -36,8 +36,6 @@ REPO_ROOT="$STATION_ROOT"
 [ -n "$ROOT_OVERRIDE" ] && REPO_ROOT="$(cd "$ROOT_OVERRIDE" 2>/dev/null && pwd || printf '%s' "$ROOT_OVERRIDE")"
 # shellcheck source=/dev/null
 . "$REPO_ROOT/scripts/lib/resolve-node.sh"
-# shellcheck source=/dev/null
-. "$REPO_ROOT/scripts/lib/resolve-powershell.sh"
 # shellcheck source=lib/cadence-format.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/cadence-format.sh"
@@ -148,17 +146,15 @@ emit() {
     if [ "$sev" != OK ]; then printf -- '- **%s** %s: %s\n  - → %s\n' "$sev" "$id" "$msg" "$remedy" >> "$BODY"; fi
 }
 
-is_windows() { case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
-
 # --- C1-node: RETIRED --------------------------------------------
 # The response-compression plugin whose SessionStart/UserPromptSubmit node hooks
 # this check classified and healed is gone, so there is nothing left to check.
 # Check ids are NOT renumbered: C1-guardrail below and C2..C21 keep their ids.
 
 # --- C1-guardrail: user-level guardrail block's baked node path -----------------
-# scripts/setup-hooks.sh|.ps1 --guardrail-mode global bakes the setup-time
+# scripts/setup-hooks.sh --guardrail-mode global bakes the setup-time
 # ABSOLUTE node path into the 3 user-level guardrail hooks. If node moves
-# (e.g. a switch from a winget MSI to nvm-windows) every tool
+# (e.g. a switch between node version managers) every tool
 # call errors and the guardrails fail OPEN.
 check_c1_guardrail() {
     [ -f "$SETTINGS" ] || return 0
@@ -191,13 +187,7 @@ check_c1_guardrail() {
 
 fix_c1_guardrail() {
     if check_c1_guardrail; then return 0; fi
-    if is_windows; then
-        local ps_bin
-        ps_bin="$(resolve_powershell)" || { echo "  fix_c1_guardrail: no PowerShell interpreter found" >&2; return 1; }
-        CLAUDE_USER_SETTINGS="$SETTINGS" "$ps_bin" -NoProfile -ExecutionPolicy Bypass -File "$REPO_ROOT/scripts/setup-hooks.ps1" -GuardrailMode global -Yes
-    else
-        CLAUDE_USER_SETTINGS="$SETTINGS" bash "$REPO_ROOT/scripts/setup-hooks.sh" --guardrail-mode global --yes
-    fi
+    CLAUDE_USER_SETTINGS="$SETTINGS" bash "$REPO_ROOT/scripts/setup-hooks.sh" --guardrail-mode global --yes
     echo "  re-checking C1-guardrail after --fix:"
     check_c1_guardrail
 }
@@ -308,7 +298,7 @@ check_c5() {
     local top="$REPO_ROOT"
     [ -n "$top" ] || return
     [ -f "$REGISTRY" ] || { emit INFO C5-handover "no handover registry yet" "/handover-setup to enable handover-resume"; return; }
-    # Case-insensitive (Windows registry stores lowercased paths) + accept a
+    # Case-insensitive (a registry may hold lowercased paths) + accept a
     # registered path that is a PARENT of $top (so a worktree under the main
     # checkout still counts as registered).
     local match; match="$(jq -r --arg p "$top" '
@@ -322,17 +312,15 @@ check_c5() {
 
 # --- C6: PATH-fragile bare-interpreter MCP servers + hooks ----------------------
 # Same failure class as C1-guardrail: a macOS GUI launch has a minimal PATH, so an MCP
-# server wired as a bare interpreter name (uvx/bun/deno/python/pwsh) silently fails
+# server wired as a bare interpreter name (uvx/bun/deno/python) silently fails
 # to start and all its tools vanish. Scans user settings + the himmel plugins.
 #
 # C6-hooks extends the scan to HOOK commands. A hook wired to lead
-# with a bare interpreter that is NOT installed on THIS host (the canonical case:
-# a `pwsh -NoProfile -File …` SessionEnd twin copied literally onto a host without
-# PowerShell) prints `pwsh: command not found` every session. Unlike the MCP scan
+# with a bare interpreter that is NOT installed on THIS host prints
+# `<interp>: command not found` every session. Unlike the MCP scan
 # (which flags any bare interpreter, since the GUI PATH differs), the hook scan
 # gates on the interpreter being genuinely absent here — that is the actual
-# per-session error. The shipped template routes the pwsh twin through
-# scripts/lib/run-pwsh.sh (leading token `bash`), so a current wiring never trips.
+# per-session error.
 check_c6() {
     local fragile="" name c
     _scan_mcp() { # $1 = json file with .mcpServers
@@ -340,7 +328,7 @@ check_c6() {
         while IFS="$(printf '\t')" read -r name c; do
             [ -n "$c" ] || continue
             case "$c" in */*) continue ;; esac
-            case "$c" in uvx|uv|bun|node|deno|python|python3|pwsh) fragile="$fragile ${name}(${c})" ;; esac
+            case "$c" in uvx|uv|bun|node|deno|python|python3) fragile="$fragile ${name}(${c})" ;; esac
         done <<EOF
 $(jq -r '(.mcpServers // {}) | to_entries[] | "\(.key)\t\(.value.command)"' "$1" 2>/dev/null)
 EOF
@@ -362,7 +350,7 @@ EOF
             lead="${cmd%% *}"          # leading token = the interpreter
             case "$lead" in */*) continue ;; esac
             case "$lead" in
-                uvx|uv|bun|node|deno|python|python3|pwsh)
+                uvx|uv|bun|node|deno|python|python3)
                     command -v "$lead" >/dev/null 2>&1 || hook_bad="$hook_bad ${lead}"
                     ;;
             esac
@@ -371,7 +359,7 @@ $(jq -r '(.hooks // {}) | to_entries[] | .value[]? | .hooks[]? | .command // emp
 EOF
     fi
     if [ -n "$hook_bad" ]; then
-        emit WARN C6-hooks "hook(s) wired to a bare interpreter not installed on this host:$hook_bad — every session prints '<interp>: command not found'" "install the interpreter, or route the hook through a guarded wrapper (e.g. scripts/lib/run-pwsh.sh) / re-run himmel setup"
+        emit WARN C6-hooks "hook(s) wired to a bare interpreter not installed on this host:$hook_bad — every session prints '<interp>: command not found'" "install the interpreter, or route the hook through a guarded wrapper / re-run himmel setup"
     else
         emit OK C6-hooks "no hooks wired to a missing bare interpreter"
     fi
@@ -483,7 +471,7 @@ EOF
 }
 
 # --- C8: stale cadence runners (armed before a format change) -----------------
-# The cadence runners (.bat/.sh) are GENERATED at arm time and NOT regenerated
+# The cadence runners (.sh) are GENERATED at arm time and NOT regenerated
 # on a code change, so a cadence armed before a
 # runner-format change keeps firing the old format with no nudge. Read-only:
 # compare the version stamped into the runners against the current
@@ -491,8 +479,7 @@ EOF
 # — a re-arm touches the OS scheduler, so this stays advisory (mirrors C7).
 check_c8() {
     # Defaults must match each emitter's runner home EXACTLY — the emitters
-    # key off resolve_user_home (USERPROFILE via cygpath before $HOME on
-    # Windows Git-Bash), NOT $CLAUDE_DIR, so probe via the lib's
+    # key off resolve_user_home, NOT $CLAUDE_DIR, so probe via the lib's
     # cadence_user_home rather than $HOME or $CLAUDE_DIR_R.
     # PIPELINE_BAT_DIR/GRAPHMAP_BAT_DIR/... override those homes.
     local label bat_dir rearm ver saw_any=0 uh
@@ -523,7 +510,7 @@ EOF
 
 # --- C9: auto-arm scheduler backend (read-only; enable needs sudo) -------------
 # arm-resume.sh schedules the usage-cap auto-resume via an OS scheduler backend
-# (windows=schtasks, linux=at+atd else crontab, macos=crontab). If that backend
+# (linux=at+atd else crontab, macos=crontab). If that backend
 # is absent/disabled the armed resume silently never fires. Detect + remediate
 # only — NEVER sudo (enable lives in the installers). WARN never FAILs: auto-arm
 # is a safety net, its absence must not flip the scripted exit code (mirrors
@@ -663,7 +650,7 @@ check_c14() {
     else
         emit WARN C14-ollama-no-cloud \
             "zero-egress defense-in-depth pin unset -- the primary guarantee (bare model names, cloud opt-in only via -cloud suffix) still holds, but the belt-and-suspenders OLLAMA_NO_CLOUD pin is off" \
-            "set per docs/setup/new-machine.md #1 Required environment (setx on Windows, launchctl/shell-profile on macOS, systemd drop-in/shell-profile on Linux)"
+            "set per docs/setup/new-machine.md #1 Required environment (launchctl/shell-profile on macOS, systemd drop-in/shell-profile on Linux)"
     fi
 }
 
@@ -973,52 +960,33 @@ check_c19() {
         return
     fi
 
-    local install_dir source_dir="$REPO_ROOT/scripts/observability" fix_hint
-    if [ "$gmode" = 1 ]; then
-        install_dir="${DOCTOR_OBSERVABILITY_INSTALL_DIR:-${XDG_DATA_HOME:-${HOME:-}/.local/share}/himmel/observability}"
-        fix_hint="bash scripts/observability/install-grafana.sh install"
-    else
-        install_dir="${DOCTOR_OBSERVABILITY_INSTALL_DIR:-${LOCALAPPDATA:-${HOME:-}/AppData/Local}/himmel/observability}"
-        fix_hint="powershell -ExecutionPolicy Bypass -File scripts/observability/install-stack.ps1"
-    fi
+    # Installed assets exist only for the opt-in Grafana tier (install-grafana.sh);
+    # the exporter-only install (install-stack.sh) has none to compare.
+    local install_dir source_dir="$REPO_ROOT/scripts/observability"
+    local fix_hint="bash scripts/observability/install-grafana.sh install"
     local drift=""
     # compared=1 only on the branch that actually ran cmp/diff (glm-2 CR
     # finding): cmp/diff-unavailable already emits its own INFO
     # here, so it must not ALSO fall through to the "match the repo copies" OK
     # below — that would claim a verification that never happened.
     local compared=0
-    if [ ! -d "$install_dir" ]; then
-        drift=" stack-not-installed"
-    elif ! command -v cmp >/dev/null 2>&1 || ! command -v diff >/dev/null 2>&1; then
-        emit INFO C19-observability "cmp/diff unavailable — installed observability assets not compared" "install cmp + diff, then re-run"
-    elif [ "$gmode" = 1 ]; then
-        compared=1
-        # install-grafana.sh drops the Windows-only exporter stanza (the last one) when it renders prometheus.yml
-        sed -e '/^  - job_name: windows_exporter/,$d' "$source_dir/prometheus.yml" 2>/dev/null | cmp -s - "$install_dir/prometheus.yml" 2>/dev/null || drift="$drift prometheus.yml"
-        cmp -s "$source_dir/alerts.rules.yml" "$install_dir/alerts.rules.yml" 2>/dev/null || drift="$drift alerts.rules.yml"
-        diff -qr "$source_dir/dashboards" "$install_dir/dashboards" >/dev/null 2>&1 || drift="$drift dashboards/"
-    else
-        compared=1
-        cmp -s "$source_dir/prometheus.yml" "$install_dir/prometheus.yml" 2>/dev/null || drift="$drift prometheus.yml"
-        cmp -s "$source_dir/alerts.rules.yml" "$install_dir/alerts.rules.yml" 2>/dev/null || drift="$drift alerts.rules.yml"
-        diff -qr "$source_dir/provisioning" "$install_dir/grafana-provisioning" >/dev/null 2>&1 || drift="$drift provisioning/"
+    if [ "$gmode" = 1 ]; then
+        install_dir="${DOCTOR_OBSERVABILITY_INSTALL_DIR:-${XDG_DATA_HOME:-${HOME:-}/.local/share}/himmel/observability}"
+        if [ ! -d "$install_dir" ]; then
+            drift=" stack-not-installed"
+        elif ! command -v cmp >/dev/null 2>&1 || ! command -v diff >/dev/null 2>&1; then
+            emit INFO C19-observability "cmp/diff unavailable — installed observability assets not compared" "install cmp + diff, then re-run"
+        else
+            compared=1
+            cmp -s "$source_dir/prometheus.yml" "$install_dir/prometheus.yml" 2>/dev/null || drift="$drift prometheus.yml"
+            cmp -s "$source_dir/alerts.rules.yml" "$install_dir/alerts.rules.yml" 2>/dev/null || drift="$drift alerts.rules.yml"
+            diff -qr "$source_dir/dashboards" "$install_dir/dashboards" >/dev/null 2>&1 || drift="$drift dashboards/"
+        fi
     fi
     if [ -n "$drift" ]; then
-        local stale_what="install-stack.ps1"; [ "$gmode" = 1 ] && stale_what="install-grafana.sh"
-        emit WARN C19-observability "observability stack stale — re-run $stale_what (drift:$drift)" "$fix_hint"
+        emit WARN C19-observability "observability stack stale — re-run install-grafana.sh (drift:$drift)" "$fix_hint"
     elif [ "$compared" -eq 1 ]; then
         emit OK C19-observability "installed observability assets match the repo copies"
-    fi
-
-    local missing=""
-    [ -n "${GRAFANA_TELEGRAM_BOT_TOKEN:-}" ] || missing="$missing GRAFANA_TELEGRAM_BOT_TOKEN"
-    [ -n "${GRAFANA_TELEGRAM_CHAT_ID:-}" ] || missing="$missing GRAFANA_TELEGRAM_CHAT_ID"
-    if [ "$gmode" = 1 ]; then
-        : # alerts route to cadence-alert through the local hook, not Telegram variables
-    elif [ -n "$missing" ]; then
-        emit WARN C19-observability "Grafana Telegram delivery variable(s) unset:$missing" "set the user-scoped variables, then re-run install-stack.ps1"
-    else
-        emit OK C19-observability "Grafana Telegram delivery variables are set"
     fi
 
     local curl_bin="${DOCTOR_CURL_BIN:-curl}"
@@ -1038,7 +1006,7 @@ check_c19() {
     elif ! groups="$(printf '%s' "$rules_json" | jq -er 'select(.status == "success") | .data.groups | length' 2>/dev/null)"; then
         emit INFO C19-observability "Prometheus rules endpoint returned an unexpected response — rule groups not checked" "inspect $rules_url"
     elif [ "$groups" -eq 0 ]; then
-        emit WARN C19-observability "Prometheus has zero rule groups — no alert rule has evaluated" "re-run install-stack.ps1, restart Prometheus, then inspect $rules_url"
+        emit WARN C19-observability "Prometheus has zero rule groups — no alert rule has evaluated" "re-run install-grafana.sh, restart Prometheus, then inspect $rules_url"
     else
         emit OK C19-observability "Prometheus reports $groups rule group(s)"
     fi
@@ -1050,7 +1018,7 @@ check_c19() {
     fi
 
     # Grafana liveness (codex-adv CR finding): the checks above
-    # (Prometheus rule-group count, Telegram vars set) can all read OK while
+    # (Prometheus rule-group count) can all read OK while
     # the component that actually evaluates + delivers alerts is down —
     # README.md's Alert rules section is explicit that "No Alertmanager is
     # installed in this stack" and Grafana's provisioning/alerting/rules.yaml
@@ -1120,7 +1088,7 @@ check_c20() {
     if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then sev=WARN; why=" [CI — advisory here]"; fi
     if [ "${NODE_MAJOR_DRIFT_OK:-0}" = 1 ]; then sev=WARN; why=" [NODE_MAJOR_DRIFT_OK=1]"; fi
     emit "$sev" C20-node "node major drift: running $cur, .nvmrc pins $pin — hooks, the Jira CLI, run-hook-with-bash.js and the lanes suites all run on the UNPINNED major here, while CI and adopters run $pin$why" \
-        "align this box (nvm-windows/volta: install + use $pin), or bump .nvmrc to $cur_major once run-shell-tests.sh and the lanes suite are green on it — the pin bump is an operator decision, the doctor never makes it (HIMMEL-1986); NODE_MAJOR_DRIFT_OK=1 downgrades this to a warning (HIMMEL-2010)"
+        "align this box (nvm/volta: install + use $pin), or bump .nvmrc to $cur_major once run-shell-tests.sh and the lanes suite are green on it — the pin bump is an operator decision, the doctor never makes it (HIMMEL-1986); NODE_MAJOR_DRIFT_OK=1 downgrades this to a warning (HIMMEL-2010)"
 }
 
 # --- C21: hermes himmel_agent profile default vs lanes.json record (advisory) ---
@@ -1169,12 +1137,10 @@ check_c21() {
     fi
     expected="$oneshot_model"
     # Resolution order: DOCTOR_HERMES_HOME (test-only override) > HERMES_HOME
-    # (explicit override) > $LOCALAPPDATA/hermes (Windows, when set) >
-    # $HOME/.hermes (Linux/macOS default — upstream hermes' own default
+    # (explicit override) > $HOME/.hermes (upstream hermes' own default
     # config home).
     if [ -n "${DOCTOR_HERMES_HOME:-}" ]; then hermes_home="$DOCTOR_HERMES_HOME"
     elif [ -n "${HERMES_HOME:-}" ]; then hermes_home="$HERMES_HOME"
-    elif [ -n "${LOCALAPPDATA:-}" ]; then hermes_home="$LOCALAPPDATA/hermes"
     else hermes_home="$HOME/.hermes"
     fi
     if [ ! -d "$hermes_home" ]; then
@@ -1330,7 +1296,7 @@ check_c23() {
 # the Telegram bridge's Linux persistence is a systemd --user
 # unit (scripts/himmelctl/lib/bridge-persistence.js installSystemdUnit()),
 # not a crontab row — but the registry names it "HimmelTelegramBridge" (the
-# Windows scheduled-task name; kept stable across platforms on purpose, so
+# name of the retired Windows scheduled task, kept stable on purpose, so
 # this fix does NOT rename the registry entry). The crontab-only probe below
 # therefore WARNed "expected-but-absent" on every Linux station with a
 # WORKING bridge — a permanent false alarm that trains the operator to
@@ -1497,7 +1463,7 @@ check_c24() {
         return
     fi
     # Probe the scheduler ITSELF once before looping --
-    # without this, an access-denied/transient schtasks or crontab error
+    # without this, an access-denied/transient crontab error
     # reads identically to "every expected task is gone" and WARNs on all of
     # them, a false alarm distinct from a genuinely absent task.
     # Availability is tracked PER BACKEND: a missing/failing
@@ -1513,39 +1479,28 @@ check_c24() {
     # false WARN on tasks crontab was never going to be able to answer for.
     local crontab_unavailable=0 crontab_err=""
     local systemctl_bin="${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}"
-    if is_windows; then
-        # Windows has exactly one backend (schtasks) for every cadence task,
-        # so schtasks unavailable really does mean nothing here can be
-        # checked -- the original whole-check bail is still correct as-is.
-        if ! command -v schtasks >/dev/null 2>&1 || ! MSYS_NO_PATHCONV=1 schtasks /query >/dev/null 2>&1; then
-            emit INFO C24-cadence-registry "the live scheduler (schtasks) is unreachable -- expected-cadence check skipped (not a false-clean OK)" "verify manually: schtasks /query"
-            return
-        fi
+    if ! command -v crontab >/dev/null 2>&1; then
+        crontab_unavailable=1
     else
-        if ! command -v crontab >/dev/null 2>&1; then
+        crontab_err="$(crontab -l 2>&1 >/dev/null)"
+        # Mirrors graphmap-cadence.sh's cron_read classification: "no
+        # crontab for this user" is the normal empty case, not a failure.
+        if ! crontab -l >/dev/null 2>/dev/null && ! printf '%s' "$crontab_err" | grep -qi 'no crontab'; then
             crontab_unavailable=1
-        else
-            crontab_err="$(crontab -l 2>&1 >/dev/null)"
-            # Mirrors graphmap-cadence.sh's cron_read classification: "no
-            # crontab for this user" is the normal empty case, not a failure.
-            if ! crontab -l >/dev/null 2>/dev/null && ! printf '%s' "$crontab_err" | grep -qi 'no crontab'; then
-                crontab_unavailable=1
-            fi
-        fi
-        # here-string, not a `producer | grep -q` pipe -- see _c24_cron_has_task's
-        # comment above on why that shape is unsafe under this file's pipefail.
-        if [ "$crontab_unavailable" -eq 1 ] && { ! grep -qx 'HimmelTelegramBridge' <<< "$expected" || ! command -v "$systemctl_bin" >/dev/null 2>&1; }; then
-            emit INFO C24-cadence-registry "the live scheduler (crontab) is unreachable -- expected-cadence check skipped (not a false-clean OK)" "verify manually: crontab -l"
-            return
         fi
     fi
+    # here-string, not a `producer | grep -q` pipe -- see _c24_cron_has_task's
+    # comment above on why that shape is unsafe under this file's pipefail.
+    if [ "$crontab_unavailable" -eq 1 ] && { ! grep -qx 'HimmelTelegramBridge' <<< "$expected" || ! command -v "$systemctl_bin" >/dev/null 2>&1; }; then
+        emit INFO C24-cadence-registry "the live scheduler (crontab) is unreachable -- expected-cadence check skipped (not a false-clean OK)" "verify manually: crontab -l"
+        return
+    fi
+
 
     local missing="" indeterminate="" indeterminate_crontab_only="" task
     while IFS= read -r task; do
         [ -n "$task" ] || continue
-        if is_windows; then
-            MSYS_NO_PATHCONV=1 schtasks /query /tn "$task" >/dev/null 2>&1 || missing="$missing $task"
-        elif [ "$task" = "HimmelTelegramBridge" ] && command -v "$systemctl_bin" >/dev/null 2>&1; then
+        if [ "$task" = "HimmelTelegramBridge" ] && command -v "$systemctl_bin" >/dev/null 2>&1; then
             case "$(_systemd_user_unit_state "$systemctl_bin" telegram-bridge.service)" in
                 enabled) : ;; # present via systemd — the crontab probe never had this task's row
                 unknown)
@@ -1632,12 +1587,9 @@ EOF
 # how loops bound themselves going forward; this check sweeps for the ones
 # already running). Reports processes whose COMMAND LINE (or, on Linux via
 # /proc, CWD) references a Claude per-session area -- .claude*/projects/
-# session dirs or the himmel handover bridge session dirs, either separator
-# style -- AND whose parent process is dead, NAMING the dead parent.
-# Windows-first: Windows has no reparenting, so an orphan's ParentProcessId
-# still names the DEAD pid (modulo pid reuse). POSIX degrade via ps: a dead
-# parent has usually been reparented to init, so ppid 1 is flagged as such
-# there. REPORT and OFFER the kill only -- this check never terminates
+# session dirs or the himmel handover bridge session dirs -- AND whose parent
+# process is dead, NAMING the dead parent. A dead parent has usually been
+# reparented to init, so ppid 1 is flagged as such. REPORT and OFFER the kill only -- this check never terminates
 # anything itself. Never a FAIL: like C7-C19 it is advisory, so scripted
 # doctor runs stay usable while an operator decides.
 #
@@ -1649,34 +1601,13 @@ check_c25() {
         emit OK C25-orphans "orphaned scratchpad watcher scan skipped by test seam"
         return
     fi
-    # A scratchpad reference: a per-session Claude path, either separator
-    # style (Windows cmdlines are backslashed, MSYS ones forward-slashed),
-    # any CLAUDE_DIR suffix (e.g. the glm lane's ~/.claude-glm).
+    # A scratchpad reference: a per-session Claude path, any CLAUDE_DIR suffix (e.g. the glm lane's ~/.claude-glm).
     local c25_pattern='\.claude([A-Za-z0-9_-]*)[/\\](projects[/\\]|handover[/\\]bridge[/\\])'
-    local c25_windows=0
-    is_windows && c25_windows=1
     local scan="" rc=0
     if [ -n "${DOCTOR_ORPHAN_SCAN_SHIM:-}" ]; then
         scan="$("$DOCTOR_ORPHAN_SCAN_SHIM" 2>/dev/null)" || rc=$?
-    elif [ "$c25_windows" -eq 1 ]; then
-        local c25_ps=""
-        c25_ps="$(resolve_powershell)" || c25_ps=""
-        if [ -z "$c25_ps" ]; then
-            emit WARN C25-orphans "cannot evaluate orphaned scratchpad watchers on this platform (no PowerShell for the Win32_Process scan) -- this is NOT a clean bill of health" "install PowerShell, then re-run"
-            return
-        fi
-        # Dumb dump only -- every decision (pattern match, parent liveness,
-        # naming) lives in THIS script where it is testable. Newlines in a
-        # CommandLine are flattened so one process stays one line.
-        #
-        # The single quotes are LOAD-BEARING: the payload is PowerShell, and
-        # its $_ / $c must reach powershell unexpanded. Double-quoting it would
-        # let bash eat them first -- MSYS mangles a bare $_ into the literal
-        # "unsetenv", which is a real failure mode seen on this box.
-        # shellcheck disable=SC2016
-        scan="$("$c25_ps" -NoProfile -NonInteractive -Command 'Get-CimInstance Win32_Process | ForEach-Object { $c = $_.CommandLine; if ($null -eq $c) { $c = "" }; $c = $c -replace "\r"," " -replace "\n"," "; "{0}|{1}|{2}" -f $_.ProcessId, $_.ParentProcessId, $c }' 2>/dev/null)" || rc=$?
     else
-        # POSIX: normalise pid/ppid/command into the same pid|ppid|cmdline
+        # Normalise pid/ppid/command into the same pid|ppid|cmdline
         # shape (the command column is last, so a | inside it survives the
         # field split below).
         scan="$({ ps -ww -e -o pid=,ppid=,command= || ps -e -o pid=,ppid=,command=; } 2>/dev/null | sed -E 's/^ *([0-9]+) +([0-9]+) /\1|\2|/')" || rc=$?
@@ -1689,7 +1620,7 @@ check_c25() {
     fi
     # Linux cwd add-on: /proc exposes each process's working directory, so a
     # watcher whose cmdline no longer names the scratchpad but which still
-    # RUNS from one is caught too. (Windows CIM and macOS expose no cheap
+    # RUNS from one is caught too. (macOS exposes no cheap
     # per-process cwd; the cmdline scan is the whole story there.) Skipped
     # under the shim so fixtures stay host-independent.
     if [ -z "${DOCTOR_ORPHAN_SCAN_SHIM:-}" ] && [ -r /proc/self/cwd ]; then
@@ -1723,11 +1654,9 @@ $scan"
 $seen"
         parent_note=""
         if printf '%s\n' "$live_pids" | grep -qx "$pppid"; then
-            # Parent alive. On POSIX an orphan is usually REPARENTED to init,
-            # which hides the dead parent -- flag that shape there (never on
-            # Windows, where no reparenting exists and ppid 1 means init
-            # itself spawned it).
-            if [ "$pppid" = 1 ] && [ "$c25_windows" -eq 0 ]; then
+            # Parent alive. An orphan is usually REPARENTED to init,
+            # which hides the dead parent -- flag that shape.
+            if [ "$pppid" = 1 ]; then
                 parent_note="reparented to init (pid 1) -- original parent exited"
             else
                 continue
@@ -1747,7 +1676,7 @@ $seen"
     fi
     emit WARN C25-orphans \
         "$n orphaned Claude-scratchpad watcher process(es) -- parent dead, still running (HIMMEL-1820 class)" \
-        "inspect each line, then terminate the ones that are not yours: taskkill /PID <pid> /T /F (Windows) or kill <pid> (POSIX) -- this check never terminates anything itself"
+        "inspect each line, then terminate the ones that are not yours: kill <pid> -- this check never terminates anything itself"
     printf '%s' "$rows"
     if [ "$n" -gt 8 ]; then
         printf '       · ...and %d more\n' "$((n-8))"
@@ -1757,7 +1686,7 @@ $seen"
 # --- C26: salus profile marker present but PHI guard marker absent (advisory) ---
 # The salus medical-vault profile installer/upgrade drops `.salus-profile`
 # (template machinery) at the vault root; the PHI launcher guards (claude-glm/
-# claude-codex + their .ps1 twins + the hermes parity guard, and
+# claude-codex + the hermes parity guard, and
 # scripts/telegram/phi-egress-guard.ts) test for `.salus` before refusing a cloud/
 # codex launch there (now `.salus-profile` too, as a defense
 # part 2). A vault that carries the profile marker but no `.salus` looks
@@ -1955,8 +1884,8 @@ check_c28_guardrail_consent() {
 #
 # Where /proc is absent (macOS) the same facts come from ps: `ps -axo` for
 # the process tree and `ps -E` for a process's environment (readable for the
-# current user's own processes). Git Bash has an MSYS /proc and takes the proc
-# route; only a platform with neither procfs nor `ps -E` skips cleanly, never
+# current user's own processes).
+# Only a platform with neither procfs nor `ps -E` skips cleanly, never
 # a false WARN.
 # An orphaned `claude -p`/`--print` or `claude daemon run` root
 # is not an interactive session and is left alone.
@@ -2149,10 +2078,9 @@ check_c30() {
     if ! command -v "$systemctl_bin" >/dev/null 2>&1; then
         # Scoped to SYSTEMD persistence specifically:
         # this check only ever speaks to the systemd unit, so it must not
-        # imply a whole-host verdict. C24 explicitly supports a Windows
-        # `HimmelTelegramBridge` SCHEDULED TASK as an alternative persistence
-        # mechanism this check knows nothing about -- "no bridge persistence
-        # possible here" was false on exactly that platform.
+        # imply a whole-host verdict. C24 covers the crontab-registered
+        # `HimmelTelegramBridge` task, which this check knows nothing about --
+        # "no bridge persistence possible here" would be false there.
         emit OK C30-bridge-liveness "no systemctl on this host — no systemd-unit bridge persistence to check here (a scheduled-task equivalent, if any, is C24's concern, not this check's)"
         return
     fi
@@ -2872,9 +2800,7 @@ check_c34() {
 # edited path under /tmp, found that .git, treated /tmp itself as a repo
 # root, and failed closed on every Write/Edit under /tmp station-wide with
 # "cannot determine branch for '/tmp' - refusing to evaluate" — invisible to
-# this doctor until now. Platform guard: POSIX ${TMPDIR:-/tmp} and Windows
-# $TEMP/$TMP are both checked directly (is_windows() branch below) rather
-# than needing a .ps1 twin.
+# this doctor until now. The system temp dir is ${TMPDIR:-/tmp}.
 #
 # WARN only, never FAIL: this is an environmental accident, not a repo
 # misconfiguration, and the doctor's exit code must not flip on it. Never
@@ -2882,16 +2808,7 @@ check_c34() {
 # never be touched by an unattended pass; the remedy is printed, not run.
 check_c36_stray_tmp_git() {
     local tmp_git="" tmp_git_q=""
-    if is_windows; then
-        local base="${TEMP:-${TMP:-}}"
-        if [ -z "$base" ]; then
-            emit INFO C36-stray-tmp-git "neither TEMP nor TMP is set — cannot resolve the system temp dir to check for a stray .git"
-            return
-        fi
-        tmp_git="$base/.git"
-    else
-        tmp_git="${TMPDIR:-/tmp}/.git"
-    fi
+    tmp_git="${TMPDIR:-/tmp}/.git"
     tmp_git_q="$(printf '%q' "$tmp_git")"
 
     if [ ! -e "$tmp_git" ]; then
@@ -4245,7 +4162,6 @@ check_c60_hermes_origin() {
     local co="${DOCTOR_HERMES_CHECKOUT:-}" url
     if [ -z "$co" ]; then
         if [ -n "${HERMES_HOME:-}" ]; then co="$HERMES_HOME/hermes-agent"
-        elif [ -n "${LOCALAPPDATA:-}" ]; then co="$LOCALAPPDATA/hermes/hermes-agent"
         else co="${HOME:-}/.hermes/hermes-agent"
         fi
     fi
@@ -4272,7 +4188,6 @@ check_c66_hermes_cron_hooks() {
     local co="${DOCTOR_HERMES_CHECKOUT:-}" f body gw_pid gw_age gw_start mtime
     if [ -z "$co" ]; then
         if [ -n "${HERMES_HOME:-}" ]; then co="$HERMES_HOME/hermes-agent"
-        elif [ -n "${LOCALAPPDATA:-}" ]; then co="$LOCALAPPDATA/hermes/hermes-agent"
         else co="${HOME:-}/.hermes/hermes-agent"
         fi
     fi
@@ -4319,7 +4234,6 @@ check_c67_hermes_fail_open() {
     local hermes_home cfg open="" n
     if [ -n "${DOCTOR_HERMES_HOME:-}" ]; then hermes_home="$DOCTOR_HERMES_HOME"
     elif [ -n "${HERMES_HOME:-}" ]; then hermes_home="$HERMES_HOME"
-    elif [ -n "${LOCALAPPDATA:-}" ]; then hermes_home="$LOCALAPPDATA/hermes"
     else hermes_home="${HOME:-}/.hermes"
     fi
     if [ ! -d "$hermes_home" ]; then
@@ -4363,7 +4277,7 @@ check_c67_hermes_fail_open() {
 # wake an idle chief (rc 3). Read-only; the doctor does not edit konsolerc.
 check_c68_konsole_dbus() {
     local rc="${XDG_CONFIG_HOME:-${HOME:-}/.config}/konsolerc"
-    if is_windows || ! command -v "${DOCTOR_KONSOLE:-konsole}" >/dev/null 2>&1; then
+    if ! command -v "${DOCTOR_KONSOLE:-konsole}" >/dev/null 2>&1; then
         emit INFO C68-konsole-dbus "konsole not installed — bus-idle-waker's sendText wake is not used here"
         return
     fi
@@ -4655,9 +4569,9 @@ check_c65_git_gates() {
         emit WARN C65-git-hooks "check-hookspath.sh exited $rc (expected 0 or 1) — core.hooksPath UNVERIFIED: $(printf '%s' "$hp_out" | head -1 | cut -c1-120)"
     fi
     hooks_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)" || hooks_dir=""
-    case "$hooks_dir" in /*|[A-Za-z]:[/\\]*) ;; *) hooks_dir="$(git -C "$REPO_ROOT" rev-parse --git-path hooks 2>/dev/null)"; hooks_dir="$REPO_ROOT/$hooks_dir" ;; esac
+    case "$hooks_dir" in /*) ;; *) hooks_dir="$(git -C "$REPO_ROOT" rev-parse --git-path hooks 2>/dev/null)"; hooks_dir="$REPO_ROOT/$hooks_dir" ;; esac
     for h in pre-commit commit-msg pre-push; do
-        if [ ! -f "$hooks_dir/$h" ] || { ! is_windows && [ ! -x "$hooks_dir/$h" ]; }; then missing="$missing${missing:+, }$h"
+        if [ ! -f "$hooks_dir/$h" ] || [ ! -x "$hooks_dir/$h" ]; then missing="$missing${missing:+, }$h"
         elif ! grep -q 'File generated by pre-commit' "$hooks_dir/$h" 2>/dev/null || ! grep -q -- "--hook-type=$h" "$hooks_dir/$h" 2>/dev/null; then foreign="$foreign${foreign:+, }$h"; fi
     done
     if [ -n "$foreign" ] && [ -z "$missing" ]; then

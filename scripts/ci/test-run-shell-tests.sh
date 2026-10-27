@@ -797,7 +797,7 @@ fi
 rm -rf "$sb13f"
 fi
 
-# 13g — the sweep rows (gitleaks, flock, node x2, jq x6) are each
+# 13g — the sweep rows (gitleaks, flock, node, jq x6) are each
 # pinned behaviourally: with the row's tool off PATH the suite is
 # [SKIPped loudly with `capability: <tool> not on PATH` and never executed. One
 # sandbox per tool holds every suite that tool gates; the PATH carries every
@@ -806,7 +806,6 @@ sweep13g_rows="
 gitleaks scripts/guardrails/test-gitleaks-retired-org.sh
 flock scripts/handover/chief-kit/test-worker-doc-lock.sh
 node scripts/hooks/test-check-hook-lib-suites.sh
-node scripts/observability/test-agent-runtime-census.sh
 jq scripts/hooks/test-check-hook-file-parse.sh
 jq scripts/hooks/test-crlf-boundary.sh
 jq scripts/hooks/test-trigger-cr-on-pr-create.sh

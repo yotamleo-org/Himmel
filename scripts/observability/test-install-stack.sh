@@ -151,11 +151,11 @@ for verb in enable start restart; do
     case "$calls" in *"systemctl --user $verb "*) fail "status must not $verb" "$calls" ;; *) pass "status does not $verb" ;; esac
 done
 
-echo "case 8: Windows shells are pointed at install-stack.ps1"
+echo "case 8: Windows shells are refused"
 setup MINGW64_NT-10.0 200 200 1
 run install
 assert_eq "windows rc" 2 "$RC"
-assert_contains "points at ps1" "install-stack.ps1" "$OUT"
+assert_contains "says unsupported" "Windows is not supported" "$OUT"
 
 echo "case 9: missing bun fails before writing anything"
 setup Linux 200 200 1

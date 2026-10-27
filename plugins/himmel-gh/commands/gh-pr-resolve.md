@@ -19,7 +19,7 @@ through the active forge (GitHub GraphQL or, for a `bitbucket.org` repo, the
 `bitbucket pr resolve` REST verb — spec §5.3):
 
 ```
-himmel-run gh --summary-regex 'resolved: ok' -- node $CLAUDE_PROJECT_DIR/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner "$owner" --repo "$name" --number "$pr_n" --prefix "$1" --reason "$2"
+himmel-run gh --summary-regex 'resolved: ok' -- node "$HIMMEL_REPO/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs" --owner "$owner" --repo "$name" --number "$pr_n" --prefix "$1" --reason "$2"
 ```
 
 `$2` is the reason, quoted as one argument: `"fixed <sha>"`, `"followup <KEY-n>"`

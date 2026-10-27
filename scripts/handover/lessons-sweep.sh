@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/lessons-sweep.sh — proposal-only lessons sweep
 # Read-only: collects resolved/wontfix bug symptoms and
-# CR-finding titles across every handover item, flags text recurring across
+# CR-finding titles and "## Lessons" bullets of next-session files across every handover item, flags text recurring across
 # >=2 items as lesson CANDIDATES, then prints a digest. Writes nothing — the
 # operator promotes what's worth keeping (no auto-write to vault / CLAUDE.md).
 set -uo pipefail
@@ -68,6 +68,24 @@ while IFS= read -r nf2; do
   ' "$nf2")
 done < <(find "$root" -type f -name reviewer-notes.md | LC_ALL=C sort)
 
+# Lessons workers write: bullets under "## Lessons" in a next-session file.
+while IFS= read -r ns; do
+  [ -n "$ns" ] || continue
+  item="$(dirname "$ns")"; label="${item#"$root"}"; label="${label#/}"
+  while IFS= read -r lesson; do
+    [ -n "$lesson" ] || continue
+    key="$(norm "$lesson")"
+    digest="${digest}- lesson · ${label} · ${lesson}
+"
+    pairs="${pairs}${label}${TAB}${key}${TAB}${lesson}
+"
+  done < <(awk '
+    /^## Lessons[[:space:]]*$/ { inl=1; next }
+    inl && /^## / { inl=0 }
+    inl && /^- / { print substr($0, 3) }
+  ' "$ns")
+done < <(find "$root" -type f -name 'next-session-*.md' | LC_ALL=C sort)
+
 # Recurring: a norm-key appearing in >=2 DISTINCT items.
 recurring="$(printf '%s' "$pairs" | awk -F"$TAB" '
   NF>=3 {
@@ -85,5 +103,9 @@ printf '## Digest\n'
 if [ -z "$digest" ]; then
   printf '_No resolved bugs or CR findings yet._\n'
 else
+  # Check share: lessons carrying "check: <name>" / "guardrail: <name>"; "none" names no check.
+  total="$(printf '%s' "$digest" | grep -c '^- ')"
+  named="$(printf '%s' "$digest" | grep -Ei '(check|guardrail): *[^ )]' | grep -Eivc '(check|guardrail): *none\b')"
+  printf 'Check share: %s/%s lessons (%s%%) name a check or guardrail\n\n' "$named" "$total" "$((named * 100 / total))"
   printf '%s' "$digest"
 fi

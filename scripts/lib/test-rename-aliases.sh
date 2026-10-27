@@ -199,12 +199,10 @@ trap 'rm -rf "$FT"' EXIT
 forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
   d="$FT/$old"
-  [ "$old" = headed-arm-leg.sh ] && d="$FT/$old/handover/chief-kit"
   mkdir -p "$d"
   check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
   cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
   [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
-  [ "$old" = headed-arm-leg.sh ] && mkdir -p "$FT/$old/lib" && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$FT/$old/lib/"
   printf '%s\n' "$src" > "$d/$new"
   out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
   rc=$?
@@ -322,7 +320,6 @@ while IFS= read -r want; do
 done <<EOF
 $V5A_ROWS
 EOF
-forwards bash scripts/handover/chief console.sh chief.sh "$SH_STUB"
 # The old lib path is gone: no forwarder file, no registry row.
 check "scripts/lib/chief-context.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/chief-context.sh" ] && echo yes || echo no)"
 check "scripts/lib/console-context.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/console-context.sh" ] && echo yes || echo no)"
@@ -330,7 +327,7 @@ check "the registry has no console-context.sh row" "0" "$(printf '%s\n' "$ROWS" 
 stub .claude/commands/supervisor-session.md .claude/commands/chief.md
 stub .claude/commands/console.md .claude/commands/chief.md
 
-# --- slice V4b: the worker scripts, each old path a forwarder to the new one ---
+# --- slice V4b: the worker scripts, each old name a registry row ---
 V4B_ROWS='close-wrapped-leg.sh|close-wrapped-worker.sh|identifier|old-to-new|V4b|X
 headed-arm-leg.sh|headed-arm-worker.sh|identifier|old-to-new|V4b|X
 leg-digest-step.sh|worker-digest-step.sh|identifier|old-to-new|V4b|X
@@ -349,29 +346,16 @@ while IFS= read -r want; do
 done <<EOF
 $V4B_ROWS
 EOF
-forwards bash scripts/handover/chief-kit headed-arm-leg.sh headed-arm-worker.sh "$SH_STUB"
+# The V4b and V5 script forwarders are removed; their registry rows stay.
+for gone in scripts/handover/chief/console.sh \
+  scripts/handover/chief-kit/headed-arm-leg.sh \
+  scripts/handover/chief-kit/leg-digest-step.sh scripts/handover/chief-kit/leg-doc-lock.sh \
+  scripts/handover/chief-kit/leg-event.sh scripts/handover/chief-kit/leg-jira-status.sh \
+  scripts/handover/chief-kit/leg-pretrust.sh scripts/handover/chief-kit/leg-transcripts.sh \
+  scripts/graphify/leg-graph.sh scripts/lib/leg-identity.sh; do
+  check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
+done
 forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
-forwards bash scripts/handover/chief-kit leg-digest-step.sh worker-digest-step.sh "$SH_STUB"
-forwards bash scripts/handover/chief-kit leg-event.sh worker-event.sh "$SH_STUB"
-forwards bash scripts/handover/chief-kit leg-jira-status.sh worker-jira-status.sh "$SH_STUB"
-forwards bash scripts/handover/chief-kit leg-pretrust.sh worker-pretrust.sh "$SH_STUB"
-forwards bash scripts/graphify leg-graph.sh worker-graph.sh "$SH_STUB"
-# The three sourced libraries load the new file from any cwd and stay silent.
-sources_alias() {  # sources_alias <dir> <old> <new>
-  local dir="$1" old="$2" new="$3" d out
-  d="$FT/v4b-$old"
-  mkdir -p "$d" "$FT/v4b-cwd"
-  check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
-  cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
-  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
-  printf 'v4b_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/$new"
-  out="$(cd "$FT/v4b-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v4b_probe x' _ "$d/$old" 2> "$d/err")"
-  check "$old sources $new from another cwd and keeps its status" "rc=5|NEW:x" "$out"
-  check "$old prints nothing when sourced" "" "$(cat "$d/err")"
-}
-sources_alias scripts/lib leg-identity.sh worker-identity.sh
-sources_alias scripts/handover/chief-kit leg-doc-lock.sh worker-doc-lock.sh
-sources_alias scripts/handover/chief-kit leg-transcripts.sh worker-transcripts.sh
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do

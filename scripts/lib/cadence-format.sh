@@ -40,7 +40,7 @@
 # keeps firing the corrupted form, so an operator whose bat dir / repo root /
 # vault path carries one of those characters must `arm --force` to pick the fix
 # up. Everyone else's regenerated runner is byte-identical bar the stamp.
-# v6: the codex-sweep runner gained a THIRD payload worker
+# v6: a legacy pwsh runner gained a THIRD payload worker
 # (reap-superseded-fleets.ps1 -Kill, the duplicate-fleet-under-a-LIVE-broker
 # check) and its trigger gained an intra-day <Repetition>. An armed v5 cadence
 # still fires, but only the two old workers and only once a day — so the leak class
@@ -65,13 +65,13 @@
 # hardcoded, so adopters who install Git outside C:\Program Files get the right
 # path. An armed v7 runner keeps firing under the bare Windows PATH, so an
 # operator must `arm --force` to pick up the prepend. Affects the bash-emitters
-# (graphmap/qmd/pipeline); drift-fix (claude-direct) and codex-sweep (pwsh) bake
+# (graphmap/qmd/pipeline); drift-fix (claude-direct) and the legacy pwsh runner bake
 # no bash.exe into their runner and are unaffected. POSIX cron runners unaffected.
-# v9: the codex-sweep .bat preserves every payload rc and exits
+# v9: the legacy pwsh .bat preserves every payload rc and exits
 # non-zero after all three workers when any worker failed. An armed v8 runner logs a
 # refusing sweep but returns the final successful worker's rc to Task Scheduler,
 # leaving LastTaskResult=0 while the primary sweep accomplished nothing. Re-arm
-# with `codex-sweep-cadence.sh arm --force` to regenerate the runner.
+# with `<cadence>.sh arm --force` to regenerate the runner.
 # v10: every generated task's Exec is now a hidden powershell.exe
 # wrapper (`-WindowStyle Hidden -Command "& '<bat>'; exit $LASTEXITCODE"`)
 # around the .bat, not the bare .bat. A bare .bat Exec pops a visible conhost
@@ -103,7 +103,7 @@
 # detection and "stopped firing" is indistinguishable from "never armed".
 # (b) every emitter prefixes its shim-resolvable payload invocation with
 # `call` (the #1454 fix, carried to the pipeline claude line, the fetch-health
-# python line, codex-sweep's three pwsh workers and graphmap's payload): without
+# python line, the legacy pwsh runner's three workers and graphmap's payload): without
 # it, a payload that resolves to a .cmd/.bat shim makes cmd.exe transfer
 # control away for good, so the rc stamp, the ledger end row and the `exit /b`
 # after it never run. Re-arm each cadence with `arm --force` to pick both up.

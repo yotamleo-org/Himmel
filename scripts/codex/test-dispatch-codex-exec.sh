@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Hermetic tests for dispatch-codex-exec.sh.
-# No real codex install: CODEX_BIN + CODEX_ACL_NORMALIZE inject stubs that
-# record their argv/cwd/order. Asserts the lane invariants: ACL preflight
-# before codex + fail-closed, critic-model default (unless caller-named), the
+# No real codex install: CODEX_BIN injects a stub that records its
+# argv/cwd/order. Asserts the lane invariants: critic-model default (unless caller-named), the
 # --background refusal, the workspace-redirect/sandbox-widening deny-list,
 # and the --reasoning-effort passthrough.
 set -euo pipefail
@@ -52,17 +51,6 @@ exit 0
 EOF
 chmod +x "$CODEX_STUB"
 
-# preflight stub: records invocation order + its worktree arg; exit code via file.
-NORM_STUB="$TMP/norm-stub.sh"
-cat > "$NORM_STUB" <<EOF
-#!/usr/bin/env bash
-echo "normalize" >> "$LOG"
-printf '%s\n' "\$1" > "$TMP/norm.arg"
-exit \$(cat "$TMP/norm.rc")
-EOF
-chmod +x "$NORM_STUB"
-echo 0 > "$TMP/norm.rc"
-
 # reap-mcp-fleet stub: records invocation + argv, exits 0 - no
 # real process table or pwsh is touched. Injected into every run_dispatch
 # call below so a codex stub that actually runs (rc-0 or nonzero-rc paths)
@@ -83,7 +71,7 @@ LEDGER="$TMP/flow-runs.jsonl"
 
 run_dispatch() {  # run_dispatch <args...> ; sets $RC and $OUT
   set +e
-  OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+  OUT="$(CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
       bash "$DISPATCH" "$@" 2>&1)"
@@ -92,8 +80,8 @@ run_dispatch() {  # run_dispatch <args...> ; sets $RC and $OUT
 }
 
 # the hook-trust preflight reads $CODEX_HOME/config.toml, which no
-# hermetic row below fixtures. Default every dispatch to a pass stub (the
-# CODEX_ACL_NORMALIZE idiom); section 16 unsets it to run the REAL check.
+# hermetic row below fixtures. Default every dispatch to a pass stub;
+# section 16 unsets it to run the REAL check.
 TRUST_PASS_STUB="$TMP/trust-pass.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TRUST_PASS_STUB"
 chmod +x "$TRUST_PASS_STUB"
@@ -124,7 +112,7 @@ for subargs in "resume --all" "review x" "--json resume --all" "--sandbox worksp
 done
 
 # --- 2.7: --json passes the allow-list; symlinked worktree refused (final rd) -
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" --json do-it
 assert_rc 0 "--json allowed through the allow-list" "json rc=$RC out=$OUT"
 LINKED="$TMP/.claude/worktrees/linked-wt"
@@ -145,20 +133,12 @@ case "$OUT" in *"--background refused"*) pass "--background refusal names the ru
 if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite --background"; else pass "codex not invoked on --background"; fi
 
 # --- 4: default dispatch follows the critic and runs preflight first ---------
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" do-the-task
 assert_rc 0 "default dispatch exits 0" "default rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
   "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=272000 do-the-task") pass "$CRITIC_MODEL pin + sandbox pin injected" ;;
   *) fail "codex args: $(cat "$TMP/codex.args")" ;;
-esac
-case "$(tr '\n' ' ' < "$LOG")" in
-  "normalize codex "*) pass "preflight runs before codex" ;;
-  *) fail "call order: $(tr '\n' ' ' < "$LOG")" ;;
-esac
-case "$(cat "$TMP/norm.arg")" in
-  "$WT") pass "preflight got the worktree path" ;;
-  *) fail "norm arg: $(cat "$TMP/norm.arg")" ;;
 esac
 
 # --- 5: codex runs with cwd = the worktree -----------------------------------
@@ -244,7 +224,7 @@ for sflag in "--sandbox" "-s"; do
   if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite $sflag pair"; else pass "codex not invoked on $sflag pair"; fi
 done
 # non-widening sandbox value passes through
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" --sandbox workspace-write do-it
 assert_rc 0 "--sandbox workspace-write allowed" "sandbox-ok rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
@@ -267,15 +247,8 @@ case "$(cat "$TMP/codex.args")" in
   *) fail "m-attach codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
-# --- 7: preflight failure aborts the dispatch (fail-closed, exit 1) ----------
-: > "$LOG"; echo 1 > "$TMP/norm.rc"
-run_dispatch --worktree "$WT" do-the-task
-assert_rc 1 "preflight failure exits 1" "preflight-fail rc=$RC out=$OUT"
-case "$OUT" in *"ACL preflight failed"*) pass "preflight failure is named";; *) fail "preflight-fail out: $OUT";; esac
-if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite preflight failure"; else pass "codex not invoked on preflight failure"; fi
-
 # --- 8: --model=<value> equals form and -m short form detected --------------
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" --model=qwen-plus do-it
 assert_rc 0 "--model= equals form exits 0" "model-eq rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
@@ -317,30 +290,12 @@ EOF
 
 # --- 12: codex CLI missing -> exit 127 with the CODEX_BIN hint ----------------
 set +e
-OUT="$(CODEX_BIN="$TMP/definitely-not-a-binary" CODEX_ACL_NORMALIZE="$NORM_STUB" \
+OUT="$(CODEX_BIN="$TMP/definitely-not-a-binary" \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
 RC=$?
 set -e
 assert_rc 127 "missing codex CLI exits 127" "no-codex rc=$RC out=$OUT"
 case "$OUT" in *"set CODEX_BIN"*) pass "missing-codex message names CODEX_BIN";; *) fail "no-codex out: $OUT";; esac
-
-# --- 13: worktree vanishing after the preflight is named distinctly ----------
-VANISH_WT="$TMP/.claude/worktrees/vanish-wt"
-mkdir -p "$VANISH_WT"
-VANISH_NORM="$TMP/vanish-norm.sh"
-cat > "$VANISH_NORM" <<EOF
-#!/usr/bin/env bash
-rmdir "\$1"
-exit 0
-EOF
-chmod +x "$VANISH_NORM"
-set +e
-OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$VANISH_NORM" \
-    bash "$DISPATCH" --worktree "$VANISH_WT" do-it 2>&1)"
-RC=$?
-set -e
-assert_rc 1 "vanished worktree exits 1" "vanish rc=$RC out=$OUT"
-case "$OUT" in *"worktree vanished before dispatch"*) pass "vanish failure is named";; *) fail "vanish out: $OUT";; esac
 
 # --- 14: --shared-branch mode ------------------------------------
 # Real git repo + real worktree under .claude/worktrees (so the containment
@@ -360,7 +315,7 @@ SB_WT="$TMP/.claude/worktrees/sb-wt"
 git -C "$SB_REPO" worktree add -q "$SB_WT" -b "feat/shared" >/dev/null 2>&1
 
 # 14a: happy path - matching branch, clean tree -> codex runs, lock released after.
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$SB_WT" --shared-branch "feat/shared" do-it
 assert_rc 0 "shared-branch happy path exits 0" "sb-happy rc=$RC out=$OUT"
 if grep -q codex "$LOG" 2>/dev/null; then pass "codex invoked in shared-branch happy path"; else fail "codex not invoked in shared-branch happy path: $OUT"; fi
@@ -435,7 +390,7 @@ EOF
 # new always-a-child flow. A dedicated slow stub records its own pid and
 # snapshots $CODEX_JOBS_DIR mid-run (the parent's registry write is racing
 # the child's start, so the child sleeps briefly first).
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 rm -f "$TMP/jobs-during.txt" "$TMP/codex.pid" "$TMP/reap.args"
 SLOW_CODEX_STUB="$TMP/codex-slow-stub"
 cat > "$SLOW_CODEX_STUB" <<EOF
@@ -448,7 +403,7 @@ exit 0
 EOF
 chmod +x "$SLOW_CODEX_STUB"
 set +e
-OUT="$(CODEX_BIN="$SLOW_CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$SLOW_CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -481,7 +436,7 @@ esac
 # --- 16: --reasoning-effort passthrough --------------------------
 # 16a: two-word form, valid value -> translated to -c model_reasoning_effort="<v>"
 #      and stripped from the codex passthrough.
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" --reasoning-effort high do-it
 assert_rc 0 "--reasoning-effort two-word form exits 0" "reff-two rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
@@ -536,7 +491,7 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite raw -c alo
 
 # 16h: --reasoning-effort as the ONLY arg (no prompt word) - exercises the
 # zero-element NEW_ARGS guard (set -u safe empty-array rebuild on pre-4.4 bash).
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 run_dispatch --worktree "$WT" --reasoning-effort medium
 assert_rc 0 "--reasoning-effort as sole arg exits 0 (empty positional rebuild)" "reff-only rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
@@ -602,9 +557,9 @@ else
 fi
 
 # 17b: a malformed budget REFUSES rather than degrading to an unbounded wait.
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 set +e
-OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=nope \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -621,7 +576,7 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite a malforme
 for bad_to in 86401 99999999999999999999; do
   : > "$LOG"
   set +e
-  OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+  OUT="$(CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT="$bad_to" \
       bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -634,7 +589,7 @@ done
 : > "$LOG"
 run_dispatch_to() {
   set +e
-  OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+  OUT="$(CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT="$1" \
       bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -649,10 +604,10 @@ assert_rc 0 "CODEX_EXEC_TIMEOUT at the 86400 ceiling accepted" "ceiling rc=$RC o
 # could not tell that it had — the run would report the child's bare 143, keep
 # no evidence, and cancel the watchdog mid-escalation. TMPDIR pointed at a
 # non-directory makes mktemp fail without touching the real temp root.
-: > "$LOG"; echo 0 > "$TMP/norm.rc"
+: > "$LOG"
 printf 'not-a-dir\n' > "$TMP/notdir"
 set +e
-OUT="$(CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" TMPDIR="$TMP/notdir" \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -679,7 +634,7 @@ sleep 120
 EOF
 chmod +x "$HANG_STUB"
 set +e
-OUT="$(CODEX_BIN="$HANG_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$HANG_STUB" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=2 \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -740,7 +695,7 @@ exit 9
 EOF
 chmod +x "$TMP/codex-fail-stub"
 set +e
-OUT="$(CODEX_BIN="$TMP/codex-fail-stub" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$TMP/codex-fail-stub" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
@@ -776,7 +731,7 @@ run_stdin_dispatch() {  # run_stdin_dispatch <redirect-source> [wrapper/codex ar
   local source="$1"
   shift
   set +e
-  OUT="$(CODEX_BIN="$STDIN_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+  OUT="$(CODEX_BIN="$STDIN_STUB" SBL_HELPER="$LOCK_LIB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=2 \
       bash "$DISPATCH" --worktree "$WT" "$@" do-it < "$source" 2>&1)"
@@ -882,7 +837,7 @@ cat > "$STDIN_STUB" <<'EOF'
 printf 'final output\n'
 EOF
 set +e
-PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" \
+PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=5 \
     bash "$DISPATCH" --worktree "$WT" do-it > "$TMP/relay.stdout" 2> "$TMP/relay.stderr"
@@ -912,7 +867,7 @@ printf 'final output\n'
 exit $child_rc
 EOF
   set +e
-  PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" \
+  PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=5 \
       bash "$DISPATCH" --worktree "$WT" do-it > "$TMP/relay.stdout" 2> "$TMP/relay.stderr"
@@ -939,7 +894,7 @@ exit 0
 EOF
 rm -rf "$JOBS_DIR"; mkdir -p "$JOBS_DIR"
 set +e
-PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" \
+PATH="$TMP/slow-relay-bin:$PATH" CODEX_BIN="$STDIN_STUB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
     HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=2 \
     bash "$DISPATCH" --worktree "$WT" do-it > "$TMP/relay.stdout" 2> "$TMP/relay.stderr"
@@ -966,7 +921,7 @@ EOF
 for child_rc in 0 7; do
   set +e
   TMPDIR="$TMP/presence-tmp" LARGE_CHILD_RC="$child_rc" \
-      CODEX_BIN="$STDIN_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" \
+      CODEX_BIN="$STDIN_STUB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=15 \
       bash "$DISPATCH" --worktree "$WT" do-it > "$TMP/large.stdout" 2> "$TMP/large.stderr"
@@ -1080,7 +1035,7 @@ fs.writeFileSync(out, text);
 run_trust() {  # run_trust <worktree> ; REAL trust check, own CODEX_HOME
   set +e
   OUT="$(env -u CODEX_HOOK_TRUST_CHECK CODEX_HOME="$TRUST_HOME" \
-      CODEX_BIN="$CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+      CODEX_BIN="$CODEX_STUB" SBL_HELPER="$LOCK_LIB" \
       CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
       HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
       bash "$DISPATCH" --worktree "$1" do-it 2>&1)"
@@ -1089,7 +1044,7 @@ run_trust() {  # run_trust <worktree> ; REAL trust check, own CODEX_HOME
 }
 
 # 16a: the defect - fresh worktree, no trust state at all -> refused.
-: > "$LOG"; echo 0 > "$TMP/norm.rc"; : > "$TRUST_HOME/config.toml"
+: > "$LOG"; : > "$TRUST_HOME/config.toml"
 rm -rf "$JOBS_DIR"; mkdir -p "$JOBS_DIR"
 run_trust "$TRUST_WT"
 assert_rc 2 "untrusted worktree hooks refused" "16a rc=$RC out=$OUT"
@@ -1247,7 +1202,7 @@ EOF
 chmod +x "$BYPASS_BIN"
 : > "$LOG"
 set +e
-OUT="$(CODEX_BIN="$BYPASS_BIN" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER="$LOCK_LIB" \
+OUT="$(CODEX_BIN="$BYPASS_BIN" SBL_HELPER="$LOCK_LIB" \
     CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
     bash "$DISPATCH" --worktree "$WT" do-it 2>&1)"
 RC=$?

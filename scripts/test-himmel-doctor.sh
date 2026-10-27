@@ -733,26 +733,25 @@ if grepq "$out" 'OK   C6-mcp'; then pass "C6 -> OK (absolute)"; else fail "C6 ->
 rm -rf "$t"
 
 # C6-hooks: a hook command leading with a bare interpreter that is
-# absent on THIS host. Use $TOOLS_PATH (real coreutils dirs — keeps bash + its
-# DLLs working on MINGW) which excludes pwsh; guard the WARN assertion in case a
-# host genuinely has pwsh on that path.
-echo "== C6-hooks: bare pwsh hook on a host without pwsh -> WARN =="
-if PATH="$TOOLS_PATH" bash -c '! command -v pwsh >/dev/null 2>&1' 2>/dev/null; then
+# absent on THIS host. Use $TOOLS_PATH (real coreutils dirs) which excludes deno;
+# guard the WARN assertion in case a host genuinely has deno on that path.
+echo "== C6-hooks: bare deno hook on a host without deno -> WARN =="
+if PATH="$TOOLS_PATH" bash -c '! command -v deno >/dev/null 2>&1' 2>/dev/null; then
     t="$(mktemp -d)"; mkdir -p "$t/claude"
     cat > "$t/claude/settings.json" <<'EOF'
-{ "mcpServers": {}, "hooks": { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "pwsh -NoProfile -File \"/x/end-session-wiki.ps1\"", "shell": "powershell" } ] } ] } }
+{ "mcpServers": {}, "hooks": { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "deno run \"/x/end-session-wiki.ts\"", "shell": "bash" } ] } ] } }
 EOF
     out="$(PATH="$TOOLS_PATH" RESOLVE_NODE_PROBE_DIRS="" RESOLVE_NODE_NVM_ROOT="$t/none" FNM_DIR="$t/none" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-    if grepq "$out" 'WARN C6-hooks' && grepq "$out" 'pwsh'; then pass "C6-hooks -> WARN (pwsh absent)"; else fail "C6-hooks -> $(printf '%s' "$out" | grep C6-hooks)"; fi
+    if grepq "$out" 'WARN C6-hooks' && grepq "$out" 'deno'; then pass "C6-hooks -> WARN (deno absent)"; else fail "C6-hooks -> $(printf '%s' "$out" | grep C6-hooks)"; fi
     rm -rf "$t"
 else
-    pass "C6-hooks -> WARN (skipped: pwsh present under TOOLS_PATH on this host)"
+    pass "C6-hooks -> WARN (skipped: deno present under TOOLS_PATH on this host)"
 fi
 
-echo "== C6-hooks: wrapper-routed pwsh twin (leading bash) -> OK =="
+echo "== C6-hooks: wrapper-routed hook (leading bash) -> OK =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"
 cat > "$t/claude/settings.json" <<'EOF'
-{ "mcpServers": {}, "hooks": { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "bash \"/x/scripts/lib/run-pwsh.sh\" \"/x/end-session-wiki.ps1\"", "shell": "bash" } ] } ] } }
+{ "mcpServers": {}, "hooks": { "SessionEnd": [ { "hooks": [ { "type": "command", "command": "bash \"/x/scripts/lib/run-node.sh\" \"/x/end-session-wiki.js\"", "shell": "bash" } ] } ] } }
 EOF
 out="$(PATH="$TOOLS_PATH" RESOLVE_NODE_PROBE_DIRS="" RESOLVE_NODE_NVM_ROOT="$t/none" FNM_DIR="$t/none" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C6-hooks'; then pass "C6-hooks -> OK (wrapper-routed)"; else fail "C6-hooks -> $(printf '%s' "$out" | grep C6-hooks)"; fi
@@ -1440,11 +1439,11 @@ rm -rf "$t"
 have_jq_c19=0
 command -v jq >/dev/null 2>&1 && have_jq_c19=1
 
-echo "== C19: stale assets + empty rules + unset delivery + dead exporter -> WARNs, rc0 =="
-t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)"; mkdir -p "$t/claude" "$t/install/grafana-provisioning" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+echo "== C19: stale assets + empty rules + dead exporter -> WARNs, rc0 =="
+t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)" || exit 1; mkdir -p "$t/claude" "$t/install/dashboards" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
 printf 'stale prometheus\n' > "$t/install/prometheus.yml"
 printf 'stale rules\n' > "$t/install/alerts.rules.yml"
-printf 'stale provisioning\n' > "$t/install/grafana-provisioning/stale.yaml"
+printf 'stale dashboard\n' > "$t/install/dashboards/stale.json"
 cat > "$t/bin/curl" <<'EOF'
 #!/bin/sh
 url=''
@@ -1456,8 +1455,7 @@ case "$url" in
 esac
 EOF
 chmod +x "$t/bin/curl"
-out="$(DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
-    GRAFANA_TELEGRAM_BOT_TOKEN="" GRAFANA_TELEGRAM_CHAT_ID="" \
+out="$(DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_GRAFANA=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
     DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
     CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
 if [ "$have_jq_c19" -eq 1 ]; then
@@ -1466,22 +1464,21 @@ else
     rules_expect='jq unavailable'
 fi
 if [ "$rc" -eq 0 ] \
-    && grepq "$out" 'observability stack stale — re-run install-stack.ps1' \
+    && grepq "$out" 'observability stack stale — re-run install-grafana.sh' \
     && grepq "$out" "$rules_expect" \
-    && grepq "$out" 'Grafana Telegram delivery variable(s) unset' \
     && grepq "$out" 'flow exporter on http://127.0.0.1:9877/metrics is not answering' \
     && grepq "$out" 'Grafana on http://127.0.0.1:3000/api/health is not answering'; then
-    pass "C19 -> all five observability drift/readiness WARNs, never-fatal"
+    pass "C19 -> all four observability drift/readiness WARNs, never-fatal"
 else
     fail "C19 unhealthy -> rc=$rc; $(printf '%s' "$out" | grep C19)"
 fi
 rm -rf "$t"
 
-echo "== C19: matching assets + nonempty rules + delivery vars + live exporter -> all OK =="
-t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)"; mkdir -p "$t/claude" "$t/install/grafana-provisioning" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+echo "== C19: matching assets + nonempty rules + live exporter -> all OK =="
+t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)" || exit 1; mkdir -p "$t/claude" "$t/install/dashboards" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
 cp "$REPO_ROOT/scripts/observability/prometheus.yml" "$t/install/prometheus.yml"
 cp "$REPO_ROOT/scripts/observability/alerts.rules.yml" "$t/install/alerts.rules.yml"
-cp -R "$REPO_ROOT/scripts/observability/provisioning/." "$t/install/grafana-provisioning/"
+cp "$REPO_ROOT/scripts/observability/dashboards/"*.json "$t/install/dashboards/"
 cat > "$t/bin/curl" <<'EOF'
 #!/bin/sh
 url=''
@@ -1497,8 +1494,7 @@ chmod +x "$t/bin/curl"
 # the assets were seeded from THIS tree, so judge this tree — the
 # doctor otherwise compares against the primary checkout, which
 # drifts from a worker worktree whose base predates the primary's head.
-out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
-    GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
+out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_GRAFANA=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
     DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
     CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
 if [ "$have_jq_c19" -eq 1 ]; then
@@ -1536,10 +1532,10 @@ if BASH_ENV="$NOCMPDIFF_ENV" bash -c '! command -v cmp >/dev/null 2>&1 && ! comm
 else
     fail "C19 cmp/diff fixture -> BASH_ENV command() override did not take effect"
 fi
-t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)" || exit 1; mkdir -p "$t/claude" "$t/install/grafana-provisioning" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)" || exit 1; mkdir -p "$t/claude" "$t/install/dashboards" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
 cp "$REPO_ROOT/scripts/observability/prometheus.yml" "$t/install/prometheus.yml"
 cp "$REPO_ROOT/scripts/observability/alerts.rules.yml" "$t/install/alerts.rules.yml"
-cp -R "$REPO_ROOT/scripts/observability/provisioning/." "$t/install/grafana-provisioning/"
+cp "$REPO_ROOT/scripts/observability/dashboards/"*.json "$t/install/dashboards/"
 cat > "$t/bin/curl" <<'EOF'
 #!/bin/sh
 url=''
@@ -1552,8 +1548,7 @@ case "$url" in
 esac
 EOF
 chmod +x "$t/bin/curl"
-out="$(BASH_ENV="$NOCMPDIFF_ENV" HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
-    GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
+out="$(BASH_ENV="$NOCMPDIFF_ENV" HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_GRAFANA=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
     DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
     CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] \
@@ -1863,75 +1858,30 @@ fi
 rm -rf "$t"
 
 # ── C24: expected-but-absent cadence tasks ─────────────────────
-# fake_task_probe [--windows|--posix] <dir> <existing-task-names...> — a
-# scheduler-probe stub for either an EXPLICITLY named platform, or (with
-# neither flag) whichever platform this test process happens to run on:
-# schtasks on Windows/MSYS (is_windows() true), crontab elsewhere. Only the
+# fake_task_probe <dir> <existing-task-names...> — a crontab stub. Only the
 # "does <name> exist" shape is faked — good enough for check_c24, which only
 # ever asks that question.
-#
-# Sensing the CALLING PROCESS's own ambient
-# uname (the no-flag default) is safe ONLY for a caller whose matching doctor
-# invocation ALSO leaves is_windows() ambient (no $FAKEBIN pin on its PATH).
-# Any caller that pins the doctor to a specific platform via $FAKEBIN MUST
-# pass the matching --posix/--windows flag explicitly instead of relying on
-# the default — otherwise this fixture and the PINNED doctor invocation can
-# silently disagree about the platform: on a real Windows host, an unflagged
-# call here still senses Windows and writes a schtasks stub while a
-# $FAKEBIN-first ("echo Linux") doctor invocation takes the crontab branch
-# and finds none, falling through toward a missing or the operator's REAL
-# crontab. The flag makes the platform an explicit, hard-to-forget statement
-# at each call site instead of an ambient fact that can drift out of sync
-# with the doctor's own pin — see the fixture-pin RED/GREEN control below for
-# a reproduction of the silent-disagreement failure.
 # shellcheck disable=SC2016  # single-quoted $1/$2/$3 are emitted literally for the fake binary's own /bin/sh
 fake_task_probe() {
-    local platform=""
-    case "${1:-}" in
-        --windows) platform=windows; shift ;;
-        --posix)   platform=posix; shift ;;
-    esac
     local dir="$1"; shift
     mkdir -p "$dir"
-    if [ -z "$platform" ]; then
-        if case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) true ;; *) false ;; esac; then
-            platform=windows
-        else
-            platform=posix
-        fi
-    fi
-    if [ "$platform" = windows ]; then
-        {
-            printf '#!/bin/sh\n'
-            printf 'if [ "$1" = "/query" ] && [ "$2" = "/tn" ]; then\n'
-            printf '    case " %s " in\n' "$*"
-            printf '        *" $3 "*) exit 0 ;;\n'
-            printf '        *) exit 1 ;;\n'
-            printf '    esac\n'
-            printf 'fi\n'
-            printf 'exit 0\n'
-        } > "$dir/schtasks"
-        chmod +x "$dir/schtasks"
-    else
-        {
-            printf '#!/bin/sh\n'
-            printf 'if [ "$1" = "-l" ]; then\n'
-            # The leading `:` is LOAD-BEARING when $@ is empty (the "no task
-            # names -> empty crontab" shape every C24-absent case relies on):
-            # a bare "if COND; then\nfi" with nothing between them is a shell
-            # SYNTAX ERROR (empty compound-command body), not an empty
-            # then-branch -- this crashed `crontab -l` with rc=2 on every
-            # POSIX host and was misread by check_c24's sched_unavailable
-            # probe as "the scheduler itself is unreachable", masking the
-            # intended WARN under a false INFO (the pre-existing baseline red
-            # row this PR turns green).
-            printf '    :\n'
-            for n in "$@"; do printf '    printf "%%s\\n" "0 0 * * * true # %s"\n' "$n"; done
-            printf 'fi\n'
-            printf 'exit 0\n'
-        } > "$dir/crontab"
-        chmod +x "$dir/crontab"
-    fi
+    {
+        printf '#!/bin/sh\n'
+        printf 'if [ "$1" = "-l" ]; then\n'
+        # The leading `:` is LOAD-BEARING when $@ is empty (the "no task
+        # names -> empty crontab" shape every C24-absent case relies on):
+        # a bare "if COND; then\nfi" with nothing between them is a shell
+        # SYNTAX ERROR (empty compound-command body), not an empty
+        # then-branch -- this crashed `crontab -l` with rc=2 on every
+        # POSIX host and was misread by check_c24's sched_unavailable
+        # probe as "the scheduler itself is unreachable", masking the
+        # intended WARN under a false INFO.
+        printf '    :\n'
+        for n in "$@"; do printf '    printf "%%s\\n" "0 0 * * * true # %s"\n' "$n"; done
+        printf 'fi\n'
+        printf 'exit 0\n'
+    } > "$dir/crontab"
+    chmod +x "$dir/crontab"
 }
 
 # fake_systemctl <dir> <state> [mainpid] [nrestarts] — a stub `systemctl`
@@ -2126,11 +2076,7 @@ rm -rf "$t"
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
-if case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) true ;; *) false ;; esac; then
-    printf '#!/bin/sh\nexit 1\n' > "$t/probe/schtasks"; chmod +x "$t/probe/schtasks"
-else
-    printf '#!/bin/sh\necho "crontab: permission denied" >&2\nexit 1\n' > "$t/probe/crontab"; chmod +x "$t/probe/crontab"
-fi
+printf '#!/bin/sh\necho "crontab: permission denied" >&2\nexit 1\n' > "$t/probe/crontab"; chmod +x "$t/probe/crontab"
 out="$(PATH="$t/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'INFO C24-cadence-registry' && grepq "$out" -F 'unreachable' && ! grepq "$out" 'WARN C24-cadence-registry' && ! grepq "$out" 'OK   C24-cadence-registry'; then
     pass "C24 -> INFO (scheduler probe unavailable, never a false mass-WARN)"
@@ -2140,126 +2086,14 @@ fi
 rm -rf "$t"
 
 # ── C24: HimmelTelegramBridge's systemd probe ──────────────────
-# check_c24's task loop branches on is_windows() FIRST
-# (schtasks vs. systemd/crontab), before it ever looks at the task name -- so
-# on a real Windows/Git-Bash host every row below would take the schtasks
-# branch and never touch fake_systemctl at all. fake_task_probe already
-# writes whichever stub matches THIS host's real uname (schtasks on
-# MINGW/MSYS/CYGWIN, crontab elsewhere), so on Windows these rows would find
-# the (nameless) fake_task_probe call's task absent via schtasks and WARN --
-# exactly the failure the RED control below reproduces. Every row here
-# therefore puts $FAKEBIN (the "echo Linux" uname stub used
-# to exercise the non-Windows --fix path, defined near the top of this file)
-# FIRST on PATH, ahead of $t/probe -- this pins is_windows() to false
-# regardless of the real host, so the systemd probe these rows exist to test
-# is what actually runs, deterministically, on every platform.
-echo "== C24 (HIMMEL-2515, finding 1 RED/GREEN): the FAKEBIN uname pin is what makes the systemd rows below platform-independent =="
-t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-winsim.XXXXXX")" || { fail "C24 finding-1 control: mktemp -d failed"; exit 1; }
-mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe" "$t/mingw"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"          # --posix pins the crontab stub regardless of the real host, same as every row below
-fake_systemctl "$t/probe" enabled 424242 0
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/mingw/uname"
-# A real Windows host also has a real schtasks -- check_c24's pre-loop
-# sched_unavailable probe (`schtasks /query`) must succeed so the per-task
-# loop below is actually reached; only the PER-TASK query (`/query /tn
-# <name>`) reports the (never-armed-here) task absent, mirroring a genuine
-# schtasks that has never heard of this task name.
-# shellcheck disable=SC2016  # single-quoted $1/$2 are emitted literally for the fake binary's own /bin/sh
-{
-    printf '#!/bin/sh\n'
-    printf 'if [ "$1" = "/query" ] && [ "$2" = "/tn" ]; then exit 1; fi\n'
-    printf 'exit 0\n'
-} > "$t/mingw/schtasks"
-chmod +x "$t/mingw/schtasks"
-# RED control: simulate a Windows host (uname -> MINGW64_NT via $t/mingw)
-# WITHOUT the FAKEBIN pin -- is_windows() now reads true, check_c24 takes the
-# schtasks branch, finds no schtasks binary here (fake_task_probe wrote
-# crontab, since IT read the REAL host's uname), and counts the task
-# absent -- reproducing this finding's bug on a real Windows host.
-out_red="$(PATH="$t/mingw:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out_red" 'WARN C24-cadence-registry' && grepq "$out_red" -F 'HimmelTelegramBridge'; then
-    pass "C24 finding-1 RED control -> WARN under a simulated Windows host without the uname pin (confirms the bug)"
-else
-    fail "C24 finding-1 RED control -> did not reproduce the bug; got: $(printf '%s' "$out_red" | grep C24)"
-fi
-# GREEN: put $FAKEBIN first, ahead of BOTH the mingw stub and the probe dir --
-# this is the fix applied to every row below. is_windows() now reads false
-# regardless of the simulated host, so the systemd probe (fake_systemctl
-# enabled) is what actually gets exercised.
-out_green="$(PATH="$FAKEBIN:$t/mingw:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out_green" 'OK   C24-cadence-registry' && ! grepq "$out_green" 'WARN C24-cadence-registry'; then
-    pass "C24 finding-1 GREEN -> FAKEBIN-first uname pin forces the POSIX/systemd branch even under a simulated Windows host"
-else
-    fail "C24 finding-1 GREEN -> $(printf '%s' "$out_green" | grep C24)"
-fi
-rm -rf "$t"
-
-# ── C24: the FIXTURE must follow the
-# PINNED platform, not the test process's ambient host ─────────────────────
-# The RED/GREEN pair above proves the doctor's OWN is_windows() branch is
-# pinnable via $FAKEBIN. This pair proves the companion half: fake_task_probe
-# itself must be told the SAME platform, not left to sense the calling
-# process's real uname — otherwise a fixture written under one platform can
-# silently disagree with a doctor invocation pinned to a different one.
-echo "== C24 (HIMMEL-2515 CR round 3, finding 1): fake_task_probe must follow the PINNED platform, not the ambient host's uname =="
-t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-fixture-pin.XXXXXX")" || { fail "C24 fixture-pin: mktemp -d failed"; exit 1; }
-mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe" "$t/mingw"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-# systemd reports "unknown" (bus unreachable) so check_c24 falls back to the
-# crontab probe -- the ONLY branch where the fixture's platform actually
-# matters (an "enabled"/"disabled" systemd answer never looks at crontab at
-# all, so it couldn't demonstrate this mismatch).
-fake_systemctl "$t/probe" busfail
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/mingw/uname"
-# RED: call fake_task_probe with NO explicit platform flag while a fake
-# Windows uname sits FIRST on the CALLING process's own PATH -- exactly how
-# every call site in this block worked before this fix, sensing the ambient
-# host instead of the platform the doctor will be pinned to. It writes a
-# schtasks stub, no crontab. The doctor is then run PINNED to POSIX via
-# $FAKEBIN (as every row in this block is) with a curated $NOGH PATH tail
-# that has no real crontab reachable at all (never touch the operator's
-# real crontab from this suite) -- so if the fixture disagrees with the pin,
-# the crontab probe finds NOTHING to read, not even a stub.
-#
-# Note: this scenario's OWN crontab is genuinely
-# unreachable (the mismatched fixture wrote schtasks, not crontab), which
-# used to trip the whole-function early return and read as a blanket
-# "scheduler unreachable" INFO regardless of what systemd said. Since round
-# 4 made that bail backend-specific, HimmelTelegramBridge (expected here)
-# has an alternate backend (systemctl IS reachable, even though its answer
-# is "unknown"/busfail) so the per-task loop still runs; with BOTH probes
-# inconclusive for this one task, it now lands in the pre-existing
-# INDETERMINATE bucket instead. The RED/GREEN distinction this row exists to
-# prove still holds: RED's mismatched fixture leaves the crontab probe with
-# nothing to find (INDETERMINATE); GREEN's correctly-pinned fixture gives
-# the crontab probe a real row to find (confirmed PRESENT) -- see below.
-PATH="$t/mingw:$PATH" fake_task_probe "$t/probe" HimmelTelegramBridge
-out_red="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out_red" 'OK   C24-cadence-registry' && grepq "$out_red" 'INFO C24-cadence-registry' && grepq "$out_red" -F 'UNDETERMINED' && grepq "$out_red" -F 'HimmelTelegramBridge' && ! grepq "$out_red" 'WARN C24-cadence-registry'; then
-    pass "C24 fixture-pin RED control -> an ambient-sensed fixture (Windows caller, POSIX-pinned doctor) mismatches: crontab probe finds nothing, task reads INDETERMINATE instead of the intended confirmed-present"
-else
-    fail "C24 fixture-pin RED control -> $(printf '%s' "$out_red" | grep C24)"
-fi
-# GREEN: same scenario, but fake_task_probe is told the platform EXPLICITLY
-# (--posix) instead of sensing the calling process's ambient uname -- the
-# fixture now matches the doctor's pin regardless of what host is really
-# running this suite (the fake Windows uname is still first on PATH here,
-# and it no longer matters).
-fake_task_probe --posix "$t/probe" HimmelTelegramBridge
-out_green="$(PATH="$FAKEBIN:$t/mingw:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out_green" 'OK   C24-cadence-registry' && grepq "$out_green" -F 'expected cadence task(s) present' && ! grepq "$out_green" 'WARN C24-cadence-registry' && ! grepq "$out_green" -F 'UNDETERMINED'; then
-    pass "C24 fixture-pin GREEN -> --posix ties the fixture to the pinned platform, matching the doctor regardless of the ambient host"
-else
-    fail "C24 fixture-pin GREEN -> $(printf '%s' "$out_green" | grep C24)"
-fi
-rm -rf "$t"
-
+# Every row below puts $FAKEBIN (the "echo Linux" uname stub) FIRST on PATH,
+# ahead of $t/probe, so the systemd probe these rows exist to test is what
+# actually runs, deterministically, on every host.
 echo "== C24 (HIMMEL-2515): HimmelTelegramBridge armed via systemd, no crontab row -> present, OK (the ticket's bug: pre-fix this WARNs) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 systemd-present: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"
+fake_task_probe "$t/probe"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" -F 'expected cadence task(s) present' && ! grepq "$out" 'WARN C24-cadence-registry'; then
@@ -2273,7 +2107,7 @@ echo "== C24 (HIMMEL-2515, CR round 1 E1): HimmelTelegramBridge enabled-runtime 
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 systemd-enabled-runtime: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"
+fake_task_probe "$t/probe"
 fake_systemctl "$t/probe" enabledruntime 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" -F 'expected cadence task(s) present' && ! grepq "$out" 'WARN C24-cadence-registry'; then
@@ -2287,7 +2121,7 @@ echo "== C24 (HIMMEL-2515): HimmelTelegramBridge NOT enabled via systemd, no cro
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 systemd-disabled: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"
+fake_task_probe "$t/probe"
 fake_systemctl "$t/probe" disabled
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HimmelTelegramBridge'; then
@@ -2301,7 +2135,7 @@ echo "== C24: HimmelTelegramBridge expected, NO systemctl at all -> falls back t
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 no-systemctl: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"
+fake_task_probe "$t/probe"
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/no-such-systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HimmelTelegramBridge'; then
     pass "C24 -> WARN (no systemctl on PATH, crontab-only fallback unchanged)"
@@ -2314,7 +2148,7 @@ echo "== C24 (HIMMEL-2515): a NON-bridge task expected, systemctl reports enable
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 no-leak: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"
+fake_task_probe "$t/probe"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HIMMEL-Qmd-Reindex'; then
@@ -2328,7 +2162,7 @@ echo "== C24 (HIMMEL-2515): systemctl present but the user bus is unreachable ->
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 bus-unreachable: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe" "HimmelTelegramBridge"
+fake_task_probe "$t/probe" "HimmelTelegramBridge"
 fake_systemctl "$t/probe" busfail
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && ! grepq "$out" 'WARN C24-cadence-registry'; then
@@ -2342,7 +2176,7 @@ echo "== C24 (CR round 1 E5): same, but the OLDER systemd bus-failure wording ('
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 bus-unreachable-old: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe" "HimmelTelegramBridge"
+fake_task_probe "$t/probe" "HimmelTelegramBridge"
 fake_systemctl "$t/probe" busfailold
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && ! grepq "$out" 'WARN C24-cadence-registry'; then
@@ -2356,7 +2190,7 @@ echo "== C24 (HIMMEL-2515, CR round 1 finding 2): unrecognized/permission-error 
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 finding-2: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe" "HimmelTelegramBridge"
+fake_task_probe "$t/probe" "HimmelTelegramBridge"
 fake_systemctl "$t/probe" permdenied
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && ! grepq "$out" 'WARN C24-cadence-registry'; then
@@ -2391,7 +2225,7 @@ echo "== C24 (HIMMEL-2515, CR round 1 finding 3): systemd bus unreachable AND no
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 finding-3: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[],"expected_tasks":["HimmelTelegramBridge"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe --posix "$t/probe"          # no crontab row -- neither probe can confirm presence
+fake_task_probe "$t/probe"          # no crontab row -- neither probe can confirm presence
 fake_systemctl "$t/probe" busfail
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if ! grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" 'INFO C24-cadence-registry' && grepq "$out" -F 'UNDETERMINED' && grepq "$out" -F 'HimmelTelegramBridge'; then
@@ -4422,13 +4256,6 @@ else
 fi
 rm -rf "$t"
 
-# every C36 case below now pins its
-# platform explicitly rather than relying on the ambient host -- the POSIX
-# cases put $FAKEBIN first (the same "echo Linux" uname stub the C24 GREEN
-# rows use) so is_windows() reads false and the TMPDIR override actually
-# takes effect even when the SUITE runs on a real Windows host, and the
-# simulated-MINGW cases explicitly unset any inherited TEMP/TMP with `env -u`
-# rather than assuming the ambient host has none.
 echo "== C36: no .git under the temp dir -> OK, no stray-git warning (GREEN) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c36.XXXXXX")" || { fail "C36 clean: mktemp -d failed"; exit 1; }
 out="$(PATH="$FAKEBIN:$PATH" TMPDIR="$t" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
@@ -4473,42 +4300,6 @@ if grepq "$out" 'OK   C36-stray-tmp-git' && ! grepq "$out" 'WARN C36-stray-tmp-g
     pass "C36 clear -> rmdir clears the warning back to OK"
 else
     fail "C36 clear -> $(printf '%s' "$out" | grep C36-stray-tmp-git)"
-fi
-rm -rf "$t"
-
-echo "== C36 windows: MINGW host reads TEMP, not TMPDIR, for the stray-.git check =="
-t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c36-win.XXXXXX")" || { fail "C36 windows TEMP: mktemp -d failed"; exit 1; }
-mkdir -p "$t/mingw" "$t/temp/.git" "$t/decoy"
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/mingw/uname"
-out="$(env PATH="$t/mingw:$PATH" TEMP="$t/temp" TMP="$t/temp" TMPDIR="$t/decoy" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C36-stray-tmp-git' && grepq "$out" -F "rmdir $t/temp/.git" && ! grepq "$out" -F "$t/decoy"; then
-    pass "C36 windows TEMP -> WARN naming the TEMP path's rmdir, TMPDIR ignored"
-else
-    fail "C36 windows TEMP -> $(printf '%s' "$out" | grep C36-stray-tmp-git)"
-fi
-rm -rf "$t"
-
-echo "== C36 windows: MINGW host falls back to TMP when TEMP is unset =="
-t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c36-win.XXXXXX")" || { fail "C36 windows TMP fallback: mktemp -d failed"; exit 1; }
-mkdir -p "$t/mingw" "$t/tmp/.git"
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/mingw/uname"
-out="$(env -u TEMP PATH="$t/mingw:$PATH" TMP="$t/tmp" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C36-stray-tmp-git' && grepq "$out" -F "rmdir $t/tmp/.git"; then
-    pass "C36 windows TMP fallback -> WARN naming the TMP path's rmdir"
-else
-    fail "C36 windows TMP fallback -> $(printf '%s' "$out" | grep C36-stray-tmp-git)"
-fi
-rm -rf "$t"
-
-echo "== C36 windows: neither TEMP nor TMP set -> INFO, cannot resolve =="
-t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c36-win.XXXXXX")" || { fail "C36 windows no-temp: mktemp -d failed"; exit 1; }
-mkdir -p "$t/mingw"
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/mingw/uname"
-out="$(env -u TEMP -u TMP PATH="$t/mingw:$PATH" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'INFO C36-stray-tmp-git' && ! grepq "$out" 'WARN C36-stray-tmp-git' && ! grepq "$out" 'OK   C36-stray-tmp-git'; then
-    pass "C36 windows no-temp -> INFO, cannot resolve the system temp dir"
-else
-    fail "C36 windows no-temp -> $(printf '%s' "$out" | grep C36-stray-tmp-git)"
 fi
 rm -rf "$t"
 
@@ -6244,7 +6035,7 @@ out="$(DOCTOR_OBSERVABILITY_DESIRED="" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_STATUS
 if grepq "$out" 'INFO C19-observability.*not desired' && ! grepq "$out" 'WARN C19-observability'; then pass "C19 not desired -> INFO"; else fail "C19 not desired -> $(printf '%s' "$out" | grep C19)"; fi
 
 echo "== C19: observability desired and applicable -> checks still run (WARN on missing install) =="
-printf '%s\n' '{"items":[{"id":"observability-stack","desired":true,"severity":"red"}]}' > "$n_t/status-on.json"
+printf '%s\n' '{"items":[{"id":"observability-grafana","desired":true,"severity":"red"}]}' > "$n_t/status-on.json"
 out="$(DOCTOR_OBSERVABILITY_DESIRED="" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_STATUS_JSON="$n_t/status-on.json" DOCTOR_OBSERVABILITY_INSTALL_DIR="$n_t/none" DOCTOR_CURL_BIN="$n_t/nocurl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C19-observability.*stack stale'; then pass "C19 desired -> checks run"; else fail "C19 desired -> $(printf '%s' "$out" | grep C19)"; fi
 
@@ -6253,10 +6044,10 @@ printf '%s\n' '{"items":"nope"}' > "$n_t/status-bad.json"
 out="$(DOCTOR_OBSERVABILITY_DESIRED="" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_STATUS_JSON="$n_t/status-bad.json" DOCTOR_OBSERVABILITY_INSTALL_DIR="$n_t/none" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'INFO C19-observability.*unreadable' && ! grepq "$out" 'not desired on this host'; then pass "C19 malformed status -> unreadable INFO"; else fail "C19 malformed status -> $(printf '%s' "$out" | grep C19)"; fi
 
-echo "== C19 (HIMMEL-4289): observability-grafana desired -> user-mode install dir, stripped prometheus.yml, no Telegram check =="
+echo "== C19 (HIMMEL-4289): observability-grafana desired -> user-mode install dir, plain prometheus.yml copy, no Telegram check =="
 printf '%s\n' '{"items":[{"id":"observability-grafana","desired":true,"severity":"red"}]}' > "$n_t/status-graf.json"
 mkdir -p "$n_t/gi/dashboards" "$n_t/gbin" "$n_t/xdg-none" "$n_t/xdg-ok/himmel"
-sed -e '/^  - job_name: windows_exporter/,$d' "$REPO_ROOT/scripts/observability/prometheus.yml" > "$n_t/gi/prometheus.yml"
+cp "$REPO_ROOT/scripts/observability/prometheus.yml" "$n_t/gi/prometheus.yml"
 cp "$REPO_ROOT/scripts/observability/alerts.rules.yml" "$n_t/gi/alerts.rules.yml"
 cp "$REPO_ROOT/scripts/observability/dashboards/"*.json "$n_t/gi/dashboards/"
 cp -R "$n_t/gi" "$n_t/xdg-ok/himmel/observability"

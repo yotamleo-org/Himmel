@@ -976,7 +976,6 @@ scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq (HIM
 scripts/hooks/test-trigger-cr-on-pr-create.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 scripts/hooks/test-trigger-cr-on-push.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 scripts/lib/test-merge-block-alert.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/observability/test-agent-runtime-census.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not
 scripts/observability/test-tool-call-census.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 "
 SUITE_REQUIRE_TOOL="${SUITE_REQUIRE_TOOL:-$SUITE_REQUIRE_TOOL_DEFAULT}"

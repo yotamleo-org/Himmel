@@ -55,6 +55,13 @@
 # ponytail: queue wait of gated jobs outside REST-read runs includes upstream time,
 # upgrade path = REST /runs/{id}/jobs?filter=all for every run when exact job created_at matters.
 #
+# Merge-forward rounds per merged PR: one more paginated GraphQL search (25 PRs a page, paced
+# and cached like the rest) lists the PRs merged in the window with their first 100 commits;
+# a round = a commit with more than one parent on the PR branch (an update-branch or a merge of
+# the base into it). Saved as prs.json beside runs.json / jobs.json; a --data-dir without one
+# prints "Not measured" for that section. A failed fetch only warns. The count is read-only
+# evidence: nothing here gates or enforces update-branch.
+#
 # Guardrail rates (plan section 1.3) come from the runs list: runs per hour and per
 # rolling 24 h, cancels per rolling 10 min (by updated_at), reruns per hour (attempt
 # above 1, by run_started_at), runs per branch per day; each against its alert line.
@@ -110,6 +117,50 @@ if [ "${1:-}" = "--runjobs" ]; then
   # One run that will not answer must not sink the dataset: its cancelled jobs fall back to the started_at rule.
   echo "ci-metrics: WARN run jobs fetch failed for run $rid ($(head -c 100 "$out.err")); its cancelled jobs are judged by started_at alone" >&2
   : > "$out.ndjson"; exit 0
+fi
+# --prs <repo> <since ISO> <upto ISO> <out>: the PRs merged in since..upto, one {number, merged_at, commits, rounds, truncated} per line in <out>.ndjson.
+# Bounded at both ends so a historical --now is not crowded out of the 1000-result search cap by newer merges.
+if [ "${1:-}" = "--prs" ]; then
+  repo="$2"; since="$3"; upto="$4"; out="$5"; after=""; : > "$out.all"
+  # shellcheck disable=SC2016  # GraphQL text, $ is not shell
+  q='query($s:String!,$after:String){ search(query:$s,type:ISSUE,first:25,after:$after){ issueCount pageInfo{hasNextPage endCursor} nodes{ ... on PullRequest { number mergedAt commits(first:100){ totalCount nodes{ commit{ parents{ totalCount } } } } } } } }'
+  # shellcheck disable=SC2016  # jq program, $ is not shell
+  f='{issues: .data.search.issueCount, next: (if .data.search.pageInfo.hasNextPage then .data.search.pageInfo.endCursor else null end),
+      rows: [.data.search.nodes[] | select(. != null and .number != null)
+             | {number, merged_at: .mergedAt, commits: .commits.totalCount,
+                rounds: ([.commits.nodes[] | select(.commit.parents.totalCount > 1)] | length), truncated: (.commits.totalCount > 100)}]}'
+  while :; do
+    h=$(printf '%s|%s|%s' "$repo" "$since..$upto" "$after" | md5sum | cut -c1-32)
+    [ -n "$h" ] || { echo "ci-metrics: cannot compute the merged PRs cache key (md5sum missing?)" >&2; exit 1; }
+    key="prs.$h"
+    if [ -n "${CI_METRICS_CACHE:-}" ] && [ -s "$CI_METRICS_CACHE/$key.json" ]; then
+      cp "$CI_METRICS_CACHE/$key.json" "$out.page"
+    else
+      got=0
+      for _try in 1 2 3; do
+        set -- -f "query=$q" -f "s=is:pr is:merged repo:$repo merged:$since..$upto"
+        if [ -n "$after" ]; then set -- "$@" -f "after=$after"; fi
+        if gh api graphql "$@" 2> "$out.err" > "$out.raw" \
+          && jq -e '.errors == null and .data.search != null' "$out.raw" >/dev/null \
+          && jq -c "$f" "$out.raw" > "$out.page"; then
+          got=1; break
+        fi
+        if grep -qiE 'rate limit|HTTP 403|HTTP 429' "$out.err" "$out.raw" 2>/dev/null; then sleep 60; else sleep 10; fi
+      done
+      [ "$got" -eq 1 ] || { echo "ci-metrics: merged PRs fetch failed: $(head -c 300 "$out.err") $(head -c 300 "$out.raw")" >&2; exit 1; }
+      if [ -n "${CI_METRICS_CACHE:-}" ]; then cp "$out.page" "$CI_METRICS_CACHE/$key.json"; fi
+      sleep "$PACE"
+    fi
+    jq -c '.rows[]' "$out.page" >> "$out.all"
+    # GitHub search returns at most 1000 results, so a larger window is cut short.
+    if [ -z "$after" ] && jq -e '.issues >= 1000' "$out.page" >/dev/null; then
+      echo "ci-metrics: WARN merged PRs search returned 1000 results (API cap): the merge-forward window is truncated" >&2
+    fi
+    prev="$after"; after=$(jq -r '.next // empty' "$out.page")
+    [ -n "$after" ] || break
+    [ "$after" != "$prev" ] || { echo "ci-metrics: merged PRs pagination did not advance past cursor $after" >&2; exit 1; }
+  done
+  mv "$out.all" "$out.ndjson"; exit 0
 fi
 # --gql jobs <ids-file> <out>: the jobs of <=100 runs.
 if [ "${1:-}" = "--gql" ]; then
@@ -188,10 +239,13 @@ fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics.XXXXXX")" || die 3 "mktemp -d failed"
 trap 'rm -rf "$WORK"' EXIT
+# PRS = merged PRs with their merge-forward rounds; this null file means "not measured".
+echo 'null' > "$WORK/none.json"; PRS="$WORK/none.json"
 
 if [ -n "$DATA" ]; then
   [ -f "$DATA/runs.json" ] && [ -f "$DATA/jobs.json" ] || die 2 "--data-dir needs runs.json and jobs.json"
   RUNS="$DATA/runs.json"; JOBS="$DATA/jobs.json"
+  if [ -f "$DATA/prs.json" ]; then PRS="$DATA/prs.json"; fi
 else
   command -v gh >/dev/null 2>&1 || die 3 "gh is required"
   RUNS="$WORK/runs.json"; JOBS="$WORK/jobs.json"
@@ -237,10 +291,23 @@ else
                  + (if $j.conclusion == "cancelled" then {ran: ($x.steps > 0)} else {} end) end)' "$JOBS" > "$WORK/jobs2.json" || die 3 "could not merge step counts"
     mv "$WORK/jobs2.json" "$JOBS" || die 3 "could not merge step counts"
   fi
-  if [ -n "$KEEP" ]; then mkdir -p "$KEEP" && cp "$RUNS" "$KEEP/runs.json" && cp "$JOBS" "$KEEP/jobs.json"; fi
+  # Merged PRs and their merge-forward rounds; a failed fetch leaves PRS at the "not measured" null.
+  # The cap check never renders them, so only a --keep run (which saves prs.json) fetches them.
+  if [ "$CAPCHECK" -eq 1 ] && [ -z "$KEEP" ]; then
+    :
+  elif bash "$SELF" --prs "$REPO" "$(jq -rn --argjson x "$START_EPOCH" '$x|todate')" "$(jq -rn --argjson x "$NOW_EPOCH" '$x|todate')" "$WORK/prs"; then
+    jq -s '.' "$WORK/prs.ndjson" > "$WORK/prs.json" && PRS="$WORK/prs.json"
+  else
+    echo "ci-metrics: WARN merge-forward rounds not measured (merged PRs fetch failed)" >&2
+  fi
+  if [ -n "$KEEP" ]; then
+    mkdir -p "$KEEP" && cp "$RUNS" "$KEEP/runs.json" && cp "$JOBS" "$KEEP/jobs.json"
+    # A reused --keep dir must not replay an older prs.json beside the fresh runs/jobs.
+    if [ "$PRS" != "$WORK/none.json" ]; then cp "$PRS" "$KEEP/prs.json"; else rm -f "$KEEP/prs.json"; fi
+  fi
 fi
 
-jq -rn --slurpfile runs "$RUNS" --slurpfile jobs "$JOBS" \
+jq -rn --slurpfile runs "$RUNS" --slurpfile jobs "$JOBS" --slurpfile prs "$PRS" \
   --argjson now "$NOW_EPOCH" --argjson start "$START_EPOCH" --argjson days "$DAYS" \
   --arg repo "$REPO" --argjson top "$TOP" --argjson hourly "$HOURLY" --argjson cap "$CAPCHECK" --arg wl "$WINDOW_LABEL" '
 def t: fromdateiso8601;
@@ -367,6 +434,34 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
      "\(gr("branch-days over 6 runs"; ($BD | map(select(.n > 6)) | length); "-")) - |"
   ]) as $GR
 
+# ---- merge-forward rounds per merged PR (prs.json; null = not measured) ----
+| ($prs[0]) as $P0
+| (($P0 // []) | map(select((.merged_at | t) >= $start and (.merged_at | t) <= $now))) as $PM
+| ($PM | map(.rounds) | sort) as $PRD
+| ($PM | map(select(.rounds > 0))) as $PB
+| (if $P0 == null then
+    [ "## Merge-forward rounds per merged PR", "",
+      "Not measured: this dataset has no prs.json (the merged-PR fetch failed or the recording predates it)." ]
+  else
+    [ "## Merge-forward rounds per merged PR",
+      "",
+      "PRs merged in the window. A round = a merge commit on the PR branch (an update-branch or a merge of the base into it), counted in the first 100 commits. Read-only: nothing here gates or enforces update-branch.",
+      "",
+      "| metric | value |",
+      "|---|---|",
+      "| PRs merged in the window | \($PM | length) |",
+      "| PRs merged after at least one round | \($PB | length) (\(share($PB | length; $PM | length))) |",
+      "| rounds per merged PR mean / median / max | \(if ($PRD | length) == 0 then "- / - / -" else (($PRD | add) * 10 / ($PRD | length) + 0.5 | floor) as $x | "\($x / 10 | floor).\($x % 10) / \($PRD | pct(0.5)) / \($PRD | max)" end) |",
+      "| PRs over 100 commits (rounds undercounted) | \($PM | map(select(.truncated)) | length) |",
+      "",
+      "Most rounds (top 5):",
+      "",
+      "| PR | rounds | merged (UTC) |",
+      "|---|---|---|",
+      (($PB | sort_by([-.rounds, .number]) | .[:5][]) | "| #\(.number) | \(.rounds) | \(.merged_at) |")
+    ]
+  end) as $MF
+
 # ---- cap check (plan section 1.2): per-minute running and queued against the 60-runner ceiling ----
 | ((($now - $start) / 60) | floor) as $nm
 | def mi($x): ((($x - $start) / 60) | ceil) | if . < 0 then 0 elif . > $nm then $nm else . end;
@@ -476,7 +571,9 @@ def gr($metric; $v; $line): "| \($metric) | \($v) | \($line) |";
   "|---|---|",
   (($PK | if $hourly == 1 then . else sort_by(-.n) | .[:10] end)[] | "| \(.h) | \(.n) |"),
   "",
-  $GR[]
+  $GR[],
+  "",
+  $MF[]
 ) end
 ' > "$WORK/report.txt" || die 3 "analysis failed"
 cat "$WORK/report.txt"

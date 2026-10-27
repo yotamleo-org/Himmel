@@ -129,7 +129,7 @@ CODEX_NOOP="$TMP/codex-noop.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CODEX_NOOP"
 CODEX_BRIEF="$TMP/codex-brief.md"
 run_registry env LANES_REGISTRY="$CODEX_REG" CODEX_BIN="$STUB" \
-  CODEX_ACL_NORMALIZE="$CODEX_NOOP" CODEX_HOOK_TRUST_CHECK="$CODEX_NOOP" CODEX_REAP_HELPER="$CODEX_NOOP" \
+  CODEX_HOOK_TRUST_CHECK="$CODEX_NOOP" CODEX_REAP_HELPER="$CODEX_NOOP" \
   CODEX_JOBS_DIR="$TMP/codex-jobs" HIMMEL_FLOW_RUNS_LEDGER="$TMP/codex-ledger.jsonl" \
   STUB_INPUT_FILE="$CODEX_BRIEF" bash "$DISPATCH" --lane codex-exec \
   --brief-file "$BRIEF" --name explicit-stdin --cwd "$REPO" --model gpt-5.5

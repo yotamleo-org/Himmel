@@ -20,14 +20,12 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PATTERN='Windows|\bWSL2?\b|PowerShell|\.ps1\b|Git[- ]Bash|\bMSYS|%LOCALAPPDATA%|schtasks|gpt-5\.[0-5]\b|gpt-6-(sol|astra)\b|claude-(opus|sonnet|haiku)-4|\b(Haiku|Sonnet|Opus) 4\.[0-9]|\bWS[0-9]+\b'
 
 PENDING='
-README.md
 why-himmel.md
 getting-started.md
 setup/install.md
 setup/new-machine.md
 daily-loop.md
 commands-catalog.md
-cadences.md
 hermes-runbook.md
 handover/afk-mode.md
 handover/running-a-chief.md
@@ -46,7 +44,6 @@ evals/review-panel.md
 # shellcheck disable=SC2016
 ALLOW='
 internals/lane-parity.md	`TERMINAL_DESTRUCTIVE` blocks `schtasks`
-internals/environment-gotchas.md	(../archive/windows-wsl-gotchas.md)
 evals/README.md	| `codex:gpt-6-astra` |
 evals/README.md	| `codex:gpt-6-sol` |
 '

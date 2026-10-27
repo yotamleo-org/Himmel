@@ -4,7 +4,7 @@
 # PATH-less GUI launch (macOS dock / Windows shortcut) where a bare `bun`
 # command silently fails to start and the server's tools vanish with no error
 # (issue #121 C6). Mirrors the himmel C1/P4 wrapper model
-# (scripts/lib/run-node.sh, run-pwsh.sh).
+# (scripts/lib/run-node.sh).
 #
 # Shipped PER-PLUGIN (not in the himmel repo's scripts/lib) on purpose: a
 # .mcp.json installed to the plugin cache can only anchor on

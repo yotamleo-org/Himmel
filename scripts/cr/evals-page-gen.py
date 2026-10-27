@@ -18,7 +18,9 @@ Two steps, so the page holds no figure of its own:
   evals-page-gen.py render [--data FILE] [--out FILE]
 
 The ledger tally is scripts/eval/cr-ledger/cr_ledger_eval.py's load/fold (the amend fold cr-scores.sh
-does, "fixed" counted as agreed), imported, not copied; the suite pins the counts to cr-scores.sh.
+does, "fixed" counted as agreed), imported, not copied. Each finding counts once, as on review-panel.md:
+scripts/eval/review-page.py's distinct() merges the same claim on the same file and line of the same PR,
+raised again in a later round or by another critic, imported, not copied.
 The test-first tally is scripts/eval/decision-158-answers.py's q1, imported, not copied.
 Precision is agreed / (agreed + disproved), the definition on docs/evals/review-panel.md.
 --until cuts the CR ledger and the eval-runs ledger alike, so a cut regenerates the same figures.
@@ -46,6 +48,7 @@ from wilson import wilson  # noqa: E402
 DATA_DEFAULT = os.path.join(HERE, "..", "..", "docs", "evals", "evals-data.json")
 CRITICS_DEFAULT = os.path.join(HERE, "critics.json")
 D158 = os.path.join(HERE, "..", "eval", "decision-158-answers.py")
+REVIEW_PAGE = os.path.join(HERE, "..", "eval", "review-page.py")
 BAR = 20
 MIN_RULED = 30
 CACHE_CMD = ("bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 "
@@ -185,6 +188,14 @@ def owner(name, panel):
     return None
 
 
+def review_page():
+    """scripts/eval/review-page.py, whose distinct() counts each finding once for review-panel.md."""
+    spec = importlib.util.spec_from_file_location("review_page", REVIEW_PAGE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_first(rows, as_of):
     """decision-158's q1 tally; no share is reported under the MIN_RULED floor."""
     spec = importlib.util.spec_from_file_location("decision_158_answers", D158)
@@ -217,10 +228,11 @@ def review_cmd(args, as_of):
 def build(args):
     path = args.ledger or cr_ledger_eval.default_ledger()
     rows, _ = cr_ledger_eval.load(path, args.until)
-    findings = cr_ledger_eval.fold(rows)
+    findings = review_page().distinct(rows)
     by = {}
     for f in findings:
-        by.setdefault(f["critic"], []).append(f)
+        for c in f["critics"]:
+            by.setdefault(c, []).append(f)
     panel = read_panel(args.critics or CRITICS_DEFAULT)
     critics = {name: dict(group(fs), panel=owner(name, panel)) for name, fs in by.items()}
     ordered = dict(sorted(critics.items(), key=lambda kv: (-kv[1]["findings"], kv[0])))

@@ -532,7 +532,6 @@ scripts/himmelctl/test/test-luna-config-migration.sh	local	behaviour suite, 0 ca
 scripts/himmelctl/test/test-provenance-js.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-provenance-session.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-report-deep.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/himmelctl/test/test-resolve-powershell.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-secret-store.sh	pr	guard
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	pr	static-gate
 scripts/himmelctl/test/test-standalone-bundle.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -876,12 +875,10 @@ scripts/lib/test-rename-aliases.sh	pr	trust-path
 scripts/lib/test-render-lease.sh	pr	trust-path
 scripts/lib/test-resolve-hermes-py.sh	pr	trust-path
 scripts/lib/test-resolve-node.sh	pr	trust-path
-scripts/lib/test-resolve-powershell.sh	pr	trust-path
 scripts/lib/test-resolve-user-home.sh	pr	trust-path
 scripts/lib/test-result.sh	pr	trust-path
 scripts/lib/test-run-bun.sh	pr	trust-path
 scripts/lib/test-run-node.sh	pr	trust-path
-scripts/lib/test-run-pwsh.sh	pr	trust-path
 scripts/lib/test-runtime-preflight.sh	pr	trust-path
 scripts/lib/test-sandbox-run.sh	pr	guard
 scripts/lib/test-scheduler-backend.sh	pr	trust-path
@@ -962,7 +959,6 @@ scripts/macos/test-macos-lane.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/mcp/test-build-mcp-profiles.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/measurements/test-prose-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/memory/test-audit-memory-capture.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/observability/test-agent-runtime-census.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-dashboard-lint.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-exit-codes.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-install-grafana.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1138,7 +1134,6 @@ scripts/vm/test-provenance-roundtrip-dry.sh	local	behaviour suite, 0 catches in 
 scripts/vm/test-upgrade-path-stage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-vm-clone-lib.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-vm-lock.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/vm/test-win-vm.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/web/research/test-research-path.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/web/test-fetch-url.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/where-are-we/test-statusline-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window

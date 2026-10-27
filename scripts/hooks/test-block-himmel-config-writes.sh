@@ -79,13 +79,28 @@ patch_case "apply_patch U+3000-led symlink alias header (no .himmel literal) -> 
 patch_case "apply_patch trailing-space benign header -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt   ${NL}+hi${NL}*** End Patch"
 run "apply_patch relative config.json with payload cwd in .himmel -> block" block "$(jq -nc --arg d "$HOME/.himmel" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
 run "apply_patch relative config.json with payload cwd elsewhere -> allow" allow "$(jq -nc --arg d "$T" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
+# BSD readlink (macOS) has no -m: path resolution is skipped, the literal
+# header check still runs.
+{ mkdir -p "$T/bsd-bin" &&
+  printf '#!/bin/sh\necho called >>"%s"\nexit 1\n' "$T/bsd-bin/calls" >"$T/bsd-bin/readlink" &&
+  chmod +x "$T/bsd-bin/readlink"; } || { echo "FAIL: cannot create the fake readlink" >&2; exit 1; }
+bsd_patch_case() {
+    local rc got
+    jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}' | PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
+}
+bsd_patch_case "apply_patch benign file without readlink -m -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
+if [ -s "$T/bsd-bin/calls" ]; then ok "the fake readlink ran"; else bad "the fake readlink ran - GNU readlink answered instead"; fi
+bsd_patch_case "apply_patch project file without readlink -m -> block" block "*** Begin Patch${NL}*** Update File: $T/r/.himmel/project.conf${NL}@@${NL}*** End Patch"
 
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"
 # shellcheck disable=SC2016 # the literal $HOME spelling is the point
 bash_case "\$HOME spelling redirect -> block" block 'echo x > $HOME/.himmel/config.json'
 bash_case "tilde spelling append -> block" block 'echo x >> ~/.himmel/config.json'
-bash_case "sed -i -> block" block "sed -i 's/false/true/' $CFG"
+bash_case "sed -i -> block" block "sed -i 's/false/true/' $CFG"  # gnu-ok: a payload string fed to the hook, never run
 bash_case "jq redirect over the config -> block" block "jq '.graphify.salus_ollama_cloud_ok=true' $CFG > $T/x"
 bash_case "cp onto the config -> block" block "cp $T/x $CFG"
 bash_case "ln -s onto the config -> block" block "ln -s $T/x $CFG"
@@ -278,6 +293,23 @@ big_case "7.5 KB alternating space/NBSP padded header -> block inside the time b
 big_case "short alternating-padded header (80 chars, base allows) -> block" block "$T/ppad-small.txt"
 { printf '*** Begin Patch\n*** Add File: \302\240 src/x.txt \302\240\n*** End Patch\n'; } > "$T/ppad-ok.txt"
 big_case "ordinary NBSP-padded benign header -> allow" allow "$T/ppad-ok.txt"
+
+echo "== the per-project override, <repo>/.himmel/project.conf (HIMMEL-7424) =="
+PROJ="$T/repo/.himmel/project.conf"
+mkdir -p "$T/repo/.himmel"
+printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$PROJ"
+ln -s "$T/repo/.himmel" "$T/projlink"
+file_case "Write to a project file -> block" block Write "$PROJ"
+file_case "Edit of a project file -> block" block Edit "$PROJ"
+file_case "relative .himmel/project.conf -> block" block Edit ".himmel/project.conf"
+file_case "symlinked dir resolving to a project file -> block" block Write "$T/projlink/project.conf"
+file_case "a project.conf outside .himmel -> allow" allow Write "$T/repo/project.conf"
+patch_case "apply_patch Update File on a project file -> block" block "*** Begin Patch${NL}*** Update File: $PROJ${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "apply_patch symlinked dir to a project file -> block" block "*** Begin Patch${NL}*** Update File: $T/projlink/project.conf${NL}@@${NL}*** End Patch"
+bash_case "redirect into a project file -> block" block "echo CR_FLOOR_FALLBACK=claude-only >> $PROJ"
+bash_case "sed -i on a relative project file -> block" block "sed -i s/1/0/ .himmel/project.conf"  # gnu-ok: a payload string fed to the hook, never run
+bash_case "cat a project file -> allow" allow "cat $PROJ"
+bash_case "grep a project file -> allow" allow "grep -n CR_ .himmel/project.conf"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
