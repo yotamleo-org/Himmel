@@ -120,6 +120,7 @@ workflow_runs() {
         inrun = 1; next
       }
       inrun && /^ *$/ { next }
+      inrun && /^ *#/ { next }
       inrun && ind($0) > k { if ($0 ~ ENVIRON["RE"]) found = 1; next }
       { inrun = 0 }
       END { exit !found }' && return 0
