@@ -437,6 +437,65 @@ wait_exit "$WPID"
 check "(u5542-5) a tick line with no unowned-prs= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (7811) procs=...,unwatched=: a live worker the manifest does not list wakes the
+# waiter once on first sight, again when another joins, and again only after
+# CHIEF_WAIT_UNWATCHED_REWAKE_MIN. RED control (chief-wait.sh before this change): none woke.
+unwatched_line() { sed -e "s/ procs=[^ ]*/ procs=$1/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+unwatched_line "1,unwatched=N302+N303"
+I="$(new_inbox w7811)"
+start "$I" "$WORK/w7811.out" --workers "N1.md"
+wait_exit "$WPID"
+check "(7811) a live worker outside the manifest wakes on first sight" "0" "$rc"
+check "(7811) the wake names the unwatched labels" "WAKE unwatched N302+N303" "$(head -n1 "$WORK/w7811.out")"
+
+start "$I" "$WORK/w7811b.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-2) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7811-2) the same set does not wake again inside the re-wake window" "running" "$rc"
+unwatched_line "1,unwatched=N302+N303+N304"
+wait_exit "$WPID"
+check "(7811-2) another unwatched worker joining wakes at once" "WAKE unwatched N302+N303+N304" "$(head -n1 "$WORK/w7811b.out")"
+
+start "$I" "$WORK/w7811d.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-4) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7811-4) the same set is quiet before the re-wake window ends" "running" "$rc"
+touch -d '2 hours ago' "$I.wait.unwatched"
+wait_exit "$WPID"
+check "(7811-4) the same set wakes again after the re-wake window" "0" "$rc"
+check "(7811-4) the re-wake names the labels" "WAKE unwatched N302+N303+N304" "$(head -n1 "$WORK/w7811d.out")"
+
+unwatched_line "1"
+start "$I" "$WORK/w7811e.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-5) no baseline heartbeat"
+n=0
+while [ "$n" -lt 50 ] && [ -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
+check "(7811-5) a tick line that drops unwatched= clears the marker" "" "$([ -e "$I.wait.unwatched" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# a failed census (procs=unknown) carries no unwatched= and must not clear the marker
+unwatched_line "1,unwatched=N302+N303"
+I="$(new_inbox w7811g)"
+start "$I" "$WORK/w7811g.out" --workers "N1.md"
+wait_exit "$WPID"
+unwatched_line "unknown"
+start "$I" "$WORK/w7811h.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-6) no baseline heartbeat"
+n=0
+while [ "$n" -lt 30 ] && [ ! -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
+sleep 3
+check "(7811-6) procs=unknown keeps the unwatched marker" "present" "$([ -e "$I.wait.unwatched" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+I="$(new_inbox w7811c)"
+start "$I" "$WORK/w7811c.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-3) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7811-3) a tick line with no unwatched= is no wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # --- (ts): a tracker that STAYS stale re-wakes once per streak ---
 # tracker= class changes wake once (w); after the first STALE the class never moves
 # again, so a chief that did not act stayed unwoken for hours. The marker

@@ -322,6 +322,115 @@ has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
 lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
 no_canary "the update step prints no value" "$out"
 
+# --- 8. A .env vs ~/.himmel mismatch is resolved with the operator ---
+env_val() { sed -n "s/^$1=//p" "$TMP/st.orig"; }   # the fixture .env's value of a key
+conf_fixture() {  # a himmel.conf that disagrees with .env on USER_SLUG
+    fixture_env
+    hconf=$(canary hconf)
+    printf 'USER_SLUG=%s\n' "$hconf" > "$HOME/.himmel/himmel.conf"
+}
+slug_read() {  # the value the shell reader returns for USER_SLUG with .env no longer holding it
+    ( unset USER_SLUG; cd "$FX" && . "$FX/scripts/lib/load-dotenv.sh" && load_dotenv --root "$TMP/st" USER_SLUG; printf '%s' "${USER_SLUG-}" ) 2>/dev/null
+}
+conf_fixture
+apply_tty $'y\ne'
+if [ "$rc" = 0 ]; then pass "keeping .env on a mismatch applies (exit 0)"; else fail "keeping .env on a mismatch exited $rc: $out"; fi
+has "a mismatch names the key" "USER_SLUG" "$out"
+has "a mismatch names the .env side" "$TMP/st/.env" "$out"
+# shellcheck disable=SC2088 # the report prints the tilde as written
+has "a mismatch names the ~/.himmel side" "~/.himmel/himmel.conf" "$out"
+no_canary "a mismatch prints no value" "$out"
+if [ "$(slug_read)" = "$(env_val USER_SLUG)" ]; then pass "keep .env: the reader returns the .env value"; else fail "keep .env: the reader returned another value"; fi
+lacks "keep .env: the line left .env" "USER_SLUG=" "$(cat "$TMP/st/.env")"
+has "keep .env: the re-verify ran and passed" "verified: load_dotenv" "$out"
+conf_fixture
+apply_tty $'y\nh'
+if [ "$rc" = 0 ]; then pass "keeping ~/.himmel on a mismatch applies (exit 0)"; else fail "keeping ~/.himmel on a mismatch exited $rc: $out"; fi
+if [ "$(slug_read)" = "$hconf" ]; then pass "keep ~/.himmel: the reader returns the ~/.himmel value"; else fail "keep ~/.himmel: the reader returned another value"; fi
+lacks "keep ~/.himmel: the line left .env" "USER_SLUG=" "$(cat "$TMP/st/.env")"
+has "keep ~/.himmel: the re-verify ran and passed" "verified: load_dotenv" "$out"
+no_canary "a kept choice prints no value" "$out"
+for answer in $'y' $'y\nx'; do
+    conf_fixture
+    apply_tty "$answer"
+    if [ "$rc" != 0 ]; then pass "no choice on a mismatch does not apply"; else fail "no choice on a mismatch exited 0"; fi
+    if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "no choice on a mismatch leaves every .env line"; else fail "no choice on a mismatch changed .env"; fi
+    has "no choice on a mismatch names the key" "USER_SLUG" "$out"
+done
+# A gate-policy key resolves the same way, in config.json.
+policy_val() { node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policy || {}; process.stdout.write(String(p.CR_REQUIRE_CROSS_MODEL))' "$HOME/.himmel/config.json" 2>/dev/null; }
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\ne'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = 1 ]; then pass "keep .env: the policy value becomes the .env value"; else fail "keep .env on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
+# shellcheck disable=SC2088 # the report prints the tilde as written
+has "a policy mismatch names the config.json side" "~/.himmel/config.json" "$out"
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\nh'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = 0 ]; then pass "keep ~/.himmel: the policy value stays"; else fail "keep ~/.himmel on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
+lacks "keep ~/.himmel: the policy line left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
+# A kept policy value with a space and a hash survives the dotenv copy it is checked through.
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"a # b"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\nh'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = "a # b" ]; then pass "keep ~/.himmel: a policy value with a hash is kept whole"; else fail "keep ~/.himmel on a policy value with a hash: rc $rc, policy '$(policy_val)'"; fi
+lacks "keep ~/.himmel: a policy value with a hash left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
+# A chosen side still has to pass the readers: a held key whose handover root
+# is read from .env only fails the re-verify whichever side is kept, and .env
+# stays whole. The faulty reader is the real one with only that lookup changed.
+if ! sed "s/const resolved = behaviourKey('HANDOVER_DIR', env, dotenvPath);/const resolved = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');/" \
+    "$TMP/handover-root.good.js" > "$TMP/handover-root.envonly.js" \
+    || [ ! -s "$TMP/handover-root.envonly.js" ] \
+    || cmp -s "$TMP/handover-root.good.js" "$TMP/handover-root.envonly.js"; then
+    fail "the .env-only handover root fixture was not built"
+fi
+for answer in e h; do
+    fixture_env
+    # The release-state reader follows the handover root, so USER_SLUG is held too.
+    printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/other" "$(canary slug)" > "$HOME/.himmel/himmel.conf"
+    cp "$TMP/handover-root.envonly.js" "$FX/scripts/jira/dist/handover-root.js"
+    apply_tty "y"$'\n'"$answer"$'\n'"$answer"
+    if [ "$rc" != 0 ]; then pass "keep $answer with a faulty reader does not apply"; else fail "keep $answer with a faulty reader exited 0"; fi
+    if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "keep $answer with a faulty reader leaves .env untouched"; else fail "keep $answer with a faulty reader changed .env"; fi
+    has "keep $answer with a faulty reader says the verify failed" "verify failed" "$out"
+done
+cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
+# Keeping .env rewrites himmel.conf as a whole file beside it (a new inode), and
+# a symlinked himmel.conf stays a link to its updated target.
+conf_fixture
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_before=$(ls -i "$HOME/.himmel/himmel.conf" | awk '{print $1}')
+apply_tty $'y\ne'
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_after=$(ls -i "$HOME/.himmel/himmel.conf" | awk '{print $1}')
+if [ "$rc" = 0 ] && [ "$ino_before" != "$ino_after" ]; then pass "keep .env: himmel.conf is replaced, not truncated in place"; else fail "keep .env: himmel.conf was rewritten in place (rc $rc)"; fi
+n=$(find "$HOME/.himmel" -name 'himmel.conf.migrate.*' | wc -l | tr -d ' ')
+if [ "$n" = 0 ]; then pass "keep .env: the himmel.conf rewrite leaves no temporary file"; else fail "keep .env: the himmel.conf rewrite left $n temporary files"; fi
+conf_fixture
+mv "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
+ln -s "$TMP/himmel.conf.target" "$HOME/.himmel/himmel.conf"
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_before=$(ls -i "$TMP/himmel.conf.target" | awk '{print $1}')
+apply_tty $'y\ne'
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_after=$(ls -i "$TMP/himmel.conf.target" | awk '{print $1}')
+if [ -L "$HOME/.himmel/himmel.conf" ] && grep -q "^USER_SLUG=$(env_val USER_SLUG)\$" "$TMP/himmel.conf.target"; then pass "keep .env: a symlinked himmel.conf stays a link to the updated target"; else fail "keep .env: a symlinked himmel.conf was not updated through the link (rc $rc)"; fi
+if [ "$ino_before" != "$ino_after" ]; then pass "keep .env: the symlink target is replaced, not truncated in place"; else fail "keep .env: the symlink target was rewritten in place"; fi
+n=$(find "$TMP" -name 'himmel.conf.target.migrate.*' | wc -l | tr -d ' ')
+if [ "$n" = 0 ]; then pass "keep .env: the symlink rewrite leaves no temporary file"; else fail "keep .env: the symlink rewrite left $n temporary files"; fi
+rm -f "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
+
+# --- 9. The report says the secrets stay in .env and never advises emptying it ---
+fixture_env
+apply_tty y
+has "the report says the secrets stay in .env" "secrets stay in .env: READ_SECRET KEEP_ME" "$out"
+lacks "the report never advises emptying .env" "empty" "$out"
+lacks "the report never advises deleting .env lines" "Delete" "$out"
+fixture_env
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "the dry run says the secrets stay in .env" "secrets stay in .env: READ_SECRET KEEP_ME" "$out"
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
     exit 1

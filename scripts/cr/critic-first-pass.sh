@@ -478,7 +478,7 @@ printf '%s' "$role_prompt" > "$pf"
 
 # The paid codex critic reviews as a SENIOR reviewer. Route the
 # gpt/codex-family one-shot through the himmel_agent profile (its main-tier SOUL)
-# instead of the hermes user-DEFAULT profile, whose SOUL is the low-risk JUNIOR
+# instead of the hermes user-DEFAULT profile, whose SOUL is the low-risk ASSISTANT
 # persona — that framing produced shallow reviews from a strong model.
 #
 # WHY ONLY the gpt family by default: himmel_agent is PROVIDER-BOUND to Codex

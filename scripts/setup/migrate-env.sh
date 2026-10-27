@@ -21,6 +21,13 @@
 # new place; any difference names the key and reader and removes no line.
 # Every gate-policy key is compared, moved or not.
 #
+# A key whose ~/.himmel side (himmel.conf or config.json .policy) already held
+# a different value is the operator's to settle: the apply names both sides,
+# never the values, and asks which to keep: e (the .env value is written to
+# ~/.himmel) or h (the ~/.himmel value stays). It then verifies again. Any other
+# answer, or none, stops with no line removed from .env. The report lists the
+# secrets that stay in .env.
+#
 # A secret "has a reader" when its name appears as a word in a tracked himmel
 # file other than docs and Markdown. Secrets named in ~/.himmel/env-keep.txt
 # (one per line, # comments) always stay, for readers outside this checkout;
@@ -110,7 +117,7 @@ if [ -n "$secrets" ]; then
     esac
 fi
 
-config_keys=() policy_keys=() secret_keys=() plan=""
+config_keys=() policy_keys=() secret_keys=() plan="" stay_secrets=""
 for key in $names; do
     if ! is_owned "$key"; then plan="$plan  $key stays (not himmel's, left in place)"$'\n'; continue; fi
     case "$(_himmel_key_class "$key")" in
@@ -119,11 +126,11 @@ for key in $names; do
         *)
             reader=$(printf '%s\n' "$readers" | awk -v k="$key" '$1 == k { print $2; exit }')
             if case "$keep" in *" $key "*) true ;; *) false ;; esac; then
-                plan="$plan  $key stays (keep-list)"$'\n'
+                stay_secrets="$stay_secrets $key"; plan="$plan  $key stays (keep-list)"$'\n'
             elif [ "$have_git" -eq 0 ]; then
-                plan="$plan  $key stays (its readers could not be searched)"$'\n'
+                stay_secrets="$stay_secrets $key"; plan="$plan  $key stays (its readers could not be searched)"$'\n'
             elif [ -n "$reader" ]; then
-                plan="$plan  $key stays (read by $reader)"$'\n'
+                stay_secrets="$stay_secrets $key"; plan="$plan  $key stays (read by $reader)"$'\n'
             else
                 secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key → $store_rel"$'\n'
             fi ;;
@@ -133,6 +140,7 @@ moving=$(( ${#config_keys[@]} + ${#policy_keys[@]} + ${#secret_keys[@]} ))
 
 echo "env migration for $envfile (key names only):"
 printf '%s' "$plan"
+[ -z "$stay_secrets" ] || echo "secrets stay in .env:$stay_secrets"
 if [ "$moving" -eq 0 ]; then
     echo "nothing to move: every key stays in .env."
     exit 0
@@ -212,6 +220,55 @@ if [ -n "$policy_all" ]; then
     fi
 fi
 
+write_policy() {  # <force 0|1> KEY...: the .env values into config.json .policy
+    local force=$1 key line
+    shift
+    # Values go to node on stdin, never argv. A key config.json already holds
+    # is kept unless force is 1.
+    for key in "$@"; do
+        line=$(_load_dotenv_extract "$envfile" "$key")
+        printf '%s=%s\n' "$key" "$(_load_dotenv_trim "${line#*=}")"
+    done | node -e '
+        const fs = require("fs");
+        const file = process.argv[1];
+        const force = process.argv[2] === "1";
+        const doc = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { version: 1 };
+        if (!doc || typeof doc !== "object" || Array.isArray(doc)) process.exit(3);
+        if (doc.policy === undefined || doc.policy === null) doc.policy = {};
+        if (typeof doc.policy !== "object" || Array.isArray(doc.policy)) process.exit(3);
+        for (const line of fs.readFileSync(0, "utf8").split("\n")) {
+            const i = line.indexOf("=");
+            if (i < 1) continue;
+            const key = line.slice(0, i);
+            let v = line.slice(i + 1);
+            if (v.length > 1 && (v[0] === "\"" || v[0] === "\x27") && v.endsWith(v[0])) v = v.slice(1, -1);
+            if (force || doc.policy[key] === undefined || doc.policy[key] === null) doc.policy[key] = v;
+        }
+        const tmp = file + ".migrate-env.tmp";
+        fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n", { mode: 0o600 });
+        if (fs.existsSync(file)) fs.chmodSync(tmp, fs.statSync(file).mode & 0o777);
+        fs.renameSync(tmp, file);
+    ' "$confdir/config.json" "$force" 2>/dev/null
+}
+set_line() {  # <in> <key> <line> <out>: <in> with the key's lines replaced by <line>; comments stay
+    NEWLINE="$3" awk -v k="$2" '{ l = $0; sub(/\r$/, "", l) }
+        l ~ /^[[:space:]]*#/ { print; next }
+        { i = index(l, "="); n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n) }
+        i && n == k { if (!done) print ENVIRON["NEWLINE"]; done = 1; next }
+        { print }
+        END { if (!done) print ENVIRON["NEWLINE"] }' "$1" > "$4"
+}
+
+# Keys whose ~/.himmel side already holds a value, before anything is copied:
+# if verify finds one of these differing, the operator picks which side wins.
+held=" "
+for key in ${config_keys[@]+"${config_keys[@]}"}; do
+    [ -f "$confdir/himmel.conf" ] && [ -n "$(_load_dotenv_extract "$confdir/himmel.conf" "$key")" ] && held="$held$key "
+done
+for key in ${policy_keys[@]+"${policy_keys[@]}"}; do
+    [ -n "$(value_of "${policy_before-}" "$key")" ] && held="$held$key "
+done
+
 # --- copy ---
 if [ "${#config_keys[@]}" -gt 0 ]; then
     if ! out=$(bash "$HERE/migrate-env-config.sh" --env "$envfile" 2>&1); then
@@ -222,31 +279,9 @@ if [ "${#config_keys[@]}" -gt 0 ]; then
     fi
 fi
 if [ "${#policy_keys[@]}" -gt 0 ]; then
-    # Values go to node on stdin, never argv. A key config.json already holds
-    # is left alone; verify then says whether the two disagree.
-    if ! for key in "${policy_keys[@]}"; do
-            line=$(_load_dotenv_extract "$envfile" "$key")
-            printf '%s=%s\n' "$key" "$(_load_dotenv_trim "${line#*=}")"
-        done | node -e '
-            const fs = require("fs");
-            const file = process.argv[1];
-            const doc = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { version: 1 };
-            if (!doc || typeof doc !== "object" || Array.isArray(doc)) process.exit(3);
-            if (doc.policy === undefined || doc.policy === null) doc.policy = {};
-            if (typeof doc.policy !== "object" || Array.isArray(doc.policy)) process.exit(3);
-            for (const line of fs.readFileSync(0, "utf8").split("\n")) {
-                const i = line.indexOf("=");
-                if (i < 1) continue;
-                const key = line.slice(0, i);
-                let v = line.slice(i + 1);
-                if (v.length > 1 && (v[0] === "\"" || v[0] === "\x27") && v.endsWith(v[0])) v = v.slice(1, -1);
-                if (doc.policy[key] === undefined || doc.policy[key] === null) doc.policy[key] = v;
-            }
-            const tmp = file + ".migrate-env.tmp";
-            fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n", { mode: 0o600 });
-            if (fs.existsSync(file)) fs.chmodSync(tmp, fs.statSync(file).mode & 0o777);
-            fs.renameSync(tmp, file);
-        ' "$confdir/config.json" 2>/dev/null; then
+    # A key config.json already holds is left alone; verify then says whether
+    # the two disagree.
+    if ! write_policy 0 "${policy_keys[@]}"; then
         echo "migrate-env: could not write ~/.himmel/config.json; no lines were removed from .env." >&2
         restore_hint
         exit 1
@@ -283,53 +318,127 @@ if [ "${#secret_keys[@]}" -gt 0 ]; then
 fi
 
 # --- verify ---
-bad="" verified="load_dotenv"
-cp "$envfile" "$work/repo/.env"
-if [ "${#config_keys[@]}" -gt 0 ]; then
-    before=$(cd "$work/repo" && read_shell "$work/home" load_dotenv "${config_keys[@]}") \
-        || bad="${bad}verify: load_dotenv failed reading .env before the move"$'\n'
-fi
-if [ -n "$policy_all" ]; then
-    verified="$verified, load_policy"
-    # shellcheck disable=SC2086 # word-split key names
-    policy_env=$(cd "$work/repo" && read_shell "$work/home" load_policy $policy_all) \
-        || bad="${bad}verify: load_policy failed reading .env before the move"$'\n'
-fi
-if [ "${#config_keys[@]}" -gt 0 ]; then
-    if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$envfile" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
-        bad="$bad$(printf '%s\n' "$nodeout" | grep -E '^(MISMATCH|verify:) ')"$'\n'
-        [ -n "$(printf '%s' "$bad" | tr -d '\n')" ] || bad="${bad}verify: the node readers failed to run"$'\n'
+verify_env="$envfile"   # the .env the readers compare against; a kept ~/.himmel value is swapped in
+verify_all() {  # sets bad and verified
+    bad="" verified="load_dotenv"
+    cp "$verify_env" "$work/repo/.env"
+    if [ "${#config_keys[@]}" -gt 0 ]; then
+        before=$(cd "$work/repo" && read_shell "$work/home" load_dotenv "${config_keys[@]}") \
+            || bad="${bad}verify: load_dotenv failed reading .env before the move"$'\n'
     fi
-    rl=$(printf '%s\n' "$nodeout" | sed -n 's/^readers: //p')
-    [ -z "$rl" ] || verified="$verified, $rl"
-fi
-: > "$work/repo/.env"
-if [ "${#config_keys[@]}" -gt 0 ]; then
-    after=$(cd "$work/repo" && read_shell "$HOME" load_dotenv "${config_keys[@]}") \
-        || bad="${bad}verify: load_dotenv failed reading ~/.himmel after the move"$'\n'
-    for key in "${config_keys[@]}"; do
-        [ "$(value_of "$before" "$key")" = "$(value_of "$after" "$key")" ] || bad="${bad}MISMATCH $key (load_dotenv)"$'\n'
-    done
-fi
-if [ -n "$policy_all" ]; then
-    # shellcheck disable=SC2086 # word-split key names
-    if ! policy_after=$(cd "$work/repo" && read_shell "$HOME" load_policy $policy_all); then
-        bad="${bad}verify: load_policy cannot read ~/.himmel/config.json after the move"$'\n'
+    if [ -n "$policy_all" ]; then
+        verified="$verified, load_policy"
+        # shellcheck disable=SC2086 # word-split key names
+        policy_env=$(cd "$work/repo" && read_shell "$work/home" load_policy $policy_all) \
+            || bad="${bad}verify: load_policy failed reading .env before the move"$'\n'
     fi
-    for key in $policy_all; do
-        case " ${policy_keys[*]-} " in
-            *" $key "*) want=$(value_of "$policy_env" "$key") ;;
-            *) want=$(value_of "$policy_before" "$key") ;;
-        esac
-        [ "$want" = "$(value_of "$policy_after" "$key")" ] || bad="${bad}MISMATCH $key (load_policy)"$'\n'
+    if [ "${#config_keys[@]}" -gt 0 ]; then
+        if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$verify_env" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
+            bad="$bad$(printf '%s\n' "$nodeout" | grep -E '^(MISMATCH|verify:) ')"$'\n'
+            [ -n "$(printf '%s' "$bad" | tr -d '\n')" ] || bad="${bad}verify: the node readers failed to run"$'\n'
+        fi
+        rl=$(printf '%s\n' "$nodeout" | sed -n 's/^readers: //p')
+        [ -z "$rl" ] || verified="$verified, $rl"
+    fi
+    : > "$work/repo/.env"
+    if [ "${#config_keys[@]}" -gt 0 ]; then
+        after=$(cd "$work/repo" && read_shell "$HOME" load_dotenv "${config_keys[@]}") \
+            || bad="${bad}verify: load_dotenv failed reading ~/.himmel after the move"$'\n'
+        for key in "${config_keys[@]}"; do
+            [ "$(value_of "$before" "$key")" = "$(value_of "$after" "$key")" ] || bad="${bad}MISMATCH $key (load_dotenv)"$'\n'
+        done
+    fi
+    if [ -n "$policy_all" ]; then
+        # shellcheck disable=SC2086 # word-split key names
+        if ! policy_after=$(cd "$work/repo" && read_shell "$HOME" load_policy $policy_all); then
+            bad="${bad}verify: load_policy cannot read ~/.himmel/config.json after the move"$'\n'
+        fi
+        for key in $policy_all; do
+            case " ${policy_keys[*]-} " in
+                *" $key "*) want=$(value_of "$policy_env" "$key") ;;
+                *) want=$(value_of "$policy_before" "$key") ;;
+            esac
+            [ "$want" = "$(value_of "$policy_after" "$key")" ] || bad="${bad}MISMATCH $key (load_policy)"$'\n'
+        done
+    fi
+}
+has_bad() { [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; }
+# A copy beside the file (same mode) renamed over it, so a failed write leaves
+# the file whole; a symlink is followed to its target, so the link stays.
+replace_file() {  # <new content file> <dest>
+    local dest="$2" link hops=0 tmp
+    while [ -L "$dest" ]; do
+        hops=$((hops + 1)); [ "$hops" -le 40 ] || return 1
+        link=$(readlink "$dest")
+        case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
     done
-fi
-if [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; then
+    tmp="$dest.migrate.$$"
+    # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
+    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
+    rm -f "$tmp"
+    return 1
+}
+verify_all
+if has_bad; then
     printf '%s' "$bad" | grep .
-    echo "verify failed: a reader sees a different value after the move than .env holds, so no lines were removed from .env."
-    echo "fix the reader, or make ~/.himmel agree with .env, then run this again."
-    restore_hint
-    exit 1
+    # Every failure a key whose ~/.himmel side held a different value: the
+    # operator settles each one, then the readers run again.
+    settle=1 keys=""
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        key=$(printf '%s' "$line" | sed -n 's/^MISMATCH \([A-Za-z_][A-Za-z0-9_]*\) (.*/\1/p')
+        if [ -z "$key" ] || { case "$held" in *" $key "*) false ;; *) true ;; esac; }; then settle=0; break; fi
+        case " $keys " in *" $key "*) ;; *) keys="$keys $key" ;; esac
+    done <<< "$bad"
+    keep_env="" keep_him=""
+    if [ "$settle" -eq 1 ]; then
+        echo "these keys hold different values in .env and in ~/.himmel (values not shown):"
+        for key in $keys; do
+            # shellcheck disable=SC2088 # shown to the user as written, never expanded
+            if [ "$(_himmel_key_class "$key")" = policy ]; then side="~/.himmel/config.json .policy"; else side="~/.himmel/himmel.conf"; fi
+            printf '  %s: %s  vs  %s\n' "$key" "$envfile" "$side"
+            printf 'keep the value in [e] %s or [h] %s? [e/h] ' "$envfile" "$side"
+            answer=""
+            read -r answer || answer=""
+            case "$answer" in
+                e|E) keep_env="$keep_env $key" ;;
+                h|H) keep_him="$keep_him $key" ;;
+                *) printf 'no choice for %s: nothing was removed from .env.\n' "$key"; settle=0; break ;;
+            esac
+        done
+    fi
+    if [ "$settle" -eq 1 ]; then
+        for key in $keep_env; do
+            if [ "$(_himmel_key_class "$key")" = policy ]; then
+                write_policy 1 "$key"
+            else
+                set_line "$confdir/himmel.conf" "$key" "$(_load_dotenv_extract "$envfile" "$key")" "$work/conf.new" \
+                    && replace_file "$work/conf.new" "$confdir/himmel.conf"
+            fi || { echo "migrate-env: could not apply the choice for $key; no lines were removed from .env." >&2; restore_hint; exit 1; }
+        done
+        for key in $keep_him; do
+            if [ "$(_himmel_key_class "$key")" = policy ]; then
+                keptvalue=$(value_of "$policy_before" "$key")
+                case "$keptvalue" in *' #'*) keptvalue="\"$keptvalue\"" ;; esac   # an unquoted ' #' reads as a comment
+                keptline="$key=$keptvalue"
+            else keptline=$(_load_dotenv_extract "$confdir/himmel.conf" "$key"); fi
+            if set_line "$verify_env" "$key" "$keptline" "$work/env.verify.new" && mv -f "$work/env.verify.new" "$work/env.verify"; then
+                verify_env="$work/env.verify"
+            else
+                echo "migrate-env: could not build the verify copy for $key; no lines were removed from .env." >&2
+                restore_hint
+                exit 1
+            fi
+        done
+        verify_all
+        has_bad && printf '%s' "$bad" | grep .
+    fi
+    if [ "$settle" -eq 0 ] || has_bad; then
+        echo "verify failed: a reader sees a different value after the move than .env holds, so no lines were removed from .env."
+        echo "fix the reader, or make ~/.himmel agree with .env, then run this again."
+        restore_hint
+        exit 1
+    fi
 fi
 
 # --- remove the moved lines; .env keeps its mode ---

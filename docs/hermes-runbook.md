@@ -2,15 +2,14 @@
 
 Hermes ([NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent))
 is a self-hosted, terminal-native AI agent with its own provider chain, profiles,
-memory, and pre-tool guards. himmel drives it in **three tiers** (config lives
+memory, and pre-tool guards. himmel drives it in **two tiers** (config lives
 OUTSIDE this repo, so hermes is part of himmel even when a checkout doesn't show
 it):
 
 | Tier | What it does | Status |
 |------|--------------|--------|
 | **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.1-sol` anchor — set `CR_PROFILE=none` for claude-only. A second paid row, `claude` (`claude-opus-5-5`, effort `medium`), runs the official claude binary read-only, not hermes: provider `claude-api` (default, per-token key through `scripts/api-lane/claude-api.sh`) or `claude-subscription` (behind bank-preflight and the native-auth pin). A missing key, closed lane, exhausted credit or non-PROCEED usage is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn it off with a `drop:true` row for slug `claude` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
-| **Junior** | Chore-shaped work (vault inbox capture, summaries, note-taking) on free inference, behind a read-only `luna_vault_guard` write fence. | **Working.** |
-| **`himmel_agent` main tier** | A full-control orchestrator (Codex / gpt-6.1-sol) carrying `parity_guard` instead of the junior fence. It does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
+| **`himmel_agent` main tier** | A full-control orchestrator (Codex / gpt-6.1-sol) carrying `parity_guard`. It does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
 
 See the registry row in [`docs/tool-adoption/registry.md`](tool-adoption/registry.md)
 (tool-adoption rubric) for the adoption rationale and trust posture. The rest of this
@@ -22,8 +21,8 @@ OUTSIDE this repo, so a machine rebuild reproduces it from here.
 himmel ships **no base-hermes installer** and never writes your hermes identity
 (`SOUL.md`, `config.yaml`, `.env`, profiles). You install and configure hermes
 itself with hermes's own tooling; himmel only adds the optional `himmel_agent`
-profile on top. There are four steps: steps 1–3 give you the working CR-critic and junior
-tiers, and step 4 is the alpha main tier.
+profile on top. There are four steps: steps 1–3 give you the working CR-critic tier, and
+step 4 is the alpha main tier.
 
 ### 1. Install hermes (upstream)
 
@@ -100,20 +99,20 @@ bash scripts/hermes/invoke.sh "Reply with exactly: OK"
 ```
 
 A clean `OK` means `/pr-check`'s hermes critic is wired. That is the whole
-working setup: the CR-critic and junior tiers need nothing further.
+working setup: the CR-critic tier needs nothing further.
 
 ### 4. (Optional, alpha) add the `himmel_agent` main tier
 
 The full-control orchestrator tier is **experimental**. Its `parity_guard`
 tests green for the guard-parity set, but it still has less live mileage than
-the Claude/himmel path. It is not required for the CR-critic or junior tiers. If you want it,
+the Claude/himmel path. It is not required for the CR-critic tier. If you want it,
 provision the additive profile per [Profiles](#profiles-your-default--himmels-himmel_agent-main-tier)
 below.
 
 ## Install layout
 
 - Install root: `~/.hermes/` (or `HERMES_HOME`): config.yaml, SOUL.md,
-  `agent-hooks/luna_vault_guard.py` (fail-closed vault write fence),
+  `agent-hooks/parity_guard.py` (once the provisioner has run),
   `.env` (API keys), and the `hermes-agent/` checkout.
 - Hermes reads its OWN `.env` (`~/.hermes/.env`); shell
   env and himmel's repo-root `.env` are irrelevant to it.
@@ -124,7 +123,7 @@ below.
 > `parity_guard` now tests green for the guard-parity set in
 > [`docs/internals/lane-parity.md`](internals/lane-parity.md), but it still has
 > less live mileage than the Claude/himmel path. The working, production hermes
-> lanes today are the **CR critic** and **junior** tiers (top of this doc). Use
+> lane today is the **CR critic** tier (top of this doc). Use
 > `himmel_agent` knowingly.
 
 Hermes supports named **profiles** (`hermes profile create|list|use|show`), each
@@ -140,9 +139,9 @@ main tier **without touching your existing setup**:
   `scripts/hermes/install-himmel-profile.sh`. It is himmel's
   main-tier orchestrator (Codex / gpt-6.1-sol): a generalist that does real
   engineering, research, vault, and writing work: the "main puller" when
-  Claude capacity is scarce. It carries `agent-hooks/parity_guard.py` instead
-  of the junior `luna_vault_guard.py`: the write/repo fence and routine
-  git/gh/rm blocks are dropped, but the secret-read fence, self-protection (it
+  Claude capacity is scarce. It carries `agent-hooks/parity_guard.py`, which
+  has no write/repo fence and no routine git/gh/rm blocks; the secret-read
+  fence, self-protection (it
   can't rewrite its own guard/config/SOUL), and catastrophic-shell blocks
   (`rm -rf`, force-push, scheduler/disk mutation, `curl|sh`) stay, for parity with
   what Claude/himmel themselves enforce.
@@ -150,8 +149,8 @@ main tier **without touching your existing setup**:
 ```
 # provision (or refresh) the himmel_agent profile AND wire parity_guard into
 # EVERY hermes profile by default (universal guard) — additive,
-# idempotent, non-clobbering (swaps a luna_vault_guard, or ADDS the guard where
-# a profile has none, preserving any other hooks it carries):
+# idempotent, non-clobbering (ADDS the guard where a profile has none,
+# preserving any other hooks it carries):
 bash scripts/hermes/install-himmel-profile.sh
 # narrow the universal pass to named profiles only:
 bash scripts/hermes/install-himmel-profile.sh --parity-guard=default,research
@@ -181,14 +180,8 @@ will answer. So couple them structurally instead:
   only** (Codex / gpt-6.1-sol) with **no free fallback** (`fallback_providers: []`).
   If the premium model is rate-limited, the main tier simply pauses; it does
   not degrade into a powerful agent backed by a free model.
-- The **free tier lives on the read-only junior** (your `default` /
-  `luna_vault_guard` profile) on a free model (e.g. OpenRouter
-  `nvidia/nemotron-3-ultra-550b-a55b:free`, which draws no paid budget). It runs
-  **in parallel** as always-available, low-stakes capacity, so when the premium
-  model is down you still have a safe agent, just not a writing one.
 
-In short: fall back to free **only** by also dropping to read-only; never pair a
-free model with write/git/PR control.
+In short: never pair a free model with write/git/PR control.
 
 ## CR critic: routes + proven invocation
 
@@ -243,46 +236,13 @@ Tests: `bash scripts/cr/test-hermes-critic.sh` is fully stubbed (`HERMES_PY` for
 the default route, a `claude` shim on `PATH` for `--route claude`), so it never
 spends the subscription usage budget. It is in the `run-shell-tests.sh` SKIP_LIST; run it directly.
 
-## Free-tier SOUL tuning (559)
+## `himmel_agent` SOUL markers (559)
 
-Himmel ships one tuned free-tier identity as an **opt-in asset**:
-[`scripts/hermes/assets/free-tier.SOUL.md`](../scripts/hermes/assets/free-tier.SOUL.md).
-It is tuned for the open-model free anchor (read live from
-`scripts/cr/critics.json`; the anchor model drifts as free quotas
-exhaust, so do not hardcode it here). It adds rigid JSON / format-obedience
-scaffolding, a declared `Context budget:` line, and fewer hedges. Open models
-drift from the output contract and over-report, so the free SOUL compensates
-where the premium GPT-anatomy prompt would instead rely on contradiction
-resolution. It is **identity-only**: project specifics stay in each context's
-`AGENTS.md` / `CLAUDE.md` / vault `_CLAUDE.md`, never in the SOUL.
-
-**How you apply it (operator action, not himmel's):** copy the asset into the
-`SOUL.md` of your **existing read-only junior profile** (the `default` /
-`luna_vault_guard` profile from the tier-coupling section above):
-
-```bash
-# <home> = your hermes config home (upstream default: ~/.hermes)
-cp scripts/hermes/assets/free-tier.SOUL.md <home>/profiles/<your-junior-profile>/SOUL.md
-hermes gateway restart   # pick up the new identity, when no session is running
-```
-
-Himmel **never** overwrites your `default` profile SOUL for you, and this path
-ships **no `install-himmel-profile.sh` edit**. The provisioner knows
-`wire_parity_guard set` / `ensure` / `swap`, all of which wire the
-write-allowed `parity_guard`; it has no supported way to wire a READ-ONLY
-`luna_vault_guard` fence onto a fresh profile (and `luna_vault_guard` is a
-hermes-side artifact himmel does not ship), so a himmel-created `--free-tier`
-profile could not be safely fenced.
-Applying the tuned SOUL to your **existing** read-only junior keeps the
-tier-coupling invariant intact (the free model stays read-only) without himmel
-wiring a fence it cannot ship.
-
-The **premium half** of 559 is the `himmel_agent` SOUL
-([`scripts/hermes/assets/himmel-agent.SOUL.md`](../scripts/hermes/assets/himmel-agent.SOUL.md)),
-which carries the GPT-anatomy markers: an explicit **Precedence ladder** +
-`<spec>` tags. The free SOUL deliberately carries the JSON-obedience markers
-instead (`Context budget:` + a fenced format-contract block); the two differ
-on those named markers by design, asserted by
+The `himmel_agent` SOUL
+([`scripts/hermes/assets/himmel-agent.SOUL.md`](../scripts/hermes/assets/himmel-agent.SOUL.md))
+carries the GPT-anatomy markers: an explicit **Precedence ladder** + `<spec>`
+tags, and none of the open-model JSON-obedience markers (`Context budget:` or a
+fenced format-contract block). This is asserted by
 [`scripts/hermes/test-soul-markers.sh`](../scripts/hermes/test-soul-markers.sh)
 (T11).
 
@@ -362,7 +322,7 @@ discarding orphaned upstream commits safe.
 ## Provider routes (wired 2026-06-12)
 
 > **SUPERSEDED: since 2026-06-24 the live route is Codex via the
-> `openai-codex` provider, today `gpt-6.1-sol`** (the impl/junior profiles; the CR critic pins its
+> `openai-codex` provider, today `gpt-6.1-sol`** (the impl profiles; the CR critic pins its
 > own model, `gpt-6.1-sol`, independently; see the tier table above), not the
 > NVIDIA/OpenRouter chain documented below. The Nemotron block is kept for history; a full re-doc of
 > the current routing is tracked. Verify the live model with

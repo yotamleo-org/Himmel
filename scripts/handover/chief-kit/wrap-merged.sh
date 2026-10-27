@@ -119,6 +119,8 @@ ticket=""; label=""
 errf="$(mktemp "${TMPDIR:-/tmp}/wrap-merged-close.XXXXXX")" || fail close-wrapped-worker "mktemp failed" 1
 "${CLOSE[@]}" --fleet "$FLEET" "$WORKER" 2>"$errf"; rc=$?
 cat "$errf" >&2
+# A zero-session worker now exits 0 (CLOSED-ALREADY) and close-wrapped-worker.sh retires its own entry.
+# This rc-5 branch stays for a close script that still refuses with that text (test-wrap-merged.sh stubs one).
 if [ "$rc" -eq 5 ] && grep -Fq 'refusing - 0 live session(s)' "$errf"; then
     # close-wrapped-worker proved the lock free and the tail WRAPPED, then found no session:
     # the window is already gone (a re-run). It stopped before its own manifest removal,

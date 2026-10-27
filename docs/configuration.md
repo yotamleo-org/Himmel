@@ -957,7 +957,7 @@ unchanged. Probe kinds: `always` (Claude tiers), `env:<KEY>`, `path:<cli>`,
 Claude tiers (haiku/sonnet/opus/fable) are always available as native
 subagents. External lanes appear only when configured — see the
 [lanes table in §4.1](#41-env--the-file-based-config) for the enabling keys,
-[hermes-runbook.md](hermes-runbook.md) for the hermes critic/junior tiers.
+[hermes-runbook.md](hermes-runbook.md) for the hermes CR-critic and main tiers.
 The delegation *policy* (which tier gets what work) is prose in
 [CLAUDE.md](../CLAUDE.md); a pre-commit guard (`scripts/lanes/check.mjs`)
 keeps the volatile lane inventory out of that file.

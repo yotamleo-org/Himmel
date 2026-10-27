@@ -22,7 +22,7 @@ a **six-item dependency chain, in order**: (1) `git pull --ff-only` of this chec
 freshly-pulled dir, (3) a **jira CLI dist rebuild** (`scripts/jira/dist` is
 gitignored, so a pull that touches the jira TypeScript source needs a
 rebuild to take effect), (4) a **qmd fork update** (qmd ships from a
-himmel-pinned fork outside this checkout), (5) a **hermes junior-tier
+himmel-pinned fork outside this checkout), (5) a **hermes
 update** (HIMMEL-426 — hermes is a separate editable git checkout *outside*
 this repo, so `git pull` here never touches it; this pulls + reinstalls it),
 and (6) a **luna template upgrade** (`LUNA_VAULT_PATH`, content-preserving).

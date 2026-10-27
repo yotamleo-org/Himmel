@@ -202,7 +202,7 @@ EOF
     return 0
 }
 
-# ─── hermes junior-tier update ──────────────────────────────────
+# ─── hermes update ──────────────────────────────────
 # Hermes (NousResearch/hermes-agent) is an EDITABLE install from a local git
 # checkout (default %LOCALAPPDATA%/hermes/hermes-agent on Windows,
 # ~/.hermes/hermes-agent on Linux/macOS), NOT a himmel plugin and
@@ -236,7 +236,7 @@ update_hermes() {
     [ -d "$src/.git" ] || { [ -d "$root/.git" ] && src="$root"; }
 
     echo ""
-    echo "==> hermes junior-tier update"
+    echo "==> hermes update"
     if [ ! -d "$src/.git" ]; then
         echo "    skip: hermes not installed as a git checkout ($src) — see docs/hermes-runbook.md."
         return 0
@@ -1687,7 +1687,7 @@ report_qmd_bun_missing() {
     return 0
 }
 
-# 5. hermes junior-tier update. Reuses update_hermes() (defined above) and
+# 5. hermes update. Reuses update_hermes() (defined above) and
 #    classifies its outcome into STATUS_hermes/DETAIL_hermes for the shared
 #    status table. update_hermes returns NON-ZERO for a genuine
 #    failure (checkout present + configured but the pull/pip refresh actually
@@ -3502,7 +3502,7 @@ fi
 
 if [ "$chain_rc" -eq 0 ]; then
     echo ""
-    echo "==> [5/6] hermes junior-tier update"
+    echo "==> [5/6] hermes update"
     # Guarded like every other item: run_hermes_step returns non-zero on a
     # GENUINE hermes failure (a real pull/pip-refresh error), aborting the
     # chain here exactly like every other item — never on an absent/foreign/
