@@ -2,7 +2,7 @@
 """enrich-chat-notes — provider-pluggable enrichment pass over enriched:false chat-import notes.
 
 HIMMEL-833 (DeepSeek, original); HIMMEL-1167 generalizes the LLM backend to a
-selectable provider (--provider deepseek|codex|claude, default deepseek).
+selectable provider (--provider deepseek|codex|claude, default claude).
 Sibling of fold-chat-history.py. Per note: one provider call
 (up to 2 attempts on invalid response shape) (summary + vocab-constrained
 tags); each request also carries the vault-wide top-200 tag vocabulary

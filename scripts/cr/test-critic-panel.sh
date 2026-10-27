@@ -2257,13 +2257,13 @@ chmod +x "$P1065_STUB"
 # cwd decoy (pre-fix the key was never loaded at all -> codex died rc=2).
 : > "$P1065_KEY"
 ( cd "$P1065_CWX" && unset CLIPROXY_API_KEY \
-    && printf '%s' "$DIFF" | CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
+    && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
 check "HIMMEL-1065: codex credential resolves from the primary .env (not the cwd repo's decoy)" "$(cat "$P1065_KEY" 2>/dev/null)" "cpx-himmel-root"
 # A live process value still wins (load_dotenv only-when-unset).
 : > "$P1065_KEY"
 ( cd "$P1065_CWX" && export CLIPROXY_API_KEY=process-key \
-    && printf '%s' "$DIFF" | CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
+    && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
 check "HIMMEL-1065: live process CLIPROXY_API_KEY wins over the .env value" "$(cat "$P1065_KEY" 2>/dev/null)" "process-key"
 
