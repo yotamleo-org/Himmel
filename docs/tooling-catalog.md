@@ -1532,7 +1532,7 @@ on demand; nothing here runs automatically.
   `docs/luna/end-session-wiki.md` → Crystallization.
 - `scripts/luna/fold-chat-history.py` — Fold an exported provider chat history (ChatGPT now; Gemini is a planned follow-up) into the luna vault as `chats/gpt/` notes (provider id maps to a vault subdir, e.g. `chatgpt` → `gpt`) + gitignored assets; create-only idempotent, `--dry-run` first.
 - `scripts/luna/enrich-chat-notes.py` — **Chat-note enrichment pass** (provider-pluggable).
-  `--provider deepseek|codex|claude` (default `deepseek`) summary + vocab-constrained tags + locally-computed Related Notes for
+  `--provider deepseek|codex|claude` (default `claude`) summary + vocab-constrained tags + locally-computed Related Notes for
   `enriched: false` chat-import notes under `<vault>/chats/`; flips each note to
   `enriched: true` (incremental, interruptible; rewrites existing notes in
   place — sibling of the create-only `fold-chat-history.py`). Each provider is egress-matrix-gated under purpose `enrichment`

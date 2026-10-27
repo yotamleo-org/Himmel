@@ -183,8 +183,8 @@ is today's shipped posture, not worsened by this default.
 
 Alternative rejected by default: hard-block on anchor death (turns a free
 third-party outage into a repo-wide merge freeze — disproportionate).
-`CR_PROFILE=paid` (codex) remains the operator escalation. Per-token lanes stay
-blocked (locked).
+`CR_PROFILE=paid` (codex) remains the operator escalation. No per-token critic
+joins any panel until the operator enables per-token billing.
 
 ## 4. Human checkpoints (first-class, bounded)
 
@@ -215,9 +215,9 @@ Unquarantine is not binary-forever; it is a per-lane trust ledger.
 
 ## 6. Trace→regression loop (placement only)
 
-A blocking automated review FAIL on a cheap-lane branch emits a machine-findable
-record stored with the run artifacts: `scripts/cr/emit-gate-fail.sh` writes it to
-`<session-dir>/gate-report.jsonl`. A lane-rubric FAIL is recorded only in the
+The record for a blocking automated review FAIL on a cheap-lane branch is a
+machine-findable line stored with the run artifacts. The emit-gate-fail script can write it to
+`<session-dir>/gate-report.jsonl`, but no review step calls it yet. A lane-rubric FAIL is recorded only in the
 PR-body verdict (§1).
 
 This is the ONE added emission this page places: today `file-deferred-issues.sh`
