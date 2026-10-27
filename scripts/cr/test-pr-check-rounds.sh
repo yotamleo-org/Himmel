@@ -3203,6 +3203,16 @@ printf '#!/bin/sh\nexit 3\n' > "$tmp/nonode/node"; chmod +x "$tmp/nonode/node"
 ab_out="$(cd "$repo" && PATH="$tmp/nonode:$PATH" bash "$RR" abort --branch ab77node --head "$ab_h" 2>&1)"; ab_rc=$?
 assert_eq "$ab_rc" "8" "7753 (i) abort refuses when the panel ledger cannot be read ($ab_out)"
 assert_eq "$(cat "$git_dir/cr-review-rounds/ab77node.round")" "1" "7753 (i) the unreadable-ledger round keeps its count"
+# A ledger file node cannot open is not an empty ledger either.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP 7753 (j) root reads a mode-000 ledger, so the row cannot fail it"
+else
+    chmod 000 "$git_dir/cr-critic-scores.jsonl"
+    ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77node --head "$ab_h" 2>&1)"; ab_rc=$?
+    chmod 644 "$git_dir/cr-critic-scores.jsonl"
+    assert_eq "$ab_rc" "8" "7753 (j) abort refuses when the panel ledger cannot be opened ($ab_out)"
+    assert_eq "$(cat "$git_dir/cr-review-rounds/ab77node.round")" "1" "7753 (j) the unopenable-ledger round keeps its count"
+fi
 
 # PR 4004's state: the delta round's start ran but its panel never reviewed
 # (an abort whose give-back did not run), so .head names an unreviewed head.

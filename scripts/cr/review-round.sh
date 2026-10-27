@@ -347,7 +347,7 @@ ledger_query() {
     LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
 let lines = [];
-try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch { process.exit(0); }
+try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch (err) { process.exit(err.code === "ENOENT" ? 0 : 2); }
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
 // ponytail: "critic" is any model name outside that list, and critic finding rows
 // and their fixed amends are session-writable through ledger-append.sh, so a worker
