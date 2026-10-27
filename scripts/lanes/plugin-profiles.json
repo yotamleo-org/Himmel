@@ -132,7 +132,7 @@
     "platform-design-skills@himmel",
     "diagram-design@himmel",
     "builder-visual@himmel",
-    "higgsfield@himmel",
+    "higgsfield-skills@himmel",
     "frontend-slides@himmel",
     "design-dna@himmel",
     "anydesign@himmel",
@@ -209,11 +209,11 @@
       "_comment_contextBudget": "HIMMEL-4021 audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
     "design-imagegen": {
-      "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles. HIMMEL-7826: higgsfield@himmel registers the hosted Higgsfield MCP (image and video generation, one-time operator OAuth); it rides this add-on, not the core, because generation is this add-on's role and the add-on carries an MCP-only plugin the same way the core carries builder-visual's.",
+      "_comment": "HIMMEL-4012 PR2b design kit add-on. Stacks on base only, not on the design core; launch as `--profile design --add-plugins <these ids>` until HIMMEL-4014 composes profiles. HIMMEL-7826: higgsfield-skills@himmel loads the Higgsfield image and video skills (they run the higgsfield CLI through Bash; the operator installs the CLI and signs in once); it rides this add-on, not the core, because generation is this add-on's role and the CLI sends prompts and files off the machine.",
       "enable": [
         "taste-skill-core@himmel",
         "ai-image-prompts@himmel",
-        "higgsfield@himmel"
+        "higgsfield-skills@himmel"
       ],
       "contextBudget": 50000,
       "contextMode": "standard",

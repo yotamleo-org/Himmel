@@ -166,11 +166,6 @@
       "note": "builder-visual@himmel hosted MCP; block-agent-native-egress.sh owns its salus deny. Tools not enumerated",
       "tools": {}
     },
-    "plugin_higgsfield_higgsfield": {
-      "verdict": "allow", "egress": "off-box", "provider": "higgsfield",
-      "note": "higgsfield@himmel hosted MCP (HIMMEL-7826); block-agent-native-egress.sh owns its salus deny. Tools not enumerated: the tool list is from third-party guides, not Higgsfield",
-      "tools": {}
-    },
     "plugin_luna-correlate_luna-correlate": {
       "verdict": "allow", "egress": "local", "note": "luna-correlate@himmel (gated by HIMMEL_MCP_LUNA_CORRELATE)",
       "tools": { "correlate": "read" }

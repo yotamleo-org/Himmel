@@ -122,7 +122,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*([Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee]|[Hh][Ii][Gg][Gg][Ss][Ff][Ii][Ee][Ll][Dd]).*",
+        "matcher": "Bash|mcp__.*[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee].*",
         "hooks": [
           {
             "type": "command",

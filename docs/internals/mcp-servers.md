@@ -41,7 +41,6 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
-| `plugin_higgsfield_higgsfield` | Policy registry | Hosted Higgsfield SDK **unknown** | HTTP (`https://mcp.higgsfield.ai/mcp`), browser OAuth; from `higgsfield@himmel`'s `.mcp.json`. Transport is from third-party guides, not Higgsfield | **Unknown**, unenumerated (third-party guides list five) | Provider-owned; `block-agent-native-egress.sh` denies it for salus (HIMMEL-7826). |
 | `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.4.0** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
 
 ## Tasks and elicitation (protocol 2026-07-28)

@@ -8,10 +8,17 @@
 # agent-native MCP call when the session is in salus or the payload names
 # salus content.
 #
-# higgsfield@himmel (design-imagegen add-on) registers the hosted
-# Higgsfield MCP (https://mcp.higgsfield.ai/mcp), which sends every tool
-# argument to Higgsfield. The same fence covers it (mcp__*higgsfield*; matrix
-# cell salus x higgsfield x * = hard deny): one hook, one set of salus signals.
+# higgsfield-skills@himmel (design-imagegen add-on) carries the Higgsfield skills,
+# which drive the `higgsfield` CLI through Bash; the CLI uploads local files
+# and sends every prompt to Higgsfield. The same fence covers a Bash call
+# whose input names higgsfield (matrix cell salus x higgsfield x * = hard
+# deny): one hook, one set of salus signals.
+#
+# Cost: hooks.json routes EVERY Bash call here, so the first thing the script
+# does is one case-insensitive substring test of the raw input for
+# agent-native / agent_native / higgsfield (or a \u escape, which could hide
+# one). A call with none of them exits 0 on bash builtins alone: no stdin
+# subprocess, no jq, no tr, no git. The suite proves it with an empty PATH.
 #
 # Why a plugin-shipped hook, not a scripts/hooks/ one wired in
 # .claude/settings.json: a design worker on salus runs with CLAUDE_PROJECT_DIR =
@@ -76,16 +83,22 @@ _canon() { (cd -P -- "$1" 2>/dev/null && pwd -P) || true; }
 
 deny() {
     {
-        echo "block-agent-native-egress: refusing a hosted agent-native (Builder.io) or Higgsfield MCP call: $1."
-        echo "Tool arguments to these MCPs leave the machine for Builder.io or Higgsfield, and salus/PHI content never may"
+        echo "block-agent-native-egress: refusing a hosted agent-native (Builder.io) MCP call or a Higgsfield CLI call: $1."
+        echo "Tool arguments to these leave the machine for Builder.io or Higgsfield, and salus/PHI content never may"
         echo "(egress-matrix.json: salus x builder-io and salus x higgsfield = hard deny)."
-        echo "Do this work without the hosted MCP: use the local design skills (frontend-design,"
+        echo "Do this work without them: use the local design skills (frontend-design,"
         echo "plannotator html-*, impeccable), which keep the content on this machine. There is no bypass."
     } >&2
     exit 2
 }
 
-input=$(cat)
+# read is a builtin: no cat subprocess on the hot path.
+IFS= read -r -d '' input || true
+
+case "$input" in
+    *[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee]*|*[Hh][Ii][Gg][Gg][Ss][Ff][Ii][Ee][Ll][Dd]*|*'\u'*) ;;
+    *) exit 0 ;;
+esac
 
 # Unparseable input: fail closed only when it names agent-native or higgsfield.
 _raw_decide() {
@@ -100,7 +113,15 @@ printf '%s' "$input" | jq empty >/dev/null 2>&1 || _raw_decide "$input"
 
 tool_lc=$(_lc "$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)")
 case "$tool_lc" in
-    mcp__*agent-native*|mcp__*agent_native*|mcp__*higgsfield*) ;;
+    mcp__*agent-native*|mcp__*agent_native*) ;;
+    bash)
+        # The raw prefilter above is looser than this: only a Bash call whose
+        # decoded input names higgsfield is this hook's business.
+        case "$(_lc "$(printf '%s' "$input" | jq -c '.tool_input // {}' 2>/dev/null)")" in
+            *higgsfield*) ;;
+            *) exit 0 ;;
+        esac
+        ;;
     *) exit 0 ;;
 esac
 

@@ -59,20 +59,41 @@ expect 2 "salus cwd -> agent-native call denied" \
 expect 0 "himmel cwd -> agent-native call allowed" \
     "$(payload "$TOOL" "$HIMMEL" "make a landing page")"
 
-# --- Higgsfield hosted MCP: the same fence, a second provider -----------------
-HF_TOOL='mcp__plugin_higgsfield_higgsfield__generate_image'
-expect 2 "salus cwd -> higgsfield call denied" \
-    "$(payload "$HF_TOOL" "$SALUS" "a product shot")"
-expect 2 "salus path in a higgsfield payload from a himmel cwd -> denied" \
-    "$(payload "$HF_TOOL" "$HIMMEL" "animate /home/x/github/salus/scan.png")"
-expect 0 "himmel cwd -> higgsfield call allowed" \
-    "$(payload "$HF_TOOL" "$HIMMEL" "a product shot")"
-expect 2 "directly-registered higgsfield server, salus cwd -> denied" \
-    "$(payload 'mcp__higgsfield__generate_video' "$SALUS" "hello")"
-expect 2 "mixed-case Higgsfield server, salus cwd -> denied" \
-    "$(payload 'mcp__plugin_Higgsfield_HIGGSFIELD__x' "$SALUS" "hello")"
+# --- Higgsfield CLI (the higgsfield skills run it through Bash): same fence ----
+bashpayload() { # bashpayload <cwd> <command>
+    jq -cn --arg c "$1" --arg m "$2" \
+        '{session_id:"s",hook_event_name:"PreToolUse",cwd:$c,tool_name:"Bash",tool_input:{command:$m}}'
+}
+HF_CMD='higgsfield generate create gpt_image_2_5 --prompt "a product shot" --wait'
+expect 2 "salus cwd -> higgsfield CLI call denied" \
+    "$(bashpayload "$SALUS" "$HF_CMD")"
+expect 2 "salus path in a higgsfield CLI call from a himmel cwd -> denied" \
+    "$(bashpayload "$HIMMEL" 'higgsfield generate create seedance --image /home/x/github/salus/scan.png --wait')"
+expect 0 "himmel cwd -> higgsfield CLI call allowed" \
+    "$(bashpayload "$HIMMEL" "$HF_CMD")"
+expect 2 "higgsfield after a chain in a salus cwd -> denied" \
+    "$(bashpayload "$SALUS" 'cd out && Higgsfield auth login')"
+expect 2 "upper-case HIGGSFIELD in a salus cwd -> denied" \
+    "$(bashpayload "$SALUS" 'HIGGSFIELD model list --json')"
 expect 2 "malformed JSON naming higgsfield -> denied" \
-    '{"tool_name":"mcp__higgsfield__generate_image", oops'
+    '{"tool_name":"Bash","tool_input":{"command":"higgsfield generate create x"}, oops'
+expect 2 "higgsfield spelled with a JSON unicode escape in a salus cwd -> denied" \
+    '{"cwd":"'"$SALUS"'","tool_name":"Bash","tool_input":{"command":"higgsfield model list"}}'
+
+# Every Bash call in the fleet reaches this hook, so a call that names none of
+# the providers must exit 0 on bash builtins alone. An empty PATH makes any
+# external command (cat, tr, jq, git) fail, so rc 0 here is the proof; the
+# salus cwd would otherwise force the full salus resolution and a deny.
+BASH_BIN="$(command -v bash)"
+EMPTY_BIN="$TMP/empty-bin"; mkdir -p "$EMPTY_BIN"
+plain_in="$(bashpayload "$SALUS" 'git status --short')"
+plain_rc=0
+printf '%s' "$plain_in" | PATH="$EMPTY_BIN" "$BASH_BIN" "$SCRIPT" >/dev/null 2>"$TMP/err" || plain_rc=$?
+if [ "$plain_rc" = 0 ] && [ ! -s "$TMP/err" ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1)); echo "FAIL: non-higgsfield Bash payload with an empty PATH (want rc=0, no stderr, got rc=$plain_rc): $(cat "$TMP/err")"
+fi
 
 # --- salus detection signals --------------------------------------------------
 expect 2 "subdir of a salus checkout -> denied (git toplevel)" \
@@ -362,7 +383,7 @@ fi
 # Claude Code's matcher is case-sensitive while the hook lowercases, so the
 # matcher must spell its own case-insensitivity.
 for name in 'mcp__Agent-Native__x' 'mcp__plugin_builder-visual_AGENT_NATIVE-dispatch__y' 'mcp__agent_Native__z' \
-    "$HF_TOOL" 'mcp__plugin_Higgsfield_HIGGSFIELD__x'; do
+    'Bash'; do
     if [ -n "$matcher" ] && printf '%s\n' "$name" | grep -Eq "^(${matcher})$"; then
         pass=$((pass + 1))
     else

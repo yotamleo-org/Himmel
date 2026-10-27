@@ -657,7 +657,7 @@ const DESIGN_ADDONS = {
   'design-motion': ['emilkowalski-skills@himmel', 'animejs-skills@himmel', 'gsap-skills@himmel',
     'lottie-motion-design@himmel', 'motion-lexicon@himmel', 'playground@claude-plugins-official'],
   'design-3d': ['threejs-skills@himmel'],
-  'design-imagegen': ['taste-skill-core@himmel', 'ai-image-prompts@himmel', 'higgsfield@himmel'],
+  'design-imagegen': ['taste-skill-core@himmel', 'ai-image-prompts@himmel', 'higgsfield-skills@himmel'],
   'design-a11y': ['platform-design-skills@himmel'],
   'design-diagram': ['diagram-design@himmel', 'builder-visual@himmel'],
   'design-slides': ['frontend-slides@himmel'],
@@ -729,6 +729,9 @@ test('marketplace kit entries are pinned; a skills list is only the root-skill f
     if (typeof e.source === 'string') continue; // himmel-owned local plugin (shadcn-mcp)
     assert.match(e.source.url, /^https:\/\/github\.com\/[^/]+\/[^/]+\.git$/, `${name}: explicit HTTPS git url`);
     assert.ok(/^[0-9a-f]{40}$/.test(e.source.sha ?? '') || typeof e.source.ref === 'string', `${name}: pinned by full sha or release tag`);
+    // higgsfield keeps its skills in root dirs (no skills/ dir) and declares none in its
+    // plugin.json, so its explicit list is the only loader; its own test pins that shape.
+    if (name === 'higgsfield-skills') continue;
     if ('skills' in e) {
       assert.equal(e.strict, false, `${name}: a skills list beside strict:true is meaningless`);
       assert.deepEqual(e.skills, ['./'], `${name}: a skills subset list is a no-op or a manifest conflict; only the root-skill ./ form works`);
@@ -739,24 +742,26 @@ test('marketplace kit entries are pinned; a skills list is only the root-skill f
   }
 });
 
-// The Higgsfield hosted MCP rides the design-imagegen add-on, registered by a
-// himmel-owned local plugin (upstream publishes no repo or license to vendor). The policy
-// row and the egress provider must exist so the MCP call is neither unknown nor unfenced.
-test('higgsfield@himmel registers the hosted Higgsfield MCP, in the imagegen add-on only (HIMMEL-7826)', () => {
+// The Higgsfield skills ride the design-imagegen add-on as a sha-pinned vendor
+// entry for higgsfield-ai/skills. They run the higgsfield CLI through Bash, so
+// there is no MCP server and no mcp-policy row; the egress provider and the hard
+// salus deny must exist so the CLI call is not unfenced.
+test('higgsfield-skills@himmel vendors the Higgsfield skills, in the imagegen add-on only (HIMMEL-7826)', () => {
   const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const mp = JSON.parse(readFileSync(join(REPO_ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
-  const entry = mp.plugins.find((x) => x.name === 'higgsfield');
-  assert.equal(entry?.source, './plugins/higgsfield', 'local himmel-owned plugin entry');
-  const mcp = JSON.parse(readFileSync(join(REPO_ROOT, 'marketplace', 'plugins', 'higgsfield', '.mcp.json'), 'utf8'));
-  assert.deepEqual(mcp.mcpServers.higgsfield, { type: 'http', url: 'https://mcp.higgsfield.ai/mcp' });
-  assert.ok(!REG.profiles.design.enable.includes('higgsfield@himmel'), 'not in the design core');
-  assert.equal(resolveProfile(REG, 'design', { installed: [] }).enabledPlugins['higgsfield@himmel'] === true, false, 'design core leaves it off');
-  assert.equal(resolveProfile(REG, 'design-imagegen', { installed: [] }).enabledPlugins['higgsfield@himmel'], true);
+  const entry = mp.plugins.find((x) => x.name === 'higgsfield-skills');
+  assert.equal(entry?.source?.source, 'url');
+  assert.equal(entry.source.url, 'https://github.com/higgsfield-ai/skills.git');
+  assert.match(entry.source.sha, /^[0-9a-f]{40}$/, 'pinned to a full sha');
+  assert.equal(entry.strict, true, 'upstream ships a plugin.json with no components, and its own marketplace entry is strict');
+  assert.equal(entry.skills.length, 8, 'upstream keeps its 8 skills at the repo root, so they are listed');
+  assert.ok(entry.skills.every((s) => /^\.\/higgsfield-[a-z-]+$/.test(s)), 'skill dirs');
+  assert.ok(!existsSync(join(REPO_ROOT, 'marketplace', 'plugins', 'higgsfield-skills')), 'no himmel-owned wrapper dir');
+  assert.ok(!REG.profiles.design.enable.includes('higgsfield-skills@himmel'), 'not in the design core');
+  assert.equal(resolveProfile(REG, 'design', { installed: [] }).enabledPlugins['higgsfield-skills@himmel'] === true, false, 'design core leaves it off');
+  assert.equal(resolveProfile(REG, 'design-imagegen', { installed: [] }).enabledPlugins['higgsfield-skills@himmel'], true);
   const policy = JSON.parse(readFileSync(join(REPO_ROOT, 'scripts', 'guardrails', 'mcp-policy.json'), 'utf8'));
-  const row = Object.entries(policy.servers ?? policy).find(([k]) => k === 'plugin_higgsfield_higgsfield')?.[1];
-  assert.ok(row, 'mcp-policy row plugin_higgsfield_higgsfield');
-  assert.equal(row.egress, 'off-box');
-  assert.equal(row.provider, 'higgsfield');
+  assert.ok(!Object.keys(policy.servers ?? policy).some((k) => /higgsfield/i.test(k)), 'no MCP policy row: the skills use no MCP');
   const matrix = JSON.parse(readFileSync(join(REPO_ROOT, 'scripts', 'guardrails', 'egress-matrix.json'), 'utf8'));
   assert.ok(matrix.providers?.higgsfield, 'egress-matrix provider row higgsfield');
   assert.ok(matrix.rules.some((r) => r.corpus === 'salus' && r.provider === 'higgsfield' && r.purpose === '*' && r.verdict === 'deny' && r.hard === true), 'hard salus x higgsfield deny');
