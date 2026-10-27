@@ -64,6 +64,8 @@ case "$*" in
     echo '["op","2026-10-26T10:00:00Z","docs/a.md","12","who cares about this line?\nsay the gain first"]'
     echo '["op","2026-10-26T10:01:00Z","docs/a.md","13","Fixed at 1234abc."]'
     echo '["op","2026-10-26T10:02:00Z","scripts/x.sh","3","this name is odd"]'
+    echo '["someone","2026-10-26T10:04:00Z","docs/a.md","14","another reviewer wrote this"]'
+    echo '["op","2026-10-26T10:05:00Z","docs/a.md","15","<!-- generated --> summary"]'
     echo '["coderabbitai[bot]","2026-10-26T10:03:00Z","docs/a.md","9","<!-- coderabbit --> nit"]' ;;
   *"pulls/7/reviews"*) echo '["op","2026-10-26T11:00:00Z","","",""]' ;;
   *"issues/7/comments"*)
@@ -84,6 +86,8 @@ lacks "gh: an agent's thread reply is skipped" "$td/g.tsv" 'Fixed at'
 lacks "gh: a CR command is skipped" "$td/g.tsv" '@coderabbitai'
 lacks "gh: a code-file comment is skipped" "$td/g.tsv" 'this name is odd'
 lacks "gh: a bot is skipped" "$td/g.tsv" 'coderabbit -->'
+lacks "gh: another login's docs remark is skipped" "$td/g.tsv" 'another reviewer wrote this'
+lacks "gh: a generated comment from the operator's login is skipped" "$td/g.tsv" 'generated -->'
 lacks "gh: a PR with no docs page is skipped" "$td/g.tsv" 'code-only PR'
 
 check "harvest: no source is a usage error" "$(python3 "$tool" harvest --rules "$td/g.tsv" >/dev/null 2>&1; echo $?)" 2
