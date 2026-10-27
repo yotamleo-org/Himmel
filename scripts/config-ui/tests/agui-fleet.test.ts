@@ -104,6 +104,7 @@ test("descriptions resolve only for listed rows, and a hanging forge leaves the 
   chmodSync(join(bin, "gh"), 0o755);
   const { port, dir } = boot({ TRACKER: "none", FORGE: "github", PATH: `${bin}:${process.env.PATH}` });
   cleanups.push(() => rmSync(bin, { recursive: true, force: true }));
+  writeFileSync(join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`), `# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 READY #4200 abcdef1 GREEN\n`);
   const old = Date.now() / 1000 - 100 * 60 * 60;
   for (let i = 0; i < 30; i++) {
     const f = join(dir, "handover", "yotam", "himmel", `OLD${i}-console.md`);
@@ -117,7 +118,8 @@ test("descriptions resolve only for listed rows, and a hanging forge leaves the 
   await fleet(port);
   const seen = existsSync(calls) ? readFileSync(calls, "utf8") : "";
   expect(seen).not.toContain("4100");
-  expect(seen.trim().split("\n").filter(Boolean).length).toBeLessThanOrEqual(1);
+  expect(seen).toContain("4200");
+  expect(seen.trim().split("\n").filter(Boolean).length).toBe(1);
 });
 
 test("a session whose journal went quiet past the window is not listed; one with no journal is listed bare", async () => {
