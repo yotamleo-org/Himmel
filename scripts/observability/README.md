@@ -644,8 +644,10 @@ provider `*.yaml` appears under `provisioning/dashboards/`.
 
 The flow exporter above stays a pure Prometheus reader — no alerting lives
 inside `flow-exporter.ts` or its request path. `luna-sync-alert.ts` is a
-**separate, small scheduled checker**, meant to run every 10 minutes from the
-operator's own scheduler (no installer registers it on Linux). It reuses the exact same git read the exporter uses
+**separate, small scheduled checker**. No installer registers it on Linux, and
+its sweeper-status trigger below reads a heartbeat file that no POSIX writer
+produces (a missing file reads as RED `sweeper-dead`), so do not schedule it
+on Linux until one exists. It reuses the same git read the exporter uses
 (`runGitDivergence`, imported from `flow-exporter.ts`, so the two never drift
 on what "unpushed" means) and sends a Telegram message via
 `scripts/telegram/telegram-api.ts`'s `sendMessage` when the luna vault clone
