@@ -1660,6 +1660,12 @@ printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=other-chief\0' > "$W/proc/131/environ"
 printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=chief\0' > "$W/proc/132/environ"
 o7811="$(PATH="$W/bin-7811:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
 contains "(7811) another live chief's worker is not unwatched, this chief's is" "$o7811" 'procs=1,unwatched=N303 '
+# This chief is itself a live session (stem "chief"): a worker it owns is still unwatched.
+mkcmdline 135 claude --model claude-opus-5 -n chief work
+mk_pgrep_x "$W/bin-7811b" 130 131 132 133 134 135
+o7811="$(PATH="$W/bin-7811b:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
+contains "(7811) this chief's own worker stays unwatched while this chief is a live session" "$o7811" 'unwatched=N303 '
+rm -f "$W/proc/135/cmdline"
 # A named chief that is no longer a live session (a succession): the worker is inherited.
 printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=gone-chief\0' > "$W/proc/131/environ"
 o7811="$(PATH="$W/bin-7811:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"

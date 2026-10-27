@@ -165,6 +165,15 @@ add_pos="${l7811%%fleet-manifest.sh add*}"; arm_pos="${l7811%%headed-arm-worker.
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
 [ "$rc7811" -eq 0 ] && pass "the re-run launcher exits 0 (HIMMEL-7811)" || fail "the re-run launcher exited $rc7811"
 [ "$(bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -c N901)" = 1 ] && pass "running the launcher twice adds the worker once (HIMMEL-7811)" || fail "launcher re-run duplicated the manifest row"
+# A failed manifest add stops the launch: the arm never runs.
+R7811f="$WORK/repo7811f"; mkdir -p "$R7811f/scripts/handover/chief-kit"
+cp -R "$REPO_ROOT/scripts/lib" "$R7811f/scripts/lib"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$R7811f/scripts/handover/chief-kit/fleet-manifest.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811f.log" > "$R7811f/scripts/handover/chief-kit/headed-arm-worker.sh"
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root /h --no-worktree --manifest "$WORK/f7811f.fleet.json" >/dev/null 2>&1
+PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811f/launch-N901.sh" >/dev/null 2>&1; rc7811f=$?
+[ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero (HIMMEL-7811)" || fail "launcher exited 0 after a failed manifest add"
+[ ! -s "$WORK/arm7811f.log" ] && pass "a failed manifest add stops the launch before the arm (HIMMEL-7811)" || fail "the arm ran after a failed manifest add"
 python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1
 lacks "a launcher generated without --manifest adds nothing (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 else

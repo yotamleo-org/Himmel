@@ -107,9 +107,9 @@ if [ "${1:-}" = --one ]; then
     close-worker)
         bash "$CK/close-wrapped-worker.sh" --check "$doc" >/dev/null 2>&1
         rc=$?
-        # rc 4 = tail is not WRAPPED; rc 5 = tail WRAPPED, then no live session matched
-        # (the stubbed census has none); any other rc is a failure, never a tail verdict
-        case "$rc" in 4) v=notwrapped ;; 5) v=WRAPPED ;; *) v="rc$rc" ;; esac
+        # rc 4 = tail is not WRAPPED; rc 0 = tail WRAPPED, then no live session matched
+        # (CLOSED-ALREADY; the stubbed census has none); any other rc is a failure, never a tail verdict
+        case "$rc" in 4) v=notwrapped ;; 0) v=WRAPPED ;; *) v="rc$rc" ;; esac
         printf 'close-tail\t%s\t%s\n' "$base" "$v"
         ;;
     esac

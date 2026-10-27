@@ -1162,6 +1162,17 @@ unset CWL_SUBTREE_MODE
 check "console: a live non-harness child -> rc 6" "$rc" "6"
 not_contains "console: withheld -> nothing signalled" "$(cat "$CALLS")" "kill"
 
+# A predecessor chief with NO live session keeps the refusal (chief-wait.sh reads rc 5 and this text);
+# only a worker turns that into CLOSED-ALREADY.
+rm -rf "$W/proc/230"; pgrep_x_stub 231
+reset_calls
+rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
+check "console: zero live sessions -> rc 5, not CLOSED-ALREADY (HIMMEL-7811)" "$rc" "5"
+contains "console: zero live sessions keeps the 'refusing - 0 live session' text (HIMMEL-7811)" "$out" "refusing - 0 live session"
+not_contains "console: zero live sessions is not reported CLOSED-ALREADY (HIMMEL-7811)" "$out" "CLOSED-ALREADY"
+mkcmdline 230 claude -n "$CNAME" work
+pgrep_x_stub 230 231
+
 # --- 25b. live in-process subagents ----------------------------
 # The REAL live-subagents.sh over a fake predecessor: its sessions/<pid>.json
 # names a session whose transcript launched one judge child with no completion

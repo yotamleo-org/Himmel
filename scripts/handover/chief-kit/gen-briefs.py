@@ -528,7 +528,7 @@ def manifest_add_lines(l, ctx, doc):
     if not ctx.get('manifest'):
         return []
     q = shlex.quote
-    arm = (' --arm ' + l['ab_arm']) if l.get('ab_arm') else ''
+    arm = (' --arm ' + q(l['ab_arm'])) if l.get('ab_arm') else ''
     return ['bash %s add %s %s --lane %s%s || exit 1' % (
         q(ctx['repo'] + '/scripts/handover/chief-kit/fleet-manifest.sh'), q(ctx['manifest']), q(doc), q(l.get('lane', 'native')), arm)]
 
