@@ -295,6 +295,21 @@ arow "$SHA_B"
 policy "operator record grants after a clean head" qpolop2 GO operator 0
 rm -f "$scores_f"
 
+# --- 8. an adopter PR's record lives in the adopter's bucket -----
+reset_state 3
+wv qadopt NO-GO "$SHA_A" --pr 501 --branch "$BRANCH" --repo o/other-repo --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qadopt"; fails=$((fails+1)); }
+GR_ARGS=(501 "$SHA_A" qadopt)
+rc=0; out=$(run 2>&1) || rc=$?
+check "adopter record, no --repo: the harness bucket has none -> 4" "$rc" 4
+GR_ARGS=(501 "$SHA_A" qadopt --repo o/third-repo)
+rc=0; out=$(run 2>&1) || rc=$?
+check "adopter record, another --repo -> 4" "$rc" 4
+check "adopter refusals change nothing" "$(cat "$state/$BRANCH.round")" 3
+GR_ARGS=(501 "$SHA_A" qadopt --repo o/other-repo)
+rc=0; out=$(run 2>&1) || rc=$?
+check "adopter record with its --repo grants" "$rc" 0
+check "adopter grant drops the round" "$(cat "$state/$BRANCH.round")" 2
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
 echo "FAILED: $fails"

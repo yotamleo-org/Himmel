@@ -3,8 +3,10 @@
 # a judge ruled on and a later head of the same PR, so the chief re-judges only
 # a push that needs it.
 #
-# Usage: delta-class.sh [--qid <qid> | --verdict-file <path>]... [--ledger <path>]
-#                       [--trust-file <path>] <judged-head> <new-head>
+# Usage: delta-class.sh [--qid <qid> [--repo <owner/repo>] | --verdict-file <path>]...
+#                       [--ledger <path>] [--trust-file <path>] <judged-head> <new-head>
+# --repo reads the --qid verdicts from that adopted repo's bucket (where
+# write-verdict.sh --repo writes them); without it, the harness bucket.
 # Run it in the checkout that holds both commits. Prints ONE word and exits 0:
 #   trust    a file the delta touches (new name, and old name of a rename) matches a
 #            line of the trust list (scripts/ci/ci-trust-paths.txt, read from
@@ -37,10 +39,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh" 2>/dev/null || trust # swallow-ok: an unloadable scrub lib fails closed to trust on this line
 git_env_scrub
-QID="" LEDGER="" TRUSTF="" VFILES=()
+QID="" LEDGER="" TRUSTF="" VREPO="" VFILES=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --qid) [ "$#" -ge 2 ] || trust; QID=$2; shift 2 ;;
+        --repo) [ "$#" -ge 2 ] || trust; VREPO=$2; shift 2 ;;
         --verdict-file) [ "$#" -ge 2 ] || trust; VFILES+=("$2"); shift 2 ;;
         --ledger) [ "$#" -ge 2 ] || trust; LEDGER=$2; shift 2 ;;
         --trust-file) [ "$#" -ge 2 ] || trust; TRUSTF=$2; shift 2 ;;
@@ -78,7 +81,7 @@ if [ -n "$QID" ]; then
     . "$HERE/../../lib/handover-path.sh" 2>/dev/null || trust
     anchor="$(cd "$HERE/../../.." && pwd)"
     root=$(go_resolve_root "$anchor") || trust
-    scope=$(go_verdict_scope "$anchor") || trust
+    scope=$(go_verdict_scope "$anchor" "$VREPO") || trust
     for f in "$root/$scope/verdicts/$QID"/*.md; do
         [ -f "$f" ] || continue
         [ -r "$f" ] || trust

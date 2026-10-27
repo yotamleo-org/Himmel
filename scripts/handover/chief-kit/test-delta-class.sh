@@ -279,5 +279,23 @@ mkv GO 'finding: src/a.txt:3-4'
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 
+# 9: --qid --repo reads the prior verdicts from the adopted repo's bucket
+scratch="/tmp/claude-$(id -u)"
+[ -d "$scratch" ] || mkdir -m 700 "$scratch" || { echo "FAIL: cannot create $scratch"; exit 1; }
+evd="$(mktemp -d "$scratch/delta-class-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed"; exit 1; }
+trap 'rm -rf "$tmp" "$evd"' EXIT
+Jq=$(git rev-parse HEAD)
+mkdir -p "$tmp/home/.config/himmel" "$tmp/root"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/home/.config/himmel/go-hmac.key"
+printf 'class: other\nclass-reason: fixture\nfinding: src/a.txt:3-4\n\n## Evidence checked\n\n- read the diff\n' > "$evd/ev.md"
+env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q9 GO "$Jq" --pr 9 --repo o/other-repo --model test-model --effort high --evidence-file "$evd/ev.md" >/dev/null 2>&1 \
+    || { echo "FAIL: cannot write the adopter verdict"; fails=$((fails+1)); }
+printf 'more\n' >> docs/c.md; Nq=$(step docs9)
+qcls() { HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q9 --ledger "$ledger" --trust-file "$trustf" "$@" "$Jq" "$Nq"; }
+check "9: --qid without --repo cannot see the adopter bucket -> trust" "$(qcls)" trust
+check "9: --qid with the adopter --repo finds the verdict -> none" "$(qcls --repo o/other-repo)" none
+check "9: --qid with another --repo -> trust" "$(qcls --repo o/third-repo)" trust
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"

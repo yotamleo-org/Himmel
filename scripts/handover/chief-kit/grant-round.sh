@@ -4,7 +4,9 @@
 # ONE more /pr-check review round itself, on a persisted judge record, so the
 # operator no longer hand-pastes `printf '2\n' > .git/cr-review-rounds/<b>.round`.
 #
-# Usage: grant-round.sh <pr> <new-head> <qid>
+# Usage: grant-round.sh <pr> <new-head> <qid> [--repo <owner/repo>]
+# --repo reads the signed record from that adopted repo's bucket (where
+# write-verdict.sh --repo writes it); without it, the harness bucket.
 #
 # A PR parks at the round-3 cap (review-round.sh). The cap
 # exists so a worker cannot buy itself rounds; the chief is not the author, and
@@ -61,11 +63,11 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: grant-round.sh <pr> <new-head> <qid>" >&2
+    echo "usage: grant-round.sh <pr> <new-head> <qid> [--repo <owner/repo>]" >&2
     exit 1
 }
-[ "$#" -eq 3 ] || usage
-PR=$1 HEAD_SHA=$2 QID=$3
+[ "$#" -eq 3 ] || { [ "$#" -eq 5 ] && [ "$4" = --repo ] && [ -n "$5" ]; } || usage
+PR=$1 HEAD_SHA=$2 QID=$3 VREPO="${5:-}"
 case "$PR" in ''|0*|*[!0-9]*) echo "grant-round: <pr> must be a PR number without a leading zero (got '$PR')" >&2; exit 1 ;; esac
 case "$HEAD_SHA" in *[!0123456789abcdef]*) echo "grant-round: <new-head> must be the full 40-char lowercase hex sha" >&2; exit 1 ;; esac
 [ "${#HEAD_SHA}" -eq 40 ] || { echo "grant-round: <new-head> must be the full 40-char lowercase hex sha" >&2; exit 1; }
@@ -117,7 +119,7 @@ fi
 
 # --- (a) the signed record ---------------------------------------------------
 ROOT="$(go_resolve_root "$ANCHOR")" && [ -n "$ROOT" ] || { echo "grant-round: cannot resolve the handover root" >&2; exit 3; }
-SCOPE="$(go_verdict_scope "$ANCHOR")" && [ -n "$SCOPE" ] || { echo "grant-round: cannot resolve this repo's verdict scope" >&2; exit 3; }
+SCOPE="$(go_verdict_scope "$ANCHOR" "$VREPO")" && [ -n "$SCOPE" ] || { echo "grant-round: cannot resolve this repo's verdict scope" >&2; exit 3; }
 vdir="$ROOT"
 [ -d "$vdir" ] && [ ! -L "$vdir" ] || { echo "grant-round: handover root '$vdir' is not a plain directory" >&2; exit 4; }
 for seg in "${SCOPE%%/*}" "${SCOPE#*/}" verdicts "$QID"; do
