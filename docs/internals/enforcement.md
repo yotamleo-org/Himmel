@@ -3794,8 +3794,9 @@ single source of truth for registry availability. A registry-available lane
 must also be RUNNABLE before the guard refuses toward it: `bun` must be on
 `PATH` and the lane's `scripts/telegram/spawn-<lane>.ts` dispatcher must exist
 on disk. An unrunnable lane is skipped with a warning, so `claudex` is still
-preferred; `glm` is a fallback only when `GLM_LANE_OK` opts the dropped lane
-back in. No suitable lane, an unrunnable
+preferred; `glm` stays the guard's fallback whenever `ZAI_API_KEY` is set and
+the lane is runnable, ready and funded (`GLM_LANE_OK` gates only
+`scripts/telegram/dispatch-lane.sh`). No suitable lane, an unrunnable
 lane, missing bun/jq/node/resolver, a missing dispatcher script, malformed
 hook input, resolver failure, or invalid resolver output all fail OPEN and
 allow the Agent dispatch — the orchestrator is never stranded on a command

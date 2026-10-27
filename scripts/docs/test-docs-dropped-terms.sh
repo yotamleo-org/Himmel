@@ -409,7 +409,7 @@ docs/internals/worker-spawn-matrix.md	write (`pwsh Set-Content`) went through �
 docs/jarvis-subsystems.md	The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
 docs/internals/enforcement.md	> **Platform tier:** Windows is dropped (HIMMEL-5729). A Windows, PowerShell
 docs/internals/enforcement.md	> or Git Bash note below is either a spelling a guard still parses or a past
-docs/internals/enforcement.md	preferred; `glm` is a fallback only when `GLM_LANE_OK` opts the dropped lane
+docs/internals/enforcement.md	preferred; `glm` stays the guard's fallback whenever `ZAI_API_KEY` is set and
 docs/internals/lane-calibration.md	| `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
 docs/internals/lane-calibration.md	## The hermes `himmel_agent` default and the ox-alpha record
 docs/internals/lane-calibration.md	when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
