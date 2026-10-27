@@ -29,7 +29,7 @@ conventions below keep that working at any team size.
 
    Optional longer body...
 
-   Platforms tested: gitbash
+   Platforms tested: linux
    Co-Authored-By: ...
    ```
 

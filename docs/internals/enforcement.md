@@ -4,6 +4,11 @@
 > CLAUDE.md keeps a session-time summary; the full reference lives here.
 > Source of truth for what actually runs: `.pre-commit-config.yaml` and
 > `.claude/settings.json`.
+>
+> **Platform tier:** Windows is dropped (HIMMEL-5729): no Windows host is
+> supported or tested. A Windows, PowerShell or Git Bash note below describes
+> handling the code still carries, a spelling a guard still parses, or a past
+> measurement.
 
 ## Pre-commit Enforcement
 
@@ -3790,7 +3795,9 @@ single source of truth for registry availability. A registry-available lane
 must also be RUNNABLE before the guard refuses toward it: `bun` must be on
 `PATH` and the lane's `scripts/telegram/spawn-<lane>.ts` dispatcher must exist
 on disk. An unrunnable lane is skipped with a warning, so `claudex` is still
-preferred and `glm` is still the fallback. No suitable lane, an unrunnable
+preferred; `glm` stays the guard's fallback whenever `ZAI_API_KEY` is set and
+the lane is runnable, ready and funded (`GLM_LANE_OK` gates only
+`scripts/telegram/dispatch-lane.sh`). No suitable lane, an unrunnable
 lane, missing bun/jq/node/resolver, a missing dispatcher script, malformed
 hook input, resolver failure, or invalid resolver output all fail OPEN and
 allow the Agent dispatch — the orchestrator is never stranded on a command

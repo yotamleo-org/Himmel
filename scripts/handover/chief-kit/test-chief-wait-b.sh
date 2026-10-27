@@ -1154,12 +1154,12 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # change): none woke.
 doctor_line() { sed -e 's/ doctor=[^ ]*//' ${1:+-e "s/\$/ doctor=$1/"} "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub
-doctor_line "C16-hooks,C76-bridge-stale"
+doctor_line "C16-hooks,C77-bridge-stale"
 I="$(new_inbox w7849)"
 start "$I" "$WORK/w7849.out" --workers "N1.md"
 wait_exit "$WPID"
 check "(7849) a new doctor WARN set wakes on first sight" "0" "$rc"
-check "(7849) the wake names the doctor ids" "WAKE doctor C16-hooks,C76-bridge-stale" "$(head -n1 "$WORK/w7849.out")"
+check "(7849) the wake names the doctor ids" "WAKE doctor C16-hooks,C77-bridge-stale" "$(head -n1 "$WORK/w7849.out")"
 
 start "$I" "$WORK/w7849b.out" --workers "N1.md"
 wait_hb "$I" || fail "(7849-2) no baseline heartbeat"
@@ -1168,7 +1168,7 @@ check "(7849-2) the same set does not wake again" "running" "$rc"
 touch -d '5 hours ago' "$I.wait.doctor"
 wait_exit "$WPID"
 check "(7849-2) nor after the marker is hours old" "running" "$rc"
-doctor_line "C16-hooks,C35-other,C76-bridge-stale"
+doctor_line "C16-hooks,C35-other,C77-bridge-stale"
 wait_exit "$WPID"
 check "(7849-3) a set gaining a member wakes naming only the new id" "WAKE doctor C35-other" "$(head -n1 "$WORK/w7849b.out")"
 

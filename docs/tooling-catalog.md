@@ -1013,8 +1013,8 @@ _Method: one bounded `claude -p` turn per tier through the live proxy with
 levels read from the proxy `main.log` `apply.go` lines. Feeds the
 per-lane effort/tier calibration._
 
-**Operating rules (from theo's gpt-5.6-sol post-mortem, gpt-5.6 era).** The lane
-spends the codex weekly subscription usage budget, so GPT-5.6's token-burn mechanics apply. These are
+**Operating rules (from theo's codex token-burn post-mortem).** The lane
+spends the codex weekly subscription usage budget, so those token-burn mechanics apply. These are
 encoded where the lane runs (the launcher default + `lanes.json`), not just as
 vault prose; the full mechanics live in luna
 `30-Resources/Tech/CLIProxyAPI.md`.
@@ -1039,7 +1039,7 @@ vault prose; the full mechanics live in luna
 - **Subagent fan-out multiplies codex spend — linearly, not by parent-context
   copy.** Claude Code gives each subagent a FRESH context (see the codex-CLI
   contrast below), so the claudex lane avoids theo's worst multiplier (the v2
-  full-history copy); still, every subagent turn is a separate gpt-5.6-sol
+  full-history copy); still, every subagent turn is a separate `gpt-6.1-sol`
   consumer on the codex subscription usage budget, so fan out deliberately and chunk big plans.
 
 Two of theo's rules are **codex-CLI-specific, not claudex levers** — they belong
@@ -1087,13 +1087,13 @@ APPLIED, one remains UNTESTED, not refuted:
    sets the compaction *threshold*, not the declared window). **APPLIED:** the launcher now exports it, tied to
    `CODEX_CONTEXT_WINDOW`. Evidence: Claude Code resolves the effective
    compact window as `min(modelWindow, configured)`, and for a model absent
-   from its catalog (gpt-5.6-sol) the modelWindow falls back to a hardcoded
+   from its catalog (such as `gpt-6.1-sol`) the modelWindow falls back to a hardcoded
    `200000` — so `CODEX_CONTEXT_WINDOW` was inert, silently clamped to 200k,
    until this export declared the window. Both env vars get the SAME value so
    the clamp is structurally unreachable; guarded by
    `scripts/parity/test-launcher-context-env-parity.sh`.
-2. **The `gpt-5.6-sol[1m]` model-name suffix** — the same convention that
-   makes `glm-5.2[1m]` a real 1M lane. Status: **untested through the real
+2. **The `[1m]` model-name suffix** — the convention the dormant GLM lane
+   used for its 1M window. Status: **untested through the real
    path, not refuted.** A direct probe of CLIProxyAPI with the suffix already
    attached returned `HTTP 400 unknown provider for model gpt-5.6-sol[1m]`
    (2026-08-17) — but Claude Code's own documented behavior is to STRIP the
@@ -1113,14 +1113,14 @@ the dormant GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itsel
 (`bash <primary-repo>/scripts/claude-codex --permission-mode <mode>
 <pointer-prompt>`, cwd = the minted worker worktree) rather than
 re-implementing any of its trust-boundary guarding — it sets NO `ANTHROPIC_*`
-var and builds no GLM-style env block; the launcher owns the entire PHI/
+var and builds no env block of its own; the launcher owns the entire PHI/
 egress/env-sweep/proxy chain (the invocation is by the PRIMARY checkout's
 absolute path, since a worktree lacks the gitignored `.env` the launcher
 resolves its key from). Own-branch mode mints `claudex/<slug>`
 (`.claude/worktrees/claudex+<slug>`); `--branch <existing>` selects
 shared-branch mode (reuses `scripts/lib/shared-branch-lock.sh` under the
-`"codex"` lane name, serializing writers onto an existing PR branch — the
-same iterative review-fix round pattern as GLM's shared mode). Sessions live
+`"codex"` lane name, serializing writers onto an existing PR branch for
+iterative review-fix rounds). Sessions live
 under `~/.himmel/bridge/claudex-sessions/` (mode 0700, outside any `.claude`
 directory because Claude Code denies a worker's Write there), or under
 `<BRIDGE_ROOT>/claudex-sessions/` when `BRIDGE_ROOT` is set; readers resolve it
@@ -1157,9 +1157,8 @@ refusal (exit 2) pointing back at this section.
 The allowlist is deliberately scoped to **this flag**, not to the launcher.
 `scripts/claude-codex`'s own `CODEX_MODEL` knob stays unvalidated because its
 documented contract is "all overridable per task" against whatever the local
-CLIProxyAPI `/v1/models` serves — which today includes `gpt-5.4`,
-`gpt-5.4-mini`, `gpt-5.5`, `gpt-5.3-codex-spark` and the image models beyond
-the three tiers above. Hardcoding the triple at the launcher would break every
+CLIProxyAPI `/v1/models` serves, which includes models beyond the three
+tiers above. Hardcoding the triple at the launcher would break every
 one of those direct `CODEX_MODEL=… cc-codex` uses; a NEW interface can be
 strict without breaking an existing contract. Launcher-side validation against
 the proxy's *live* model list stays open as a follow-up.
@@ -1179,17 +1178,17 @@ timeout flag for this lane — the dispatcher enforces the timeout around the
 worker process itself, independently of the lane command.
 The dispatcher waits once and returns final `meta.json` status, worker branch,
 diffstat, outbox tail, and failure log; the parent owns review + merge. Claudex
-is registry-marked dormant pending the lane rethink (worker git
-permission surface + subagent-control probe) and requires the
-explicit `CLAUDEX_LANE_OK=1` opt-in.
+is the one live dispatch lane: the readiness gate accepts it once the
+flow-runs ledger holds 5 consecutive verified passes on `claudex/` branches
+(`readiness.passesRequired`). `CLAUDEX_LANE_OK=1` is not a dispatch opt-in
+([lane-calibration](internals/lane-calibration.md#claudex-worker--implementor-default-operating-model)).
 
 **v1 scope — deferred to a follow-up:** cap-guard /
-arm-on-cap resume scheduling (GLM cap-window classification +
+arm-on-cap resume scheduling (cap-window classification +
 `arm-resume.sh` scheduling — a generic sentinel only marks a capped run
 `capped` in `meta.json`; no resume is armed), a quota-gauge ledger row for
 this lane, the grants/escalation channel (`--grant`/`--autonomous`/
-`--carry-from`), and an `await-claudex-worker.sh` twin of
-`await-glm-worker.sh` (until then, poll `meta.json` directly — see the agent
+`--carry-from`), and an `await-claudex-worker.sh` waiter (until then, poll `meta.json` directly — see the agent
 def).
 
 **Acceptance:** `scripts/telegram/spawn-claudex.test.ts` (plan-function
@@ -1804,8 +1803,8 @@ private repo has Actions off by design.
   (qmd is the standing case: its pin is a fork SHA, not a version), `4` bump
   failed (both files restored). Hermetic test: `test-apply-drift-bump.sh`.
 - `scripts/upstreams/apply-tool-upgrade.sh <name> [target-version] [--dry-run] [--unattended]` —
-  the `mode: probe` counterpart: upgrades an INSTALLED vendor CLI (rtk,
-  twitter-cli) whose version lives on the machine, not in the repo, so there is
+  the `mode: probe` counterpart: upgrades an INSTALLED vendor CLI (rtk)
+  whose version lives on the machine, not in the repo, so there is
   no pin to move and no PR to open. Runs the entry's `upgrade.command` (an argv
   ARRAY, executed as argv — never through a shell), then RE-PROBES and requires
   the version to have strictly advanced: a command that exits 0 without moving
@@ -1817,8 +1816,8 @@ private repo has Actions off by design.
   reaching the target is a hard rc `4`. `--unattended` — which the cadence always
   passes — refuses any entry not marked `upgrade.unattended: true`. That is the
   structural gate for the per-entry policy; read the registry for who is gated
-  rather than trusting this line. As of 2026-07-28 BOTH probe entries are
-  `unattended: true`: twitter-cli (Tier A) and rtk, which the operator approved
+  rather than trusting this line. As of 2026-07-28 rtk is
+  `unattended: true`: the operator approved it
   that day, overriding its Tier B default (the entry's note records the
   reservation and the revert path). Exit codes: `0` upgraded,
   `1` already current, `2` usage/registry/**tool not installed** (it upgrades,

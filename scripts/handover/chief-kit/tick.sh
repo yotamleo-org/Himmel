@@ -268,7 +268,7 @@ sorted. Absent when the doctor is clean, TICK_DOCTOR_TTL_MIN is 0 or the doctor 
 (TICK_DOCTOR_CMD, default $REPO/scripts/himmel-doctor.sh) is missing. The doctor is slow, so the
 ids are cached TICK_DOCTOR_TTL_MIN minutes (default 30) in TICK_DOCTOR_CACHE, a failed run too: it
 reads the last cached ids, else ?. A cold run outlasts the 120 s a tick gets, so it runs detached:
-a tick waits up to TICK_DOCTOR_WAIT_SEC (default 45) for it, else answers from the cache and the
+a tick waits up to TICK_DOCTOR_WAIT_SEC (default 3) for it, else answers from the cache and the
 next tick folds the finished run in. chief-wait.sh wakes once per id new to its marker and keeps its
 saved set on ?.
 
@@ -2241,7 +2241,7 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
             # shellcheck disable=SC2016  # $1 and $2 expand in the inner shell, not here
             setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"; rmdir "$2.run"' _ "$doctor_cmd" "$doctor_cache" </dev/null >/dev/null 2>&1 &
         fi
-        case "${TICK_DOCTOR_WAIT_SEC:-45}" in ""|*[!0-9]*) doctor_wait=45 ;; *) doctor_wait=$((10#${TICK_DOCTOR_WAIT_SEC:-45})) ;; esac
+        case "${TICK_DOCTOR_WAIT_SEC:-3}" in ""|*[!0-9]*) doctor_wait=3 ;; *) doctor_wait=$((10#${TICK_DOCTOR_WAIT_SEC:-3})) ;; esac
         doctor_polls=0
         while [ ! -f "$doctor_cache.rc" ] && [ -d "$doctor_cache.run" ] && [ "$doctor_polls" -lt $((doctor_wait * 5)) ]; do
             sleep 0.2  # gnu-ok: fractional sleep on the Linux-only console kit

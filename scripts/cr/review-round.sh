@@ -633,6 +633,27 @@ record_binds() {
     [ "${2#pr: }" = "$pr_want" ]
 }
 
+# pr_repo_nwo prints the owner/name of the origin remote of the current
+# directory, taken as the repo the branch's PR lives in, when that is not the
+# harness's own repo (HIMMEL_ROOT's origin), so go_verdict_scope reads an
+# adopter's bucket (write-verdict.sh --repo writes it). gh does not always
+# resolve the PR against origin (a gh default repo, an upstream remote); this
+# does not follow it. Prints nothing for the harness's own repo or an origin it
+# cannot read as owner/name: that is today's one-argument scope.
+pr_repo_nwo() {
+    local LC_ALL=C pr_nwo own_nwo
+    pr_nwo="$(_origin_nwo .)" && [ -n "$pr_nwo" ] || return 0
+    own_nwo="$(_origin_nwo "$HIMMEL_ROOT")" || own_nwo=""
+    [ "$(printf '%s' "$pr_nwo" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$own_nwo" | tr '[:upper:]' '[:lower:]')" ] || return 0
+    printf '%s\n' "$pr_nwo"
+}
+_origin_nwo() {
+    local url nwo
+    url="$(git -C "$1" remote get-url origin 2>/dev/null)" || return 1
+    nwo="$(printf '%s' "$url" | sed -nE 's#^(https?://([^/@]+@)?[^/]+/|ssh://([^/@]+@)?[^/]+/|[^/@:]+@[^/:]+:)([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$#\4#p')"
+    printf '%s\n' "${nwo%.git}"
+}
+
 # Print space-separated "<qid>/<name>" records ruling NO-GO for
 # head $1 (one per qid), in chief-kit/write-verdict.sh format, under this repo's
 # verdict scope; rc 1 when there is none. A qid counts only when every record
@@ -654,7 +675,7 @@ judge_nogo_record() (
     # shellcheck disable=SC1091
     . "$lib/go-gate.sh" 2>/dev/null || exit 1
     root="$(go_resolve_root "$HIMMEL_ROOT")" && [ -n "$root" ] || exit 1
-    scope="$(go_verdict_scope "$HIMMEL_ROOT")" && [ -n "$scope" ] || exit 1
+    scope="$(go_verdict_scope "$HIMMEL_ROOT" "$(pr_repo_nwo)")" && [ -n "$scope" ] || exit 1
     dir="$root"
     [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
     for seg in "${scope%%/*}" "${scope#*/}" verdicts; do
@@ -832,7 +853,7 @@ judge_scope_record() (
     # shellcheck disable=SC1091
     . "$lib/go-gate.sh" 2>/dev/null || exit 1
     root="$(go_resolve_root "$HIMMEL_ROOT")" && [ -n "$root" ] || exit 1
-    scope="$(go_verdict_scope "$HIMMEL_ROOT")" && [ -n "$scope" ] || exit 1
+    scope="$(go_verdict_scope "$HIMMEL_ROOT" "$(pr_repo_nwo)")" && [ -n "$scope" ] || exit 1
     dir="$root"
     [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
     for seg in "${scope%%/*}" "${scope#*/}" verdicts; do
@@ -961,7 +982,7 @@ judge_go_record() (
     # shellcheck disable=SC1091
     . "$lib/go-gate.sh" 2>/dev/null || exit 1
     root="$(go_resolve_root "$HIMMEL_ROOT")" && [ -n "$root" ] || exit 1
-    scope="$(go_verdict_scope "$HIMMEL_ROOT")" && [ -n "$scope" ] || exit 1
+    scope="$(go_verdict_scope "$HIMMEL_ROOT" "$(pr_repo_nwo)")" && [ -n "$scope" ] || exit 1
     dir="$root"
     [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
     for seg in "${scope%%/*}" "${scope#*/}" verdicts; do

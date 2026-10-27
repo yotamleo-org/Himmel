@@ -26,7 +26,7 @@
       "title": "Telegram bridge",
       "rows": [
         "telegram-bridge", "bridge-health", "bridge-persistence",
-        "doctor:C30-bridge-liveness", "probe-disagree:C30-bridge-liveness", "doctor:C76-bridge-stale",
+        "doctor:C30-bridge-liveness", "probe-disagree:C30-bridge-liveness", "doctor:C77-bridge-stale",
         "plugin:telegram-himmel@himmel", "secret:TELEGRAM_BOT_TOKEN"
       ]
     },
@@ -88,7 +88,8 @@
         "plugin:humanizer@himmel", "plugin:domain-modeling@himmel",
         "doctor:C2-obsidian", "doctor:C6-mcp", "doctor:C15-plugins", "doctor:C15-plugins-ondemand",
         "doctor:C17-dep-readiness", "doctor:C37-vendored-skill-dupes",
-        "doctor:C46-plugin-enabled-missing", "doctor:C72-design-mcp-auth"
+        "doctor:C46-plugin-enabled-missing", "doctor:C72-design-mcp-auth",
+        "doctor:C76-duplicate-plugin-installs"
       ]
     },
     {

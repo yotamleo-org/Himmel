@@ -1321,7 +1321,7 @@ STATUS_graphify="";                   DETAIL_graphify=""
 # The .env migration is not a chain item either: its row prints only when the
 # step ran and found a .env.
 STATUS_env_migration="";              DETAIL_env_migration=""
-# probe-mode station tools (rtk, twitter-cli, ...) are advisory too.
+# probe-mode station tools (rtk, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
 # one fixed STATUS_/DETAIL_ pair each.
@@ -2064,8 +2064,8 @@ EOF
 }
 
 # ─── probe-mode station tools ──────────────────────────────────
-# Registry tag_release/probe entries that declare an `upgrade` block (rtk,
-# twitter-cli) name a binary installed on THIS machine. Only the nightly
+# Registry tag_release/probe entries that declare an `upgrade` block (rtk)
+# name a binary installed on THIS machine. Only the nightly
 # drift-fix cadence used to upgrade them, so with that cadence unarmed an
 # operator's /himmel-update said "everything current" while the drift guard
 # still read them BEHIND.
@@ -3151,7 +3151,7 @@ Usage: scripts/himmel-update.sh [MODE]
 Update the himmel checkout and every component it manages. With no MODE it runs
 the real update: pull, marketplace re-sync, jira CLI rebuild, qmd fork, hermes,
 luna template, then the advisory steps (cli-proxy-api, codex, toolchain,
-probe-mode station tools such as rtk and twitter-cli).
+probe-mode station tools such as rtk).
 
 Modes:
   (none)              run the real update

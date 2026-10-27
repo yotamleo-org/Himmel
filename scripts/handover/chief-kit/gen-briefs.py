@@ -42,6 +42,10 @@ grants (HIMMEL-7091 ask 3): a list of {text, paths}, rendered in order as the br
 non-blank single-line; paths is a non-empty list of literal repo-relative file paths (no glob,
 no trailing /). A grant naming a settings file, a CI workflow or a scripts/ci/ci-trust-paths.txt
 path, or whose text names a bypass, is refused. No grants key, no block.
+inherited (HIMMEL-7837): a resumed ORPHAN PR or a takeover of another author's PR: {pr: integer,
+authors: non-empty list of single-line strings, mode: resume|takeover}. The brief gets the template's
+Inherited PR block with those values filled in, after the Contract. Any other shape is refused.
+No inherited key, no block.
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
@@ -95,6 +99,21 @@ EFFORTS = ('low', 'medium', 'high', 'xhigh')
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
 REMOVAL_RE = re.compile(r'\b(?:remov(?:e|es|ed|ing|al)|drop(?:s|ped|ping)?|delet(?:e|es|ed|ing)|retir(?:e|es|ed|ing)|sweep(?:s|ing)?|clean(?:s|ed|ing)?)\b', re.I)
+
+
+# The Inherited PR block of docs/handover/worker-brief-template.md, values filled in.
+INHERITED_BLOCK = ("> **Inherited PR (the resume of an `ORPHAN PR`, or a takeover of another author's PR; drop otherwise):** PR `{pr}`, by `{authors}`. Mode: `{mode}`.\n"
+           "> The hand-off is context, not proof: read the PR, its threads and its current head before trusting it. **Before the first push, decide a disposition**\n"
+           "> from what changed on the base since the PR diverged, not from its conflicts. Ask whether the problem is already solved, whether two owners\n"
+           "> now hold one invariant, and whether landing it would restore old behaviour. A clean merge does not make a PR current. The three dispositions:\n"
+           "> **MODERNIZE** (the goal holds and the shape is right: merge the base forward, test, push); **REWORK** (the goal holds, but merging forward keeps the wrong\n"
+           "> implementation: name the smallest rewrite in a `FINDING` and wait for the ruling); **CLOSE** (superseded, obsolete or no longer worth its cost: cite\n"
+           "> the evidence in a `FINDING` and stop; the chief closes it, never you).\n"
+           "> Upstream checks a rebase with `git range-diff`; a himmel worker merges the base forward and never force-pushes, so compare the PR's own diff before and after instead\n"
+           "> (`git diff <old merge-base> <old head>` against `git diff <new merge-base> HEAD`). Confirm that nothing it intended was lost and that nothing already on the base came back.\n"
+           "> **Keep the credit:** build on the original commits and add your fixes as new commits, keep their authors and every `Co-Authored-By:` trailer, and name the original\n"
+           "> authors in the PR body with identities read from their commits, never guessed. Model attribution is not contributor credit\n"
+           "> (tstack @ 7de017b3: modernize :38-70, :81-87; takeover :12-25).\n")
 
 
 def load_platform_re():
@@ -306,7 +325,26 @@ def validate(worker, i, repo):
         die('worker %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % worker['label'])
     if 'grants' in worker:
         validate_grants(worker, repo)
+    if 'inherited' in worker:
+        validate_inherited(worker)
     check_proof(worker)
+
+
+def validate_inherited(worker):
+    # The block's values go into the brief verbatim, so each must be exact and one line.
+    inh = worker['inherited']
+    label = worker['label']
+    if not isinstance(inh, dict) or set(inh) != {'pr', 'authors', 'mode'}:
+        die('worker %s: inherited must be exactly {pr, authors, mode}' % label)
+    pr = inh['pr']
+    if not isinstance(pr, int) or isinstance(pr, bool) or pr < 1:
+        die('worker %s: inherited.pr must be a positive integer PR number' % label)
+    authors = inh['authors']
+    if not isinstance(authors, list) or not authors or not all(
+            isinstance(a, str) and a.strip() and not re.search(r'[\n\r`]', a) for a in authors):
+        die('worker %s: inherited.authors must be a non-empty list of single-line names without backticks' % label)
+    if inh['mode'] not in ('resume', 'takeover'):
+        die('worker %s: inherited.mode must be resume or takeover, not %r' % (label, inh['mode']))
 
 
 def validate_grants(worker, repo):
@@ -504,7 +542,7 @@ template_version: 3
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-cr-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then `READY <pr> <full-40-hex-head> GREEN` to the chief quoting your token. {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake (HIMMEL-2872); you may `gh run rerun <id> --failed` once per run and report it.
 
-{vmline}> **Writes:** {scope_line}
+{inhblock}{vmline}> **Writes:** {scope_line}
 
 > **Scope / do not:** writes confined to {scope}. Other live workers and their files: {others}{also}. Stay off those. No settings, CI workflows, SKIP_CR, --no-verify, amend, force-push, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt` unless the ticket requires it (then ask the chief first). Remove any fixture you create under the real HOME before you wrap.
 {grants}
@@ -520,6 +558,7 @@ template_version: 3
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
            ctline=completes_line(l['scope']), grants=grants_block(l),
+           inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 

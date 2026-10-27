@@ -11,7 +11,7 @@ or a login, so the bench can drive it like any other provider:
 Routes (from the installed skill/references/*.md):
   youtube.com / youtu.be   yt-dlp --dump-json            (keyless)
   github.com               gh CLI                        (needs `gh auth login`: 77 when unauthenticated)
-  x.com / twitter.com      twitter-cli                   (cookies: 77)
+  x.com / twitter.com      its cookie-backed X CLI       (cookies: 77; himmel routes X through Scrapling)
   reddit.com               rdt-cli                       (login: 77)
   anything else            curl https://r.jina.ai/<url>  (the documented 'any web page' command)
 Stdlib only. Prints markdown to stdout; never prints a secret."""

@@ -666,5 +666,36 @@ rm -f "$GEN_BRIEFS_MIRROR/HIMMEL-9003.md"
 rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb3.err" || rc=$?
 [ "$rc" = 0 ] && has "proof: a ticket missing from the mirror warns and does not refuse (mirror lag)" "$(cat "$WORK/pb3.err")" "HIMMEL-9003" || fail "proof: absent mirror rc=$rc"
 
+# --- an optional inherited key renders the Inherited PR block; a bad value is refused ---
+inh_gen() { # <python expr for the inherited value, or -: writes N901 alone into $WORK/inh; sets inh_rc
+    rm -rf "$WORK/inh" "$WORK/inh.json" "$WORK/inh.err"
+    inh_rc=1
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
+if sys.argv[3] != "-": l[0]["inherited"]=eval(sys.argv[3])
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/inh.json" "$1" || return 1
+    python3 "$SUT" "$WORK/inh.json" --base 4ccb59d --chief BZ --bucket "$WORK/inh" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/inh.err"; inh_rc=$?
+}
+inh_gen "{'pr': 4033, 'authors': ['Ada Lovelace', 'Alan Turing'], 'mode': 'takeover'}"
+inh_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+[ "$inh_rc" = 0 ] && pass "a leg with a valid inherited key generates (rc 0)" || fail "inherited leg rc=$inh_rc: $(cat "$WORK/inh.err")"
+has "a leg with inherited renders the Inherited PR block" "$inh_brief" "> **Inherited PR (the resume of an \`ORPHAN PR\`"
+has "the Inherited PR block names the PR number" "$inh_brief" "PR \`4033\`"
+has "the Inherited PR block names every original author" "$inh_brief" "by \`Ada Lovelace, Alan Turing\`"
+has "the Inherited PR block carries the mode" "$inh_brief" "Mode: \`takeover\`"
+has "the Inherited PR block keeps the disposition rule" "$inh_brief" "**Before the first push, decide a disposition**"
+inh_gen -
+plain_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+[ "$inh_rc" = 0 ] && [ -n "$plain_brief" ] && lacks "a leg without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain leg rc=$inh_rc or no brief written"
+inhbad() { # <name> <python expr for the inherited value>: refused, rc 1, nothing written
+    inh_gen "$2"
+    if [ "$inh_rc" = 1 ] && grep -q "inherited" "$WORK/inh.err" && ! ls "$WORK/inh"/*.md >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$inh_rc, err: $(cat "$WORK/inh.err"))"; fi
+}
+inhbad "an inherited key that is not an object is refused" "'4033'"
+inhbad "an inherited key with an empty authors list is refused" "{'pr': 4033, 'authors': [], 'mode': 'resume'}"
+inhbad "an inherited key with authors as a bare string is refused" "{'pr': 4033, 'authors': 'Ada', 'mode': 'resume'}"
+inhbad "an inherited key with a pr that is not an integer is refused" "{'pr': '4033', 'authors': ['Ada'], 'mode': 'resume'}"
+inhbad "an inherited key with a mode other than resume or takeover is refused" "{'pr': 4033, 'authors': ['Ada'], 'mode': 'fork'}"
+inhbad "an inherited key with no mode is refused" "{'pr': 4033, 'authors': ['Ada']}"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

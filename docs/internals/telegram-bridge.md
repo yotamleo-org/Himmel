@@ -326,8 +326,7 @@ that share neither root nor checkout do not, which is the same isolation (and
 the same accepted `409`) the instance-scoping section above documents.
 
 **Reboot persistence:** nothing relaunches the bridge on its own after a
-reboot. Windows registers the `HimmelTelegramBridge` logon task; Linux
-installs a systemd **user** unit plus `loginctl enable-linger` (without linger
+reboot. Linux installs a systemd **user** unit plus `loginctl enable-linger` (without linger
 the unit stops at logout). The unit is `Type=simple` running
 `restart-bridge.sh run`, so the bun supervisor is the unit's MAINPID and
 `Restart=on-failure` brings it back when it dies — including on a signal

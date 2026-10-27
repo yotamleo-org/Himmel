@@ -221,7 +221,8 @@ template_version: 3
 >    workflow and the `WF_DISPATCH_EXEMPT` workflows need no run, so do not
 >    try to dispatch them). **A PR that changes a docs page** (`README.md`,
 >    `site/`, a reader-facing `.md` or `.html` under `docs/`) names those pages
->    in its READY message. Do not run the `docs-reviewer` skill yourself: the
+>    in its READY message by quoting the `docs-review scope:` line and its page
+>    list from the lint job's advisory step at that head. Do not run the `docs-reviewer` skill yourself: the
 >    judge runs it once at your `JUDGE-REQUEST` head, and a BLOCKING finding comes back
 >    as a NO-GO line to fix.
 >    <Anything else unusual: a PR body that must carry other

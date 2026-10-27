@@ -1365,6 +1365,20 @@ jobs:
       - name: flag-parity changed files
         if: github.event_name == 'pull_request'
         run: bash scripts/lint/flag-parity.sh --changed "HEAD^1..HEAD" --baseline scripts/lint/flag-parity-baseline.tsv
+      # HIMMEL-7657: advisory, never gating. Names the docs pages the change touches
+      # and the remark rows the judge's docs-reviewer run applies to them, and checks
+      # the rules table's shape. The review itself is the judge's skill run (no model
+      # here). A PR diffs its merge ref against HEAD^1; a dispatch against the default branch.
+      - name: docs-review scope (advisory)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          EVENT: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base="origin/$DEFAULT_BRANCH"
+          if [ "$EVENT" = pull_request ]; then base="HEAD^1"; fi
+          python3 marketplace/plugins/himmel-ops/skills/docs-reviewer/docs_remarks.py scope --base "$base" --head HEAD
 
   node-suites:
     needs: plan

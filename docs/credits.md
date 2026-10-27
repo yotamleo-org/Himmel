@@ -96,7 +96,7 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | branch main; [pin site](../marketplace/.claude-plugin/marketplace.json) | runtime-dependency |
 | yotamleo-org/obsidian-skills | https://github.com/kepano/obsidian-skills | Steph Ango | MIT | branch himmel-main; no pin site registered | runtime-dependency |
 | yotamleo-org/qmd | https://github.com/tobi/qmd | Tobi Lütke | MIT | branch main; [pin site](../scripts/lib/qmd-bin.sh) | runtime-dependency |
-| yotamleo-org/twitter-cli | https://github.com/public-clis/twitter-cli | public-clis | Apache-2.0 | branch himmel-main; [pin site](../scripts/upstreams.json) | runtime-dependency |
+| yotamleo-org/twitter-cli | https://github.com/public-clis/twitter-cli | public-clis | Apache-2.0 | branch himmel-main; no pin site registered | dormant |
 
 ## Licences and regeneration
 

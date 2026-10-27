@@ -305,7 +305,9 @@ gathering, per the rule below.>
 > page, run the `docs-reviewer` skill at the `JUDGE-REQUEST` head (the head
 > that goes `READY`); this is the PR's only run of it. Save the answer and hold it to 3 KB with the skill's
 > `fit_answer.py` (exit 1: shorten the page-verdict and BLOCKING lines, drop
-> none, and rerun fit_answer.py). A BLOCKING finding, or a code
+> none, and rerun fit_answer.py). The pages to review are the ones the READY message
+> quotes from the lint job's advisory `docs-review scope:` step. Quote the answer's
+> `docs-review:` summary line in your verdict. A BLOCKING finding, or a code
 > change the page implies with no fix in the diff and no follow-up ticket, is a
 > NO-GO line in your verdict.
 

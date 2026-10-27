@@ -168,6 +168,8 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        reads — STUB_PROTECTION_PREMERGE would be dead, and the
 #                        case would prove nothing about the pre-merge re-read.
 #   STUB_CI_RC          exit code of the stub check-ci. Default 0.
+#   STUB_CI_COMMIT=1    the stub check-ci commits in its cwd (a local commit
+#                        made during the CI watch).
 #   STUB_CI_RCS         space-separated exit codes, one per check-ci call (the
 #                        last repeats). Overrides STUB_CI_RC.
 #   STUB_ROUND_STATE / STUB_ROUND_HEAD / STUB_ROUND_FAIL=1  the between-rounds
@@ -324,6 +326,7 @@ mog_build_fixture() {
 #!/usr/bin/env bash
 d=$(dirname "$0")
 : > "$d/check-ci.ran"
+[ -z "${STUB_CI_COMMIT:-}" ] || git commit -q --allow-empty -m "made during the CI watch"
 printf "%s" "${MERGE_WATCH_POST_GO:-}" > "$d/check-ci.postgo"
 printf "%s\n" "${CHECK_CI_DISTINCT_DEADLINE:-}" >> "$d/check-ci.distinct"
 n=$(( $(cat "$d/check-ci.count" 2>/dev/null || echo 0) + 1 ))
@@ -1978,6 +1981,48 @@ MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
     run_mog 0 "merged but tip moved → kept, exit 0"
 if [ -d "$P_WT" ]; then pass; else fail "11k: worktree with post-merge commits was removed"; fi
 assert_audit_has "11k: audit records the tip mismatch" "prune=tip-differs-kept"
+
+# 11k1. A commit made in the worker's worktree after the PR head (the 4023 /
+# 7f2eb545f sequence) is refused BEFORE any gate or merge, so the commit is
+# never left behind on a branch whose PR merged without it.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+printf 'after the GO head\n' >> "$P_WT/work.txt"
+git -C "$P_WT" commit -q -am "unpushed after the GO head"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 25 "11k1: worktree HEAD ahead of the PR head → exit 25"
+assert_gh_lacks "11k1: no merge attempted" "pr merge"
+assert_audit_has "11k1: refusal audited" "REFUSED reason=local-commits-not-in-pr ahead=1"
+if grepq "$LAST_ERR" -F 'push them' && grepq "$LAST_ERR" -F 'follow-up'; then pass; else fail "11k1: refusal does not name both remedies (err: $LAST_ERR)"; fi
+
+# 11k1b. The same worktree with HEAD == PR head still merges.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "11k1b: worktree HEAD == PR head → merges, exit 0"
+assert_gh_has "11k1b: merge fired" "pr merge"
+
+# 11k1c. A PR head absent from the worktree's object store cannot be compared,
+# so the guard fails closed instead of reading the failed rev-list as "nothing ahead".
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_WT" STUB_SHA="0123456789abcdef0123456789abcdef01234567" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 25 "11k1c: PR head not in the local object store → exit 25"
+assert_gh_lacks "11k1c: no merge attempted" "pr merge"
+assert_audit_has "11k1c: refusal audited" "REFUSED reason=local-commits-unreadable"
+
+# 11k1d. A tag named like the branch makes `symbolic-ref --short` print
+# heads/<branch>; the guard still sees the checkout as on the PR's branch.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+git -C "$P_WT" tag feat/mog-prune
+git -C "$P_WT" commit -q --allow-empty -m "unpushed beside a same-named tag"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 25 "11k1d: same-named tag does not hide the branch → exit 25"
+assert_gh_lacks "11k1d: no merge attempted" "pr merge"
+
+# 11k1e. A local commit made while check-ci watches CI is caught by the
+# re-check right before the merge.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_CI_COMMIT=1 \
+    run_mog 25 "11k1e: commit made during the CI watch → exit 25"
+assert_gh_lacks "11k1e: no merge attempted" "pr merge"
 
 # 11k2. POSITIVE CONTROL: a worktree held open by a live native
 # process is detected BEFORE the remove and skipped WHOLE. This is the case

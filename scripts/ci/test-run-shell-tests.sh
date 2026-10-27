@@ -3034,4 +3034,30 @@ fi
 rm -rf "$sb29"
 fi
 
+echo "== Case 30: a suite never sees the operator's OS keyring (HIMMEL-7576) =="
+sb30=$(mktemp -d -t himmel-suite-keyring.XXXXXX) || { fail "30: mktemp failed"; sb30=""; }
+if [ -n "$sb30" ]; then
+mkdir -p "$sb30/scripts"
+cat > "$sb30/scripts/test-keyring.sh" <<'SHEOF'
+#!/usr/bin/env bash
+printf 'keyring=%s\n' "${HIMMEL_SECRETS_KEYRING-unset}" > "$KEYRING_LOG"
+exit 0
+SHEOF
+chmod +x "$sb30/scripts/test-keyring.sh"
+
+# Negative control: plain bash, no runner, leaves the variable unset.
+KEYRING_LOG="$sb30/direct.log" env -u HIMMEL_SECRETS_KEYRING bash "$sb30/scripts/test-keyring.sh"
+directrc30=$?
+KEYRING_LOG="$sb30/runner.log" env -u HIMMEL_SECRETS_KEYRING -u SUITE_TIER_MODE bash "$RUNNER" "$sb30/scripts" >/dev/null 2>&1
+rc30=$?
+direct30=$(cat "$sb30/direct.log" 2>/dev/null)
+runner30=$(cat "$sb30/runner.log" 2>/dev/null)
+if [ "$directrc30" -eq 0 ] && [ "$direct30" = "keyring=unset" ] && [ "$rc30" -eq 0 ] && [ "$runner30" = "keyring=off" ]; then
+  pass "30: the runner exports HIMMEL_SECRETS_KEYRING=off to a suite; plain bash leaves it unset"
+else
+  fail "30: directrc=$directrc30 rc=$rc30 direct=[$direct30] runner=[$runner30] (want 0, keyring=unset direct, keyring=off via the runner)"
+fi
+rm -rf "$sb30"
+fi
+
 rst_tally

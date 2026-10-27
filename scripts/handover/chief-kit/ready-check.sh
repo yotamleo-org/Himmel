@@ -499,6 +499,10 @@ cov_linked() {
 
 # cov_ledger_keys <ledger> <head> <pr-branch>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
 # Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head.
+# A deferral of <pr-branch> at any earlier head carries to <head> when a critic's ok avail row of <pr-branch> at <head> was
+# written after the finding (a clean full round) and no finding row of <pr-branch> sits at <head>: a round that re-raised
+# or fixed anything there is not clean (fail-closed), a deferral later amended to fixed is no longer a deferral, and a
+# finding the branch recorded again at any later head (re-raised in between) is judged by that later row alone.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
 # order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
@@ -516,7 +520,13 @@ cov_ledger_keys() {
         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
         [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
             | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
-        | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev));
+        | [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and .status == "ok" and (.head | type == "string") and hm(.head; $h)
+            and (.model | type == "string") and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not)
+            and ((.detail // "") | tostring | startswith("trivial-descendant") | not)) | ._ln] as $clean
+        | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h))] | length > 0) as $raised
+        | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev))
+            or ($pb != "" and $f.branch == $pb and ($raised | not) and any($clean[]; . > $f._ln)
+                and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e

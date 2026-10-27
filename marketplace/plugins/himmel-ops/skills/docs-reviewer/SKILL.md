@@ -183,6 +183,14 @@ repeats it; the repeat is its own row, so the remark now counts as made more
 than once. A quote is never edited; a changed view is a new row, and the old
 row becomes `retired`.
 
+`docs_remarks.py harvest` (beside this file) drafts those rows. It reads the
+chief's recorded remarks (`--remarks-file`, `date<TAB>source<TAB>quote`) and
+the operator's comments on merged docs PRs (`--author <login>`). It prints one
+`candidate` row per quote and source the table lacks (so a repeat from a new
+source is its own row), and `--write` appends them. Each
+new row's rule reads `pending: the chief writes the rule` until the chief
+writes it, in the same PR.
+
 ## How the chief uses it
 
 Docs PRs do not wait on the operator (decision 286). In place of that gate,

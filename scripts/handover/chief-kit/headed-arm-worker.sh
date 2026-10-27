@@ -2441,6 +2441,36 @@ if [ -n "$PROFILE" ]; then
         fi
         chmod 600 "$PROFILE_CONTRACT" 2>/dev/null || true
     fi
+    # A worker on an adopted repo copies the preface's ship steps from a cwd that
+    # is not a himmel checkout, where the relative `bash scripts/...` forms do not
+    # resolve. Name the himmel anchor's absolute scripts in the
+    # written copy: $HIMMEL_REPO, else the primary checkout this script lives in.
+    # A worker whose repo root is this checkout (same git common dir, no
+    # subdirectory prefix) keeps the relative form, which the gate guards
+    # demand. A non-himmel repo with no
+    # resolvable anchor keeps it too.
+    _pf_anchor="${HIMMEL_REPO:-}"
+    case "$_pf_anchor" in /*) ;; *)
+        _pf_anchor="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && _pf_anchor="$(dirname "$_pf_anchor")" || _pf_anchor="" ;; # swallow-ok: no anchor keeps the relative form
+    esac
+    if [ -n "${HEADED_ARM_REPO:-}" ] && [ -d "$_pf_anchor" ]; then
+        _pf_repo_common="$(git_clean -C "$HEADED_ARM_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _pf_repo_common="" # swallow-ok: not a git repo is not a himmel checkout
+        _pf_anchor_common="$(git_clean -C "$_pf_anchor" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _pf_anchor_common="" # swallow-ok: an unresolvable anchor compares unequal
+        _pf_repo_prefix="$(git_clean -C "$HEADED_ARM_REPO" rev-parse --show-prefix 2>/dev/null)" || _pf_repo_prefix="." # swallow-ok: an unreadable prefix counts as below the root
+        if [ -z "$_pf_repo_common" ] || [ "$_pf_repo_common" != "$_pf_anchor_common" ] || [ -n "$_pf_repo_prefix" ]; then
+            _pf_esc="$(printf '%s' "$_pf_anchor" | sed -e 's/[\\&#]/\\&/g')"
+            if sed -E "s#(^|[ \`(])scripts/#\\1${_pf_esc}/scripts/#g" "$WORKER_SESSION_PROFILE_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE.abs" \
+                && mv "$WORKER_SESSION_PROFILE_PREFACE.abs" "$WORKER_SESSION_PROFILE_PREFACE"; then
+                chmod 600 "$WORKER_SESSION_PROFILE_PREFACE" 2>/dev/null || true
+            else
+                rm -f "$WORKER_SESSION_PROFILE_PREFACE.abs"
+                echo "$(date +%F_%T) headed-arm-worker: WARN preface paths not anchored; launching with the relative forms" >> "$LOG"
+            fi
+            unset -v _pf_esc
+        fi
+        unset -v _pf_repo_common _pf_anchor_common _pf_repo_prefix
+    fi
+    unset -v _pf_anchor
     # WORKER_SESSION_REPO_MAP=1 (launching shell, default off): put a token-capped
     # PageRank repo map of the worker's repo (its primary checkout's
     # graphify-out/graph.json) at the HEAD of the preface, so the preface's

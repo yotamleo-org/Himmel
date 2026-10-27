@@ -36,7 +36,6 @@ internals/egress-matrix.md
 internals/harness-compat.md
 internals/testing.md
 internals/lane-calibration.md
-tool-adoption/registry.md
 evals/review-panel.md
 '
 

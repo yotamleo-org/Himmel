@@ -25,9 +25,8 @@
 # WITHOUT --unattended is the operator's approval for a gated entry.
 #
 # WHICH entries are gated lives in the registry, not here — read it, do not
-# trust this comment for that. (As of 2026-07-28 neither probe entry is gated:
-# twitter-cli is Tier A with no caveat, and rtk was approved unattended by the
-# operator that day, overriding its Tier B default; rtk's entry note carries the
+# trust this comment for that. (As of 2026-07-28 rtk is not gated: it was
+# approved unattended by the operator that day, overriding its Tier B default; its entry note carries the
 # reservation and the revert path.) This paragraph is deliberately short on
 # specifics because four earlier copies of it went stale within hours of the
 # registry changing — a comment must not restate a fact that lives in data.
@@ -116,7 +115,7 @@ command -v python3 >/dev/null 2>&1 || {
 # `| tr -d '\r'` is load-bearing, not cosmetic (same guard check-plugin-drift.sh
 # uses): python's stdout is in text mode on Windows, so every line comes back
 # CRLF-terminated and each value would carry a trailing CR — enough to turn
-# `twitter --version` into an argv whose second word is `--version\r`, which the
+# `rtk --version` into an argv whose second word is `--version\r`, which the
 # tool rejects, which then reads as "not installed". `set -o pipefail` (top of
 # file) keeps python's exit code as the pipeline's, so the SKIP/error codes below
 # still arrive intact rather than being masked by tr's 0.
@@ -201,7 +200,7 @@ if [ -z "$VERSION_COMMAND" ] || [ -z "$VERSION_REGEX" ] || [ "${#UPGRADE_ARGV[@]
 fi
 
 # Probe the installed version. Mirrors check-plugin-drift.sh's probe: a
-# --version that exits non-zero AFTER printing (twitter-cli does this) is fine,
+# --version that exits non-zero AFTER printing is fine,
 # so parse combined output rather than trusting the exit code.
 probe_version() {
   local cmd_arr out

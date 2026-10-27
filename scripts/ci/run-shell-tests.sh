@@ -4464,6 +4464,9 @@ _suite_attempts() {
     scrub_override_env
     # Nor the caller's Claude session / harness env: a suite sees what CI sees.
     scrub_session_env
+    # No suite reads the operator's OS keyring. After the scrub:
+    # scrub_session_env unsets every HIMMEL_* name it does not keep.
+    export HIMMEL_SECRETS_KEYRING=off
     _live_env "$suite"
     bash "$suite" >"$log" 2>&1 </dev/null; printf '%s\n' "$?" > "$rcfile"; } &
   suite_pid=$!

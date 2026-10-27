@@ -1481,7 +1481,9 @@ cat > "$fixture17b" <<'FIXTURE_EOF'
 
 - 00:00 this bullet must never reach the system-prompt preface.
 FIXTURE_EOF
+anchor7795="$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")"
 rc=0
+HIMMEL_REPO="$anchor7795" \
 HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
 HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b/konsole" PGREP_CMD="$d17b/pgrep" \
@@ -1517,6 +1519,54 @@ not_contains "brief-preface: does NOT carry the fixture's Contract line (HIMMEL-
   "$prefacecontent17b" "**Contract:**"
 not_contains "brief-preface: does NOT carry the Results tail" "$prefacecontent17b" \
   "this bullet must never reach the system-prompt preface"
+
+# A worker on an adopted repo copies the preface's ship steps from
+# a cwd that is not a himmel checkout, so the relative `bash scripts/...` forms
+# do not resolve there. The adopter preface names the himmel anchor's absolute
+# scripts; a worker in a himmel checkout keeps the relative form (the gate
+# guards demand it).
+not_contains "adopter preface: no bare relative 'bash scripts/cr/' ship step (HIMMEL-7795)" \
+  "$prefacecontent17b" "bash scripts/cr/"
+not_contains "adopter preface: no bare relative 'bash scripts/quiet-run.sh' (HIMMEL-7795)" \
+  "$prefacecontent17b" "bash scripts/quiet-run.sh"
+contains "adopter preface: gate scripts name the anchor's absolute path (HIMMEL-7795)" \
+  "$prefacecontent17b" "bash $anchor7795/scripts/cr/"
+contains "adopter preface: quiet-run names the anchor's absolute path (HIMMEL-7795)" \
+  "$prefacecontent17b" "bash $anchor7795/scripts/quiet-run.sh"
+contains "adopter preface: check-ci names the anchor's absolute path (HIMMEL-7795)" \
+  "$prefacecontent17b" "$anchor7795/scripts/check-ci.sh"
+contains "adopter preface: already-anchored <anchor>/scripts form is untouched (HIMMEL-7795)" \
+  "$prefacecontent17b" "bash <anchor>/scripts/cr/clear-cr-marker.sh"
+d17h="$tmp/c17h"; mk_launch_stubs "$d17h" "HIMMEL-9999-himmelcwd"
+rc=0
+HIMMEL_REPO="$anchor7795" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+KONSOLE_CMD="$d17h/konsole" PGREP_CMD="$d17h/pgrep" \
+WORKER_SESSION_REPO="$(cd "$HERE/../../.." && pwd)" HEADED_ARM_LOCK_DIR="$d17h/locks" HEADED_ARM_PROC="$d17h/proc" \
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-9999-himmelcwd" "$fixture17b" "$d17h/signal-never" "$PAST" "$d17h/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d17h" || true
+check "himmel-cwd preface: full launch exit 0 (HIMMEL-7795)" "$rc" "0"
+prefacecontent17h="$(cat "$d17h/HIMMEL-9999-himmelcwd.worker-preface.md" 2>/dev/null || true)"
+contains "himmel-cwd preface: the relative gate-script form is unchanged (HIMMEL-7795)" \
+  "$prefacecontent17h" "bash scripts/cr/"
+not_contains "himmel-cwd preface: no absolute rewrite of quiet-run (HIMMEL-7795)" \
+  "$prefacecontent17h" "bash $anchor7795/scripts/quiet-run.sh"
+d17s="$tmp/c17s"; mk_launch_stubs "$d17s" "HIMMEL-9999-subdir"
+rc=0
+HIMMEL_REPO="$anchor7795" \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+KONSOLE_CMD="$d17s/konsole" PGREP_CMD="$d17s/pgrep" \
+WORKER_SESSION_REPO="$HERE" HEADED_ARM_LOCK_DIR="$d17s/locks" HEADED_ARM_PROC="$d17s/proc" \
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-9999-subdir" "$fixture17b" "$d17s/signal-never" "$PAST" "$d17s/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d17s" || true
+check "himmel-subdirectory preface: full launch exit 0 (HIMMEL-7795)" "$rc" "0"
+prefacecontent17s="$(cat "$d17s/HIMMEL-9999-subdir.worker-preface.md" 2>/dev/null || true)"
+contains "himmel-subdirectory preface: quiet-run names the anchor's absolute path (HIMMEL-7795)" \
+  "$prefacecontent17s" "bash $anchor7795/scripts/quiet-run.sh"
+not_contains "himmel-subdirectory preface: no bare relative 'bash scripts/cr/' (HIMMEL-7795)" \
+  "$prefacecontent17s" "bash scripts/cr/"
 
 # --- 17b-3. 2985's per-call preface concatenation is replaced:
 # the brief's own contract now goes to its own per-worker <name>.worker-contract.md,

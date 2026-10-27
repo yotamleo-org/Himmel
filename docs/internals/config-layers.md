@@ -187,8 +187,6 @@ Moving a station: `bash scripts/lib/himmel-secrets import-env <primary
 checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
 as the fallback; import-env skips a secret the manifest does not list, so add
 a new one to `stationSecrets` first.
-Wait until the test runners export `HIMMEL_SECRETS_KEYRING=off` before you
-move a station whose suites run against the real keyring.
 
 ## Which keys go where
 

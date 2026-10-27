@@ -44,7 +44,7 @@
 #           takes the version from `synced_base` (carried forks and the six
 #           third-party Obsidian assets bundled in the luna template); mode
 #           `probe` runs `version_command` and extracts the version via
-#           `version_regex` — for installed binaries/CLIs (rtk, twitter-cli).
+#           `version_regex` — for installed binaries/CLIs (rtk).
 #           Optional `latest_source:
 #           release` reads the maintainer's latest-non-prerelease via the Releases
 #           API instead of the highest semver tag — for upstreams whose tags are
@@ -582,7 +582,7 @@ echo ""
 echo "== carried upstreams =="
 # scripts/upstreams.json enumerates the rest of the carried fleet (including
 # claude-hud, claude-obsidian's resync metadata, the luna template's bundled
-# third-party assets, hermes-agent, rtk, twitter-cli, graphify, and qmd); installed
+# third-party assets, hermes-agent, rtk, graphify, and qmd); installed
 # marketplaces are discovered from known_marketplaces.json. Both paths are
 # env-overridable so the test harness can point at fixtures / a stubbed gh.
 REGISTRY="${DRIFT_REGISTRY:-$ROOT/scripts/upstreams.json}"
@@ -773,8 +773,8 @@ PY
               echo "  $name: ? tool '${cmd_arr[0]}' not installed — UNCHECKED${tier_note}"
               incomplete=1; continue
             fi
-            # A --version that exits non-zero after printing the version (e.g.
-            # twitter-cli) is fine: we extract the version from combined output.
+            # A --version that exits non-zero after printing the version is
+            # fine: we extract the version from combined output.
             if command -v timeout >/dev/null 2>&1; then
               probe_out="$(timeout 10 "${cmd_arr[@]}" 2>&1)"; probe_rc=$?
               # rc=124 is `timeout`'s own kill signal; 137 (128+9) shows up if

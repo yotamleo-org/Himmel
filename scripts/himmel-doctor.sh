@@ -3795,6 +3795,38 @@ check_c46_plugin_enabled_missing() {
     fi
 }
 
+# --- C76: one plugin installed many times ---
+# `claude plugin list --json` listed atlassian@claude-plugins-official 132 times: a
+# local-scope install per worktree. Each copy loads, so startup time and context
+# pay for it. WARN on any plugin id with more than HIMMEL_DOCTOR_DUP_PLUGIN_MAX
+# (default 3) entries across all scopes. Read-only. Shares C46's claude seam.
+check_c76_duplicate_plugin_installs() {
+    local max="${HIMMEL_DOCTOR_DUP_PLUGIN_MAX:-3}"
+    local bin="${HIMMEL_DOCTOR_CLAUDE_BIN:-claude}"
+    if [ "$bin" = claude ]; then bin="$(command -v claude 2>/dev/null || true)"; fi
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+        emit INFO C76-duplicate-plugin-installs "claude not resolvable -- duplicate plugin install scan skipped"
+        return
+    fi
+    command -v jq >/dev/null 2>&1 || { emit INFO C76-duplicate-plugin-installs "jq not found -- duplicate plugin install scan skipped"; return; }
+    local list_json dups
+    if ! list_json="$("$bin" plugin list --json 2>/dev/null)" || [ -z "$list_json" ] || ! dups="$(printf '%s' "$list_json" | jq -r --argjson max "$max" 'if type == "array" then group_by(.id)[] | select(length > $max) | "\(.[0].id) x\(length)" else error("not an array") end' 2>/dev/null)"; then
+        emit INFO C76-duplicate-plugin-installs "'claude plugin list --json' failed or was not a JSON array -- scan skipped"
+        return
+    fi
+    if [ -z "$dups" ]; then
+        emit OK C76-duplicate-plugin-installs "no plugin is installed more than $max times"
+        return
+    fi
+    local line id fix=""
+    while IFS= read -r line; do
+        id="${line% x*}"
+        fix="$fix bash \"$REPO_ROOT/scripts/setup/dedupe-plugin-installs.sh\" --plugin $id (dry-run; add --apply);"
+    done <<< "$dups"
+    emit WARN C76-duplicate-plugin-installs "plugin(s) installed more than $max times: $(printf '%s' "$dups" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
+        "each copy loads and costs startup time and context; run:$fix"
+}
+
 # --- C47-runaway-procs: long-lived himmel-shaped process pegging a core ---
 # Runaway qmd queries and orphaned hook.sh fixtures ran ~99 % CPU for hours unnoticed.
 # WARN on a current-user process older than HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN (30) at
@@ -4622,7 +4654,7 @@ check_c65_git_gates() {
     fi
 }
 
-# --- C76: telegram-bridge poller older than its code ---
+# --- C77: telegram-bridge poller older than its code ---
 # The 10-27 AI TODO outage: a pull changed scripts/telegram, scripts/lanes and scripts/lib while the
 # bridge process kept the code it started with, and a group went unanswered for 12 h. C30 only asks
 # whether the unit is alive. This asks whether the live poller started after the newest commit to the
@@ -4631,7 +4663,7 @@ check_c65_git_gates() {
 # Seam: HIMMEL_DOCTOR_SYSTEMCTL (shared with C24/C30); --root picks the checkout whose git log is read.
 # ponytail: the commit time (not the pull time) is compared, so a commit authored before the poller
 # started but pulled after it reads fresh; upgrade is the HEAD reflog's last pull time.
-check_c76_bridge_stale() {
+check_c77_bridge_stale() {
     local systemctl_bin="${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" unit="telegram-bridge.service"
     local started started_ts commit_ts subject started_fmt commit_fmt
     command -v "$systemctl_bin" >/dev/null 2>&1 || return 0
@@ -4639,7 +4671,7 @@ check_c76_bridge_stale() {
     started="$("$systemctl_bin" --user show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null)" || return 0
     [ -n "$started" ] || return 0
     started_ts="$(date -d "$started" +%s 2>/dev/null)" || {  # gnu-ok: systemd on Linux prints the timestamp; macOS has no user bridge unit, so the unreadable branch below covers it
-        emit INFO C76-bridge-stale "$unit start time '$started' is unreadable — bridge staleness undetermined" \
+        emit INFO C77-bridge-stale "$unit start time '$started' is unreadable — bridge staleness undetermined" \
             "verify manually: $systemctl_bin --user show $unit -p ActiveEnterTimestamp --value"
         return 0
     }
@@ -4649,11 +4681,11 @@ check_c76_bridge_stale() {
         subject="$(git -C "$REPO_ROOT" log -1 --format=%s -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)"
         started_fmt="$(date -d "@$started_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: only reached after the GNU parse above succeeded
         commit_fmt="$(date -d "@$commit_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: same Linux-only path
-        emit WARN C76-bridge-stale "$unit started $started_fmt before the newest commit to scripts/telegram, scripts/lanes or scripts/lib ($commit_fmt: $subject) — the poller runs stale code" \
+        emit WARN C77-bridge-stale "$unit started $started_fmt before the newest commit to scripts/telegram, scripts/lanes or scripts/lib ($commit_fmt: $subject) — the poller runs stale code" \
             "systemctl --user restart $unit   # an OPERATOR decision, this check never restarts it"
         return 0
     fi
-    emit OK C76-bridge-stale "$unit started after the newest commit to scripts/telegram, scripts/lanes and scripts/lib"
+    emit OK C77-bridge-stale "$unit started after the newest commit to scripts/telegram, scripts/lanes and scripts/lib"
 }
 
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
@@ -4802,7 +4834,8 @@ run_check C72 check_c72_design_mcp_auth
 run_check C73 check_c73_bun_compiled
 run_check C74 check_c74_config_split
 run_check C75 check_c75_keyring
-run_check C76 check_c76_bridge_stale
+run_check C76 check_c76_duplicate_plugin_installs
+run_check C77 check_c77_bridge_stale
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
