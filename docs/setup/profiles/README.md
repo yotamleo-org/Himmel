@@ -23,7 +23,7 @@ code is the answer as the installer shows it.
 
 Guardrails, git gates and worktrees for this project. Use it for any repo,
 and for the practice climb on the
-[adoption trail](../../adoption-trail.html#trial).
+[adoption trail](../../adoption-trail-levels.html#trial).
 
 - **Notes vault:** `none`. With no vault, the installer skips the vault
   questions and the Telegram bridge question.

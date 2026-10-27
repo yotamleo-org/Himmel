@@ -66,7 +66,7 @@
       "prereqs": ["Level 0.", "A git repository with a <code>main</code> branch."],
       "setup_time": null,
       "cost": ["No model usage for the guards and gates.", "<code>/pr-check</code> uses your Claude usage for each review round."],
-      "turn_off": "For one session: start Claude Code with <code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code> or <code>DESTRUCTIVE_OK=1</code>. For good: <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code>.",
+      "turn_off": "For one session: start Claude Code as <code>EDIT_ON_MAIN_OK=1 claude</code>, or with <code>READ_SECRETS_OK=1</code> or <code>DESTRUCTIVE_OK=1</code> in the same place. For good: <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code>.",
       "docs": [
         { "label": "Getting started", "href": "getting-started/" },
         { "label": "The daily loop", "href": "daily-loop/" },
@@ -133,7 +133,7 @@
       "prereqs": ["Level 2 for capture to the vault.", "bun.", "A Telegram bot token from BotFather, and your own Telegram user id."],
       "setup_time": null,
       "cost": ["Each message is one short Claude run on your usage."],
-      "turn_off": "<code>bun supervisor.ts --kill</code> from <code>~/himmel/scripts/telegram</code> stops the bridge.",
+      "turn_off": "<code>cd ~/himmel/scripts/telegram &amp;&amp; bun supervisor.ts --kill</code> stops the bridge.",
       "docs": [
         { "label": "Telegram bridge", "href": "telegram-bridge/" }
       ]

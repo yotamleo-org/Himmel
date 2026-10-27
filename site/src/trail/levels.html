@@ -1,140 +1,13 @@
-<!doctype html>
-<!-- Built by site/src/trail/render.mjs from levels.json, page.html, trail.css, trail.js and site/src/styles/tokens.css. Edit those, then run: node site/src/trail/render.mjs -->
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The adoption trail · himmel</title>
-<meta name="description" content="What himmel is, what it changes on your machine, how to undo it, and how far to climb: a practice install and eight levels, each with its cost and its off switch.">
-<script>try { var t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
-<style>
-{{TOKENS}}
-{{CSS}}
-</style>
-</head>
-<body>
-<a class="skip" href="#main">Skip to the page</a>
-<header class="top">
+<section class="sec-block" aria-labelledby="page-h">
   <div class="wrap">
-    <a class="home" href=".">himmel docs</a>
-    <nav aria-label="Docs">
-      <a href="getting-started/">Getting started</a>
-      <a href="setup/install/">Install</a>
-      <a href="glossary/">Glossary</a>
-      <a href="https://github.com/yotamleo-org/Himmel">GitHub</a> <!-- env-literal-ok: the public repo link -->
-    </nav>
-  </div>
-</header>
-<main id="main">
-
-<section class="hero" aria-labelledby="hero-h">
-  <svg class="contours" viewBox="0 0 560 360" preserveAspectRatio="xMaxYMid slice" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1">
-    <path d="M560 300 C470 290 420 250 380 220 S300 150 330 110 S450 60 560 70"/>
-    <path d="M560 260 C490 250 450 225 420 200 S370 150 390 125 S470 95 560 100"/>
-    <path d="M560 225 C510 215 480 200 460 180 S430 150 445 135 S500 120 560 125"/>
-    <path d="M560 195 C530 188 510 178 500 166 S488 150 498 144 S530 140 560 146"/>
-    <path d="M560 340 C440 335 360 300 320 260 S230 160 270 90 S420 10 560 25"/>
-    <path d="M540 360 C400 360 300 330 260 290 S160 170 210 80 S380 -20 560 -10"/>
-  </svg>
-  <div class="wrap hero-in">
-    <p class="eyebrow">himmel · for Claude Code</p>
-    <h1 id="hero-h">Ship more with Claude Code, <em>and keep every change reviewable.</em></h1>
-    <p class="sec-lede" style="margin-top:0">himmel puts Claude Code's work on a delivery graph. Each change is built in its own worktree, checked three ways at once, reviewed (by a second model too, once you add one) and merged through one gate. The guardrails apply to every session, including the ones you are not watching. For developers on Linux or macOS who use git.</p>
-    <ul class="proofs" aria-label="What it does">
-      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree, then passes the tests, a review and one merge gate. No step can be skipped. When a check fails, the change goes back with the reason, so main only gets work that passed.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
-      <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="#lvl-1">Level 1</a> · in your project</span></li>
-      <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="#lvl-5">Level 5</a></span></li>
-    </ul>
-    <p class="shipstat"><b>himmel is built this way.</b> Over 2,000 pull requests merged on its own main in 30 days (October 2026). <a href="guide/dev-graph.html">See the graph they went through</a></p>
-    <details class="learned">
-      <summary><b>A new project, shipping fast.</b> The rules that keep it fast.</summary>
-      <ul>
-        <li><b>Guards aimed at real damage.</b> Each guard targets a move that can hurt a project, and is replayed against real commands before it ships, so it stops what matters and lets the rest through.</li>
-        <li><b>Long tracks keep their pace.</b> Each session keeps its context small, so its answers stay sharp. When it fills, a worker hands off at a set point and the chief passes the shift to a successor, with everything written down, so a long track never starts over.</li>
-        <li><b>Every merge is earned.</b> A change merges through one gate only: CI green at its exact commit, every review point decided, and an approval signed for that commit.</li>
-        <li><b>Cleanup keeps every session fast.</b> Stale worktrees and open tickets slow down each session that has to step around them, so finished worktrees are cleared and tickets close when their change merges.</li>
-      </ul>
-    </details>
-    <div class="ctas">
-      <a class="btn-primary" href="#trial">Take a practice climb <span aria-hidden="true">→</span></a>
-      <a class="link-sec" href="#trail">See the whole trail</a>
-    </div>
-  </div>
-</section>
-
-<section class="sec-block" id="control" aria-labelledby="control-h">
-  <div class="wrap">
-    <h2 class="sec" id="control-h">What it is, and how you stay in control</h2>
-    <p class="sec-lede">himmel adds a delivery process to Claude Code. You decide how much of it runs, and where.</p>
-    <div class="qgrid">
-      <details class="qcard">
-        <summary><span class="qn">Question 1</span><span class="qh">What is it?</span><span class="qa">A delivery process for Claude Code: worktrees, git gates, a review (by a second model too, once you add one) and one merge gate, with guardrails that hold.</span></summary>
-        <div class="qbody">
-          <p>Small scripts fire automatically and refuse risky actions (edits and commits on your main branch, reads of your secret files, pushes to main), so the rules hold even when nobody remembers them.</p>
-          <h4>Five words you will see</h4>
-          <ul>
-            <li><b>Hook:</b> a script Claude Code runs before or after a tool; it can refuse the action.</li>
-            <li><b>Gate:</b> a check that must pass before a commit, push or merge.</li>
-            <li><b>Worktree:</b> a second working folder on its own branch, sharing the repo's history.</li>
-            <li><b>Handover:</b> a written note a later session resumes from.</li>
-            <li><b>Sector:</b> one region of your project's sky: a stable area of the work, the "where" of a ticket, so each area's progress shows on its own.</li>
-          </ul>
-          <p>Every other term is in the <a href="glossary/">glossary</a>.</p>
-          <h4>Who it is for</h4>
-          <p>Developers who use git and a terminal. Linux and macOS are supported.</p>
-        </div>
-      </details>
-      <details class="qcard" open>
-        <summary><span class="qn">Question 2</span><span class="qh">Who is in control?</span><span class="qa">You are. You choose what runs, you see the plan before anything is written, and you can switch any part off.</span></summary>
-        <div class="qbody">
-          <ul>
-            <li><b>You choose the starting point.</b> A starter install for one project, or more: a second brain, a second reviewer, a fleet. <a href="setup/profiles/">Install profiles</a></li>
-            <li><b>You see the plan first.</b> The installer lists everything it would add or change, and asks before it writes a thing.</li>
-            <li><b>Nothing runs on a schedule</b> until you arm it, one job at a time.</li>
-            <li><b>Every guardrail has an off switch</b> for one session, when you mean it.</li>
-            <li><b>One command takes it all back out.</b> <a href="setup/updating/#undo">How</a></li>
-          </ul>
-        </div>
-      </details>
-      <details class="qcard">
-        <summary><span class="qn">Question 3</span><span class="qh">What changes on my machine, and how do I undo it?</span><span class="qa">Files and settings in the project you install into, a few in your home folder, all recorded; one command takes them back out.</span></summary>
-        <div class="qbody">
-          <div class="pinned">
-            <h4>Read these four first</h4>
-            <ol>
-              <li><b>Helper scripts are copied into <code>scripts/</code>.</b> A file with the same name is replaced only after himmel has backed it up, and uninstall restores it. If the backup cannot be made, the file is left alone and the install says <code>not replaced … (cannot back up the existing file; left untouched)</code>. The preview lists every file it would replace.</li>
-              <li><b>Your <code>statusLine</code> is replaced</b> in <code>.claude/settings.json</code>, and <code>~/.claude/plugins/claude-hud/config.json</code> is rewritten. Both old values are backed up and uninstall restores them.</li>
-              <li><b>Commits and pushes to main are refused at once.</b> If your project has no <code>.pre-commit-config.yaml</code>, the install places himmel's own git gates. They refuse a commit on main, a direct push to main, and a commit message without a conventional type and a ticket reference such as <code>#1</code>. No tracker? Answer <code>none</code> to the installer's tracker question, or put <code>TICKET_ID_REQUIRED=0</code> in <code>~/.himmel/himmel.conf</code>; that file applies to every project on this machine.</li>
-              <li><b>The install itself starts uncommitted.</b> Main now refuses commits, so the installer offers to make the one allowed commit there (<code>chore: add himmel</code>), or prints the command that does. Until the install is committed, a new worktree has none of himmel's files, so Claude runs there without its hooks.</li>
-            </ol>
-          </div>
-          <h4>In the project folder</h4>
-          <ul>
-            <li>Three hook entries, a status line and <code>HIMMEL_REPO</code> in <code>.claude/settings.json</code>.</li>
-            <li>Three git hooks in <code>.git/hooks</code>. Existing ones are saved as <code>&lt;hook&gt;.himmel-backup</code> and still run after himmel's.</li>
-            <li>Claude Code plugins, recorded in <code>.claude/settings.json</code>; the preview names each one.</li>
-          </ul>
-          <h4>In your home folder</h4>
-          <ul>
-            <li>A <code>himmelctl</code> launcher in <code>~/.local/bin</code>, a cache in <code>~/.claude/himmel</code>.</li>
-            <li>A trust entry for the project in <code>~/.claude.json</code>.</li>
-          </ul>
-          <h4>Only if bun is installed</h4>
-          <ul><li>The qmd search tool, about 2.1 GB of search models, and an index of your himmel clone.</li></ul>
-          <h4>Left alone</h4>
-          <p>Your notes vault, scheduled jobs, the Telegram bridge and the second-model reviewers.</p>
-          <p>Every part the installer can add is one item of the install manifest, {{MANIFEST_N}} items in all, {{CORE_N}} of them in the starter install, and <code>himmelctl status</code> checks each one. The full reference: <a href="setup/install/">Install on your project</a>.</p>
-          <h4 id="undo">Undo</h4>
-          <p>From the project you installed into, <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code> removes what the install added and restores what it replaced. Add <code>--dry-run</code> first to see the list; anything it cannot undo by itself is listed under <code>NEEDS YOU</code>.</p>
-        </div>
-      </details>
-    </div>
+    <h1 class="sec" id="page-h">The trail</h1>
+    <p class="sec-lede">Two parts. First, a practice climb: you install himmel on a spare project, see what it does, and remove it again. Then the levels: each one adds a part of himmel, says what it costs, and says how to turn it off. You need a Claude account to sign in to Claude Code. What himmel changes on your machine, and how to undo it: <a href="adoption-trail.html#where">Start here</a>. Words you have not met before: <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
   </div>
 </section>
 
 <section class="sec-block" id="trial" aria-labelledby="trial-h">
   <div class="wrap">
-    <h2 class="sec" id="trial-h">Take a practice climb</h2>
+    <h2 class="sec" id="trial-h">Your first steps: a practice climb</h2>
     <p class="sec-lede">Ten steps on a spare project you can delete afterwards. You install himmel, watch a guardrail stop a risky move, keep the install, make one change in its own worktree, and then remove everything again. Each output below comes from one real run on a clean machine; paths and commit hashes that differ on yours are shortened to "…".</p>
     <p class="legend"><span><code>$</code> you type it in your terminal</span><span><code>›</code> you type it to Claude</span><span>dashed box: what you see</span><span>✓ what success looks like</span></p>
     <ol class="steps">
@@ -281,28 +154,8 @@ DRY: Reconcile report - ledger …, 96 units
 
 <section class="sec-block" id="trail" aria-labelledby="trail-h">
   <div class="wrap">
-    <h2 class="sec" id="trail-h">The trail</h2>
+    <h2 class="sec" id="trail-h">The levels</h2>
     <p class="sec-lede">Eight levels, each optional. Base camp is a complete result on its own; climb only as far as it pays. Each level says what you get, what it costs, and how you turn it off.</p>
 {{TRAIL}}
   </div>
 </section>
-
-</main>
-<footer class="foot">
-  <div class="wrap">
-    <p>himmel is open source. Questions and bugs: the issue tracker on GitHub.</p>
-    <nav aria-label="More">
-      <a href="why-himmel/">Why himmel</a>
-      <a href="getting-started/">Getting started</a>
-      <a href="daily-loop/">The daily loop</a>
-      <a href="commands-catalog/">Commands</a>
-      <a href="glossary/">Glossary</a>
-      <a href="https://github.com/yotamleo-org/Himmel/issues">Issues</a> <!-- env-literal-ok: the public issue tracker -->
-    </nav>
-  </div>
-</footer>
-<script>
-{{JS}}
-</script>
-</body>
-</html>

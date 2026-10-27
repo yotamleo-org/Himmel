@@ -273,7 +273,7 @@ echo "ok: HIMMEL-2435 negative control a genuinely different --target still gets
 # working command, not the absent slash command, for the starter trail; (b)
 # that command, run inside a real starter install, actually creates a
 # worktree.
-page="$repo_root/docs/adoption-trail.html"
+page="$repo_root/docs/adoption-trail-levels.html"
 [ -f "$page" ] || fail "HIMMEL-3326: $page not found"
 grepq "$(cat "$page")" 'bash scripts/worktree.sh feat/try-himmel' \
   || fail "HIMMEL-3326: adoption-trail.html's starter walkthrough must tell the reader to run bash scripts/worktree.sh (the /worktree slash command does not exist in a --scope project install)"

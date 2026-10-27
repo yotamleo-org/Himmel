@@ -5,7 +5,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 ## Start here
 
 - [why-himmel.md](why-himmel.md) — the case for the harness: the five failure modes it exists for, the evidence, and what it costs you.
-- [adoption-trail.html](adoption-trail.html) — the eight-level adoption trail, as a page you open in a browser: what each level turns on, what it changes, and what it does not. Public URL: https://yotamleo-org.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
+- [adoption-trail.html](adoption-trail.html) — the adoption trail's main page, opened in a browser: what himmel is, what it installs and where, and how to undo it. [adoption-trail-levels.html](adoption-trail-levels.html) is the trail itself, a practice climb and then each level with what it turns on, what it changes and how to turn it off; [adoption-trail-questions.html](adoption-trail-questions.html) holds the questions and the words it uses. Public URL: https://yotamleo-org.github.io/Himmel/adoption-trail.html ([how the site is published](#publishing-these-docs-github-pages))
 - [system-design.md](system-design.md) — the narrative design document: goals, the parts, one ticket's flow from file to merge, the trust and safety model, and the trade-offs behind the key decisions.
 - [architecture.md](architecture.md) — five diagrams: the enforcement layers, the handover system, the fleet/chief model, the Jira seam, the observability chain.
 - [getting-started.md](getting-started.md) — clone to your first PR-gated loop in ~15 minutes.
