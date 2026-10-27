@@ -207,11 +207,11 @@ _verify_fs_id() {
     local label="$1" path="$2" expected="$3" now
     [ -n "$expected" ] || return 0
     now="$(_fs_id "$path")" || {
-        echo "refresh-graph-map: TOCTOU guard: could not probe $label identity via stat at use-time ($path) -- refusing (fail-closed, HIMMEL-1704)" >&2
+        echo "refresh-graph-map: TOCTOU guard: could not probe $label identity via stat at use-time ($path) -- refusing (fail-closed)" >&2
         return 1
     }
     if [ "$now" != "$expected" ]; then
-        echo "refresh-graph-map: TOCTOU guard: $label identity changed between preflight and use ($path expected $expected, now $now) -- refusing (HIMMEL-1704)" >&2
+        echo "refresh-graph-map: TOCTOU guard: $label identity changed between preflight and use ($path expected $expected, now $now) -- refusing" >&2
         return 1
     fi
     return 0
@@ -2567,7 +2567,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   esac
   if [ "$_rc" -ne 0 ]; then
     if [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then
-      echo "refresh-graph-map: graphify --update exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline (HIMMEL-1901) -- graphify-out left unpromoted" >&2
+      echo "refresh-graph-map: graphify --update exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline -- graphify-out left unpromoted" >&2
       _keep_finished_chunks
     else
       echo "refresh-graph-map: graphify --update failed" >&2
@@ -2595,7 +2595,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _run_bounded "$GRAPHIFY_MAP" cluster-only "$SCRATCH" --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" >&2 || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     if [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then
-      echo "refresh-graph-map: cluster-only exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline (HIMMEL-1901) -- graphify-out left unpromoted" >&2
+      echo "refresh-graph-map: cluster-only exceeded the ${GRAPHIFY_RUN_DEADLINE_SECONDS}s run deadline -- graphify-out left unpromoted" >&2
     else
       echo "refresh-graph-map: cluster-only failed" >&2
     fi
@@ -3412,7 +3412,7 @@ elif [ -n "$MAPS_PARENT_ID" ]; then
   MAPS_LEAF="${MAPS_DIR##*/}"
   VAULT_DIR="${MAPS_DIR%/*}"
   if [ "$VAULT_DIR" = "$MAPS_DIR" ] || [ -z "$MAPS_LEAF" ]; then
-    echo "refresh-graph-map: TOCTOU guard: --maps-dir '$MAPS_DIR' has no parent/leaf to split for the first-publish identity check -- refusing (HIMMEL-1704)" >&2
+    echo "refresh-graph-map: TOCTOU guard: --maps-dir '$MAPS_DIR' has no parent/leaf to split for the first-publish identity check -- refusing" >&2
     exit 1
   fi
   # The `mkdir` and the `cd` right after it are
@@ -3439,7 +3439,7 @@ elif [ -n "$MAPS_PARENT_ID" ]; then
       && node "$REPO_ROOT/scripts/graphify/publish-graph-map.mjs" \
            --report "$REPORT_ABS" --out "./$SLUG.md" --title "$TITLE" --slug "$SLUG" \
            ${CORPUS_TAG:+--corpus "$CORPUS_TAG"} --source-graph "$SOURCE_GRAPH_ABS" ) \
-    || { echo "refresh-graph-map: publish failed or refused -- maps-dir did not exist at preflight and could not be safely created (see output above, HIMMEL-1704)" >&2; exit 1; }
+    || { echo "refresh-graph-map: publish failed or refused -- maps-dir did not exist at preflight and could not be safely created (see output above)" >&2; exit 1; }
 else
   node "$REPO_ROOT/scripts/graphify/publish-graph-map.mjs" \
     --report "$REPORT" --out "$OUT_NOTE" --title "$TITLE" --slug "$SLUG" \

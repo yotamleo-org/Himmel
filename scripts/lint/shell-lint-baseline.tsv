@@ -135,8 +135,6 @@ scripts/ci/tmp-sweep.sh	mktemp	1
 scripts/ci/tmp-sweep.sh	prim-tmpdir	1
 scripts/ci/workflow-red-issue.sh	prim-tmpdir	1
 scripts/claude-codex	prim-tmpdir	1
-scripts/claude-glm	prim-lock	1
-scripts/claude-glm-seed-check.sh	mktemp	1
 scripts/clean-garden.sh	errexit	1
 scripts/clean.sh	errexit	1
 scripts/cleanup/test-reap-mcp-orphans.sh	mktemp	1
@@ -591,7 +589,6 @@ scripts/hooks/test-check-template-himmel-plugins.sh	errexit	1
 scripts/hooks/test-check-template-himmel-plugins.sh	mktemp	1
 scripts/hooks/test-check-update-available.sh	errexit	1
 scripts/hooks/test-check-update-available.sh	mktemp	1
-scripts/hooks/test-claude-glm-seed-check.sh	mktemp	1
 scripts/hooks/test-codex-plugin-security-hooks.sh	mktemp	1
 scripts/hooks/test-codex-run-hook.sh	mktemp	1
 scripts/hooks/test-detect-dirty-primary.sh	mktemp	1
@@ -916,7 +913,6 @@ scripts/test-check-ci.sh	mktemp	1
 scripts/test-check-marketplace-source-hermetic.sh	errexit	1
 scripts/test-check-plugin-drift.sh	mktemp	8
 scripts/test-claude-deepseek.sh	errexit	1
-scripts/test-claude-glm.sh	mktemp	1
 scripts/test-claude-openrouter.sh	mktemp	1
 scripts/test-clean-prune-strays.sh	errexit	1
 scripts/test-clean-prune-strays.sh	mktemp	1

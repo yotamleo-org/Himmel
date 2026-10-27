@@ -112,7 +112,6 @@ SHELL:scripts/hooks/refresh-statusline-caches-periodic.sh
 SHELL:scripts/hooks/refresh-where-are-we-on-end.sh
 SHELL:scripts/hooks/telegram-notification.sh
 SHELL:scripts/hooks/telegram-session-end.sh
-SHELL:scripts/lanes/await-glm-worker.sh
 SHELL:scripts/lanes/bench/scorecard/dead-parts.sh
 SHELL:scripts/lanes/bench/scorecard/merged-count.sh
 SHELL:scripts/lanes/worker-pr-open.sh

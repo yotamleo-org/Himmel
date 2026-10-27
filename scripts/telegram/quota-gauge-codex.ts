@@ -57,8 +57,7 @@ function isoOrNull(ms: number | null): string | null {
 
 // Map the parsed reading to canonical rows — one per found bank. `null` ->
 // exactly one `invisible`-source row with null fields (visible-not-silent,
-// never a fabricated number. glm_peak is null on every codex row
-// (the peak band is a GLM-only concept).
+// never a fabricated number). glm_peak is a reserved, always-null v1 column.
 export function buildCodexRows(parsed: ParsedCodex | null, nowMs: number): QuotaGaugeRecord[] {
   const ts = new Date(nowMs).toISOString();
   if (parsed === null) {

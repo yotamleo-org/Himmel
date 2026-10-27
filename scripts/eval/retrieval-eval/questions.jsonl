@@ -21,7 +21,7 @@
 {"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/afk-mode.md"],"gold1":["docs/handover/running-a-chief.md"],"reason":[]}
 {"id":"q22","kind":"where","src":"qmd","q":"himmel doctor vector probe","gold":["scripts/himmel-doctor.sh"],"gold1":["docs/commands-catalog.md"],"reason":[]}
 {"id":"q23","kind":"how","src":"qmd","q":"how does a worker make sure only one session works on a handover document at a time","gold":["scripts/handover/queue-lock.sh","docs/internals/handover-system.md"],"gold1":["docs/handover/worker-preface.md"],"reason":[]}
-{"id":"q24","kind":"where","src":"selfq","q":"where is sanitize_settings called","gold":["scripts/claude-codex","scripts/claude-glm","scripts/claude-openrouter","scripts/claude-deepseek"],"reason":[]}
+{"id":"q24","kind":"where","src":"selfq","q":"where is sanitize_settings called","gold":["scripts/claude-codex","scripts/claude-openrouter","scripts/claude-deepseek"],"reason":[]}
 {"id":"q25","kind":"who-calls","src":"grep","q":"who consumes the plugin-upstreams refs","gold":["scripts/plugin-upstreams.json","docs/tooling-catalog.md"],"reason":[]}
 {"id":"q26","kind":"where","src":"grep","q":"the base resolver the PR flow uses for review-round base sha","gold":["scripts/cr/base-resolver.sh"],"gold1":["docs/handover/worker-preface.md"],"reason":[]}
 {"id":"q27","kind":"how","src":"grep","q":"how merge-on-green lets a PR declare itself the fix for a red main","gold":["scripts/handover/merge-on-green.sh","docs/internals/stuck-playbook.md"],"gold1":["docs/handover/worker-preface.md"],"reason":["Fixes-main-red"]}

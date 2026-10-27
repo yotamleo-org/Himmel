@@ -114,6 +114,24 @@ if [ -n "$sc_rev" ] && [ "$sc_req" = "$sc_rev" ] && grep -qF -- '-r /tmp/require
   ok "Dockerfile installs shellcheck-py $sc_rev from the hashed requirements-shellcheck.txt"
 else bad "Dockerfile does not install shellcheck-py==${sc_rev:-?} from requirements-shellcheck.txt (file pins ${sc_req:-none})"; fi
 
+# 7a. fork shards have no image: install its real hashed shellcheck pin before suites.
+shard_setup="$(awk '
+  /^  [a-z][a-z0-9-]*:/ { shard = ($1 == "shell-unit-shard:") }
+  shard && /- run: bash scripts\/ci\/home-canary.sh/ { exit }
+  shard && !/^[[:space:]]*#/ { print }
+' "$CI_YML")"
+sc_step="$(awk '
+  /^      - name: pinned shellcheck for shell-unit/ { step = 1; next }
+  step && /^      - / { exit }
+  step { print }
+' <<< "$shard_setup")"
+if [ -n "$sc_req" ] && [ "$sc_req" = "$sc_rev" ] \
+  && grep -qxF "        if: runner.environment == 'github-hosted' && !job.container.id" <<< "$sc_step" \
+  && grep -qxF "          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --target \"\$RUNNER_TEMP/shellcheck-pinned\" -r .github/ci-image/requirements-shellcheck.txt" <<< "$sc_step" \
+  && grep -qxF "          echo \"\$RUNNER_TEMP/shellcheck-pinned/bin\" >> \"\$GITHUB_PATH\"" <<< "$sc_step"; then
+  ok "host shell-unit shards install the image shellcheck-py $sc_req on PATH before suites"
+else bad "host shell-unit shards do not install the image shellcheck-py ${sc_req:-none} on PATH before suites"; fi
+
 # 9. the parsers themselves, on inline fixtures: a single-line `run:` call is read,
 #    and a pin that appears only in a comment satisfies nothing.
 if apt_install_pkgs <<< "        run: bash .github/scripts/apt-install.sh fixture-pkg socat" | grep -qx fixture-pkg; then

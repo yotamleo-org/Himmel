@@ -15,6 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
+// glm remains readable for historical ledgers consumed by observability.
 export type Lane = "glm" | "codex" | "claude" | "alibaba";
 
 // Canonical record schema — keys in this EXACT order (the byte-identical
@@ -36,7 +37,7 @@ export type QuotaGaugeRecord = {
   window: string | null;   // "5h" | "weekly" | "long" (coarse long-window cap, sub-window unknown) | null
   reset_at: string | null; // ISO instant, or null when the host shows "unknown"
   tier: string | null;
-  glm_peak: boolean | null;
+  glm_peak: null; // Reserved v1 column; no current writer sets a peak flag.
   note: string | null;
 };
 
@@ -80,7 +81,7 @@ export function serializeQuotaGauge(row: QuotaGaugeRecord): string {
     jsonVal(row.window),
     jsonVal(row.reset_at),
     jsonVal(row.tier),
-    jsonVal(row.glm_peak),
+    "null",
     jsonVal(row.note),
   ];
   const pairs = QUOTA_GAUGE_FIELDS.map((k, i) => `"${k}":${vals[i]}`);
@@ -157,39 +158,4 @@ export function quotaGaugeRead(p: { path?: string; nowMs?: number; lookbackN?: n
     result[lane] = laneVerdict(lane, row, nowMs);
   }
   return result;
-}
-
-// ── Task 5: GLM row-builder + peak-band advisory (pure) ──────────────────────
-// z.ai bills the GLM 5h cycle at a 3× multiplier during a fixed daily window
-// (14:00-18:00 UTC+8, z.ai-fixed, does NOT track local DST). `glm_peak` is an
-// advisory COST flag on GLM rows — the reader/consumer may defer bulk fanout;
-// it never gates a dispatch (passivity). Single source for the window bounds.
-export const GLM_PEAK_START_H = 14;
-export const GLM_PEAK_END_H = 18;
-export const GLM_PEAK_TZ_OFFSET_H = 8;
-
-// True iff `nowMs`, converted to UTC+8, falls in [14:00, 18:00) on a WEEKDAY
-// (Mon–Fri). Pure — derives the UTC+8 hour + weekday from the absolute instant
-// (DST-immune: UTC+8 is z.ai-fixed), never reads a lane/arm/dispatch. Weekends
-// bill 1× all day, so a Sat/Sun inside the peak hours is NOT peak.
-export function isGlmPeak(nowMs: number): boolean {
-  const utc8Hour = Math.floor(((nowMs / 3600000) + GLM_PEAK_TZ_OFFSET_H) % 24 + 24) % 24;
-  if (utc8Hour < GLM_PEAK_START_H || utc8Hour >= GLM_PEAK_END_H) return false;
-  // UTC+8 weekday. Days since the Unix epoch in UTC+8 wall-clock; 1970-01-01
-  // was a Thursday, so a JS-getDay-style weekday (Sun=0..Sat=6) = (4 + days) % 7.
-  // Sat=6, Sun=0 → weekdays Mon–Fri are 1..5.
-  const utc8Days = Math.floor((nowMs + GLM_PEAK_TZ_OFFSET_H * 3600000) / 86400000);
-  const utc8Day = (((4 + utc8Days) % 7) + 7) % 7;
-  return utc8Day >= 1 && utc8Day <= 5;
-}
-
-// Map the GLM monitor-endpoint reading to a canonical row. `null` (usage
-// invisible) is visible-not-silent: an `invisible`-source row with null fields,
-// NEVER a fabricated number. `glm_peak` is stamped in both cases.
-export function buildGlmRow(reading: { percentage: number; nextResetTime: number; level?: string } | null, nowMs: number): QuotaGaugeRecord {
-  const peak = isGlmPeak(nowMs);
-  if (reading === null) {
-    return { v: 1, ts: new Date(nowMs).toISOString(), lane: "glm", source: "invisible", used_pct: null, window: null, reset_at: null, tier: null, glm_peak: peak, note: "usage invisible (monitor endpoint unavailable)" };
-  }
-  return { v: 1, ts: new Date(nowMs).toISOString(), lane: "glm", source: "monitor-endpoint", used_pct: reading.percentage, window: "5h", reset_at: new Date(reading.nextResetTime).toISOString(), tier: reading.level ?? null, glm_peak: peak, note: null };
 }

@@ -67,10 +67,10 @@ test('HIMMEL-1700 band: codex weekly at 95% is spent under the shared default (w
   assert.equal(guardState({ kind: 'measured', readings: [{ window: 'weekly', usedPct: 89 }] }, active, resolveFundedMaxPct({})), 'funded');
 });
 
-test('HIMMEL-1700 scope: only codex takes the shared 90; claude/glm keep 99 and a 95% reading stays funded', () => {
+test('HIMMEL-1700 scope: only codex takes the shared 90; claude keeps 99 and a 95% reading stays funded', () => {
   assert.equal(fundedMaxPctForBank('codex', {}), 90);
   assert.equal(fundedMaxPctForBank('codex', { CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
-  for (const bank of ['claude', 'glm']) {
+  for (const bank of ['claude']) {
     assert.equal(fundedMaxPctForBank(bank, {}), 99);
     assert.equal(fundedMaxPctForBank(bank, { CLAUDEX_BANK_REFUSE_PCT: '70' }), 99); // alias is codex-only
     assert.equal(fundedMaxPctForBank(bank, { LANE_FUNDED_MAX_PCT: '60' }), 60); // override still honored

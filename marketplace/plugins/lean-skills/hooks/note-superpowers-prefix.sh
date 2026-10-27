@@ -49,5 +49,5 @@ dir="$root/skills/$name"
 [ -d "$dir" ] || exit 0
 grep -rqF 'superpowers:' "$dir" 2>/dev/null || exit 0
 
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"lean-skills (HIMMEL-3100): in this skill, superpowers:<x> means lean-skills:<x> (bare <x> also resolves); the superpowers plugin is not installed, so a superpowers:-prefixed Skill call fails."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"lean-skills: in this skill, superpowers:<x> means lean-skills:<x> (bare <x> also resolves); the superpowers plugin is not installed, so a superpowers:-prefixed Skill call fails."}}'
 exit 0

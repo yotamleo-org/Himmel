@@ -1,24 +1,26 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Mirrors scripts/jira/src/client.ts: resolve the primary checkout root via
-// git so the CLI loads the right .env even when invoked from a worktree
-// (where .git is a file pointing at the common dir).
-function repoRoot(): string {
+// Match the Jira CLI: own install, primary checkout, then HIMMEL_REPO.
+function envFilePath(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const own = join(here, '..', '..', '..', '.env');
+  if (existsSync(own)) return own;
+  const candidates: string[] = [];
   try {
-    const gitCommonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
-      encoding: 'utf8',
-    }).trim();
-    return dirname(gitCommonDir);
-  } catch (e) {
-    process.stderr.write(
-      `bitbucket: warning: git rev-parse --git-common-dir failed (${(e as Error).message}); ` +
-        `falling back to cwd=${process.cwd()} for .env lookup. ` +
-        `Set BITBUCKET_EMAIL/BITBUCKET_API_TOKEN via env vars to bypass.\n`,
-    );
-    return process.cwd();
+    const common = execFileSync(
+      'git',
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { encoding: 'utf8', cwd: here, stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    candidates.push(join(dirname(common), '.env'));
+  } catch {
+    // An install outside git can still use HIMMEL_REPO.
   }
+  if (process.env.HIMMEL_REPO) candidates.push(join(process.env.HIMMEL_REPO, '.env'));
+  return candidates.find((c) => existsSync(c)) ?? own;
 }
 
 const DOTENV_KEYS = new Set([
@@ -26,7 +28,7 @@ const DOTENV_KEYS = new Set([
 ]);
 
 function loadEnv(): void {
-  const envPath = `${repoRoot()}/.env`;
+  const envPath = envFilePath();
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();

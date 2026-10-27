@@ -4089,8 +4089,39 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
     # whitespace split, same documented ceiling every other TOK=0 fallback
     # in this file already accepts.
+    # The seen-lists below match case-sensitively even when the launch
+    # environment imported `nocasematch` through BASHOPTS: a word that differs
+    # only in case from one already judged must still be judged (it can name
+    # another file). The lookups are written inline, not in a function, so a
+    # long list is not copied into an argument on every word.
+    _NC_ON=0
+    if shopt -q nocasematch; then _NC_ON=1; fi
+    _COO_SEEN=$'\n'
+    # The forking check of one operand word. A word judged once is judged the
+    # same every time (the verdict reads only the word, $cwd and
+    # $nested_wt_primary, all fixed for the run, and the flag it sets only
+    # ever goes to 1), so a long body that repeats `settings.json` forks once,
+    # not once per line. Only words that reach this fork are listed, which
+    # keeps the list short however many plain words the command carries. A
+    # word holding a newline would match across two entries of the list, so
+    # it is always judged.
+    _coo_fork_check() {
+        local w="$1" result seen=0
+        case "$w" in
+            *$'\n'*) ;;
+            *)
+                if [ "$_NC_ON" = 1 ]; then shopt -u nocasematch; fi
+                case "$_COO_SEEN" in *$'\n'"$w"$'\n'*) seen=1 ;; esac
+                if [ "$_NC_ON" = 1 ]; then shopt -s nocasematch; fi
+                [ "$seen" = 0 ] || return 0
+                _COO_SEEN=$_COO_SEEN$w$'\n'
+                ;;
+        esac
+        result=$(check_claude_dir_target "$w")
+        case "$result" in deny\ *) symlink_dest=1 ;; esac
+    }
     _check_one_operand() {
-        local w="$1" resolved wabs wparent wleaf result
+        local w="$1" resolved wabs wparent wleaf
         [ -n "$w" ] || return 0
         if [ -n "$nested_wt_primary" ]; then
             case "$w" in
@@ -4113,8 +4144,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # is a second stat-family builtin, no subprocess, and catches the
         # symlink itself so canon() still resolves where it points.
         if [ -e "$wabs" ] || [ -L "$wabs" ]; then
-            result=$(check_claude_dir_target "$w")
-            case "$result" in deny\ *) symlink_dest=1 ;; esac
+            _coo_fork_check "$w"
             return
         fi
         # HIMMEL-178 round-2 codex-2: a destination that does not exist YET
@@ -4148,8 +4178,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         wparent="${wabs%/*}"
         [ -n "$wparent" ] || wparent="/"
         if [ -e "$wparent" ]; then
-            result=$(check_claude_dir_target "$w")
-            case "$result" in deny\ *) symlink_dest=1 ;; esac
+            _coo_fork_check "$w"
         fi
     }
     # HIMMEL-3700 (J1329O I2, I4): a word can carry its path glued to an
@@ -4272,13 +4301,16 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # again: a padded command costs one resolution per distinct word.
     _CV_SEEN=$'\n'
     _check_variant() {
-        local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd
+        local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd seen=0
         [ "$variant_dest" = 0 ] || return 0
         # a word with a newline is never memoized: it could forge an entry
         case "$w" in
             *$'\n'*) ;;
             *)
-                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
+                if [ "$_NC_ON" = 1 ]; then shopt -u nocasematch; fi
+                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) seen=1 ;; esac
+                if [ "$_NC_ON" = 1 ]; then shopt -s nocasematch; fi
+                [ "$seen" = 0 ] || return 0
                 _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
                 ;;
         esac

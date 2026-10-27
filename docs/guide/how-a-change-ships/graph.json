@@ -497,7 +497,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -516,7 +516,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -535,7 +535,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -688,7 +688,7 @@
       "sub": "Claude + OpenAI GPT",
       "reach": {
         "kind": "clone",
-        "text": "from your himmel clone, for now"
+        "text": "from your himmel clone"
       },
       "box": [
         610,
@@ -968,7 +968,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -987,7 +987,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -1032,7 +1032,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -1139,7 +1139,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -1158,7 +1158,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               }
             },
             {
@@ -1177,7 +1177,7 @@
               },
               "reach": {
                 "kind": "clone",
-                "text": "from your himmel clone, for now"
+                "text": "from your himmel clone"
               },
               "end": true
             }

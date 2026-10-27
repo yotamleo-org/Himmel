@@ -2,22 +2,13 @@
 // scripts/lanes/usage-status.ts
 // Reports both the routing guard verdict and the
 // evidence behind it. Output remains guard-compatible in its first two fields:
-//   <lane-id> <funded|spent|unknown> <measured ...|unmeasurable ...|flat-rate>
+//   <lane-id> <funded|spent|unknown> <measured ...|unmeasurable ...>
 //
-// PER-BANK READER CONTRACT. Three explicit bank
-// states exist — measured, unmeasurable (with the reason), and
-// flat-rate/not-applicable — and each bank uses the right one:
+// PER-BANK READER CONTRACT. Each bank is measured or unmeasurable
+// (with the reason):
 //
 //   claude — readClaudeBank, live-window gated (unchanged). omitReason or zero
 //            readings => unmeasurable; never a fabricated number.
-//   glm    — readGlmBank, live-window gated. A live row => measured (the 5h
-//            utilization is real data z.ai reports). NO live row => flat-rate,
-//            NOT unmeasurable: the z.ai plan is FLAT-RATE (operator ruling;
-//            confirmed by the scripts/claude-glm launcher header
-//            — "Z.ai GLM flat-rate lane"), so an absent window is "not
-//            applicable", not a measurement failure. `unknown` there was
-//            bug-shaped: it read like a defect while the lane is in fact
-//            always-available.
 //   codex  — readCodexDisplay, a TTL-gated CACHE read. The
 //            source of truth is `codex app-server`
 //            (JSON-RPC account/rateLimits/read), captured by the BOUNDED
@@ -60,16 +51,13 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import {
-  BANK_IDS,
   defaultClaudeCachePath,
   readClaudeBank,
   readClaudeCacheProvenance,
-  readGlmBank,
   type BankId,
   type BankReading,
   type LaneQuotaTargets,
 } from "../observability/quota-sources";
-import { ledgerPath as quotaGaugeLedgerPath } from "../telegram/quota-gauge";
 import { fundedMaxPctForBank } from "./funded-max-pct.mjs";
 import { legacyNamesOn } from "../lib/env-alias.mjs";
 import {
@@ -80,6 +68,8 @@ import {
   readCodexBankCache,
 } from "./bank-status-core.mjs";
 import { resolveActiveAccessPath, resolveBankTargets } from "./resolve.mjs";
+
+const BANK_IDS = ["claude", "codex"] as const;
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const LANES_PATH = process.env.LANES_REGISTRY || join(SCRIPT_DIR, "lanes.json");
@@ -97,7 +87,6 @@ const claudeCache = defaultClaudeCachePath(env, process.platform);
 const codexBankCachePath = env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
 const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_USAGE_CACHE_TTL_SECONDS)
   ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_CACHE_TTL_SECONDS : undefined) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
-const glmLedger = quotaGaugeLedgerPath(env);
 
 function positiveEnvNumber(v: string | undefined): number | null {
   const n = Number(v);
@@ -134,8 +123,7 @@ function claudeProvenanceSuffix(): string {
 type CodexCacheReading = BankReading & { resetsAt?: number };
 type DisplayResult =
   | { kind: "measured"; readings: CodexCacheReading[] }
-  | { kind: "unmeasurable"; reason: string }
-  | { kind: "flat-rate" };
+  | { kind: "unmeasurable"; reason: string };
 
 // a stale or missing codex cache is refreshed by ONE bounded probe
 // run, so the chief's bank line stops reading codex=? for days. Guards:
@@ -230,17 +218,7 @@ function readCodexCacheFile(cachePath: string): DisplayResult {
   return readCodexBankCache(text, nowMs, codexBankTtlSeconds);
 }
 
-function readGlmDisplay(ledgerPath: string, nowMs: number): DisplayResult {
-  const result = readGlmBank(ledgerPath, nowMs);
-  if (!result.omitReason && result.readings.length > 0) return { kind: "measured", readings: result.readings };
-  // No live ledger window: the lane is flat-rate, not broken. See the header
-  // — `unmeasurable`/`unknown` here would be the bug-shaped word for a
-  // not-applicable measurement.
-  return { kind: "flat-rate" };
-}
-
 function readBank(bank: BankId): DisplayResult {
-  if (bank === "glm") return readGlmDisplay(glmLedger, nowMs);
   if (bank === "codex") return readCodexDisplay(codexBankCachePath);
   const result = readClaudeBank(claudeCache, nowMs);
   return result.omitReason || result.readings.length === 0
@@ -250,7 +228,6 @@ function readBank(bank: BankId): DisplayResult {
 
 function detail(result: DisplayResult): string {
   if (result.kind === "unmeasurable") return formatUnmeasurable(result.reason);
-  if (result.kind === "flat-rate") return "flat-rate";
   return formatMeasured(result.readings);
 }
 

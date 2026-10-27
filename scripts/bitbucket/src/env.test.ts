@@ -1,5 +1,35 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { authHeader, normalizeEnv } from './env.js';
+
+it('loads the install .env from an unrelated cwd with no Bitbucket variables exported', () => {
+  const root = mkdtempSync(join(tmpdir(), 'bitbucket-own-path-'));
+  try {
+    const installed = join(root, 'scripts', 'bitbucket', 'dist');
+    const cwd = join(root, 'unrelated');
+    const home = join(root, 'home');
+    mkdirSync(installed, { recursive: true });
+    mkdirSync(cwd);
+    mkdirSync(home);
+    const modulePath = join(installed, 'env.mjs');
+    copyFileSync(new URL('../dist/env.js', import.meta.url), modulePath);
+    writeFileSync(join(root, '.env'), 'BITBUCKET_EMAIL=fixture@example.invalid\nBITBUCKET_API_TOKEN=dummy\n');
+    writeFileSync(join(cwd, '.env'), 'BITBUCKET_EMAIL=wrong@example.invalid\nBITBUCKET_API_TOKEN=wrong\n');
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { authHeader } from ${JSON.stringify(pathToFileURL(modulePath).href)}; process.stdout.write(authHeader());`,
+    ], { cwd, env: { PATH: process.env.PATH, HOME: home }, encoding: 'utf8', timeout: 30000 });
+    expect(run.error).toBeUndefined();
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toBe(`Basic ${Buffer.from('fixture@example.invalid:dummy').toString('base64')}`);
+    expect(run.stderr).toBe('');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 describe('normalizeEnv', () => {
   const keys = ['BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'BITBUCKET_WORKSPACE', 'BITBUCKET_REPO_SLUG'];

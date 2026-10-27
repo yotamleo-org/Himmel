@@ -164,7 +164,7 @@ async function gc(root) {
       }
     });
   }
-  console.log(`gc: ${removable} removable, ${kept} kept; nothing deleted (deletion waits on HIMMEL-5072: scan must survive a removed segment)`);
+  console.log(`gc: ${removable} removable, ${kept} kept; nothing deleted (scan must survive a removed segment before deletion is safe)`);
 }
 
 // Rulings (c=1) involving the caller. `expired` is computed, never stored: an

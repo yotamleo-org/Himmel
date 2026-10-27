@@ -332,4 +332,62 @@ else
   fail "24u: shallow clone setup failed: $shout"
 fi
 
+# 24v-24y: the suite reads its runner's real slot owner before release. Omitting
+# runner detail, counting discovered rather than selected suites, or retaining
+# the pre-clamp range must fail these assertions.
+IMP_OWNER="$SB/slot.owner"
+export IMP_OWNER
+mksuite scripts/test-uninstall.sh uninstall \
+  'cp "$HIMMEL_SUITE_SLOT_HELD/owner" "$IMP_OWNER"'
+mksuite scripts/test-unrelated.sh unrelated \
+  'cp "$HIMMEL_SUITE_SLOT_HELD/owner" "$IMP_OWNER"'
+for slot_range in "$CODE_RANGE" "$FWD_RANGE"; do
+  rm -f "$IMP_OWNER"
+  out=$(HIMMEL_SUITE_SEMAPHORE_DIR="$SB/semaphore" HIMMEL_SUITE_SLOT_HELD='' \
+    HIMMEL_BUS_NAME=N3912 HIMMEL_SUITE_SLOT_DETAIL='stale inherited detail' \
+    bash "$IMPRUN" --scan-repo-of-script --impacted "$slot_range" 2>&1); rc=$?
+  want_range="$CODE_RANGE"
+  [ "$slot_range" != "$FWD_RANGE" ] || want_range="$MAIN_TIP..$(git -C "$SB" rev-parse pr)"
+  if [ "$rc" -eq 0 ] && grep -qxF 'label=run-shell-tests' "$IMP_OWNER" \
+     && grep -qxF "detail=worker=N3912 range=$want_range suites=1" "$IMP_OWNER" \
+     && [ ! -d "$SB/semaphore/slot-1" ]; then
+    pass "24v: slot names the worker, effective impacted range and one selected suite ($slot_range)"
+  else
+    fail "24v: rc=$rc owner='$(cat "$IMP_OWNER" 2>/dev/null)' output: $out"
+  fi
+done
+
+rm -f "$IMP_OWNER"
+out=$(HIMMEL_SUITE_SEMAPHORE_DIR="$SB/semaphore" HIMMEL_SUITE_SLOT_HELD='' \
+  HIMMEL_BUS_NAME='' HIMMEL_SUITE_SLOT_DETAIL='stale inherited detail' \
+  bash "$IMPRUN" --scan-repo-of-script --only-list "$SB/only-both.txt" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] \
+   && grep -qxF "detail=worker=${SB##*/} range=all suites=2" "$IMP_OWNER"; then
+  pass "24w: a non-impacted run names its checkout and two selected suites, not stale detail"
+else
+  fail "24w: rc=$rc owner='$(cat "$IMP_OWNER" 2>/dev/null)' output: $out"
+fi
+
+printf 'scripts/test-uninstall.sh\t10\nscripts/test-unrelated.sh\t1\n' > "$SB/slot-durations.tsv"
+for slot_ledger in "$SB/missing-durations.tsv" "$SB/slot-durations.tsv"; do
+  rm -f "$IMP_OWNER"
+  out=$(HIMMEL_SUITE_SEMAPHORE_DIR="$SB/semaphore" HIMMEL_SUITE_SLOT_HELD='' \
+    HIMMEL_BUS_NAME=N3912 SUITE_DURATIONS="$slot_ledger" \
+    bash "$IMPRUN" --scan-repo-of-script \
+    --only-list "$SB/only-both.txt" --shard 1/2 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && grep -qxF 'detail=worker=N3912 range=all suites=1' "$IMP_OWNER"; then
+    pass "24x: the slot suite count includes only this shard's selected suite (${slot_ledger##*/})"
+  else
+    fail "24x: rc=$rc owner='$(cat "$IMP_OWNER" 2>/dev/null)' output: $out"
+  fi
+done
+
+out=$(HIMMEL_SUITE_SEMAPHORE_DIR="$SB/list-semaphore" HIMMEL_SUITE_SLOT_HELD='' \
+  bash "$IMPRUN" --scan-repo-of-script --list --impacted "$CODE_RANGE" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ ! -d "$SB/list-semaphore" ]; then
+  pass "24y: list-only planning never acquires a semaphore slot"
+else
+  fail "24y: rc=$rc output: $out"
+fi
+
 rst_tally

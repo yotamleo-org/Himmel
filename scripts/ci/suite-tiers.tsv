@@ -673,7 +673,6 @@ scripts/hooks/test-check-template-himmel-plugins.sh	pr	guard
 scripts/hooks/test-check-update-available.sh	pr	guard
 scripts/hooks/test-check-worktree-isolation.sh	pr	guard
 scripts/hooks/test-ci-doc-invariants.sh	pr	static-gate
-scripts/hooks/test-claude-glm-seed-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-cmdpos-clean.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-codex-adapter-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-codex-plugin-security-hooks.sh	pr	guard
@@ -780,8 +779,6 @@ scripts/lanes/test-launch-site-profiles.sh	local	behaviour suite, 0 catches in t
 scripts/lanes/test-worker-cost-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-worker-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-profile-settings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/lanes/tests/test-await-glm-worker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/lanes/tests/test-await-liveness.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/tests/test-worker-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/tests/test-stop-worker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lib/test-api-credit-state.sh	pr	trust-path
@@ -1039,7 +1036,6 @@ scripts/test-claude-codex-srt.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/test-claude-codex.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-claude-deepseek-vault-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-claude-deepseek.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/test-claude-glm.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-claude-openrouter.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-clean-fresh-lock.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-clean-garden-accounting.sh	local	behaviour suite, 0 catches in the 400-PR audit window

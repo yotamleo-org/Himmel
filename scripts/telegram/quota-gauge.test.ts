@@ -16,8 +16,6 @@ import {
   appendQuotaGauge,
   serializeQuotaGauge,
   quotaGaugeRead,
-  isGlmPeak,
-  buildGlmRow,
   type QuotaGaugeRecord,
 } from "./quota-gauge";
 
@@ -122,15 +120,15 @@ test.skipIf(!BASH_RUNS)("byte-identical bash<->TS serialization (T22)", () => {
 
 test("two interleaved appends -> 2 complete parseable lines (T16)", () => {
   const f = join(tmp, "two.jsonl");
-  appendQuotaGauge(rec({ lane: "glm", source: "monitor-endpoint", used_pct: 62, window: "5h", tier: "pro", glm_peak: true }), f);
+  appendQuotaGauge(rec({ lane: "claude", source: "arm-threshold", used_pct: 62, window: "5h", tier: "pro", glm_peak: null }), f);
   appendQuotaGauge(rec({ lane: "codex", source: "codex-sqlite", used_pct: 40, window: "weekly", tier: "pro", glm_peak: null }), f);
   const lines = readFileSync(f, "utf8").split("\n").filter(Boolean);
   expect(lines.length).toBe(2);
   const a = JSON.parse(lines[0]);
   const b = JSON.parse(lines[1]);
-  expect(a.lane).toBe("glm");
+  expect(a.lane).toBe("claude");
   expect(b.lane).toBe("codex");
-  expect(a.glm_peak).toBe(true);
+  expect(a.glm_peak).toBeNull();
   expect(b.glm_peak).toBe(null);
 });
 
@@ -150,7 +148,7 @@ test("T17/AC6 same-lane concurrent appendQuotaGauge race -> no loss/merge", asyn
       `ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)`,
       `i=0`,
       `while [ "$i" -lt ${R} ]; do`,
-      `  quota_gauge_append "$(quota_gauge_row glm monitor-endpoint ${w} 5h "" "race-w${w}-i$i" "$ts")" 2>/dev/null || true`,
+      `  quota_gauge_append "$(quota_gauge_row codex codex-sqlite ${w} 5h "" "race-w${w}-i$i" "$ts")" 2>/dev/null || true`,
       `  i=$((i+1))`,
       `done`,
     ].join("\n");
@@ -167,7 +165,7 @@ test("T17/AC6 same-lane concurrent appendQuotaGauge race -> no loss/merge", asyn
   expect(lines.length).toBe(W * R);
   let allParse = true;
   for (const l of lines) {
-    try { const o = JSON.parse(l); if (o.lane !== "glm" || o.v !== 1) allParse = false; }
+    try { const o = JSON.parse(l); if (o.lane !== "codex" || o.v !== 1) allParse = false; }
     catch { allParse = false; }
   }
   expect(allParse).toBe(true);
@@ -176,6 +174,7 @@ test("T17/AC6 same-lane concurrent appendQuotaGauge race -> no loss/merge", asyn
   expect(openBraces).toBe(lines.length);
 });
 
+// Historical GLM rows remain readable for the observability consumer.
 // ── Task 2: quotaGaugeRead reader (T10-T15, T18, T21, T26) ─────────────────────
 const NOW_MS = Date.parse(NOW_TS);
 const ago = (s: number) => new Date(NOW_MS - s * 1000).toISOString();
@@ -298,52 +297,7 @@ test("T11b stale alibaba row (age 4000s > 3600 budget) -> fresh:false status:unk
 // owner-boundary proof that a second reader implementation would have to
 // route around to go undetected.
 
-// ── Task 5: GLM row-builder + peak band (T1, T2, T3) ─────────────────────────
-test("T1 buildGlmRow maps a live-shaped reading; round-trips; no fresh_for_s (AC1)", () => {
-  const reading = { percentage: 62, nextResetTime: NOW_MS + 2 * 3600 * 1000, level: "pro" };
-  const row = buildGlmRow(reading, NOW_MS);
-  expect(row.lane).toBe("glm");
-  expect(row.source).toBe("monitor-endpoint");
-  expect(row.used_pct).toBe(62);
-  expect(row.window).toBe("5h");
-  expect(row.reset_at).toBe(new Date(NOW_MS + 2 * 3600 * 1000).toISOString());
-  expect(row.tier).toBe("pro");
-  expect(JSON.parse(serializeQuotaGauge(row)).used_pct).toBe(62);
-  expect(serializeQuotaGauge(row)).not.toContain("fresh_for_s");
-});
-
-test("T2 buildGlmRow(null) -> invisible row, used_pct null, no throw", () => {
-  const row = buildGlmRow(null, NOW_MS);
-  expect(row.source).toBe("invisible");
-  expect(row.used_pct).toBeNull();
-  expect(row.window).toBeNull();
-  expect(row.note).toContain("invisible");
-});
-
-test("T3 isGlmPeak hour boundaries 13:59 / 14:00 / 17:59 / 18:00 UTC+8 (AC8)", () => {
-  // a UTC instant whose UTC+8 wall-clock hour is `utc8h` -> UTC hour = utc8h-8.
-  // Anchored on a WEEKDAY (2026-07-06 Mon) so the hour rule is isolated from
-  // the weekday rule (weekends are 1× all day).
-  const at = (utc8h: number, m: number) => Date.UTC(2026, 6, 6, (utc8h - 8 + 24) % 24, m, 0);
-  expect(isGlmPeak(at(13, 59))).toBe(false);
-  expect(isGlmPeak(at(14, 0))).toBe(true);
-  expect(isGlmPeak(at(17, 59))).toBe(true);
-  expect(isGlmPeak(at(18, 0))).toBe(false);
-  // glm_peak is a bool on GLM rows (never null there); non-GLM rows carry null
-  expect(buildGlmRow({ percentage: 1, nextResetTime: NOW_MS, level: "pro" }, NOW_MS).glm_peak).not.toBeNull();
-});
-
-test("T3b isGlmPeak weekday rule — weekends are 1× all day (HIMMEL-1479)", () => {
-  // SGT (UTC+8) wall-clock instant: day/hour/min are SGT; subtract 8h for UTC
-  // (Date.UTC normalizes the negative hour). 2026-07-10 Fri, 07-11 Sat, 07-13 Mon.
-  const sgt = (day: number, h: number, m = 0) => Date.UTC(2026, 6, day, h - 8, m, 0);
-  // weekend INSIDE the peak hours → NOT peak (the bug this fixes)
-  expect(isGlmPeak(sgt(11, 15))).toBe(false);  // Saturday 15:00 SGT, inside [14,18)
-  // weekday inside the peak hours → peak (existing behavior preserved)
-  expect(isGlmPeak(sgt(10, 15))).toBe(true);   // Friday 15:00 SGT
-  expect(isGlmPeak(sgt(13, 14))).toBe(true);   // Monday 14:00 SGT
-  // boundary: Fri 17:59 SGT peak; the instant SGT rolls to Sat 00:00 → not peak.
-  // Sat 00:00 SGT = Fri 16:00 UTC — exercises the UTC+8 (not UTC) weekday calc.
-  expect(isGlmPeak(sgt(10, 17, 59))).toBe(true);  // Friday 17:59 SGT
-  expect(isGlmPeak(sgt(11, 0, 0))).toBe(false);   // Saturday 00:00 SGT (= Fri 16:00 UTC)
+test("retired peak column is null even for a legacy caller", () => {
+  const legacy = { ...rec({ lane: "codex", used_pct: 12 }), glm_peak: true } as unknown as QuotaGaugeRecord;
+  expect(JSON.parse(serializeQuotaGauge(legacy)).glm_peak).toBeNull();
 });

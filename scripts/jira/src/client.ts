@@ -38,6 +38,15 @@ export function loadEnvFile(envPath: string): void {
   const confDir = join(process.env.HOME || homedir(), '.himmel');
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
   readEnvFile(join(confDir, 'himmel.conf'), CONFIG_KEYS);
+  let projectRoot: string | undefined;
+  try {
+    projectRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    // The cwd need not be a git checkout; install credentials still apply.
+  }
+  if (projectRoot) readEnvFile(join(projectRoot, '.env'), new Set(['JIRA_PROJECT_KEY']));
   readEnvFile(envPath, DOTENV_KEYS);
 }
 

@@ -26,6 +26,9 @@ case "$out" in *lean-skills:*) ;; *) bad "bare citing skill not hinted (got '$ou
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"lean-skills:writing-skills"}}')
 case "$out" in *'"hookEventName":"PostToolUse"'*'"additionalContext"'*) ;; *) bad "malformed envelope (got '$out')";; esac
 [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = "1" ] || bad "hint is not one line"
+if printf '%s\n' "$out" | grep -qE 'HIMMEL-[0-9]+'; then
+  bad "hint exposes an internal ticket id (got '$out')"
+fi
 if command -v node >/dev/null 2>&1; then
   printf '%s' "$out" | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));if(j.hookSpecificOutput.hookEventName!=="PostToolUse"||!j.hookSpecificOutput.additionalContext)process.exit(1)' \
     || bad "envelope is not valid JSON with the expected fields"
