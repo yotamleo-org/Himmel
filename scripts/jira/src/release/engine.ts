@@ -884,11 +884,15 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         }
       }
     }
-    if (override !== undefined && moved > BULK_MOVE_LIMIT) {
-      appendAdmission({ version: current, key: `rm-run:${ctx.release}`, kind: 'override', reason: `bulk ${moved} open moves in ${current}: ${override}` });
-    }
   } finally {
     // Cleanup never hides the rulings already made or the error that ended the run.
+    try {
+      if (override !== undefined && moved > BULK_MOVE_LIMIT) {
+        appendAdmission({ version: current, key: `rm-run:${ctx.release}`, kind: 'override', reason: `bulk ${moved} open moves in ${current}: ${override}` });
+      }
+    } catch (e) {
+      lines.push(`PENDING override row: ${(e as Error).message}`);
+    }
     try {
       leaseRelease(rctx);
     } catch (e) {

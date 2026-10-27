@@ -914,6 +914,18 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
     expect(overrideRows()).toEqual([]);
   });
 
+  it('an override run that ends in an error still writes its override row', async () => {
+    askMany(21);
+    const set = jira.setFixVersion;
+    jira.setFixVersion = async () => { throw new Error('jira down'); };
+    expect(rulings(await rmRun(ctx(), admitAll, { ruling: '98' }))).toHaveLength(0);
+    jira.setFixVersion = set;
+    request(ctx(), { verb: 'INTAKE', key: 'K-200', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    const down: Judge = async () => { throw new Error('judge down'); };
+    await expect(rmRun(ctx(marked), down, { chiefOverride: 'operator ordered the reshuffle' })).rejects.toThrow(/judge down/);
+    expect(overrideRows()).toEqual([expect.objectContaining({ reason: expect.stringMatching(/21 .*operator ordered the reshuffle/) })]);
+  });
+
   it('an unreadable mirror aborts the run without leaving the lease held', async () => {
     askMany(2);
     mirror([]);
