@@ -113,9 +113,10 @@ rm: HIMMEL-rm-fixture /fixture/rm/doc.md epoch=2
 focus-version: v1.1.3
 focus-plan: /fixture/plan/focus-plan.md
 '
-awk -v live="$fixture_live" '
+# ENVIRON, not `-v`: BSD awk (macOS) refuses a newline in a -v value.
+LIVE="$fixture_live" awk '
     $0 == "## Live state" { f = 1; print; next }
-    f && /^legs:/ { printf "%s\n", live; skip = 1; next }
+    f && /^legs:/ { printf "%s\n", ENVIRON["LIVE"]; skip = 1; next }
     skip && /^## / { skip = 0; f = 0 }
     skip { next }
     { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"

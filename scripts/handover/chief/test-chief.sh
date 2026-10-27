@@ -1629,7 +1629,7 @@ check "60b successor doc carries the predecessor's focus-version: line" \
     "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
 check "60b successor doc carries the predecessor's focus-plan: line" \
     "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
-sed -i 's/^focus-version: .*/focus-version: auto/' "$doc60bA"  # gnu-ok: Linux-only kit
+sed 's/^focus-version: .*/focus-version: auto/' "$doc60bA" >"$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
 rm -f "$doc60bB"
 chief next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1
 check "60b successor doc carries focus-version: auto" \

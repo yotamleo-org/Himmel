@@ -1217,7 +1217,7 @@ v7render() {
         --prs-file "${V7PRS:-$W/vp-prs7.json}" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1)" \
         || fail "a chain-row render failed, so the rows after it read a stale page: $o" >&2
 }
-touch -d '2026-09-01 00:00:00 UTC' "$W/vp-chains7.json"
+TZ=UTC touch -t 202609010000 "$W/vp-chains7.json"  # -t, not GNU -d: BSD touch (macOS) cannot read '… UTC'
 v7render >/dev/null
 v7="$(cat "$v7out" 2>/dev/null)"
 li() { grep -F "$1" "$v7out" 2>/dev/null | grep -F '<li' ; }

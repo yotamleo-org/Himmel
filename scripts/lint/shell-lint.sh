@@ -395,13 +395,14 @@ _baseline_growth() {
     else
         renames="$(git -c core.quotePath=false diff --name-status -M --diff-filter=R "$CHANGED" --)"
     fi
-    awk -v old="$old" -v ren="$renames" -v new="$BASE_TEXT" '
+    # ENVIRON, not `-v`: BSD awk (macOS) refuses a newline in a -v value.
+    SL_OLD="$old" SL_REN="$renames" SL_NEW="$BASE_TEXT" awk '
     BEGIN {
-        n = split(old, o, "\n")
+        n = split(ENVIRON["SL_OLD"], o, "\n")
         for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) { before[p[1] SUBSEP p[2]] = p[3] + 0; breason[p[1] SUBSEP p[2]] = (m >= 4) ? p[4] : "" } }
-        n = split(ren, r, "\n")
+        n = split(ENVIRON["SL_REN"], r, "\n")
         for (i = 1; i <= n; i++) { m = split(r[i], p, "\t"); if (m == 3) from[p[3]] = p[2] }
-        n = split(new, w, "\n")
+        n = split(ENVIRON["SL_NEW"], w, "\n")
         for (i = 1; i <= n; i++) {
             m = split(w[i], p, "\t")
             if (m < 3) continue
@@ -423,9 +424,9 @@ _baseline_growth() {
 # _baseline_filter KEY — stdin: a file's report. Drops each tag whose count is
 # within its baseline row; the rest print unchanged.
 _baseline_filter() {
-    awk -v key="$1" -v base="$BASE_TEXT" -v wr="$WRITE_BASELINE" '
+    SL_BASE="$BASE_TEXT" awk -v key="$1" -v wr="$WRITE_BASELINE" '
     BEGIN {
-        n = split(base, bl, "\n")
+        n = split(ENVIRON["SL_BASE"], bl, "\n")
         for (i = 1; i <= n; i++) { m = split(bl[i], p, "\t"); if (m >= 3 && p[1] == key) allow[p[2]] = p[3] + 0 }
         never["parse"] = 1
     }
