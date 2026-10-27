@@ -89,7 +89,7 @@ sweep_one() {
     [ "$state" = "CLEAN $sha" ] || { skip "GitHub reports '${state:-unreadable}', not CLEAN at $sha"; return 1; }
     # gh exits 8 while a check is pending; the bucket list itself decides
     buckets=$("$GH" pr checks "$pr" --required --json bucket --jq '.[].bucket' 2>/dev/null) || :  # swallow-ok: an empty or partial list fails the pass check below
-    if [ -z "$buckets" ] || printf '%s\n' "$buckets" | grep -qvx pass; then
+    if [ -z "$buckets" ] || grep -qvx pass <<<"$buckets"; then
         skip "a required check is not pass"; return 1
     fi
     qid="dbot-$pr-$(printf '%.12s' "$sha")"
