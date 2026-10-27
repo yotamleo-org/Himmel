@@ -221,14 +221,17 @@ printf '\nCase 7: the dropped GLM launcher is not a mandatory guard surface (HIM
 # guard-surface file missing" -- the launcher is deleted one PR later.
 NG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lint-noglm.XXXXXX")" || exit 1
 mkdir -p "$NG_DIR/scripts/guardrails" "$NG_DIR/scripts/hooks" "$NG_DIR/scripts/lanes" "$NG_DIR/scripts/graphify"
-cp "$SCRIPT_DIR/../graphify/refresh-graph-map.sh" "$NG_DIR/scripts/graphify/"
-cp "$SCRIPT_DIR/../claude-codex" "$NG_DIR/scripts/"
-cp "$SCRIPT_DIR/lint-fail-open.sh" "$NG_DIR/scripts/guardrails/"
-run_lint --root "$NG_DIR"
-if [ "$LINT_RC" -eq 0 ]; then
-    pass "a tree without scripts/claude-glm scans clean"
+if ! { cp "$SCRIPT_DIR/../graphify/refresh-graph-map.sh" "$NG_DIR/scripts/graphify/" \
+    && cp "$SCRIPT_DIR/../claude-codex" "$NG_DIR/scripts/" \
+    && cp "$SCRIPT_DIR/lint-fail-open.sh" "$NG_DIR/scripts/guardrails/"; }; then
+    fail "a tree without scripts/claude-glm: fixture setup failed" "a cp into $NG_DIR did not complete"
 else
-    fail "a tree without scripts/claude-glm: expected exit 0, got $LINT_RC" "$(cat "$OUT")"
+    run_lint --root "$NG_DIR"
+    if [ "$LINT_RC" -eq 0 ]; then
+        pass "a tree without scripts/claude-glm scans clean"
+    else
+        fail "a tree without scripts/claude-glm: expected exit 0, got $LINT_RC" "$(cat "$OUT")"
+    fi
 fi
 rm -rf "$NG_DIR"
 
