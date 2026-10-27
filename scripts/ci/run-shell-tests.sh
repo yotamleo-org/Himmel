@@ -363,6 +363,12 @@ _suite_timeout_for() {
   fi
 
   case "${1#./}" in
+    scripts/ci/test-run-shell-tests.sh|*/scripts/ci/test-run-shell-tests.sh)
+      # The core file of the split family, killed at 603s on Linux
+      # CI with every assertion passing and 129s on the ledger (main run
+      # 40441105007; PR 4021 job 121981449917). 1500s is that x2.5 (the
+      # loaded-budget rule); its five siblings keep the default.
+      printf '1500' ;;
     scripts/eval/guard-corpus/test-guard-corpus.sh|*/scripts/eval/guard-corpus/test-guard-corpus.sh)
       # Runtime IPC masking scans before every fresh hook sandbox.
       # Full replay: 1407s local sequential, 1437s timed (2026-10-08); PR CI
@@ -430,8 +436,8 @@ _suite_timeout_for() {
       # pass. 3600s covers the worst figure ever observed with headroom;
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '3600' ;;
-    # NO ARM here for scripts/ci/test-run-shell-tests*.sh (the one macOS-only
-    # arm for the core file is in the Darwin block above). It used to
+    # NO ARM here for scripts/ci/test-run-shell-tests-*.sh (the split siblings;
+    # the core file test-run-shell-tests.sh has its own arms above). It used to
     # carry a 1200s arm (712s measured standalone on
     # 2026-08-30, x ~1.5). Splitting that one
     # 3086-line file into six suites and measured each standalone on linux
