@@ -498,9 +498,11 @@ cov_linked() {
 }
 
 # cov_ledger_keys <ledger> <head> <pr-branch>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
-# Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head.
-# A deferral of <pr-branch> at any earlier head carries to <head> when a critic's ok avail row of <pr-branch> at <head> was
-# written after the finding (a clean full round) and no finding row of <pr-branch> sits at <head>: a round that re-raised
+# Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head,
+# and so along a chain of such rows: each row names the reviewed head before it, up to 10 hops back from <head> (cycle-safe).
+# A deferral of <pr-branch> at any earlier head carries to <head> when a critic's ok avail row of <pr-branch> at <head> or at
+# any head of that chain was written after the finding (a clean full round) and no finding row of <pr-branch> sits at any
+# head of the chain: a round that re-raised
 # or fixed anything there is not clean (fail-closed), a deferral later amended to fixed is no longer a deferral, and a
 # finding the branch recorded again at any later head (re-raised in between) is judged by that later row alone.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
@@ -518,13 +520,15 @@ cov_ledger_keys() {
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
         [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
-        [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
-            | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
-        | [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and .status == "ok" and (.head | type == "string") and hm(.head; $h)
+        [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and (.detail | type == "string"))
+            | {head, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
+        | (reduce range(10) as $_ ([$h]; . as $c | . + [$desc[] | select(. as $d | any($c[]; hm($d.head; .))) | .rev | select(. as $r | any($c[]; hm($r; .)) | not)] | unique)) as $chain
+        | def inchain($x): any($chain[]; hm($x; .));
+        [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and .status == "ok" and (.head | type == "string") and inchain(.head)
             and (.model | type == "string") and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not)
             and ((.detail // "") | tostring | startswith("trivial-descendant") | not)) | ._ln] as $clean
-        | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h))] | length > 0) as $raised
-        | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev))
+        | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head))] | length > 0) as $raised
+        | def at_head($f; $e): hm($e.head; $h) or ($pb != "" and $f.branch == $pb and inchain($e.head))
             or ($pb != "" and $f.branch == $pb and ($raised | not) and any($clean[]; . > $f._ln)
                 and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends

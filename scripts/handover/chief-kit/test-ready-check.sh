@@ -1198,6 +1198,63 @@ else
 fi
 chmod 600 "$LEDGER"
 
+# --- chain: a deferral carries along a chain of trivial-descendant rows, each naming the reviewed head before it ---
+# chain_head <n>: a distinct 40-hex head
+chain_head() { printf '%040x' "$1"; }
+# seed_hop <head> <reviewed head>: the avail row of a tip cleared as a trivial descendant of <reviewed head>
+seed_hop() {
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
+}
+# seed_clean_at <head>: a critic's ok avail row at <head>, a full round that found nothing
+seed_clean_at() {
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:03Z","branch":"%s","head":"%s","model":"codex","status":"ok","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$1" >> "$LEDGER"
+}
+CH_B=$(chain_head 11); CH_C=$(chain_head 12)
+SEED_BRANCH=feat/himmel-100-thing
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean_at "$CH_B"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+rc=0; out="$(run)" || rc=$?
+check "chain: a deferral carries through two trivial descendants of a cleanly reviewed head: exit 0" "$rc" "0"
+contains "chain: two hops: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean_at "$CH_B"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-HIMMEL-50","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$CH_C" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "chain: a finding re-raised at a middle head of the chain stops the carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+rc=0; out="$(run)" || rc=$?
+check "chain: no clean round at any head of the chain, the deferral does not carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean_at "$CH_B"; seed_hop "$CH_C" "$CH_B"; seed_hop "$CH_B" "$SHA"; seed_hop "$SHA" "$CH_C"
+rc=0; out="$(run)" || rc=$?
+check "chain: a cycle among the descendant rows ends and the carry still holds: exit 0" "$rc" "0"
+
+# a chain of N hops: the clean round sits N hops before the PR head
+chain_of() {
+    local n="$1" i prev
+    reset_stubs
+    STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+    seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean_at "$(chain_head 100)"
+    prev=$(chain_head 100)
+    for ((i = 1; i < n; i++)); do seed_hop "$(chain_head $((100 + i)))" "$prev"; prev=$(chain_head $((100 + i))); done
+    seed_hop "$SHA" "$prev"
+}
+chain_of 10
+rc=0; out="$(run)" || rc=$?
+check "chain: ten hops from the PR head still carry: exit 0" "$rc" "0"
+chain_of 11
+rc=0; out="$(run)" || rc=$?
+check "chain: eleven hops from the PR head are past the cap: exit 1" "$rc" "1"
+
 # --- 8. TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
 # ready-check.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors
 # test-bank-preflight-dotenv-root.sh: a scratch "own checkout" (this script +
