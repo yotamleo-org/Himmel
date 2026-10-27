@@ -77,12 +77,16 @@
 # same as any other "retry shortly" refusal here.
 #
 # Exit codes:
-#   0  signaled (prune ran, skipped, or reported "in use" - all non-fatal)
+#   0  signaled (prune ran, skipped, or reported "in use" - all non-fatal); or
+#      CLOSED-ALREADY: lock free, tail WRAPPED, and no live session
+#      under any of the worker's names (a RESUME doc's label suffix is dropped to
+#      find the original session) - nothing to signal; the manifest entry is retired.
+#      Not for --chief: a predecessor chief with 0 sessions still exits 5.
 #   1  gh/git/queue-lock plumbing failure, or the TERM signal itself failed
 #   2  usage (missing/unreadable doc)
 #   3  refused - the queue lock is not free
 #   4  refused - the doc's last marker-bullet is not WRAPPED
-#   5  refused - 0 or >1 live sessions matched the worker's names
+#   5  refused - >1 live sessions matched the worker's names (0 for a --chief)
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
 #   7  refused - the matched session still has a live in-process subagent (an
@@ -226,6 +230,18 @@ ident=$(worker_identity "$DOC")
 # which other callers rely on for the stripped forms).
 doc_stem="$(basename "$DOC" .md)"
 names=",${ident#*$'\t'},${doc_stem},"
+# A RESUME doc's label carries a successor suffix (N3731c) but the window
+# still runs under the ORIGINAL worker's session name (...-N3731-...). Add each name with
+# the suffix dropped from its worker token; a live N3731b session keeps its own name and
+# never matches.
+orig_names=""
+if [[ ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
+    orig_label="${BASH_REMATCH[1]}"
+    for resume_name in ${names//,/ }; do
+        orig_names="$orig_names,$(printf '%s' "$resume_name" | sed -E "s/-${ident%%$'\t'*}(-|\$)/-${orig_label}\\1/")"
+    done
+    names="$names${orig_names#,},"
+fi
 
 sessions=$(claude_sessions)
 census_rc=$?
@@ -252,6 +268,15 @@ while IFS=$'\t' read -r pid name _model _ac; do
 done <<EOF
 $sessions
 EOF
+
+# The lock is free and the tail says WRAPPED (both proven above), and no session
+# runs under any of the worker's names: the window already exited. That is a close, not a
+# refusal. A predecessor chief keeps the refusal (chief-wait.sh reads its rc 5).
+if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
+    echo "CLOSED-ALREADY: $(worker_label "$DOC") has no live session under [${ident#*$'\t'}]; nothing to signal"
+    [ "$CHECK_MODE" -eq 1 ] && exit 0
+    close_success
+fi
 
 if [ "$match_count" -ne 1 ]; then
     echo "close-wrapped-worker: refusing - $match_count live session(s) matched worker names [${ident#*$'\t'}] (need exactly 1)" >&2

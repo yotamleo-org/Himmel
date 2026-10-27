@@ -120,6 +120,10 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
+# procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
+# chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
+# to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
+# 60) while it stays non-empty. The marker clears when the field is gone.
 # vmrun= (class only, wakes ONLY on a move to DEAD, STUCK or DISAGREE -- never
 # on the busy count, nor a move to ok/off/FAILING; absent from an older tick line,
 # never a failure),
@@ -726,28 +730,39 @@ underfill_repool() {
 # new to the marker, holds a PR the marker lacks, or the marker is older than the re-wake
 # window.
 unowned_wake() {
-    local nums num wake=""
-    nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
-    if [ ! -e "$unowned_file" ]; then
+    set_wake "$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
+}
+# set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
+# logic: succeeds (and refreshes the marker) when the marker is missing, holds none of
+# an item, or is older than the re-wake window.
+set_wake() {
+    local nums="$1" file="$2" min="$3" num wake=""
+    if [ ! -e "$file" ]; then
         wake=1
-    elif [ -z "$(find "$unowned_file" -mmin "-${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}" 2>/dev/null)" ]; then
+    elif [ -z "$(find "$file" -mmin "-$min" 2>/dev/null)" ]; then
         wake=1
     else
         for num in $nums; do
-            grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { wake=1; break; }
+            grep -qxF -- "$num" "$file" 2>/dev/null || { wake=1; break; }
         done
     fi
     if [ -z "$wake" ]; then
-        # Shrink the marker to the current set, keeping its mtime (the re-wake clock), so a PR
-        # that leaves and rejoins is new to the marker and wakes at once.
-        touch -r "$unowned_file" "$unowned_file.ref" 2>/dev/null &&
-            printf '%s\n' "$nums" > "$unowned_file" 2>/dev/null &&
-            touch -r "$unowned_file.ref" "$unowned_file" 2>/dev/null
-        rm -f "$unowned_file.ref"
+        # Shrink the marker to the current set, keeping its mtime (the re-wake clock), so an
+        # item that leaves and rejoins is new to the marker and wakes at once.
+        touch -r "$file" "$file.ref" 2>/dev/null &&
+            printf '%s\n' "$nums" > "$file" 2>/dev/null &&
+            touch -r "$file.ref" "$file" 2>/dev/null
+        rm -f "$file.ref"
         return 1
     fi
-    printf '%s\n' "$nums" > "$unowned_file" 2>/dev/null
+    printf '%s\n' "$nums" > "$file" 2>/dev/null
     return 0
+}
+# unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
+# (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
+unwatched_file="$inbox.wait.unwatched"
+unwatched_wake() {
+    set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
 }
 
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
@@ -1208,6 +1223,13 @@ while :; do
                         exit_reason='wake-unowned-prs'; exit 0
                     fi ;;
             esac
+            unwatched_val="$(printf '%s\n' "$tick_line" | sed -n 's/.* procs=[^ ]*unwatched=\([^ ,]*\).*/\1/p')"
+            if [ -z "$unwatched_val" ]; then
+                rm -f "$unwatched_file"
+            elif unwatched_wake "$unwatched_val"; then
+                printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
+                exit_reason='wake-unwatched'; exit 0
+            fi
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0

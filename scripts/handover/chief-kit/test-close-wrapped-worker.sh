@@ -11,7 +11,7 @@
 #   1. usage: no args / 2 args / unreadable doc          -> rc 2
 #   2. held lock (a real acquire, not released)           -> rc 3
 #   3. last Results marker is not WRAPPED                 -> rc 4
-#   4. 0 matching live sessions                            -> rc 5, kill NOT called
+#   4. 0 matching live sessions (the window already exited) -> rc 0 CLOSED-ALREADY, kill NOT called
 #   5. 2 matching live sessions                             -> rc 5, kill NOT called
 #   6. 1 match, 0 worktree paths in doc                    -> rc 0, clean.sh NOT called
 #   7. 1 match, 2 worktree paths in doc                    -> rc 0, clean.sh NOT called
@@ -282,7 +282,8 @@ mkcmdline 201 claude -n SOME-OTHER-SESSION work
 pgrep_x_stub 201
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "zero-match: rc 5" "$rc" "5"
+check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
+contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
 # --- 5. 2 matching sessions -------------------------------------------------------
@@ -1267,8 +1268,33 @@ mkcmdline 264 claude -n "${SESSION_NAME}-extra" work
 pgrep_x_stub 262 263 264
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "non -r<N> suffixes are not this leg: rc 5" "$rc" "5"
+check "non -r<N> suffixes are not this leg: CLOSED-ALREADY rc 0 (HIMMEL-7811)" "$rc" "0"
 check "non -r<N> suffixes: nothing signaled" "$(cat "$CALLS")" ""
+
+# --- A RESUME doc (label suffix c) closes the ORIGINAL session's window ----
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+RDOC="$W/HIMMEL-9-N7c-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$RDOC"
+mkcmdline 290 claude -n HIMMEL-9-N7-demo work
+mkcmdline 291 claude -n HIMMEL-9-N7b-demo work
+pgrep_x_stub 290 291
+reset_calls
+rc=0; out=$(run "$RDOC" 2>&1) || rc=$?
+check "resume N7c: the original N7 session is matched -> rc 0" "$rc" "0"
+exact_count "resume N7c: TERM sent to the original session only" "$(cat "$CALLS")" "kill -TERM 290" "1"
+not_contains "resume N7c: the N7b successor session is never signaled" "$(cat "$CALLS")" "kill -TERM 291"
+# the original already exited and only the N7b successor lives: nothing to close, nothing signaled
+rm -rf "$W/proc/290"; pgrep_x_stub 291
+reset_calls
+rc=0; out=$(run "$RDOC" 2>&1) || rc=$?
+check "resume N7c, original gone, N7b alive: CLOSED-ALREADY rc 0" "$rc" "0"
+contains "resume N7c, original gone: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "resume N7c, original gone: nothing signaled" "$(cat "$CALLS")" ""
+# CLOSED-ALREADY still retires the worker from the fleet manifest
+bash "$HERE/fleet-manifest.sh" add "$W/closed-already.fleet.json" "$RDOC" "$W/HIMMEL-9-N2-other.md"
+rc=0; out=$(run --fleet "$W/closed-already.fleet.json" "$RDOC" 2>&1) || rc=$?
+check "closed-already: --fleet rc 0" "$rc" "0"
+check "closed-already: the manifest keeps only the other worker" "$W/HIMMEL-9-N2-other.md" "$(jq -r '.legs[].doc' "$W/closed-already.fleet.json")"
 
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
@@ -1363,8 +1389,8 @@ rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bu
 check "workers --check, no manifest: sweeps the bucket -> rc 0" "$rc" "0"
 contains "workers --check: the predecessor's worker would close" "$out" "sweep: would close $MS_PRED"
 contains "workers --check: the current chief's worker would close" "$out" "sweep: would close $MS_CUR"
-contains "workers --check: both fresh bucket manifests swept" "$out" "sweeps: manifests=2 failed=0 gone=1"
-not_contains "workers --check: a worker whose window is already gone is counted, not printed" "$out" "$MS_GONE"
+contains "workers --check: both fresh bucket manifests swept (a gone window is now CLOSED-ALREADY, so gone= stays 0, HIMMEL-7811)" "$out" "sweeps: manifests=2 failed=0 gone=0"
+contains "workers --check: a worker whose window is already gone is a close, not a refusal (HIMMEL-7811)" "$out" "sweep: would close $MS_GONE"
 not_contains "workers --check: a manifest older than the age window is not swept" "$out" "$MS_OLD"
 not_contains "workers --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
@@ -1379,7 +1405,7 @@ not_contains "legs: an unknown flag after a manifest signals nothing" "$(cat "$C
 reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run "$W/no-such.fleet.json" "$MS_PRED_M" "$MS_CUR_M" 2>&1) || rc=$?
 check "legs: a failed sweep is reported -> rc 1" "$rc" "1"
-contains "legs: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=1"
+contains "legs: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=0"
 exact_count "legs: the predecessor manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 280" "1"
 exact_count "legs: the current manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 281" "1"
 check "legs: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"

@@ -1651,6 +1651,17 @@ contains 'an agreeing arm still surfaces the live workers outside it (HIMMEL-329
 printf '%s\n' '# chief' '' 'no Live state section in this doc at all' > "$W/handover/chief.md"
 contains 'a chief doc with no Live state section reads workerset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=unknown'
 
+# --- unwatched= is scoped to THIS chief. The worker's environ carries
+# HIMMEL_CONSOLE_NAME (its launching chief); the chief's name is its doc stem. N302 belongs
+# to another chief (dropped), N303 to this one (kept), N301 is armed.
+printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=other-chief\0' > "$W/proc/131/environ"
+printf 'HOME=/x\0HIMMEL_CONSOLE_NAME=chief\0' > "$W/proc/132/environ"
+o7811="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
+contains "(7811) another chief's worker is not unwatched, this chief's is" "$o7811" 'procs=1,unwatched=N303 '
+rm -f "$W/proc/131/environ" "$W/proc/132/environ"
+o7811="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --doc "$W/handover/chief.md" --workers "$W/handover/$a3293.md")"
+contains '(7811) a worker with no readable owner stays unwatched (fail open)' "$o7811" 'procs=1,unwatched=N302+N303 '
+
 # --- a resolved FINDING must read differently from an open one.
 # The ticket's case (worker N219, 2026-09-20): a worker raised a FINDING, the chief
 # accepted it the same minute, and tails= kept reading FINDING for the 23 minutes
