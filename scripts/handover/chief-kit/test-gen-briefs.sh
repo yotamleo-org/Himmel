@@ -488,7 +488,8 @@ done
 # Every worker and chief pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-for budget in "worker-preface.md:12400" "chief-template.md:16512"; do
+# worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
+for budget in "worker-preface.md:12800" "chief-template.md:16512"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
