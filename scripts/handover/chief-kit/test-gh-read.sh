@@ -20,14 +20,22 @@ trap 'rm -rf "$W"' EXIT
 fails=0
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
+redact() { # a failure line never carries a token: any token-shaped run becomes <first 3>…(<len>), short enough to never spell a token prefix
+    local s="$1" tok
+    while [[ "$s" =~ (github_pat_|gh[pousr]_)[A-Za-z0-9_]+ ]]; do
+        tok="${BASH_REMATCH[0]}"
+        s="${s//"$tok"/<${tok:0:3}…(${#tok})>}"
+    done
+    printf '%s' "$s"
+}
 check() { # <name> <want> <got>
-    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
+    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$(redact "$2")' got '$(redact "$3")')"; fi
 }
 has() { # <name> <needle> <haystack>
-    case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 (no '$2' in '$3')" ;; esac
+    case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 (no '$(redact "$2")' in '$(redact "$3")')" ;; esac
 }
 lacks() { # <name> <needle> <haystack>
-    case "$3" in *"$2"*) fail "$1 (found '$2' in '$3')" ;; *) pass "$1" ;; esac
+    case "$3" in *"$2"*) fail "$1 (found '$(redact "$2")' in '$(redact "$3")')" ;; *) pass "$1" ;; esac
 }
 
 READTOK=ghp_READTOKEN0123456789
@@ -53,8 +61,15 @@ esac
 exit 0
 STUB
 chmod +x "$W/bin/gh"
-export GHLOG="$W/gh.log" HOME="$W/home" PATH="$W/bin:$PATH"
-unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2
+mkdir -p "$W/ghcfg" "$W/xdg/config" "$W/xdg/data" "$W/xdg/cache" "$W/himmelcfg" || exit 1
+export GHLOG="$W/gh.log" HOME="$W/home" PATH="$W/bin:$PATH" GH_CONFIG_DIR="$W/ghcfg" HIMMEL_SECRETS_KEYRING=off \
+    XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CACHE_HOME="$W/xdg/cache" HIMMEL_CONFIG_DIR="$W/himmelcfg"
+# only fixture tokens may be visible: the ambient token, the keyring and a systemd credential dir are all closed
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+# control: a forced mismatch must print the token shortened, never whole (a passing run never reaches redact otherwise)
+redaction_probe="$( (check "redaction probe" "$READTOK" "not-the-token") 2>&1)"
+has "A0 a failing assertion prints a token shortened" "<ghp…(" "$redaction_probe"
+lacks "A0b a failing assertion never prints the token whole" "$READTOK" "$redaction_probe"
 
 run_gh_read() { # <env-root> <gh args...> — executed form, fresh process
     local root="$1"; shift
