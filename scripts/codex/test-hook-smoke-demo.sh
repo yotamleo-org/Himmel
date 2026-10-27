@@ -584,7 +584,7 @@ set +e
 OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 90} bash "$FAKEREPO/$(basename "$SMOKE")" --from "$FIX" --timeout 20 2>&1)"; RC=$?
 echo "  [progress] 11a: done rc=$RC" >&2
 set -e
-if grep -qE '^claude-print +SKIP.*native-auth pin unavailable' <<<"$OUT"
+if [ "$RC" -ne 124 ] && grep -qE '^claude-print +SKIP.*native-auth pin unavailable' <<<"$OUT"
 then pass "claude worker skips when the native-auth pin cannot be applied"
 else fail "claude worker launched unpinned: $OUT"; fi
 
@@ -596,6 +596,7 @@ else fail "claude worker launched unpinned: $OUT"; fi
 shadow_smoke() { # <proxy-url|-> -> prints the witness file's content (empty = never launched)
     local w="$TMP/shadow-witness"; rm -f "$w"
     echo "  [progress] 11a2: shadow_smoke start proxy=$1" >&2
+    set -m
     # shellcheck disable=SC2016
     bash -c '
         exit() { :; }; return() { :; }; unset() { :; }
@@ -604,28 +605,36 @@ shadow_smoke() { # <proxy-url|-> -> prints the witness file's content (empty = n
         [ "$1" = - ] && p=() || p=(ANTHROPIC_BASE_URL="$1")
         exec env "${p[@]}" PATH="$2:$PATH" SMOKE_STUB_MODE=clean SMOKE_CLAUDE_WITNESS="$3" \
             bash "$4" --from "$5" --timeout 20' _ "$1" "$BIN" "$w" "$SMOKE" "$FIX" >"$TMP/shadow-out" 2>&1 &
-    local sp=$! n=0
+    local sp=$! n=0 src=0
+    set +m
     while kill -0 "$sp" 2>/dev/null && [ "$n" -lt 90 ]; do sleep 1; n=$((n + 1)); done
     if kill -0 "$sp" 2>/dev/null; then
         echo "  [progress] 11a2: shadow_smoke HUNG proxy=$1; tail of its output:" >&2
         tail -n 15 "$TMP/shadow-out" >&2
         : > "$TMP/shadow-hung"
-        pkill -KILL -P "$sp" 2>/dev/null; kill -KILL "$sp" 2>/dev/null
+        kill -KILL -- "-$sp" 2>/dev/null || kill -KILL "$sp" 2>/dev/null
     fi
-    wait "$sp" 2>/dev/null || true
+    wait "$sp" 2>/dev/null || src=$?
+    echo "$src" > "$TMP/shadow-rc"
     echo "  [progress] 11a2: shadow_smoke end proxy=$1" >&2
     cat "$w" 2>/dev/null || true
 }
-# ponytail: skipped on macOS, where the shadowed demo hangs with no output (bash 3.2, cause not pinned); re-enable once HIMMEL-7253 finds the cause
+# ponytail: skipped on macOS, where the shadowed demo hangs with no output (bash 3.2, cause not pinned); re-enable once HIMMEL-7925 finds the cause
 if [ "$(uname -s)" = Darwin ]; then
-    echo "  SKIP: 11a2 shadowed-builtin rows: the shadowed demo hangs on macOS; tracked by HIMMEL-7253"
+    echo "  SKIP: 11a2 shadowed-builtin rows: the shadowed demo hangs on macOS; tracked by HIMMEL-7925"
 else
-if [ -n "$(shadow_smoke -)" ]; then pass "shadowed builtins, no proxy: the demo still reaches the claude launch (control)"
+SH_OUT="$(shadow_smoke -)"; SH_RC="$(cat "$TMP/shadow-rc")"; CTRL_RC="$SH_RC"
+echo "  [progress] 11a2: control run rc=$SH_RC" >&2
+if [ "$SH_RC" = 124 ] || [ -e "$TMP/shadow-hung" ]; then fail "shadow control: the shadowed demo hung and was killed"
+elif [ -n "$SH_OUT" ]; then pass "shadowed builtins, no proxy: the demo still reaches the claude launch (control)"
 else fail "shadow control: the shadowed demo never reached the claude launch (vacuous row below)"; fi
-if [ -z "$(shadow_smoke http://evil.invalid)" ]; then pass "shadowed builtins + ambient ANTHROPIC_BASE_URL: claude is NOT launched"
-else fail "shadowed builtins let an ambient proxy variable reach the claude launch: $(shadow_smoke http://evil.invalid)"; fi
-# a killed run leaves an empty witness, which the negative row above reads as "not launched"
-if [ -e "$TMP/shadow-hung" ]; then fail "a shadow_smoke run hung and was killed; its row result is not evidence"; fi
+SH_OUT="$(shadow_smoke http://evil.invalid)"; SH_RC="$(cat "$TMP/shadow-rc")"
+echo "  [progress] 11a2: proxied run rc=$SH_RC" >&2
+# the control run's exit status is the baseline: a proxied run that exited differently may have died before the gate
+if [ -e "$TMP/shadow-hung" ]; then fail "shadowed builtins + ambient ANTHROPIC_BASE_URL: the run hung and was killed, so its empty witness is not evidence"
+elif [ -n "$SH_OUT" ]; then fail "shadowed builtins let an ambient proxy variable reach the claude launch: $SH_OUT"
+elif [ "$SH_RC" != "$CTRL_RC" ]; then fail "shadowed builtins + ambient ANTHROPIC_BASE_URL: the run exited $SH_RC, the control $CTRL_RC, so its empty witness is not evidence"
+else pass "shadowed builtins + ambient ANTHROPIC_BASE_URL: claude is NOT launched"; fi
 fi
 
 # --- 11b: an agent worker without its positive control is not a result ----------
