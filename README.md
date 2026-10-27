@@ -164,7 +164,7 @@ from [`llms.txt`](llms.txt), the machine-readable map of the repo.
 
 ## Quickstart
 
-himmel is a harness *for* [Claude Code](https://claude.com/claude-code), so
+himmel runs on top of [Claude Code](https://claude.com/claude-code), so
 install Claude Code first:
 `curl -fsSL https://claude.ai/install.sh | bash`.
 

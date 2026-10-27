@@ -8,7 +8,8 @@ Five steps get you there: preview, install, persist, verify, undo. Read the
 choices, the adapting notes and the recovery path once the first install
 works.
 
-himmel is a harness *for* [Claude Code](https://claude.com/claude-code): hooks,
+himmel is a control plane for coding agents, running on
+[Claude Code](https://claude.com/claude-code) today: hooks,
 git gates and guardrails that enforce a PR-gated workflow at the tool-call layer
 instead of asking the model to remember prose, plus handover files that carry
 context across sessions.
