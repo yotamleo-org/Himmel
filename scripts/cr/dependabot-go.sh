@@ -136,7 +136,8 @@ if [ "$MODE" = sweep ]; then
     merged=0 skipped=0
     while read -r n h a; do
         [ -n "$n" ] || continue
-        if sweep_one "$n" "$h" "$a" 2>&1; then merged=$((merged + 1)); else skipped=$((skipped + 1)); fi
+        # stdin is the PR list: a judge that reads stdin (claude -p does) would swallow the rest
+        if sweep_one "$n" "$h" "$a" 2>&1 </dev/null; then merged=$((merged + 1)); else skipped=$((skipped + 1)); fi
     done <<EOF
 $list
 EOF

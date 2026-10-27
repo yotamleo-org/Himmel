@@ -303,6 +303,18 @@ check    "5: a head whose retry failed too is not judged again" "$(judged)" "2"
 check    "5: a failed judge call is never merged" "$(merged)" ""
 export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
 
+# a judge that reads stdin, as `claude -p` does, must not swallow the rest of the PR list
+# shellcheck disable=SC2016  # the stub's own text, expanded when the stub runs
+printf '#!/usr/bin/env bash\ncat > "$STUB_STDIN"\nexec "$STUB_JUDGE_CALL" "$@"\n' > "$tmp/bin/judge-stdin"
+chmod +x "$tmp/bin/judge-stdin"
+sreset; export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-stdin" STUB_JUDGE_CALL="$tmp/bin/judge-call" STUB_STDIN="$tmp/stdin"
+STUB_LIST="$PR $SHA false
+$PR $SHA true"
+sweep
+contains "5: a judge reading stdin leaves the next PR to the sweep" "$out" "merged=1 skipped=1"
+check    "5: the judge reads no PR list on its stdin" "$(cat "$STUB_STDIN")" ""
+export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
+
 # a directory where the ledger file goes: the row write fails, as root too
 sreset; rm -f "$LEDGER"; mkdir "$LEDGER"
 sweep
