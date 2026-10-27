@@ -191,6 +191,35 @@ CHK_DROP=$(env -u CR_PROFILE CRITICS_BASE_JSON="$tmp/chk.json" CRITICS_LOCAL_JSO
     HIMMEL_API_LANE=on CR_APP=0 bash "$PANEL" --check 2>/dev/null)
 check "check: drop claude gives codex only" "$(printf '%s\n' "$CHK_DROP" | grep '^effective reviewers:')" "effective reviewers: codex"
 
+# Resolver rejects unknown modes and invalid precision instead of loosening a gate.
+# shellcheck source=scripts/lib/critics-config.sh
+. "$HERE/../lib/critics-config.sh"
+printf '%s\n' '{"panel":[{"slug":"claude","mode":"soft"}]}' > "$tmp/mode-unknown.json"
+mode_rc=0
+CRITICS_JSON="$tmp/mode-unknown.json" critics_config_resolve > "$tmp/mode-unknown.out" 2>&1 || mode_rc=$?
+check "mode: unknown mode rejected" "$mode_rc" "2"
+printf '%s\n' '{"advisory_precision_floor":0.60,"coderabbit_outside_precision":0.55,"panel":[{"slug":"claude","mode":"advisory","precision":0.482}]}' > "$tmp/mode-advisory.json"
+mode_rc=0
+CRITICS_JSON="$tmp/mode-advisory.json" critics_config_resolve > "$tmp/mode-advisory.out" 2>&1 || mode_rc=$?
+check "mode: advisory accepted" "$mode_rc" "0"
+check "mode: below floor stays advisory" "$(jq -r '.panel[0].mode' "$tmp/mode-advisory.out" 2>/dev/null)" "advisory"
+printf '%s\n' '{"advisory_precision_floor":0.40,"coderabbit_outside_precision":0.70,"panel":[{"slug":"claude","precision":0.45}]}' > "$tmp/precision-overlay.json"
+precision_out=$(CRITICS_JSON="" CRITICS_BASE_JSON="$tmp/mode-advisory.json" CRITICS_LOCAL_JSON="$tmp/precision-overlay.json" critics_config_resolve 2>/dev/null)
+check "mode: local precision and floor restore hard" "$(printf '%s' "$precision_out" | jq -r '.panel[0].mode')" "hard"
+check "mode: outside precision overlay preserved" "$(printf '%s' "$precision_out" | jq -r '.coderabbit_outside_precision')" "0.7"
+for bad in '"0.60"' null -0.1 1.1; do
+    jq --argjson bad "$bad" '.advisory_precision_floor=$bad' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json"
+    mode_rc=0
+    CRITICS_JSON="$tmp/precision-bad.json" critics_config_resolve > "$tmp/precision-bad.out" 2>&1 || mode_rc=$?
+    check "mode: invalid precision floor $bad rejected" "$mode_rc" "2"
+done
+for field in precision coderabbit_outside_precision; do
+    jq --arg field "$field" 'if $field == "precision" then .panel[0].precision="invalid" else .coderabbit_outside_precision="invalid" end' "$tmp/mode-advisory.json" > "$tmp/precision-bad.json"
+    mode_rc=0
+    CRITICS_JSON="$tmp/precision-bad.json" critics_config_resolve > "$tmp/precision-bad.out" 2>&1 || mode_rc=$?
+    check "mode: invalid $field rejected" "$mode_rc" "2"
+done
+
 if [ "$fails" -eq 0 ]; then
     echo "ALL PASS"
 else
