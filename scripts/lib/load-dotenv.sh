@@ -367,7 +367,8 @@ _load_dotenv_extract() {
 # .env (layer table: docs/internals/config-layers.md). They live in this file,
 # not a sibling, so every copy of the loader carries load_policy.
 #
-#   behaviour keys  <repo>/.himmel/project.conf > ~/.himmel/himmel.conf.local
+#   behaviour keys  <repo>/.himmel/project.conf (project-scope keys only,
+#                   _himmel_project_scope) > ~/.himmel/himmel.conf.local
 #                   > ~/.himmel/himmel.conf (KEY=value, parsed, never
 #                   sourced). load_dotenv reads them with the process env
 #                   still winning.
@@ -408,6 +409,19 @@ _himmel_key_class() {
         *)
             printf 'secret' ;;
     esac
+}
+
+# Behaviour keys a repo's project file may set. Station-scope keys (paths,
+# identity, initiative/AFK) never read it, so a committed file cannot redirect
+# where a station keeps its state.
+_himmel_project_scope() {
+    case "$1" in
+        CR_PROFILE|CR_CLAUDE_AGENTS|TICKET_ID_REQUIRED|TICKET_ID_PATTERN|\
+        TICKET_ID_EXEMPT_AUTHORS|TRACKER|JIRA_PROJECT_KEY|JIRA_PROJECTS|\
+        HIMMEL_DOC_FRESHNESS)
+            return 0 ;;
+    esac
+    return 1
 }
 
 _himmel_config_dir() {
@@ -451,16 +465,22 @@ _himmel_policy_strict() {
 # _himmel_project_tighten KEY... — for each policy key the project file sets,
 # export its value when it is stricter than the one already resolved; a looser
 # or unordered value is ignored with one notice. Returns non-zero when the
-# file exists but cannot be read, so a gate fails closed.
+# file exists but is not a readable file or cannot be parsed, so a gate fails
+# closed.
 _himmel_project_tighten() {
-    local _pt_file _pt_line _pt_key _pt_val _pt_new _pt_cur
+    local _pt_file _pt_out _pt_line _pt_key _pt_val _pt_new _pt_cur
     _pt_file=$(_himmel_project_conf)
     [ -n "$_pt_file" ] && { [ -e "$_pt_file" ] || [ -L "$_pt_file" ]; } || return 0
-    if [ ! -r "$_pt_file" ]; then
-        printf 'himmel: %s exists but is unreadable; gate policy fails closed\n' "$_pt_file" >&2
+    if [ ! -f "$_pt_file" ] || [ ! -r "$_pt_file" ]; then
+        printf 'himmel: %s exists but is unreadable or not a file; gate policy fails closed\n' "$_pt_file" >&2
         return 1
     fi
-    while IFS= read -r _pt_line || [ -n "$_pt_line" ]; do
+    if ! _pt_out=$(_load_dotenv_extract "$_pt_file" "$@"); then
+        printf 'himmel: %s cannot be parsed; gate policy fails closed\n' "$_pt_file" >&2
+        return 1
+    fi
+    while IFS= read -r _pt_line; do
+        [ -n "$_pt_line" ] || continue
         _pt_key="${_pt_line%%=*}"
         _pt_val=$(_load_dotenv_trim "${_pt_line#*=}")
         _pt_new=$(_himmel_policy_strict "$_pt_key" "$_pt_val")
@@ -470,7 +490,9 @@ _himmel_project_tighten() {
         elif [ -z "$_pt_new" ] || [ "$_pt_new" -lt "$_pt_cur" ]; then
             printf 'himmel: ignoring %s from %s: a project file may only tighten gate policy, never loosen it\n' "$_pt_key" "$_pt_file" >&2
         fi
-    done < <(_load_dotenv_extract "$_pt_file" "$@")
+    done <<EOF
+$_pt_out
+EOF
     return 0
 }
 
@@ -525,17 +547,29 @@ _himmel_policy_json() {
 # config.json. Secret keys are skipped. Non-zero only when config.json exists
 # and cannot be read.
 _himmel_config_layers() {
-    local _hc_dir _hc_key _hc_line _hc_val _hc_file _hc_found=" "
-    local _hc_cfg=() _hc_pol=()
+    local _hc_dir _hc_key _hc_line _hc_val _hc_file _hc_found=" " _hc_first=1
+    local _hc_cfg=() _hc_pol=() _hc_proj=() _hc_keys=()
     _hc_dir=$(_himmel_config_dir)
     for _hc_key in "$@"; do
         case "$(_himmel_key_class "$_hc_key")" in
-            config) _hc_cfg[${#_hc_cfg[@]}]="$_hc_key" ;;
+            config)
+                _hc_cfg[${#_hc_cfg[@]}]="$_hc_key"
+                if _himmel_project_scope "$_hc_key"; then
+                    _hc_proj[${#_hc_proj[@]}]="$_hc_key"
+                fi ;;
             policy) _hc_pol[${#_hc_pol[@]}]="$_hc_key" ;;
         esac
     done
     if [ "${#_hc_cfg[@]}" -gt 0 ]; then
+        # The project file comes first and serves project-scope keys only.
         for _hc_file in "$(_himmel_project_conf)" "$_hc_dir/himmel.conf.local" "$_hc_dir/himmel.conf"; do
+            if [ "$_hc_first" = 1 ]; then
+                _hc_first=0
+                [ "${#_hc_proj[@]}" -gt 0 ] || continue
+                _hc_keys=("${_hc_proj[@]}")
+            else
+                _hc_keys=("${_hc_cfg[@]}")
+            fi
             [ -n "$_hc_file" ] && [ -f "$_hc_file" ] || continue
             while IFS= read -r _hc_line || [ -n "$_hc_line" ]; do
                 _hc_key="${_hc_line%%=*}"
@@ -544,7 +578,7 @@ _himmel_config_layers() {
                 [ -n "$_hc_val" ] || continue
                 _hc_found="$_hc_found$_hc_key "
                 printf '%s=%s\n' "$_hc_key" "$_hc_val"
-            done < <(_load_dotenv_extract "$_hc_file" "${_hc_cfg[@]}")
+            done < <(_load_dotenv_extract "$_hc_file" "${_hc_keys[@]}")
         done
     fi
     if [ "${#_hc_pol[@]}" -gt 0 ] && [ -f "$(_himmel_policy_dir)/config.json" ]; then

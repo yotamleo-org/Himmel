@@ -613,7 +613,7 @@ assert_eq "C3 control: the station conf supplies HANDOVER_DIR" "$TMP/c3-live" "$
 got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" && . "$(dirname "$LIB")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP/c3-suite" && printf 'isolated ' && load_dotenv HANDOVER_DIR 2>/dev/null && printf '%s' "${HANDOVER_DIR:-<unset>}" )
 assert_eq "C3 isolate_himmel_config keeps the station conf out" "isolated <unset>" "$got"
 
-# P1-P5: the per-project override, <primary checkout>/.himmel/project.conf.
+# P1-P8: the per-project override, <primary checkout>/.himmel/project.conf.
 PREPO="$TMP/p-repo"
 mkdir -p "$PREPO/.himmel" "$TMP/p-config" "$TMP/p-home/.himmel"
 git -C "$PREPO" init --quiet
@@ -621,15 +621,15 @@ git -C "$PREPO" config user.email t@example.com
 git -C "$PREPO" config user.name tester
 git -C "$PREPO" commit --allow-empty -q -m init
 PCONF="$PREPO/.himmel/project.conf"
-printf 'HANDOVER_DIR=/p1/from-user\n' >"$TMP/p-config/himmel.conf"
+printf 'CR_PROFILE=p1-from-user\nHANDOVER_DIR=/p7/from-user\n' >"$TMP/p-config/himmel.conf"
 
-# P1: a behaviour key in the project file beats himmel.conf; the process env
-# still beats the project file.
-printf 'HANDOVER_DIR=/p1/from-project\n' >"$PCONF"
-got=$( cd "$PREPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
-assert_eq "P1 the project file beats himmel.conf for a behaviour key" "/p1/from-project" "$got"
-got=$( cd "$PREPO" && export HANDOVER_DIR=/p1/live && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
-assert_eq "P1 the process env beats the project file" "/p1/live" "$got"
+# P1: a project-scope key in the project file beats himmel.conf; the process
+# env still beats the project file.
+printf 'CR_PROFILE=p1-from-project\n' >"$PCONF"
+got=$( cd "$PREPO" && unset CR_PROFILE && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv CR_PROFILE 2>/dev/null; printf '%s' "${CR_PROFILE:-<unset>}" )
+assert_eq "P1 the project file beats himmel.conf for a project-scope key" "p1-from-project" "$got"
+got=$( cd "$PREPO" && export CR_PROFILE=p1-live && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv CR_PROFILE 2>/dev/null; printf '%s' "${CR_PROFILE:-<unset>}" )
+assert_eq "P1 the process env beats the project file" "p1-live" "$got"
 
 # P2: a project value looser than the user's is ignored, with one notice.
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1","ARMAUTOMERGE":"0"}}\n' >"$TMP/p-home/.himmel/config.json"
@@ -648,21 +648,21 @@ assert_eq "P3 the project file tightens a policy key (load_dotenv)" "1" "$got"
 got=$( cd "$PREPO" && export CR_REQUIRE_CROSS_MODEL=0 && HOME="$TMP/p-home" load_dotenv --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
 assert_eq "P3 the project file tightens a policy key the process env set loose (load_dotenv)" "1" "$got"
 
-# P4: a secret key in the project file is never loaded, while a behaviour key
-# beside it is.
+# P4: a secret key in the project file is never loaded, while a project-scope
+# key beside it is.
 kreset
-printf 'HANDOVER_DIR=/p4/from-project\nTEST_KR_TOKEN=planted-in-project\n' >"$PCONF"
-got=$( cd "$PREPO" && unset HANDOVER_DIR TEST_KR_TOKEN && load_dotenv HANDOVER_DIR TEST_KR_TOKEN 2>/dev/null; printf '%s|%s' "${HANDOVER_DIR:-<unset>}" "${TEST_KR_TOKEN:-<unset>}" )
-assert_eq "P4 a secret in the project file is not loaded" "/p4/from-project|<unset>" "$got"
+printf 'CR_PROFILE=p4-from-project\nTEST_KR_TOKEN=planted-in-project\n' >"$PCONF"
+got=$( cd "$PREPO" && unset CR_PROFILE TEST_KR_TOKEN && load_dotenv CR_PROFILE TEST_KR_TOKEN 2>/dev/null; printf '%s|%s' "${CR_PROFILE:-<unset>}" "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "P4 a secret in the project file is not loaded" "p4-from-project|<unset>" "$got"
 
 # P5: a worktree reads its primary checkout's project file, not its own copy.
-printf 'HANDOVER_DIR=/p5/from-primary\n' >"$PCONF"
+printf 'CR_PROFILE=p5-from-primary\n' >"$PCONF"
 PWT="$TMP/p-wt"
 git -C "$PREPO" worktree add -q "$PWT" -b p5-branch
 mkdir -p "$PWT/.himmel"
-printf 'HANDOVER_DIR=/p5/from-worktree\n' >"$PWT/.himmel/project.conf"
-got=$( cd "$PWT" && unset HANDOVER_DIR && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
-assert_eq "P5 a worktree reads the primary checkout's project file" "/p5/from-primary" "$got"
+printf 'CR_PROFILE=p5-from-worktree\n' >"$PWT/.himmel/project.conf"
+got=$( cd "$PWT" && unset CR_PROFILE && load_dotenv CR_PROFILE 2>/dev/null; printf '%s' "${CR_PROFILE:-<unset>}" )
+assert_eq "P5 a worktree reads the primary checkout's project file" "p5-from-primary" "$got"
 git -C "$PREPO" worktree remove --force "$PWT" 2>/dev/null || true
 
 # P6: a project file that is a dangling symlink fails closed in the gate reader.
@@ -670,6 +670,29 @@ rm -f "$PCONF"
 ln -s "$TMP/p6-gone" "$PCONF"
 got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>"$TMP/p6.err"; printf '%s' "$?" )
 assert_eq "P6 a dangling project-file symlink fails closed" "1|1" "$got|$(grep -c 'unreadable' "$TMP/p6.err")"
+rm -f "$PCONF"
+
+# P7: a station-scope key is never read from the project file, so a committed
+# file cannot redirect HANDOVER_DIR, whether or not himmel.conf sets it.
+printf 'HANDOVER_DIR=/p7/decoy\nLUNA_VAULT_PATH=/p7/decoy-vault\n' >"$PCONF"
+got=$( cd "$PREPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "P7 a project HANDOVER_DIR cannot beat himmel.conf" "/p7/from-user" "$got"
+got=$( cd "$PREPO" && unset LUNA_VAULT_PATH && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv LUNA_VAULT_PATH 2>/dev/null; printf '%s' "${LUNA_VAULT_PATH:-<unset>}" )
+assert_eq "P7 a station key absent from himmel.conf is not served from the project file" "<unset>" "$got"
+
+# P8: when the project file cannot be parsed (a directory, or awk failing),
+# the gate reader fails closed instead of dropping the tightening.
+rm -f "$PCONF"
+mkdir -p "$PCONF"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "$?" )
+assert_eq "P8 a project file that is a directory fails closed" "1" "$got"
+rmdir "$PCONF"
+printf 'CR_REQUIRE_CROSS_MODEL=1\n' >"$PCONF"
+mkdir -p "$TMP/p8-bin"
+printf '#!/bin/sh\nexit 2\n' >"$TMP/p8-bin/awk"
+chmod +x "$TMP/p8-bin/awk"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" PATH="$TMP/p8-bin:$PATH" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "$?" )
+assert_eq "P8 a failing project-file extractor fails closed" "1" "$got"
 rm -f "$PCONF"
 
 echo

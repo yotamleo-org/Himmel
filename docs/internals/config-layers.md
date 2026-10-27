@@ -8,14 +8,14 @@ Settings come in two scopes. **User scope** is every file under `~/.himmel`
 (and the keyring): it applies to every repo you run himmel in. **Project
 scope** is one file, `.himmel/project.conf`, committed in a repo you adopted:
 it applies only to sessions that run in that repo. A project file can change
-behaviour keys for its repo, and can make a gate stricter than your user
+the project-scope behaviour keys for its repo, and can make a gate stricter than your user
 setting, but never looser.
 
 ## The layers
 
 | Layer | File | Owner | Tracked? | Holds |
 |---|---|---|---|---|
-| Project override | `<repo>/.himmel/project.conf` | the repo's maintainers (a hook refuses agent writes) | yes, in the adopted repo | behaviour keys for this repo, and gate-policy keys that may only tighten |
+| Project override | `<repo>/.himmel/project.conf` | the repo's maintainers (a hook refuses agent writes) | yes, in the adopted repo | project-scope behaviour keys (never station paths or identity), and gate-policy keys that may only tighten |
 | Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
@@ -35,7 +35,7 @@ every session (fleet manifest, queue locks, ledgers) is state, not config.
 Behaviour keys, read by `load_dotenv` in `scripts/lib/load-dotenv.sh`:
 
 1. the process environment (a non-empty value)
-2. `<repo>/.himmel/project.conf`
+2. `<repo>/.himmel/project.conf`, project-scope keys only
 3. `~/.himmel/himmel.conf.local`
 4. `~/.himmel/himmel.conf`
 5. legacy `.env`, with a `DEPRECATED` notice on stderr
@@ -80,8 +80,16 @@ primary checkout's file, not the worktree's copy. The gate scripts pass
 `--root` pointing at the himmel checkout; that root still picks `.env`, but
 never the project file. Outside a git repo there is no project file.
 
-- **Behaviour keys** from the project file beat `himmel.conf.local` and
+- **Behaviour keys**: the project file serves project-scope keys only:
+  `CR_PROFILE`, `CR_CLAUDE_AGENTS`, `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`,
+  `TICKET_ID_EXEMPT_AUTHORS`, `TRACKER`, `JIRA_PROJECT_KEY`, `JIRA_PROJECTS`
+  and `HIMMEL_DOC_FRESHNESS`. They beat `himmel.conf.local` and
   `himmel.conf`; the process environment still beats the project file.
+  Station-scope keys (`HANDOVER_DIR`, `LUNA_VAULT_PATH`, `USER_SLUG`,
+  `JIRA_EMAIL`, the org and account ids, `HIMMEL_UPDATE_AUTOSTASH`, the
+  initiative and AFK keys) are never read from it, even when `himmel.conf`
+  does not set them, so a committed file cannot move where a station keeps
+  its state.
 - **Gate-policy keys** from the project file can only tighten. Each key has a
   strict side, read as the gates read it (trimmed, any case):
 
@@ -100,6 +108,10 @@ never the project file. Outside a git repo there is no project file.
   `load_dotenv` applies the same rule to the policy keys it serves, even
   one the process environment set, so `pr-check-env.sh` shows the project
   file's tightening the gate enforces.
+  A project `ARMAUTOMERGE=0` governs only the default `arm-resume.sh` reads
+  through `load_policy`. It does not stop `headed-arm.sh`, which launches
+  with `ARMAUTOMERGE=1`, or an `ARMAUTOMERGE=1` passed to `merge-on-green.sh`
+  in its environment.
 - **Secret keys** are never read from the project file. A token written there
   is skipped and the resolver order below applies.
 - **Writes**: `block-himmel-config-writes.sh` refuses an agent's Edit, Write
@@ -107,9 +119,9 @@ never the project file. Outside a git repo there is no project file.
   a Bash command that names one, except a plain read. A session therefore
   cannot change its own repo's settings; the maintainers change the file by
   hand, and through review like any other tracked file.
-- A project file that exists but cannot be read, including a symlink whose
-  target is gone, makes `load_policy` return non-zero, so the gate refuses
-  instead of guessing.
+- A project file that exists but cannot be read or parsed, including a
+  symlink whose target is gone or a directory, makes `load_policy` return
+  non-zero, so the gate refuses instead of guessing.
 
 ### Failure behaviour
 
