@@ -12,8 +12,8 @@ fails=0
 ok(){ echo "ok - $1"; }
 bad(){ echo "FAIL - $1"; fails=$((fails+1)); }
 check(){ [ "$2" = "$3" ] && ok "$1" || bad "$1: [$2]!=[$3]"; }
-has(){ grep -qF -- "$3" "$2" && ok "$1" || bad "$1: [$3] not in $2"; }
-lacks(){ grep -qF -- "$3" "$2" && bad "$1: [$3] still in $2" || ok "$1"; }
+has(){ [ -r "$2" ] || { bad "$1: $2 unreadable"; return; }; grep -qF -- "$3" "$2" && ok "$1" || bad "$1: [$3] not in $2"; }
+lacks(){ [ -r "$2" ] || { bad "$1: $2 unreadable"; return; }; grep -qF -- "$3" "$2" && bad "$1: [$3] still in $2" || ok "$1"; }
 
 rules(){
     printf 'id\tstate\trule\tdate\tsource\tquote\n' >"$1"
@@ -105,6 +105,11 @@ check "scope: a malformed table exits 1" "$?" 1
 has "scope: a duplicate id is named" "$td/b.out" 'duplicate id M02'
 has "scope: an unknown state is named" "$td/b.out" "state 'live'"
 has "scope: an empty quote is named" "$td/b.out" 'M02 has no quote'
+
+git -C "$repo" mv docs/a.md scripts/a-notes.md
+git -C "$repo" -c user.name=t -c user.email=t@t commit -qm move
+(cd "$repo" && python3 "$tool" scope --rules "$td/r.tsv" --base HEAD~1 --head HEAD) >"$td/mv.out" 2>&1
+has "scope: a page renamed out of docs/ is in scope" "$td/mv.out" '- R docs/a.md → scripts/a-notes.md'
 
 (cd "$root" && python3 "$tool" scope --base HEAD --head HEAD) >"$td/real.out" 2>&1
 check "scope: the real remarks.tsv has a sound shape" "$?" 0

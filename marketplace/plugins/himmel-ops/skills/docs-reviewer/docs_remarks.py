@@ -151,13 +151,19 @@ def shape_problems(header, rows):
 
 def scope(a):
     header, rows = read_rows(a.rules)
-    out = subprocess.run(["git", "diff", "--name-status", "-M", f"{a.base}...{a.head}"],
+    out = subprocess.run(["git", "diff", "--name-status", "-z", "-M", f"{a.base}...{a.head}"],
                          check=True, capture_output=True, text=True).stdout
+    fields = out.split("\0")
     pages = []
-    for l in out.splitlines():
-        parts = l.split("\t")
-        if is_docs_page(parts[-1]):
-            pages.append(f"- {parts[0][0]} {parts[-1]}")
+    i = 0
+    while i < len(fields) - 1:
+        status = fields[i]
+        n = 2 if status[0] in "RC" else 1
+        paths = fields[i + 1:i + 1 + n]
+        i += 1 + n
+        # A rename or copy is in scope when either side is a docs page.
+        if any(is_docs_page(p) for p in paths):
+            pages.append(f"- {status[0]} {' → '.join(paths)}")
     states = [r[1] for r in rows if len(r) > 1]
     if pages:
         print(f"docs-review scope: {len(pages)} changed docs page(s); the judge runs the docs-reviewer skill on them "
