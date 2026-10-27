@@ -996,7 +996,7 @@ fi
 # here is a hard failure, not a silent skip of the marker -- an unmarked
 # worktree on the next run reads as foreign and refuses, defeating the whole
 # point of a dedicated persistent worktree.
-printf 'graph-cadence.sh HIMMEL-2095 owner=%s\n' "$_himmel_common" > "$OWNER_MARKER" \
+printf 'graph-cadence.sh owner=%s\n' "$_himmel_common" > "$OWNER_MARKER" \
     || _fail "could not write ownership marker $OWNER_MARKER after sync -- refusing to proceed on an unmarked worktree"
 
 # --- 6. ast-update.sh (structural refresh, promote-lock-safe) ---------------

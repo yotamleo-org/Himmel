@@ -1041,12 +1041,12 @@ launch_cmd() {
     # (--settings), like the armed launch; fails closed (no profile, no line).
     local console_settings
     console_settings=$(bash "$HERE/../../lanes/profile-settings.sh" console) \
-        || { err "the console plugin profile did not resolve; refusing to print a full-plugin-set console launch (HIMMEL-4013)"; exit 2; }
+        || { err "the console plugin profile did not resolve; refusing to print a full-plugin-set console launch"; exit 2; }
     # Only the profile's MCP servers (--strict-mcp-config), as the
     # armed launch does; the flags sit between --model and --autocompact.
     local console_mcp mcp_flags=""
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
-        || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server (HIMMEL-5310)"; exit 2; }
+        || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
     local claude_cmd
     claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \

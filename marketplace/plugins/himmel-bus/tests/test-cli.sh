@@ -145,7 +145,7 @@ out=$("$BUS" gc 2>&1)
 if [ -e "$seg0" ] && ! printf '%s' "$out" | grep -q 'would remove legB.0'; then pass "gc keeps a delivered segment younger than 30 days"; else fail "gc removed a 29-day segment: $out"; fi
 touch -t "$(ago 31)" "$seg0"
 out=$("$BUS" gc 2>&1)
-if [ -e "$seg0" ] && printf '%s' "$out" | grep -q 'would remove legB.0' && printf '%s' "$out" | grep -q 'HIMMEL-5072'; then pass "gc is report-only: names a delivered 31-day segment and the follow-up, deletes nothing"; else fail "gc delivered: $out"; fi
+if [ -e "$seg0" ] && printf '%s' "$out" | grep -q 'would remove legB.0' && printf '%s' "$out" | grep -q 'scan must survive a removed segment' && ! printf '%s' "$out" | grep -qE 'HIMMEL-[0-9]+'; then pass "gc is report-only: names a delivered 31-day segment and the reason without internal ticket ids, deletes nothing"; else fail "gc delivered: $out"; fi
 # Halted logs are kept and reported.
 lib "
   for (let i = 0; i < 400; i++) await store.append(root, 'otherLeg', { i: 'h' + i, t: Date.now(), f: 'other', r: 'otherLeg', b: 'z'.repeat(1400) });

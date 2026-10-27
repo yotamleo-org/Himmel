@@ -184,7 +184,7 @@ mk_ho() {
         printf 'session_kind: test\n'
         printf 'resume_cwd: %s\n' "$WORK_REPO"
         printf -- '---\n'
-        printf '# HIMMEL-2125 probe handover\n'
+        printf '# probe handover\n'
     } > "$p"
 }
 
