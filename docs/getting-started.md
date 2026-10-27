@@ -352,7 +352,7 @@ machine-wide default and override it per repo:
 { "env": { "HIMMEL_INITIATIVE": "prcheck,handover" } }
 
 // <repo>/.claude/settings.json — make THIS repo stricter (off) or freer (all)
-{ "env": { "HIMMEL_INITIATIVE": "" } }
+{ "env": { "HIMMEL_INITIATIVE": "0" } }
 ```
 
 A value exported in the launching shell takes precedence over `settings.json`

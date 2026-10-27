@@ -65,7 +65,7 @@ after this one are the full map.
 
 | Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
 |---|---|---|---|---|---|
-| Steps a session runs unasked at a completion point (for example `execute,prcheck,pr`) | machine · `HIMMEL_INITIATIVE=<steps>` in `~/.himmel/himmel.conf` | next session start | the session opens with `HIMMEL_INITIATIVE is active. Active steps: …` | remove the line; for one repo only, `"env": { "HIMMEL_INITIATIVE": "" }` in its `.claude/settings.json` | `scripts/hooks/inject-initiative.sh` |
+| Steps a session runs unasked at a completion point (for example `execute,prcheck,pr`) | machine · `HIMMEL_INITIATIVE=<steps>` in `~/.himmel/himmel.conf` | next session start | the session opens with `HIMMEL_INITIATIVE is active. Active steps: …` | remove the line; for one repo only, `"env": { "HIMMEL_INITIATIVE": "0" }` in its `.claude/settings.json` | `scripts/hooks/inject-initiative.sh` |
 | The unattended (AFK) step set | machine · `HIMMEL_AFK=1` plus `HIMMEL_INITIATIVE_AFK=<steps>` in `~/.himmel/himmel.conf` | next session start | the session opens with `HIMMEL_INITIATIVE_AFK is active. Active steps: …` | set `HIMMEL_AFK=0` or remove both lines | `scripts/hooks/inject-initiative.sh` |
 
 The step vocabulary and the AFK step set: **Initiative & autonomy** in
@@ -512,7 +512,7 @@ groups describe **how each key reaches code**, which is the #1 trap:
 
 The loader (`scripts/lib/load-dotenv.sh`) resolves the **primary checkout's**
 `.env` even from a worktree, never `source`s the file, and never overrides a
-value already exported in the live environment — so a bridged `.env` value
+non-empty value already exported in the live environment — so a bridged `.env` value
 sits at the *bottom* of the precedence chain: launching shell > project
 `settings.json` `env` > user `settings.json` `env` > `himmel.conf.local` >
 `himmel.conf` > the `.env` line. `load_policy` skips the live environment for
@@ -1022,7 +1022,7 @@ tables; this is the layer level.)
 
 | Layer | Off switch | Scope |
 |---|---|---|
-| Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "" }` in that repo's `.claude/settings.json` | session start |
+| Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "0" }` in that repo's `.claude/settings.json` | session start |
 | Armed auto-merge | remove `"ARMAUTOMERGE"` from `"policy"` in `~/.himmel/config.json`, and any legacy `ARMAUTOMERGE=` line from `.env` (default OFF), so `arm-resume.sh` stops arming with it; `--no-automerge` declines it for one arm; unset the shell `ARMAUTOMERGE` to drop a one-run grant | policy: every arm; flag: that arm; shell: that run |
 | Cap watchdogs (auto-arm) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) | launching shell |
 | A scheduled resume | find the job with `atq` then `at -c <job-id>` (look for `HIMMEL-Resume-`), or `crontab -l`; remove that one job with `atrm <job-id>`, or delete that one line with `crontab -e` | OS scheduler |
