@@ -2,14 +2,14 @@
 # test-machine-setup-hermetic.sh — structural guard: no machine-setup suite may
 # reach a REAL user settings.json write.
 #
-# WHY this exists: test-install-plugins-verify.ps1 / test-install-plugins-diagnostics.ps1
-# drove install-plugins.ps1 -Scope user with no settings pin. install-plugins.ps1
-# had NO -Settings seam at all, so `user` scope always resolved to the operator's
+# WHY this exists: the install-plugins verify/diagnostics suites drove
+# install-plugins -Scope user with no settings pin. install-plugins had
+# NO -Settings seam at all, so `user` scope always resolved to the operator's
 # real $HOME/.claude/settings.json — and on a verify-FAIL case, control still
 # reached the reconcile step (gated by HIMMEL_RECONCILE_PLUGINS, which
 # is `1` in the operator's live env), silently rewriting real enabledPlugins down
-# to the fixture floor. The fix teaches install-plugins.sh/.ps1 the same
-# CLAUDE_CONFIG_DIR idiom the sibling reconcile-enabled-plugins.{sh,ps1} and
+# to the fixture floor. The fix teaches install-plugins.sh the same
+# CLAUDE_CONFIG_DIR idiom the sibling reconcile-enabled-plugins.sh and
 # remove-retired-plugin.sh already use, and the two leaking suites now pin it.
 #
 # WHY behavioral, not textual: a static grep for "does this suite mention
@@ -31,15 +31,14 @@
 # silently passing everything downstream.
 #
 # EXPANSION: CLAUDE_CONFIG_DIR is PRODUCTION behavior
-# in install-plugins.{sh,ps1} now, not test-only scaffolding, so two more
-# properties are proven directly against the installers (not their test
+# in install-plugins.sh now, not test-only scaffolding, so two more
+# properties are proven directly against the installer (not its test
 # suites):
 #   - unset-path negative control: with CLAUDE_CONFIG_DIR UNSET, `user` scope
 #     must still resolve to (a sandboxed) $HOME/.claude/settings.json exactly
 #     as before this ticket — proven by observing a real write land there.
-#   - twin parity: .sh and .ps1 each get their OWN named case proving they
-#     honor CLAUDE_CONFIG_DIR when set — never collapsed into one, so a future
-#     one-sided edit fails loudly and names which twin drifted.
+#   - set-path case: with CLAUDE_CONFIG_DIR set, the installer writes there
+#     and leaves $HOME/.claude alone.
 #
 # Scope: only the suites that can actually reach a plugin-settings write are
 # driven here (kept fast — this does not run the whole directory).
@@ -51,7 +50,6 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 MS_DIR="$REPO_ROOT/scripts/machine-setup"
 INSTALL_SH="$MS_DIR/install-plugins.sh"
-INSTALL_PS1="$MS_DIR/install-plugins.ps1"
 
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; echo "$(basename "$0"): SKIPPED — 0 cases ran (jq not on PATH)"; exit 0; }
 SHA_TOOL=""
@@ -73,23 +71,6 @@ skip() { printf 'SKIP %s -- %s\n' "$1" "$2"; SKIP_COUNT=$((SKIP_COUNT + 1)); }
 # failure here would scatter them across the real filesystem.
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-hermetic.XXXXXX")" || { echo "FAIL: mktemp -d failed - cannot build the canary sandboxes"; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
-
-# Windows + pwsh gate, same idiom as test-upgrade-rtk.sh (a .cmd stub is
-# cmd.exe-native and cannot run for real under pwsh on Linux/macOS).
-PS_BIN=""
-for c in pwsh pwsh.exe powershell.exe; do
-  if command -v "$c" >/dev/null 2>&1; then PS_BIN="$c"; break; fi
-done
-IS_WINDOWS=0
-case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-  msys*|cygwin*|win32*|MINGW*|MSYS*) IS_WINDOWS=1 ;;
-esac
-PS1_OK=0
-[ -n "$PS_BIN" ] && [ "$IS_WINDOWS" -eq 1 ] && PS1_OK=1
-ps1_skip_reason() {
-  if [ -z "$PS_BIN" ]; then echo "no pwsh/powershell.exe on PATH"
-  else echo "not Windows (OSTYPE=${OSTYPE:-unknown}); the claude.cmd stub needs cmd.exe"; fi
-}
 
 # ── canary check: run <cmd...> as a child with HOME/USERPROFILE/CLAUDE_CONFIG_DIR
 # pointed at a fresh sandbox holding a known canary, cwd pinned to REPO_ROOT
@@ -208,7 +189,7 @@ echo "──── positive control: a deliberately non-hermetic fixture must be
 BAD_FIXTURE="$TMP/non-hermetic-fixture.sh"
 cat > "$BAD_FIXTURE" <<'FIXTURE'
 #!/usr/bin/env bash
-# Deliberately BAD: resolves `user` scope the way install-plugins.{sh,ps1}
+# Deliberately BAD: resolves `user` scope the way install-plugins.sh
 # used to, straight off $HOME, ignoring CLAUDE_CONFIG_DIR entirely.
 mkdir -p "$HOME/.claude"
 printf '{"tampered": true}\n' > "$HOME/.claude/settings.json"
@@ -280,11 +261,6 @@ SH_SUITES=(
   test-reconcile-enabled-plugins.sh
   test-remove-retired-plugin.sh
 )
-PS1_SUITES=(
-  test-install-plugins-verify.ps1
-  test-install-plugins-diagnostics.ps1
-  test-install-plugins-autoupdate.ps1
-)
 
 for s in "${SH_SUITES[@]}"; do
   suite="$MS_DIR/$s"
@@ -295,25 +271,12 @@ for s in "${SH_SUITES[@]}"; do
   check_hermetic "$s: hermetic (real settings.json untouched)" bash "$suite"
 done
 
-for s in "${PS1_SUITES[@]}"; do
-  suite="$MS_DIR/$s"
-  if [ "$PS1_OK" -ne 1 ]; then
-    skip "$s: hermetic" "$(ps1_skip_reason)"
-    continue
-  fi
-  if [ ! -f "$suite" ]; then
-    fail "$s: hermetic" "suite not found: $suite"
-    continue
-  fi
-  check_hermetic "$s: hermetic (real settings.json untouched)" "$PS_BIN" -NoProfile -File "$suite"
-done
-
-# ── EXPANSION: unset-path negative control + explicit twin parity ───────────
+# ── EXPANSION: unset-path negative control + set-path case ───────────────
 # Both cases below drive the REAL installer directly (not a wrapping test
 # suite) through its autoUpdate patch — the one write path cheap
 # enough to trigger with an empty enabledPlugins template (no install/verify
 # machinery needed) — and observe WHERE the write actually lands.
-echo "──── CLAUDE_CONFIG_DIR: unset-path default + explicit twin parity (HIMMEL-2353 EXPANSION) ────"
+echo "──── CLAUDE_CONFIG_DIR: unset-path default + set-path case (HIMMEL-2353 EXPANSION) ────"
 
 TWIN_TEMPLATE="$TMP/twin-template.json"
 cat > "$TWIN_TEMPLATE" <<'JSON'
@@ -344,8 +307,7 @@ autoupdate_true() { # <path> -> "true" | "false" | "absent" | "MISSING"
 # The sh stub's `marketplace add` declares mp in the user-scope settings file
 # when absent, as the real CLI does: install-plugins.sh reads that file BEFORE
 # the call and leaves an entry already there alone, so the sh
-# cases seed an mp-less file. The ps1 twin still patches a pre-existing entry
-# and keeps seed_settings.
+# cases seed an mp-less file.
 make_sh_claude_stub() { # <bindir>
   mkdir -p "$1"
   cat > "$1/claude" <<'STUB'
@@ -360,10 +322,6 @@ fi
 exit 0
 STUB
   chmod +x "$1/claude"
-}
-make_ps1_claude_stub() { # <bindir>
-  mkdir -p "$1"
-  printf '@echo off\nexit /b 0\n' > "$1/claude.cmd"
 }
 
 # ── The four parity cases below used to assert only on WHERE
@@ -448,43 +406,6 @@ if [ "$(autoupdate_true "$cfg_settings")" = "true" ] && [ "$(autoupdate_true "$h
 parity_verdict "sh: honors CLAUDE_CONFIG_DIR when set (writes there, not \$HOME/.claude)" \
   "$patched_ok" "$rc" \
   "cfgdir autoUpdate=$(autoupdate_true "$cfg_settings"), home autoUpdate=$(autoupdate_true "$home_settings") (sandbox: $sbx)"
-
-# -- .ps1 twins: same two cases, skipped cleanly off-Windows/no-pwsh ---------
-if [ "$PS1_OK" -ne 1 ]; then
-  skip "ps1: CLAUDE_CONFIG_DIR unset -- default still resolves to \$HOME/.claude/settings.json" "$(ps1_skip_reason)"
-  skip "ps1: honors CLAUDE_CONFIG_DIR when set (writes there, not \$HOME/.claude)" "$(ps1_skip_reason)"
-else
-  sbx="$(mktemp -d "$TMP/ps1-unset.XXXXXX")"
-  bindir="$sbx/bin"; make_ps1_claude_stub "$bindir"
-  default_settings="$sbx/.claude/settings.json"
-  seed_settings "$default_settings"
-  env -u CLAUDE_CONFIG_DIR -u HIMMEL_RECONCILE_PLUGINS \
-    HOME="$sbx" USERPROFILE="$sbx" PATH="$bindir:$PATH" \
-    "$PS_BIN" -NoProfile -File "$INSTALL_PS1" -Template "$TWIN_TEMPLATE" -Scope user >/dev/null 2>&1
-  rc=$?
-  patched_ok=0
-  [ "$(autoupdate_true "$default_settings")" = "true" ] && patched_ok=1
-  parity_verdict "ps1: CLAUDE_CONFIG_DIR unset -- default still resolves to \$HOME/.claude/settings.json" \
-    "$patched_ok" "$rc" \
-    "expected the sandboxed \$HOME/.claude/settings.json to be patched; it was not (sandbox: $sbx)"
-
-  sbx="$(mktemp -d "$TMP/ps1-set.XXXXXX")"
-  bindir="$sbx/bin"; make_ps1_claude_stub "$bindir"
-  home_settings="$sbx/home/.claude/settings.json"
-  cfg_dir="$sbx/cfgdir"
-  cfg_settings="$cfg_dir/settings.json"
-  seed_settings "$home_settings"
-  seed_settings "$cfg_settings"
-  env -u HIMMEL_RECONCILE_PLUGINS \
-    HOME="$sbx/home" USERPROFILE="$sbx/home" CLAUDE_CONFIG_DIR="$cfg_dir" PATH="$bindir:$PATH" \
-    "$PS_BIN" -NoProfile -File "$INSTALL_PS1" -Template "$TWIN_TEMPLATE" -Scope user >/dev/null 2>&1
-  rc=$?
-  patched_ok=0
-  if [ "$(autoupdate_true "$cfg_settings")" = "true" ] && [ "$(autoupdate_true "$home_settings")" = "false" ]; then patched_ok=1; fi
-  parity_verdict "ps1: honors CLAUDE_CONFIG_DIR when set (writes there, not \$HOME/.claude)" \
-    "$patched_ok" "$rc" \
-    "cfgdir autoUpdate=$(autoupdate_true "$cfg_settings"), home autoUpdate=$(autoupdate_true "$home_settings") (sandbox: $sbx)"
-fi
 
 echo ""
 if [ "$FAIL_COUNT" -eq 0 ]; then

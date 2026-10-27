@@ -4,10 +4,6 @@
 # template + settings.json in a temp dir and drives the real script with
 # --settings/--template. No plugin is installed, no ~/.claude touched.
 #
-# reconcile-enabled-plugins.ps1 carries the same WHITELIST + local-override
-# logic — that twin is NOT covered here; keep both in lockstep (sanity-check
-# with `pwsh reconcile-enabled-plugins.ps1 -DryRun -Settings <fixture>`).
-#
 # Covers:
 #   1. Drift force-off       — a template-`false` plugin left `true` -> `false`.
 #   2. Template-`true` kept   — a floor plugin stays enabled.

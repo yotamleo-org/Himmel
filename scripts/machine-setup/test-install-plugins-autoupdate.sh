@@ -14,9 +14,6 @@
 #   6. link pre-planted at the OLD predictable temp path
 #      ("$SF.autoupdate.tmp") → not written through; patch still lands.
 #
-# install-plugins.ps1 carries the SAME patch as a PowerShell twin — covered by
-# test-install-plugins-autoupdate.ps1; keep both in lockstep when changing either.
-
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)

@@ -7,10 +7,7 @@
 # Instead the jq filters are MIRRORED below and each mirror is pinned to
 # the source with a literal drift-guard grep: if ubuntu.sh's filter
 # changes, the corresponding grep fails and forces this test back in
-# sync. win11.ps1 carries the same swap/patch logic as PowerShell object
-# walks (no jq) — that twin is NOT covered here; it is
-# fixture-verified-only by manual runs on Windows (flagged honestly:
-# keep both in lockstep when changing either).
+# sync.
 #
 # Covers:
 #   1. Swap filter (bug fix): a settings.json holding BOTH a

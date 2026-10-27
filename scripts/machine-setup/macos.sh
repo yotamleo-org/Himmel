@@ -38,8 +38,8 @@
 #   6. hands off to the himmelctl install wizard — arming a
 #      cadence (drift-fix/upstream-watch/pull-cadence/...) was
 #      previously reachable only by separately running himmelctl, so this is
-#      where arming stops being undiscoverable, same as ubuntu.sh/win11.ps1
-#      already do at the end of their own runs.
+#      where arming stops being undiscoverable, same as ubuntu.sh
+#      already does at the end of its own run.
 # Idempotent. Honors CLAUDE_DIR (default ~/.claude), HIMMEL_PATH (default: the
 # clone this script lives in), and MACOS_ASSUME_YES=1 (skip the hook prompt).
 set -euo pipefail
@@ -196,7 +196,7 @@ step "Hand off to the himmelctl install wizard (cadences, plugins, hooks)"
   # Arming a cadence (drift-fix, upstream-watch,
   # pull-cadence, ...) was previously reachable only by separately running
   # himmelctl, so it never happened on a fresh machine unless the operator
-  # remembered to. ubuntu.sh/win11.ps1 already end by delegating to this
+  # remembered to. ubuntu.sh already ends by delegating to this
   # same wizard via `exec` -- deliberately NOT an exec here,
   # since macos.sh (unlike those two) still wants to print its own summary
   # below afterward. Bootstrap.sh short-circuits straight to `node bin.js

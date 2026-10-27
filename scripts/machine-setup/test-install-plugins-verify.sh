@@ -11,9 +11,6 @@
 #      (follow-up: install-plugins.sh must honor enabledPlugins'
 #      boolean value, not install every key regardless)
 #
-# install-plugins.ps1 carries the SAME verify logic as a PowerShell twin — it is
-# covered by its own twin test-install-plugins-verify.ps1; keep
-# both in lockstep when changing either.
 
 set -uo pipefail
 

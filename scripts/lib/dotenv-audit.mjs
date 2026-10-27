@@ -24,7 +24,7 @@ function sources(dir) {
     const p = join(dir, e.name);
     if (e.isDirectory()) return sources(p);
     if (/(?:^test[-_]|\.test\.|\.md$|\.json$|\.lock$|\.tsv$)/.test(e.name)) return [];
-    return /\.(?:sh|ps1|ts|js|mjs|py)$/.test(e.name) || /^claude-/.test(e.name) ? [p] : [];
+    return /\.(?:sh|ts|js|mjs|py)$/.test(e.name) || /^claude-/.test(e.name) ? [p] : [];
   });
 }
 
@@ -42,9 +42,6 @@ export function auditDotenv(root) {
     }
     if (/^\s*(?:from dotenv import load_dotenv\b|dotenv\.config\s*\()/m.test(text)) warn(path, 1);
     if (/process\.env\[key(?:\.trim\(\))?\]\s*\?\?=/.test(text) && !/DOTENV_KEYS\.has\(key(?:\.trim\(\))?\)/.test(text)) warn(path, 1);
-    if (path.endsWith('.ps1')) {
-      for (const m of text.matchAll(/Get-DotenvKey[^\n]*-Name\s+["']([A-Za-z_][A-Za-z0-9_]*)["']/g)) used.add(m[1]);
-    }
     if (path.endsWith('.sh') || /\/claude-[^/.]+$/.test(path)) {
       const lines = text.split('\n');
       for (let i = 0; i < lines.length; i++) {

@@ -63,9 +63,7 @@
 # claim about user scope alone; project/local settings may still override the
 # effective state. --dry-run performs no write and no re-read.
 #
-# Cross-platform: pure bash + jq, bash 3.2-safe (no associative arrays, no
-# mapfile) — Git-Bash on Windows runs it as-is. plugin-profile.ps1 is the
-# PowerShell twin; keep the resolution + refusal rules in lockstep.
+# Pure bash + jq, bash 3.2-safe (no associative arrays, no mapfile).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
