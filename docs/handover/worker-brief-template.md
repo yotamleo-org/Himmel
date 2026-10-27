@@ -187,7 +187,7 @@ template_version: 3
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
 >    it omits the flag. The merge is typed exactly
 >    `bash scripts/handover/merge-on-green.sh [--jira-transition]` (on an adapter
->    repo the worker stops at READY and the chief merges with
+>    repo not confirmed PRIVATE the worker stops at READY and the chief merges with
 >    `merge-fork-pr.sh`, HIMMEL-7796) from the
 >    worktree root, followed by `--go <GO file>`: the chief's `GO` message
 >    names the file (`<handover root>/.locks/go/<pr>.<head>`), a chief-launched worker's
