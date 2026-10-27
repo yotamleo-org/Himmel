@@ -674,7 +674,6 @@ scripts/hooks/test-check-template-himmel-plugins.sh	1
 scripts/hooks/test-check-update-available.sh	7
 scripts/hooks/test-check-worktree-isolation.sh	1
 scripts/hooks/test-ci-doc-invariants.sh	12
-scripts/hooks/test-claude-glm-seed-check.sh	0
 scripts/hooks/test-cmdpos-clean.sh	0
 scripts/hooks/test-codex-adapter-e2e.sh	0
 scripts/hooks/test-codex-plugin-security-hooks.sh	2
@@ -780,8 +779,6 @@ scripts/lanes/test-launch-site-profiles.sh	0
 scripts/lanes/test-worker-cost-report.sh	0
 scripts/lanes/test-worker-pr-open.sh	3
 scripts/lanes/test-profile-settings.sh	1
-scripts/lanes/tests/test-await-glm-worker.sh	61
-scripts/lanes/tests/test-await-liveness.sh	1
 scripts/lanes/tests/test-worker-burn.sh	0
 scripts/lanes/tests/test-stop-worker.sh	317
 scripts/lib/test-api-credit-state.sh	6
@@ -1032,7 +1029,6 @@ scripts/test-claude-codex-srt.sh	2
 scripts/test-claude-codex.sh	17
 scripts/test-claude-deepseek-vault-marker.sh	2
 scripts/test-claude-deepseek.sh	4
-scripts/test-claude-glm.sh	7
 scripts/test-claude-openrouter.sh	14
 scripts/test-clean-fresh-lock.sh	4
 scripts/test-clean-garden-accounting.sh	10

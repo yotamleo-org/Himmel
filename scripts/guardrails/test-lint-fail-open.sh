@@ -192,11 +192,9 @@ else
                 scripts/guardrails/fixtures/fail-open/instance2-fixed.sh.fxt \
                 scripts/hooks/block-backend-tier.sh \
                 scripts/hooks/check-fail-open-lint.sh \
-                scripts/lanes/await-glm-worker.sh \
                 scripts/lanes/bench/run-batch.sh \
                 scripts/lanes/funded-max-pct.mjs \
                 scripts/graphify/refresh-graph-map.sh \
-                scripts/claude-glm \
                 .pre-commit-config.yaml
             do
                 if printf '%s' "$p" | grep -Eq "$scope_re"; then
