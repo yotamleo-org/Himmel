@@ -521,7 +521,7 @@ cov_ledger_keys() {
         [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
             | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
         | [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and .status == "ok" and (.head | type == "string") and hm(.head; $h)
-            and (.model | type == "string") and (.model | IN("claude", "claude-floor", "codex-adv") | not)
+            and (.model | type == "string") and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not)
             and ((.detail // "") | tostring | startswith("trivial-descendant") | not)) | ._ln] as $clean
         | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h))] | length > 0) as $raised
         | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev))
