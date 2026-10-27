@@ -4102,15 +4102,16 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         return "$hit"
     }
     _COO_SEEN=$'\n'
-    _check_one_operand() {
-        local w="$1" resolved wabs wparent wleaf result
-        [ -n "$w" ] || return 0
-        # A word judged once is judged the same every time (the
-        # verdict reads only the word, $cwd and $nested_wt_primary, all fixed
-        # for the run, and the flags it sets only ever go to 1), so a long
-        # body that repeats `settings.json` forks the checks below once, not
-        # once per line. A word holding a newline would match across two
-        # entries of the list, so it is always judged.
+    # The forking check of one operand word. A word judged once is judged the
+    # same every time (the verdict reads only the word, $cwd and
+    # $nested_wt_primary, all fixed for the run, and the flag it sets only
+    # ever goes to 1), so a long body that repeats `settings.json` forks once,
+    # not once per line. Only words that reach this fork are listed, which
+    # keeps the list short however many plain words the command carries. A
+    # word holding a newline would match across two entries of the list, so
+    # it is always judged.
+    _coo_fork_check() {
+        local w="$1" result
         case "$w" in
             *$'\n'*) ;;
             *)
@@ -4118,6 +4119,12 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 _COO_SEEN=$_COO_SEEN$w$'\n'
                 ;;
         esac
+        result=$(check_claude_dir_target "$w")
+        case "$result" in deny\ *) symlink_dest=1 ;; esac
+    }
+    _check_one_operand() {
+        local w="$1" resolved wabs wparent wleaf
+        [ -n "$w" ] || return 0
         if [ -n "$nested_wt_primary" ]; then
             case "$w" in
                 *..*)
@@ -4139,8 +4146,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # is a second stat-family builtin, no subprocess, and catches the
         # symlink itself so canon() still resolves where it points.
         if [ -e "$wabs" ] || [ -L "$wabs" ]; then
-            result=$(check_claude_dir_target "$w")
-            case "$result" in deny\ *) symlink_dest=1 ;; esac
+            _coo_fork_check "$w"
             return
         fi
         # HIMMEL-178 round-2 codex-2: a destination that does not exist YET
@@ -4174,8 +4180,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         wparent="${wabs%/*}"
         [ -n "$wparent" ] || wparent="/"
         if [ -e "$wparent" ]; then
-            result=$(check_claude_dir_target "$w")
-            case "$result" in deny\ *) symlink_dest=1 ;; esac
+            _coo_fork_check "$w"
         fi
     }
     # HIMMEL-3700 (J1329O I2, I4): a word can carry its path glued to an
