@@ -3035,6 +3035,45 @@ jge_head="$(git -C "$repo" rev-parse jg63c)"
 judge jg63c-1 GO "$jge_head"
 jgo_out="$(jgo_verb jg63c "$jge_head")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "1" "6303 (g) no judge shortcut while a full round is still available ($jgo_out)"
+# A GO written with --repo for an adopter repo lives in that repo's bucket, so
+# judge-go finds it for a PR whose origin remote names that repo; a PR on the
+# harness's own repo still reads the harness bucket.
+jga_origin="$(git -C "$repo" remote get-url origin)"
+jga_fx_origin="$(git -C "$fx" remote get-url origin 2>/dev/null)" || jga_fx_origin=""
+jga_rec() {  # <qid> <head> [--repo <owner/name>]
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-7828 \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" GO "$2" \
+        --pr 1 ${3:+"$3" "$4"} --evidence-file "$jev/judge-evidence.md" \
+        >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1"
+}
+jgo_setup jg7828a
+jga_ha="$jgo_head"
+jga_rec jga-1 "$jga_ha" --repo yotamleo-org/himmel-voice
+jgo_setup jg7828b
+jga_hb="$jgo_head"
+jga_rec jga-2 "$jga_hb"
+jgo_setup jg7828c
+jga_hc="$jgo_head"
+jga_rec jga-3 "$jga_hc" --repo yotamleo-org/himmel-voice
+git -C "$repo" remote set-url origin https://github.com/yotamleo-org/himmel-voice.git
+git -C "$repo" checkout -q jg7828a
+jgo_out="$(jgo_verb jg7828a "$jga_ha")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "7828 (a) a GO written with --repo is found for a PR on that adopter repo ($jgo_out)"
+assert_has "$jgo_out" "jga-1/judge" "7828 (a) the verb names the adopter record"
+git -C "$repo" checkout -q jg7828b
+jgo_out="$(jgo_verb jg7828b "$jga_hb")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "7828 (b) an adopter PR does not take a GO from the harness bucket ($jgo_out)"
+git -C "$repo" remote set-url origin https://github.com/yotamleo-org/Himmel.git
+if [ -n "$jga_fx_origin" ]; then git -C "$fx" remote set-url origin git@github.com:yotamleo-org/himmel.git; else git -C "$fx" remote add origin git@github.com:yotamleo-org/himmel.git; fi
+git -C "$repo" checkout -q jg7828b
+jgo_out="$(jgo_verb jg7828b "$jga_hb")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "7828 (c) a PR on the harness's own repo still reads the harness bucket ($jgo_out)"
+git -C "$repo" checkout -q jg7828c
+jgo_out="$(jgo_verb jg7828c "$jga_hc")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "1" "7828 (d) a harness PR does not take a GO from an adopter bucket ($jgo_out)"
+git -C "$repo" remote set-url origin "$jga_origin"
+git -C "$repo" checkout -q jg63c
+if [ -n "$jga_fx_origin" ]; then git -C "$fx" remote set-url origin "$jga_fx_origin"; else git -C "$fx" remote remove origin; fi
 # A GO that only the record checks can refuse: each case has a reviewed head
 # below the delta and a GO at the delta, so a deleted check accepts it.
 jgo_rec() {
