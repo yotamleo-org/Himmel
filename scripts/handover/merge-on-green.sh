@@ -775,9 +775,13 @@ fi
 # merge of the PR head would leave them behind on a branch GitHub then deletes.
 # Mirrors worker-pr-open.sh's unpushed-HEAD refusal. A checkout on any other
 # branch (the primary on main, a selector run) is not the PR's branch and is skipped.
-# swallow-ok: a detached HEAD or a non-repo cwd is not on the PR's branch, so the guard does not apply
-cur_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || cur_branch=""
-if [ -n "$cur_branch" ] && [ "$cur_branch" = "$head_branch" ]; then
+# The full ref is compared: a tag named like the branch turns --short into heads/<b>.
+# Runs here and again right before the merge, to catch a commit made during the CI watch.
+local_commit_guard() {
+    local cur_ref local_ahead ahead_n
+    # swallow-ok: a detached HEAD or a non-repo cwd is not on the PR's branch, so the guard does not apply
+    cur_ref=$(git symbolic-ref --quiet HEAD 2>/dev/null) || cur_ref=""
+    [ "$cur_ref" = "refs/heads/$head_branch" ] || return 0
     if ! local_ahead=$(git rev-list "$sha..HEAD"); then
         echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2
         audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
@@ -789,7 +793,8 @@ if [ -n "$cur_branch" ] && [ "$cur_branch" = "$head_branch" ]; then
         audit "REFUSED reason=local-commits-not-in-pr ahead=$ahead_n repo=$nwo pr=#$pr_num sha=$sha"
         exit 25
     fi
-fi
+}
+local_commit_guard
 
 # 2a. Same-repo guard — bind the merge target to the CURRENT checkout's repo.
 # The standing authorization must NOT reach PRs in OTHER private
@@ -1886,6 +1891,8 @@ if ! title_err=$(TICKET_ID_AUTHOR="$fresh_title_author" TICKET_ID_TRUSTED_AUTHOR
     audit "REFUSED reason=title-gate-failed title=$fresh_title repo=$nwo pr=#$pr_num"
     exit 20
 fi
+
+local_commit_guard
 
 # Audit-sink preflight — an unauditable merge must not proceed. Runs after the
 # gates (so a gate refusal short-circuits first) and before the merge/dry-run.
