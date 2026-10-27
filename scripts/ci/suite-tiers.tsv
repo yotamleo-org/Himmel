@@ -221,7 +221,6 @@ scripts/cr/test-critic-panel-instrumentation.sh	local	behaviour suite, 0 catches
 scripts/cr/test-critic-panel-registry.sh	pr	static-gate
 scripts/cr/test-critic-panel-triviality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-d1-verdict.sh	pr	trust-path
 scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -245,7 +244,6 @@ scripts/cr/test-orphan-check.sh	pr	trust-path
 scripts/cr/test-panel-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-context.sh	pr	trust-path
 scripts/cr/test-pr-check-env.sh	pr	trust-path
-scripts/cr/test-pr-check-external.sh	pr	trust-path
 scripts/cr/test-pr-check-pair.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-rounds.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -325,7 +323,6 @@ scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in 
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/glm/test-append-outbox.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/glm/test-ship-branch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/graphify/test-anchor-seeds.sh	pr	guard
 scripts/graphify/test-ast-update.sh	pr	guard
 scripts/graphify/test-check-graph-freshness.sh	pr	guard

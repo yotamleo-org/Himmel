@@ -4,7 +4,7 @@
 #
 # Covers: checkout-targeted creation, idempotent rewrite, moved-checkout
 # re-point, PATH-missing guidance without profile/PATH mutation, honest dry-run,
-# Windows .cmd/.ps1 twins (including no BOM), and install self-application.
+# and install self-application.
 
 set -uo pipefail
 
@@ -44,13 +44,12 @@ STUB
 }
 
 run_update() {
-  local _fixture="$1" _bin="$2" _platform="$3" _path="$4"
+  local _fixture="$1" _bin="$2" _path="$3"
   PATH="$_path" HIMMELCTL_BASH="$bash_bin" \
     HIMMELCTL_CACHE_DIR="$(winpath "$_fixture.himmelctl-cache")" \
     HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_fixture.himmelctl-cache/luna-config.json")" \
     HIMMELCTL_REPO_ROOT="$(winpath "$_fixture")" \
     HIMMELCTL_BIN_DIR="$(winpath "$_bin")" \
-    HIMMELCTL_SHIM_PLATFORM="$_platform" \
     "$node_bin" "$wizard" update </dev/null 2>&1
 }
 
@@ -58,7 +57,7 @@ run_update() {
 fixtureA="$work/caseA-checkout"
 binA="$work/shared-bin"
 build_update_fixture "$fixtureA"
-out=$(run_update "$fixtureA" "$binA" linux "$(winpath "$binA"):$PATH")
+out=$(run_update "$fixtureA" "$binA" "$(winpath "$binA"):$PATH")
 [ -f "$fixtureA/update-calls.log" ] || fail "caseA: update engine was not invoked"
 [ -x "$binA/himmelctl" ] || fail "caseA: executable POSIX launcher missing"
 [ -f "$binA/himmelctl.js" ] || fail "caseA: target loader missing"
@@ -81,7 +80,7 @@ echo "ok: caseA2 himmel alias launcher dispatches like himmelctl"
 # ── B: re-run is byte-idempotent; moved checkout re-points the loader ───────
 cp "$binA/himmelctl" "$work/himmelctl.before"
 cp "$binA/himmelctl.js" "$work/himmelctl-js.before"
-run_update "$fixtureA" "$binA" linux "$(winpath "$binA"):$PATH" >/dev/null
+run_update "$fixtureA" "$binA" "$(winpath "$binA"):$PATH" >/dev/null
 cmp -s "$work/himmelctl.before" "$binA/himmelctl" \
   || fail "caseB: idempotent re-run changed the POSIX wrapper"
 cmp -s "$work/himmelctl-js.before" "$binA/himmelctl.js" \
@@ -89,7 +88,7 @@ cmp -s "$work/himmelctl-js.before" "$binA/himmelctl.js" \
 
 fixtureB="$work/caseB-moved-checkout"
 build_update_fixture "$fixtureB"
-run_update "$fixtureB" "$binA" linux "$(winpath "$binA"):$PATH" >/dev/null
+run_update "$fixtureB" "$binA" "$(winpath "$binA"):$PATH" >/dev/null
 : > "$work/shim-calls.log"
 SHIM_CALL_LOG="$(winpath "$work/shim-calls.log")" SHIM_LABEL=B \
   PATH="$(winpath "$binA"):$PATH" "$binA/himmelctl" moved
@@ -108,7 +107,7 @@ build_update_fixture "$fixtureC"
 printf 'profile-sentinel\n' > "$homeC/.profile"
 printf 'bashrc-sentinel\n' > "$homeC/.bashrc"
 before_path="$PATH"
-out=$(HOME="$(winpath "$homeC")" USERPROFILE="$(winpath "$homeC")" run_update "$fixtureC" "$binC" linux "$PATH")
+out=$(HOME="$(winpath "$homeC")" USERPROFILE="$(winpath "$homeC")" run_update "$fixtureC" "$binC" "$PATH")
 [ "$PATH" = "$before_path" ] || fail "caseC: parent PATH changed"
 [ "$(cat "$homeC/.profile")" = 'profile-sentinel' ] || fail "caseC: .profile was mutated"
 [ "$(cat "$homeC/.bashrc")" = 'bashrc-sentinel' ] || fail "caseC: .bashrc was mutated"
@@ -116,23 +115,6 @@ grepq "$out" 'is not on PATH' || fail "caseC: missing-PATH diagnostic absent: $o
 grepq "$out" 'export PATH=' || fail "caseC: exact POSIX PATH instruction absent: $out"
 [ -f "$binC/himmelctl" ] || fail "caseC: launcher should still be written when PATH is missing"
 echo "ok: caseC PATH-missing prints manual guidance and mutates neither PATH nor shell profiles"
-
-# ── C2 (win32): the missing-PATH PowerShell instruction is idempotent ────────
-# Pasting the printed line twice (e.g. a second `himmelctl update` before a new
-# shell) must NOT duplicate the User PATH entry. The snippet prepends binDir
-# only when it is not already an element of the persisted User PATH
-# r4 glm-3). Asserted by SHAPE (grep) — actually mutating the User PATH needs
-# machine-state change the suite cannot do hermetically; the idempotence guard
-# and its "safe to repeat" marker are the lockable surface.
-fixtureC2="$work/caseC2-checkout"; binC2="$work/caseC2-bin"; mkdir -p "$binC2"
-build_update_fixture "$fixtureC2"
-out=$(run_update "$fixtureC2" "$binC2" win32 "$PATH")
-grepq "$out" 'is not on PATH' || fail "caseC2: missing-PATH diagnostic absent: $out"
-grepq "$out" 'safe to repeat' || fail "caseC2: idempotence marker absent from the win32 PATH instruction: $out"
-grepq "$out" -- '-contains' || fail "caseC2: idempotence guard (-contains) absent from the win32 PATH instruction: $out"
-grepq "$out" 'SetEnvironmentVariable' || fail "caseC2: win32 PATH instruction absent: $out"
-[ -f "$binC2/himmelctl.js" ] || fail "caseC2: launcher should still be written when PATH is missing"
-echo "ok: caseC2 win32 missing-PATH instruction is idempotent (guards against a duplicate PATH entry)"
 
 # ── D: dry-run plans the launcher but writes and executes nothing ───────────
 fixtureD="$work/caseD-checkout"
@@ -143,7 +125,7 @@ out=$(PATH="$PATH" HIMMELCTL_BASH="$bash_bin" \
   HIMMELCTL_CACHE_DIR="$(winpath "$fixtureD.himmelctl-cache")" \
   HIMMEL_LUNA_CONFIG_PATH="$(winpath "$fixtureD.himmelctl-cache/luna-config.json")" \
   HIMMELCTL_REPO_ROOT="$(winpath "$fixtureD")" \
-  HIMMELCTL_BIN_DIR="$(winpath "$binD")" HIMMELCTL_SHIM_PLATFORM=linux \
+  HIMMELCTL_BIN_DIR="$(winpath "$binD")" \
   "$node_bin" "$wizard" update --dry-run </dev/null 2>&1); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseD: dry-run exited $rc: $out"
@@ -152,47 +134,6 @@ grepq "$out" '(written to' && fail "caseD: dry-run claimed the launcher was writ
 [ ! -e "$binD" ] || fail "caseD: dry-run created the bin directory"
 [ ! -f "$fixtureD/update-calls.log" ] || fail "caseD: dry-run executed the update engine"
 echo "ok: caseD dry-run plans only — no update execution and no launcher files"
-
-# ── E: Windows writes a relative .cmd (NO .ps1) without a BOM ───────────────
-# Fix 1 (codex-adv-1): no himmelctl.ps1 is written — PowerShell command
-# precedence resolves a .ps1 before the .cmd of the same basename, and a clean
-# Windows client defaults to ExecutionPolicy=Restricted → bare `himmelctl`
-# throws PSSecurityException. Letting PowerShell resolve the .cmd avoids that.
-# (A live bare-`himmelctl`-under-Restricted resolution test is NOT expressible
-# hermetically: controlling ExecutionPolicy needs machine-state mutation, and
-# the only per-process override is -ExecutionPolicy Bypass — the very condition
-# the fix removes the need for. The structural guarantee — no .ps1 written, so
-# none to precedence-resolve — is covered by the assertions below. The stale-
-# marked-.ps1 removal case lives in caseG5.)
-fixtureE="$work/caseE checkout with spaces"
-binE="$work/caseE bin with spaces"
-build_update_fixture "$fixtureE"
-win_path="$(winpath "$binE");$PATH"
-out=$(run_update "$fixtureE" "$binE" win32 "$win_path")
-[ -f "$binE/himmelctl.cmd" ] || fail "caseE: himmelctl.cmd missing"
-[ -f "$binE/himmelctl.js" ] || fail "caseE: himmelctl.js missing"
-[ ! -e "$binE/himmelctl.ps1" ] || fail "caseE: himmelctl.ps1 must NOT be written (ExecutionPolicy=Restricted breaks bare himmelctl)"
-grepq "$(cat "$binE/himmelctl.cmd")" '%~dp0himmelctl.js' \
-  || fail "caseE: .cmd does not use %~dp0-relative indirection"
-grepq "$(cat "$binE/himmelctl.cmd")" 'generated by himmelctl (HIMMEL-1446)' \
-  || fail "caseE: .cmd missing the ownership marker"
-grepq "$(cat "$binE/himmelctl.js")" 'caseE checkout with spaces' \
-  || fail "caseE: Windows target loader does not name this checkout"
-for shim in "$binE/himmelctl.cmd" "$binE/himmelctl.js"; do
-  prefix=$(od -An -tx1 -N3 "$shim" | tr -d ' \n')
-  [ "$prefix" != 'efbbbf' ] || fail "caseE: UTF-8 BOM found in $shim"
-done
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    SHIM_CALL_LOG="$(winpath "$work/windows-shim-calls.log")" SHIM_LABEL=CMD \
-      SHIM_CMD="$(winpath "$binE/himmelctl.cmd")" \
-      powershell -NoProfile -Command "& \$env:SHIM_CMD winarg" >/dev/null \
-      || fail "caseE: .cmd launcher failed from a path containing spaces"
-    win_calls=$(cat "$work/windows-shim-calls.log")
-    grepq "$win_calls" '^CMD:winarg$' || fail "caseE: .cmd did not dispatch its argument"
-    ;;
-esac
-echo "ok: caseE Windows .cmd is relative, checkout-targeted, marker-carrying, BOM-free, space-safe (no .ps1 written)"
 
 # ── F: install applies the same launcher after its executor succeeds ────────
 fixtureF="$work/caseF-checkout"
@@ -206,26 +147,16 @@ const fs = require('fs');
 fs.appendFileSync(process.env.SHIM_CALL_LOG, `install:${process.argv.slice(2).join('|')}\n`);
 STUB
 # ONE execution engine now — deriveCommand always targets
-# adopt.sh, with the dev overlay's setup.sh/setup.ps1 as an ADDITIONAL step
+# adopt.sh, with the dev overlay's setup.sh as an ADDITIONAL step
 # on top. A silent no-op (never touching INSTALL_CALL_LOG) so the assertion
 # below still sees exactly the overlay's own 'setup' line.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixtureF/scripts/adopt.sh"
 chmod +x "$fixtureF/scripts/adopt.sh"
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    cat > "$fixtureF/scripts/setup.ps1" <<'STUB'
-Add-Content -LiteralPath $env:INSTALL_CALL_LOG -Value 'setup'
-exit 0
-STUB
-    ;;
-  *)
-    cat > "$fixtureF/scripts/setup.sh" <<'STUB'
+cat > "$fixtureF/scripts/setup.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'setup\n' >> "$INSTALL_CALL_LOG"
 STUB
-    chmod +x "$fixtureF/scripts/setup.sh"
-    ;;
-esac
+chmod +x "$fixtureF/scripts/setup.sh"
 cat > "$work/contributor-profile.json" <<'JSON'
 {
   "role": "contributor",
@@ -247,7 +178,7 @@ out=$(PATH="$install_path" HOME="$(winpath "$homeF")" USERPROFILE="$(winpath "$h
   HIMMELCTL_BASH="$bash_bin" HIMMELCTL_INTERACTIVE=0 \
   HIMMELCTL_CACHE_DIR="$(winpath "$work/caseF-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/caseF-cache")-luna-config.json" \
   HIMMELCTL_REPO_ROOT="$(winpath "$fixtureF")" \
-  HIMMELCTL_BIN_DIR="$(winpath "$binF")" HIMMELCTL_SHIM_PLATFORM=linux \
+  HIMMELCTL_BIN_DIR="$(winpath "$binF")" \
   INSTALL_CALL_LOG="$(winpath "$work/install-calls.log")" \
   "$node_bin" "$wizard" install --from-profile "$(winpath "$work/contributor-profile.json")" \
   </dev/null 2>&1); rc=$?
@@ -263,21 +194,15 @@ echo "ok: caseF successful install self-applies the same launcher"
 
 # ── F2: install creates the himmel XDG state home + bus at 0700 ─
 # Its own XDG_STATE_HOME (caseF-state), never the real one; the fake HOME must
-# stay free of .local/state. POSIX modes only — skipped on Windows Git-Bash.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) echo "ok: caseF2 state dirs skipped (no POSIX modes on Windows)" ;;
-  *)
-    mode_f2() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
-    [ "$(mode_f2 "$work/caseF-state/himmel")" = 700 ] || fail "caseF2: himmel state dir is not 0700"
-    [ "$(mode_f2 "$work/caseF-state/himmel/bus")" = 700 ] || fail "caseF2: himmel/bus is not 0700"
-    [ ! -e "$homeF/.local/state" ] || fail "caseF2: install wrote the fake HOME's .local/state"
-    echo "ok: caseF2 install creates the himmel XDG state home and bus at 0700"
-    ;;
-esac
+# stay free of .local/state.
+mode_f2() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+[ "$(mode_f2 "$work/caseF-state/himmel")" = 700 ] || fail "caseF2: himmel state dir is not 0700"
+[ "$(mode_f2 "$work/caseF-state/himmel/bus")" = 700 ] || fail "caseF2: himmel/bus is not 0700"
+[ ! -e "$homeF/.local/state" ] || fail "caseF2: install wrote the fake HOME's .local/state"
+echo "ok: caseF2 install creates the himmel XDG state home and bus at 0700"
 
 # ── G: ownership marker — refuse unmarked/symlink collisions, replace marked, ─
-# ── atomic tmp+rename; stale marked .ps1 removed (Fix 3 + Fix 1 cleanup). ────
-# Cross-platform file ops; HIMMELCTL_SHIM_PLATFORM drives which launchers write.
+# ── atomic tmp+rename. ───────────────────────────────────────────────────────
 # These cases deliberately exercise FAILURE paths (refusals) and assert the rc
 # explicitly with `[ ] || fail`, so run them under errexit OFF — caseF above
 # leaves `set -e` on, under which an expected non-zero `out=$(run_update …)`
@@ -291,7 +216,7 @@ set +e
 fixG1="$work/caseG1-checkout"; binG1="$work/caseG1-bin"; mkdir -p "$binG1"
 build_update_fixture "$fixG1"
 printf 'third-party\n' > "$binG1/himmelctl.js"
-out=$(run_update "$fixG1" "$binG1" linux "$(winpath "$binG1"):$PATH"); rc=$?
+out=$(run_update "$fixG1" "$binG1" "$(winpath "$binG1"):$PATH"); rc=$?
 [ "$rc" -eq 0 ] || fail "caseG1: a refused launcher must not fail a successful update (rc=$rc): $out"
 [ "$(cat "$binG1/himmelctl.js")" = 'third-party' ] \
   || fail "caseG1: unmarked collision must be left untouched"
@@ -308,7 +233,7 @@ fixG2="$work/caseG2-checkout"; binG2="$work/caseG2-bin"; mkdir -p "$binG2"
 build_update_fixture "$fixG2"
 printf 'valid-target\n' > "$work/caseG2-target"
 if ln -s "$work/caseG2-target" "$binG2/himmelctl.js" 2>/dev/null && [ -L "$binG2/himmelctl.js" ]; then
-  out=$(run_update "$fixG2" "$binG2" linux "$(winpath "$binG2"):$PATH"); rc=$?
+  out=$(run_update "$fixG2" "$binG2" "$(winpath "$binG2"):$PATH"); rc=$?
   [ "$rc" -eq 0 ] || fail "caseG2: a refused launcher must not fail a successful update (rc=$rc): $out"
   [ -L "$binG2/himmelctl.js" ] || fail "caseG2: valid symlink must be left intact (not followed/clobbered)"
   grepq "$out" 'refusing to overwrite symlink' || fail "caseG2: symlink refusal message absent: $out"
@@ -328,7 +253,7 @@ fi
 fixG2b="$work/caseG2b-checkout"; binG2b="$work/caseG2b-bin"; mkdir -p "$binG2b"
 build_update_fixture "$fixG2b"
 if ln -s "$work/caseG2b-does-not-exist" "$binG2b/himmelctl.js" 2>/dev/null && [ -L "$binG2b/himmelctl.js" ]; then
-  out=$(run_update "$fixG2b" "$binG2b" linux "$(winpath "$binG2b"):$PATH"); rc=$?
+  out=$(run_update "$fixG2b" "$binG2b" "$(winpath "$binG2b"):$PATH"); rc=$?
   [ "$rc" -eq 0 ] || fail "caseG2b: a refused launcher must not fail a successful update (rc=$rc): $out"
   [ -L "$binG2b/himmelctl.js" ] || fail "caseG2b: broken symlink must be left intact (not clobbered)"
   grepq "$out" 'refusing to overwrite symlink' || fail "caseG2b: broken-symlink refusal message absent: $out"
@@ -346,7 +271,7 @@ cat > "$binG3/himmelctl.js" <<'STUB'
 // generated by himmelctl (HIMMEL-1446)
 require('/old/target/himmelctl.js');
 STUB
-out=$(run_update "$fixG3" "$binG3" linux "$(winpath "$binG3"):$PATH"); rc=$?
+out=$(run_update "$fixG3" "$binG3" "$(winpath "$binG3"):$PATH"); rc=$?
 [ "$rc" -eq 0 ] || fail "caseG3: marked file should be replaced (rc=$rc): $out"
 grepq "$(cat "$binG3/himmelctl.js")" 'caseG3-checkout' \
   || fail "caseG3: marked loader was not re-pointed to this checkout"
@@ -359,7 +284,7 @@ echo "ok: caseG3 marked file replaced in place (re-pointed), marker preserved"
 # G4a: a successful write leaves no orphaned tmp (rename always completes).
 fixG4="$work/caseG4-checkout"; binG4="$work/caseG4-bin"
 build_update_fixture "$fixG4"
-run_update "$fixG4" "$binG4" linux "$(winpath "$binG4"):$PATH" >/dev/null
+run_update "$fixG4" "$binG4" "$(winpath "$binG4"):$PATH" >/dev/null
 tmpcount=$(find "$binG4" -name '.*.tmp' 2>/dev/null | wc -l | tr -d ' ')
 [ "$tmpcount" -eq 0 ] || fail "caseG4a: successful write left an orphaned tmp file"
 echo "ok: caseG4a successful write leaves no orphaned tmp"
@@ -384,7 +309,7 @@ require('/old/target');
 STUB
     marked_before=$(cat "$binG4b/himmelctl.js")
     chmod a-w "$binG4b"
-    out=$(run_update "$fixG4b" "$binG4b" linux "$(winpath "$binG4b"):$PATH"); rc=$?
+    out=$(run_update "$fixG4b" "$binG4b" "$(winpath "$binG4b"):$PATH"); rc=$?
     chmod u+w "$binG4b"   # restore so the EXIT trap's rm -rf can clean up
     [ "$rc" -eq 0 ] || fail "caseG4b: a failed launcher write must not fail a successful update (rc=$rc): $out"
     [ "$(cat "$binG4b/himmelctl.js")" = "$marked_before" ] \
@@ -393,42 +318,6 @@ STUB
     echo "ok: caseG4b failed write leaves the marked dest untouched (no partial); update rc stays 0 + WARN"
     ;;
 esac
-
-# G5: a stale MARKED .ps1 is removed on a win32 update; an unmarked .ps1 is kept.
-fixG5m="$work/caseG5-marked"; binG5m="$work/caseG5m-bin"; mkdir -p "$binG5m"
-build_update_fixture "$fixG5m"
-printf '# generated by himmelctl (HIMMEL-1446)\nstale\n' > "$binG5m/himmelctl.ps1"
-run_update "$fixG5m" "$binG5m" win32 "$(winpath "$binG5m"):$PATH" >/dev/null
-[ ! -e "$binG5m/himmelctl.ps1" ] || fail "caseG5: stale MARKED .ps1 should be removed on win32 update"
-fixG5u="$work/caseG5-unmarked"; binG5u="$work/caseG5u-bin"; mkdir -p "$binG5u"
-build_update_fixture "$fixG5u"
-printf 'third-party ps1\n' > "$binG5u/himmelctl.ps1"
-run_update "$fixG5u" "$binG5u" win32 "$(winpath "$binG5u"):$PATH" >/dev/null
-[ -f "$binG5u/himmelctl.ps1" ] || fail "caseG5: unmarked .ps1 must NOT be removed"
-[ "$(cat "$binG5u/himmelctl.ps1")" = 'third-party ps1' ] || fail "caseG5: unmarked .ps1 was mutated"
-echo "ok: caseG5 stale marked .ps1 removed; unmarked .ps1 left untouched"
-
-# G6: a stale-.ps1 REMOVAL error does not fail the shim write or misattribute
-# removeMarkedLauncher('himmelctl.ps1') runs inside the
-# shim's write step; pre-fix its I/O errors were caught by the surrounding
-# try/catch and reported as "failed to write PATH launcher" + a failed rc, even
-# though the .js/.cmd launchers HAD already been written. A directory named
-# himmelctl.ps1 injects the removal error hermetically (readFileSync on a
-# directory throws EISDIR inside fileCarriesMarker) on every platform. The fix
-# gives the removal its own try/catch: WARN accurately + keep rc 0 + launchers
-# present.
-fixG6="$work/caseG6-checkout"; binG6="$work/caseG6-bin"; mkdir -p "$binG6"
-build_update_fixture "$fixG6"
-mkdir "$binG6/himmelctl.ps1"   # a directory at the .ps1 name -> removeMarkedLauncher throws EISDIR
-out=$(run_update "$fixG6" "$binG6" win32 "$(winpath "$binG6"):$PATH"); rc=$?
-[ "$rc" -eq 0 ] || fail "caseG6: a stale-.ps1 removal error must not fail the shim write (rc=$rc): $out"
-[ -f "$binG6/himmelctl.js" ] || fail "caseG6: himmelctl.js should be written despite the .ps1 removal error"
-[ -f "$binG6/himmelctl.cmd" ] || fail "caseG6: himmelctl.cmd should be written despite the .ps1 removal error"
-grepq "$out" 'could not remove stale launcher' || fail "caseG6: accurate stale-.ps1 WARN absent: $out"
-case "$out" in
-  *"failed to write PATH launcher"*) fail "caseG6: removal error must NOT misattribute as 'failed to write PATH launcher': $out" ;;
-esac
-echo "ok: caseG6 stale-.ps1 removal error WARNs accurately, never fails/misattributes the shim write"
 
 # ── H: launcher binds to the PRIMARY checkout, not the running worktree (Fix 2)
 # A real git fixture: install from a linked worktree must target the PRIMARY
@@ -443,7 +332,7 @@ wtH="$work/caseH-worktree"
 if git -C "$primaryH" worktree add -q "$wtH" 2>/dev/null; then
   binH1="$work/caseH1-bin"
   # repoRoot = the WORKTREE; the loader must target the PRIMARY checkout.
-  run_update "$wtH" "$binH1" linux "$(winpath "$binH1"):$PATH" >/dev/null
+  run_update "$wtH" "$binH1" "$(winpath "$binH1"):$PATH" >/dev/null
   loader=$(cat "$binH1/himmelctl.js")
   grepq "$loader" 'caseH-primary' || fail "caseH1: worktree-installed loader must target the PRIMARY checkout"
   case "$loader" in *caseH-worktree*) fail "caseH1: loader must not target the disposable worktree ($loader)" ;; esac
@@ -458,7 +347,7 @@ mkdir -p "$primaryH2"
 build_update_fixture "$primaryH2"
 ( cd "$primaryH2" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init )
 binH2="$work/caseH2-bin"
-run_update "$primaryH2" "$binH2" linux "$(winpath "$binH2"):$PATH" >/dev/null
+run_update "$primaryH2" "$binH2" "$(winpath "$binH2"):$PATH" >/dev/null
 grepq "$(cat "$binH2/himmelctl.js")" 'caseH2-repo' \
   || fail "caseH2: non-worktree install must target repoRoot (primary == self)"
 echo "ok: caseH2 non-worktree primary install targets repoRoot unchanged"
@@ -499,7 +388,7 @@ out=$(PATH="$install_path" HOME="$(winpath "$homeI")" USERPROFILE="$(winpath "$h
   HIMMELCTL_BASH="$bash_bin" HIMMELCTL_INTERACTIVE=0 \
   HIMMELCTL_CACHE_DIR="$(winpath "$work/caseI-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/caseI-cache")-luna-config.json" \
   HIMMELCTL_REPO_ROOT="$(winpath "$fixtureI")" \
-  HIMMELCTL_BIN_DIR="$(winpath "$binI")" HIMMELCTL_SHIM_PLATFORM=linux \
+  HIMMELCTL_BIN_DIR="$(winpath "$binI")" \
   "$node_bin" "$wizard" install --from-profile "$(winpath "$work/adopter-profile.json")" \
   </dev/null 2>&1); rc=$?
 set -e
@@ -532,7 +421,7 @@ if (require.main === module) {
   main();
 }
 STUB
-run_update "$fixtureJ" "$binJ" linux "$(winpath "$binJ"):$PATH" >/dev/null
+run_update "$fixtureJ" "$binJ" "$(winpath "$binJ"):$PATH" >/dev/null
 outJ=$("$binJ/himmelctl" --help 2>&1); rcJ=$?
 [ -n "$outJ" ] || fail "caseJ: generated launcher produced no output — the require.main===module guard (HIMMEL-2438) swallowed main() (rc=$rcJ)"
 [ "$rcJ" -eq 0 ] || fail "caseJ: generated launcher should exit 0 (got rc=$rcJ): $outJ"
@@ -546,14 +435,14 @@ echo "ok: caseJ generated launcher re-execs bin.js so the require.main===module 
 if command -v jq >/dev/null 2>&1; then
   fixtureK="$work/caseK-checkout"; binK="$work/caseK-bin"; provK="$work/caseK-prov"; mkdir -p "$binK"
   build_update_fixture "$fixtureK"
-  HIMMEL_PROVENANCE_DIR="$(winpath "$provK")" run_update "$fixtureK" "$binK" linux "$(winpath "$binK"):$PATH" >/dev/null
+  HIMMEL_PROVENANCE_DIR="$(winpath "$provK")" run_update "$fixtureK" "$binK" "$(winpath "$binK"):$PATH" >/dev/null
   ledK="$provK/provenance.jsonl"
   [ -f "$ledK" ] || fail "caseK: no ledger written at $ledK"
   [ "$(jq -rs '.[0].op' "$ledK")" = "install-begin" ] || fail "caseK: first row is not install-begin"
   [ "$(jq -rs '.[-1] | .op + " " + .status' "$ledK")" = "install-end ok" ] || fail "caseK: session did not end ok"
   [ "$(jq -rs '[.[] | select(.kind=="shim" and .op=="create" and .class=="code")] | length' "$ledK")" = "3" ] \
     || fail "caseK: expected three shim create rows (himmelctl.js + himmelctl + himmel alias)"
-  HIMMEL_PROVENANCE_DIR="$(winpath "$provK")" run_update "$fixtureK" "$binK" linux "$(winpath "$binK"):$PATH" >/dev/null
+  HIMMEL_PROVENANCE_DIR="$(winpath "$provK")" run_update "$fixtureK" "$binK" "$(winpath "$binK"):$PATH" >/dev/null
   [ "$(jq -rs '[.[] | select(.kind=="shim" and .op=="replace" and .class=="code")] | length' "$ledK")" = "3" ] \
     || fail "caseK: the re-run should record three shim replace rows"
   [ "$(jq -rs '[.[] | select(.op=="install-begin")] | length' "$ledK")" = "2" ] || fail "caseK: each run should be its own session"

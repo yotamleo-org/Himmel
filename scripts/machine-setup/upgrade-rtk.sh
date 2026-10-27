@@ -8,9 +8,9 @@
 # installed. "Repairing" rtk drift therefore means upgrading the actual
 # installed binary, not editing a file, and there is no `rtk self-update`
 # verb. himmel installs rtk only as a side effect of full machine
-# provisioning (scripts/machine-setup/ubuntu.sh / win11.ps1, "Install RTK"
+# provisioning (scripts/machine-setup/ubuntu.sh, "Install RTK"
 # step) — this script reuses those exact artifact sources (the GitHub
-# release .deb / zip) instead of upstream's `curl | sh` one-liner, which
+# release .deb) instead of upstream's `curl | sh` one-liner, which
 # himmel does not run unattended.
 #
 # On Linux, install method is selected by who owns RTK_BIN_PATH:
@@ -37,9 +37,9 @@
 #   bash scripts/machine-setup/upgrade-rtk.sh [--dry-run]
 #
 # Test seams (env vars; all unset in production — see test-upgrade-rtk.sh):
-#   RTK_UPGRADE_PLATFORM  force windows|linux|macos instead of deriving from
+#   RTK_UPGRADE_PLATFORM  force linux|macos instead of deriving from
 #                         OSTYPE. Lets the Linux backup/smoke/rollback logic
-#                         run hermetically under Windows Git-Bash, and lets
+#                         run hermetically on any host OS, and lets
 #                         the "unsupported platform" path be exercised
 #                         without an actual Mac.
 #   RTK_BIN               command name resolved via `command -v` for
@@ -63,8 +63,6 @@
 #   RTK_UPGRADE_ARCH       force x86_64|aarch64 instead of deriving from
 #                         `uname -m`, for the tarball asset name (only
 #                         consulted on the "other" RTK_BIN_OWNER branch).
-#   RTK_PWSH_BIN           pwsh/powershell.exe override for the Windows
-#                         dispatch (default: resolved from PATH).
 #   RTK_UPGRADE_LOCK_TTL   seconds after which a held concurrency lock is
 #                         presumed abandoned and reclaimed (default: 1800).
 #
@@ -78,11 +76,6 @@
 #   4  the upgrade was attempted and FAILED; the pre-upgrade backup was
 #      restored (announced explicitly)
 set -uo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Named PS1_TWIN, not PS1: bare `PS1` is bash's prompt variable.
-# Harmless in a non-interactive script, misleading the moment anyone sources it.
-PS1_TWIN="$SCRIPT_DIR/upgrade-rtk.ps1"
 
 # Same version shape as scripts/upstreams.json's rtk `version_regex`.
 VERSION_RE='[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*'
@@ -105,8 +98,7 @@ done
 # which the stock BSD `sort` on macOS does not support at all (this suite
 # deliberately forces the Linux code path onto every host OS, macOS CI
 # runners included, per the header comment above), so a GNU-only flag here
-# broke the suite on that worker. Same discipline upgrade-rtk.ps1's Test-IsNewer
-# uses, so the two platforms cannot quietly diverge on a suffixed tag.
+# broke the suite on that worker.
 is_newer() {
   [ "$1" = "$2" ] && return 1
   local c="" b=""
@@ -137,7 +129,6 @@ _platform() {
     return
   fi
   case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*|MSYS*) echo windows ;;
     linux*|Linux*) echo linux ;;
     darwin*|Darwin*) echo macos ;;
     *) echo unknown ;;
@@ -147,22 +138,6 @@ _platform() {
 PLATFORM="$(_platform)"
 
 case "$PLATFORM" in
-  windows)
-    PWSH_BIN="${RTK_PWSH_BIN:-}"
-    if [ -z "$PWSH_BIN" ]; then
-      for c in pwsh pwsh.exe powershell.exe; do
-        if command -v "$c" >/dev/null 2>&1; then PWSH_BIN="$c"; break; fi
-      done
-    fi
-    if [ -z "$PWSH_BIN" ]; then
-      echo "upgrade-rtk: pwsh not found on PATH -- run scripts/machine-setup/upgrade-rtk.ps1 directly." >&2
-      exit 2
-    fi
-    ps_args=()
-    [ "$DRY_RUN" -eq 1 ] && ps_args+=("-DryRun")
-    "$PWSH_BIN" -NoProfile -ExecutionPolicy Bypass -File "$PS1_TWIN" ${ps_args[@]+"${ps_args[@]}"}
-    exit $?
-    ;;
   linux) : ;;
   *)
     echo "upgrade-rtk: unsupported on this platform ($PLATFORM) -- upgrade rtk manually (see rtk-ai/rtk releases)." >&2

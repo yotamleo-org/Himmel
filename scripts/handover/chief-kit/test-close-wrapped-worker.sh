@@ -134,6 +134,8 @@ CLEAN_STUB="$W/bin/clean.sh"
 cat > "$CLEAN_STUB" <<'STUB'
 #!/usr/bin/env bash
 echo "clean.sh $*" >> "$CALLS_LOG"
+echo "$PWD" >> "${CLEAN_CWD_LOG:-/dev/null}"
+echo "${GIT_DIR:-unset}" >> "${CLEAN_GITDIR_LOG:-/dev/null}"
 if [ "${CWL_CLEAN_MODE:-ok}" = "in-use-once" ] && [ "$(grep -c '^clean.sh' "$CALLS_LOG")" -ge 2 ]; then
     echo "clean-garden: prune summary — 1 pruned, 0 partial, 0 skipped, 0 failed"
     exit 0
@@ -365,6 +367,30 @@ rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "no-pr-line: rc 0" "$rc" "0"
 calls8="$(cat "$CALLS")"
 exact_count "no-pr-line: clean.sh --only <wt> --only-allow-unmerged called anyway" "$calls8" "clean.sh --only $WT/.claude/worktrees/demo --only-allow-unmerged" "1"
+
+# --- 8b. an adopter worker's worktree is registered in the adopter's repo, so the
+# prune runs from that repo (worktree.sh prune reads the cwd's git), never the cwd the close started in ----
+ADOPTER="$W/adopter-repo"; ADOPTER_WT="$ADOPTER/.claude/worktrees/feat+demo"
+mkdir -p "$ADOPTER_WT"
+mkdoc "- 10:00 WRAPPED - done" "worktree: \`$ADOPTER_WT\`"
+reset_calls
+export CLEAN_CWD_LOG="$W/clean-cwd.log"; : > "$CLEAN_CWD_LOG"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "adopter-worktree: rc 0" "$rc" "0"
+check "adopter-worktree: clean.sh runs in the repo that owns the worktree" "$(tail -n 1 "$CLEAN_CWD_LOG")" "$ADOPTER"
+exact_count "adopter-worktree: clean.sh still gets --only <wt>" "$(cat "$CALLS")" "clean.sh --only $ADOPTER_WT --only-allow-unmerged" "1"
+
+# --- 8c. an adopter checkout that itself sits under a .claude/worktrees/ dir: the repo is the LAST
+# worktrees component's parent; an inherited GIT_DIR must not redirect the prune ----
+NESTED="$W/outer/.claude/worktrees/adopter-in-wt"; NESTED_WT="$NESTED/.claude/worktrees/feat+demo"
+mkdir -p "$NESTED_WT"
+mkdoc "- 10:00 WRAPPED - done" "worktree: \`$NESTED_WT\`"
+reset_calls
+export CLEAN_GITDIR_LOG="$W/clean-gitdir.log"; : > "$CLEAN_GITDIR_LOG"; : > "$CLEAN_CWD_LOG"
+rc=0; out=$(GIT_DIR="$W/not-a-git-dir" run "$DOC" 2>&1) || rc=$?
+check "nested-adopter: rc 0" "$rc" "0"
+check "nested-adopter: clean.sh runs in the adopter, not the outer repo" "$(tail -n 1 "$CLEAN_CWD_LOG")" "$NESTED"
+check "nested-adopter: an inherited GIT_DIR does not reach clean.sh" "$(tail -n 1 "$CLEAN_GITDIR_LOG")" "unset"
 
 # --- 9. clean.sh reports "not a prune candidate" (its own PR-state gate
 # refused the target, e.g. an OPEN PR) -------------------------------------------

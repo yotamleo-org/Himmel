@@ -39,6 +39,17 @@ import { legacyNamesOn } from "../../lib/env-alias.mjs";
 
 export const RECENT_MS = 60 * 60 * 1000;
 const SCRIPT_TIMEOUT_MS = 30_000;
+const CONSOLE_DOC_CONCURRENCY = 16;
+
+// fn over items with at most `limit` in flight; results keep the items' order.
+async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]); }
+  }));
+  return out;
+}
 
 export type FleetState = "running" | "idle" | "waiting for GO" | "wrapped" | "unknown";
 export type FleetRow = {
@@ -490,16 +501,21 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   // the rows that show a doc: only these get their description looked up
   const described: [FleetRow, string][] = [];
   census.sessions.forEach((c, i) => { const r = rows[i]; if (r && c.doc) described.push([r, c.doc]); });
+  // The station keeps hundreds of archived chief docs, each read and lock-checked (a bash process): a bounded pool, never one at a time.
+  const taken = new Set(rows.map((r) => r?.name));
+  const archived: [string, string][] = [];
   for (const file of census.consoleDocs ?? []) {
     const name = plain(basename(file, ".md"));
-    if (!name || rows.some((r) => r?.name === name)) continue;
+    if (name && !taken.has(name)) archived.push([file, name]);
+  }
+  const built = await mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
     try {
       const s = await stat(file);
-      if (opts.now - s.mtimeMs > 72 * RECENT_MS) continue;
+      if (opts.now - s.mtimeMs > 72 * RECENT_MS) return null;
       const doc = await readFile(file, "utf8");
       const lock = await lockOf(file, doc);
       const wrapped = ownWrap(doc) && lock === "released";
-      const row: FleetRow = {
+      return {
         name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
@@ -507,10 +523,10 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
         lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
         marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
       };
-      rows.push(row);
-      described.push([row, file]);
-    } catch { /* archived console moved or unreadable */ }
-  }
+    } catch { return null; /* archived console moved or unreadable */ }
+  });
+  // the first readable doc of a name wins, in census order; an expired or unreadable one never hides a later one
+  built.forEach((row, i) => { if (row && !taken.has(row.name)) { taken.add(row.name); rows.push(row); described.push([row, archived[i][0]]); } });
   const descOf = await describe(described.map(([, f]) => f), opts.script, opts.env);
   for (const [r, f] of described) {
     const text = descOf(f);

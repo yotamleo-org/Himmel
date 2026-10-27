@@ -488,7 +488,8 @@ done
 # Every worker and chief pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-for budget in "worker-preface.md:12400" "chief-template.md:16512"; do
+# worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
+for budget in "worker-preface.md:12800" "chief-template.md:16512"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -537,6 +538,40 @@ git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9001-plai
 git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9002-hook-fix" -b fix/himmel-9002-hook-fix 2>/dev/null
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/nw2" --repo "$NWREPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/nw2.err") || rc=$?
 [ "$rc" = 0 ] && pass "RED control: --no-worktree with existing worktrees works unchanged" || fail "existing worktrees rc=$rc: $(cat "$WORK/nw2.err")"
+
+# --- an adopted repo (a git checkout with no chief-kit of its own): the worktree is made by
+# himmel's _new-worktree.sh run inside the adopter, and the launcher names himmel's kit and exports the
+# adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
+KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
+mkdir -p "$KIT/scripts/ci"
+cp "$SUT" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
+cp "$HERE/../../ci/ci-trust-paths.txt" "$KIT/scripts/ci/"
+export ADP_WT_LOG="$WORK/adp-wt.log"
+cat > "$KIT/scripts/_new-worktree.sh" <<'EOF'
+#!/usr/bin/env bash
+[ "$2" = --no-install ] || { echo "_new-worktree.sh stub: unexpected 2nd argument [$2]" >&2; exit 64; }
+printf '%s|%s|%s\n' "$PWD" "$1" "$2" >> "$ADP_WT_LOG"
+git worktree add -q "$PWD/.claude/worktrees/${1//\//+}" -b "$1"
+EOF
+ADP="$WORK/adapter"; git init -q "$ADP" && git -C "$ADP" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+ADPBASE="$(git -C "$ADP" rev-parse HEAD)"
+rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/adp.fleet.json" >"$WORK/adp.out" 2>"$WORK/adp.err" || rc=$?
+[ "$rc" = 0 ] && pass "an adopted repo generates (rc 0)" || fail "adopted repo rc=$rc: $(cat "$WORK/adp.err") $(cat "$WORK/adp.out")"
+has "the adopter worktree is made by himmel's _new-worktree.sh run inside the adopter, without the install step" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9001-plain-fix|--no-install"
+has "and so is the second worker's" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9002-hook-fix|--no-install"
+al="$(cat "$WORK/hr/tester/adp/launch-N901.sh" 2>/dev/null)"
+has "the adopter launcher names himmel's headed-arm-worker.sh" "$al" "$KIT/scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl"
+lacks "and not a copy under the adopter" "$al" "$ADP/scripts/handover/chief-kit/"
+has "the adopter launcher exports the adopter worktree as WORKER_SESSION_REPO" "$al" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
+has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" "$KIT/scripts/handover/chief-kit/fleet-manifest.sh add"
+has "the adopter brief's ticket-read line uses himmel's jira CLI" "$(cat "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "node $KIT/scripts/jira/dist/index.js get HIMMEL-9001"
+lacks "RED control: a himmel-repo launcher exports no WORKER_SESSION_REPO" "$l1" "WORKER_SESSION_REPO"
+ADP2="$WORK/adapter2"; git init -q "$ADP2"
+rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
+has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"
+[ "$rc" = 1 ] && [ ! -e "$WORK/hr/tester/adp2/launch-N901.sh" ] && pass "and exits 1 writing no launcher" || fail "adopter no-worktree refusal rc=$rc"
+rc=0; (cd "$WORK" && unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp3" --repo adapter --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp3.err") || rc=$?
+has "a relative --repo still exports an absolute worktree path" "$(cat "$WORK/hr/tester/adp3/launch-N901.sh" 2>/dev/null)" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
 
 # --- the rm kind: a release-manager brief filled from docs/handover/rm-brief-template.md ---
 cat > "$WORK/rm.json" <<EOF

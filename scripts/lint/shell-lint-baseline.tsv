@@ -166,7 +166,6 @@ scripts/codex/test-startup-health.sh	mktemp	1
 scripts/config-ui/tests/e2e/record-agui-gif.sh	errexit	1
 scripts/context-fill.sh	errexit	1
 scripts/copilot/test-dispatch-copilot.sh	errexit	1
-scripts/cr/d1-verdict.sh	errexit	1
 scripts/cr/emit-gate-fail.sh	errexit	1
 scripts/cr/file-deferred-issues.sh	errexit	1
 scripts/cr/impacted-suites.sh	prim-tmpdir	1
@@ -179,8 +178,6 @@ scripts/cr/test-cr-scores.sh	mktemp	1
 scripts/cr/test-cr-tune.sh	mktemp	1
 scripts/cr/test-critic-first-pass.sh	mktemp	1
 scripts/cr/test-critic-panel.sh	mktemp	1
-scripts/cr/test-d1-verdict.sh	errexit	1
-scripts/cr/test-d1-verdict.sh	mktemp	2
 scripts/cr/test-emit-gate-fail.sh	errexit	1
 scripts/cr/test-emit-gate-fail.sh	mktemp	2
 scripts/cr/test-failure-classify.sh	mktemp	1

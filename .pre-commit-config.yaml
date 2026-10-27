@@ -232,10 +232,10 @@ repos:
         entry: bash scripts/hooks/check-fail-open-lint.sh
         language: system
         # Scoped to the guard surfaces the lint scans (guardrails/hooks/lanes),
-        # the graphify + claude-glm/codex/routed + telegram spawn-glm entry
+        # the graphify + claude-glm/codex/routed entry
         # points it also covers, and this gate's own config — same lesson as
         # guardrail-matrices above: the guard must cover every file it guards.
-        files: ^(scripts/(guardrails|hooks|lanes)/|scripts/graphify/refresh-graph-map\.sh$|scripts/claude-(codex|glm|routed)$|scripts/telegram/spawn-glm\.ts$|\.pre-commit-config\.yaml$)
+        files: ^(scripts/(guardrails|hooks|lanes)/|scripts/graphify/refresh-graph-map\.sh$|scripts/claude-(codex|glm|routed)$|\.pre-commit-config\.yaml$)
         pass_filenames: false
         stages: [pre-commit]
 

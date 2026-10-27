@@ -46,7 +46,7 @@ import {
   refuseNonPrimaryCwd,
 } from "./spawn-claudex";
 import { BASH_BIN } from "./run";
-import { resolveFailfastWindowMs, transcriptDirFor } from "./spawn-glm";
+import { resolveFailfastWindowMs, transcriptDirFor } from "./spawn-common";
 
 // runClaudexSharedDispatch trust-seeds
 // UNCONDITIONALLY (needsWorktreeAdd true or false), so every test below that
@@ -399,7 +399,7 @@ test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refuse
 });
 
 // The hermetic-repo helper, its timeout constant and the registry-gated
-// teardown are shared with spawn-glm.test.ts in ./fixture-repo.
+// teardown live in ./fixture-repo.
 
 // a symlink is Linux's stand-in for Windows 8.3 aliasing: one
 // directory has two spellings, so resolve() alone cannot make them compare
@@ -2092,13 +2092,12 @@ test("runSharedDispatch releases the lock via a finally (wiring pin)", () => {
 });
 
 // --- --help/-h short-circuits BEFORE any side effect ---
-// (isHelpFlag itself is lane-agnostic and unit-tested in spawn-glm.test.ts —
-// spawn-claudex imports it verbatim so both lanes share one definition and
-// can't drift apart; these pins wire it into THIS lane's main().)
+// (isHelpFlag itself is lane-agnostic and lives in spawn-common.ts;
+// these pins wire it into THIS lane's main().)
 
-test("main() imports isHelpFlag from spawn-glm and checks it BEFORE parseClaudexArgs / any side effect (wiring pin)", () => {
+test("main() imports isHelpFlag from spawn-common and checks it BEFORE parseClaudexArgs / any side effect (wiring pin)", () => {
   const src = readFileSync("scripts/telegram/spawn-claudex.ts", "utf8");
-  expect(/import \{[^}]*\bisHelpFlag\b[^}]*\} from "\.\/spawn-glm"/.test(src)).toBe(true);
+  expect(/import \{[^}]*\bisHelpFlag\b[^}]*\} from "\.\/spawn-common"/.test(src)).toBe(true);
   const helpIdx = src.indexOf("isHelpFlag(rawArgv)");
   const parseIdx = src.indexOf("parseClaudexArgs(rawArgv)");
   const wtIdx = src.indexOf('"worktree", "add"');
@@ -2325,7 +2324,7 @@ test("executeClaudexRun: growth observed the poll AFTER the window elapses must 
 });
 
 test("composeWorkerSettings: a POSIX session dir is granted as a `//`-rooted absolute Read rule so the worker can Read its brief.md (HIMMEL-6421)", async () => {
-  const { composeWorkerSettings } = await import("./spawn-glm");
+  const { composeWorkerSettings } = await import("./spawn-common");
   const sessionDir = "/srv/.claude/handover/bridge/claudex-sessions/claudex-t1";
   const allow: string[] = JSON.parse(composeWorkerSettings(undefined, "/srv/repo/.claude/worktrees/claudex+t1", sessionDir)).permissions.allow;
   // a single leading `/` is project-root-relative in Claude Code permission rules; `//` is filesystem-absolute

@@ -6,11 +6,6 @@
 # and asserts the chosen scope threads through to BOTH the
 # `claude plugin marketplace add` and `claude plugin install` calls.
 #
-# install-plugins.ps1 carries the same -Scope param as a PowerShell
-# ValidateSet — that twin is NOT covered here; keep both in lockstep when
-# changing either (sanity-check with `pwsh install-plugins.ps1 -DryRun
-# -Scope project`).
-#
 # Covers:
 #   1. Default (no flag) → `--scope user` on install + marketplace add.
 #   2. `--scope project` → `--scope project` on both.

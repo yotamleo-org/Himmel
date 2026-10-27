@@ -81,7 +81,7 @@ const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { spawnSync } = require('child_process');
-const { which, resolvePowershell } = require('./helpers.js');
+const { which } = require('./helpers.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // launcher uses to pick a genuinely usable Git Bash — reused here (mirroring
 // deps-engine.js's and install-engine.js's own requires of it) rather than
@@ -98,7 +98,7 @@ const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash
 // missing seam rather than reading the ambient environment unscoped.
 const lunaConfig = require('./luna-config.js');
 // C, status item S6: the pinned persistence artifact
-// names/helpers (SYSTEMD_UNIT_NAME, WINDOWS_LOGON_TASK_NAME,
+// names/helpers (SYSTEMD_UNIT_NAME,
 // lingerEnabled(), systemdUnitInstalled()) are owned by bridge-persistence.js
 // — imported here, never redeclared (that module's own header comment: "a
 // sibling status item (S6) registers against these constants").
@@ -154,8 +154,7 @@ function probeFileExists(item, ctx) {
 
 // Read a checkout's LOCAL core.hooksPath — the override that points git at a
 // non-default hooks dir (e.g. `git config core.hooksPath scripts/hooks`, the
-// legitimate in-repo layout check-commit-msg.ps1 documents and check-hookspath
-// validates). LOCAL scope only: the status-probe fixtures below resolve hooks
+// legitimate in-repo layout check-hookspath validates). LOCAL scope only: the status-probe fixtures below resolve hooks
 // by pure-fs .git/gitdir/commondir traversal and carry no local config, so
 // `--local` returns '' for them and leaves that path unchanged; a GLOBAL
 // core.hooksPath is check-hookspath's authoritative concern, not this probe's
@@ -212,7 +211,7 @@ function gitHooksDir(targetPath) {
   return path.join(gitDir, 'hooks');
 }
 
-function installedHook(p, platform) {
+function installedHook(p) {
   let st;
   try {
     st = fs.statSync(p);
@@ -220,7 +219,6 @@ function installedHook(p, platform) {
     return false;
   }
   if (!st.isFile()) return false;
-  if (platform === 'win32') return true;
   try {
     fs.accessSync(p, fs.constants.X_OK);
     return true;
@@ -249,8 +247,7 @@ function probeGitHooks(item, ctx) {
   if (!hooksDir) {
     return { actual: 'absent', detail: `cannot resolve git hooks directory; missing hook type(s): ${item.probe.hooks.join(', ')}` };
   }
-  const platform = ctx.platform || process.platform;
-  const missing = item.probe.hooks.filter((hook) => !installedHook(path.join(hooksDir, hook), platform));
+  const missing = item.probe.hooks.filter((hook) => !installedHook(path.join(hooksDir, hook)));
   if (missing.length === 0) {
     // Installed is not enforcing: stubs with no config gate nothing.
     const configPresent = fs.existsSync(path.join(targetPath, '.pre-commit-config.yaml'));
@@ -1034,7 +1031,7 @@ function probeSettingsHooks(item, ctx) {
 const PROBE_TIMEOUT_MS = 60000;
 
 // HIMMELCTL_PROBE_TIMEOUT_SECS overrides the family budget — the same env-seam
-// class as HIMMELCTL_BASH / HIMMELCTL_POWERSHELL here, and the direct sibling
+// class as HIMMELCTL_BASH here, and the direct sibling
 // of install-engine.js's own INSTALL_TIMEOUT_SECS. Two real users: an operator
 // on a box slower than the one these numbers were measured on, and a hermetic
 // test that needs a SMALL budget so proving the timeout path costs seconds
@@ -1329,16 +1326,9 @@ function mcpConfigPath(ctx) {
 // dropped at that path) read as usable. POSIX distinguishes the two cases via
 // fs.accessSync(path, X_OK) — ENOENT (doesn't exist) vs any other failure
 // (typically EACCES, exists but not executable) get different reasons.
-// win32 has no exec bit to check (NTFS/ACL "executable" isn't a stat mode
-// concept the way POSIX X_OK is) — existsSync is the same signal which()'s
-// own win32 extension scan (.exe/.cmd/.bat) already relies on elsewhere in
-// this file, so this stays existsSync-only there, unchanged.
 function registeredCommandCheck(command, ctx) {
   if (!path.isAbsolute(command)) {
     return which(command, ctx.env) ? { ok: true } : { ok: false, reason: 'does not resolve' };
-  }
-  if (process.platform === 'win32') {
-    return fs.existsSync(command) ? { ok: true } : { ok: false, reason: 'does not resolve' };
   }
   try {
     fs.accessSync(command, fs.constants.X_OK);
@@ -1410,8 +1400,8 @@ function probeMcpConfigFile(item, ctx, filePath) {
   // bare `graphify` CLI a stale descriptor checked). This runs
   // unconditionally (registration always implies SOME configured command;
   // there's no opt-out) — see registeredCommandCheck() above for the exact
-  // resolution rule per platform (absolute path: POSIX checks X_OK, not just
-  // existence —; win32 stays existsSync-only; bare name:
+  // resolution rule (absolute path: X_OK, not just
+  // existence; bare name:
   // which() against ctx.env, same PATH-aware resolution `bin` uses).
   const command = registered && typeof registered === 'object' ? registered.command : undefined;
   if (!command || typeof command !== 'string') {
@@ -1502,7 +1492,7 @@ function probeHandoverDir(item, ctx) {
 // EXERCISES the interpreter through ctx.env rather than asking which() to
 // vouch for whatever name happens to sit on PATH.
 function probeDep(item, ctx) {
-  const cmd = item.probe.cmd || (process.platform === 'win32' ? item.probe.win32 : item.probe.posix);
+  const cmd = item.probe.cmd || item.probe.posix;
   if (cmd === 'bash') return probeBashDep(ctx);
   const found = which(cmd);
   return found
@@ -2475,12 +2465,9 @@ function probeTelegramGetMe(item, ctx) {
 // scripts/telegram/transcribe.ts:15-25's own resolution (WHISPER_DIR
 // override else ~/.himmel/whisper; WHISPER_CLI/WHISPER_MODEL override else
 // <dir>/<default>), with ONE deliberate deviation — transcribe.ts's own
-// default binary name is Windows-only (`whisper-cli.exe`; its own header
-// comment tells POSIX operators to set WHISPER_CLI explicitly) — but a
-// READINESS probe needs a sane default to check on EITHER platform, so the
-// default name is platform-branched here (`ctx.platform || process.platform`,
-// the same override precedent probeGitHooks already established above)
-// rather than win32-only. Two-step degrade, not a single yes/no: a binary
+// default binary name is `whisper-cli.exe`, but a
+// READINESS probe needs a sane POSIX default, so it checks `whisper-cli`.
+// Two-step degrade, not a single yes/no: a binary
 // present but the model missing is a DIFFERENT, more specific problem
 // (whisper-cli then fails per-invocation, not at bridge startup) —
 // 'degraded', not 'absent'.
@@ -2491,22 +2478,9 @@ function probeTelegramGetMe(item, ctx) {
 // file's own comments already cite it for the identical "it was a plain
 // directory" bug class) plus a non-zero-size floor, rather than a third
 // hand-rolled variant — kept local (not required cross-module) since that
-// file is ESM and this one is CommonJS. Windows carries no meaningful
-// executable-bit concept (fs.accessSync X_OK behaves like plain existence
-// there — see registeredCommandCheck() above), so the exec check is
-// POSIX-only and only ever applied to the binary, never the model.
-//
-// the POSIX/win32 branch
-// used to read the real process.platform directly instead of the effective
-// platform this file's own convention threads everywhere else (`ctx.platform
-// || process.platform` — see probeWhisperReady/probeGitHooks above). A probe
-// simulating win32 on an actual POSIX host inherited the host's own exec-bit
-// check instead of the simulated one, so a win32-simulated `.exe` fixture
-// with no exec bit set could read falsely absent — exactly the cross-
-// platform coverage the whisper fixtures below exist to prove, undermined by
-// reading the wrong platform signal. isUsableFile() now takes the effective
-// platform as a parameter instead of reading process.platform itself.
-function isUsableFile(p, { execCheck, platform } = {}) {
+// file is ESM and this one is CommonJS. The exec check is only ever applied to the
+// binary, never the model.
+function isUsableFile(p, { execCheck } = {}) {
   let stat;
   try {
     stat = fs.statSync(p);
@@ -2520,7 +2494,7 @@ function isUsableFile(p, { execCheck, platform } = {}) {
   } catch (_e) {
     return { ok: false, reason: 'exists but is not readable' };
   }
-  if (execCheck && (platform || process.platform) !== 'win32') {
+  if (execCheck) {
     try {
       fs.accessSync(p, fs.constants.X_OK);
     } catch (_e) {
@@ -2559,7 +2533,7 @@ function probeWhisperReady(item, ctx) {
   const env = ctx.env || process.env;
   const home = env.HOME || os.homedir();
   const dir = env.WHISPER_DIR || path.join(home, '.himmel', 'whisper');
-  const defaultBin = (ctx.platform || process.platform) === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
+  const defaultBin = 'whisper-cli';
   const { config, configError } = loadConfigIfPresent(ctx);
   if (configError) return { actual: 'degraded', detail: `cannot read luna config: ${configError.message}` };
   const whisperConfig = (config && config.bridge && config.bridge.whisper) || {};
@@ -2567,7 +2541,7 @@ function probeWhisperReady(item, ctx) {
   const configuredModel = nonEmpty(whisperConfig.model) ? path.join(dir, whisperConfig.model) : null;
   const cli = env.WHISPER_CLI || configuredCli || path.join(dir, defaultBin);
   const model = env.WHISPER_MODEL || configuredModel || path.join(dir, 'ggml-small.bin');
-  const cliCheck = isUsableFile(cli, { execCheck: true, platform: ctx.platform || process.platform });
+  const cliCheck = isUsableFile(cli, { execCheck: true });
   if (!cliCheck.ok) {
     return {
       actual: 'absent',
@@ -2609,7 +2583,7 @@ function probeWhisperReady(item, ctx) {
 // outcome).
 function probePythonInterpreter(item, ctx) {
   const env = ctx.env || process.env;
-  const cmd = item.probe.cmd || ((ctx.platform || process.platform) === 'win32' ? 'python' : 'python3');
+  const cmd = item.probe.cmd || 'python3';
   const marker = 'HIMMEL_PY_OK';
   const envForSpawn = Object.assign({}, env, {
     HIMMEL_PROBE_PY_CMD: cmd,
@@ -2745,7 +2719,7 @@ const UNCONFIGURED_REASON_RE = /missing$/;
 function probeLunaSources(item, ctx) {
   const env = ctx.env || process.env;
   const scriptPath = path.resolve(ctx.repoRoot, item.probe.script);
-  const pythonCmd = item.probe.pythonCmd || ((ctx.platform || process.platform) === 'win32' ? 'python' : 'python3');
+  const pythonCmd = item.probe.pythonCmd || 'python3';
   const sources = item.probe.sources || [];
   if (sources.length === 0) {
     return { actual: 'absent', detail: 'no luna sources configured to probe' };
@@ -2875,8 +2849,8 @@ function resolvePipelineBatDir(item, ctx) {
 // Which of `scheduleKeys` have a generated runner file present under
 // `batDir` — the same present-vs-absent signal cmd:cadence_armed already
 // uses, just per-schedule instead of "any runner at all".
-function armedPipelineSchedules(scheduleKeys, batDir, platform) {
-  const ext = platform === 'win32' ? 'bat' : 'sh';
+function armedPipelineSchedules(scheduleKeys, batDir) {
+  const ext = 'sh';
   return scheduleKeys.filter((k) => {
     const base = PIPELINE_RUNNER_BASE[k];
     return Boolean(base) && fs.existsSync(path.join(batDir, `${base}.${ext}`));
@@ -3126,7 +3100,7 @@ function probeCadenceCoherence(item, ctx) {
 // written within twice the interval, a last run that exited with a success
 // code. A task that is not armed is not judged; a row with none armed is the
 // ordinary "never turned on" absence (cleanAbsence). `platform` marks a
-// Windows-only row, which reads n/a anywhere else.
+// single-platform row, which reads n/a anywhere else.
 function probeCadenceRuns(item, ctx) {
   const d = item.probe;
   const platform = ctx.platform || process.platform;
@@ -3213,18 +3187,12 @@ function walkForSalusMarker(startDir) {
   }
 }
 
-// this used to lowercase
-// unconditionally, which is wrong on POSIX — Linux filesystems are
-// case-sensitive, so e.g. /home/u/Salus and /home/u/salus are genuinely
-// DIFFERENT paths there and must not compare equal. We fold case only on
-// win32, whose filesystems default to case-insensitive; POSIX (including
-// Linux) keeps its original case. macOS is nominally POSIX but its default
-// filesystem (HFS+/APFS) is ALSO case-insensitive in practice — we don't
-// special-case it here: detecting real filesystem case-sensitivity at
-// runtime is out of scope for a coherence hint (this probe already disclaims
-// full fence-matcher fidelity above), so the rule stays the simple
-// platform-name check this file already uses elsewhere
-// (`ctx.platform || process.platform`, per probeGitHooks/probeWhisperReady).
+// Case is preserved: Linux filesystems are case-sensitive, so e.g.
+// /home/u/Salus and /home/u/salus are genuinely DIFFERENT paths and must not
+// compare equal. macOS's default filesystem is case-insensitive in practice;
+// detecting real filesystem case-sensitivity at runtime is out of scope for a
+// coherence hint (this probe already disclaims full fence-matcher fidelity
+// above).
 // a `~`-prefixed path (either
 // side — vaultPath or a phi-roots entry) reached path.resolve() unexpanded,
 // which resolves `~` against CWD, not $HOME — a wrong PHI coherence verdict.
@@ -3235,24 +3203,24 @@ function walkForSalusMarker(startDir) {
 // would see a partially-initialized module — deferring the require into the
 // call site, after both modules have finished loading, avoids that) rather
 // than writing a third variant.
-function normalizeForPhiMatch(p, platform) {
+function normalizeForPhiMatch(p) {
   const { expandHome } = require('./status-report.js');
   const normalized = path.resolve(expandHome(p)).replace(/\\/g, '/');
-  return platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return normalized;
 }
 
-function vaultListedInPhiRoots(vaultPath, phiRootsPath, platform) {
+function vaultListedInPhiRoots(vaultPath, phiRootsPath) {
   let raw;
   try {
     raw = fs.readFileSync(phiRootsPath, 'utf8');
   } catch (_e) {
     return false;
   }
-  const target = normalizeForPhiMatch(vaultPath, platform);
+  const target = normalizeForPhiMatch(vaultPath);
   return raw.split(/\r?\n/).some((line) => {
     const entry = line.trim();
     if (!entry || entry.charAt(0) === '#') return false;
-    const normalized = normalizeForPhiMatch(entry, platform);
+    const normalized = normalizeForPhiMatch(entry);
     return target === normalized || target.indexOf(`${normalized}/`) === 0;
   });
 }
@@ -3278,9 +3246,8 @@ function probePhiCoherence(item, ctx) {
   const vaultPath = expandHome(rawVaultPath);
   const home = env.HOME || os.homedir();
   const phiRootsPath = path.join(home, '.config', 'claude-glm', 'phi-roots');
-  const platform = ctx.platform || process.platform;
   const hasMarker = fs.existsSync(vaultPath) && walkForSalusMarker(vaultPath);
-  const listed = vaultListedInPhiRoots(vaultPath, phiRootsPath, platform);
+  const listed = vaultListedInPhiRoots(vaultPath, phiRootsPath);
   if (hasMarker === listed) {
     return {
       actual: 'present',
@@ -3329,8 +3296,7 @@ function probeEngineAllowlist(item, ctx) {
   const suffixes = new Set(lines.map((l) => l.slice(l.indexOf(':') + 1)));
 
   const batDir = resolvePipelineBatDir(item, ctx);
-  const platform = ctx.platform || process.platform;
-  const armedSchedules = armedPipelineSchedules(Object.keys(PIPELINE_RUNNER_BASE), batDir, platform);
+  const armedSchedules = armedPipelineSchedules(Object.keys(PIPELINE_RUNNER_BASE), batDir);
 
   const workers = item.probe.legs || [];
   const armedLegs = workers.filter((worker) => armedSchedules.indexOf(worker.schedule) !== -1);
@@ -3362,61 +3328,34 @@ function probeEngineAllowlist(item, ctx) {
 // process-identity design
 // for "exactly one poller":
 //   (1) The count is of poller.ts CONSUMER processes only, never the
-//       combined supervisor-or-poller regex restart-bridge.ps1's own
-//       Test-BridgeCoreProc uses for a DIFFERENT purpose (liveness, where a
-//       supervisor+child pair legitimately coexist). A supervisor plus its
+//       combined supervisor-or-poller liveness regex, which serves a
+//       DIFFERENT purpose (where a supervisor+child pair legitimately coexist). A supervisor plus its
 //       poller child is one healthy running bridge, not two — counting with
 //       that liveness regex here would read 2 pollers on a correct install
 //       and false-fail S5 every time.
-//   (2) Platform posture: process identity is Windows-CIM-only today
-//       (Get-CimInstance Win32_Process; Get-Process cannot read
-//       CommandLine) and there is no JS/TS process-count helper anywhere in
-//       this repo. Windows uses a real CIM count (probeBridgePollerCount
-//       below); every other platform reads a LOUD 'degraded' naming the
-//       limitation (never a silent pass) rather than a cheap
-//       portable POSIX count (e.g. a /proc scan), which would grow this
-//       probe into a cross-platform process-inspection library — out of
-//       scope for this Stage-1 pass.
+//   (2) Platform posture: process identity is read by the POSIX path
+//       (probeBridgePollerCountPosix); every other platform reads a LOUD
+//       'degraded' naming the limitation (never a silent pass).
 function worstSeverity(a, b) {
   const rank = { absent: 2, degraded: 1, present: 0 };
   return (rank[a] || 0) >= (rank[b] || 0) ? a : b;
 }
 
-// Windows-only: count LIVE poller.ts processes via WMI (Get-CimInstance
-// Win32_Process), the same primitive restart-bridge.ps1 uses to read a
-// process's full CommandLine (Get-Process cannot). Matching on the literal
-// substring 'poller.ts' is deliberate and sufficient for ruling (1) above:
-// the supervisor's OWN command line never contains that string (it invokes
-// supervisor.ts, which then SPAWNS a separate poller.ts child) — so a
-// substring match on 'poller.ts' naturally counts only the leaf consumer
-// process, with no need to parse out or exclude the supervisor's PID.
-//
-// that substring match was NOT
-// anchored to any particular checkout — on a machine with more than one
-// himmel checkout/worktree (the normal state of this repo), a poller.ts
-// process belonging to a DIFFERENT checkout was counted too, reading either
-// a false healthy (a foreign poller mistaken for this one, with THIS
-// checkout's own bridge not actually running) or a spurious duplicate-poller
-// failure (a foreign, unrelated poller counted alongside this checkout's
-// genuinely healthy one). Same class of bug cadence-approve-engines.sh's own
-// ROOT ANCHOR closes: a bare tail/substring
-// match is never tied to a specific checkout.
+// The poller.ts process count is anchored to THIS checkout: a bare substring
+// match is never tied to a specific checkout, so on a machine with more than
+// one himmel checkout/worktree a poller.ts belonging to a DIFFERENT checkout
+// would be counted too, reading either a false healthy or a spurious
+// duplicate-poller failure. Same class of bug cadence-approve-engines.sh's own
+// ROOT ANCHOR closes.
 // supervisor.ts spawns the real poller.ts process with a bare RELATIVE argv
-// (`spawn(["bun","poller.ts"], {cwd: import.meta.dir})`) — restart-bridge.ps1's
-// own Test-BridgeCoreProc comment is explicit that "the genuine command
-// lines carry NO path" (verified against a live process table). A healthy
-// poller from ANY checkout is therefore indistinguishable from this one by
-// path alone in that shape — a genuine platform limit this fix does not
-// (and per the retask, must not try to) close; a bare, unpathed token is
-// still counted exactly as before. What IS closable: when a commandline
-// DOES carry a path (an alternate/manual invocation, or a foreign checkout's
-// own poller.ts happening to be invoked with one), it is now required to
-// resolve to THIS checkout's own scripts/telegram/poller.ts to count — a
-// path naming a different checkout is excluded rather than folded into the
-// same bucket. Win32_Process's CommandLine has been observed with either
-// path separator and NTFS is case-insensitive, so the comparison normalizes
-// both sides (forward-slashed, lower-cased) rather than assuming one
-// canonical form.
+// (`spawn(["bun","poller.ts"], {cwd: import.meta.dir})`), so the genuine
+// command lines carry NO path. A healthy poller from ANY checkout is
+// therefore indistinguishable from this one by path alone in that shape — a
+// genuine platform limit; a bare, unpathed token is still counted. What IS
+// closable: when a commandline DOES carry a path, it must resolve to THIS
+// checkout's own scripts/telegram/poller.ts to count — a path naming a
+// different checkout is excluded. The comparison normalizes both sides
+// (forward-slashed, lower-cased) rather than assuming one canonical form.
 function normalizeForPollerAnchorMatch(p) {
   return p.replace(/\\/g, '/').toLowerCase();
 }
@@ -3430,8 +3369,8 @@ function normalizeForPollerAnchorMatch(p) {
 // fragment ('Doe\himmel\...\poller.ts') that can never equal
 // thisCheckoutAnchor — a healthy LOCAL poller then read as foreign, and
 // bridge-health falsely reported zero pollers. Rather than fight whitespace
-// inside a bare regex, this leans on the fact that a Win32_Process
-// CommandLine (like any Windows/PowerShell command line) quotes an argument
+// inside a bare regex, this leans on the fact that a process
+// command line (like any Windows/PowerShell command line) quotes an argument
 // that itself contains a space — so a quoted 'poller.ts' path is tried
 // FIRST, capturing everything between the quotes (spaces included); only
 // when no quoted match exists does this fall back to the original bare-token
@@ -3835,36 +3774,11 @@ function probeBridgePollerCountPosix(ctx) {
 
 function probeBridgePollerCount(ctx) {
   const platform = ctx.platform || process.platform;
-  if (platform !== 'win32') {
-    if (platform === 'linux' || platform === 'darwin') return probeBridgePollerCountPosix(ctx);
-    return {
-      actual: 'degraded',
-      detail: `poller-count check not implemented on '${platform}' — Windows/Linux/macOS only today (HIMMEL-2176/HIMMEL-2890); process identity is UNVERIFIED here, not assumed healthy`,
-    };
-  }
-  const env = ctx.env || process.env;
-  // Routed through `bash -c` (the SAME cross-platform PATH-resolution seam
-  // every other cmd:* probe in this file already uses — see e.g.
-  // probeTelegramGetMe's `bun -e` call above) rather than spawning
-  // `powershell` directly: this is what lets the hermetic test suite fake
-  // it via a stub EXECUTABLE on a scrubbed PATH, consistent with this
-  // file's own established testing convention (never a JS mock). Emits each
-  // matching process's own CommandLine (one per line) rather than a bare
-  // Count — the checkout anchor above needs the actual text to compare
-  // against ctx.repoRoot, which a pre-reduced count would have thrown away.
-  const cmd = "powershell -NoProfile -NonInteractive -Command "
-    + "\"Get-CimInstance Win32_Process | Where-Object { \\$_.CommandLine -match 'poller\\.ts' } | ForEach-Object { \\$_.CommandLine }\"";
-  const r = spawnBashProbe(['-c', cmd], { env, encoding: 'utf8' });
-  if (r.timedOut) return { actual: 'degraded', detail: `poller-count probe timed out after ${probeTimeoutSecs(r)}s` };
-  if (r.error) return { actual: 'degraded', detail: `spawn error: ${r.error.message}` };
-  if (r.status !== 0) return { actual: 'degraded', detail: `Get-CimInstance poller-count query exited rc=${r.status}` };
-  const lines = (r.stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const thisCheckoutAnchor = ctx.repoRoot
-    ? normalizeForPollerAnchorMatch(path.join(ctx.repoRoot, 'scripts', 'telegram', 'poller.ts'))
-    : null;
-  const n = lines.filter((line) => pollerLineIsThisCheckout(line, thisCheckoutAnchor)).length;
-  if (n === 1) return { actual: 'present', detail: '1 poller.ts process running for this checkout (a supervisor parent, if any, is not counted)' };
-  return { actual: 'absent', detail: `${n} poller.ts process(es) running for this checkout (expected exactly 1)` };
+  if (platform === 'linux' || platform === 'darwin') return probeBridgePollerCountPosix(ctx);
+  return {
+    actual: 'degraded',
+    detail: `poller-count check not implemented on '${platform}' — Linux/macOS only today (HIMMEL-2176/HIMMEL-2890); process identity is UNVERIFIED here, not assumed healthy`,
+  };
 }
 
 // probeBridgeHealth folds three independent AND-conditions (token getMe ok +
@@ -3927,8 +3841,8 @@ function probeBridgeHealth(item, ctx) {
 
 // ── bridge-persistence (status item S6) ─────────────────────────────────
 
-// C, status item S6 (design §3.5): a logon task
-// (win) / systemd unit + linger (linux) must exist whenever bridge.enabled —
+// C, status item S6 (design §3.5): a systemd unit + linger (linux) must exist
+// whenever bridge.enabled —
 // otherwise the bridge silently stops surviving a reboot/logout (the same
 // silent-04:00-stall class S1 named for cadence). bridge.enabled:false is a
 // clean opt-out, not a failure — mirrors cadence-armed/engine-allowlist/
@@ -3936,17 +3850,6 @@ function probeBridgeHealth(item, ctx) {
 // downgrades it to an n/a opt-in hint instead of red). Every OTHER failure/
 // limitation reads 'degraded' (a loud warn) — this item's contract is
 // pass/warn/opt-in, never a hard 'absent'/red once the adopter has opted in.
-//
-// Windows: registration must be verified by QUERYING THE SCHEDULER itself
-// (schtasks), never inferred from any file on disk — a defect caught in the
-// predecessor PR was exactly an S1 false-green (a runner FILE's presence
-// mistaken for proof a scheduler task was registered). A query FAILURE
-// (spawn error, timeout, an unrecognized exit code, OR a caught
-// Get-ScheduledTask error that isn't the exact "no such task" identifier —
-// e.g. the ScheduledTasks module unavailable, access denied, a WinRM/CIM
-// problem) is reported as unknown, never absent and never present —
-// probeWindowsSchedulerTaskState()'s `state` never resolves to anything but
-// 'registered' on rc=0, and 'absent' only on a genuinely confirmed not-found.
 //
 // Linux: persistence = the systemd user unit installed+enabled AND linger
 // enabled. Linger absent is reported as ITS OWN warn (never folded into a
@@ -3956,110 +3859,8 @@ function probeBridgeHealth(item, ctx) {
 // macOS/other: launchd support is explicitly Stage 2 (A12) — this does NOT
 // build a process/service-inspection library for it; it reads a LOUD
 // degraded naming the limitation (never a silent pass), the
-// same platform posture bridge-health's own Windows-CIM-only poller-count
+// same platform posture bridge-health's own poller-count
 // check already established.
-// rc=0 from
-// `schtasks /query` only proves the task EXISTS — schtasks still exits 0 for
-// a task that is registered but DISABLED, and a disabled task will not run
-// at logon (the exact thing S6 exists to verify). Existence is not
-// enablement — the same class as the predecessor's S1 false-green and this
-// same ticket's own bridge-persistence.js round-3 uninstall gap. `/v`
-// (verbose) is added so the query's own stdout carries the `Scheduled Task
-// State` field; that field is parsed and only `Enabled` reads 'registered'.
-function probeWindowsSchedulerTaskState(ctx) {
-  const env = ctx.env || process.env;
-  const taskName = bridgePersistence.WINDOWS_LOGON_TASK_NAME;
-  // the round-6 fix
-  // parsed schtasks' `/fo LIST /v` TEXT output for the literal label
-  // "Scheduled Task State" and value "Enabled" — both are LOCALIZED by
-  // Windows (German/Japanese/Spanish/... display strings), so on a
-  // non-English install the label never matches and a perfectly healthy
-  // enabled task silently degrades (safe direction, but still an
-  // operator-environment assumption baked into adopter-facing code — the
-  // exact class this whole PR exists to eliminate). Get-ScheduledTask's
-  // `.State` is a genuine .NET enum (Microsoft.PowerShell.ScheduledTask's
-  // TaskState) — `.ToString()` returns the symbolic member name
-  // (Ready/Disabled/Running/Queued/Unknown), which is culture-invariant BY
-  // CONSTRUCTION, unlike schtasks' display strings. Routed through `bash -c`
-  // (this file's own established cross-platform seam — see
-  // probeBridgePollerCount above) so a stub on PATH fakes this hermetically,
-  // never a JS mock. `$_` is escaped as `\$_` for bash (same convention
-  // probeBridgePollerCount's own Get-CimInstance call already uses) since
-  // the whole command reaches bash inside literal double quotes.
-  //
-  // this used to
-  // hardcode the literal binary name `powershell` — a machine with ONLY
-  // PowerShell 7 (`pwsh`) and no Windows PowerShell would never resolve it,
-  // reading persistence as unknown forever even though bridge-persistence.js
-  // (the installer half of this same S6 feature) already resolves the
-  // interpreter correctly via helpers.js's resolvePowershell() (prefers
-  // `pwsh`, falls back to `powershell` with a stderr warning). Reusing that
-  // SAME helper here — never a second, independent resolution path — is
-  // what keeps the installer and the probe from disagreeing about which
-  // interpreter exists on this machine. The resolved name/path is
-  // double-quoted in the command string (which()'s own resolution can
-  // return a full path, e.g. one containing "Program Files") — the same
-  // quoting convention this file's other bash -c commands already use for
-  // any interpolated path (see e.g. probeCmdHasQmd's `. "${resolverPath}"`).
-  //
-  // (third face of the tri-state class this
-  // round is fixing): `-ErrorAction SilentlyContinue` swallows EVERY error
-  // into the same empty-stdout/rc=0 shape — a genuinely missing task AND a
-  // real query failure (ScheduledTasks module unavailable, access denied,
-  // WinRM/CIM trouble) both used to read 'absent'. Switched to
-  // `-ErrorAction Stop` inside a try/catch so the two are told apart: on
-  // success, stdout is `STATE:<enum>`; on a caught error, stdout is
-  // `NOTFOUND` only when `$_.FullyQualifiedErrorId` matches the exact,
-  // non-localized identifier PowerShell uses for "no such task"
-  // (`CmdletizationQuery_NotFound_TaskName,Get-ScheduledTask` — confirmed
-  // against a real Windows host: FullyQualifiedErrorId segments are stable
-  // internal identifiers, never translated, unlike `.Exception.Message` or
-  // even `.CategoryInfo.Category` — the latter reads the SAME
-  // 'ObjectNotFound' for a missing task AND for the module itself being
-  // unavailable (CommandNotFoundException), so it can't carry this
-  // distinction on its own). Any other caught error emits `ERR:<FQEID>` —
-  // read as unknown/degraded, never absent, the same fail-safe posture as
-  // every other undetermined branch in this function.
-  const psBin = resolvePowershell(env);
-  const cmd = `"${psBin}" -NoProfile -NonInteractive -Command `
-    + '"try { \\$t = Get-ScheduledTask -TaskName \'' + taskName + '\' -ErrorAction Stop; '
-    + 'Write-Output (\'STATE:\' + \\$t.State.ToString()) } catch { '
-    + 'if (\\$_.FullyQualifiedErrorId -like \'CmdletizationQuery_NotFound_TaskName*\') { Write-Output \'NOTFOUND\' } '
-    + 'else { Write-Output (\'ERR:\' + \\$_.FullyQualifiedErrorId) } }"';
-  const r = spawnBashProbe(['-c', cmd], { env, encoding: 'utf8' });
-  if (r.timedOut) return { state: 'unknown', detail: `Get-ScheduledTask query for '${taskName}' timed out after ${probeTimeoutSecs(r)}s — registration status could not be determined` };
-  if (r.error) return { state: 'unknown', detail: `Get-ScheduledTask query for '${taskName}' failed to spawn: ${r.error.message} — registration status could not be determined` };
-  if (r.status !== 0) return { state: 'unknown', detail: `Get-ScheduledTask query for '${taskName}' exited rc=${r.status} — registration status could not be determined (treated as unknown, never present)` };
-  const out = (r.stdout || '').trim();
-  if (!out) return { state: 'unknown', detail: `Get-ScheduledTask query for '${taskName}' produced no output — registration status could not be determined (treated as unknown, never present)` };
-  if (out === 'NOTFOUND') return { state: 'absent', detail: `Get-ScheduledTask reports no scheduled task named '${taskName}' registered with the Windows Task Scheduler` };
-  if (out.startsWith('ERR:')) {
-    return {
-      state: 'unknown',
-      detail: `Get-ScheduledTask query for '${taskName}' failed (${out.slice(4)}) — registration status could not be determined (treated as unknown, NOT assumed absent — e.g. ScheduledTasks module unavailable, access denied, or a WinRM/CIM problem)`,
-    };
-  }
-  if (!out.startsWith('STATE:')) {
-    return { state: 'unknown', detail: `Get-ScheduledTask query for '${taskName}' returned an unrecognized response '${out}' — registration status could not be determined (treated as unknown, never present)` };
-  }
-  const taskState = out.slice('STATE:'.length);
-  // Ready/Running/Queued are all "will fire" states (Queued is a transient
-  // in-flight state, not a disabled one) — Disabled is the one state S6
-  // exists to catch. Any OTHER value (a future TaskState member this build
-  // doesn't know about) reads unknown — fail-safe, never silently folded
-  // into either bucket.
-  if (taskState === 'Ready' || taskState === 'Running' || taskState === 'Queued') {
-    return { state: 'registered', detail: `Get-ScheduledTask reports the scheduled task '${taskName}' is registered and ${taskState} (culture-invariant State enum)` };
-  }
-  if (taskState === 'Disabled') {
-    return {
-      state: 'disabled',
-      detail: `Get-ScheduledTask reports the scheduled task '${taskName}' exists but its State is Disabled — it will NOT run at logon (fix: Enable-ScheduledTask -TaskName "${taskName}")`,
-    };
-  }
-  return { state: 'unknown', detail: `Get-ScheduledTask reports the scheduled task '${taskName}' exists with an unrecognized State '${taskState}' — registration status could not be determined (treated as unknown, never present)` };
-}
-
 // the SPAWN side of the same
 // ctx.env class scopeConfigPathToCtx already fixed for the config-path read
 // — one layer further out. bridgePersistence.systemdUnitInstalled()/
@@ -4135,17 +3936,6 @@ function probeBridgePersistence(item, ctx) {
 
   const platform = ctx.platform || process.platform;
 
-  if (platform === 'win32') {
-    const taskResult = probeWindowsSchedulerTaskState(ctx);
-    if (taskResult.state === 'registered') {
-      return { actual: 'present', detail: taskResult.detail };
-    }
-    return {
-      actual: 'degraded',
-      detail: `${taskResult.detail} (bridge.enabled=true) — the bridge will not restart automatically after a reboot/logon without it`,
-    };
-  }
-
   if (platform === 'linux') {
     const unitInfo = scopeEnvToCtx(ctx, () => bridgePersistence.systemdUnitInstalled());
     if (!unitInfo.fileExists) {
@@ -4163,8 +3953,7 @@ function probeBridgePersistence(item, ctx) {
     // which tells an operator to `systemctl enable` a unit whose enablement
     // was never actually established — the wrong remediation when the real
     // problem is that systemctl couldn't be queried at all. Named separately
-    // here, mirroring the Windows branch's own present/disabled/unknown
-    // split above. The verdict stays 'degraded' in both cases.
+    // here. The verdict stays 'degraded' in both cases.
     if (unitInfo.enabled === null) {
       return {
         actual: 'degraded',
@@ -4208,145 +3997,43 @@ function probeBridgePersistence(item, ctx) {
 
 // ── observability-stack ───────────────────────────────────
 //
-// The Phase A observability stack (local Prometheus + Grafana +
-// windows_exporter + the Bun flow-exporter) registers FOUR scheduled tasks
-// at install time, under these names:
-const OBSERVABILITY_TASK_NAMES = [
-  'himmel-observability-flow-exporter',
-  'himmel-observability-grafana',
-  'himmel-observability-prometheus',
-  'himmel-observability-windows-exporter',
-];
-
-// No descriptor fields — the four names above are a fixed convention (same
-// posture as cmd:codex_provisioned/phi-coherence/bridge-persistence), not
-// per-item configuration.
+// No descriptor fields — a fixed convention (same posture as
+// cmd:codex_provisioned/phi-coherence/bridge-persistence), not per-item
+// configuration.
 //
-// Phase A ships a Windows-only installer (install-stack.ps1,
-// Register-LogonTask per exporter); install-stack.sh is an 11-line loud
-// placeholder that exits 2 (cross-platform packaging is tracked as its own
-// gap, not something this probe assumes will land). On posix
-// this is honest about that: it never spawns the doomed placeholder and
-// never reports 'present' or a silent 'degraded' that would imply a
-// repairable partial install — a plain 'absent' naming the reason.
-//
-// On win32, ONE Get-ScheduledTask query (wildcard 'himmel-observability-*',
-// same -ErrorAction Stop / FullyQualifiedErrorId discipline as
-// probeWindowsSchedulerTaskState above) folds the four tasks' live State
-// into a tri-state verdict: all four Ready/Running/Queued -> present; a
-// query-level failure (spawn error, timeout, nonzero exit, unparseable
-// output, or a caught PowerShell error) -> degraded, never silently read as
-// absent or present (same fail-safe posture as S6's bridge-persistence
-// probe above); the query succeeding with zero matching tasks -> absent
-// (the stack was never installed); anything in between (some tasks
-// registered, some missing, or one Disabled) -> degraded, naming exactly
-// which task(s) are the problem — the literal "Grafana up, exporters
-// absent" honesty case asks for.
+// The exporter-only user service (install-stack.sh) is opt-in via
+// observability.enabled in ~/.himmel/config.json: every profile desires this
+// item, but a systemd/launchd service is never enabled unasked. Not opted in
+// is a CLEAN absence, never degraded.
 function probeObservabilityStack(item, ctx) {
   const env = ctx.env || process.env;
-  const platform = ctx.platform || process.platform;
-  if (platform !== 'win32') {
-    // posix runs the exporter-only user service ships
-    // (install-stack.sh). Opt-in via observability.enabled in
-    // ~/.himmel/config.json: every profile desires this item, but a
-    // systemd/launchd service is never enabled unasked. Not opted in is a
-    // CLEAN absence, never degraded.
-    let config;
-    try {
-      config = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
-    } catch (e) {
-      return { actual: 'degraded', detail: `cannot read luna config: ${e.message}` };
-    }
-    if (!(config.observability && config.observability.enabled === true)) {
-      return {
-        actual: 'absent',
-        detail: 'observability.enabled is not true in ~/.himmel/config.json — the exporter service is opt-in',
-        cleanAbsence: true,
-      };
-    }
-    // Read-only: `status` only runs systemctl is-enabled / launchctl print,
-    // curls the exporter and reads doctor-cadence status; spawnProbeSync bounds it.
-    const script = path.join(ctx.repoRoot, 'scripts', 'observability', 'install-stack.sh');
-    const r = spawnBashProbe([script, 'status'], { env, encoding: 'utf8' });
-    if (r.timedOut) return { actual: 'degraded', detail: `install-stack.sh status timed out after ${probeTimeoutSecs(r)}s — exporter state could not be determined` };
-    if (r.error) return { actual: 'degraded', detail: `install-stack.sh status failed to spawn: ${r.error.message} — exporter state could not be determined` };
-    const out = String(r.stdout || '').trim();
-    if (r.status === 0) return { actual: 'present', detail: 'flow exporter service registered, healthy, doctor-cadence armed' };
-    const fails = out.split(/\r?\n/).filter((l) => l.startsWith('FAIL'));
-    if (fails.length === 0) return { actual: 'degraded', detail: `install-stack.sh status exited rc=${r.status} — ${String(r.stderr || out).trim().slice(0, 200)}` };
-    // service + health both failing = never installed (cadence aside); anything else = partial.
-    const svcFail = fails.some((l) => l.startsWith('FAIL service'));
-    const healthFail = fails.some((l) => l.startsWith('FAIL health'));
-    return { actual: svcFail && healthFail ? 'absent' : 'degraded', detail: fails.join('; ') };
+  let config;
+  try {
+    config = scopeConfigPathToCtx(ctx, () => lunaConfig.load());
+  } catch (e) {
+    return { actual: 'degraded', detail: `cannot read luna config: ${e.message}` };
   }
-  const psBin = resolvePowershell(env);
-  // The WILDCARD TaskName is load-bearing, and is why -ErrorAction Stop is safe
-  // here: Get-ScheduledTask with a wildcard matching nothing returns an EMPTY
-  // set — it does NOT throw — so a clean host falls through to the else-branch
-  // and reports NONE -> 'absent'. A LITERAL TaskName that matches nothing DOES
-  // throw; that asymmetry is what makes this look wrong at a glance, and CR
-  // rounds 1 and 2 each raised it as a false 'degraded'. Verified live on
-  // win32: `Get-ScheduledTask -TaskName 'himmel-nonexistent-pattern-*'
-  // -ErrorAction Stop` returns count=0 without throwing. The catch below
-  // therefore fires only on a REAL query failure (ScheduledTasks module
-  // missing, access denied, CIM/WinRM fault) — correctly degraded, and
-  // deliberately never 'absent', since an unanswerable query is not evidence
-  // the stack is uninstalled.
-  const cmd = `"${psBin}" -NoProfile -NonInteractive -Command `
-    + '"try { \\$tasks = Get-ScheduledTask -TaskName \'himmel-observability-*\' -ErrorAction Stop; '
-    + 'if (\\$tasks) { \\$tasks | ForEach-Object { Write-Output (\\$_.TaskName + \':\' + \\$_.State.ToString()) } } else { Write-Output \'NONE\' } '
-    + '} catch { Write-Output (\'ERR:\' + \\$_.FullyQualifiedErrorId) }"';
-  const r = spawnBashProbe(['-c', cmd], { env, encoding: 'utf8' });
-  if (r.timedOut) return { actual: 'degraded', detail: `Get-ScheduledTask query for the himmel-observability-* family timed out after ${probeTimeoutSecs(r)}s — stack status could not be determined` };
-  if (r.error) return { actual: 'degraded', detail: `Get-ScheduledTask query for the himmel-observability-* family failed to spawn: ${r.error.message} — stack status could not be determined` };
-  if (r.status !== 0) return { actual: 'degraded', detail: `Get-ScheduledTask query for the himmel-observability-* family exited rc=${r.status} — stack status could not be determined` };
-  const out = (r.stdout || '').trim();
-  if (!out) return { actual: 'degraded', detail: 'Get-ScheduledTask query for the himmel-observability-* family produced no output — stack status could not be determined' };
-  if (out.startsWith('ERR:')) {
+  if (!(config.observability && config.observability.enabled === true)) {
     return {
-      actual: 'degraded',
-      detail: `Get-ScheduledTask query for the himmel-observability-* family failed (${out.slice(4)}) — stack status could not be determined (treated as unknown, never assumed absent — e.g. ScheduledTasks module unavailable, access denied, or a WinRM/CIM problem)`,
+      actual: 'absent',
+      detail: 'observability.enabled is not true in ~/.himmel/config.json — the exporter service is opt-in',
+      cleanAbsence: true,
     };
   }
-  if (out === 'NONE') {
-    return { actual: 'absent', detail: 'no himmel-observability-* scheduled tasks are registered with the Windows Task Scheduler — the stack has not been installed' };
-  }
-  const states = new Map();
-  for (const line of out.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const idx = trimmed.lastIndexOf(':');
-    if (idx === -1) continue;
-    states.set(trimmed.slice(0, idx), trimmed.slice(idx + 1));
-  }
-  const running = [];
-  const problems = [];
-  for (const name of OBSERVABILITY_TASK_NAMES) {
-    const state = states.get(name);
-    if (state === 'Ready' || state === 'Running' || state === 'Queued') {
-      running.push(name);
-    } else if (state === 'Disabled') {
-      problems.push(`${name}: Disabled`);
-    } else if (state === undefined) {
-      problems.push(`${name}: not registered`);
-    } else {
-      problems.push(`${name}: unrecognized state '${state}'`);
-    }
-  }
-  // 'running' here also covers 'Ready' (registered +
-  // enabled, but NOT currently executing) and 'Queued' (a transient
-  // in-flight state) — only the literal 'Running' state means actually
-  // executing right now. A detail claiming "running" for a host where every
-  // task is merely Ready overstates exactly what this probe exists to be
-  // honest about. "registered and enabled" is what the states actually
-  // prove, on both the present and degraded strings.
-  if (running.length === OBSERVABILITY_TASK_NAMES.length) {
-    return { actual: 'present', detail: `all ${OBSERVABILITY_TASK_NAMES.length} himmel-observability-* scheduled tasks registered and enabled` };
-  }
-  return {
-    actual: 'degraded',
-    detail: `partial install — ${running.length}/${OBSERVABILITY_TASK_NAMES.length} himmel-observability-* tasks registered and enabled; ${problems.join(', ')}`,
-  };
+  // Read-only: `status` only runs systemctl is-enabled / launchctl print,
+  // curls the exporter and reads doctor-cadence status; spawnProbeSync bounds it.
+  const script = path.join(ctx.repoRoot, 'scripts', 'observability', 'install-stack.sh');
+  const r = spawnBashProbe([script, 'status'], { env, encoding: 'utf8' });
+  if (r.timedOut) return { actual: 'degraded', detail: `install-stack.sh status timed out after ${probeTimeoutSecs(r)}s — exporter state could not be determined` };
+  if (r.error) return { actual: 'degraded', detail: `install-stack.sh status failed to spawn: ${r.error.message} — exporter state could not be determined` };
+  const out = String(r.stdout || '').trim();
+  if (r.status === 0) return { actual: 'present', detail: 'flow exporter service registered, healthy, doctor-cadence armed' };
+  const fails = out.split(/\r?\n/).filter((l) => l.startsWith('FAIL'));
+  if (fails.length === 0) return { actual: 'degraded', detail: `install-stack.sh status exited rc=${r.status} — ${String(r.stderr || out).trim().slice(0, 200)}` };
+  // service + health both failing = never installed (cadence aside); anything else = partial.
+  const svcFail = fails.some((l) => l.startsWith('FAIL service'));
+  const healthFail = fails.some((l) => l.startsWith('FAIL health'));
+  return { actual: svcFail && healthFail ? 'absent' : 'degraded', detail: fails.join('; ') };
 }
 
 // ── env-present ──────────────────────────────────────────────────────────

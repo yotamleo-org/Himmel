@@ -506,6 +506,16 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 ---
 
+## Project skills and agents (`.claude/skills/`, `.claude/agents/`)
+
+`unslop`, `no-comments`, `technical-writing`, `test-audit` and `writing-for-agents`
+(skills) and `comment-sicko` (agent) are project-scoped by design: they load
+only in a session opened in this repo and are not entries in
+`marketplace/.claude-plugin/marketplace.json`. A profile can only select a
+plugin, so a skill that a profile must enable moves into a plugin instead
+(as `domain-modeling` did). Registry rows:
+[`tool-adoption/registry.md`](tool-adoption/registry.md).
+
 ### writing-for-agents (`.claude/skills/writing-for-agents/`)
 
 **What:** Vendored `mattpocock/skills` skill (MIT, pinned `49dd158d1076134a641b33efb035946536778336`, HIMMEL-5631) on cutting and tightening agent-facing docs. User-invoked (`disable-model-invocation`), 0 listing tokens. POC use: `/writing-for-agents find ways to cull my global steering files`, read-only, proposal only. Complements `claude-md-audit` (rubric check of a changed CLAUDE.md) and `prose-audit` (mechanical prose to script); neither culls sediment or no-ops across the steering set. Scheduling not wired (operator ruling pending).

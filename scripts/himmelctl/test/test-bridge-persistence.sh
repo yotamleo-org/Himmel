@@ -25,13 +25,7 @@
 # refuse to remove the unit file when `disable --now` fails, never report
 # ok:true regardless. That case needs no SKIP anywhere: a stub-forced
 # non-zero exit (Linux) and a genuinely unspawnable stub (Windows, status
-# null) both hit the same "disable did not succeed" branch. And the two new
-# Windows persistence primitives (installWindowsLogonTask /
-# uninstallWindowsLogonTask): dryRun action lists run everywhere; the real
-# non-Windows graceful path is exercised for real only where
-# process.platform !== 'win32' (WSL/Linux) — never attempted on the real
-# Windows dev host, where it would genuinely spawn pwsh and register a real
-# scheduled task (SKIP there instead, honestly named).
+# null) both hit the same "disable did not succeed" branch.
 #
 # an absent unit file alone is never proof of
 # uninstall; is-enabled/is-active must ALSO give a CONFIRMED negative (never
@@ -49,13 +43,7 @@
 # EVERY install failure after the first durable side effect (file written
 # -> reload -> enable -> start), not just the enable/start split: a
 # daemon-reload failure, and an outright (not just stuck-enabled) enable
-# failure, both now report `partial:true` too. codex-2 — the Windows
-# logon-task primitives take an injectable `spawnFn` (default the real
-# spawnSync); this repo's own Windows dev host reports process.platform
-# 'win32' too, so injecting a fake spawn genuinely exercises the win32
-# branch's pwsh argv construction for real, verified with NO process ever
-# spawned — closing the "unverified on the primary platform" gap without
-# registering a real scheduled task.
+# failure, both now report `partial:true` too.
 #
 # closes the sibling gap an earlier fix named but didn't
 # fix: uninstallSystemdUnit() now carries the SAME `partial:true` contract
@@ -240,101 +228,6 @@ const unitPath = path.join(UNIT_DIR, m.SYSTEMD_UNIT_NAME);
   check('enableLinger dryRun: ok=true', true, rl.ok);
   check('enableLinger dryRun: actions (exact)', ['loginctl enable-linger op'], rl.actions);
 
-  const rw = m.installWindowsLogonTask({ repoRoot: REPO_FIXTURE, dryRun: true });
-  check('installWindowsLogonTask dryRun: ok=true', true, rw.ok);
-  check('installWindowsLogonTask dryRun: actions (exact)', 1, rw.actions.length);
-  if (rw.actions[0].indexOf('install-logon-task.ps1') !== -1 && rw.actions[0].indexOf(`-Repo ${REPO_FIXTURE}`) !== -1) {
-    pass('installWindowsLogonTask dryRun: action names install-logon-task.ps1 -Repo <repoRoot>');
-  } else {
-    fail('installWindowsLogonTask dryRun: action names install-logon-task.ps1 -Repo <repoRoot>', JSON.stringify(rw.actions));
-  }
-
-  const ruw = m.uninstallWindowsLogonTask({ dryRun: true });
-  check('uninstallWindowsLogonTask dryRun: ok=true', true, ruw.ok);
-  check('uninstallWindowsLogonTask dryRun: actions (exact)', 1, ruw.actions.length);
-  if (ruw.actions[0].indexOf('install-logon-task.ps1') !== -1 && ruw.actions[0].indexOf('-Remove') !== -1) {
-    pass('uninstallWindowsLogonTask dryRun: action names install-logon-task.ps1 -Remove');
-  } else {
-    fail('uninstallWindowsLogonTask dryRun: action names install-logon-task.ps1 -Remove', JSON.stringify(ruw.actions));
-  }
-
-  check('installWindowsLogonTask: repoRoot required', false, m.installWindowsLogonTask({}).ok);
-}
-
-// ── Windows logon-task primitives: non-Windows graceful path. Exercised for
-// real ONLY off Windows (process.platform !== 'win32') — never attempted on
-// the real Windows dev host, where it would genuinely spawn pwsh and
-// register a real scheduled task (requirement: never touch real machine
-// state from a test). Honestly SKIPped there instead. ──────────────────────
-if (process.platform !== 'win32') {
-  const r = m.installWindowsLogonTask({ repoRoot: REPO_FIXTURE });
-  check('installWindowsLogonTask (non-Windows): ok=false', false, r.ok);
-  if (/not a Windows host/.test(r.detail)) {
-    pass('installWindowsLogonTask (non-Windows): detail names a non-Windows host');
-  } else {
-    fail('installWindowsLogonTask (non-Windows): detail names a non-Windows host', r.detail);
-  }
-
-  const ru = m.uninstallWindowsLogonTask({});
-  check('uninstallWindowsLogonTask (non-Windows): ok=false', false, ru.ok);
-  if (/not a Windows host/.test(ru.detail)) {
-    pass('uninstallWindowsLogonTask (non-Windows): detail names a non-Windows host');
-  } else {
-    fail('uninstallWindowsLogonTask (non-Windows): detail names a non-Windows host', ru.detail);
-  }
-} else {
-  skip('installWindowsLogonTask/uninstallWindowsLogonTask (non-Windows graceful path)', 'this host IS Windows (process.platform===win32) — exercising the real-invocation branch here would genuinely spawn pwsh and register a real scheduled task; verified for real on WSL/Linux instead');
-}
-
-// ── Windows logon-task primitives: argv verification via an injected
-// spawnFn — the REAL win32 branch, minus the actual
-// spawn. Node's process.platform reports 'win32' for THIS repo's own Git
-// Bash dev host too (native Windows node, not an MSYS thing), so this
-// genuinely exercises PowerShell invocation/argument construction — the
-// primary-platform code path round-1's own tests never reached — without
-// ever touching a real process or registering a real scheduled task. Off
-// Windows this branch is correctly unreachable regardless of injection
-// (the platform gate fires first, same as the graceful-path block above),
-// so it SKIPs there instead of asserting nothing. ──────────────────────────
-if (process.platform === 'win32') {
-  const installCalls = [];
-  const fakeInstallSpawn = (cmd, args, opts) => { installCalls.push({ cmd, args, opts }); return { status: 0, stdout: '', stderr: '' }; };
-  const ri = m.installWindowsLogonTask({ repoRoot: REPO_FIXTURE, spawnFn: fakeInstallSpawn });
-  check('installWindowsLogonTask (injected spawn): ok=true, never touched a real process', true, ri.ok);
-  check('installWindowsLogonTask (injected spawn): spawned exactly once', 1, installCalls.length);
-  if (installCalls.length === 1) {
-    const args = installCalls[0].args;
-    check('installWindowsLogonTask argv: -NoProfile present', true, args.includes('-NoProfile'));
-    check('installWindowsLogonTask argv: -File present', true, args.includes('-File'));
-    check('installWindowsLogonTask argv: script path names install-logon-task.ps1', true, args.some((a) => typeof a === 'string' && a.indexOf('install-logon-task.ps1') !== -1));
-    check('installWindowsLogonTask argv: -Repo <repoRoot> present', true, args.includes('-Repo') && args.includes(REPO_FIXTURE));
-  }
-
-  const uninstallCalls = [];
-  const fakeUninstallSpawn = (cmd, args, opts) => { uninstallCalls.push({ cmd, args, opts }); return { status: 0, stdout: '', stderr: '' }; };
-  const ru2 = m.uninstallWindowsLogonTask({ spawnFn: fakeUninstallSpawn });
-  check('uninstallWindowsLogonTask (injected spawn): ok=true, never touched a real process', true, ru2.ok);
-  check('uninstallWindowsLogonTask (injected spawn): spawned exactly once', 1, uninstallCalls.length);
-  if (uninstallCalls.length === 1) {
-    const args = uninstallCalls[0].args;
-    check('uninstallWindowsLogonTask argv: -Remove present', true, args.includes('-Remove'));
-    check('uninstallWindowsLogonTask argv: script path names install-logon-task.ps1', true, args.some((a) => typeof a === 'string' && a.indexOf('install-logon-task.ps1') !== -1));
-  }
-
-  // A failing spawn (real pwsh exit code) must still propagate honestly
-  // through the injected path — proves the injection wires into the SAME
-  // status/stderr handling the real spawnSync path uses, not a shortcut.
-  const failCalls = [];
-  const fakeFailSpawn = () => { failCalls.push(1); return { status: 1, stdout: '', stderr: 'boom' }; };
-  const rFail = m.installWindowsLogonTask({ repoRoot: REPO_FIXTURE, spawnFn: fakeFailSpawn });
-  check('installWindowsLogonTask (injected spawn, forced failure): ok=false', false, rFail.ok);
-  if (/boom/.test(rFail.detail)) {
-    pass('installWindowsLogonTask (injected spawn, forced failure): detail carries the real stderr');
-  } else {
-    fail('installWindowsLogonTask (injected spawn, forced failure): detail carries the real stderr', rFail.detail);
-  }
-} else {
-  skip('installWindowsLogonTask/uninstallWindowsLogonTask (injected-spawn argv verification)', `this host is not win32 (platform=${process.platform}) — the win32 branch is correctly unreachable here regardless of injection; verified for real on the Windows dev host instead`);
 }
 
 // ── non-Linux graceful path: systemctl/loginctl genuinely absent from PATH ─

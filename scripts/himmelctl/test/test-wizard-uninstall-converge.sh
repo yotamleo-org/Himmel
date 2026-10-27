@@ -11,7 +11,7 @@
 # Same hermetic conventions as test-wizard-uninstall.sh: a stub PATH via
 # scripts/lib/hermetic-path.sh, a fake HOME, node launched by absolute path,
 # HIMMELCTL_REPO_ROOT pointed at a throwaway fixture carrying a no-op
-# uninstall.sh/uninstall.ps1 (so a real uninstall is never triggered) plus a
+# uninstall.sh (so a real uninstall is never triggered) plus a
 # minimal scripts/install/manifest.json exercising all three `offboard`
 # values.
 #
@@ -31,7 +31,7 @@
 #      just prints an empty summary every time.
 #   D. manifest-lint.mjs still passes on the REAL manifest.json (the
 #      `offboard` field this sub-ticket added must stay lint-clean).
-#   E. the teardown itself FAILS (uninstall.sh/uninstall.ps1 exits 1, same
+#   E. the teardown itself FAILS (uninstall.sh exits 1, same
 #      pre-wired owned state as case C): cmdUninstall must propagate the
 #      teardown's rc=1 out as its own return value — never swallow/mask a
 #      failed teardown behind rc=0 — AND still run the completeness check
@@ -96,8 +96,8 @@ trap cleanup EXIT
 
 # cmdUninstall now removes PATH launchers from binDir.
 # Isolate binDir for the WHOLE suite so an accept-case never touches the
-# operator's real ~/.local/bin (on win32 himmelctlBinDir() ignores HOME and
-# would otherwise resolve to the real home). winpath'd so win32 node resolves it
+# operator's real ~/.local/bin (himmelctlBinDir() would otherwise
+# resolve to the real home). winpath'd so node resolves it
 # cleanly; the dir need not exist (removeMarkedLauncher treats ENOENT as no-op).
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
@@ -113,7 +113,7 @@ build_path() {
 }
 
 # build_fixture <dir> — a throwaway HIMMELCTL_REPO_ROOT target: no-op
-# uninstall.sh/uninstall.ps1 stubs (never actually unwire anything — that's
+# uninstall.sh stubs (never actually unwire anything — that's
 # the point: it lets case C prove the completeness check notices), plus a
 # 3-item manifest exercising all three `offboard` values:
 #   fixture-owned  — default (absent -> 'unwire'), carries an `unwire`
@@ -136,12 +136,6 @@ printf 'uninstall.sh: %s\n' "\$*" >> "$_d/uninstall-calls.log"
 exit 0
 STUB
   chmod +x "$_d/scripts/uninstall.sh"
-  local _dw; _dw="$(winpath "$_d")"
-  cat > "$_d/scripts/uninstall.ps1" <<STUB
-param([switch]\$Yes,[switch]\$DryRun)
-Add-Content -Path '$_dw/uninstall-calls.log' -Value "uninstall.ps1: Yes=\$Yes DryRun=\$DryRun"
-exit 0
-STUB
   cat > "$_d/scripts/install/manifest.json" <<'JSON'
 {
   "schemaVersion": 2,
@@ -183,7 +177,7 @@ JSON
 }
 
 # build_fixture_failing <dir> — same fixture as build_fixture, except
-# uninstall.sh/uninstall.ps1 exit 1 instead of 0 (still logging the call
+# uninstall.sh exit 1 instead of 0 (still logging the call
 # first, so a failed-invocation assertion has the same log-file signal to
 # check as the passing cases). Used by case E to prove a failed teardown's
 # rc propagates out of cmdUninstall rather than being masked by the
@@ -191,18 +185,12 @@ JSON
 build_fixture_failing() {
   local _d="$1"
   build_fixture "$_d"
-  local _dw; _dw="$(winpath "$_d")"
   cat > "$_d/scripts/uninstall.sh" <<STUB
 #!/usr/bin/env bash
 printf 'uninstall.sh: %s\n' "\$*" >> "$_d/uninstall-calls.log"
 exit 1
 STUB
   chmod +x "$_d/scripts/uninstall.sh"
-  cat > "$_d/scripts/uninstall.ps1" <<STUB
-param([switch]\$Yes,[switch]\$DryRun)
-Add-Content -Path '$_dw/uninstall-calls.log' -Value "uninstall.ps1: Yes=\$Yes DryRun=\$DryRun"
-exit 1
-STUB
 }
 
 # ── Case A: --dry-run -> full plan printed, nothing asked or executed ──────
@@ -262,7 +250,7 @@ out=$(PATH="$cB" HOME="$hB" USERPROFILE="$(winpath "$hB")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseB: accept should exit 0 (got rc=$rc): $out"
 [ -f "$fixtureB/uninstall-calls.log" ] \
-  || fail "caseB: an explicit --yes accept should invoke uninstall.sh/uninstall.ps1 (out: $out)"
+  || fail "caseB: an explicit --yes accept should invoke uninstall.sh (out: $out)"
 grepq "$out" -F 'fixture-advise' \
   || fail "caseB: expected fixture-advise listed in the advisory (got: $out)"
 grepq "$out" -F 'left untouched (your data): fixture-keep' \
@@ -294,7 +282,7 @@ out=$(PATH="$cC" HOME="$hC" USERPROFILE="$(winpath "$hC")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseC: accept should exit 0 even with a residue WARN (got rc=$rc): $out"
 [ -f "$fixtureC/uninstall-calls.log" ] \
-  || fail "caseC: an explicit --yes accept should invoke uninstall.sh/uninstall.ps1 (out: $out)"
+  || fail "caseC: an explicit --yes accept should invoke uninstall.sh (out: $out)"
 grepq "$out" -E 'WARN.*fixture-owned' \
   || fail "caseC: expected a single completeness WARN line naming fixture-owned since the stub never actually unwired it (got: $out)"
 echo "ok: caseC accepted run with pre-wired owned state -> completeness WARN fires naming the residue, rc still 0"
@@ -307,7 +295,7 @@ set -e
 [ "$rcD" -eq 0 ] || fail "caseD: the real manifest.json should lint clean after adding 'offboard' (got rc=$rcD): $outD"
 echo "ok: caseD — the real manifest.json (with the new 'offboard' field) still lints clean"
 
-# ── Case E: the teardown itself FAILS (uninstall.sh/.ps1 exit 1), with the
+# ── Case E: the teardown itself FAILS (uninstall.sh exit 1), with the
 # same pre-wired owned state as case C. The overall `himmelctl uninstall` rc
 # must be 1 (the teardown's rc propagated, never masked by the non-fatal
 # completeness check that runs after it) — and the completeness check must
@@ -328,7 +316,7 @@ out=$(PATH="$cE" HOME="$hE" USERPROFILE="$(winpath "$hE")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 1 ] || fail "caseE: a failed teardown (uninstall.sh exit 1) should propagate rc=1 (got rc=$rc): $out"
 [ -f "$fixtureE/uninstall-calls.log" ] \
-  || fail "caseE: an explicit --yes accept should still invoke uninstall.sh/uninstall.ps1 even though it fails (out: $out)"
+  || fail "caseE: an explicit --yes accept should still invoke uninstall.sh even though it fails (out: $out)"
 grepq "$out" -E 'WARN.*fixture-owned' \
   || fail "caseE: expected a single completeness WARN line naming fixture-owned — the failed stub never actually unwired it (got: $out)"
 echo "ok: caseE a failed teardown propagates rc=1 (not masked), and the completeness WARN still fires"
@@ -358,7 +346,7 @@ out=$(PATH="$cF" HOME="$hF" USERPROFILE="$(winpath "$hF")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseF: accept should exit 0 even with a project-scope residue WARN (got rc=$rc): $out"
 [ -f "$fixtureF/uninstall-calls.log" ] \
-  || fail "caseF: an explicit --yes accept should invoke uninstall.sh/uninstall.ps1 (out: $out)"
+  || fail "caseF: an explicit --yes accept should invoke uninstall.sh (out: $out)"
 grepq "$out" -E 'WARN.*fixture-owned \(present, project\)' \
   || fail "caseF: expected the completeness WARN to name fixture-owned's PROJECT-scope residue specifically (got: $out)"
 [ -f "$hF/.claude/settings.json" ] \
@@ -395,7 +383,7 @@ out=$(PATH="$cG" HOME="$hG" USERPROFILE="$(winpath "$hG")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseG: accept should exit 0 (got rc=$rc): $out"
 [ -f "$gWt/uninstall-calls.log" ] \
-  || fail "caseG: an explicit --yes accept should invoke uninstall.sh/uninstall.ps1 (out: $out)"
+  || fail "caseG: an explicit --yes accept should invoke uninstall.sh (out: $out)"
 grepq "$out" -i 'WARN' \
   && fail "caseG (HIMMEL-2459): running from himmel's OWN checkout must NOT WARN on its own git-tracked project-scope settings.json (got: $out)"
 echo "ok: caseG self-checkout project-scope residue -> no false WARN (HIMMEL-2459)"

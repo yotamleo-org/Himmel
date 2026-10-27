@@ -266,10 +266,6 @@ function cadenceRow(c, ctx) {
   if (c.evidence === 'doctor-last') {
     const at = mtimeIso(path.join(homeDir(), '.himmel', 'state', 'doctor-cadence', 'last.tsv'));
     if (at) fires = { state: 'yes', evidence: 'doctor-cadence last.tsv mtime', at };
-  } else if (process.platform === 'win32') {
-    const m = /run log\s+(\S+\.log)\b/.exec(out);
-    const at = m ? mtimeIso(m[1]) : null;
-    if (at) fires = { state: 'yes', evidence: `runner log ${path.basename(m[1])}`, at };
   }
   const state = broken ? 'n/a' : armed ? 'present' : 'absent';
   return mkRow({

@@ -38,8 +38,8 @@ Three rules the script cannot enforce:
 
 **Check `scripts/` for an existing script before proposing a new one.** The
 central finding of the first audit was that the extraction usually already
-exists — `scripts/cr/pr-check-external.sh` already implements `/pr-check` steps
-3.0/3.2/4/5/6 in 357 lines of tested shell. "Call the script that already
+exists — a tested shell script already implemented several `/pr-check` steps.
+"Call the script that already
 exists" beats "write a new script"; a second copy of a gate costs more than the
 prose does.
 

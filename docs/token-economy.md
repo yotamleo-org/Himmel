@@ -65,9 +65,9 @@ same one (then pick the stronger and disable the loser).
 
 | Boundary | Owner | Status / gate |
 |---|---|---|
-| Dev command output | **RTK (hooked)**, which keeps the boundary | context-mode is **REJECTED for adoption while NOASSERTION-licensed** (himmel targets an MIT-licensed public path); re-open ONLY if it ships an OSI license AND beats RTK on a measured real-session delta (same measured-eval protocol) |
+| Dev command output | **RTK (hooked)**, which keeps the boundary | a challenger clears invariant 2 (license) then beats RTK on a measured real-session delta (invariant 3) |
 | Conversational / verbose output | **unowned** | the boundary is deliberately empty: a candidate enters through invariant 2 (license) then invariant 3 (measured delta) |
-| MCP / tool output | **open; the MCP eval decides** (Headroom lead candidate, Apache-2.0), with token-optimizer-mcp as TAKE-PARTS comparator (PolyForm-NC = personal-internal ceiling, never redistributed) | adoption gate = measured token delta on a real himmel workday + outcome-per-session verdict |
+| MCP / tool output | **open; the MCP eval decides** (Headroom lead candidate, Apache-2.0) | adoption gate = measured token delta on a real himmel workday + outcome-per-session verdict |
 | Stable prefixes (prompt cache) | **owner = the operator** (as `/morning-report` reviewer), responder path below | cheapest lever, least instrumented. **monitored by `scripts/eval/cache-health-cadence.sh`** (HIMMEL-5672, [`docs/internals/cache-health.md`](internals/cache-health.md)): hourly, no model, per-role hit rate against a 7-day baseline, one Telegram + chief message only on a real threshold crossing (baseline 2026-10-14: 97.9 % overall, chiefs 99.3, workers 97.8, subagents 94.9). The circulating 76.5% read-ratio / "<40% = structural issue" figures are one-tweet heuristics from someone else's workspace, flagged non-representative by the source note itself; himmel's own read-ratio was first measured 2026-09-29: 98.2% over 1,210 session first-turns and 36.0G tokens of a single project's transcripts (`scripts/eval/cache-probe.sh first-turn`, [`docs/internals/prompt-cache.md`](internals/prompt-cache.md)) |
 | Context bloat | **CLAUDE.md hygiene** | with the Vercel passive-beats-on-demand caveat baked into its acceptance (always-on beat on-demand 100% vs 79% for general knowledge; don't blanket-move content out of always-on) |
 | Whole task (routing) | **lane selection** ([`lane-calibration.md`](internals/lane-calibration.md)); this doc only states the policy: trivial→cheap is the biggest lever | seam: this doc = policy + measurement bar; lane selection = mechanism (lane table, model defaults, fallback chains) |
@@ -109,8 +109,6 @@ to sample.
 2. **License gate precedes measurement gate.** NOASSERTION / non-OSI /
    noncommercial licenses are REJECT-for-adoption on himmel's public MIT
    path; at most personal-internal pilot, never wired into shipped config.
-   Current casualties: context-mode (NOASSERTION), token-optimizer-mcp
-   (PolyForm-NC; TAKE-PARTS comparator only).
 3. **Measurement gate (boundary-owner CHANGES).** Every change requires a
    measured token delta on a real himmel session AND an outcome-per-session
    verdict. Vendor percentages are never sufficient. **Incumbent
@@ -122,13 +120,11 @@ to sample.
 ## Decision records
 
 - **Dev-command contest (decided 2026-07-02):** RTK keeps the boundary.
-  context-mode REJECT-while-unlicensed (18.4k★ and a 98% vendor claim do
-  not clear the license gate). Evidence snapshot: RTK Apache-2.0/67.9k★
-  active; context-mode NOASSERTION as of 2026-07-02. Reversal protocol:
+  Evidence snapshot: RTK Apache-2.0/67.9k★ active. A challenger needs an
   OSI license + a measured win over RTK.
 - **MCP/tool-output contest (protocol, decision deferred by design):**
   license gate → measured eval (Headroom Apache-2.0/55.8k★ lead
-  vs rtk incumbent), token-optimizer-mcp as comparator. The eval ticket owns the
+  vs rtk incumbent). The eval ticket owns the
   verdict; this doc records the protocol so the decision is reproducible.
 - **Lane compliance (2026-07-03):** panel/router lanes terminate PER-TOKEN
   keys only; subscription lanes (ToS-restricted to officially supported
@@ -321,8 +317,7 @@ needs a quiet subscription usage budget window, so it runs post-merge and its nu
 
 ## Pointers
 
-- Open eval boundaries: MCP boundary owner, token-optimizer-mcp comparator,
-  context bloat, cache data source, routing policy input, router mechanism,
-  validation-lane sampling.
+- Open eval boundaries: MCP boundary owner, context bloat, cache data source,
+  routing policy input, router mechanism, validation-lane sampling.
 - Tooling inventory: [`docs/tooling-catalog.md`](tooling-catalog.md).
 - Adoption method: [`docs/tool-adoption/rubric.md`](tool-adoption/rubric.md).

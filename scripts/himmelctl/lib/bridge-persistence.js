@@ -1,7 +1,6 @@
 'use strict';
 // scripts/himmelctl/lib/bridge-persistence.js — installer PRIMITIVES for the
 // Telegram bridge's Linux systemd-user persistence.
-// POSIX twin of install-logon-task.ps1's HimmelTelegramBridge scheduled task.
 //
 // This module ships the primitives ONLY — it never calls them, never
 // prompts, never writes without being asked. The wizard consent step that
@@ -28,19 +27,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { which, resolvePowershell } = require('./helpers.js');
+const { which } = require('./helpers.js');
 const provLib = require('./provenance.js');
 
 const SYSTEMD_UNIT_NAME = 'telegram-bridge.service';
 const SYSTEMD_USER_UNIT_DIR = process.env.HIMMELCTL_SYSTEMD_USER_UNIT_DIR
   || path.join(os.homedir(), '.config', 'systemd', 'user');
-// Re-exported, not redefined — install-logon-task.ps1 pins this name; a
-// sibling status item (S6) registers against these constants.
-const WINDOWS_LOGON_TASK_NAME = 'HimmelTelegramBridge';
 
 const TEMPLATE_PATH = path.join(__dirname, '..', '..', 'telegram', 'systemd', SYSTEMD_UNIT_NAME);
 const UNIT_PATH = path.join(SYSTEMD_USER_UNIT_DIR, SYSTEMD_UNIT_NAME);
-const INSTALL_LOGON_TASK_PS1 = path.join(__dirname, '..', '..', 'telegram', 'install-logon-task.ps1');
 
 function haveSystemctl() { return Boolean(which('systemctl')); }
 function haveLoginctl() { return Boolean(which('loginctl')); }
@@ -401,79 +396,12 @@ function systemdUnitInstalled() {
   return { fileExists, enabled, unitPath: UNIT_PATH };
 }
 
-// installWindowsLogonTask / uninstallWindowsLogonTask — Windows twin of the
-// systemd pair above, delegating to install-logon-task.ps1 (already
-// idempotent, already owns the HimmelTelegramBridge task definition +
-// -Status/-Remove) rather than reimplementing Register-ScheduledTask here.
-// Invoked via spawnSync on the resolved pwsh binary directly — never a bare
-// bash (standing lint), and never via `shell:true` (Node's Windows
-// spawnSync cannot run a .cmd/.bat without it, but pwsh.exe/powershell.exe
-// are real PE executables, so plain spawnSync works — same distinction
-// documented in helpers.js's resolvePowershell() and rediscovered the hard
-// way earlier this session testing bridge-persistence.js's own stubs).
-//
-// Gated on process.platform === 'win32', not merely on whether `pwsh`
-// resolves: PowerShell Core itself runs on Linux/macOS too, but
-// Register-ScheduledTask/Get-ScheduledTask are Windows-only cmdlets — a
-// non-Windows host is EXPECTED (per the systemd pair's own contract) and
-// must return a clear result, never attempt the spawn at all.
-//
-// `spawnFn` (defaults to the real spawnSync) is
-// injectable — same DI shape as onboard.ts's process-check injection — so a
-// test can capture the exact argv this module would hand to pwsh (the
-// script path, -NoProfile, -File, -Repo/-Remove) WITHOUT ever spawning
-// anything. That closes the "unverified on the primary platform" gap
-// honestly: this repo's own Windows dev host (Git Bash's node also reports
-// process.platform==='win32') can now exercise the real win32 branch
-// end-to-end via injection, without registering a real scheduled task.
-function installWindowsLogonTask({ repoRoot, dryRun, spawnFn = spawnSync } = {}) {
-  if (!repoRoot) return { ok: false, actions: [], detail: 'installWindowsLogonTask: repoRoot is required' };
-  const actions = [`${INSTALL_LOGON_TASK_PS1} -Repo ${repoRoot}`];
-  if (dryRun) {
-    return { ok: true, actions, detail: `dry-run: would register the ${WINDOWS_LOGON_TASK_NAME} logon task via ${INSTALL_LOGON_TASK_PS1} -Repo ${repoRoot}` };
-  }
-  if (process.platform !== 'win32') {
-    return { ok: false, actions: [], detail: `not a Windows host (platform=${process.platform}) — ${WINDOWS_LOGON_TASK_NAME} logon task was NOT registered` };
-  }
-  const pwsh = resolvePowershell();
-  const r = spawnFn(pwsh, ['-NoProfile', '-File', INSTALL_LOGON_TASK_PS1, '-Repo', repoRoot], { encoding: 'utf8' });
-  if (r.error) {
-    return { ok: false, actions: [], detail: `failed to spawn ${pwsh}: ${r.error.message}` };
-  }
-  if (r.status !== 0) {
-    return { ok: false, actions: [], detail: `${pwsh} -File ${INSTALL_LOGON_TASK_PS1} -Repo ${repoRoot} failed (rc=${r.status}): ${(r.stderr || '').trim()}` };
-  }
-  return { ok: true, actions, detail: `${WINDOWS_LOGON_TASK_NAME} logon task registered via ${INSTALL_LOGON_TASK_PS1}` };
-}
-
-function uninstallWindowsLogonTask({ dryRun, spawnFn = spawnSync } = {}) {
-  const actions = [`${INSTALL_LOGON_TASK_PS1} -Remove`];
-  if (dryRun) {
-    return { ok: true, actions, detail: `dry-run: would unregister the ${WINDOWS_LOGON_TASK_NAME} logon task via ${INSTALL_LOGON_TASK_PS1} -Remove` };
-  }
-  if (process.platform !== 'win32') {
-    return { ok: false, actions: [], detail: `not a Windows host (platform=${process.platform}) — nothing to unregister` };
-  }
-  const pwsh = resolvePowershell();
-  const r = spawnFn(pwsh, ['-NoProfile', '-File', INSTALL_LOGON_TASK_PS1, '-Remove'], { encoding: 'utf8' });
-  if (r.error) {
-    return { ok: false, actions: [], detail: `failed to spawn ${pwsh}: ${r.error.message}` };
-  }
-  if (r.status !== 0) {
-    return { ok: false, actions: [], detail: `${pwsh} -File ${INSTALL_LOGON_TASK_PS1} -Remove failed (rc=${r.status}): ${(r.stderr || '').trim()}` };
-  }
-  return { ok: true, actions, detail: `${WINDOWS_LOGON_TASK_NAME} logon task unregistered via ${INSTALL_LOGON_TASK_PS1}` };
-}
-
 module.exports = {
   SYSTEMD_UNIT_NAME,
   SYSTEMD_USER_UNIT_DIR,
-  WINDOWS_LOGON_TASK_NAME,
   installSystemdUnit,
   uninstallSystemdUnit,
   enableLinger,
   lingerEnabled,
   systemdUnitInstalled,
-  installWindowsLogonTask,
-  uninstallWindowsLogonTask,
 };

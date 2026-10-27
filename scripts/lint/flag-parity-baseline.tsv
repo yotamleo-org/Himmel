@@ -11,7 +11,6 @@ docs/internals/enforcement.md	scripts/handover/chief-kit/go.sh	--judge
 docs/internals/enforcement.md	scripts/hooks/trigger-cr-on-push.sh	--paginate
 docs/internals/enforcement.md	scripts/lib/forge.sh	--head
 docs/internals/enforcement.md	scripts/lib/forge.sh	--state
-docs/tooling-catalog.md	scripts/cr/pr-check-external.sh	--no-verify
 marketplace/plugins/himmel-ops/skills/vm/SKILL.md	scripts/handover/arm-resume.sh	--at
 # Old forwarder paths (rename slice V4b): these docs cite headed-arm-worker.sh, close-wrapped-worker.sh and worker-event.sh, now forwarders to the worker-named scripts that carry the flags; a row goes when its doc names the new path.
 docs/glossary.md	scripts/handover/chief-kit/headed-arm-worker.sh	--judge

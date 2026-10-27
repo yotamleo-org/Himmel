@@ -42,9 +42,7 @@
 #                    himmel-update and the hermetic tests).
 #   --template PATH  Override the template (default: repo settings-template.json).
 #
-# Cross-platform: pure bash + jq (Git-Bash on Windows), matching
-# install-plugins.sh. The install-plugins.ps1 twin has a PowerShell reconciler
-# (reconcile-enabled-plugins.ps1) — keep the whitelist logic in lockstep.
+# Pure bash + jq, matching install-plugins.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,15 +99,14 @@ jq -e . "$TEMPLATE" >/dev/null 2>&1 || { echo "reconcile-enabled-plugins: templa
 # Read a file's enabledPlugins as a compact object, failing on a present-but-
 # non-object (non-null) value — only an object or absent/null is a usable map.
 # Shared by the template + live + local reads so no path can slip a non-object
-# through to the object merge (or, in the ps1 twin, the hashtable conversion).
+# through to the object merge.
 enabled_plugins_of() {
   local file="$1" label="$2" t bad
   t="$(jq -r '.enabledPlugins | type' "$file" 2>/dev/null)"
   case "$t" in
     null) echo '{}' ;;
     object)
-      # Every value must be a real boolean (parity with the ps1 twin, which
-      # refuses non-bools because [bool]"false" is $true). jq keeps JSON types,
+      # Every value must be a real boolean. jq keeps JSON types,
       # so a string "false" would otherwise pass through and confuse drift logic.
       bad="$(jq -r '.enabledPlugins | to_entries[] | select((.value | type) != "boolean") | .key' "$file" 2>/dev/null | head -1)"
       if [ -n "$bad" ]; then

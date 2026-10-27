@@ -164,7 +164,7 @@ elif [ ! -f "$ROOT/$GATE_REL" ]; then
 else
     hook_block="$(awk '/^      - id: fail-open-lint$/{f=1} f && /^      - id:/ && !/^      - id: fail-open-lint$/{f=0} f' "$CONFIG")"
     if [ -z "$hook_block" ]; then
-        fail "fail-open-lint hook registered in .pre-commit-config.yaml" "the lint is wired to nothing on the private path. Apply the round-2 escalation block: id fail-open-lint · entry bash scripts/hooks/check-fail-open-lint.sh · pass_filenames false · stages [pre-commit] · files ^(scripts/(guardrails|hooks|lanes)/|scripts/graphify/refresh-graph-map\.sh$|scripts/claude-(codex|glm|routed)$|scripts/telegram/spawn-glm\.ts$|\.pre-commit-config\.yaml$)"
+        fail "fail-open-lint hook registered in .pre-commit-config.yaml" "the lint is wired to nothing on the private path. Apply the round-2 escalation block: id fail-open-lint · entry bash scripts/hooks/check-fail-open-lint.sh · pass_filenames false · stages [pre-commit] · files ^(scripts/(guardrails|hooks|lanes)/|scripts/graphify/refresh-graph-map\.sh$|scripts/claude-(codex|glm|routed)$|\.pre-commit-config\.yaml$)"
     else
         pass "fail-open-lint hook registered in .pre-commit-config.yaml"
         if grep -q "entry: bash $GATE_REL" <<<"$hook_block"; then
@@ -197,7 +197,6 @@ else
                 scripts/lanes/funded-max-pct.mjs \
                 scripts/graphify/refresh-graph-map.sh \
                 scripts/claude-glm \
-                scripts/telegram/spawn-glm.ts \
                 .pre-commit-config.yaml
             do
                 if printf '%s' "$p" | grep -Eq "$scope_re"; then

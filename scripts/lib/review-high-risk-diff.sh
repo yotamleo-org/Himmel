@@ -113,8 +113,8 @@ cr_diff_is_high_risk() {
 # ask about and the paths can only come from `git diff --name-only`. The point
 # of the split is that there stays exactly ONE copy of the list below: this
 # file's own comments already require keeping the predicate in step with
-# scripts/cr/pr-check-external.sh GATE 6, and a second hand-maintained copy in
-# the kickoff would be a third thing to drift.
+# the other copies, and a second hand-maintained copy in the kickoff would be
+# a third thing to drift.
 cr_paths_are_high_risk() {
     local path base matched=""
     while IFS= read -r path; do
@@ -129,9 +129,7 @@ cr_paths_are_high_risk() {
         # classified ordinary, and use that tampered machinery to manufacture
         # the clean panel evidence that carries a stale review — the diff
         # self-authorizing its own carry. Same reason the pr-check runbook and
-        # its codex twin are listed. This matches the repo's existing
-        # gate-infrastructure predicate in scripts/cr/pr-check-external.sh
-        # (GATE 6); keep the two in step.
+        # its codex twin are listed.
         #
         # merge-on-green.sh IS listed below: it EXECUTES the squash-merge
         # unattended under the ARMAUTOMERGE=1 standing allow,
@@ -155,7 +153,7 @@ cr_paths_are_high_risk() {
         # what merges, OR now EXECUTE that merge/push unattended under a
         # standing allow — not everything merge-adjacent.
         case "$path" in
-            scripts/hooks/*|.claude/settings.json|.claude/settings.local.json|.codex/hooks.json|scripts/guardrails/*|scripts/luna/pipeline-cadence.sh|scripts/check-ci.sh|scripts/cr/*|scripts/lib/cr-*.sh|scripts/lib/coderabbit-*.sh|scripts/lib/review-*.sh|.claude/commands/pr-check.md|.agents/skills/pr-check/SKILL.md|.pre-commit-config.yaml|marketplace/plugins/*/hooks/hooks.json|scripts/glm/ship-branch.sh|.codex/run-hook.cmd|.codex/run-hook.sh|.codex/codex-hook-adapter.sh|scripts/handover/merge-on-green.sh)
+            scripts/hooks/*|.claude/settings.json|.claude/settings.local.json|.codex/hooks.json|scripts/guardrails/*|scripts/luna/pipeline-cadence.sh|scripts/check-ci.sh|scripts/cr/*|scripts/lib/cr-*.sh|scripts/lib/coderabbit-*.sh|scripts/lib/review-*.sh|.claude/commands/pr-check.md|.agents/skills/pr-check/SKILL.md|.pre-commit-config.yaml|marketplace/plugins/*/hooks/hooks.json|.codex/run-hook.cmd|.codex/run-hook.sh|.codex/codex-hook-adapter.sh|scripts/handover/merge-on-green.sh)
                 if [ -n "$matched" ]; then matched="$matched,$path"; else matched="$path"; fi ;;
             *)
                 case "$base" in

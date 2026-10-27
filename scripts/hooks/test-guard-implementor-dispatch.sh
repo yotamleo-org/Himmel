@@ -330,9 +330,9 @@ RC1JO=$(run_hook impl-console-judge-ro "$REG_CLAUDEX" "$(payload console-judge-r
 HOOK="$REAL_HOOK"
 assert_rc "console-judge-ro (old id) is not lane-exempt" 2 "$RC1JO"
 
-RC2=$(run_hook impl-glm "$REG_GLM" "$(payload claude sonnet 'Fix the failing shell test' 'Land the fix.')")
-assert_rc "implementation + glm available refuses" 2 "$RC2"
-assert_contains "glm refusal names dispatcher" "bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>" "$(cat "$TMP/err-impl-glm")"
+RC2=$(run_hook impl-glm "$REG_GLM" "$(payload claude sonnet 'Fix the failing shell test' 'Land the fix.')" IMPL_GUARD_CACHE_PATH="$TMP/no-such-cache.json")
+assert_rc "implementation + registered glm never refuses toward dropped glm" 0 "$RC2"
+assert_not_contains "registered glm never names spawn-glm" "spawn-glm" "$(combined_output impl-glm)"
 
 RC3=$(run_hook research "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Research HIMMEL-1513' 'Investigate how to fix the routing drift; report findings only, read-only.')")
 assert_rc "research-shaped dispatch allowed" 0 "$RC3"
@@ -1082,12 +1082,19 @@ RC32=$(run_hook dispatcher-missing "$REG_CLAUDEX" "$(payload general-purpose son
 assert_rc "missing dispatcher script does not strand the caller" 0 "$RC32"
 assert_contains "dispatcher-missing warns why claudex was skipped" "dispatcher is missing" "$(cat "$TMP/err-dispatcher-missing")"
 
-# 3. Fallback to the runnable lane — claudex is registry-available but not
-# runnable (its dispatcher is missing), glm is registry-available AND fully
-# runnable. The guard must refuse toward glm, not strand the caller.
+# 3. No fallback to glm — claudex is registry-available but not
+# runnable (its dispatcher is missing), glm is registry-available AND its
+# dispatcher exists. glm is dropped, so the guard falls through to the bank
+# guard instead of refusing toward it.
 RC33=$(run_hook fallback-to-glm "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
-assert_rc "unrunnable claudex falls back to runnable glm, refuses" 2 "$RC33"
-assert_contains "fallback refusal names the glm dispatcher" "bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>" "$(cat "$TMP/err-fallback-to-glm")"
+assert_rc "unrunnable claudex never falls back to glm (low bank -> allow)" 0 "$RC33"
+assert_not_contains "unrunnable claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-fallback-to-glm")"
+
+# glm is dropped. With the REAL registry, ZAI_API_KEY set and
+# claudex not runnable, the guard must never steer a dispatch to spawn-glm.
+RC33G=$(run_hook real-registry-zai-no-claudex "$REPO_ROOT/scripts/lanes/lanes.json" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_CLAUDEX" ZAI_API_KEY=fixture-key IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+assert_rc "ZAI_API_KEY set + claudex unrunnable never refuses toward glm" 0 "$RC33G"
+assert_not_contains "ZAI_API_KEY set + claudex unrunnable never names spawn-glm" "spawn-glm" "$(combined_output real-registry-zai-no-claudex)"
 
 # 4. Unchanged happy path — when BOTH lanes are registry-available AND
 # actually runnable (real checkout, real bun), the guard still refuses and
@@ -1103,12 +1110,12 @@ echo "=== HIMMEL-1513: a runnable lane must also be FUNDED ==="
 # Default (all-funded) baseline — RC34 above already proves both runnable +
 # funded still prefers claudex; these cases override the funded verdict.
 
-# 1. claudex runnable + bank SPENT, glm runnable + funded -> the preferred lane
-# falls through to the funded one. The refusal must name GLM, not claudex, and
-# must not strand the caller toward the spent claudex lane.
+# 1. claudex runnable + bank SPENT, glm runnable + funded -> no lane refusal:
+# glm is dropped, so control falls through to the bank guard
+# and never strands the caller toward the spent claudex lane.
 RC35=$(run_hook claudex-spent-glm-funded "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_CLAUDEX_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
-assert_rc "spent claudex falls through to funded glm, refuses" 2 "$RC35"
-assert_contains "spent-claudex refusal names the glm dispatcher" "bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>" "$(cat "$TMP/err-claudex-spent-glm-funded")"
+assert_rc "spent claudex never falls through to glm (low bank -> allow)" 0 "$RC35"
+assert_not_contains "spent-claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 assert_contains "spent-claudex warns why claudex was skipped" "bank is spent" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 assert_not_contains "spent-claudex does NOT name the claudex dispatcher" "spawn-claudex" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 
@@ -1118,7 +1125,6 @@ assert_not_contains "spent-claudex does NOT name the claudex dispatcher" "spawn-
 RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "both lanes spent falls through to the bank guard (low bank -> allow)" 0 "$RC36"
 assert_contains "both-spent warns claudex spent" "lane 'claudex' is runnable but its bank is spent" "$(cat "$TMP/err-both-spent")"
-assert_contains "both-spent warns glm spent" "lane 'glm' is runnable but its bank is spent" "$(cat "$TMP/err-both-spent")"
 assert_not_contains "both-spent emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-both-spent")"
 RC36U=$(run_hook both-spent-usage "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=4 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "IMPL_GUARD_USAGE_STATUS_CMD: both lanes spent falls through (low bank -> allow)" 0 "$RC36U"
@@ -1141,9 +1147,9 @@ assert_not_contains "spent-glm emits NO lane refusal" "refusing implementation-s
 # 4. Every unreadable-bank shape reports UNKNOWN and skips the lane. Covers an
 # explicit unknown verdict plus helper-missing, timeout, and garbage output.
 RC37B=$(run_hook bank-explicit-unknown "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1768' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_CLAUDEX_UNKNOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
-assert_rc "unknown claudex skips to measured-funded glm" 2 "$RC37B"
+assert_rc "unknown claudex never skips to measured-funded glm" 0 "$RC37B"
 assert_contains "explicit unknown is loud at the gate" "lane 'claudex' bank is UNKNOWN" "$(cat "$TMP/err-bank-explicit-unknown")"
-assert_contains "explicit unknown fallback names glm" "spawn-glm" "$(cat "$TMP/err-bank-explicit-unknown")"
+assert_not_contains "explicit unknown never names glm" "spawn-glm" "$(cat "$TMP/err-bank-explicit-unknown")"
 assert_not_contains "explicit unknown never treats claudex as funded" "spawn-claudex" "$(cat "$TMP/err-bank-explicit-unknown")"
 
 RC38=$(run_hook bank-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_BANK_STATUS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
@@ -1168,12 +1174,12 @@ assert_not_contains "garbage emits no lane refusal" "refusing implementation-sha
 echo ""
 echo "=== HIMMEL-1626: a runnable+funded lane must also be READY ==="
 
-# 1. claudex down-listed, glm ready (both runnable + funded) -> the preferred
-# lane is skipped toward the ready one. The refusal must name GLM and must not
-# strand the caller toward the down-listed claudex lane.
+# 1. claudex down-listed, glm ready (both runnable + funded) -> no lane
+# refusal: glm is dropped, so control falls through to the bank
+# guard and never strands the caller toward the down-listed claudex lane.
 RC62=$(run_hook claudex-down-glm-ready "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_CLAUDEX_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
-assert_rc "down-listed claudex falls through to ready glm, refuses" 2 "$RC62"
-assert_contains "down-claudex refusal names the glm dispatcher" "bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>" "$(cat "$TMP/err-claudex-down-glm-ready")"
+assert_rc "down-listed claudex never falls through to glm (low bank -> allow)" 0 "$RC62"
+assert_not_contains "down-claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-claudex-down-glm-ready")"
 assert_contains "down-claudex warns why claudex was skipped" "readiness gate is unmet" "$(cat "$TMP/err-claudex-down-glm-ready")"
 assert_not_contains "down-claudex does NOT name the claudex dispatcher" "spawn-claudex" "$(cat "$TMP/err-claudex-down-glm-ready")"
 
@@ -1184,7 +1190,6 @@ assert_not_contains "down-claudex does NOT name the claudex dispatcher" "spawn-c
 RC63=$(run_hook both-down "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_BOTH_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "runnable+funded but down-listed lanes do not veto (low bank -> allow)" 0 "$RC63"
 assert_contains "both-down warns claudex gate unmet" "lane 'claudex' is runnable but its readiness gate is unmet" "$(cat "$TMP/err-both-down")"
-assert_contains "both-down warns glm gate unmet" "lane 'glm' is runnable but its readiness gate is unmet" "$(cat "$TMP/err-both-down")"
 assert_not_contains "both-down emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-both-down")"
 
 # 2b. A probe that emits `down` AND exits NON-ZERO must be treated as READY —

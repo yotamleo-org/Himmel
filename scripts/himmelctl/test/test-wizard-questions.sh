@@ -79,9 +79,9 @@ questions_cwd="$work/suite-cwd"; mkdir -p "$questions_cwd"; cd "$questions_cwd"
 
 # a non-dry-run install (case5 --from-profile) reaches
 # applyHimmelctlPathShim(), whose default binDir is the operator's REAL
-# ~/.local/bin (win32 ignores HOME entirely). Isolate binDir for the WHOLE
+# ~/.local/bin. Isolate binDir for the WHOLE
 # suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
-# test-wizard-uninstall.sh. winpath'd so win32 node resolves it cleanly.
+# test-wizard-uninstall.sh. winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
@@ -234,7 +234,7 @@ grepq "$outOp" -F '? whisper model [tiny|base|small|medium|large-v3|large-v3-tur
 # The bridge-persistence consent prompt ("install bridge persistence now") is
 # the one EXCEPTION to "every question is still asked": bin.js only asks it
 # when adopterProfileLib.bridgePersistenceArtifact() names an installer for
-# THIS platform (win32 scheduled task / linux systemd unit); on any other
+# THIS platform (linux systemd unit); on any other
 # platform (e.g. macOS) it prints a skip notice instead (see bin.js
 # askQuestions()'s bridge subwalk). Ask the SAME shared function bin.js
 # consults, rather than reimplementing the platform mapping here, so this

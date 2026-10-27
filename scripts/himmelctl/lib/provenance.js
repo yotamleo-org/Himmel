@@ -33,9 +33,7 @@ const SNAP_KINDS = ['file', 'shim', 'block'];
 const SNAP_OPS = ['create', 'replace', 'insert'];
 // ponytail: 1 MiB cap, raise it on a real >1 MiB unit (design §2)
 const SNAP_MAX = 1048576;
-// a backslash is a separator on Windows only; on POSIX it is a legal filename character
-const fwd = (p) => (process.platform === 'win32' ? p.replace(/\\/g, '/') : p);
-const ROOT = fwd(path.resolve(__dirname, '..', '..', '..'));
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 let owned = null; // the iid this process opened (provEnd closes only its own)
 
@@ -107,7 +105,6 @@ const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch (_) { 
 // (canon-path.sh canon_path_partial).
 function canonPartial(p) {
   if (!p) throw fail('cannot resolve an empty path');
-  p = fwd(p);
   let rest = '';
   while (!isDir(p)) {
     const i = p.lastIndexOf('/');
@@ -119,13 +116,12 @@ function canonPartial(p) {
       if (!isDir(p)) throw fail(`cannot resolve ${p}`);
     }
   }
-  return fwd(fs.realpathSync(p)).replace(/\/$/, '') + rest;
+  return fs.realpathSync(p).replace(/\/$/, '') + rest;
 }
 
 // absolute, parent chain resolved, basename left as given (a link stays a link).
 function absPath(p) {
-  p = fwd(p);
-  if (!(p.startsWith('/') || /^[A-Za-z]:\//.test(p))) p = fwd(process.cwd()) + '/' + p;
+  if (!(p.startsWith('/') || /^[A-Za-z]:\//.test(p))) p = process.cwd() + '/' + p;
   while (p.length > 1 && p.endsWith('/') && !/^[A-Za-z]:\/$/.test(p)) p = p.slice(0, -1);
   if (/^[A-Za-z]:\/$/.test(p)) return canonPartial(p) + '/'; // a drive root is its own path
   const i = p.lastIndexOf('/');
@@ -183,7 +179,7 @@ function append(line) {
     try { st = fs.statSync(file); } catch (_) { /* no ledger yet */ }
     if (st) {
       // the ledger holds pre/post values: a pre-existing group/world-readable one is tightened
-      if (process.platform !== 'win32' && (st.mode & 0o077)) fs.chmodSync(file, 0o600);
+      if (st.mode & 0o077) fs.chmodSync(file, 0o600);
       if (st.size > 0) {
         const fd = fs.openSync(file, 'r');
         const b = Buffer.alloc(1);
@@ -207,7 +203,7 @@ function beginRow(iid, writer, target, root, argv) {
   try { version = fs.readFileSync(root + '/VERSION', 'utf8').replace(/[ \r\n]/g, ''); } catch (_) { /* none */ }
   const h = homeDir();
   let home = h;
-  try { home = fwd(fs.realpathSync(h)); } catch (_) { /* raw */ }
+  try { home = fs.realpathSync(h); } catch (_) { /* raw */ }
   const cfgRaw = process.env.CLAUDE_CONFIG_DIR || (h + '/.claude');
   let cfg = cfgRaw;
   try { cfg = canonPartial(cfgRaw); } catch (_) { /* raw */ }

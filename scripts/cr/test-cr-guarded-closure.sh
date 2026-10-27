@@ -123,8 +123,7 @@ scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh"
 # relative to the script (checked below, so a pin cannot rot silently).
 DIST_PRIMARY="scripts/lib/ticket-status.sh::dirname \"\\\$common\"\\)/scripts/jira/dist/index\\.js
 scripts/handover/merge-on-green.sh::(\\\$repo_root/|cd \"\\\$repo_root\" && node )scripts/jira/dist/index\\.js
-scripts/telegram/run.ts::\\\$\\{p\\.cwd\\}/scripts/jira/dist/index\\.js
-scripts/telegram/spawn-glm.ts::Jira updates .*via node scripts/jira/dist/index\\.js"
+scripts/telegram/run.ts::\\\$\\{p\\.cwd\\}/scripts/jira/dist/index\\.js"
 
 # closure - the transitive set of files reached from the seeds.
 closure() {

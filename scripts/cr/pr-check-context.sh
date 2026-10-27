@@ -809,8 +809,8 @@ scripts/telegram/console-route.ts scripts/telegram/chief-route.ts scripts/telegr
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
-scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts
-scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts
+scripts/telegram/triage.ts scripts/telegram/transcribe.ts
+scripts/telegram/glm-env.ts scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
 scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/worker-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
 scripts/handover/chief-kit/leg-jira-status.sh scripts/handover/chief-kit/worker-jira-status.sh
@@ -840,8 +840,8 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
     ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts'
     ':(top)scripts/telegram/run.ts' ':(top)scripts/telegram/triage.ts'
-    ':(top)scripts/telegram/transcribe.ts' ':(top)scripts/telegram/spawn-glm.ts'
-    ':(top)scripts/telegram/glm-env.ts' ':(top)scripts/telegram/grants.ts'
+    ':(top)scripts/telegram/transcribe.ts'
+    ':(top)scripts/telegram/glm-env.ts'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'
     ':(top)scripts/telegram/phi-egress-guard.ts' ':(top)scripts/telegram/round-guard.ts'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'

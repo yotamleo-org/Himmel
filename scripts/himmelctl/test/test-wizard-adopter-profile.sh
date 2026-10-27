@@ -73,8 +73,8 @@
 #      that really is installed still reads present — citing the physical
 #      reason, never the override.
 #   Q. lane guidance is platform-correct — POSIX
-#      renders no .ps1/%LOCALAPPDATA%/winget/powercfg anywhere in the lane
-#      rows, summary or hardening block, and win32 still keeps its own.
+#      renders no Windows-only guidance (%LOCALAPPDATA%/winget/powercfg)
+#      anywhere in the lane rows, summary or hardening block.
 #
 #   R. vault=default-template onto an OCCUPIED destination
 #      [codex-adv-r7-3]) — unstamped is REFUSED before adopt.sh runs at all
@@ -123,8 +123,8 @@
 #
 # Cases N, O, P, Q, R, T, U, V, W, X and Y are mutation-verified: disabling the
 # overlay-error branch fails N, dropping the retained setup note fails B,
-# restoring the merged-probe-first ordering fails P, pinning setupNote to the
-# win32 entry fails Q, removing the unstamped-destination refusal fails R,
+# restoring the merged-probe-first ordering fails P, pinning setupNote to a
+# single platform's entry fails Q, removing the unstamped-destination refusal fails R,
 # restoring the optimistic degenerate-probe fallback fails T, dropping the
 # retained note from the disabled branch fails U, dropping the overlay re-enable
 # step fails V, adding a bogus kind to the constant fails W, removing the
@@ -166,9 +166,9 @@ trap cleanup EXIT
 
 # a non-dry-run install (caseE --from-profile) reaches
 # applyHimmelctlPathShim(), whose default binDir is the operator's REAL
-# ~/.local/bin (win32 ignores HOME entirely). Isolate binDir for the WHOLE
+# ~/.local/bin. Isolate binDir for the WHOLE
 # suite so no case touches the real bin dir — mirrors test-wizard-update.sh /
-# test-wizard-uninstall.sh. winpath'd so win32 node resolves it cleanly.
+# test-wizard-uninstall.sh. winpath'd so node resolves it cleanly.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
@@ -233,19 +233,11 @@ PLUGINS
 LANE_TOOLS=(ollama copilot codex hermes)
 
 # plant_cli <dir> <name> — put a fake <name> on PATH in a way the CANONICAL
-# resolver recognises. scripts/lanes/resolve.mjs honours PATHEXT on win32, so
-# an extensionless file there is (correctly) NOT executable and would make a
-# "lane is present" fixture silently absent — and a "false positive" fixture
-# pass for the wrong reason. Plant both forms so the stub is real on every OS.
+# resolver recognises.
 plant_cli() {
   local _dir="$1" _name="$2"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$_dir/$_name"
   chmod +x "$_dir/$_name"
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-      printf '@echo off\r\nexit /b 0\r\n' > "$_dir/$_name.cmd"
-      ;;
-  esac
 }
 
 # run_install <stub_dir> <home_dir> <fixture_dir> [extra args...] — a dry-run
@@ -288,8 +280,8 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # the wizard resolves the codex install command per-platform
 # (adopter-profile.js pickByPlatform), so the suite asserts the ACTIVE
-# platform's EXACT string. The previous win32 literal failed on ubuntu CI and
-# passed vacuously on POSIX; an any-platform alternation was rejected in CR —
+# platform's EXACT string. The previous platform-specific literal failed on ubuntu CI and
+# passed vacuously; an any-platform alternation was rejected in CR —
 # it would keep CI green if the wizard regressed to another platform's hint.
 # (Library-level platform mapping for all three platforms is pinned by caseQ.)
 #
@@ -300,18 +292,10 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # buildSummary machinery (not anything ollama/copilot-specific) now selects
 # codex via --with-codex instead of relying on a non-opt-in default that no
 # longer exists.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) CODEX_INSTALL_HINT='winget install OpenAI.Codex' ;;
-  *)                    CODEX_INSTALL_HINT='npm install -g @openai/codex' ;;
-esac
-# the post-install setup step is per-platform too (adopter-profile.js
-# codex `setup`: win32 = install-himmel-codex.ps1, default = install-himmel-codex.sh;
-# caseQ pins both renderings). U1/U2/V assert the ACTIVE platform's step, so a
-# Windows host is not held to the POSIX script name it correctly never prints.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) CODEX_SETUP_STEP='install-himmel-codex.ps1' ;;
-  *)                    CODEX_SETUP_STEP='install-himmel-codex.sh' ;;
-esac
+CODEX_INSTALL_HINT='npm install -g @openai/codex'
+# the post-install setup step (adopter-profile.js codex `setup`) is
+# install-himmel-codex.sh; caseQ pins the rendering and U1/U2/V assert it.
+CODEX_SETUP_STEP='install-himmel-codex.sh'
 # Negative asserts reject EVERY platform's hint — a foreign-platform leak
 # (winget on Linux) must fail too.
 CODEX_ANY_HINT_RE='winget install OpenAI[.]Codex|npm install -g @openai/codex'
@@ -771,45 +755,17 @@ grepq "$out" 'CHECKLIST ONLY' \
   || fail "caseE: alwaysOn=true must print the checklist banner: $out"
 [ -f "$sentinel" ] \
   && fail "caseE: HARDENING WAS EXECUTED — powercfg stub ran (sentinel $sentinel exists)"
-# the hardening checklist is platform-branched
-# (hardeningChecklistLines filters HARDENING_CHECKLIST by platform; every step
-# is win32-only so far). caseE drives the REAL wizard on the HOST, so it must
-# assert the host-appropriate content: the real Phase-6 commands on win32, and
-# the honest "no steps published for <platform>" note on any other host (the
-# emission is already platform-correct; caseQ separately pins the cross-
-# platform emission via forced-platform library renders). caseE's own job is
-# the integration invariant -- alwaysOn=true PRINTS the checklist and
-# EXECUTES none of it -- which holds on every platform.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    grepq "$out" 'powercfg /hibernate off' \
-      || fail "caseE: the checklist must carry the real Phase-6 commands: $out"
-    # sshd reads its config at START, so
-    # `Start-Service` against an already-running daemon is a no-op and the OLD
-    # (possibly password-auth) config stays live — which would make the whole
-    # policy-before-enable ordering cosmetic. The checklist must restart a
-    # running service, and the access policy must precede the enable step.
-    grepq "$out" 'Restart-Service sshd' \
-      || fail "caseE: the checklist must RESTART an already-running sshd: $out"
-    grepq "$out" "Get-Service sshd).Status -eq 'Running'" \
-      || fail "caseE: the checklist should branch on the current service state: $out"
-    policy_line=$(printf '%s' "$out" | grep -n 'SSH access policy' | head -1 | cut -d: -f1)
-    enable_line=$(printf '%s' "$out" | grep -n 'Enable sshd' | head -1 | cut -d: -f1)
-    [ "$policy_line" -lt "$enable_line" ] \
-      || fail "caseE: the access policy must be printed BEFORE the enable step: $out"
-    grepq "$out" 'PreferredAuthentications=password' \
-      || fail "caseE: the off-box password-refusal verification must survive: $out"
-    ;;
-  *)
-    # Non-win32 host: the checklist honestly reports no platform-specific
-    # hardening steps yet. Assert that note is present and that NO Windows-only
-    # command leaked into a POSIX host's checklist.
-    grepq "$out" 'no hardening steps are published for platform' \
-      || fail "caseE: a non-win32 host should get the honest 'no steps for platform' note: $out"
-    grepq "$out" 'powercfg' \
-      && fail "caseE: a non-win32 host's checklist must not carry Windows-only powercfg commands: $out"
-    ;;
-esac
+# hardeningChecklistLines filters HARDENING_CHECKLIST by platform, and no step
+# is published for linux/darwin, so the host prints the honest "no steps
+# published for <platform>" note (caseQ separately pins the emission via
+# forced-platform library renders). caseE's own job is the integration
+# invariant -- alwaysOn=true PRINTS the checklist and EXECUTES none of it.
+# The checklist honestly reports no platform-specific hardening steps
+# yet. Assert that note is present and that NO Windows-only command leaked.
+grepq "$out" 'no hardening steps are published for platform' \
+  || fail "caseE: the host should get the honest 'no steps for platform' note: $out"
+grepq "$out" 'powercfg' \
+  && fail "caseE: the host's checklist must not carry Windows-only powercfg commands: $out"
 echo "ok: caseE alwaysOn=true prints the checklist and executes NONE of it (platform-correct content)"
 
 # ── Case F: alwaysOn=false -> pointer only, no powercfg text ────────────────
@@ -836,12 +792,10 @@ fG="$work/g-fix"; make_fixture "$fG"
 mkdir -p "$fG/scripts/install"
 cp "$repo_root/scripts/install/manifest.json" "$fG/scripts/install/manifest.json"
 cp "$repo_root/scripts/install/deps.json" "$fG/scripts/install/deps.json"
-# The dev overlay's own primitive — contributeCheckoutOk() reads this (the
-# platform-appropriate one), and deriveOverlayCommand() derives it as the
+# The dev overlay's own primitive — contributeCheckoutOk() reads this, and deriveOverlayCommand() derives it as the
 # overlay's additional command.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fG/scripts/setup.sh"
 chmod +x "$fG/scripts/setup.sh"
-printf 'exit 0\n' > "$fG/scripts/setup.ps1"
 pG=$(build_path "$sG" bash jq python3 npm -- "${LANE_TOOLS[@]}")
 set +e
 out=$(PATH="$pG" HOME="$hG" USERPROFILE="$(winpath "$hG")" HIMMELCTL_CACHE_DIR="$(winpath "$hG.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hG.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
@@ -991,7 +945,7 @@ grepq "$out" -E '!! +hermes +MISSING' \
   || fail "caseK1: an unrelated hermes on PATH must NOT read as installed: $(epilogue "$out")"
 
 # K2 — a standard venv under HERMES_HOME, with `hermes` scrubbed off PATH.
-# Both layouts resolve.mjs accepts are planted so this holds on win32+posix.
+# Both layouts resolve.mjs accepts are planted so this holds on either layout.
 sK2="$work/k2"; mkdir -p "$sK2"
 vK="$work/k-venv"; mkdir -p "$vK/venv/bin" "$vK/venv/Scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$vK/venv/bin/python"; chmod +x "$vK/venv/bin/python"
@@ -1216,11 +1170,10 @@ echo "ok: caseP always-overlay cannot fake a binary; real presence still reporte
 # ── Case Q: guidance must be platform-correct, not just install commands ───
 # The install hints were platform-aware while the
 # SETUP notes were bare strings, so a Linux adopter got a working install
-# command followed by "run this .ps1" and a Windows-only runbook — able to
+# command followed by a Windows-only runbook — able to
 # install the binary, unable to finish. Renders the whole guidance surface
 # (lane rows + summary + hardening) under forced linux/darwin and asserts no
-# Windows leakage, then the converse for win32 so the fix cannot have simply
-# deleted the PowerShell guidance. Driven through the library so no production
+# Windows leakage. Driven through the library so no production
 # platform-override seam has to exist just for a test.
 fQ="$work/q-fix"; make_fixture "$fQ"
 # shellcheck disable=SC2016
@@ -1238,7 +1191,7 @@ const render = (plat) => {
     a.hardeningChecklistLines(plat)
   ).join("\n");
 };
-const WINDOWS_ONLY = [/\.ps1/, /%LOCALAPPDATA%/, /venv.Scripts/, /powershell/i, /winget/, /powercfg/];
+const WINDOWS_ONLY = [/%LOCALAPPDATA%/, /venv.Scripts/, /powershell/i, /winget/, /powercfg/];
 for (const plat of ["linux", "darwin"]) {
   const text = render(plat);
   for (const re of WINDOWS_ONLY) {
@@ -1248,19 +1201,9 @@ for (const plat of ["linux", "darwin"]) {
     if (!want.test(text)) { console.error(plat + " is missing POSIX guidance " + want + "\n" + text); process.exit(1); }
   }
 }
-const win = render("win32");
-// a printed note cannot run resolvePowershell itself, so the
-// codex/hermes win32 notes must say BOTH the pwsh preference AND that
-// powershell.exe still works for that one step (verified: both .ps1 targets
-// carry a UTF-8 BOM and no PS7-only syntax, so 5.1 genuinely tolerates them) —
-// a stock clean-Windows box (no pwsh yet) must not be handed a dead command.
-for (const want of [/install-himmel-codex\.ps1/, /install-himmel-profile\.ps1/, /winget install/, /powercfg/,
-                     /pwsh\/PowerShell 7 preferred/, /powershell\.exe also works for this step/]) {
-  if (!want.test(win)) { console.error("win32 lost its own guidance " + want + "\n" + win); process.exit(1); }
-}
 ' "$(winpath "$repo_root/scripts/himmelctl/lib/adopter-profile.js")" "$(winpath "$fQ")" \
   || fail "caseQ: lane guidance is not platform-correct"
-echo "ok: caseQ POSIX platforms get POSIX guidance; win32 keeps its PowerShell guidance (pwsh preferred, powershell.exe fallback stated, HIMMEL-2126)"
+echo "ok: caseQ POSIX platforms get POSIX guidance and no Windows-only text (HIMMEL-2126)"
 
 # ── Case R: vault=default-template onto an OCCUPIED destination ────────────
 # adopt.sh's do_luna skips the template copy
@@ -2246,21 +2189,14 @@ adFull=$(probe_hooks "$adRepo") || fail "caseAD2: probe failed after placing hoo
 # "the path exists" is not "git will run it". A
 # non-executable file and a DIRECTORY at the hook path both satisfy an
 # existence check while git runs nothing -- certifying an ungated repo as
-# gated is the exact false-clean this ticket is about. Windows is exempt:
-# git-for-windows runs hooks through sh and ignores the mode, so the bit is
-# not part of "would git run this" there.
-case "$(uname -s 2>/dev/null)" in
-  MINGW*|MSYS*|CYGWIN*)
-    echo "  (caseAD2: executable-bit arm skipped -- git-for-windows ignores the hook mode)" ;;
-  *)
-    chmod -x "$adHooks/commit-msg"
-    adNoExec=$(probe_hooks "$adRepo") || fail "caseAD2: probe failed on a non-executable hook"
-    case "$adNoExec" in
-      "true false "*commit-msg*) : ;;
-      *) fail "caseAD2: a NON-EXECUTABLE commit-msg must read as missing, got [$adNoExec]" ;;
-    esac
-    chmod +x "$adHooks/commit-msg" ;;
+# gated is the exact false-clean this ticket is about.
+chmod -x "$adHooks/commit-msg"
+adNoExec=$(probe_hooks "$adRepo") || fail "caseAD2: probe failed on a non-executable hook"
+case "$adNoExec" in
+  "true false "*commit-msg*) : ;;
+  *) fail "caseAD2: a NON-EXECUTABLE commit-msg must read as missing, got [$adNoExec]" ;;
 esac
+chmod +x "$adHooks/commit-msg"
 
 rm -f "$adHooks/pre-push"
 mkdir -p "$adHooks/pre-push"
@@ -2339,7 +2275,7 @@ if (!/check-user-slug\.sh --dotenv-root/.test(vt)) fail("the unverified row pres
 
 const nonApplicable = a.buildSummary(ans, [], { derived:"x", dryRun:false,
   userSlug: { applicable:false } });
-if (/USER_SLUG/.test(manualText(nonApplicable))) fail("win32 (setup.ps1 has no such step) must produce no still-manual row");
+if (/USER_SLUG/.test(manualText(nonApplicable))) fail("a non-applicable slug state must produce no still-manual row");
 
 const dry = a.buildSummary(ans, [], { derived:"x", dryRun:true, userSlug: null });
 if (/USER_SLUG/.test(manualText(dry))) fail("--dry-run must not claim a slug probe it never ran");
@@ -2379,43 +2315,37 @@ as_stub_argv() {
   } > "$1/scripts/setup/check-user-slug.sh"
   chmod +x "$1/scripts/setup/check-user-slug.sh"
 }
-case "$(uname -s 2>/dev/null || echo unknown)" in
-  MINGW*|MSYS*|CYGWIN*)
-    echo "  (caseAS2: probe arms skipped -- the dev overlay on win32 is setup.ps1, which has no USER_SLUG step)" ;;
-  *)
-    asOk="$work/as-ok";   as_stub "$asOk" 0
-    asAdv="$work/as-adv"; as_stub "$asAdv" 3
-    asBad="$work/as-bad"; as_stub "$asBad" 7
-    asGone="$work/as-gone"; mkdir -p "$asGone/scripts/setup"
+asOk="$work/as-ok";   as_stub "$asOk" 0
+asAdv="$work/as-adv"; as_stub "$asAdv" 3
+asBad="$work/as-bad"; as_stub "$asBad" 7
+asGone="$work/as-gone"; mkdir -p "$asGone/scripts/setup"
 
-    asOkOut=$(probe_slug "$asOk") || fail "caseAS2: probe failed on the rc=0 stub"
-    [ "$asOkOut" = "true true true" ] \
-      || fail "caseAS2: rc=0 must read as resolved, got [$asOkOut]"
-    asAdvOut=$(probe_slug "$asAdv") || fail "caseAS2: probe failed on the rc=3 stub"
-    [ "$asAdvOut" = "true true false" ] \
-      || fail "caseAS2: rc=3 (advised) must read as verified-but-unresolved, got [$asAdvOut]"
-    # An unexpected rc is the probe breaking, NOT a slug that failed to resolve.
-    # Collapsing the two would put a confident "did NOT resolve" row in front of
-    # an operator whose slug may be perfectly fine.
-    asBadOut=$(probe_slug "$asBad") || fail "caseAS2: probe failed on the rc=7 stub"
-    [ "$asBadOut" = "true false -" ] \
-      || fail "caseAS2: an unexpected rc must read as unverified, got [$asBadOut]"
-    asGoneOut=$(probe_slug "$asGone") || fail "caseAS2: probe failed on the missing-script fixture"
-    [ "$asGoneOut" = "true false -" ] \
-      || fail "caseAS2: an absent check-user-slug.sh must read as unverified, got [$asGoneOut]"
+asOkOut=$(probe_slug "$asOk") || fail "caseAS2: probe failed on the rc=0 stub"
+[ "$asOkOut" = "true true true" ] \
+  || fail "caseAS2: rc=0 must read as resolved, got [$asOkOut]"
+asAdvOut=$(probe_slug "$asAdv") || fail "caseAS2: probe failed on the rc=3 stub"
+[ "$asAdvOut" = "true true false" ] \
+  || fail "caseAS2: rc=3 (advised) must read as verified-but-unresolved, got [$asAdvOut]"
+# An unexpected rc is the probe breaking, NOT a slug that failed to resolve.
+# Collapsing the two would put a confident "did NOT resolve" row in front of
+# an operator whose slug may be perfectly fine.
+asBadOut=$(probe_slug "$asBad") || fail "caseAS2: probe failed on the rc=7 stub"
+[ "$asBadOut" = "true false -" ] \
+  || fail "caseAS2: an unexpected rc must read as unverified, got [$asBadOut]"
+asGoneOut=$(probe_slug "$asGone") || fail "caseAS2: probe failed on the missing-script fixture"
+[ "$asGoneOut" = "true false -" ] \
+  || fail "caseAS2: an absent check-user-slug.sh must read as unverified, got [$asGoneOut]"
 
-    # The probe must pass --dotenv-root repoRoot() on the same spawnSync call
-    # without it a slug filled into the fixture's
-    # own .env is invisible to this replay, disagreeing with setup.sh's footer.
-    asArgv="$work/as-argv"; as_stub_argv "$asArgv" 0
-    argvProbeOut=$(probe_slug "$asArgv") || fail "caseAS2: probe failed on the argv-capture stub"
-    [ "$argvProbeOut" = "true true true" ] \
-      || fail "caseAS2: argv-capture stub did not read as resolved, got [$argvProbeOut]"
-    capturedArgv=$(cat "$asArgv/argv-capture" 2>/dev/null || echo "")
-    grep -q -F <<<"$capturedArgv" -- "--dotenv-root" \
-      || fail "caseAS2: the probe did not pass --dotenv-root, argv was [$capturedArgv]"
-    ;;
-esac
+# The probe must pass --dotenv-root repoRoot() on the same spawnSync call
+# without it a slug filled into the fixture's
+# own .env is invisible to this replay, disagreeing with setup.sh's footer.
+asArgv="$work/as-argv"; as_stub_argv "$asArgv" 0
+argvProbeOut=$(probe_slug "$asArgv") || fail "caseAS2: probe failed on the argv-capture stub"
+[ "$argvProbeOut" = "true true true" ] \
+  || fail "caseAS2: argv-capture stub did not read as resolved, got [$argvProbeOut]"
+capturedArgv=$(cat "$asArgv/argv-capture" 2>/dev/null || echo "")
+grep -q -F <<<"$capturedArgv" -- "--dotenv-root" \
+  || fail "caseAS2: the probe did not pass --dotenv-root, argv was [$capturedArgv]"
 echo "ok: caseAS the USER_SLUG step is reported from a replay of its own check — resolved/unresolved/unverified/dry-run all distinct"
 
 # ── caseAT: the install trusts the workspace it just wired ────

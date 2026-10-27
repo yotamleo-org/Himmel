@@ -52,16 +52,14 @@
 #                  codex-adv-1's registered-command check is now
 #                  unconditional — see the dedicated block further down for
 #                  the wrong/missing/nonexistent-command coverage itself,
-#                  including the earlier POSIX executability distinction
-#                  win32-reachable paths only; see that block's skip note).
+#                  including the POSIX executability distinction).
 #   which (helpers.js key-PRESENCE beats
 #                  truthiness — a deliberately scrubbed PATH:'' must not fall
 #                  through to a present Path, and Path alone (PATH key
 #                  genuinely absent) still resolves.
 #   handover-dir   handover-wiring — HANDOVER_DIR set (ctx.env pass-through,
 #                  not process.env mutation) / unset with a non-repo cwd.
-#   dep            single-cmd (rtk), the win32/posix platform union
-#                  (scheduler-backend), and graphify — each
+#   dep            single-cmd (rtk), the scheduler-backend, and graphify — each
 #                  present/absent via stub PATH.
 #   cmd:has_hermes hermes-lanes, sourcing (via a resolver path
 #                  passed through the spawned env, not string-interpolated
@@ -180,20 +178,10 @@
 #   cmd:whisper_ready
 #                  binary+model both present (present) / binary present,
 #                  model missing (degraded) / binary missing (absent);
-#                  platform-branched default binary name proven both ways via
-#                  ctx.platform (whisper-cli.exe on a simulated win32,
-#                  whisper-cli elsewhere); ALSO a plain DIRECTORY at the
+#                  default binary name whisper-cli (no .exe); ALSO a plain DIRECTORY at the
 #                  binary path (absent, never present), a 0-byte binary
 #                  (absent) and a 0-byte model (degraded) — a truncated
-#                  download must never read ready. Plus
-#                  retask stage1-build-6d2e): the exec-bit check is proven to
-#                  be driven by ctx.platform, not the real host
-#                  process.platform — process.platform is overridden to a
-#                  non-win32 value while ctx.platform stays 'win32' and
-#                  fs.accessSync is instrumented to count X_OK calls, so the
-#                  win32-simulated fixtures above are shown to pass because
-#                  of the platform routing, not by accident of this test host
-#                  already being win32.
+#                  download must never read ready.
 #   cmd:python_interpreter — absent (nothing on PATH,
 #                  via bash's own rc=127 "command not found"), present (a
 #                  stub interpreter that runs the given script and echoes the
@@ -305,13 +293,6 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-is_win32() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 # build_path <stub_dir> <present_tools...> -- <absent_tools...> (copied from
 # the sibling suites: link the named present tools off the CURRENT PATH into
 # <stub_dir>, then echo a PATH with the stub prepended and the named absent
@@ -349,10 +330,9 @@ repo_root_w="$(winpath "$repo_root")"
 # to a genuinely unresolvable bash. A bare `env: { PATH: '' }` used to be
 # enough to un-resolve bash for a spawn-error case, but resolveProbeBash()
 # (probes.js) now falls through to resolveBash() (scripts/hooks/
-# run-hook-with-bash.js), which also probes canonical Git-for-Windows
-# locations on win32 (hardcoded, e.g. C:\Program Files\Git\bin\bash.exe) and
-# /bin/bash, /usr/bin/bash on posix REGARDLESS of PATH — so an empty PATH
-# alone is now vacuous on both platforms and no longer proves a spawn error.
+# run-hook-with-bash.js), which also probes /bin/bash and /usr/bin/bash
+# REGARDLESS of PATH — so an empty PATH alone is now vacuous and no longer
+# proves a spawn error.
 no_such_bash_w="$(winpath "$work/no-such-bash/bash")"
 
 # ── which (helpers.js): key-PRESENCE, not truthiness — an earlier fix
@@ -530,7 +510,7 @@ echo "ok: git-hooks reads pre-commit stubs with no .pre-commit-config.yaml as in
 
 # ── git-hooks: core.hooksPath override ───────────────────────
 # A legitimate LOCAL `git config core.hooksPath <dir>` (the in-repo layout
-# check-commit-msg.ps1 documents and check-hookspath validates) must resolve at
+# check-hookspath validates) must resolve at
 # that dir, NOT fall through to .git/hooks (left intentionally empty here) and
 # read a false absent.
 hooks_hp_repo="$work/hooks-hp-repo"; mkdir -p "$hooks_hp_repo/custom-hooks"
@@ -1664,22 +1644,6 @@ echo "$outCmdNone" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "mcp-registered: a registered entry with NO command field should read degraded: (got: $outCmdNone)"
 echo "ok: mcp-registered — the registered entry's OWN command is validated (absolute-path resolution / bare-name PATH lookup), unconditionally; a wrong, missing, or nonexistent command reads degraded, never silently present"
 
-# SKIP NOTE: registeredCommandCheck's POSIX
-# branch (fs.accessSync(cmd, X_OK) distinguishing "exists but not executable"
-# from "does not exist") is gated behind `process.platform === 'win32'` and
-# so is STRUCTURALLY UNREACHABLE on this dev/CI machine (win32) — the outCmdAbs/
-# outCmdAbsMissing cases above already exercise the win32 existsSync branch
-# (unchanged) for both the resolve/does-not-resolve outcomes,
-# but the executability distinction itself has no path to run here. Per the
-# CR's own guidance, this is a comment+skip note rather than a fake test:
-# stubbing process.platform to force the POSIX branch on a win32 CI runner
-# would test a code path that can never actually execute on this box (a
-# platform hack producing a false sense of coverage, not a real one). The
-# logic itself is a 6-line try/catch around a single documented Node API
-# (fs.accessSync + fs.constants.X_OK) with no himmel-specific branching to
-# get wrong; real coverage should come from a POSIX runner in CI/a Linux dev
-# box, not a Windows-side simulation.
-
 # ── graphify-mcp: bin field DROPPED, relying on the registered-command
 # check alone (least-redundant design — see manifest.json's comment on this
 # item). Proven live: the REAL server registered under a bare "graphify-mcp"
@@ -1834,8 +1798,8 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outDepA" | jq -e '.actual == "absent"' >/dev/null || fail "dep single-cmd (rtk) absent: (got: $outDepA)"
 echo "ok: dep single-cmd (rtk) present/absent"
 
-# ── dep: win32/posix platform union (scheduler-backend) ────────────────────
-if is_win32; then sched_name="schtasks"; else sched_name="at"; fi
+# ── dep: scheduler-backend ────────────────────
+sched_name="at"
 
 dep_sched_present="$work/dep-sched-present-bin"; mkdir -p "$dep_sched_present"
 pathSchedPresent=$(build_path "$dep_sched_present" bash git jq -- "$sched_name")
@@ -2583,28 +2547,28 @@ echo "$outWRabsent" | jq -e '.detail | contains("whisper-cli") and (contains("wh
 echo "ok: cmd:whisper_ready — no binary reads absent, POSIX default binary name has no .exe"
 
 wr_degraded="$work/wr-degraded-dir"; mkdir -p "$wr_degraded"
-printf 'stub-binary' > "$wr_degraded/whisper-cli.exe"
+printf 'stub-binary' > "$wr_degraded/whisper-cli"; chmod +x "$wr_degraded/whisper-cli"
 outWRdegraded=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_degraded")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_degraded")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRdegraded" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "cmd:whisper_ready: binary present (simulated win32 default name), model missing should read degraded: (got: $outWRdegraded)"
-echo "$outWRdegraded" | jq -e '.detail | contains("whisper-cli.exe") and contains("ggml-small.bin")' >/dev/null \
-  || fail "cmd:whisper_ready: degraded detail should name both the win32 binary default and the missing model (got: $outWRdegraded)"
-echo "ok: cmd:whisper_ready — binary present (win32 default name), model missing reads degraded"
+  || fail "cmd:whisper_ready: binary present, model missing should read degraded: (got: $outWRdegraded)"
+echo "$outWRdegraded" | jq -e '.detail | contains("whisper-cli") and contains("ggml-small.bin")' >/dev/null \
+  || fail "cmd:whisper_ready: degraded detail should name both the default binary and the missing model (got: $outWRdegraded)"
+echo "ok: cmd:whisper_ready — binary present, model missing reads degraded"
 
 wr_present="$work/wr-present-dir"; mkdir -p "$wr_present"
-printf 'stub-binary' > "$wr_present/whisper-cli.exe"
+printf 'stub-binary' > "$wr_present/whisper-cli"; chmod +x "$wr_present/whisper-cli"
 printf 'stub-model' > "$wr_present/ggml-small.bin"
 outWRpresent=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_present")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_present")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRpresent" | jq -e '.actual == "present"' >/dev/null \
@@ -2617,12 +2581,12 @@ echo "ok: cmd:whisper_ready — binary + model both present reads present"
 # as a genuinely missing binary. Ambient WHISPER_CLI/WHISPER_MODEL/
 # WHISPER_DIR are explicitly nulled per the task brief's own warning (a real
 # operator env value on this machine previously produced a false pass).
-wr_dir_binary="$work/wr-dir-binary-dir"; mkdir -p "$wr_dir_binary/whisper-cli.exe"
+wr_dir_binary="$work/wr-dir-binary-dir"; mkdir -p "$wr_dir_binary/whisper-cli"
 outWRdirBinary=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_dir_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_dir_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRdirBinary" | jq -e '.actual == "absent"' >/dev/null \
@@ -2634,12 +2598,12 @@ echo "ok: cmd:whisper_ready — a plain directory at the binary path reads absen
 # a 0-byte binary (a truncated/interrupted
 # download) must read absent, never present.
 wr_empty_binary="$work/wr-empty-binary-dir"; mkdir -p "$wr_empty_binary"
-: > "$wr_empty_binary/whisper-cli.exe"
+: > "$wr_empty_binary/whisper-cli"; chmod +x "$wr_empty_binary/whisper-cli"
 outWRemptyBinary=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRemptyBinary" | jq -e '.actual == "absent"' >/dev/null \
@@ -2652,13 +2616,13 @@ echo "ok: cmd:whisper_ready — a 0-byte binary (truncated download) reads absen
 # truncated model download — the design's own checklist item warns about
 # exactly this) must read degraded, never present.
 wr_empty_model="$work/wr-empty-model-dir"; mkdir -p "$wr_empty_model"
-printf 'not-empty' > "$wr_empty_model/whisper-cli.exe"
+printf 'not-empty' > "$wr_empty_model/whisper-cli"; chmod +x "$wr_empty_model/whisper-cli"
 : > "$wr_empty_model/ggml-small.bin"
 outWRemptyModel=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_model")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_model")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRemptyModel" | jq -e '.actual == "degraded"' >/dev/null \
@@ -2666,47 +2630,6 @@ echo "$outWRemptyModel" | jq -e '.actual == "degraded"' >/dev/null \
 echo "$outWRemptyModel" | jq -e '.detail | test("0-byte"; "i")' >/dev/null \
   || fail "cmd:whisper_ready: a 0-byte model detail should name it a 0-byte file (got: $outWRemptyModel)"
 echo "ok: cmd:whisper_ready — a 0-byte model (truncated download) reads degraded, never ready"
-
-# isUsableFile's exec-bit
-# check used to read the REAL process.platform directly instead of the
-# effective platform (ctx.platform || process.platform) this file's own
-# convention threads everywhere else — a win32-simulated probe running on an
-# actual POSIX host would silently fall back to that host's own exec check
-# instead of skipping it (Windows has no exec-bit concept). The
-# wr_present/wr_degraded fixtures above pin ctx.platform:'win32', but on
-# THIS test host the real process.platform already happens to read 'win32'
-# too, so they could not tell the fix apart from the pre-fix bug — the exec
-# check would be skipped either way, for the wrong reason. This test forces
-# the two apart: process.platform is overridden (a real, JS-visible
-# override — libuv's own X_OK enforcement is unaffected either way, since
-# this only changes what isUsableFile() itself reads to decide whether to
-# even ATTEMPT the check) to a non-win32 value while ctx.platform stays
-# 'win32', and fs.accessSync is instrumented to count X_OK calls. The pre-fix
-# code (reading the overridden process.platform) would attempt the exec
-# check anyway; the fixed code (reading ctx.platform) must skip it entirely —
-# proving the win32-simulated fixtures above now pass because of the
-# effective-platform routing, not by accident of the real host OS.
-outWRplatformRouting=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
-const fs = require('fs');
-let xOkCalls = 0;
-const origAccessSync = fs.accessSync;
-fs.accessSync = function (p, mode) {
-  if (mode === fs.constants.X_OK) xOkCalls += 1;
-  return origAccessSync.call(fs, p, mode);
-};
-Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
-const { runProbe } = require('$probes_lib_w');
-const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_present")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
-const result = runProbe(item, ctx);
-console.log(JSON.stringify({ result, xOkCalls }));
-")
-echo "$outWRplatformRouting" | jq -e '.result.actual == "present"' >/dev/null \
-  || fail "cmd:whisper_ready: ctx.platform:'win32' should still read present even with the real process.platform overridden to non-win32: (got: $outWRplatformRouting)"
-echo "$outWRplatformRouting" | jq -e '.xOkCalls == 0' >/dev/null \
-  || fail "cmd:whisper_ready: ctx.platform:'win32' must skip the exec-bit check entirely (fs.accessSync X_OK must not be called), even when the real process.platform reads non-win32 (got: $outWRplatformRouting)"
-echo "ok: cmd:whisper_ready — the exec-bit check is driven by ctx.platform, not the real host process.platform (HIMMEL-2176 CR fix)"
 
 # loadConfigIfPresent used to read
 # HIMMEL_LUNA_CONFIG_PATH from the real process.env directly, ignoring
@@ -4829,14 +4752,9 @@ echo "$outPHIrootsOnly" | jq -e '.actual == "degraded"' >/dev/null \
 echo "ok: phi-coherence — a phi-roots entry with no local .salus marker reads degraded (stale entry?)"
 rm -f "$phi_home/.config/claude-glm/phi-roots"
 
-# ── phi-coherence: platform-driven case-folding (5,
+# ── phi-coherence: case-sensitive comparison (5,
 # retask stage1-build-6d2e) — POSIX filesystems are case-sensitive, so two
-# paths differing only in case must NOT compare equal there; win32
-# filesystems default to case-insensitive, so they MUST compare equal there.
-# Driven through ctx.platform (not the real host process.platform) so this
-# is meaningful on any host — a previous fix in this file was passing only
-# because the dev box happens to be Windows, and that trap is worth not
-# repeating here.
+# paths differing only in case must NOT compare equal.
 phi_case_vault="$work/PHI-Case-Vault"; mkdir -p "$phi_case_vault"
 : > "$phi_case_vault/.salus"
 phi_case_cfg="$work/phi-case-config.json"
@@ -4845,9 +4763,7 @@ cat > "$phi_case_cfg" <<JSON
 JSON
 # phi-roots lists the SAME path with different case in its last segment
 # (phi-vault -> PHI-VAULT-style casing) — a case-sensitive (POSIX) compare
-# must treat this as a DIFFERENT path (no listing, degraded); a
-# case-insensitive (win32) compare must treat it as the SAME path (listed,
-# present).
+# must treat this as a DIFFERENT path (no listing, degraded).
 printf '%s\n' "$(winpath "$phi_case_vault" | tr '[:lower:]' '[:upper:]')" > "$phi_home/.config/claude-glm/phi-roots"
 
 run_phi_platform() {
@@ -4865,10 +4781,6 @@ echo "$outPHIposix" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "phi-coherence: ctx.platform=linux (POSIX) must treat differently-cased paths as DIFFERENT — expected degraded (got: $outPHIposix)"
 echo "ok: phi-coherence — ctx.platform=linux (POSIX) treats case-differing paths as DIFFERENT (degraded, no false coherence)"
 
-outPHIwin32=$(run_phi_platform win32)
-echo "$outPHIwin32" | jq -e '.actual == "present"' >/dev/null \
-  || fail "phi-coherence: ctx.platform=win32 must treat differently-cased paths as the SAME — expected present (got: $outPHIwin32)"
-echo "ok: phi-coherence — ctx.platform=win32 treats case-differing paths as the SAME (present)"
 rm -f "$phi_home/.config/claude-glm/phi-roots"
 
 # ── phi-coherence: ~-prefixed vaultPath (CodeRabbit App finding,
@@ -5021,14 +4933,6 @@ echo "$outEAnone" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/
   || fail "engine-allowlist: no known worker armed should read absent, cleanAbsence:true (got: $outEAnone)"
 echo "ok: engine-allowlist — no luna cadence worker with a known engine requirement armed reads absent, cleanAbsence:true"
 
-# armedPipelineSchedules (probes.js) keys the runner-file
-# extension on `ctx.platform || process.platform` — `.bat` on win32, `.sh`
-# everywhere else — and this ctx never sets ctx.platform, so it resolves
-# against the REAL host running the suite. A `.bat`-only fixture reads
-# "no worker armed" (a false cleanAbsence) on any non-Windows host. Creating
-# both extensions makes the case host-independent, same as this suite's
-# other cross-platform fixtures.
-: > "$ea_bat/pipeline-health.bat"
 : > "$ea_bat/pipeline-health.sh"
 outEAok=$(PIPELINE_BAT_DIR="$(winpath "$ea_bat")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -5062,12 +4966,8 @@ rm -f "$ea_bat"/*.bat "$ea_bat"/*.sh
 
 # ── bridge-health — status item S5 ──────────────────────
 # S5's binding rulings (probes.js's own header comment): (1) counts poller.ts
-# CONSUMER processes only, never the combined supervisor-or-poller regex
-# restart-bridge.ps1 uses for a different purpose; (2) Windows-CIM-only —
-# EVERY other platform reads a LOUD degraded naming the limitation, never a
-# silent pass. The poller-count check is routed through `bash -c` (this
-# file's own established cross-platform seam), so a stub `powershell`
-# EXECUTABLE on PATH fakes it here, never a JS mock.
+# CONSUMER processes only; (2) linux/darwin only — EVERY other platform reads
+# a LOUD degraded naming the limitation, never a silent pass.
 bh_dir="$work/bh-dir"; mkdir -p "$bh_dir/.claude/channels/telegram"
 
 # no token at all -> absent, cleanAbsence:true, short-circuited before any
@@ -5145,137 +5045,27 @@ echo "ok:testbot"
 STUB
 chmod +x "$bh_stub/bun"
 
-# probeBridgePollerCount now emits
-# each matching process's own CommandLine (not a bare Count) so it can anchor
-# to THIS checkout's own scripts/telegram/poller.ts — the stub `powershell`
-# below therefore echoes raw CommandLine fixture lines (one per line), never a
-# number; the real anchor/count logic lives in probes.js and is exercised
-# here exactly as production would drive it.
-repo_root_native_w=$(printf '%s' "$repo_root_w" | sed 's#/#\\#g')
-other_checkout_native="C:\\Users\\testuser\\Documents\\github\\himmel\\.claude\\worktrees\\feat-some-other-checkout"
-
-run_bh() {
-  local lines="$1" platform="${2:-win32}" repoRootOverride="${3:-$repo_root_w}"
-  {
-    printf '%s\n' '#!/usr/bin/env bash'
-    printf '%s\n' "cat <<'PSOUT'"
-    printf '%s\n' "$lines"
-    printf '%s\n' 'PSOUT'
-  } > "$bh_stub/powershell"
-  chmod +x "$bh_stub/powershell"
-  # Scrub any REAL powershell off the inherited PATH first (never assumed
-  # absent by luck), then prepend the stub dir so ours is the one resolved.
-  local pathVal
-  pathVal="$bh_stub:$(scrub_path "$PATH" powershell)"
-  PATH="$pathVal" "$node_bin" -e "
+run_bh_other() {
+  PATH="$bh_stub:$PATH" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'bridge-health');
-const ctx = { repoRoot: '$repoRootOverride', targetPath: '$(winpath "$bh_dir")', scope: 'project', platform: '$platform', env: process.env };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$(winpath "$bh_dir")', scope: 'project', platform: '$1', env: process.env };
 console.log(JSON.stringify(runProbe(item, ctx)));
 "
 }
 
-# Bare, unpathed token — the genuine shape supervisor.ts's own
-# `spawn(["bun","poller.ts"], {cwd})` produces (restart-bridge.ps1's own
-# Test-BridgeCoreProc comment: "the genuine command lines carry NO path") —
-# unattributable to any checkout by path alone, so it is still counted.
-outBH1=$(run_bh 'bun.exe poller.ts' win32)
-echo "$outBH1" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: token getMe ok + access.json schema ok + exactly 1 bare-token poller should read present (got: $outBH1)"
-echo "$outBH1" | jq -e '.detail | contains("fake-bridge-health-token-marker") | not' >/dev/null \
-  || fail "bridge-health: the raw token must never appear in the result (got: $outBH1)"
-echo "ok: bridge-health — token getMe ok + access.json schema ok + exactly 1 bare-token poller.ts process reads present, token never leaked"
-
-outBH0=$(run_bh '' win32)
-echo "$outBH0" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "bridge-health: 0 poller.ts processes should read absent (fail) (got: $outBH0)"
-echo "ok: bridge-health — 0 poller.ts processes reads absent (fail)"
-
-outBH2=$(run_bh "$(printf 'bun.exe poller.ts\nbun.exe poller.ts')" win32)
-echo "$outBH2" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "bridge-health: 2 poller.ts processes (a supervisor+2 pollers or a duplicate) should read absent (fail) (got: $outBH2)"
-echo "ok: bridge-health — 2 poller.ts processes (never exactly 1) reads absent (fail), never a false present"
-
-# linux/darwin now have a real implementation (see the
-# dedicated Linux poller-count block below) — this case now covers a
-# platform NEITHER Windows-CIM NOR the new POSIX path supports at all, so
-# the generic "not implemented" degraded fallback still has live coverage.
-outBHposix=$(run_bh 'bun.exe poller.ts' freebsd)
+# linux/darwin have a real implementation (see the poller-count blocks
+# below) — a platform with neither reads the generic "not implemented"
+# degraded, never a silent present just because the token/access checks pass.
+outBHposix=$(run_bh_other freebsd)
 echo "$outBHposix" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "bridge-health: a platform with no poller-count implementation at all must read a LOUD degraded (HIMMEL-1128), never a silent present just because the token/access checks pass (got: $outBHposix)"
 echo "$outBHposix" | jq -e '.detail | test("not implemented"; "i")' >/dev/null \
   || fail "bridge-health: the not-implemented-platform degraded detail should name the limitation explicitly (got: $outBHposix)"
-echo "ok: bridge-health — a platform with no poller-count implementation at all reads a LOUD degraded naming the limitation, never a silent pass"
-
-# a poller.ts token explicitly
-# PATHED to THIS checkout's own root (mixed-slash form, matching winpath's
-# cygpath -m output — own documented "mixed or native path
-# form" reality) must still count as this checkout's poller.
-outBHthisPathed=$(run_bh "bun.exe ${repo_root_w}/scripts/telegram/poller.ts" win32)
-echo "$outBHthisPathed" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: a poller.ts pathed to THIS checkout (mixed-slash) should still read present (got: $outBHthisPathed)"
-echo "ok: bridge-health — a poller.ts token pathed to THIS checkout (mixed-slash form) reads present"
-
-# Same checkout, but native backslashes and mismatched case — the anchor
-# normalizes separators AND case (NTFS is case-insensitive; Win32_Process
-# CommandLine has been observed in both separator forms).
-outBHthisNativeUpper=$(run_bh "bun.exe $(printf '%s' "$repo_root_native_w" | tr '[:lower:]' '[:upper:]')\\SCRIPTS\\TELEGRAM\\POLLER.TS" win32)
-echo "$outBHthisNativeUpper" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: a poller.ts pathed to THIS checkout (native backslashes, upper-cased) should still read present (got: $outBHthisNativeUpper)"
-echo "ok: bridge-health — a poller.ts token pathed to THIS checkout (native backslashes, mismatched case) reads present"
-
-# [^\s"']* stopped at
-# the first space, truncating a poller.ts path under a checkout with a space
-# in it (e.g. 'C:\Users\John Doe\himmel\...') to a fragment that could never  # leak-allow: home-path doc example
-# match the anchor — the healthy LOCAL poller then read as foreign and
-# bridge-health falsely reported zero pollers. A real Win32_Process
-# CommandLine quotes an argument containing a space, so the fixed extractor
-# tries a QUOTED token first. This is the third of the three token shapes now
-# covered: (1) bare, unpathed ('bun.exe poller.ts', outBH1 above); (2) an
-# unquoted, space-free path (outBHthisPathed/outBHthisNativeUpper above); (3)
-# this one — a quoted path containing a space.
-bh_space_root_w='C:/Users/John Doe/himmel/.claude/worktrees/feat-space-checkout'  # leak-allow: home-path test fixture
-bh_space_root_native='C:\Users\John Doe\himmel\.claude\worktrees\feat-space-checkout'  # leak-allow: home-path test fixture
-outBHspaceQuoted=$(run_bh "bun.exe \"${bh_space_root_native}\\scripts\\telegram\\poller.ts\"" win32 "$bh_space_root_w")
-echo "$outBHspaceQuoted" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: a poller.ts path containing a space, quoted (the real Win32_Process shape), must still resolve to THIS checkout and read present (got: $outBHspaceQuoted)"
-echo "ok: bridge-health — a quoted poller.ts path containing a space resolves to THIS checkout and reads present"
-
-# The same space-containing checkout, but pathed to a DIFFERENT one — must
-# still be excluded, proving the quoted extraction doesn't just always match.
-outBHspaceQuotedForeign=$(run_bh "bun.exe \"${bh_space_root_native}\\scripts\\telegram\\poller.ts\"" win32 "$repo_root_w")
-echo "$outBHspaceQuotedForeign" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "bridge-health: a quoted poller.ts path with a space, belonging to a DIFFERENT checkout, must not be counted as this one's (got: $outBHspaceQuotedForeign)"
-echo "ok: bridge-health — a quoted poller.ts path with a space, pathed to a DIFFERENT checkout, is still excluded"
-
-# the exact gap this fix closes
-# a poller.ts token pathed to a DIFFERENT checkout must NOT be counted as
-# this one's, even though the old bare-substring match would have counted it
-# (false healthy, or a spurious duplicate alongside a real local poller).
-outBHforeign=$(run_bh "bun.exe ${other_checkout_native}\\scripts\\telegram\\poller.ts" win32)
-echo "$outBHforeign" | jq -e '.actual == "absent"' >/dev/null \
-  || fail "bridge-health: a poller.ts pathed to a DIFFERENT checkout must not be counted as this one's (expected 0 -> absent, got: $outBHforeign)"
-echo "$outBHforeign" | jq -e '.detail | contains("0 poller")' >/dev/null \
-  || fail "bridge-health: a foreign-checkout poller must read as 0 for THIS checkout, not silently folded in (got: $outBHforeign)"
-echo "ok: bridge-health — a poller.ts token pathed to a DIFFERENT checkout is excluded, never counted as this checkout's"
-
-# A foreign-checkout poller alongside a genuinely healthy local one: the
-# foreign one must not inflate the count into a spurious duplicate-poller
-# failure on an otherwise-healthy bridge.
-outBHmixedForeign=$(run_bh "bun.exe poller.ts"$'\n'"bun.exe ${other_checkout_native}\\scripts\\telegram\\poller.ts" win32)
-echo "$outBHmixedForeign" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: this checkout's healthy bare-token poller alongside an unrelated foreign-checkout poller should still read present, not a spurious duplicate (got: $outBHmixedForeign)"
-echo "ok: bridge-health — a foreign-checkout poller alongside this checkout's healthy one does not force a spurious duplicate-poller failure"
-
-# The existing supervisor-plus-child case, unchanged: the supervisor's own
-# commandline never contains 'poller.ts' at all, so even if a defensive CIM
-# query ever returned it alongside the real child, it must still read as
-# exactly ONE consumer.
-outBHsupervisorPlusChild=$(run_bh "$(printf 'bun.exe supervisor.ts\nbun.exe poller.ts')" win32)
-echo "$outBHsupervisorPlusChild" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-health: a supervisor.ts line alongside its poller.ts child must still read exactly 1 consumer (got: $outBHsupervisorPlusChild)"
-echo "ok: bridge-health — a supervisor-plus-child pair still reads as exactly one poller.ts consumer"
+echo "$outBHposix" | jq -e '.detail | contains("fake-bridge-health-token-marker") | not' >/dev/null \
+  || fail "bridge-health: the raw token must never appear in the result (got: $outBHposix)"
+echo "ok: bridge-health — a platform with no poller-count implementation at all reads a LOUD degraded naming the limitation, never a silent pass, token never leaked"
 
 # ── bridge-health poller-count — Linux/macOS ──────────────────
 # Unlike Windows' binary present/absent, the Linux/macOS contract is a
@@ -5299,7 +5089,7 @@ build_hermetic_bin "$bh_posix_stub" cat
 # the REAL binary (by design); a real bun genuinely calling
 # Telegram's API would make this fixture's verdict depend on live network
 # reachability and a real bot token, neither of which this suite controls.
-# Fake it the same way the Windows-lane `$bh_stub/bun` above already does
+# Fake it the same way the `$bh_stub/bun` above already does
 # (unconditional `ok:testbot`) so only the poller-count sub-result under
 # test varies across cases (a)-(e).
 cat > "$bh_posix_stub/bun" <<'STUB'
@@ -6340,186 +6130,6 @@ else
   echo "SKIP: bridge-persistence — ctx.env spawn-routing case: no evidence in the stub log that systemctl/loginctl actually spawned on this host"
 fi
 
-# ── Windows branch: scheduler registration via a stubbed powershell on PATH ──
-# schtasks' text output
-# is LOCALIZED (both the field label and the "Enabled" value translate on
-# non-English Windows) — probes.js now queries Get-ScheduledTask and reads
-# its `.State` enum via `.ToString()`, which is culture-invariant BY
-# CONSTRUCTION (Ready/Disabled/Running/Queued — .NET enum member names, never
-# translated). The stub therefore fakes `powershell`, not `schtasks`, and
-# every case below drives it with the INVARIANT enum member name — exactly
-# what a REAL non-English Windows would also produce, proving the fix
-# without needing to fake an actual German/Japanese/etc. locale.
-write_bp_powershell() {
-  # $1: 0 (task found, emit STATE:$2, rc=0) | 1 (task genuinely not found —
-  #     emit NOTFOUND, rc=0 — the real Get-ScheduledTask/FullyQualifiedErrorId
-  #     match probes.js now performs, replacing the old -ErrorAction
-  #     SilentlyContinue swallowed-error shape) | 2 (query fails at the
-  #     process level — spawn/timeout/crash — nonzero rc, no output) |
-  #     3 (query fails but PowerShell itself CATCHES the error, rc=0 — e.g.
-  #     the ScheduledTasks module unavailable, access denied, a WinRM/CIM
-  #     problem — retask stage1-build-6d2e: this must NOT read absent, since
-  #     unlike mode 1 nothing ever confirmed the task doesn't exist)
-  # $2: OPTIONAL — the State enum member to emit when $1=0 (default: Ready)
-  local mode="$1" state="${2:-Ready}"
-  # resolvePowershell() PREFERS pwsh over powershell — a leftover
-  # $bp_stub/pwsh from an earlier case (write_bp_pwsh_only) would silently
-  # shadow this fresh powershell write otherwise, since bp_stub is reused
-  # across every Windows-branch case in this file.
-  rm -f "$bp_stub/pwsh"
-  {
-    printf '%s\n' '#!/usr/bin/env bash'
-    if [ "$mode" = "0" ]; then
-      printf 'echo "STATE:%s"\n' "$state"
-    elif [ "$mode" = "1" ]; then
-      printf 'echo "NOTFOUND"\n'
-    elif [ "$mode" = "3" ]; then
-      # A representative real FullyQualifiedErrorId for a CAUGHT, non-absent
-      # failure — same shape confirmed on a real host for e.g. the
-      # ScheduledTasks module missing (CommandNotFoundException), distinct
-      # from the exact CmdletizationQuery_NotFound_TaskName match.
-      printf 'echo "ERR:HResult 0x80070005,Get-ScheduledTask"\n'
-    fi
-    if [ "$mode" = "2" ]; then
-      printf 'exit 2\n'
-    else
-      printf 'exit 0\n'
-    fi
-  } > "$bp_stub/powershell"
-  chmod +x "$bp_stub/powershell"
-}
-
-run_bp_win() {
-  local cfgPath="$1"
-  local pathVal
-  # Scrub BOTH names, not just 'powershell' (retask stage1-build-6d2e round
-  # 12, caught here): resolvePowershell() PREFERS pwsh, so a real pwsh.exe
-  # left on PATH shadows the $bp_stub/powershell stub below and this test
-  # queries the REAL Windows Task Scheduler instead — exactly what happened
-  # on this dev machine (it found a genuine 'HimmelTelegramBridge' task).
-  pathVal="$bp_stub:$(scrub_path "$PATH" powershell pwsh)"
-  HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cfgPath")" PATH="$pathVal" "$node_bin" -e "
-$bp_item_js
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', platform: 'win32', env: process.env };
-console.log(JSON.stringify(runProbe(item, ctx)));
-"
-}
-
-# write_bp_pwsh_only <state> — a $bp_stub/pwsh stub only, NO powershell stub
-# anywhere: proves the probe
-# resolves the interpreter via helpers.js's resolvePowershell() (which
-# PREFERS pwsh) rather than a hardcoded 'powershell' binary name — the same
-# helper bridge-persistence.js (the installer half of this feature) already
-# uses, so a PowerShell-7-only machine doesn't have the installer succeed
-# while the probe reports persistence as unknown forever.
-write_bp_pwsh_only() {
-  local state="${1:-Ready}"
-  rm -f "$bp_stub/powershell"
-  {
-    printf '%s\n' '#!/usr/bin/env bash'
-    printf 'echo "STATE:%s"\n' "$state"
-    printf 'exit 0\n'
-  } > "$bp_stub/pwsh"
-  chmod +x "$bp_stub/pwsh"
-}
-
-run_bp_win_pwsh_only() {
-  local cfgPath="$1"
-  local pathVal
-  # Scrub BOTH names off the OUTER (real) PATH — bp_stub itself (prepended)
-  # carries only `pwsh` (write_bp_pwsh_only above already removed any
-  # leftover `powershell` stub from an earlier case), so `pwsh` is the ONLY
-  # thing either name can resolve to.
-  pathVal="$bp_stub:$(scrub_path "$PATH" powershell pwsh)"
-  HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cfgPath")" PATH="$pathVal" "$node_bin" -e "
-$bp_item_js
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', platform: 'win32', env: process.env };
-console.log(JSON.stringify(runProbe(item, ctx)));
-"
-}
-
-# ── case 5: Windows, scheduled task registered (State=Ready) -> present ────
-write_bp_powershell 0 Ready
-outBP5=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP5" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-persistence: Windows task registered (Ready) should read present (got: $outBP5)"
-echo "ok: bridge-persistence — Windows: scheduled task registered (State=Ready) reads present"
-
-# ── case 5b: State=Running is ALSO a healthy/active state, not just Ready —
-# proves the classification isn't hardcoded to a single enum member. ───────
-write_bp_powershell 0 Running
-outBP5b=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP5b" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-persistence: Windows task registered (Running) should read present (got: $outBP5b)"
-echo "ok: bridge-persistence — Windows: scheduled task registered (State=Running) reads present"
-
-# ── case 5c: only `pwsh`
-# resolves — NO `powershell` anywhere on PATH — must still classify
-# correctly (present), never 'unknown'. A machine with only PowerShell 7
-# installed is a real, common shape; a hardcoded 'powershell' binary name
-# would never find an interpreter there. ───────────────────────────────────
-write_bp_pwsh_only Ready
-outBP5c=$(run_bp_win_pwsh_only "$bp_cfg_enabled")
-echo "$outBP5c" | jq -e '.actual == "present"' >/dev/null \
-  || fail "bridge-persistence: with ONLY pwsh resolving (no powershell), an enabled task must still read present, not unknown (got: $outBP5c)"
-echo "ok: bridge-persistence — Windows: only pwsh resolves (no powershell), task registered still reads present"
-
-# ── case 6: Windows, task NOT registered -> warn. Anti-false-green: a
-# plausible runner/launcher FILE existing on disk must NOT flip this to
-# present — only the scheduler's own answer may. ───────────────────────────
-bp_fake_runner_dir="$work/bp-fake-runner"; mkdir -p "$bp_fake_runner_dir"
-: > "$bp_fake_runner_dir/restart-bridge.ps1"
-: > "$bp_fake_runner_dir/HimmelTelegramBridge.xml"
-write_bp_powershell 1
-outBP6=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP6" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-persistence: Windows task not registered should read degraded (warn), even with a plausible runner file present on disk (got: $outBP6)"
-echo "$outBP6" | jq -e '.detail | test("HimmelTelegramBridge"; "i")' >/dev/null \
-  || fail "bridge-persistence: not-registered detail should name the task (got: $outBP6)"
-echo "ok: bridge-persistence — Windows: task not registered reads degraded (warn), never inferred present from a runner file on disk"
-
-# ── case 6b: the task
-# EXISTS (State=Disabled) — a disabled task will not run at logon, so this
-# must NOT read present. Existence is not enablement. ──────────────────────
-write_bp_powershell 0 Disabled
-outBP6b=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP6b" | jq -e '.actual != "present"' >/dev/null \
-  || fail "bridge-persistence: a task that exists but is Disabled must NEVER read present (got: $outBP6b)"
-echo "$outBP6b" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-persistence: a Disabled task should read degraded (warn), not absent/unknown (got: $outBP6b)"
-echo "$outBP6b" | jq -e '.detail | test("Disabled"; "i")' >/dev/null \
-  || fail "bridge-persistence: disabled-task detail should name the Disabled state, not just 'exists' (got: $outBP6b)"
-echo "ok: bridge-persistence — Windows: task exists but is Disabled reads degraded, never present (existence is not enablement)"
-
-# ── case 7: Windows, scheduler query FAILS (unexpected rc) -> unknown/degraded, NEVER present ──
-write_bp_powershell 2
-outBP7=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP7" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-persistence: a failed scheduler query should read degraded, never present (got: $outBP7)"
-echo "$outBP7" | jq -e '.detail | test("unknown"; "i")' >/dev/null \
-  || fail "bridge-persistence: a failed scheduler query detail should call the registration status unknown (got: $outBP7)"
-echo "ok: bridge-persistence — Windows: a failed scheduler query reads degraded/unknown, never present"
-
-# ── case 7b: Get-ScheduledTask query
-# CAUGHT an error that is NOT the exact "no such task" identifier (e.g. the
-# ScheduledTasks module unavailable, access denied, a WinRM/CIM problem) —
-# PowerShell itself exits 0 here (the try/catch swallows it internally), so
-# this is a DIFFERENT failure shape than case 7's process-level rc=2. The
-# pre-fix `-ErrorAction SilentlyContinue` collapsed this into the same
-# empty-stdout/rc=0 shape as a genuine not-found, reading it 'absent' — an
-# operator would then be told to reinstall persistence when the truth is the
-# scheduler could not be queried at all. Must read degraded/unknown, and the
-# detail must NOT claim the task is absent/not registered. ──────────────────
-write_bp_powershell 3
-outBP7b=$(run_bp_win "$bp_cfg_enabled")
-echo "$outBP7b" | jq -e '.actual == "degraded"' >/dev/null \
-  || fail "bridge-persistence: a caught (non-not-found) scheduler query error should read degraded, never present (got: $outBP7b)"
-echo "$outBP7b" | jq -e '.detail | test("unknown"; "i")' >/dev/null \
-  || fail "bridge-persistence: a caught scheduler query error detail should call the registration status unknown (got: $outBP7b)"
-echo "$outBP7b" | jq -e '.detail | test("no scheduled task named"; "i") | not' >/dev/null \
-  || fail "bridge-persistence: a caught (non-not-found) error must NOT be worded as a confirmed absence (got: $outBP7b)"
-echo "ok: bridge-persistence — Windows: a caught scheduler query error (not the exact not-found identifier) reads degraded/unknown, never absent or present"
-
 # ── case 8: unsupported platform (darwin) -> loud degraded naming Stage 2 ──
 outBP8=$(run_bp "$bp_cfg_enabled" "
 $bp_item_js
@@ -6619,53 +6229,16 @@ echo "$outPB10b" | jq -e '.actual == "present"' >/dev/null \
   || fail "Part B case 10b: TELEGRAM_ENV=~/... must expand against HOME before resolving (got: $outPB10b)"
 echo "ok: Part B case 10b — TELEGRAM_ENV with a ~/-prefixed path expands against HOME and resolves"
 
-# ── case 10c: TELEGRAM_ENV set to a ~\-prefixed (backslash) path — the
-# documented gap class — must ALSO expand correctly. The raw
-# value is passed through a real env var (never interpolated into the JS
-# source string) so neither bash's nor JS's own backslash-escape handling
-# can corrupt it — same convention this suite already uses for any fixture
-# value that might carry a backslash or apostrophe. Windows-only assertion:
-# expandHomeForCtx's path.join(home, p.slice(2)) only SPLITS on `\` as a
-# separator on win32 — on POSIX, Node's path.join keeps a `\` as a literal
-# filename character (the exact, already-ticketed class the
-# EXISTING phi-coherence `~\` test already hits on this suite's WSL run) —
-# so this stays a Windows-only proof rather than adding a 13th Linux
-# failure to a bucket the coordinator is tracking as a fixed count of 12.
-pb_tildebs_env_dir="$pb_home/tildebs-env-dir"; mkdir -p "$pb_tildebs_env_dir"
-cat > "$pb_tildebs_env_dir/tildebs.env" <<'ENV'
-TELEGRAM_BOT_TOKEN=tilde-backslash-override-token-marker
-ENV
-if is_win32; then
-  outPB10c=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$pb_cfg_envpath")" PB_TILDEBS_RAW='~\tildebs-env-dir\tildebs.env' "$node_bin" -e "
-const { runProbe } = require('$probes_lib_w');
-const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'telegram-bridge');
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { HOME: '$(winpath "$pb_home")', TELEGRAM_ENV: process.env.PB_TILDEBS_RAW }) };
-console.log(JSON.stringify(runProbe(item, ctx)));
-")
-  echo "$outPB10c" | jq -e '.actual == "present"' >/dev/null \
-    || fail "Part B case 10c: TELEGRAM_ENV=~\\... (backslash, HIMMEL-2263 gap class) must expand against HOME before resolving (got: $outPB10c)"
-  printf '%s\n' "ok: Part B case 10c — TELEGRAM_ENV with a ~\\-prefixed (backslash) path expands against HOME and resolves"
-else
-  # printf, not echo (SC2028): this message's text carries a literal
-  # backslash, and echo's escape-interpretation behavior is shell-dependent —
-  # printf '%s' never re-interprets its argument, portable everywhere, the
-  # same convention the rest of this repo's shell already uses for anything
-  # containing a backslash.
-  printf '%s\n' "SKIP: Part B case 10c — ~\\-prefixed TELEGRAM_ENV is a Windows-only path shape (path.join doesn't split on '\\' on POSIX — the same known HIMMEL-2275 class as the existing phi-coherence ~\\ test)"
-fi
-
 # ── case: no config at all -> whisper_ready behaves identically to today (regression guard) ──
 pb_no_config="$work/pb-no-config.json"
 pb_whisper_dir="$work/pb-whisper-dir"; mkdir -p "$pb_whisper_dir"
-printf 'stub-binary' > "$pb_whisper_dir/whisper-cli.exe"
+printf 'stub-binary' > "$pb_whisper_dir/whisper-cli"; chmod +x "$pb_whisper_dir/whisper-cli"
 printf 'stub-model' > "$pb_whisper_dir/ggml-small.bin"
 outPBnoConfig=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$pb_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outPBnoConfig" | jq -e '.actual == "present"' >/dev/null \
@@ -6677,7 +6250,7 @@ outPBwhisperMalformed=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$bp_cfg_malformed")"
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'win32' };
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outPBwhisperMalformed" | jq -e '.actual == "degraded" and (.detail | test("luna config"; "i"))' >/dev/null \
@@ -6698,31 +6271,14 @@ real_bash_w="$(winpath "$(command -v bash)")"
 
 # when this stub is PINNED directly as HIMMELCTL_BASH (the
 # negative controls, and the toolchain-row non-vacuous case below) it is
-# spawned DIRECTLY (never via a real bash's own shebang exec) — and this
-# host's own documented Windows limitation (see the bridge-persistence
-# "Linux branch" comment above, CVE-2024-27980 / no-shebang-exec-on-Windows)
-# means a plain extensionless `#!/usr/bin/env bash` script isn't
-# CreateProcess-able as a directly-spawned `bin` there at all (ENOENT, not a
-# controlled nonzero exit) — that would make the negative control vacuously
-# "pass" via a spawn error instead of actually exercising "resolves fine but
-# can't source". On win32 the stand-in is therefore a COPY of Git for
-# Windows' own coreutils false.exe — a real PE binary that ignores every
-# argument and always exits 1 — never a script; on posix a plain shebang
-# script (exec-able directly there) is exactly the "always fails" bash a
-# sabotage stub needs to be.
+# spawned DIRECTLY, so it must be a plain shebang script that always fails —
+# exactly the "resolves fine but can't source" bash a sabotage stub needs.
 sabotage_bash_dir="$work/sabotage-bash-bin"; mkdir -p "$sabotage_bash_dir"
-if is_win32; then
-  sabotage_bash="$sabotage_bash_dir/bash.exe"
-  false_exe="$(command -v false.exe || true)"
-  [ -n "$false_exe" ] || fail "HIMMEL-2289 setup: no false.exe on PATH — the win32 sabotage-bash stand-in needs a real PE binary that always exits nonzero (Git for Windows ships one at /usr/bin/false.exe)"
-  cp "$false_exe" "$sabotage_bash"
-else
-  sabotage_bash="$sabotage_bash_dir/bash"
-  cat > "$sabotage_bash" <<'STUB'
+sabotage_bash="$sabotage_bash_dir/bash"
+cat > "$sabotage_bash" <<'STUB'
 #!/usr/bin/env bash
 exit 127
 STUB
-fi
 chmod +x "$sabotage_bash"
 sabotage_path="$sabotage_bash_dir:$PATH"
 
@@ -6881,7 +6437,7 @@ echo "ok: toolchain bash (probeBashDep) reads present with a 'presence only' det
 # INSTALL_TIMEOUT_SECS, so this drives the SHIPPED code path, not a test-only
 # branch. The 60s default itself is pinned structurally further down, where
 # asserting it costs nothing. Real bash, real resolver-sourcing path: none of
-# the win32 shebang-exec caveats from the 2289 cases apply here.
+# shebang-exec caveats from the 2289 cases apply here.
 #
 # Case 1 — a resolver slower than the budget reads degraded, and the message
 # reports the budget ACTUALLY applied (2s here, not a hardcoded figure). That

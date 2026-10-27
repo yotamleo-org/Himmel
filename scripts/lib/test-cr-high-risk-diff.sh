@@ -85,7 +85,6 @@ for path in \
     .claude/commands/pr-check.md \
     .agents/skills/pr-check/SKILL.md \
     marketplace/plugins/himmel-ops/hooks/hooks.json \
-    scripts/glm/ship-branch.sh \
     .codex/run-hook.cmd \
     .codex/run-hook.sh \
     .codex/codex-hook-adapter.sh \

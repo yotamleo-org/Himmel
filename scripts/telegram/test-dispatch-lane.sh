@@ -144,7 +144,7 @@ DORMANT_ROWS="$(jq -r '.lanes[] | select(.class == "impl" and .dormant) | [.id, 
 # A dormant lane only ever reaches dispatch-lane.sh's own
 # DORMANT gate (~lines 229-235) if scripts/lanes/resolve.mjs's probe filter
 # (~line 35) lets it through first. The 6 real dormant lanes' probes read
-# host state (ZAI_API_KEY, `codex`/`wsl`/`hermes` on PATH, ...), so on a bare
+# host state (`codex`/`wsl`/`hermes` on PATH, ...), so on a bare
 # CI runner -- or any host with no lanes configured -- none of them pass and
 # this case would exercise nothing there: the exact failure class. Give
 # it a hermetic fixture instead: a copy of REAL_REG with every dormant
@@ -167,7 +167,7 @@ jq '(.lanes[] | select(.dormant) | .probe) = {"kind":"always"}' "$REAL_REG" > "$
 # failure. Capture the lookup's own exit status and treat a non-zero rc OR
 # empty stdout as a hard failure naming the cause, rather than silently
 # degrading into "every lane is probe-unavailable" (which would still
-# increment DORMANT_COUNT to 4 further down and report a false ok).
+# increment DORMANT_COUNT to 3 further down and report a false ok).
 PROBE_JSON="$(LANES_REGISTRY="$DORMANT_FIXTURE_REG" node "$SCRIPT_DIR/../lanes/resolve.mjs" --json)"
 PROBE_RC=$?
 PROBE_AVAILABLE_IDS=""
@@ -235,13 +235,13 @@ fi
 # get their DORMANT refusal exercised, but must never narrow this count, or a
 # registry regression that dropped the dormant block would go uncaught right
 # alongside a probe that happens to fail everywhere. Bump it DELIBERATELY when
-# the registry's dormant set changes. Currently 4: glm, hermes-oneshot,
-# codex-exec, openrouter-claude.
+# the registry's dormant set changes. Currently 3: hermes-oneshot, codex-exec,
+# openrouter-claude.
 #
-# The count above proves the registry still ENUMERATES 4 dormant lanes; it says
+# The count above proves the registry still ENUMERATES 3 dormant lanes; it says
 # nothing about whether any of them was actually EXERCISED -- a probe-lookup
-# failure (caught above) or a host where every single one of the 4 happens to
-# be probe-unavailable would both leave DORMANT_COUNT at 4 while DORMANT_EXERCISED
+# failure (caught above) or a host where every single one of the 3 happens to
+# be probe-unavailable would both leave DORMANT_COUNT at 3 while DORMANT_EXERCISED
 # stays 0, i.e. the exact vacuity this case exists to catch, reintroduced one
 # level up. So require DORMANT_EXERCISED > 0 as its own hard failure, separate
 # from the count check, so a reader can tell "wrong count" apart from "right
@@ -250,7 +250,7 @@ fi
 if [ "$DORMANT_EXERCISED" -eq 0 ]; then
   bad "dormant refusals exercised zero of $DORMANT_COUNT registry-declared dormant lanes (all probe-unavailable on this host, or the probe lookup above failed) -- a DORMANT-gate case that tests nothing must not report ok"
 fi
-if [ "$DORMANT_COUNT" -eq 4 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
+if [ "$DORMANT_COUNT" -eq 3 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
 
 # claudex is a live lane: the real registry row (probe forced, dispatch swapped
 # for the stub) dispatches without CLAUDEX_LANE_OK once the ledger holds its 5

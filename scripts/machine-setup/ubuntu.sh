@@ -203,7 +203,7 @@ bash scripts/hooks/check-hookspath.sh
 #     monolith did the swap inline and the delegated himmelctl flow lost it;
 #     wiring earlier (before the clone) could strand a RAW unguarded hook if
 #     clone/validation failed — raw rtk breaks compound find rewrites.
-# Transactional (mirrors win11.ps1): rtk init mutates settings.json before
+# Transactional: rtk init mutates settings.json before
 # the reconcile can guard it — on any failure in between, restore the
 # pre-init settings so no partial state leaves a raw unguarded hook behind.
 rtk_settings="$HOME/.claude/settings.json"

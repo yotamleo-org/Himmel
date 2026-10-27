@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # _hermetic-home.sh — sourced by every scripts/himmelctl/test/*.sh suite
 #
-# ROOT CAUSE: os.homedir() on win32 reads USERPROFILE, not HOME. Proven:
-#   USERPROFILE='C:\Temp\sandbox' node -e "console.log(require('os').homedir())"
-#   -> C:\Temp\sandbox, even with HOME set to something else entirely.
-# A bash-level `HOME=` override is therefore a NO-OP for any node CHILD a
-# suite spawns — the child still resolves the operator's REAL homedir. Every
+# ROOT CAUSE: a bash-level `HOME=` override can be a NO-OP for a node CHILD a
+# suite spawns — the child can still resolve the operator's REAL homedir. Every
 # per-seam patch (HIMMELCTL_CACHE_DIR, HIMMEL_LUNA_CONFIG_PATH) only closes
 # the ONE env-var override each library happens to check; it does nothing
 # for a code path neither of us has enumerated. own live

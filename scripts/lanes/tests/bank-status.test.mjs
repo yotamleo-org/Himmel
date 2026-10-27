@@ -477,8 +477,8 @@ test('the SHIPPED lanes.json stays guardable end-to-end against the reader contr
   for (const lane of ['haiku', 'sonnet', 'opus', 'fable']) {
     assert.match(out, new RegExp(`^${lane} funded measured 5h used=12% free=88%; weekly used=34% free=66%$`, 'm'));
   }
-  // The GLM lane declares 5h and the ledger reader emits exactly that.
-  assert.match(out, /^glm funded measured 5h used=2% free=98%$/m);
+  // glm is dropped: the shipped registry carries no glm row to report.
+  assert.doesNotMatch(out, /^glm /m);
   // codex-bank lanes declare weekly and the probe-cache reader emits exactly that.
   for (const lane of ['claudex', 'codex-exec']) {
     assert.match(out, new RegExp(`^${lane} funded measured weekly used=14% free=86% resets=${CODEX_RESETS_ISO}$`, 'm'));

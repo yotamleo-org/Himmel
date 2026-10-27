@@ -778,6 +778,63 @@ fi
 assert_rc "Bash long uppercase arg (linear fold)" 0 "$(run_case "$(j_bash "node -e 1 --data $BIGTOK")")"
 assert_rc "Bash long uppercase arg + .env still blocks" 2 "$(run_case "$(j_bash "cat $BIGTOK .env")")"
 
+# --- a long command with default expansions finishes inside its chain budget ---
+# guard_expansion_recheck re-runs this whole hook on the command with its
+# expansions dropped, and once more per word-or-dropped combination of its
+# `${V:-w}` defaults (up to 2^5 - 1 = 31), so a long heredoc that writes a
+# script holding five of them cost 32 full scans: 12.8 s for 200 lines, past
+# the 15 s chain budget (the 2026-10-25 and 2026-10-27 ETIMEDOUT denies). A
+# rerun now skips the clauses the first pass already scanned. These rows pin
+# BOTH the verdict and a wall-clock bound, and that a clause the expansion
+# changed is still scanned.
+LONGBODY=""
+i=0
+while [ "$i" -lt 300 ]; do
+    LONGBODY="${LONGBODY}- item $i: don't panic, it's the ${i}th (really); it said \"hi\" | ok
+"
+    i=$((i + 1))
+done
+# shellcheck disable=SC2016 # the `${…}` defaults are the test input, not expansions
+LONGDFLT='${A:-x} ${B:-x} ${C:-x} ${D:-x} ${E:-x}'
+LONGCMD="cd /tmp/x && echo $LONGDFLT && cat > notes.md <<'EOF'
+${LONGBODY}EOF
+wc -l notes.md"
+long_start=$(date +%s)
+long_rc=$(run_case "$(j_bash "$LONGCMD")")
+long_end=$(date +%s)
+long_elapsed=$((long_end - long_start))
+assert_rc "7892 long heredoc + 5 default expansions: verdict" 0 "$long_rc"
+# Generous bound: the fix takes ~1 s, the 32-scan form took ~19 s here, so 8 s
+# separates them while leaving half the 15 s chain budget as headroom.
+if [ "$long_elapsed" -le 8 ]; then
+    echo "PASS 7892 long heredoc + 5 default expansions finishes inside its budget (${long_elapsed}s)"
+else
+    echo "FAIL 7892 long heredoc + 5 default expansions took ${long_elapsed}s (expected <=8s); the expansion reruns rescan every clause again"
+    FAILED=$((FAILED + 1))
+fi
+# The skip only drops clauses the first pass scanned: a clause the stripped or
+# defaulted form changed is still scanned, so each of these still denies.
+LONGCMD_DENY="cd /tmp/x && echo $LONGDFLT && \${V:-}cat .env && cat > notes.md <<'EOF'
+${LONGBODY}EOF"
+assert_rc "7892 long heredoc: \${V:-}cat .env still blocks"   2 "$(run_case "$(j_bash "$LONGCMD_DENY")")"
+LONGCMD_DENY2="cd /tmp/x && \${A:-cat} .env && cat > notes.md <<'EOF'
+${LONGBODY}EOF"
+assert_rc "7892 long heredoc: \${A:-cat} .env still blocks"   2 "$(run_case "$(j_bash "$LONGCMD_DENY2")")"
+LONGCMD_DENY3="cd /tmp/x && $LONGDFLT && cat .env && cat > notes.md <<'EOF'
+${LONGBODY}EOF"
+assert_rc "7892 long heredoc: plain cat .env still blocks"    2 "$(run_case "$(j_bash "$LONGCMD_DENY3")")"
+# An interpreter clause the expansion leaves unchanged is skipped by a re-run,
+# but the whole-command environment-dump check still has to run on the
+# stripped form: the re-run starts from the first pass's interpreter flag. A
+# `;;` and a command over 8 KiB are the two shapes the tokenizer does not read.
+# shellcheck disable=SC2016 # the `${X:-}` default is the test input, not an expansion
+ENVCMD1='case 1 in 1) python3 -c "import os; print(os.envi${X:-}ron)";; esac'
+assert_rc "7892 interpreter env dump through a default, untokenized (;;) blocks" 2 "$(run_case "$(j_bash "$ENVCMD1")")"
+PAD=x
+while [ "${#PAD}" -lt 9000 ]; do PAD="$PAD$PAD"; done
+ENVCMD2="python3 -c \"import os; print(os.envi\${X:-}ron)\"; echo $PAD"
+assert_rc "7892 interpreter env dump through a default, untokenized (>8 KiB) blocks" 2 "$(run_case "$(j_bash "$ENVCMD2")")"
+
 
 # --- the forms the shell runs, not the text it was given ---
 assert_rc "4438 eval 'cat .env'"              2 "$(run_case "$(j_bash "eval 'cat .env'")")"

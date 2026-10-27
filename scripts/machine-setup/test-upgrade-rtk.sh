@@ -227,7 +227,7 @@ if [ -e "$INSTALL_DIR/rtk.pre-upgrade.bak" ]; then fail "held lock did NOT preve
 if [ -e "$FIX_DIR/invoked-ok" ]; then fail "held lock did NOT prevent the install step from running"; else pass "held lock never invoked the install step"; fi
 rm -rf "$LOCK_DIR"
 
-echo "[test-upgrade-rtk] is_newer ignores a suffix (CR: was sort -V, diverged from the .ps1 twin)"
+echo "[test-upgrade-rtk] is_newer ignores a suffix (CR: was sort -V, which BSD sort lacks)"
 reset_fixture
 write_fake_rtk "0.44.0" "1"
 out=$(env PATH="$BIN_DIR:$PATH" RTK_UPGRADE_PLATFORM=linux RTK_INSTALL_DIR="$INSTALL_DIR" \

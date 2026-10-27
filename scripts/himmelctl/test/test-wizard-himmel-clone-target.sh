@@ -3,9 +3,7 @@
 # a project TARGET, and the project-scope items a CONTRIBUTOR station really
 # carries stop reading n/a.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + node; the surfaces under test (bin.js, lib/state.js) are JS, so
-# there is no .ps1 twin to keep in step.
+# Platform guard: any POSIX bash 3.2+. Pure bash + node.
 #
 # WHY: 2026-09-09 dogfood — `himmelctl install --scope project` run inside the
 # himmel checkout regenerated the repo's own tracked .claude/settings.json hook
@@ -98,28 +96,6 @@ run_install() {
       "$node_bin" "$wizard" install --dry-run "$@" </dev/null 2>&1 )
 }
 
-# overlay_remedy_ok <output> <posix_literal> <win_regex> — does <output> name the
-# contributor primitive the diagnostic renders on THIS platform?
-#
-# bin.js prints displayCommand(deriveOverlayCommand), which is
-# `bash <clone>/scripts/setup.sh` on POSIX but
-# `<pwsh> -ExecutionPolicy Bypass -File <clone>\scripts\setup.ps1` on win32 —
-# 1 on #605, because `bash …setup.ps1` is unrunnable there.
-# Asserting the POSIX rendering unconditionally therefore REJECTS correct
-# behaviour under Git Bash and reddens this suite (and its parent
-# scripts/test-adopt.sh) on a platform CI does not run. The Windows arm matches
-# the invariant part of the line rather than a full literal: resolvePowershell()
-# picks the interpreter at runtime, so the leading argv element is not
-# predictable. Returns an rc instead of calling fail(), so case a4 below can
-# exercise BOTH arms.
-overlay_remedy_ok() {
-  local _out="$1" _posix="$2" _win="$3"
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) grepq "$_out" -E -- "$_win" ;;
-    *)                    grepq "$_out" -F -- "$_posix" ;;
-  esac
-}
-
 # ── case a: RED control — project scope inside the himmel clone is refused ──
 cloneA="$work/a-clone"; make_clone_fixture "$cloneA"
 homeA="$work/a-home"; mkdir -p "$homeA"
@@ -144,12 +120,9 @@ grepq "$outA" -F "$cloneA_w" \
   || fail "case a: the refusal must NAME the checkout it refused ($cloneA_w): $outA"
 # The contributor primitive is NOT hardcoded in bin.js — it is rendered from
 # deriveOverlayCommand(), the same derivation that would actually spawn it, so
-# the line carries `bash <clone>/scripts/setup.sh` on POSIX and pwsh +
-# -ExecutionPolicy Bypass -File setup.ps1 on Windows.
-# Assert whichever this platform actually renders — see overlay_remedy_ok()
-# Case a3 below is the platform-independent control.
-overlay_remedy_ok "$outA" "bash $cloneA_w/scripts/setup.sh" '-ExecutionPolicy Bypass -File .*setup[.]ps1' \
-  || fail "case a: the remedy must name the checkout's own scripts/setup.sh (the contributor primitive) in this platform's rendering: $outA"
+# the line carries `bash <clone>/scripts/setup.sh`.
+grepq "$outA" -F -- "bash $cloneA_w/scripts/setup.sh" \
+  || fail "case a: the remedy must name the checkout's own scripts/setup.sh (the contributor primitive): $outA"
 # The node command must be ABSOLUTE: the refusal fires from
 # whatever subdirectory the operator ran it in — which is where they paste it
 # back — and a relative `node scripts/himmelctl/bin.js` only resolves from the
@@ -159,22 +132,6 @@ grepq "$outA" -F "node $cloneA_w/scripts/himmelctl/bin.js install --scope user" 
 [ ! -f "$homeA/himmelctl-cache/install-profile.json" ] \
   || fail "case a: a REFUSED install must not write an install-profile cache (a 'scope: project' record would survive it)"
 echo "ok: case a — --scope project inside the himmel clone is refused with the remedy, and writes no cache"
-
-# ── case a3: the remedy's contributor command is DERIVED, not hardcoded ────
-# Platform-independent control for the 1 finding: the Windows
-# branch cannot be exercised here (no pwsh, and process.platform is not
-# stubbable from a shell suite), so assert the SOURCE property that makes the
-# Windows rendering correct — the refusal renders deriveOverlayCommand() (which
-# already carries the pwsh/-File form on win32) rather than prefixing a literal
-# `bash ` to contributeOverlayFilename(), which yields the unrunnable
-# `bash …/setup.ps1` there. Same static-assertion shape as
-# test-wizard-noinstall-guard.sh.
-wizard_src=$(cat "$wizard")
-grepq "$wizard_src" -F 'const setupCmd = displayCommand(deriveOverlayCommand());' \
-  || fail "case a3: the refusal's contributor command must be rendered from deriveOverlayCommand(), so the Windows branch gets pwsh -File instead of an unrunnable 'bash <setup.ps1>'"
-grepq "$wizard_src" -E 'bash \$\{(setupCmd|.*contributeOverlayFilename)' \
-  && fail "case a3: the refusal must not prefix a literal 'bash ' to the contributor primitive — that is the Windows bug (setup.ps1 is not a bash script)"
-echo "ok: case a3 — the contributor command in the refusal is derived per-platform, never a hardcoded 'bash <script>'"
 
 # ── case b: negative control — a VENDORING adopter repo still installs ──────
 # This is the load-bearing half: the detector keys off the clone THIS
@@ -210,50 +167,11 @@ set -e
 [ "$rcA2" -ne 0 ] \
   || fail "case a2: --scope project inside a himmel clone whose path contains a space should still be refused (got rc=$rcA2): $outA2"
 cloneA2_w=$(winpath "$cloneA2")
-overlay_remedy_ok "$outA2" "bash '$cloneA2_w/scripts/setup.sh'" "-ExecutionPolicy Bypass -File '[^']*a2 clone with space[^']*setup[.]ps1'" \
+grepq "$outA2" -F -- "bash '$cloneA2_w/scripts/setup.sh'" \
   || fail "case a2: a setup path containing a space must be SHELL-QUOTED in the remedy, or the printed command runs the wrong thing: $outA2"
 grepq "$outA2" -F "node '$cloneA2_w/scripts/himmelctl/bin.js'" \
   || fail "case a2: the bin.js path containing a space must be SHELL-QUOTED in the remedy too: $outA2"
 echo "ok: case a2 — a checkout path with a space is refused and both remedy commands stay shell-quoted"
-
-# ── case a4: platform control for a/a2 — the assertion arm follows uname ──
-# The bug closes is a FALSE red on a platform CI does not run (the
-# shell suites are ubuntu-only), so it cannot be reproduced by running this
-# suite here. Exercise overlay_remedy_ok() itself instead, against synthetic
-# renderings under a STUBBED uname — BOTH arms stubbed, never the host's own
-# asserting the POSIX arm against the real `uname`
-# would itself fail under Git Bash, where the Windows arm is selected — the
-# very platform this case exists to protect. The LAST check is the RED control:
-# before the fix the POSIX literal was asserted unconditionally, so a POSIX
-# rendering under a Git-Bash uname PASSED, which is precisely the false red a
-# contributor hits. Each stub lives inside its own subshell; nothing below this
-# case runs with a doctored PATH.
-a4_posix_line="derived: bash /x/scripts/setup.sh"
-a4_pwsh_line="derived: /usr/bin/pwsh -ExecutionPolicy Bypass -File /x/scripts/setup.ps1"
-a4_posix_lit="bash /x/scripts/setup.sh"
-a4_win_re='-ExecutionPolicy Bypass -File .*setup[.]ps1'
-a4_posix_stub="$work/a4-uname-posix"; mkdir -p "$a4_posix_stub"
-printf '#!/usr/bin/env bash\nprintf "Linux\\n"\n' > "$a4_posix_stub/uname"
-a4_win_stub="$work/a4-uname-mingw"; mkdir -p "$a4_win_stub"
-printf '#!/usr/bin/env bash\nprintf "MINGW64_NT-10.0-22631\\n"\n' > "$a4_win_stub/uname"
-chmod +x "$a4_posix_stub/uname" "$a4_win_stub/uname"
-# shellcheck disable=SC2030,SC2031  # deliberately subshell-LOCAL: the uname stub must not leak past this case
-( PATH="$a4_posix_stub:$PATH"; hash -r 2>/dev/null || true
-  overlay_remedy_ok "$a4_posix_line" "$a4_posix_lit" "$a4_win_re" ) \
-  || fail "case a4: under a POSIX uname the bash rendering must satisfy the remedy assertion"
-# shellcheck disable=SC2030,SC2031  # deliberately subshell-LOCAL: the uname stub must not leak past this case
-( PATH="$a4_posix_stub:$PATH"; hash -r 2>/dev/null || true
-  overlay_remedy_ok "$a4_pwsh_line" "$a4_posix_lit" "$a4_win_re" ) \
-  && fail "case a4: under a POSIX uname the pwsh rendering must NOT satisfy it — the two arms must be distinguishable"
-# shellcheck disable=SC2030,SC2031  # deliberately subshell-LOCAL: the uname stub must not leak past this case
-( PATH="$a4_win_stub:$PATH"; hash -r 2>/dev/null || true
-  overlay_remedy_ok "$a4_pwsh_line" "$a4_posix_lit" "$a4_win_re" ) \
-  || fail "case a4: under a Git-Bash uname the pwsh rendering must satisfy the remedy assertion"
-# shellcheck disable=SC2030,SC2031  # deliberately subshell-LOCAL: the uname stub must not leak past this case
-( PATH="$a4_win_stub:$PATH"; hash -r 2>/dev/null || true
-  overlay_remedy_ok "$a4_posix_line" "$a4_posix_lit" "$a4_win_re" ) \
-  && fail "case a4: under a Git-Bash uname the POSIX rendering must FAIL — asserting it unconditionally is the false red HIMMEL-2905 fixes"
-echo "ok: case a4 — the remedy assertion selects its arm from uname (Git Bash asserts the pwsh rendering, POSIX the bash one)"
 
 # ── case c: scope control — user scope inside the clone is unaffected ───────
 cloneC="$work/c-clone"; make_clone_fixture "$cloneC"

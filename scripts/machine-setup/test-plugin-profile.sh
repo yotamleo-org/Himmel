@@ -11,10 +11,6 @@
 # $CALL_LOG instead of touching anything real, so a case can assert EXACTLY
 # which writes happened (or that none did).
 #
-# plugin-profile.ps1 carries the SAME resolution + refusal rules as a
-# PowerShell twin — not covered here (this repo has no pwsh runner); sanity
-# check with `pwsh plugin-profile.ps1` on a Windows host per its own header.
-#
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Stubs the claude CLI and relies on git, jq, and temporary directories; NOT ported to native
 # PowerShell. A test harness needs no .ps1 twin (project convention: a

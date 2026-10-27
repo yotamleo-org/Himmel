@@ -23,7 +23,7 @@
 # answer set still reaches writeCache()) via a closed/unredirected
 # stdin path the static idiom-matcher never enumerated. A pattern check can
 # only catch idioms it was told to look for — require()-style invocations,
-# .ps1 entry points, and this closed-stdin writeCache() path all missed it in
+# and this closed-stdin writeCache() path all missed it in
 # turn. So this guard has THREE layers:
 #
 #   1. check_dir() — static, cheap, LOCALIZES a fault to a file:line when one
@@ -54,7 +54,7 @@
 # guard, even with all three layers green, does NOT prove every path is
 # hermetic. It does not see in-process require() invocations (a suite that
 # requires helpers.js/luna-config.js directly instead of spawning bin.js —
-# hand-audited separately, not by this file), it does not see .ps1 entry
+# hand-audited separately, not by this file), it does not see non-bash entry
 # points (verified separately, from inside, to reach only fixture stubs), and
 #
 # check_sources_helper() (codex-4) is a TEXT-PRESENCE check even after being
@@ -70,7 +70,7 @@
 # when winpath is used the way almost every suite uses it -- as a `VAR=$(...)`
 # PREFIX to another command (`USERPROFILE="$(winpath ...)" ... "$node_bin"
 # "$wizard" ...`), rather than as its own standalone assignment statement.
-# Verified empirically on this exact win32/Git-Bash/node24 stack: a failing
+# Verified empirically: a failing
 # command substitution in assignment-prefix position does not make bash's
 # `set -e` treat the enclosing simple command as failed -- the trailing
 # command still runs, with that one var resolved to "". This does NOT reopen
@@ -182,7 +182,7 @@ canary_run() {
 
 # real_home_dir — the operator's REAL home as a node child would resolve it.
 #
-# `os.homedir` on win32 reads USERPROFILE; $HOME is a
+# `os.homedir` can read USERPROFILE; $HOME is a
 # git-bash convenience that can legitimately point elsewhere (git-bash honours
 # an inherited HOME before falling back to USERPROFILE). check_real_canary()'s
 # operator-file tripwire must therefore watch the USERPROFILE-derived home,
@@ -227,7 +227,7 @@ real_home_dir() {
 #
 #   codex-2 (IMPORTANT, rated above codex-1): deriving the watched paths from
 #   $HOME (`"$HOME/.himmel/config.json"` etc.) is Ruling 38's own root cause
-#   one level up -- os.homedir() on win32 follows USERPROFILE, not HOME, so
+#   one level up -- os.homedir() can follow USERPROFILE, not HOME, so
 #   watching HOME-derived paths misses exactly the divergent-HOME-vs-
 #   USERPROFILE condition this whole ticket exists to catch, and would report
 #   a false-green while a real leak landed via USERPROFILE instead.
@@ -388,7 +388,7 @@ check_real_canary() {
 # Every suite still has to set USERPROFILE itself, per invocation, using
 # winpath -- that requirement is check_dir()'s job (the has_home/
 # has_userprofile check above), not this function's. This replaces trying to
-# pattern-match every invocation idiom (bin.js subprocess, require(), .ps1)
+# pattern-match every invocation idiom (bin.js subprocess, require())
 # with checking for the ONE line that, once present, gives all of them the
 # same fail-loud winpath().
 #
@@ -560,8 +560,8 @@ for path in sorted(glob.glob(os.path.join(target, '*.sh'))):
         # content never runs).
         if not re.search(r'"\$node_bin"\s+"\$wizard"', text):
             continue
-        # USERPROFILE is the keystone seam (os.homedir() follows it, not HOME,
-        # on win32) -- required alongside the two HIMMELCTL_* vars, but only
+        # USERPROFILE is the keystone seam (os.homedir() can follow it, not HOME)
+        # -- required alongside the two HIMMELCTL_* vars, but only
         # for a block that is ITSELF faking a HOME: a block with no HOME
         # override at all isn't attempting home-directory isolation in the
         # first place (several real suites in this directory pin every
@@ -639,7 +639,7 @@ echo "ok: case a — positive control: a non-isolated bin.js invocation IS flagg
 
 # ── case a2 (POSITIVE CONTROL, codex-panel finding 1): a bin.js invocation
 # that fakes HOME and sets BOTH HIMMELCTL_* vars, but omits USERPROFILE --
-# the keystone seam os.homedir() actually follows on win32 -- must still be
+# the keystone seam os.homedir() can follow -- must still be
 # FAIL. Sources the shared helper (so this isn't also flagged as
 # WINPATH-UNDEFINED, which would confound the assertion below): the point is
 # specifically that the two pinned seams being covered is NOT sufficient by
@@ -860,8 +860,8 @@ echo "ok: case g3 — positive control: a suite that fakes HOME and only MENTION
 
 # ── case h (POSITIVE CONTROL, codex-2): check_real_canary() must still fire
 # when HOME and USERPROFILE DIVERGE -- the exact condition Chief Ruling 38's
-# whole premise rests on (os.homedir() follows USERPROFILE, not HOME, on
-# win32). This fixture sets HOME to a throwaway dir but deliberately leaves
+# whole premise rests on (os.homedir() can follow USERPROFILE, not HOME).
+# This fixture sets HOME to a throwaway dir but deliberately leaves
 # USERPROFILE UNSET, inheriting whatever check_real_canary()'s own ambient
 # environment provides for that seam -- which, after codex-1/codex-2's
 # redesign, is the SANDBOX check_real_canary() builds, never the operator's

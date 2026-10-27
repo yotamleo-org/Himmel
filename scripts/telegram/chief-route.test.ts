@@ -655,3 +655,49 @@ test("HIMMEL-5125: a dead or released console still bounces", async () => {
   const r = root();
   expect(await routeText(r, "/chief halt")).toContain("no live chief");
 });
+
+// A chief reply to a voice line is also spoken on the asking satellite.
+const SAT = "assist_satellite.esp32_s3_box_3_a8c48c_assist_satellite";
+const replyToSatellite = async (args: string[], env: Record<string, string> = {}) => {
+  const seen: { url: string; auth: string | null; body: unknown }[] = [];
+  const ha = Bun.serve({ port: 0, async fetch(req) { seen.push({ url: new URL(req.url).pathname, auth: req.headers.get("authorization"), body: await req.json() }); return Response.json([]); } });
+  const r = root();
+  try {
+    const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", ...args], {
+      env: { ...process.env, BRIDGE_ROOT: r, HA_URL: `http://127.0.0.1:${ha.port}`, HA_TOKEN: "t0k", ...env }, stdout: "pipe", stderr: "pipe",
+    });
+    const err = await new Response(p.stderr).text();
+    const code = await p.exited;
+    const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+    return { code, err, seen, line: existsSync(outbox) ? readFileSync(outbox, "utf8").trim() : null };
+  } finally { ha.stop(true); }
+};
+
+test("reply --satellite: the answer goes to Telegram AND is announced on the asking satellite", async () => {
+  const { code, seen, line } = await replyToSatellite(["--satellite", SAT, "1", "two", "PRs", "open"]);
+  expect(code).toBe(0);
+  expect(JSON.parse(line!)).toEqual({ text: "two PRs open" });
+  expect(seen).toEqual([{ url: "/api/services/assist_satellite/announce", auth: "Bearer t0k", body: { entity_id: SAT, message: "two PRs open" } }]);
+});
+
+test("reply --satellite: a non-satellite id is refused and nothing is announced", async () => {
+  for (const bad of ["light.kitchen", "assist_satellite.x/../y", "../etc"]) {
+    const { code, seen } = await replyToSatellite(["--satellite", bad, "1", "hi"]);
+    expect(code).not.toBe(0);
+    expect(seen).toEqual([]);
+  }
+});
+
+test("reply --satellite: no HA token is an error after the Telegram reply is queued, never a silent drop", async () => {
+  const { code, err, seen, line } = await replyToSatellite(["--satellite", SAT, "1", "hi"], { HA_TOKEN: "" });
+  expect(code).not.toBe(0);
+  expect(err).toContain("HA_TOKEN");
+  expect(seen).toEqual([]);
+  expect(JSON.parse(line!)).toEqual({ text: "hi" });
+});
+
+test("reply without --satellite never calls Home Assistant", async () => {
+  const { code, seen } = await replyToSatellite(["1", "plain"]);
+  expect(code).toBe(0);
+  expect(seen).toEqual([]);
+});

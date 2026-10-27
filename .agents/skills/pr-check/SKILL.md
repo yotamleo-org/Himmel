@@ -29,12 +29,6 @@ happens to fail-close:
   exhausted=<lanes>`, with the CR-clean line naming the same-model floor in
   words — so `clear-cr-marker.log` distinguishes the two per clear. Default off
   keeps the adopter-portable Claude-alone floor and an untagged `CLEARED` line.
-- `scripts/cr/pr-check-external.sh` (the Claude-FREE ship lane) → **"codex
-  responded"** is the floor. A diff that changes the gate infrastructure itself
-  needs a quorum of two responding cross-model reviewers, which that lane can no
-  longer reach (CodeRabbit is App-only since HIMMEL-2704 and the panel is
-  codex-only), so it REFUSES such diffs outright — they go through the
-  interactive Claude `/pr-check`.
 - **this Codex subset** → **"a panel critic responded"**. Step 5 clears only when
   the panel returned ≥1 responder and `clear-cr-marker.sh` sees `avail … ok` at
   the reviewed SHA. There is **no Claude self-review backstop here** (the codex

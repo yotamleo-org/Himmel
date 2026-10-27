@@ -139,6 +139,10 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 - **Merge only on the chief's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. `READY`, then hold. After 30 minutes without
   a reply, nudge once, then wrap. [prose]
+- **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
+  (`scripts/guardrails/himmel-adapters.json`) that is not confirmed PRIVATE,
+  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh`. Send `READY <pr> <full head> GREEN`, hold for
+  the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
   --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command ending `--go <GO file>`. The Jira transition is opt-in
@@ -187,5 +191,5 @@ non-blocking decisions, or a "good place to report": put status in a
 
 The wanted stops: holding for the chief's `GO` after `READY`; a `BLOCKED`, or a
 `FINDING` whose ruling every remaining step depends on, already sent; `WRAPPED`;
-the ≥ 75 % context hand-off. **The GO-hold is the only permitted hold**: any
+the ≥ 75 % context hand-off. **The GO-hold (on an adapter repo, the hold for the chief's merge) is the only permitted hold**: any
 other blocker means `WRAP` with a resume brief.

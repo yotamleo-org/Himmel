@@ -24,13 +24,6 @@
 #   8. The install summary names each on-demand spec with its `neededBy` text
 #      plus the enable recipe, and names the onDemandConnectors entries.
 #
-# install-plugins.ps1 carries the SAME two-tier logic as a PowerShell twin,
-# EXCEPT it has no force-enable step at all (a pre-existing,
-# documented, bash-only gap unrelated to this ticket — see
-# test-install-plugins-diagnostics.ps1's header) — case 6 has no ps1
-# counterpart for that reason. Cases 1-5 and 7 should still hold there;
-# sanity-check with `pwsh install-plugins.ps1` on a Windows host.
-#
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Uses git, jq, and mktemp to validate the two-tier install logic; NOT ported
 # to native PowerShell. A test harness needs no .ps1 twin (project convention:
