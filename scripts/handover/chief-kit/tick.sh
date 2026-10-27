@@ -1834,16 +1834,16 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
-# dbot=<armed>/<skipped>[,run]: with DEPENDABOT_AUTOLAND=on (default off) the
+# dbot=<merged>/<skipped>[,run]: with DEPENDABOT_AUTOLAND=on (default off) the
 # tick launches ONE detached `dependabot-go.sh --sweep` per TICK_DBOT_MIN_SECS (default 900),
 # under flock so sweeps never overlap; the sweep judges each green dependency-only Dependabot
-# PR and arms GitHub auto-merge behind its guards. The counts are the previous sweep's, read
-# from its log. Off, the field is absent.
+# PR and merges it at the judged head behind its guards. The counts are the previous sweep's,
+# read from its log; a failed sweep's output is kept in tick-dbot-*.err. Off, the field is absent.
 dbot_summary=""
 if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-go.sh" ]; then
     dbot_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
     dbot_base="$dbot_dir/tick-dbot-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
-    dbot_summary="$(sed -n 's/^dependabot-go sweep: armed=\([0-9]*\) skipped=\([0-9]*\)$/\1\/\2/p' "$dbot_base.log" 2>/dev/null | tail -n 1)"  # swallow-ok: no log yet reads none
+    dbot_summary="$(sed -n 's/^dependabot-go sweep: merged=\([0-9]*\) skipped=\([0-9]*\)$/\1\/\2/p' "$dbot_base.log" 2>/dev/null | tail -n 1)"  # swallow-ok: no log yet reads none
     [ -n "$dbot_summary" ] || dbot_summary=none
     dbot_gap="${TICK_DBOT_MIN_SECS:-900}"
     case "$dbot_gap" in '' | *[!0-9]*) dbot_gap=900 ;; esac
@@ -1854,9 +1854,9 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
     if [ "$dbot_age" -ge "$dbot_gap" ] && mkdir -p "$dbot_dir" 2>/dev/null && touch "$dbot_base.stamp" 2>/dev/null; then
         dbot_tmp="$dbot_base.log.$$"
-        # a running sweep holds the lock, so this launch is a no-op that keeps the last log
+        # a running sweep holds the lock (75), so this launch is a no-op that keeps the last log
         ( cd "$REPO" || exit 0
-          if setsid nohup flock -n "$dbot_base.lock" bash "$REPO/scripts/cr/dependabot-go.sh" --sweep >"$dbot_tmp" 2>&1; then mv -f "$dbot_tmp" "$dbot_base.log"; else rm -f "$dbot_tmp"; fi  # prim-ok: Linux-only nonblocking lock; a per-pid tmp log, and only the tick reads the log
+          setsid nohup flock -n -E 75 "$dbot_base.lock" bash "$REPO/scripts/cr/dependabot-go.sh" --sweep >"$dbot_tmp" 2>&1; case $? in 0) mv -f "$dbot_tmp" "$dbot_base.log" ;; 75) rm -f "$dbot_tmp" ;; *) mv -f "$dbot_tmp" "$dbot_base.err" ;; esac  # prim-ok: Linux-only nonblocking lock; a per-pid tmp log, and only the tick reads the log
         ) </dev/null >/dev/null 2>&1 &
         dbot_summary="$dbot_summary,run"
     fi

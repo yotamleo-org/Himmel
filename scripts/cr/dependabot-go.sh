@@ -25,16 +25,17 @@
 #   dependabot-go.sh --sweep
 #
 # lands every open Dependabot PR with no chief turn; tick.sh runs
-# it when DEPENDABOT_AUTOLAND=on. A PR gets GitHub auto-merge, armed with
-# --match-head-commit at its head, only when ALL hold, in this order:
+# it when DEPENDABOT_AUTOLAND=on. A PR is squash-merged at once with
+# --match-head-commit at its head, never left on auto-merge (that would also
+# merge a later, unjudged head), only when ALL hold, in this order:
 #   a. --check passes (the allowlist, before any judge spend);
 #   b. GitHub reports it CLEAN at that head and every required check `pass`;
 #   c. a judge call (DEPENDABOT_JUDGE_CALL, default scripts/api-lane/judge-call.sh:
 #      sonnet, 0.50 USD) records a signed GO at that head, under qid
 #      dbot-<pr>-<head12>; one call per head, a NO-GO or failed call included;
 #   d. the record path above appends the dependabot-go row and the row is there.
-# A PR already armed is left alone. Prints one line per PR, then
-# `dependabot-go sweep: armed=<n> skipped=<n>`; exit 2 only when the list is unreadable.
+# A PR already on auto-merge is left alone. Prints one line per PR, then
+# `dependabot-go sweep: merged=<n> skipped=<n>`; exit 2 only when the list is unreadable.
 #
 # ponytail: the row is unsigned like a judge-go row (the ledger is same-uid
 # writable, and the merge gate re-reads the PR author), upgrade: a go_msg_mac on
@@ -78,12 +79,12 @@ fi
 common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""  # swallow-ok: empty fails closed on the next line
 [ -n "$common" ] || { echo "dependabot-go: not in a git repo, so there is no CR ledger" >&2; exit 2; }
 
-# sweep_one <pr> <head> <auto-merge armed: true|false> - arm auto-merge when every guard holds; 0 = armed
+# sweep_one <pr> <head> <auto-merge on: true|false> - merge when every guard holds; 0 = merged
 sweep_one() {
     local pr="$1" sha="$2" qid q state buckets row judged="$common/dependabot-judged"
     skip() { echo "dependabot-go sweep: #$pr skipped - $*"; }
     case "$pr" in ''|0*|*[!0123456789]*) skip "not a PR number"; return 1 ;; esac
-    [ "$3" = false ] || { skip "auto-merge is already armed"; return 1; }
+    [ "$3" = false ] || { skip "auto-merge is already on"; return 1; }
     bash "$0" "$pr" "$sha" --check || { skip "not a dependency-only Dependabot PR at $sha"; return 1; }
     state=$("$GH" pr view "$pr" --json mergeStateStatus,headRefOid 2>/dev/null | jq -r '"\(.mergeStateStatus) \(.headRefOid)"' 2>/dev/null) || state=""  # swallow-ok: empty fails the equality below
     [ "$state" = "CLEAN $sha" ] || { skip "GitHub reports '${state:-unreadable}', not CLEAN at $sha"; return 1; }
@@ -112,21 +113,21 @@ sweep_one() {
     bash "$0" "$pr" "$sha" --judge "$qid" || { skip "no dependabot-go row (judge $qid)"; return 1; }
     row=$(jq -cR --arg h "$sha" --argjson p "$pr" 'fromjson? | select(.kind == "dependabot-go" and .head == $h and .pr == $p and .status == "ok")' "$common/cr-critic-scores.jsonl" 2>/dev/null) || row=""  # swallow-ok: an unreadable ledger reads as no row and refuses below
     [ -n "$row" ] || { skip "the dependabot-go row is not in the ledger"; return 1; }
-    "$GH" pr merge "$pr" --auto --squash --match-head-commit "$sha" >/dev/null 2>&1 || { skip "GitHub refused to arm auto-merge"; return 1; }
-    echo "dependabot-go sweep: #$pr armed at $sha (judge:$qid)"
+    "$GH" pr merge "$pr" --squash --match-head-commit "$sha" >/dev/null 2>&1 || { skip "GitHub refused the merge"; return 1; }
+    echo "dependabot-go sweep: #$pr merged at $sha (judge:$qid)"
 }
 
 if [ "$MODE" = sweep ]; then
     list=$("$GH" pr list --author app/dependabot --state open --limit 100 --json number,headRefOid,autoMergeRequest \
         --jq '.[] | "\(.number) \(.headRefOid) \(.autoMergeRequest != null)"' 2>/dev/null) || { echo "dependabot-go sweep: cannot list the open Dependabot PRs" >&2; exit 2; }
-    armed=0 skipped=0
+    merged=0 skipped=0
     while read -r n h a; do
         [ -n "$n" ] || continue
-        if sweep_one "$n" "$h" "$a" 2>&1; then armed=$((armed + 1)); else skipped=$((skipped + 1)); fi
+        if sweep_one "$n" "$h" "$a" 2>&1; then merged=$((merged + 1)); else skipped=$((skipped + 1)); fi
     done <<EOF
 $list
 EOF
-    echo "dependabot-go sweep: armed=$armed skipped=$skipped"
+    echo "dependabot-go sweep: merged=$merged skipped=$skipped"
     exit 0
 fi
 
