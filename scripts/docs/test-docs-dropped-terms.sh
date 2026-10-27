@@ -44,9 +44,9 @@ docs/architecture.md	            H2["marketplace/plugins/himmel-ops/<br/>hooks/h
 docs/commands-catalog.md	| /handover-arm-resume | Arm the OS scheduler to relaunch claude at a given time with a given handover. Dedup-guarded. | Arm the OS scheduler to relaunch claude at the given time with the given handover. Dedup-guarded. Direct schtasks/at invoke. |
 docs/daily-loop.md	| Touches `*.sh`, `*.bash`, PowerShell files (`*.ps1`, `*.psm1`, `*.psd1`), `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
 docs/daily-loop.md	arch mac darwin wsl posix gitbash git-bash powershell pwsh`.
-docs/evals/README.md	| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-25, n = 113 ruled findings over 27 PRs |
-docs/evals/README.md	| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-25, n = 1,231 ruled findings over 362 PRs |
-docs/evals/README.md	| `codex:gpt-6-sol` | 2026-09-23 to 2026-09-29 | **70.7%** | 67.0 to 74.1 | 64.8 to 76.2 | as of 2026-10-25, n = 627 ruled findings over 169 PRs |
+docs/evals/README.md	| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-27, n = 113 ruled findings over 27 PRs |
+docs/evals/README.md	| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-27, n = 1,231 ruled findings over 362 PRs |
+docs/evals/README.md	| `codex:gpt-6-sol` | 2026-09-23 to 2026-09-29 | **70.7%** | 67.0 to 74.1 | 64.8 to 76.2 | as of 2026-10-27, n = 627 ruled findings over 169 PRs |
 docs/evals/review-panel.md	model re-pin of the same slug show up as a new critic (`codex:gpt-6-sol`,
 docs/evals/review-panel.md	| `codex:gpt-5.6-sol` | 231 | 27 | 95 | 18 | 35 | 83 | 84.1% | 74.2–91.7 |
 docs/evals/review-panel.md	| `codex:gpt-6-astra` | 2,435 | 362 | 1,099 | 132 | 697 | 507 | 89.3% | 86.1–92.0 |
