@@ -87,8 +87,8 @@ sweep_one() {
     bash "$0" "$pr" "$sha" --check || { skip "not a dependency-only Dependabot PR at $sha"; return 1; }
     state=$("$GH" pr view "$pr" --json mergeStateStatus,headRefOid 2>/dev/null | jq -r '"\(.mergeStateStatus) \(.headRefOid)"' 2>/dev/null) || state=""  # swallow-ok: empty fails the equality below
     [ "$state" = "CLEAN $sha" ] || { skip "GitHub reports '${state:-unreadable}', not CLEAN at $sha"; return 1; }
-    # gh exits 8 while a check is pending; the bucket list itself decides
-    buckets=$("$GH" pr checks "$pr" --required --json bucket --jq '.[].bucket' 2>/dev/null) || :  # swallow-ok: an empty or partial list fails the pass check below
+    # gh exits 1 on a failed check and 8 on a pending one: only exit 0 with every bucket pass arms
+    buckets=$("$GH" pr checks "$pr" --required --json bucket --jq '.[].bucket' 2>/dev/null) || { skip "a required check is not pass"; return 1; }  # swallow-ok: a failed read refuses here, never a value
     if [ -z "$buckets" ] || grep -qvx pass <<<"$buckets"; then
         skip "a required check is not pass"; return 1
     fi
@@ -104,7 +104,7 @@ sweep_one() {
             rm -f "$q"; skip "the diff is unreadable or too big for one judge question"; return 1
         fi
         # recorded before the call: a head gets one judge spend, a failed call included
-        printf '%s\n' "$qid" >> "$judged"
+        printf '%s\n' "$qid" >> "$judged" || { rm -f "$q"; skip "cannot record the judged head"; return 1; }
         bash "${DEPENDABOT_JUDGE_CALL:-$ANCHOR/scripts/api-lane/judge-call.sh}" --qid "$qid" --pr "$pr" --head "$sha" --question-file "$q" \
             --model claude-sonnet-5-5 --max-budget-usd 0.50 --effort medium --timeout 600 --judge dbot-judge >/dev/null 2>&1 || :  # swallow-ok: the record step below refuses without a signed GO
         rm -f "$q"

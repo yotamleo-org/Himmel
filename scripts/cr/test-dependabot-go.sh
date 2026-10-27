@@ -37,7 +37,7 @@ case "$*" in
     "api --paginate"*"/files"*previous_filename*) printf '%s\n' "${STUB_PREV:-}" ;;
     "api --paginate"*"/files"*) printf '%s\n' "$STUB_FILES" ;;
     "pr list"*) printf '%s\n' "${STUB_LIST:-}" ;;
-    "pr checks"*) printf '%s\n' "${STUB_CHECKS:-}" ;;
+    "pr checks"*) printf '%s\n' "${STUB_CHECKS:-}"; exit "${STUB_CHECKS_RC:-0}" ;;
     "pr diff"*) printf '%s\n' "${STUB_DIFF:-+numpy==2.5.4}" ;;
     "pr merge"*) printf '%s\n' "$*" >> "$STUB_MERGED" ;;
     *) exit 91 ;;
@@ -226,7 +226,7 @@ pass'
 sreset() {
     reset; rm -rf "$HDIR/$VSCOPE/verdicts/dbot-"*
     rm -f "$STUB_JUDGED" "$STUB_MERGED" "$(dirname "$LEDGER")/dependabot-judged"
-    export STUB_LIST="$PR $SHA false" STUB_CHECKS="$GREEN" STUB_JUDGE=GO
+    export STUB_LIST="$PR $SHA false" STUB_CHECKS="$GREEN" STUB_CHECKS_RC=0 STUB_JUDGE=GO
 }
 sweep() { rc=0; out="$(bash "$WRITER" --sweep 2>&1)" || rc=$?; }
 armed() { cat "$STUB_MERGED" 2>/dev/null; }
@@ -266,6 +266,10 @@ sreset; STUB_CHECKS=''
 sweep
 check    "5: no required checks read is never armed" "$(armed)" ""
 
+sreset; STUB_CHECKS_RC=1
+sweep
+check    "5: a checks read that fails with only pass buckets printed is never armed" "$(armed)" ""
+
 sreset; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1 BLOCKED)"
 sweep
 check    "5: a merge state other than CLEAN is never armed" "$(armed)" ""
@@ -287,6 +291,13 @@ sreset; rm -f "$LEDGER"; mkdir "$LEDGER"
 sweep
 check    "5: a GO with no dependabot-go row is never armed" "$(armed)" ""
 rmdir "$LEDGER"
+
+# a directory where the judged-head record goes: the record fails, so no judge is paid for
+sreset; mkdir "$(dirname "$LEDGER")/dependabot-judged"
+sweep
+check    "5: an unrecordable judged head spends no judge" "$(judged)" "0"
+check    "5: an unrecordable judged head is never armed" "$(armed)" ""
+rmdir "$(dirname "$LEDGER")/dependabot-judged"
 
 sreset; STUB_LIST="$PR $OTHER false"
 sweep
