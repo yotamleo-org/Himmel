@@ -128,8 +128,7 @@ fi
 [ -n "$goal" ] || goal="(no task goal provided — review the change on its own merits)"
 
 # Operator ruling 2026-08-23: CR critics must not ride the
-# himmel_agent hermes profile default (ox-alpha today — free/front-tier,
-# reserved for implementation/one-shot work). When neither
+# himmel_agent hermes profile default; the reviewer is pinned separately. When neither
 # --model nor HERMES_CRITIC_MODEL pins the hermes reviewer, default it to the
 # critics.json "codex" row's model (gpt-6.1-sol/openai-codex) — the same pin
 # the codex-CLI panel critic uses. Reused rather than duplicated into a
