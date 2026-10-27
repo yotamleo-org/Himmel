@@ -72,8 +72,8 @@ check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"
 contains() { grep -qF -e "$3" <<< "$2" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
 
 ROOT="$tmp/root"; mkdir -p "$ROOT"
-VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
-VSCOPE="u/$VBUCKET"
+# The adapter's own bucket, as go_verdict_scope names it for an owner/name.
+VSCOPE="u/$(printf '%s--%s' "${FORK%%/*}" "${FORK#*/}" | tr '[:upper:]' '[:lower:]')"
 mkdir -p "$HOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
 
@@ -82,7 +82,7 @@ verdict() {
   local vf="$ROOT/$VSCOPE/verdicts/$1/HIMMEL-5899-judge-$1.md" vmac
   mkdir -p "$ROOT/$VSCOPE/verdicts/$1"
   # shellcheck disable=SC2016
-  printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n**%s** for head `%s`\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$2" "$3" "$4" > "$vf"
+  printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n**%s** for head `%s`\n\npr: %s\nrepo: %s\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$2" "$3" "$4" "$FORK" > "$vf"
   vmac="$(cat "$vf" | bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../lib/go-gate.sh" "$VSCOPE" "$1" "HIMMEL-5899-judge-$1")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
