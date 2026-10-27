@@ -355,6 +355,7 @@ for gone in scripts/handover/chief/console.sh \
   scripts/graphify/leg-graph.sh scripts/lib/leg-identity.sh; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
+forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do
