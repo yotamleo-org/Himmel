@@ -1131,7 +1131,7 @@ if [ -z "$files_json" ]; then
     mark_fail
 elif [ -z "$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)" ]; then  # swallow-ok: no non-doc line is grep rc 1, which is the doc-only answer
     echo "[PASS] 13. RED-then-GREEN line: not needed (a doc-only PR)"
-elif printf '%s\n' "$cov_body" | grep -Eq '(^|[^A-Za-z0-9])RED([^A-Za-z0-9].*[^A-Za-z0-9]|[^A-Za-z0-9])GREEN([^A-Za-z0-9]|$)'; then
+elif [ -n "$(printf '%s\n' "$cov_body" | grep -E '(^|[^A-Za-z0-9])RED([^A-Za-z0-9].*[^A-Za-z0-9]|[^A-Za-z0-9])GREEN([^A-Za-z0-9]|$)' || true)" ]; then  # swallow-ok: no matching line is grep rc 1, which is the no-RED-line answer
     echo "[PASS] 13. the PR body names a RED-then-GREEN line"
 elif dep_pr_generated; then
     echo "[PASS] 13. RED-then-GREEN line: not needed (a Dependabot dependency-only PR)"
