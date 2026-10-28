@@ -144,6 +144,7 @@ _ident() {
 take_snapshot() {
     [ "$want_snapshot" -eq 1 ] || return 0
     local after now ssize
+    # prim-ok: invoke.sh removes only a hermes-snapshot.* directory this gate handed back, so the name is a safety check
     snapdir="$(umask 077; mktemp -d "${TMPDIR:-/tmp}/hermes-snapshot.XXXXXX" 2>/dev/null)" || snapdir=""
     if [ -z "$snapdir" ] || [ ! -d "$snapdir" ]; then
         snapdir=""

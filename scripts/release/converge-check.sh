@@ -168,6 +168,7 @@ snapshot() {
   } | norm "$home" "$prefix" "$target"
 }
 
+# prim-ok: test-tarball-install-vm.sh copies this file alone into a guest stage, with no scripts/lib beside it
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/himmel-converge.XXXXXX")" || { echo "converge-check: cannot create a scratch dir" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT
 snapshot "$ah" "$ap" "$at" > "$tmp/a.txt"
