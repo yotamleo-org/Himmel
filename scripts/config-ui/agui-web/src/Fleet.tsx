@@ -190,7 +190,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
-        {s.attention.operator.length > 0 && <Section id="attention" title="Needs you" count={s.attention.operator.length} initial={true} className="fleet-attention">
+        {s.attention.operator.length > 0 && <Section id="attention" title="Needs you" count={s.attention.operator.length} initial={true} className="fleet-attention bd-need">
           <Attention label="Needs you" items={s.attention.operator} needs={[]} token={token} now={now} />
         </Section>}
         {(s.attention.chief.length > 0 || needs.length > 0) && <Section id="attention-chief" title="Needs the chief" count={s.attention.chief.length + needs.length} initial={true} className="fleet-attention">
