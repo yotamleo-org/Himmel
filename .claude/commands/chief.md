@@ -43,5 +43,4 @@ Record the printed `release-token: ` line — now backticked around the token
 itself (HIMMEL-2910) — in the chief's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
-Linux/macOS only — `--arm` launches through konsole. The Windows station arms
-through `scripts/handover/arm-resume.sh`'s schtasks backend instead.
+Linux/macOS only — `--arm` launches through konsole.

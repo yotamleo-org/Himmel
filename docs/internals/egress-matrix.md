@@ -209,7 +209,7 @@ real vault path listed beside it); mixed staged+real invocations need
 ## Direct-eval mode (`--eval`)
 
 The fence is wired only as a PreToolUse hook, which never sees graphify calls a
-script makes itself (cron/schtasks). Non-hook callers — currently
+script makes itself (cron/at). Non-hook callers — currently
 `scripts/graphify/refresh-graph-map.sh`, before both of its graphify
 dispatches — run the same evaluation directly instead of keeping a private
 copy of the provider map, matrix eval and ledger:

@@ -164,7 +164,7 @@ untracked, so the clone itself carries no credentials and no Jira CLI either.
 
 ## Codex deep-dive
 
-### 1. Hooks — Claude-compatible; Windows wiring + block-decision fixed
+### 1. Hooks — Claude-compatible; block-decision fixed
 
 Codex implements a hook engine literally named `ClaudeHooksEngine`. The
 PreToolUse contract mirrors Claude Code's:
@@ -209,10 +209,8 @@ guardrail that merely exits 2 is reported as a *failed (non-blocking)* hook and
 would *fire but never block*.
 
 **The fix.** Tracked
-`.codex/hooks.json` routes `command` through `.codex/run-hook.sh --sandbox` on
-Unix and `commandWindows` through `.codex/run-hook.cmd --sandbox` on Windows.
-Both derive + export `CLAUDE_PROJECT_DIR` from their own location; the Windows
-wrapper finds Git Bash explicitly (skipping the System32 stub). The wrapper
+`.codex/hooks.json` routes `command` through `.codex/run-hook.sh --sandbox`,
+which derives + exports `CLAUDE_PROJECT_DIR` from its own location. The wrapper
 delegates to `.codex/codex-hook-adapter.sh`, which runs the guardrail and,
 for PreToolUse/PermissionRequest exit 2, re-emits the block as Codex's JSON
 `permissionDecision:"deny"` (the guardrail's stderr → reason) and exits 0.
@@ -280,10 +278,9 @@ ledger may not refresh (known limitation; the render is the load-bearing half).
 The guardrails stay single-sourced — they keep working verbatim under Claude
 Code, which never invokes the adapter (only `.codex/hooks.json` does). Verified
 live against codex-cli 0.141.0: a secret read (`block-read-secrets`) is
-**Blocked**; a benign command is allowed. Unit-tested both platform wrappers,
-exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart**, explicit sandbox/no-sandbox mode parsing, and Windows
-Git-Bash-startup fail-closed handling
-(`scripts/hooks/test-codex-run-hook.{sh,ps1}`). Live Codex lifecycle probes of
+**Blocked**; a benign command is allowed. Unit-tested the wrapper,
+exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart** and explicit sandbox/no-sandbox mode parsing
+(`scripts/hooks/test-codex-run-hook.sh`). Live Codex lifecycle probes of
 the auto-arm path remain a follow-up; the no-token fixture is the gate that has
 now passed.
 
@@ -293,7 +290,7 @@ now passed.
   `-s read-only` hook side effects are suppressed; a writable sandbox (the
   interactive default `workspace-write`) is needed for them to act. The adapter
   writes **no temp files** for this reason.
-- **No-sandbox mode is diagnostic-only.** The Windows wrapper accepts
+- **No-sandbox mode is diagnostic-only.** The wrapper accepts
   `--no-sandbox <script.sh>` and surfaces the raw child exit code. Do not wire it
   into `.codex/hooks.json`; it is for trusted local debugging, not normal
   guardrail enforcement.
@@ -476,8 +473,8 @@ tree under `codex.exe` showed every hook running as
    `ParserError` → **rc=1 in 0.4s** (the "exit code 1" spam). Fix shape: a
    leading `& ` (`& "C:\…\bash.exe" "…"`), or Codex's `commandWindows` field.
 
-himmel's own `.codex/hooks.json` entries are immune to both — `commandWindows`
-selects an unquoted relative `.cmd` that pins Git Bash internally. **A/B replay
+himmel's own `.codex/hooks.json` entries were immune to both: a per-platform
+override selected an unquoted relative wrapper that pinned its shell. **A/B replay
 (same stdin per event; arm A = registry Machine+User
 PATH as Codex inherits it, arm B = `Git\bin` prepended):** all 18 project hooks
 ok (<1.4s) on both arms; arm A → `rtk-hook-guard` + 4× security-guidance
@@ -519,8 +516,8 @@ does not carry (the paths sit in `*** Add/Update/Delete File:` lines; the guard
 exits 0 on an empty path = fails open). `Bash`-matched guards *do* fire, but the
 command text is **PowerShell** (`Get-Content`, `Remove-Item`, …), so reader/
 destructive token lists tuned for bash shapes under-match. The `Bash` tool name
-is itself a Codex compat alias (Claude-engine), which is why the project matchers
-`Bash|PowerShell` are harmless but the `PowerShell` half never matches.
+is itself a Codex compat alias (Claude-engine), which is why the `PowerShell`
+half of the project matchers of the time never matched.
 
 **Same benchmark on the other two harnesses (2026-08-21, no finding):** Claude Code
 runs hooks through Git Bash (`bash -c`) with `CLAUDE_PROJECT_DIR`/`CLAUDE_PLUGIN_ROOT`
@@ -697,11 +694,9 @@ by design, mirrored into the project file).
 **Shell-surface guards mirrored.** `block-git-stash`,
 `block-rogue-claude-schedule`, `require-quiet-run` and `block-edit-live-settings`
 were wired for Claude only; they are now in the `.codex/hooks.json` `Bash` chain,
-and the first, second and fourth also in the `PowerShell` chain, in the Claude
-chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
+in the Claude chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
 tool, which is the Codex shell payload too, so no hook script changed.
-`require-quiet-run` is `Bash`-only by its own tool-name test, so it is not on the
-`PowerShell` matcher. Declared gap: `block-edit-live-settings`' Edit/Write arm
+Declared gap: `block-edit-live-settings`' Edit/Write arm
 reads `file_path`/`notebook_path`/`path`, and Codex edits through `apply_patch`,
 whose target paths sit in the patch text in `tool_input.command`; the hook has no
 `apply_patch` branch, so it is deliberately not wired on the edit matcher (it
@@ -785,8 +780,7 @@ launches drops:
   `=`) as an argument delimiter, so `--sandbox a.sh,b.sh` arrives as `%2=a.sh`
   and the chain silently truncates to its first guardrail — every later guard
   quietly not running, with nothing downstream able to detect it. Measured on
-  cmd.exe 10.0.26200 and pinned as a named canary in
-  the Windows hook-runner test; `test-codex-hook-parity.sh` refuses a comma outright.
+  cmd.exe 10.0.26200; `test-codex-hook-parity.sh` refuses a comma outright.
 - **First deny wins and short-circuits.** Codex ran every matched hook and then
   honoured the deny; the chain stops at the first. Safe because every himmel
   PreToolUse guardrail is a pure check — the one side-effecting hook,
@@ -796,7 +790,7 @@ launches drops:
 - **A bad member denies before any member runs** — never a prefix of the chain
   with the rest skipped. Malformed chains (`++`, leading/trailing `+`, any
   character outside `[A-Za-z0-9._+-]`) fail closed.
-- **Matchers had to become disjoint** for this to pay off: `Bash`, `PowerShell`,
+- **Matchers had to become disjoint** for this to pay off: `Bash`,
   `Read|Grep`, the Edit/Write family and the atlassian MCP matcher now each match
   a tool at most once (`.*` exempt). The parity gate asserts that, because two
   matching blocks silently re-multiply the launches and would not stand out in a

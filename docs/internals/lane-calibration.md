@@ -592,7 +592,7 @@ invented — extend this list only from a new observation):
   parent takes, **not** a reason to send the chunk to Sonnet: codex-exec still
   does the implementation.
 - **Its terminal writes are hook-fenced.** `.codex/hooks.json` wires
-  `block-terminal-write-fence.sh` on Bash/PowerShell: `git push`, remote-URL
+  `block-terminal-write-fence.sh` on Bash: `git push`, remote-URL
   rewrites, `gh` PR-mutations (`create`/`merge`/`comment`/…) and network CLIs
   (`curl`, `wget`, `iwr`/`irm`) are denied unless `CODEX_EXTERNAL_WRITES_OK=1`.
   Edit/Write are fenced by `block-edit-on-main.sh`, and lesson-enforcement paths
