@@ -142,7 +142,7 @@ Names that stay as they are, and why. A rename slice and the old-term lint skip 
 | The session-name suffix `-console` | A data contract (`-chief` is accepted in addition). |
 | The initiative chain `workers.sh` / `resolve_workers` | The auto-ship step sense, not the fleet sense. |
 | The hook chain (`RUN_HOOK_CHAIN_*`, `--chain`) and `/himmel-update`'s "dependency chain" | Other senses of chain. |
-| Lane-worker files (`stop-worker.sh`, `await-glm-worker.sh`, `reconcile-workers.sh`) | Other sense of worker. |
+| Lane-worker files (`stop-worker.sh`, `reconcile-workers.sh`) | Other sense of worker. |
 | `/supervisor-session` | The command is a permanent alias. |
 
 ## Who holds what
@@ -239,7 +239,7 @@ dispatched, and feeds its priority and availability.
 | Cost & efficiency | Usage banks, token cost, budget planning. |
 | Visibility | Observability and failure feedback, the fleet UI, the Telegram side of remote ops. |
 | Quality & proof | CI and test infrastructure, station and VM ops, tool evals and dependency bumps. |
-| Deployment | Install, setup, update, uninstall, and the config UI and CLI. |
+| Deployment | Install, setup, update, uninstall, and the himmel UI and CLI. |
 | Knowledge & steering | Retrieval (qmd, graphify), the luna vault and knowledge capture, steering docs and skills. |
 | Planning & tracking | Jira and roadmap tooling, the version model, the ticket standard. |
 
@@ -308,7 +308,7 @@ collision are not listed: they now use the new wording.
 |---|---|---|---|
 | **judge** | A judge session or subagent that rules on one question. A review by the CR critic panel is a "panel review", and an independent check in the token-economy docs is a "validator". | `follow-judge`, the judge pass of the X follow-list scorer. It is being renamed to follow-scorer (ticket to come). | A judge session writes a verdict file for the chief. The follow-list judge pass scores one account and feeds a queue. The charter is `marketplace/plugins/obsidian-triage/tools/follow-judge-charter.md` and the queue is `_judge-queue.jsonl`. |
 | **chief** | The session that runs the shift (formerly supervisor session, console). | "Chief judge", a real title for the head judge. | The fleet docs and `/chief` mean the session. A title means the other, which is why the judge agent ids are `judge` and `judge-ro`, never `chief-judge*`. |
-| **worker** | A worker: one ticket, one worktree, one PR (formerly worker session, leg). | A lane worker (a process on a dispatch backend: `scripts/lanes/stop-worker.sh`, `await-glm-worker.sh`), a dispatched subagent worker (`internals/worker-spawn-matrix.md`), a Codex lane worker, `reconcile-workers.sh` and `max_workers`. Also `HIMMEL_WORKER`, the dispatched-lane marker, which a worker does not carry. | A bare "worker" is the fleet sense; every other sense is qualified (lane, subagent, Codex lane). Worker env names are `HIMMEL_WORKER_SESSION_*`, never `HIMMEL_WORKER_*`. |
+| **worker** | A worker: one ticket, one worktree, one PR (formerly worker session, leg). | A lane worker (a process on a dispatch backend: `scripts/lanes/stop-worker.sh`), a dispatched subagent worker (`internals/worker-spawn-matrix.md`), a Codex lane worker, `reconcile-workers.sh` and `max_workers`. Also `HIMMEL_WORKER`, the dispatched-lane marker, which a worker does not carry. | A bare "worker" is the fleet sense; every other sense is qualified (lane, subagent, Codex lane). Worker env names are `HIMMEL_WORKER_SESSION_*`, never `HIMMEL_WORKER_*`. |
 | **chain** | A **dependency chain**: workers that must run in order. A bare "chain" is never the fleet sense in new prose. | A serial hook chain and the hook runner's `--chain` flag; the token chain of a succession (`worker-sections/succession.md`); the handover skill's chain files (`next-session-N.md`, read by `arm-resume.sh`); `/himmel-update`'s six-item dependency chain; the dependency supply chain of package security (see the overlap map); the pin chain (`PIN_CHAIN_*`). | "Dependency chain" next to tickets or workers means the fleet sense. The `/himmel-update` docs and package security use the same two words for the other senses. Hooks, tokens and chain files always carry their qualifier. The hook sense is in `architecture.md` and `harness-compat.md`. |
 | **wave** | A **parallel wave**: a group of workers started together. | The idiom "wave … through" ("a guard must not wave it through"); a subagent wave (`MID-AGENT-WAVE` in `auto-arm-on-subagent-cap.sh`, `FIRST_WAVE` in `lane-readiness.mjs`); Argo CD sync waves. | "Parallel wave", or a wave of workers or tickets, means the fleet sense. The idiom is a verb. A subagent wave is a burst of `Agent` dispatches inside one session. |
 | **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was the 10-17 interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |

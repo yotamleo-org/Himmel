@@ -124,8 +124,8 @@ grant re-enables one narrow capability without lifting the wall. A refusal
 clears the escalation.
 
 **Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`.
-The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-was dropped, so the channel stays off.
+The only such lane, GLM, was removed (see
+[tooling-catalog](tooling-catalog.md#claude-glm)), so the channel stays off.
 
 ## Statusline
 
