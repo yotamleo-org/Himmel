@@ -22,8 +22,10 @@ key=$(printf '%s' "$repository" | cksum | awk '{print $1}')
 lock="$dir/$key.lock"
 # Fail closed under contention rather than fetching outside the lock. Do not
 # steal by age: a slow live fetch must not lose its lock to another writer.
+# prim-ok: a non-blocking try-lock that fails closed on contention; with_lock waits for the holder instead of refusing
 mkdir "$lock" 2>/dev/null || exit 1
 printf '%s\n' "$$" > "$lock/pid"
+# prim-ok: the work dir sits in the cache dir beside the lock so a published snapshot is a same-filesystem mv; tmpdir would use TMPDIR
 work=$(mktemp -d "$dir/.snapshot.XXXXXX") || { rm -f "$lock/pid"; rmdir "$lock"; exit 1; }
 trap 'rm -rf "$work"; rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null' EXIT
 trap 'exit 1' HUP INT TERM

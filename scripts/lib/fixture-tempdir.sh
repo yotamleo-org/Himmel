@@ -3,6 +3,7 @@
 
 fixture_mktemp_dir() {
     local dir
+    # prim-ok: this guard is a defence against a broken or shadowed mktemp, so it keeps the direct call and checks the result itself; the himmel-fixture. prefix is a scripts/tmp-reap.sh FAMILIES entry that tmpdir's prim. prefix would leave unreaped
     dir=$(mktemp -d "${TMPDIR:-/tmp}/himmel-fixture.XXXXXX") || {
         echo "FAIL: fixture mktemp -d failed" >&2
         return 1

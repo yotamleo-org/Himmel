@@ -23,6 +23,7 @@ BWK_REPO="https://github.com/onetrueawk/awk.git"
 # shellcheck source=../lib/prim.sh
 . "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "run-unchecked-mktemp-under-bwk: cannot load scripts/lib/prim.sh" >&2; exit 1; }
 build_dir="$(tmpdir)" || exit 1
+trap 'rm -rf "$build_dir" "${shim_dir:-}"' EXIT
 git clone --quiet "$BWK_REPO" "$build_dir"
 git -C "$build_dir" checkout --quiet "$BWK_COMMIT"
 make -C "$build_dir" >/dev/null

@@ -90,6 +90,7 @@ for v in $keep; do
 done
 
 if [ -z "$scratch" ]; then
+    # prim-ok: the clean-sandbox. prefix is a scripts/tmp-reap.sh FAMILIES entry that tmpdir's prim. prefix would leave unreaped
     scratch=$(mktemp -d "${TMPDIR:-/tmp}/clean-sandbox.XXXXXX") || die "could not create a scratch dir under ${TMPDIR:-/tmp}"
 fi
 mkdir -p "$scratch/home" "$scratch/prov" "$scratch/cache" "$scratch/tmp" || die "could not create scratch subdirs under $scratch"
