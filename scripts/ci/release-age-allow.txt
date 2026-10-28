@@ -1,4 +1,4 @@
-# release-age-allow.txt — HIMMEL-7173. One `name@version  reason` per line: a lockfile
+# release-age-allow.txt — one `name@version  reason` per line: a lockfile
 # entry younger than 3 days that check-lockfile-release-age.mjs accepts. Two reasons are
 # allowed: a security fix (name the advisory), or an operator-approved timeboxed exception.
 # A timeboxed exception MUST carry `until=YYYY-MM-DD` (UTC) as its second field, no more

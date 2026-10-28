@@ -1,4 +1,4 @@
-# himmel uninstall path manifest (HIMMEL-3058) — the ONE list of every surface
+# himmel uninstall path manifest — the ONE list of every surface
 # scripts/uninstall.sh acts on. The uninstaller READS this file: the removal
 # targets, the code-vs-state class that gates --purge-state, the printed
 # footprint and the post-run read-back all come from here, so a path cannot be
@@ -18,18 +18,18 @@
 #   path     default path; tokens {HOME} {PWD} {REPO_ROOT} {HOOKS_REPO_ROOT}
 #            ({HOME} is $HOME and {PWD} is the caller's cwd: neither has a twin
 #            root override, so a caller confines a row that has no env var by
-#            giving the run a scratch HOME / cwd — see the HIMMEL-3336 rule in
+#            giving the run a scratch HOME / cwd — see the caller-policed fence rule in
 #            docs/internals/enforcement.md)
 #   step     uninstall.sh step that acts on it (1-8; '-' for keep rows)
 #   what     one line shown in the footprint
 #   record   comma-separated provenance-ledger kinds install writes for this row
-#            (HIMMEL-3332; vocabulary = _PROV_KINDS in scripts/lib/provenance.sh),
+#            (vocabulary = _PROV_KINDS in scripts/lib/provenance.sh),
 #            or 'none' when install records nothing for it. The reader also
 #            accepts the older 8-column form (no record). A row whose `what`
 #            says "removal pending" is listed for completeness: no step removes
 #            it yet, so the printed REMOVE/KEEP verdict is the policy, not yet
-#            the action (HIMMEL-3332 S8, HIMMEL-3311, or a separate ticket not
-#            yet filed — see the row's own `what` text for which).
+#            the action (the ticket the row's own `what` text names, or one not
+#            yet filed).
 bridge-process	code	telegram-bridge	process	-	-	1	the telegram bun bridge supervisor (stopped, not deleted)	none
 bridge-unit	code	telegram-bridge	file	-	{HOME}/.config/systemd/user/telegram-bridge.service	1	the telegram bridge systemd user unit install wrote (removal pending HIMMEL-3332 S8)	unit,file
 telegram-channel	state	telegram-bridge	dir	TELEGRAM_CHANNEL_DIR	{HOME}/.claude/channels/telegram	2	telegram pairing: bot-token .env + access.json	file

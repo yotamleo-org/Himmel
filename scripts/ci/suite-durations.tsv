@@ -1,4 +1,4 @@
-# suite	seconds — the shell-unit shard bin-pack ledger (HIMMEL-2894, refreshed HIMMEL-4075).
+# suite	seconds — the shell-unit shard bin-pack ledger.
 #
 # source: per-suite timings from the green Linux main CI runs 39180908042 (head
 #   a9045e8f7c8e3b9bd6ec66596ea67dce36077e04, 2026-10-19), 39161402108 (head
@@ -14,11 +14,11 @@
 #   2301s mean in proportion to each part's case count (249/239/269/261 of 1018).
 #   With that suite no longer the floor, the 22w balance check sees the stale
 #   test-stop-worker.sh row (117s here, 317s measured); it is refreshed to 317.
-#   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); HIMMEL-7300 split it
+#   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); it was split
 #   into test-adopt.sh and test-adopt-features.sh, the 969s shared in proportion to their
 #   local times (479s / 427s) as 512 / 457.
-#   test-run-shell-tests-parallel.sh (64) is a local measurement (HIMMEL-7483).
-# The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
+#   test-run-shell-tests-parallel.sh (64) is a local measurement.
+# The quarantined suites (SKIP_LIST) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
 # longest-first bin-pack instead of round-robin ($SUITE_DURATIONS overrides this

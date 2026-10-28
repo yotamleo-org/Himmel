@@ -2,7 +2,7 @@
 # that is deliberate. Format: <basename>|<reason>. Read by check-unwired-hooks.sh,
 # which fails on an unlisted unwired script AND on an entry that is now wired.
 #
-# Known unwired, tracked, NOT to be wired here (HIMMEL-5030):
+# Known unwired, tracked, NOT to be wired here:
 bus-deliver-run.js|HIMMEL-5030: node runner for the bus-deliver hooks, never wired on its own
 #
 # Called only from another script (the audit's "called only from other scripts"):

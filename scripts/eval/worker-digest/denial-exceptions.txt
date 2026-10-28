@@ -1,4 +1,4 @@
-# Known, accepted divergences between the two denial detectors (HIMMEL-4670, spec section 2.3): the AG-UI
+# Known, accepted divergences between the two denial detectors (spec section 2.3): the AG-UI
 # mapper's DENIED regex (canonical for the event layer) and trajectory.py denied() (canonical for the
 # trajectory fields). test-worker-digest.sh fails on any divergence not listed here, and on a line here that
 # no longer occurs. One per line: <fixture> <tool_call_id> <only: mapper|trajectory> <reason>.

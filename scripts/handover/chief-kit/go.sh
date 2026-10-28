@@ -63,8 +63,8 @@
 #
 # Exit codes:
 #   0  written
-#   1  handover root unresolvable (incl. an .env-configured root that is gone -
-#      HIMMEL-3572), the GO key cannot be minted or read, or the write failed; also scripts/lib/go-gate.sh
+#   1  handover root unresolvable (incl. an .env-configured root that is gone),
+#      the GO key cannot be minted or read, or the write failed; also scripts/lib/go-gate.sh
 #      failed to source or did not define chief_worker (fail closed - writing a GO
 #      is sensitive enough that a broken shared lib must never read as "not a worker")
 #   2  usage (arg count, non-digit PR, sha not exactly 40 lowercase hex, a

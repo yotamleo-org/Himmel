@@ -117,7 +117,7 @@ SHELL:scripts/lanes/bench/scorecard/merged-count.sh
 SHELL:scripts/lanes/worker-pr-open.sh
 SHELL:scripts/lanes/stop-worker.sh
 
-# --- HIMMEL-5393: findings that appeared when the gate was tightened. Each is a
+# --- Findings that appeared when the gate was tightened. Each is a
 # --- real call site, baselined (not exempted) and tracked for widening by HIMMEL-5403.
 
 # Shell: unsets only the original four vars (full 14-var set required now).
@@ -133,10 +133,10 @@ SHELL:scripts/cr/pr-check-context.sh
 SHELL:scripts/hooks/guard-worker-context-handoff.sh
 # Shell test stub: a heredoc fake-git fixture that falls through to /usr/bin/git; not a gate call.
 SHELL:scripts/hooks/capture-baseline.sh
-# Shell test libs: sourced by the write-fence suites (HIMMEL-4391/N1894 own them); bare sourced-lib marker has no reason yet.
+# Shell test libs: sourced by the write-fence suites; bare sourced-lib marker has no reason yet.
 SHELL:scripts/hooks/lib-test-write-fence-matrix.sh
 SHELL:scripts/hooks/lib-test-write-fence.sh
-# Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked, epic HIMMEL-4102.
+# Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked.
 FILE:scripts/handover/chief-kit/gen-briefs.py
 # JS: wrapper helpers whose spawn env is not the full set (claude-floor.mjs git(), verify-return.mjs exec,
 # hook-integrity.js spawnSync adds only GIT_NO_REPLACE_OBJECTS; the hook file is hook-integrity guarded).

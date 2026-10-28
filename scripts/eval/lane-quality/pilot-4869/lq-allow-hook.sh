@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-5077: jail-only PreToolUse hook for the claudex eval rows. Usage (registered
+# Jail-only PreToolUse hook for the claudex eval rows. Usage (registered
 # by sandbox.sh): lq-allow-hook.sh <jwt> <wt>, tool-call JSON on stdin.
 # Allows one shape only: `bash <base>/lq-work/test-*.sh`, <base> one of the two mounts
 # of the row worktree, nothing chained, no `..` segment, a regular non-symlink file

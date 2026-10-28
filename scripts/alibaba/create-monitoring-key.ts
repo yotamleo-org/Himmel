@@ -1,4 +1,4 @@
-// scripts/alibaba/create-monitoring-key.ts (HIMMEL-729)
+// scripts/alibaba/create-monitoring-key.ts
 // One-shot bootstrap: derive a SCOPED, read-only monitoring key from the
 // operator's MASTER Alibaba AK/SK, so the quota-gauge poller never holds
 // account-level credentials (operator directive 2026-07-06: masters stay
