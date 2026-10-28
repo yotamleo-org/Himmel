@@ -1228,6 +1228,19 @@ check "chain: a finding re-raised at a middle head of the chain stops the carry:
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_B" "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-HIMMEL-50","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$CH_B" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "chain: a deferral inside the chain that a later head re-raised does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_B" "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+rc=0; out="$(run)" || rc=$?
+check "chain: a deferral at the far end of the chain counts: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
 rc=0; out="$(run)" || rc=$?
 check "chain: no clean round at any head of the chain, the deferral does not carry: exit 1" "$rc" "1"

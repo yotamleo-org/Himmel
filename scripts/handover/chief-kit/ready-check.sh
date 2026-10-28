@@ -528,9 +528,10 @@ cov_ledger_keys() {
             and (.model | type == "string") and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not)
             and ((.detail // "") | tostring | startswith("trivial-descendant") | not)) | ._ln] as $clean
         | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head))] | length > 0) as $raised
-        | def at_head($f; $e): hm($e.head; $h) or ($pb != "" and $f.branch == $pb and inchain($e.head))
-            or ($pb != "" and $f.branch == $pb and ($raised | not) and any($clean[]; . > $f._ln)
-                and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not));
+        | def at_head($f; $e): hm($e.head; $h)
+            or ($pb != "" and $f.branch == $pb
+                and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not)
+                and (inchain($e.head) or (($raised | not) and any($clean[]; . > $f._ln))));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
