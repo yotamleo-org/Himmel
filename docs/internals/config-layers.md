@@ -197,6 +197,8 @@ add a new one to `stationSecrets` first. Then:
 1. `bash scripts/lib/himmel-secrets import-env <primary checkout>/.env`. It
    prints `stored KEY` for each key it moved.
 2. `himmel-secrets status KEY…` with those keys names `keyring` for each one.
+   `env`, `credentials` or `keyring-project` means another layer still serves
+   that key ahead of the stored item: settle that layer first.
 3. Delete from `.env` exactly the lines import-env printed as `stored`, and
    nothing else. Until you do, each secret is still in plain text on disk.
    A line it skipped stays: a config key until it moves to `~/.himmel`, and
@@ -204,7 +206,9 @@ add a new one to `stationSecrets` first. Then:
    example below). Do not delete by key class: `HIMMEL_FLEET_CAP` reads as a
    secret there, and the `DEPRECATED: secret … read from .env` line still
    names it after the move.
-4. `bash scripts/himmel-doctor.sh --only C75` shows `OK C75-secrets: no secret comes from .env`.
+4. `bash scripts/himmel-doctor.sh --only C75` shows `OK C75-secrets: no secret
+   comes from .env`. C75 counts only the manifest's secrets, so the
+   `HIMMEL_FLEET_CAP` line left in `.env` does not fail it.
 
 ## The .env split: what moves, what stays, and a mismatch
 
