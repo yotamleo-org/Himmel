@@ -72,12 +72,13 @@ for i, line in enumerate(lines):
     if text.strip() == 'none named':
         continue
     paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p]
-    if not paths or any(not re.fullmatch(r'[\w.+@/-]+', p) or p in ('.', '..') or
+    if not paths or any(not re.fullmatch(r'[\w.+@/-]+', p) or os.path.isabs(p) or
+                        any(part in ('.', '..') for part in p.split('/')) or
                         not ('/' in p or '.' in p or os.path.exists(os.path.join(repo, p))) for p in paths):
         sys.exit(1)
 PY
 then
-    fail "'> **Writes:**' must contain paths only (or 'none named'); the chief fills an empty line from the ticket's Writes text; move parentheses and prose to '> **Writes note:**'"
+    fail "'> **Writes:**' must contain repo-relative paths without . or .. segments (or 'none named'); the chief fills an empty line from the ticket's Writes text; move parentheses and prose to '> **Writes note:**'"
 fi
 
 # a fresh brief carries a front-matter `description:` line, the

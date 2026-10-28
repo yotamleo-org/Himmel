@@ -180,6 +180,12 @@ expect_rc "7c prose on a Writes continuation is refused" 1 "$tmp/writes_wrapped_
 expect_rc "7d a path-only Writes line passes" 0 "$tmp/writes_paths.md"
 expect_rc "7e prose on Writes note passes" 0 "$tmp/writes_note.md"
 expect_rc "7f explicit none named passes" 0 "$tmp/writes_none.md"
+for unsafe_path in 'scripts/lib/../config-ui/panel.ts' 'scripts/./x/a.sh' "$tmp/outside.sh"; do
+    mk writes_unsafe "$PA" "> **Writes:** $unsafe_path"
+    expect_rc "7k non-canonical Writes path is refused: $unsafe_path" 1 "$tmp/writes_unsafe.md"
+done
+mk writes_dotted "$PA" '> **Writes:** .github/workflows/check.yml scripts/.hidden/file.sh'
+expect_rc "7l dotted names without dot segments still pass" 0 "$tmp/writes_dotted.md"
 err="$(bash "$LINT" "$tmp/writes_paren.md" 2>&1 >/dev/null)"
 grep -Fq '> **Writes note:**' <<< "$err" && ok "7g refusal names Writes note as the replacement" || bad "7g refusal lacks Writes note hint: $err"
 rc=0; out="$(run_worker "$tmp/writes_word.md" --profile worker-impl)" || rc=$?
