@@ -26,9 +26,8 @@
 # filtering, so `gt -1` on refId B marks a rule that must NEVER use
 # noDataState: NoData.
 #
-# ponytail: five NoData rules fire on one dark-data condition, HIMMEL-2485
-# (himmel_orphan_processes,
-# himmel_session_dead, himmel_hook_chain_budget_pressure,
+# ponytail: four NoData rules fire on one dark-data condition, HIMMEL-2485
+# (himmel_session_dead, himmel_hook_chain_budget_pressure,
 # himmel_hook_chain_budget_denials, himmel_hook_chain_log_unreadable) fire
 # independently on that same one dark-data condition — a dead exporter —
 # which is already covered correctly by himmel_watcher_down's `up == 0`.
@@ -54,6 +53,23 @@
 # Prometheus datasource unreachable) pages rather than silently going quiet,
 # distinct from a query that legitimately returns nothing.
 apiVersion: 1
+
+# The Windows-only rules, removed with their metric families.
+deleteRules:
+  - orgId: 1
+    uid: himmel_scheduled_task_disabled
+  - orgId: 1
+    uid: himmel_agent_tree_ram_runaway
+  - orgId: 1
+    uid: himmel_orphan_processes
+  - orgId: 1
+    uid: himmel_kernel_pool_high
+  - orgId: 1
+    uid: himmel_kernel_pool_critical
+  - orgId: 1
+    uid: himmel_kernel_pool_leak_rate
+  - orgId: 1
+    uid: himmel_commit_pressure
 
 groups:
   - orgId: 1
@@ -213,118 +229,7 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} last success is older than 2x its cadence'
 
-      - uid: himmel_scheduled_task_disabled
-        title: "Scheduled task disabled or missing"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              # `unless` is scoped to ONLY the `enabled == 0`
-              # arm, not the whole OR — an allowlisted task that gets
-              # DELETED entirely (scheduled_task_exists == 0) must still
-              # page; the allowlist only exempts the disabled state, not
-              # exists coverage. Kept byte-identical to alerts.rules.yml.
-              expr: ((scheduled_task_enabled == 0) unless on (task) (scheduled_task_expected_disabled == 1)) or on (task) (scheduled_task_exists == 0)
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`== 0` / `unless`) —
-        # empty vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 0m
-        labels:
-          severity: page
-        annotations:
-          summary: 'Scheduled task {{ $labels.task }} is disabled or missing'
-
-      - uid: himmel_agent_tree_ram_runaway
-        title: "Agent tree RAM runaway"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              # Base 6 GiB + 1 GiB per active subagent above 2
-              # (subagent_active_total), so ordinary overnight-swarm fanout
-              # doesn't page on the flat default. `or vector(0)` guards the
-              # sum against an absent subagent_active_total series; clamp_min
-              # floors the count at 2 pre-scalar() (clamp_min needs an
-              # instant vector) so the multiplier can never go negative.
-              # class="other" is host-detectors.ps1's explicit
-              # catch-all for everything NOT descended from a recognized
-              # agent root — the rest of the desktop, not an agent tree — so
-              # it dwarfed any per-agent-scaled threshold on a normal
-              # desktop. Excluded from the alert only, not from the
-              # dashboard series.
-              # Kept byte-identical to alerts.rules.yml; tune both together.
-              expr: agent_tree_rss_bytes{class!="other"} > (6442450944 + 1073741824 * scalar(clamp_min(sum(subagent_active_total) or vector(0), 2) - 2))
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`> (6442450944 + ...)`)
-        # — empty vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 10m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Agent tree class {{ $labels.class }} RSS exceeds 6 GiB'
-
-      - uid: himmel_orphan_processes
-        title: "Orphan-shaped agent processes"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              # codex-fleet/codex-exec-registry only, per design's default
-              # sketch — mcp-dead-parent-unattributed and the gateway/
-              # app-server orphan classes stay dashboard-visible, unalerted.
-              expr: orphan_process_count{class=~"codex-fleet|codex-exec-registry"}
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [0] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        noDataState: NoData
-        execErrState: Alerting
-        for: 30m
-        labels:
-          severity: warn
-        annotations:
-          summary: '{{ $labels.class }} orphan count is {{ $values.A.Value }}'
-
-      # Linux /proc twin of himmel_orphan_processes, which is
-      # dark on Linux (orphan_process_count is win32-only). See
-      # alerts.rules.yml HimmelQuietRunOrphans; keep the two together.
+      # See alerts.rules.yml HimmelQuietRunOrphans; keep the two together.
       - uid: himmel_quiet_run_orphans
         title: "Orphaned quiet-run suites / writer-less tail followers"
         condition: B
@@ -366,7 +271,7 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: prometheus
             model:
-              expr: up{job=~"flow-exporter|windows_exporter"} == 0
+              expr: up{job="flow-exporter"} == 0
               instant: true
               refId: A
           - refId: B
@@ -455,136 +360,11 @@ groups:
         annotations:
           summary: 'Host {{ $labels.host }} has {{ $values.A.Value }} dead session(s)'
 
-      # Kernel pool + commit pressure — expression strings kept
-      # byte-identical to alerts.rules.yml's four Himmel{KernelPool*,
-      # CommitPressure} rules. Change one, change the other.
-      - uid: himmel_kernel_pool_high
-        title: "Kernel pool high"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 900, to: 0 }
-            datasourceUid: prometheus
-            model:
-              expr: windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes > 12884901888
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`> 12884901888`) —
-        # empty vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 15m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Kernel pool total exceeds 12 GiB on {{ $labels.instance }}'
-
-      - uid: himmel_kernel_pool_critical
-        title: "Kernel pool critical"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: prometheus
-            model:
-              expr: windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes > 19327352832
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`> 19327352832`) —
-        # empty vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 5m
-        labels:
-          severity: page
-        annotations:
-          summary: 'Kernel pool total exceeds 18 GiB on {{ $labels.instance }} — only a reboot reclaims it'
-
-      # relativeTimeRange spans 2h so the [1h:5m] subquery always has a full
-      # window of samples inside Grafana's own query range.
-      - uid: himmel_kernel_pool_leak_rate
-        title: "Kernel pool leak rate"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 7200, to: 0 }
-            datasourceUid: prometheus
-            model:
-              expr: deriv((windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes)[1h:5m]) * 3600 > 1073741824
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`> 1073741824`) —
-        # empty vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 1h
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Kernel pool on {{ $labels.instance }} is growing faster than 1 GiB/h'
-
-      - uid: himmel_commit_pressure
-        title: "Commit pressure"
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange: { from: 900, to: 0 }
-            datasourceUid: prometheus
-            model:
-              expr: windows_memory_committed_bytes / windows_memory_commit_limit > 0.85
-              instant: true
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator: { type: gt, params: [-1] }
-              datasource: { type: __expr__, uid: __expr__ }
-              refId: B
-        # refId A filters in PromQL (`> 0.85`) — empty
-        # vector is the healthy case, not absence. See file header.
-        noDataState: OK
-        execErrState: Alerting
-        for: 15m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Committed memory exceeds 85% of the commit limit on {{ $labels.instance }}'
-
       # Hook-chain budget pressure — see alerts.rules.yml's
       # matching rule for the full calibration evidence (measured against the
       # real 6179-row skip log, first-fires 131/104 minutes ahead of the
-      # 2026-09-03 spawn-storm hang; agent_tree_process_count rejected as the
-      # signal — it peaked with no hang at all).
+      # 2026-09-03 spawn-storm hang; agent_tree_process_count, a since-removed
+      # Windows family, was rejected as the signal — it peaked with no hang).
       #
       # noDataState: NoData (this file's usual default, kept here) — refId A
       # is a bare metric selector (`hook_chain_budget_events_recent{action=…}`)

@@ -15,16 +15,12 @@
 #                              the lane probe degrades gracefully; wired
 #                              anyway per the brief's fixture-point list)
 #   WHISPER_DIR                fixture whisper dir (empty -> "not found")
-#   HIMMEL_CAPTURE_SCHTASKS_CMD  "node <stub.mjs>" — a bare .cmd/.bat stub
-#                              cannot be exec'd directly on Windows without
-#                              shell:true (verified EINVAL); a "node <script>"
-#                              prefix is the command form the capture script
-#                              itself supports for exactly this reason.
+#   PATH                       a stub `crontab` first on PATH
 #
 # Nothing here mutates machine state; every fixture lives under one mktemp
 # tree. Covers at minimum: (a) profile shape, (b) scrub self-test, (c)
 # --check exit 0/1 + named diff, (d) idempotence, (e) cadence armed/off from
-# a stubbed schtasks, (f) a planted secret VALUE never appears in any output
+# a stubbed crontab, (f) a planted secret VALUE never appears in any output
 # while its NAME appears only in the delta's keysBeyondGeneratedBlock, (g)
 # assertScrubbed's failure message names a label + JSON path, never the
 # regex/matched text, (h) observability flow objects are reduced to names
@@ -36,9 +32,7 @@
 # a real git checkout so the git-common-dir branch runs too, (m) crontab
 # error classification, (n) POSIX prefix-group cadence matching, (o) a
 # failed askable-lane read, (p) a malformed handover registry, (q) non-string
-# observability entries are dropped not leaked, plus:
-# (r) a present-but-Disabled scheduled task reads 'off',
-# (s) an unrecognized Status string fails toward armed + is flagged, (t)
+# observability entries are dropped not leaked, plus: (t)
 # matchCadenceGroups skips commented-out crontab lines, (u) a malformed
 # observability.json is a read failure not present-and-empty, (v)
 # bridge.envPath names CLAUDE_CONFIG_DIR when it differs from ~/.claude, (w)
@@ -66,16 +60,6 @@ PASS=0
 FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
-
-# winpath <path> — Node on Windows/Git-Bash wants a Windows-form path for
-# some APIs; cygpath -m round-trips a Git-Bash /c/... path to C:/... . A
-# plain path on non-Windows passes through unchanged.
-winpath() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) cygpath -m "$1" 2>/dev/null || printf '%s' "$1" ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/cap2307.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -159,35 +143,23 @@ cat > "$work/lanes.json" <<'EOF'
 { "lanes": [] }
 EOF
 
-# schtasks stub: pipeline (FetchHealth) armed, drift-fix armed, everything
-# else off — one deterministic CSV response regardless of the args it's
-# called with, mirroring how test-pipeline-cadence.sh's fake schtasks works.
-cat > "$work/fakeschtasks.mjs" <<'EOF'
-process.stdout.write('"\\HIMMEL-Pipeline-FetchHealth","N/A","Ready"\r\n"\\HIMMEL-DriftFix","N/A","Ready"\r\n');
+# crontab stub: pipeline (FetchHealth) armed, drift-fix armed, everything
+# else off — one deterministic `crontab -l` response.
+mkdir -p "$work/bin" "$work/bin-fail"
+cat > "$work/bin/crontab" <<'EOF'
+#!/usr/bin/env bash
+[ "$*" = "-l" ] || { echo "fixture crontab: unexpected args: $*" >&2; exit 64; }
+printf '0 6 * * * HIMMEL-Pipeline-FetchHealth\n0 7 * * * HIMMEL-DriftFix\n'
 EOF
-
-# schtasks stub that fails loudly (non-empty stderr, rc!=1-with-no-stderr) —
-# used by the alwaysOn-degraded case to force computeCadences()'s genuine
-# queryFailed path (as opposed to the trusted "empty scheduler" rc=1 signature).
-cat > "$work/fakeschtasks-fail.mjs" <<'EOF'
-process.stderr.write('fixture: schtasks query boom\n');
-process.exit(2);
+# crontab stub that fails loudly (non-empty stderr, rc 2) — used by the
+# alwaysOn-degraded case to force computeCadences()'s genuine queryFailed
+# path (as opposed to the trusted "no crontab for <user>" rc=1 signature).
+cat > "$work/bin-fail/crontab" <<'EOF'
+#!/usr/bin/env bash
+echo 'fixture: crontab boom' >&2
+exit 2
 EOF
-
-# schtasks stub: HIMMEL-DriftFix present but Status=Disabled — used by case r
-# to prove a present-but-disabled task reads
-# as 'off', not armed.
-cat > "$work/fakeschtasks-disabled.mjs" <<'EOF'
-process.stdout.write('"\\HIMMEL-DriftFix","N/A","Disabled"\r\n');
-EOF
-
-# schtasks stub: HIMMEL-DriftFix present with an unrecognized (e.g.
-# localized-Windows) Status string, plus an unrelated third-party task —
-# used by case s to prove the capture flags the himmel task in
-# statusUnrecognized while excluding the unrelated task (scope-filtering).
-cat > "$work/fakeschtasks-unrecognized.mjs" <<'EOF'
-process.stdout.write('"\\HIMMEL-DriftFix","N/A","Queued"\r\n"\\Adobe Updater","N/A","Queued"\r\n');
-EOF
+chmod +x "$work/bin/crontab" "$work/bin-fail/crontab"
 
 # ── fixture variants for the fix cases (real git repo, its
 # non-git fallback, a repo missing scripts/guardrails/lib.sh entirely, and a
@@ -211,23 +183,22 @@ git -C "$FIX_REPO" config user.name "fixture"
 git -C "$FIX_REPO" add -A
 git -C "$FIX_REPO" commit -q -m "fixture"
 
-HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO")"
+HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO"
 export HIMMEL_CAPTURE_REPO_ROOT
-CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG")"
+CLAUDE_CONFIG_DIR="$FIX_CONFIG"
 export CLAUDE_CONFIG_DIR
-HIMMEL_OBSERVABILITY_CONFIG="$(winpath "$work/observability.json")"
+HIMMEL_OBSERVABILITY_CONFIG="$work/observability.json"
 export HIMMEL_OBSERVABILITY_CONFIG
-LANES_REGISTRY="$(winpath "$work/lanes.json")"
+LANES_REGISTRY="$work/lanes.json"
 export LANES_REGISTRY
-WHISPER_DIR="$(winpath "$work/whisper")"
+WHISPER_DIR="$work/whisper"
 export WHISPER_DIR
-HIMMEL_CAPTURE_SCHTASKS_CMD="node $(winpath "$work/fakeschtasks.mjs")"
-export HIMMEL_CAPTURE_SCHTASKS_CMD
+export PATH="$work/bin:$PATH"
 export HOME="$work/fake-home"
 export USERPROFILE="$work/fake-home"
 
 node_bin=$(command -v node)
-run_json() { "$node_bin" "$(winpath "$script")" --json; }
+run_json() { "$node_bin" "$script" --json; }
 
 # ── case a: profile shape ───────────────────────────────────────────────
 outA=$(run_json) || fail "case a: --json should exit 0" "$outA"
@@ -250,10 +221,9 @@ console.log(problems.join('|'));
 if [ -z "$shapeCheck" ]; then pass "case a: v2 profile shape (schemaVersion, profile=operator, no role/tier/unknown fields, placeholder paths)"; else fail "case a: v2 profile shape" "$shapeCheck"; fi
 
 # ── case b: scrub self-test (planted real-path trips it) ───────────────
-# CAPTURE_SCRIPT_PATH travels via env, then through pathToFileURL(): a bare
-# "C:/..." string is not a valid ESM import specifier on Windows (verified —
-# ERR_UNSUPPORTED_ESM_URL_SCHEME), it must be a real file:// URL.
-CAPTURE_SCRIPT_PATH="$(winpath "$script")"
+# CAPTURE_SCRIPT_PATH travels via env, then through pathToFileURL() into a
+# file:// import URL.
+CAPTURE_SCRIPT_PATH="$script"
 export CAPTURE_SCRIPT_PATH
 scrubOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
@@ -279,9 +249,9 @@ fi
 
 # ── case c: --check exit 0 identical / exit 1 + named diff on drift ────
 profA="$work/profile-a.json"
-"$node_bin" "$(winpath "$script")" --profile-out "$(winpath "$profA")"
+"$node_bin" "$script" --profile-out "$profA"
 set +e
-"$node_bin" "$(winpath "$script")" --check "$(winpath "$profA")" >/dev/null 2>&1
+"$node_bin" "$script" --check "$profA" >/dev/null 2>&1
 rcIdentical=$?
 set -e
 if [ "$rcIdentical" -eq 0 ]; then pass "case c: --check exits 0 against an identical committed profile"; else fail "case c: --check identical" "rc=$rcIdentical"; fi
@@ -292,9 +262,9 @@ const fs = require('fs');
 const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
 p.alwaysOn = !p.alwaysOn;
 fs.writeFileSync(process.argv[2], JSON.stringify(p, null, 2) + '\n');
-" "$(winpath "$profA")" "$(winpath "$profB")"
+" "$profA" "$profB"
 set +e
-driftOut=$("$node_bin" "$(winpath "$script")" --check "$(winpath "$profB")" 2>&1)
+driftOut=$("$node_bin" "$script" --check "$profB" 2>&1)
 rcDrift=$?
 set -e
 if [ "$rcDrift" -eq 1 ] && grepq "$driftOut" -F "alwaysOn"; then
@@ -306,17 +276,17 @@ fi
 # ── case d: idempotence — two runs byte-identical ───────────────────────
 profC="$work/profile-c.json"
 profD="$work/profile-d.json"
-"$node_bin" "$(winpath "$script")" --profile-out "$(winpath "$profC")"
-"$node_bin" "$(winpath "$script")" --profile-out "$(winpath "$profD")"
+"$node_bin" "$script" --profile-out "$profC"
+"$node_bin" "$script" --profile-out "$profD"
 if cmp -s "$profC" "$profD"; then pass "case d: two --profile-out runs are byte-identical"; else fail "case d: idempotence (profile)" "$(diff "$profC" "$profD" || true)"; fi
 
 deltaC="$work/delta-c.json"
 deltaD="$work/delta-d.json"
-"$node_bin" "$(winpath "$script")" --delta-out "$(winpath "$deltaC")"
-"$node_bin" "$(winpath "$script")" --delta-out "$(winpath "$deltaD")"
+"$node_bin" "$script" --delta-out "$deltaC"
+"$node_bin" "$script" --delta-out "$deltaD"
 if cmp -s "$deltaC" "$deltaD"; then pass "case d: two --delta-out runs are byte-identical"; else fail "case d: idempotence (delta)" "$(diff "$deltaC" "$deltaD" || true)"; fi
 
-# ── case e: cadence armed/off from the stubbed schtasks ─────────────────
+# ── case e: cadence armed/off from the stubbed crontab ──────────────────
 cadenceCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const c = j.profile.cadences;
@@ -327,7 +297,7 @@ for (const id of ['graphmap','qmd']) {
 }
 console.log(problems.join('|'));
 " <<< "$outA")
-if [ -z "$cadenceCheck" ]; then pass "case e: cadence armed/off reflects the stubbed schtasks CSV"; else fail "case e: cadence detection" "$cadenceCheck"; fi
+if [ -z "$cadenceCheck" ]; then pass "case e: cadence armed/off reflects the stubbed crontab"; else fail "case e: cadence detection" "$cadenceCheck"; fi
 
 # ── case oo: profile.cadences carries ONLY cadence-registry.json ids
 # — a non-registry cadence (drift-fix,
@@ -370,7 +340,7 @@ FIX_REPO_NOCADREG="$work/repo-nocadreg"
 cp -r "$FIX_REPO" "$FIX_REPO_NOCADREG"
 rm -f "$FIX_REPO_NOCADREG/scripts/himmelctl/lib/cadence-registry.json"
 set +e
-cadRegFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_NOCADREG")" "$node_bin" "$(winpath "$script")" --json 2>&1)
+cadRegFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_NOCADREG" "$node_bin" "$script" --json 2>&1)
 rcCadRegFail=$?
 set -e
 if [ "$rcCadRegFail" -eq 2 ] && grepq "$cadRegFailOut" -F "cadences"; then
@@ -400,7 +370,7 @@ const problems = [];
 if (!beyond.includes('FAKE_TOKEN')) problems.push('FAKE_TOKEN name missing from keysBeyondGeneratedBlock');
 if (beyond.includes('KNOWN_SECRET')) problems.push('KNOWN_SECRET should be excluded (it is in the generated block)');
 console.log(problems.join('|'));
-" "$(winpath "$deltaC")")
+" "$deltaC")
 if [ -z "$nameCheck" ]; then pass "case f: FAKE_TOKEN's NAME appears in delta.envKeys.keysBeyondGeneratedBlock; KNOWN_SECRET's does not"; else fail "case f: env-key name accounting" "$nameCheck"; fi
 
 # ── case g: scrub-failure message never leaks the regex or the matched text ──
@@ -457,7 +427,7 @@ if [ -z "$flowNamesCheck" ]; then pass "case h: delta.observability.flowNames is
 # not a clean "absent"). --json must exit 2 and name the field, not silently
 # emit devOverlay:false.
 set +e
-devOverlayFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_NOLIB")" "$node_bin" "$(winpath "$script")" --json 2>&1)
+devOverlayFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_NOLIB" "$node_bin" "$script" --json 2>&1)
 rcDevOverlayFail=$?
 set -e
 if [ "$rcDevOverlayFail" -eq 2 ] && grepq "$devOverlayFailOut" -F "devOverlay"; then
@@ -467,11 +437,11 @@ else
 fi
 
 # ── case j: alwaysOn-degraded (failed scheduler query, no bridge proof) ────
-# A schtasks stub that fails loudly (not the trusted empty-scheduler rc=1
+# A crontab stub that fails loudly (not the trusted empty-crontab rc=1
 # signature) with bridge persistence undetectable must exit 2 naming
 # 'alwaysOn' rather than silently reading as alwaysOn:false.
 set +e
-alwaysOnFailOut=$(HIMMEL_CAPTURE_SCHTASKS_CMD="node $(winpath "$work/fakeschtasks-fail.mjs")" "$node_bin" "$(winpath "$script")" --json 2>&1)
+alwaysOnFailOut=$(PATH="$work/bin-fail:$PATH" "$node_bin" "$script" --json 2>&1)
 rcAlwaysOnFail=$?
 set -e
 if [ "$rcAlwaysOnFail" -eq 2 ] && grepq "$alwaysOnFailOut" -F "alwaysOn"; then
@@ -484,7 +454,7 @@ fi
 # A corrupt template must not render as "nothing enabled beyond template"
 # (a false-clean diff) — templateReadFailed must be true and the dependent
 # diff arrays must be null, not [].
-templateFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_BADTPL")" "$node_bin" "$(winpath "$script")" --json)
+templateFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_BADTPL" "$node_bin" "$script" --json)
 templateFailCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const p = j.delta.plugins;
@@ -498,7 +468,7 @@ if [ -z "$templateFailCheck" ]; then pass "case k: a corrupt settings-template.j
 
 # ── case l: non-git repo root still works (the primaryCheckoutRoot fallback) ──
 set +e
-nonGitOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_NONGIT")" "$node_bin" "$(winpath "$script")" --json 2>&1)
+nonGitOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_NONGIT" "$node_bin" "$script" --json 2>&1)
 rcNonGit=$?
 set -e
 if [ "$rcNonGit" -eq 0 ]; then
@@ -508,14 +478,8 @@ else
 fi
 
 # ── case m: classifyCrontabError distinguishes empty-crontab from a real failure ──
-# The POSIX cadence probe itself can't run
-# hermetically on this platform — computeCadences()'s useSchtasks gate is
-# `process.platform === 'win32' || HIMMEL_CAPTURE_SCHTASKS_CMD`, so on a
-# real win32 host the POSIX branch never executes regardless of env, and a
-# bare-name `crontab` PATH stub can't be exec'd without shell:true (verified
-# ENOENT, same gotcha the schtasks stub's own comment documents). So this
-# case unit-tests the exported pure classifier directly with synthetic
-# error-shaped objects instead.
+# Unit-tests the exported pure classifier directly with synthetic
+# error-shaped objects, one per signature.
 classifyOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
 const { classifyCrontabError } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
@@ -574,7 +538,7 @@ FIX_REPO_NOADOPTER="$work/repo-noadopter"
 cp -r "$FIX_REPO" "$FIX_REPO_NOADOPTER"
 rm -rf "$FIX_REPO_NOADOPTER/.git" "$FIX_REPO_NOADOPTER/scripts/himmelctl"
 set +e
-askableFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_NOADOPTER")" "$node_bin" "$(winpath "$script")" --json 2>&1)
+askableFailOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_NOADOPTER" "$node_bin" "$script" --json 2>&1)
 rcAskableFail=$?
 set -e
 if [ "$rcAskableFail" -eq 2 ] && grepq "$askableFailOut" -F "askableIds"; then
@@ -588,7 +552,7 @@ fi
 FIX_CONFIG_BADREG="$work/config-badreg/.claude"
 mkdir -p "$FIX_CONFIG_BADREG/handover" "$FIX_CONFIG_BADREG/channels/telegram"
 printf '{ not valid json' > "$FIX_CONFIG_BADREG/handover/registry.json"
-badRegOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_BADREG")" "$node_bin" "$(winpath "$script")" --json)
+badRegOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_BADREG" "$node_bin" "$script" --json)
 badRegCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const h = j.delta.handover;
@@ -611,7 +575,7 @@ OBS_BADENTRY="$work/observability-badentry.json"
 cat > "$OBS_BADENTRY" <<'EOF'
 { "flows": [], "expected_tasks": ["T1", { "name": "T2", "leakField": "SHOULD-NEVER-APPEAR-MARKER" }], "expected_disabled_tasks": ["T3"] }
 EOF
-badEntryOut=$(HIMMEL_OBSERVABILITY_CONFIG="$(winpath "$OBS_BADENTRY")" "$node_bin" "$(winpath "$script")" --json)
+badEntryOut=$(HIMMEL_OBSERVABILITY_CONFIG="$OBS_BADENTRY" "$node_bin" "$script" --json)
 if grepq "$badEntryOut" -F "SHOULD-NEVER-APPEAR-MARKER"; then
   fail "case q: a non-string expected_tasks entry's nested field must never appear in output"
 else
@@ -629,40 +593,6 @@ if [ -z "$badEntryCheck" ]; then
   pass "case q: non-string expected_tasks entries are dropped and counted in nonStringEntriesDropped"
 else
   fail "case q: expected_tasks non-string filtering" "$badEntryCheck"
-fi
-
-# ── case r: a present-but-Disabled scheduled task reads 'off', not armed
-# — before the fix only the name column was
-# parsed, so any present task (regardless of Status) counted as armed ──────
-disabledOut=$(HIMMEL_CAPTURE_SCHTASKS_CMD="node $(winpath "$work/fakeschtasks-disabled.mjs")" run_json)
-disabledCheck=$("$node_bin" -e "
-const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-const problems = [];
-if (j.delta.cadences.nonRegistryCadences['drift-fix'] !== 'off') problems.push('drift-fix should be off (Disabled status), got ' + j.delta.cadences.nonRegistryCadences['drift-fix']);
-if (j.delta.cadences.statusUnrecognized.length !== 0) problems.push('statusUnrecognized should be empty for a cleanly Disabled task, got ' + JSON.stringify(j.delta.cadences.statusUnrecognized));
-console.log(problems.join('|'));
-" <<< "$disabledOut")
-if [ -z "$disabledCheck" ]; then
-  pass "case r: a present-but-Disabled scheduled task reads cadences['drift-fix']='off', not armed"
-else
-  fail "case r: disabled-task status handling" "$disabledCheck"
-fi
-
-# ── case s: an unrecognized Status string (e.g. localized Windows) fails
-# TOWARD armed but is flagged in delta.cadences.statusUnrecognized ─────────
-unrecognizedOut=$(HIMMEL_CAPTURE_SCHTASKS_CMD="node $(winpath "$work/fakeschtasks-unrecognized.mjs")" run_json)
-unrecognizedCheck=$("$node_bin" -e "
-const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-const problems = [];
-if (j.delta.cadences.nonRegistryCadences['drift-fix'] !== 'armed') problems.push('drift-fix should be armed (unknown status fails toward armed), got ' + j.delta.cadences.nonRegistryCadences['drift-fix']);
-if (!j.delta.cadences.statusUnrecognized.includes('HIMMEL-DriftFix')) problems.push('statusUnrecognized should name HIMMEL-DriftFix, got ' + JSON.stringify(j.delta.cadences.statusUnrecognized));
-if (j.delta.cadences.statusUnrecognized.includes('Adobe Updater')) problems.push('statusUnrecognized should NOT include unrelated task Adobe Updater, got ' + JSON.stringify(j.delta.cadences.statusUnrecognized));
-console.log(problems.join('|'));
-" <<< "$unrecognizedOut")
-if [ -z "$unrecognizedCheck" ]; then
-  pass "case s: an unrecognized Status string fails toward armed and is named in delta.cadences.statusUnrecognized; unrelated third-party tasks are excluded (scope-filtering)"
-else
-  fail "case s: status-unrecognized handling" "$unrecognizedCheck"
 fi
 
 # ── case t: matchCadenceGroups skips commented-out crontab lines —
@@ -695,7 +625,7 @@ fi
 # present-and-empty ─────────────────────────
 OBS_MALFORMED="$work/observability-malformed.json"
 printf '{ this is not valid json' > "$OBS_MALFORMED"
-malformedObsOut=$(HIMMEL_OBSERVABILITY_CONFIG="$(winpath "$OBS_MALFORMED")" run_json)
+malformedObsOut=$(HIMMEL_OBSERVABILITY_CONFIG="$OBS_MALFORMED" run_json)
 malformedObsCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const o = j.delta.observability;
@@ -817,9 +747,9 @@ const home = os.homedir();
 const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
 p.vault.path = home + '/leaked/real/path';
 fs.writeFileSync(process.argv[2], JSON.stringify(p, null, 2) + '\n');
-" "$(winpath "$profA")" "$(winpath "$profLeak")"
+" "$profA" "$profLeak"
 set +e
-leakDriftOut=$("$node_bin" "$(winpath "$script")" --check "$(winpath "$profLeak")" 2>&1)
+leakDriftOut=$("$node_bin" "$script" --check "$profLeak" 2>&1)
 rcLeakDrift=$?
 set -e
 homeVal=$("$node_bin" -e "console.log(require('os').homedir())")
@@ -890,7 +820,7 @@ fi
 # nonexistent directory) printed raw; this was the one emit path scrubText()
 # didn't cover yet. ──────────────────────────────────────────────────────────
 set +e
-writeFailOut=$("$node_bin" "$(winpath "$script")" --profile-out "$homeVal/cap2307-write-fail-dir/nested/out.json" 2>&1)
+writeFailOut=$("$node_bin" "$script" --profile-out "$homeVal/cap2307-write-fail-dir/nested/out.json" 2>&1)
 rcWriteFail=$?
 set -e
 if [ "$rcWriteFail" -eq 2 ] && grepq "$writeFailOut" -F "<HOME>" && ! grepq "$writeFailOut" -F "$homeVal"; then
@@ -911,7 +841,7 @@ FIX_REPO_NOGUARDRAIL="$work/repo-noguardrail"
 cp -r "$FIX_REPO" "$FIX_REPO_NOGUARDRAIL"
 rm -rf "$FIX_REPO_NOGUARDRAIL/.git" "$FIX_REPO_NOGUARDRAIL/scripts/guardrails"
 set +e
-summaryDegradedOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_NOGUARDRAIL")" "$node_bin" "$(winpath "$script")" 2>&1)
+summaryDegradedOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_NOGUARDRAIL" "$node_bin" "$script" 2>&1)
 rcSummaryDegraded=$?
 set -e
 if [ "$rcSummaryDegraded" -eq 0 ] && grepq "$summaryDegradedOut" -F "devOverlay=unknown (probe degraded)" && ! grepq "$summaryDegradedOut" -F "devOverlay=false"; then
@@ -926,7 +856,7 @@ fi
 FIX_CONFIG_BADHUD="$work/config-badhud/.claude"
 mkdir -p "$FIX_CONFIG_BADHUD/handover" "$FIX_CONFIG_BADHUD/channels/telegram"
 printf '{ not valid json' > "$FIX_CONFIG_BADHUD/claude-hud.json"
-badHudOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_BADHUD")" "$node_bin" "$(winpath "$script")" --json)
+badHudOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_BADHUD" "$node_bin" "$script" --json)
 badHudCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const h = j.delta.hud;
@@ -948,7 +878,7 @@ fi
 # requires BOTH fileExists AND enabled, with fileExists-but-disabled and an
 # undeterminable systemctl state each flagged distinctly. Unit-tested
 # directly on synthetic inputs (same pattern as classifyCrontabError/case m)
-# since the systemd path itself isn't reachable hermetically on win32. ──────
+# since the systemd path itself isn't reachable hermetically. ──────────────
 decideBridgeOut=$("$node_bin" --input-type=module -e "
 import { pathToFileURL } from 'node:url';
 const { decideBridgePersistence } = await import(pathToFileURL(process.env.CAPTURE_SCRIPT_PATH).href);
@@ -981,7 +911,7 @@ fi
 FIX_CONFIG_QEMPTY="$work/config-qempty/.claude"
 mkdir -p "$FIX_CONFIG_QEMPTY/handover" "$FIX_CONFIG_QEMPTY/channels/telegram"
 printf 'TELEGRAM_BOT_TOKEN=""\n' > "$FIX_CONFIG_QEMPTY/channels/telegram/.env"
-qEmptyOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_QEMPTY")" run_json)
+qEmptyOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_QEMPTY" run_json)
 qEmptyCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -997,7 +927,7 @@ fi
 FIX_CONFIG_HASHCOMMENT="$work/config-hashcomment/.claude"
 mkdir -p "$FIX_CONFIG_HASHCOMMENT/handover" "$FIX_CONFIG_HASHCOMMENT/channels/telegram"
 printf 'TELEGRAM_BOT_TOKEN=# not configured\n' > "$FIX_CONFIG_HASHCOMMENT/channels/telegram/.env"
-hashCommentOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_HASHCOMMENT")" run_json)
+hashCommentOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_HASHCOMMENT" run_json)
 hashCommentCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1013,7 +943,7 @@ fi
 FIX_CONFIG_QNONEMPTY="$work/config-qnonempty/.claude"
 mkdir -p "$FIX_CONFIG_QNONEMPTY/handover" "$FIX_CONFIG_QNONEMPTY/channels/telegram"
 printf 'TELEGRAM_BOT_TOKEN="realtoken123-marker"\n' > "$FIX_CONFIG_QNONEMPTY/channels/telegram/.env"
-qNonemptyOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_QNONEMPTY")" run_json)
+qNonemptyOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_QNONEMPTY" run_json)
 if grepq "$qNonemptyOut" -F "realtoken123-marker"; then
   fail "case ff: the token VALUE (realtoken123-marker) must never appear in output"
 else
@@ -1038,7 +968,7 @@ fi
 # basename of the model file named by WHISPER_MODEL or found at the default path.
 WHISPER_TEST_MODEL="$work/whisper/ggml-large-v3-turbo.bin"
 touch "$WHISPER_TEST_MODEL"
-ggOut=$(WHISPER_MODEL="$(winpath "$WHISPER_TEST_MODEL")" run_json)
+ggOut=$(WHISPER_MODEL="$WHISPER_TEST_MODEL" run_json)
 ggCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1065,7 +995,7 @@ git -C "$FIX_REPO_QEMPTY_HANDOVER" config user.email "fixture@test.local"
 git -C "$FIX_REPO_QEMPTY_HANDOVER" config user.name "fixture"
 git -C "$FIX_REPO_QEMPTY_HANDOVER" add -A
 git -C "$FIX_REPO_QEMPTY_HANDOVER" commit -q -m "fixture"
-qEmptyHandoverOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_QEMPTY_HANDOVER")" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
+qEmptyHandoverOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_QEMPTY_HANDOVER" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
 qEmptyHandoverCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1097,7 +1027,7 @@ git -C "$FIX_REPO_QNONEMPTY_HANDOVER" config user.email "fixture@test.local"
 git -C "$FIX_REPO_QNONEMPTY_HANDOVER" config user.name "fixture"
 git -C "$FIX_REPO_QNONEMPTY_HANDOVER" add -A
 git -C "$FIX_REPO_QNONEMPTY_HANDOVER" commit -q -m "fixture"
-qNonemptyHandoverOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_QNONEMPTY_HANDOVER")" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
+qNonemptyHandoverOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_QNONEMPTY_HANDOVER" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
 qNonemptyHandoverCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1131,7 +1061,7 @@ git -C "$FIX_REPO_CONF" add -A
 git -C "$FIX_REPO_CONF" commit -q -m "fixture"
 mkdir -p "$HOME/.himmel"
 printf 'HANDOVER_DIR=/fake/conf/handover\nLUNA_VAULT_PATH=/fake/conf/vault\n' > "$HOME/.himmel/himmel.conf"
-confOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_CONF")" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
+confOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_CONF" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
 confCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1195,7 +1125,7 @@ git -C "$FIX_REPO_HASHUNSET" config user.email "fixture@test.local"
 git -C "$FIX_REPO_HASHUNSET" config user.name "fixture"
 git -C "$FIX_REPO_HASHUNSET" add -A
 git -C "$FIX_REPO_HASHUNSET" commit -q -m "fixture"
-hashUnsetOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_HASHUNSET")" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
+hashUnsetOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_HASHUNSET" HANDOVER_DIR='' LUNA_VAULT_PATH='' run_json)
 hashUnsetCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1217,7 +1147,7 @@ fi
 FIX_CONFIG_QWS="$work/config-qws/.claude"
 mkdir -p "$FIX_CONFIG_QWS/handover" "$FIX_CONFIG_QWS/channels/telegram"
 printf 'TELEGRAM_BOT_TOKEN="   "\n' > "$FIX_CONFIG_QWS/channels/telegram/.env"
-qwsOut=$(CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_QWS")" run_json)
+qwsOut=$(CLAUDE_CONFIG_DIR="$FIX_CONFIG_QWS" run_json)
 qwsCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const problems = [];
@@ -1255,7 +1185,7 @@ git -C "$FIX_REPO_LANES_MM" config user.name "fixture"
 git -C "$FIX_REPO_LANES_MM" add -A
 git -C "$FIX_REPO_LANES_MM" commit -q -m "fixture"
 set +e
-lanesMmOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_LANES_MM")" run_json)
+lanesMmOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_LANES_MM" run_json)
 rcLanesMm=$?
 set -e
 lanesMmCheck=$("$node_bin" -e "
@@ -1292,7 +1222,7 @@ git -C "$FIX_REPO_LANES_NN" config user.name "fixture"
 git -C "$FIX_REPO_LANES_NN" add -A
 git -C "$FIX_REPO_LANES_NN" commit -q -m "fixture"
 set +e
-lanesNnOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_LANES_NN")" run_json)
+lanesNnOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_LANES_NN" run_json)
 rcLanesNn=$?
 set -e
 lanesNnCheck=$("$node_bin" -e "
@@ -1329,7 +1259,7 @@ mkdir -p "$FIX_CONFIG_OD_DISABLED"
 cat > "$FIX_CONFIG_OD_DISABLED/settings.json" <<'EOF'
 { "enabledPlugins": { "a@mp": true, "od1@mp": false } }
 EOF
-odDisabledOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_OD")" CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_OD_DISABLED")" run_json)
+odDisabledOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_OD" CLAUDE_CONFIG_DIR="$FIX_CONFIG_OD_DISABLED" run_json)
 odDisabledCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const p = j.delta.plugins;
@@ -1349,7 +1279,7 @@ mkdir -p "$FIX_CONFIG_OD_ENABLED"
 cat > "$FIX_CONFIG_OD_ENABLED/settings.json" <<'EOF'
 { "enabledPlugins": { "a@mp": true, "od1@mp": true } }
 EOF
-odEnabledOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_OD")" CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_OD_ENABLED")" run_json)
+odEnabledOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_OD" CLAUDE_CONFIG_DIR="$FIX_CONFIG_OD_ENABLED" run_json)
 odEnabledCheck=$("$node_bin" -e "
 const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const p = j.delta.plugins;
@@ -1374,7 +1304,7 @@ cat > "$FIX_REPO_OD_MALFORMED/docs/setup/settings-template.json" <<'EOF'
 }
 EOF
 set +e
-odMalformedOut=$(HIMMEL_CAPTURE_REPO_ROOT="$(winpath "$FIX_REPO_OD_MALFORMED")" CLAUDE_CONFIG_DIR="$(winpath "$FIX_CONFIG_OD_ENABLED")" run_json)
+odMalformedOut=$(HIMMEL_CAPTURE_REPO_ROOT="$FIX_REPO_OD_MALFORMED" CLAUDE_CONFIG_DIR="$FIX_CONFIG_OD_ENABLED" run_json)
 rcOdMalformed=$?
 set -e
 odMalformedCheck=$("$node_bin" -e "
@@ -1390,6 +1320,16 @@ if [ "$rcOdMalformed" -eq 0 ] && [ -z "$odMalformedCheck" ]; then
   pass "case ss: a malformed (array) onDemandPlugins degrades safely — no throw, no false-clean exemption"
 else
   fail "case ss: malformed onDemandPlugins handling" "rc=$rcOdMalformed $odMalformedCheck"
+fi
+
+# ── case tt: crontab is the only scheduler the capture queries — no env
+# override swaps in another scheduler binary, so REPO_ROOT is the one
+# HIMMEL_CAPTURE_* override left ────────────────────────────────────────────
+captureOverrides=$(grep -oE 'HIMMEL_CAPTURE_[A-Z_]+' "$script" | sort -u | tr '\n' ' ')
+if [ "$captureOverrides" = "HIMMEL_CAPTURE_REPO_ROOT " ]; then
+  pass "case tt: HIMMEL_CAPTURE_REPO_ROOT is the only HIMMEL_CAPTURE_* override"
+else
+  fail "case tt: capture overrides" "got: $captureOverrides"
 fi
 
 echo

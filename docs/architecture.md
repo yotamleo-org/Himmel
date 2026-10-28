@@ -305,7 +305,7 @@ flowchart TD
 
     ALERT --> TG["contact point: a webhook to<br/>grafana-cadence-hook.ts →<br/>scripts/luna/cadence-alert.sh → Telegram"]
 
-    EXP -.-> M["49 metric families, for example:<br/>flow_run_in_flight · flow_run_outcome_total · flow_run_stalled_current<br/>session_active_total · session_dead_total · subagent_active_total<br/>himmel_tool_calls_total · himmel_tool_denials_total · himmel_tool_errors_total<br/>hook_chain_budget_events_recent · lane_quota_used_pct<br/>himmel_eval_metric_value · graphify_shipped_graph_age_seconds<br/>scheduled_task_next_run_timestamp · luna_git_unpushed_commits"]
+    EXP -.-> M["42 metric families, for example:<br/>flow_run_in_flight · flow_run_outcome_total · flow_run_stalled_current<br/>session_active_total · session_dead_total · subagent_active_total<br/>himmel_tool_calls_total · himmel_tool_denials_total · himmel_tool_errors_total<br/>hook_chain_budget_events_recent · lane_quota_used_pct<br/>himmel_eval_metric_value · graphify_shipped_graph_age_seconds<br/>quiet_run_orphan_count · luna_git_unpushed_commits"]
 ```
 
 **The record that never gets written is the important one.** `SessionEnd` is a

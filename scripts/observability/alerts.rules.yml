@@ -15,8 +15,7 @@
 # change it there too — grep both files for the rule name.
 #
 # Metric provenance: scripts/observability/flow-exporter.ts (README.md
-# documents every family), except the windows_memory_* families, which come
-# straight from windows_exporter's built-in `memory` collector. Coverage table
+# documents every family). Coverage table
 # + design rationale: scripts/observability/README.md#alerting-himmel-924.
 groups:
   - name: himmel-observability
@@ -65,8 +64,8 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} has a run stalled past its deadline'
 
-      # Last-success age is a backstop even for flows with no scheduled_task_*
-      # coverage (e.g. armed-resume flows). Per-flow
+      # Last-success age is the backstop for every flow, armed-resume flows
+      # included. Per-flow
       # threshold is 2x the declared cadence_seconds (design §5), joined by
       # the `flow` label entirely in PromQL — a flow missing EITHER series
       # (no completed run ever, or no declared cadence) is silently absent
@@ -80,73 +79,10 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} last success is older than 2x its cadence'
 
-      # `on (task)` explicitly joins the two families' identical task label
-      # sets. `unless on (task) (scheduled_task_expected_disabled == 1)`
-      # exempts tasks the operator has allowlisted
-      # (ObservabilityConfig.expected_disabled_tasks) as intentionally
-      # disabled right now — but it is scoped to ONLY the `enabled == 0` arm,
-      # not the whole OR. An allowlisted task that gets DELETED entirely
-      # (scheduled_task_exists == 0) must still page: the allowlist promises
-      # continued exists/enabled coverage for anything other than the
-      # disabled state itself, and folding `unless` over the combined
-      # expression would silently swallow that deletion too.
-      - alert: HimmelScheduledTaskDisabled
-        expr: ((scheduled_task_enabled == 0) unless on (task) (scheduled_task_expected_disabled == 1)) or on (task) (scheduled_task_exists == 0)
-        for: 0m
-        labels:
-          severity: page
-        annotations:
-          summary: 'Scheduled task {{ $labels.task }} is disabled or missing'
-
-      # A flat 6 GiB threshold pages on ordinary swarm fanout. Scale by
-      # concurrent subagent count: base 6 GiB + 1 GiB per active subagent above
-      # 2 (subagent_active_total{host,subagent_type}). `sum(...)`
-      # collapses the per-host/type series to one number — station-wide
-      # fanout, not per-class, is what's wanted; `or vector(0)` guards it
-      # against an absent subagent_active_total series (no session ledger
-      # yet). `clamp_min(..., 2)` floors the count at 2 BEFORE subtracting so
-      # the multiplier can never go negative (clamp_min takes an instant
-      # vector, not a scalar, so the floor has to happen pre-scalar()); the
-      # final scalar() converts the single-element result to the number `>`
-      # needs. Tune the two literals against real swarm episodes; edit both
-      # here and in the Grafana-provisioned twin.
-      # class="other" is host-detectors.ps1's explicit catch-all
-      # for everything NOT descended from a recognized agent root (claude,
-      # codex-app-server, codex-exec, hermes-gateway, telegram-bridge,
-      # mcp-standalone) — by definition the rest of the desktop (browser,
-      # chat apps, indexers, memory compression, ...), not an agent tree. On
-      # a normal desktop it dwarfs any per-agent-scaled threshold.
-      # Excluded from the ALERT, not from the
-      # dashboard-facing agent_tree_rss_bytes series itself — same
-      # "counted, never paged, unless investigated" posture already used for
-      # the ambiguous orphan classes below.
-      - alert: HimmelAgentTreeRamRunaway
-        expr: agent_tree_rss_bytes{class!="other"} > (6442450944 + 1073741824 * scalar(clamp_min(sum(subagent_active_total) or vector(0), 2) - 2))
-        for: 10m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Agent tree class {{ $labels.class }} RSS exceeds 6 GiB'
-
-      # Orphan-shaped processes (design §4.2/§5): the default sketch is
-      # specifically "any codex-fleet/registry orphan" — the two classes with
-      # a direct 918/840 failure-mode lineage. mcp-dead-parent-unattributed
-      # and the gateway/app-server orphan classes stay dashboard-visible but
-      # unalerted by default per the design's "counted, never reaped ...
-      # unless investigated" framing for the ambiguous class.
-      - alert: HimmelOrphanProcesses
-        expr: orphan_process_count{class=~"codex-fleet|codex-exec-registry"} > 0
-        for: 30m
-        labels:
-          severity: warn
-        annotations:
-          summary: '{{ $labels.class }} orphan count is {{ $value }}'
-
-      # orphan_process_count is win32-only and does not cover quiet-run.
       # quiet_run_orphan_count is the Linux /proc gauge
       # (quiet-run-orphans.ts): kind="suite" = a quiet-run wrapper or log writer
       # reparented to init/systemd, kind="tail" = a follower with no writer.
-      # A platform that emits no series (win32) or an unreadable /proc leaves
+      # A platform that emits no series (macOS) or an unreadable /proc leaves
       # the vector empty: dark, not healthy - see README. `for: 30m` absorbs a
       # reparent window and a follower racing its writer's exit.
       - alert: HimmelQuietRunOrphans
@@ -158,15 +94,15 @@ groups:
           summary: 'quiet-run {{ $labels.kind }} orphan count is {{ $value }}'
 
       # Watcher-down (design §5): the collector itself dying must not be
-      # single-covered by rules that depend on it. Scoped to the two
-      # himmel-owned exporters (flow-exporter, windows_exporter) — Prometheus
+      # single-covered by rules that depend on it. Scoped to the
+      # himmel-owned flow-exporter — Prometheus
       # dying is not expressible as a metric Prometheus itself evaluates.
       # `for: 10m` absorbs load-induced scrape-miss bursts while staying
       # below the 15m detection ceiling for exporter death. Since `for:`
       # resets on every dip, keep_firing_for holds an already fired alert
       # through brief flaps rather than resolving and re-firing.
       - alert: HimmelWatcherDown
-        expr: up{job=~"flow-exporter|windows_exporter"} == 0
+        expr: up{job="flow-exporter"} == 0
         for: 10m
         keep_firing_for: 10m
         labels:
@@ -207,68 +143,6 @@ groups:
         annotations:
           summary: 'Host {{ $labels.host }} has {{ $value }} dead session(s)'
 
-      # Kernel-pinned File/nonpaged and Token/paged leaks require a reboot
-      # to reclaim. These rules use windows_exporter's memory collector;
-      # per-tag File/Toke attribution requires a separate poolmon exporter.
-      #
-      # Thresholds are literal defaults, same convention as
-      # HimmelAgentTreeRamRunaway above: tune by editing the expression here
-      # AND its Grafana-provisioned twin. Calibration evidence (2026-08-20/23):
-      # quiet post-boot steady state ~1.9-2 GiB, 44 min after a reboot 6.1 GiB
-      # (2.05 NP / 4.08 P), pre-reboot peak ~21 GiB (11.8 P / 9.3 NP). 12 GiB
-      # sits above every observed healthy value and well below the peak, so a
-      # warn leaves hours of headroom to attribute the leak while the causing
-      # process is still running; 18 GiB is the "act now" band.
-
-      # Absolute level, warn. `for: 15m` rides out a single scrape spike.
-      - alert: HimmelKernelPoolHigh
-        expr: windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes > 12884901888
-        for: 15m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Kernel pool total exceeds 12 GiB on {{ $labels.instance }}'
-
-      # Absolute level, page. Only a reboot reclaims kernel-pinned pool, so by
-      # this band the remaining choice is when to take the restart, not
-      # whether to.
-      - alert: HimmelKernelPoolCritical
-        expr: windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes > 19327352832
-        for: 5m
-        labels:
-          severity: page
-        annotations:
-          summary: 'Kernel pool total exceeds 18 GiB on {{ $labels.instance }} — only a reboot reclaims it'
-
-      # Slope, the rule that actually catches a leak early enough to attribute
-      # it. Both incidents were slow accumulations that a level-only alert
-      # would have caught long after the offending process exited. Measured
-      # slopes: +0.13 GiB/h quiet, +1.2 GiB/h under a 6-worker swarm. 1 GiB/h
-      # sustained for a full hour is above ordinary swarm churn and would have
-      # fired ~10 h before the 12 GiB level rule on the episode-2 curve.
-      # deriv() over a subquery (not rate/increase) because pool bytes are a
-      # gauge that legitimately falls — rate() would read every reclaim as a
-      # counter reset.
-      - alert: HimmelKernelPoolLeakRate
-        expr: deriv((windows_memory_pool_nonpaged_bytes + windows_memory_pool_paged_bytes)[1h:5m]) * 3600 > 1073741824
-        for: 1h
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Kernel pool on {{ $labels.instance }} is growing faster than 1 GiB/h'
-
-      # Commit pressure — the mechanism behind the sluggishness the operator
-      # actually noticed. Past ~0.85 Windows stops growing working sets and
-      # starts permanently trimming them (episode 2 ran soft faults at
-      # 177k-252k/sec with CPU, disk and GPU all idle).
-      - alert: HimmelCommitPressure
-        expr: windows_memory_committed_bytes / windows_memory_commit_limit > 0.85
-        for: 15m
-        labels:
-          severity: warn
-        annotations:
-          summary: 'Committed memory exceeds 85% of the commit limit on {{ $labels.instance }}'
-
       # scripts/hooks/run-hook-with-bash.js writes one row per starved chain
       # member to .claude/logs/hook-chain-skips.jsonl: `skip` means the guard
       # did not evaluate the call; `deny` means it refused fail-closed.
@@ -285,8 +159,8 @@ groups:
       #   - deny > 2: 131 firing minutes over 7 days (1.24% duty); first fires
       #     06:46 UTC, 104 minutes before the hang.
       # The alternative signal was rejected on evidence: agent_tree_process_
-      # count{class="claude"} (already exported) peaked at 451 processes at
-      # 02:05 UTC with NO hang at all, and read only 261 at the hang itself —
+      # count{class="claude"} (a Windows-only family, since removed) peaked at
+      # 451 processes at 02:05 UTC with NO hang at all, and read only 261 at the hang itself —
       # process population does not predict this failure, budget-event rate
       # does. A process-count threshold was considered and does not work here.
       - alert: HimmelHookChainBudgetPressure

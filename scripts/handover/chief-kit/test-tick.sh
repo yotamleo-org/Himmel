@@ -3032,6 +3032,27 @@ chmod +x "$W/pd-classify"
 pd_tick="$(NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TOKEN='' bash "$SUT" --doc "$pd_doc" 2>/dev/null)"
 contains 'a real tick uses the shared pool interpretation with PR ownership and chief decisions' "$pd_tick" ' pool=3/1/2/1 '
 
+# The pool snapshot classifies every version ticket (140 s on a 23-worker fleet),
+# so a slow one never holds the tick: it reads ? until the detached snapshot lands, then counts.
+# The kit is the real one, file by file, but its next-dispatchable.sh sleeps 8 s on the pool call.
+if [ -n "$_TIMEOUT_BIN" ]; then
+    real_scripts="$(cd "$HERE/../.." && pwd)"
+    sk="$W/slowrepo/scripts"
+    mkdir -p "$sk/handover/chief-kit"
+    for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f##*/}"; done
+    for f in "$real_scripts"/handover/*; do [ "${f##*/}" = chief-kit ] || ln -s "$f" "$sk/handover/${f##*/}"; done
+    for f in "$HERE"/*; do [ "${f##*/}" = next-dispatchable.sh ] || ln -s "$f" "$sk/handover/chief-kit/${f##*/}"; done
+    printf '#!/usr/bin/env bash\ncase " $* " in *" --dispositions "*) sleep 8 ;; esac\nexec bash %q "$@"\n' "$HERE/next-dispatchable.sh" > "$sk/handover/chief-kit/next-dispatchable.sh"
+    pd_slow() { NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_POOL_WAIT=1 TICK_STATE_DIR="$W/pd-slow-state" TOKEN='' "$_TIMEOUT_BIN" -k 2 6 bash "$sk/handover/chief-kit/tick.sh" --doc "$pd_doc" 2>/dev/null; }
+    pd_slow_out="$(pd_slow)"; pd_rc=$?
+    [ "$pd_rc" -eq 0 ] && pass 'a slow pool snapshot never holds the tick past its budget (HIMMEL-7609)' || fail "a slow pool snapshot held the tick past its 6 s budget (rc $pd_rc)"
+    contains 'the tick reads pool=? until the slow snapshot lands (HIMMEL-7609)' "$pd_slow_out" ' pool=? '
+    for _ in $(seq 1 40); do [ -z "$(find "$W/pd-slow-state" -name 'tick-pool-*.rows' 2>/dev/null)" ] || break; sleep 0.5; done
+    contains 'the next tick counts from the finished snapshot (HIMMEL-7609)' "$(pd_slow)" ' pool=3/1/2/1 '
+else
+    skip 'a slow pool snapshot never holds the tick: no timeout'
+fi
+
 # --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
 mk_ow 911 "Done" Task
 mk_ow 912 "wont do" Task

@@ -108,15 +108,7 @@ type FlowConfig = {
 
 export type ObservabilityConfig = {
   flows?: FlowConfig[];
-  expected_tasks?: string[];
-  // Tasks in expected_tasks the operator has allowlisted as
-  // intentionally disabled right now — exempts them from
-  // HimmelScheduledTaskDisabled without removing them from expected_tasks
-  // (so they still get scheduled_task_exists/enabled coverage for anything
-  // OTHER than the disabled state itself).
-  expected_disabled_tasks?: string[];
   vault_path?: string;
-  host_detectors_ttl_seconds?: number;
   quota_sources?: {
     claude_cache_path?: string;
     codex_sessions_dir?: string;
@@ -136,33 +128,6 @@ export type ObservabilityConfig = {
   // read time rather than trusted from this static type.
   sessions?: { stale_after_seconds?: number };
 };
-
-type ScheduledTaskSample = {
-  task: string;
-  exists: 0 | 1;
-  enabled?: 0 | 1;
-  next_run_timestamp?: number | null;
-};
-
-type SchedulerRunner = (tasks: string[]) => ScheduledTaskSample[] | Promise<ScheduledTaskSample[]>;
-
-type HostTreeSample = {
-  class: string;
-  rss_bytes: number;
-  process_count: number;
-};
-
-type HostOrphanSample = {
-  class: string;
-  count: number;
-};
-
-type HostDetectorResult = {
-  trees: HostTreeSample[];
-  orphans: HostOrphanSample[];
-};
-
-type HostDetectorRunner = () => unknown | Promise<unknown>;
 
 // luna_git_*: local-refs-only divergence read for the luna vault
 // clone. `unpushed` is null when the branch has no upstream configured (@{u}
@@ -216,8 +181,6 @@ type Cached<T> = {
 };
 
 export type ExporterCache = {
-  scheduler?: Cached<{ samples: ScheduledTaskSample[]; comments: string[] }>;
-  hostDetectors?: Cached<HostDetectorResult>;
   luna?: Cached<{ samples: string[] }>;
   lunaGit?: Cached<GitDivergenceResult>;
   // Keyed by repo_path (a single scrape may watch several corpora/repos).
@@ -239,8 +202,6 @@ export type RenderMetricsOptions = {
   toolCensusPath?: string;
   hookChainSkipLogPath?: string;
   platform?: NodeJS.Platform;
-  schedulerRunner?: SchedulerRunner;
-  hostDetectorRunner?: HostDetectorRunner;
   // Test seam for the quiet-run orphan scan's /proc root.
   procRoot?: string;
   gitRunner?: GitRunner;
@@ -1257,175 +1218,8 @@ export function hookChainSkipLogUnreadableMetrics(unreadableLogCount: number, wo
   return lines;
 }
 
-function normalizeTaskSamples(raw: unknown): ScheduledTaskSample[] {
-  const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  const samples: ScheduledTaskSample[] = [];
-  for (const item of arr) {
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const task = typeof row.task === "string" ? row.task : typeof row.Task === "string" ? row.Task : null;
-    if (!task) continue;
-    const exists = row.exists ?? row.Exists;
-    const enabled = row.enabled ?? row.Enabled;
-    const next = row.next_run_timestamp ?? row.NextRunTimestamp;
-    samples.push({
-      task,
-      exists: exists === 1 || exists === true ? 1 : 0,
-      enabled: enabled === 1 || enabled === true ? 1 : 0,
-      next_run_timestamp: typeof next === "number" && Number.isFinite(next) ? next : null,
-    });
-  }
-  return samples;
-}
-
-async function scheduledTaskMetrics(
-  config: ObservabilityConfig,
-  opts: Required<Pick<RenderMetricsOptions, "platform" | "nowMs" | "cache">> & { schedulerRunner?: SchedulerRunner },
-): Promise<{ lines: string[]; comments: string[] }> {
-  const tasks = [...(config.expected_tasks ?? [])].filter(Boolean).sort();
-  if (tasks.length === 0) return { lines: [], comments: [] };
-  const runner = opts.schedulerRunner;
-  if (opts.platform !== "win32" || !runner) {
-    return { lines: [], comments: ["# scheduled_task_* omitted: platform has no Windows Scheduled Tasks API"] };
-  }
-
-  // The disabled-allowlist is config, not a live query result,
-  // so it is read fresh every call rather than threaded through the
-  // scheduler cache above. Runtime-validated (CR-flagged): observability.json
-  // is operator-edited JSON, not trusted from the static ObservabilityConfig
-  // type — a non-array value here would throw at buildScheduledTaskLines'
-  // .filter() call, and a non-string element would leak an invalid
-  // Prometheus label value.
-  const expectedDisabledTasks = Array.isArray(config.expected_disabled_tasks)
-    ? config.expected_disabled_tasks.filter((t): t is string => typeof t === "string" && t.length > 0)
-    : [];
-
-  const key = tasks.join("\0");
-  if (opts.cache.scheduler && opts.cache.scheduler.key === key && opts.nowMs - opts.cache.scheduler.fetchedAtMs < CACHE_TTL_MS) {
-    return buildScheduledTaskLines(opts.cache.scheduler.value.samples, opts.cache.scheduler.value.comments, expectedDisabledTasks);
-  }
-
-  let samples: ScheduledTaskSample[] = [];
-  const comments: string[] = [];
-  try {
-    samples = normalizeTaskSamples(await runner(tasks));
-    const byTask = new Map(samples.map((s) => [s.task, s]));
-    samples = tasks.map((task) => byTask.get(task) ?? { task, exists: 0, enabled: 0, next_run_timestamp: null });
-  } catch {
-    comments.push("# scheduled_task_* omitted: scheduled-task query failed");
-  }
-  opts.cache.scheduler = { key, fetchedAtMs: opts.nowMs, value: { samples, comments } };
-  return buildScheduledTaskLines(samples, comments, expectedDisabledTasks);
-}
-
-function buildScheduledTaskLines(samples: ScheduledTaskSample[], comments: string[], expectedDisabledTasks: string[] = []): { lines: string[]; comments: string[] } {
-  const ordered = [...samples].sort((a, b) => a.task.localeCompare(b.task));
-  const lines: string[] = [];
-  addFamily(lines, "scheduled_task_exists", "Whether an expected Windows scheduled task exists.", "gauge",
-    ordered.map((s) => sample("scheduled_task_exists", { task: s.task }, s.exists)));
-  addFamily(lines, "scheduled_task_enabled", "Whether an expected Windows scheduled task is enabled.", "gauge",
-    ordered.map((s) => sample("scheduled_task_enabled", { task: s.task }, s.enabled ?? 0)));
-  addFamily(lines, "scheduled_task_next_run_timestamp", "Next run time as epoch seconds from a Date object, never a locale-rendered string.", "gauge",
-    ordered.flatMap((s) => s.exists && typeof s.next_run_timestamp === "number" ? [sample("scheduled_task_next_run_timestamp", { task: s.task }, s.next_run_timestamp)] : []));
-  // Tasks the operator has allowlisted as intentionally
-  // disabled right now — HimmelScheduledTaskDisabled excludes any task with
-  // a `1` here via an `unless on (task)` join. Deduped/sorted like the other
-  // task families; a task not in the allowlist is simply omitted (never
-  // emitted as 0), matching PromQL's "absent = not excluded" semantics.
-  const disabledTasks = [...new Set(expectedDisabledTasks.filter(Boolean))].sort();
-  addFamily(lines, "scheduled_task_expected_disabled", "Whether an expected Windows scheduled task is intentionally disabled by operator allowlist.", "gauge",
-    disabledTasks.map((task) => sample("scheduled_task_expected_disabled", { task }, 1)));
-  return { lines, comments };
-}
-
-function hostDetectorTtlMs(config: ObservabilityConfig): number {
-  const seconds = config.host_detectors_ttl_seconds;
-  return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : CACHE_TTL_MS;
-}
-
-function asNonNegativeNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-export function parseHostDetectorJson(raw: unknown): HostDetectorResult {
-  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("host-detectors output is not an object");
-  }
-  const row = parsed as Record<string, unknown>;
-  const treesRaw = Array.isArray(row.trees) ? row.trees : [];
-  const orphansRaw = Array.isArray(row.orphans) ? row.orphans : [];
-  return {
-    trees: treesRaw.flatMap((item) => {
-      if (!item || typeof item !== "object") return [];
-      const tree = item as Record<string, unknown>;
-      if (typeof tree.class !== "string" || !tree.class) return [];
-      return [{
-        class: tree.class,
-        rss_bytes: asNonNegativeNumber(tree.rss_bytes),
-        process_count: asNonNegativeNumber(tree.process_count),
-      }];
-    }),
-    orphans: orphansRaw.flatMap((item) => {
-      if (!item || typeof item !== "object") return [];
-      const orphan = item as Record<string, unknown>;
-      if (typeof orphan.class !== "string" || !orphan.class) return [];
-      return [{
-        class: orphan.class,
-        count: asNonNegativeNumber(orphan.count),
-      }];
-    }),
-  };
-}
-
-function hostDetectorOmitComment(reason: string): string {
-  return `# agent_tree_*/orphan_* omitted: ${reason.replace(/\s+/g, " ").trim() || "host-detectors query failed"}`;
-}
-
-async function hostDetectorMetrics(
-  config: ObservabilityConfig,
-  opts: Required<Pick<RenderMetricsOptions, "platform" | "nowMs" | "cache">> & { hostDetectorRunner?: HostDetectorRunner },
-): Promise<{ lines: string[]; comments: string[] }> {
-  const runner = opts.hostDetectorRunner;
-  if (opts.platform !== "win32" || !runner) {
-    return { lines: [], comments: [hostDetectorOmitComment("platform has no Windows process tree API")] };
-  }
-
-  const key = "host-detectors";
-  const ttlMs = hostDetectorTtlMs(config);
-  if (opts.cache.hostDetectors && opts.cache.hostDetectors.key === key && opts.nowMs - opts.cache.hostDetectors.fetchedAtMs < ttlMs) {
-    return buildHostDetectorLines(opts.cache.hostDetectors.value);
-  }
-
-  try {
-    const result = parseHostDetectorJson(await runner());
-    opts.cache.hostDetectors = { key, fetchedAtMs: opts.nowMs, value: result };
-    return buildHostDetectorLines(result);
-  } catch (e) {
-    delete opts.cache.hostDetectors;
-    const message = e instanceof Error && e.message ? e.message : "host-detectors query failed";
-    return { lines: [], comments: [hostDetectorOmitComment(message)] };
-  }
-}
-
-function buildHostDetectorLines(result: HostDetectorResult): { lines: string[]; comments: string[] } {
-  const trees = [...result.trees].sort((a, b) => a.class.localeCompare(b.class));
-  const orphans = [...result.orphans].sort((a, b) => a.class.localeCompare(b.class));
-  const lines: string[] = [];
-  addFamily(lines, "agent_tree_rss_bytes", "Working-set bytes summed by agent process tree class.", "gauge",
-    trees.map((s) => sample("agent_tree_rss_bytes", { class: s.class }, s.rss_bytes)));
-  addFamily(lines, "agent_tree_process_count", "Process count summed by agent process tree class.", "gauge",
-    trees.map((s) => sample("agent_tree_process_count", { class: s.class }, s.process_count)));
-  addFamily(lines, "orphan_process_count", "Report-only orphan-shaped process count by detector class.", "gauge",
-    orphans.map((s) => sample("orphan_process_count", { class: s.class }, s.count)));
-  return { lines, comments: [] };
-}
-
-// HimmelOrphanProcesses' source (orphan_process_count) is
-// win32-only, so this is the Linux-side orphan signal for quiet-run suites and
-// their writer-less `tail -f` followers. A separate family (not more classes on
-// orphan_process_count) keeps the win32 detector's contract untouched. An
-// unreadable /proc exports nothing, never a fabricated 0.
+// The orphan signal for quiet-run suites and their writer-less `tail -f`
+// followers. An unreadable /proc exports nothing, never a fabricated 0.
 function quietRunOrphanMetrics(platform: NodeJS.Platform, procRoot?: string): { lines: string[]; comments: string[] } {
   if (platform !== "linux") return { lines: [], comments: ["# quiet_run_orphan_count omitted: platform has no /proc"] };
   try {
@@ -2092,24 +1886,6 @@ export async function renderMetrics(options: RenderMetricsOptions = {}): Promise
   lines.push(...hookChain.comments);
   lines.push(...hookChain.lines);
   lines.push(...hookChainSkipLogUnreadableMetrics(hookChain.unreadableCount, hookChainPaths.worktreesDirUnreadable));
-
-  const scheduled = await scheduledTaskMetrics(cfg, {
-    platform: options.platform ?? process.platform,
-    nowMs,
-    cache,
-    schedulerRunner: options.schedulerRunner,
-  });
-  lines.push(...scheduled.comments);
-  lines.push(...scheduled.lines);
-
-  const host = await hostDetectorMetrics(cfg, {
-    platform: options.platform ?? process.platform,
-    nowMs,
-    cache,
-    hostDetectorRunner: options.hostDetectorRunner,
-  });
-  lines.push(...host.comments);
-  lines.push(...host.lines);
 
   const quietRun = quietRunOrphanMetrics(options.platform ?? process.platform, options.procRoot);
   lines.push(...quietRun.comments);

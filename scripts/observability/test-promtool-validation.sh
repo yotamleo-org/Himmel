@@ -155,17 +155,10 @@ nodatastate_table() {
         "himmel_flow_error|OK" \
         "himmel_flow_stalled|KeepLast" \
         "himmel_flow_last_success_age|OK" \
-        "himmel_scheduled_task_disabled|OK" \
-        "himmel_agent_tree_ram_runaway|OK" \
-        "himmel_orphan_processes|NoData" \
         "himmel_quiet_run_orphans|OK" \
         "himmel_watcher_down|OK" \
         "${PRIVATE_REPO_METRIC_UID}|OK" \
         "himmel_session_dead|NoData" \
-        "himmel_kernel_pool_high|OK" \
-        "himmel_kernel_pool_critical|OK" \
-        "himmel_kernel_pool_leak_rate|OK" \
-        "himmel_commit_pressure|OK" \
         "himmel_hook_chain_budget_pressure|NoData" \
         "himmel_hook_chain_budget_denials|NoData" \
         "himmel_hook_chain_log_unreadable|NoData" \

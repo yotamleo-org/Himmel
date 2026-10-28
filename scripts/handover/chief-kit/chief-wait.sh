@@ -39,6 +39,8 @@
 #                               by class, even at full capacity; re-wake on the bounded
 #                               pool-probe cadence until every ticket has a disposition.
 #                               tick.sh --pool-dispositions owns the interpretation.
+#                               A failed tick sample still probes: capacity=? and a
+#                               `tick-fail samples=<n> step=<step>` line stand in for the tick line.
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CHIEF_WAIT_TRACKER_STALE_MIN (default 30); once
 #                               per streak (the class-change wake fires only once).
@@ -94,10 +96,12 @@
 #                               or DIRTY:<n>m with n of 10 or more; once per state.
 #                               Each tick also starts one background refresh of a
 #                               DIRTY or FAILED page (none while one runs); no wake.
-#   WAKE tick-fail samples=<n>  CHIEF_WAIT_FAIL_WAKE consecutive samples
+#   WAKE tick-fail samples=<n> step=<step>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
-#                               broken. Once per streak; the re-arm stays quiet
-#                               until a sample succeeds.
+#                               broken. step= names the last sample's failure:
+#                               tick-timeout:<s>, tick-exit:<rc>, no-tick-line,
+#                               usage-read or missing-field:<name>. Once per streak;
+#                               the re-arm stays quiet until a sample succeeds.
 #
 # The action key is the tick fields a chief acts on: workers= (an older tick's legs=),
 # livestate=, prs=, tails=, acts= (a worker's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
@@ -429,16 +433,19 @@ old_key_names() {
     printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
 }
 
-# sample: sets tick_line and key (empty on a failed tick).
+# sample: sets tick_line and key (empty on a failed tick, with fail_step naming why).
 sample() {
-    local f v raw bank
-    key=""; cap_val=""
+    local f v raw bank rc
+    key=""; cap_val=""; fail_step=""
     # A tick that exits non-zero failed, whatever it printed first.
-    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)" || { tick_state=fail; return; }  # gnu-ok: Linux-only kit
+    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)" || {  # gnu-ok: Linux-only kit
+        rc=$?
+        case "$rc" in 124|137) fail_step="tick-timeout:${tick_timeout}s" ;; *) fail_step="tick-exit:$rc" ;; esac
+        tick_state=fail; return; }
     tick_line="$(printf '%s\n' "$raw" | grep '^TICK ' | head -n 1)"
-    if [ -z "$tick_line" ]; then tick_state=fail; return; fi
+    if [ -z "$tick_line" ]; then fail_step=no-tick-line; tick_state=fail; return; fi
     # A failed or garbled bank read is a failed sample, not a verdict.
-    bank="$(bank_word)" || { tick_state=fail; return; }
+    bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
     for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall dispatch denials closable deadwin; do
@@ -456,7 +463,7 @@ sample() {
         if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
-        if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
+        if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
         # vmrun= keeps its class only, not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
@@ -721,6 +728,21 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
+}
+# pool_watch_wake: even a full fleet, or a failed tick sample, may have silently dropped
+# version tickets. On the CHIEF_WAIT_UNDERFILL_REPOOL_SEC cadence (marker <inbox>.wait.pool)
+# probe the pool; an unresolved key prints the pool-unresolved wake and succeeds.
+pool_watch_wake() {
+    local pool_watch="$inbox.wait.pool"
+    if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
+        pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
+        touch "$pool_watch" 2>/dev/null
+        if [ -n "$pool_unresolved" ]; then
+            underfill_wake
+            return 0
+        fi
+    fi
+    return 1
 }
 # underfill_repool: succeeds (and saves the new key set) when the marker is due for a re-probe
 # and the pool's non-empty key set differs from the saved one. A failed probe reads no output and
@@ -1245,16 +1267,7 @@ while :; do
                     fi ;;
                 *)
                     rm -f "$underfill_file"
-                    # Even a full fleet may have silently dropped version tickets.
-                    pool_watch="$inbox.wait.pool"
-                    if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
-                        pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
-                        touch "$pool_watch" 2>/dev/null
-                        if [ -n "$pool_unresolved" ]; then
-                            underfill_wake
-                            exit_reason='wake-pool-unresolved'; exit 0
-                        fi
-                    fi ;;
+                    if pool_watch_wake; then exit_reason='wake-pool-unresolved'; exit 0; fi ;;
             esac
             case "$cap_val" in UNDERFILLED:*) rm -f "$inbox.wait.pool" ;; esac
             unowned_val="$(field unowned-prs "$tick_line")"
@@ -1335,6 +1348,10 @@ while :; do
         else
             pending=""
             fail_streak=$((fail_streak + 1))
+            # A failed sample never masks the pool: the wake line reads
+            # capacity=? and the failure in place of a tick line.
+            cap_val='?'; tick_line="tick-fail samples=$fail_streak step=$fail_step"
+            if pool_watch_wake; then exit_reason='wake-pool-unresolved'; exit 0; fi
             # A monitor that stays broken is an event too, but only once per
             # streak: the re-arm stays quiet until a sample succeeds.
             if [ "$fail_streak" -ge "$fail_wake" ] && ! fail_woke; then
@@ -1345,7 +1362,7 @@ while :; do
                         rm -f "$tmp" 2>/dev/null
                     fi
                 fi
-                printf 'WAKE tick-fail samples=%s\n' "$fail_streak"
+                printf 'WAKE tick-fail samples=%s step=%s\n' "$fail_streak" "$fail_step"
                 exit_reason='wake-tick-fail'; exit 0
             fi
         fi
