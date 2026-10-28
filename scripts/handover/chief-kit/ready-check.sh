@@ -506,6 +506,9 @@ cov_linked() {
 # head of the chain: a round that re-raised
 # or fixed anything there is not clean (fail-closed), a deferral later amended to fixed is no longer a deferral, and a
 # finding the branch recorded again at any later head (re-raised in between) is judged by that later row alone.
+# One exception: a chain-head finding does not make the round unclean when its effective verdict (its row plus later amends)
+# is fixed, deferred or disproved, its head (and its effective head) is not <head>, and a clean round was written after its
+# last row or amend (that round reviewed the handled code); a finding at <head> itself, or an open one, still blocks.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
 # order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
@@ -528,14 +531,18 @@ cov_ledger_keys() {
         [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and .status == "ok" and (.head | type == "string") and inchain(.head)
             and (.model | type == "string") and .model != "" and (.model | IN("claude", "claude-floor", "codex-adv") | not)
             and ((.detail // "") | tostring | startswith("trivial-descendant") | not)) | ._ln] as $clean
-        | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head))] | length > 0) as $raised
+        | (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
+        | def applied($f): [($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (.branch == null or .branch == $f.branch))];
+        def handled($f): (reduce applied($f)[] as $a ($f; . + $a.set)) as $e
+            | ($e.verdict | IN("fixed", "deferred", "disproved")) and (hm($f.head; $h) | not) and (hm($e.head; $h) | not)
+              and ((([$f._ln] + (applied($f) | map(._ln))) | max) as $last | any($clean[]; . > $last));
+        ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head) and (handled(.) | not))] | length > 0) as $raised
         | def at_head($f; $e): hm($e.head; $h)
             or ($pb != "" and $f.branch == $pb
                 and ((inchain($e.head) and (any($rows[]; .kind == "finding" and .branch == $pb and (.head | type == "string") and inchain(.head) and fk(.) == fk($f) and ._ln > $f._ln) | not))
                     or (($raised | not) and any($clean[]; . > $f._ln)
                         and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not))));
-        (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
-        | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
+        reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
             | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))

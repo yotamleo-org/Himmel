@@ -1258,6 +1258,90 @@ seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean_at "$CH_B"; seed_hop "$CH_C" "$CH
 rc=0; out="$(run)" || rc=$?
 check "chain: a cycle among the descendant rows ends and the carry still holds: exit 0" "$rc" "0"
 
+# --- terminal: a chain-head finding that is already handled (fixed, deferred or disproved) no longer makes the chain "raised" ---
+# seed_judge <verdict> [deferred_to]: the judge's finding at the reviewed head $CH_B of the chain
+seed_judge() {
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"judge","finding_id":"IF-j4130-2-G1","severity":"imp","verdict":"%s","deferred_to":"%s","fu_class":"polish","reason":"judged","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$CH_B" "$1" "${2:-}" >> "$LEDGER"
+}
+# seed_judge_amend <verdict> [deferred_to]: a later amend of that finding
+seed_judge_amend() {
+    printf '{"kind":"amend","ts":"2026-01-01T00:00:02Z","branch":"%s","target_head":"%s","finding_id":"IF-j4130-2-G1","artifact":"diff","perspective":"off","set":{"verdict":"%s","deferred_to":"%s"}}\n' "$SEED_BRANCH" "$CH_B" "$1" "${2:-}" >> "$LEDGER"
+}
+# the shape under test: an earlier-head deferral, a judge finding at the reviewed head, a trivial descendant of it, a clean codex round at the PR head after both
+pr4130_shape() {
+    reset_stubs
+    STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+    seed_deferral HIMMEL-50 "$REVHEAD"
+}
+
+pr4130_shape
+seed_judge deferred HIMMEL-201; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n- ask two: deferred -> HIMMEL-201\n'
+rc=0; out="$(run)" || rc=$?
+check "terminal: a deferred judge finding at the reviewed head does not block the earlier deferral's carry: exit 0" "$rc" "0"
+contains "terminal: deferred judge finding: check 7 passes" "$out" "[PASS] 7."
+
+pr4130_shape
+seed_judge disproved; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a disproved judge finding at the reviewed head does not block the carry: exit 0" "$rc" "0"
+
+pr4130_shape
+seed_judge agreed; seed_judge_amend deferred HIMMEL-201; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n- ask two: deferred -> HIMMEL-201\n'
+rc=0; out="$(run)" || rc=$?
+check "terminal: a judge finding deferred by a later amend does not block the carry: exit 0" "$rc" "0"
+
+pr4130_shape
+seed_judge agreed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: an open judge finding at the reviewed head still blocks the carry: exit 1" "$rc" "1"
+contains "terminal: open judge finding: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+pr4130_shape
+seed_judge agreed; seed_judge_amend agreed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: an amend that leaves the judge finding open still blocks the carry: exit 1" "$rc" "1"
+
+pr4130_shape
+seed_judge deferred HIMMEL-201; seed_judge_amend agreed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a deferred judge finding later amended back to open blocks the carry: exit 1" "$rc" "1"
+
+pr4130_shape
+seed_judge deferred HIMMEL-201; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-open","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$CH_B" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a terminal judge finding beside an open one at the chain still blocks the carry: exit 1" "$rc" "1"
+
+# a fixed finding carries only when a clean round was written after its last row or amend
+pr4130_shape
+seed_judge agreed; seed_judge_amend fixed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a judge finding fixed by an amend, then a clean round at the PR head, carries: exit 0" "$rc" "0"
+contains "terminal: fixed then clean: check 7 passes" "$out" "[PASS] 7."
+
+pr4130_shape
+seed_judge agreed; seed_clean_at "$SHA"; seed_judge_amend fixed; seed_hop "$SHA" "$CH_B"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a clean round written before the fixing amend does not carry: exit 1" "$rc" "1"
+
+pr4130_shape
+seed_clean_at "$SHA"; seed_judge fixed; seed_hop "$SHA" "$CH_B"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a clean round written before the fixed finding row does not carry: exit 1" "$rc" "1"
+
+pr4130_shape
+seed_judge fixed; seed_hop "$SHA" "$CH_B"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a fixed judge finding with no clean round after it does not carry: exit 1" "$rc" "1"
+
+pr4130_shape
+printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"judge","finding_id":"IF-j4130-2-G1","severity":"imp","verdict":"deferred","deferred_to":"HIMMEL-201","fu_class":"polish","reason":"judged","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$SHA" >> "$LEDGER"
+seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a handled finding AT the PR head still blocks the carry: exit 1" "$rc" "1"
+
 # a chain of N hops: the clean round sits N hops before the PR head
 chain_of() {
     local n="$1" i prev
