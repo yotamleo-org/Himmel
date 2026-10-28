@@ -254,6 +254,66 @@ else
 fi
 [ -z "$ASSIGN_SKIP" ] || echo "NOTE rows not applied to a leading VAR=value payload (bash runs it as a command name):$ASSIGN_SKIP"
 
+# DIAG-7120 begin (temporary, removed before the fix commit)
+# shellcheck disable=SC2088 # literal ~ is payload text the hook must see
+if [ -n "${GITHUB_ACTIONS:-}" ] || [ -e "$HERE/.diag-7120" ]; then
+  DG=$(mktemp -d "$BASE/diag.XXXXXX") || exit 1
+  mkdir -p "$DG/home"
+  git init -q -b main "$DG/repo"
+  cat > "$DG/run.pl" <<'PERL'
+use Time::HiRes qw(time);
+my ($hook, $json, $err) = @ARGV;
+my $t = time;
+my $pid = fork();
+if (!$pid) {
+  open(STDIN, '<', $json); open(STDOUT, '>', '/dev/null'); open(STDERR, '>', $err);
+  exec('env', '-i', "HOME=$ENV{DG_HOME}", "PATH=$ENV{PATH}", "PS4=$ENV{DG_PS4}", @ENV{qw(DG_E1 DG_E2)}, 'bash', split(' ', $ENV{DG_BASHOPT}), $hook) or die;
+}
+$SIG{ALRM} = sub { kill 9, $pid; print "TIMEOUT "; };
+alarm 100;
+waitpid($pid, 0);
+printf "rc=%d secs=%.2f\n", $? >> 8, time - $t;
+PERL
+  dg() { # dg LABEL HOOK COMMAND [E1 [E2 [BASHOPT]]]
+    printf '%s' "$3" > "$DG/cmd.txt"
+    jq -Rsc --arg d "$DG/repo" '{tool_name:"Bash",tool_input:{command:.},cwd:$d}' < "$DG/cmd.txt" > "$DG/in.json"
+    printf '%s: ' "$1"
+    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="${4:-A=1}" DG_E2="${5:-B=1}" DG_BASHOPT="${6:-}" DG_PS4='+ ${SECONDS} ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ' \
+        perl "$DG/run.pl" "$HERE/$2" "$DG/in.json" "$DG/err" )
+  }
+  rep() { local n=$1 out='' i=0; while [ "$i" -lt "$n" ]; do out=$out$2; i=$((i + 1)); done; printf '%s' "$out"; }
+  echo "DIAG bash=$BASH_VERSION locale: LANG=${LANG:-} LC_ALL=${LC_ALL:-} uname=$(uname -sr)"
+  for nw in 100 200 400; do
+    dg "els default n=$nw dq" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt"
+    dg "els LC_ALL=C n=$nw dq" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt" LC_ALL=C
+    dg "els default n=$nw plain" block-edit-live-settings.sh "echo $(rep "$nw" '~/.claude/x ')> /tmp/out.txt"
+    dg "els default n=$nw words" block-edit-live-settings.sh "echo $(rep "$nw" 'abcdefghij ')> /tmp/out.txt"
+  done
+  dg "els default n=800 dq" block-edit-live-settings.sh "echo $(rep 800 '~/.cl$"a"ude/x ')> /tmp/out.txt"
+  dg "els trace n=120 dq" block-edit-live-settings.sh "echo $(rep 120 '~/.cl$"a"ude/x ')> /tmp/out.txt" A=1 B=1 -x
+  echo "-- trace lines per second:"; awk '{print $2}' "$DG/err" | sort -n | uniq -c | head -40
+  echo "-- trace top sites:"; awk '{print $3}' "$DG/err" | sort | uniq -c | sort -rn | head -25
+  for pw in 500 1000 2000; do
+    P=$(rep "$pw" 'true ')
+    dg "qmd pad=$pw pipe-to-sh" block-bare-qmd-query.sh "${P}; echo qmd query x | sh"
+    dg "qmd pad=$pw 2>&1 pipe-to-sh" block-bare-qmd-query.sh "${P}; echo qmd query x 2>&1 | sh"
+    dg "qmd pad=$pw bare verb" block-bare-qmd-query.sh "${P}; qmd query x"
+    dg "qmd pad=$pw status+words" block-bare-qmd-query.sh "qmd status; ${P}"
+  done
+  dg "qmd 2>&1 trace pad=300" block-bare-qmd-query.sh "$(rep 300 'true '); echo qmd query x 2>&1 | sh" A=1 B=1 -x
+  echo "-- qmd trace lines per second:"; awk '{print $2}' "$DG/err" | sort -n | uniq -c | head -20
+  echo "-- qmd trace top sites:"; awk '{print $3}' "$DG/err" | sort | uniq -c | sort -rn | head -15
+  dg "prcl plain" guard-pr-check-literal.sh 'bash scripts/cr/pr-check-context.sh'
+  echo "-- prcl plain stderr:"; head -c 600 "$DG/err"; echo
+  dg "prcl ansi-c" guard-pr-check-literal.sh "\$'bash' scripts/cr/pr-check-context.sh"
+  echo "-- prcl ansi-c stderr:"; head -c 800 "$DG/err"; echo
+  dg "prcl ansi-c trace" guard-pr-check-literal.sh "\$'bash' scripts/cr/pr-check-context.sh" A=1 B=1 -x
+  echo "-- prcl trace tail:"; tail -25 "$DG/err" | cut -c1-200
+  rm -rf "$DG"
+  exit 0
+fi
+# DIAG-7120 end
+
 # ---- the differential ---------------------------------------------------------
 nshapes=0
 while IFS= read -r g; do
