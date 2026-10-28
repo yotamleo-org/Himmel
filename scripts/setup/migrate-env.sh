@@ -46,9 +46,11 @@
 # run, and a key whose two sides differ still stops with nothing removed.
 #
 # Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
-# node, or the backup, copy or verify failed (no line removed from .env), or
-# the final rewrite of .env failed (restore it from the printed backup);
-# 2 usage; 3 nothing written: an agent session, no terminal, or not a y.
+# node, the account's home could not be read from its passwd entry, or the
+# backup, copy or verify failed (no line removed from .env), or the final
+# rewrite of .env failed (restore it from the printed backup); 2 usage;
+# 3 nothing written: an agent session or no terminal without the consent
+# key, or not a y.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
