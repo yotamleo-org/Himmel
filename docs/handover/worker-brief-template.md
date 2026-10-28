@@ -159,9 +159,14 @@ template_version: 3
 > :12-25).
 
 > **Contract:**
-> 1. LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write
->    the bullet with `scripts/handover/chief-kit/append-results.sh <doc>
->    "LIVE ..."` (worker-preface.md), never the Edit tool. A bullet never
+> 1. Acquire the lock with
+>    `bash /absolute/repo/scripts/handover/queue-lock.sh acquire /absolute/handover.md`.
+>    LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write
+>    the bullet with
+>    `bash /absolute/repo/scripts/handover/chief-kit/append-results.sh /absolute/handover.md "LIVE ..."`
+>    (worker-preface.md), never the Edit tool. The chief replaces the example
+>    paths with this repo's and this doc's literal absolute paths before dispatch.
+>    No variable, loop or xargs around a guarded script. A bullet never
 >    contains `>`; write `→` or `to`. The LIVE bullet moves the
 >    ticket to In Progress and the PR open to In Review, by script
 >    (worker-preface.md); do not transition it by hand.

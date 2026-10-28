@@ -28,8 +28,10 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
   `WRAPPED` / `PARKED-BANK` / `RESUMED` is invisible. [prose]
 - **Write every marker bullet with `append-results.sh`, never the Edit tool:**
-  `bash <repo>/scripts/handover/chief-kit/append-results.sh <doc> "<MARKER> …"`
-  appends at the true EOF and stamps `HH:MM`. **A bullet never contains `>`**:
+  `bash /absolute/repo/scripts/handover/chief-kit/append-results.sh /absolute/handover.md "<MARKER> …"`
+  (replace both example paths with the brief's literal absolute paths).
+  No variable, loop or xargs around a guarded script. It appends at the true
+  EOF and stamps `HH:MM`. **A bullet never contains `>`**:
   write `→` or `to`. [prose]
 - **A `FINDING` stays your status until you retire it** with
   `- HH:MM RESOLVED — ruling received, see chief message` as soon as you act on
@@ -64,13 +66,17 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 
 ## Before you start
 
-1. `bash <repo>/scripts/handover/queue-lock.sh acquire <doc>` — the launcher
-   already exported `HANDOVER_DIR`, so type no prefix; `<doc>` is the
-   **absolute** path (a bare name is not relativized). Your LIVE bullet carries
-   the release-token in backticks plus `effort=$CLAUDE_CODE_EFFORT_LEVEL`
-   `model=<id>` read from your env; release it at WRAP.
+1. `bash /absolute/repo/scripts/handover/queue-lock.sh acquire /absolute/handover.md`
+   — replace both example paths with the brief's literal absolute paths. The
+   launcher already exported `HANDOVER_DIR`, so type no prefix; a bare doc name
+   is not relativized. No variable, loop or xargs around a guarded script.
+   Your LIVE bullet carries the release-token in backticks plus the literal
+   `effort=<level> model=<id>` from the launcher's `Worker launch:` line in
+   this prompt; do not probe the environment (`env` / `printenv`). Release the
+   lock at WRAP.
 2. Paste `git log -1 --format=%H` and `git merge-base --is-ancestor <base sha> HEAD`.
-3. Run `bash scripts/lib/usage-preflight.sh`.
+3. Run this as its own bare command, with no prefix, chain or appended command:
+   `bash scripts/lib/usage-preflight.sh`.
 
 ## How you work
 
