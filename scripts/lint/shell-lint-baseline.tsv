@@ -192,12 +192,8 @@ scripts/cr/triviality-gate.sh	errexit	1
 scripts/docs/check-dev-graph.sh	prim-tmpdir	1
 scripts/docs/check-doc-terms.sh	errexit	1
 scripts/docs/check-llms-links.sh	errexit	1
-scripts/eval/ci-metrics.sh	prim-tmpdir	1
-scripts/eval/lane-quality/pilot-4869/sandbox.sh	prim-tmpdir	1
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	gnu-flag	1
-scripts/eval/lane-quality/prune-history.sh	prim-tmpdir	1
 scripts/eval/lane-quality/run.sh	prim-tmpdir	1
-scripts/eval/lane-quality/tasks/class-sweep/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/tasks/cr-fix/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/tasks/dispatch-chores/fixture/lq-work/chores/a.sh	errexit	1
 scripts/eval/lane-quality/tasks/dispatch-chores/fixture/lq-work/chores/b.sh	errexit	1
@@ -208,13 +204,10 @@ scripts/eval/lane-quality/tasks/dispatch-chores/reference/lq-work/chores/c.sh	er
 scripts/eval/lane-quality/tasks/shell-red-green/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/test-trajectory.sh	gnu-flag	1
 scripts/eval/qmd-quality/backfill-ledger.sh	mktemp	1
-scripts/eval/qmd-quality/qmd-burst-proof.sh	prim-tmpdir	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	gnu-flag	1
-scripts/eval/review-panel/run.sh	prim-tmpdir	1
 scripts/eval/stability-scorecard.sh	prim-lock	1
 scripts/eval/test-worktree-latency-curve.sh	errexit	1
 scripts/eval/worktree-latency-curve.sh	errexit	1
-scripts/eval/worktree-latency-curve.sh	prim-tmpdir	1
 scripts/gen-changelog.sh	errexit	1
 scripts/git/classify-branches.sh	mktemp	1
 scripts/git/restore-to-head.sh	prim-tmpdir	1

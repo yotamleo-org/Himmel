@@ -83,7 +83,9 @@ if [ -n "$token" ]; then
   auth=(-K -)
 fi
 
-dir="$(mktemp -d "${TMPDIR:-/tmp}/qmd-burst-proof.XXXXXX")" || fail 2 "could not create a temp dir"
+# shellcheck source=../../lib/prim.sh
+. "$LIB_DIR/../../lib/prim.sh" || fail 2 "cannot load scripts/lib/prim.sh"
+dir="$(tmpdir)" || fail 2 "could not create a temp dir"
 trap 'rm -rf "$dir"' EXIT
 
 # one_call <i>: writes "<ms> <class>" to $dir/<i>; class is ok | busy | noreply |
