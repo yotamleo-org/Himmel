@@ -893,7 +893,7 @@ const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
 const crLoopSection = (() => {
     const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null, prs: null, merged: null },
-        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror ' },
+        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror (HIMMEL-6390)' },
         versions: [], restructure_open: null, before: CR_BEFORE,
         cadence: { stale_after_days: CR_CADENCE_STALE_DAYS, proposals_days: null, proposals_stale: true, restructure_days: null, restructure_stale: true } };
     trend.cr_loop = out;
