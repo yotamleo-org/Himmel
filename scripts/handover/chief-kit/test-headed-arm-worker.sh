@@ -178,6 +178,7 @@ export XDG_RUNTIME_DIR="$tmp/pinned-xdg-runtime"
 # cache dir; pinned so this suite never writes into the operator's real
 # ~/.claude/himmel (a suite must not touch shared state).
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
+export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
 # the re-dispatch refusal reads page/ack records from this dir;
 # pinned so no ambient ~/.himmel/state record can refuse (or pass) a case here.
 export HIMMEL_DENIAL_ACK_DIR="$tmp/pinned-denial-acks"
@@ -2119,6 +2120,9 @@ HEADED_ARM_WORKER_PROFILES="$composed/profiles.mjs" HEADED_ARM_WORKER_PREFLIGHT=
   bash "$SCRIPT" --lane claudex --profile worker-impl HIMMEL-composed "some/doc.md" "$composed/signal" "$PAST" "$composed/log" >/dev/null 2>&1 || rc=$?
 check "composition: real wrapper + shim reaches claudex" "$rc" "0"
 check "composition: lane env reaches the backend" "$(cat "$composed/lane-env" 2>/dev/null || true)" "$(printf '1\nhigh')"
+contains "launch identity: claudex prompt carries resolved effort and model" \
+  "$(cat "$composed/HIMMEL-composed.worker-preface.md" 2>/dev/null || true)" \
+  "Worker launch: effort=high model=gpt-6.1-sol"
 rc=0
 node - "$composed" "$HERE/../../../docs/handover/worker-preface.md" <<'NODE' || rc=$?
 const assert = require('node:assert/strict');
@@ -2127,7 +2131,8 @@ const [dir, profilePreface] = process.argv.slice(2);
 const preface = `${dir}/HIMMEL-composed.worker-preface.md`;
 const claudexPreface = profilePreface.replace('worker-preface.md', 'worker-preface-claudex.md');
 assert.strictEqual(fs.readFileSync(preface, 'utf8'),
-  fs.readFileSync(profilePreface, 'utf8') + fs.readFileSync(claudexPreface, 'utf8'));
+  fs.readFileSync(profilePreface, 'utf8').replace('\n', '\n\nWorker launch: effort=high model=gpt-6.1-sol\n') +
+  fs.readFileSync(claudexPreface, 'utf8'));
 assert.deepStrictEqual(fs.readFileSync(`${dir}/args`, 'utf8').trimEnd().split('\n'), [
   '--settings', `${dir}/HIMMEL-composed.leg-settings.json`,
   '--append-system-prompt-file', preface,
@@ -3445,6 +3450,17 @@ wait_record "$d34i" || true
 env34i="$(cat "$d34i/env-record" 2>/dev/null || true)"
 check "34i full native launch, WORKER_SESSION_EFFORT=high: exit 0" "$rc" "0"
 contains "34i full native launch, WORKER_SESSION_EFFORT=high: the armed process env carries high" "$env34i" "CLAUDE_CODE_EFFORT_LEVEL=high"
+contains "launch identity: native prompt carries resolved effort and model" \
+  "$(cat "$d34i/HIMMEL-9999-worker-34i.worker-preface.md" 2>/dev/null || true)" \
+  "Worker launch: effort=high model=claude-sonnet-5"
+
+rc=0
+out_identity="$(HEADED_ARM_LAUNCHER_ENV=CLAUDE_CODE_EFFORT_LEVEL=low WORKER_SESSION_EFFORT=high \
+  bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-7961-identity "$some_doc" \
+  /tmp/nosig 99999999999 "$tmp/identity.log" claude-sonnet-5 2>&1)" || rc=$?
+check "launch identity: profiled dry run succeeds" "$rc" "0"
+contains "launch identity: dry run previews effective prompt, not requested effort" "$out_identity" \
+  "Worker launch: effort=low model=claude-sonnet-5"
 
 # 34j. A caller-preset EMPTY launcher token is still the launcher token: the
 # effort line reports its (empty) value and source, never WORKER_SESSION_EFFORT's.
@@ -4897,6 +4913,57 @@ HANDOVER_REGISTRY="$reg47" RUN_WORKER_ARGS=--no-profile run_worker "$d47c" "$tmp
 wait_record "$d47c" || true
 check "47c an explicit WORKER_SESSION_REPO launch: exit 0" "$rc" "0"
 contains "47c an explicit WORKER_SESSION_REPO still wins" "$(cat "$d47c/record" 2>/dev/null || true)" "--workdir $tmp/repo47c"
+# A same-repo worktree must not fall back to the launcher's primary checkout.
+harness47="$tmp/harness47"; mkdir -p "$harness47"
+git -C "$harness47" init -q
+git -C "$harness47" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$harness47" worktree add -q -b fix/harness-47 "$harness47/.claude/worktrees/fix+harness-47"
+wt47h="$harness47/.claude/worktrees/fix+harness-47"
+mk_launcher_tree "$harness47"
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt47h" > "$doc47"
+d47h="$tmp/c47h"; mk_launch_stubs "$d47h" "HIMMEL-47-harness"
+rc=0
+HANDOVER_REGISTRY="$reg47_none" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" KONSOLE_CMD="$d47h/konsole" PGREP_CMD="$d47h/pgrep" \
+  HEADED_ARM_PROC="$d47h/proc" HEADED_ARM_LOCK_DIR="$d47h/locks" \
+  bash "$harness47/scripts/handover/chief-kit/headed-arm-worker.sh" --no-profile \
+  HIMMEL-47-harness "$doc47" "$d47h/signal" "$PAST" "$d47h/log" claude-sonnet-5 >/dev/null 2>&1 || rc=$?
+wait_record "$d47h" || true
+check "47d same-repo worktree launch: exit 0" "$rc" "0"
+contains "47d same-repo session starts in resume_cwd, not main" \
+  "$(cat "$d47h/record" 2>/dev/null || true)" "--workdir $wt47h"
+# Relative launch logs still yield profile files readable from the selected worktree.
+for lane47 in native claudex; do
+  name47="HIMMEL-47-relative-$lane47"
+  d47r="$tmp/c47r-$lane47"; mk_launch_stubs "$d47r" "$name47"
+  model47=claude-sonnet-5; [ "$lane47" != claudex ] || model47=gpt-6.1-sol
+  rc=0
+  (
+    cd "$harness47" || exit 1
+    HANDOVER_REGISTRY="$reg47_none" PLUGIN_PROFILES_REGISTRY="$mcpreg" \
+      HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+      KONSOLE_CMD="$d47r/konsole" PGREP_CMD="$d47r/pgrep" \
+      HEADED_ARM_PROC="$d47r/proc" HEADED_ARM_LOCK_DIR="$d47r/locks" \
+      bash "$harness47/scripts/handover/chief-kit/headed-arm-worker.sh" --profile mcp-empty --lane "$lane47" \
+      "$name47" "$doc47" "$d47r/signal" "$PAST" "../c47r-$lane47/log" "$model47"
+  ) >"$d47r/worker-out" 2>&1 || rc=$?
+  wait_record "$d47r" || true
+  check "47e $lane47 relative-log launch exits 0" "$rc" "0"
+  env47r="$(cat "$d47r/env-record" 2>/dev/null || true)"
+  contains "47e $lane47 settings path is absolute" "$env47r" "WORKER_SESSION_PROFILE_SETTINGS=$d47r/$name47.leg-settings.json"
+  contains "47e $lane47 preface path is absolute" "$env47r" "WORKER_SESSION_PROFILE_PREFACE=$d47r/$name47.worker-preface.md"
+  contains "47e $lane47 MCP path is absolute" "$env47r" "WORKER_SESSION_PROFILE_MCP_CONFIG=$d47r/$name47.leg-mcp.json"
+  rc=0
+  (
+    cd "$wt47h" || exit 1
+    WORKER_SESSION_CLAUDE_BIN=true \
+      WORKER_SESSION_PROFILE_SETTINGS="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_SETTINGS=//p')" \
+      WORKER_SESSION_PROFILE_PREFACE="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_PREFACE=//p')" \
+      WORKER_SESSION_PROFILE_MCP_CONFIG="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_MCP_CONFIG=//p')" \
+      bash "$HERE/../../lanes/worker-claude-launcher.sh" --version
+  ) >"$d47r/shim-out" 2>&1 || rc=$?
+  check "47e $lane47 real shim reads profile artifacts from worktree cwd" "$rc" "0"
+done
 some_doc="$some_doc_47"
 
 echo "---"
