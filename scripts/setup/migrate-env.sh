@@ -155,9 +155,9 @@ bdir="$confdir/env-backups"
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 apply_cmd=$(printf 'bash %q --env %q' "$HERE/migrate-env.sh" "$envfile")
-poldir=$(_himmel_policy_dir) || poldir=""
+poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
 consent=0 cv=""
-if [ -n "$poldir" ] && [ -f "$poldir/config.json" ] \
+if [ -f "$poldir/config.json" ] \
     && cv=$(_himmel_policy_json "$poldir/config.json" ENV_MIGRATION_CONSENT) \
     && [ "$(_himmel_policy_strict ENV_MIGRATION_CONSENT "${cv#ENV_MIGRATION_CONSENT=}")" = 0 ]; then
     consent=1
@@ -175,7 +175,6 @@ else
     fi
 fi
 command -v node >/dev/null 2>&1 || { echo "migrate-env: node is needed to write and verify the config; nothing written." >&2; exit 1; }
-[ -n "$poldir" ] || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
 if [ "$consent" -eq 0 ]; then
     printf 'Move these keys now (backup first)? [y/N] '
     answer=""
