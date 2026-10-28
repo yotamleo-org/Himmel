@@ -320,11 +320,13 @@ if [ "$now_owner" != "$owner" ] || [ "$now_gowner" != "$gowner" ]; then
     fail 5 "lost the review-counter or qid lock before the renames; nothing was granted"
 fi
 trap 'undo; release; exit 5' INT TERM HUP
+# prim-ok: two staged files are renamed in a fixed order under two locks, with undo; atomic_write publishes one stream
 if ! mv "$tmp_verd" "$verd_f"; then
     rm -f "$tmp_verd"
     undo
     fail 5 "cannot record the judge record $record as consumed for $branch"
 fi
+# prim-ok: the second rename of the staged pair; see the verdict rename above
 if ! mv "$tmp_round" "$round_f"; then
     undo
     fail 5 "cannot persist the granted round for $branch"

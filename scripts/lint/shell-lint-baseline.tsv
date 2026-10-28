@@ -234,10 +234,6 @@ scripts/handover/auto-commit.sh	mktemp	1
 scripts/handover/cap-reset-time.sh	errexit	1
 scripts/handover/chief-kit/chief-wait.sh	prim-atomic	2	renamed from console-wait.sh
 scripts/handover/chief-kit/chief-wait.sh	prim-lock	1	renamed from console-wait.sh
-scripts/handover/chief-kit/denial-ack-lib.sh	prim-atomic	1
-scripts/handover/chief-kit/go.sh	prim-atomic	2
-scripts/handover/chief-kit/grant-round.sh	prim-atomic	2
-scripts/handover/chief-kit/judge-ladder.sh	prim-lock	1
 scripts/handover/chief-kit/launch-cloud.sh	errexit	1
 scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-digest-step.sh with its 10 findings; the old path is a forwarder, so git sees no rename
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1
@@ -248,9 +244,6 @@ scripts/handover/chief-kit/test-inbox-send.sh	gnu-flag	1
 scripts/handover/chief-kit/test-next-dispatchable.sh	gnu-flag	1
 scripts/handover/chief-kit/test-ops-run.sh	gnu-flag	1
 scripts/handover/chief-kit/tick.sh	mktemp	1
-scripts/handover/chief-kit/wrap-merged.sh	prim-atomic	1
-scripts/handover/chief-kit/write-verdict.sh	prim-atomic	1
-scripts/handover/chief-kit/write-verdict.sh	prim-lock	1
 scripts/handover/chief/chief.sh	errexit	1
 scripts/handover/chief/chief-bus-exec.sh	kill-after	1
 scripts/handover/chief/test-chief.sh	gnu-flag	2
@@ -258,8 +251,6 @@ scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
 scripts/handover/hop.sh	errexit	1
 scripts/handover/hop.sh	gnu-flag	2
-scripts/handover/merge-on-green.sh	prim-canon	1
-scripts/handover/merge-on-green.sh	prim-tmpdir	1
 scripts/handover/pr-merge.sh	errexit	1
 scripts/handover/pr-open.sh	errexit	1
 scripts/handover/register-state.sh	errexit	1
