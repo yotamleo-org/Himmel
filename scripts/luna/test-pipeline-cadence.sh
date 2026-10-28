@@ -1465,7 +1465,7 @@ assert_rc "a vault cd failure sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # previous night's log to .log.prev, and that is where the first skip lives.
 printf '#!/bin/sh\necho SKIPPED-BANK\n' > "$TMP_ROOT/bank-skip-stub.sh"
 chmod +x "$TMP_ROOT/bank-skip-stub.sh"
-sed "s#[^ ]*bank-preflight\\.sh#$TMP_ROOT/bank-skip-stub.sh#" "$FIRE_DIR/pipeline-harvest.sh" > "$FIRE_DIR/pipeline-harvest-bankskip.sh"
+sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub.sh#" "$FIRE_DIR/pipeline-harvest.sh" > "$FIRE_DIR/pipeline-harvest-bankskip.sh"
 reset_alerts
 use_claude ok
 sh "$FIRE_DIR/pipeline-harvest.sh" || true

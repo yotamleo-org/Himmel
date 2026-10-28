@@ -8,7 +8,7 @@ construction; see "PR/CI join" below.
 
 | Input | Source |
 |---|---|
-| per-session tokens | `scripts/lib/bank-attribution.sh` output, reused not re-parsed |
+| per-session tokens | `scripts/lib/usage-attribution.sh` output, reused not re-parsed |
 | automated review rounds, verdicts, estimated critic tokens | the automated review critic ledger (`scripts/cr/ledger-append.sh`) |
 | PR and CI facts (opt-in) | `gh pr list` / `gh run list`, only with `--repo` |
 
@@ -89,7 +89,7 @@ not end in a newline.
 A record has no compute timestamp, so the same inputs give the same bytes. The
 compute step appends a ticket's record only when its `digest` differs from that
 ticket's latest stored line; older versions stay (`usage-read.sh --all`). A
-`--print` rerun is byte-identical. Token counts follow `bank-attribution.sh`
+`--print` rerun is byte-identical. Token counts follow `usage-attribution.sh`
 exactly (per-requestId dedup), and a skipped or unreadable transcript makes the
 run fail rather than store incomplete totals.
 

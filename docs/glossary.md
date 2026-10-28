@@ -386,7 +386,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 
 | Term | Meaning | Avoid |
 |---|---|---|
-| **Bank** [usage] | The subscription usage budget (5-hour and 7-day). `scripts/lib/bank-preflight.sh` prints one verdict token (`PROCEED`, …) and always exits 0. | quota |
+| **Bank** [usage] | The subscription usage budget (5-hour and 7-day). `scripts/lib/usage-preflight.sh` prints one verdict token (`PROCEED`, …) and always exits 0. | quota |
 | **Bank lift** [weekly limit override] | `~/.himmel/state/bank-lift.json`, which relaxes the 7-day bank check. Setting it is operator-only; `block-bank-lift-writes.sh` denies every agent write. | — |
 | **Plugin profile** | A plugin set a worker launches with (`headed-arm-worker.sh --profile <name>`, defined in `scripts/lanes/plugin-profiles.json`). | — |
 | **Preface** | [`handover/worker-preface.md`](handover/worker-preface.md): the rules appended to every worker's system prompt at launch. Five prefaces exist (worker, worker claudex, worker openrouter, judge, consult), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
@@ -409,7 +409,7 @@ comment is the `ponytail:` code comment.
 | Word | What it means in this glossary | Other things it is used for | How to tell which one |
 |---|---|---|---|
 | **marker** | Two things: a status marker and the CR marker. | Nothing else now. The other former uses are renamed: sentinel file, identity variable and ponytail comment. | A status marker is the leading word of a Results bullet. The CR marker is an untracked file under `.git/cr-pending/`. |
-| **verdict** | One disposition per review finding, written by `write-verdicts.sh`. | A judge's verdict file. The one-word answer `bank-preflight.sh` prints. These are three different objects. | A review verdict sits in the CR ledger. A judge verdict is a file written for one question (`handover/verdict-template.md`). The bank token is script output. |
+| **verdict** | One disposition per review finding, written by `write-verdicts.sh`. | A judge's verdict file. The one-word answer `usage-preflight.sh` prints. These are three different objects. | A review verdict sits in the CR ledger. A judge verdict is a file written for one question (`handover/verdict-template.md`). The bank token is script output. |
 | **ledger** | The CR ledger, one row per critic that responded at a head. | The shadow ledger, the claudex inbox ledger, and the bank-preflight ledger row. | Name which one. The CR ledger is `cr-critic-scores.jsonl` in the git common dir. |
 | **board** | The chief's board, a generated HTML page of fleet state. | The Jira board, set by `JIRA_BOARD_ID`. The chief's board does not replace it. | A `JIRA_BOARD_ID` or a Jira URL means the Jira board. |
 | **tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none`. | The roadmap page `tracker.py`, until its rename ticket lands. The version-first roadmap view (HIMMEL-3990). Neither is the `TRACKER` backend. | The `TRACKER` variable means the backend. A page or a ticket means one of the others. The page is `scripts/handover/chief-kit/tracker.py`. |

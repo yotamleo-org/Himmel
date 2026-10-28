@@ -30,7 +30,7 @@ mapping: [`docs/internals/jira-plugin.md`](jira-plugin.md).
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
 weekly subscription usage budget as interactive use. Unattended
-sites preflight with `scripts/lib/bank-preflight.sh`, parse
+sites preflight with `scripts/lib/usage-preflight.sh`, parse
 `--output-format json`, and declare an
 explicit `--permission-mode` (never `bypassPermissions`). Evidence, sources +
 re-measure recipe:

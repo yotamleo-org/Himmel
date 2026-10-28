@@ -50,7 +50,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     move TO `ok` never wakes on its own either, since that's just the chief's
     own render; the key still saves, so a later move to STALE/MISSING wakes
     again) and the
-    `bank-preflight.sh` verdict word. Heartbeat, procs, fill, fleet, gql and
+    `usage-preflight.sh` verdict word. Heartbeat, procs, fill, fleet, gql and
     orphans never wake (`capacity=` wakes only through `WAKE underfilled`). An idle chief therefore takes **zero** turns.
 
     **`WAKE doctor <new ids>`** (HIMMEL-7849): the tick runs `himmel-doctor.sh`

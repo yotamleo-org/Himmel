@@ -984,20 +984,6 @@ put_lift "$OLDL" $((NOW+3600))
 ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$LIFT" clear >/dev/null 2>&1 )
 check "clear removes the lift under both names" absent:absent \
   "$([ -e "$NEWL" ] && echo present || echo absent):$([ -e "$OLDL" ] && echo present || echo absent)"
-# The old script path forwards, run directly or sourced.
-FWD="$REPO/scripts/lib/bank-lift.sh"
-put_lift "$NEWL" $((NOW+3600)) true
-check "bank-lift.sh run directly forwards to usage-lift.sh" 'usage-lift: VALID' \
-  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$FWD" show "$W/lc.json" 2>/dev/null ) | tail -1)"
-check "bank-lift.sh run directly names its replacement" 1 \
-  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; bash "$FWD" show "$W/lc.json" 2>&1 >/dev/null ) | grep -c "bank-lift.sh is deprecated: use 'usage-lift.sh' instead")"
-# shellcheck disable=SC1090
-check "bank-lift.sh sourced keeps bank_lift_valid and BANK_LIFT_STANDING" 0:true \
-  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; . "$FWD"; bank_lift_valid "$W/lc.json" >/dev/null 2>&1; printf '%s:%s' "$?" "$BANK_LIFT_STANDING" ) )"
-put_lift "$NEWL" $((NOW-10))
-# shellcheck disable=SC1090
-check "bank-lift.sh sourced keeps BANK_LIFT_REASON" 1:expired \
-  "$( ( unset USAGE_LIFT_FILE BANK_LIFT_FILE; . "$FWD"; bank_lift_valid "$W/lc.json" >/dev/null 2>&1; printf '%s:%s' "$?" "$BANK_LIFT_REASON" ) )"
 rm -f "$NEWL" "$OLDL" "$W/alt-new.json" "$W/alt-old.json"
 
 # BSD `date -j` fallback. Stub `date` so GNU `-d` fails and `-j -f`
