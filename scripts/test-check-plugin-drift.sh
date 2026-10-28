@@ -298,6 +298,7 @@ rm -rf -- "$W_NULL"
 #     above the base — in staged mode (pre-commit shape) and range mode (CI
 #     shape). Throwaway git repo fixtures — this check is inherently
 #     diff-based, unlike the directory-only --manifest-only checks above.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 W_BUMP="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-bump.XXXXXX")" || { bad "--bump-required fixture: mktemp -d failed"; exit 1; }
 (
   set -e
@@ -314,6 +315,7 @@ W_BUMP="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-bump.XXXXXX")" || { bad "--bump-requ
   git add -A
   git commit -q -m 'chore: seed plugin-a'
 )
+if git -C "$W_BUMP" ls-files --error-unmatch marketplace/plugins/plugin-a/.claude-plugin/plugin.json >/dev/null 2>&1; then ok "--bump-required fixture: seed tracks plugin-a manifest"; else bad "--bump-required fixture: seed did not track plugin-a manifest"; fi
 # Staged: a plugin edit that leaves the version alone passes.
 (cd "$W_BUMP" && printf '# skill v2\n' > marketplace/plugins/plugin-a/skills/one.md && git add -A)
 staged_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_rc=$?
@@ -382,7 +384,6 @@ rm -rf -- "$W_BUMP"
 #       the gate. Each case seeds a throwaway repo with plugin `foo` (0.1.0),
 #       applies <mutation> and stages it, then runs the staged gate.
 bump_fixture() { # <dir> <plugin-dir-name>
-  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
   (
     set -e
     mkdir -p "$1" && cd "$1"
