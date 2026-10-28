@@ -6,10 +6,10 @@ Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first, the authoritati
 
 ## Install
 
-himmel runs on top of [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `npm`/`bun`, `jq`, `python3`; `gh` optional).
+Install [Claude Code](https://claude.com/claude-code) first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `npm`/`bun`, `jq`, `python3`; `gh` optional).
 
 ```bash
-git clone https://github.com/yotamleo-org/Himmel himmel   # env-literal-ok: the canonical clone URL
+git clone https://github.com/yotamleo-org/Himmel himmel   # env-literal-ok: canonical
 node himmel/scripts/himmelctl/bin.js install --scope project   # or --scope user
 # node-less machine? run first: bash himmel/scripts/himmelctl/bootstrap.sh
 ```
