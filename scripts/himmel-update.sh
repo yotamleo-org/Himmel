@@ -2682,6 +2682,86 @@ EOF
     return 0
 }
 
+# ─── same-version plugin cache refresh ─────────────────────────
+# Claude Code caches a plugin by version, and plugin versions change only in a
+# release cut, so a merged hooks change reaches the checkout but not the cached
+# copy of the SAME version: `marketplace update` and `plugin update` both
+# report "nothing to update". `plugin uninstall` then `plugin install` re-copies
+# the checkout bytes into that version dir. This reinstalls an enabled,
+# checkout-sourced @himmel plugin whose installed version equals its plugin.json
+# version and whose cached hooks or skills differ from the checkout (the version-lag case
+# is update_installed_plugins' job). A url-sourced or source-less plugin has no
+# checkout tree to compare, so it is never touched. Runs BEFORE reconcile_plugins
+# (a reinstall re-enables), and a failed install after the uninstall is loud and
+# fails the run: a plugin must never be left uninstalled silently.
+# ponytail: compares hooks/, hooks.json and skills/ and skips a disabled plugin, compare the whole tree if commands/agents drift matters.
+
+# _plugin_cache_drift <checkout plugin tree> <installPath> — prints each file
+# under hooks/, hooks.json or skills/ that differs between the two (or exists in only one).
+_plugin_cache_drift() {
+    local tree="$1" cache="$2" f
+    { ( cd "$tree" && find hooks hooks.json skills -type f 2>/dev/null ) || true
+      ( cd "$cache" && find hooks hooks.json skills -type f 2>/dev/null ) || true
+    } | sort -u | while IFS= read -r f; do
+        cmp -s "$tree/$f" "$cache/$f" 2>/dev/null || printf '%s\n' "$f"
+    done
+}
+
+refresh_drifted_plugin_caches() {
+    local mode="${1:-apply}"   # check | apply
+    local claude_bin="${HIMMEL_UPDATE_CLAUDE_BIN:-claude}"
+    local settings="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
+    local manifest="$ROOT/marketplace/.claude-plugin/marketplace.json"
+    local installed="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+    echo "==> same-version plugin cache refresh"
+    if ! command -v "$claude_bin" >/dev/null 2>&1; then
+        echo "    skip: claude CLI not on PATH."
+        return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "    skip: jq not on PATH (cannot enumerate installed plugins)."
+        return 0
+    fi
+    if [ ! -f "$manifest" ] || [ ! -f "$installed" ] || [ ! -f "$settings" ]; then
+        echo "    skip: marketplace manifest, settings or installed-plugins state not found."
+        return 0
+    fi
+    local name src row have path want drift n=0
+    while IFS=' ' read -r name src; do
+        [ -n "$name" ] || continue
+        row="$(jq -r --arg k "$name@himmel" '[.plugins[$k][]? | select(.scope == "user")][0] | "\(.version // "") \(.installPath // "")"' "$installed" 2>/dev/null)" || row=""
+        have="${row%% *}"; path="${row#* }"
+        [ -n "$have" ] && [ -n "$path" ] && [ -d "$path" ] || continue
+        want="$(jq -r '.version // empty' "$ROOT/marketplace/$src/.claude-plugin/plugin.json" 2>/dev/null)" || want=""
+        [ -n "$want" ] && [ "$want" = "$have" ] || continue
+        drift="$(_plugin_cache_drift "$ROOT/marketplace/$src" "$path")" || drift=""
+        [ -n "$drift" ] || continue
+        n=$((n + 1))
+        if [ "$mode" = "check" ]; then
+            echo "    would reinstall $name@himmel (cache differs: $(printf '%s' "$drift" | tr '\n' ' '))"
+            continue
+        fi
+        echo "    ==> reinstall $name@himmel (cache differs from the checkout at $have)"
+        if ! "$claude_bin" plugin uninstall --keep-data "$name@himmel" </dev/null; then
+            echo "    ERROR: uninstall of $name@himmel failed; it stays installed with the stale cache." >&2
+            chain_rc=1
+            continue
+        fi
+        if ! "$claude_bin" plugin install "$name@himmel" </dev/null; then
+            echo "    ERROR: $name@himmel was uninstalled but the reinstall failed — run: claude plugin install $name@himmel" >&2
+            chain_rc=1
+        elif [ -n "$(_plugin_cache_drift "$ROOT/marketplace/$src" "$path")" ]; then
+            echo "    ERROR: $name@himmel still differs from the checkout after the reinstall (the marketplace clone may be older) — run: claude plugin marketplace update himmel, then re-run this step" >&2
+            chain_rc=1
+        fi
+    done <<EOF
+$(jq -r --slurpfile s "$settings" '.plugins[]? | select(.source | type == "string") | .name as $n
+    | select(($s[0].enabledPlugins // {})[$n + "@himmel"] == true) | "\($n) \(.source)"' "$manifest" 2>/dev/null)
+EOF
+    [ "$n" -gt 0 ] || echo "    every same-version plugin cache matches the checkout."
+    return 0
+}
+
 # _node_vs_pin <node-version> <pin> — prints match|behind|ahead|unknown.
 # Compares only as many dot-components as the pin gives (20 = major, 20.11 =
 # major.minor, 20.11.0 = major.minor.patch); a leading "v" is ignored on both.
@@ -3168,6 +3248,8 @@ Modes:
   --only <item>       run ONE step: pull marketplace jira_cli qmd_fork hermes
                       luna_template graphify cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
+                      plugin-refresh (reinstall a same-version plugin cache that
+                      differs from the checkout; exit 1 if a reinstall fails)
   --graphify-only     alias for --only graphify: clear a graphify pin-sync skip
                       from a slot with no live Claude session
   --plugins-check     just the plugin install-state report; no git, no network
@@ -3297,7 +3379,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check env_migration" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3332,12 +3414,16 @@ if [ "${1:-}" = "--only" ]; then
         toolchain)     report_toolchain apply ;;
         clis)          sync_agent_clis apply || only_rc=1 ;;
         plugins)       report_plugin_gap ;;
+        # chain_rc is only initialised further down; the refresh sets it on a
+        # failed reinstall, and an operator who asked for exactly this step
+        # gets that as the exit code.
+        plugin-refresh) chain_rc=0; refresh_drifted_plugin_caches apply; only_rc=$chain_rc ;;
         tools)         sync_probe_tools apply || only_rc=1 ;;
         drift)         report_drift apply ;;
         drift-check)   report_drift check ;;
         env_migration) run_env_migration apply || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins tools drift drift-check env_migration" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli qmd_fork hermes luna_template graphify cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -3422,6 +3508,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     sync_marketplaces check || true
     install_missing_himmel_plugins check || true
     update_installed_plugins check || true
+    refresh_drifted_plugin_caches check || true
     report_cadence_stale
     report_qmd_bun_missing
     report_toolchain check
@@ -3626,6 +3713,7 @@ sync_cli_proxy || true
 sync_marketplaces
 install_missing_himmel_plugins apply
 update_installed_plugins apply
+refresh_drifted_plugin_caches apply
 report_plugin_gap
 reconcile_plugins apply
 enable_adhd_always apply

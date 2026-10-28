@@ -89,7 +89,7 @@
         "doctor:C2-obsidian", "doctor:C6-mcp", "doctor:C15-plugins", "doctor:C15-plugins-ondemand",
         "doctor:C17-dep-readiness", "doctor:C37-vendored-skill-dupes",
         "doctor:C46-plugin-enabled-missing", "doctor:C72-design-mcp-auth",
-        "doctor:C76-duplicate-plugin-installs"
+        "doctor:C76-duplicate-plugin-installs", "doctor:C79-plugin-cache-drift"
       ]
     },
     {
