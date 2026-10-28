@@ -584,9 +584,9 @@ DONE_STATES = ('Done', 'Closed')
 def done_key(k):
     i = issues.get(k)
     return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
+# ponytail: custom Done statuses hold until listed here, upgrade path: jira get returns statusCategory
 # a live read carries only the status name, so its Done-category names are listed here
 LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
-OPEN_STATES = ('To Do', 'In Progress', 'In Review', 'IN CI')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
 live_cache = {}
@@ -618,9 +618,6 @@ def blocker_state(b):
     # None when the blocker is resolved, else its status (live when read)
     st = issues.get(b, {}).get('status')
     live = live_cache.get(b)
-    if live is not None and done_key(b):
-        # the mirror says Done: only a reopen to an open workflow status blocks, so a custom Done-category name does not
-        return '%s, live' % live if live in OPEN_STATES else None
     if live is not None:
         return None if live in LIVE_DONE else '%s, live' % live
     if done_key(b):

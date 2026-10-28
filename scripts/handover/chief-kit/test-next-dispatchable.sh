@@ -1138,7 +1138,7 @@ lacks "Done category: a mirror wont do blocker reopened live still blocks" "$reo
 closed_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="wont do" run --no-classify)"
 has "Done category: a mirror wont do blocker still wont do live is resolved" "$closed_out" "HIMMEL-9304"
 archived_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="Archived" run --no-classify)"
-has "Done category: a custom Done-category live status (Archived) is resolved" "$archived_out" "HIMMEL-9304"
+lacks "Done category: an unlisted live status (Archived) holds the dependent" "$archived_out" "HIMMEL-9304"
 M="$WORK/jira-mirror/HIMMEL"
 
 printf '\n%d failure(s)\n' "$fails"
