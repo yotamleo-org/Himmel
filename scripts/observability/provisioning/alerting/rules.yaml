@@ -26,9 +26,8 @@
 # filtering, so `gt -1` on refId B marks a rule that must NEVER use
 # noDataState: NoData.
 #
-# ponytail: five NoData rules fire on one dark-data condition, HIMMEL-2485
-# (himmel_orphan_processes,
-# himmel_session_dead, himmel_hook_chain_budget_pressure,
+# ponytail: four NoData rules fire on one dark-data condition, HIMMEL-2485
+# (himmel_session_dead, himmel_hook_chain_budget_pressure,
 # himmel_hook_chain_budget_denials, himmel_hook_chain_log_unreadable) fire
 # independently on that same one dark-data condition — a dead exporter —
 # which is already covered correctly by himmel_watcher_down's `up == 0`.
@@ -54,6 +53,23 @@
 # Prometheus datasource unreachable) pages rather than silently going quiet,
 # distinct from a query that legitimately returns nothing.
 apiVersion: 1
+
+# The Windows-only rules, removed with their metric families.
+deleteRules:
+  - orgId: 1
+    uid: himmel_scheduled_task_disabled
+  - orgId: 1
+    uid: himmel_agent_tree_ram_runaway
+  - orgId: 1
+    uid: himmel_orphan_processes
+  - orgId: 1
+    uid: himmel_kernel_pool_high
+  - orgId: 1
+    uid: himmel_kernel_pool_critical
+  - orgId: 1
+    uid: himmel_kernel_pool_leak_rate
+  - orgId: 1
+    uid: himmel_commit_pressure
 
 groups:
   - orgId: 1
