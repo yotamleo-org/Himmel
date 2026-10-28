@@ -254,72 +254,6 @@ else
 fi
 [ -z "$ASSIGN_SKIP" ] || echo "NOTE rows not applied to a leading VAR=value payload (bash runs it as a command name):$ASSIGN_SKIP"
 
-# DIAG-7120 begin (temporary, removed before the fix commit)
-# shellcheck disable=SC2088 # literal ~ is payload text the hook must see
-if [ -n "${GITHUB_ACTIONS:-}" ] || [ -e "$HERE/.diag-7120" ]; then
-  DG=$(mktemp -d "$BASE/diag.XXXXXX") || exit 1
-  mkdir -p "$DG/home"
-  git init -q -b main "$DG/repo"
-  cat > "$DG/run.pl" <<'PERL'
-use Time::HiRes qw(time);
-my ($hook, $json, $err) = @ARGV;
-my $t = time;
-my $pid = fork();
-if (!$pid) {
-  open(STDIN, '<', $json); open(STDOUT, '>', '/dev/null'); open(STDERR, '>', $err);
-  exec('env', '-i', "HOME=$ENV{DG_HOME}", "PATH=$ENV{PATH}", "PS4=$ENV{DG_PS4}", @ENV{qw(DG_E1 DG_E2)}, 'bash', split(' ', $ENV{DG_BASHOPT}), $hook) or die;
-}
-$SIG{ALRM} = sub { kill 9, $pid; print "TIMEOUT "; };
-alarm 100;
-waitpid($pid, 0);
-printf "rc=%d secs=%.2f\n", $? >> 8, time - $t;
-PERL
-  dg() { # dg LABEL HOOK COMMAND [E1 [E2 [BASHOPT]]]
-    printf '%s' "$3" > "$DG/cmd.txt"
-    jq -Rsc --arg d "$DG/repo" '{tool_name:"Bash",tool_input:{command:.},cwd:$d}' < "$DG/cmd.txt" > "$DG/in.json"
-    printf '%s: ' "$1"
-    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="${4:-A=1}" DG_E2="${5:-B=1}" DG_BASHOPT="${6:-}" DG_PS4='+ ${SECONDS} ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ' \
-        perl "$DG/run.pl" "$HERE/$2" "$DG/in.json" "$DG/err" )
-  }
-  rep() { local n=$1 out='' i=0; while [ "$i" -lt "$n" ]; do out=$out$2; i=$((i + 1)); done; printf '%s' "$out"; }
-  echo "DIAG bash=$BASH_VERSION uname=$(uname -sr) LANG=${LANG:-} LC_ALL=${LC_ALL:-}"
-  U8=LC_ALL=en_US.UTF-8
-  summ() { # every trace line that ran after a 2 s or longer gap: the gap is its own expansion
-    awk '$1 ~ /^\++$/ && $2 ~ /^[0-9]+$/ { if (p != "" && $2 - p >= 2) printf "  gap %d->%d: %s\n", p, $2, substr($0, 1, 150); p = $2 }' "$DG/err" | head -22
-  }
-  # shellcheck disable=SC2016 # the snippet is program text for a fresh bash
-  snip() { # snip LABEL LOCALE BODY — time BODY in a fresh bash over a 10 KB string
-    {
-      echo 't=$(printf "true %.0s" $(seq 2000))'
-      printf '%s\n' "$3"
-    } > "$DG/snip.sh"
-    printf '%s %s: ' "$1" "$2"
-    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="$2" DG_E2=B=1 DG_BASHOPT="" DG_PS4='+ ' perl "$DG/run.pl" "$DG/snip.sh" /dev/null "$DG/err" )
-  }
-  # shellcheck disable=SC2016 # the snippets are program text for a fresh bash
-  for lc in "$U8" LC_ALL=C; do
-    snip "class sed+tr 1 match" "$lc" 't="$t; x"; t=$(printf "%s" "$t" | sed -e "s/>&/> /g" -e "s/&>/ >/g" | tr "|;&(){}\`" "\n\n\n\n\n\n\n\n")'
-  done
-  for nw in 600 1000; do
-    dg "els n=$nw dq utf8" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8"
-  done
-  dg "els trace n=800 dq utf8" block-edit-live-settings.sh "echo $(rep 800 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8" B=1 -x
-  summ
-  P=$(rep 2000 'true ')
-  PW=$(rep 2000 'w ')
-  dg "qmd pad=2000 bare utf8" block-bare-qmd-query.sh "${P}; qmd query x" "$U8"
-  dg "qmd pad=2000 pipe-to-sh utf8" block-bare-qmd-query.sh "${P}; echo qmd query x | sh" "$U8"
-  dg "qmd pad=2000 status utf8" block-bare-qmd-query.sh "qmd status; ${PW}" "$U8"
-  dg "qmd pad=2000 bash -c utf8" block-bare-qmd-query.sh "qmd status; bash -c 'echo \$0' ${PW}" "$U8"
-  dg "qmd trace pad=2000 pipe-to-sh utf8" block-bare-qmd-query.sh "${P}; echo qmd query x | sh" "$U8" B=1 -x
-  summ
-  dg "qmd trace pad=2000 bash -c utf8" block-bare-qmd-query.sh "qmd status; bash -c 'echo \$0' ${PW}" "$U8" B=1 -x
-  summ
-  rm -rf "$DG"
-  exit 1
-fi
-# DIAG-7120 end
-
 # ---- the differential ---------------------------------------------------------
 nshapes=0
 while IFS= read -r g; do
@@ -350,7 +284,13 @@ while IFS= read -r g; do
     verdict "$hook" "$mode" "$envs" "$c"
     tk=$(known_ticket "$hook" "$id")
     if [ "$V" = deny ]; then
-      if [ -n "$tk" ]; then
+      if [ -n "$tk" ] && [ "$hook $id" = "guard-pr-check-literal.sh ansi-c-command-word" ] &&
+        { [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; }; then
+        # below bash 4.4 the guard cannot classify an ANSI-C quoted word and
+        # denies it by design (guard-pr-check-literal.sh: "cannot be classified
+        # safely by this bash version"), so the listed miss does not exist there
+        pass=$((pass+1))
+      elif [ -n "$tk" ]; then
         fail=$((fail+1)); echo "FAIL $hook $id is now denied but is listed KNOWN_FAILURES ($tk): remove the entry"
       else
         pass=$((pass+1))
