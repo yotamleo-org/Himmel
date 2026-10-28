@@ -340,6 +340,8 @@ CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/dedupe-path.sh"
+# shellcheck source=../lib/prim.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "headed-arm: cannot load scripts/lib/prim.sh" >&2; exit 2; }
 
 # The chief parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via an explicit [model].
@@ -1049,7 +1051,7 @@ headless_fail() { # headless_fail <rc> <message>
 # the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
 # still reaches the worker from the daemon.
 headless_launch() {
-    local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" tmp_settings pair
+    local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_worker_var "$name" || continue
@@ -1095,11 +1097,10 @@ headless_launch() {
         jq_args+=("${HL_KEYS[$i]}" "${HL_VALS[$i]}")
         i=$((i + 1))
     done
-    tmp_settings="$settings.tmp.$$"
+    # jq's output is held in a variable so a jq failure never reaches atomic_write (an empty publish).
     # shellcheck disable=SC2016  # $ARGS / $a / $i are jq variables, not shell ones.
-    if ! ( umask 077 && jq --args '.env = ((.env // {}) + ($ARGS.positional as $a | reduce range(0; $a | length; 2) as $i ({}; . + {($a[$i]): $a[$i + 1]})))' \
-            "${jq_args[@]}" < "$settings" > "$tmp_settings" ) || ! mv -f "$tmp_settings" "$settings"; then
-        rm -f "$tmp_settings" 2>/dev/null
+    if ! new_settings=$( umask 077 && jq --args '.env = ((.env // {}) + ($ARGS.positional as $a | reduce range(0; $a | length; 2) as $i ({}; . + {($a[$i]): $a[$i + 1]})))' \
+            "${jq_args[@]}" < "$settings" ) || ! printf '%s\n' "$new_settings" | atomic_write "$settings"; then
         headless_fail 1 "headless: could not write the worker env into $settings"
     fi
     chmod 600 "$settings" 2>/dev/null || true
@@ -1309,6 +1310,7 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
         return 1
     fi
     rm -rf "$victim" 2>/dev/null
+    # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
     if mkdir "$LOCK" 2>/dev/null; then
         stamp_or_fail_loudly
         return 0
@@ -1319,6 +1321,7 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
     return 1
 }
 claim_lock() {
+    # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
     if mkdir "$LOCK" 2>/dev/null; then
         stamp_or_fail_loudly
         return 0

@@ -1665,6 +1665,7 @@ mutant36="$mutant36dir/scripts/handover/headed-arm.sh"
 # shellcheck disable=SC2016 # single-quoted sed script; $RECORDER must stay literal
 sed 's/if \[ "\$RECORDER" = "1" \]; then/if true; then/' "$SCRIPT" > "$mutant36"
 cp "$HERE/../lib/chief-context.sh" "$mutant36dir/scripts/lib/chief-context.sh"
+cp "$HERE/../lib/prim.sh" "$mutant36dir/scripts/lib/prim.sh"
 cp "$HERE/../lib/claude-version.sh" "$mutant36dir/scripts/lib/claude-version.sh"
 # Headed-arm.sh sources its argv check from its own directory.
 cp "$HERE/argv-has-n-name.sh" "$mutant36dir/scripts/handover/argv-has-n-name.sh"
@@ -1913,6 +1914,7 @@ cp "$SCRIPT" "$d43/bare/headed-arm.sh"
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/chief-context.sh" "$d43/lib/chief-context.sh"
+cp "$HERE/../lib/prim.sh" "$d43/lib/prim.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43/lib/claude-version.sh"
 fixture_profiles "$d43"
 mk_stub "$d43" 1 alive
@@ -1938,6 +1940,7 @@ cp "$SCRIPT" "$d43b/bare/headed-arm.sh"
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/chief-context.sh" "$d43b/lib/chief-context.sh"
+cp "$HERE/../lib/prim.sh" "$d43b/lib/prim.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43b/lib/claude-version.sh"
 fixture_profiles "$d43b"
 mk_stub "$d43b" 1 alive
@@ -1968,6 +1971,7 @@ not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konso
 d43c="$tmp/c43c"; mkdir -p "$d43c/bare" "$d43c/lib"
 cp "$SCRIPT" "$d43c/bare/headed-arm.sh"
 cp "$HERE/../lib/chief-context.sh" "$d43c/lib/chief-context.sh"
+cp "$HERE/../lib/prim.sh" "$d43c/lib/prim.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43c/lib/claude-version.sh"
 fixture_profiles "$d43c"
 mk_stub "$d43c" 1 alive
@@ -2216,6 +2220,7 @@ d42="$tmp/c42"; mkdir -p "$d42/bare" "$d42/lib"
 cp "$SCRIPT" "$d42/bare/headed-arm.sh"
 # The lone copy needs its ../lib sibling to get this far at all.
 cp "$HERE/../lib/chief-context.sh" "$d42/lib/chief-context.sh"
+cp "$HERE/../lib/prim.sh" "$d42/lib/prim.sh"
 cp "$HERE/../lib/claude-version.sh" "$d42/lib/claude-version.sh"
 fixture_profiles "$d42"
 mk_stub "$d42" 1 alive
