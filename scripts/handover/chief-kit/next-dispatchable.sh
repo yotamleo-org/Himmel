@@ -624,7 +624,7 @@ def blocker_state(b):
         return None
     return st or 'not in mirror'
 
-live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review') and i['type'] not in ('Epic', 'Sub-task')
+live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
             for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
 skipped_platform = []
 cands = []
