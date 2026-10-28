@@ -1353,6 +1353,27 @@ seed_judge fixed; seed_judge agreed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SH
 rc=0; out="$(run)" || rc=$?
 check "terminal: a fixed finding row replaced by a later open row of the same identity blocks: exit 1" "$rc" "1"
 
+# the clean round must have reviewed the handled code: its head is the finding's head or a descendant of it
+# seed_judge_at <head> <verdict>: the judge's finding at <head>
+seed_judge_at() {
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"judge","finding_id":"IF-j4130-2-G1","severity":"imp","verdict":"%s","reason":"judged","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
+}
+
+pr4130_shape
+seed_judge_at "$CH_C" fixed; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"; seed_clean_at "$CH_B"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a clean round at an ANCESTOR of the fixed finding's head does not carry: exit 1" "$rc" "1"
+
+pr4130_shape
+seed_judge_at "$CH_C" fixed; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"; seed_clean_at "$CH_C"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a clean round at the fixed finding's own head carries: exit 0" "$rc" "0"
+
+pr4130_shape
+seed_judge_at "$CH_C" fixed; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a clean round at a descendant of the fixed finding's head carries: exit 0" "$rc" "0"
+
 # a chain of N hops: the clean round sits N hops before the PR head
 chain_of() {
     local n="$1" i prev
