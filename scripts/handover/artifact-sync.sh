@@ -69,12 +69,24 @@ _af_file_hash() {
     printf '%s' "$_h"
 }
 
-# record's read-modify-write runs under with_lock (scripts/lib/prim.sh) on
-# <registry>.lock: two concurrent `record` calls on the same registry would
-# otherwise race and drop each other's row (codex panel finding).
+# _af_lock <registry> -- atomic mkdir mutex around record's read-modify-write
+# (codex panel finding: two concurrent `record` calls on the same registry
+# race and can drop each other's row). mkdir is atomic (like queue-lock.sh's
+# convention) and portable to git-bash, unlike flock. Retries for up to ~10s;
+# a worker-publish cadence is human-paced, so real contention is rare and brief.
 # ponytail: a single registry-wide lock, not per-URL -- fine at this
 # operator's publish cadence; upgrade to per-URL locking if throughput ever
 # makes that a bottleneck.
+_af_lock() {
+    local _lockdir="${1}.lock" _tries=0
+    # prim-ok: with_lock waits without a deadline; record must give up after ~10s so a stalled holder cannot hang publishing
+    while ! mkdir "$_lockdir" 2>/dev/null; do
+        _tries=$((_tries + 1))
+        [ "$_tries" -lt 100 ] || _af_die "record: could not acquire lock $_lockdir after 10s -- a stale lock from a crashed run? remove it manually if so"
+        sleep 0.1
+    done
+}
+_af_unlock() { rmdir "${1}.lock" 2>/dev/null || true; }
 
 _af_registry_path() {
     local _root
@@ -106,9 +118,9 @@ cmd_slice() {
 }
 
 # _af_record_locked <registry> <url_esc> <row> -- body of record's critical
-# section, run inside with_lock. It sets no EXIT trap (that would replace the
-# one with_lock uses to release the fallback lock) and reports through its
-# return code, so the temp file is removed on every path.
+# section, run between _af_lock and _af_unlock. It sets no EXIT trap (cmd_record
+# owns the one that releases the lock) and reports through its return code, so
+# the temp file is removed on every path.
 _af_record_locked() {
     local registry="$1" url_esc="$2" row="$3" tmpf grc
     [ -f "$registry" ] || : > "$registry"
@@ -174,7 +186,13 @@ cmd_record() {
 
     # Locked read-modify-write: two concurrent `record` calls must not race
     # and drop each other's row (codex panel finding).
-    with_lock "${registry}.lock" _af_record_locked "$registry" "$url_esc" "$row" || exit "$?"
+    local rc=0
+    _af_lock "$registry"
+    trap '_af_unlock "$registry"' EXIT
+    _af_record_locked "$registry" "$url_esc" "$row" || rc=$?
+    trap - EXIT
+    _af_unlock "$registry"
+    [ "$rc" -eq 0 ] || exit "$rc"
 }
 
 cmd_check() {
