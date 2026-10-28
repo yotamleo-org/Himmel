@@ -267,7 +267,7 @@ for u in 54321 54329 61234 61239; do
 done
 if [ -n "$nouid" ] && unshare --user --map-user="$nouid" true 2>/dev/null; then
     out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; cd "$REPO" && HOME="$TMP/evil" unshare --user --map-user="$nouid" bash -c '
-        . "$1"; _himmel_policy_dir >/dev/null; printf "dir=%s|" "$?"
+        . "$1"; _himmel_policy_dir >/dev/null; printf "dir=%s|" "$?" # read-sink-ok: $1 is this repo LIB, set above
         load_policy --root "$PWD" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "policy=%s[%s]" "$?" "${CR_FLOOR_FALLBACK-}"' _ "$LIB" 2>/dev/null)
     assert_eq_fp "(i) with no passwd entry the policy dir and load_policy fail closed" "dir=1|policy=1[]" "$out"
 else
