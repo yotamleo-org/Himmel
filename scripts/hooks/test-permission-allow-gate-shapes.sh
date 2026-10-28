@@ -18,6 +18,7 @@ ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/gate-shapes.XXXXXX")" || exit 1
+T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 git init -q -b main "$T/repo" && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || exit 1
 mkdir -p "$T/repo/.claude/worktrees" "$T/plain"

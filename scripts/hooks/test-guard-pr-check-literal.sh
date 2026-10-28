@@ -110,6 +110,23 @@ need_in_err() { # need_in_err <label> <fixed-string>
 
 HR="HIMMEL_REPO=$PRIMARY"
 
+# macOS job 122539153644: the pre-4.4 tokenizer left ANSI-C escapes raw.
+mkdir -p "$TMP/legacy/hooks"
+ln -s "$(dirname "$HOOK")/../lib" "$TMP/legacy/lib"
+# shellcheck disable=SC2016 # replace version expressions, not their expanded values
+sed 's/${BASH_VERSINFO\[0\]}/3/g; s/${BASH_VERSINFO\[1\]}/2/g' "$HOOK" > "$TMP/legacy/hooks/guard-pr-check-literal.sh"
+SAVED_HOOK="$HOOK"
+HOOK="$TMP/legacy/hooks/guard-pr-check-literal.sh"
+# shellcheck disable=SC2016 # literal command payloads, never executed
+run "7120 legacy bash: hex-escaped git grep opener denies" 2 \
+    "$(payload "git grep \$'\\x2dObash' -- scripts/cr/pr-check-env.sh" "$WT")" "$HR"
+# shellcheck disable=SC2016
+run "7120 legacy bash: hex-escaped git rebase executor denies" 2 \
+    "$(payload "\$'\\x67'it rebase -x scripts/cr/pr-check-env.sh main" "$WT")" "$HR"
+run "7120 legacy bash: plain git pathspec read allows" 0 \
+    "$(payload 'git grep foo -- scripts/cr/pr-check-env.sh' "$WT")" "$HR"
+HOOK="$SAVED_HOOK"
+
 # ---- allow: every condition holds -----------------------------------------
 run "clean himmel-lane worktree root, no cr/lib diff -> allow" 0 "$(payload "$LITERAL" "$WT")" "$HR"
 [ -z "$LAST_ERR" ] || { echo "FAIL allow is silent - stderr: $LAST_ERR"; FAILED=$((FAILED + 1)); }
