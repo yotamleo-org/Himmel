@@ -74,12 +74,13 @@ fi
 # Copied/mutant renderers get a sibling resolver like the real tree; ambient
 # HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct chief arms.
 fixture_profiles() {
-  mkdir -p "$1/lanes" "$1/lib"
-  cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
-  cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/"
+  # A failed copy leaves a fixture that can pass for the wrong reason, so stop the suite.
+  mkdir -p "$1/lanes" "$1/lib" || exit 1
+  cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/" || exit 1
+  cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/" || exit 1
   # Every lib headed-arm.sh sources by its own path: bash on macOS stops at a missing one.
-  cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/"
-  [ -d "$1/bare" ] && cp "$HERE/argv-has-n-name.sh" "$1/bare/"
+  cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/" || exit 1
+  if [ -d "$1/bare" ]; then cp "$HERE/argv-has-n-name.sh" "$1/bare/" || exit 1; fi
   return 0
 }
 fails=0

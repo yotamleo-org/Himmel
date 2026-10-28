@@ -133,6 +133,7 @@ printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo %s; else exec %s "$@"; fi\n' 
 PATH="$datepin:$PATH"; export PATH
 flip0="$tmp/flipdate"; mkdir -p "$flip0"
 printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo 2099-01-01; else exec %s "$@"; fi\n' "$(command -v date)" > "$flip0/date"; chmod +x "$flip0/date"
+check "0 the date pin leads the PATH every child process of the suite inherits" "$(bash -c 'printf %s "${PATH%%:*}"')" "$datepin"
 check "0 the date pin holds the suite's day against a clock past midnight" "$(PATH="${datepin:-/nonexistent}:$flip0:$PATH" date +%F)" "$today"
 root0="$tmp/root0"; mkdir -p "$root0"
 PATH="${datepin:-/nonexistent}:$flip0:$PATH" chief_root "$root0" new --bucket midnight >/dev/null 2>&1
@@ -575,7 +576,8 @@ check "14 --deadline-min 08 parses like 8 (no octal error)" "$([ "$diff14" -le 2
 # in resolve_predecessor misses and the glob fallback is what actually runs.
 root_sp="$tmp/adj sp"
 mkdir -p "$root_sp/tester/spacerepo"
-yesterday_epoch=$(( $(date +%s) - 86400 ))
+today_epoch="$(date -u -d "$today" +%s 2>/dev/null || date -u -j -f %F "$today" +%s 2>/dev/null)"  # gnu-ok: BSD fallback follows
+yesterday_epoch=$(( today_epoch - 86400 ))
 yesterday="$(date -u -d "@$yesterday_epoch" +%F 2>/dev/null || date -u -r "$yesterday_epoch" +%F 2>/dev/null)"
 predoc15="$root_sp/tester/spacerepo/DEMO-nextleg-${yesterday}A-chief.md"
 stub_doc predecessor > "$predoc15"

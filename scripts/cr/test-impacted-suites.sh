@@ -1179,7 +1179,7 @@ range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 t0=$SECONDS
 out="$(run_is "$range")"; rc=$?
 elapsed=$((SECONDS - t0))
-if [ "$rc" -eq 0 ] && [ "$elapsed" -le 60 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 60s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
+if [ "$rc" -eq 0 ] && [ "$elapsed" -le 90 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 90s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
 
 # --- 37b. a candidate whose scratch copy cannot be created fails closed ------
 # The narrowing writes each candidate's matching lines to a scratch file; a

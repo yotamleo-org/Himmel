@@ -37,8 +37,8 @@
 set -u
 
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# wall-clock budget: 120 s on a workstation; the shared CI runner measured 191-198 s, and up to 319 s under load on 2026-10-21, so CI gets 640 s (2x the loaded measurement)
-CI_BUDGET=640
+# wall-clock budget: 120 s on a workstation; the shared CI runner measured 191-198 s, and up to 319 s under load on 2026-10-21, so CI gets 640 s (2x the loaded measurement); the macOS runner under a full cadence run measured 788-840 s on 2026-10-28, so it is 960 s
+CI_BUDGET=960
 BUDGET="${SEQ_BUDGET_SECS:-$([ -n "${CI:-}" ] && echo "$CI_BUDGET" || echo 120)}"
 SEED=6626
 BREAK=0
@@ -72,7 +72,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ORIG_PATH="$PATH"
 REALNODE="$(command -v node || true)"
 [ -n "$REALNODE" ] || fail "node is required (himmelctl status runs under it)"
-if [ -n "$KEEP" ]; then TMP="$KEEP"; mkdir -p "$TMP"; else TMP="$(mktemp -d "${TMPDIR:-/tmp}/adopt-sequences.XXXXXX")" || exit 1; TMP="$(cd "$TMP" && pwd -P)"; fi
+if [ -n "$KEEP" ]; then TMP="$KEEP"; mkdir -p "$TMP"; else TMP="$(mktemp -d "${TMPDIR:-/tmp}/adopt-sequences.XXXXXX")" || exit 1; TMP="$(cd "$TMP" && pwd -P)" || exit 1; fi
 [ -n "$KEEP" ] || trap 'rm -rf "$TMP"' EXIT
 
 # Paths whose presence after an uninstall is NOT a defect: the provenance

@@ -210,9 +210,14 @@ rm -f "$t7pid"
 # does) hands it to every descendant, and bash cannot trap or reset an inherited ignore;
 # python3 resets it to the default before the exec so the INT reaches the wrapper.
 t7dfl="$W/sigdfl.py"
-printf '%s\n' 'import os, signal, sys' 'signal.signal(signal.SIGINT, signal.SIG_DFL)' 'os.execvp(sys.argv[1], sys.argv[1:])' >"$t7dfl"
+printf '%s\n' 'import os, signal, sys' 'signal.signal(signal.SIGINT, signal.SIG_DFL)' "os.environ['PATH'] = os.environ.pop('T7PATH')" 'os.execvp(sys.argv[1], sys.argv[1:])' >"$t7dfl"
 t7py="$(command -v python3 2>/dev/null)" || t7py=""
-got="$(PATH="$d7" ${t7py:+"$t7py" -I "$t7dfl"} "$BASH_BIN" "$t7int" "$PORTF" "$t7pid" "$t7ic" 2>/dev/null)"
+# python3 starts on the caller's PATH (a pyenv shim needs more than the stub dir) and hands bash the restricted one.
+if [ -n "$t7py" ]; then
+    got="$(T7PATH="$d7" "$t7py" -I "$t7dfl" "$BASH_BIN" "$t7int" "$PORTF" "$t7pid" "$t7ic" 2>/dev/null)"
+else
+    got="$(PATH="$d7" "$BASH_BIN" "$t7int" "$PORTF" "$t7pid" "$t7ic" 2>/dev/null)"
+fi
 [ ! -s "$t7pid" ] || kill -s KILL "$(cat "$t7pid")" 2>/dev/null || true
 eq "T7 an INT sent to the wrapper reaches the command as INT (its handler ran, rc 0, not a KILL)" "$got" "rc=0"
 d7d="$(stub_dir t7d env bash sleep awk mktemp rm cat pkill sh ps)"

@@ -307,8 +307,11 @@ realtouch="$(command -v touch)"; realdate="$(command -v date)"
 printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -d ] && { echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1; }; done\nexec %s "$@"\n' "$realtouch" >"$bsd/touch"
 printf '#!/bin/sh\ncase "$1" in -v-10d) shift; exec %s -d "10 days ago" "$@" ;; -d) echo "date: illegal option -- d" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$realdate" "$realdate" >"$bsd/date"
 chmod +x "$bsd/touch" "$bsd/date"
-PATH="$bsd:$PATH" bash "$HERE/tasks/cr-fix/accept.sh" "$TMP/noop-cr-fix" "$(cat "$TMP/noop-cr-fix.fix")" >"$TMP/bsd-cr-fix.log" 2>&1
-check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d)" 'grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log"'
+git -C "$TMP/src" worktree add -q --detach "$TMP/bsd-cr-fix" HEAD
+bsdfix="$(bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix")"
+bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix" --reference >/dev/null
+PATH="$bsd:$PATH" bash "$HERE/tasks/cr-fix/accept.sh" "$TMP/bsd-cr-fix" "$bsdfix" >"$TMP/bsd-cr-fix.log" 2>&1; bsdrc=$?
+check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d), and acceptance of the reference exits 0" '[ "$bsdrc" -eq 0 ] && grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log"'
 mkdir "$TMP/bsdref"; cp "$HERE/tasks/cr-fix/reference/lq-work/cleanup-old.sh" "$TMP/bsdref/" 2>/dev/null; cp "$HERE/tasks/cr-fix/reference/lq-work/test-cleanup-old.sh.ref" "$TMP/bsdref/test-cleanup-old.sh"
 PATH="$bsd:$PATH" bash "$TMP/bsdref/test-cleanup-old.sh" >"$TMP/bsd-ref.log" 2>&1; rc=$?
 check "cr-fix: the reference own test passes on a BSD touch" '[ "$rc" -eq 0 ]'
