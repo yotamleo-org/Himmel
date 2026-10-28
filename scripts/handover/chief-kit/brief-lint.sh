@@ -56,6 +56,9 @@ case "$bare" in
         ;;
 esac
 
+# shellcheck source=../../lib/load-dotenv.sh
+. "$(dirname "$0")/../../lib/load-dotenv.sh"
+load_dotenv HANDOVER_DIR || fail "cannot load configured handover root"
 # shellcheck source=../../lib/handover-path.sh
 . "$(dirname "$0")/../../lib/handover-path.sh"
 # Without a resolved state root, only relative Writes can pass.

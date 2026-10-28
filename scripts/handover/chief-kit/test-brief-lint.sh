@@ -195,6 +195,11 @@ mk writes_state_symlink "$PA" "> **Writes:** $tmp/state/link/spec.md"
 HANDOVER_DIR="$tmp/state" expect_rc "7r absolute state symlink escaping the root is refused" 1 "$tmp/writes_state_symlink.md"
 rc=0; out="$(HANDOVER_DIR="$tmp/state" run_worker "$tmp/writes_state.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "7s launcher preserves the configured state root for absolute Writes" || bad "7s launcher lost the configured state root (rc=$rc): $out"
+mkdir -p "$tmp/dotenv-repo" || exit 1
+git init -q "$tmp/dotenv-repo" || exit 1
+printf 'HANDOVER_DIR=%s\n' "$tmp/state" > "$tmp/dotenv-repo/.env" || exit 1
+rc=0; out="$(cd "$tmp/dotenv-repo" && env -u HANDOVER_DIR HOME="$tmp/dotenv-repo" HIMMEL_CONFIG_DIR="$tmp/dotenv-repo/no-config" HIMMELCTL_CACHE_DIR="$tmp/dotenv-repo/no-cache" bash "$LINT" "$tmp/writes_state.md" 2>&1)" || rc=$?
+[ "$rc" -eq 0 ] && ok "7t absolute state Writes uses the dotenv-only root" || bad "7t dotenv-only root was not loaded (rc=$rc): $out"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7o relative Writes needs no state root" 0 "$tmp/writes_paths.md"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7p older brief needs no state root" 0 "$tmp/filled.md"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7q absolute Writes without a resolvable state root is refused" 1 "$tmp/writes_state.md"
