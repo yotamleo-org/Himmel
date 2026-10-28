@@ -222,7 +222,8 @@ registers `/srv/claude-b` and reads that file for `<id>`, then
 `resolveJournal` searches `~/.claude/projects`, `~/.claude-codex/projects` and
 `/srv/claude-b/projects` and serves `/srv/claude-b/projects/<slug>/<id>.jsonl`.
 Had `/srv/claude-b/projects` been a symlink to `/data/projects`,
-`registerConfigRoot` would have refused the root and the run would be `404`.
+`registerConfigRoot` would have refused the root and its journal would not be
+found (`404`, unless a built-in root holds the same run).
 
 `GET /agui/` serves the built page from `agui-web/dist` (`/agui` redirects
 there) with the same CSP and frame headers as every other page. It serves only
