@@ -60,7 +60,7 @@ SHAPE='
 jq -e "$SHAPE" "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH is malformed (lanes/nodes/edges/walkthroughs/coverage entries have the wrong shape)" >&2; exit 2; }
 
 # shellcheck source=../lib/prim.sh
-. "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || exit 2
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || exit 2
 TMP=$(tmpdir) || exit 2
 trap 'rm -rf "$TMP"' EXIT
 

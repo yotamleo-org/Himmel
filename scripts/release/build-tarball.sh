@@ -71,7 +71,7 @@ out="$(cd -- "$out" && pwd)"
 name="himmel-${version}-linux.tar.gz"
 top="himmel-${version}"
 # shellcheck source=../lib/prim.sh
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+. "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
 stage="$(tmpdir)" || { echo "build-tarball: cannot create a staging dir" >&2; exit 1; }
 trap 'rm -rf "$stage"' EXIT
 

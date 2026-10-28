@@ -212,7 +212,7 @@ elif [ "$STAGED" -eq 1 ]; then
         printf 'skill-lint: --staged: git diff --cached failed\n' >&2; exit 2
     fi
     # shellcheck source=../lib/prim.sh
-    . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || {
+    . "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || {
         printf 'skill-lint: --staged: cannot load scripts/lib/prim.sh\n' >&2; exit 2
     }
     STAGE_TMP="$(tmpdir)" || {
