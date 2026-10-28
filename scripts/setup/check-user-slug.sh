@@ -26,14 +26,8 @@
 # its own file.
 #
 # PLATFORM GUARD (WS5 T15) — no .ps1 twin, deliberately. This is a step of
-# scripts/setup.sh, and the Windows installer twin scripts/setup.ps1 has NO
-# USER_SLUG step at all, so there is nothing on that side to mirror; a twin
-# here would be a file no code path reaches. That asymmetry is not incidental
-# — it is evidence line 6 in the rationale below. On Windows this
-# runs under Git Bash like the rest of scripts/setup.sh's chain; it uses only
-# POSIX shell plus git, and both `--dotenv-root` sources (load-dotenv.sh,
-# user-slug.sh) are themselves bash-only libs with no PowerShell counterpart.
-# If setup.ps1 ever grows a USER_SLUG step, the twin belongs with THAT change.
+# scripts/setup.sh; it uses POSIX shell plus git, and both `--dotenv-root`
+# sources (load-dotenv.sh, user-slug.sh) are bash-only libs.
 #
 # WHY rc=3 and not rc=1. Step 0.5 used to `exit 1` here, which
 # aborted a contributor install on a stock guest with no USER_SLUG, no
@@ -55,8 +49,6 @@
 #      three sources is set.
 #   5. The abort landed BEFORE step [5/9], which is what creates .env and, under
 #      --fill-env, prompts for USER_SLUG — it pre-empted its own remedy.
-#   6. scripts/setup.ps1, the Windows twin, has no USER_SLUG step at all, so the
-#      hard failure was an unmatched asymmetry rather than a shared invariant.
 #
 # So the honest shape is to continue, and make the summary
 # say plainly that a step was left undone. rc=3 (not 0) is what lets setup.sh

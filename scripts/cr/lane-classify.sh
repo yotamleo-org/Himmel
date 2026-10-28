@@ -9,7 +9,7 @@
 # Branch-string-only by design (pure, no I/O): the spec's session-meta
 # corroboration happens at the verdict/hook layer, which fails safe (no meta ⇒
 # no verdict ⇒ no advance).
-# bash 3.2-safe; no .ps1 twin (scripts/cr runs under Git Bash on Windows).
+# bash 3.2-safe.
 set -euo pipefail
 
 lane_classify() {

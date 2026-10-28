@@ -4,9 +4,6 @@
 # step doesn't hit the network, and uses throwaway temp dirs + a fake HOME so
 # nothing touches the real ~/.claude.
 #
-# adopt.ps1 carries the same profile/scope logic for PowerShell — that twin is
-# NOT covered here; keep both in lockstep when changing either.
-#
 # Covers:
 #   1. core/project — copies the portable files, wires 4 PreToolUse hooks
 #      ($CLAUDE_PROJECT_DIR prefix), idempotent on re-run.
@@ -618,7 +615,7 @@ echo "ok: re-run over existing scaffold still wires LUNA_VAULT_PATH (uncondition
 # ── 9. hook paths forward-slashed + quoted; re-wire REPLACES a
 #       pre-existing broken backslash entry (basename dedup), keeps non-himmel ──
 h9="$work/h9"; mkdir -p "$h9/.claude"
-# seed a BROKEN backslash auto-approve entry (the adopt.ps1 bug) + a non-himmel hook
+# seed a BROKEN backslash auto-approve entry + a non-himmel hook
 printf '%s' '{"hooks":{"PreToolUse":[
   {"matcher":"Bash","hooks":[{"type":"command","command":"bash C:\\Users\\me\\Himmel/scripts/hooks/auto-approve-safe-bash.sh"}]},
   {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"C:/x/scripts/hooks/rtk-hook-guard.sh\""}]}

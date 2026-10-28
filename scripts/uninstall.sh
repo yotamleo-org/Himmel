@@ -1162,9 +1162,7 @@ restore_hook_backups() {
 # indistinguishable here from the operator's own run; the static caller guard
 # stays the only control for that shape. A same-uid process can also fake the
 # lookup itself (a PATH-shadowed `id`, getent or dscl, or an LD_PRELOAD'd
-# getpwnam) and so name a different "real" home. On win32 himmelctl always
-# spawns uninstall.ps1 (bin.js deriveUninstallCommand), so this script runs
-# there only by hand under Git-Bash — the MSYS USERPROFILE source below.
+# getpwnam) and so name a different "real" home.
 
 # real_home_resolve — the invoking user's passwd home, never read from $HOME:
 # bash's own `~<user>` expansion (getpwnam, no external binary), then

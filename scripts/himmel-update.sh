@@ -2705,8 +2705,8 @@ _node_vs_pin() {
 }
 
 # ─── node/npm/bun toolchain ────────────────────────────────────
-# Installers pin Node from .nvmrc ONCE, at install time (ubuntu.sh/win11.ps1/
-# macos.sh), and this script consumes node/npm/bun throughout (jira_cli,
+# Installers pin Node from .nvmrc ONCE, at install time (ubuntu.sh/macos.sh),
+# and this script consumes node/npm/bun throughout (jira_cli,
 # qmd_fork, the pre-push npm-audit gate...) but until now never checked
 # whether the pin had since moved. Best-effort advisory, matching
 # sync_graphify/sync_cli_proxy's shape (never gates the chain).

@@ -56,12 +56,10 @@ trap 'exit 143' TERM
 # etc.); matching them would invent phantom release sections, so the glob is
 # `v` + digit — the scheme proposed (`vMAJOR.MINOR.PATCH`, with
 # `-rc.N` pre-releases sorting inside the same glob).
-# KEEP IN SYNC with scripts/gen-changelog.ps1 $versionTagGlob.
 VERSION_TAG_GLOB='v[0-9]*'
 # The glob above is a cheap pre-filter and also matches non-version tags like
 # `v1-backup` or a bare `v1.2` (too few components) — this anchored regex is
 # the real gate: `vMAJOR.MINOR.PATCH` with an optional `-rc.1`-style suffix.
-# KEEP IN SYNC with scripts/gen-changelog.ps1 $versionTagRe.
 VERSION_TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
 
 # render <heading> [<git-log-range>] — emit one version section. An empty range
@@ -116,7 +114,6 @@ generate() {
     # squash merges) — a tag on a side branch is not orderable this way, so
     # such tags are filtered out below (with a stderr warning) before the
     # count sort even runs.
-    # KEEP IN SYNC with scripts/gen-changelog.ps1 tag ordering.
     while IFS= read -r t; do
         [ -n "$t" ] && tags+=("$t")
     done < <(
@@ -137,7 +134,6 @@ generate() {
             # failing generation. The error is recorded to
             # $mb_err_file (see above) so it fails the whole script, not just
             # this pipeline subshell.
-            # KEEP IN SYNC with scripts/gen-changelog.ps1 ancestry filter.
             mb_rc=0
             git merge-base --is-ancestor "$vt" HEAD 2>/dev/null || mb_rc=$?
             if [ "$mb_rc" -gt 1 ]; then
@@ -154,7 +150,6 @@ generate() {
             # `v0.1.0` outranks `v0.1.0-rc.1`), then tag name descending, so
             # the order is total. rank=1 (no `-` suffix) sorts ahead of
             # rank=0 (has one) under the `nr` (numeric reverse) sort below.
-            # KEEP IN SYNC with scripts/gen-changelog.ps1 $rank.
             case "$vt" in
                 (*-*) rank=0 ;;
                 (*)   rank=1 ;;
@@ -174,7 +169,6 @@ generate() {
     # tag's range is empty and the release content sits under the pre-release
     # heading. A pre-release at a different commit, or of another
     # series, keeps its own section.
-    # KEEP IN SYNC with scripts/gen-changelog.ps1 same-commit fold.
     local kept=() ft ct
     for t in ${tags[@]+"${tags[@]}"}; do
         case "$t" in
