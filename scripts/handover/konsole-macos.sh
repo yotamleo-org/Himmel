@@ -233,14 +233,12 @@ if [ -n "$TABTITLE" ]; then
     # Title via the terminal's own OSC escape rather than AppleScript: it
     # works identically in iTerm and Terminal.app, needs no Automation
     # (TCC) permission prompt, and cannot fail the launch.
-    _tmp="$RUNDIR/titled.command"
     {
         printf '#!/bin/sh\n'
         printf 'printf "\\033]0;%%s\\007" %s\n' "$(printf '%q' "$TABTITLE")"
         tail -n +2 "$CMDFILE"
-    } > "$_tmp"
-    chmod +x "$_tmp"
-    mv "$_tmp" "$CMDFILE"
+    } | atomic_write "$CMDFILE"
+    chmod +x "$CMDFILE"
 fi
 
 # Open the worker in the arming session's own iTerm window (#3602). `open -a`

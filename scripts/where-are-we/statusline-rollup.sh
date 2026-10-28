@@ -20,6 +20,9 @@
 # Test seam: --jira-cmd overrides the jira CLI (default the primary-checkout CLI).
 set -uo pipefail
 
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || exit 2
+
 key="" out="" jira_cmd=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -51,6 +54,7 @@ if [ -d "$lock" ]; then
 fi
 
 # Acquire the lock (PRIMARY gate). Held → another refresh is in flight → bail.
+# prim-ok: fail-fast, a held lock exits 0 at once; with_lock would wait for the other refresh
 mkdir "$lock" 2>/dev/null || exit 0
 trap 'rmdir "$lock" 2>/dev/null || true' EXIT
 
@@ -82,14 +86,12 @@ iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 write_cache() {
     # $1 = epic-or-empty, $2 = done, $3 = total
-    local e="$1" d="$2" t="$3" tmp
-    tmp="$out.$$.tmp"
+    local e="$1" d="$2" t="$3"
     if [ -z "$e" ]; then
-        printf '{"epic":null,"done":0,"total":0,"refreshed_at":"%s"}\n' "$iso" > "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return; }
+        printf '{"epic":null,"done":0,"total":0,"refreshed_at":"%s"}\n' "$iso" | atomic_write "$out" 2>/dev/null || true
     else
-        printf '{"epic":"%s","done":%s,"total":%s,"refreshed_at":"%s"}\n' "$e" "$d" "$t" "$iso" > "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return; }
+        printf '{"epic":"%s","done":%s,"total":%s,"refreshed_at":"%s"}\n' "$e" "$d" "$t" "$iso" | atomic_write "$out" 2>/dev/null || true
     fi
-    mv -f "$tmp" "$out" 2>/dev/null || rm -f "$tmp" 2>/dev/null
 }
 
 # 1. Parent epic via `get --json`. On a TRANSIENT failure (nonzero / timeout) do

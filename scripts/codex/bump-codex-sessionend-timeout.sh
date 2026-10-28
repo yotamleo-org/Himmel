@@ -69,6 +69,7 @@ while IFS= read -r f; do
     real="$(readlink -f "$f" 2>/dev/null)" || real="$f"  # prim-ok: resolves the symlink TARGET file; canon_path takes a directory only
     tmp="$(mktemp "$(dirname "$real")/.hooks.json.XXXXXX")" || { echo "SKIP (mktemp failed): $f" >&2; skipped=$((skipped + 1)); continue; }
     mode="$(stat -c %a "$real" 2>/dev/null || stat -f %Lp "$real" 2>/dev/null || echo 644)"
+    # prim-ok: the original mode is copied onto the temp file before it is renamed into place; atomic_write publishes mktemp's 0600
     if jq --argjson min "$MIN_TIMEOUT" "$PATCH" "$real" > "$tmp" && chmod "$mode" "$tmp" && mv "$tmp" "$real"; then
       echo "BUMPED      : $f"
     else

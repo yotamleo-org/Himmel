@@ -82,11 +82,9 @@ packaging/aur/test-pkgbuild.sh	bash32	2
 packaging/aur/test-pkgbuild.sh	gnu-flag	1
 packaging/aur/test-pkgbuild.sh	mktemp	1
 scripts/_new-worktree.sh	errexit	1
-scripts/_new-worktree.sh	prim-lock	1
 scripts/adopt.sh	errexit	1
 scripts/adopt.sh	mktemp	1
 scripts/agents-md/test-generate.sh	mktemp	1
-scripts/api-lane/bulk-call.sh	prim-lock	2
 scripts/check-ci.sh	mktemp	1
 scripts/check-marketplace-source-hermetic.sh	errexit	1
 scripts/check-marketplace-source-hermetic.sh	mktemp	2
@@ -138,7 +136,6 @@ scripts/clean.sh	errexit	1
 scripts/cleanup/test-reap-mcp-orphans.sh	mktemp	1
 scripts/codex/bump-codex-sessionend-timeout.sh	errexit	1
 scripts/codex/bump-codex-sessionend-timeout.sh	gnu-flag	1
-scripts/codex/bump-codex-sessionend-timeout.sh	prim-atomic	1
 scripts/codex/companion-liveness.sh	errexit	1
 scripts/codex/install-himmel-codex.sh	errexit	1
 scripts/codex/sanitize-plugin-hooks.sh	errexit	1
@@ -201,7 +198,6 @@ scripts/eval/lane-quality/tasks/shell-red-green/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/test-trajectory.sh	gnu-flag	1
 scripts/eval/qmd-quality/backfill-ledger.sh	mktemp	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	gnu-flag	1
-scripts/eval/stability-scorecard.sh	prim-lock	1
 scripts/eval/test-worktree-latency-curve.sh	errexit	1
 scripts/eval/worktree-latency-curve.sh	errexit	1
 scripts/gen-changelog.sh	errexit	1
@@ -288,7 +284,6 @@ scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
 scripts/handover/hop.sh	errexit	1
 scripts/handover/hop.sh	gnu-flag	2
-scripts/handover/konsole-macos.sh	prim-atomic	1
 scripts/handover/merge-on-green.sh	prim-canon	1
 scripts/handover/merge-on-green.sh	prim-tmpdir	1
 scripts/handover/pr-merge.sh	errexit	1
@@ -605,8 +600,6 @@ scripts/install/test-mcp-profile-providers.sh	errexit	1
 scripts/install/test-observability-grafana-manifest.sh	errexit	1
 scripts/install/test-observability-stack-manifest.sh	errexit	1
 scripts/install/test-operator-profile-staleness.sh	errexit	1
-scripts/judge-dir.sh	prim-lock	3
-scripts/lane-mirror-seed.sh	prim-lock	1
 scripts/lanes/bench/fixtures/T1/input/run-tests.sh	shellcheck	1
 scripts/lanes/bench/fixtures/T2/input/run-tests.sh	mktemp	1
 scripts/lanes/bench/fixtures/T2/input/run-tests.sh	shellcheck	1
@@ -747,8 +740,6 @@ scripts/lib/wire-statusline.sh	errexit	1
 scripts/lib/wire-statusline.sh	mktemp	1
 scripts/lib/wire-statusline.sh	prim-atomic	1
 scripts/lib/worktree-inuse.sh	prim-canon	1
-scripts/lint/flag-parity.sh	prim-atomic	1
-scripts/lint/flag-parity.sh	prim-tmpdir	1
 scripts/lint/test-check-history-comments.sh	bash32	1
 scripts/luna-upgrade-all.sh	mktemp	11
 scripts/luna-vitals/connectors/pull-cadence.sh	errexit	1
@@ -783,7 +774,6 @@ scripts/machine-setup/install-code-kit-clis.sh	errexit	1
 scripts/machine-setup/install-plugins.sh	errexit	1
 scripts/machine-setup/macos.sh	errexit	1
 scripts/machine-setup/migrate-plugin-to-himmel.sh	errexit	1
-scripts/machine-setup/migrate-plugin-to-himmel.sh	prim-atomic	1
 scripts/machine-setup/plugin-profile.sh	errexit	1
 scripts/machine-setup/reconcile-enabled-plugins.sh	errexit	1
 scripts/machine-setup/test-bootstrap.sh	errexit	1
@@ -804,8 +794,6 @@ scripts/machine-setup/ubuntu.sh	errexit	1
 scripts/machine-setup/ubuntu.sh	mktemp	1
 scripts/machine-setup/uninstall-plugins.sh	errexit	1
 scripts/machine-setup/upgrade-rtk.sh	mktemp	2
-scripts/machine-setup/upgrade-rtk.sh	prim-atomic	1
-scripts/machine-setup/upgrade-rtk.sh	prim-tmpdir	2
 scripts/measurements/test-prose-audit.sh	bash32	2
 scripts/measurements/test-prose-audit.sh	mktemp	1
 scripts/memory/test-audit-memory-capture.sh	mktemp	1
@@ -837,7 +825,6 @@ scripts/quiet-run.sh	errexit	1
 scripts/release/build-tarball.sh	errexit	1
 scripts/release/followup-report.sh	errexit	1
 scripts/roadmap/plan-index.sh	errexit	1
-scripts/roadmap/plan-index.sh	prim-lock	1
 scripts/sessions-reindex.sh	mktemp	1
 scripts/setup-hooks.sh	errexit	1
 scripts/setup.sh	errexit	1
@@ -853,7 +840,6 @@ scripts/skill-index/build-skill-index.sh	mktemp	1
 scripts/telegram/dispatch-lane.sh	kill-after	1
 scripts/telegram/restart-bridge.sh	errexit	1
 scripts/telegram/restart-bridge.sh	gnu-flag	1
-scripts/telegram/restart-bridge.sh	prim-lock	1
 scripts/telegram/test-auto-action.sh	mktemp	1
 scripts/telegram/test-phi-egress-guard-parity.sh	mktemp	2
 scripts/test-adopt-features.sh	errexit	12
@@ -901,8 +887,6 @@ scripts/test-template-nostash-hooks.sh	bash32	2
 scripts/test-uninstall-real-home-callers.sh	mktemp	31
 scripts/test-unlanded-work.sh	mktemp	25
 scripts/test-user-slug-resolve.sh	mktemp	1
-scripts/testing/check-added-unwired.sh	prim-atomic	1
-scripts/testing/check-added-unwired.sh	prim-tmpdir	1
 scripts/tests/test-setup-hooks-guardrail.sh	mktemp	1
 scripts/uninstall.sh	mktemp	1
 scripts/unlanded-work.sh	mktemp	4
@@ -923,15 +907,11 @@ scripts/vm/ci-runner/guest-provision.sh	errexit	1
 scripts/vm/lib/seed-provenance.sh	errexit	1
 scripts/vm/provenance-roundtrip.sh	gnu-flag	1
 scripts/web/research/test-research-path.sh	errexit	1
-scripts/where-are-we/statusline-rollup.sh	prim-atomic	1
-scripts/where-are-we/statusline-rollup.sh	prim-lock	1
 scripts/where-are-we/test-statusline-rollup.sh	mktemp	1
 scripts/where-are-we/test-statusline-segment.sh	mktemp	1
 scripts/where-are-we/test-statusline-wrapper.sh	mktemp	1
 scripts/worktree.sh	errexit	1
 scripts/worktree.sh	mktemp	2
-scripts/worktree.sh	prim-atomic	1
-scripts/worktree.sh	prim-tmpdir	1
 templates/luna-second-brain/_profiles/salus/.claude/hooks/block-cloud-egress.sh	errexit	1
 templates/luna-second-brain/scripts/hooks/install-nostash-hooks.sh	errexit	1
 templates/luna-second-brain/scripts/lib/_print-handover-root.sh	errexit	1
