@@ -410,6 +410,7 @@ cat > "$tmp/stub-arm.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --role ] && shift 2
 echo "armed: name=$1 doc=$2 signal=$3 deadline=$4 context=${7:-${CHIEF_CONTEXT:-default}}" >> "$5"
+echo "predecessor=${HIMMEL_CHIEF_PREDECESSOR:-unset}" >> "$5"
 STUB
 chmod +x "$tmp/stub-arm.sh"
 
@@ -424,6 +425,8 @@ check "3884 explicit context reaches actual arm input" "$(grep -c 'context=stand
 check "3884 explicit context agrees with printed launch" "$(printf '%s\n' "$out7b" | grep -c -- 'standard explicit 200000')" "1"
 check "7 arm log carries armed/signal/deadline/session" \
     "$(grep -cE "armed: name=${session7B} doc=.* signal=.*sig-${session7B} deadline=[0-9]+" "$log7B" 2>/dev/null)" "1"
+check "7945 next --arm exports the predecessor's session name to the arm" \
+    "$(grep -c "^predecessor=DEMO-nextleg-${today}A-chief\$" "$log7B")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
 
 # --- 8: no private-string leak -----------------------------------------

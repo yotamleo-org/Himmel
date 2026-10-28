@@ -588,6 +588,12 @@ if [ "$ROLE" = "chief" ]; then
     # (create --chief-override, version-admit/-defer/-ready) check; workers never
     # get it (headed-arm-worker.sh scrubs it).
     CHIEF_ENV=("HIMMEL_CONSOLE_DOC=$_chief_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
+    # chief.sh next names the chief it succeeds; the chief's worker arms read it
+    # (tab_launch) to find the predecessor's live window.
+    case "${HIMMEL_CHIEF_PREDECESSOR:-}" in
+        ''|*[!A-Za-z0-9._-]*) ;;
+        *) CHIEF_ENV+=("HIMMEL_CHIEF_PREDECESSOR=$HIMMEL_CHIEF_PREDECESSOR") ;;
+    esac
 fi
 # This argv carries --autocompact and an Opus 5.5 id, which a CLI
 # below the floor rejects at parse time -- refuse here, naming the version,
@@ -1552,10 +1558,11 @@ fi
 # (the record keeps the later one), a recycled window pid that is another
 # konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
 # sweep never closes a dead tab in a window that still has live ones; a
-# per-chief flock is the upgrade path. A successor finds its predecessor by
-# the previous letter of the -nextleg-<date><LETTERS> name part only, so a
-# hand-over that changes the date or the naming opens a window; chief.sh next
-# exporting the predecessor's name is the upgrade path. The konsole check is
+# per-chief flock is the upgrade path. A successor finds a window by the
+# predecessor name chief.sh next exports (HIMMEL_CHIEF_PREDECESSOR), then the
+# previous letter of the -nextleg-<date><LETTERS> part, then the newest live
+# record of a chief with the same name apart from date and letters; a chain
+# whose names differ in anything else opens a window. The konsole check is
 # /proc comm (Linux), so it never adopts a recycled non-konsole pid.
 TAB_SESSION=""
 TAB_WINDOW_FILE=""
@@ -1581,6 +1588,33 @@ tab_predecessor_name() {
     fi
     printf '%s%s%s\n' "${BASH_REMATCH[1]}" "$letters" "${BASH_REMATCH[3]}"
 }
+# tab_live_window <chief name> - print the pid recorded for that chief's tab
+# window when it is a live konsole. Returns 1 for no record, a bad pid, or a
+# pid that is not a konsole.
+tab_live_window() {
+    local w
+    w="$(cat "$LOCKDIR/tabs-$1.window" 2>/dev/null)"  # swallow-ok: no readable record means no window to adopt
+    case "$w" in ''|*[!0-9]*|0|1) return 1 ;; esac
+    case "$(cat "/proc/$w/comm" 2>/dev/null)" in konsole*) ;; *) return 1 ;; esac  # swallow-ok: a pid with no readable comm is dead or not ours, so it is not adopted
+    printf '%s\n' "$w"
+}
+# tab_chain_window <chief name> - print the newest live konsole window recorded
+# by any chief of the same chain (same name apart from the date and letters),
+# newest record first, at most 30 records. Returns 1 when there is none.
+tab_chain_window() {
+    local re='^(.*-nextleg-)[0-9]{4}-[0-9]{2}-[0-9]{2}[A-Z]{1,2}(-.*)?$' key f n=0 cand w
+    [[ "$1" =~ $re ]] || return 1
+    key="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+    # shellcheck disable=SC2012  # ls -t is the newest-first order
+    while IFS= read -r f; do
+        cand="$(basename -- "$f" .window)"; cand="${cand#tabs-}"
+        [ "$cand" != "$1" ] || continue
+        [[ "$cand" =~ $re ]] && [ "${BASH_REMATCH[1]}${BASH_REMATCH[2]}" = "$key" ] || continue
+        n=$((n + 1)); [ "$n" -le 30 ] || return 1
+        w="$(tab_live_window "$cand")" && { printf '%s\n' "$w"; return 0; }
+    done < <(ls -1t -- "$LOCKDIR"/tabs-*.window 2>/dev/null)
+    return 1
+}
 tab_launch() {
     local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
@@ -1590,16 +1624,19 @@ tab_launch() {
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
     case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
     if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
-        # No live window of this chief's own: a successor chief adopts its
-        # predecessor's live konsole window and records it as its own.
+        # No live window of this chief's own: a successor chief adopts a live
+        # konsole window of its chain and records it as its own. In order: the
+        # predecessor chief.sh next named, the previous letter, then the newest
+        # live window any chief of the chain recorded.
         TAB_RECORD=1; wpid=""
-        if pred="$(tab_predecessor_name "$HIMMEL_CONSOLE_NAME")"; then
-            wpid="$(cat "$LOCKDIR/tabs-$pred.window" 2>/dev/null)"  # swallow-ok: no readable predecessor record means no window to adopt, so this arm opens one
-            case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
-            if [ -n "$wpid" ]; then
-                case "$(cat "/proc/$wpid/comm" 2>/dev/null)" in konsole*) ;; *) wpid="" ;; esac  # swallow-ok: a pid with no readable comm is dead or not ours, so it is not adopted
-            fi
+        case "${HIMMEL_CHIEF_PREDECESSOR:-}" in
+            ''|*[!A-Za-z0-9._-]*) ;;
+            *) wpid="$(tab_live_window "$HIMMEL_CHIEF_PREDECESSOR")" || wpid="" ;;
+        esac
+        if [ -z "$wpid" ] && pred="$(tab_predecessor_name "$HIMMEL_CONSOLE_NAME")"; then
+            wpid="$(tab_live_window "$pred")" || wpid=""
         fi
+        [ -n "$wpid" ] || wpid="$(tab_chain_window "$HIMMEL_CONSOLE_NAME")" || wpid=""
         [ -n "$wpid" ] || return 1
     fi
     tab_sh="$LOCK/tab.sh"

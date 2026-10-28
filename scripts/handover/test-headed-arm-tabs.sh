@@ -303,11 +303,77 @@ if [ "$HAVE_PROC" = 1 ]; then
 d13="$tmp/c13"; mk_env "$d13"
 arm "$d13" HIMMEL-13-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}Z-roadmap-chief
 arm "$d13" HIMMEL-13-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}AA-roadmap-chief
-arm "$d13" HIMMEL-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-roadmap-chief
-check "13a letter roll: AA adopts Z's window, A opens its own" "$(konsole_count "$d13")" 2
+arm "$d13" HIMMEL-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-solo-chief
+check "13a letter roll: AA adopts Z's window, A (another chain) opens its own" "$(konsole_count "$d13")" 2
 check "13b letter roll: AA is tracked in Z's window" "$(window_of "$d13" HIMMEL-13-N2-b)" "$(window_of "$d13" HIMMEL-13-N1-a)"
 else
   echo "  SKIP 13 letter roll: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
+fi
+
+# --- 14-19. a successor finds the chain's live window beyond one letter back.
+# Windows are Linux-only (/proc comm), as in rows 10 and 13.
+if [ "$HAVE_PROC" = 1 ]; then
+D27=HIMMEL-nextleg-2026-10-27; D28=HIMMEL-nextleg-2026-10-28
+# dead_pid - a pid that is certainly not alive.
+dead_pid() { sleep 60 > /dev/null 2>&1 & local p=$!; kill -KILL "$p" 2>/dev/null; wait "$p" 2>/dev/null; echo "$p"; }
+# record <dir> <chief name> <pid> <epoch> - write a tab window record by hand, mtime <epoch>.
+record() { printf '%s\n' "$3" > "$1/locks/tabs-$2.window"; touch -d "@$4" "$1/locks/tabs-$2.window"; }
+
+# 14. the date changed: 10-28ID succeeds 10-27IC, which letter arithmetic misses.
+d14="$tmp/c14"; mk_env "$d14"
+arm "$d14" HIMMEL-14-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-roadmap-chief
+arm "$d14" HIMMEL-14-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc14=$?
+w14="$(window_of "$d14" HIMMEL-14-N1-a)"
+check "14a date crossing: exit 0" "$rc14" 0
+check "14b date crossing: no second window" "$(konsole_count "$d14")" 1
+check "14c date crossing: tracked in the previous day's window" "$(window_of "$d14" HIMMEL-14-N2-b)" "${w14:-unset}"
+check "14d date crossing: recorded as the successor's own window" "$(cat "$d14/locks/tabs-${D28}ID-roadmap-chief.window" 2>/dev/null)" "${w14:-unset}"
+
+# 15. the direct predecessor never armed a worker: IC has no record, IB's window lives.
+d15="$tmp/c15"; mk_env "$d15"
+arm "$d15" HIMMEL-15-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
+arm "$d15" HIMMEL-15-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc15=$?
+check "15a predecessor armed nothing: exit 0" "$rc15" 0
+check "15b predecessor armed nothing: no second window" "$(konsole_count "$d15")" 1
+check "15c predecessor armed nothing: tracked in IB's window" "$(window_of "$d15" HIMMEL-15-N2-b)" "$(window_of "$d15" HIMMEL-15-N1-a)"
+
+# 16. the predecessor's window died while an older chief's lives.
+d16="$tmp/c16"; mk_env "$d16"; mkdir -m 0700 "$d16/locks"
+arm "$d16" HIMMEL-16-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
+record "$d16" "${D28}IC-roadmap-chief" "$(dead_pid)" "$(date +%s)"
+arm "$d16" HIMMEL-16-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc16=$?
+check "16a dead predecessor window, older live: exit 0" "$rc16" 0
+check "16b dead predecessor window, older live: no second window" "$(konsole_count "$d16")" 1
+check "16c dead predecessor window, older live: tracked in the older window" "$(window_of "$d16" HIMMEL-16-N2-b)" "$(window_of "$d16" HIMMEL-16-N1-a)"
+
+# 17. chief.sh next's exact predecessor name wins where the name arithmetic cannot reach.
+d17="$tmp/c17"; mk_env "$d17"
+arm "$d17" HIMMEL-17-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
+arm "$d17" HIMMEL-17-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief HIMMEL_CHIEF_PREDECESSOR=${D27}IC-ops-chief; rc17=$?
+check "17a named predecessor: exit 0" "$rc17" 0
+check "17b named predecessor: no second window" "$(konsole_count "$d17")" 1
+check "17c named predecessor: tracked in its window" "$(window_of "$d17" HIMMEL-17-N2-b)" "$(window_of "$d17" HIMMEL-17-N1-a)"
+
+# 18. the walk stops after 30 records: 29 dead ones newer than the live one still
+# reach it, 30 do not.
+for dead in 29 30; do
+  d18="$tmp/c18-$dead"; mk_env "$d18"; mkdir -m 0700 "$d18/locks"
+  arm "$d18" HIMMEL-18-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}AA-roadmap-chief
+  touch -d "@$(( $(date +%s) - 5000 ))" "$d18/locks/tabs-${D27}AA-roadmap-chief.window"
+  dp="$(dead_pid)"; i=1; alpha=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+  while [ "$i" -le "$dead" ]; do record "$d18" "${D27}${alpha:i/26+1:1}${alpha:i%26:1}-roadmap-chief" "$dp" "$(( $(date +%s) - 4000 + i ))"; i=$((i + 1)); done
+  arm "$d18" HIMMEL-18-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ZZ-roadmap-chief
+  want=1; [ "$dead" = 30 ] && want=2
+  check "18 hop cap: $dead dead records ahead of the live one: windows opened" "$(konsole_count "$d18")" "$want"
+done
+
+# 19. another chain's live window is never adopted.
+d19="$tmp/c19"; mk_env "$d19"
+arm "$d19" HIMMEL-19-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
+arm "$d19" HIMMEL-19-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief
+check "19 other chain: the successor opens its own window" "$(konsole_count "$d19")" 2
+else
+  echo "  SKIP 14-19 chain walk: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
 fi
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

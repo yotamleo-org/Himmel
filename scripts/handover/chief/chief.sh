@@ -368,7 +368,10 @@ do_arm() {
     # Fail-open: a failed register warns and the chief launches unbound.
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
-    unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
+    unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HIMMEL_CHIEF_PREDECESSOR
+    # The successor's workers tab into the window of the chief it succeeds
+    # (headed-arm.sh tab_launch reads this); a fresh chain exports nothing.
+    [ -z "$CHIEF_BUS_PREDECESSOR" ] || export HIMMEL_CHIEF_PREDECESSOR="$CHIEF_BUS_PREDECESSOR"
     bus_cli="${CHIEF_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
     local bus_opt=0 bus_stamp=""
     console_bus_opted_in || bus_opt=$?
