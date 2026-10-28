@@ -500,6 +500,7 @@ cov_linked() {
 # cov_ledger_keys <ledger> <head> <pr-branch>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
 # Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head,
 # and so along a chain of such rows: each row names the reviewed head before it, up to 10 hops back from <head> (cycle-safe).
+# A finding recorded again later at a head of the chain is judged by that later row alone.
 # A deferral of <pr-branch> at any earlier head carries to <head> when a critic's ok avail row of <pr-branch> at <head> or at
 # any head of that chain was written after the finding (a clean full round) and no finding row of <pr-branch> sits at any
 # head of the chain: a round that re-raised
@@ -530,8 +531,9 @@ cov_ledger_keys() {
         | ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head))] | length > 0) as $raised
         | def at_head($f; $e): hm($e.head; $h)
             or ($pb != "" and $f.branch == $pb
-                and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not)
-                and (inchain($e.head) or (($raised | not) and any($clean[]; . > $f._ln))));
+                and ((inchain($e.head) and (any($rows[]; .kind == "finding" and .branch == $pb and (.head | type == "string") and inchain(.head) and fk(.) == fk($f) and ._ln > $f._ln) | not))
+                    or (($raised | not) and any($clean[]; . > $f._ln)
+                        and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not))));
         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e

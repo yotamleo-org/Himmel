@@ -1241,6 +1241,13 @@ check "chain: a deferral at the far end of the chain counts: exit 0" "$rc" "0"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_B" "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
+seed_deferral HIMMEL-50 "$(chain_head 77)"
+rc=0; out="$(run)" || rc=$?
+check "chain: the same finding recorded again at a head outside the chain does not cancel the chain's deferral: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50 "$REVHEAD"; seed_hop "$CH_C" "$CH_B"; seed_hop "$SHA" "$CH_C"
 rc=0; out="$(run)" || rc=$?
 check "chain: no clean round at any head of the chain, the deferral does not carry: exit 1" "$rc" "1"
