@@ -187,10 +187,13 @@ pass the same redactor as the feed; the id fields are left intact, and so are
 `agent` (who acted: a session name is often 32+ characters, which the redactor
 would blank) and `failure` (one of four words).
 
-**Journal roots.** A journal root is a Claude config directory whose
-`projects/` holds session journals. `resolveJournal` searches two built-in
-roots, `~/.claude` (native) and `~/.claude-codex` (claudex), then every custom
-root registered so far.
+**Journal roots.** A session launched with its own `CLAUDE_CONFIG_DIR` opens
+in the run view once the Fleet page has listed it; before that, and after a
+server restart, its run is `404`. A journal root is a Claude config directory
+whose `projects/` holds session journals. `resolveJournal` searches two
+built-in roots, `~/.claude` (native) and `~/.claude-codex` (claudex, the lane
+that runs Claude Code on Codex models), then every custom root registered so
+far.
 
 - **Where custom roots come from.** Only the live census: `readFleet`
   (`agui/fleet.ts`, behind `GET /api/agui/fleet`) reads each live session's
