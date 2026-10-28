@@ -191,10 +191,20 @@ barrier: an agent can still reach `get` by sourcing the script
 `himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
 secret names are still served from `.env` (`C75-secrets`), names only.
 
-Moving a station: `bash scripts/lib/himmel-secrets import-env <primary
-checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
-as the fallback; import-env skips a secret the manifest does not list, so add
-a new one to `stationSecrets` first.
+Moving a station: import-env skips a secret the manifest does not list, so
+add a new one to `stationSecrets` first. Then:
+
+1. `bash scripts/lib/himmel-secrets import-env <primary checkout>/.env`. It
+   prints `stored KEY` for each key it moved.
+2. `himmel-secrets status KEY…` with those keys names `keyring` for each one.
+3. Delete from `.env` exactly the lines import-env printed as `stored`, and
+   nothing else. Until you do, each secret is still in plain text on disk.
+   A line it skipped stays: a config key until it moves to `~/.himmel`, and
+   `HIMMEL_FLEET_CAP`, a guarded variable kept in `.env` (see the fleet cap
+   example below). Do not delete by key class: `HIMMEL_FLEET_CAP` reads as a
+   secret there, and the `DEPRECATED: secret … read from .env` line still
+   names it after the move.
+4. `bash scripts/himmel-doctor.sh --only C75` shows `OK C75-secrets: no secret comes from .env`.
 
 ## The .env split: what moves, what stays, and a mismatch
 
