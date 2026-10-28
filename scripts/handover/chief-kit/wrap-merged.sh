@@ -223,6 +223,7 @@ remaining_refresh() {
     timeout -k 5 "$tmo" "${TRACKER[@]}" --remaining "$ver" --mirror-dir "$MIRROR_FRESH" ${plan:+--priority-file "$plan"} --out "$tmp" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$tmp"; echo "remaining=failed:render-rc$rc"; return 0; fi
     if [ -f "$out" ] && cmp -s "$tmp" "$out"; then rm -f "$tmp"; echo "remaining=UNCHANGED"; return 0; fi
+    # prim-ok: the renderer writes $tmp itself via --out, so there is no stdin stream for atomic_write
     mv -f "$tmp" "$out" && echo "remaining=CHANGED" || echo "remaining=failed:write"
     return 0
 }

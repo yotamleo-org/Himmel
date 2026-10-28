@@ -1506,6 +1506,7 @@ case $'\n'"$bp_files" in
 esac
 bp_nlines=$(printf '%s\n' "$bp_files" | wc -l | tr -d ' ')
 if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
+    # prim-ok: private scratch the gate removes itself; the gate sources only its own anchor libs, so prim.sh would add four globals to a trust path
     bp_tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-bump.XXXXXX" 2>/dev/null) || bp_tmp=""
     { [ -n "$bp_tmp" ] && [ -d "$bp_tmp" ]; } || bump_refuse "cannot create a scratch directory for the recheck" "phase=scratch"
     bp_fetch_rc=0
@@ -2103,6 +2104,7 @@ worktree_has_live_suite_run() {
         # is coreutils' own and always present. There is no BSD path to be
         # portable to: without /proc there is no cwd to read at all and the
         # function has already returned 1.
+        # prim-ok: reads the /proc magic link's target as text, a deleted cwd included; canon_path would cd into it
         cwd=$(readlink -f "$entry/cwd" 2>/dev/null) || cwd=""  # gnu-ok: /proc-gated, Linux-only by construction
         # First pass: identify. Which runner name matched is ALL that is reported
         # below — the full argv would put a
