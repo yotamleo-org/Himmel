@@ -1492,17 +1492,21 @@ assert_rc "7147 ctl age encrypt"                           0 "$(run_case "$(j_ba
 mirror_dir=$(mktemp -d "${TMPDIR:-/tmp}/secrets-mirror.XXXXXX") || exit 1
 mirror_i=0
 while [ "$mirror_i" -lt 8000 ]; do
-    : > "$mirror_dir/HIMMEL-$mirror_i.md"
+    : > "$mirror_dir/HIMMEL-$mirror_i.md" || exit 1
     mirror_i=$((mirror_i + 1))
 done
 # shellcheck disable=SC2016 # the loop variable is literal hook input
-mirror_cmd='for v in v1.1.3 v1.1.4 v1.1.5 v1.2.0; do echo "## $v sectors"; rtk proxy grep -l "$v" *.md | xargs grep -h sector; rtk proxy grep -l "$v" *.md | xargs grep -h status; rtk proxy grep -l "$v" *.md | xargs grep -h priority; done'
+mirror_cmd='for v in v1.1.3 v1.1.4 v1.1.5 v1.2.0; do echo "## $v sectors"; rtk proxy grep -l "$v" *.md | xargs grep -h sector; rtk proxy grep -l "$v" *.md | xargs grep -h status; rtk proxy grep -l "$v" *.md | xargs grep -h priority; rtk proxy grep -l "$v" *.md | xargs grep -h type; rtk proxy grep -l "$v" *.md | xargs grep -h summary; done'
 mirror_input=$(j_bash "$mirror_cmd")
 mirror_rc=0
-(cd "$mirror_dir" && printf '%s' "$mirror_input" | node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK") >/dev/null 2>"$mirror_dir/chain.err" || mirror_rc=$?
+(
+    unset RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS RUN_HOOK_CHAIN_BUDGET_MS \
+        RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS
+    cd "$mirror_dir" && printf '%s' "$mirror_input" | RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=15000 node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK"
+) >/dev/null 2>"$mirror_dir/chain.err" || mirror_rc=$?
 assert_rc "7956 mirror query completes within default chain window" 0 "$mirror_rc"
 if [ "$mirror_rc" != 0 ]; then cat "$mirror_dir/chain.err"; fi
-: > "$mirror_dir/credentials.json"
+: > "$mirror_dir/credentials.json" || exit 1
 mirror_secret_input=$(j_bash 'cat *')
 mirror_secret_rc=$(cd "$mirror_dir" && run_case "$mirror_secret_input")
 assert_rc "7956 secret glob match among mirror files still denies" 2 "$mirror_secret_rc"
