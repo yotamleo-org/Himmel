@@ -905,7 +905,7 @@ the statusline segment):
 | `OBSIDIAN_API_KEY` | unset (on-disk fallback works) | `.env` | Obsidian REST plugin access |
 | `PERPLEXITY_API_KEY` | blank = feature off | `.env` | backs `/research`, `/research-deep` — **not adopted** (2026-07-29, no active subscription; see `docs/tooling-catalog.md`) |
 | `XAI_API_KEY` | blank = feature off | `.env` | backs `/x-read`, `/x-pulse`, `/youtube` — **not adopted** (2026-07-29, no active subscription; see `docs/tooling-catalog.md`) |
-| `DASHSCOPE_API_KEY` | blank = feature off | `.env` | fleet-control providers |
+| `DASHSCOPE_API_KEY` | blank = feature off | `.env` | the Alibaba Model Studio key; the hermes `alibaba-coding-plan` provider reads it after `ALIBABA_CODING_PLAN_API_KEY` ([hermes-runbook.md](hermes-runbook.md#provider-hermes-built-in)) |
 | `ALIBABA_OPENAI_BASE_URL` / `ALIBABA_ANTHROPIC_BASE_URL` / `ALIBABA_DASHSCOPE_BASE_URL` | blank | live env (export or `settings.json` `env`) | the three Alibaba Model Studio endpoint flavors (OpenAI-compatible, Anthropic-compatible, DashScope-native) used with `DASHSCOPE_API_KEY`; set the one your consumer needs |
 | `GRAFANA_TELEGRAM_BOT_TOKEN` / `GRAFANA_TELEGRAM_CHAT_ID` | unset | repo-root `.env` | the dedicated send-only alert bot and destination chat for the optional Grafana alerting stack. Separate from the Telegram bridge's token; a group chat id is negative |
 | `SKILL_INDEX_DIR`, `SKILL_TELEMETRY_DISABLE`/`_DIR` | `~/.claude/skill-index` / on | env / shell | skill index + telemetry |
