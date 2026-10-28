@@ -7,4 +7,4 @@ description: List/show review threads on a specific PR ("what comments are on PR
 
 The user wants to see review threads on a specific PR (open + resolved).
 
-Extract the PR number from the user's message and run `/gh-pr-comments <N>`. Output only the runner's one-line summary (e.g. `threads=5 unresolved=2`). If the user asks for the full table, read `~/.cache/himmel-cli/gh/normal.log` — the per-thread 6-char prefixes shown there feed `/gh-pr-reply <prefix>` and `/gh-pr-resolve <prefix>`.
+Extract the PR number from the user's message and run `/gh-pr-comments <N>`. Output only the runner's one-line summary (e.g. `threads=5 unresolved=2`). If the user asks for the full table, read `normal.log` in the `himmel-run` gh log directory (see the README) — the per-thread 6-char prefixes shown there feed `/gh-pr-reply <prefix>` and `/gh-pr-resolve <prefix>`.

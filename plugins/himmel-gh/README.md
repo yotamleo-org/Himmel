@@ -64,13 +64,16 @@ Each command has a matching skill that auto-triggers on PR/GitHub intent. Skills
 
 ## Logs + cache
 
-`~/.cache/himmel-cli/gh/`:
+Plugin-owned cache files live in `$XDG_CACHE_HOME/himmel-cli/gh/`, or `~/.cache/himmel-cli/gh/` when `XDG_CACHE_HOME` is unset:
+
+- `repo-context.json` — cached `(owner, name)` keyed by cwd; refreshed when cwd changes.
+- `threads/<owner>-<repo>-<N>.json` — per-PR 6-char prefix → full thread-id map. Written by every `/gh-pr-comments` call.
+
+`himmel-run` writes its logs and metadata under its own cache root (`env-paths`: `$XDG_CACHE_HOME` or `~/.cache` on Linux, `~/Library/Caches` on macOS), in the `himmel-cli/gh/` directory:
 
 - `normal.log` — append-only stdout (rotated at 10MB).
 - `error.log` — append-only stderr.
 - `index/<run-id>.json` — per-call metadata for `himmel-run gh --inspect <run-id>`.
-- `repo-context.json` — cached `(owner, name)` keyed by cwd; refreshed when cwd changes.
-- `threads/<owner>-<repo>-<N>.json` — per-PR 6-char prefix → full thread-id map. Written by every `/gh-pr-comments` call.
 
 Inspect any run:
 

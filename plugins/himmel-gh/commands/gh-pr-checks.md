@@ -12,4 +12,4 @@ Run exactly:
 himmel-run gh --summary-jq '[.[] | .bucket] | group_by(.) | map("\(length) \(.[0])") | join(", ")' -- gh pr checks "$1" --json bucket
 ```
 
-Output only the runner's one-line summary. Do not add commentary. If the user asks which specific checks failed, read `~/.cache/himmel-cli/gh/normal.log` or run `himmel-run gh --inspect <run-id>` for full per-check detail.
+Output only the runner's one-line summary. Do not add commentary. If the user asks which specific checks failed, read `normal.log` in the `himmel-run` gh log directory (see the README) or run `himmel-run gh --inspect <run-id>` for full per-check detail.

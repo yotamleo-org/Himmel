@@ -32,7 +32,7 @@ Each command has a matching skill that auto-triggers on Jira intent.
 
 ## Logs
 
-Cache + logs at `~/.cache/himmel-cli/jira/`. Inspect any run:
+The metadata cache is written to `$XDG_CACHE_HOME/himmel-cli/jira/` when `XDG_CACHE_HOME` is set, otherwise `~/.cache/himmel-cli/jira/`. Inspect any run:
 
 ```
 himmel-run jira --inspect <run-id-from-summary-line>
