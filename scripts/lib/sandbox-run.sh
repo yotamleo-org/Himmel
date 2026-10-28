@@ -59,6 +59,7 @@ while [ "$#" -gt 0 ]; do
             if [ "$platform" = Darwin ]; then
                 input=$(python3 -I -c 'import os,sys; p=os.path.realpath(sys.argv[1]); assert os.path.exists(p); print(p)' "$2") || exit 125
             else
+                # prim-ok: realpath -e resolves a file or a directory; canon_path cd's into its argument and fails for a file input
                 input=$(realpath -e -- "$2") || exit 125
             fi
             case "$input" in
@@ -80,6 +81,7 @@ if [ "$#" -eq 0 ] && [ -z "$write_mask" ]; then
     exit 125
 fi
 
+# prim-ok: the scratch root is pinned to /tmp, never TMPDIR, because it is bind-mounted into the sandbox; tmpdir would honour a caller-set TMPDIR
 scratch_root=$(mktemp -d /tmp/himmel-sandbox.XXXXXX) || exit 125
 trap 'rm -rf "$scratch_root"' EXIT
 canary="${canary:-$scratch_root/canary}"
@@ -195,6 +197,7 @@ if [ -n "$write_mask" ]; then
     nul=$(tr -cd '\0' < "$mask_list" | wc -c) || exit 125
     { printf 'himmel-mask-list-v1 %s %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$build_fp" "$((nul / 2))"
       cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; exit 125; }
+    # prim-ok: tmp_out is already a same-directory 0600 mktemp file renamed into place, which is what atomic_write does; this sandbox tool sources no lib and keeps its exit-125 contract
     mv -f "$tmp_out" "$write_mask" || exit 125
     exit 0
 fi

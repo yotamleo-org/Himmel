@@ -232,6 +232,7 @@ git_test_env_pin_perf() {
   # caller calls git_test_env_cleanup from its own EXIT trap after its children
   # finish; this sourced library never installs or replaces a caller's trap.
   local _tmpl_dir _tmpl_val _pid
+  # prim-ok: this sourced lib never installs a trap or sources a lib, and the himmel-git-empty-template. prefix is a scripts/tmp-reap.sh FAMILIES entry that tmpdir's prim. prefix would leave unreaped
   if _tmpl_dir=$(mktemp -d "${TMPDIR:-/tmp}/himmel-git-empty-template.XXXXXX" 2>/dev/null); then
     _pid=${BASHPID:-}
     [ -n "$_pid" ] || _pid=$(exec sh -c 'printf "%s" "$PPID"')
