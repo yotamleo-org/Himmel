@@ -25,7 +25,6 @@ getting-started.md
 setup/install.md
 setup/new-machine.md
 daily-loop.md
-commands-catalog.md
 hermes-runbook.md
 handover/afk-mode.md
 handover/running-a-chief.md
