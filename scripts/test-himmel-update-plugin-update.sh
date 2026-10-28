@@ -608,6 +608,125 @@ else
     assert_fail "a failed plugin update failed the run (rc=$rc) — out: $out_fail"
 fi
 
+echo "Test: a same-version @himmel plugin whose cache differs from the checkout is reinstalled (HIMMEL-8016)"
+# The cache-side hooks.json line is copied from the real station cache
+# (~/.claude/plugins/cache/himmel/himmel-ops/0.4.141/hooks/hooks.json): the
+# egress matcher without the Bash alternative; main's has `Bash|` in front.
+drift_main_matcher='"matcher": "Bash|mcp__.*[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee].*"'
+drift_cache_matcher='"matcher": "mcp__.*[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee].*"'
+# make_drift_scenario <name> -- sets CHECKOUT_DIR and DRIFT_HOME: p1 (cache differs),
+# same (cache identical), remote (url-sourced, cache differs), nosrc (no marketplace
+# source, cache differs), all installed at 1.0.0.
+make_drift_scenario() {
+    make_mock_clone
+    mkdir -p "$CHECKOUT_DIR/marketplace/.claude-plugin"
+    cat > "$CHECKOUT_DIR/marketplace/.claude-plugin/marketplace.json" <<'EOF'
+{
+  "name": "himmel",
+  "plugins": [
+    { "name": "p1", "source": "./plugins/p1" },
+    { "name": "same", "source": "./plugins/same" },
+    { "name": "remote", "source": { "source": "url", "url": "https://example.invalid/r.git" } },
+    { "name": "nosrc" }
+  ]
+}
+EOF
+    DRIFT_HOME="$TMP/fake-home-drift-$1"
+    mkdir -p "$DRIFT_HOME/.claude/plugins"
+    local n tree cache inst=""
+    for n in p1 same remote nosrc; do
+        cache="$DRIFT_HOME/.claude/plugins/cache/himmel/$n/1.0.0"
+        mkdir -p "$cache/hooks"
+        if [ "$n" = same ]; then
+            printf '{ %s }\n' "$drift_main_matcher" > "$cache/hooks/hooks.json"
+        else
+            printf '{ %s }\n' "$drift_cache_matcher" > "$cache/hooks/hooks.json"
+        fi
+        tree="$CHECKOUT_DIR/marketplace/plugins/$n"
+        mkdir -p "$tree/.claude-plugin" "$tree/hooks"
+        printf '{"name":"%s","version":"1.0.0"}\n' "$n" > "$tree/.claude-plugin/plugin.json"
+        printf '{ %s }\n' "$drift_main_matcher" > "$tree/hooks/hooks.json"
+        inst="$inst\"$n@himmel\":[{\"scope\":\"user\",\"installPath\":\"$cache\",\"version\":\"1.0.0\"}],"
+    done
+    printf '{"version":2,"plugins":{%s}}\n' "${inst%,}" > "$DRIFT_HOME/.claude/plugins/installed_plugins.json"
+    cat > "$DRIFT_HOME/.claude/settings.json" <<'EOF'
+{ "enabledPlugins": { "p1@himmel": true, "same@himmel": true, "remote@himmel": true, "nosrc@himmel": true } }
+EOF
+}
+make_drift_scenario apply
+log_drift="$TMP/claude-invocations-drift.log"
+: > "$log_drift"
+claude_stub_drift="$TMP/claude-logging-stub-drift"
+make_claude_logging_stub "$claude_stub_drift" "$log_drift"
+rc=0
+out_drift=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
+log_drift_content="$(cat "$log_drift")"
+if [ "$rc" -eq 0 ]; then assert_pass "drift run completed (rc=$rc)"; else assert_fail "drift run completed (rc=$rc) — out: $out_drift"; fi
+assert_contains "drifted p1 is uninstalled (data kept)" "plugin uninstall --keep-data p1@himmel" "$log_drift_content"
+assert_contains "drifted p1 is installed again" "plugin install p1@himmel" "$log_drift_content"
+un_pos="${log_drift_content%%plugin uninstall --keep-data p1@himmel*}"
+in_pos="${log_drift_content%%plugin install p1@himmel*}"
+if [ "${#un_pos}" -lt "${#in_pos}" ]; then assert_pass "uninstall runs before install"; else assert_fail "uninstall runs before install — log: $log_drift_content"; fi
+assert_not_contains "an identical cache is left alone" "same@himmel" "$log_drift_content"
+assert_not_contains "a url-sourced plugin is never uninstalled" "plugin uninstall --keep-data remote@himmel" "$log_drift_content"
+assert_not_contains "a url-sourced plugin is never reinstalled" "plugin install remote@himmel" "$log_drift_content"
+assert_not_contains "a plugin with no marketplace source is never reinstalled" "nosrc@himmel" "$log_drift_content"
+
+echo "Test: check mode names the drifted cache and invokes nothing (HIMMEL-8016)"
+make_drift_scenario check
+: > "$log_drift"
+out_drift_check=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1) || true
+assert_contains "check mode lists the drifted plugin" "would reinstall p1@himmel" "$out_drift_check"
+assert_not_contains "check mode does not list the identical plugin" "would reinstall same@himmel" "$out_drift_check"
+if [ -z "$(cat "$log_drift")" ]; then assert_pass "check mode never invoked claude for the drift"; else assert_fail "check mode invoked claude: $(cat "$log_drift")"; fi
+
+echo "Test: an install that fails after the uninstall is loud and fails the run (HIMMEL-8016)"
+make_drift_scenario failinst
+log_drift_fail="$TMP/claude-invocations-drift-fail.log"
+: > "$log_drift_fail"
+claude_stub_drift_fail="$TMP/claude-install-failing-stub"
+cat > "$claude_stub_drift_fail" <<EOF
+#!/bin/sh
+echo "\$@" >> "$log_drift_fail"
+[ "\$*" = "plugin install p1@himmel" ] && exit 1
+exit 0
+EOF
+chmod +x "$claude_stub_drift_fail"
+rc=0
+out_drift_fail=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift_fail" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
+if [ "$rc" -ne 0 ]; then assert_pass "a failed reinstall fails the run (rc=$rc)"; else assert_fail "a failed reinstall left rc=0 — out: $out_drift_fail"; fi
+assert_contains "the failure names the plugin and says it is uninstalled" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_drift_fail"
+assert_contains "the failure prints the recovery command" "claude plugin install p1@himmel" "$out_drift_fail"
+
+echo "Test: --only plugin-refresh runs just the cache repair and returns its outcome (HIMMEL-8016)"
+make_drift_scenario only
+: > "$log_drift"
+rc=0
+out_only=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+log_only="$(cat "$log_drift")"
+if [ "$rc" -eq 0 ]; then assert_pass "--only plugin-refresh succeeds (rc=$rc)"; else assert_fail "--only plugin-refresh rc=$rc — out: $out_only"; fi
+assert_contains "--only plugin-refresh reinstalls the drifted plugin" "plugin uninstall --keep-data p1@himmel" "$log_only"
+assert_contains "--only plugin-refresh installs it again" "plugin install p1@himmel" "$log_only"
+assert_not_contains "--only plugin-refresh runs no marketplace refresh" "marketplace update" "$log_only"
+assert_not_contains "--only plugin-refresh runs no plugin update" "plugin update" "$log_only"
+
+make_drift_scenario onlyfail
+: > "$log_drift_fail"
+rc=0
+out_only_fail=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift_fail" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+if [ "$rc" -ne 0 ]; then assert_pass "--only plugin-refresh exits nonzero when the reinstall fails (rc=$rc)"; else assert_fail "--only plugin-refresh rc=0 after a failed reinstall — out: $out_only_fail"; fi
+assert_contains "--only plugin-refresh failure is loud" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_only_fail"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 [ "$fail" -eq 0 ]
