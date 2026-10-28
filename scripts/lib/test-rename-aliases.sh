@@ -23,8 +23,8 @@ REG="${RENAME_ALIASES_FILE:-$HERE/rename-aliases.tsv}"
 # old-to-new for a marker, keep for do-not-rename. A prefix ends in '_'.
 SEED='console|chief|prose|fail|V5|never
 leg|worker|prose|fail|V4a|never
-supervisor session|chief|prose|warn|D|never
-worker session|worker|prose|warn|D|never
+supervisor session|chief|prose|fail|D|never
+worker session|worker|prose|fail|D|never
 ticket sequence|dependency chain|prose|fail|R2|never
 batch of workers|parallel wave|prose|fail|R2|never
 wave|parallel wave|prose|fail|R2|never
@@ -368,6 +368,12 @@ for gone in scripts/handover/chief/console.sh \
   scripts/handover/chief-kit/leg-pretrust.sh scripts/handover/chief-kit/leg-transcripts.sh \
   scripts/graphify/leg-graph.sh scripts/lib/leg-identity.sh \
   scripts/lib/cr-default-base.sh scripts/lib/cr-high-risk-diff.sh scripts/lib/cr-trigger-ledger.sh; do
+  check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
+done
+# Removal release X: the forwarders with no live caller are deleted; their registry rows stay.
+for gone in scripts/handover/chief-kit/close-wrapped-legs.sh scripts/handover/chief-kit/console-budget.sh \
+  scripts/handover/chief-kit/leg-budget.sh scripts/handover/leg-resume-brief.sh \
+  scripts/lib/initiative-legs.sh scripts/eval/console-load-inventory.py scripts/telegram/console-route.ts; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
 forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"

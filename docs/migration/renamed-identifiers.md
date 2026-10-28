@@ -142,7 +142,7 @@ Notes on the order:
 | `HIMMEL_WORKER` | Live security marker; a worker does not carry it. |
 | `CONSOLE_KIT_FIXTURE`, `CONSOLE_ROLE`, `CONSOLE_VERB`, `GIT_SEQUENCE_EDITOR` | The registry marks them keep: another sense (a fixture switch, a retired test variable, the Telegram `/consoles` verb, git's own variable). |
 | `/supervisor-session`, `himmel-ops:supervisor-session` | Permanent aliases of `/chief` (OD-6). |
-| The initiative chain: `scripts/lib/initiative-legs.sh`, the plugin's `scripts/legs.sh` wrapper, `resolve_legs` and their tests | The auto-ship step sense of leg, not the fleet sense (the glossary's Do not rename list). | <!-- old-term-ok: this page inventories the old names -->
+| The initiative chain: the plugin's `scripts/legs.sh` wrapper, `resolve_legs` and their tests | The auto-ship step sense of leg, not the fleet sense (the glossary's Do not rename list). | <!-- old-term-ok: this page inventories the old names -->
 | The `<git-dir>/cr-pending/` dir | Kept by OD-3. |
 | F15 (`chain`, `wave`, `ticket sequence`, `batch`) | Glossary and prose only; no fleet-sense identifier exists (`WAVE` and `FIRST_WAVE` are a lint word and a comment). |
 | F12 (`chokepoint-*`) | On hold; docs-only per the glossary. |
