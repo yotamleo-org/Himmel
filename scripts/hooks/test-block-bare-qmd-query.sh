@@ -708,9 +708,11 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 # The nested scan is linear: padding with shell words must not push the hook
 # past the chain's budget, where it would be skipped instead of deciding.
 # timed RC LABEL CMD — assert the exit code and a wall time under 1 s
-# (EPOCHREALTIME is bash 5; without it, SECONDS bounds it to 2 s).
+# (EPOCHREALTIME is bash 5; without it SECONDS ticks in whole seconds, and the
+# budget is five times wider: the quadratic cost this guards ran for minutes).
 timed() {
     local want=$1 label=$2 input t0 t1 rc ms budget=${4:-1000}
+    [ -n "${EPOCHREALTIME:-}" ] || budget=$((budget * 5))
     input=$(j_bash "$3")
     t0=${EPOCHREALTIME:-$SECONDS}
     rc=$(run_case "$input")

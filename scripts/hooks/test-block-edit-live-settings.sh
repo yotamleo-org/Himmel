@@ -470,17 +470,6 @@ assert_rc "57 bash mention of settings.json from a non-git cwd with unresolved H
 # already denied at da43ee9f, so the row proves the prefix/spelling is what
 # used to walk past the hook — not that the target was never guarded.
 NESTED_WT="$SANDBOX/primary/.claude/worktrees/feat+x"
-# DIAG-7120 begin (temporary)
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    jq -n --arg cmd 'ln -sf /tmp/s/settings.json ~/{x,{.claude,y}}/' --arg cwd "$NESTED_WT" \
-        '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' > "$SANDBOX/d397.json"
-    env HOME="$FAKEHOME" PS4='+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ' bash -x "$HOOK" < "$SANDBOX/d397.json" > "$SANDBOX/d397.out" 2> "$SANDBOX/d397.err"
-    echo "D397 bash=$BASH_VERSION rc=$?"
-    cut -c1-160 "$SANDBOX/d397.out" | head -3
-    grep -n '_dc_can_be_claude\|brace_dir_dest\|has_unquoted_brace\|has_brace_climb\|nested_wt' "$SANDBOX/d397.err" | cut -c1-170 | tail -45
-    exit 1
-fi
-# DIAG-7120 end
 
 # 58-61: a cd/pushd earlier in the same command moves the real write target
 # away from the PreToolUse cwd the worktree-relative exemption was judged on.
@@ -2153,6 +2142,18 @@ assert_rc "395 nested worktree ln -sf \$SJ ~/.cl{a,}ude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl{a,}ude" HOME="$FAKEHOME")"
 assert_rc "396 nested worktree ln -sf \$SJ \$HOME/.cla{ude,x}/ denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ \$HOME/.cla{ude,x}/" HOME="$FAKEHOME")"
+# DIAG-7120 begin (temporary)
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    jq -n --arg cmd "ln -sf $SJ ~/{x,{.claude,y}}/" --arg cwd "$NESTED_WT" \
+        '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' > "$SANDBOX/d397.json"
+    echo "D397 bash=$BASH_VERSION plain=$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/{x,{.claude,y}}/" HOME="$FAKEHOME")"
+    env HOME="$FAKEHOME" PS4='+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ' bash -x "$HOOK" < "$SANDBOX/d397.json" > "$SANDBOX/d397.out" 2> "$SANDBOX/d397.err"
+    echo "D397 traced=$?"
+    cut -c1-200 "$SANDBOX/d397.out" | head -3
+    grep -n 'brace_dir_dest\|has_unquoted_brace\|has_brace_climb\|nested_wt\|deny' "$SANDBOX/d397.err" | cut -c1-170 | tail -40
+    exit 1
+fi
+# DIAG-7120 end
 assert_rc "397 nested worktree ln -sf \$SJ ~/{x,{.claude,y}}/ (nested brace) denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/{x,{.claude,y}}/" HOME="$FAKEHOME")"
 assert_rc "398 nested worktree ln -sf \$SJ ~/.cl\$X denies" 2 \
