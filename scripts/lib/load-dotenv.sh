@@ -380,20 +380,20 @@ _load_dotenv_extract() {
 #                   the OS keyring), then .env with a DEPRECATED notice. Never
 #                   read from either file above.
 #
-# The policy directory is fixed at $HOME/.himmel; no env var selects another
-# one. HIMMEL_CONFIG_DIR redirects only the himmel.conf read (tests use it to
-# stay off the station's file).
-# ponytail: the path follows $HOME, so a caller that controls HOME picks the
-# file; clear-cr-marker's seam guard does not cover HOME (it is always set).
-# Upgrade path: pin the directory from the passwd entry if a gate ever runs
-# under a caller-chosen HOME.
+# The policy directory is <account home>/.himmel, the home taken from the
+# account's passwd entry, never from $HOME, so a HOME prefix cannot pick the
+# file. HIMMEL_POLICY_FOLLOWS_HOME=1 is the test seam that points it back at
+# $HOME; it is a registered seam on the gates that read policy
+# (scripts/chokepoints.json), so a per-call prefix is refused there.
+# HIMMEL_CONFIG_DIR redirects only the himmel.conf read (tests use it to stay
+# off the station's file).
 # ponytail: policy keys live in config.json, not the tracked himmel.conf,
 # because no guard covers writes to himmel.conf yet; move them once one does.
 
 # Keys this layer serves. Anything else is a secret and stays in .env.
 _himmel_key_class() {
     case "$1" in
-        CR_REQUIRE_CROSS_MODEL|CR_FLOOR_FALLBACK|ARMAUTOMERGE)
+        CR_REQUIRE_CROSS_MODEL|CR_FLOOR_FALLBACK|ARMAUTOMERGE|ENV_MIGRATION_CONSENT)
             printf 'policy' ;;
         HANDOVER_DIR|USER_SLUG|LUNA_VAULT_PATH|HIMMEL_DOC_FRESHNESS|\
         HIMMEL_INITIATIVE|HIMMEL_INITIATIVE_AFK|HIMMEL_AFK|\
@@ -432,10 +432,24 @@ _himmel_config_dir() {
     printf '%s' "${HIMMEL_CONFIG_DIR:-$HOME/.himmel}"
 }
 
-# The gate-policy file's directory: pinned to $HOME/.himmel so no env var can
-# redirect what load_policy and the policy layer read.
+# The gate-policy file's directory: the account's passwd home + /.himmel, so
+# no env var but the registered seam can redirect what load_policy and the
+# policy layer read. command -p looks tools up on the default PATH, never
+# $PATH, and $UID is bash's own. Prints nothing and fails when the account
+# entry cannot be read.
 _himmel_policy_dir() {
-    printf '%s' "$HOME/.himmel"
+    local _pd_home="" _pd_line
+    if [ "${HIMMEL_POLICY_FOLLOWS_HOME:-}" = 1 ]; then
+        _pd_home=$HOME
+    elif _pd_line=$(command -p getent passwd "$UID" 2>/dev/null); then
+        IFS=: read -r _ _ _ _ _ _pd_home _ <<< "$_pd_line"
+    elif _pd_line=$(command -p dscl . -read "/Users/$(command -p id -un 2>/dev/null)" NFSHomeDirectory 2>/dev/null); then
+        # A value with a space comes on the next line, indented.
+        _pd_home=${_pd_line#NFSHomeDirectory:}
+        _pd_home=${_pd_home#"${_pd_home%%[![:space:]]*}"}
+    fi
+    [ -n "$_pd_home" ] || return 1
+    printf '%s' "$_pd_home/.himmel"
 }
 
 # The per-project override: .himmel/project.conf in the primary checkout of
@@ -461,7 +475,7 @@ _himmel_policy_strict() {
             case "$_ps_v" in 1|true|on|yes) printf 1 ;; *) printf 0 ;; esac ;;
         CR_FLOOR_FALLBACK)
             case "$_ps_v" in claude-only) printf 0 ;; *) printf 1 ;; esac ;;
-        ARMAUTOMERGE)
+        ARMAUTOMERGE|ENV_MIGRATION_CONSENT)
             case "$_ps_v" in 1|true|on|yes) printf 0 ;; *) printf 1 ;; esac ;;
     esac
 }
@@ -596,8 +610,11 @@ _himmel_config_layers() {
             done < <(_load_dotenv_extract "$_hc_file" "${_hc_keys[@]}")
         done
     fi
-    if [ "${#_hc_pol[@]}" -gt 0 ] && [ -f "$(_himmel_policy_dir)/config.json" ]; then
-        _himmel_policy_json "$(_himmel_policy_dir)/config.json" "${_hc_pol[@]}" || return 1
+    if [ "${#_hc_pol[@]}" -gt 0 ]; then
+        _hc_dir=$(_himmel_policy_dir) || return 1
+        if [ -f "$_hc_dir/config.json" ]; then
+            _himmel_policy_json "$_hc_dir/config.json" "${_hc_pol[@]}" || return 1
+        fi
     fi
     return 0
 }
@@ -618,7 +635,10 @@ load_policy() {
     local _lp_key _lp_line _lp_val _lp_out _lp_envfile _lp_i _lp_found=" "
     local _lp_keys=() _lp_env=() _lp_rest=() _lp_legacy=()
     local _lp_conf
-    _lp_conf="$(_himmel_policy_dir)/config.json"
+    if ! _lp_conf="$(_himmel_policy_dir)/config.json"; then
+        printf 'himmel: cannot read this account'\''s home from its passwd entry; gate policy fails closed\n' >&2
+        return 1
+    fi
 
     for _lp_key in "$@"; do
         if [ "$(_himmel_key_class "$_lp_key")" != policy ]; then

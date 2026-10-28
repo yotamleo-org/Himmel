@@ -46,6 +46,7 @@
     { "name": "ALIBABA_OPENAI_BASE_URL", "class": "config", "explanation": "Alibaba OpenAI-compatible API endpoint.", "effect": "Routes that provider's OpenAI-format requests to this endpoint." },
     { "name": "CR_REQUIRE_CROSS_MODEL", "class": "policy", "explanation": "Require a non-Claude reviewer.", "effect": "A true value refuses a Claude-only review panel. Operator-only: edit ~/.himmel/config.json policy by hand; the wizard never writes it." },
     { "name": "CR_FLOOR_FALLBACK", "class": "policy", "explanation": "Fallback when cross-model review cannot run.", "effect": "claude-only permits the Claude-only fallback. Operator-only: edit ~/.himmel/config.json policy by hand; the wizard never writes it." },
-    { "name": "ARMAUTOMERGE", "class": "policy", "explanation": "Default automatic-merge arming switch.", "effect": "A true value arms automatic merging, still subject to every merge gate. Operator-only: edit ~/.himmel/config.json policy by hand; the wizard never writes it." }
+    { "name": "ARMAUTOMERGE", "class": "policy", "explanation": "Default automatic-merge arming switch.", "effect": "A true value arms automatic merging, still subject to every merge gate. Operator-only: edit ~/.himmel/config.json policy by hand; the wizard never writes it." },
+    { "name": "ENV_MIGRATION_CONSENT", "class": "policy", "explanation": "Operator consent for an unattended .env migration.", "effect": "A true value lets himmel-update finish scripts/setup/migrate-env.sh with no terminal prompt; the backup, verify and remove steps still apply. Operator-only: edit ~/.himmel/config.json policy by hand; the wizard never writes it." }
   ]
 }

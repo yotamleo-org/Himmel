@@ -39,13 +39,33 @@
 # asks at ([y/N], any other answer declines). With no terminal on stdin, or
 # inside an agent session (CLAUDECODE set, since an agent may not write
 # ~/.himmel/config.json), it prints the plan and the command for the
-# operator, and writes nothing.
+# operator, and writes nothing. The operator can consent once instead:
+# ENV_MIGRATION_CONSENT=1 in ~/.himmel/config.json .policy, read from that
+# file alone (never the process env or .env), stands in for the y, so an
+# unattended or agent-run update finishes the move. Backup and verify still
+# run, and a key whose two sides differ still stops with nothing removed. The
+# consent covers only this checkout's .env and this account's own ~/.himmel,
+# and gate-policy keys stay in .env until the operator moves them at a prompt.
 #
 # Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
-# node, or the backup, copy or verify failed (no line removed from .env), or
-# the final rewrite of .env failed (restore it from the printed backup);
-# 2 usage; 3 nothing written: an agent session, no terminal, or not a y.
+# node, the account's home could not be read from its passwd entry, or the
+# backup, copy or verify failed (no line removed from .env), or the final
+# rewrite of .env failed (restore it from the printed backup); 2 usage;
+# 3 nothing written: an agent session or no terminal without the consent
+# key, or not a y; 96 a chokepoint seam differs from the session's launch env.
 set -uo pipefail
+
+# The consent is read from the policy dir, so the seam that moves that dir is
+# refused when it differs from the session's launch env.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "migrate-env.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/setup/migrate-env.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -149,24 +169,56 @@ bdir="$confdir/env-backups"
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 apply_cmd=$(printf 'bash %q --env %q' "$HERE/migrate-env.sh" "$envfile")
-if [ -n "${CLAUDECODE:-}" ]; then
-    echo "migrate-env: an agent session cannot write ~/.himmel/config.json; nothing written."
-    printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
-    exit 3
+poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
+consent=0 cv=""
+if [ -f "$poldir/config.json" ] \
+    && cv=$(_himmel_policy_json "$poldir/config.json" ENV_MIGRATION_CONSENT) \
+    && [ "$(_himmel_policy_strict ENV_MIGRATION_CONSENT "${cv#ENV_MIGRATION_CONSENT=}")" = 0 ]; then
+    consent=1
+    echo "migrate-env: ENV_MIGRATION_CONSENT is set in ~/.himmel/config.json; moving without a prompt."
+else
+    if [ -n "${CLAUDECODE:-}" ]; then
+        echo "migrate-env: an agent session cannot write ~/.himmel/config.json; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    if [ ! -t 0 ]; then
+        echo "migrate-env: no terminal to confirm the move at; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
 fi
-if [ ! -t 0 ]; then
-    echo "migrate-env: no terminal to confirm the move at; nothing written."
-    printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
-    exit 3
+if [ "$consent" -eq 1 ]; then
+    # The consent covers this checkout's own .env moving into this account's
+    # own ~/.himmel, and never writes a gate-policy key: those move only at the
+    # operator's own prompt, so an agent cannot fill policy through it.
+    if ! [ "$envfile" -ef "$ROOT/.env" ]; then
+        echo "migrate-env: the consent covers only this checkout's .env, not $envfile; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    if [ "${HOME%/}/.himmel" != "$poldir" ] || [ "${confdir%/}" != "$poldir" ]; then
+        echo "migrate-env: the consent covers only this account's own ~/.himmel, and HOME or HIMMEL_CONFIG_DIR points elsewhere; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    if [ "${#policy_keys[@]}" -gt 0 ]; then
+        echo "migrate-env: gate-policy keys move only at your own prompt; these stay in .env: ${policy_keys[*]}"
+        printf 'To move them, run this at your own prompt:\n  %s\n' "$apply_cmd"
+        moving=$(( moving - ${#policy_keys[@]} )) policy_keys=()
+        [ "$moving" -gt 0 ] || { echo "nothing else to move; nothing written."; exit 3; }
+    fi
 fi
 command -v node >/dev/null 2>&1 || { echo "migrate-env: node is needed to write and verify the config; nothing written." >&2; exit 1; }
-printf 'Move these keys now (backup first)? [y/N] '
-answer=""
-read -r answer || answer=""
-case "$answer" in
-    y|Y|yes|YES) ;;
-    *) printf 'skipped: nothing written. To apply later:\n  %s\n' "$apply_cmd"; exit 3 ;;
-esac
+if [ "$consent" -eq 0 ]; then
+    printf 'Move these keys now (backup first)? [y/N] '
+    answer=""
+    read -r answer || answer=""
+    case "$answer" in
+        y|Y|yes|YES) ;;
+        *) printf 'skipped: nothing written. To apply later:\n  %s\n' "$apply_cmd"; exit 3 ;;
+    esac
+fi
 
 umask 077
 # shellcheck source=../lib/prim.sh
@@ -189,13 +241,16 @@ restore_hint() {
     echo "the backup holds your secrets; remove it once you are happy: rm $backup"
 }
 
-# The readers, run with the keys only in .env (an empty HOME) or only in their
-# new place (the real HOME, an empty .env), in one scratch checkout.
+# The readers, run with the keys only in .env (an empty HOME, the policy dir
+# pointed at it) or only in their new place (the real HOME, an empty .env), in
+# one scratch checkout.
 git init -q "$work/repo" && : > "$work/repo/.env"
 mkdir -p "$work/home"
 read_shell() {  # <home> <reader> KEY... — KEY=value lines, for comparing only
+    local follow=${HIMMEL_POLICY_FOLLOWS_HOME-}
+    [ "$1" != "$work/home" ] || follow=1
     # shellcheck disable=SC2016 # expanded by the child shell
-    env -i HOME="$1" PATH="$PATH" bash -c '
+    env -i HOME="$1" PATH="$PATH" HIMMEL_POLICY_FOLLOWS_HOME="$follow" bash -c '
         . "$1"; reader=$2; shift 2  # read-sink-ok: $1 is always the checkout load-dotenv.sh
         if [ "$reader" = load_policy ]; then load_policy --root "$PWD" "$@" || exit 1
         else load_dotenv --root "$PWD" "$@" || exit 1; fi
@@ -223,6 +278,7 @@ fi
 write_policy() {  # <force 0|1> KEY...: the .env values into config.json .policy
     local force=$1 key line
     shift
+    mkdir -p "$poldir" 2>/dev/null || return 1
     # Values go to node on stdin, never argv. A key config.json already holds
     # is kept unless force is 1.
     for key in "$@"; do
@@ -248,7 +304,7 @@ write_policy() {  # <force 0|1> KEY...: the .env values into config.json .policy
         fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + "\n", { mode: 0o600 });
         if (fs.existsSync(file)) fs.chmodSync(tmp, fs.statSync(file).mode & 0o777);
         fs.renameSync(tmp, file);
-    ' "$confdir/config.json" "$force" 2>/dev/null
+    ' "$poldir/config.json" "$force" 2>/dev/null
 }
 set_line() {  # <in> <key> <line> <out>: <in> with the key's lines replaced by <line>; comments stay
     NEWLINE="$3" awk -v k="$2" '{ l = $0; sub(/\r$/, "", l) }
@@ -397,6 +453,8 @@ if has_bad; then
             # shellcheck disable=SC2088 # shown to the user as written, never expanded
             if [ "$(_himmel_key_class "$key")" = policy ]; then side="~/.himmel/config.json .policy"; else side="~/.himmel/himmel.conf"; fi
             printf '  %s: %s  vs  %s\n' "$key" "$envfile" "$side"
+            # Only the operator at a terminal settles a difference, never the consent.
+            if [ "$consent" -eq 1 ]; then settle=0; continue; fi
             printf 'keep the value in [e] %s or [h] %s? [e/h] ' "$envfile" "$side"
             answer=""
             read -r answer || answer=""
@@ -406,6 +464,7 @@ if has_bad; then
                 *) printf 'no choice for %s: nothing was removed from .env.\n' "$key"; settle=0; break ;;
             esac
         done
+        [ "$consent" -eq 0 ] || printf 'the consent does not settle a difference; run this at your own prompt:\n  %s\n' "$apply_cmd"
     fi
     if [ "$settle" -eq 1 ]; then
         for key in $keep_env; do

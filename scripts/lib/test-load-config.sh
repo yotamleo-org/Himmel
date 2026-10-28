@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the config layers in scripts/lib/load-dotenv.sh — the behaviour-config / gate-policy
 # split out of .env. Hermetic: every case runs with HOME pointed at a temp dir,
-# so the operator's real ~/.himmel is never read.
+# so the operator's real ~/.himmel is never read, except row (h), which proves
+# the policy dir ignores HOME, and row (i), which proves it fails closed.
 # Each case runs in its own $(...) subshell so exports stay scoped.
 # shellcheck disable=SC2030,SC2031,SC2016,SC1090
 set -uo pipefail
@@ -34,6 +35,8 @@ REPO="$TMP/repo"
 mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 export HOME="$TMP/home"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 export HIMMEL_REPO="$REPO" HIMMEL_CONFIG_DIR="$HOME/.himmel"
 export HIMMELCTL_CACHE_DIR="$TMP/no-cache"
 export HIMMEL_SECRETS_KEYRING=off CREDENTIALS_DIRECTORY="$TMP/credentials"
@@ -108,8 +111,8 @@ assert_has "(a) env override is reported as ignored" "ignoring" "$out"
 # (a2) An env-only policy value (no file anywhere) is dropped, not honoured.
 reset
 printf '{"version":1}\n' > "$HOME/.himmel/config.json"
-out=$(run 'export CR_FLOOR_FALLBACK=claude-only; load_policy --root "$PWD" CR_FLOOR_FALLBACK; printf "[%s]" "${CR_FLOOR_FALLBACK-}"')
-assert_has "(a2) env-only policy value is not honoured" "[]" "$out"
+out=$(run 'export CR_FLOOR_FALLBACK=claude-only; load_policy --root "$PWD" CR_FLOOR_FALLBACK; printf "[%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "$?"')
+assert_has "(a2) env-only policy value is not honoured" "[|rc=0]" "$out"
 
 # (b) A legacy .env-only config key still applies, with a deprecation notice.
 reset
@@ -172,8 +175,8 @@ reset
 printf '{"version":1}\n' > "$HOME/.himmel/config.json"
 printf 'CR_FLOOR_FALLBACK=claude-only\n' > "$HOME/.himmel/himmel.conf"
 printf 'ARMAUTOMERGE=1\n' > "$HOME/.himmel/himmel.conf.local"
-out=$(run 'load_policy --root "$PWD" CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}"')
-assert_has "(e) policy in himmel.conf/.local is not honoured by load_policy" "[|]" "$out"
+out=$(run 'load_policy --root "$PWD" CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}" "$?"')
+assert_has "(e) policy in himmel.conf/.local is not honoured by load_policy" "[||rc=0]" "$out"
 out=$(run 'load_dotenv CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}"')
 assert_has "(e) policy in himmel.conf/.local is not honoured by load_dotenv" "[|]" "$out"
 
@@ -236,6 +239,40 @@ case "$out" in
     *"once setup reads"*) assert_eq_fp "(g) deprecation notice is current" "no stale clause" "$out" ;;
     *) assert_has "(g) deprecation notice is current" "migrate-env-config.sh" "$out" ;;
 esac
+
+# (h) Without the seam the policy dir is the account's home from its passwd
+# entry, not HOME: a HOME holding a permissive policy file is not the one read.
+# Reads the account's real policy file, read-only, and asserts only that the
+# canary planted under HOME did not win.
+acct_home=$(node -e 'process.stdout.write(require("os").userInfo().homedir)')
+mkdir -p "$TMP/evil/.himmel"
+printf '{"version":1,"policy":{"CR_FLOOR_FALLBACK":"CANARY-evil-floor"}}\n' > "$TMP/evil/.himmel/config.json"
+out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run '_himmel_policy_dir')
+assert_eq_fp "(h) the policy dir ignores HOME" "$acct_home/.himmel" "$out"
+out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run 'load_policy --root "$REPO" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "rc=%s[%s]" "$?" "${CR_FLOOR_FALLBACK-}"')
+case "$out" in
+    *CANARY-evil-floor*) assert_eq_fp "(h) load_policy does not read a HOME-planted policy file" "not the canary" "$out" ;;
+    rc=0\[*) echo "PASS (h) load_policy does not read a HOME-planted policy file" ;;
+    *) assert_eq_fp "(h) load_policy succeeds with a HOME-planted policy file" "rc=0" "$out" ;;
+esac
+out=$(HOME="$TMP/evil" run '_himmel_policy_dir')
+assert_eq_fp "(h) the seam points the policy dir at HOME" "$TMP/evil/.himmel" "$out"
+
+# (i) With no passwd entry for the account there is no policy dir: load_policy
+# fails closed instead of reading HOME. A user namespace runs the reader as a
+# uid no passwd entry names.
+nouid=""
+for u in 54321 54329 61234 61239; do
+    command -p getent passwd "$u" >/dev/null 2>&1 || { nouid=$u; break; }
+done
+if [ -n "$nouid" ] && unshare --user --map-user="$nouid" true 2>/dev/null; then
+    out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; cd "$REPO" && HOME="$TMP/evil" unshare --user --map-user="$nouid" bash -c '
+        . "$1"; _himmel_policy_dir >/dev/null; printf "dir=%s|" "$?" # read-sink-ok: $1 is this repo LIB, set above
+        load_policy --root "$PWD" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "policy=%s[%s]" "$?" "${CR_FLOOR_FALLBACK-}"' _ "$LIB" 2>/dev/null)
+    assert_eq_fp "(i) with no passwd entry the policy dir and load_policy fail closed" "dir=1|policy=1[]" "$out"
+else
+    echo "SKIP (i) no user namespace to run as a uid with no passwd entry"
+fi
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-load-config: $FAILED FAILED"

@@ -20,6 +20,8 @@ hasnt() { if grep -qE -- "$2" "$3" 2>/dev/null; then bad "$1: /$2/ found in $3";
 # a throwaway HOME and floor key dir — this suite never touches
 # the real ~/.himmel/cr-floor-key.
 export HOME="$W/home" CR_FLOOR_KEY_DIR="$W/keys"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 mkdir -p "$HOME"
 # bank-preflight distrusts a cache whose account doesn't match
 # the current identity — synthesize one so this fixture still verdicts PROCEED.
@@ -478,7 +480,7 @@ mk_repo 31; row codex unavailable quota
 PROMPT_REPO="$W/unreadable-prompt"
 mkdir -p "$PROMPT_REPO/scripts/cr" "$PROMPT_REPO/scripts/lib"
 cp "$SUT" "$PROMPT_REPO/scripts/cr/claude-floor-review.sh"
-cp "$REPO/scripts/lib/review-default-base.sh" "$PROMPT_REPO/scripts/lib/"
+cp "$REPO/scripts/lib/review-default-base.sh" "$REPO/scripts/lib/chokepoint-seam-guard.sh" "$PROMPT_REPO/scripts/lib/"
 cp "$AGENT_MD" "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
 chmod 000 "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
 if [ -r "$PROMPT_REPO/scripts/cr/floor-reviewer.md" ]; then

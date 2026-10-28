@@ -20,6 +20,8 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL
 # console.log colour a bare number/boolean (\e[33m0\e[39m) in the values the
 # gate parses. Pin it on so the suite catches a regression in any environment.
 export FORCE_COLOR=3
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
