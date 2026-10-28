@@ -114,6 +114,8 @@ cmd_slice() {
     tail -n +2 "$raw" > "$tmpf" || _af_die "slice: strip failed"
     _af_assert_clean "$tmpf"
     atomic_write "$out" < "$tmpf" || _af_die "slice: write failed"
+    rm -f "$tmpf"   # atomic_write copies $tmpf; a rename used to consume it
+    trap - EXIT
     echo "$out"
 }
 
