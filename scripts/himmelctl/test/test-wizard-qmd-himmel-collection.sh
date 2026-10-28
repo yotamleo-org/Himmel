@@ -39,7 +39,7 @@ cat > "$stubBin/qmd" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = "collection" ] || exit 0
 case "$2" in
-  list) [ -f "$QMD_STATE" ] && cat "$QMD_STATE"; exit 0 ;;
+  list) [ -f "$QMD_STATE" ] && cat "$QMD_STATE"; exit "${QMD_LIST_RC:-0}" ;;
   add) name=""; while [ $# -gt 0 ]; do [ "$1" = "--name" ] && name="$2"; shift; done
        echo "$name" >> "$QMD_STATE"; echo "add $name" >> "$QMD_STATE.adds"; exit 0 ;;
 esac
@@ -102,6 +102,12 @@ argv=(); while IFS= read -r a; do argv+=("$a"); done < <(echo "$cmdline" | jq -r
 ( PATH="$withQmdPath" QMD_STATE="$stateC" HOME="$work/home" BUN_INSTALL="$work/home/.bun" "${argv[@]}" >/dev/null 2>&1 ) || fail "c: the register-only command failed against an already-registered himmel"
 [ ! -s "$stateC.adds" ] || fail "c: himmel was registered a second time (adds: $(cat "$stateC.adds"))"
 echo "ok: c — luna/all keep qmd-index's three collections; an already-registered himmel is not added again"
+
+# ── e. an installed qmd whose `collection list` exits 3 is a failure, not "no qmd" ──
+stateE="$work/qmd-state-e"; : > "$stateE"
+st=$(QMD_LIST_RC=3 run_wizard "$withQmdPath" "$stateE" status --json --items qmd-himmel-collection) || fail "e: status failed: $st"
+echo "$st" | jq -e '.items[] | select(.id=="qmd-himmel-collection") | .severity != "n/a"' >/dev/null || fail "e: a failing collection list on an installed qmd must not read as the no-qmd hint: $st"
+echo "ok: e — a failing collection list on an installed qmd is not reported as qmd absent"
 
 # ── d. manifest-lint ───────────────────────────────────────────────────────
 node "$repo_root/scripts/install/manifest-lint.mjs" "$manifest_path" >/dev/null || fail "d: manifest-lint rejects the manifest"
