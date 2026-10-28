@@ -72,7 +72,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ORIG_PATH="$PATH"
 REALNODE="$(command -v node || true)"
 [ -n "$REALNODE" ] || fail "node is required (himmelctl status runs under it)"
-if [ -n "$KEEP" ]; then TMP="$KEEP"; mkdir -p "$TMP"; else TMP="$(mktemp -d "${TMPDIR:-/tmp}/adopt-sequences.XXXXXX")" || exit 1; fi
+if [ -n "$KEEP" ]; then TMP="$KEEP"; mkdir -p "$TMP"; else TMP="$(mktemp -d "${TMPDIR:-/tmp}/adopt-sequences.XXXXXX")" || exit 1; TMP="$(cd "$TMP" && pwd -P)"; fi
 [ -n "$KEEP" ] || trap 'rm -rf "$TMP"' EXIT
 
 # Paths whose presence after an uninstall is NOT a defect: the provenance
