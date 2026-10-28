@@ -16,7 +16,7 @@
 // launch is counted too — the alert's `for:` window is the only allowance.
 // Writer visibility needs read access to other processes' /proc/<pid>/fd, so
 // a log written by a different user reads as writer-less. Linux only: there
-// is no /proc on macOS, and Windows has its own host-detectors.ps1 path.
+// is no /proc on macOS.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 

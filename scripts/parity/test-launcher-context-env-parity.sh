@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# test-launcher-context-env-parity.sh — the claude-codex twins must BOTH feed
+# test-launcher-context-env-parity.sh — the claude-codex launcher must feed
 # the context-window env pair from the CODEX_CONTEXT_WINDOW variable
 #, and the launcher defaults the per-dispatch effort to `xhigh` (decision 223),
 # the value lanes.json declares.
 #
-# test-launcher-twin-parity.sh compares only embedded node JS between twins —
-# by its own design — so it is blind to a plain export: a .ps1 twin missing
-# the CLAUDE_CODE_MAX_CONTEXT_TOKENS export ships green there. This guard
-# closes that gap for the one pair where the export is load-bearing: Claude
+# A launcher missing the CLAUDE_CODE_MAX_CONTEXT_TOKENS export would ship
+# green without this guard. The export is load-bearing: Claude
 # Code resolves the effective compact window as min(modelWindow, configured),
 # and for an out-of-catalog model (gpt-5.6-sol) modelWindow falls back to a
 # hardcoded 200000 — without the export, CODEX_CONTEXT_WINDOW is silently

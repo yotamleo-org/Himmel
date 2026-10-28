@@ -5,7 +5,7 @@
 // auto-committed commits piled up unpushed (9 deep) with zero visible signal.
 // flow-exporter.ts's `luna_git_unpushed_commits`/`luna_git_uncommitted_files`
 // gauges are the passive DETECTION signal; this script is the ACTIVE
-// notification on top of it — invoked on a schedule (see install-stack.ps1),
+// notification on top of it — invoked on a schedule (see scripts/observability/README.md, Alerting),
 // never a hook, never in the exporter's request path.
 //
 // Reuses the exact same git-reading function the exporter uses

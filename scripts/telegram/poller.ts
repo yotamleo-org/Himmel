@@ -2519,7 +2519,7 @@ export async function main(): Promise<void> {
       // file (ingestUpdates only rewrites it when maxId advances). Without this,
       // "poller alive but neither appending nor advancing the offset" is invisible:
       // bridgeProcs>=1 and conflictLines==0 were BOTH true for the entire 2026-08-03
-      // ~16h wedge. restart-bridge.ps1's verify step and watchdog treat this line (or
+      // ~16h wedge. the bridge restart's verify step and watchdog treat this line (or
       // the offset file actually advancing) as the real liveness proof.
       console.error(`[poller] heartbeat: getUpdates ok (offset=${offset}, updates=${updates.length})`);
       pollFails = 0; outageStartedAt = null; lastOutageAlertAt = null;

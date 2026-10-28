@@ -4,24 +4,6 @@ Automate a bare OS → full dev environment. Run **before** the himmel repo is a
 
 ---
 
-## Win11
-
-**Requirements:** PowerShell 7+ as Administrator, internet access.
-
-```powershell
-# 1. Download
-Invoke-WebRequest "https://raw.githubusercontent.com/yotamleo/Himmel/main/scripts/machine-setup/win11.ps1" -OutFile "$env:TEMP\win11.ps1"
-
-# 2. Run
-pwsh -ExecutionPolicy Bypass -File "$env:TEMP\win11.ps1" -LunaRemote "https://github.com/<you>/<your-vault>.git"
-```
-
-**What it installs:** winget packages (git, node LTS, python, jq), uv+uvx, bun, Claude Code CLI, RTK, himmel repo + setup, claude-hud statusline, CLAUDE.md + RTK.md, obsidian-second-brain plugin, Luna vault + pre-commit, `~/.claude/settings.json` (shallow top-level merge), **end-session-wiki SessionEnd hook (prompted: PowerShell / Bash / Both / Skip)**, Obsidian.
-
-**After run:** Complete the printed manual checklist (Jira token, Atlassian MCP token, qmd embed).
-
----
-
 ## Ubuntu
 
 **Requirements:** Standard user with sudo, internet access.
@@ -69,7 +51,7 @@ statusline (the cap *trigger*), the auto-arm-on-cap PreToolUse hook (the cap
 *action*), verifies `crontab` (the macOS scheduler backend — arm-resume uses
 crontab, **not** `at`/atrun, which is off-by-default / SIP-fragile), and hands
 off to the himmelctl install wizard (cadences, plugins, hooks — same
-delegation ubuntu.sh/win11.ps1 already end with). Idempotent. On modern macOS,
+delegation ubuntu.sh already ends with). Idempotent. On modern macOS,
 cron may need Full Disk Access granted to `/usr/sbin/cron` — the script prints
 this caveat.
 

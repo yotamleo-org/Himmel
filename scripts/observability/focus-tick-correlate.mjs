@@ -2,7 +2,7 @@
 // LUNA-131 Task 9c (acceptance 2 / D16). The owner of acceptance 2's
 // statistic -- nothing else in the plan computes it. Correlates
 // foreground-window-change timestamps (focus.jsonl, written by
-// foreground-window-log.ps1) against the vault sweeper's tick_start times
+// the foreground-window logger) against the vault sweeper's tick_start times
 // (sync.log, written by the sweeper Task 5 built) and prints a single
 // PASS/FAIL verdict for whether the sweeper coincides with focus loss more
 // than chance predicts over the soak.

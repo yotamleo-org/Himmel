@@ -623,7 +623,7 @@ export const MAX_TOTAL_BACKOFF_MS = 180_000;
 // (claude-codex --preflight-only). Keeps the retry from ever firing on a
 // PERMANENT error (missing key = the launcher's early exit 2, egress refusal =
 // 3, etc.), which would otherwise waste the whole backoff then launch a doomed
-// worker (codex-adv CR). Keep in sync with scripts/claude-codex{,.ps1}.
+// worker (codex-adv CR). Keep in sync with scripts/claude-codex.
 export const CLAUDEX_PREFLIGHT_GAP_EXIT = 20;
 // Hard per-probe wall-clock cap so ONE synchronous probe can never blow the
 // preflight's absolute deadline (codex/coderabbit CR: spawnSync is not
