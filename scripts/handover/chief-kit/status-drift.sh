@@ -24,8 +24,8 @@
 #   WORKER-COMMENT    the WORKER comment hash differs from the one the record's class gives
 #   TWO-OWNERS        two live docs claim one key
 #   UNOWNED           started, no open PR, no live owner; not for a `standing`-labelled
-#                     ticket, nor one whose comments name an OPEN PR in another repo (that
-#                     also skips DERIVE-MISMATCH and WORKER-COMMENT for the key)
+#                     ticket, nor one whose comments cite an OPEN PR whose title names the
+#                     ticket (any repo; that also skips DERIVE-MISMATCH and WORKER-COMMENT)
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
 #                     version than the current one; the fix is an INTAKE request to the current version
@@ -185,19 +185,22 @@ if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swall
 
 is_owner_state() { case "$1" in live|idle|IDLE-HELD) return 0 ;; *) return 1 ;; esac; }
 
-# 0 when a comment on the ticket names a PR in another repo that gh reports OPEN. The pr list
-# above only sees this repo, so a ticket whose PR lives elsewhere looks ownerless without this.
-# A closed or merged PR, or a failed gh read, is not a yes: the ticket's rows stay.
+# 0 when a comment on the ticket names a PR that gh reports OPEN and whose title's first [KEY]
+# is this ticket. The pr list above only sees this repo, so a ticket whose PR lives elsewhere
+# looks ownerless without this. The title binds the PR to the ticket: a PR a comment merely
+# cites (another ticket's, an upstream one) exempts nothing. A closed or merged PR, a PR
+# titled for another ticket or none, or a failed gh read is not a yes: the ticket's rows stay.
 xrepo_open() { # <KEY>
-    local urls u st
+    local urls u row tkey
     # swallow-ok: an unreadable comment list means no cross-repo PR is known, so the rows stay
     urls=$(ts_jira comments "$1" 2>/dev/null | grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+' | sort -u)
     while IFS= read -r u; do
         [ -n "$u" ] || continue
-        case "$u" in "https://github.com/$REPO/pull/"*) continue ;; esac
         # swallow-ok: a failed gh read is not proof the PR is open, so the rows stay
-        st=$(bounded 20 gh pr view "$u" --json state --jq .state 2>/dev/null) || continue
-        [ "$st" = OPEN ] && return 0
+        row=$(bounded 20 gh pr view "$u" --json state,title --jq '.state + "\t" + .title' 2>/dev/null) || continue
+        [ "${row%%$'\t'*}" = OPEN ] || continue
+        tkey=$(ticket_key_from_title "${row#*$'\t'}") || continue
+        [ "$tkey" = "$1" ] && return 0
     done <<<"$urls"
     return 1
 }

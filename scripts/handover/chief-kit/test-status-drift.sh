@@ -104,7 +104,8 @@ case "$1 $2" in
     "pr view")
         case "$3" in http*)
             [ -e "$FX/xpr.fail" ] && { echo "HTTP 502" >&2; exit 1; }
-            cat "$FX/xpr.state"; exit 0 ;;
+            [ "$5" != state ] || { cat "$FX/xpr.state"; exit 0; }
+            printf '%s\t%s\n' "$(cat "$FX/xpr.state")" "$(cat "$FX/xpr.title")"; exit 0 ;;
         esac
         if [ "$5" = headRefOid ]; then
             if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
@@ -632,7 +633,10 @@ check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
 # a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
 # another repo is owned by that PR (the open-PR list only sees this repo)
 XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
-xpr() { printf 'PR %s is open and parked\n' "$XPR" > "$FX/comments.$K"; printf '%s\n' "$1" > "$FX/xpr.state"; }
+xpr() { # <state> [title key, default the ticket] - the comment cites $XPR; gh reports its state and title
+    printf 'PR %s is open and parked\n' "$XPR" > "$FX/comments.$K"; printf '%s\n' "$1" > "$FX/xpr.state"
+    printf '[%s] feat: the work\n' "${2:-$K}" > "$FX/xpr.title"
+}
 reset "In Progress"; jl "$K" "In Progress"; printf 'standing\n' > "$FX/labels.$K"
 drift
 check "3b: a standing ticket with no PR and no owner is not UNOWNED" "$(dcount UNOWNED)" 0
@@ -660,10 +664,23 @@ reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"
 drift
 contains "3b: a failed cross-repo read keeps the rows (never a silent green)" "$(drows UNOWNED)" "UNOWNED $K"
 contains "3b: and the failed read still ends in a counted sdrift" "$(dlast)" "sdrift="
-reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"
-printf 'PR https://github.com/yotamleo-org/himmel/pull/13 is open\n' > "$FX/comments.$K"; printf 'OPEN\n' > "$FX/xpr.state"
-bash "$DRIFT" --repo yotamleo-org/himmel --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
-contains "3b: a PR URL in this repo is not a cross-repo exemption" "$(drows UNOWNED)" "UNOWNED $K"
+# an open PR a comment merely cites is not the ticket's PR: only a title naming the ticket binds it
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
+drift
+contains "3b: an open cross-repo PR titled for another ticket keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+contains "3b: an open cross-repo PR titled for another ticket keeps DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: an open cross-repo PR titled for another ticket keeps WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; printf 'feat: no ticket key\n' > "$FX/xpr.title"
+drift
+contains "3b: an open cross-repo PR whose title names no ticket keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+# a URL spelled in another case or under the old slug is just another PR: the title decides, not the slug
+XPR_KEEP=$XPR
+for XPR in https://github.com/YotamLeo-Org/Himmel/pull/13 https://github.com/yotamleo/himmel/pull/13; do
+    reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
+    drift
+    contains "3b: $XPR to another ticket's open PR keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+done
+XPR=$XPR_KEEP
 
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
 drift
