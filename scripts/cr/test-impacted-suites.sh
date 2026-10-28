@@ -1152,7 +1152,8 @@ elif ! cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/oldcr/anchor-handoff.sh";
 elif ! git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/oldcr/impacted-suites.sh"; then
     fail "old-selector control setup: $OLD_IS_SHA is present but its selector could not be read"
 else
-    old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
+    # LC_ALL=C: that selector predates the byte-safe sed and BSD sed rejects the fixture's non-UTF-8 byte.
+    old_out="$( cd "$FX" && LC_ALL=C bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
     # The WS5 scan_roots rows postdate that selector, so its row is not compared.
     cmp_out="$(grep -vxF scripts/parity/test-ws5-invariants.sh <<< "$out")"
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi

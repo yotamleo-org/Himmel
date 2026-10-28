@@ -242,7 +242,7 @@ if command -v node >/dev/null 2>&1; then
     [ "$RC" -eq 0 ] || {
         echo "    node at $(command -v node) said:"
         _qlog="$(printf '%s\n' "$OUT" | sed -n 's/.*log: \([^ )]*\)).*/\1/p' | head -n 1)"
-        [ -n "$_qlog" ] && [ -f "$_qlog" ] && sed -n '1,40p' "$_qlog"
+        [ -n "$_qlog" ] && [ -f "$_qlog" ] && grep -v '^✔' "$_qlog" | sed -n '1,60p'
     }
     assert_rc "suite with node --test <tracked file> unaffected" 0 "$RC"
 else

@@ -78,7 +78,7 @@ fixture_profiles() {
   cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
   cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/"
   # Every lib headed-arm.sh sources by its own path: bash on macOS stops at a missing one.
-  cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/"
+  cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/"
   [ -d "$1/bare" ] && cp "$HERE/argv-has-n-name.sh" "$1/bare/"
   return 0
 }
