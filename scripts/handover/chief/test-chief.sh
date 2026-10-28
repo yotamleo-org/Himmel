@@ -136,7 +136,9 @@ printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo 2099-01-01; else exec %s "$@"
 check "0 the date pin leads the PATH every child process of the suite inherits" "$(bash -c 'printf %s "${PATH%%:*}"')" "$datepin"
 check "0 the date pin holds the suite's day against a clock past midnight" "$(PATH="${datepin:-/nonexistent}:$flip0:$PATH" date +%F)" "$today"
 root0="$tmp/root0"; mkdir -p "$root0"
-PATH="${datepin:-/nonexistent}:$flip0:$PATH" chief_root "$root0" new --bucket midnight >/dev/null 2>&1
+rc0=0
+PATH="${datepin:-/nonexistent}:$flip0:$PATH" chief_root "$root0" new --bucket midnight >/dev/null 2>&1 || rc0=$?
+check "0 chief new succeeds" "$rc0" "0"
 check "0 chief new names its doc for the suite's day against a clock past midnight" "$([ -f "$root0/tester/midnight/DEMO-nextleg-${today}A-chief.md" ] && echo yes)" "yes"
 
 # Acquire prints the token backticked
