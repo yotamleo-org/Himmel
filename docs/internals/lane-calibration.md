@@ -1173,7 +1173,9 @@ sweep), so the repriced cost carries a 1.2 markup.
   exported in the launching shell, and it runs as its own worker once the
   operator sets it.
 - `--lane claudex` is a live lane. It bills the codex usage budget, so the
-  sweep exits 3 unless `CLAUDEX_LANE_OK=1` is on the command.
+  sweep exits 3 unless `CLAUDEX_LANE_OK=1` is on the command. Also set
+  `CADENCE_USAGE_LANE=claudex`: the preflight reads that variable, and
+  without it checks the native Claude budget instead.
 
 ## Escalation shape
 
