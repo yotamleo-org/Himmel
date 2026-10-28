@@ -480,7 +480,7 @@ mk_repo 31; row codex unavailable quota
 PROMPT_REPO="$W/unreadable-prompt"
 mkdir -p "$PROMPT_REPO/scripts/cr" "$PROMPT_REPO/scripts/lib"
 cp "$SUT" "$PROMPT_REPO/scripts/cr/claude-floor-review.sh"
-cp "$REPO/scripts/lib/review-default-base.sh" "$PROMPT_REPO/scripts/lib/"
+cp "$REPO/scripts/lib/review-default-base.sh" "$REPO/scripts/lib/chokepoint-seam-guard.sh" "$PROMPT_REPO/scripts/lib/"
 cp "$AGENT_MD" "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
 chmod 000 "$PROMPT_REPO/scripts/cr/floor-reviewer.md"
 if [ -r "$PROMPT_REPO/scripts/cr/floor-reviewer.md" ]; then

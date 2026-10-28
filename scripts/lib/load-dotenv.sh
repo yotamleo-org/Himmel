@@ -443,8 +443,10 @@ _himmel_policy_dir() {
         _pd_home=$HOME
     elif _pd_line=$(command -p getent passwd "$UID" 2>/dev/null); then
         IFS=: read -r _ _ _ _ _ _pd_home _ <<< "$_pd_line"
-    elif _pd_line=$(command -p dscl . -read "/Users/$(command -p id -un)" NFSHomeDirectory 2>/dev/null); then
-        _pd_home=${_pd_line#NFSHomeDirectory: }
+    elif _pd_line=$(command -p dscl . -read "/Users/$(command -p id -un 2>/dev/null)" NFSHomeDirectory 2>/dev/null); then
+        # A value with a space comes on the next line, indented.
+        _pd_home=${_pd_line#NFSHomeDirectory:}
+        _pd_home=${_pd_home#"${_pd_home%%[![:space:]]*}"}
     fi
     [ -n "$_pd_home" ] || return 1
     printf '%s' "$_pd_home/.himmel"

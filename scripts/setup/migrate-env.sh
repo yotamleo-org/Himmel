@@ -43,7 +43,9 @@
 # ENV_MIGRATION_CONSENT=1 in ~/.himmel/config.json .policy, read from that
 # file alone (never the process env or .env), stands in for the y, so an
 # unattended or agent-run update finishes the move. Backup and verify still
-# run, and a key whose two sides differ still stops with nothing removed.
+# run, and a key whose two sides differ still stops with nothing removed. The
+# consent covers only this checkout's .env and this account's own ~/.himmel,
+# and gate-policy keys stay in .env until the operator moves them at a prompt.
 #
 # Exit: 0 moved, nothing to move, no .env or a dry run; 1 a step failed: no
 # node, the account's home could not be read from its passwd entry, or the
@@ -184,6 +186,27 @@ else
         echo "migrate-env: no terminal to confirm the move at; nothing written."
         printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
         exit 3
+    fi
+fi
+if [ "$consent" -eq 1 ]; then
+    # The consent covers this checkout's own .env moving into this account's
+    # own ~/.himmel, and never writes a gate-policy key: those move only at the
+    # operator's own prompt, so an agent cannot fill policy through it.
+    if ! [ "$envfile" -ef "$ROOT/.env" ]; then
+        echo "migrate-env: the consent covers only this checkout's .env, not $envfile; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    if [ "${HOME%/}/.himmel" != "$poldir" ] || [ "${confdir%/}" != "$poldir" ]; then
+        echo "migrate-env: the consent covers only this account's own ~/.himmel, and HOME or HIMMEL_CONFIG_DIR points elsewhere; nothing written."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    if [ "${#policy_keys[@]}" -gt 0 ]; then
+        echo "migrate-env: gate-policy keys move only at your own prompt; these stay in .env: ${policy_keys[*]}"
+        printf 'To move them, run this at your own prompt:\n  %s\n' "$apply_cmd"
+        moving=$(( moving - ${#policy_keys[@]} )) policy_keys=()
+        [ "$moving" -gt 0 ] || { echo "nothing else to move; nothing written."; exit 3; }
     fi
 fi
 command -v node >/dev/null 2>&1 || { echo "migrate-env: node is needed to write and verify the config; nothing written." >&2; exit 1; }
@@ -430,6 +453,8 @@ if has_bad; then
             # shellcheck disable=SC2088 # shown to the user as written, never expanded
             if [ "$(_himmel_key_class "$key")" = policy ]; then side="~/.himmel/config.json .policy"; else side="~/.himmel/himmel.conf"; fi
             printf '  %s: %s  vs  %s\n' "$key" "$envfile" "$side"
+            # Only the operator at a terminal settles a difference, never the consent.
+            if [ "$consent" -eq 1 ]; then settle=0; continue; fi
             printf 'keep the value in [e] %s or [h] %s? [e/h] ' "$envfile" "$side"
             answer=""
             read -r answer || answer=""
@@ -439,6 +464,7 @@ if has_bad; then
                 *) printf 'no choice for %s: nothing was removed from .env.\n' "$key"; settle=0; break ;;
             esac
         done
+        [ "$consent" -eq 0 ] || printf 'the consent does not settle a difference; run this at your own prompt:\n  %s\n' "$apply_cmd"
     fi
     if [ "$settle" -eq 1 ]; then
         for key in $keep_env; do

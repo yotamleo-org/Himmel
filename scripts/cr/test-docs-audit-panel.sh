@@ -50,7 +50,7 @@ root="$tmp/root"
 mkdir -p "$root/scripts/cr" "$root/scripts/lib" "$root/scripts/guardrails"
 cp "$SUT_SRC" "$root/scripts/cr/docs-audit-panel.sh"
 cp "$DIR/anchor-handoff.sh" "$root/scripts/cr/anchor-handoff.sh"
-cp "$DIR/../lib/load-dotenv.sh" "$root/scripts/lib/load-dotenv.sh"
+cp "$DIR/../lib/load-dotenv.sh" "$DIR/../lib/chokepoint-seam-guard.sh" "$root/scripts/lib/"
 cp "$DIR/../guardrails/lib.sh" "$root/scripts/guardrails/lib.sh"
 SUT="$root/scripts/cr/docs-audit-panel.sh"
 

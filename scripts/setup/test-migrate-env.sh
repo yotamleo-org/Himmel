@@ -338,13 +338,60 @@ has "(a) the consented apply still verifies" "verified: load_dotenv" "$out"
 lacks "(a) the consented apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
 if ls "$HOME/.himmel/env-backups/env."* >/dev/null 2>&1; then pass "(a) the consented apply took the backup"; else fail "(a) the consented apply took no backup"; fi
 no_canary "(a) the consented apply prints no value" "$out"
+has "(a) a gate-policy key stays in .env under consent" "CR_REQUIRE_CROSS_MODEL=1" "$(cat "$FX/.env")"
+lacks "(a) the consent writes no gate-policy key" "CR_REQUIRE_CROSS_MODEL" "$(cat "$HOME/.himmel/config.json")"
+has "(a) the report names the policy key that stays" "these stay in .env: CR_REQUIRE_CROSS_MODEL" "$out"
 
-consent_fixture '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0","ENV_MIGRATION_CONSENT":"1"}}'
-out=$(bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+# An agent that plants a gate-policy key in .env cannot have the consent write it.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+printf 'ARMAUTOMERGE=1\n' >> "$FX/.env"
+out=$(CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+lacks "a planted policy key never reaches config.json under consent" "ARMAUTOMERGE" "$(cat "$HOME/.himmel/config.json")"
+has "a planted policy key stays in .env" "ARMAUTOMERGE=1" "$(cat "$FX/.env")"
+
+# Nor can it point the consent at a .env of its own making.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+printf 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\nUSER_SLUG=%s\n' "$(canary agent)" > "$TMP/agent.env"
+cp -p "$TMP/agent.env" "$TMP/agent.orig"
+cp -p "$HOME/.himmel/config.json" "$TMP/consent.orig"
+out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$TMP/agent.env" < /dev/null 2>&1); rc=$?
+if [ "$rc" = 3 ]; then pass "the consent refuses a --env other than the checkout's (exit 3)"; else fail "a consented --env elsewhere exited $rc"; fi
+has "the refusal names the checkout's .env" "the consent covers only this checkout's .env" "$out"
+if cmp -s "$HOME/.himmel/config.json" "$TMP/consent.orig" && cmp -s "$TMP/agent.env" "$TMP/agent.orig" \
+    && [ ! -e "$HOME/.himmel/himmel.conf" ] && [ ! -e "$HOME/.himmel/env-backups" ]; then
+    pass "a consented --env elsewhere writes nothing"
+else
+    fail "a consented --env elsewhere wrote something"
+fi
+
+# Nor move the backup and the moved lines out of the account's own ~/.himmel.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+out=$(HIMMEL_CONFIG_DIR="$TMP/elsewhere" CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "the consent refuses a config dir outside the account's ~/.himmel" "rc=0 status=pending" "$out"
+has "the refusal names the moved home" "HOME or HIMMEL_CONFIG_DIR points elsewhere" "$out"
+if [ ! -e "$TMP/elsewhere" ] && cmp -s "$FX/.env" "$TMP/st.orig"; then
+    pass "a consented move to another config dir writes nothing"
+else
+    fail "a consented move to another config dir wrote something"
+fi
+
+# A mismatch stops under consent, and a piped answer cannot settle it.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+hconf=$(canary hconf)
+printf 'USER_SLUG=%s\n' "$hconf" > "$HOME/.himmel/himmel.conf"
+out=$(printf 'e\n' | CLAUDECODE=1 bash "$TMP/update-step.sh" apply 2>&1)
 has "a mismatch still stops under consent" "rc=1 status=failed" "$out"
-has "the consented mismatch names the key" "MISMATCH CR_REQUIRE_CROSS_MODEL (load_policy)" "$out"
-has "the consented mismatch names both sides" "CR_REQUIRE_CROSS_MODEL: $FX/.env  vs  ~/.himmel/config.json .policy" "$out"
+has "the consented mismatch names the key" "MISMATCH USER_SLUG (load_dotenv)" "$out"
+# shellcheck disable=SC2088 # the report prints the tilde as written
+has "the consented mismatch names both sides" "USER_SLUG: $FX/.env  vs  ~/.himmel/himmel.conf" "$out"
+has "the consented mismatch names the operator command" "the consent does not settle a difference" "$out"
+if [ "$(sed -n 's/^USER_SLUG=//p' "$HOME/.himmel/himmel.conf")" = "$hconf" ]; then
+    pass "a piped e cannot overwrite the operator's value"
+else
+    fail "a piped e overwrote the operator's value"
+fi
 if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "the consented mismatch leaves .env untouched"; else fail "the consented mismatch changed .env"; fi
+no_canary "the consented mismatch prints no value" "$out"
 
 consent_fixture '{"version":1,"policy":{}}'
 printf 'ENV_MIGRATION_CONSENT=1\n' >> "$FX/.env"

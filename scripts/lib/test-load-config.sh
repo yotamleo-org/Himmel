@@ -2,7 +2,7 @@
 # Tests for the config layers in scripts/lib/load-dotenv.sh — the behaviour-config / gate-policy
 # split out of .env. Hermetic: every case runs with HOME pointed at a temp dir,
 # so the operator's real ~/.himmel is never read, except row (h), which proves
-# the policy dir ignores HOME.
+# the policy dir ignores HOME, and row (i), which proves it fails closed.
 # Each case runs in its own $(...) subshell so exports stay scoped.
 # shellcheck disable=SC2030,SC2031,SC2016,SC1090
 set -uo pipefail
@@ -257,6 +257,22 @@ case "$out" in
 esac
 out=$(HOME="$TMP/evil" run '_himmel_policy_dir')
 assert_eq_fp "(h) the seam points the policy dir at HOME" "$TMP/evil/.himmel" "$out"
+
+# (i) With no passwd entry for the account there is no policy dir: load_policy
+# fails closed instead of reading HOME. A user namespace runs the reader as a
+# uid no passwd entry names.
+nouid=""
+for u in 54321 54329 61234 61239; do
+    command -p getent passwd "$u" >/dev/null 2>&1 || { nouid=$u; break; }
+done
+if [ -n "$nouid" ] && unshare --user --map-user="$nouid" true 2>/dev/null; then
+    out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; cd "$REPO" && HOME="$TMP/evil" unshare --user --map-user="$nouid" bash -c '
+        . "$1"; _himmel_policy_dir >/dev/null; printf "dir=%s|" "$?"
+        load_policy --root "$PWD" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "policy=%s[%s]" "$?" "${CR_FLOOR_FALLBACK-}"' _ "$LIB" 2>/dev/null)
+    assert_eq_fp "(i) with no passwd entry the policy dir and load_policy fail closed" "dir=1|policy=1[]" "$out"
+else
+    echo "SKIP (i) no user namespace to run as a uid with no passwd entry"
+fi
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-load-config: $FAILED FAILED"

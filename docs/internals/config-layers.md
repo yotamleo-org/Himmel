@@ -384,7 +384,16 @@ The confirmation needs a terminal, so an update run by an agent stops at
 yourself. The key is read only from that file: the process env and `.env`
 cannot grant it. With it set, the migration skips the prompt but keeps the
 backup and the check. A mismatch still stops before anything is removed, and
-names the key and both readers, never the values.
+names the key and both readers, never the values; only you, at a terminal,
+choose which side wins.
+
+The consent covers less than a typed `y`, so an agent cannot use it to change
+gate policy or move your files elsewhere:
+
+- Gate-policy keys stay in `.env`. Run the move at your own prompt to move them.
+- It applies only to the checkout's own `.env`, never a `--env` file somewhere else.
+- It writes only into your account's own `~/.himmel`. With `HOME` or
+  `HIMMEL_CONFIG_DIR` pointing elsewhere, it writes nothing.
 
 Setup, adopt and `himmelctl` read and write the behaviour keys in
 `~/.himmel/himmel.conf` (a key already set in `.env` is still read as a
