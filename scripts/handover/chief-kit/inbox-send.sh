@@ -243,6 +243,7 @@ if [ -n "$doc" ]; then
             printf 'inbox-send: failed to update %s\n' "$doc" >&2
             exit 2
         fi
+        # prim-ok: the temp is cp -p'd from the doc to keep its mode; atomic_write would publish it 0600
         if ! mv -f "$tmp" "$doc"; then
             rm -f "$tmp"
             printf 'inbox-send: failed to update %s\n' "$doc" >&2

@@ -270,11 +270,7 @@ scripts/guardrails/test-lesson-write-fence.sh	gnu-flag	1
 scripts/guardrails/test-lib.sh	mktemp	5
 scripts/guardrails/test-lint-fail-open.sh	mktemp	1
 scripts/handover/arm-resume.sh	errexit	1
-scripts/handover/arm-resume.sh	prim-atomic	1
-scripts/handover/arm-resume.sh	prim-lock	1
 scripts/handover/arm-resume.sh	quote-break	1
-scripts/handover/artifact-sync.sh	prim-atomic	2
-scripts/handover/artifact-sync.sh	prim-lock	1
 scripts/handover/auto-commit.sh	errexit	1
 scripts/handover/auto-commit.sh	mktemp	1
 scripts/handover/cap-reset-time.sh	errexit	1
@@ -283,8 +279,6 @@ scripts/handover/chief-kit/chief-wait.sh	prim-lock	1	renamed from console-wait.s
 scripts/handover/chief-kit/denial-ack-lib.sh	prim-atomic	1
 scripts/handover/chief-kit/go.sh	prim-atomic	2
 scripts/handover/chief-kit/grant-round.sh	prim-atomic	2
-scripts/handover/chief-kit/inbox-send.sh	prim-atomic	1
-scripts/handover/chief-kit/inbox-send.sh	prim-lock	1
 scripts/handover/chief-kit/judge-ladder.sh	prim-lock	1
 scripts/handover/chief-kit/launch-cloud.sh	errexit	1
 scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-digest-step.sh with its 10 findings; the old path is a forwarder, so git sees no rename
@@ -307,8 +301,6 @@ scripts/handover/chief/chief-bus-exec.sh	kill-after	1
 scripts/handover/chief/test-chief.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
-scripts/handover/headed-arm.sh	prim-atomic	1
-scripts/handover/headed-arm.sh	prim-lock	2
 scripts/handover/hop.sh	errexit	1
 scripts/handover/hop.sh	gnu-flag	2
 scripts/handover/konsole-macos.sh	prim-atomic	1
@@ -316,8 +308,6 @@ scripts/handover/merge-on-green.sh	prim-canon	1
 scripts/handover/merge-on-green.sh	prim-tmpdir	1
 scripts/handover/pr-merge.sh	errexit	1
 scripts/handover/pr-open.sh	errexit	1
-scripts/handover/queue-lock.sh	prim-atomic	3
-scripts/handover/queue-lock.sh	prim-lock	3
 scripts/handover/register-state.sh	errexit	1
 scripts/handover/resume-slot.sh	errexit	1
 scripts/handover/set-handover-dir.sh	errexit	1

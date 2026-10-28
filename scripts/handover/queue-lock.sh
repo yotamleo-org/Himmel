@@ -238,6 +238,9 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
 # shellcheck source=../lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$_QL_SCRIPT_DIR/../lib/git-clean.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$_QL_SCRIPT_DIR/../lib/prim.sh"
 
 _ql_usage() {
     cat <<'EOF'
@@ -460,28 +463,19 @@ _ql_slug() {
 # acquire, pre-988 copies included) still changes and catches it.
 _ql_write_owner() {
     local lockdir="$1" session="$2" host="$3" ho="$4" started="$5" heartbeat="$6"
-    local tmp="$lockdir/owner.json.tmp.$$"
-    if ! printf '{"session":"%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    local body
+    body=$(printf '{"session":"%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}' \
         "$(_ql_json_escape "$session")" \
         "$(_ql_json_escape "$host")" \
         "$(_ql_json_escape "$ho")" \
-        "$started" "$heartbeat" \
-        > "$tmp" 2>/dev/null; then
-        rm -f "$tmp" 2>/dev/null
-        return 1
-    fi
+        "$started" "$heartbeat" 2>/dev/null) || return 1
     if [ "$#" -ge 7 ] && [ "$(_ql_read_gen "$lockdir")" != "$7" ]; then
-        rm -f "$tmp" 2>/dev/null
         return 3
     fi
     if [ "$#" -ge 8 ] && [ "$(_ql_read_arbiter "$lockdir")" != "$8" ]; then
-        rm -f "$tmp" 2>/dev/null
         return 3
     fi
-    if ! mv -f "$tmp" "$lockdir/owner.json" 2>/dev/null; then
-        rm -f "$tmp" 2>/dev/null
-        return 1
-    fi
+    printf '%s\n' "$body" | atomic_write "$lockdir/owner.json" 2>/dev/null || return 1
     return 0
 }
 
@@ -1350,8 +1344,9 @@ _ql_arms_registry_retire_fired() {
         # token-read->rmdir gap documented below.
         cur=$(cat "$reg.lock/owner" 2>/dev/null) || cur=""
         if [ "$cur" = "$tok" ]; then
-            if wfail_err=$(mv -f "$tmp" "$reg" 2>&1); then
+            if wfail_err=$(atomic_write "$reg" < "$tmp" 2>&1); then
                 echo "queue-lock: consumed this host's pending arms-registry record(s) for this handover (arm fired)" >&2
+                rm -f "$tmp" 2>/dev/null   # atomic_write copies $tmp; a rename used to consume it
             else
                 failed=1
             fi
@@ -1401,6 +1396,7 @@ _ql_arms_mutex_acquire() {
     local reg="$1" lockd tries=0 m now tok
     lockd="$reg.lock"
     while :; do
+        # prim-ok: an owner-branded lease that outlives the call and is reclaimed when stale; with_lock fails closed on a dead owner
         if mkdir "$lockd" 2>/dev/null; then
             # Brand the lock. pid alone is unique among LIVE processes;
             # $RANDOM guards the recycled-pid edge.
@@ -1645,6 +1641,7 @@ queue_lock_acquire() {
     # uutils mkdir can report success to concurrent creators of the same
     # directory. The owner create is the real CAS: bash noclobber maps to
     # open(O_CREAT|O_EXCL), so only its winner may brand owner.json.
+    # prim-ok: this IS the queue lease (owner.json, generation, takeover) held across processes; with_lock cannot express it
     if mkdir "$lockdir" 2>/dev/null; then
         if ( set -C; printf '%s' "$session" > "$lockdir/owner" ) 2>/dev/null; then
             if ! _ql_brand_gen "$lockdir" \
@@ -1848,6 +1845,7 @@ queue_lock_acquire() {
         # lost race -- rmdir the unbranded dir (race-safe: rmdir refuses a
         # non-empty dir) instead of leaving a queue-wedging husk.
         local takeover_owner_ok=0
+        # prim-ok: this IS the queue lease takeover (owner.json, generation) held across processes; with_lock cannot express it
         if mkdir "$lockdir" 2>/dev/null; then
             if ( set -C; printf '%s' "$session" > "$lockdir/owner" ) 2>/dev/null; then
                 takeover_owner_ok=1
@@ -2012,17 +2010,12 @@ queue_lock_heartbeat() {
 # the file is only rewritten when its content differs so a hook firing on
 # every tool call does not churn the lock dir. Writes ONLY inside <lockdir>.
 _ql_write_liveness() {
-    local lk="$1" tr="$2" want have tmp
+    local lk="$1" tr="$2" want have
     [ -n "$tr" ] && [ -d "$lk" ] || return 0
     want=$(printf 'host=%s\ntranscript=%s\n' "$(_ql_hostname)" "$tr")
     have=$(cat "$lk/liveness" 2>/dev/null) || have=""
     [ "$want" = "$have" ] && return 0
-    tmp="$lk/liveness.tmp.$$"
-    if printf '%s\n' "$want" > "$tmp" 2>/dev/null; then
-        mv -f "$tmp" "$lk/liveness" 2>/dev/null || rm -f "$tmp" 2>/dev/null
-    else
-        rm -f "$tmp" 2>/dev/null
-    fi
+    printf '%s\n' "$want" | atomic_write "$lk/liveness" 2>/dev/null || true
     return 0
 }
 
