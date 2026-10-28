@@ -20,12 +20,14 @@ set -euo pipefail
 BWK_COMMIT="5739fd79bcfc75ba7526773d0cf634521f8aca3c"
 BWK_REPO="https://github.com/onetrueawk/awk.git"
 
-build_dir="$(mktemp -d "${TMPDIR:-/tmp}/bwk-awk-build.XXXXXX")" || exit 1
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "run-unchecked-mktemp-under-bwk: cannot load scripts/lib/prim.sh" >&2; exit 1; }
+build_dir="$(tmpdir)" || exit 1
 git clone --quiet "$BWK_REPO" "$build_dir"
 git -C "$build_dir" checkout --quiet "$BWK_COMMIT"
 make -C "$build_dir" >/dev/null
 
-shim_dir="$(mktemp -d "${TMPDIR:-/tmp}/bwk-awk-shim.XXXXXX")" || exit 1
+shim_dir="$(tmpdir)" || exit 1
 ln -s "$build_dir/a.out" "$shim_dir/awk"
 
 # Confirm the built binary is genuinely BWK before trusting it. Positive

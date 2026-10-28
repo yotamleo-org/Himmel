@@ -367,6 +367,7 @@ do_install() {
     tmp_hook="$pre_push_hook.himmel-tmp.$$"
     printf '%s\n' "$new_content" > "$tmp_hook" || { rm -f "$tmp_hook"; echo "install-cr-gate: cannot write $pre_push_hook" >&2; exit 2; }
     chmod +x "$tmp_hook" || { rm -f "$tmp_hook"; echo "install-cr-gate: cannot make $pre_push_hook executable" >&2; exit 2; }
+    # prim-ok: the hook must be executable before it is published (atomic_write publishes a private 0600 file, and git skips a non-executable pre-push); T23 also runs a copy with no scripts/lib
     mv -f "$tmp_hook" "$pre_push_hook" || { rm -f "$tmp_hook"; echo "install-cr-gate: cannot install $pre_push_hook" >&2; exit 2; }
     echo "installed"; exit 0
 }
