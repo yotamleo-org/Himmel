@@ -795,13 +795,16 @@ run "4516: 32-deep chain (at the cap) judged as before -> allow" 0 \
 run "4516: 33-deep chain (one past the cap) -> deny" 2 \
     "$(payload "$(nest_chain 33)" "$WT")" "$HR"
 need_in_err "4516: 33-deep deny names the cap" "nested more than 32 levels"
+CHAIN_BUDGET_S=5
+# Darwin bash 3.2 takes 7-8s on the cadence runner; stay below the 15s hook limit.
+[ "$(uname -s)" = Darwin ] && CHAIN_BUDGET_S=10
 T0=$SECONDS
 run "4516: 400-deep chain -> deny" 2 "$(payload "$(nest_chain 400)" "$WT")" "$HR"
 need_in_err "4516: 400-deep deny names the cap" "nested more than 32 levels"
-if [ $((SECONDS - T0)) -le 5 ]; then
-    echo "PASS 4516: 400-deep chain finished in $((SECONDS - T0))s (budget 15s)"
+if [ $((SECONDS - T0)) -le "$CHAIN_BUDGET_S" ]; then
+    echo "PASS 4516: 400-deep chain finished in $((SECONDS - T0))s (budget ${CHAIN_BUDGET_S}s)"
 else
-    echo "FAIL 4516: 400-deep chain took $((SECONDS - T0))s (want <= 5s)"
+    echo "FAIL 4516: 400-deep chain took $((SECONDS - T0))s (want <= ${CHAIN_BUDGET_S}s)"
     FAILED=$((FAILED + 1))
 fi
 
