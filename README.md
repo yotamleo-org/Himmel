@@ -38,7 +38,8 @@ replacing it. It adds hooks, guardrails, slash commands, a local Jira CLI and
 a handover system, so the work follows a worktree-isolated, PR-gated,
 Jira-tracked workflow without anyone having to remember the rules. Its fleet
 of sessions is the software factory: tickets go in, reviewed and merged PRs
-come out, and each merge still waits for a GO.
+come out, and each merge still waits for a GO: a signed approval to merge
+that one PR at the exact commit that was reviewed.
 
 Runs on Claude Code today; under Codex the guardrails fire through the hook
 adapter and AGENTS.md; other harnesses are audited, not ported.
@@ -52,9 +53,9 @@ It has four layers, and each one works without the layers above it:
 3. **Jarvis, the command layer.** The chief hands tickets to workers,
    has each result judged and merges on GO. [Jarvis](docs/jarvis-subsystems.md)
    describes it.
-4. **Mission Control, the surface.** The Fleet page, the chief's board,
-   Telegram, the statusline, the morning report and the metrics let you watch
-   the fleet and steer the chief.
+4. **The surface.** The himmel UI (`himmelctl ui`) and its Fleet page, the
+   chief's board, Telegram, the statusline, the morning report and the
+   metrics let you watch the fleet and steer the chief.
 
 The idea is simple: anything you would otherwise repeat by hand (checking a
 commit, reviewing a PR, writing down where you stopped, restarting after a

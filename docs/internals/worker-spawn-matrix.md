@@ -126,9 +126,8 @@ with separate filesystem/process/session artifacts and separate guard wiring.
   CLI entry; only bridge code invokes it), so there is NO repo actuator a
   hermes parent can call to spawn a Claude-lane bounded worker. The GLM
   worker it did spawn IS a Claude Code process (claude-glm lane), so
-  harness-supervision is proven; the pure-Claude lane needs the `runSession`
-  CLI entry that the fleet-control build story now lists as a
-  prerequisite. This is the one AC cell satisfied-with-named-gap.
+  harness-supervision is proven; the pure-Claude lane needs a `runSession`
+  CLI entry first. This is the one AC cell satisfied-with-named-gap.
 
 ## Gaps and follow-up proof needed
 
