@@ -1168,11 +1168,12 @@ quoting its spend. The balance is the real figure. In the first live sweeps
 it fell 12-16% more than the list-price repricing (2.00 against 1.75 on one
 sweep), so the repriced cost carries a 1.2 markup.
 
-**Not enabled.** `--lane deepseek|claudex` exits 3.
+**Not enabled.** `--lane deepseek` exits 3.
 - DeepSeek also needs the station opt-in `HIMMEL_DEEPSEEK_INFERENCE_OK=1`,
   exported in the launching shell, and it runs as its own worker once the
   operator sets it.
-- claudex bills another usage budget and was not part of the approval.
+- `--lane claudex` is a live lane. It bills the codex usage budget, so the
+  sweep exits 3 unless `CLAUDEX_LANE_OK=1` is on the command.
 
 ## Escalation shape
 

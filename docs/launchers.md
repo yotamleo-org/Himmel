@@ -55,7 +55,7 @@ effort, the readiness gate and the `CLAUDEX_LANE_OK` marker:
 | Variable | Default | Effect |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-6.1-sol` | Main model slug |
-| `CLAUDE_CODE_EFFORT_LEVEL` | `medium` | Effort sent to the Codex model; a chief-dispatched claudex worker runs `xhigh` through its brief's `effort` key |
+| `CLAUDE_CODE_EFFORT_LEVEL` | `xhigh` | Effort sent to the Codex model (decision 223); a per-dispatch export or a brief's `effort` key overrides it |
 | `CODEX_HAIKU`, `CODEX_SUBAGENT_MODEL` | `CODEX_MODEL` | Small-model and subagent slugs |
 | `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); `dispatch-codex-exec.sh` takes the same flag with the same rule, and `/lanes` shows the default and the enum on each of those lanes; the tier used is recorded as `context_tier` in the session `meta.json` |
 
