@@ -1098,8 +1098,7 @@ flow-runs ledger holds 5 consecutive verified passes on `claudex/` branches
 arm-on-cap resume scheduling (cap-window classification +
 `arm-resume.sh` scheduling — a generic sentinel only marks a capped run
 `capped` in `meta.json`; no resume is armed), a quota-gauge ledger row for
-this lane, the grants/escalation channel (`--grant`/`--autonomous`/
-`--carry-from`), and an `await-claudex-worker.sh` waiter (until then, poll `meta.json` directly — see the agent
+this lane, and an `await-claudex-worker.sh` waiter (until then, poll `meta.json` directly — see the agent
 def).
 
 **Acceptance:** `scripts/telegram/spawn-claudex.test.ts` (plan-function

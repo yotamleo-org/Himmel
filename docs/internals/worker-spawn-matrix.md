@@ -12,8 +12,7 @@
 > `scripts/lanes/lanes.json` (`hermes-oneshot`, `codex-exec`); `/lanes` and [`lane-calibration.md`](lane-calibration.md) are
 > the live source of truth. The contract detail in the matrix below (worktree
 > isolation, guard coverage, artifact contracts) still applies to each lane
-> when it is used. The GLM worker path was removed (HIMMEL-7909,
-> HIMMEL-7481).
+> when it is used.
 
 ## Evidence read
 
@@ -75,7 +74,7 @@ launcher: Claude Code, Hermes one-shot, or Codex/companion.
 It has OS/process-level isolation, its own logs/transcripts/outbox, and often a
 dedicated git worktree/branch. The parent/operator inspects artifacts and merges
 or pushes later. Guard coverage is lane-specific: Claude hooks for Claude Code,
-`phi-egress-guard` (renamed from `glm-guard`) before a run, `parity_guard.py` for Hermes,
+`scripts/claude-codex` checks `.salus`, `phi-roots` and `egress-denylist` before a claudex run, `parity_guard.py` for Hermes,
 and Codex hook adapters / health probes for Codex.
 
 This distinction matters because "spawn a worker" can mean either an in-process
@@ -181,9 +180,9 @@ validation:
    CLAUDE-side decision stack (hooks + settings allow-list + classifier where
    the lane has one). hermes MUST NOT proxy or re-answer the worker's
    permission prompts. Bounded workers run stdin-closed: an un-allowlisted
-   prompt is a deterministic denial, surfaced as an outbox escalation line
-   (`{"type":"escalation",...}`, the grants contract), never a
-   stall.
+   prompt is a deterministic denial, noted in the worker's summary, never a
+   stall. The grants contract (an outbox escalation line answered by a scoped
+   grant) was removed (HIMMEL-7481).
 3. **Approval-window UX term:** a hermes approval window for a SPAWN shows the
    lane, branch, and toolset/grant list — the policy surface — not raw command
    text. Approving a spawn approves its declared grant envelope, nothing more.
