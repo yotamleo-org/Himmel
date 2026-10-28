@@ -56,19 +56,16 @@ const ARM = /^\/arm\s+(\S+)(?:\s+(?:at\s+((?:[01][0-9]|2[0-3]):[0-5][0-9])|(auto
 const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 
 // Structured self-restart auto-command: `/restart` (rung 1, poller
-// bounce) or `/restart full` (rung 2, whole-supervisor relaunch via the registered
-// scheduled task). Anchored on the WHOLE trimmed message like /arm and /mergepub,
+// bounce) or `/restart full` (rung 2, unsupported: poller.ts answers rc 20). Anchored on the WHOLE trimmed message like /arm and /mergepub,
 // so `/restart now` or a mid-text `/restart` falls through to chat rather than
 // bouncing the bridge on a stray word. The RUNG rides in `arg` (the Route variant
 // reuses the same {arg,time} shape as the other two ops so poller.ts's generic
 // auto-command plumbing — the audit-line builder in particular — needs no change);
 // `time` is the fixed placeholder "-" since a restart has no schedule.
-// Why two rungs: the supervisor already respawns an exited poller, but that respawn
-// INHERITS the supervisor's environment, frozen at its launching shell. So rung 1
-// picks up anything re-read from a file (that includes
-// TELEGRAM_AUTO_ACTIONS) but NOT a changed User-scope env var. Only a
-// scheduler-service-launched process reads the current User environment at fire
-// time — that is rung 2.
+// The supervisor respawns an exited poller, but that respawn INHERITS the
+// supervisor's environment, frozen at its launching shell. So rung 1 picks up
+// anything re-read from a file (that includes TELEGRAM_AUTO_ACTIONS) but NOT a
+// changed env var.
 const RESTART = /^\/restart(?:\s+(full))?$/i;
 
 // Operator -> running chief: `/chief <session-name> <text>` (`/console` is a quiet alias).

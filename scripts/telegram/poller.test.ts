@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appen
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, RESTART_WATCHDOG_MS, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -2656,7 +2656,7 @@ test("/restart surfaces a FAILED fire instead of leaving an ack and a live bridg
     runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
     reply: async (_c, t) => { replies.push(t); },
     audit: async (f) => { audits.push(`${f.result}:${f.rc}`); },
-    restart: async () => ({ rc: 1, message: "⚠️ couldn't fire HimmelTelegramBridge (rc=1)" }),
+    restart: async () => ({ rc: 1, message: "⚠️ couldn't fire the restart (rc=1)" }),
   });
   expect(replies).toHaveLength(2);
   expect(replies[1]).toContain("couldn't fire");
@@ -2688,124 +2688,23 @@ test("/restart degrades safely when the poller build has no restart dep wired", 
   expect(audits).toEqual(["restart-unsupported"]);
 });
 
-test("makeRestart rung 1 exits 0 so the supervisor respawns; it never shells anything", async () => {
+test("makeRestart rung 1 exits 0 so the supervisor respawns", async () => {
   const exits: number[] = [];
-  let spawned = false;
   const restart = makeRestart({
     exit: ((c: number) => { exits.push(c); return undefined as never; }),
-    spawnSync: (() => { spawned = true; return { exitCode: 0 } as any; }) as any,
-    platform: "win32",
   });
   await restart("poller");
   expect(exits).toEqual([0]);
-  expect(spawned).toBe(false);
 });
 
-test("makeRestart rung 2 fires schtasks /run with argv-array flags (no shell, no MSYS rewrite)", async () => {
-  let cmd: string[] = [];
+test("makeRestart rung 2 is refused (rc 20) rather than pretending, and names no Windows task", async () => {
   const restart = makeRestart({
     exit: ((c: number) => { throw new Error(`unexpected exit ${c}`); }) as any,
-    spawnSync: ((c: string[]) => { cmd = c; return { exitCode: 0 } as any; }) as any,
-    platform: "win32",
-  });
-  const out = await restart("full");
-  expect(out.rc).toBe(0);
-  expect(cmd).toEqual(["schtasks", "/run", "/tn", "HimmelTelegramBridge"]);
-});
-
-test("makeRestart rung 2 surfaces a non-zero schtasks rc and does NOT exit the poller", async () => {
-  let exited = false;
-  const restart = makeRestart({
-    exit: ((c: number) => { exited = true; return undefined as never; }),
-    spawnSync: (() => ({ exitCode: 1, stderr: Buffer.from("ERROR: The system cannot find the file specified.\n"), stdout: Buffer.from("") } as any)) as any,
-    platform: "win32",
-  });
-  const out = await restart("full");
-  expect(exited).toBe(false);
-  expect(out.rc).toBe(1);
-  expect(out.message).toContain("Interactive only");
-  expect(out.message).toContain("cannot find the file");
-});
-
-test("makeRestart rung 2 refuses on non-Windows rather than pretending", async () => {
-  const restart = makeRestart({
-    exit: ((c: number) => { throw new Error(`unexpected exit ${c}`); }) as any,
-    spawnSync: (() => { throw new Error("must not spawn"); }) as any,
-    platform: "linux",
   });
   const out = await restart("full");
   expect(out.rc).toBe(20);
-  expect(out.message).toContain("Windows");
-});
-
-test("makeRestart rung 2: a spawn that THROWS is reported, not left as a silent no-op (HIMMEL-1272 CR)", async () => {
-  // Bun.spawnSync throws (rather than returning a non-zero exitCode) when the
-  // binary cannot be launched at all — no schtasks on PATH, EACCES. Unhandled it
-  // escapes into autoFire's .catch(), which only console.errors, leaving the
-  // operator with an ack and a bridge that never went away.
-  let exited = false;
-  const restart = makeRestart({
-    exit: ((c: number) => { exited = true; return undefined as never; }),
-    spawnSync: (() => { throw Object.assign(new Error("spawn schtasks ENOENT"), { code: "ENOENT" }); }) as any,
-    platform: "win32",
-  });
-  const out = await restart("full");
-  expect(exited).toBe(false);
-  expect(out.rc).toBe(22);
-  expect(out.message).toContain("couldn't launch schtasks");
-  expect(out.message).toContain("ENOENT");
-  expect(out.message).toContain("still running");
-});
-
-test("/restart full arms a watchdog — schtasks rc 0 means LAUNCHED, not restarted (HIMMEL-1272 CR)", async () => {
-  // The panel's finding: schtasks exiting 0 only says the task was launched. If
-  // restart-bridge.ps1 then fails, this process keeps running and the operator is
-  // left holding a "restarting…" that never came true.
-  const replies: string[] = [];
-  const audits: string[] = [];
-  let armedMs = -1;
-  let fire: (() => void) | null = null;
-  await handleAutoCommand("/root", restartMsg(), restartRoute("full"), {
-    runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
-    reply: async (_c, t) => { replies.push(t); },
-    audit: async (f) => { audits.push(`${f.result}:${f.rc}`); },
-    restart: async () => ({ rc: 0, message: "" }),
-    scheduleWatchdog: (ms, f) => { armedMs = ms; fire = f; },
-  });
-  expect(armedMs).toBe(RESTART_WATCHDOG_MS);
-  expect(audits).toEqual(["restarting:0"]);          // nothing alarming yet
-  // …the bridge is still alive when it fires ⇒ the relaunch did not take effect.
-  fire!();
-  await Bun.sleep(20);
-  expect(audits).toEqual(["restarting:0", "error:23"]);
-  expect(replies[1]).toContain("STILL RUNNING");
-  expect(replies[1]).toContain("Interactive only");
-  expect(replies[1]).toContain("restart-bridge.ps1");
-});
-
-test("/restart (rung 1) arms NO watchdog — it exits, so surviving is impossible", async () => {
-  let armed = false;
-  await handleAutoCommand("/root", restartMsg(), restartRoute("poller"), {
-    runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
-    reply: async () => {},
-    audit: async () => {},
-    restart: async () => ({ rc: 0, message: "" }),
-    scheduleWatchdog: () => { armed = true; },
-  });
-  expect(armed).toBe(false);
-});
-
-test("/restart full does NOT arm a watchdog when the fire itself failed", async () => {
-  // A failed fire already replied with the rc; a later 'still running' would be noise.
-  let armed = false;
-  await handleAutoCommand("/root", restartMsg(), restartRoute("full"), {
-    runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
-    reply: async () => {},
-    audit: async () => {},
-    restart: async () => ({ rc: 1, message: "boom" }),
-    scheduleWatchdog: () => { armed = true; },
-  });
-  expect(armed).toBe(false);
+  expect(out.message).toContain("/restart");
+  expect(out.message).not.toContain("Windows");
 });
 
 // --- burst coalescing ------------------------------------------

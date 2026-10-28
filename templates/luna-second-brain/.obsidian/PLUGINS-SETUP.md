@@ -10,13 +10,12 @@ qmd-as-md.
 A sixth plugin, **GitHub Sync**, is vendored too (`optional/plugins/github-sync/`
 in the template) but **not installed by default** (HIMMEL-3066): it commits
 the vault from inside Obsidian on its own ~10-minute tick, which races
-`scripts/vault-autosync.ps1`/`.sh` (the sweeper) committing the same working
-tree — `vault-autosync.ps1`'s sanity gate refuses to run at all
-(`AlarmClass: plugin-resurrected`) if it ever finds `github-sync` enabled.
+`scripts/vault-autosync.sh` (the sweeper) committing the same working
+tree.
 **Pick one sync mechanism, not both:**
 
-- **Sweeper (default)** — `LUNA_VAULT_AUTOSYNC=1 bash scripts/vault-autosync.sh`
-  (or the `.ps1` twin). No plugin install needed.
+- **Sweeper (default)** — `LUNA_VAULT_AUTOSYNC=1 bash scripts/vault-autosync.sh`.
+  No plugin install needed.
 - **GitHub Sync plugin (opt-in)** — run the upgrader with
   `--with-github-sync` (or `LUNA_WITH_GITHUB_SYNC=1`):
   `bash scripts/upgrade.sh --with-github-sync`. This installs the plugin

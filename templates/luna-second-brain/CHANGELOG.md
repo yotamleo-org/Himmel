@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.91] — 2026-10-28
+
+### Changed
+- The template's setup docs, hooks config and helper scripts drop their stale
+  PowerShell-twin and `.ps1` references (Windows support is gone).
+
 ## [0.4.90] — 2026-10-28
 
 ### Changed

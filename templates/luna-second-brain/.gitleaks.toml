@@ -24,7 +24,7 @@ paths = [
 # the local CLIProxyAPI gateway (127.0.0.1:8317) land in sessions/*.md as
 # `curl -H "Authorization: Bearer himmel-local-claudex"`. That token is a
 # documented, loopback-only, shared constant checked into himmel itself
-# (scripts/setup/cli-proxy-lane.ps1), not a credential. Suppress the generic
+# (scripts/setup/cli-proxy-lane.sh), not a credential. Suppress the generic
 # curl-auth-header false positive for this one literal only. Anchored (^…$)
 # so it suppresses ONLY the exact constant — a prefixed/suffixed bearer
 # credential (himmel-local-claudex-<real-secret>) is still caught.
