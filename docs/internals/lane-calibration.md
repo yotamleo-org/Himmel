@@ -1171,9 +1171,10 @@ sweep), so the repriced cost carries a 1.2 markup.
 **Live.** `--lane claudex` is a live lane. It bills the codex usage budget,
 so the sweep exits 3 unless `CLAUDEX_LANE_OK=1` is on the command. The sweep
 preflights every call, the claudex agent included, against the native Claude
-budget, so a low Claude bank stops a claudex sweep; do not export
-`CADENCE_USAGE_LANE=claudex`, which would also move the native judge's gate
-to the codex bank.
+budget, so a low Claude bank stops a claudex sweep; do not select claudex
+for the preflight with `CADENCE_USAGE_LANE=claudex` or, when that is unset,
+`WORKER_SESSION_LANE=claudex`: either selection also moves the native
+judge's gate to the codex bank.
 
 **Not enabled.** `--lane deepseek` exits 3.
 - DeepSeek also needs the station opt-in `HIMMEL_DEEPSEEK_INFERENCE_OK=1`,
