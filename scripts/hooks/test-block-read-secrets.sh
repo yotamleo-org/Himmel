@@ -843,6 +843,14 @@ assert_rc "7892 long heredoc: \${A:-cat} .env still blocks"   2 "$(run_case "$(j
 LONGCMD_DENY3="cd /tmp/x && $LONGDFLT && cat .env && cat > notes.md <<'EOF'
 ${LONGBODY}EOF"
 assert_rc "7892 long heredoc: plain cat .env still blocks"    2 "$(run_case "$(j_bash "$LONGCMD_DENY3")")"
+# The heredoc strip is what brings an 18 KB command under the tokenizer's cap,
+# for every opener shape and on every regcomp (macOS has no ERE
+# backreferences). Untokenized, the ${A:-x} brace reads as a glob after the cd.
+for hd_op in '<<EOF' '<<"EOF"' "<< 'EOF'"; do
+    assert_rc "7120 long heredoc opened $hd_op + defaults after cd: verdict" 0 "$(run_case "$(j_bash "cd /tmp/x && echo $LONGDFLT && cat > notes.md $hd_op
+${LONGBODY}EOF
+wc -l notes.md")")"
+done
 # An interpreter clause the expansion leaves unchanged is skipped by a re-run,
 # but the whole-command environment-dump check still has to run on the
 # stripped form: the re-run starts from the first pass's interpreter flag. A
