@@ -91,12 +91,13 @@ jq -e '(.items[] | select(.id=="qmd-himmel-collection")) | (.profiles == ["core"
   || fail "c: qmd-himmel-collection must cover core, luna, all and probe only himmel"
 stateC="$work/qmd-state-c"; printf 'himmel\nluna\nskills\n' > "$stateC"; : > "$stateC.adds"
 cmdline=$("$node_bin" -e "
-const eng = require('$(winpath "$repo_root/scripts/himmelctl/lib/install-engine.js")');
-const m = JSON.parse(require('fs').readFileSync('$(winpath "$manifest_path")', 'utf8'));
+const [enginePath, manifestFile, repoRoot, target, vault] = process.argv.slice(1);
+const eng = require(enginePath);
+const m = JSON.parse(require('fs').readFileSync(manifestFile, 'utf8'));
 const item = m.items.find((i) => i.id === 'qmd-himmel-collection');
-const [e] = eng.planInstall([item], { repoRoot: '$(winpath "$repo_root")', scope: 'project', profile: 'luna', targetPath: '$(winpath "$work/target")', env: process.env, vaultPath: '$(winpath "$work")' });
+const [e] = eng.planInstall([item], { repoRoot, scope: 'project', profile: 'luna', targetPath: target, env: process.env, vaultPath: vault });
 console.log(JSON.stringify([e.cmd, ...e.args]));
-")
+" "$(winpath "$repo_root/scripts/himmelctl/lib/install-engine.js")" "$(winpath "$manifest_path")" "$(winpath "$repo_root")" "$(winpath "$work/target")" "$(winpath "$work")")
 [ -n "$cmdline" ] || fail "c: planInstall produced no command"
 argv=(); while IFS= read -r a; do argv+=("$a"); done < <(echo "$cmdline" | jq -r '.[]')
 ( PATH="$withQmdPath" QMD_STATE="$stateC" HOME="$work/home" BUN_INSTALL="$work/home/.bun" "${argv[@]}" >/dev/null 2>&1 ) || fail "c: the register-only command failed against an already-registered himmel"
