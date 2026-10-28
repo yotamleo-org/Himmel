@@ -45,7 +45,7 @@ check() {  # check <desc> <file> <ERE>
 # 1. bash: MAX_CONTEXT_TOKENS exported from the VARIABLE, not a literal.
 check 'claude-codex exports CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CODEX_CONTEXT_WINDOW"' \
   "$BASH_TWIN" '^export CLAUDE_CODE_MAX_CONTEXT_TOKENS="\$CODEX_CONTEXT_WINDOW"'
-# 3. both twins still feed AUTO_COMPACT_WINDOW from the SAME variable.
+# 3. the launcher still feeds AUTO_COMPACT_WINDOW from the SAME variable.
 check 'claude-codex exports CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WINDOW"' \
   "$BASH_TWIN" '^export CLAUDE_CODE_AUTO_COMPACT_WINDOW="\$CODEX_CONTEXT_WINDOW"'
 

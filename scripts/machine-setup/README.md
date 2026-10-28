@@ -65,13 +65,13 @@ Steps 1–6 are fatal — any failure aborts immediately (no core tools = unusab
 
 ## Re-running
 
-Safe to re-run. `apt install -y` and `winget install` are idempotent. Git clones will error if the target already exists (delete first, or treat the clone failure as non-fatal on retry). On Win11, `settings.json` is merged shallowly: existing top-level keys win on conflict, so nested objects (e.g. `hooks`, `mcpServers`) you've customised are preserved as-is — but new nested entries from the template will be **dropped** rather than merged. On Ubuntu, settings.json is deep-merged with jq (existing wins).
+Safe to re-run. `apt install -y` is idempotent. Git clones will error if the target already exists (delete first, or treat the clone failure as non-fatal on retry). On Ubuntu, settings.json is deep-merged with jq (existing wins).
 
 ---
 
 ## End-session-wiki SessionEnd hook
 
-Both setup scripts prompt you near the end to register `scripts/hooks/end-session-wiki.{ps1,sh}` as a `SessionEnd` hook in `~/.claude/settings.json`. Before any write the script backs up `settings.json` to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS`. If `hooks.SessionEnd` is already populated the script asks Overwrite / Append / Skip. Skip the prompt entirely with the default (Both on Win11, Yes on Ubuntu) — only press other keys if you know what you want.
+The setup script prompts you near the end to register `scripts/hooks/end-session-wiki.sh` as a `SessionEnd` hook in `~/.claude/settings.json`. Before any write the script backs up `settings.json` to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS`. If `hooks.SessionEnd` is already populated the script asks Overwrite / Append / Skip. Skip the prompt entirely with the default (Yes on Ubuntu) — only press other keys if you know what you want.
 
 See [`docs/luna/end-session-wiki.md`](../../docs/luna/end-session-wiki.md) for opt-out + per-repo override.
 
