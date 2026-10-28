@@ -236,9 +236,14 @@ fi
 # 7. label "suite" with `node --test <tracked file>` is unaffected - the
 # tracked-file check applies only when argv is `bash <path> ...`; node
 # suites stay on the classifier path exactly as before this change.
-OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- node --test scripts/lanes/tests/plugin-profiles.test.mjs 2>&1)
-RC=$?
-assert_rc "suite with node --test <tracked file> unaffected" 0 "$RC"
+if command -v node >/dev/null 2>&1; then
+    OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- node --test scripts/lanes/tests/plugin-profiles.test.mjs 2>&1)
+    RC=$?
+    assert_rc "suite with node --test <tracked file> unaffected" 0 "$RC"
+else
+    # The macOS cadence runner installs bun, not node; the row runs where node exists
+    echo "SKIP 7: node not found on this host - the node --test row needs a node binary"
+fi
 
 # 8. Outside a git repo, the tracked-file check is skipped (does not break
 # non-repo callers) but the '..' guard still applies. GIT_CEILING_DIRECTORIES
@@ -393,6 +398,12 @@ esac
 # included - a TERM/INT/HUP to the wrapper used to leave the whole suite
 # running with no owning session. The wrapped command spawns a
 # long sleep and records its pid; after the signal that pid must be gone.
+# A runner that starts this suite with SIGINT already ignored (the macOS
+# CI shell does) hands that to every descendant, and an inherited ignore cannot be
+# trapped or reset from bash; python3 resets it to the default before the exec.
+SIGDFL="$SCRATCH/sigdfl.py"
+printf '%s\n' 'import os, signal, sys' 'signal.signal(signal.SIGINT, signal.SIG_DFL)' 'os.execvp(sys.argv[1], sys.argv[1:])' > "$SIGDFL"
+PY3=$(command -v python3 2>/dev/null) || PY3=""
 for SIG in TERM INT HUP; do
     PIDFILE="$SCRATCH/reap-$SIG.pid"
     rm -f "$PIDFILE"
@@ -400,7 +411,8 @@ for SIG in TERM INT HUP; do
     # signal cannot be trapped); job control gives it the default disposition.
     set -m
     (
-        TMPDIR="$SCRATCH" exec bash "$QUIET_RUN" reap-$SIG -- \
+        # shellcheck disable=SC2016  # the inner script expands $! and $1 itself
+        TMPDIR="$SCRATCH" exec ${PY3:+"$PY3" -I "$SIGDFL"} bash "$QUIET_RUN" reap-$SIG -- \
             bash -c 'sleep 300 & echo $! > "$1"; wait' _ "$PIDFILE" </dev/null >/dev/null 2>&1
     ) &
     QR_PID=$!

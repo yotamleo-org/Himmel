@@ -124,6 +124,20 @@ chief_root() {  # chief_root <root> <args...> -- invoke chief.sh with
 
 chief() { chief_root "$root" "$@"; }
 
+# --- 0: the date pin. chief.sh re-reads `date +%F` on every call while $today
+# is read once above, so a suite that crosses UTC midnight (run
+# 40604087236 shard 2: docs named 2026-10-28, expected 2026-10-27) fails every
+# later row that names a doc. $flip0 is a clock already past midnight.
+datepin="$tmp/datepin"; mkdir -p "$datepin"
+printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo %s; else exec %s "$@"; fi\n' "$today" "$(command -v date)" > "$datepin/date"; chmod +x "$datepin/date"
+PATH="$datepin:$PATH"; export PATH
+flip0="$tmp/flipdate"; mkdir -p "$flip0"
+printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo 2099-01-01; else exec %s "$@"; fi\n' "$(command -v date)" > "$flip0/date"; chmod +x "$flip0/date"
+check "0 the date pin holds the suite's day against a clock past midnight" "$(PATH="${datepin:-/nonexistent}:$flip0:$PATH" date +%F)" "$today"
+root0="$tmp/root0"; mkdir -p "$root0"
+PATH="${datepin:-/nonexistent}:$flip0:$PATH" chief_root "$root0" new --bucket midnight >/dev/null 2>&1
+check "0 chief new names its doc for the suite's day against a clock past midnight" "$([ -f "$root0/tester/midnight/DEMO-nextleg-${today}A-chief.md" ] && echo yes)" "yes"
+
 # Acquire prints the token backticked
 # ("release-token: `<token>`"); strip a matched pair so callers get the bare
 # token either way -- a no-op on the pre-2910 bare form.

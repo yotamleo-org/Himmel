@@ -240,6 +240,11 @@ for s in t1 t2 t3 t4 t5 t6; do echo "fx2/$s.judge-packet.md"; done >"$TMP/sample
 (cd "$TMP" && bash "$RUN" calibration fx2 "${G1[@]}" "${G2[@]}" --sample sample-rel.txt --json --no-ledger) >"$TMP/rel.json" 2>/dev/null; rc=$?
 check "a relative --sample line names its packet from the caller's directory" '[ "$rc" -eq 0 ] && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 6 ] && jq -e ".metrics.n_verdict == 6" "$TMP/rel.json" >/dev/null'
 fresh
+# macOS TMPDIR is a symlink (/var to /private/var), so the shell's logical cwd and python's physical one differ
+ln -s "$TMP" "$TMP/self"
+(cd "$TMP/self" && bash "$RUN" calibration fx2 "${G1[@]}" "${G2[@]}" --sample sample-rel.txt --json --no-ledger) >"$TMP/sym.json" 2>/dev/null; rc=$?
+check "a relative --sample line names its packet from a symlinked caller directory" '[ "$rc" -eq 0 ] && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 6 ] && jq -e ".metrics.n_verdict == 6" "$TMP/sym.json" >/dev/null'
+fresh
 for s in t1 t2 t3 t4 t5 t6; do echo "$TMP/./fx2/$s.judge-packet.md"; done >"$TMP/sample-dot.txt"
 bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --sample "$TMP/sample-dot.txt" --json --no-ledger >"$TMP/dot.json" 2>/dev/null; rc=$?
 check "a --sample line with a ./ segment names its packet" '[ "$rc" -eq 0 ] && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 6 ] && jq -e ".metrics.n_verdict == 6" "$TMP/dot.json" >/dev/null'

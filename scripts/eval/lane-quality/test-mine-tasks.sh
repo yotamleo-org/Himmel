@@ -297,6 +297,18 @@ for pair in cr-fix:lq-work/test-cleanup-old.sh hook-refusal:lq-work/test-block-c
   bash "$HERE/tasks/$t/accept.sh" "$wt" "$(cat "$TMP/noop-$t.fix")" >"$TMP/helper-$t.log" 2>&1; rc=$?
   check "$t: an own test that fails only for want of its helper fails acceptance" '[ "$rc" -ne 0 ] && grep -q "^FAIL own-test-catches" "$TMP/helper-$t.log"'
 done
+# BSD touch (macOS) rejects GNU `touch -d '10 days ago'`
+# with "out of range or illegal time specification" and has `date -v`; shim that host on Linux.
+bsd="$TMP/bsdshim"; mkdir -p "$bsd"
+realtouch="$(command -v touch)"; realdate="$(command -v date)"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -d ] && { echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1; }; done\nexec %s "$@"\n' "$realtouch" >"$bsd/touch"
+printf '#!/bin/sh\ncase "$1" in -v-10d) shift; exec %s -d "10 days ago" "$@" ;; -d) echo "date: illegal option -- d" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$realdate" "$realdate" >"$bsd/date"
+chmod +x "$bsd/touch" "$bsd/date"
+PATH="$bsd:$PATH" bash "$HERE/tasks/cr-fix/accept.sh" "$TMP/noop-cr-fix" "$(cat "$TMP/noop-cr-fix.fix")" >"$TMP/bsd-cr-fix.log" 2>&1
+check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d)" 'grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log"'
+mkdir "$TMP/bsdref"; cp "$HERE/tasks/cr-fix/reference/lq-work/cleanup-old.sh" "$TMP/bsdref/" 2>/dev/null; cp "$HERE/tasks/cr-fix/reference/lq-work/test-cleanup-old.sh.ref" "$TMP/bsdref/test-cleanup-old.sh"
+PATH="$bsd:$PATH" bash "$TMP/bsdref/test-cleanup-old.sh" >"$TMP/bsd-ref.log" 2>&1; rc=$?
+check "cr-fix: the reference own test passes on a BSD touch" '[ "$rc" -eq 0 ]'
 LQ_FAKE_DOC=ref bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \
   --base "$C1" --out "$TMP/out-doc" >/dev/null 2>&1
 LQ_FAKE_DOC=noop bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \

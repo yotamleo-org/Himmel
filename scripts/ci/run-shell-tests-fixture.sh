@@ -143,6 +143,13 @@ rst_tally() {
 RST_ROTATE_SLEEP=3
 # shellcheck disable=SC2034  # read by the test-run-shell-tests-rotation*.sh suites that source this file
 RST_ROTATE_BUDGET=2
+# The runner's pre-first-suite setup takes longer than 2s on the macOS runner, so the
+# budget expired before test-a.sh ran (17a/17b). Same shape, larger floor, only where it is needed.
+if [ "$(uname -s)" = Darwin ]; then
+  RST_ROTATE_SLEEP=12
+  # shellcheck disable=SC2034  # read by the test-run-shell-tests-rotation*.sh suites that source this file
+  RST_ROTATE_BUDGET=10
+fi
 mk_rotate_sandbox() {
   local _d="$1" _order="$2" _c _dur
   # Refuse an empty or non-existent target rather than writing the six suites

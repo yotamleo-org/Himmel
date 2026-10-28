@@ -77,12 +77,17 @@ if [ -z "${IMPSEL_BASE_TOOLS:-}" ]; then
     || verdict_full "mktemp-failed" "$base_sha" "$selector_blob"
   # shellcheck disable=SC2064  # expand $tools now: it is the dir to remove
   trap "rm -rf '$tools'" EXIT
-  if ! git archive --format=tar "$base_sha" -- \
+  # An archive FILE, not a pipe: bsdtar stops reading at the end-of-archive
+  # marker, the writer then dies of SIGPIPE, and pipefail reads that as a failed
+  # extraction.
+  if ! git archive --format=tar -o "$tools/base.tar" "$base_sha" -- \
          scripts/ci/impacted-selection.sh scripts/ci/ci-trust-paths.txt \
          scripts/cr/impacted-suites.sh scripts/cr/anchor-handoff.sh \
-       | tar -x -C "$tools"; then
+     || ! tar -x -C "$tools" -f "$tools/base.tar"; then
+    rm -f "$tools/base.tar"
     verdict_full "base-extract-failed" "$base_sha" "$selector_blob"
   fi
+  rm -f "$tools/base.tar"
   IMPSEL_BASE_TOOLS="$tools" bash "$tools/scripts/ci/impacted-selection.sh" "$base_sha" "$head_sha"
   exit $?
 fi

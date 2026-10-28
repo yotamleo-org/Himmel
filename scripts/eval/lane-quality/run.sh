@@ -1124,10 +1124,10 @@ cmd_calibration() {
     # --sample lists the packets to grade, so a listed one that is missing stops
     # the pass; without it, a run the sweep never judged has no packet and is left out.
     # Its lines are matched as lq_stats.py reads them: absolute from the caller's directory.
-    [ -z "$sample" ] || python3 -c 'import os, sys; [print(os.path.abspath(l.strip())) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]' \
+    [ -z "$sample" ] || python3 -c 'import os, sys; [print(os.path.realpath(l.strip())) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]' \
       "$sample" >"$list.sample" || die "cannot read --sample '$sample'"
     for d in "${dirs[@]}"; do
-      d="$(cd "$d" && pwd)" || die "cannot resolve $d"
+      d="$(cd "$d" && pwd -P)" || die "cannot resolve $d"
       rdirs+=("$d")
       while IFS= read -r stem; do
         if [ -n "$sample" ]; then

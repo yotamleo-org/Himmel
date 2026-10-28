@@ -68,6 +68,10 @@ C="$fixture_repo/scripts/handover/chief/chief.sh"
 root="$tmp/handovers"
 mkdir -p "$root"
 today="$(date +%F)"
+# chief.sh re-reads `date +%F` per call: pin it so a run crossing UTC midnight keeps one day
+datepin="$tmp/datepin"; mkdir -p "$datepin"
+printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo %s; else exec %s "$@"; fi\n' "$today" "$(command -v date)" > "$datepin/date"; chmod +x "$datepin/date"
+PATH="$datepin:$PATH"; export PATH
 chief() { ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/work" bash "$C" "$@" ); }
 live_state() { awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$1"; }
 
