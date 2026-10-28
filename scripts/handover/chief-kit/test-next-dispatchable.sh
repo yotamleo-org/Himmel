@@ -1120,5 +1120,14 @@ note_legacy="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a note is ignored in the older-brief fallback too" "$note_legacy" "LOCAL?	HIMMEL-9202"
 has "Writes note: the older-brief fallback still holds its own file" "$note_legacy" "# drop HIMMEL-9201 collision docs/nd-note-own.md held by live worker N920"
 
+# a Done-category status the name list does not know ('wont do') is done: its blocked ticket is dispatchable
+DC_DIR="$WORK/jira-mirror-done-cat"; M="$DC_DIR/HIMMEL"; mkdir -p "$M"
+printf 'v1.0.1\tfalse\t\n' > "$DC_DIR/HIMMEL.versions.tsv"
+printf -- '---\nkey: "HIMMEL-9301"\ntype: "Task"\nstatus: "wont do"\nstatusCategory: "Done"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9301: closed as wont do\n\n## Description\n\nEdit scripts/lib/wontdo.sh.\n' > "$M/HIMMEL-9301.md"
+mk HIMMEL-9302 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9301"]' "blocked only by a wont do ticket" "Edit scripts/lib/after-wontdo.sh."
+dc_out="$(run --no-classify)"
+has "Done category: a blocker in a Done-category status (wont do) is resolved" "$dc_out" "HIMMEL-9302"
+M="$WORK/jira-mirror/HIMMEL"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
