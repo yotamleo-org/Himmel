@@ -249,10 +249,11 @@ mkdir -p "$TMP/evil/.himmel"
 printf '{"version":1,"policy":{"CR_FLOOR_FALLBACK":"CANARY-evil-floor"}}\n' > "$TMP/evil/.himmel/config.json"
 out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run '_himmel_policy_dir')
 assert_eq_fp "(h) the policy dir ignores HOME" "$acct_home/.himmel" "$out"
-out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run 'load_policy --root "$REPO" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "[%s]" "${CR_FLOOR_FALLBACK-}"')
+out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run 'load_policy --root "$REPO" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "rc=%s[%s]" "$?" "${CR_FLOOR_FALLBACK-}"')
 case "$out" in
     *CANARY-evil-floor*) assert_eq_fp "(h) load_policy does not read a HOME-planted policy file" "not the canary" "$out" ;;
-    *) echo "PASS (h) load_policy does not read a HOME-planted policy file" ;;
+    rc=0\[*) echo "PASS (h) load_policy does not read a HOME-planted policy file" ;;
+    *) assert_eq_fp "(h) load_policy succeeds with a HOME-planted policy file" "rc=0" "$out" ;;
 esac
 out=$(HOME="$TMP/evil" run '_himmel_policy_dir')
 assert_eq_fp "(h) the seam points the policy dir at HOME" "$TMP/evil/.himmel" "$out"
