@@ -1,31 +1,30 @@
 // thin DOM glue. All markup comes from render.js.
-import { render, renderNav, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
+import { renderInventory, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { renderWorkflow, mountWorkflow } from "/workflow.js";
-import { renderSetup } from "/setup.js";
+import { renderConfigure as render } from "/setup.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, fleetCap: null, tile: null };
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
-let current = "triage";
 
 // The token rides the URL fragment (never sent in a request line); keep it in
 // memory only and clear it from the address bar. The AG-UI rail
 // links here as #t=<token>&page=<id>, landing on that page.
 const landing = parseLanding(location.hash);
 const token = landing ? landing.token : "";
-if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page);
+if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page + (landing.tile ? "?tile=" + landing.tile : ""));
 // the Fleet link's status dot, read on load and on each page change (never polled: an open
 // chief must still let the server idle out).
 let fleet = { data: null, error: null };
 
-// Pages: one entry each (id = the `#/<id>` route). `regions` keeps the Config
-// region nav and its 1/2/3 keys on that page only.
-// Health renders without a feed (D2): its bank and workers cards do not wait for the doctor report.
+// Pages: one entry each (id = the `#/<id>` route).
+// Health renders without a feed (D2): its bank and workers cards do not wait for the doctor report. So does Configure, so a
+// first-run Account never waits on the minutes-long probe; refreshFeed asks it to pick up a newer report on arrival anyway.
 let health = null; // GET /api/health, null while loading
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
@@ -42,9 +41,8 @@ let sources; // GET /api/sources: the trackers the UI can read; undefined until 
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
-  { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); } },
-  { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs, verify), onVisit: () => loadSetup() },
-  { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
+  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
+  { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health) + (f ? renderInventory(f, state) : ""), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
@@ -53,11 +51,18 @@ const PAGES = [
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
 
+// Settings and Setup became the one Configure page: their old routes still land on it, Setup with the Secrets tile open.
+// (nav.js maps the AG-UI rail's page=setup landing the same way.)
+const OLD_ROUTES = { setup: "secrets", configure: null };
+
 function route() {
-  const m = /^#\/(\w+)(?:\/([^/?#]+))?/.exec(location.hash) || [];
-  const id = m[1];
+  const m = /^#\/(\w+)(?:\/([^/?#]+))?(?:\?([^#]*))?/.exec(location.hash) || [];
+  const old = Object.hasOwn(OLD_ROUTES, m[1]);
+  const id = old ? "config" : m[1];
   currentPage = PAGES.find((p) => p.id === id) || PAGES[0];
-  if (id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id);
+  // the open tile rides the hash (#/config?tile=tracker), so a reload keeps it; any other route leaves none open.
+  state.tile = currentPage.id === "config" ? (old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile")) : null;
+  if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
   roadmapUi.ver = ver;
@@ -67,8 +72,8 @@ function route() {
   if (currentPage.onVisit) currentPage.onVisit();
   if (feed || currentPage.needsFeed === false) paint();
   else { $("#main").innerHTML = lastProbe ? renderProbe(lastProbe) : `<p class="sub" id="status">loading…</p>`; $("#nav").innerHTML = ""; } // no stale page under this tab
-  // back on Config, pick up a newer report the server loaded in the background.
-  if (feed && currentPage.needsFeed !== false) refreshFeed();
+  // back on Configure (or another feed page), pick up a newer report the server loaded in the background.
+  if (feed && (currentPage.needsFeed !== false || currentPage.refreshFeed)) refreshFeed();
 }
 addEventListener("hashchange", route);
 route();
@@ -103,10 +108,14 @@ function paint() {
   const focusK = document.activeElement && document.activeElement.matches && document.activeElement.matches(".row-head") ? document.activeElement.dataset.k : null;
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
   const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
+  // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
+  // It is held in this one synchronous call and put straight back; it is never kept in page state.
+  const typing = [...document.querySelectorAll("input[data-secret],input[data-path],input[data-account]")].map((i) => ({ sel: ["secret", "path", "account"].map((a) => (i.dataset[a] !== undefined ? `input[data-${a}="${i.dataset[a]}"]` : "")).find(Boolean), value: i.value, had: i === document.activeElement }));
   if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
   if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
-  $("#nav").innerHTML = currentPage.regions && feed ? renderNav(feed, current) : "";
+  for (const t of typing) { const i = t.value && document.querySelector(t.sel); if (i) { i.value = t.value; if (t.had) i.focus(); } }
+  $("#nav").innerHTML = "";
   $("#top").innerHTML = renderHeader(feed);
   renderPages(); // the Health dot follows the feed and the health read
   $("#where").textContent = `${location.host} · ${feed && feed.target ? feed.target.scope : "?"} scope`;
@@ -190,7 +199,7 @@ async function loadVm() {
     if (gen !== vmLoadGen) return;
     state.vm = r.ok ? { data: j, error: null, draft: vmDraft(j) } : { data: null, error: j.error || `vm setting failed (${r.status})` };
   } catch (_) { if (gen !== vmLoadGen) return; state.vm = { data: null, error: "vm setting: server unreachable" }; }
-  if (currentPage.id === "config" && feed) paint();
+  if (currentPage.id === "config") paint();
 }
 let vmSaving = false; // one save at a time: an older reply landing last must not overwrite a newer setting
 async function saveVm() {
@@ -218,7 +227,7 @@ async function loadFleetCap() {
     if (gen !== fleetCapLoadGen) return;
     state.fleetCap = r.ok ? { data: j, error: null, draft: String(j.cap) } : { data: null, error: j.error || `fleet cap failed (${r.status})` };
   } catch (_) { if (gen !== fleetCapLoadGen) return; state.fleetCap = { data: null, error: "fleet cap: server unreachable" }; }
-  if (currentPage.id === "config" && feed) paint();
+  if (currentPage.id === "config") paint();
 }
 async function saveFleetCap() {
   const fc = state.fleetCap;
@@ -243,7 +252,7 @@ async function loadReviewGate() {
     if (gen !== reviewGateLoadGen) return;
     state.reviewGate = r.ok ? { data: j, error: null, draft: reviewGateDraft(j) } : { data: null, error: j.error || `review gate failed (${r.status})` };
   } catch (_) { if (gen !== reviewGateLoadGen) return; state.reviewGate = { data: null, error: "review gate: server unreachable" }; }
-  if (currentPage.id === "config" && feed) paint();
+  if (currentPage.id === "config") paint();
 }
 async function saveReviewGate() {
   const rg = state.reviewGate;
@@ -293,7 +302,7 @@ async function loadSetup() {
   } catch (_) { data = { error: "server unreachable" }; }
   if (gen !== setupGen) return;
   setup = data;
-  if (currentPage.id === "setup") paint();
+  if (currentPage.id === "config") paint();
 }
 async function runVerify() {
   if (verify && verify.state === "running") return;
@@ -301,7 +310,7 @@ async function runVerify() {
   paint();
   const { ok, j } = await post("/api/setup/verify", {});
   verify = ok ? j : { state: "error", error: j.error || "the checks failed" };
-  if (currentPage.id === "setup") paint();
+  if (currentPage.id === "config") paint();
 }
 // The value leaves the field in this one request and the field is cleared whatever the answer is.
 async function saveSecret(name, op, input) {
@@ -420,7 +429,7 @@ async function run(k) {
   const { ok, j } = await post("/api/run", { previewId: p.previewId, ...p.req, consent: p.typed });
   state.plans[k] = ok ? { stage: "done", ...j } : { stage: "error", error: j.error || "run failed", output: j.output };
   paint();
-  if (ok) { loadFeed(); if (currentPage.id === "setup") loadSetup(); }
+  if (ok) { loadFeed(); if (currentPage.id === "config") loadSetup(); }
 }
 // The password leaves its fields in this one request; both fields are cleared whatever the answer is.
 async function createAccount(f) {
@@ -456,14 +465,8 @@ function toggleBundle(h) {
   paint();
 }
 
-function go(id) {
-  current = id;
-  document.getElementById(id).scrollIntoView({ block: "start" });
-  $("#nav").innerHTML = renderNav(feed, current);
-}
-
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-act],[data-go],[data-f]");
+  const b = e.target.closest("[data-act],[data-f]");
   if (!b) return;
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
@@ -473,13 +476,18 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
   if (b.dataset.act === "setup-verify") return void runVerify();
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
-  if (b.dataset.act === "open-config") {
+  if (b.dataset.act === "open-config") { // a check's finding opens its row in Health's inventory
     state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };
-    location.hash = "#/config";
+    if (location.hash === "#/health") return paint(); // Health's own button: already there, so no route change repaints
+    location.hash = "#/health";
     return;
   }
+  if (b.dataset.act === "tile") { // one group open at a time; the open one closes again. The hash keeps it across a reload.
+    state.tile = state.tile === b.dataset.tile ? null : b.dataset.tile;
+    history.replaceState(null, "", location.pathname + location.search + "#/config" + (state.tile ? "?tile=" + state.tile : ""));
+    return paint();
+  }
   if (!feed && currentPage.needsFeed !== false) return;
-  if (b.dataset.go) return go(b.dataset.go);
   if (b.dataset.f) { state.filt[b.dataset.f] = state.filt[b.dataset.f] === b.dataset.v ? null : b.dataset.v; return paint(); }
   if (b.dataset.act === "copy") {
     e.stopPropagation();
@@ -519,7 +527,6 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (!feed || e.target.matches("input,select")) return;
-  if (currentPage.regions && ["1", "2", "3"].includes(e.key)) return go(["triage", "settings", "inventory"][Number(e.key) - 1]);
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".bhead")) {
     e.preventDefault();
     return toggleBundle(e.target);

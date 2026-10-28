@@ -27,15 +27,15 @@ test.afterEach(async () => {
 const canary = () => `${randomInt(100_000_000, 999_999_999)}:${randomBytes(27).toString("base64url").slice(0, 35)}`;
 const NAME = "TELEGRAM_BOT_TOKEN";
 
-async function open(page: Page, conf?: string) {
+async function open(page: Page, conf?: string, tile = "secrets") {
   kdir = mkdtempSync(join(tmpdir(), "setup-e2e-keyring-"));
   k = stubKeyring(kdir);
   for (const [n, v] of Object.entries(k.env)) { savedEnv[n] = process.env[n]; process.env[n] = v; }
   h = await boot();
   if (conf !== undefined) { mkdirSync(join(h.home, ".himmel"), { recursive: true }); writeFileSync(join(h.home, ".himmel", "himmel.conf"), conf); }
-  await page.goto(h.url);
-  await page.locator('nav.pages a:has-text("Setup")').click();
-  await page.locator("#main h2:has-text('Setup')").waitFor();
+  await page.goto(`${h.url}&page=setup`); // the himmelctl install hand-off link: lands on Configure with the Secrets tile open
+  await page.locator("#h-configure").waitFor();
+  if (tile !== "secrets") await page.locator(`button.tile[data-tile="${tile}"]`).click();
 }
 
 const store = (): string => join(h.home, ".claude", "channels", "telegram", ".env");
@@ -59,10 +59,13 @@ async function leaks(page: Page, secret: string): Promise<string[]> {
   return found;
 }
 
-test("J5. Setup sits after Settings in the rail and recommends the terminal", async ({ page }) => {
+test("J5. the page=setup hand-off lands on Configure with the Secrets tile open, and recommends the terminal", async ({ page }) => {
   await open(page);
   const rail = await page.locator("nav.pages a").allTextContents();
-  expect(rail.indexOf("Setup")).toBe(rail.indexOf("Settings") + 1);
+  expect(rail).toContain("Configure");
+  expect(rail).not.toContain("Setup");
+  await expect(page.locator('button.tile[data-tile="secrets"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#tile-secrets")).not.toContainText("0600");
   await expect(page.locator("#main")).toContainText("A secret you save here goes to this machine over a loopback connection");
   const field = page.locator(`input[data-secret="${NAME}"]`);
   await expect(field).toHaveAttribute("type", "password");
@@ -83,8 +86,7 @@ test("J5. a saved secret is set in the store and its value is nowhere else", asy
   expect(statSync(store()).mode & 0o777).toBe(0o600);
   expect(await leaks(page, secret)).toEqual([]);
   // a fresh load (the token rides the URL fragment, so a plain reload would lose it) reads presence from the server and still holds no value
-  await page.goto(h.url);
-  await page.locator('nav.pages a:has-text("Setup")').click();
+  await page.goto(`${h.url}&page=setup`);
   await expect(row.locator(".st")).toHaveText("set");
   expect(await leaks(page, secret)).toEqual([]);
 });
@@ -208,7 +210,7 @@ test("J5. two different passwords send nothing and leave neither in the page", a
 });
 
 test("J7. a commit-rules change shows its dry-run first and only confirm runs it", async ({ page }) => {
-  await open(page, "TRACKER=jira\nTICKET_ID_REQUIRED=1\n");
+  await open(page, "TRACKER=jira\nTICKET_ID_REQUIRED=1\n", "tracker");
   await page.locator('button[data-act="plan"][data-target="tracker"][data-value="local"]').click();
   const plan = page.locator("#main .plan");
   await expect(plan).toContainText("dry-run · nothing has changed");
@@ -220,7 +222,7 @@ test("J7. a commit-rules change shows its dry-run first and only confirm runs it
 });
 
 test("J7. cancel runs nothing, and ticket-ID required is off-limits while the tracker is none", async ({ page }) => {
-  await open(page, "TRACKER=none\n");
+  await open(page, "TRACKER=none\n", "tracker");
   await expect(page.locator('button[data-target="ticket-id-required"]').first()).toBeDisabled();
   // the rule reads off while the tracker is none, so "off" is the pressed choice
   await expect(page.locator('button[data-target="ticket-id-required"][data-value="off"]')).toHaveAttribute("aria-pressed", "true");
@@ -232,7 +234,7 @@ test("J7. cancel runs nothing, and ticket-ID required is off-limits while the tr
 });
 
 test("J8. a handover-root change shows its dry-run first and only confirm runs it", async ({ page }) => {
-  await open(page);
+  await open(page, undefined, "scope");
   await page.locator('input[data-path="handover-root"]').fill("/srv/state/handovers");
   await page.locator('[data-path-form][data-target="handover-root"] button[type="submit"]').click();
   const plan = page.locator("#main .plan");
@@ -244,7 +246,7 @@ test("J8. a handover-root change shows its dry-run first and only confirm runs i
 });
 
 test("J8. a refused path shows the reason and runs nothing", async ({ page }) => {
-  await open(page);
+  await open(page, undefined, "scope");
   await page.locator('input[data-path="luna-vault"]').fill("../vault");
   await page.locator('[data-path-form][data-target="luna-vault"] button[type="submit"]').click();
   await expect(page.locator("#main .plan")).toContainText("absolute path");

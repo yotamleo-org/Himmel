@@ -6,10 +6,18 @@ import { boot, BUNDLES, HIMMEL_ID, type BootOpts, type Harness, type Variant } f
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
+// Inventory and Triage live on Health since the Configure page replaced Settings and Setup; open() lands there.
 async function open(page: Page, v: Variant = {}, o: BootOpts = {}) {
   h = await boot(v, o);
-  await page.goto(h.url);
+  await page.goto(`${h.url}&page=health`);
   await page.locator("#inventory .bhead").first().waitFor();
+}
+// The Configure landing: paints without the feed. tile: the group to open (the Secrets tile is open by default only via #/setup).
+async function openConfig(page: Page, v: Variant = {}, o: BootOpts = {}, tile?: string) {
+  h = await boot(v, o);
+  await page.goto(h.url);
+  await page.locator("#h-configure").waitFor();
+  if (tile) await page.locator(`button.tile[data-tile="${tile}"]`).click();
 }
 const heads = (region: string) => `#${region} .bhead`;
 const titles = (page: Page, region: string) => page.locator(`${heads(region)} .bt`).allTextContents();
@@ -96,9 +104,9 @@ test("7. Unsorted is absent with 0 unmapped rows; with one it is always open and
 });
 
 test("safety: a toggle shows only a dry-run plan; nothing runs without the typed consent; cancel clears it", async ({ page }) => {
-  await open(page);
-  await page.locator('#settings button[data-act="plan"][data-target="pipeline"]').click();
-  const plan = page.locator("#settings .plan");
+  await openConfig(page, {}, {}, "scope");
+  await page.locator('#tile-scope button[data-act="plan"][data-target="pipeline"]').click();
+  const plan = page.locator("#tile-scope .plan");
   await expect(plan).toContainText("dry-run · nothing has changed");
   await expect(plan.locator("pre")).toContainText("--dry-run");
   const confirm = plan.locator('button[data-act="run"]');
@@ -108,7 +116,7 @@ test("safety: a toggle shows only a dry-run plan; nothing runs without the typed
   await plan.locator('input[data-act="consent"]').fill((await plan.locator("label b").innerText()).trim());
   await expect(confirm).toBeEnabled(); // typed consent matches; still nothing has run: cancel, never confirm
   await plan.locator('button[data-act="close"]').click();
-  await expect(page.locator("#settings .plan")).toHaveCount(0);
+  await expect(page.locator("#tile-scope .plan")).toHaveCount(0);
   const ran = h.argv();
   expect(ran.length).toBeGreaterThan(0);
   expect(ran.every((l) => l.endsWith("--dry-run")), ran.join("\n")).toBe(true);
@@ -131,10 +139,10 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
   await expect(page.locator("header.top")).toContainText("version unknown (feed has no himmel identity)");
 });
 
-test("rail page links are [Fleet, Health, Tool health, Settings, Setup, Roadmap, Kanban, Workflow, Docs]; Config is current and the hash is #/config", async ({ page }) => {
-  await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
+test("rail page links are [Fleet, Health, Tool health, Configure, Roadmap, Kanban, Workflow, Docs]; Configure is current and the hash is #/config", async ({ page }) => {
+  await openConfig(page);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
 
@@ -161,16 +169,16 @@ async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
 const verdictWord = (page: Page) => page.locator("#verdict .word");
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
-  await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  await openConfig(page);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await page.getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");
   await expect(page.locator("header.top")).toHaveCount(1);
   await expect(page.locator("header.top")).toContainText(HIMMEL_ID.describe);
   await page.goBack();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
-  await expect(page.locator("#inventory .bhead").first()).toBeVisible();
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
+  await expect(page.locator("#h-configure")).toBeVisible();
 });
 
 test("health: reloading at #/health starts loadHealth without a page error", async ({ page }) => {
@@ -188,7 +196,7 @@ test("health: the seven sections appear in spec order", async ({ page }) => {
   expect(await page.locator("main h2").allTextContents()).toEqual(SECTIONS);
 });
 
-test("health: fail first with remedy; open in Config lands on the row", async ({ page }) => {
+test("health: fail first with remedy; the open-row button filters Health's inventory to the row", async ({ page }) => {
   await openHealth(page, { failDetail: "e2e-fail-detail" });
   const rows = page.locator("#broken .hrow");
   expect(await rows.locator(".id").allTextContents()).toEqual(["guard-fail", "guard-warn"]);
@@ -196,7 +204,7 @@ test("health: fail first with remedy; open in Config lands on the row", async ({
   await expect(rows.first()).toContainText("fix-guard-cmd");
   await expect(rows.first().locator('[data-act="copy"]')).toBeVisible();
   await rows.first().locator('[data-act="open-config"]').click();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   await expect(page.locator("#q")).toHaveValue("guard-fail");
   await expect(page.locator("#inventory .row-head", { hasText: "guard-fail" })).toBeVisible();
 });
@@ -255,23 +263,22 @@ test("health: with the feed pending the verdict is No data and bank and workers 
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
 });
 
-test("health: returning to Config before the feed lands shows loading, not Health content (HIMMEL-4443)", async ({ page }) => {
+test("health: returning to Configure before the feed lands paints Configure at once, not Health content (HIMMEL-4443)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
   await page.evaluate(() => { location.hash = "#/health"; });
   await expect(verdictWord(page)).toHaveText("No data");
-  await page.locator("nav.pages a", { hasText: "Settings" }).click();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
+  await page.locator("nav.pages a", { hasText: "Configure" }).click();
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   await expect(page.locator("main #verdict")).toHaveCount(0);
-  // the pending state is the probe status (or plain loading before its first step).
-  await expect(page.locator("#status")).toHaveText(/^(loading…|probing .*)/);
-  await expect(page.locator("#inventory .bhead").first()).toBeVisible({ timeout: 20_000 }); // the feed lands and Config paints
+  await expect(page.locator("#h-configure")).toBeVisible(); // Configure needs no feed, so it does not wait on the report
+  await expect(page.locator("#status")).toHaveCount(0);
 });
 
 // the probe progress bar, and the feed loading in the background.
-test("probe progress bar: while the report runs, Config names the step, n of N, over a progress bar", async ({ page }) => {
+test("probe progress bar: while the report runs, Health names the step, n of N, over a progress bar", async ({ page }) => {
   h = await boot({}, { feedDelayMs: 6000 });
-  await page.goto(h.url);
+  await page.goto(`${h.url}&page=health`);
   await expect(page.locator("#status progress")).toBeVisible();
   await expect(page.locator("#status")).toHaveText(/probing (install items|doctor checks|pipeline cadence|plugin profile) \(\d of 4\)/);
   await expect(page.locator("#status progress")).toHaveAttribute("max", "4");
@@ -280,12 +287,12 @@ test("probe progress bar: while the report runs, Config names the step, n of N, 
   await expect(page.locator("#status")).toHaveCount(0);
 });
 
-test("background loading: the report loads while the operator is on another page; Config then has it at once", async ({ page }) => {
+test("background loading: the report loads while the operator is on another page; Health then has it at once", async ({ page }) => {
   h = await boot({}, { feedDelayMs: 4000 });
   await page.goto(h.url.replace("/#", "/agui/#")); // the Fleet landing, another document (its build page when dist is unbuilt)
   await page.waitForTimeout(5000); // past the report's 4 s, without the console ever asking
   const config = await page.context().newPage();
-  await config.goto(h.url);
+  await config.goto(`${h.url}&page=health`);
   await expect(config.locator("#inventory .bhead").first()).toBeVisible({ timeout: 1500 });
   await config.close();
 });

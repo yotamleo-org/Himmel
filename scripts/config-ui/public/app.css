@@ -105,4 +105,19 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .srow{display:grid;grid-template-columns:minmax(160px,240px) minmax(0,1fr) auto auto;gap:12px;align-items:center;min-height:30px;padding:4px;border-bottom:1px solid var(--line)}
 .sform{display:flex;gap:6px;align-items:center;margin:0}
 .sform input{background:var(--bg);color:var(--fg);border:1px solid var(--line);font:12px var(--mono);padding:4px 6px;width:min(260px,100%)}
+/* Configure page: four group tiles, one open; the Check this install strip under them. Existing tokens only. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:12px 0}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;background:var(--panel);color:var(--fg);border:1px solid var(--line);font:inherit;padding:10px 12px;cursor:pointer;min-width:0}
+.tile .tname{font-weight:600}.tile .tval{color:var(--dim);font-size:12px;min-height:1em;overflow-wrap:anywhere}
+.tile[aria-expanded="true"]{border-color:var(--accent)}
+.chk{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;border:1px solid var(--line);padding:8px 12px;margin:8px 0}
+.chk .sub{margin:0;flex:1 1 240px}
+.cpanel{border:1px solid var(--line);padding:4px 14px 10px;margin:8px 0}
+.cpanel h3{font-size:13px;margin:14px 0 4px}
+.cpanel .foot{color:var(--dim);font-size:12px;margin:12px 0 0}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:4px 24px}
+.col{min-width:0}.col .srow{grid-template-columns:minmax(0,1fr)}
+.dryrun{border:1px dashed var(--line);padding:4px 10px;margin:10px 0}
+.chips{display:flex;flex-wrap:wrap;gap:4px 10px;grid-column:span 2}
+details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);padding:4px 0}
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}

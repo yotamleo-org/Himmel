@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as R from "../public/render.js";
+import * as C from "../public/setup.js";
 import { DOCS_PATHS, DOCS_URL, navLinks } from "../public/nav.js";
 import { buildTable, resolveAction } from "../actions";
 // @ts-ignore plain ES module, no types
@@ -123,7 +124,95 @@ test("settingsEffect has plain words for every action in the table", () => {
   for (const action of table.keys()) expect(R.settingsEffect(action), action).toMatch(/\S/);
 });
 
-test("the rail names the page Settings and keeps its #/config route", () => {
+test("the rail names the page Configure and keeps its #/config route", () => {
   const l = navLinks({ here: "console", token: "a".repeat(64), current: "config" }).find((x) => x.id === "config")!;
-  expect(l).toMatchObject({ label: "Settings", href: "#/config", current: true });
+  expect(l).toMatchObject({ label: "Configure", href: "#/config", current: true });
+});
+
+// Settings and Setup are one Configure page: four group tiles, one open at a time, and a Check this install strip.
+const sec = (name: string, collect = "file", status = "not-set") => ({ name, feature: "feature", required: "", collect, example: "", status });
+const setupData = {
+  account: { status: "set", user: "me", setLogin: "himmelctl ui set-login" },
+  secrets: [sec("TELEGRAM_BOT_TOKEN"), sec("BITBUCKET_API_TOKEN"), sec("BITBUCKET_EMAIL"),
+    sec("JIRA_BASE_URL"), sec("JIRA_EMAIL"), sec("JIRA_API_TOKEN"), sec("JIRA_PROJECT_KEY"),
+    ...["FIRECRAWL_API_KEY", "FIRECRAWL_BASE_URL", "WHISPER_MODEL", "GEMINI_API_KEY", "PERPLEXITY_API_KEY", "XAI_API_KEY"].map((n) => sec(n, "probe"))],
+  commit: { tracker: "jira", ticketIdRequired: true },
+  choices: { paths: [{ target: "handover-root", key: "HANDOVER_DIR", value: "/srv/h", fallback: "d" }, { target: "luna-vault", key: "LUNA_VAULT_PATH", value: null, fallback: "none" }], forge: { value: "github", error: null } },
+  coderabbit: { installed: "installed", armed: true, requirement: "optional", what: "reviews PRs", steps: ["step one"], manual: "" },
+};
+const reviewGate = { data: { reviewers: [{ slug: "claude", order: 1, provider: "anthropic", mode: "hard", required: true, hasModel: false, hasEffort: false, recommended: null }], dropped: [], efforts: [], env: [], overlay: "~/.claude/himmel/critics.local.json", rateLimit: "rate-limit-sentence" } };
+const cfgState = { open: new Set(), bundles: {}, filt: {}, plans: {}, reviewGate, fleetCap: { data: { cap: 3, min: 1, max: 50, default: 3, source: "file", fileValue: 3, envFile: ".env" } }, vm: { data: { mode: "local" } } };
+const cfg = (tile: string | null, over: Record<string, unknown> = {}): string => {
+  const { feed: f = feed, ...rest } = over;
+  return C.renderConfigure(f, { tile, setup: setupData, state: cfgState, msgs: {}, verify: null, ...rest });
+};
+const panel = (html: string) => html.slice(html.indexOf('<div class="cpanel"'));
+
+test("Configure draws four group tiles in order, and only the picked one is open", () => {
+  const html = cfg("review");
+  expect([...html.matchAll(/data-act="tile" data-tile="([a-z]+)"/g)].map((m) => m[1])).toEqual(["secrets", "review", "tracker", "scope"]);
+  expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
+  expect(html).toMatch(/data-tile="review"[^>]*aria-expanded="true"|aria-expanded="true"[^>]*data-tile="review"/);
+  expect(cfg(null)).not.toContain('class="cpanel"');
+});
+
+test("the Check this install strip sits under the tile row and above the open panel, and runs the old Verify", () => {
+  const html = cfg("secrets");
+  const [tiles, chk, open] = ["class=\"tiles\"", "class=\"chk\"", "class=\"cpanel\""].map((s) => html.indexOf(s));
+  expect(tiles).toBeGreaterThan(-1);
+  expect(chk).toBeGreaterThan(tiles);
+  expect(open).toBeGreaterThan(chk);
+  expect(html).toContain("Check this install");
+  expect(html).toContain('data-act="setup-verify"');
+  expect(cfg("secrets", { verify: { state: "done", ok: 2, info: 0, warn: 1, fail: 1, findings: [{ sev: "FAIL", id: "C5", msg: "m", remedy: "r" }] } })).toMatch(/1 fail[\s\S]*1 warn[\s\S]*2 ok/);
+});
+
+test("the Secrets tile has the account, 3 saveable entries and the terminal-only ones read-only, and no 0600 anywhere", () => {
+  const html = cfg("secrets"), p = panel(html);
+  expect(p).toContain("me");
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["TELEGRAM_BOT_TOKEN", "BITBUCKET_API_TOKEN", "BITBUCKET_EMAIL"]);
+  for (const n of ["FIRECRAWL_API_KEY", "FIRECRAWL_BASE_URL", "WHISPER_MODEL", "GEMINI_API_KEY", "PERPLEXITY_API_KEY", "XAI_API_KEY"]) expect(p).toContain(n);
+  expect(p).not.toContain("JIRA_");
+  expect(html).not.toContain("0600");
+});
+
+test("the Review tile has the reviewers with CodeRabbit folded in, the lanes and the save", () => {
+  const p = panel(cfg("review"));
+  expect(p).toContain('data-slug="claude"');
+  expect(p).toContain("CodeRabbit");
+  expect(p).toContain('data-act="review-gate-save"');
+  expect(p).toContain('data-action="config.lanes"');
+  expect(p).toContain("rate-limit-sentence");
+  expect(p).toContain("critics.local.json");
+});
+
+test("the Tracker tile has the JIRA connection rows and commit rules in two columns, under one dry-run box", () => {
+  const p = panel(cfg("tracker", { state: { ...cfgState, plans: { "setup|tracker": { stage: "plan", command: "c1", output: "o1", effect: "e", typed: "", consent: { kind: "plain" } }, "setup|ticket-id-required": { stage: "plan", command: "c2", output: "o2", effect: "e", typed: "", consent: { kind: "plain" } } } } }));
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);
+  expect(p).toContain('data-action="config.commitRules" data-target="tracker"');
+  expect(p).toContain('data-action="config.commitRules" data-target="ticket-id-required"');
+  expect(p.match(/class="col"/g)).toHaveLength(2);
+  expect(p.match(/class="dryrun"/g)).toHaveLength(1);
+  expect(p.indexOf('class="dryrun"')).toBeGreaterThan(p.lastIndexOf('class="col"'));
+  expect(p).toContain("c1");
+  expect(p).toContain("c2");
+});
+
+test("the Tracker tile hides the JIRA rows when the tracker is Local or None", () => {
+  const local = { ...setupData, commit: { tracker: "local", ticketIdRequired: true } };
+  expect(panel(cfg("tracker", { setup: local }))).not.toContain("JIRA_BASE_URL");
+});
+
+test("the Project scope tile has plugins, auto-ship, scheduled jobs, paths, forge, fleet cap and VM mode", () => {
+  const p = panel(cfg("scope"));
+  for (const s of ['id="sg-plugins"', 'id="sg-auto-ship"', 'id="sg-scheduled-jobs"', 'data-target="handover-root"', 'data-target="luna-vault"', "Forge", 'data-fc="cap"', 'data-vm="mode"']) expect(p, s).toContain(s);
+  expect(p).not.toContain('id="sg-review"');
+});
+
+test("Configure leaves Triage and Inventory out, and shows the loading note, not a crash, while the feed or setup is unread", () => {
+  const html = cfg("scope");
+  expect(html).not.toContain('id="triage"');
+  expect(html).not.toContain('id="inventory"');
+  expect(panel(cfg("scope", { feed: null }))).toMatch(/loading/);
+  expect(cfg("secrets", { setup: null })).toMatch(/loading/);
 });

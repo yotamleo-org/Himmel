@@ -1,8 +1,8 @@
 import { test, expect, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DOCS_URL, fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
+import { DOCS_URL, PAGES, fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
 // the config chief and the AG-UI pages are one app with one rail. These pin the page list, the
@@ -17,16 +17,58 @@ const tokenOnlyInFragment = (href: string) => {
   return !u.pathname.includes(TOKEN) && !u.search.includes(TOKEN);
 };
 
-test("the rail lists Fleet first, then Health, Tool health, Settings and Setup, on every page, plus Run when a run is open", () => {
-  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual(["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
+test("the rail lists Fleet first, then Health, Tool health and one Configure entry, on every page, plus Run when a run is open", () => {
+  const rail = ["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
+  expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(rail);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(rail);
+  expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual([...rail.slice(0, -1), "Run", "Docs"]);
 });
 
-test("Setup is a console route, in the fragment from the AG-UI pages too", () => {
-  expect(navLinks({ here: "console", token: TOKEN, current: "setup" }).find((l) => l.id === "setup")).toMatchObject({ href: "#/setup", current: true });
-  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).find((l) => l.id === "setup")!.href).toBe(`/#t=${TOKEN}&page=setup`);
-  expect(parseLanding(`#t=${TOKEN}&page=setup`)).toEqual({ token: TOKEN, page: "setup" });
+test("Settings and Setup are gone from the rail: Configure is the one entry, page id config", () => {
+  const ids = navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.id);
+  expect(ids.filter((i) => i === "config")).toHaveLength(1);
+  expect(ids).not.toContain("setup");
+  expect(PAGES.map((p) => p.label)).not.toContain("Settings");
+  expect(PAGES.map((p) => p.label)).not.toContain("Setup");
+});
+
+test("the old Setup landing and page=configure resolve to Configure, Setup with the Secrets tile picked", () => {
+  expect(parseLanding(`#t=${TOKEN}&page=setup`)).toEqual({ token: TOKEN, page: "config", tile: "secrets" });
+  expect(parseLanding(`#t=${TOKEN}&page=configure`)).toEqual({ token: TOKEN, page: "config" });
+  expect(parseLanding(`#t=${TOKEN}&page=config`)).toEqual({ token: TOKEN, page: "config" });
+});
+
+// app.js is a browser module; run it against stubs (as slow.test.ts does) and read where each hash lands.
+async function landedOn(hash: string) {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8").replace(/^import .*$/gm, "");
+  const urls: string[] = [];
+  const painted: unknown[] = [];
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderInventory", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "renderToolHealth", "renderKanban", "renderRoadmap", "renderWorkflow", "mountWorkflow",
+    "parseLanding", "navLinks", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, {
+    render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
+    renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "", mountWorkflow() {},
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
+    document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
+    location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },
+    fetch: () => new Promise(() => {}), addEventListener() {},
+  });
+  try { new Function(src)(); } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  return { urls, tile: (painted.at(-1) as { tile?: string } | undefined)?.tile ?? null };
+}
+
+test("the old #/setup and #/configure routes land on Configure, #/setup with the Secrets tile open", async () => {
+  expect(await landedOn("#/setup")).toEqual({ urls: ["/#/config?tile=secrets"], tile: "secrets" });
+  expect(await landedOn("#/configure")).toEqual({ urls: ["/#/config"], tile: null });
+  expect(await landedOn("#/config?tile=tracker")).toEqual({ urls: [], tile: "tracker" });
+  expect(await landedOn("#/health")).toEqual({ urls: [], tile: null });
+});
+
+test("from the AG-UI pages the Configure link carries the token in the fragment", () => {
+  expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).find((l) => l.id === "config")!.href).toBe(`/#t=${TOKEN}&page=config`);
 });
 
 test("the rail ends with Docs, an external link to DOCS_URL that is never the current page and carries no token", () => {

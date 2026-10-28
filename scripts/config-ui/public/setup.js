@@ -1,7 +1,8 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { esc, planHtml } from "./render.js";
+import { esc, planHtml, renderFleetCap, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { TILES } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
 const TRACKERS = [["jira", "Jira"], ["local", "Local"], ["none", "None"]];
@@ -36,27 +37,33 @@ function choice(label, action, target, value, current, k, disabled) {
   return `<button class="btn${on ? " primary" : ""}" data-act="plan" data-action="${action}" data-target="${target}" data-value="${value}" data-k="${k}" aria-pressed="${on}"${disabled ? " disabled" : ""}>${esc(label)}</button>`;
 }
 
-function commitRules(c, plans) {
-  const tk = "setup|tracker", rk = "setup|ticket-id-required";
+const TK = "setup|tracker", RK = "setup|ticket-id-required";
+
+const trackerRow = (c) => `<div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
+      <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, TK)).join(" ")}</span></div>`;
+
+function ticketRow(c) {
   const none = c.tracker === "none";
   const required = none || c.ticketIdRequired === false ? "off" : "on";
+  return `<div class="srow"><span class="id">Ticket ID required</span><span class="det">${none ? "off while the tracker is None" : "takes effect on your next commit"}</span>
+      <span>${choice("on", "config.commitRules", "ticket-id-required", "on", required, RK, none)} ${choice("off", "config.commitRules", "ticket-id-required", "off", required, RK, none)}</span></div>`;
+}
+
+function commitRules(c, plans) {
   return `<h3>Commit rules</h3>
     <p class="sub">Which tracker a commit's ticket ID comes from, and whether a commit needs one. Each change shows a dry run before it writes. The ID pattern is typed in the terminal.</p>
-    <div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
-      <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, tk)).join(" ")}</span></div>
-    ${plans[tk] ? planHtml(tk, plans[tk]) : ""}
-    <div class="srow"><span class="id">Ticket ID required</span><span class="det">${none ? "off while the tracker is None" : "takes effect on your next commit"}</span>
-      <span>${choice("on", "config.commitRules", "ticket-id-required", "on", required, rk, none)} ${choice("off", "config.commitRules", "ticket-id-required", "off", required, rk, none)}</span></div>
-    ${plans[rk] ? planHtml(rk, plans[rk]) : ""}`;
+    ${trackerRow(c)}
+    ${plans[TK] ? planHtml(TK, plans[TK]) : ""}
+    ${ticketRow(c)}
+    ${plans[RK] ? planHtml(RK, plans[RK]) : ""}`;
 }
 
 const PATH_LABEL = { "handover-root": "Handover root", "luna-vault": "luna vault path" };
 
 // Where handover state and the luna vault live, each change a dry run first; the forge is shown as detected; the
 // remaining choices are the Settings page's toggles, linked here rather than repeated.
-function setupChoices(c, plans) {
-  if (!c) return "";
-  const rows = c.paths.map((p) => {
+function pathRows(c, plans) {
+  return c.paths.map((p) => {
     const k = `setup|${p.target}`;
     const shown = (plans[k] && plans[k].req && plans[k].req.value) || p.value || "";
     return `<div class="srow"><span class="id">${esc(PATH_LABEL[p.target] || p.target)}</span>
@@ -66,10 +73,18 @@ function setupChoices(c, plans) {
         <button class="btn" type="submit">preview</button></form></div>
       ${plans[k] ? planHtml(k, plans[k]) : ""}`;
   }).join("");
+}
+
+function forgeRow(c) {
   const f = c.forge || {};
-  const forge = `<div class="srow"><span class="id">Forge</span>
+  return `<div class="srow"><span class="id">Forge</span>
     <span class="det">${f.error ? esc(f.error) : `detected: ${esc(f.value)}`}</span>
     <span class="ro">set <code>FORGE</code> or <code>git config himmel.forge</code> in the terminal</span></div>`;
+}
+
+function setupChoices(c, plans) {
+  if (!c) return "";
+  const rows = pathRows(c, plans), forge = forgeRow(c);
   return `<h3>Setup choices</h3>
     <p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>
     ${rows}${forge}
@@ -103,6 +118,119 @@ function verifyStep(v) {
       <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
       <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Settings</button></div>`).join("");
   return `${head}${summary}${rows || `<p class="sub" role="status">Nothing to fix.</p>`}${run("run again")}`;
+}
+
+// ---- the Configure page: Settings and Setup as four group tiles, one open at a time, under a Check this install strip ----
+const TILE_NAME = { secrets: "Secrets", review: "Review", tracker: "Tracker", scope: "Project scope" };
+const isJira = (s) => s.name.startsWith("JIRA_");
+const TRACKER_NAME = Object.fromEntries(TRACKERS);
+
+// What a tile holds right now, read from the data the panels already use; "" until that data is loaded.
+function tileValue(id, { setup, state }) {
+  const ok = setup && !setup.error;
+  if (id === "secrets") {
+    const own = ok ? setup.secrets.filter((s) => s.collect === "file" && !isJira(s)) : [];
+    return ok ? `${own.filter((s) => s.status === "set").length} of ${own.length} set` : "";
+  }
+  if (id === "review") {
+    const d = state.reviewGate && state.reviewGate.data;
+    return d ? `${d.reviewers.length} reviewer${d.reviewers.length === 1 ? "" : "s"}` : "";
+  }
+  if (id === "tracker") return ok ? TRACKER_NAME[setup.commit.tracker] || "not set" : "";
+  const fc = state.fleetCap && state.fleetCap.data, vm = state.vm && state.vm.data;
+  return [fc && `fleet cap ${fc.cap}`, vm && `VM ${vm.mode}`].filter(Boolean).join(" · ");
+}
+
+// Only the review gate carries a recommendation, so only the Review tile can say it matches our pick.
+function tileChip(id, { state }) {
+  const d = id === "review" && state.reviewGate && state.reviewGate.data;
+  if (!d) return "";
+  const rec = d.reviewers.filter((r) => r.recommended);
+  const same = rec.length > 0 && rec.every((r) => r.recommended.mode === r.mode && r.recommended.required === r.required && r.recommended.enabled);
+  return same ? `<span class="st ok">matches our pick</span>` : "";
+}
+
+function checkStrip(v) {
+  const run = (label) => `<button class="btn primary" type="button" data-act="setup-verify">${label}</button>`;
+  const head = `<b>Check this install</b><span class="sub">Read-only: nothing is fixed or changed, and no secret value is shown.</span>`;
+  if (!v) return `<div class="chk">${head}<span class="det">not run yet</span>${run("run the checks")}</div>`;
+  if (v.state === "running") return `<div class="chk">${head}<span class="det" role="status">running… this can take a minute or two</span></div>`;
+  if (v.state !== "done") return `<div class="chk">${head}<span class="nodata" role="alert">${esc(v.error || "the checks did not finish")}</span>${run("run again")}</div>`;
+  const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
+      <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
+      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Health</button></div>`).join("");
+  return `<div class="chk">${head}<span class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</span>${run("run again")}</div>
+    ${rows || `<p class="sub" role="status">Nothing to fix.</p>`}`;
+}
+
+const loading = (what) => `<p class="sub" role="status">loading ${what}…</p>`;
+const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(setup.error)}</div>` : loading("this install's setup"));
+
+function secretsPanel({ setup, msgs }) {
+  if (!setup || setup.error) return setupFailed(setup);
+  const own = setup.secrets.filter((s) => !isJira(s));
+  return `${account(setup.account, msgs.account)}
+    <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
+    ${own.filter((s) => s.collect === "file").map((s) => secretRow(s, msgs[s.name])).join("")}
+    <div class="srow"><span class="det">Set in the terminal, never here</span><span class="chips">${own.filter((s) => s.collect !== "file").map((s) => `<span class="ro" title="${esc(s.feature)}">${esc(s.name)} · ${esc(STATUS[s.status] || s.status)}</span>`).join(" ")}</span></div>
+    <p class="foot">Saved to the store each secret names · takes effect the next time the feature reads it · Jira values: now in the <a href="#/config?tile=tracker">Tracker tile</a></p>`;
+}
+
+// CodeRabbit is reviewer 1's install state, so it sits with the reviewers rather than in a step of its own.
+function crFold(c) {
+  if (!c) return "";
+  const st = `<span class="st ${c.installed === "installed" ? "ok" : "warn"}">${esc(CR_STATE[c.installed] || c.installed)}</span>`;
+  return `<div class="setrow"><div class="sethead"><span class="id">CodeRabbit review</span><span class="det">${esc(c.requirement)} add-on · gates ${c.armed ? "armed" : "not armed"} in this clone</span><span class="slot">${st}</span></div>
+    <details class="more"><summary>what it is, and how to install it</summary><p class="sub">${esc(c.what)}</p>
+    <ol class="sub">${c.steps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>${c.manual ? `<p class="sub" role="status">${esc(c.manual)}</p>` : ""}</details></div>`;
+}
+
+function reviewPanel({ setup, feed, state }) {
+  const lanes = feed ? renderSettingsGroups(feed, state, ["review"], 3) : loading("the station report");
+  return `${renderReviewGate(state.reviewGate, crFold(setup && setup.coderabbit))}${lanes}
+    <p class="foot">Saved to <code>~/.claude/himmel/critics.local.json</code> and <code>lanes.local.json</code> · takes effect the next time work is handed to a reviewer</p>`;
+}
+
+// Two columns, one shared dry-run box: a tracker change and a ticket-rule change both preview into it.
+function trackerPanel({ setup, state, msgs }) {
+  if (!setup || setup.error) return setupFailed(setup);
+  const c = setup.commit, plans = state.plans || {};
+  const jira = setup.secrets.filter(isJira);
+  const connection = c.tracker === "local" || c.tracker === "none" ? "" : jira.map((s) => secretRow(s, msgs[s.name])).join("");
+  const open = [TK, RK].filter((k) => plans[k]);
+  return `<div class="cols">
+    <div class="col"><h3>Connection</h3>${trackerRow(c)}${connection}</div>
+    <div class="col"><h3>Commit rules</h3>${ticketRow(c)}<p class="sub">The ticket ID pattern is typed in the terminal: <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code>.</p></div></div>
+    ${open.length ? `<div class="dryrun">${open.map((k) => planHtml(k, plans[k])).join("")}</div>` : ""}
+    <p class="foot">Saved to <code>~/.himmel/himmel.conf</code> after a dry run you confirm · takes effect on your next commit</p>`;
+}
+
+function scopePanel({ setup, feed, state }) {
+  const plans = state.plans || {};
+  const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold) : loading("the station report"));
+  const choices = setup && setup.choices;
+  const paths = !setup || setup.error ? setupFailed(setup)
+    : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
+  return `${group(["plugins"], 3)}${group(["auto-ship", "scheduled-jobs"])}${paths}
+    <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}</div>
+    ${group(["install-answers"])}`;
+}
+
+const PANELS = { secrets: secretsPanel, review: reviewPanel, tracker: trackerPanel, scope: scopePanel };
+
+// feed: the doctor feed or null. c = { tile, setup: GET /api/setup or null, state: the app state (plans, reviewGate, fleetCap, vm), msgs, verify }.
+// The tile is the one open group; null opens none. Setup and the feed load apart, so each panel says "loading" for only what it still lacks.
+// app.js imports this as `render` (tests/slow.test.ts stubs that name), hence the feed first.
+export function renderConfigure(feed, config) {
+  const c = { ...config, feed };
+  const tiles = TILES.map((id) => `<button class="tile g-${id}" type="button" data-act="tile" data-tile="${id}" aria-expanded="${c.tile === id}">
+      <span class="tname">${TILE_NAME[id]}</span><span class="tval">${esc(tileValue(id, c))}</span>${tileChip(id, c)}</button>`).join("");
+  const panel = PANELS[c.tile];
+  return `<h2 id="h-configure">Configure</h2><p class="sub">Change what himmel does, any time.</p>
+    <div class="tiles">${tiles}</div>
+    ${checkStrip(c.verify)}
+    <p class="sub">Not here, on purpose: the safety hooks (<code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code>, <code>DESTRUCTIVE_OK=1</code>, <code>.single-writer</code>). Set one in the shell that starts Claude Code. Triage and Inventory moved to <a href="#/health">Health</a>.</p>
+    ${panel ? `<div class="cpanel" id="tile-${c.tile}" role="region" aria-label="${TILE_NAME[c.tile]}">${panel(c)}</div>` : ""}`;
 }
 
 export function renderSetup(setup, plans, msgs, verify = null) {

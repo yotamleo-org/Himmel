@@ -3,14 +3,14 @@
 Audience: newcomer who has installed himmel, and contributor. Owner: HIMMEL-6836 (this page).
 
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
-command you run yourself. Only the config UI can change anything on your machine. Settings switches show a dry-run and ask
+command you run yourself. Only the config UI can change anything on your machine. Configure switches show a dry-run and ask
 for a confirm, and a typed value is saved on request. A Kanban drop and a theme select on the Roadmap
 write to Jira at once, with no confirm. The other two surfaces only display. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Settings, Setup, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -18,7 +18,7 @@ they almost always mean the first one.
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
 same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
-inventory only display. What can change something is on Settings, Setup and the Roadmap and
+inventory only display. What can change something is on Configure and the Roadmap and
 Kanban boards; the table after the switches maps every action to its route. A switch shows its
 dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 
@@ -28,11 +28,11 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Review by a second model | the local lane overlay `lanes.local.json`, through `himmelctl config set lanes.<id>` | next time work is handed to a lane |
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
-| Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
-| Setup choices (Setup) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
-| Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a `HIMMEL_FLEET_CAP` exported in the shell that launches a worker wins over the `.env` line for that launch, and it takes any whole number, outside 1 to 50 too; and the page shows a notice while the shell that started the UI sets one | the next worker launch |
-| VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
-| Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
+| Commit rules (Configure, Tracker tile) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Setup choices (Configure, Project scope tile) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
+| Fleet cap (Configure, Project scope tile) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a `HIMMEL_FLEET_CAP` exported in the shell that launches a worker wins over the `.env` line for that launch, and it takes any whole number, outside 1 to 50 too; and the page shows a notice while the shell that started the UI sets one | the next worker launch |
+| VM mode (Configure, Project scope tile) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
+| Review gate (Configure, Review tile) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
 The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
 mean, marks the recommended value, and states the ruled rate-limit behaviour: with CodeRabbit on best-effort (the default), rate limited or absent is a
@@ -40,34 +40,42 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 (`CRITIC_TIMEOUT_SECS`, `CRITIC_PARALLEL`, `CRITIC_PANEL_TIERS`, `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`) are shown with their current value and default, and are set in `.env` or the launching shell.
 
-The Setup page starts with an Account step. On a fresh install it creates the login the always-on UI asks
+Configure is one page with four group tiles: Secrets, Review, Tracker and Project scope. One tile is open at a time and
+the open one rides the address (`#/config?tile=tracker`). Under the tile row, a Check this install strip runs the doctor
+(see below). The old Settings and Setup pages are gone: `#/setup` lands here with the Secrets
+tile open, and the install hand-off link below still works. Triage and the inventory moved to the Health page.
+Tracker holds the Jira connection (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`) next to the
+commit rules, with one shared dry-run box; Secrets holds the other file-stored secrets and lists the terminal-only
+ones read-only.
+
+The Secrets tile starts with an Account step. On a fresh install it creates the login the always-on UI asks
 for: a user name and a password of at least 8 characters, kept only as a hash. It does this once, from an
 ad-hoc `himmelctl ui` or the UI `himmelctl install` starts. The always-on service cannot create it, and a
 login that is already set changes only with `--set-login` in your own terminal. A login file the page
 cannot read (a symlink, not mode 600, or malformed) is left as it is, and the page sends you to
 `--set-login` too.
 
-The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
+The Secrets and Tracker tiles also save or remove a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned). The always-on service saves one only after
 you log in at `/login`; an ad-hoc `himmelctl ui` needs no login. Each secret form shows an example value under it (a shape, never a working value).
 
-The Setup page also has a CodeRabbit step. It says what CodeRabbit is, that it is an optional add-on (himmel
+The Review tile also has a CodeRabbit step. It says what CodeRabbit is, that it is an optional add-on (himmel
 works without it), and the steps to install the GitHub App on the repo and arm the gates
 (`git config --local himmel.coderabbit true`). The installed check runs `gh pr list` over the last 10 PRs and looks
 for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
 reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
 
-The Setup page ends with Setup choices: the handover root and the luna vault path, each prefilled from
+The Project scope tile has Setup choices: the handover root and the luna vault path, each prefilled from
 `~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
 confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
 `git config himmel.forge` in the terminal. The plugin set, Review by a second model and Auto-ship steps are
-linked to their Settings toggles, not repeated.
+shown on the same tile, not repeated.
 
-The Setup page closes with a Verify step: a button runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
+The Check this install strip runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
 checks; never `--fix`) and shows a fail, warn and ok count with one row per warning or failure, its remedy, and an
-Open in Settings link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
+Open in Health link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
-page only, so come back to Setup and press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
+page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
 
 The Roadmap and Kanban boards also write to Jira: dragging a card to another column
 transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
@@ -97,11 +105,11 @@ node scripts/himmelctl/bin.js ui --agui latest   # URL of the newest session's r
 node scripts/himmelctl/bin.js ui --agui <session-id>
 ```
 
-- **Install hands off to the Setup page.** Run `himmelctl install` in your terminal
+- **Install hands off to the Configure page.** Run `himmelctl install` in your terminal
   first ([install.md](setup/install.md)); when it finishes it prints
   `Finish setup in the UI: http://127.0.0.1:<port>/#t=<token>&page=setup`. It reuses the always-on
   UI or an earlier install's UI when one is running, and otherwise starts a token-bound one that
-  stops after 30 minutes idle and can save secrets. The Setup page edits an install that exists;
+  stops after 30 minutes idle and can save secrets. Configure edits an install that exists;
   it does not run one. With no browser (an SSH session, or Linux with no display) install asks for
   the secrets in the terminal instead.
 - **Link forms.** `himmelctl config` prints the Configure link, `http://127.0.0.1:47391/#t=<token>&page=config`,
@@ -122,18 +130,19 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
   `<chief doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
   reaches the page within about 5 s; with no such file the server builds it as before.
-- **Pages** (the left rail): `#/config` (Settings: seven groups of what you can
-  change, each row with its command, when it takes effect and a Learn more link
-  to the docs site; then triage of failing items and the inventory of install
-  items, doctor checks, scheduled jobs, lanes, flags and secrets by presence;
-  Roadmap and Kanban only appear when the UI can read a tracker), `#/setup`
-  (first the Account step, which creates the UI login once on a fresh install;
+- **Pages** (the left rail): `#/config` (Configure: four group tiles, Secrets, Review,
+  Tracker and Project scope, one open at a time, each row with its command, when it takes
+  effect and a Learn more link to the docs site, and the Check this install strip under the
+  tiles. Secrets: first the Account step, which creates the UI login once on a fresh install;
   which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
-  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, and the setup
-  choices, handover root and luna vault path, each with a dry-run before it changes), `#/health` (one verdict:
+  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login.
+  Tracker: the Jira connection and the commit rules, tracker and ticket-id-required. Project scope: the
+  handover root and luna vault path, each with a dry-run before it changes. Roadmap and Kanban only
+  appear when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
   All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
-  cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
+  cards from the weekly roll-up, see below; then triage of failing items and the inventory of install
+  items, doctor checks, scheduled jobs, lanes, flags and secrets by presence), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
