@@ -254,6 +254,66 @@ else
 fi
 [ -z "$ASSIGN_SKIP" ] || echo "NOTE rows not applied to a leading VAR=value payload (bash runs it as a command name):$ASSIGN_SKIP"
 
+# DIAG-7120 begin (temporary, removed before the fix commit)
+# shellcheck disable=SC2088 # literal ~ is payload text the hook must see
+if [ -n "${GITHUB_ACTIONS:-}" ] || [ -e "$HERE/.diag-7120" ]; then
+  DG=$(mktemp -d "$BASE/diag.XXXXXX") || exit 1
+  mkdir -p "$DG/home"
+  git init -q -b main "$DG/repo"
+  cat > "$DG/run.pl" <<'PERL'
+use Time::HiRes qw(time);
+my ($hook, $json, $err) = @ARGV;
+my $t = time;
+my $pid = fork();
+if (!$pid) {
+  open(STDIN, '<', $json); open(STDOUT, '>', '/dev/null'); open(STDERR, '>', $err);
+  exec('env', '-i', "HOME=$ENV{DG_HOME}", "PATH=$ENV{PATH}", "PS4=$ENV{DG_PS4}", @ENV{qw(DG_E1 DG_E2)}, 'bash', split(' ', $ENV{DG_BASHOPT}), $hook) or die;
+}
+$SIG{ALRM} = sub { kill 9, $pid; print "TIMEOUT "; };
+alarm 100;
+waitpid($pid, 0);
+printf "rc=%d secs=%.2f\n", $? >> 8, time - $t;
+PERL
+  rep() { local n=$1 out='' i=0; while [ "$i" -lt "$n" ]; do out=$out$2; i=$((i + 1)); done; printf '%s' "$out"; }
+  echo "DIAG bash=$BASH_VERSION uname=$(uname -sr) LANG=${LANG:-} LC_ALL=${LC_ALL:-}"
+  U8=LC_ALL=en_US.UTF-8
+  cat > "$DG/prof.pl" <<'PERL'
+use Time::HiRes qw(time);
+my ($hook, $json) = @ARGV;
+pipe(my $r, my $w);
+my $pid = fork();
+if (!$pid) {
+  close $r;
+  open(STDIN, '<', $json); open(STDOUT, '>', '/dev/null'); open(STDERR, '>&', $w);
+  exec('env', '-i', "HOME=$ENV{DG_HOME}", "PATH=$ENV{PATH}", 'PS4=+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ', $ENV{DG_E1}, 'bash', '-x', $hook) or die;
+}
+close $w;
+my $t0 = time; my $p = $t0; my (%ms, %n);
+$SIG{ALRM} = sub { kill 9, $pid; print "TIMEOUT "; };
+alarm 280;
+while (my $l = <$r>) {
+  my $t = time;
+  my ($k) = $l =~ /^\++ (\S+)/;
+  $k = '?' unless defined $k;
+  $ms{$k} += ($t - $p) * 1000; $n{$k}++; $p = $t;
+}
+waitpid($pid, 0);
+printf "rc=%d secs=%.1f\n", $? >> 8, time - $t0;
+my @k = sort { $ms{$b} <=> $ms{$a} } keys %ms;
+printf "  %7.0f ms %6d x %s\n", $ms{$_}, $n{$_}, $_ for grep { defined } @k[0 .. 9];
+PERL
+  prof() { # prof LABEL HOOK COMMAND LOCALE — per-statement time (arrival delta), top 10 sites
+    printf '%s' "$3" > "$DG/cmd.txt"
+    jq -Rsc --arg d "$DG/repo" '{tool_name:"Bash",tool_input:{command:.},cwd:$d}' < "$DG/cmd.txt" > "$DG/in.json"
+    printf '%s: ' "$1"
+    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="$4" perl "$DG/prof.pl" "$HERE/$2" "$DG/in.json" )
+  }
+  prof "els 680 n=1200" block-edit-live-settings.sh "echo $(rep 1200 '~/.c$"l"aude/settings.json ')> /tmp/out.txt" "$U8"
+  prof "els 679 n=1200" block-edit-live-settings.sh "echo $(rep 1200 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8"
+  rm -rf "$DG"
+  exit 1
+fi
+# DIAG-7120 end
 # ---- the differential ---------------------------------------------------------
 nshapes=0
 while IFS= read -r g; do

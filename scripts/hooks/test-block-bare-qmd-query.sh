@@ -12,6 +12,7 @@ set -uo pipefail
 HOOK="$(cd "$(dirname "$0")" && pwd)/block-bare-qmd-query.sh"
 
 FAILED=0
+DGF=""
 
 run_case() {
     local input="$1"
@@ -30,6 +31,8 @@ assert_rc() {
         echo "PASS $label (rc=$actual)"
     else
         echo "FAIL $label - expected rc=$expected, got rc=$actual"
+        DGF="$DGF
+${SECONDS}s $label rc=$actual"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -723,6 +726,8 @@ timed() {
         echo "PASS $label in ${ms}ms"
     else
         echo "FAIL $label took ${ms}ms (budget ${budget}ms)"
+        DGF="$DGF
+${SECONDS}s $label ms=$ms"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -1292,5 +1297,6 @@ if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
 fi
+echo "DIAGF bash=$BASH_VERSION total=${SECONDS}s:$DGF" | cut -c1-200
 echo "$FAILED FAILED"
 exit 1
