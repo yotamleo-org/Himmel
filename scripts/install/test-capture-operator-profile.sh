@@ -148,6 +148,7 @@ EOF
 mkdir -p "$work/bin" "$work/bin-fail"
 cat > "$work/bin/crontab" <<'EOF'
 #!/usr/bin/env bash
+[ "$*" = "-l" ] || { echo "fixture crontab: unexpected args: $*" >&2; exit 64; }
 printf '0 6 * * * HIMMEL-Pipeline-FetchHealth\n0 7 * * * HIMMEL-DriftFix\n'
 EOF
 # crontab stub that fails loudly (non-empty stderr, rc 2) — used by the

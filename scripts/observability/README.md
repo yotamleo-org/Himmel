@@ -318,9 +318,9 @@ Three session populations exist in this harness, with three different owners:
    `meta.json`/`outbox.jsonl` under the bridge root.
 3. **Interactive/foreground Claude Code sessions and the Task-tool subagents
    fanned out inside them** — this section. Nothing tracked these before: a
-   process-tree `class="claude"` reading is a *sum* over every process wearing
-   that class and cannot say how many distinct sessions are alive, which have
-   subagents under them, or which one died three hours ago instead of
+   removed process-tree `class="claude"` reading was a *sum* over every process
+   wearing that class and could not say how many distinct sessions were alive,
+   which had subagents under them, or which one died three hours ago instead of
    finishing.
 
 ### The ledger
