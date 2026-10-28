@@ -1,4 +1,4 @@
-# end-session-wiki fixture transcripts (HIMMEL-576)
+# end-session-wiki fixture transcripts
 
 Hermetic JSONL fixtures for the husk-skip gate + crystallization tests.
 

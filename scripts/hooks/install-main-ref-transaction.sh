@@ -176,7 +176,7 @@ install_one_hook() {
 #!/usr/bin/env bash
 # himmel-main-ref-transaction-v1
 # Shim installed by scripts/hooks/install-main-ref-transaction.sh
-# (HIMMEL-2095). Runs the tracked, reviewable check script via bash
+# Runs the tracked, reviewable check script via bash
 # EXPLICITLY (never relying on the target's own exec bit surviving every
 # checkout/platform) -- "$@" and stdin (the reference-transaction line
 # stream) pass through unchanged.

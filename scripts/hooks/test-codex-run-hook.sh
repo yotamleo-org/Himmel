@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Unit test for .codex/run-hook.sh + .codex/codex-hook-adapter.sh — the Codex
 # hook wrapper + decision adapter. Tests the UNIX (bash) branch of
-# the Unix wrapper. The Windows run-hook.cmd wrapper is tested by the .ps1 twin.
+# the Unix wrapper.
 #
 # Sets up an ISOLATED temp tree (<T>/.codex/{run-hook.sh,codex-hook-adapter.sh}
 # + <T>/scripts/hooks/...) so the test proves the wrapper derives the repo root

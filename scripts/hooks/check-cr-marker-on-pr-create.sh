@@ -124,8 +124,8 @@ fi
 # ponytail: handles quoting only; any `#`, `<<`, `$'`, `eval`, ` -c ` or
 # double-quoted substitution bails to the unchanged scan (a comment, heredoc
 # body or ANSI-C quote can pair apostrophes across a real invocation, and a
-# nested shell body runs its quoted text as code); HIMMEL-5663's tokenizer
-# (inlined per hook) is the upgrade path.
+# nested shell body runs its quoted text as code); the upgrade path is the
+# shared tokenizer, inlined per hook.
 # shellcheck disable=SC1003,SC2016  # literal \ and $( in case patterns
 strip_quoted_spans() {
     local s="$1" out="" span="" q="" c

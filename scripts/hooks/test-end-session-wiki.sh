@@ -75,8 +75,8 @@ run_hook() {
     payload=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"t","reason":"other"}' \
         "$sb/transcript.jsonl" "$sb/proj")
     # OSTYPE/OS are forced to a non-Windows value so the .sh platform guard
-    # (which makes this script a deliberate no-op on Windows, where the .ps1
-    # twin runs) doesn't short-circuit the logic we're exercising. On a
+    # (which makes this script a deliberate no-op under a Windows shell)
+    # doesn't short-circuit the logic we're exercising. On a
     # Linux/macOS CI this is a no-op; on Windows Git Bash it lets the test run.
     # HOME is sandboxed so the relocated per-machine log never
     # touches the real ~/.claude/logs/end-session-wiki on the dev machine.

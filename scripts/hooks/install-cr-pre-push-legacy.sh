@@ -45,7 +45,7 @@ if ! cat > "$legacy_hook" <<'HOOK'
 # himmel-cr-ref-stream-v1
 # pre-commit migration hook: preserve the complete git pre-push ref stream.
 #
-# HIMMEL-1574: resolve the gate from the PRIMARY checkout, never from
+# Resolve the gate from the PRIMARY checkout, never from
 # --show-toplevel. core.hooksPath points every worktree at the primary's
 # .git/hooks, so this one file is shared — but --show-toplevel returns the
 # WORKTREE root, which made each worktree exec its own base commit's stale
@@ -78,7 +78,7 @@ if [ -z "$push_gate" ] || [ ! -f "$push_gate" ]; then
     exit 2
 fi
 
-# HIMMEL-2371: capture the ref stream ONCE and replay it to each gate in turn
+# Capture the ref stream ONCE and replay it to each gate in turn
 # — stdin cannot be rewound, and both gates need the COMPLETE, undrained
 # stream (the whole reason this migration hook exists: a pre-commit-configured
 # hook never sees it — see check-push-target.sh's own header). This is what
