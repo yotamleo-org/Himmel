@@ -103,7 +103,9 @@ fi
 printf '{"type":"module"}\n' > "$FX/scripts/jira/dist/package.json"
 # shellcheck disable=SC2016 # the fixture reader names the variable literally
 printf 'printf %%s "$READ_SECRET"\n' >"$FX/scripts/reads-secret.sh"
-git -C "$FX" init -q && git -C "$FX" add -A
+# The git dir is not named .git: a fixture that is its own primary checkout is an
+# anchor to the seam guard, which refuses the CLAUDECODE rows on CI (no claude ancestor).
+git init -q --separate-git-dir "$FX/.fxgit" "$FX" && printf '.fxgit/\n' >> "$FX/.fxgit/info/exclude" && git -C "$FX" add -A
 SCRIPT="$FX/scripts/setup/migrate-env.sh"
 
 mkdir -p "$TMP/handovers"
