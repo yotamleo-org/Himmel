@@ -663,7 +663,7 @@ contains "3b: a merged cross-repo PR does not exempt" "$(drows UNOWNED)" "UNOWNE
 reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; touch "$FX/xpr.fail"
 drift
 contains "3b: a failed cross-repo read keeps the rows (never a silent green)" "$(drows UNOWNED)" "UNOWNED $K"
-contains "3b: and the failed read still ends in a counted sdrift" "$(dlast)" "sdrift="
+check "3b: and the failed read still ends in a counted sdrift" "$(dlast | grep -cE '^sdrift=[1-9][0-9]*:[0-9a-f]{8}$')" 1
 # an open PR a comment merely cites is not the ticket's PR: only a title naming the ticket binds it
 reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
 drift
