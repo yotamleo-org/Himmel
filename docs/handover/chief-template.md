@@ -199,9 +199,8 @@ bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>`
 ## Standing rules
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
-- **Idle capacity is a duty.** `WAKE underfilled`: `gen-briefs.py` the pool,
-  launch `<slack>`; `POOL-EMPTY`: unblock, draft specs, `NEXT-TIER` if ruled;
-  `capacity=unknown` = census failed. [prose]
+- **Before idling**, disposition every listed/dropped key: dispatch, slice, close or
+  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>`. [prose]
 - **A worker's BLOCKED, permission prompt, or question comes to the chief first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
