@@ -31,6 +31,9 @@ node_bin=$(command -v node)
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/ensure-scope.XXXXXX") || exit 1
 trap 'rm -rf "$work"' EXIT
+# The state file is keyed by the target's real path; macOS's TMPDIR sits under the
+# /var -> /private/var symlink, so a logical path would never match the recorded key.
+work=$(cd "$work" && pwd -P)
 
 fixture_repo="$work/repo"
 mkdir -p "$fixture_repo/scripts/install" "$fixture_repo/scripts"

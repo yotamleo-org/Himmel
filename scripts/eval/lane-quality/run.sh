@@ -169,6 +169,7 @@ materialize() {
 
 # Redact every model and lane name before the judge sees a byte, and the literal
 # --model / --judge-model values first (a 1-2 character value would mangle the packet).
+# The lane word is matched twice: BSD sed has no \b, and two adjacent hits share their delimiter.
 redact() {
   local v esc="" x
   for v in "${MODEL:-}" "${JUDGE_MODEL:-}"; do
@@ -176,7 +177,7 @@ redact() {
     x="$(printf '%s' "$v" | sed 's/[][\.*^$/|(){}+?&]/\\&/g')"
     esc="${esc}s/$x/[redacted]/Ig;"
   done
-  sed -E "${esc}"'s/(anthropic|claude|opus|sonnet|haiku|fable|gpt[-_.a-z0-9]*|codex|claudex|openai|deepseek|openrouter|gemini|glm|kimi|qwen|llama|mistral)/[redacted]/Ig; s/\bnative\b/[redacted]/Ig;s/\[redacted\]([-_.]*[0-9][-_.0-9]*)?/[redacted]/g'
+  sed -E "${esc}"'s/(anthropic|claude|opus|sonnet|haiku|fable|gpt[-_.a-z0-9]*|codex|claudex|openai|deepseek|openrouter|gemini|glm|kimi|qwen|llama|mistral)/[redacted]/Ig; s/(^|[^[:alnum:]_])native([^[:alnum:]_]|$)/\1[redacted]\2/Ig;s/(^|[^[:alnum:]_])native([^[:alnum:]_]|$)/\1[redacted]\2/Ig;s/\[redacted\]([-_.]*[0-9][-_.0-9]*)?/[redacted]/g'
 }
 
 bank_read() { # prints "<token> <five_hour>"
@@ -620,8 +621,10 @@ apply_config() {
   [ -n "$EFFORT" ] || EFFORT="$ef"
   [ -n "$JUDGE_EFFORT" ] || JUDGE_EFFORT="$jef"
   if [ -n "$td" ]; then
-    root="$(realpath -m "$HERE")"  # prim-ok: paired with the -m line below, run.sh does not source prim.sh
-    td="$(realpath -m "$HERE/$td")"  # prim-ok: -m folds a not-yet-existing tasks_dir so the containment check below reports it; canon_path needs an existing directory
+    # BSD realpath has no -m; python folds ".." and a not-yet-existing tail the same way, so the
+    # containment check below still reports a missing tasks_dir.
+    root="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$HERE")"
+    td="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$HERE/$td")"
     case "$td" in "$root"/*) ;; *) die "--config: tasks_dir must stay under $root" ;; esac
     [ -d "$td" ] || die "--config: tasks_dir '$td' is not a directory"
     TASKS="$td"
@@ -1124,10 +1127,10 @@ cmd_calibration() {
     # --sample lists the packets to grade, so a listed one that is missing stops
     # the pass; without it, a run the sweep never judged has no packet and is left out.
     # Its lines are matched as lq_stats.py reads them: absolute from the caller's directory.
-    [ -z "$sample" ] || python3 -c 'import os, sys; [print(os.path.abspath(l.strip())) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]' \
+    [ -z "$sample" ] || python3 -c 'import os, sys; [print(os.path.realpath(l.strip())) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]' \
       "$sample" >"$list.sample" || die "cannot read --sample '$sample'"
     for d in "${dirs[@]}"; do
-      d="$(cd "$d" && pwd)" || die "cannot resolve $d"
+      d="$(cd "$d" && pwd -P)" || die "cannot resolve $d"
       rdirs+=("$d")
       while IFS= read -r stem; do
         if [ -n "$sample" ]; then

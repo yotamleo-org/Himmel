@@ -1296,6 +1296,10 @@ else
   check_os_timeout_2267 Linux "scripts/hooks/test-block-edit-live-settings.sh" "600"
   check_os_timeout_2267 Darwin "scripts/hooks/test-block-edit-live-settings.sh" "1800"
   check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-edit-live-settings.sh" "1800"
+  # macOS run 40633905316 killed it at 603s on both attempts; Linux is about 150s.
+  check_os_timeout_2267 Linux "scripts/test-adopt-sequences.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1800"
+  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1800"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"

@@ -74,9 +74,14 @@ fi
 # Copied/mutant renderers get a sibling resolver like the real tree; ambient
 # HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct chief arms.
 fixture_profiles() {
-  mkdir -p "$1/lanes" "$1/lib"
-  cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
-  cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/"
+  # A failed copy leaves a fixture that can pass for the wrong reason, so stop the suite.
+  mkdir -p "$1/lanes" "$1/lib" || exit 1
+  cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/" || exit 1
+  cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/" || exit 1
+  # Every lib headed-arm.sh sources by its own path: bash on macOS stops at a missing one.
+  cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/" || exit 1
+  if [ -d "$1/bare" ]; then cp "$HERE/argv-has-n-name.sh" "$1/bare/" || exit 1; fi
+  return 0
 }
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -1921,6 +1926,7 @@ mk_stub "$d43" 1 alive
 out43=$(HEADED_ARM_UNAME=Darwin PGREP_CMD="$d43/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43/locks" \
   bash "$d43/bare/headed-arm.sh" "HIMMEL-mac43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1)
 rc43=$?
+[ "$rc43" = 3 ] || echo "  arm said: $(printf '%s' "$out43" | head -c 600)"
 check "43 macOS default: exit 3 when the shim is absent" "$rc43" "3"
 contains "43 macOS default resolves to the konsole-macos.sh shim" "$out43" "konsole-macos.sh"
 not_contains "43 macOS default is never a bare 'konsole'" "$out43" "no 'konsole' on PATH"
@@ -1952,6 +1958,7 @@ mk_stub "$d43b" 1 alive
 out43b=$(env -u KONSOLE_CMD PATH="$d43b:$PATH" HEADED_ARM_UNAME=Linux PGREP_CMD="$d43b/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" \
   bash "$d43b/bare/headed-arm.sh" "HIMMEL-mac43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1)
 wait_record "$d43b" || true
+[ -e "$d43b/record" ] || echo "  arm said: $(printf '%s' "$out43b" | head -c 600)"
 [ -e "$d43b/record" ] && echo "ok - 43b Linux default: the bare konsole on PATH is what launched" \
   || { echo "FAIL - 43b Linux default: the konsole on PATH was never invoked"; fails=$((fails+1)); }
 not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konsole-macos.sh"
