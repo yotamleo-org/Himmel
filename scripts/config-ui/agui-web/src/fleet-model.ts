@@ -49,7 +49,7 @@ export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
     .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && consoleName(r) === c.name && !orphanReason(r, rows)) }));
 }
 
-// the page's sections. Needs attention = one line per session that wants a chief action, by severity;
+// the page's sections. Needs you / Needs the chief = one line per session, by owner then severity;
 // Orphans = live sessions no live chief watches, plus the stale shell-tool wrappers tick also reports; Running = the
 // rest of the live sessions, grouped under their live chief (siblings by state, then newest activity); Finished =
 // everything that ended, plus a cloud session whose chief has, with a worker's or a chief's chain folded into one entry.
@@ -65,13 +65,23 @@ const finishedOrder = (a: Row, b: Row) => newest(ended(a), ended(b)) || byName(b
 
 export const CONTEXT_ATTENTION = 85;
 export type Attention = { row: Row; why: string };
+type AttentionOwner = "operator" | "chief";
+const ATTENTION_REASONS = {
+  BLOCKED: { severity: 0, owner: "chief" },
+  FINDING: { severity: 0, owner: "chief" },
+  "CLOUD-BLOCKED": { severity: 0, owner: "operator" },
+  context: { severity: 1, owner: "chief" },
+  "CLOUD-DONE": { severity: 2, owner: "chief" },
+} as const;
+const reason = (kind: keyof typeof ATTENTION_REASONS, text: string): [number, string, AttentionOwner] =>
+  [ATTENTION_REASONS[kind].severity, text, ATTENTION_REASONS[kind].owner];
 // kind: wait = a live session's own long-running call, stuck = its pgrep -f wait matches itself; absent/orphan = no live owner.
 export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind?: "orphan" | "wait" | "stuck" };
 // Empty lists filter nothing. states: running | waiting | idle | attention | orphaned (a finished row is "finished").
 export type Filters = { lanes: string[]; states: string[]; text: string };
 export const NO_FILTERS: Filters = { lanes: [], states: [], text: "" };
 export type FleetSections = {
-  attention: Attention[]; orphans: Attention[]; processOrphans: ProcessOrphan[]; waits: ProcessOrphan[];
+  attention: Record<AttentionOwner, Attention[]>; orphans: Attention[]; processOrphans: ProcessOrphan[]; waits: ProcessOrphan[];
   running: { console: Row | null; showConsole: boolean; rows: Row[] }[];
   finished: { row: Row; hops: Row[] }[]; hops: Record<string, Row[]>;
   counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; live: number; total: number };
@@ -101,14 +111,14 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   const finished = (r: Row) => !isLive(r) || (r.role === "cloud" && !liveConsole(consoleName(r)));
   const mine = (r: Row) => !selected || r.name === selected || consoleName(r) === selected;
   const orphanOf = (r: Row) => (finished(r) ? null : orphanReason(r, rows));
-  const why = (r: Row): [number, string] | null => {
+  const why = (r: Row): [number, string, AttentionOwner] | null => {
     if (finished(r)) return null;
-    if (r.marker === "BLOCKED" || r.marker === "FINDING") return [0, r.marker];
+    if (r.marker === "BLOCKED" || r.marker === "FINDING") return reason(r.marker, r.marker);
     const pr = r.pr !== null ? ` · PR ${r.pr}` : "";
-    if (r.cloud?.phase === "blocked") return [0, `CLOUD-BLOCKED · a question on the PR${pr}`];
-    if (r.usage?.fill != null && r.usage.fill >= CONTEXT_ATTENTION) return [1, `context ${Math.round(r.usage.fill)}%`];
+    if (r.cloud?.phase === "blocked") return reason("CLOUD-BLOCKED", `CLOUD-BLOCKED · a question on the PR${pr}`);
+    if (r.usage?.fill != null && r.usage.fill >= CONTEXT_ATTENTION) return reason("context", `context ${Math.round(r.usage.fill)}%`);
     // A CLOUD-DONE PR with nobody shepherding it is the chief's move; a cloud session still working alone is normal.
-    if (r.cloud?.phase === "done" && !shepherded(r, rows)) return [2, `CLOUD-DONE · awaiting shepherd${pr}`];
+    if (r.cloud?.phase === "done" && !shepherded(r, rows)) return reason("CLOUD-DONE", `CLOUD-DONE · awaiting shepherd${pr}`);
     return null;
   };
   const text = filters.text.trim().toLowerCase();
@@ -118,7 +128,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     && (!filters.lanes.length || filters.lanes.includes(laneOf(r)))
     && (!filters.states.length || states(r).some((s) => filters.states.includes(s)))
     && (!text || [r.name, r.ticket ?? "", shortName(r.name)].some((s) => s.toLowerCase().includes(text)));
-  const byUrgency = (a: { r: Row; w: [number, string] }, b: { r: Row; w: [number, string] }) =>
+  const byUrgency = (a: { r: Row; w: [number, string, AttentionOwner?] }, b: { r: Row; w: [number, string, AttentionOwner?] }) =>
     a.w[0] - b.w[0] || newest(recency(a.r), recency(b.r)) || byName(a.r, b.r);
 
   const running = rows.filter((r) => !finished(r) && !orphanOf(r) && mine(r)).sort(siblingOrder);
@@ -158,8 +168,10 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     .sort((a, b) => finishedOrder(a.row, b.row));
 
   // An orphan's own alarm (BLOCKED, high context) still reaches Needs attention, beside its Orphans row.
-  const attention = rows.filter(shown).flatMap((r) => { const w = why(r); return w ? [{ r, w }] : []; })
-    .sort(byUrgency).map(({ r, w }) => ({ row: r, why: w[1] }));
+  const attention: FleetSections["attention"] = { operator: [], chief: [] };
+  for (const { r, w } of rows.filter(shown).flatMap((r) => { const w = why(r); return w ? [{ r, w }] : []; }).sort(byUrgency)) {
+    attention[w[2]].push({ row: r, why: w[1] });
+  }
   const orphans = rows.filter(shown).flatMap((r) => { const o = orphanOf(r); return o ? [{ r, w: [0, o] as [number, string] }] : []; })
     .sort(byUrgency).map(({ r, w }) => ({ row: r, why: w[1] }));
   // A wrapper follows the same filters as its owning session; one with no live owner has no lane and matches by pid.
@@ -176,7 +188,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     attention, orphans, processOrphans, waits, running: groups, finished: finishedEntries, hops,
     counts: {
       running: live.filter((r) => r.state === "running").length, waiting: live.filter((r) => r.state === "waiting for GO").length,
-      attention: attention.length, orphaned: orphans.length + processOrphans.length, finished: finishedEntries.length,
+      attention: attention.operator.length + attention.chief.length, orphaned: orphans.length + processOrphans.length, finished: finishedEntries.length,
       shown: rows.filter(shown).length, live: rows.filter((r) => !finished(r) && shown(r)).length, total: rows.filter(mine).length,
     },
   };
