@@ -1,7 +1,8 @@
 # Jarvis: the command layer of the agentic OS
 
-himmel is an agentic OS: a harness on top of Claude Code that runs a fleet of
-agent sessions as one software factory. **Jarvis** is its command layer: the
+himmel is a control plane for coding agents, and the agentic OS is where it
+is heading: a fleet of agent sessions, on top of Claude Code today, run as one
+software factory. **Jarvis** is its command layer: the
 chief plans the work, hands each ticket to a worker in its own worktree, has
 the result judged, and merges it. **Mission Control** is the
 surface where you watch and steer Jarvis.
