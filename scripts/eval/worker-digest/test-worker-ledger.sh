@@ -47,10 +47,10 @@ check "the eval-runs row is the observational leg-trajectory row keyed by sessio
 check "its metrics are the digest metrics, booleans as 1/0" 'jq -e ".metrics | .fail_denied == 10 and .turns == 3 and .identical_denied_retries == 1 and has(\"red_before_green\") and has(\"verify_before_claim\")" "$EL" >/dev/null'
 check "the digest file is written last and the row points at it" '[ -f "$ST/$SID.json" ] && [ "$(jq -r .artifact "$EL")" = "$ST/$SID.json" ]'
 
-echo "1b. the old --leg and --console are the same flags"
-python3 "$LL" record --failures-ledger "$TMP/ofail.jsonl" --eval-ledger "$TMP/oeval.jsonl" --state-dir "$TMP/ostate" --digest "$TMP/digest.json" --leg N1373 --ticket HIMMEL-4670 --console demo-chief --pr 1990 --doc himmel/x.md >"$TMP/o.out" 2>"$TMP/o.err"; orc=$?
-check "legacy flags: exit 0 and the same rows as --worker/--chief" '[ "$orc" = 0 ] && [ "$(lines "$TMP/ofail.jsonl")" = "$(lines "$FL")" ] && [ "$(jq -c "del(.ts)" "$FL")" = "$(jq -c "del(.ts)" "$TMP/ofail.jsonl")" ]'
-check "legacy flags: one deprecation line per flag" '[ "$(grep -c "^--leg is deprecated: use --worker$" "$TMP/o.err")" = 1 ] && [ "$(grep -c "^--console is deprecated: use --chief$" "$TMP/o.err")" = 1 ]'
+echo "1b. the old --leg and --console are no longer accepted"
+HIMMEL_LEGACY_NAMES=1 python3 "$LL" record --failures-ledger "$TMP/ofail.jsonl" --eval-ledger "$TMP/oeval.jsonl" --state-dir "$TMP/ostate" --digest "$TMP/digest.json" --leg N1373 --ticket HIMMEL-4670 --console demo-chief --pr 1990 --doc himmel/x.md >"$TMP/o.out" 2>"$TMP/o.err"; orc=$?
+check "legacy flags are unknown even with compatibility enabled" '[ "$orc" = 2 ] && grep -q "unrecognized arguments: --leg" "$TMP/o.err"'
+check "legacy flags write no ledgers or state and offer no forwarding" '[ ! -e "$TMP/ofail.jsonl" ] && [ ! -e "$TMP/oeval.jsonl" ] && [ ! -e "$TMP/ostate" ] && ! grep -q "is deprecated: use" "$TMP/o.err"'
 HIMMEL_LEGACY_NAMES=0 python3 "$LL" record --failures-ledger "$TMP/nfail.jsonl" --eval-ledger "$TMP/neval.jsonl" --state-dir "$TMP/nstate" --digest "$TMP/digest.json" --leg N1373 >"$TMP/n.out" 2>"$TMP/n.err"; nrc=$?
 check "legacy names off: --leg is an unknown option (rc 2, nothing written)" '[ "$nrc" = 2 ] && grep -q "unrecognized arguments: --leg" "$TMP/n.err" && [ ! -e "$TMP/nfail.jsonl" ]'
 

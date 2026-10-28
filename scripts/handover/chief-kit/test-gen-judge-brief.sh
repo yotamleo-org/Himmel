@@ -128,11 +128,11 @@ rm -rf "$BUCKET"
 python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
 
-# the old --console is the same flag as --chief
+# The removal release refuses --console even with compatibility enabled.
 rm -rf "$BUCKET"
-python3 "$SUT" "$WORK/spec.json" --console "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/old.err"; rc=$?
-[ "$rc" = 0 ] && grep -q "$CHIEF" "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && grep -q 'Z-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "the old --console writes the same brief as --chief" || fail "old --console rc=$rc: $(cat "$WORK/old.err")"
-[ "$(grep -c '^--console is deprecated: use --chief$' "$WORK/old.err")" = 1 ] && pass "the old --console prints one deprecation line" || fail "no single deprecation line: $(cat "$WORK/old.err")"
+HIMMEL_LEGACY_NAMES=1 python3 "$SUT" "$WORK/spec.json" --console "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/old.err"; rc=$?
+[ "$rc" = 2 ] && grep -q 'unrecognized arguments: --console' "$WORK/old.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1 && pass "the old --console is unknown and writes no brief" || fail "old --console rc=$rc: $(cat "$WORK/old.err")"
+! grep -q 'is deprecated: use' "$WORK/old.err" && pass "the old --console offers no forwarding" || fail "old --console still forwards: $(cat "$WORK/old.err")"
 rm -rf "$BUCKET"
 HIMMEL_LEGACY_NAMES=0 python3 "$SUT" "$WORK/spec.json" --console "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/off.err"; rc=$?
 [ "$rc" = 2 ] && grep -q 'unrecognized arguments: --console' "$WORK/off.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1 && pass "legacy names off: --console is an unknown option (rc 2, nothing written)" || fail "off --console rc=$rc: $(cat "$WORK/off.err")"
