@@ -72,9 +72,7 @@ Shape:
   "expected_tasks": [
     "himmel-pipeline-harvest"
   ],
-  "expected_disabled_tasks": [],
   "vault_path": "C:/Users/you/Documents/luna",
-  "host_detectors_ttl_seconds": 60,
   "sessions": {
     "stale_after_seconds": 900
   },
@@ -93,16 +91,9 @@ Rules:
 - Unknown flows seen only in the ledger default to a 6 hour stall deadline.
 - Missing config is valid; the exporter still serves metrics derivable from
   ledgers alone.
-- `expected_tasks` is Windows-only. Non-Windows platforms omit the scheduled
-  task family and add a comment in `/metrics`.
-- `expected_disabled_tasks` allowlists tasks in `expected_tasks`
-  that are intentionally disabled right now — `HimmelScheduledTaskDisabled`
-  skips them via `scheduled_task_expected_disabled{task}`. A task stays in
-  `expected_tasks` for `scheduled_task_exists`/`enabled` coverage; this list
-  only exempts the disabled-state alert.
+- `expected_tasks` names the tasks the cadence scripts arm. `himmel-doctor`
+  reads it; the exporter does not.
 - `vault_path` is optional. Without it, Luna backlog metrics are omitted.
-- `host_detectors_ttl_seconds` controls the Windows host detector cache. It
-  defaults to 60 seconds.
 - `sessions.stale_after_seconds` is the transcript-inactivity threshold that
   flips a live session to dead. It defaults to 900.
 - `quota_sources` is optional; every key has a derived default (claude:
@@ -226,27 +217,10 @@ omitted, never re-emitted). Lanes without a machine-readable quota source —
 and banks with no live reading — appear as explicit
 `# lane_quota_used_pct omitted: ...` comments instead of fabricated values.
 
-Scheduled task and Luna backlog walks are cached for 60s. The flow ledger fold
+Luna backlog walks are cached for 60s. The flow ledger fold
 runs on every scrape so in-flight age and stall inference are fresh.
 
-Host detector metrics are collected by
-`scripts/observability/host-detectors.ps1`, which takes one `Win32_Process`
-snapshot and emits JSON for the exporter. The detector is report-only: it does
-not write state and does not control processes. On non-Windows hosts, or when
-PowerShell collection fails, these families are omitted and `/metrics` includes
-an explanatory `# agent_tree_*/orphan_* omitted: ...` comment.
-
-- `agent_tree_rss_bytes{class="..."}` - working-set bytes summed by process
-  tree class (`claude`, `codex-app-server`, `codex-exec`, `hermes-gateway`,
-  `telegram-bridge`, `mcp-standalone`, `other`).
-- `agent_tree_process_count{class="..."}` - process count for the same tree
-  classes.
-- `orphan_process_count{class="..."}` - report-only orphan-shaped process count
-  by detector class (`codex-fleet`, `codex-exec-registry`,
-  `hermes-gateway-orphan`, `codex-app-server-orphan`,
-  `mcp-dead-parent-unattributed`). **Windows only** - see the next paragraph.
-
-`quiet_run_orphan_count{kind="suite"|"tail"}` is the Linux twin,
+`quiet_run_orphan_count{kind="suite"|"tail"}` is the orphan signal,
 read straight from `/proc` by `quiet-run-orphans.ts` (report-only, never signals
 a process; a scan is ~15 ms). `kind="suite"` counts a `quiet-run.sh` wrapper, or a
 process holding a `quiet-run-*.log` open for writing, that has been reparented to
@@ -273,8 +247,8 @@ alongside the Luna backlog walk:
   catches a commit-gate block, complementing the push-gate signal.
 
 Any git error, missing repo, or timeout omits the whole family with an
-explanatory `# luna_git_* omitted: ...` comment, same fail-soft contract as
-the scheduled-task and host-detector families.
+explanatory `# luna_git_* omitted: ...` comment, the same fail-soft contract
+as the other families.
 
 ## Eval results
 
@@ -344,7 +318,7 @@ Three session populations exist in this harness, with three different owners:
    `meta.json`/`outbox.jsonl` under the bridge root.
 3. **Interactive/foreground Claude Code sessions and the Task-tool subagents
    fanned out inside them** — this section. Nothing tracked these before: a
-   host-detector `class="claude"` reading is a *sum* over every process wearing
+   process-tree `class="claude"` reading is a *sum* over every process wearing
    that class and cannot say how many distinct sessions are alive, which have
    subagents under them, or which one died three hours ago instead of
    finishing.
@@ -605,7 +579,7 @@ units and the data dir.
 dashboard. It answers, in this order: is himmel healthy, what is failing and
 what to do, are the scheduled jobs on time, sessions and the usage bank,
 search and graph freshness, the Luna vault, and 7-day trends. `war-room-system.json`
-stays the engineer's view (Windows host series included).
+stays the engineer's view.
 
 It reads only series that exist: the `flow-exporter.ts` families, plus the
 Prometheus built-ins `ALERTS` (from `alerts.rules.yml`) and `up`. Every
@@ -736,18 +710,17 @@ healthy case returns an empty vector — `NoData` there turns "healthy" into a
 firing `DatasourceNoData` alert. 9 of the original 14 rules had exactly that shape;
 measured live, Grafana reported `grafana_alerting_alerts{state="nodata"} 9`
 against `{state="alerting"} 0` while sending ~125 Telegram messages/day for
-~2/day of genuine alerts. Those 9 (`HimmelFlowLastSuccessAgeExceeded`,
-`HimmelScheduledTaskDisabled`, `HimmelWatcherDown`, `HimmelKernelPoolCritical`,
-`HimmelAgentTreeRamRunaway`, `HimmelLunaInboxBacklogRising`,
-`HimmelKernelPoolHigh`, `HimmelKernelPoolLeakRate`, `HimmelCommitPressure`) now
+~2/day of genuine alerts. The 3 of those 9 still shipped
+(`HimmelFlowLastSuccessAgeExceeded`, `HimmelWatcherDown`,
+`HimmelLunaInboxBacklogRising`; the other 6 were Windows-only and are gone)
 use `noDataState: OK`, as do `HimmelFlowRunTruncated` and `HimmelFlowRunError`
 since HIMMEL-1634 (their refId A is now a recency filter). `HimmelFlowStalled`
-keeps `KeepLast` (see its comment in `rules.yaml`); the remaining 5
-(`HimmelOrphanProcesses`, `HimmelSessionDead`, and the
+keeps `KeepLast` (see its comment in `rules.yaml`); the remaining 4
+(`HimmelSessionDead` and the
 three hook-chain rules — `HimmelHookChainBudgetPressure`,
 `HimmelHookChainBudgetDenials`, `HimmelHookChainLogUnreadable`) keep the
 `NoData` default — for the hook-chain rules, refId A IS a bare metric
-selector, unlike the 9 OK rules, but their series genuinely goes absent when
+selector, unlike the OK rules, but their series genuinely goes absent when
 `hookChainMetrics`/`defaultHookChainSkipLogPaths` (flow-exporter.ts) fails to
 read the skip log (or enumerate the worktrees directory, for
 `HimmelHookChainLogUnreadable`), and that absence is a fault worth alerting on, not a healthy filter match. Full
@@ -766,50 +739,13 @@ depend on the failing component itself (the design's acceptance test, §5):
 | 600s background-wait truncation | `HimmelFlowRunTruncated` (+ `HimmelFlowLastSuccessAgeExceeded` backstop) | No — reads the ledger's end row, written by the wrapper, not the model |
 | Permission-prompt stall / SIGKILL, no exit code | `HimmelFlowRunStalled` | No — exporter-inferred from an unpaired start row past deadline |
 | Transient CLI/API death | `HimmelFlowRunError` (or `HimmelFlowRunStalled` if it never writes an end row) | No |
-| 4-day silently-disabled scheduled task | `HimmelScheduledTaskDisabled` + `HimmelFlowLastSuccessAgeExceeded` | No — `Get-ScheduledTask`, independent of the flow itself |
+| 4-day silently-disabled scheduled task | `HimmelFlowLastSuccessAgeExceeded` | No — a job that stops running stops writing success rows, so its last-success age grows |
 | The exporter/collector itself dying | `HimmelWatcherDown` (`up == 0`) | No — Prometheus's own scrape health, not the exporter's output |
 | 2026-09-03 spawn-storm hang | `HimmelHookChainBudgetPressure` + `HimmelHookChainBudgetDenials` + `HimmelHookChainLogUnreadable` | No — reads the skip log `scripts/hooks/run-hook-with-bash.js` writes when a chain member blows its time budget, independent of the starved member itself; `HimmelHookChainLogUnreadable` covers the reader's own read/enumeration failures, which would otherwise degrade the first two silently |
 
-Five more rules extend coverage past that postmortem: `HimmelAgentTreeRamRunaway`,
-`HimmelOrphanProcesses` and `HimmelQuietRunOrphans` (host-level, design §4; the
-latter is the Linux `/proc` sibling), `HimmelLunaInboxBacklogRising`
+Three more rules extend coverage past that postmortem: `HimmelQuietRunOrphans`
+(host-level, design §4, read from Linux `/proc`), `HimmelLunaInboxBacklogRising`
 (pipeline-level, design §3), and `HimmelSessionDead` (session-level).
-Four more again cover kernel pool and commit pressure — see below.
-
-### Kernel pool + commit pressure
-
-OVERLORD8 has two reboot-only kernel-pinned leak families — File (nonpaged) and
-Token (paged) — that grow in proportion to file-handle churn. Two long diagnostic sessions (2026-07-20, 2026-08-06) were spent on
-them because nothing watched the metrics windows_exporter's `memory` collector was
-already scraping. These four rules close that gap using only already-scraped
-series — the per-tag `File`/`Toke` breakdown needs the poolmon textfile exporter,
-a planned follow-up, and is deliberately NOT here.
-
-| Rule | Expression shape | Threshold | `for` | Severity |
-|---|---|---|---|---|
-| `HimmelKernelPoolHigh` | nonpaged + paged pool bytes | > 12 GiB | 15m | warn |
-| `HimmelKernelPoolCritical` | nonpaged + paged pool bytes | > 18 GiB | 5m | page |
-| `HimmelKernelPoolLeakRate` | `deriv(… [1h:5m]) * 3600` | > 1 GiB/h | 1h | warn |
-| `HimmelCommitPressure` | committed / commit_limit | > 0.85 | 15m | warn |
-
-Calibration evidence (2026-08-20/23 measurements on OVERLORD8): quiet post-boot
-steady state ~1.9–2 GiB pool total; 44 min after a reboot 6.1 GiB (2.05 nonpaged /
-4.08 paged); pre-reboot peak ~21 GiB (11.8 paged / 9.3 nonpaged); slope +0.13 GiB/h
-quiet vs +1.2 GiB/h under a 6-worker swarm. 12 GiB sits above every observed healthy
-value and well below the peak; 18 GiB is the "take the reboot now" band.
-
-`HimmelKernelPoolLeakRate` is the rule that earns its keep. Both incidents were slow
-accumulations, and a level-only alert fires long after the leaking process has
-exited — by then the pool is kernel-pinned, only a reboot reclaims it, and the
-evidence needed to attribute it is gone. `deriv()` over a subquery rather than
-`rate()`/`increase()` because pool bytes are a **gauge** that legitimately falls;
-`rate()` would read every reclaim as a counter reset.
-
-Both rule files carry the same four expressions byte-identically — the promtool
-suite (`alerts.rules.test.yml`) asserts each against a healthy post-boot fixture
-(all four silent) and against the recorded episode-2 known-bad sample (all three
-level/ratio rules firing), plus a synthetic +1.5 GiB/h climb that never reaches any
-level threshold, where the slope rule is the only thing that fires.
 
 ### Delivery choice — the cadence-alert webhook
 
@@ -832,17 +768,6 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
 
 ### Tuning
 
-- `HimmelAgentTreeRamRunaway` scales a 6 GiB base by
-  `subagent_active_total`: +1 GiB per active subagent above 2, station-wide
-  (`scalar(sum(...))`), so ordinary overnight-swarm fanout doesn't page on
-  the flat default. Still no per-class config surface — both literals (base,
-  per-subagent step) are literal defaults in both rule files; edit together.
-  The expression also excludes `class="other"` —
-  `host-detectors.ps1`'s catch-all for every process NOT descended from a
-  recognized agent root (the rest of the desktop), which otherwise dwarfs
-  the swarm-scaled threshold on a normal desktop. Still emitted on the
-  `agent_tree_rss_bytes` series for the dashboard, just excluded from this
-  alert.
 - `HimmelFlowRunStalled`'s alerting bucket
   (`flow_run_stalled_current`) is capped at
   `FLOW_STALLED_ALERT_TTL_SECONDS` (24h) measured from when a
@@ -862,21 +787,9 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
 - `HimmelLunaInboxBacklogRising`'s 3-day/1h grace is a literal default in
   both rule files — no config surface exists yet in
   `observability.json`/`flow-exporter.ts`. Edit both files together.
-- The four pool/commit thresholds (12 GiB, 18 GiB, 1 GiB/h, 0.85)
-  are literal defaults in both rule files, same convention as
-  `HimmelAgentTreeRamRunaway` — there is no config surface, tune by editing the
-  expression in `alerts.rules.yml` AND its Grafana twin together, then re-running
-  the promtool suite.
-- `HimmelOrphanProcesses` only watches `codex-fleet`/`codex-exec-registry`
-  (the design's literal default). `mcp-dead-parent-unattributed` and the
-  gateway/app-server orphan classes stay dashboard-visible, unalerted.
-  **It is also Windows-only:** `orphan_process_count` comes from
-  `host-detectors.ps1` (`Win32_Process`) and `flow-exporter.ts` gates it to
-  `win32`, so on a Linux host the rule has no series to evaluate. It never
-  covered quiet-run suites or `tail -f` followers either (both missed on
-  2026-08-29). `HimmelQuietRunOrphans` (`quiet_run_orphan_count > 0`
-  for 30m, both rule files) covers those two shapes on Linux; the Windows
-  equivalents remain uncovered.
+- `HimmelQuietRunOrphans` (`quiet_run_orphan_count > 0` for 30m, both rule
+  files) covers orphaned quiet-run suites and writer-less `tail -f` followers
+  on Linux (both missed on 2026-08-29).
 - `HimmelFlowLastSuccessAgeExceeded` needs a flow's `cadence_seconds`
   declared in `observability.json` (`flow_cadence_seconds{flow}`) — a flow with no declared cadence is excluded from the `on
   (flow)` join and never fires. If every flow lacks a declared cadence the

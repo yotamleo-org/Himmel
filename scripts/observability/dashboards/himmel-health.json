@@ -629,41 +629,13 @@
                         "text": "HimmelHookChainLogUnreadable — The guardrail timeout log cannot be read, so the timeout count may be low. Check file permissions.",
                         "index": 10
                       },
-                      "HimmelScheduledTaskDisabled": {
-                        "text": "HimmelScheduledTaskDisabled — Windows: a scheduled task is disabled. Re-enable it in Task Scheduler.",
-                        "index": 11
-                      },
-                      "HimmelAgentTreeRamRunaway": {
-                        "text": "HimmelAgentTreeRamRunaway — Windows: agent processes are using too much memory. Close idle sessions.",
-                        "index": 12
-                      },
-                      "HimmelOrphanProcesses": {
-                        "text": "HimmelOrphanProcesses — Windows: processes were left behind by closed sessions. Stop them.",
-                        "index": 13
-                      },
-                      "HimmelKernelPoolHigh": {
-                        "text": "HimmelKernelPoolHigh — Windows: kernel memory pool is high. Plan a reboot.",
-                        "index": 14
-                      },
-                      "HimmelKernelPoolCritical": {
-                        "text": "HimmelKernelPoolCritical — Windows: kernel memory pool is critical. Reboot soon.",
-                        "index": 15
-                      },
-                      "HimmelKernelPoolLeakRate": {
-                        "text": "HimmelKernelPoolLeakRate — Windows: kernel memory pool is leaking. Plan a reboot.",
-                        "index": 16
-                      },
-                      "HimmelCommitPressure": {
-                        "text": "HimmelCommitPressure — Windows: committed memory is near the limit. Close programs or reboot.",
-                        "index": 17
-                      },
                       "HimmelEvalRegression": {
                         "text": "HimmelEvalRegression — An eval scored worse than its normal noise. Open the Eval results row, then run eval-compare for that eval.",
-                        "index": 18
+                        "index": 11
                       },
                       "HimmelEvalStale": {
                         "text": "HimmelEvalStale — A scheduled eval has not run in 14 days. Check its timer and run it by hand.",
-                        "index": 19
+                        "index": 12
                       }
                     }
                   }
@@ -2644,7 +2616,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "These health answers have no Prometheus series yet, so this dashboard leaves them out instead of faking them.\n\n- **Daily health check** (himmel-doctor results) — shown via `/obs-report`, HIMMEL-4291.\n- **Machine setup** (`himmelctl status`) — shown via `/obs-report`, HIMMEL-4291.\n- **qmd search index age** — shown via `/obs-report`, HIMMEL-4291.\n- **Chief workers and their cost** — machine-readable after HIMMEL-4290; shown via `/obs-report`, HIMMEL-4291.\n- **Usage bank reset time** — the exporter does not keep `resets_at` yet.\n- **Advice per alert** lives in this dashboard's mapping, not in the alert rules.\n\nWindows-only series (scheduled tasks, agent memory, kernel pool) are not charted here; `war-room-system.json` keeps them."
+        "content": "These health answers have no Prometheus series yet, so this dashboard leaves them out instead of faking them.\n\n- **Daily health check** (himmel-doctor results) — shown via `/obs-report`, HIMMEL-4291.\n- **Machine setup** (`himmelctl status`) — shown via `/obs-report`, HIMMEL-4291.\n- **qmd search index age** — shown via `/obs-report`, HIMMEL-4291.\n- **Chief workers and their cost** — machine-readable after HIMMEL-4290; shown via `/obs-report`, HIMMEL-4291.\n- **Usage bank reset time** — the exporter does not keep `resets_at` yet.\n- **Advice per alert** lives in this dashboard's mapping, not in the alert rules."
       }
     }
   ]
