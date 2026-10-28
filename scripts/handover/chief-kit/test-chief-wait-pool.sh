@@ -32,6 +32,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
 EOF
 cat > "$STUB/bank.sh" <<'EOF'
@@ -198,6 +199,22 @@ sed 's/ capacity=[^ ]*/ capacity=UNDERFILLED:7/' "$STUB/tick.line" > "$STUB/tick
 I="$(new_inbox replaydoneunderfill)"
 timeout 4 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replaydoneunderfill.out" 2>/dev/null; rc=$?
 check '(replay) a fully dispositioned pool also stays quiet when underfilled' 124 "$rc"
+
+# --- (tf) a failing tick never masks the pool: no sample, still a pool-unresolved wake ---
+: > "$STUB/tick.fail"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-16 question operator decision 268\n\n## Results\n' > "$WORK/tf-chief.md"
+printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n# disposition HIMMEL-77 listed LOCAL\n' > "$STUB/dispositions"
+I="$(new_inbox tickfail)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/tickfail.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check '(tf) a failing tick sample with an unresolved pool still wakes (rc 0)' 0 "$rc"
+check '(tf) the wake is pool-unresolved and says the tick failed' 1 "$(grep -c '^WAKE pool-unresolved capacity=? ' "$WORK/tickfail.out")"
+check '(tf) the failure stands in for the tick line' 'tick-fail samples=1 step=tick-exit:1' "$(sed -n 2p "$WORK/tickfail.out")"
+check '(tf) the wake names the unresolved key' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-77 ' "$WORK/tickfail.out")"
+printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
+I="$(new_inbox tickfailquiet)"
+timeout 4 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/tickfailquiet.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check '(tf) a failing tick with a dispositioned pool stays quiet' 124 "$rc"
+rm -f "$STUB/tick.fail"
 rm -f "$STUB/dispositions"
 
 # --- (rp-real) the waiter's pool output is the hand run's, drop summary included -----------

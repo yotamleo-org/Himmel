@@ -343,7 +343,8 @@ in a frozen version with no frozen-set membership and no admissions-ledger row. 
 or the active version is not frozen. Read-only, and not part of chief-wait's wake key.
 
 pool=<open>/<in-flight>/<dispositioned>/<undispositioned> counts every open ticket
-of the current version from next-dispatchable.sh --dispositions. In-flight is
+of the current version from a next-dispatchable.sh --dispositions snapshot the tick
+refreshes in the background (TICK_POOL_MIN_SECS, TICK_POOL_WAIT, TICK_POOL_TTL). In-flight is
 included in dispositioned. A listed row or unexplained drop is not a decision.
 Live-state pool-disposition: KEY slice|close|question <named target> lines record
 explicit chief decisions. Malformed, duplicate or unknown decisions stay unresolved.
@@ -1936,16 +1937,39 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
+# The pool snapshot classifies every version ticket: 140 s on a 23-worker fleet,
+# longer than the waiter's whole tick budget. It runs detached under flock, at most once per
+# TICK_POOL_MIN_SECS (default 600), and the tick waits TICK_POOL_WAIT seconds (default 10)
+# for it; the counts come from the newest snapshot younger than TICK_POOL_TTL (default 1800),
+# else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
-    [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
-    if pd_rows="$(timeout -k 2 60 bash "$HERE/next-dispatchable.sh" "${pd_args[@]}" 2>/dev/null)"; then  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed snapshot reads unknown below, never an all-clear
-        pd_summary="$(printf '%s\n' "$pd_rows" | pool_dispositions "$console_doc")"
+    pool_summary='?'
+    pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    pd_base="$pd_dir/tick-pool-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
+    pd_age=999999999
+    pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
+    case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
+    pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
+    if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
+        pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
+        [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
+        # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
+        # A running snapshot holds the lock, so this launch exits at once.
+        # shellcheck disable=SC2016  # the inner script expands its own positional arguments
+        setsid -w flock -n -E 75 "$pd_base.lock" bash -c 'timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"' _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_pid=$!
+        pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
+        pd_end=$(( $(date +%s) + pd_wait ))
+        while kill -0 "$pd_pid" 2>/dev/null && [ "$(date +%s)" -lt "$pd_end" ]; do sleep 0.2; done
+        pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
+        case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
+    fi
+    pd_ttl="${TICK_POOL_TTL:-1800}"; case "$pd_ttl" in '' | *[!0-9]*) pd_ttl=1800 ;; esac
+    if [ "$pd_age" -lt "$pd_ttl" ]; then
+        pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
-    else
-        pool_summary='?'
     fi
 fi
 

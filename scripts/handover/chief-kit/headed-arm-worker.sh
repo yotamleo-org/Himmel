@@ -101,7 +101,8 @@
 # HEADED_ARM_WORKER_CLAUDEX_BIN, default ../../claude-codex), turns on the `script`
 # tty recorder (HEADED_ARM_RECORDER=1 - load-bearing: konsole -e output is
 # otherwise lost and a silent claudex death is undiagnosable), and exports
-# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${WORKER_SESSION_EFFORT:-medium} into the
+# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${CLAUDE_CODE_EFFORT_LEVEL:-${WORKER_SESSION_EFFORT:-xhigh}}
+# (an explicit value wins, then WORKER_SESSION_EFFORT, then decision 223's gpt-6.1-sol default) into the
 # launched process via HEADED_ARM_LAUNCHER_ENV. An empty/omitted MODEL
 # defaults to gpt-6.1-sol for this lane (native's own --judge default,
 # claude-opus-5-5, is a Claude tier and would defeat the point of
@@ -1093,10 +1094,9 @@ case "$_worker_rcwd" in
         echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree. Create it first, from the repo's primary checkout: bash scripts/worktree.sh new ${_worker_wt_base/+//} --no-prune" >&2
         exit 2
     fi
-    # With no repo override, a worktree of ANOTHER repo in the handover registry is the
-    # session cwd: without it the session starts in the harness checkout and a step can
-    # run against the wrong tree. himmel's own worktrees, an unregistered repo and
-    # --consult (which refuses a worktree cwd) launch as before.
+    # With no repo override, use this repo's worktree or a registered adopter's
+    # worktree as the session cwd, never the launcher's primary checkout.
+    # An unregistered repo and --consult launch as before.
     # ponytail: registered = the registry lists the worktree's primary checkout, upgrade
     # path: read himmel-adopted.json once it carries local repo paths.
     if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ]; then
@@ -1104,8 +1104,8 @@ case "$_worker_rcwd" in
         _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: empty leaves the harness cwd rule to the registry match alone
         # ponytail: a repo with a separate git dir (git init --separate-git-dir) has no <checkout>/.git, so
         # it is not matched and launches as before, upgrade path: match the registry paths by git common dir.
-        if [ -n "$_worker_rc_common" ] && [ "$_worker_rc_common" != "$_worker_self_common" ] \
-            && bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; then
+        if [ -n "$_worker_rc_common" ] && { [ "$_worker_rc_common" = "$_worker_self_common" ] \
+            || bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; }; then
             HEADED_ARM_REPO="$_worker_wt_phys"
             export HEADED_ARM_REPO
             # headed-arm.sh passes DOC to the session as written and starts it in the new cwd
@@ -1756,7 +1756,7 @@ if [ "$LANE" = "claudex" ]; then
     LANE_BIN="${LANE_BIN_OVERRIDE:-$HERE/../../$LANE_BIN_NAME}"
     export HEADED_ARM_LAUNCHER="$LANE_BIN"
     worker_propagate_env CLAUDEX_LANE_OK 1
-    worker_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${WORKER_SESSION_EFFORT:-medium}"
+    worker_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${CLAUDE_CODE_EFFORT_LEVEL:-${WORKER_SESSION_EFFORT:-xhigh}}"
     export HEADED_ARM_RECORDER=1
     [ -z "$MODEL" ] && MODEL="gpt-6.1-sol"
     # scripts/claude-codex reads only CODEX_MODEL; without this the positional
@@ -1845,7 +1845,6 @@ if [ -n "$PROFILE" ]; then
     # Next to the launch log, i.e. inside the per-uid chief work dir the
     # chief already owns and cleans - never /tmp world-readable, never the
     # repo (it is generated, per-worker state).
-    PROFILE_SETTINGS="$(dirname "$LOG")/$NAME.leg-settings.json"
     # Native lane only: the brief's own contract, re-injected by
     # the compact-matcher SessionStart hook below instead of ridden in the
     # preface on every call. Resolved to an absolute path:
@@ -1856,6 +1855,7 @@ if [ -n "$PROFILE" ]; then
         echo "headed-arm-worker: --profile $PROFILE: cannot resolve log directory for $LOG" >&2
         exit 2
     }
+    PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
     PROFILE_CONTRACT="$_worker_log_dir/$NAME.worker-contract.md"
     for _worker_need in "$PROFILES_MJS" "$WORKER_SESSION_SHIM" "$WORKER_SESSION_PREFACE"; do
         if [ ! -f "$_worker_need" ]; then
@@ -2227,7 +2227,7 @@ EOF_CS_FILES
     # Per-worker path, like PROFILE_SETTINGS above - the claudex
     # lane below overrides this to the same shape for its own coordination
     # preface; content is written only at real-launch time further down.
-    WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.worker-preface.md"
+    WORKER_SESSION_PROFILE_PREFACE="$_worker_log_dir/$NAME.worker-preface.md"
     worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     # The consult loads no user/project/local scope: the shim turns this into
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
@@ -2256,7 +2256,7 @@ EOF_CS_FILES
             echo "headed-arm-worker: --profile $PROFILE: mcp-config resolution failed: $MCP_CONFIG_JSON" >&2
             exit 2
         fi
-        PROFILE_MCP_CONFIG="$(dirname "$LOG")/$NAME.leg-mcp.json"
+        PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
         worker_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
     fi
 fi
@@ -2275,7 +2275,7 @@ if [ "$LANE_CHANNEL" = "file" ]; then
         fi
     done
     if [ -n "$PROFILE" ]; then
-        WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.worker-preface.md"
+        WORKER_SESSION_PROFILE_PREFACE="$_worker_log_dir/$NAME.worker-preface.md"
         worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     else
         WORKER_SESSION_PROFILE_PREFACE="$CLAUDEX_PREFACE"
@@ -2321,6 +2321,19 @@ fi
 if [ "$LANE" = "native" ] && [ -n "$ASKED_MODEL" ] && [ "$MODEL" != "$ASKED_MODEL" ]; then
     echo "headed-arm-worker: refusing launch: asked model=$ASKED_MODEL but claude would be passed --model $MODEL" >&2
     exit 2
+fi
+
+if [ -n "$PROFILE" ]; then
+    _prompt_effort="${CLAUDE_CODE_EFFORT_LEVEL:-<unset>}"
+    set -f
+    for _prompt_tok in ${HEADED_ARM_LAUNCHER_ENV:-}; do
+        case "$_prompt_tok" in CLAUDE_CODE_EFFORT_LEVEL=*) _prompt_effort="${_prompt_tok#*=}" ;; esac
+    done
+    set +f
+    _prompt_model="$MODEL"
+    [ "$LANE" != openrouter ] || _prompt_model="$OR_MODEL"
+    WORKER_LAUNCH_IDENTITY="Worker launch: effort=$_prompt_effort model=$_prompt_model"
+    unset -v _prompt_effort _prompt_tok _prompt_model
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -2386,9 +2399,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # absent and the dry-run report is byte-identical to the earlier
     # one, matching the argv guarantee it describes.
     if [ -n "$PROFILE" ]; then
-        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s\n' \
+        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s prompt=%s\n' \
             "$PROFILE" "$PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_PREFACE" "$PROFILE_CONTRACT" "$HIMMEL_LEAN_WORKER_SESSION" \
-            "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT"
+            "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT" "$WORKER_LAUNCH_IDENTITY"
     fi
     # Printed ONLY for an Opus/Fable model that cleared the tier gate above;
     # absent for Sonnet/Haiku, matching the argv-report guarantee pattern above.
@@ -2420,7 +2433,8 @@ if [ -n "$PROFILE" ]; then
     fi
     chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     if [ "$LANE_CHANNEL" = "file" ]; then
-        if ! cat "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
+        if ! awk -v identity="$WORKER_LAUNCH_IDENTITY" 'NR == 1 { print; print ""; print identity; next } { print }' \
+            "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
             echo "headed-arm-worker: --lane $LANE: cannot write preface to $WORKER_SESSION_PROFILE_PREFACE" >&2
             exit 2
         fi
@@ -2433,7 +2447,8 @@ if [ -n "$PROFILE" ]; then
         # in the preface. awk stops at the Results tail (or never, printing
         # the whole file) rather than mapfile, for bash 3.2 (macOS ships 3.2;
         # see the Platform guard above).
-        if ! cat "$WORKER_SESSION_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
+        if ! awk -v identity="$WORKER_LAUNCH_IDENTITY" 'NR == 1 { print; print ""; print identity; next } { print }' \
+            "$WORKER_SESSION_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
             echo "headed-arm-worker: --profile $PROFILE: cannot write preface to $WORKER_SESSION_PROFILE_PREFACE" >&2
             exit 2
         fi
