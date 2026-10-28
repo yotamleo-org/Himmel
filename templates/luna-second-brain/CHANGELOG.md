@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.90] — 2026-10-28
+
+### Changed
+- `scripts/test-vault-git.sh` skips loudly, with its reason, when `gitleaks` is not
+  on PATH (the generated pre-commit hook fails closed without it).
+
 ## [0.4.89] — 2026-10-23
 
 ### Changed
