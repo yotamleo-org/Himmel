@@ -645,6 +645,27 @@ reject_old_flag scripts/lanes/srt-poc/push-wrapper.sh --leg-branch 20 --leg-bran
 reject_old_flag scripts/eval/worker-digest/worker_ledger.py --leg 2 record --digest "$FT/missing.json" --leg N1
 reject_old_flag scripts/eval/worker-digest/worker_ledger.py --console 2 record --digest "$FT/missing.json" --console unused
 
+# A full argv must not turn the removed option into the session name.
+out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/old-flags" -- \
+  env HIMMEL_LEGACY_NAMES=1 bash "$ROOT/scripts/handover/chief-kit/headed-arm-worker.sh" \
+  --dry-run --no-profile --console test-chief test-worker "$FT/brief.md" "$FT/signal" 4102444800 "$FT/launch.log" 2>&1)"
+rc=$?
+check "headed-arm rejects --console with a full launch argv" 2 "$rc"
+case "$out" in *"--console was renamed to --chief"*) refused=yes ;; *) refused=no ;; esac
+check "headed-arm diagnoses the removed flag before positional parsing" yes "$refused"
+case "$out" in *"would exec:"*) launched=yes ;; *) launched=no ;; esac
+check "headed-arm never forwards the removed flag as a session name" no "$launched"
+check "headed-arm refusal leaves the signal and log untouched" yes "$([ ! -e "$FT/signal" ] && [ ! -e "$FT/launch.log" ] && echo yes || echo no)"
+out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/old-flags" -- \
+  env HIMMEL_LEGACY_NAMES=1 bash "$ROOT/scripts/handover/chief-kit/headed-arm-worker.sh" \
+  --dry-run --no-profile --chief test-chief test-worker "$FT/brief.md" "$FT/signal" 4102444800 "$FT/launch.log" claude-sonnet-5-5 2>&1)"
+rc=$?
+check "headed-arm still accepts --chief with a full launch argv" 0 "$rc"
+case "$out" in *" test-worker $FT/brief.md $FT/signal 4102444800 $FT/launch.log claude-sonnet-5-5 "*) aligned=yes ;; *) aligned=no ;; esac
+check "headed-arm canonical launch keeps positional arguments aligned" yes "$aligned"
+case "$out" in *"HIMMEL_CONSOLE_NAME=test-chief "*) routed=yes ;; *) routed=no ;; esac
+check "headed-arm canonical chief retains the bus wire identity" yes "$routed"
+
 if [ "$FAIL" -ne 0 ]; then
   echo "test-rename-aliases: $FAIL failed, $PASS passed" >&2
   exit 1

@@ -57,8 +57,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALERT="$SCRIPT_DIR/../luna/cadence-alert.sh"
 # shellcheck source=../lib/llm-backend.sh
 . "$SCRIPT_DIR/../lib/llm-backend.sh"
-# shellcheck source=../lib/legacy-names.sh
-. "$SCRIPT_DIR/../lib/legacy-names.sh"
 STATE_DIR="${STEERING_CULL_STATE_DIR:-${HOME:-}/.himmel/state/steering-cull}"
 CRONTAB_BIN="${STEERING_CULL_CRONTAB:-crontab}"
 RUNNER_DIR="${STEERING_CULL_RUNNER_DIR:-${HOME:-}/.claude/steering-cull-cadence}"

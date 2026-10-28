@@ -473,6 +473,10 @@ while :; do
                 exit 2
             fi
             CHIEF_FLAG="$2"; shift 2 ;;
+        --console)
+            usage
+            echo "headed-arm-worker: --console was renamed to --chief" >&2
+            exit 2 ;;
         --rm-release)
             # Same missing-value trap as --lane/--profile above.
             if [ "$#" -lt 2 ]; then
