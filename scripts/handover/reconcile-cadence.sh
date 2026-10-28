@@ -69,13 +69,6 @@ cmd_run() {
     return "$rc"
 }
 
-windows_refuse() {
-    case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
-        msys*|cygwin*|win32*|MINGW*)
-            die "Windows uses the schtasks twin: pwsh -File $SCRIPT_DIR/reconcile-cadence.ps1 -Action ${1}" ;;
-    esac
-}
-
 CRON_TAB=""
 cron_read() {
     local err rc
@@ -134,7 +127,6 @@ cmd_arm() {
     # and one shorter than the tick timeout could overlap the previous tick.
     [ $((interval * 60)) -ge "$GRACE_SECS" ] || die "--interval-min $interval is shorter than RECONCILE_GRACE_SECS=${GRACE_SECS}s"
     [ $((interval * 60)) -gt $((10#$TIMEOUT_SECS + KILL_SECS)) ] || die "--interval-min $interval does not exceed the ${TIMEOUT_SECS}s tick timeout plus ${KILL_SECS}s kill grace"
-    windows_refuse Arm
     # Without timeout a hung tick would overlap the next one.
     command -v timeout >/dev/null 2>&1 || die "timeout not on PATH; ticks would be unbounded (macOS: brew install coreutils)"
 
@@ -153,14 +145,12 @@ cmd_arm() {
 }
 
 cmd_disarm() {
-    windows_refuse Disarm
     cron_read
     cron_write ""
     echo "reconcile-cadence: disarmed"
 }
 
 cmd_status() {
-    windows_refuse Status
     cron_read
     local line
     line=$(printf '%s\n' "$CRON_TAB" | grep -F "# $TAG" || true)

@@ -769,7 +769,7 @@ done
 # After the refresh workers, print `graphmap-cadence.sh status` so the operator sees
 # whether the daily cadence is armed (and how stale its last fire was) next to a
 # just-run ad-hoc refresh. Best-effort + advisory: the cadence status runs
-# against the OS scheduler (schtasks/crontab) and may exit non-zero (unsupported
+# against the OS scheduler (crontab) and may exit non-zero (unsupported
 # platform, query error); that NEVER fails this wrapper — the refreshes above
 # already completed. `|| true` masks the cadence rc; the captured stdout is what
 # matters. Both streams are merged so a scheduler warning is not lost.
