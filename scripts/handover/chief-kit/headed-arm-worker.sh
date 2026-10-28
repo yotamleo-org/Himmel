@@ -465,8 +465,7 @@ while :; do
                 exit 2
             fi
             PROFILE="$2"; shift 2 ;;
-        --chief|--console)
-            [ "$1" = --chief ] || legacy_flag --console --chief || { usage; exit 2; }
+        --chief)
             # Same missing-value trap as --lane/--profile above.
             if [ "$#" -lt 2 ]; then
                 usage

@@ -357,8 +357,7 @@ while [ $# -gt 0 ]; do
         --go)
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --go needs the path of the chief's GO file" >&2; exit 10; fi
             GO_FLAG="$2"; shift 2 ;;
-        --worker-doc|--leg-doc)
-            [ "$1" = --worker-doc ] || legacy_flag --leg-doc --worker-doc || { echo "merge-on-green: unknown option: $1" >&2; exit 10; }
+        --worker-doc)
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --worker-doc needs a path" >&2; exit 10; fi
             WORKER_SESSION_DOC="$2"; shift 2 ;;
         -h|--help)

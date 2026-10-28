@@ -45,7 +45,7 @@ mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; workers_from="${WORKERS
 while [ $# -gt 0 ]; do
     case "$1" in
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
-        --workers-from|--legs-from) [ "$1" = --workers-from ] || legacy_flag --legs-from --workers-from || exit 2; workers_from="${2:-}"; shift 2 || exit 2 ;;
+        --workers-from) workers_from="${2:-}"; shift 2 || exit 2 ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
         *) echo 'usage: version-status-audit.sh [--mirror DIR] [--workers-from MANIFEST] [--owners "KEY ..."]' >&2; exit 2 ;;
     esac

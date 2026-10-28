@@ -78,7 +78,7 @@ while [ "$#" -gt 0 ]; do
         --transcript) JOURNAL="$2" ;;
         --pid) PID="$2" ;;
         --projects) PROJECTS="$2" ;;
-        --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || usage; CHIEF="$2" ;;
+        --chief) CHIEF="$2" ;;
         *) usage ;;
     esac
     shift 2

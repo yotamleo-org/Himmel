@@ -614,6 +614,37 @@ check "exact names above the prefixes that swallow them ($ORDER)" "" "$ORDER"
 check "HIMMEL_WORKER is do-not-rename" "do-not-rename keep" "$(awk -F'\t' '$1 == "HIMMEL_WORKER" { print $3 " " $4 }' "$REG")"
 check "HIMMEL_CONSOLE_ is do-not-rename" "do-not-rename keep" "$(awk -F'\t' '$1 == "HIMMEL_CONSOLE_" { print $3 " " $4 }' "$REG")"
 
+# Missing required arguments keep these parser probes before any external action.
+reject_old_flag() {
+  local script="$1" old="$2" want_rc="$3" out rc accepted
+  local runner=(bash)
+  case "$script" in *.py) runner=(python3 -I) ;; esac
+  shift 3
+  out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/old-flags" -- \
+    env HIMMEL_LEGACY_NAMES=1 "${runner[@]}" "$ROOT/$script" "$@" 2>&1)"
+  rc=$?
+  check "$script rejects $old with its usage status" "$want_rc" "$rc"
+  accepted=no
+  case "$out" in *"is deprecated: use"*|*"unbound variable"*) accepted=yes ;; esac
+  check "$script does not accept the old $old parser arm" no "$accepted"
+}
+reject_old_flag scripts/eval/cache-health-cadence.sh --console 64 run --console
+reject_old_flag scripts/eval/lane-quality/pilot-4869/pilot.sh --console 1 init --console
+reject_old_flag scripts/handover/chief-kit/action-zero.sh --render-legs 2 --render-legs
+reject_old_flag scripts/handover/chief-kit/close-wrapped-worker.sh --console 2 --console
+reject_old_flag scripts/handover/chief-kit/headed-arm-worker.sh --console 2 --console
+reject_old_flag scripts/handover/chief-kit/worker-digest-step.sh --console 2 --console unused
+reject_old_flag scripts/handover/chief-kit/version-status-audit.sh --legs-from 2 --legs-from
+reject_old_flag scripts/handover/merge-on-green.sh --leg-doc 10 --leg-doc
+reject_old_flag scripts/cleanup/steering-cull-cadence.sh --console 64 run --console
+reject_old_flag scripts/cleanup/steering-cull-cadence.sh --console 1 arm --console
+reject_old_flag scripts/eval/handover-cost.py --legs-after 2 --legs-after 2026-10-28 --dir "$FT/missing"
+reject_old_flag scripts/handover/chief-kit/gen-judge-brief.py --console 2 "$FT/missing.json" --console unused --bucket "$FT/bucket" --handover-root "$FT/root"
+reject_old_flag scripts/handover/chief-kit/verdict-go.sh --leg 2 unused NO-GO unused --leg
+reject_old_flag scripts/lanes/srt-poc/push-wrapper.sh --leg-branch 20 --leg-branch
+reject_old_flag scripts/eval/worker-digest/worker_ledger.py --leg 2 record --digest "$FT/missing.json" --leg N1
+reject_old_flag scripts/eval/worker-digest/worker_ledger.py --console 2 record --digest "$FT/missing.json" --console unused
+
 if [ "$FAIL" -ne 0 ]; then
   echo "test-rename-aliases: $FAIL failed, $PASS passed" >&2
   exit 1

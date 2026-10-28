@@ -96,10 +96,9 @@ cmd_run() {
     local repo="" chief="" dry=0 rc
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo|--chief|--console)
-                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR cache-health: unknown arg: $1" >&2; return 64; }
+            --repo|--chief)
                 [ $# -ge 2 ] || { echo "ERR cache-health: $1 needs a value" >&2; return 64; }
-                case "$1" in --repo) repo="$2" ;; --chief|--console) chief="$2" ;; esac
+                case "$1" in --repo) repo="$2" ;; --chief) chief="$2" ;; esac
                 shift 2 ;;
             --dry-run) dry=1; shift ;;
             *) echo "ERR cache-health: unknown arg: $1" >&2; return 64 ;;

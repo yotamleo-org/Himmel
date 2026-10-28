@@ -41,10 +41,10 @@ hc >"$TMP/b.out" 2>&1
 check "control: with no cutoff the old worker counts too (5 turns, 2 workers)" 'row "$TMP/b.out" | grep -q " worker=5/1250 workers=2 "'
 check "with the cutoff the old worker is reported skipped" 'grep -q "workers_skipped_before_cutoff=1" "$TMP/a.out"'
 
-echo "3a. the old --legs-after is the same flag"
-hc --legs-after 2026-10-19T09:30:00Z >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
-check "legs-after: same output as --workers-after" '[ "$rc" = 0 ] && cmp -s "$TMP/a.out" "$TMP/o.out"'
-check "legs-after: one deprecation line on stderr" '[ "$(grep -c "^--legs-after is deprecated: use --workers-after$" "$TMP/o.err")" = 1 ]'
+echo "3a. the old --legs-after is no longer accepted"
+HIMMEL_LEGACY_NAMES=1 hc --legs-after 2026-10-19T09:30:00Z >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+check "legs-after is an unknown option even with compatibility enabled" '[ "$rc" = 2 ] && grep -q "unrecognized arguments: --legs-after" "$TMP/o.err"'
+check "legs-after writes no rows and offers no forwarding" '[ ! -s "$TMP/o.out" ] && ! grep -q "is deprecated: use" "$TMP/o.err"'
 HIMMEL_LEGACY_NAMES=0 hc --legs-after 2026-10-19T09:30:00Z >"$TMP/p.out" 2>"$TMP/p.err"; rc=$?
 check "legs-after with HIMMEL_LEGACY_NAMES=0 is an unknown option (rc 2, no rows)" '[ "$rc" = 2 ] && grep -q "unrecognized arguments: --legs-after" "$TMP/p.err" && ! row "$TMP/p.out" | grep -q .'
 

@@ -105,10 +105,9 @@ cmd_run() {
     local files="" f mem low=0 esc=0 cut path risk line inbox root backend prompt
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo|--proposal-dir|--chief|--console)
-                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR steering-cull: unknown arg: $1" >&2; return 64; }
+            --repo|--proposal-dir|--chief)
                 [ $# -ge 2 ] || { echo "ERR steering-cull: $1 needs a value" >&2; return 64; }
-                case "$1" in --repo) repo="$2" ;; --proposal-dir) pdir="$2" ;; --chief|--console) chief="$2" ;; esac
+                case "$1" in --repo) repo="$2" ;; --proposal-dir) pdir="$2" ;; --chief) chief="$2" ;; esac
                 shift 2 ;;
             *) echo "ERR steering-cull: unknown arg: $1" >&2; return 64 ;;
         esac
@@ -227,11 +226,10 @@ cmd_arm() {
     local pdir="" chief="" day=1 time="07:00" force=0 dry=0 root runner bash_bin entry backend="" acct=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --proposal-dir|--chief|--console|--day|--time|--backend|--api-account)
-                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR steering-cull: unknown arg: $1" >&2; return 1; }
+            --proposal-dir|--chief|--day|--time|--backend|--api-account)
                 [ $# -ge 2 ] || { echo "ERR steering-cull: $1 needs a value" >&2; return 1; }
                 case "$1" in
-                    --proposal-dir) pdir="$2" ;; --chief|--console) chief="$2" ;;
+                    --proposal-dir) pdir="$2" ;; --chief) chief="$2" ;;
                     --backend) backend="$2" ;; --api-account) acct="$2" ;;
                     --day) day="$2" ;; --time) time="$2" ;;
                 esac

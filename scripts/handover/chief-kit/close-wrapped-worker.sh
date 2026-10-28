@@ -136,8 +136,6 @@ if [ "${1:-}" = --fleet ]; then
     FLEET_MANIFEST="$2"; shift 2
 elif [ "${1:-}" = --chief ]; then
     CHIEF_MODE=1; shift
-elif [ "${1:-}" = --console ] && legacy_flag --console --chief; then
-    CHIEF_MODE=1; shift
 fi
 
 # Only successful close exits retire the worker; refusals and failed pruning keep it.

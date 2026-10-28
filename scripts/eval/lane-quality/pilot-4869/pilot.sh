@@ -89,7 +89,7 @@ cmd_init() {
   local chief="" floor=3 b a
   while [ $# -gt 0 ]; do
     case "$1" in
-      --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || die "init: unknown flag '$1'"; chief="$2"; shift 2 ;;
+      --chief) chief="$2"; shift 2 ;;
       --floor) floor="$2"; shift 2 ;;
       *) die "init: unknown flag '$1'" ;;
     esac
