@@ -136,7 +136,7 @@ usage_lift_valid() {
 }
 
 _usage_lift_cmd() {
-  local cmd="${1:-}" f old cache resets until acct json standing=false
+  local cmd="${1:-}" f old cache resets until acct tmp standing=false
   f="$(usage_lift_file)"
   old="$(_usage_lift_old_file)"
   case "$cmd" in
@@ -153,14 +153,12 @@ _usage_lift_cmd() {
       until=$(_usage_lift_epoch "$resets") || { echo "usage-lift: no usable seven_day.resets_at ('$resets')" >&2; return 1; }
       [ "$until" -gt "$(date +%s)" ] || { echo "usage-lift: seven_day window already reset" >&2; return 1; }
       mkdir -p "$(dirname "$f")" || return 1
-      # Loaded here, not at the top: hooks source this file for usage_lift_valid and never reach `set`.
-      # shellcheck source=prim.sh
-      # shellcheck disable=SC1091
-      . "$_UL_DIR/prim.sh" || { echo "usage-lift: cannot load prim.sh" >&2; return 1; }
+      tmp=$(mktemp "$f.tmp.XXXXXX") || return 1
       # Store whole seconds, independent of fractional timestamp spelling.
-      json=$(jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "${USER:-unknown}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}') || return 1
-      printf '%s\n' "$json" | atomic_write "$f" || return 1
+      if ! ( umask 077; jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "${USER:-unknown}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}' > "$tmp" ); then rm -f "$tmp"; return 1; fi
+      # prim-ok: hooks source this file for usage_lift_valid, and the hook-closure walkers cannot resolve prim.sh's own dynamic source lines, so it must not load prim.sh
+      if ! mv "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
       if [ -n "$old" ] && ! rm -f "$old"; then echo "usage-lift: set, but could not remove the old $old" >&2; return 1; fi
       echo "usage-lift: set until $until ($resets)"
       ;;
