@@ -104,7 +104,7 @@ case "$1 $2" in
     "pr view")
         case "$3" in http*)
             [ -e "$FX/xpr.fail" ] && { echo "HTTP 502" >&2; exit 1; }
-            [ "$5" != state ] || { cat "$FX/xpr.state"; exit 0; }
+            [ "$4 $5 $6 $7" = '--json state,title --jq .state + "\t" + .title' ] || { echo "gh stub: unexpected pr view args: $*" >&2; exit 2; }
             printf '%s\t%s\n' "$(cat "$FX/xpr.state")" "$(cat "$FX/xpr.title")"; exit 0 ;;
         esac
         if [ "$5" = headRefOid ]; then
@@ -679,6 +679,9 @@ for XPR in https://github.com/YotamLeo-Org/Himmel/pull/13 https://github.com/yot
     reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
     drift
     contains "3b: $XPR to another ticket's open PR keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+    reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+    drift
+    check "3b: $XPR to this ticket's open PR is not UNOWNED" "$(dcount UNOWNED)" 0
 done
 XPR=$XPR_KEEP
 
