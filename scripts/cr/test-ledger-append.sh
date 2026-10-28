@@ -1723,4 +1723,12 @@ for bad in "--head abc123 --source judge:j1 --pr 3861" "--head 9D87A2790A6B7D121
 done
 check "dependabot-go: a refused row writes nothing" "$(test -s "$tmp/dg-bad.jsonl" && echo wrote || echo none)" "none"
 
+# ── the amend fu_class gate must not pipe $set_pairs into grep ──
+# Under `set -o pipefail`, `printf ... | grep -q` reports the producer's status when
+# grep exits early, so a present fu_class can read as absent and the amend is
+# refused. Static pin: no pipe from set_pairs.
+# shellcheck disable=SC2016  # the single-quoted pattern is a literal source-text match
+check "no \$set_pairs pipeline into grep remains in ledger-append.sh" \
+  "$(grep -cE 'printf .*\$set_pairs.*\| *grep' "$LA")" "0"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

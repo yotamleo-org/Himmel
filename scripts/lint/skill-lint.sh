@@ -211,8 +211,12 @@ elif [ "$STAGED" -eq 1 ]; then
     if ! _staged="$(cd "$_root" && git diff --cached --name-only --diff-filter=ACMR)"; then
         printf 'skill-lint: --staged: git diff --cached failed\n' >&2; exit 2
     fi
-    STAGE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/skill-lint-staged.XXXXXX")" || {
-        printf 'skill-lint: --staged: mktemp -d failed\n' >&2; exit 2
+    # shellcheck source=../lib/prim.sh
+    . "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || {
+        printf 'skill-lint: --staged: cannot load scripts/lib/prim.sh\n' >&2; exit 2
+    }
+    STAGE_TMP="$(tmpdir)" || {
+        printf 'skill-lint: --staged: could not create a scratch directory\n' >&2; exit 2
     }
     # ponytail: --staged sees C-quoted names for paths with TAB/newline (core.quotePath) and so skips them, switch to `git diff -z` + `read -d ''` if one is ever staged
     while IFS= read -r _f; do

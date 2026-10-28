@@ -77,6 +77,9 @@
 #      restored (announced explicitly)
 set -uo pipefail
 
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || { echo "upgrade-rtk: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+
 # Same version shape as scripts/upstreams.json's rtk `version_regex`.
 VERSION_RE='[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*'
 
@@ -314,7 +317,7 @@ rtk_lock_acquire() {
   return 1
 }
 
-INSTALL_DIR="${RTK_INSTALL_DIR:-$(mktemp -d)}"
+INSTALL_DIR="${RTK_INSTALL_DIR:-$(tmpdir)}"
 rtk_lock_acquire "${INSTALL_DIR}.lock" || exit 3
 mkdir -p "$INSTALL_DIR"
 BACKUP="$INSTALL_DIR/rtk.pre-upgrade.bak"
@@ -445,6 +448,7 @@ else
     exit 2
   fi
   chmod +x "$REPLACE_TMP"
+  # prim-ok: the staged binary is already chmod +x before the rename; atomic_write publishes mktemp's 0600, which would break the live path
   if ! mv -f "$REPLACE_TMP" "$RTK_BIN_PATH" 2>/dev/null; then
     echo "upgrade-rtk: atomic replace of $RTK_BIN_PATH failed -- restoring the pre-upgrade backup." >&2
     rm -f "$REPLACE_TMP" 2>/dev/null
@@ -465,7 +469,7 @@ fi
 # Functional probe: `rtk ls <tmpdir>` -- verified by hand against the real
 # 0.43.0 install (rc=0, prints a compact file listing) before this script was
 # written, so a rc!=0 here is a genuine functional regression, not a fluke.
-PROBE_DIR="$(mktemp -d)"
+PROBE_DIR="$(tmpdir)"
 : > "$PROBE_DIR/probe.txt"
 if ! "$RTK_BIN_PATH" ls "$PROBE_DIR" >/dev/null 2>&1; then
   echo "upgrade-rtk: functional smoke test FAILED ('$RTK_BIN_PATH ls <tmpdir>' did not exit 0) -- restoring the pre-upgrade backup." >&2

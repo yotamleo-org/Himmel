@@ -1,4 +1,4 @@
-# Google Health API — verified payload schema (HIMMEL-609 ground truth, 2026-06-29)
+# Google Health API — verified payload schema (ground truth, 2026-06-29)
 
 Captured from the operator's real account. Drives `map/table.ts` + adapters.
 Three categories by date source; values often JSON **strings** → coerce.
@@ -37,14 +37,14 @@ Three categories by date source; values often JSON **strings** → coerce.
 | hydration-log | hydrationLog | amountConsumed.milliliters | ml | sum | |
 | sleep | sleep | (interval; stages[]) | hours | main session | emit sleep_hours (Σ non-AWAKE, only if the rounded value is >0) + sleep_in_bed_hours (in-bed) |
 
-### Migration note (HIMMEL-785)
+### Migration note
 Prior to HIMMEL-785 the connector emitted `sleep_hours` = time-in-bed (what is now
 `sleep_in_bed_hours`). `writeSeries` only overlays emitted rows onto the existing
 on-disk CSV, so `sleep_hours.csv` values written by pre-HIMMEL-785 artifacts are
 **not** auto-reconciled — any vault that ever landed old connector artifacts verbatim
 must one-time repair that series (the operator vault was repaired in salus commit `a1c9456`).
 
-### Degraded stage data (HIMMEL-793)
+### Degraded stage data
 If any non-AWAKE stage in the main sleep session has an unparseable start/end timestamp
 (`Date.parse` → NaN), the session's stage data is treated as DEGRADED for that date:
 `sleep_hours` is omitted entirely (the remaining valid stages would under-count sleep),
@@ -52,7 +52,7 @@ If any non-AWAKE stage in the main sleep session has an unparseable start/end ti
 and a `[google-health]` stderr warning is printed. Invalid AWAKE stages never enter the
 asleep sum, so they do not trigger the degraded path.
 
-### Durable warnings field (HIMMEL-794)
+### Durable warnings field
 The degraded warning above is now ALSO recorded durably in the review artifact's optional
 `warnings: string[]` field — absent from the JSON when there are no warnings, written by
 `pull` and preserved through `merge` (deduped across inputs). A clean pull keeps producing

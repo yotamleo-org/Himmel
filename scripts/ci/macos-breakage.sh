@@ -37,6 +37,9 @@ ARTIFACT="macos-breakage-record"
 
 die() { echo "macos-breakage: $*" >&2; exit 2; }
 
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+
 cmd_suites_from_logs() {
   local dir="${1:?suites-from-logs <dir>}"
   # Run-shell-tests writes .run-complete only when its suite loop ran
@@ -172,7 +175,7 @@ cmd_prev_record() {
   # shellcheck disable=SC2015 # die is the intended else-branch; the tests cannot fail
   [ -n "$repo" ] && [ -n "$run_id" ] && [ -n "$dest" ] || die "prev-record: --repo --run-id --dest are required"
   local tmp id ids rc
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/macos-breakage.XXXXXX")" || die "mktemp failed"
+  tmp="$(tmpdir)" || die "mktemp failed"
   ids="$(list_run_ids "$repo" 30)" || { rm -rf "$tmp"; die "prev-record: gh run list failed"; }
   for id in $ids; do
     # only runs before this one: a rerun of an older run must not pick a newer predecessor
@@ -205,7 +208,7 @@ cmd_report() {
   [ -n "$repo" ] || die "report: --repo is required"
   local tmp id ids rc
   local files=()
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/macos-breakage.XXXXXX")" || die "mktemp failed"
+  tmp="$(tmpdir)" || die "mktemp failed"
   ids="$(list_run_ids "$repo" "$limit")" || { rm -rf "$tmp"; die "report: gh run list failed"; }
   for id in $ids; do
     rc=0

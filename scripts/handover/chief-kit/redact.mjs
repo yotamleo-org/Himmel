@@ -4,7 +4,7 @@
 // cannot be imported, which is why this lives in its own module.
 //
 // Nonces (`V-N255-93f72f64`, `AA-N1-abcdef12`, a worker stem
-// `V-HIMMEL-3340-N1-alpha-cafe0123`), the canonical RETASK token
+// `V-TICKET-N1-alpha-cafe0123`), the canonical RETASK token
 // `R-<32 hex>` (mintRetaskNonce, scripts/telegram/brief-blocks.ts), lock tokens
 // (`cachyos-x8664-pid909468`), key-shaped strings and a `token \`...\`` span are
 // replaced. Chief letters run A-Z then AA-ZZ. Runs BEFORE escaping and BEFORE

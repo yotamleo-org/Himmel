@@ -4,7 +4,7 @@
    ```bash
    threads_rc=2  # default: unknown = blocking; every path below overwrites it
    pr_rc=0
-   # --head takes step 0's printed `branch=` LITERAL (HIMMEL-2226),
+   # --head takes step 0's printed `branch=` LITERAL,
    # SINGLE-QUOTED: pasted bare, a branch name is shell-parsed.
    pr_lookup=$(gh pr list --state open --head '<branch>' --json number --jq '.[0].number' 2>&1) || pr_rc=$?
    if [ "$pr_rc" -ne 0 ]; then

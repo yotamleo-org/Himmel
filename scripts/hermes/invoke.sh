@@ -269,7 +269,9 @@ fi
 # abort by writing "$state_dir/abort". Best-effort: a failure here only
 # disables the deny-escalation safety net, not the core allow/block verdict or
 # the wall-clock timebox below, so it does not refuse the dispatch.
-state_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermes-guard-state.XXXXXX" 2>/dev/null)" || state_dir=""
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh"
+state_dir="$(tmpdir 2>/dev/null)" || state_dir=""
 abort_marker=""
 if [ -n "$state_dir" ]; then
     export PARITY_GUARD_STATE_DIR="$state_dir"

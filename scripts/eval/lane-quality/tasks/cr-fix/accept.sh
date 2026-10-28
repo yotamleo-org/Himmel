@@ -8,11 +8,13 @@ set -u
 . "$(dirname "$0")/../accept-common.sh"
 WT="$1"
 S="$WT/lq-work/cleanup-old.sh"
-D="$(mktemp -d "${TMPDIR:-/tmp}/lq-cr.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }
+D="$(mktemp -d "${TMPDIR:-/tmp}/lq-cr.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: a frozen pilot accept.sh stays self-contained (only accept-common.sh is sourced)
 # gnu-ok: the fixture needs backdated mtimes; abort rather than pass vacuously
-touch -d '10 days ago' "$D/old file.log" "$D/older.log" || { echo "accept: touch -d unsupported" >&2; exit 1; }
+# backdate: GNU touch -d, else BSD/macOS touch -t from date -v
+backdate() { touch -d '10 days ago' "$@" 2>/dev/null || touch -t "$(date -v-10d +%Y%m%d%H%M)" "$@"; }  # gnu-ok: BSD fallback
+backdate "$D/old file.log" "$D/older.log" || { echo "accept: touch -d unsupported" >&2; exit 1; }
 touch "$D/new.log"
-mkdir "$D/olddir"; touch -d '10 days ago' "$D/olddir" || { echo "accept: touch -d unsupported" >&2; exit 1; }
+mkdir "$D/olddir"; backdate "$D/olddir" || { echo "accept: touch -d unsupported" >&2; exit 1; }
 
 bash "$S" "$D" 5 >/dev/null 2>&1
 accept_ok r2-space-name-deleted test ! -e "$D/old file.log"

@@ -84,9 +84,7 @@
 //                     | needed); any gap downgrades a
 //                     | registered server to 'degraded' instead of 'present'.
 //   handover-dir      | resolver: string
-//   dep               | EXACTLY ONE of cmd: string XOR (win32: string AND
-//                     | posix: string) — the win32/posix pair is the
-//                     | platform-branched variant used by scheduler-backend
+//   dep               | cmd: string
 //   cmd:has_hermes    | resolver: string
 //   cmd:is_himmel_dev | resolver: string
 //   telegram-access   | envFile: string; tokenKey: string; accessFile:
@@ -125,15 +123,12 @@
 //   cmd:whisper_ready        | (no fields) mirrors
 //                            | scripts/telegram/transcribe.ts's own
 //                            | WHISPER_DIR/WHISPER_CLI/WHISPER_MODEL
-//                            | resolution convention; platform-branches the
-//                            | default binary name (transcribe.ts's own
-//                            | default is win32-only).
+//                            | resolution convention.
 //   cmd:python_interpreter   | OPTIONAL cmd: string —
 //                            | spawns the candidate interpreter and asserts
 //                            | it runs a trivial script, catching the
 //                            | "resolves on PATH but is actually a stub"
-//                            | class (Windows Store app-execution aliases,
-//                            | broken WSL/venv shims).
+//                            | class (broken venv shims).
 //   distinct-tokens          | envFileA/tokenKeyA/envFileB/tokenKeyB: string
 //                            | — fails when two
 //                            | configured tokens are IDENTICAL (e.g. the
@@ -162,17 +157,11 @@
 //                            | (pre-existing backlog, not fixed
 //                            | here) — this row is added so bridge-persistence
 //                            | does not add to that gap.
-//   observability-stack      | (no fields) queries the FOUR
-//                            | himmel-observability-* scheduled tasks via
-//                            | Get-ScheduledTask on win32; all four
-//                            | Ready/Running/Queued -> present, none
-//                            | registered -> absent, anything in between
-//                            | (partial install, a disabled task, or an
-//                            | inconclusive query) -> degraded naming which.
-//                            | Phase A ships a win32-only
-//                            | installer — non-win32 always reads absent
-//                            | naming that gap, never
-//                            | present or a repairable-looking degraded.
+//   observability-stack      | (no fields) opt-in via observability.enabled;
+//                            | runs install-stack.sh status: rc 0 ->
+//                            | present, service + health both failing ->
+//                            | absent, anything in between -> degraded
+//                            | naming which.
 //
 // Coverage decisions (deliberate, not oversights):
 //   - claude CLI is NOT a manifest item. It is the substrate himmelctl itself
@@ -228,12 +217,11 @@ const KINDS = ['hook', 'plugin', 'dep', 'wiring', 'vault', 'scheduler', 'lane', 
 // state, generated runner files, a live allow-list, or several existing
 // single-source probes into one tri-state result (probes.js's module header
 // documents each).
-// observability-stack added — a tri-state probe over the four
-// himmel-observability-* scheduled tasks (probes.js's module header
-// documents it); 'observability'/'stack' added to INSTALL_TYPES/
-// INSTALL_TARGETS so its install descriptor can dispatch to install-stack.ps1
-// (win32-only in Phase A — install-engine.js's buildEntry() 'observability'
-// case).
+// observability-stack added — a tri-state probe over the exporter user
+// service (probes.js's module header documents it); 'observability'/'stack'
+// added to INSTALL_TYPES/INSTALL_TARGETS so its install descriptor can
+// dispatch to install-stack.sh (install-engine.js's buildEntry()
+// 'observability' case).
 const PROBE_TYPES = ['file-exists', 'git-hooks', 'settings-key', 'settings-hooks', 'cmd:has_qmd', 'qmd-index', 'qmd-daemon', 'mcp-registered', 'handover-dir', 'dep', 'cmd:has_hermes', 'cmd:is_himmel_dev', 'telegram-access', 'cmd:codex_provisioned', 'cmd:cadence_armed', 'cmd:guardrail_block_status', 'cmd:hermes_checkout', 'cmd:telegram_getme', 'cmd:whisper_ready', 'cmd:python_interpreter', 'distinct-tokens', 'luna-sources', 'cadence-coherence', 'cadence-runs', 'phi-coherence', 'engine-allowlist', 'bridge-health', 'bridge-persistence', 'observability-stack', 'observability-grafana']; // t13b-ok: probe type names only, qmd-daemon is a manifest probe id
 const ITEM_KEYS = ['id', 'kind', 'scopes', 'profiles', 'deps', 'probe'];
 // Optional schema-v2 consumer keys. Permitted by the
@@ -483,7 +471,7 @@ function checkProbeShape(probe, label, errors) {
     }
     case 'cmd:python_interpreter': {
       // 'cmd' is OPTIONAL: absent means the
-      // platform-branched default (python on win32, python3 elsewhere).
+      // default, python3.
       if (Object.prototype.hasOwnProperty.call(probe, 'cmd') && typeof probe.cmd !== 'string') {
         errors.push(`${label}: probe type 'cmd:python_interpreter' field 'cmd', when present, must be a string`);
       }
@@ -502,7 +490,7 @@ function checkProbeShape(probe, label, errors) {
       if (typeof probe.script !== 'string') errors.push(`${label}: probe type 'luna-sources' requires 'script' (string)`);
       if (!isNonEmptyStringArray(probe.sources)) errors.push(`${label}: probe type 'luna-sources' requires 'sources' (non-empty string[])`);
       // 'pythonCmd' is OPTIONAL — absent means the platform-branched default
-      // (python on win32, python3 elsewhere), same convention as
+      // (python3), same convention as
       // cmd:python_interpreter's 'cmd'.
       if (Object.prototype.hasOwnProperty.call(probe, 'pythonCmd') && typeof probe.pythonCmd !== 'string') {
         errors.push(`${label}: probe type 'luna-sources' field 'pythonCmd', when present, must be a string`);
@@ -596,22 +584,8 @@ function checkProbeShape(probe, label, errors) {
       break;
     }
     case 'dep': {
-      const hasCmd = Object.prototype.hasOwnProperty.call(probe, 'cmd');
-      const hasWin32 = Object.prototype.hasOwnProperty.call(probe, 'win32');
-      const hasPosix = Object.prototype.hasOwnProperty.call(probe, 'posix');
-      const hasPlatformPair = hasWin32 && hasPosix;
-      if (hasCmd && (hasWin32 || hasPosix)) {
-        errors.push(`${label}: probe type 'dep' requires exactly one of 'cmd' (string) or 'win32'+'posix' (both strings), got both`);
-      } else if (hasCmd) {
-        if (typeof probe.cmd !== 'string') errors.push(`${label}: probe type 'dep' field 'cmd' must be a string`);
-      } else if (hasWin32 || hasPosix) {
-        if (!hasPlatformPair || typeof probe.win32 !== 'string' || typeof probe.posix !== 'string') {
-          errors.push(`${label}: probe type 'dep' requires both 'win32' and 'posix' (strings) when not using 'cmd'`);
-        }
-      } else {
-        errors.push(`${label}: probe type 'dep' requires exactly one of 'cmd' (string) or 'win32'+'posix' (both strings), got neither`);
-      }
-      reportExtra(['cmd', 'win32', 'posix']);
+      if (typeof probe.cmd !== 'string') errors.push(`${label}: probe type 'dep' requires 'cmd' (string)`);
+      reportExtra(['cmd']);
       break;
     }
     default:

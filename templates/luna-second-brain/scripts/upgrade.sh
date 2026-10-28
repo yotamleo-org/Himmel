@@ -37,7 +37,7 @@
 #                       again, or drop it to take the template's update).
 #   --with-github-sync  install the optional github-sync Obsidian plugin (env
 #                       twin: LUNA_WITH_GITHUB_SYNC=1). Mutually exclusive with
-#                       vault-autosync.ps1/.sh — see the github-sync note above. Only ever
+#                       vault-autosync.sh — see the github-sync note above. Only ever
 #                       ADDS the plugin: a vault that already has it ENABLED
 #                       keeps it with no flag needed, but only files missing
 #                       from the install get written (skip-if-present); the
@@ -112,7 +112,7 @@ upgrade.sh — content-preserving vault/template upgrade (HIMMEL-389)
                       records the decision so the stamp advances.
   --with-github-sync  install the optional github-sync plugin (env twin:
                       LUNA_WITH_GITHUB_SYNC=1). Mutually exclusive with
-                      vault-autosync.ps1/.sh; a vault that already has it
+                      vault-autosync.sh; a vault that already has it
                       ENABLED keeps it with no flag needed, but only files
                       missing from the install get written (skip-if-present).
 
@@ -834,8 +834,7 @@ PLUGINS_SETUP_PRIOR_SHA="$(sha_of "$VAULT_DIR/$PLUGINS_SETUP_REL")"
 
 # github-sync install eligibility: out of the template default
 # (community-plugins.json / .obsidian/plugins/) since the bundled plugin races
-# vault-autosync.ps1/.sh's own commits (see vault-autosync.ps1's sanity gate,
-# AlarmClass 'plugin-resurrected'). Installed when EITHER the operator asked
+# vault-autosync.sh's own commits. Installed when EITHER the operator asked
 # for it (--with-github-sync/LUNA_WITH_GITHUB_SYNC) OR the vault already has
 # it ENABLED — flag-alone is not the rule, so an upgrade with NO flag can
 # never drop a vault that already carries it (its data.json holds git

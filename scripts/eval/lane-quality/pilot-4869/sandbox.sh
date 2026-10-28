@@ -112,7 +112,7 @@ case "$GITDIR" in */..|*/../*|"$REPO"|"$REPO"/*) die "git dir $GITDIR is not the
 mnt "$WT" dir
 # The row's git dir stays writable: the row's own commit/index/scoring state lives there, outside
 # the worktree. The worktree itself is read-only below, so its project policy (.claude settings,
-# hooks) and every script a hook sources are un-rewritable (HIMMEL-5200).
+# hooks) and every script a hook sources are un-rewritable.
 A+=(--bind "$GITDIR" "$GITDIR")
 # The row lives outside the checkout (clean-garden scans .claude/worktrees),
 # but the lane launcher only serves a cwd under the checkout: the jail shows
@@ -122,7 +122,7 @@ mnt "$JWT" dir
 if [ "$mode" = check ]; then
   A+=(--bind "$WT" "$WT" --bind "$WT" "$JWT")
 else
-  # HIMMEL-5200: the whole worktree comes in read-only, at both paths, and only lq-work/ (where
+  # The whole worktree comes in read-only, at both paths, and only lq-work/ (where
   # every task prompt writes) is re-bound writable on top (a later bind wins). Enumerating the
   # policy files and hook trees was not enough: hooks source guard files settings never name
   # (scripts/guardrails/lib.sh, scripts/chokepoints.json). lq-work must be a real directory, so a
@@ -144,7 +144,7 @@ if [ "$mode" = check ]; then
 else
   # User settings with every plugin and MCP server removed (qmd, obsidian, ...).
   if [ -f "$HOME/.claude/settings.json" ]; then
-    # HIMMEL-5077: claudex's classifier runs client-side on the codex model and over-reads
+    # claudex's classifier runs client-side on the codex model and over-reads
     # the rm -rf deny rule. The row's own test scripts get a jail-only PreToolUse hook
     # (lq-allow-hook.sh; a permissions.allow glob's `*` would cross `/` and `..`) and
     # own-file rewrites an autoMode.allow line. The deny list stays.
@@ -167,7 +167,7 @@ else
     A+=(--ro-bind-try "$HOME/.claude/$s" "$HOME/.claude/$s")
   done
   for d in "${EGRESS[@]}"; do A+=(--ro-bind-try "$d" "$d"); done
-  # HIMMEL-5200: every bind below comes AFTER the worktree's read-only bind, and a later bind
+  # Every bind below comes AFTER the worktree's read-only bind, and a later bind
   # wins. One that is, sits under, or contains the worktree (at either jail path) would put it
   # back writable or hide the read-only mount, so such a row is refused, never launched.
   # canon_path_partial keeps a not-yet-created tail as written, so a dot component there would dodge
@@ -222,7 +222,7 @@ while IFS= read -r v; do
   fi
 done < <(compgen -e)
 
-# HIMMEL-5183: the row must not rewrite its own permission policy. ROWCONF stays
+# The row must not rewrite its own permission policy. ROWCONF stays
 # writable (the launcher writes its mirror and runtime state there), but the seeded
 # settings.json and the hooks dir it references come back read-only. The launcher seeds
 # them OUTSIDE the lane: a first jail with the same mounts (so the seed fingerprint
@@ -273,7 +273,7 @@ done
 # short private dir of its own (the inner end connects before bwrap hides /tmp).
 sock="$RUN/tunnel.sock"; sockdir=""
 if [ "$mode" = launch ]; then
-  sockdir="$(mktemp -d /tmp/lq-tun.XXXXXX)" || die "cannot create the tunnel dir"
+  sockdir="$(mktemp -d /tmp/lq-tun.XXXXXX)" || die "cannot create the tunnel dir"  # prim-ok: a fixed short /tmp path keeps the unix socket under its 108-byte cap and visible to the inner end; tmpdir follows a long TMPDIR
   sock="$sockdir/s"; trap 'rm -rf "$sockdir"' EXIT
 fi
 # shellcheck disable=SC2016 # expanded by the inner shell, from its own arguments
@@ -290,7 +290,7 @@ case "$mode" in
   launch)
     mkdir -p "$ROWCONF" "$TX" || die "cannot create $ROWCONF or $TX"
     # The jailed claude runs at $JWT with $ROWCONF as its lane config, so the folder-trust
-    # flag (HIMMEL-5068) must be seeded there, under that exact key; non-fatal like the caller's.
+    # flag must be seeded there, under that exact key; non-fatal like the caller's.
     WORKER_SESSION_PRETRUST_CONFIG="$ROWCONF/.claude.json" WORKER_SESSION_PRETRUST_KEY="$JWT" \
       bash "$REPO/scripts/handover/chief-kit/worker-pretrust.sh" "$LANE" "$WT" \
       || echo "pilot-sandbox: warning: could not pre-trust $JWT in $ROWCONF" >&2

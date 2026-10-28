@@ -26,7 +26,7 @@ repos:
       #      ASCII-named code/config files sidesteps this entirely; a denylist
       #      cannot enumerate every non-ASCII name a vault might hold.
       # Code/config files are ASCII-named by convention, so trailing-ws fixing
-      # on them is both safe and wanted. (himmel-managed scripts are .sh/.ps1;
+      # on them is both safe and wanted. (himmel-managed scripts are .sh;
       # configs are .yaml/.yml/.json/.toml.)
       # Vault-root `.manifest.json` (distinct from the per-plugin
       # .obsidian/plugins/*/manifest.json already excluded above) is machine-

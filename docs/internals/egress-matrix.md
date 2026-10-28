@@ -101,8 +101,8 @@ Semantics.)*
   As with DeepSeek/Alibaba the rows
   are `deny`, **not deleted** (a deleted row falls through to `default: deny`
   and loses the history), **not `hard`**, and `himmel-code × zai-glm` stays
-  **allow** via the wildcard — public code, not private content, so
-  `refresh-graph-map.sh`'s `--backend glm` remap still legitimately serves it.
+  **allow** via the wildcard — public code, not private content; the
+  `refresh-graph-map.sh` remap that once served it is removed.
   Consumer sweep: `graphify-fence.sh` loses the `luna-clippings × zai-glm`
   conditional branch and its `GRAPHIFY_CLIPPINGS_GLM_OK` opt-in (the cell it
   opened is now deny, so the flag opened nothing); `enrich-chat-notes.py`

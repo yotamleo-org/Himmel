@@ -128,26 +128,21 @@ describe('schema_version', () => {
 });
 
 describe('chmodSync warning', () => {
-  it.skipIf(process.platform === 'win32')(
-    'writeCache does not throw when chmodSync fails (best-effort contract)',
-    () => {
-      // The chmodSync warn-on-fail path is exercised via the implementation
-      // contract: writeCache must not throw even if chmod fails. Forcing
-      // chmodSync to fail across platforms in a unit test is flaky; this
-      // observational assertion pins the contract.
-      expect(() => writeCache(dir, { cwd: dir, owner: 'a', name: 'b' })).not.toThrow();
-    },
-  );
+  it('writeCache does not throw when chmodSync fails (best-effort contract)', () => {
+    // The chmodSync warn-on-fail path is exercised via the implementation
+    // contract: writeCache must not throw even if chmod fails. Forcing
+    // chmodSync to fail in a unit test is flaky; this observational
+    // assertion pins the contract.
+    expect(() => writeCache(dir, { cwd: dir, owner: 'a', name: 'b' })).not.toThrow();
+  });
 });
 
 describe('osCacheRoot env-unset throw', () => {
-  it('throws when LOCALAPPDATA (win32) or HOME+XDG_CACHE_HOME (posix) all unset', () => {
+  it('throws when HOME and XDG_CACHE_HOME are both unset', () => {
     const saved = {
-      LOCALAPPDATA: process.env.LOCALAPPDATA,
       XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
       HOME: process.env.HOME,
     };
-    delete process.env.LOCALAPPDATA;
     delete process.env.XDG_CACHE_HOME;
     delete process.env.HOME;
     try {

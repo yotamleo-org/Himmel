@@ -524,6 +524,7 @@ if ! tree=$(git ls-tree -r -z --name-only "$head_sha" | tr '\0' '\n'); then
     echo "impacted-suites.sh: git ls-tree ${head_sha} failed" >&2; exit 2
 fi
 
+# prim-ok: impacted-selection.sh extracts a BASE-commit copy of this script into a temp dir with no scripts/lib, so it cannot source prim.sh
 work=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites.XXXXXX") || { echo "impacted-suites.sh: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 pats="$work/patterns"
@@ -1018,8 +1019,9 @@ while IFS= read -r f; do
     # joined and every quote and backslash deleted, so a name split by quotes or
     # a continuation (`HIMMEL""_UNINSTALL_...`) still reaches its row. This is
     # the normalisation test-uninstall-real-home-callers.sh's sets_var applies.
-    sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$work/content" \
-        | sed -e "s/\\\$\\([\"']\\)/\\1/g" -e "s/[\"'\\\\]//g" > "$work/content.norm" \
+    # LC_ALL=C: BSD sed dies on a non-UTF-8 byte in a UTF-8 locale.
+    LC_ALL=C sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$work/content" \
+        | LC_ALL=C sed -e "s/\\\$\\([\"']\\)/\\1/g" -e "s/[\"'\\\\]//g" > "$work/content.norm" \
         || io_fail "normalising ${f} for the content rules"
     cat "$work/content.norm" >> "$work/content" || io_fail "appending the normalised text of ${f}"
     while IFS='|' read -r re rule_suite; do

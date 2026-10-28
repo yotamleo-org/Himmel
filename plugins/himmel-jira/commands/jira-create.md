@@ -4,8 +4,6 @@ description: Create a Jira issue. Returns one-line summary with new KEY. Support
 argument-hint: "<type> \"<title>\" [--parent KEY] [--desc \"...\"] [--attach path]..."
 ---
 
-> **Note (Windows):** the body uses bash parameter expansion / subshell syntax. Claude Code's `Bash` tool invokes Git Bash on Windows — works as long as Git Bash is on PATH (which it is when this repo's `setup/win11.ps1` ran successfully).
-
 ## Your task
 
 Resolve required fields for the type from the metadata cache (no `--project` —

@@ -167,7 +167,7 @@
       "scopes": ["user"],
       "profiles": ["core", "all"],
       "deps": [],
-      "probe": { "type": "dep", "win32": "schtasks", "posix": "at" },
+      "probe": { "type": "dep", "cmd": "at" },
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

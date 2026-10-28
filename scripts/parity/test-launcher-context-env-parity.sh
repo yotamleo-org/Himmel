@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# test-launcher-context-env-parity.sh — the claude-codex twins must BOTH feed
+# test-launcher-context-env-parity.sh — the claude-codex launcher must feed
 # the context-window env pair from the CODEX_CONTEXT_WINDOW variable
-#, and BOTH default the per-dispatch effort to `medium`, the value
-# lanes.json declares.
+#, and the launcher defaults the per-dispatch effort to `xhigh` (decision 223),
+# the value lanes.json declares.
 #
-# test-launcher-twin-parity.sh compares only embedded node JS between twins —
-# by its own design — so it is blind to a plain export: a .ps1 twin missing
-# the CLAUDE_CODE_MAX_CONTEXT_TOKENS export ships green there. This guard
-# closes that gap for the one pair where the export is load-bearing: Claude
+# A launcher missing the CLAUDE_CODE_MAX_CONTEXT_TOKENS export would ship
+# green without this guard. The export is load-bearing: Claude
 # Code resolves the effective compact window as min(modelWindow, configured),
 # and for an out-of-catalog model (gpt-5.6-sol) modelWindow falls back to a
 # hardcoded 200000 — without the export, CODEX_CONTEXT_WINDOW is silently
@@ -47,24 +45,33 @@ check() {  # check <desc> <file> <ERE>
 # 1. bash: MAX_CONTEXT_TOKENS exported from the VARIABLE, not a literal.
 check 'claude-codex exports CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CODEX_CONTEXT_WINDOW"' \
   "$BASH_TWIN" '^export CLAUDE_CODE_MAX_CONTEXT_TOKENS="\$CODEX_CONTEXT_WINDOW"'
-# 3. both twins still feed AUTO_COMPACT_WINDOW from the SAME variable.
+# 3. the launcher still feeds AUTO_COMPACT_WINDOW from the SAME variable.
 check 'claude-codex exports CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WINDOW"' \
   "$BASH_TWIN" '^export CLAUDE_CODE_AUTO_COMPACT_WINDOW="\$CODEX_CONTEXT_WINDOW"'
 
-# 5. The per-dispatch effort default is `medium` (Astra on low/medium
-#    beats the old high pin; `low` is the first lever for mechanical chunks), in
-#    BOTH twins and in the lanes.json prose that documents it. Still overridable:
-#    the bash default stays the `${VAR:-x}` form, the ps1 the `-not $env:VAR` form.
-check 'claude-codex defaults CLAUDE_CODE_EFFORT_LEVEL to medium (overridable)' \
-  "$BASH_TWIN" '^export CLAUDE_CODE_EFFORT_LEVEL="\$\{CLAUDE_CODE_EFFORT_LEVEL:-medium\}"'
-check 'lanes.json claudex row says the launcher defaults effort to medium' \
-  "$LANES_JSON" 'launcher defaults effort to medium'
-if grep -qE 'launcher defaults effort to high' "$LANES_JSON" 2>/dev/null; then
-  echo 'FAIL: lanes.json still says the launcher defaults effort to high'
-  fails=$((fails + 1))
+# 5. The per-dispatch effort default is `xhigh` (decision 223: gpt-6.1-sol at
+#    xhigh; `low` stays the first lever for mechanical chunks), in the launcher
+#    and in the lanes.json prose that documents it. Still overridable: the bash
+#    default stays the `${VAR:-x}` form.
+check 'claude-codex defaults CLAUDE_CODE_EFFORT_LEVEL to xhigh (overridable)' \
+  "$BASH_TWIN" '^export CLAUDE_CODE_EFFORT_LEVEL="\$\{CLAUDE_CODE_EFFORT_LEVEL:-xhigh\}"'
+last_effort_export=$(grep -E '^export CLAUDE_CODE_EFFORT_LEVEL=' "$BASH_TWIN" | tail -n 1)
+if [ "$last_effort_export" = 'export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}"' ]; then
+  echo "ok: the last CLAUDE_CODE_EFFORT_LEVEL export in claude-codex is the xhigh default"
 else
-  echo 'ok: lanes.json no longer claims a high launcher default'
+  echo "FAIL: the last CLAUDE_CODE_EFFORT_LEVEL export in claude-codex is not the xhigh default (got: $last_effort_export)"
+  fails=$((fails + 1))
 fi
+check 'lanes.json claudex row says the launcher defaults effort to xhigh' \
+  "$LANES_JSON" 'launcher defaults effort to xhigh'
+for stale in high medium; do
+  if grep -qE "launcher defaults effort to $stale" "$LANES_JSON" 2>/dev/null; then
+    echo "FAIL: lanes.json still says the launcher defaults effort to $stale"
+    fails=$((fails + 1))
+  else
+    echo "ok: lanes.json no longer claims a $stale launcher default"
+  fi
+done
 
 echo
 if [ "$fails" -eq 0 ]; then

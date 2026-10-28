@@ -262,6 +262,10 @@ contains "9b waker: the window's first tab keeps /Sessions/1, bound to its worke
 # live konsole window: its first worker is a tab there, never a second window.
 # The predecessor is the previous letter of the chief name's -nextleg-<date><LETTERS> part.
 NL=HIMMEL-nextleg-2026-10-25
+# Adoption reads the predecessor window's /proc/<pid>/comm (konsole is a Linux
+# terminal), so a host with no procfs, macOS, cannot adopt: rows 10 and 13 skip there.
+HAVE_PROC=0; [ -r "/proc/$$/comm" ] && HAVE_PROC=1
+if [ "$HAVE_PROC" = 1 ]; then
 d10="$tmp/c10"; mk_env "$d10"
 arm "$d10" HIMMEL-10-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
 arm "$d10" HIMMEL-10-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc10=$?
@@ -273,6 +277,9 @@ check "10c successor: its first worker is tracked in the predecessor's window" "
 contains "10d successor: newSession on the predecessor's window" "$(cat "$d10/qdbus-record" 2>/dev/null)" "org.kde.konsole-${w10a:-x} /Windows/1 newSession"
 check "10e successor: the window is recorded as the successor's own" "$(cat "$d10/locks/tabs-${NL}FY-roadmap-chief.window" 2>/dev/null)" "${w10a:-unset}"
 check "10f successor: its next worker is tracked in the same window" "$(window_of "$d10" HIMMEL-10-N3-c)" "${w10a:-unset}"
+else
+  echo "  SKIP 10 successor adoption: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
+fi
 
 # --- 11. the predecessor's window is gone: the successor opens a window of its own.
 d11="$tmp/c11"; mk_env "$d11"
@@ -292,11 +299,15 @@ check "12b non-konsole predecessor pid: successor opens its own window" "$(konso
 check "12c non-konsole predecessor pid: qdbus never called" "$([ -e "$d12/qdbus-record" ] && echo called || echo none)" none
 
 # --- 13. the letter roll: AA's predecessor is Z, A has none.
+if [ "$HAVE_PROC" = 1 ]; then
 d13="$tmp/c13"; mk_env "$d13"
 arm "$d13" HIMMEL-13-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}Z-roadmap-chief
 arm "$d13" HIMMEL-13-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}AA-roadmap-chief
 arm "$d13" HIMMEL-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-roadmap-chief
 check "13a letter roll: AA adopts Z's window, A opens its own" "$(konsole_count "$d13")" 2
 check "13b letter roll: AA is tracked in Z's window" "$(window_of "$d13" HIMMEL-13-N2-b)" "$(window_of "$d13" HIMMEL-13-N1-a)"
+else
+  echo "  SKIP 13 letter roll: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
+fi
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

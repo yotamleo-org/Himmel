@@ -1,4 +1,4 @@
-# MCP tasks and elicitation launch-mode probe (HIMMEL-7304)
+# MCP tasks and elicitation launch-mode probe
 
 Records, per Claude launch mode, whether the client advertises the MCP tasks
 capability and task-augments a `tools/call`, and what happens to an

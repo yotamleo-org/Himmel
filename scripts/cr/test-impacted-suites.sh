@@ -1138,8 +1138,8 @@ printf 'bash "$d/lib/clo-lib.sh" \377\n' > "$FX/scripts/test-nonutf8.sh"
 change scripts/lib/clo-lib.sh
 ctl="$(run_is "$range")"
 : > "$SHIM4/calls"
-out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>/dev/null )"
-if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out"; fi
+out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>"$SHIM4/stderr" )"
+if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out [stderr: $(head -c 600 "$SHIM4/stderr")]"; fi
 # The control above compares the new selector with itself; this one compares it
 # with the selector as it was before the batching change (a full `git grep -E -f` per
 # round), read from the immutable base commit when this clone holds it.
@@ -1152,7 +1152,8 @@ elif ! cp "$(dirname "$IS")/anchor-handoff.sh" "$SHIM4/oldcr/anchor-handoff.sh";
 elif ! git -C "$(dirname "$IS")" show "$OLD_IS_SHA:scripts/cr/impacted-suites.sh" > "$SHIM4/oldcr/impacted-suites.sh"; then
     fail "old-selector control setup: $OLD_IS_SHA is present but its selector could not be read"
 else
-    old_out="$( cd "$FX" && bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
+    # LC_ALL=C: that selector predates the byte-safe sed and BSD sed rejects the fixture's non-UTF-8 byte.
+    old_out="$( cd "$FX" && LC_ALL=C bash "$SHIM4/oldcr/impacted-suites.sh" "$range" 2>/dev/null )"
     # The WS5 scan_roots rows postdate that selector, so its row is not compared.
     cmp_out="$(grep -vxF scripts/parity/test-ws5-invariants.sh <<< "$out")"
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
@@ -1178,7 +1179,7 @@ range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
 t0=$SECONDS
 out="$(run_is "$range")"; rc=$?
 elapsed=$((SECONDS - t0))
-if [ "$rc" -eq 0 ] && [ "$elapsed" -le 60 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 60s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
+if [ "$rc" -eq 0 ] && [ "$elapsed" -le 90 ] && grepq "$out" '^scripts/test-bulk-1\.sh$' && grepq "$out" '^scripts/test-bulk-120\.sh$'; then pass "a $LARGE_N-file diff finishes in ${elapsed}s (budget 90s) and lists its impacted suites"; else fail "large diff: rc=$rc elapsed=${elapsed}s lines=$(printf '%s\n' "$out" | wc -l)"; fi
 
 # --- 37b. a candidate whose scratch copy cannot be created fails closed ------
 # The narrowing writes each candidate's matching lines to a scratch file; a

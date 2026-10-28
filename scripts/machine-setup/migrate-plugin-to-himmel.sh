@@ -35,6 +35,9 @@
 #     obsidian@obsidian-skills
 set -euo pipefail
 
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || { echo "migrate-plugin-to-himmel: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+
 TARGET="himmel"
 APPLY=0
 SPECS=()
@@ -103,25 +106,22 @@ for spec in "${SPECS[@]}"; do
                     REGISTRY_BACKUP=$(mktemp "$INSTALLED_JSON.bak-$(date +%Y%m%d-%H%M%S).XXXXXX")
                     cp -p "$INSTALLED_JSON" "$REGISTRY_BACKUP"
                 fi
-                registry_tmp=$(mktemp "$INSTALLED_JSON.tmp.XXXXXX")
                 # Compare-and-swap. cksum (POSIX) before the read and
                 # again just before the mv; a change means a concurrent writer
                 # (e.g. `claude plugin install`) — abort rather than replace its write.
                 # ponytail: a writer landing between the re-check and the mv is
                 # still lost — there is no atomic compare-and-rename in POSIX shell.
                 registry_sum=$(cksum < "$INSTALLED_JSON")
-                if jq --arg spec "$spec" --arg path "$project_path" '
+                if registry_new=$(jq --arg spec "$spec" --arg path "$project_path" '
                     .plugins[$spec] |= map(select(.scope != "project" or .projectPath != $path))
                     | if .plugins[$spec] == [] then del(.plugins[$spec]) else . end
-                ' "$INSTALLED_JSON" > "$registry_tmp"; then
+                ' "$INSTALLED_JSON"); then
                     if [ "$(cksum < "$INSTALLED_JSON")" != "$registry_sum" ]; then
-                        rm -f "$registry_tmp"
                         echo "ERROR: $INSTALLED_JSON changed during prune (concurrent write); aborting so it is not overwritten. Registry left as the other writer wrote it; backup kept at $REGISTRY_BACKUP" >&2
                         exit 1
                     fi
-                    mv "$registry_tmp" "$INSTALLED_JSON"
+                    printf '%s\n' "$registry_new" | atomic_write "$INSTALLED_JSON"
                 else
-                    rm -f "$registry_tmp"
                     exit 1
                 fi
                 echo "RUN: drop orphaned project-scope record $spec (projectPath gone: $project_path)"

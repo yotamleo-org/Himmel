@@ -7,7 +7,7 @@
 # Operator ruling 2026-08-17: headless claude as the default cadence shape is
 # acceptable ONLY while it runs on NATIVE auth (the Anthropic login), never
 # through CLIProxyAPI. The failure mode is silent, which is the whole problem:
-# scripts/claude-codex.ps1:740 and scripts/claude-glm.ps1:525 export
+# the proxy lanes (scripts/claude-codex, scripts/claude-glm) export
 # ANTHROPIC_BASE_URL pointing at their local proxy, so a headless claude that
 # inherits that variable from an ambient shell is proxied with no error, no
 # warning, and no signal -- the subscription credential re-exposed to a
@@ -16,8 +16,7 @@
 # (structural > instructional).
 #
 # CANONICAL VARIABLE SET -- the single definition the other consumers are
-# checked against. The emitted .bat cadence runners and the PowerShell twin
-# scripts/lib/native-auth-pin.ps1 clear the SAME set:
+# checked against. The emitted .bat cadence runners clear the SAME set:
 #
 #   every environment variable whose UPPER-CASED name starts with
 #   `ANTHROPIC_` or `CLAUDE_CODE_USE_`
@@ -34,8 +33,7 @@
 # carries those prefixes. CLAUDE_CODE_OAUTH_TOKEN is therefore NOT cleared --
 # a pin that clears the native credential breaks the lane it exists to protect.
 #
-# The proxy lanes (scripts/claude-glm, scripts/claude-glm.ps1,
-# scripts/claude-codex.ps1) are SUPPOSED to set ANTHROPIC_BASE_URL -- that is
+# The proxy lanes (scripts/claude-glm, scripts/claude-codex) are SUPPOSED to set ANTHROPIC_BASE_URL -- that is
 # their correct behaviour and they are out of scope; this pin protects the
 # native-claude path from INHERITING it.
 #
@@ -118,13 +116,12 @@
 #     and HIMMEL_CLAUDE_BIN name the binary that runs, so whoever sets them
 #     controls the launch outright;
 #   - a mixed-case spelling at launch (see above): the pin strips it and its rc
-#     refuses a survivor, the gate does not re-check it; or the PowerShell twin.
+#     refuses a survivor, the gate does not re-check it.
 
 # The predicate lives once, as the case glob inside native_auth_pin_env (no
 # fork per variable -- a `tr` per variable was brutally slow on Windows). The
-# node screen and the PowerShell twin (not mirrored; Windows is
-# parked) carry the same predicate in their own runtimes; this
-# header's CANONICAL VARIABLE SET block is the definition they are checked against.
+# node screen carries the same predicate in its own runtime; this
+# header's CANONICAL VARIABLE SET block is the definition it is checked against.
 
 native_auth_pin_env() {
   # No external tool, no builtin in the decision path and no `return`: the

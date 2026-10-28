@@ -25,7 +25,7 @@ function nodeFromThread(t) {
 
 // Resolve the CLI argv once per call. `cli` (an argv array) overrides for tests
 // — passing it directly avoids the BITBUCKET_CLI env string-split, so callers
-// can drive a node stub on Windows too.
+// can drive a node stub directly.
 function resolveCli(cli, env, cwd) {
   return cli ?? bitbucketCli(env, cwd);
 }

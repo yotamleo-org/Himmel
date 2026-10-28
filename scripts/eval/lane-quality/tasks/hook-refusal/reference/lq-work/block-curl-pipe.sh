@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reference solution (HIMMEL-4090 lane-quality task hook-refusal).
+# Reference solution (lane-quality task hook-refusal).
 set -u
 ev="$(cat)"
 tool="$(printf '%s' "$ev" | jq -er '.tool_name // ""' 2>/dev/null)" || {

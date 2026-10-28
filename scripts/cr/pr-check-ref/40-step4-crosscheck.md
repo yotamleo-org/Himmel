@@ -39,19 +39,19 @@
 
    First, persist YOUR aggregate VERDICT lines — every `VERDICT [<id>] = <v>` you emitted in step 3.2 (panel `[<slug>-N]`) — to the branch-scoped aggregate file, via the same `scripts/cr/write-verdicts.sh` helper phase A uses (same `<branch>` scope as phase A's prior-blocking file):
    ```bash
-   # --branch takes step 0's printed `branch=` LITERAL (HIMMEL-2226, same rule
+   # --branch takes step 0's printed `branch=` LITERAL (same rule
    # as phase A); branch-scoped because git-common-dir is SHARED across
    # worktrees (round 1b). write-verdicts.sh is the classifier-sanctioned
-   # write path (HIMMEL-2131) — it REPLACES the file contents every run, and
+   # write path — it REPLACES the file contents every run, and
    # step 0 pre-truncates it, so a stale aggregate from a prior run can never
    # mask an orphan. Pass an EMPTY scratch file (zero verdict lines) when no
    # cross-model source produced any verdict — phase A wrote nothing either,
    # so there is nothing to reconcile (fail-open). Do NOT feed placeholder
    # `VERDICT [<id>] = <v>` lines; feed the REAL verdicts you emitted, or
    # nothing.
-   #   Same spelling rule as phase A above (HIMMEL-4040, HIMMEL-2601).
-   # `guard-pr-check-literal.sh` denies a pipe into this writer, and (as of
-   # HIMMEL-3798 round 3, "CUT, do not patch") denies every heredoc and
+   #   Same spelling rule as phase A above.
+   # `guard-pr-check-literal.sh` denies a pipe into this writer, and
+   # denies every heredoc and
    # `< <file>` redirect shape outright — same cut as phase A above. The
    # sanctioned shape is `--from-file <path>`, same accepted shape as phase A.
    #   Example — write one VERDICT line per verdict you emitted in 3.2 to a

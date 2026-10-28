@@ -176,8 +176,7 @@ const INIT_CLI = pathResolve(fileURLToPath(new URL('.', import.meta.url)), '../l
 // Without a stub the CLI spawns the runner's real `gh` (network, keyring), and
 // under CI load the 5000 ms default trips. A fake `gh` first on PATH makes
 // the spawn deterministic; the timeout is a loaded budget, not an idle one.
-// The stub is a POSIX sh script: on win32 it is not found and the real gh runs
-// as before (the assertions hold either way; only the speed aid is lost).
+// The stub is a POSIX sh script.
 const CLI_TEST_TIMEOUT_MS = 30000;
 
 describe('init-cli unhandled-throw contract', () => {

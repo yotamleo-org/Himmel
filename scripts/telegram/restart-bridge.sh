@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# restart-bridge.sh — POSIX twin of restart-bridge.ps1.
+# restart-bridge.sh — launcher for the Telegram bun bridge.
 # Safely (re)starts the Telegram bun bridge on Linux/macOS.
 #
 # PARITY HONESTY (spec-mandated — do not silently overclaim, and equally: do
@@ -94,7 +94,7 @@
 #     process's environment.
 #
 # The STALENESS check is what makes both halves safe at once, and it is not
-# novel here: restart-bridge.ps1's Test-LedgerPidValid already refuses any
+# novel here: the original Windows launcher already refused any
 # ledger pid whose process was created after the ledger was written. Without
 # it, honouring the ledger across checkouts would license SIGKILLing another
 # checkout's supervisor that merely inherited a recycled pid; without honouring
@@ -575,7 +575,7 @@ EOF_REC
 
 # ledger_entry_fresh <pid> — rc=0 when this pid's ledger entry is NOT stale:
 # the process did not start AFTER the pidfile was last written. Ported from
-# restart-bridge.ps1's Test-LedgerPidValid, which refuses any ledger pid whose
+# the original Windows launcher, which refused any ledger pid whose
 # process CreationDate is later than the ledger's LastWriteTime — the
 # recycled-pid guard. Our own supervisor rewrites the pidfile on every poller
 # respawn, so for a genuinely current entry the mtime only ever moves FORWARD
@@ -978,6 +978,7 @@ acquire_lock() {
   mkdir -p "$lockdir"
   if command -v flock >/dev/null 2>&1; then
     exec 200>"$lock"
+    # prim-ok: the lock is held on fd 200 for the rest of the process (start/stop span many commands); with_lock releases when its one command returns
     flock 200
   else
     echo "[restart-bridge] WARNING: 'flock' not found on this host — cannot serialize concurrent start/stop (documented Stage-1 limitation, see this script's header). Proceeding WITHOUT the lock." >&2

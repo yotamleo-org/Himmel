@@ -102,15 +102,14 @@
 #                         (test-capture-operator-profile.sh) whose own name
 #                         states it is not a real path segment.
 #   ...                  - a literal ellipsis used in docs as an elided
-#                         placeholder (docs/setup/new-machine.md,
-#                         scripts/codex/reap-mcp-fleet.ps1).
+#                         placeholder (docs/setup/new-machine.md).
 #   parity, mismatched, plainhome, whoever, msysuser, fixture, runner, other,
 #   current-user
 #                        - added for the first real --tree run
 #                         against this tree's content (the public
 #                         CI job): fixture/placeholder names in
 #                         ledger-path-parity.test.ts, test-resolve-user-home.sh,
-#                         test-pipeline-cadence.sh, test-host-detectors.ps1,
+#                         test-pipeline-cadence.sh,
 #                         flow-run-ledger.test.ts, test-propagate-public.sh's
 #                         RED-control fail-message strings, and doc-comment
 #                         examples (environment-gotchas.md, test-leak-classes.sh,

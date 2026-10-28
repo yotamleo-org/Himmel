@@ -64,6 +64,7 @@ sweep_all() {
   # macOS has no nproc; sysctl hw.ncpu is its CPU count
   n=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null) || n=1 # swallow-ok: no CPU count means no parallelism, the serial sweep runs
   [ "${n:-1}" -gt 1 ] 2>/dev/null || serial_sweep
+  # prim-ok: ci.yml runs a BASE-commit copy extracted to RUNNER_TEMP with no scripts/lib, so it cannot source prim.sh
   sd=$(mktemp -d "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") || serial_sweep
   if [ -n "$subset" ]; then plan=$subset; else plan=$(git ls-files) || serial_sweep; fi
   case "$plan" in '"'* | *'

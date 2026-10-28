@@ -35,6 +35,14 @@ command -v python3 >/dev/null 2>&1 || {
   echo "SKIP all — python3 not on PATH (setup.sh needs it)"
   exit 0
 }
+# The generated pre-commit hook runs `gitleaks git --pre-commit --staged`
+# itself and fails closed when gitleaks is missing, so without it every autosync
+# commit is refused and Phases D-E fail for a reason that says nothing about the
+# vault code. The macOS runner does not ship gitleaks.
+command -v gitleaks >/dev/null 2>&1 || {
+  echo "SKIP all — gitleaks not on PATH (the pre-commit hook fails closed without it)"
+  exit 0
+}
 
 # Make commits work without relying on the host's global git identity / slug.
 export USER_SLUG="${USER_SLUG:-luna-test}"

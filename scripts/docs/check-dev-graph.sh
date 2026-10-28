@@ -59,7 +59,9 @@ SHAPE='
   and all(.coverage[]; type == "object" and ((.mapped // {}) | type) == "object" and ((.unmapped // {}) | type) == "object")'
 jq -e "$SHAPE" "$GRAPH" >/dev/null 2>&1 || { echo "check-dev-graph: $GRAPH is malformed (lanes/nodes/edges/walkthroughs/coverage entries have the wrong shape)" >&2; exit 2; }
 
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/check-dev-graph.XXXXXX") || exit 2
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || exit 2
+TMP=$(tmpdir) || exit 2
 trap 'rm -rf "$TMP"' EXIT
 
 fails=0

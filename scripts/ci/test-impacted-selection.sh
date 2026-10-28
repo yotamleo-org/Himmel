@@ -521,4 +521,27 @@ for m in - fast pr; do
 done
 rm -rf "$TP"
 
+# --- IS26 ------------------------------------------------------
+# macOS bsdtar stops reading at the end-of-archive marker while `git archive`
+# is still writing, so the pipe closes under it (SIGPIPE) and pipefail read a
+# good extraction as base-extract-failed. The stub tar models that reader on any
+# host: given a PIPE it closes stdin at once; given an archive FILE (-f) it is
+# the real tar. A tar that really fails must still give base-extract-failed.
+TS="$(fixture_mktemp_dir)" || exit 1
+REAL_TAR="$(command -v tar)"
+mkdir -p "$TS/early" "$TS/broken"
+# shellcheck disable=SC2016  # the stub body is literal sh, expanded by the stub not here
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -f ] && exec "%s" "$@"; done\nexec <&-\nsleep 1\nexit 0\n' "$REAL_TAR" > "$TS/early/tar"
+printf '#!/bin/sh\nexit 1\n' > "$TS/broken/tar"
+chmod +x "$TS/early/tar" "$TS/broken/tar"
+out=$(cd "$SB" && env -u SUITE_TIER_MODE PATH="$TS/early:$PATH" bash "$SEL" "$BASE" "$H_CODE" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' && ! grepq "$out" 'base-extract-failed'; then
+  pass "IS26: a tar that stops reading early does not turn a good extraction into base-extract-failed"
+else fail "IS26: rc=$rc out: $out"; fi
+out=$(cd "$SB" && env -u SUITE_TIER_MODE PATH="$TS/broken:$PATH" bash "$SEL" "$BASE" "$H_CODE" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode full' && grepq "$out" -x 'reason base-extract-failed'; then
+  pass "IS26: a tar that really fails is still base-extract-failed"
+else fail "IS26: broken tar: rc=$rc out: $out"; fi
+rm -rf "$TS"
+
 rst_tally

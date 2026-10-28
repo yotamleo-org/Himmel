@@ -181,8 +181,7 @@ validation:
    the lane has one). hermes MUST NOT proxy or re-answer the worker's
    permission prompts. Bounded workers run stdin-closed: an un-allowlisted
    prompt is a deterministic denial, noted in the worker's summary, never a
-   stall. The grants contract (an outbox escalation line answered by a scoped
-   grant) was removed (HIMMEL-7481).
+   stall.
 3. **Approval-window UX term:** a hermes approval window for a SPAWN shows the
    lane, branch, and toolset/grant list — the policy surface — not raw command
    text. Approving a spawn approves its declared grant envelope, nothing more.

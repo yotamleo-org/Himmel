@@ -40,7 +40,9 @@ done
 [ -d "$ROOT" ] || { echo "check-swallowed-errors: root '$ROOT' is not a directory" >&2; exit 2; }
 [ -n "$BASELINE" ] || BASELINE="$SELF_DIR/swallowed-errors-baseline.txt"
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/swallowed-errors.XXXXXX")" || { echo "check-swallowed-errors: mktemp failed" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$SELF_DIR/../lib/prim.sh" || { echo "check-swallowed-errors: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+WORK="$(tmpdir)" || { echo "check-swallowed-errors: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$WORK"' EXIT
 
 FILES="$WORK/files"

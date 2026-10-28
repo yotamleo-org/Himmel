@@ -1,4 +1,4 @@
-# srt-poc — a claudex worker under sandbox-runtime (HIMMEL-5287)
+# srt-poc — a claudex worker under sandbox-runtime
 
 VM-only proof of concept. Nothing here is wired into a launcher, hook, setting or
 CI workflow. It answers one question: can a claudex worker run under Anthropic's

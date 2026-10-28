@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir, platform } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { metadataPath, readMetadata, writeMetadata, isStale } from '../lib/metadata.mjs';
 
@@ -16,23 +16,19 @@ beforeEach(() => {
 
 /** Set the env var used as the cache root, return a restore callback. */
 function stubCacheRoot(tmpDir) {
-  const isWin = platform() === 'win32';
-  const envKey = isWin ? 'LOCALAPPDATA' : 'HOME';
   const origXdg = process.env.XDG_CACHE_HOME;
-  const orig = process.env[envKey];
-  if (!isWin) delete process.env.XDG_CACHE_HOME;
-  process.env[envKey] = tmpDir;
+  const orig = process.env.HOME;
+  delete process.env.XDG_CACHE_HOME;
+  process.env.HOME = tmpDir;
   return () => {
-    process.env[envKey] = orig;
-    if (!isWin && origXdg !== undefined) process.env.XDG_CACHE_HOME = origXdg;
+    process.env.HOME = orig;
+    if (origXdg !== undefined) process.env.XDG_CACHE_HOME = origXdg;
   };
 }
 
 /** Returns the directory where metadata.json lives, relative to the stub root. */
 function metaSubdir(root) {
-  return platform() === 'win32'
-    ? join(root, 'himmel-cli', 'jira')
-    : join(root, '.cache', 'himmel-cli', 'jira');
+  return join(root, '.cache', 'himmel-cli', 'jira');
 }
 
 // ---------------------------------------------------------------------------
@@ -40,8 +36,7 @@ function metaSubdir(root) {
 // ---------------------------------------------------------------------------
 
 describe('metadataPath', () => {
-  it('returns path under XDG_CACHE_HOME when set (POSIX)', () => {
-    if (platform() === 'win32') return;
+  it('returns path under XDG_CACHE_HOME when set', () => {
     const origXdg = process.env.XDG_CACHE_HOME;
     const origHome = process.env.HOME;
     process.env.XDG_CACHE_HOME = dir;
@@ -55,8 +50,7 @@ describe('metadataPath', () => {
     }
   });
 
-  it('falls back to HOME/.cache when XDG_CACHE_HOME absent (POSIX)', () => {
-    if (platform() === 'win32') return;
+  it('falls back to HOME/.cache when XDG_CACHE_HOME absent', () => {
     const origXdg = process.env.XDG_CACHE_HOME;
     const origHome = process.env.HOME;
     delete process.env.XDG_CACHE_HOME;
@@ -70,21 +64,7 @@ describe('metadataPath', () => {
     }
   });
 
-  it('returns path under LOCALAPPDATA on Windows', () => {
-    if (platform() !== 'win32') return;
-    const orig = process.env.LOCALAPPDATA;
-    process.env.LOCALAPPDATA = dir;
-    try {
-      const { file } = metadataPath();
-      expect(file).toBe(join(dir, 'himmel-cli', 'jira', 'metadata.json'));
-    } finally {
-      if (orig === undefined) delete process.env.LOCALAPPDATA;
-      else process.env.LOCALAPPDATA = orig;
-    }
-  });
-
-  it('throws when HOME and XDG_CACHE_HOME are both unset (POSIX)', () => {
-    if (platform() === 'win32') return;
+  it('throws when HOME and XDG_CACHE_HOME are both unset', () => {
     const origHome = process.env.HOME;
     const origXdg = process.env.XDG_CACHE_HOME;
     delete process.env.HOME;

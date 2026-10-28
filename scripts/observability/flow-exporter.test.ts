@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderMetrics, createExporterCache, parseHostDetectorJson, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics, registryLedgerPath } from "./flow-exporter";
+import { renderMetrics, createExporterCache, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics, registryLedgerPath } from "./flow-exporter";
 import { serializeSessionRun, type SessionCloseEvidence, type SessionEndReason, type SessionRunRow, type SubagentOutcome } from "./session-run-ledger";
 import { serializeFlowRunEnd, serializeFlowRunStart, type FlowRunEnd, type FlowRunStart } from "../telegram/flow-run-ledger";
 import { serializeQuotaGauge, type QuotaGaugeRecord } from "../telegram/quota-gauge";
@@ -190,7 +190,6 @@ hook_chain_budget_events_recent{action="skip"} 0
 # HELP hook_chain_skip_log_unreadable Count of hook-chain skip logs that exist but could not be read, plus 1 if the .claude/worktrees directory exists but could not be enumerated. Always emitted, 0 when healthy. Non-zero means this early-warning signal is degraded and hook_chain_budget_events_recent may be under-counting — the budget alerts cannot be trusted while this is set.
 # TYPE hook_chain_skip_log_unreadable gauge
 hook_chain_skip_log_unreadable 0
-# agent_tree_*/orphan_* omitted: platform has no Windows process tree API
 # HELP quiet_run_orphan_count quiet-run.sh suites whose owning session is gone (kind=suite) and tail -f followers of a quiet-run log with no remaining writer (kind=tail).
 # TYPE quiet_run_orphan_count gauge
 quiet_run_orphan_count{kind="suite"} 0
@@ -947,7 +946,7 @@ test("luna backlog counts inbox stages and monthly graduations, read-only", asyn
 
   // platform/gitRunner pinned: this test only cares about the
   // synchronous luna backlog walk — without these, vault_path being set also
-  // triggers a REAL host-detector powershell spawn and a REAL git spawn,
+  // triggers a REAL git spawn,
   // which is slow/environment-dependent and unrelated to what's asserted here.
   const body = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "linux", gitRunner: async () => ({ unpushed: null, uncommittedFiles: 0 }) });
   expect(body).toContain('luna_inbox_backlog{stage="unprocessed"} 2');
@@ -1174,7 +1173,7 @@ test("shipped-graph age runs per-repo queries CONCURRENTLY: total wall time stay
 
   // platform/gitRunner pinned:
   // without these, this timing-sensitive test also triggers a REAL
-  // host-detector powershell spawn + a real git spawn, polluting elapsedMs.
+  // real git spawn, polluting elapsedMs.
   const start = performance.now();
   const body = await renderMetrics({
     nowMs: NOW, configPath: config, flowLedgerPath: ledger,
@@ -1446,182 +1445,17 @@ test("runGitDivergence: exit 0 but non-numeric rev-list output propagates (ambig
   }))).rejects.toThrow();
 });
 
-test("scheduled-task scrape is platform-gated and TTL-cached", async () => {
+test("the Windows-only scheduled_task_* and agent_tree_*/orphan_* families are gone", async () => {
   const config = join(tmp, "observability.json");
   const ledger = join(tmp, "flow-runs.jsonl");
-  writeFileSync(config, JSON.stringify({ expected_tasks: ["himmel-pipeline-harvest", "himmel-pipeline-synthesize"] }));
+  writeFileSync(config, JSON.stringify({ expected_tasks: ["himmel-pipeline-harvest"], expected_disabled_tasks: ["himmel-pipeline-harvest"] }));
   writeLines(ledger, []);
-  const cache = createExporterCache();
-  let calls = 0;
-  const runner = () => {
-    calls++;
-    return [
-      { task: "himmel-pipeline-harvest", exists: 1 as const, enabled: 1 as const, next_run_timestamp: 1783915200 },
-      { task: "himmel-pipeline-synthesize", exists: 0 as const, enabled: 0 as const, next_run_timestamp: null },
-    ];
-  };
-  const first = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", schedulerRunner: runner, cache });
-  const second = await renderMetrics({ nowMs: NOW + 1000, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", schedulerRunner: runner, cache });
-  expect(calls).toBe(1);
-  expect(first).toContain('scheduled_task_exists{task="himmel-pipeline-harvest"} 1');
-  expect(first).toContain('scheduled_task_enabled{task="himmel-pipeline-harvest"} 1');
-  expect(first).toContain('scheduled_task_next_run_timestamp{task="himmel-pipeline-harvest"} 1783915200');
-  expect(second).toContain('scheduled_task_exists{task="himmel-pipeline-synthesize"} 0');
-
-  const linux = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "linux", cache: createExporterCache() });
-  expect(linux).toContain("# scheduled_task_* omitted: platform has no Windows Scheduled Tasks API");
-  expect(linux).not.toContain("scheduled_task_exists");
-});
-
-test("HIMMEL-2075: expected_disabled_tasks emits scheduled_task_expected_disabled for allowlisted tasks only", async () => {
-  const config = join(tmp, "observability.json");
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeFileSync(config, JSON.stringify({
-    expected_tasks: ["himmel-pipeline-harvest", "himmel-pipeline-synthesize"],
-    expected_disabled_tasks: ["himmel-pipeline-synthesize"],
-  }));
-  writeLines(ledger, []);
-  const runner = () => [
-    { task: "himmel-pipeline-harvest", exists: 1 as const, enabled: 1 as const, next_run_timestamp: null },
-    { task: "himmel-pipeline-synthesize", exists: 1 as const, enabled: 0 as const, next_run_timestamp: null },
-  ];
-
-  const body = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", schedulerRunner: runner, cache: createExporterCache() });
-
-  expect(body).toContain('scheduled_task_expected_disabled{task="himmel-pipeline-synthesize"} 1');
-  // Not in the allowlist: omitted entirely, never emitted as 0 — PromQL's
-  // `unless` treats an absent series as "not excluded", which is what's
-  // wanted for a task that IS expected to be enabled.
-  expect(body).not.toContain('scheduled_task_expected_disabled{task="himmel-pipeline-harvest"}');
-});
-
-test("HIMMEL-2075: expected_disabled_tasks with no expected_tasks emits no scheduled_task_* family", async () => {
-  const config = join(tmp, "observability.json");
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeFileSync(config, JSON.stringify({ expected_disabled_tasks: ["himmel-pipeline-synthesize"] }));
-  writeLines(ledger, []);
-
-  const body = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", cache: createExporterCache() });
-
-  expect(body).not.toContain("scheduled_task_expected_disabled");
-});
-
-test("HIMMEL-2075 CR fix: malformed expected_disabled_tasks (non-array, mixed-type elements) fails soft rather than throwing", async () => {
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeLines(ledger, []);
-  const runner = () => [{ task: "himmel-pipeline-harvest", exists: 1 as const, enabled: 1 as const, next_run_timestamp: null }];
-
-  // A single string instead of an array — observability.json is
-  // operator-edited JSON, not trusted from the static ObservabilityConfig
-  // type. Must not throw at buildScheduledTaskLines' .filter() call.
-  const nonArrayConfig = join(tmp, "observability-non-array.json");
-  writeFileSync(nonArrayConfig, JSON.stringify({ expected_tasks: ["himmel-pipeline-harvest"], expected_disabled_tasks: "himmel-pipeline-harvest" }));
-  const nonArrayBody = await renderMetrics({ nowMs: NOW, configPath: nonArrayConfig, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", schedulerRunner: runner, cache: createExporterCache() });
-  expect(nonArrayBody).not.toContain("scheduled_task_expected_disabled");
-
-  // A mixed-type array — non-string elements must be dropped rather than
-  // leaking an invalid Prometheus label value.
-  const mixedConfig = join(tmp, "observability-mixed.json");
-  writeFileSync(mixedConfig, JSON.stringify({ expected_tasks: ["himmel-pipeline-harvest"], expected_disabled_tasks: [123, "himmel-pipeline-harvest", null] }));
-  const mixedBody = await renderMetrics({ nowMs: NOW, configPath: mixedConfig, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", schedulerRunner: runner, cache: createExporterCache() });
-  expect(mixedBody).toContain('scheduled_task_expected_disabled{task="himmel-pipeline-harvest"} 1');
-  expect(mixedBody).not.toContain('scheduled_task_expected_disabled{task="123"}');
-});
-
-test("host detector JSON parser normalizes detector output", () => {
-  const parsed = parseHostDetectorJson(JSON.stringify({
-    trees: [
-      { class: "claude", rss_bytes: 1234, process_count: 2 },
-      { class: "", rss_bytes: 999, process_count: 1 },
-      { class: "other", rss_bytes: -1, process_count: Number.NaN },
-    ],
-    orphans: [
-      { class: "codex-fleet", count: 3 },
-      { class: "ignored" },
-    ],
-  }));
-  expect(parsed.trees).toEqual([
-    { class: "claude", rss_bytes: 1234, process_count: 2 },
-    { class: "other", rss_bytes: 0, process_count: 0 },
-  ]);
-  expect(parsed.orphans).toEqual([
-    { class: "codex-fleet", count: 3 },
-    { class: "ignored", count: 0 },
-  ]);
-});
-
-test("host detector metrics render from fixture data", async () => {
-  const config = join(tmp, "observability.json");
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeFileSync(config, JSON.stringify({ host_detectors_ttl_seconds: 30 }));
-  writeLines(ledger, []);
-
-  const body = await renderMetrics({
-    nowMs: NOW,
-    configPath: config,
-    flowLedgerPath: ledger,
-    quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"),
-    platform: "win32",
-    hostDetectorRunner: () => JSON.stringify({
-      trees: [
-        { class: "claude", rss_bytes: 2048, process_count: 2 },
-        { class: "other", rss_bytes: 512, process_count: 1 },
-      ],
-      orphans: [
-        { class: "codex-fleet", count: 1 },
-      ],
-    }),
-  });
-
-  expect(body).toContain('# HELP agent_tree_rss_bytes Working-set bytes summed by agent process tree class.');
-  expect(body).toContain('agent_tree_rss_bytes{class="claude"} 2048');
-  expect(body).toContain('agent_tree_process_count{class="other"} 1');
-  expect(body).toContain('orphan_process_count{class="codex-fleet"} 1');
-});
-
-test("host detector scrape is platform-gated and fail-soft on runner errors", async () => {
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeLines(ledger, []);
-  const base = { nowMs: NOW, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json") };
-
-  const linux = await renderMetrics({ ...base, platform: "linux", hostDetectorRunner: () => { throw new Error("should not run"); } });
-  expect(linux).toContain("# agent_tree_*/orphan_* omitted: platform has no Windows process tree API");
-  expect(linux).not.toContain("agent_tree_rss_bytes");
-
-  const failed = await renderMetrics({
-    ...base,
-    platform: "win32",
-    hostDetectorRunner: () => { throw new Error("powershell failed"); },
-  });
-  expect(failed).toContain("# agent_tree_*/orphan_* omitted: powershell failed");
-  expect(failed).not.toContain("orphan_process_count");
-});
-
-test("host detector scrape uses TTL cache and drops cache on refresh failure", async () => {
-  const config = join(tmp, "observability.json");
-  const ledger = join(tmp, "flow-runs.jsonl");
-  writeFileSync(config, JSON.stringify({ host_detectors_ttl_seconds: 2 }));
-  writeLines(ledger, []);
-  const cache = createExporterCache();
-  let calls = 0;
-  const runner = () => {
-    calls++;
-    if (calls === 2) throw new Error("expired refresh failed");
-    return {
-      trees: [{ class: "claude", rss_bytes: 1000, process_count: 1 }],
-      orphans: [{ class: "codex-fleet", count: 0 }],
-    };
-  };
-
-  const first = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", hostDetectorRunner: runner, cache });
-  const second = await renderMetrics({ nowMs: NOW + 1000, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", hostDetectorRunner: runner, cache });
-  const third = await renderMetrics({ nowMs: NOW + 3000, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform: "win32", hostDetectorRunner: runner, cache });
-
-  expect(calls).toBe(2);
-  expect(first).toContain('agent_tree_rss_bytes{class="claude"} 1000');
-  expect(second).toContain('agent_tree_process_count{class="claude"} 1');
-  expect(third).toContain("# agent_tree_*/orphan_* omitted: expired refresh failed");
-  expect(third).not.toContain("agent_tree_rss_bytes");
+  for (const platform of ["linux", "darwin"] as const) {
+    const body = await renderMetrics({ nowMs: NOW, configPath: config, flowLedgerPath: ledger, quotaLedgerPath: join(tmp, "none"), lanesPath: join(tmp, "no-lanes.json"), platform, cache: createExporterCache() });
+    expect(body).not.toContain("scheduled_task_");
+    expect(body).not.toContain("agent_tree_");
+    expect(body).not.toContain("orphan_process_count");
+  }
 });
 
 // Quiet-run orphan family. Linux-only (/proc), and an unreadable
@@ -1644,9 +1478,9 @@ test("quiet-run orphan gauge is linux-only, reads the injected proc root, and fa
   expect(linux).toContain('quiet_run_orphan_count{kind="suite"} 1');
   expect(linux).toContain('quiet_run_orphan_count{kind="tail"} 0');
 
-  const win = await renderMetrics({ ...base, platform: "win32", hostDetectorRunner: () => ({ trees: [], orphans: [] }) });
-  expect(win).not.toContain("quiet_run_orphan_count{");
-  expect(win).toContain("# quiet_run_orphan_count omitted: platform has no /proc");
+  const mac = await renderMetrics({ ...base, platform: "darwin" });
+  expect(mac).not.toContain("quiet_run_orphan_count{");
+  expect(mac).toContain("# quiet_run_orphan_count omitted: platform has no /proc");
 
   const missing = await renderMetrics({ ...base, platform: "linux", procRoot: join(tmp, "no-proc") });
   expect(missing).toContain("# quiet_run_orphan_count omitted:");

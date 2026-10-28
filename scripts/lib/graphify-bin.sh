@@ -162,7 +162,7 @@ graphify_source() {
 # present (adopt it instead -- see graphify_source() above). Returns an honest rc:
 # 0 when graphify ends up resolvable one way or another (adopted or freshly
 # installed), nonzero on a genuine failure. WARN-not-fail by contract -- callers
-# (setup.sh/adopt.sh + pwsh mirrors) decide whether a graphify failure aborts;
+# (setup.sh/adopt.sh) decide whether a graphify failure aborts;
 # this function only reports.
 graphify_install() {
   local src
@@ -364,8 +364,8 @@ graphify_register_mcp_on_demand() {
 # graphify_register_mcp <scope> -- register the graphify MCP server (the
 # mcp__graphify__* tools) with Claude Code at <scope> (local|user|project;
 # default user), so an install actually delivers the MCP tools and not just the
-# CLI. ONE implementation consumed by setup.sh + adopt.sh (and,
-# via the CLI entry below, the pwsh mirrors). SCOPE-DEPENDENT entrypoint:
+# CLI. ONE implementation consumed by setup.sh + adopt.sh.
+# SCOPE-DEPENDENT entrypoint:
 #   - user/local (a PERSONAL config) -> the ABSOLUTE path (robust in the MCP
 #     launch context; matches /himmel-doctor's absolute-not-bare convention).
 #     uv places the shim in `uv tool dir --bin` (graphify-mcp.exe on Windows,
@@ -2124,10 +2124,10 @@ PRICE_PY
   return 0
 }
 
-# CLI entry -- only when EXECUTED (not sourced). Lets the pwsh mirrors
-# (scripts/setup.ps1, scripts/adopt.ps1) delegate to this ONE implementation
-# (`bash scripts/lib/graphify-bin.sh install`) instead of duplicating the
-# detect/install recipe natively (mirrors qmd-bin.sh's CLI entry).
+# CLI entry -- only when EXECUTED (not sourced). Lets a caller run this ONE
+# implementation as a subprocess (`bash scripts/lib/graphify-bin.sh install`)
+# instead of duplicating the detect/install recipe (mirrors qmd-bin.sh's CLI
+# entry).
 if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   case "${1:-}" in
     install) graphify_install ;;

@@ -64,6 +64,7 @@ command -v "$qmd" >/dev/null 2>&1 || { echo "plan-index: qmd not found ($qmd); n
 mkdir -p "$out"
 # one refresh at a time: generation, indexing and the key publish share docs.new and the qmd index
 # ponytail: a kill -9 leaves .lock behind (remove it by hand), a pid-aware stale-lock takeover when it bites
+# prim-ok: fail-fast, a held lock exits 1 at once; with_lock would wait for the other refresh
 mkdir "$out/.lock" 2>/dev/null || { echo "plan-index: another refresh holds $out/.lock" >&2; exit 1; }
 trap 'rmdir "$out/.lock" 2>/dev/null || true' EXIT
 python3 "$HERE/plan_docs.py" --plan-dir "$plan" --docs "$out/docs" --graph "$out/graph.json" ${watches[@]+"${watches[@]}"}

@@ -82,9 +82,7 @@ export function appendEnvKeys(envPath, kvs) {
   try {
     chmodSync(envPath, 0o600);
   } catch (e) {
-    if (process.platform !== 'win32') {
-      process.stderr.write(`[jira-init] warning: chmod 600 failed on ${envPath}: ${e.message}\n`);
-    }
+    process.stderr.write(`[jira-init] warning: chmod 600 failed on ${envPath}: ${e.message}\n`);
   }
 }
 

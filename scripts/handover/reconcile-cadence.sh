@@ -17,7 +17,7 @@
 #
 # arm/disarm/status manage ONE crontab entry tagged `# HIMMEL-ReconcileCadence`
 # (Linux/macOS). Arming replaces any existing tagged entry, so arming twice
-# yields one job. On Windows use the twin: pwsh -File reconcile-cadence.ps1.
+# yields one job.
 #
 # Env:
 #   RECONCILE_CADENCE_LOG     Log file `run` appends to (default:

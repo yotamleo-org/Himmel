@@ -22,10 +22,10 @@
    # file with the Write tool, then hand that file to
    # scripts/cr/write-verdicts.sh via --from-file, REPLACING the prior-blocking
    # file's contents (step 0 truncated it). The helper is the
-   # classifier-sanctioned write path (HIMMEL-2131): an inline
+   # classifier-sanctioned write path: an inline
    # `cat > ... <<EOF` heredoc is denied by the auto-mode classifier, which
    # silently degrades this structural signal to fail-open.
-   # --branch takes step 0's printed `branch=` LITERAL (HIMMEL-2226: a runtime
+   # --branch takes step 0's printed `branch=` LITERAL (a runtime
    # value as a dash-flag operand is refused by the worktree-isolation guard,
    # and each fence is its own process anyway), SINGLE-QUOTED because a pasted
    # branch name is shell-parsed and a git ref may legitimately carry shell
@@ -42,12 +42,11 @@
    # feed the REAL verdicts, or nothing.
    #   Spelling: the fence shows the canonical adopter-safe absolute form. On
    #   the himmel lane run the cwd-relative literal `bash scripts/cr/write-verdicts.sh ...`
-   #   instead (HIMMEL-4040, preamble) — the shape the allow rule
+   #   instead (see the preamble) — the shape the allow rule
    #   `Bash(bash scripts/cr/write-verdicts.sh:*)` matches and
-   #   `guard-pr-check-literal.sh` accepts. No extra operator rule is needed
-   #   (HIMMEL-2601; the denial was fixed by HIMMEL-3383/3495).
-   # `guard-pr-check-literal.sh` denies a pipe into this writer, and (as of
-   # HIMMEL-3798 round 3, "CUT, do not patch") denies every heredoc and
+   #   `guard-pr-check-literal.sh` accepts. No extra operator rule is needed.
+   # `guard-pr-check-literal.sh` denies a pipe into this writer, and
+   # denies every heredoc and
    # `< <file>` redirect shape outright — three rounds of the same
    # regex-approximates-bash-grammar mechanism finding a new bypass meant the
    # mechanism itself, not the regex, was wrong. The sanctioned shape is

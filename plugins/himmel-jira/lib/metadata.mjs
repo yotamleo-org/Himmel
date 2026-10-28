@@ -1,16 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
-import { platform } from 'node:os';
 
 export function metadataPath() {
-  const win = platform() === 'win32';
-  const base = win
-    ? process.env.LOCALAPPDATA
-    : (process.env.XDG_CACHE_HOME || (process.env.HOME && join(process.env.HOME, '.cache')));
+  const base = process.env.XDG_CACHE_HOME || (process.env.HOME && join(process.env.HOME, '.cache'));
   if (!base) {
-    throw new Error(
-      `Cannot resolve cache dir: ${win ? 'LOCALAPPDATA' : 'HOME / XDG_CACHE_HOME'} unset`,
-    );
+    throw new Error('Cannot resolve cache dir: HOME / XDG_CACHE_HOME unset');
   }
   const dir = join(base, 'himmel-cli', 'jira');
   return { dir, file: join(dir, 'metadata.json') };
@@ -31,7 +25,7 @@ export function writeMetadata(data) {
   const { dir, file } = metadataPath();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
-  if (platform() !== 'win32') chmodSync(file, 0o600);
+  chmodSync(file, 0o600);
 }
 
 export function isStale(metadata, days = 30) {

@@ -10,7 +10,7 @@
 #
 # The himmel rationale was re-verified against this template
 # from scratch rather than assumed to transfer: no step after [2/6] in
-# setup.sh (or setup.ps1) reads USER_SLUG, nothing setup writes embeds it,
+# setup.sh reads USER_SLUG, nothing setup writes embeds it,
 # the export dies with the process, and the template's own user-slug.sh has
 # no forge lookup or --dotenv-root bridge to carry over (env var + git
 # config only — porting those in is explicitly out of scope). So the

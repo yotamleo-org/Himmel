@@ -569,6 +569,7 @@ _npm_latest() {
     local out="" cache
     # A private cache: --check and --versions promise to write nothing, and a
     # bare `npm view` fills ~/.npm.
+    # prim-ok: the himmel-update suites run a copy of this script in a clone holding only the libs each lists (no prim.sh), and a missing lib would silently drop the version probe
     cache="$(mktemp -d "${TMPDIR:-/tmp}/himmel-npm-view.XXXXXX")" || return 0
     if command -v timeout >/dev/null 2>&1; then
         out="$(npm_config_cache="$cache" timeout 30 npm view "$1" version 2>/dev/null)" || out=""
