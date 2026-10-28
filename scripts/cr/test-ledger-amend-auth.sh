@@ -79,10 +79,10 @@ mv "$KEYF.off" "$KEYF"
 REPO="$tmp/repo"; git init -q "$REPO"
 LA_LEDGER="$tmp/la.jsonl"
 (cd "$REPO" && CR_LEDGER="$LA_LEDGER" bash "$LA" finding --branch b --head 1111111111111111111111111111111111111111 --model codex --id la-1 \
-  --severity imp --file a.sh --line 1 --verdict agreed --text "a finding" >/dev/null 2>&1) || echo "FAIL: fixture finding not written"
+  --severity imp --file a.sh --line 1 --verdict agreed --text "a finding" >/dev/null 2>&1) || { echo "FAIL: fixture finding not written"; fails=$((fails+1)); }
 { signed "$(amend b first '{"reason":"x"}' first)"; echo; } >> "$LA_LEDGER"
 (cd "$REPO" && CR_LEDGER="$LA_LEDGER" bash "$LA" amend --branch b --head 1111111111111111111111111111111111111111 --id la-1 --set verdict=disproved \
-  --reason "signed by the writer" >/dev/null 2>&1) || echo "FAIL: fixture amend not written"
+  --reason "signed by the writer" >/dev/null 2>&1) || { echo "FAIL: fixture amend not written"; fails=$((fails+1)); }
 check "6: a ledger-append.sh amend verifies" "$(kept "$LA_LEDGER")" "first:first la-1:signed by the writer"
 
 # --- 7. a keyless writer: the claudex lane's scratch HOME ------------------
@@ -92,14 +92,15 @@ check "6: a ledger-append.sh amend verifies" "$(kept "$LA_LEDGER")" "first:first
 SCRATCH_HOME="$tmp/claudex-home"; mkdir -p "$SCRATCH_HOME"
 L7="$tmp/l7.jsonl"
 (cd "$REPO" && CR_LEDGER="$L7" bash "$LA" finding --branch b --head 2222222222222222222222222222222222222222 --model codex --id cx-1 \
-  --severity sug --file a.sh --line 1 --verdict agreed --text "a finding" >/dev/null 2>&1) || echo "FAIL: fixture finding cx-1 not written"
+  --severity sug --file a.sh --line 1 --verdict agreed --text "a finding" >/dev/null 2>&1) || { echo "FAIL: fixture finding cx-1 not written"; fails=$((fails+1)); }
 { signed "$(amend b first '{"reason":"x"}' first)"; echo; } >> "$L7"
 (cd "$REPO" && HOME="$SCRATCH_HOME" CR_LEDGER="$L7" bash "$LA" amend --branch b --head 2222222222222222222222222222222222222222 --id cx-1 \
   --set verdict=deferred --set deferred_to=HIMMEL-7 --set fu_class=polish --set class=new:claudex-lane \
-  --reason "claudex deferral" >"$tmp/l7.out" 2>"$tmp/l7.err") || echo "FAIL: keyless amend refused: $(cat "$tmp/l7.err")"
+  --reason "claudex deferral" >"$tmp/l7.out" 2>"$tmp/l7.err") || { echo "FAIL: keyless amend refused: $(cat "$tmp/l7.err")"; fails=$((fails+1)); }
 check "7a: a keyless writer's lowering amend lands with no mac" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep -vc amend_mac)" "1"
 check "7b: a keyed reader drops it" "$(kept "$L7")" "first:first"
 check "7c: a keyless reader honours it" "$(HOME="$SCRATCH_HOME" kept "$L7")" "first:first cx-1:claudex deferral"
+check "7d: the amend carries the verdict, ticket and class" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep '"verdict":"deferred"' | grep '"deferred_to":"HIMMEL-7"' | grep -c '"fu_class":"polish"')" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
