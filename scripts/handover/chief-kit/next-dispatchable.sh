@@ -584,6 +584,8 @@ DONE_STATES = ('Done', 'Closed')
 def done_key(k):
     i = issues.get(k)
     return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
+# a live read carries only the status name, so its Done-category names are listed here
+LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
 live_cache = {}
@@ -614,15 +616,15 @@ def live_fetch(keys):
 def blocker_state(b):
     # None when the blocker is resolved, else its status (live when read)
     st = issues.get(b, {}).get('status')
-    if done_key(b):
-        return None
     live = live_cache.get(b)
     if live is not None:
-        return None if live in DONE_STATES else '%s, live' % live
+        return None if live in LIVE_DONE else '%s, live' % live
+    if done_key(b):
+        return None
     return st or 'not in mirror'
 
 live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review') and i['type'] not in ('Epic', 'Sub-task')
-            for b in i['blocked_by'] if not done_key(b)])
+            for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
 skipped_platform = []
 cands = []
 for i in issues.values():

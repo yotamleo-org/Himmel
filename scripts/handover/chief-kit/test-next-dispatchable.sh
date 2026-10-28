@@ -1125,8 +1125,18 @@ DC_DIR="$WORK/jira-mirror-done-cat"; M="$DC_DIR/HIMMEL"; mkdir -p "$M"
 printf 'v1.0.1\tfalse\t\n' > "$DC_DIR/HIMMEL.versions.tsv"
 printf -- '---\nkey: "HIMMEL-9301"\ntype: "Task"\nstatus: "wont do"\nstatusCategory: "Done"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9301: closed as wont do\n\n## Description\n\nEdit scripts/lib/wontdo.sh.\n' > "$M/HIMMEL-9301.md"
 mk HIMMEL-9302 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9301"]' "blocked only by a wont do ticket" "Edit scripts/lib/after-wontdo.sh."
-dc_out="$(run --no-classify)"
+dc_out="$(run --no-classify)"; dc_rc=$?
+[ "$dc_rc" = 0 ] && pass "Done category: the dispatcher exits 0" || fail "Done category: the dispatcher exited $dc_rc"
 has "Done category: a blocker in a Done-category status (wont do) is resolved" "$dc_out" "HIMMEL-9302"
+# a Done-category mirror row whose live Jira status was reopened still blocks; a live wont do still counts as done
+printf -- '---\nkey: "HIMMEL-9303"\ntype: "Task"\nstatus: "wont do"\nstatusCategory: "Done"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9303: stale wont do\n\n## Description\n\nEdit scripts/lib/stale.sh.\n' > "$M/HIMMEL-9303.md"
+mk HIMMEL-9304 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9303"]' "blocked by a reopened ticket" "Edit scripts/lib/after-reopen.sh."
+# shellcheck disable=SC2016  # the $ names are literal text of the fake Jira CLI, expanded when it runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\tTask\\t%%s\\tt\\n" "$2" "$LIVE_STATUS"\n' > "$WORK/jira-live"; chmod +x "$WORK/jira-live"
+reopen_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" run --no-classify)"
+lacks "Done category: a mirror wont do blocker reopened live still blocks" "$reopen_out" "HIMMEL-9304"
+closed_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="wont do" run --no-classify)"
+has "Done category: a mirror wont do blocker still wont do live is resolved" "$closed_out" "HIMMEL-9304"
 M="$WORK/jira-mirror/HIMMEL"
 
 printf '\n%d failure(s)\n' "$fails"
