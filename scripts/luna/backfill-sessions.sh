@@ -63,6 +63,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 1
 
 # Source shared libs
 _ST_LIB="$SCRIPT_DIR/../lib/session-transcript.sh"
@@ -187,8 +189,8 @@ fi
 TMP_JSONL_LIST="$(mktemp 2>/dev/null)" || TMP_JSONL_LIST="/tmp/backfill-jl-$$"
 # Per-vault session_id set cache: one file per resolved vault_hash,
 # holding the session_id of every note already in that vault's sessions/ tree.
-TMP_VAULTSETS_DIR="$(mktemp -d 2>/dev/null)" || TMP_VAULTSETS_DIR="/tmp/backfill-vsets-$$"
-# The literal fallback path must actually EXIST (mktemp -d creates its dir; the
+TMP_VAULTSETS_DIR="$(tmpdir 2>/dev/null)" || TMP_VAULTSETS_DIR="/tmp/backfill-vsets-$$"
+# The literal fallback path must actually EXIST (tmpdir creates its dir; the
 # fallback string does not) — otherwise every set-file write fails silently and
 # the dedup no-ops for the whole run.
 [ -d "$TMP_VAULTSETS_DIR" ] || mkdir -p "$TMP_VAULTSETS_DIR" 2>/dev/null || true

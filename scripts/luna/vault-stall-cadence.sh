@@ -272,7 +272,7 @@ alert() {
 # Plan: every edit lands in a scratch copy first; nothing is live until all succeed.
 plan_edits() {
     local rc f re
-    work="$(mktemp -d "${TMPDIR:-/tmp}/vault-stall.XXXXXX")" || return 2
+    work="$(tmpdir)" || return 2
     cp "$vault/.pre-commit-config.yaml" "$work/yaml" 2>/dev/null
     cp "$vault/.gitleaks.toml" "$work/toml" 2>/dev/null
     [ -f "$work/yaml" ] && cp "$work/yaml" "$work/yaml.orig"   # the plan's own baseline
@@ -403,6 +403,7 @@ cmd_run() {
         mkdir -p "$STATE_DIR" || return 2
         command -v flock >/dev/null 2>&1 || { echo "ERR vault-stall: flock not on PATH (needed to serialize runs)" >&2; return 2; }
         exec 9>"$STATE_DIR/run.lock"
+        # prim-ok: busy runs must skip immediately with exit 0; with_lock waits instead.
         flock -n 9 || { echo "vault-stall: busy (another run holds $STATE_DIR/run.lock)"; return 0; }
     fi
     if [ -e "$gitdir/index.lock" ]; then echo "vault-stall: busy (index.lock held - the sync is mid-commit)"; return 0; fi

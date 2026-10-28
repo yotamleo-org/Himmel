@@ -44,6 +44,8 @@ export CLAUDE_END_SESSION_WIKI=0
 export HIMMEL_WHERE_ARE_WE=0
 
 HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HIMMEL_ROOT/scripts/lib/prim.sh" || exit 0
 DEFAULT_MODEL="claude-opus-4-8"
 DEFAULT_BUDGET_USD="1.00"
 
@@ -249,7 +251,7 @@ if [ -n "$HASH_BEFORE" ] && [ -n "$HASH_AFTER" ] && [ "$HASH_BEFORE" != "$HASH_A
     # Non-refresh runs are untouched by this branch (no snapshot exists).
     if [ "${CRYSTALLIZE_REFRESH:-}" = "1" ] && ! _refresh_valid "$NOTE_PATH"; then
         if [ -n "$SNAP_TMP" ] && [ -r "$SNAP_TMP" ]; then
-            mv -f "$SNAP_TMP" "$NOTE_PATH" 2>/dev/null || true
+            atomic_write "$NOTE_PATH" < "$SNAP_TMP" 2>/dev/null && rm -f "$SNAP_TMP" 2>/dev/null || true
             SNAP_TMP=""
         fi
     else
@@ -261,7 +263,8 @@ if [ -n "$HASH_BEFORE" ] && [ -n "$HASH_AFTER" ] && [ "$HASH_BEFORE" != "$HASH_A
             fmc==1 && /^crystallized_at:/ { print "crystallized_at: " now; next }
             { print }
         ' "$NOTE_PATH" > "$STAMP_TMP" 2>/dev/null; then
-            mv -f "$STAMP_TMP" "$NOTE_PATH" 2>/dev/null || rm -f "$STAMP_TMP" 2>/dev/null || true
+            atomic_write "$NOTE_PATH" < "$STAMP_TMP" 2>/dev/null || true
+            rm -f "$STAMP_TMP" 2>/dev/null || true
         else
             rm -f "$STAMP_TMP" 2>/dev/null || true
         fi
