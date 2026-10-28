@@ -4658,7 +4658,9 @@ check_c65_git_gates() {
 # The 10-27 AI TODO outage: a pull changed scripts/telegram, scripts/lanes and scripts/lib while the
 # bridge process kept the code it started with, and a group went unanswered for 12 h. C30 only asks
 # whether the unit is alive. This asks whether the live poller started after the newest commit to the
-# directories it imports from. Read-only like C30 (systemctl show / git log only, never a restart).
+# directories it imports from. Read-only like C30 (systemctl show / git log only, never a restart);
+# station-sync.sh restarts the bridge after a merge to those dirs and the fix line
+# names the stamp it writes (~/.himmel/state/bridge-restart.ts).
 # Silent when no bridge unit is enabled here (C24/C30 speak to that) or its start time is unknown.
 # Seam: HIMMEL_DOCTOR_SYSTEMCTL (shared with C24/C30); --root picks the checkout whose git log is read.
 # ponytail: the commit time (not the pull time) is compared, so a commit authored before the poller
@@ -4681,11 +4683,34 @@ check_c77_bridge_stale() {
         subject="$(git -C "$REPO_ROOT" log -1 --format=%s -- scripts/telegram scripts/lanes scripts/lib 2>/dev/null)"
         started_fmt="$(date -d "@$started_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: only reached after the GNU parse above succeeded
         commit_fmt="$(date -d "@$commit_ts" '+%F %H:%M' 2>/dev/null)"  # gnu-ok: same Linux-only path
+        local stamp last_fmt="never"
+        stamp="$(cat "$HOME/.himmel/state/bridge-restart.ts" 2>/dev/null)"
+        case "$stamp" in ''|*[!0-9]*) ;; *) last_fmt="$(date -d "@$stamp" '+%F %H:%M' 2>/dev/null || echo never)" ;; esac  # gnu-ok: same Linux-only path
         emit WARN C77-bridge-stale "$unit started $started_fmt before the newest commit to scripts/telegram, scripts/lanes or scripts/lib ($commit_fmt: $subject) — the poller runs stale code" \
-            "systemctl --user restart $unit   # an OPERATOR decision, this check never restarts it"
+            "the restart is automatic after station-sync (last restart: $last_fmt); if it stays stale: systemctl --user restart $unit   # this check never restarts it"
         return 0
     fi
     emit OK C77-bridge-stale "$unit started after the newest commit to scripts/telegram, scripts/lanes and scripts/lib"
+}
+
+# --- C78: shfmt on PATH (the Bash guards parse commands with it) -------------------
+# Without shfmt the PreToolUse guards that read a command's AST deny every
+# command naming a stash, ref-plumbing or graphify verb, so the operator first
+# hears of it as a refusal mid-session. Same up-front shape as C38/C39. WARN only.
+# Test seam: HIMMEL_DOCTOR_SHFMT (the shfmt command to probe, default `shfmt`).
+check_c78_shfmt() {
+    local shfmt_bin="${HIMMEL_DOCTOR_SHFMT:-shfmt}"
+    if command -v "$shfmt_bin" >/dev/null 2>&1; then
+        emit OK C78-shfmt "shfmt on PATH (the Bash guards can parse commands)"
+        return
+    fi
+    local hint
+    case "$(uname -s 2>/dev/null || echo x)" in
+        Darwin) hint="brew install shfmt" ;;
+        *) hint="sudo apt-get install -y shfmt (or pacman -S shfmt)" ;;
+    esac
+    emit WARN C78-shfmt "shfmt not on PATH — the Bash guards that parse commands with it deny any command that names a stash, ref-plumbing or graphify verb" \
+        "$hint (see docs/setup/new-machine.md)"
 }
 
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
@@ -4836,6 +4861,7 @@ run_check C74 check_c74_config_split
 run_check C75 check_c75_keyring
 run_check C76 check_c76_duplicate_plugin_installs
 run_check C77 check_c77_bridge_stale
+run_check C78 check_c78_shfmt
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

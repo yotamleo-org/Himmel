@@ -50,7 +50,7 @@ node_suites     (^|/)package(-lock)?\.json$
 # git_env_scrub, bwk_gate, plugin_version_bump, deps_audit).
 
 # bun-suites matrix (now benign).
-benign          ^scripts/(luna-vitals|telegram|vault|config-ui|fleet-control|observability|cr|lanes|handover)/
+benign          ^scripts/(luna-vitals|telegram|vault|config-ui|observability|cr|lanes|handover)/
 benign          ^scripts/(cleanup|codex|eval|glm|himmelctl|hooks|luna|machine-setup|trust)/
 benign          ^scripts/[^/]+\.(sh|bash|mjs|js|ts|py)$
 benign          ^marketplace/plugins/(luna-correlate|telegram-himmel)/

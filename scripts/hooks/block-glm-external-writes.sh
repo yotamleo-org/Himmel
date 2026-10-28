@@ -1765,8 +1765,7 @@ const rawSig = require("node:crypto").createHash("sha256").update(text, "utf8").
 let lastSig = null;
 // Torn-tail boundary. If an earlier append was
 // interrupted the file can end mid-line, and appending straight onto it would
-// CONCATENATE the new JSON into that partial line: consumers
-// (fleet-control/aggregator/escalations.ts jsonl()) skip the combined invalid
+// CONCATENATE the new JSON into that partial line: JSONL readers skip the combined invalid
 // line, while the worker is still told its report was recorded. Detect the
 // missing terminator and separate the records. A torn tail also fails to parse,
 // so it already yields lastSig=null and can never suppress this append.

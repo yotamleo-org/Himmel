@@ -136,7 +136,7 @@ runner_for() {
     case "$path" in
         scripts/hooks/*.test.mjs|scripts/lib/*.test.mjs|scripts/lanes/tests/*.test.mjs|scripts/trust/tests/*.test.mjs|scripts/where-are-we/tests/*.test.mjs|scripts/lessons/tests/*.test.mjs|scripts/op-env-parity.test.mjs|scripts/observability/*.test.mjs)
             printf 'node --test %q\n' "$path" ;;
-        scripts/fleet-control/*.test.ts|scripts/observability/*.test.ts)
+        scripts/observability/*.test.ts)
             printf 'bun test %q --dots\n' "$path" ;;
         scripts/jira/*.test.ts)
             rel="${path#scripts/jira/}"
@@ -209,7 +209,7 @@ telegram-himmel|bun-test|marketplace/plugins/telegram-himmel && bun install
 where-are-we|node-test|scripts/where-are-we/tests/*.test.mjs
 lessons|node-test|scripts/lessons/tests/*.test.mjs
 op-env-observability-mjs|node-test|"scripts/observability/*.test.mjs"
-fleet-control-observability|bun-test|scripts/fleet-control scripts/observability
+observability|bun-test|scripts/observability --path-ignore-patterns=
 EOF
 }
 

@@ -52,9 +52,9 @@ EOF
 chmod +x "$CODEX_STUB"
 
 # reap-mcp-fleet stub: records invocation + argv, exits 0 - no
-# real process table or pwsh is touched. Injected into every run_dispatch
+# real process table is touched. Injected into every run_dispatch
 # call below so a codex stub that actually runs (rc-0 or nonzero-rc paths)
-# never shells out to the real reap-mcp-fleet.sh/.ps1.
+# never shells out to the real reap-mcp-fleet.sh.
 REAP_STUB="$TMP/reap-stub.sh"
 cat > "$REAP_STUB" <<EOF
 #!/usr/bin/env bash

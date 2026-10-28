@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/agg-postpin.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq-free grep/
-# sed over a Claude Code transcript (same JSONL on every platform); it runs
-# under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ plus jq-free grep/sed over a Claude Code
+# transcript (same JSONL on every platform).
 #
 # Copied from the baseline Appendix B (agg-postpin.sh, worker N207,
 # 2026-09-12): the headline worker/chief rollup (spec §0/§2.1's workers +

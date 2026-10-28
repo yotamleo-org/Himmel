@@ -22,8 +22,7 @@
 #                 negates or empties --purge-state fails case 3, so none can
 #                 pass vacuously.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus python3, so it runs
-# unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): POSIX bash 3.2+ plus python3.
 #
 # Usage: bash scripts/docs/test-footprint-page.sh [page.md [manifest.tsv]]
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).

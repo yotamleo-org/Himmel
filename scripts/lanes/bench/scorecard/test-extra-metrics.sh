@@ -3,8 +3,7 @@
 # extra-metrics.sh's per-message operator-intervention window filter.
 # House check/contains style, per scripts/test-context-fill.sh.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
-# git bash unchanged.
+# Platform guard: POSIX bash 3.2+.
 #
 # The fix-forward/revert (g) section calls `gh pr list`; extra-metrics.sh
 # exits 1 if that call fails, which starves the operator-window assertions

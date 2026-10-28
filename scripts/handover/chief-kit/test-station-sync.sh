@@ -228,4 +228,58 @@ seq="$(awk '{ print $1 }' "$SS_CALLS" | paste -sd, -)"
 check "17 two syncs do not overlap" "$seq" "enter,exit,enter,exit"
 check "17 final state after both runs" "$(cat "$SS_STATE")" "ok"
 
+# A merge to the bridge's import graph restarts telegram-bridge.service once,
+# at most one restart per 10 minutes. The unit name is read from the real unit file.
+unit="$(basename "$HERE/../../telegram/systemd/telegram-bridge.service")"
+cat > "$W/systemctl" <<'EOF2'
+#!/usr/bin/env bash
+echo "systemctl $*" >> "$SS_SC_CALLS"
+[ "$2" = "is-enabled" ] && exit "${SS_T_ENABLED:-0}"
+exit 0
+EOF2
+chmod +x "$W/systemctl"
+export SS_SYSTEMCTL="$W/systemctl" SS_SC_CALLS="$W/sc-calls"
+run_bridge() {  # run_bridge <path>...   (keeps the debounce stamp between calls)
+    : > "$SS_CALLS"; rm -f "$SS_STATE"
+    export SS_T_VERSIONS="$W/ver-current"
+    printf '%s\n' "$@" > "$W/files"
+    out="$(bash "$SCRIPT" --files "$W/files" 2>&1)"; rc=$?; sc="$(cat "$SS_SC_CALLS" 2>/dev/null)"
+}
+: > "$SS_SC_CALLS"; rm -f "$W/bridge-restart.ts"
+run_bridge scripts/lanes/plugin-profiles.json
+contains "18 lanes path restarts the bridge" "$sc" "systemctl --user restart $unit"
+contains "18 step line" "$out" "STEP bridge_restart rc=0"
+check "18 one restart" "$(grep -c ' restart ' "$SS_SC_CALLS")" 1
+if [ -s "$W/bridge-restart.ts" ]; then echo "ok - 18 debounce stamp written"; else echo "FAIL - 18 debounce stamp written"; fails=$((fails+1)); fi
+run_bridge scripts/telegram/poller.ts
+check "19 second sync inside 10 min: still one restart" "$(grep -c ' restart ' "$SS_SC_CALLS")" 1
+contains "19 skip names the debounce" "$out" "SKIP bridge_restart debounce"
+echo 1 > "$W/bridge-restart.ts"
+run_bridge scripts/lib/foo.sh
+check "20 stale stamp: restarts again" "$(grep -c ' restart ' "$SS_SC_CALLS")" 2
+rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
+run_bridge docs/x.md scripts/handover/foo.sh
+lacks "21 outside the three dirs: no restart" "$sc" " restart "
+contains "21 skip names the reason" "$out" "SKIP bridge_restart no-bridge-path"
+if [ ! -e "$W/bridge-restart.ts" ]; then echo "ok - 21 no stamp"; else echo "FAIL - 21 no stamp"; fails=$((fails+1)); fi
+rm -f "$W/bridge-restart.ts"
+run_bridge scripts/lib/qmd-bin.sh
+contains "23 a scripts/lib pin path also restarts the bridge" "$sc" "systemctl --user restart $unit"
+contains "23 and still runs its own step" "$(cat "$SS_CALLS")" "update --only qmd_fork"
+cat > "$W/systemctl-fail" <<'EOF2'
+#!/usr/bin/env bash
+[ "$2" = "restart" ] && exit 1
+exit 0
+EOF2
+chmod +x "$W/systemctl-fail"
+rm -f "$W/bridge-restart.ts"
+SS_SYSTEMCTL="$W/systemctl-fail" run_bridge scripts/lanes/a.json
+contains "24 failed restart is reported" "$out" "STEP bridge_restart rc=1"
+contains "24 failed restart is not OK" "$out" "STATION=BEHIND:bridge_restart-failed"
+if [ ! -e "$W/bridge-restart.ts" ]; then echo "ok - 24 no stamp after a failed restart"; else echo "FAIL - 24 no stamp after a failed restart"; fails=$((fails+1)); fi
+rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
+SS_T_ENABLED=1 run_bridge scripts/lanes/a.json
+lacks "22 unit not enabled: no restart" "$sc" " restart "
+contains "22 skip names the reason" "$out" "SKIP bridge_restart unit-not-enabled"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

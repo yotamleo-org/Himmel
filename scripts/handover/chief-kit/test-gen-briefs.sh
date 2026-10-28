@@ -732,5 +732,46 @@ inhbad "an inherited key with a pr that is not an integer is refused" "{'pr': '4
 inhbad "an inherited key with a mode other than resume or takeover is refused" "{'pr': 4033, 'authors': ['Ada'], 'mode': 'fork'}"
 inhbad "an inherited key with no mode is refused" "{'pr': 4033, 'authors': ['Ada']}"
 
+# A leg whose scope Writes name scripts/config-ui/ launches with worker-e2e (worker-impl plus the
+# Playwright MCP server) and its brief says how to look at the page; any other leg stays on worker-impl.
+ui_gen() { # <scope prefix or -> <profile key or ->: one leg generated into $WORK/ui
+    rm -rf "$WORK/ui"; ui_rc=1
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
+if sys.argv[3] != "-": l[0]["scope"]=sys.argv[3]+" "+l[0]["scope"]
+if sys.argv[4] != "-": l[0]["profile"]=sys.argv[4]
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ui.json" "$1" "$2" || return 1
+    python3 "$SUT" "$WORK/ui.json" --base 4ccb59d --chief BZ --bucket "$WORK/ui" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ui.err"; ui_rc=$?
+    ui_launch="$(cat "$WORK/ui"/launch-N901.sh 2>/dev/null)"; ui_brief="$(cat "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+}
+ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the generated brief
+    mkdir -p "$WORK/uiarm"; grep -v '^resume_cwd:' "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md > "$WORK/uiarm/HIMMEL-9001-N901-copy.md"
+    HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile "$1" HIMMEL-9001-N901 "$WORK/uiarm/HIMMEL-9001-N901-copy.md" "$WORK/uiarm/signal" 9999999999 "$WORK/uiarm/log" claude-sonnet-5-5 2>&1 | grep -o ' mcp=[^ ]*'
+}
+ui_gen "Writes scripts/config-ui/page.ts." -
+[ "$ui_rc" = 0 ] && pass "a config-ui leg generates (rc 0)" || fail "config-ui leg rc=$ui_rc: $(cat "$WORK/ui.err")"
+has "a config-ui leg's launcher arms worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
+has "a config-ui leg's brief says the chief starts himmelctl ui from the worker's own worktree" "$ui_brief" "from YOUR worktree"
+has "a config-ui leg's brief tells the worker to ask for the URL and never start the UI itself" "$ui_brief" "ask for it, never start it yourself"
+lacks "a config-ui leg's brief hands out no standing agent-session bypass" "$ui_brief" "allow-agent-session"
+has "a config-ui leg's brief says to open the URL with the browser MCP headless" "$ui_brief" "browser MCP headless"
+has "a config-ui leg's brief says to save screenshots to the scratch dir" "$ui_brief" "save screenshots to your scratch dir"
+ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
+has "the dry-run launch of a config-ui leg lists playwright among its MCP servers" "$(ui_mcp "${ui_launch_profile#--profile }")" "playwright"
+ui_gen "Writes scripts/config-ui/page.ts." worker-bus
+has "an explicit leg profile key wins over the config-ui choice" "$ui_launch" "--profile worker-bus --chief BZ"
+has "the explicit-profile leg's brief was written" "$ui_brief" "> **Writes:**"
+lacks "and a leg off the browser profile gets no browser line" "$ui_brief" "UI work:"
+ui_gen - -
+[ "$ui_rc" = 0 ] && pass "a non-UI leg generates (rc 0)" || fail "non-UI leg rc=$ui_rc: $(cat "$WORK/ui.err")"
+has "a non-UI leg's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+has "the non-UI leg's brief was written" "$ui_brief" "> **Writes:**"
+lacks "a non-UI leg's brief has no browser line" "$ui_brief" "UI work:"
+ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
+ui_mcp_impl="$(ui_mcp "${ui_launch_profile#--profile }")"
+has "the dry-run launch of a non-UI leg reports its MCP servers" "$ui_mcp_impl" 'mcp=["qmd","himmel-bus"]'
+lacks "the dry-run launch of a non-UI leg lists no playwright" "$ui_mcp_impl" "playwright"
+ui_gen - 'Bad;x'
+[ "$ui_rc" = 1 ] && grep -q 'profile' "$WORK/ui.err" && [ ! -e "$WORK/ui/launch-N901.sh" ] && pass "an invalid leg profile is refused before anything is written" || fail "bad profile rc=$ui_rc"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

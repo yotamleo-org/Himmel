@@ -733,6 +733,42 @@ CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-finding-without-ok-row-ho
 has "$TMP/out-M10-finding-without-ok-row-holds" '^HOLD: .*claude.*claude-2' "M10 HOLD names the finding without an ok row"
 led "$(av abc123 codex ok)" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-3","severity":"crit","verdict":""}'
 CRITICS_JSON="$TMP/m10.json" GH_STUB_MODE=clean rg M10-finding-without-avail-row-holds 1
+# Advisory findings stay visible without holding; precision at the floor restores hard mode.
+led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"claude","finding_id":"claude-advisory-critical","severity":"crit","verdict":""}'
+GH_STUB_MODE=clean t advisory-hard-claude-control-blocks 2
+CRITICS_JSON="$SCRIPT_DIR/../cr/critics.json" GH_STUB_MODE=clean t advisory-shipped-claude-finding-note 0
+has "$TMP/out-advisory-shipped-claude-finding-note" '^NOTE: .*claude.*claude-advisory-critical' "advisory Critical finding is surfaced"
+has "$TMP/err-advisory-shipped-claude-finding-note" '^NOTE: .*claude.*claude-advisory-critical' "advisory Critical finding survives hook stdout capture"
+has "$LEDGER" '"finding_id":"claude-advisory-critical","severity":"crit"' "advisory Critical finding stays recorded"
+cfg "$TMP/advisory.json" '{"advisory_precision_floor":0.60,"coderabbit_outside_precision":0.55,"panel":[{"slug":"codex","provider":"openai-codex","mode":"hard","required":true},{"slug":"claude","provider":"claude-api","mode":"advisory","precision":0.482},{"slug":"coderabbit","provider":"github-app","mode":"advisory","precision":0.55}]}'
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=clean rg advisory-claude-finding-note 0
+has "$TMP/out-advisory-claude-finding-note" '^NOTE: .*claude.*claude-advisory-critical' "advisory NOTE identifies the finding"
+hasnt "$TMP/out-advisory-claude-finding-note" '^HOLD:' "advisory critic has no HOLD"
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=unresolved t advisory-app-thread-still-blocks 2
+has "$TMP/out-advisory-app-thread-still-blocks" '^BLOCK: .*unresolved CodeRabbit review thread' "advisory app cannot suppress a thread"
+for precision in 0.60 0.75; do
+    jq --argjson p "$precision" '(.panel[] | select(.slug == "claude")).precision=$p' "$TMP/advisory.json" > "$TMP/advisory-promoted.json"
+    CRITICS_JSON="$TMP/advisory-promoted.json" GH_STUB_MODE=clean rg "advisory-claude-precision-$precision-holds" 1
+    has "$TMP/err-advisory-claude-precision-$precision-holds" 'claude hard findings-open' "precision $precision restores hard mode"
+done
+led "$CRIT_OK" '{"kind":"finding","head":"abc123","model":"codex","finding_id":"codex-advisory-control","severity":"imp","verdict":""}'
+GH_STUB_MODE=clean t advisory-codex-before-blocks 2
+CRITICS_JSON="$SCRIPT_DIR/../cr/critics.json" GH_STUB_MODE=clean t advisory-codex-after-blocks 2
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=clean t advisory-config-codex-still-blocks 2
+has "$TMP/out-advisory-codex-after-blocks" '^BLOCK: .*codex.*codex-advisory-control' "codex finding still blocks with shipped config"
+led "$CRIT_OK"
+export GH_STUB_BODY_FILE="$FIXD/pr-777-outside-diff-blockquote.body.txt"
+CRITICS_JSON="$SCRIPT_DIR/../cr/critics.json" GH_STUB_MODE=body-file t advisory-shipped-outside-finding-note 0
+has "$TMP/err-advisory-shipped-outside-finding-note" '^NOTE: .*coderabbit-outside.*outside-diff' "outside-diff advisory NOTE is visible on stderr"
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=body-file t advisory-outside-finding-note 0
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=body-a2-file t advisory-prior-outside-finding-note 0
+CRITICS_JSON="$TMP/advisory.json" GH_STUB_MODE=body-drift t advisory-outside-drift-still-blocks 2
+for precision in 0.60 0.75; do
+    jq --argjson p "$precision" '.coderabbit_outside_precision=$p' "$TMP/advisory.json" > "$TMP/outside-promoted.json"
+    CRITICS_JSON="$TMP/outside-promoted.json" GH_STUB_MODE=body-file t "advisory-outside-precision-$precision-blocks" 2
+    has "$TMP/out-advisory-outside-precision-$precision-blocks" '^BLOCK: .*not dispositioned' "outside precision $precision restores disposition gate"
+done
+unset GH_STUB_BODY_FILE
 # M11 — overlay drops claude: the Codex-only gate.
 led "$(av abc123 codex ok)"
 cfg "$TMP/m11.json" '{"panel":[{"slug":"claude","drop":true}]}'

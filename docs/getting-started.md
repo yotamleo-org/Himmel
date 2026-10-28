@@ -18,9 +18,12 @@ step 10 undoes the install. A different result means stop and read
 [daily-loop walkthrough](daily-loop.md), which narrates every hook, is
 *optional depth*; the steps below stand on their own.
 
-> **What is himmel?** A harness that runs Claude Code as a PR-gated,
-> overnight-capable agent: worktree isolation, multi-agent review, guardrail
-> hooks, and durable handover state that survives session boundaries. See the
+> **What is himmel?** A control plane for coding agents, running on Claude
+> Code today. Each change is built
+> in its own worktree, passes git gates and tests, is reviewed (by a second
+> model too, once you add one), and merges through one gate. Hooks refuse
+> risky actions before they run, so the rules hold even when nobody remembers
+> them, and handover notes carry the work across sessions. See the
 > [README](../README.md) for the full pitch and the
 > [advantages](../README.md#what-you-get).
 

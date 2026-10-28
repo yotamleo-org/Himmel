@@ -80,7 +80,7 @@ luna_config_lib_w="$(winpath "$luna_config_lib")"
 
 build_path() {
   local _stub="$1"; shift
-  local _present=() _absent=() _stage=0 _tt
+  local _present=(awk) _absent=() _stage=0 _tt
   for _tt in "$@"; do
     if [ "$_tt" = "--" ]; then _stage=1; continue; fi
     if [ "$_stage" -eq 0 ]; then _present+=("$_tt"); else _absent+=("$_tt"); fi

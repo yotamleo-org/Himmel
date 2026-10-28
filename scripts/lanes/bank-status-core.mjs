@@ -103,7 +103,7 @@ export function formatMeasured(readings) {
     const free = pct(100 - usedPct);
     // resets= is per READING: each limit window resets at its
     // own instant and must never be collapsed into one global value. Only the
-    // codex cache reader populates it today; claude/glm render unchanged.
+    // codex cache reader populates it today; claude renders unchanged.
     const resets = Number.isFinite(resetsAt) ? ` resets=${new Date(resetsAt).toISOString()}` : '';
     return `${window} used=${used}% free=${free}%${resets}`;
   }).join('; ')}`;
@@ -171,13 +171,6 @@ export function guardState(result, active, maxPct) {
   if (windows.length === 0) {
     return active.path.kind === 'metered-api-key' ? 'funded' : 'unknown';
   }
-  // flat-rate is a POSITIVE not-applicable determination by the
-  // bank reader (the z.ai GLM plan is flat-rate — see readGlmDisplay in
-  // usage-status.ts), not missing evidence, so `unknown` would be the wrong
-  // word: it reads as a bug while the lane is in fact always-available. This
-  // is NOT a fail-open: that would flip a measured,
-  // EXHAUSTED bank to funded; here no metered reading exists to ignore.
-  if (result.kind === 'flat-rate') return 'funded';
   if (result.kind === 'unmeasurable') return 'unknown';
   for (const window of windows) {
     const evidence = result.readings.filter((reading) => reading.window === window);

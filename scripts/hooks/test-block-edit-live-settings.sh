@@ -1323,6 +1323,64 @@ else
     echo "SKIP 186-190 (node not installed)"
 fi
 
+# 7912a-c: a long heredoc body that repeats a settings-named
+# word (`settings.json` in a file list, a grep, a path) forked the operand
+# checks once per repeat, ~18 ms a line: a 400-line script cost 7+ s and, next
+# to the other members of the chain, ran past the 15 s budget (doctor C22,
+# ETIMEDOUT in the chain-skips log). A word judged once is not judged again. 7912a is
+# the allowed shape (a worktree cwd, nothing written to a live file) and must
+# finish inside its own, tighter bound; 7912b/c keep the denies a long body
+# must not lose.
+if command -v node >/dev/null 2>&1; then
+    LONG_BODY=''
+    _i=1
+    while [ "$_i" -le 400 ]; do
+        LONG_BODY=$LONG_BODY"line $_i: cp settings.json /tmp/o$_i; grep settings.json a$_i | sed 's/a/b/' > /tmp/p$_i"$'\n'
+        _i=$((_i + 1))
+    done
+    LONG_BUDGET_MS=4000
+    [ "$(uname -s)" = Darwin ] && LONG_BUDGET_MS=8000 # prim-ok: Darwin timing budget
+    LONG_ALLOW="python3 - <<'EOF'
+import re
+${LONG_BODY}EOF"
+    t0=$(now_ms)
+    rc=$(bash_rc_of "$WT2" "$LONG_ALLOW" HOME="$FAKEHOME")
+    ms=$(( $(now_ms) - t0 ))
+    echo "  7912a timing: ${#LONG_ALLOW} bytes, ${ms} ms"
+    assert_rc "7912a long heredoc repeating settings.json in a worktree allows" 0 "$rc"
+    if [ "$ms" -lt "$LONG_BUDGET_MS" ]; then
+        echo "PASS 7912a within ${LONG_BUDGET_MS} ms"
+    else
+        echo "FAIL 7912a took ${ms} ms (budget ${LONG_BUDGET_MS} ms)"
+        FAILED=$((FAILED + 1))
+    fi
+    assert_rc "7912b long heredoc then a cp into the live settings.json denies" 2 \
+        "$(bash_rc_of "$WT2" "$LONG_ALLOW"$'\n'"cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
+    assert_rc "7912c a live-settings word repeated before and after still denies" 2 \
+        "$(bash_rc_of "$WT2" "cp /tmp/evil ~/.claude/settings.json; echo ok; cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
+    # 7912d/e: a deny that comes from a symlink operand alone (the command
+    # never names a settings file) survives the same word repeating, and a
+    # word differing only in case is still judged when the launch
+    # environment imported nocasematch. COO-Link must exist so it reaches the
+    # memoized fork (a missing non-settings leaf returns before it). On a
+    # case-insensitive disk the two names are one file, so 7912e is skipped;
+    # a distinct regular file that cannot be created fails the row's setup.
+    ln -s "$PRIMARY/.claude/settings.json" "$WT2/coo-link"
+    assert_rc "7912d a symlink operand repeated still denies" 2 \
+        "$(bash_rc_of "$WT2" "cp /tmp/x coo-link; echo ok; cp /tmp/x coo-link" HOME="$FAKEHOME")"
+    if [ -e "$WT2/COO-Link" ]; then
+        echo "SKIP 7912e (case-insensitive filesystem)"
+    elif : > "$WT2/COO-Link" && [ -f "$WT2/COO-Link" ] && [ ! -L "$WT2/COO-Link" ]; then
+        assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \
+            "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
+    else
+        echo "FAIL 7912e could not create a distinct regular COO-Link"
+        FAILED=$((FAILED + 1))
+    fi
+else
+    echo "SKIP 7912a-e (node not installed)"
+fi
+
 # 191-196 (HIMMEL-3675): a literal `..` inside a benign `<base>..<head>` git
 # SHA range must not be treated as directory traversal. Real-world trigger:
 # /pr-check step 3.6's canonical `impacted-suites.sh --check <base>..<head>`

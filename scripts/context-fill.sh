@@ -505,7 +505,7 @@ then
       "$age" "$lag" "$MAX_LAG_SECONDS" >&2
   fi
   if [ "$lag" -gt "$MAX_LAG_SECONDS" ]; then
-    printf 'context-fill: STALE - the HUD snapshot is frozen: saved_at is %ss old and lags the session transcript by %ss (lag window %ss). The HUD appears to have skipped its cache write for this transcript (a known in-flight-zero condition, HIMMEL-2342) - the live HUD statusline column is the truthful number right now; this snapshot cannot be certified current.\n' \
+    printf 'context-fill: STALE - the HUD snapshot is frozen: saved_at is %ss old and lags the session transcript by %ss (lag window %ss). The HUD appears to have skipped its cache write for this transcript (a known in-flight-zero condition) - the live HUD statusline column is the truthful number right now; this snapshot cannot be certified current.\n' \
       "$age" "$lag" "$MAX_LAG_SECONDS" >&2
     stale_estimate_or_return
     exit 3

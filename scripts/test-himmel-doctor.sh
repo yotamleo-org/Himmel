@@ -2238,6 +2238,20 @@ if grepq "$out" 'WARN C77-bridge-stale' && grepq "$out" -F 'fix: lib change'; th
 else
     fail "C77 stale poller -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
+mkdir -p "$t/home/.himmel/state"
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F 'last restart: never'; then
+    pass "C77 fix line says the restart is automatic and that none has run yet (HIMMEL-7936)"
+else
+    fail "C77 fix line (no stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
+fi
+printf '1792000000\n' > "$t/home/.himmel/state/bridge-restart.ts"
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M')"; then  # gnu-ok: test host is Linux (the check is Linux-only)
+    pass "C77 fix line names when station-sync last restarted the bridge (HIMMEL-7936)"
+else
+    fail "C77 fix line (stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
+fi
 fake_systemctl "$t/probe" enabled 424242 0 '@1893000000'
 # 1893000000 = 2029: the poller started after the newest commit
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
@@ -4608,6 +4622,61 @@ else
     fi
 fi
 rm -rf "$c3839_t"
+
+# --- C78: shfmt presence, reported up front ----
+# Seam: HIMMEL_DOCTOR_SHFMT (the shfmt command, default `shfmt`). "Absent" is an
+# absolute nonexistent path, "present" a stub first on PATH, as for C38.
+c78_setup() {
+    c78_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c78.XXXXXX")" || { fail "C78 setup: mktemp -d failed"; exit 1; }
+    mkdir -p "$c78_t/darwin" "$c78_t/sbin"
+    printf '#!/bin/sh\necho Darwin\n' > "$c78_t/darwin/uname"
+    printf '#!/bin/sh\nexit 0\n' > "$c78_t/sbin/shfmt"
+    chmod +x "$c78_t/darwin/uname" "$c78_t/sbin/shfmt"
+    c78_absent="$c78_t/no-shfmt"
+}
+
+echo "== C78: no shfmt on Linux -> WARN naming the denied verbs, apt-get remedy (RED) =="
+c78_setup
+if PATH="$FAKEBIN:$PATH" bash -c 'command -v "$1"' _ "$c78_absent" >/dev/null 2>&1 || [ "$(PATH="$FAKEBIN:$PATH" uname -s)" != Linux ]; then
+    fail "C78 linux no-shfmt: precondition — the absent seam resolves or uname is not Linux"
+else
+    out="$(PATH="$FAKEBIN:$PATH" HIMMEL_DOCTOR_SHFMT="$c78_absent" CLAUDE_DIR="$c78_t/claude" HOME="$c78_t/home" bash "$DOC" --only C78 --no-color 2>&1)"
+    if grepq "$out" 'WARN C78-shfmt' && grepq "$out" -F 'stash, ref-plumbing or graphify verb' \
+       && grepq "$out" -F 'apt-get install -y shfmt' && ! grepq "$out" -F 'brew install shfmt'; then
+        pass "C78 linux no shfmt -> WARN naming the denied verbs, apt-get remedy"
+    else
+        fail "C78 linux no shfmt -> $(printf '%s' "$out" | grep -A1 C78)"
+    fi
+fi
+rm -rf "$c78_t"
+
+echo "== C78: no shfmt on Darwin -> remedy is brew install shfmt =="
+c78_setup
+if [ "$(PATH="$c78_t/darwin:$PATH" uname -s)" != Darwin ]; then
+    fail "C78 darwin: precondition — the uname stub did not report Darwin"
+else
+    out="$(PATH="$c78_t/darwin:$PATH" HIMMEL_DOCTOR_SHFMT="$c78_absent" CLAUDE_DIR="$c78_t/claude" HOME="$c78_t/home" bash "$DOC" --only C78 --no-color 2>&1)"
+    if grepq "$out" 'WARN C78-shfmt' && grepq "$out" -F 'brew install shfmt' && ! grepq "$out" -F 'apt-get'; then
+        pass "C78 darwin no shfmt -> WARN with the brew remedy"
+    else
+        fail "C78 darwin no shfmt -> $(printf '%s' "$out" | grep -A1 C78)"
+    fi
+fi
+rm -rf "$c78_t"
+
+echo "== C78: shfmt on PATH -> OK, no WARN =="
+c78_setup
+if [ "$(PATH="$c78_t/sbin:$FAKEBIN:$PATH" command -v shfmt)" != "$c78_t/sbin/shfmt" ]; then
+    fail "C78 present: precondition — the stub shfmt is not what PATH resolves"
+else
+    out="$(PATH="$c78_t/sbin:$FAKEBIN:$PATH" CLAUDE_DIR="$c78_t/claude" HOME="$c78_t/home" bash "$DOC" --only C78 --no-color 2>&1)"
+    if grepq "$out" 'OK   C78-shfmt' && ! grepq "$out" 'WARN C78-shfmt'; then
+        pass "C78 shfmt present -> OK, no warning"
+    else
+        fail "C78 shfmt present -> $(printf '%s' "$out" | grep -A1 C78)"
+    fi
+fi
+rm -rf "$c78_t"
 
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The

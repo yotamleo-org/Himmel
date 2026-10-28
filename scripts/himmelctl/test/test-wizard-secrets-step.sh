@@ -89,7 +89,7 @@ echo "ok: J4 re-run — kept, store byte-identical"
 
 # ── J6a: reuse an existing .env, show a placeholder ─────────────────────────
 mkdir -p "$t/j6a/himmel"
-printf 'JIRA_BASE_URL=<your-jira-url>\nJIRA_EMAIL=ops@example.com\n' > "$t/j6a/pre.env"
+printf 'JIRA_BASE_URL=<your-jira-url>\nJIRA_EMAIL=ops@example.com\nJIRA_API_TOKEN=fixture-secret-sentinel\n' > "$t/j6a/pre.env"
 c="$t/j6a"; mkdir -p "$c/home" "$c/himmel" "$c/proj" "$c/cache"
 git -C "$c/himmel" init -q; printf '.env\n' > "$c/himmel/.gitignore"; git -C "$c/proj" init -q; printf '.env\n' > "$c/proj/.gitignore"
 cp "$c/pre.env" "$c/himmel/.env"; chmod 600 "$c/himmel/.env"
@@ -103,7 +103,8 @@ rc=0
 grep -qF "JIRA_BASE_URL" "$c/transcript" || fail "j6a: JIRA_BASE_URL not listed"
 grep -qF "placeholder" "$c/transcript" || fail "j6a: the placeholder value was not reported as 'placeholder'"
 grep -qF "ops@example.com" "$c/transcript" && fail "j6a: a stored value was printed"
-[ "$(answers '.secrets.JIRA_EMAIL')" = "kept" ] || fail "j6a: JIRA_EMAIL not 'kept'"
+[ "$(answers '.secrets.JIRA_API_TOKEN')" = "kept" ] || fail "j6a: JIRA_API_TOKEN not 'kept'"
+[ "$(answers '.secrets.JIRA_EMAIL')" = "null" ] || fail "j6a: config-class JIRA_EMAIL must not be collected as a secret"
 [ "$(answers '.secrets.JIRA_BASE_URL')" = "skipped" ] || fail "j6a: placeholder JIRA_BASE_URL not 'skipped' by default"
 [ "$(sha_of "$c/himmel/.env")" = "$sum_pre" ] || fail "j6a: accepting the defaults changed the existing .env"
 echo "ok: J6 existing .env reused, placeholder reported, defaults leave it byte-identical"

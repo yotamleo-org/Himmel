@@ -185,7 +185,7 @@
     <p>These are all the questions the installer can ask, in order, each with an example answer; the prompt names the default. Which of the later ones you meet depends on your earlier answers: for example, choosing no companion vault skips every vault question. With scripts enabled, this becomes an interactive stepper for your own path.</p>
       <details class="sstep" open>
         <summary><span class="n">1</span> Prerequisites <small>tools + one command</small></summary>
-        <p class="intro">himmel is a harness for Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.</p>
+        <p class="intro">himmel runs on top of Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.</p>
         <div class="term"><pre aria-label="What the terminal shows"><span class="d"># 1. Claude Code itself (Linux/macOS)</span>
 <span class="in">$ curl -fsSL https://claude.ai/install.sh | bash</span>
 <span class="d"># 2. clone himmel once, then run the installer from the repo you want it in</span>
@@ -520,7 +520,7 @@
   var steps = [
     // source: scripts/himmelctl/bin.js HARD_GATE_TOOLS; docs/getting-started.md §1; docs/setup/new-machine.md
     { id: 'pre', short: 'Prerequisites', sub: 'tools + one command', kind: 'info',
-      intro: 'himmel is a harness for Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.',
+      intro: 'himmel runs on top of Claude Code, so Claude Code comes first. The installer then checks a handful of tools before it asks anything, and stops with an install hint if one is missing.',
       term: function () { return [['d', '# 1. Claude Code itself (Linux/macOS)'], ['in', '$ curl -fsSL https://claude.ai/install.sh | bash'], ['d', '# 2. clone himmel once, then run the installer from the repo you want it in'], ['in', '$ git clone https://github.com/yotamleo-org/Himmel himmel'], ['in', '$ node himmel/scripts/himmelctl/bin.js install --scope project'], ['d', '# no Node yet? run this first, then re-run install:'], ['in', '$ bash himmel/scripts/himmelctl/bootstrap.sh']]; },
       means: function () { return { see: ['A hard check for bash, git, jq and python3, plus npm or bun (npm is the one it recommends).', 'A missing tool stops the run before the first question, with the command to install it.'], does: ['Nothing yet. No question has been answered, and nothing on your machine has changed.'] }; } },
     { id: 'profile', short: 'Profile', sub: 'how much to set up', kind: 'ask',

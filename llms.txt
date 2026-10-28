@@ -1,12 +1,12 @@
 # himmel
 
-> A harness that runs Claude Code as a managed, PR-gated agent that can run unattended: hooks, git gates and guardrails enforce the workflow at the tool-call layer instead of asking the model to remember prose. Memory is durable, hand-editable markdown (handover files plus an optional companion vault), not a vector DB.
+> A control plane for coding agents, on Claude Code today: a PR-gated workflow, attended or unattended, enforced by hooks, git gates and guardrails at the tool-call layer instead of asking the model to remember prose. Memory is durable, hand-editable markdown (handover files plus an optional companion vault), not a vector DB.
 
 Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first, the authoritative rule set. Just **pointed at** it to set it up? Start at Install. Everything below is a router: open the linked file.
 
 ## Install
 
-himmel is a harness *for* [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `jq`, `python3`; `gh`, `bun` optional).
+himmel runs on top of [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `npm`/`bun`, `jq`, `python3`; `gh` optional).
 
 ```bash
 git clone https://github.com/yotamleo/himmel

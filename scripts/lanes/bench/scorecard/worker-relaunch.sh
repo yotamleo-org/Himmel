@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/worker-relaunch.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ over plain handover
-# markdown files; it runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ over plain handover markdown files.
 #
 # Adapted from the baseline Appendix B (worker-relaunch.sh, worker
 # N207, 2026-09-12): per worker handover doc,

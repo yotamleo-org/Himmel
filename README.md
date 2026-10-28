@@ -1,6 +1,6 @@
 # himmel
 
-> **A harness for Claude Code.**
+> **A control plane for coding agents.**
 
 Audience: newcomer. The page opens with the first task for someone new to
 himmel; the path for running or developing himmel itself is
@@ -31,14 +31,14 @@ turn it off.
 
 ## What himmel is
 
-himmel is an agentic OS for a solo operator or a small team who works with
-Claude Code every day. It is a bootstrap harness that you install on top of
-Claude Code's own harness, and it adds to that harness without replacing it.
-It wraps Claude Code in hooks, guardrails, slash commands, a local Jira CLI and
+himmel is a control plane for coding agents, for a solo operator or a small
+team who works with one every day. The agent's own harness keeps running each
+session; himmel installs on top of it and governs those sessions without
+replacing it. It adds hooks, guardrails, slash commands, a local Jira CLI and
 a handover system, so the work follows a worktree-isolated, PR-gated,
-Jira-tracked workflow without anyone having to remember the rules. On top of
-that it runs as a software factory: a fleet of sessions that turns tickets
-into reviewed, merged PRs.
+Jira-tracked workflow without anyone having to remember the rules. Its fleet
+of sessions is the software factory: tickets go in, reviewed and merged PRs
+come out, and each merge still waits for a GO.
 
 Runs on Claude Code today; under Codex the guardrails fire through the hook
 adapter and AGENTS.md; other harnesses are audited, not ported.
@@ -164,7 +164,7 @@ from [`llms.txt`](llms.txt), the machine-readable map of the repo.
 
 ## Quickstart
 
-himmel is a harness *for* [Claude Code](https://claude.com/claude-code), so
+himmel runs on top of [Claude Code](https://claude.com/claude-code), so
 install Claude Code first:
 `curl -fsSL https://claude.ai/install.sh | bash`.
 

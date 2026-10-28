@@ -13,8 +13,7 @@
 # rather than whichever tokens the real lib happens to carry today. Its absence
 # is a case too: that is the public clone, where tracked-ness is the whole test.
 #
-# Platform guard (gitbash-only): pure POSIX bash 3.2+ plus git/mktemp, so it
-# runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/mktemp.
 #
 # Usage: bash scripts/docs/test-check-llms-links.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).

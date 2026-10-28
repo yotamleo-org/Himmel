@@ -534,7 +534,7 @@ docs/internals/lane-parity.md	| glm-spawn (dormant) | `tested:scripts/hooks/test
 docs/internals/lane-parity.md	| glm-launcher (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 docs/internals/lane-parity.md	| glm-spawn (dormant) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-docs/internals/lane-parity.md	| glm-launcher (dormant) | `tested:scripts/hooks/test-claude-glm-seed-check.sh` (seeded `~/.claude-glm`, drift-checked) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+docs/internals/lane-parity.md	| glm-launcher (dormant) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 docs/internals/lane-parity.md	Notes on the guardrail-firing cells. GLM IS Claude Code, so on the two CC GLM
 docs/internals/lane-parity.md	`test-block-glm-external-writes.sh`, which covers the lane-specific write-fence

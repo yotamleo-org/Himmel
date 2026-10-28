@@ -39,8 +39,8 @@
 #                 the other two pages exist, are linked, and the questions page
 #                 defines the ten newcomer terms.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq/perl/python3
-# and node, so it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): POSIX bash 3.2+ plus grep/sed/jq/perl/python3
+# and node.
 #
 # Usage: bash scripts/docs/test-adoption-trail.sh [--registry <cadence-registry.json>]
 #        (--registry checks the data file against another registry, such as an

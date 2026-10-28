@@ -60,7 +60,7 @@ async function fieldIndex(req: Req): Promise<Map<string, string[]>> {
 
 function pick(byName: Map<string, string[]>, name: string): string {
   const ids = byName.get(name) ?? [];
-  if (ids.length === 0) throw new Error(`roadmap: Jira field "${name}" not found (HIMMEL-3890 apply step 2)`);
+  if (ids.length === 0) throw new Error(`roadmap: Jira field "${name}" not found`);
   if (ids.length > 1) throw new Error(`roadmap: Jira field name "${name}" is ambiguous (${ids.join(', ')})`);
   return ids[0];
 }
@@ -73,7 +73,7 @@ export async function resolveRoadmapFields(req: Req = request): Promise<RoadmapI
 function idsFrom(byName: Map<string, string[]>): RoadmapIds {
   const missing = Object.values(ROADMAP_FIELD_NAMES).filter((n) => !byName.has(n));
   if (missing.length) {
-    throw new Error(`roadmap: Jira fields not found: ${missing.join(', ')} (HIMMEL-3890 apply step 2)`);
+    throw new Error(`roadmap: Jira fields not found: ${missing.join(', ')}`);
   }
   const ids = {} as RoadmapIds;
   for (const [k, name] of Object.entries(ROADMAP_FIELD_NAMES)) ids[k as RoadmapKey] = pick(byName, name);
@@ -360,7 +360,7 @@ export async function syncSprints(
 }
 
 export function registerRoadmap(program: Command): void {
-  const roadmap = program.command('roadmap').description('Roadmap fields, ranking inputs, export and sprint sync (HIMMEL-3890)');
+  const roadmap = program.command('roadmap').description('Roadmap fields, ranking inputs, export and sprint sync');
 
   roadmap
     .command('fields')

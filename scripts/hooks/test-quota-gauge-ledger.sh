@@ -27,7 +27,7 @@ export HIMMEL_QUOTA_GAUGE_LEDGER="$LEDGER"
 # shellcheck disable=SC1091
 . "$LIB"
 
-quota_gauge_append "$(quota_gauge_row glm monitor-endpoint 62 5h 2026-07-04T14:00:00Z "live reading")"
+quota_gauge_append "$(quota_gauge_row codex codex-sqlite 62 5h 2026-07-04T14:00:00Z "live reading")"
 quota_gauge_append "$(quota_gauge_row claude arm-threshold 93 5h "" "cap approached")"
 
 if [ -f "$LEDGER" ]; then ok "ledger created at HIMMEL_QUOTA_GAUGE_LEDGER"; else bad "ledger missing"; fi
@@ -55,6 +55,12 @@ assert_eq "resolver honors HIMMEL_QUOTA_GAUGE_LEDGER" "$LEDGER" "$(quota_gauge_l
 emit=$(bash "$LIB" --emit claude arm-threshold 93 5h 2026-07-04T14:00:00Z "cap approached" 2026-07-04T12:00:00Z)
 expect='{"v":1,"ts":"2026-07-04T12:00:00Z","lane":"claude","source":"arm-threshold","used_pct":93,"window":"5h","reset_at":"2026-07-04T14:00:00Z","tier":null,"glm_peak":null,"note":"cap approached"}'
 assert_eq "--emit canonical line (byte-identical)" "$expect" "$emit"
+
+# Even a stale caller cannot revive the retired peak flag in a v1 row.
+serialized=$(bun -e 'const { serializeQuotaGauge } = await import(process.argv[1]);
+const row = { v: 1, ts: "2026-07-04T12:00:00Z", lane: "codex", source: "test", used_pct: 12, window: "weekly", reset_at: null, tier: null, glm_peak: true, note: null };
+console.log(JSON.parse(serializeQuotaGauge(row)).glm_peak);' "${LIB%/lib/quota-gauge-ledger.sh}/telegram/quota-gauge.ts")
+assert_eq "retired peak column always serializes as null" "null" "$serialized"
 
 echo
 if [ "$fail" = 0 ]; then echo "PASS ($pass checks)"; exit 0; else echo "FAIL ($fail failed)"; exit 1; fi

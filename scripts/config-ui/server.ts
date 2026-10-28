@@ -9,7 +9,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
-import { scrubProviderKeys } from "../fleet-control/server";
+import { scrubProviderKeys } from "./scrub-provider-keys";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
 import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";

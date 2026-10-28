@@ -210,7 +210,7 @@ export const reviewGateDraft = (d) => [
   ...d.reviewers.map((r) => ({ slug: r.slug, mode: r.mode, required: r.required, enabled: true, ...(r.hasModel ? { model: r.model } : {}), ...(r.hasEffort ? { effort: r.effort } : {}) })),
   ...(d.dropped || []).map((slug) => ({ slug, mode: (d.droppedBase?.[slug]?.mode) || "best-effort", required: d.droppedBase?.[slug]?.required === true, enabled: false })),
 ];
-const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note" };
+const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note", advisory: "critic findings are notes until precision reaches the floor; review threads still hold" };
 export function renderReviewGate(rg) {
   const head = `<h2 id="h-review-gate">Review gate</h2><p class="sub">Who reviews a pull request before it merges, in what order, and what happens when one of them cannot.</p>`;
   if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div></section>`;
@@ -220,7 +220,7 @@ export function renderReviewGate(rg) {
   const rows = draft.map((x) => {
     const r = by[x.slug], rec = r ? r.recommended : null;
     const isRec = rec && rec.mode === x.mode && rec.required === x.required && rec.enabled === x.enabled;
-    const modes = ["hard", "best-effort"].map((m) => `<option value="${m}"${x.mode === m ? " selected" : ""}>${m}</option>`).join("");
+    const modes = ["hard", "best-effort", "advisory"].map((m) => `<option value="${m}"${x.mode === m ? " selected" : ""}>${m}</option>`).join("");
     const model = r && r.hasModel && x.enabled ? `<label>model <input type="text" data-rg="model" data-slug="${esc(x.slug)}" value="${esc(x.model ?? "")}" aria-label="${esc(x.slug)} model"></label>` : "";
     const effort = r && r.hasEffort && x.enabled
       ? `<label>effort <select data-rg="effort" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} effort">${["", ...(d.efforts || [])].map((e) => `<option value="${esc(e)}"${(x.effort ?? "") === e ? " selected" : ""}>${e || "default"}</option>`).join("")}</select></label>`

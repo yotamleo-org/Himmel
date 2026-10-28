@@ -2,8 +2,7 @@
 # scripts/lanes/bench/scorecard/ready-go-latency.sh - READY->GO latency and
 # missed-READY measurement (spec S3.5 item 5).
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ / BSD-or-GNU date;
-# it runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ / BSD-or-GNU date.
 #
 # Reads a chief (or relay) doc for `- HH:MM READY <pr> <sha7>` and
 # `- HH:MM HOLD <pr> ...` bullets and pairs each READY with its GO file

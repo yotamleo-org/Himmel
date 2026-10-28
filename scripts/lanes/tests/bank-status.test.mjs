@@ -63,11 +63,11 @@ test('bank detail formatting makes measured and unmeasurable states explicit', (
   assert.equal(formatUnmeasurable('file missing'), 'unmeasurable reason="file missing"');
   const statuses = parseBankStatusOutput([
     'claudex funded measured weekly used=14% free=86%',
-    'glm unknown unmeasurable reason="missing weekly window"',
+    'sonnet unknown unmeasurable reason="missing weekly window"',
     'codex-exec unknown unmeasurable reason="I/O timeout"',
   ].join('\n'));
   assert.equal(formatBankAnnotation(statuses.get('claudex')), '[bank: weekly 14% used / 86% free]');
-  assert.equal(formatBankAnnotation(statuses.get('glm')), '[bank: unmeasurable — missing weekly window]');
+  assert.equal(formatBankAnnotation(statuses.get('sonnet')), '[bank: unmeasurable — missing weekly window]');
   assert.equal(formatBankAnnotation(statuses.get('codex-exec')), '[bank: unmeasurable — I/O timeout]');
 });
 
@@ -95,7 +95,7 @@ test('bank annotation keeps "free" attached to its window across MULTI-reading d
   );
 });
 
-test('bank-status CLI reports GLM 5h and Codex weekly headroom', { skip: BUN_SKIP }, () => {
+test('bank-status CLI ignores retired GLM bank and reports Codex weekly headroom', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-');
   const registry = fixtureRegistry(dir);
   const cache = codexCacheFile(dir, 14);
@@ -110,7 +110,7 @@ test('bank-status CLI reports GLM 5h and Codex weekly headroom', { skip: BUN_SKI
       CODEX_BANK_CACHE: cache,
     },
   });
-  assert.match(out, /^glm funded measured 5h used=2% free=98%$/m);
+  assert.doesNotMatch(out, /^glm /m);
   assert.match(out, new RegExp(`^claudex funded measured weekly used=14% free=86% resets=${CODEX_RESETS_ISO}$`, 'm'));
 });
 
@@ -124,10 +124,7 @@ test('bank-status CLI names an unreadable Codex bank instead of silently reporti
   assert.match(out, /^claudex unknown unmeasurable reason="codex bank cache missing — run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });
 
-// A canonical quota-gauge ledger row for the GLM lane. `resetAt` is an ISO
-// instant: in the future for a LIVE window, in the past for an expired one.
-// readGlmBank gates every reading on that reset_at being parseable AND still
-// in the future — these tests pin the guard that the first rewrite deleted.
+// A historical GLM ledger row must not revive the retired routing bank.
 function glmLedgerLine({ usedPct, resetAt }) {
   return JSON.stringify({
     v: 1,
@@ -142,53 +139,6 @@ function glmLedgerLine({ usedPct, resetAt }) {
     note: null,
   });
 }
-
-test('bank-status CLI reports an exhausted GLM lane as spent, not funded', { skip: BUN_SKIP }, () => {
-  // Regression: when the GLM read was deleted, an exhausted GLM
-  // A LIVE required-window reading at/over the threshold must be spent.
-  const dir = makeTmpDir('lane-bank-glm-spent-');
-  const registry = fixtureRegistry(dir);
-  const ledger = join(dir, 'quota-gauge.jsonl');
-  writeFileSync(ledger, glmLedgerLine({ usedPct: 80, resetAt: new Date(Date.now() + 3600_000).toISOString() }) + '\n');
-  const out = execFileSync('bun', [BANK_STATUS], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      LANES_REGISTRY: registry,
-      HIMMEL_QUOTA_GAUGE_LEDGER: ledger,
-      LANE_FUNDED_MAX_PCT: '50',
-      CODEX_BANK_CACHE: join(dir, 'missing.json'),
-    },
-  });
-  assert.match(out, /^glm spent measured 5h used=80% free=20%$/m);
-  assert.doesNotMatch(out, /^glm funded /m);
-});
-
-test('bank-status CLI reports an expired GLM resets_at window as flat-rate, not a bug-shaped unknown', { skip: BUN_SKIP }, () => {
-  // The resets_at live-window validation still drops a row whose window reset
-  // (its used_pct no longer describes the current cycle — a high-but-expired
-  // reading must NOT report spent). But with no live window the lane is NOT
-  // "unmeasurable" either: the z.ai plan is flat-rate, so the
-  // honest state is not-applicable — `unknown` read like a defect while the
-  // lane is always-available.
-  const dir = makeTmpDir('lane-bank-glm-expired-');
-  const registry = fixtureRegistry(dir);
-  const ledger = join(dir, 'quota-gauge.jsonl');
-  writeFileSync(ledger, glmLedgerLine({ usedPct: 80, resetAt: new Date(Date.now() - 3600_000).toISOString() }) + '\n');
-  const out = execFileSync('bun', [BANK_STATUS], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      LANES_REGISTRY: registry,
-      HIMMEL_QUOTA_GAUGE_LEDGER: ledger,
-      LANE_FUNDED_MAX_PCT: '50',
-      CODEX_BANK_CACHE: join(dir, 'missing.json'),
-    },
-  });
-  assert.match(out, /^glm funded flat-rate$/m);
-  assert.doesNotMatch(out, /^glm (spent|unknown) /m);
-  assert.doesNotMatch(out, /^glm funded measured /m);
-});
 
 test('/lanes output surfaces limit structure, binding windows, and measured bank data', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-output-');
@@ -205,7 +155,7 @@ test('/lanes output surfaces limit structure, binding windows, and measured bank
       CODEX_BANK_CACHE: cache,
     },
   });
-  assert.match(out, /GLM .*\[access: subscription; windows: 5h; binds: 5h\].*\[bank: 5h 2% used \/ 98% free\]/);
+  assert.doesNotMatch(out, /GLM .*\[bank: 5h 2% used/);
   assert.match(out, new RegExp(`claudex .*\\[access: subscription; windows: weekly; binds: weekly\\].*\\[bank: weekly 14% used / 86% free resets=${CODEX_RESETS_ISO}\\]`));
 });
 
@@ -218,13 +168,13 @@ test('bank probe surfaces an overlay-only quota bank instead of "no status retur
   // layer the lanes.local.json overlay so an overlay-only quota bank reaches
   // the probe instead of being silently dropped.
   const base = { lanes: [
-    { id: 'glm', quota: { bank: 'glm' } },
+    { id: 'sonnet', quota: { bank: 'claude' } },
     { id: 'plain', quota: {} },
   ] };
   const local = { lanes: [
     { id: 'himmel1690-overlay-only', quota: { bank: 'codex' } },
   ] };
-  const bankIds = ['claude', 'codex', 'glm'];
+  const bankIds = ['claude', 'codex'];
 
   // WITH the overlay: the overlay-only quota bank reaches the probe.
   const merged = resolveBankTargets(base, local, bankIds);
@@ -232,7 +182,7 @@ test('bank probe surfaces an overlay-only quota bank instead of "no status retur
     merged.withBank.some((t) => t.lane === 'himmel1690-overlay-only' && t.bank === 'codex'),
     'overlay-only quota bank is probed (real status, not "no status returned")',
   );
-  assert.ok(merged.withBank.some((t) => t.lane === 'glm'), 'base bank lane retained');
+  assert.ok(merged.withBank.some((t) => t.lane === 'sonnet'), 'base bank lane retained');
   assert.ok(merged.without.includes('plain'), 'non-bank lane listed in without');
 
   // WITHOUT the overlay (the latent default on a box that has no
@@ -311,7 +261,7 @@ test('guardState: empty window lists split by path kind — metered funded, ever
     activeAccessPath: 1,
   });
   assert.equal(metered.ok, true);
-  assert.equal(guardState({ kind: 'unmeasurable', reason: 'no live glm row' }, metered, 99), 'funded');
+  assert.equal(guardState({ kind: 'unmeasurable', reason: 'no live usage window' }, metered, 99), 'funded');
   assert.equal(guardState({ kind: 'measured', readings: [{ window: '5h', usedPct: 100 }] }, metered, 99), 'funded');
 
   // Side B: a SUBSCRIPTION path declaring no windows is a registry defect —
@@ -330,24 +280,6 @@ test('guardState: empty window lists split by path kind — metered funded, ever
     activeAccessPath: 7,
   });
   assert.equal(guardState({ kind: 'measured', readings: [{ window: '5h', usedPct: 1 }] }, broken, 99), 'unknown');
-});
-
-test('guardState: a flat-rate bank read is funded by construction, not a bug-shaped unknown (HIMMEL-1678)', () => {
-  // The z.ai GLM plan is flat-rate (operator ruling — see readGlmDisplay), so
-  // a bank read with NO metered window is a positive not-applicable, never
-  // missing evidence. `unknown` here read like a defect while the lane is in
-  // fact always-available. This is NOT the round-2 fail-open: that one flipped
-  // a measured, EXHAUSTED bank to funded; a flat-rate read carries no metered
-  // reading to ignore.
-  const sub = resolveActiveAccessPath({ accessPaths: [{ kind: 'subscription', windows: ['5h'] }], activeAccessPath: 0 });
-  assert.equal(guardState({ kind: 'flat-rate' }, sub, 50), 'funded');
-  // An unresolved path is still a registry error, flat-rate bank or not.
-  const broken = resolveActiveAccessPath({ accessPaths: [{ kind: 'subscription', windows: ['5h'] }], activeAccessPath: 9 });
-  assert.equal(guardState({ kind: 'flat-rate' }, broken, 99), 'unknown');
-  // The explicit n/a state renders end to end (formatBankAnnotation's
-  // flat-rate branch finally has a producer).
-  const statuses = parseBankStatusOutput('glm funded flat-rate');
-  assert.equal(formatBankAnnotation(statuses.get('glm')), '[bank: flat-rate / n/a]');
 });
 
 test('formatQuotaAnnotation lists every path except the ACTIVE one, not paths.slice(1)', () => {
@@ -377,41 +309,35 @@ function writeRegistry(dir, lanes) {
 test('bank-status CLI: a subscription path declaring no windows is unknown, not fail-open funded', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-emptywin-');
   const registry = writeRegistry(dir, [
-    { id: 'nosub', quota: { bank: 'glm', accessPaths: [{ kind: 'subscription', windows: [] }], activeAccessPath: 0 } },
+    { id: 'nosub', quota: { bank: 'codex', accessPaths: [{ kind: 'subscription', windows: [] }], activeAccessPath: 0 } },
   ]);
-  const ledger = join(dir, 'quota-gauge.jsonl');
-  writeFileSync(ledger, glmLedgerLine({ usedPct: 80, resetAt: new Date(Date.now() + 3600_000).toISOString() }) + '\n');
   const out = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
     env: {
       ...process.env,
       LANES_REGISTRY: registry,
-      HIMMEL_QUOTA_GAUGE_LEDGER: ledger,
       LANE_FUNDED_MAX_PCT: '50',
-      CODEX_BANK_CACHE: join(dir, 'missing.json'),
+      CODEX_BANK_CACHE: codexCacheFile(dir, 80),
     },
   });
-  assert.match(out, /^nosub unknown measured 5h used=80% free=20%$/m);
+  assert.match(out, new RegExp(`^nosub unknown measured weekly used=80% free=20% resets=${CODEX_RESETS_ISO}$`, 'm'));
   assert.doesNotMatch(out, /^nosub funded /m);
 });
 
-test('bank-status CLI: an active metered-api-key path stays funded even when the subscription ledger is dead', { skip: BUN_SKIP }, () => {
+test('bank-status CLI: an active metered-api-key path stays funded even when the subscription cache is missing', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-metered-');
   const registry = writeRegistry(dir, [
-    { id: 'payg', quota: { bank: 'glm', accessPaths: [{ kind: 'subscription', windows: ['5h'] }, { kind: 'metered-api-key', provider: 'z.ai', windows: [] }], activeAccessPath: 1 } },
+    { id: 'payg', quota: { bank: 'codex', accessPaths: [{ kind: 'subscription', windows: ['weekly'] }, { kind: 'metered-api-key', provider: 'openai', windows: [] }], activeAccessPath: 1 } },
   ]);
   const out = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
     env: {
       ...process.env,
       LANES_REGISTRY: registry,
-      HIMMEL_QUOTA_GAUGE_LEDGER: join(dir, 'absent.jsonl'),
       CODEX_BANK_CACHE: join(dir, 'missing.json'),
     },
   });
-  // The glm bank read with a dead ledger is flat-rate; the
-  // metered path stays funded by construction either way.
-  assert.match(out, /^payg funded flat-rate$/m);
+  assert.match(out, /^payg funded unmeasurable reason="codex bank cache missing/);
 });
 
 test('bank-status CLI: out-of-range activeAccessPath reports unknown with a stderr diagnostic', { skip: BUN_SKIP }, () => {
@@ -430,30 +356,23 @@ test('bank-status CLI: out-of-range activeAccessPath reports unknown with a stde
 
 test('bank-status CLI: a lane with no accessPaths at all is unknown, whatever the bank read', { skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('lane-bank-nopath-');
-  const registry = writeRegistry(dir, [{ id: 'nopath', quota: { bank: 'glm' } }]);
-  const ledger = join(dir, 'quota-gauge.jsonl');
-  writeFileSync(ledger, glmLedgerLine({ usedPct: 2, resetAt: new Date(Date.now() + 3600_000).toISOString() }) + '\n');
+  const registry = writeRegistry(dir, [{ id: 'nopath', quota: { bank: 'codex' } }]);
   const run = spawnSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
     env: {
       ...process.env,
       LANES_REGISTRY: registry,
-      HIMMEL_QUOTA_GAUGE_LEDGER: ledger,
-      CODEX_BANK_CACHE: join(dir, 'missing.json'),
+      CODEX_BANK_CACHE: codexCacheFile(dir, 2),
     },
   });
   assert.equal(run.status, 0);
-  assert.match(run.stdout, /^nopath unknown measured 5h used=2% free=98%$/m);
+  assert.match(run.stdout, new RegExp(`^nopath unknown measured weekly used=2% free=98% resets=${CODEX_RESETS_ISO}$`, 'm'));
   assert.match(run.stderr, /lane 'nopath': no access path declared/);
 });
 
 test('the SHIPPED lanes.json stays guardable end-to-end against the reader contract (round-1 lesson)', { skip: BUN_SKIP }, () => {
-  // A registry declaring glm windows ["5h","weekly"] while readGlmBank emits
-  // exactly one reading leaves glm permanently unknown, and the suite stays
-  // green if every test reads a hand-written fixture that ALSO declares
-  // ["5h"]. This test reads the SHIPPED registry and feeds each bank a
-  // fixture its reader really emits; any declared window no reader emits, or
-  // an out-of-range activeAccessPath, flips a lane to unknown and fails here.
+  // Read the shipped registry, not a fixture that could repeat a window-label
+  // mismatch. Every declared window needs evidence from its actual reader.
   const dir = makeTmpDir('lane-bank-shipped-');
   const ledger = join(dir, 'quota-gauge.jsonl');
   const cache = join(dir, 'statusline-cache.json');

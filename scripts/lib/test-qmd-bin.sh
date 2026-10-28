@@ -933,12 +933,33 @@ assert "register idempotent-skip returns 0" test "$(reg_rc /repo himmel)" -eq 0
 assert "register idempotent-skip did NOT call add" test ! -s "$add_log"
 # warn on list failure -> rc nonzero, add NOT called.
 STUB_LIST="x"; STUB_LIST_FAIL=1; : > "$add_log"
-assert "register warn-on-list-fail returns nonzero" test "$(reg_rc /repo himmel)" -ne 0
+assert "register warn-on-list-fail returns the list rc" test "$(reg_rc /repo himmel)" -eq 2
 assert "register warn-on-list-fail did NOT call add" test ! -s "$add_log"
 # idempotency must not false-match a prefix-only name (luna vs lunabot).
 STUB_LIST="lunabot"; STUB_LIST_FAIL=""; : > "$add_log"
 assert "register no prefix false-match (luna vs lunabot)" test "$(reg_rc /vault luna)" -eq 0
 assert "register luna added despite lunabot in list" grep -q 'collection add' "$add_log"
+# skills-backup must not satisfy a request for skills.
+STUB_LIST="skills-backup (qmd://skills-backup/)"; STUB_LIST_FAIL=""; : > "$add_log"
+assert "register skills despite skills-backup returns 0" test "$(reg_rc /skills skills)" -eq 0
+assert "register skills despite skills-backup adds exactly once" test "$(wc -l < "$add_log")" -eq 1
+assert "register skills despite skills-backup uses requested path and name" \
+  grep -qxF 'collection collection add /skills --name skills' "$add_log"
+STUB_LIST="skills (qmd://skills/)"; : > "$add_log"
+assert "register exact skills listing returns 0" test "$(reg_rc /skills skills)" -eq 0
+assert "register exact skills listing does NOT call add" test ! -s "$add_log"
+STUB_LIST="skills-v2 (qmd://skills-v2/)"; : > "$add_log"
+assert "register collection name is literal, not a regex" test "$(reg_rc /skills skills.v2)" -eq 0
+assert "register literal skills.v2 despite skills-v2 in list" \
+  grep -qxF 'collection collection add /skills --name skills.v2' "$add_log"
+STUB_LIST="001 (qmd://001/)"; : > "$add_log"
+assert "register numeric-looking name despite zero-padded name returns 0" test "$(reg_rc /numeric 1)" -eq 0
+assert "register numeric-looking name despite zero-padded name adds exactly once" test "$(wc -l < "$add_log")" -eq 1
+assert "register numeric-looking name uses requested path and name" \
+  grep -qxF 'collection collection add /numeric --name 1' "$add_log"
+STUB_LIST="1 (qmd://1/)"; : > "$add_log"
+assert "register exact numeric-looking name returns 0" test "$(reg_rc /numeric 1)" -eq 0
+assert "register exact numeric-looking name does NOT call add" test ! -s "$add_log"
 # add-FAILURE: list ok, add exits nonzero -> WARN + honest rc passthrough.
 STUB_LIST=""; STUB_LIST_FAIL=""; STUB_ADD_RC=3; : > "$add_log"
 assert "register add-failure returns the add rc" test "$(reg_rc /repo himmel)" -eq 3

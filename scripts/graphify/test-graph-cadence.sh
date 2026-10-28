@@ -1326,6 +1326,23 @@ rc=0; out=$(FAKE_SEM_OUT="semantic-update: BATCH id=msgbatch_01Abc state=submitt
 batch_row=$(tail -n1 "$TMP_ROOT/t9-$tag-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)
 assert_eq "a submitted batch keeps the run rc=0" "0" "$rc"
 assert_contains "a submitted batch is ledgered with its id and state" '"batch_id":"msgbatch_01Abc","batch_state":"submitted","batch_requests":14,"batch_cost_usd":null' "$batch_row"
+# (c5) the default sender finds bun under cron's minimal PATH: a runner whose PATH lacks ~/.bun/bin must still deliver.
+H5="$TMP_ROOT/t9-bunpath-home"; mkdir -p "$H5/.bun/bin" "$H5/.claude/channels/telegram"
+printf '{"allowFrom":["4242"]}\n' > "$H5/.claude/channels/telegram/access.json"
+cat > "$H5/.bun/bin/bun" <<'STUBBUN'
+#!/bin/sh
+echo "$*" >> "$HOME/bun-called"
+STUBBUN
+chmod 755 "$H5/.bun/bin/bun"
+# jq is the sender's own dependency: expose it through a fixture dir so the initial PATH still lacks ~/.bun/bin wherever jq lives.
+mkdir -p "$H5/fixbin"; ln -sf "$(command -v jq)" "$H5/fixbin/jq"
+env -i HOME="$H5" PATH="$H5/fixbin:/usr/bin:/bin" /usr/bin/bash "$SCRIPT_DIR/../luna/cadence-alert.sh" fail graph-bunpath "the semantic update failed" "/dev/null" >/dev/null 2>&1
+assert_contains "the default alert sender reaches bun from ~/.bun/bin under a minimal PATH" "reply 4242" "$(cat "$H5/bun-called" 2>/dev/null)"
+if [ -e "$H5/.himmel/state/cadence-alert-send-failed" ]; then fail "a delivered alert leaves no send-failed marker"; else pass "a delivered alert leaves no send-failed marker"; fi
+# (c6) an unset HOME must not stop the alert from logging: the bun lookup is skipped, not fatal.
+H6="$TMP_ROOT/t9-nohome"; mkdir -p "$H6"
+env -i PATH=/usr/bin:/bin CADENCE_ALERT_FILE="$H6/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$H6/sent" CADENCE_ALERT_SEND_FAILED_MARK="$H6/send-failed" CADENCE_ALERT_SEND_CMD=/bin/true /usr/bin/bash "$SCRIPT_DIR/../luna/cadence-alert.sh" fail graph-nohome "the semantic update failed" "/dev/null" >/dev/null 2>&1 || true
+assert_contains "an alert with HOME unset is still logged" "graph-nohome" "$(cat "$H6/alerts.log" 2>/dev/null)"
 # (c4) a run with no batch line carries null batch fields.
 assert_contains "a run without a batch ledgers null batch fields" '"batch_id":null,"batch_state":null,"batch_requests":null,"batch_cost_usd":null' "$(tail -n1 "$TMP_ROOT/t9-on-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)"
 # (d) a failing semantic step: alert + failed run.

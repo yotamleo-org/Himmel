@@ -1575,12 +1575,12 @@ state; a started card without an open PR is flagged, and so is a card with an op
 
 def main():
     global MIRROR, LUNA, HANDOVERS, ROOT, OUT, LUNA_MAP, VERSIONS
-    ap = argparse.ArgumentParser(description='Render the HIMMEL-3882 roadmap tracker page.')
+    ap = argparse.ArgumentParser(description='Render the roadmap tracker page.')
     ap.add_argument('--remaining', metavar='VERSION', default=None,
                     help='write the open tickets of one version grouped by the plan priority line (--priority-file) to '
                          '--out (else stdout), then exit; needs only --mirror-dir')
     ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining, --version)')
-    ap.add_argument('--version', default=None, help='write the FOCUS page of one version to --out, then exit (HIMMEL-6769); with '
+    ap.add_argument('--version', default=None, help='write the FOCUS page of one version to --out, then exit; with '
                                                      '--plan-dir it also writes <out>.fp, the value --emit-fp prints for tick')
     ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,headRefOid,isDraft,'
                                                      'statusCheckRollup` file (default: one live gh read)')
@@ -1590,7 +1590,7 @@ def main():
                                                         '([{name, note, steps: [{key, pr, label, state, owner}]}])')
     ap.add_argument('--repo', default=None, help='--version: the GitHub repo (owner/name) gh reads and the PR badges '
                                                   'link to (default: this checkout\'s origin)')
-    ap.add_argument('--plan-dir', help='the HIMMEL-3882 plan dir (holds stage1/ and stage3/)')
+    ap.add_argument('--plan-dir', help='the plan dir (holds stage1/ and stage3/)')
     ap.add_argument('--out', help='tracker.html to write (with --target-version, --out-done or --out-future: the focus page, '
                                   'the open tickets of the target version)')
     ap.add_argument('--out-done', default=None, help='split mode: the Done page (every Done ticket) to write')

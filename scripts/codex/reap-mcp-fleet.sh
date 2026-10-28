@@ -17,12 +17,9 @@
 #
 # Bash 3.2 safe. Sourcing this file (instead of executing it) defines the
 # pure functions below WITHOUT running production code - the hermetic test
-# seam (mirrors reap-mcp-fleet.ps1's -AsLibrary and shared-branch-lock.sh's
-# own sourcing guard).
+# seam (mirrors shared-branch-lock.sh's own sourcing guard).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PS1="$SCRIPT_DIR/reap-mcp-fleet.ps1"
 JOBS_DIR="${CODEX_JOBS_DIR:-$HOME/.himmel/state/codex-exec-jobs}"
 
 _reap_platform() {
@@ -91,8 +88,7 @@ _reap_ps_table() {
     ps -eo pid,ppid 2>/dev/null | awk '$1+0==$1 && $2+0==$2 {print $1, $2, "-"}'
 }
 
-# _reap_registry_scan - non-Windows twin of the .ps1's registry-driven
-# maintenance block. Reads
+# _reap_registry_scan - registry-driven maintenance. Reads
 # $JOBS_DIR/*.json (node -e, mirroring companion-liveness.sh's own JSON-
 # parsing convention) and, for each entry whose codex_pid is dead, reports
 # (default) / reaps (--kill) its descendants, dropping the entry under
@@ -167,20 +163,8 @@ _reap_main() {
     done
 
     if [ "$_platform" = "windows" ]; then
-        _pwsh_bin=""
-        for c in pwsh pwsh.exe powershell.exe; do
-            if command -v "$c" >/dev/null 2>&1; then _pwsh_bin="$c"; break; fi
-        done
-        if [ -z "$_pwsh_bin" ]; then
-            echo "ERR: pwsh not found on PATH - run scripts/codex/reap-mcp-fleet.ps1 directly." >&2
-            return 1
-        fi
-        _ps_args=()
-        [ -n "$_root_pid" ] && _ps_args+=("-RootPid" "$_root_pid")
-        [ -n "$_started_at" ] && _ps_args+=("-StartedAt" "$_started_at")
-        [ "$_kill" -eq 1 ] && _ps_args+=("-Kill")
-        "$_pwsh_bin" -NoProfile -ExecutionPolicy Bypass -File "$PS1" ${_ps_args[@]+"${_ps_args[@]}"}
-        return $?
+        echo "ERR: Windows is not supported; run reap-mcp-fleet.sh on Linux or macOS." >&2
+        return 2
     fi
 
     # --- non-Windows: real descendant-reap + registry scan (no app-server

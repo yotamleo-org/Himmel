@@ -9,8 +9,8 @@
 #   stdout: the effective config as one JSON line:
 #             {"review":"no_code_review"|null,"panel":[row,...],
 #              "files":{"base":<path>,"local":<path>|null}}
-#           every row carries `mode` (hard | best-effort) and `required`
-#           (boolean), defaults filled in.
+#           every row carries effective `mode` (hard | best-effort | advisory),
+#           pre-promotion `configured_mode`, and `required` (boolean), defaults filled in.
 #   rc 0 = resolved; rc 2 = config error, `<file>: <why>` on stderr;
 #   rc 3 = cannot evaluate (no node found), reason on stderr.
 #
@@ -39,8 +39,11 @@
 #
 # Defaults: mode = best-effort for a provider "github-app" row, else hard;
 # required = false. Config errors (rc 2): a file that does not parse, a mode
-# other than hard / best-effort, a non-boolean required, a review value other
-# than "no_code_review". Each names the file that set the bad value.
+# other than hard / best-effort / advisory, a non-boolean required, a review value
+# other than "no_code_review", or precision/floor outside the numeric range 0..1.
+# Advisory rows become hard when their precision reaches advisory_precision_floor
+# (default 0.60). coderabbit_outside_precision applies only to body findings;
+# absent precision preserves their blocking policy. Each error names its file.
 #
 # Sourceable: functions only, `return` never `exit`. bash 3.2-safe.
 
@@ -146,11 +149,27 @@ for (const r of lp) {
     else { idx.set(r.slug, out.length); out.push(Object.assign({}, r)); }
     note(r.slug, r, e.CCFG_LOCAL);
 }
+const fraction = (v, p, key) => {
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1)
+        fail(p, key + " must be a number from 0 to 1");
+    return v;
+};
+const topPrecision = (key, fallback) => {
+    const src = local && Object.prototype.hasOwnProperty.call(local, key) ? local : base;
+    if (!Object.prototype.hasOwnProperty.call(src, key)) return fallback;
+    return fraction(src[key], src === local ? e.CCFG_LOCAL : e.CCFG_BASE, key);
+};
+const advisory_precision_floor = topPrecision("advisory_precision_floor", 0.60);
+const coderabbit_outside_precision = topPrecision("coderabbit_outside_precision", undefined);
 const panel = out.filter(Boolean).map((r) => {
     const from = (k) => (setBy.get(r.slug) || {})[k] || e.CCFG_BASE;
     if (r.mode === undefined) r.mode = r.provider === "github-app" ? "best-effort" : "hard";
-    else if (r.mode !== "hard" && r.mode !== "best-effort")
-        fail(from("mode"), "row " + r.slug + " has mode " + JSON.stringify(r.mode) + " (want hard or best-effort)");
+    else if (r.mode !== "hard" && r.mode !== "best-effort" && r.mode !== "advisory")
+        fail(from("mode"), "row " + r.slug + " has mode " + JSON.stringify(r.mode) + " (want hard, best-effort or advisory)");
+    r.configured_mode = r.mode;
+    if (r.precision !== undefined) fraction(r.precision, from("precision"), "row " + r.slug + " precision");
+    if (r.mode === "advisory" && r.precision !== undefined && r.precision >= advisory_precision_floor)
+        r.mode = "hard";
     if (r.required === undefined) r.required = false;
     else if (typeof r.required !== "boolean")
         fail(from("required"), "row " + r.slug + " has required " + JSON.stringify(r.required) + " (want true or false)");
@@ -162,7 +181,7 @@ else if (Object.prototype.hasOwnProperty.call(base, "review")) review = base.rev
 if (review !== null && review !== "no_code_review")
     fail(reviewFile, "review is " + JSON.stringify(review) + " (the only value is \"no_code_review\")");
 if (e.CCFG_PROFILE === "none") review = "no_code_review";
-process.stdout.write(JSON.stringify({ review, panel,
+process.stdout.write(JSON.stringify({ review, panel, advisory_precision_floor, coderabbit_outside_precision,
     files: { base: e.CCFG_BASE, local: e.CCFG_LOCAL || null } }) + "\n");
 '
 }

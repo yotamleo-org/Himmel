@@ -10,14 +10,14 @@
 # Top-level consumers
 #          treat any non-2 rc as allow.
 # Who must pass is configuration (docs/configuration.md): every critics.json
-#   row is `mode` hard (must pass at the head) or best-effort (only a posted,
-#   open finding holds). cr_reviewer_gate below is that predicate, shared
-#   with the release check; this gate reads its HOLD as a block, then adds
-#   CodeRabbit's outside-diff body findings. As shipped (codex + claude hard,
-#   CodeRabbit best-effort), CodeRabbit's commit-status state (pending/absent/
-#   rate_limited/skipped/etc.) prints an advisory NOTE and never blocks on its
-#   own; an unresolved coderabbitai review thread, or an outside-diff body
-#   finding with no ledger disposition at this exact head, does.
+#   row is `mode` hard (must pass at the head), best-effort (open findings hold),
+#   or advisory (critic findings print a NOTE below advisory_precision_floor).
+#   cr_reviewer_gate shares that predicate with the release check; this gate
+#   reads its HOLD as a block, then adds CodeRabbit's outside-diff body findings.
+#   As shipped (codex hard, claude advisory, CodeRabbit best-effort), CodeRabbit's
+#   commit-status state prints a NOTE and never blocks on its own. Unresolved
+#   review threads always hold; outside-diff findings need a disposition unless
+#   coderabbit_outside_precision is below the floor. Unparseable findings hold.
 #
 #   A clone without the CodeRabbit app has the coderabbit row absent: no
 #   CodeRabbit call is made (scripts/lib/coderabbit-available.sh).
@@ -116,6 +116,10 @@ _cmg_outside_block() {
         return 2
     fi
     if [ "$od_ok" -lt "$od_n" ]; then
+        if printf '%s' "$cfg" | jq -e '.coderabbit_outside_precision != null and (.coderabbit_outside_precision < .advisory_precision_floor)' >/dev/null 2>&1; then
+            echo "NOTE: coderabbit-outside (advisory) reports $((od_n - od_ok)) undispositioned outside-diff finding(s) on head $gate_head of PR #$num:$od_list — precision is below advisory_precision_floor, not gating." >&2
+            return 0
+        fi
         if [ "$gate_head" != "$head" ]; then
             prefix="head $head of PR #$num carries no CodeRabbit review (best effort, HIMMEL-3360: nothing waits or re-triggers); a prior review, at head $gate_head, "
         else
@@ -517,6 +521,8 @@ _crg_eval() {
             findings-open)
                 if [ "$prov" = github-app ]; then
                     hold="${hold}HOLD: $_CRG_CR_HOLD"$'\n'
+                elif [ "$mode" = advisory ]; then
+                    note="${note}NOTE: $slug (advisory) has open finding(s) at head $head of PR #$num: $detail — precision has not reached advisory_precision_floor; findings remain recorded in the CR ledger, not gating."$'\n'
                 else
                     hold="${hold}HOLD: $slug has open finding(s) at head $head of PR #$num: $detail — fix them, or record a disposition in the CR ledger (disproved, or deferred to a ticket with a reason)."$'\n'
                 fi ;;
@@ -562,7 +568,9 @@ _crg_eval() {
 #   a hard or required row; it holds). Absent and not-selected rows leave the set (a
 #   required row that is absent is unavailable instead). A hard row holds on
 #   anything but pass; a best-effort row holds only on findings-open and is
-#   otherwise relaxed(<state>). No hard row left in the set is a config error,
+#   otherwise relaxed(<state>). Advisory critic findings print a NOTE; the
+#   resolver promotes the row to hard at the precision floor. Review threads
+#   always hold, including for an advisory app. No hard row is a config error,
 #   unless the config says "review": "no_code_review" (or CR_PROFILE=none):
 #   then GO with a NOTE and no gh call.
 #   --release (the CI release check, cr-first-release.sh) changes exactly two
@@ -691,8 +699,8 @@ cr_merge_gate() {
 
     # 1+2) The reviewer set, through the predicate the release check shares
     # (cr_reviewer_gate): every hard reviewer must pass at this head, a
-    # posted open finding holds in either mode, a best-effort CodeRabbit
-    # state prints a NOTE. A HOLD blocks the merge. A degraded read (ledger,
+    # posted open finding holds unless its critic is advisory, a best-effort
+    # CodeRabbit state prints a NOTE. A HOLD blocks the merge. A degraded read (ledger,
     # status or thread query) is remembered and fails open only at the end,
     # when nothing blocked: a broken query is not evidence here (the release
     # check never fails open on it).
@@ -703,7 +711,11 @@ cr_merge_gate() {
         2) printf '%s\n' "$crg_out"; return 2 ;;
         3) crg_degraded=1 ;;
     esac
-    if [ -n "$crg_out" ]; then printf '%s\n' "$crg_out"; fi
+    if [ -n "$crg_out" ]; then
+        printf '%s\n' "$crg_out"
+        # Allow-path stdout is discarded by hook callers; keep advisory findings visible.
+        printf '%s\n' "$crg_out" | grep '^NOTE: .* (advisory)' >&2 || true
+    fi
 
     # 3) CodeRabbit review-BODY findings (S1 — see
     # coderabbit-body-findings.sh header): outside-diff-range comments carry NO
