@@ -34,7 +34,7 @@ render_session_note() {
     # reaction line ("I'll ignore the TaskCreate reminder…") but NOT a substantive
     # line that merely names one token (e.g. "TaskCreate was wired into the queue"
     # or "Reminder banner implemented"). Case-insensitive + trailing-whitespace-
-    # tolerant to stay in lockstep with the PowerShell twin (end-session-wiki.ps1).
+    # tolerant.
     # Crystallization (when claude is available) is the real quality path; this
     # only sharpens the mechanical fallback, and never drops content once a
     # substantive line begins.

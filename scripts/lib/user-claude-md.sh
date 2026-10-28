@@ -10,7 +10,7 @@
 #
 # One TARGET per call, by design: the function is agent-agnostic, so the
 # caller invokes it once per harness whose user-scope rule file it wants
-# populated -- adopt.sh/adopt.ps1's do_core() call it twice, once for Claude
+# populated -- adopt.sh's do_core() call it twice, once for Claude
 # Code's ~/.claude/CLAUDE.md and once for Codex's ~/.codex/AGENTS.md. Hermes
 # is not a target: its himmel_agent profile SOUL already states the same four.
 #

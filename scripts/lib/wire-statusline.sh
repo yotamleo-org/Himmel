@@ -389,8 +389,8 @@ wire_statusline() {
   # it promises to be. Every failure path above clears the staging file too.
   if [ -n "$hud_cfg" ]; then
     # A failed rename leaves the staged file behind — clear it, and the staged
-    # settings with it, so no failure path leaves either one staged (parity
-    # with the ps1 twin's finally; CodeRabbit, PR #772).
+    # settings with it, so no failure path leaves either one staged
+    # (CodeRabbit, PR #772).
     local hud_snap="" hud_rec=1
     if [ -f "$hud_cfg_path" ]; then hud_snap="$(_wire_statusline_hud_snapshot "$hud_cfg_path")" || hud_rec=0; fi
     mv "$hud_cfg_tmp" "$hud_cfg_path" \

@@ -39,7 +39,7 @@ _vault_jq() { # <file> <filter>
 
 # Validate an untrusted vault name (it travels in a tracked, cloned file).
 _vault_name_valid() { # <name>  -> 0 valid / 1 invalid
-  [ "${#1}" -le 64 ] || return 1     # length cap (mirrors the PS twin's {0,63})
+  [ "${#1}" -le 64 ] || return 1     # length cap
   case "$1" in
     '' | . | ..) return 1 ;;
     *..*) return 1 ;;                 # no ".." substring
@@ -58,7 +58,7 @@ resolve_vault_root() { # <config_json> <registry_json> [<dry_run>]
   # config the hook can't read as the expected object must not silently leak a
   # (possibly sensitive) repo's transcript into the default vault. `type` here
   # is true only for an object, so this also rejects jq's falsy null/false
-  # (which `jq -e .` would have mis-handled and which the PS twin parses cleanly).
+  # (which `jq -e .` would have mis-handled).
   if [ -r "$config" ] && ! _vault_debom "$config" | jq -e 'type == "object"' >/dev/null 2>&1; then
     printf ''
     return 0
@@ -80,7 +80,7 @@ resolve_vault_root() { # <config_json> <registry_json> [<dry_run>]
     # 2a. operator registry name -> path
     if [ -r "$registry" ]; then
       # String values only — an array/object value must not be flattened into a
-      # multi-line garbage path (mirrors the PS twin's `-is [string]` guard).
+      # multi-line garbage path.
       reg="$(_vault_debom "$registry" | jq -r --arg n "$cfg_vault" '(.vaults[$n]?) as $v | if ($v | type) == "string" then $v else "" end' 2>/dev/null)"
     else
       reg=""
