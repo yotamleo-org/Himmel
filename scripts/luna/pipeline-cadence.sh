@@ -1154,11 +1154,11 @@ cmd_arm() {
         echo "    existing runner files left untouched" >&2
         exit 4
     fi
-    mv -f "$tmp_fetch_health" "$CRON_RUNNER_FETCH_HEALTH"
-    mv -f "$tmp_harvest" "$CRON_RUNNER_HARVEST"
-    mv -f "$tmp_synth"  "$CRON_RUNNER_SYNTH"
-    mv -f "$tmp_health" "$CRON_RUNNER_HEALTH"
-    mv -f "$tmp_settings" "$SETTINGS_FRAGMENT"
+    mv -f "$tmp_fetch_health" "$CRON_RUNNER_FETCH_HEALTH"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds; atomic_write resets executable permissions.
+    mv -f "$tmp_harvest" "$CRON_RUNNER_HARVEST"  # prim-ok: preserve the staged executable mode at publication.
+    mv -f "$tmp_synth"  "$CRON_RUNNER_SYNTH"  # prim-ok: preserve the staged executable mode at publication.
+    mv -f "$tmp_health" "$CRON_RUNNER_HEALTH"  # prim-ok: preserve the staged executable mode at publication.
+    mv -f "$tmp_settings" "$SETTINGS_FRAGMENT"  # prim-ok: promote the prepared fragment with its runners only after cron succeeds, without another allocation.
     for _t in "$TASK_FETCH_HEALTH" "$TASK_HARVEST" "$TASK_SYNTH" "$TASK_HEALTH"; do
         cadence_prov_record "$_t"
     done

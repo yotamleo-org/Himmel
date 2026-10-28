@@ -1347,8 +1347,8 @@ cmd_arm() {
         [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && rm -f "$BAT_DIR/$LUNA_SEMANTIC_PAUSE_MARKER"
     fi
     if [ -n "$tmp_luna" ]; then
-        mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"
-        mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"
+        mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds; atomic_write resets executable permissions.
+        mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
         # weekly (604800s), not daily -- these are the semantic pair: a wrong cadence here would make future
         # cadence-based staleness tooling flag a healthy weekly job as
         # stalled every day it hasn't fired.
@@ -1357,8 +1357,8 @@ cmd_arm() {
         cadence_prov_record "$TASK_LUNA"
         cadence_prov_record "$TASK_HIMMEL"
     fi
-    mv -f "$tmp_ast_luna" "$CRON_RUNNER_AST_LUNA"
-    mv -f "$tmp_ast_himmel" "$CRON_RUNNER_AST_HIMMEL"
+    mv -f "$tmp_ast_luna" "$CRON_RUNNER_AST_LUNA"  # prim-ok: preserve the staged executable mode at publication.
+    mv -f "$tmp_ast_himmel" "$CRON_RUNNER_AST_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
     observability_register_cadence graphmap-ast-luna 86400 "$TASK_AST_LUNA"
     observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
     cadence_prov_record "$TASK_AST_LUNA"
@@ -1371,7 +1371,7 @@ cmd_arm() {
     # flow-run-ledger rows the runner actually emits (both sides DERIVE the name from
     # the same corpus-slug computation instead of a hardcoded literal).
     if [ "$WITH_PUBLISH" -eq 1 ]; then
-        mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"
+        mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
         observability_register_cadence "$PUBLISH_FLOW_NAME" $((PUBLISH_EVERY_HOURS * 3600)) "$TASK_PUBLISH_HIMMEL"
         cadence_prov_record "$TASK_PUBLISH_HIMMEL"
     fi

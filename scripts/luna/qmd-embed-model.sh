@@ -51,6 +51,8 @@ MIN_VRAM_MIB=4096
 MIN_RAM_KIB=4194304
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh"
 
 say()  { printf 'qmd-embed-model: %s\n' "$*"; }
 warn() { printf 'WARN qmd-embed-model: %s\n' "$*" >&2; }
@@ -132,6 +134,7 @@ write_yml_embed() {
         printf 'models:\n  embed: %s\n' "$uri" >"$tmp" || return 1
     fi
     jina_gate_ok "$tmp" "$db" || { rm -f "$tmp"; return 2; }
+    # prim-ok: after the index swap, publish the validated stage without atomic_write's second allocation.
     mv -f "$tmp" "$file"
 }
 
@@ -430,7 +433,7 @@ cmd_reembed() {
     # qmd reads models.embed from the config BEFORE QMD_EMBED_MODEL, so the
     # override needs its own config dir: a copy of the real one with only
     # models.embed changed. The live config is never touched.
-    SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/qmd-reembed.XXXXXX")" || die 5 "mktemp -d failed; cannot stage the qmd config copy"
+    SCRATCH="$(tmpdir)" || die 5 "tmpdir failed; cannot stage the qmd config copy"
     trap 'rm -rf "$SCRATCH"' EXIT
     local scratch="$SCRATCH"
     if [ -f "$(config_file)" ]; then
