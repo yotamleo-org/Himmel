@@ -1,15 +1,17 @@
 // Service mode (`server.ts --service`): a token that survives restarts, no idle exit, and the board read from the
 // JSON file the chief writes beside its doc. Real server processes; the feed is the stub himmelctl.
-import { test, expect, afterEach } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { test, expect, afterEach, beforeAll } from "bun:test";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startServer } from "../server";
+import { rebuildAguiIfStale, startServer } from "../server";
 
 const SERVER = join(import.meta.dir, "..", "server.ts");
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cleanups: (() => void)[] = [];
+// A cold runner has no built page: the first service start would install and build inside a 5 s test budget.
+beforeAll(() => rebuildAguiIfStale(() => {}), 120_000);
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
 function tmp() {
@@ -63,6 +65,23 @@ test("readUrlLine: a URL line split across stdout chunks is read whole", async (
     },
   });
   expect(await readUrlLine(stream)).toBe(line.trim());
+});
+
+// A launch killed mid-`bun install` leaves a half-populated node_modules; the next start must install again, not
+// build on it (the build then dies on "Could not resolve", the server exits with no URL line).
+test("rebuildAguiIfStale: a node_modules left half-installed is installed again before the build", () => {
+  const dir = tmp();
+  const web = join(dir, "web");
+  mkdirSync(join(web, "node_modules"), { recursive: true });
+  mkdirSync(join(web, "src"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const calls = join(dir, "calls");
+  writeFileSync(join(bin, "bun"), `#!/bin/sh\necho "$*" >> ${JSON.stringify(calls)}\n`, { mode: 0o755 });
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}:${path}`;
+  try { rebuildAguiIfStale(() => {}, join(web, "dist"), web); } finally { process.env.PATH = path; }
+  expect(readFileSync(calls, "utf8").split("\n").filter(Boolean)).toEqual(["install --frozen-lockfile", "run build"]);
 });
 
 test("service: two starts on one token file serve the same token, and the file is mode 600", async () => {
