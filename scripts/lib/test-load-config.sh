@@ -111,8 +111,8 @@ assert_has "(a) env override is reported as ignored" "ignoring" "$out"
 # (a2) An env-only policy value (no file anywhere) is dropped, not honoured.
 reset
 printf '{"version":1}\n' > "$HOME/.himmel/config.json"
-out=$(run 'export CR_FLOOR_FALLBACK=claude-only; load_policy --root "$PWD" CR_FLOOR_FALLBACK; printf "[%s]" "${CR_FLOOR_FALLBACK-}"')
-assert_has "(a2) env-only policy value is not honoured" "[]" "$out"
+out=$(run 'export CR_FLOOR_FALLBACK=claude-only; load_policy --root "$PWD" CR_FLOOR_FALLBACK; printf "[%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "$?"')
+assert_has "(a2) env-only policy value is not honoured" "[|rc=0]" "$out"
 
 # (b) A legacy .env-only config key still applies, with a deprecation notice.
 reset
@@ -175,8 +175,8 @@ reset
 printf '{"version":1}\n' > "$HOME/.himmel/config.json"
 printf 'CR_FLOOR_FALLBACK=claude-only\n' > "$HOME/.himmel/himmel.conf"
 printf 'ARMAUTOMERGE=1\n' > "$HOME/.himmel/himmel.conf.local"
-out=$(run 'load_policy --root "$PWD" CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}"')
-assert_has "(e) policy in himmel.conf/.local is not honoured by load_policy" "[|]" "$out"
+out=$(run 'load_policy --root "$PWD" CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}" "$?"')
+assert_has "(e) policy in himmel.conf/.local is not honoured by load_policy" "[||rc=0]" "$out"
 out=$(run 'load_dotenv CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}"')
 assert_has "(e) policy in himmel.conf/.local is not honoured by load_dotenv" "[|]" "$out"
 
