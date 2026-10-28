@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guard-judge-writes.sh — PreToolUse hook (matcher
-# "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*"): [HIMMEL-4564].
+# "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*").
 #
 # A chief judge only advises: it reads, writes its verdict, appends Results
 # bullets to its own doc, and reports by SendMessage. headed-arm-worker.sh --judge
@@ -108,7 +108,7 @@ resolve() {
     r=$(readlink -f -- "$p" 2>/dev/null) && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
     case "$p" in */) return 1 ;; esac
     # A symlink readlink could not resolve is dangling past a missing parent:
-    # its own path says nothing about where a write would land (HIMMEL-4614 T4).
+    # its own path says nothing about where a write would land.
     [ -L "$p" ] && return 1
     leaf="${p##*/}"
     parent="${p%/*}"
@@ -195,7 +195,7 @@ case "$tool" in
             "$cache"/*) exit 0 ;;
         esac
         # judge-dir.sh's /tmp/claude-<uid>/j<PR> scratch and the session
-        # scratchpad (HIMMEL-4614 T7).
+        # scratchpad.
         tmpscratch=$(resolve "/tmp/claude-$(id -u 2>/dev/null)") || tmpscratch=""
         if [ -n "$tmpscratch" ]; then
             case "$resolved" in

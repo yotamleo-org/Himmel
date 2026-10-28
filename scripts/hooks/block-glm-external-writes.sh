@@ -13,7 +13,7 @@
 # push / PR / external-write shapes.
 #
 # Lane detection: ANTHROPIC_BASE_URL contains api.z.ai (set by
-# scripts/telegram/glm-env.ts buildGlmEnv and the scripts/claude-glm{,.ps1}
+# scripts/telegram/glm-env.ts buildGlmEnv and the scripts/claude-glm
 # launcher family; inherited by hook processes). Non-GLM sessions exit 0 on
 # the first case below — near-zero overhead, before the jq availability check.
 #

@@ -26,9 +26,8 @@
 # Used by:
 #   1. .pre-commit-config.yaml (pre-commit stage) — fails commits
 #   2. scripts/machine-setup/ubuntu.sh (post-clone gate)
-#   3. scripts/machine-setup/win11.ps1 (post-clone gate, via .ps1 sibling)
-#   4. Claude ~/.claude/settings.json SessionStart (warning, non-blocking)
-#   5. scripts/hooks/test-check-hookspath.sh (smoke test)
+#   3. Claude ~/.claude/settings.json SessionStart (warning, non-blocking)
+#   4. scripts/hooks/test-check-hookspath.sh (smoke test)
 #
 # Exit codes:
 #   0 — OK or bypassed

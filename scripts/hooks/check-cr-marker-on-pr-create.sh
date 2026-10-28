@@ -121,11 +121,11 @@ fi
 # quotes dropped, because the shell glues a quoted span to its neighbours:
 # `gh pr create""` and `gh pr "create"` run `gh pr create`, while `gh'x' pr
 # create` runs `ghx` and `create"x"` runs `createx`.
-# ponytail: handles quoting only; any `#`, `<<`, `$'`, `eval`, ` -c ` or
-# double-quoted substitution bails to the unchanged scan (a comment, heredoc
-# body or ANSI-C quote can pair apostrophes across a real invocation, and a
-# nested shell body runs its quoted text as code); HIMMEL-5663's tokenizer
-# (inlined per hook) is the upgrade path.
+# ponytail: handles quoting only, upgrade path is HIMMEL-5663's tokenizer
+# (inlined per hook); any `#`, `<<`, `$'`, `eval`, ` -c ` or double-quoted
+# substitution bails to the unchanged scan (a comment, heredoc body or ANSI-C
+# quote can pair apostrophes across a real invocation, and a nested shell body
+# runs its quoted text as code).
 # shellcheck disable=SC1003,SC2016  # literal \ and $( in case patterns
 strip_quoted_spans() {
     local s="$1" out="" span="" q="" c

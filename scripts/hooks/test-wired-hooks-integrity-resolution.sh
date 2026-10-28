@@ -116,7 +116,7 @@ wired_scripts() {
       if (m) for (const n of m[1].split("+")) out.add("scripts/hooks/" + n);
       found(".codex/hooks.json", c, m ? 1 : 0);
     }
-    // HIMMEL-5085: plugin hooks.json commands. CLAUDE_PLUGIN_ROOT is the plugin dir,
+    // Plugin hooks.json commands. CLAUDE_PLUGIN_ROOT is the plugin dir,
     // marketplace/plugins/<name>, in this tree; CLAUDE_PROJECT_DIR is the project root.
     const pdir = path.join(root, "marketplace/plugins");
     if (fs.existsSync(pdir)) for (const name of fs.readdirSync(pdir).sort()) {

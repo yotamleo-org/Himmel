@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-commit-msg.sh (HIMMEL-1483).
+# Smoke test for scripts/hooks/check-commit-msg.sh.
 # Exercises default-off compatibility, strict Jira/custom patterns, and exemptions.
 set -uo pipefail
 
@@ -38,10 +38,8 @@ expect_rc() {
   fi
 }
 
-# HIMMEL-2442: the gate is ON by default, and with no ticket system configured
-# the pattern is himmel's own `#N` enumeration. (a)-(d) are the ticket's
-# acceptance cases; (a) is the exact control that PASSED on the HIMMEL-2432
-# Ubuntu guest before this change.
+# The gate is ON by default, and with no ticket system configured the pattern
+# is himmel's own `#N` enumeration.
 expect_rc "default ON rejects a ticketless message (adopter defaults)" 1 "chore: no ticket id here"
 expect_rc "default ON accepts #N" 0 "chore: [#12] wire the thing"
 # CR2: the default #N pattern must not match inside a longer token, and must
@@ -56,15 +54,14 @@ expect_rc "Jira posture does not accept bare #N" 1 "chore: [#12] wire the thing"
 expect_rc "Jira posture accepts PROJECT-N without TICKET_ID_REQUIRED" 0 \
   "chore: HIMMEL-2442 wire the thing" JIRA_PROJECT_KEY=HIMMEL
 expect_rc "explicit opt-out keeps ticket optional" 0 "feat: add feature" TICKET_ID_REQUIRED=0
-# CR3 twin parity: the .ps1's `switch -Regex` is case-insensitive by default, so
-# these spellings MUST resolve the same way in both hooks. The same cases exist
-# in test-check-commit-msg.ps1.
+# Case-insensitive TICKET_ID_REQUIRED: every spelling of true/false resolves
+# the same way.
 expect_rc "mixed-case False opts out (twin parity)" 0 "feat: add feature" TICKET_ID_REQUIRED=False
 expect_rc "mixed-case True still requires a ticket (twin parity)" 1 "feat: add feature" \
   TICKET_ID_REQUIRED=True
-# The discriminating arm: before normalization EVERY mixed-case spelling was
-# rejected as invalid config, so the two cases above were rc=1 for the wrong
-# reason. This one is rc=1 pre-change and rc=0 post-change.
+# The discriminating arm: a mixed-case spelling that is rejected as invalid
+# config would make the two cases above rc=1 for the wrong reason; this one
+# is only rc=0 when the case is normalized.
 expect_rc "mixed-case True accepts a ticketed message (twin parity)" 0 "feat: [#12] add feature" \
   TICKET_ID_REQUIRED=True
 expect_rc "an unrecognised TICKET_ID_REQUIRED fails closed" 1 "feat: [#12] add feature" \
@@ -91,8 +88,8 @@ expect_rc "strict Jira mode accepts PROJECT-N" 0 "feat: ACME-42 add feature" \
   TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=ACME
 expect_rc "custom regex supports no-Jira #N tickets" 0 "fix: close #73" \
   TICKET_ID_REQUIRED=1 'TICKET_ID_PATTERN=#[0-9]+'
-# HIMMEL-2442: no configured pattern is no longer a configuration error — it is
-# the `#N` posture, so a ticketless message still fails, and an #N one passes.
+# No configured pattern is not a configuration error — it is the `#N` posture,
+# so a ticketless message still fails, and an #N one passes.
 expect_rc "no configured pattern falls back to #N and rejects" 1 "feat: add feature" \
   TICKET_ID_REQUIRED=1
 expect_rc "no configured pattern falls back to #N and accepts" 0 "feat: [#7] add feature" \
@@ -103,7 +100,7 @@ expect_rc "fake merge subject is not exempt" 1 "Merge branch 'main'" \
   TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=ACME
 expect_rc "bare revert subject is not exempt" 1 'Revert "feat: add feature"' \
   TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=ACME
-# HIMMEL-1483 CR1: the revert exemption now requires the reverted hash to
+# The revert exemption requires the reverted hash to
 # resolve to a real commit (git cat-file -e). Seed one and use its SHA for the
 # positive case; a fabricated hash must fall through and be rejected in strict.
 git -C "$R" commit -q --allow-empty -m "feat: add feature"
@@ -139,9 +136,9 @@ expect_rc "trusted bot and bot author are exempt" 0 "chore: bump dependency" \
   TICKET_ID_REQUIRED=1 'TICKET_ID_AUTHOR=dependabot[bot]' 'TICKET_ID_TRUSTED_AUTHOR=dependabot[bot]'
 expect_rc "custom author exemption list is data-driven" 0 "chore: generated update" \
   TICKET_ID_REQUIRED=1 TICKET_ID_AUTHOR=release-bot TICKET_ID_EXEMPT_AUTHORS=release-bot
-# HIMMEL-1483 CR2: `dependabot[bot]` is a GLOB — a matching file in the hook's
-# cwd (e.g. `dependabotb`) used to pathname-expand the unquoted list expansion
-# and silently break the exemption. Globbing is now off around the split.
+# `dependabot[bot]` is a GLOB — a matching file in the hook's cwd (e.g.
+# `dependabotb`) would pathname-expand the unquoted list expansion and silently
+# break the exemption. Globbing is off around the split.
 touch "$R/dependabotb"
 expect_rc "glob-matching file in cwd does not break the bot exemption" 0 "chore: bump dependency" \
   TICKET_ID_REQUIRED=1 'TICKET_ID_AUTHOR=dependabot[bot]'
@@ -156,7 +153,7 @@ expect_rc "primary .env supplies strict mode and Jira key" 0 "docs: ENVKEY-9 upd
 expect_rc "live env overrides the primary .env" 0 "docs: no ticket needed" TICKET_ID_REQUIRED=0
 rm -f "$R/.env"
 
-# HIMMEL-2183: WARN-only negative-existence claim linter. Never blocks — rc
+# WARN-only negative-existence claim linter. Never blocks — rc
 # must match what the case would get without the linter.
 expect_warn() {
   local name="$1" want_rc="$2" want_warn="$3" message="$4"
@@ -176,7 +173,7 @@ expect_warn() {
 }
 
 # TICKET_ID_REQUIRED=0 keeps these focused on the linter: the ticket gate is ON
-# by default (HIMMEL-2442) and would otherwise decide rc for these messages.
+# by default and would otherwise decide rc for these messages.
 expect_warn "bare negative claim warns, rc unchanged" 0 1 \
   "feat: add feature
 
@@ -191,13 +188,12 @@ expect_warn "no claim is silent" 0 0 \
 
 Everything here works as expected." TICKET_ID_REQUIRED=0
 
-# HIMMEL-3022 (HIMMEL-2982 Ask 3): commit-msg-time WARNING when a `Security
-# reviewed:` trailer is present but its token does not conform to
-# check-security-reviewed.sh's TOKEN_RE (HIMMEL-1681), and when a
-# `Platforms tested:` trailer is present with an empty value — so the author
+# Commit-msg-time WARNING when a `Security reviewed:` trailer is present but
+# its token does not conform to check-security-reviewed.sh's TOKEN_RE, and when
+# a `Platforms tested:` trailer is present with an empty value — so the author
 # sees the problem before the pre-push gate refuses the push. Never blocks
 # (rc unchanged); TICKET_ID_REQUIRED=0 keeps the ticket gate out of the way,
-# same as the HIMMEL-2183 cases above.
+# same as the negative-existence cases above.
 expect_warn "non-conforming Security reviewed token warns" 0 1 \
   "chore: add feature
 
@@ -256,11 +252,10 @@ expect_warn "a later non-empty Platforms tested line silences an earlier empty o
 Platforms tested:
 Platforms tested: linux" TICKET_ID_REQUIRED=0
 
-# HIMMEL-2461: an unreadable message file used to be asserted as a SILENT
-# rc=0 pass here — that fail-open assertion is exactly what let the vacuous
-# gate (pass_filenames: false, empty $1) look tested for months. It must now
-# fail CLOSED with a named rejection, while the HIMMEL-2183 linter above stays
-# silent (no WARN) since it never got a message to scan.
+# An unreadable message file must fail CLOSED with a named rejection — a
+# silent rc=0 pass would let the vacuous gate (pass_filenames: false, empty $1)
+# look tested. The negative-existence linter above stays silent (no WARN)
+# since it never got a message to scan.
 MALFORMED_RC=0
 MALFORMED_OUT=$( ( cd "$R" && env -u TICKET_ID_REQUIRED -u TICKET_ID_PATTERN \
     -u TICKET_ID_EXEMPT_AUTHORS -u TICKET_ID_AUTHOR -u TICKET_ID_TRUSTED_AUTHOR -u JIRA_PROJECT_KEY \
@@ -275,12 +270,9 @@ else
   failures=$((failures + 1))
 fi
 
-# codex-1 (CR round 2, .ps1 twin parity): a $1 naming a DIRECTORY must also
-# fail CLOSED. bash's `[ ! -f "$FILE" ]` guard is already false for a
-# directory, so this checks the guard stays correct rather than fixing a bug
-# — the .ps1 twin needed `-PathType Leaf` explicitly since its Test-Path
-# returns true for directories. $R itself is a directory, so it doubles as
-# the fixture here.
+# A $1 naming a DIRECTORY must also fail CLOSED. bash's `[ ! -f "$FILE" ]`
+# guard is false for a directory, so this checks the guard stays correct.
+# $R itself is a directory, so it doubles as the fixture here.
 DIR_RC=0
 DIR_OUT=$( ( cd "$R" && env -u TICKET_ID_REQUIRED -u TICKET_ID_PATTERN \
     -u TICKET_ID_EXEMPT_AUTHORS -u TICKET_ID_AUTHOR -u TICKET_ID_TRUSTED_AUTHOR -u JIRA_PROJECT_KEY \
@@ -294,7 +286,7 @@ else
   failures=$((failures + 1))
 fi
 
-# HIMMEL-2442: this checkout's OWN posture must be unchanged by the new default.
+# This checkout's OWN posture must be unchanged by the default-on gate.
 # Runs against the real primary .env (cwd inside the repo, no env stripping), so
 # it proves the claim for this repo rather than a synthetic fixture. Skipped on a
 # checkout whose primary .env carries no JIRA_PROJECT_KEY (an adopter clone),
@@ -353,7 +345,7 @@ else
   printf '  SKIP  primary .env is not JIRA_PROJECT_KEY-driven (no key, or TICKET_ID_PATTERN / TICKET_ID_REQUIRED=0 overrides it)\n'
 fi
 
-# HIMMEL-4758: the gate reads its tracker from scripts/lib/project-mode.sh.
+# The gate reads its tracker from scripts/lib/project-mode.sh.
 # G is a repo with a github.com origin; the Jira credentials are stripped so the
 # jira verdict is proven to come from JIRA_PROJECT_KEY alone.
 G=$(fixture_mktemp_dir) || exit 1
@@ -384,7 +376,7 @@ expect_mode_rc "FORGE=local-git on a github origin is refused with the resolver'
 expect_mode_rc "TRACKER=jira with no key is refused" 1 "JIRA_PROJECT_KEY is not set" \
   "$R" "chore: [#12] wire the thing" TRACKER=jira
 expect_mode_rc "TRACKER=none makes the ticket optional" 0 "" "$R" "chore: no ticket id here" TRACKER=none
-# HIMMEL-4787: tracker none has no pattern, so a forced requirement would pass
+# Tracker none has no pattern, so a forced requirement would pass
 # every message. The contradiction is refused (rc 2), naming both settings.
 expect_mode_rc "TRACKER=none + TICKET_ID_REQUIRED=1 is refused, never a silent pass" 2 \
   "TICKET_ID_REQUIRED=1 with TRACKER=none" "$R" "chore: no ticket id here" TRACKER=none TICKET_ID_REQUIRED=1
@@ -403,7 +395,7 @@ expect_mode_rc "a multi-line TICKET_ID_REQUIRED fails closed, never drops the pa
 expect_mode_rc "a TAB in TICKET_ID_REQUIRED fails closed, never shifts the pattern" 1 "TICKET_ID_REQUIRED" \
   "$R" "chore: no ticket id here" JIRA_PROJECT_KEY=HIMMEL "TICKET_ID_REQUIRED=1"$'\t'"x"
 # Fail CLOSED when the resolver is not installed beside the hook (an adopter
-# payload from before HIMMEL-4758): never a silent env-only fallback.
+# payload without the resolver): never a silent env-only fallback.
 NOLIB=$(fixture_mktemp_dir) || exit 1
 trap 'rm -rf "$R" "$G" "$NOLIB"' EXIT
 mkdir -p "$NOLIB/hooks"

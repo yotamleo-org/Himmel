@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spec for block-bank-lift-writes.sh (HIMMEL-4445). The lift file
+# Spec for block-bank-lift-writes.sh. The lift file
 # ~/.himmel/state/bank-lift.json relaxes the 7-day bank gate while it is
 # valid, so it is OPERATOR-ONLY: an agent session must not write it or run
 # `bank-lift.sh set`. `show`, `clear` and plain reads stay allowed.

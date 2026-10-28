@@ -32,8 +32,7 @@
 #      full inject behavior is covered by their own test-inject-*.sh under Claude).
 #
 # Hermetic: no network, no .env required (process env wins via load_dotenv's
-# non-clobber). The Windows run-hook.cmd wrapper is covered by the
-# existing .ps1 twin (test-codex-run-hook.ps1). bash 3.2-safe.
+# non-clobber). bash 3.2-safe.
 set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
