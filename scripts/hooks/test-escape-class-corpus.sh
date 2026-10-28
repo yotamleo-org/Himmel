@@ -310,7 +310,7 @@ PERL
   dg "prcl ansi-c trace" guard-pr-check-literal.sh "\$'bash' scripts/cr/pr-check-context.sh" A=1 B=1 -x
   echo "-- prcl trace tail:"; tail -25 "$DG/err" | cut -c1-200
   rm -rf "$DG"
-  exit 0
+  exit 1
 fi
 # DIAG-7120 end
 
