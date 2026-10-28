@@ -17,6 +17,7 @@ HOOK="$(cd "$(dirname "$0")" && pwd)/block-edit-live-settings.sh"
 [ -x "$HOOK" ] || chmod +x "$HOOK"
 
 FAILED=0
+DGT=""
 
 assert_rc() {
     local label="$1" expected="$2" actual="$3"
@@ -1299,6 +1300,8 @@ if command -v node >/dev/null 2>&1; then
         rc=$(bash_rc_of "$PRIMARY" "$2" HOME="$FAKEHOME")
         ms=$(( $(now_ms) - t0 ))
         echo "  $1 timing: ${#2} bytes, ${ms} ms"
+        DGT="$DGT$SECONDS:${1%% *}:${ms}
+"
         assert_rc "$1 denies" 2 "$rc"
         if [ "$ms" -lt "$TIMING_BUDGET_MS" ]; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
@@ -1594,7 +1597,7 @@ DCSW_SRC="$SANDBOX/dc_split_words_extract.sh"
 sed -n '/^_dc_split_words() {/,/^}/p' "$HOOK" > "$DCSW_SRC"
 DCSW_BAD="$SANDBOX/dc_split_words_broken.sh"
 # broken: drops the space-to-separator rewrite, so every word merges into one
-sed 's|\${1// /\$s}|${1}|' "$DCSW_SRC" > "$DCSW_BAD"
+sed "s|tr ' ' '\\\\037'|tr ' ' ' '|" "$DCSW_SRC" > "$DCSW_BAD"
 dcsw_run() {
     bash -c '
         source "$1"
@@ -3475,6 +3478,8 @@ if command -v node >/dev/null 2>&1; then
         rc=$(bash_rc_of "$PRIMARY" "$3" HOME="$FAKEHOME")
         ms=$(( $(now_ms) - t0 ))
         echo "  $1 timing: ${#3} bytes, ${ms} ms"
+        DGT="$DGT$SECONDS:${1%% *}:${ms}
+"
         assert_rc "$1 rc" "$2" "$rc"
         if [ "$ms" -lt "$TIMING_BUDGET_MS" ]; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
@@ -3735,6 +3740,8 @@ git -C "$SANDBOX/primary" worktree remove --force "$HOMEWT" 2>/dev/null || true
 git -C "$SANDBOX/primary" worktree remove --force "$WTDIRECT" 2>/dev/null || true
 rm -rf "$SANDBOX" 2>/dev/null || true
 
+printf "DIAGT bash=%s total=%ss\n%b" "$BASH_VERSION" "$SECONDS" "$DGT" | tr "\n" " " | fold -w 200
+echo
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
     echo "FAIL $FAILED case(s)"

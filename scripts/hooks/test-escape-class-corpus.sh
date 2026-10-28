@@ -309,7 +309,10 @@ PERL
     ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="$4" perl "$DG/prof.pl" "$HERE/$2" "$DG/in.json" )
   }
   prof "els 680 n=1200" block-edit-live-settings.sh "echo $(rep 1200 '~/.c$"l"aude/settings.json ')> /tmp/out.txt" "$U8"
-  prof "els 679 n=1200" block-edit-live-settings.sh "echo $(rep 1200 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8"
+  # shellcheck disable=SC2016 # the payload is program text, not expanded here
+  prof "qmd cmd-sub program" block-bare-qmd-query.sh '$(echo qmd) query x' "$U8"
+  # shellcheck disable=SC2016 # the payload is program text, not expanded here
+  prof "qmd tmux cmd-sub" block-bare-qmd-query.sh 'timeout -k 5 $f $(echo tmux) new -d x' "$U8"
   rm -rf "$DG"
   exit 1
 fi

@@ -2516,13 +2516,14 @@ _dc_can_be_claude() {
 }
 
 # _dc_split_words TEXT -- the CALLER's local array f is TEXT split at every
-# space, in the C locale (HIMMEL-4678): in a UTF-8 locale bash's ${1// /…}
-# re-decodes the text for every match, which took 2.5 s on a 45 KB heredoc of
-# prose, against 5 ms byte-wise. A space byte never occurs inside a UTF-8
-# multibyte sequence, so the bytes come out the same either way.
+# space, byte-wise: a UTF-8 ${1// /…} re-decodes the text for
+# every match (2.5 s on a 45 KB heredoc of prose, 5 ms byte-wise), and bash 3.2
+# runs any global substitution that matches in time quadratic in its matches
+# (29 s for 2400 spaces on macOS), so tr splits it. A space byte never occurs
+# inside a UTF-8 multibyte sequence, so the bytes come out the same.
 _dc_split_words() {
-    local LC_ALL=C s=$'\037'
-    IFS=$s read -r -d '' -a f <<< "${1// /$s}" || true
+    local s=$'\037'
+    IFS=$s read -r -d '' -a f < <(printf '%s\n' "$1" | LC_ALL=C tr ' ' '\037') || true
 }
 
 # _dc_name_fold TEXT — _DCF is TEXT with every path component that can expand
