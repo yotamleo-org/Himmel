@@ -21,7 +21,7 @@
 #
 #   grep -rhoE "mkdtempSync\(join\([A-Za-z_.()]+, *[\"'][^\"']+[\"']" scripts/ \
 #     | grep -oE "[\"'][^\"']+[\"']$" | tr -d "\"'" | sort -u
-#   grep -rn mktemp scripts/ --include=*.sh --include=*.ps1
+#   grep -rn mktemp scripts/ --include=*.sh
 #
 # and cross-check against what is actually accumulating:
 #

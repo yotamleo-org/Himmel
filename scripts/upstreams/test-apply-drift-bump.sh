@@ -305,9 +305,8 @@ esac
 assert_file_has "$root/scripts/lib/widget-bin.sh" 'WIDGET_VERSION:-1.2.4' "CRLF file still got bumped"
 rm -rf "$root"
 
-# An entry whose pin is split across files (cli-proxy-api: the
-# .ps1 $Version is the registry's version_pin, the Linux twin's VERSION= and
-# ASSET_SHA256= are companions). The bump must move ALL of them or none.
+# A fixture entry whose pin is split across files: the registry's version_pin
+# and companion VERSION= and ASSET_SHA256= must ALL move or none.
 make_split_fixture() {
   local root
   root=$(mktemp -d "${TMPDIR:-/tmp}/apply-drift-split.XXXXXX") || exit 1
