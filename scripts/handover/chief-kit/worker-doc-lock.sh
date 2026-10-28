@@ -50,6 +50,7 @@ doc_lock() {
     chmod 700 "$_dl_dir" || { printf '%s: cannot secure doc lock directory\n' "$2" >&2; return 1; }
     _dl_key="$(printf '%s' "$_dl_doc" | sha256sum)" || return 1
     _dl_key="${_dl_key%% *}"
+    # prim-ok: doc_lock/doc_unlock split acquire from release across the caller's code; with_lock wraps one synchronous command and closes fd 9
     if ! { exec 9>"$_dl_dir/$_dl_key.lock"; } || ! flock -x 9; then
         exec 9>&-
         printf '%s: cannot lock %s\n' "$2" "$1" >&2
@@ -88,7 +89,7 @@ worker_doc_add_session_id() {
         && grep -q "^session_ids:.*$_ls_sid" "$_ls_tmp" &&
         # read-sink-ok: the handover doc the caller holds the lock on
         [ "$(cksum < "$_ls_doc" 2>/dev/null)" = "$_ls_sum" ] \
-        && mv -f "$_ls_tmp" "$_ls_doc"; then
+        && mv -f "$_ls_tmp" "$_ls_doc"; then  # prim-ok: the temp is cp -p'd from the doc to keep its mode and the cksum re-check gates the rename; atomic_write would publish 0600
         _ls_rc=0
     fi
     [ -n "$_ls_tmp" ] && rm -f "$_ls_tmp" 2>/dev/null
