@@ -529,6 +529,13 @@ check "18 control: no shadow, proxy vars stripped, launch happens" "launched" "$
 # from the gate, not from the shadows breaking the launch path.
 check "18 control: function shadows installed, no proxy: launch happens" "launched" "$(shadow_launch cf "$SH18/funcs.sh" noproxy)"
 check "18 control: alias shadows installed, no proxy: launch happens" "launched" "$(shadow_launch ca "$SH18/alias.sh" noproxy)"
+# Diagnostics: which BASH_COMMAND values a DEBUG trap sees under this bash.
+# shellcheck disable=SC2016  # the probe bodies are written literally
+{ printf '%s\n' 'SCRIPT_DIR="$(cd . && pwd)"' ':' > "$SH18/probe.sh"
+  printf '%s\n' 'trap '"'"'echo "[$BASH_COMMAND]" >> "$PROBE_OUT"'"'"' DEBUG' > "$SH18/probe-env.sh"; }
+BASH_ENV="$SH18/probe-env.sh" PROBE_OUT="$W/probe-cmds" bash "$SH18/probe.sh" >/dev/null 2>&1
+echo "diag - bash=$(command -v bash) $(bash -c 'echo $BASH_VERSION') probe-commands: $(tr '\n' ' ' < "$W/probe-cmds" 2>/dev/null)"
+echo "diag - SUT head: $(sed -n '30,38p' "$SUT" | tr '\n' ' ')"
 rm -f "$LIVE_DIR"/*.json
 
 # --- 19: the loopback-mock seam gate keeps EXACT names only. With
