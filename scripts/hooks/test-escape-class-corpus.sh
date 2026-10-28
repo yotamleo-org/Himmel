@@ -284,13 +284,15 @@ PERL
   rep() { local n=$1 out='' i=0; while [ "$i" -lt "$n" ]; do out=$out$2; i=$((i + 1)); done; printf '%s' "$out"; }
   echo "DIAG bash=$BASH_VERSION uname=$(uname -sr) LANG=${LANG:-} LC_ALL=${LC_ALL:-}"
   U8=LC_ALL=en_US.UTF-8
-  summ() { # per second: trace line count, and the last line that ran in it
-    awk '$1 ~ /^\++$/ && $2 ~ /^[0-9]+$/ {n[$2]++; l[$2]=$0} END{for(s in n) printf "%d %d %s\n", s, n[s], substr(l[s],1,170)}' "$DG/err" | sort -n | head -14
+  summ() { # per second: its two busiest functions (a second with no row held one long statement)
+    awk '$1 ~ /^\++$/ && $2 ~ /^[0-9]+$/ {n=split($3,a,":"); c[$2" "a[n]]++} END{for(k in c) print k, c[k]}' "$DG/err" | sort -k1,1n -k3,3nr |
+      awk '{if ($1 != p) {m=0; p=$1} if (m++ < 2) print "  " $0}' | head -22
   }
   # shellcheck disable=SC2016 # the snippet is program text for a fresh bash
   snip() { # snip LABEL LOCALE BODY — time BODY in a fresh bash over a 10 KB string
     {
-      echo 't=$(printf "true %.0s" $(seq 2000))'
+      echo 't=$(printf "true %.0s" $(seq 2000)); d=$(printf "~/.cl\$\"a\"ude/x %.0s" $(seq 700))'
+      echo "QG=$HERE/block-bare-qmd-query.sh"
       printf '%s\n' "$3"
     } > "$DG/snip.sh"
     printf '%s %s: ' "$1" "$2"
@@ -298,24 +300,17 @@ PERL
   }
   # shellcheck disable=SC2016 # the snippets are program text for a fresh bash
   for lc in "$U8" LC_ALL=C; do
-    snip "build only" "$lc" ':'
-    snip "sub >&" "$lc" "t=\${t//'>&'/'> '}"
-    snip "sub class" "$lc" 't=${t//[|;&()\{\}\`]/$'"'"'\n'"'"'}'
-    snip "sed+tr" "$lc" 't=$(printf "%s" "$t" | sed -e "s/>&/> /g" -e "s/&>/ >/g" | tr "|;&(){}\`" "\n\n\n\n\n\n\n\n")'
+    snip "dq sub 700 matches" "$lc" 'r=${d//\$\"/\"}'
+    snip "dq sed" "$lc" 'r=$(printf "%s" "$d" | sed "s/\\\$\"/\"/g")'
+    snip "class sub 1 match" "$lc" 't="$t; x"; t=${t//[|;&()\{\}\`]/$'"'"'\n'"'"'}'
+    snip "readers_only" "$lc" 'eval "$(sed -n "/^QREADERS=/p;/^readers_only() {/,/^}/p" "$QG")"; readers_only "$t; qmd query x"'
   done
-  for nw in 600 800 1000 1500; do
-    dg "els n=$nw dq utf8" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8"
-  done
-  dg "els n=1000 dq C" block-edit-live-settings.sh "echo $(rep 1000 '~/.cl$"a"ude/x ')> /tmp/out.txt" LC_ALL=C
-  dg "els n=1000 plain utf8" block-edit-live-settings.sh "echo $(rep 1000 '~/.claude/x ')> /tmp/out.txt" "$U8"
-  dg "els trace n=700 dq utf8" block-edit-live-settings.sh "echo $(rep 700 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8" B=1 -x
+  dg "els n=600 dq utf8" block-edit-live-settings.sh "echo $(rep 600 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8"
+  dg "els trace n=500 dq utf8" block-edit-live-settings.sh "echo $(rep 500 '~/.cl$"a"ude/x ')> /tmp/out.txt" "$U8" B=1 -x
   summ
   P=$(rep 2000 'true ')
-  PW=$(rep 2000 'w ')
   dg "qmd pad=2000 bare utf8" block-bare-qmd-query.sh "${P}; qmd query x" "$U8"
-  dg "qmd pad=2000 status utf8" block-bare-qmd-query.sh "qmd status; ${P}" "$U8"
-  dg "qmd pad=2000 bash -c utf8" block-bare-qmd-query.sh "qmd status; bash -c 'echo \$0' ${PW}" "$U8"
-  dg "qmd trace pad=2000 bash -c utf8" block-bare-qmd-query.sh "qmd status; bash -c 'echo \$0' ${PW}" "$U8" B=1 -x
+  dg "qmd trace pad=2000 bare utf8" block-bare-qmd-query.sh "${P}; qmd query x" "$U8" B=1 -x
   summ
   rm -rf "$DG"
   exit 1
