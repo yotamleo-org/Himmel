@@ -29,7 +29,7 @@ accept_ok own-test-passes bash -c 'cd "$1" && bash lq-work/test-semver-cmp.sh' _
 
 # Test quality: the candidate's test must FAIL against a stub that always
 # answers 0 (a test that cannot fail is not evidence).
-MUT="$(mktemp -d "${TMPDIR:-/tmp}/lq-mut.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: a frozen pilot accept.sh stays self-contained (only accept-common.sh is sourced)
+MUT="$(mktemp -d "${TMPDIR:-/tmp}/lq-mut.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }
 if [ -f "$T" ]; then cp -R "$WT/lq-work" "$MUT/"; fi
 printf '#!/usr/bin/env bash\necho 0\n' > "$MUT/lq-work/semver-cmp.sh" 2>/dev/null
 accept_ok own-test-catches-stub bash -c 'cd "$1" && [ -f lq-work/test-semver-cmp.sh ] && ! bash lq-work/test-semver-cmp.sh' _ "$MUT"

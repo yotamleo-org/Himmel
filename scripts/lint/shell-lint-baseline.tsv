@@ -181,6 +181,7 @@ scripts/eval/lane-quality/tasks/dispatch-chores/fixture/lq-work/chores/c.sh	erre
 scripts/eval/lane-quality/tasks/dispatch-chores/reference/lq-work/chores/a.sh	errexit	1
 scripts/eval/lane-quality/tasks/dispatch-chores/reference/lq-work/chores/b.sh	errexit	1
 scripts/eval/lane-quality/tasks/dispatch-chores/reference/lq-work/chores/c.sh	errexit	1
+scripts/eval/lane-quality/tasks/shell-red-green/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/test-trajectory.sh	gnu-flag	1
 scripts/eval/qmd-quality/backfill-ledger.sh	mktemp	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	gnu-flag	1

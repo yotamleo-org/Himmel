@@ -94,6 +94,5 @@ winpath() {
   fi
   printf '%s' "$_out"
 }
-# shellcheck source=../../lib/prim.sh
-. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/prim.sh" || { echo "hermetic-home: FATAL — cannot load scripts/lib/prim.sh" >&2; exit 1; }
-HIMMEL_PROVENANCE_DIR="$(tmpdir)" || { echo "hermetic-home: FATAL — no scratch dir for HIMMEL_PROVENANCE_DIR" >&2; exit 1; }; export HIMMEL_PROVENANCE_DIR  # HIMMEL-3332: suites never write the real ledger
+# prim-ok: tmp-reap.sh FAMILIES reaps himmel-prov.*; a prim.* name would leak (nothing reaps it)
+HIMMEL_PROVENANCE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-prov.XXXXXX")" || { echo "hermetic-home: FATAL — no scratch dir for HIMMEL_PROVENANCE_DIR" >&2; exit 1; }; export HIMMEL_PROVENANCE_DIR  # HIMMEL-3332: suites never write the real ledger
