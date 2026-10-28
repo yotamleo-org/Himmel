@@ -67,12 +67,12 @@ than suppressing stderr (a blanket filter would hide real errors).
 
 `cd <suite-dir> && bun test` is correct for `scripts/luna-vitals` (172 pass, 0
 fail from its own directory) and **wrong** for the `scripts/telegram` suites.
-Those pin their fixtures repo-root-relative through `_rf(...)`, so running them
+Those reach their sources by repo-root-relative paths, so running them
 from their own directory fails every wired case:
 
 ```chief
-$ cd scripts/telegram && bun test spawn-glm.test.ts
-error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-glm.ts'   (x8)
+$ cd scripts/telegram && bun test spawn-claudex.test.ts
+error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-claudex.ts'   (x12; 33 fail)
 ```
 
 From the repo root the same suite runs normally.
@@ -690,7 +690,7 @@ append one line per tool call the bypass is consulted for, and a symlink or
 non-regular audit file refuses it by an lstat check before a plain append (not an
 `O_NOFOLLOW` open). Its git calls are bounded by `timeout` at the launcher's
 `HIMMEL_HOOK_INTEGRITY_GIT_TIMEOUT_MS` budget, and a missing `timeout` or a timed-out
-git refuses the bypass (the hook entry itself fails open on a hang). The worker spawners (`glmChildEnv`, `sessionEnv`,
+git refuses the bypass (the hook entry itself fails open on a hang). The worker spawners (`sessionEnv`,
 `claudexChildEnv`) also strip the variable from every worker child env, so a
 worker never inherits it. So do the hook edit in a worktree, with the session's
 cwd inside it.

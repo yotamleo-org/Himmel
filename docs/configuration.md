@@ -310,8 +310,8 @@ claudex` runs it once its readiness gate has 5 consecutive verified passes
 lanes, codex-exec, hermes-oneshot and openrouter-claude, are marked `dormant`;
 opting one in is per-dispatch and per-lane (`CODEX_EXEC_LANE_OK`,
 `HERMES_ONESHOT_LANE_OK`, `OPENROUTER_CLAUDE_LANE_OK`; `/lanes` prints each
-dormant lane's opt-in). The registry also keeps a dropped GLM lane, offered
-only under `GLM_LANE_OK`. Hermes critic rows inside `/pr-check` are unaffected.
+dormant lane's opt-in). The GLM lane was removed, registry row included
+(HIMMEL-7909, HIMMEL-7481). Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
 
@@ -587,7 +587,7 @@ sites are changed here.
 | Bitbucket (`scripts/bitbucket/src/env.ts`) | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG` |
 | Codex launcher, CLI proxy setup | `CLIPROXY_API_KEY` |
 | DeepSeek launcher | `DEEPSEEK_API_KEY` |
-| GLM launcher (dropped lane), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
+| Graph-map refresh (`graphify/refresh-graph-map.sh --backend glm`) | `ZAI_API_KEY` |
 | OpenRouter launcher, `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
 | CR critic panel | `CLIPROXY_API_KEY` when the critic registry holds a Codex critic |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |

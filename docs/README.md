@@ -31,9 +31,9 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
 - [troubleshooting.md](troubleshooting.md) — each message a starter install can show, why it appears, and the fix.
 - [cadences.md](cadences.md) — every recurring job you can arm: what it does, when the wizard offers it, how to arm, status and disarm it.
-- [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is dormant.
+- [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes.
 - [himmel-bus.md](himmel-bus.md) — **early.** The local session-to-session message bus: CLI, MCP tools, identity, delivery guarantees.
-- [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (the dormant GLM lane, quota-gauge, escalation channel, statusline, clipper pipeline).
+- [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (the surface, the fleet, quota-gauge, statusline).
 - [operator-conventions.md](operator-conventions.md) — durable operator working-habits.
 - [contributing.md](contributing.md) — the contribution workflow.
 - [token-economy.md](token-economy.md) — per-boundary token-optimizer policy: who owns which token cost and where it's paid.

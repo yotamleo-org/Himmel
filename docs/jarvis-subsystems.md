@@ -15,7 +15,6 @@ deep doc lives.
 | [The fleet](#the-fleet-the-engine) | the chief, its workers, the judge and the GO that gates a merge | opt-in | `/chief new` |
 | [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup; lanes fill its ledger as they run |
-| [Escalation channel](#escalation-channel) | a scoped grant for a sandboxed worker | **off** (no lane writes to it) | a sandboxed worker lane |
 | [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
 > **Default posture: every optional lane is OFF until you configure it.** The
@@ -99,33 +98,6 @@ byte-identical canonical record). The shared path resolver is
 **`scripts/lib/quota-gauge-ledger-path.sh`**. Lane writers ride on existing
 touchpoints, such as a lane's cap-guard, with no new fetch and no new poll.
 There is no separate enable step: the ledger fills as those touchpoints run.
-
-## Escalation channel
-
-**What it is.** A sandboxed worker can hit a gated capability, for example a
-push that the deny hook blocks. The channel lets that worker **ask** the
-parent or operator for a scoped grant, instead of deadlocking or running under
-a blanket bypass.
-
-**How it works.** Workers only ever **append** an escalation request to their
-session's `outbox.jsonl`. The parent or operator is the single adjudicator per
-session, and responds with a lean CLI:
-
-```sh
-bun scripts/telegram/adjudicate.ts list                    # surface pending escalations
-bun scripts/telegram/adjudicate.ts grant  <sessionDir> --arm <arm> --pattern <re> [--ttl m] [--uses n]
-bun scripts/telegram/adjudicate.ts refuse <sessionDir> <index>
-```
-
-A **grant** whitelists exactly one command shape on one deny arm
-(`git-push` / `git-url` / `gh` / `network`). Each grant has a TTL and a use
-limit. The deny hook folds valid grant patterns into its allowed-count, so a
-grant re-enables one narrow capability without lifting the wall. A refusal
-clears the escalation.
-
-**Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`.
-The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-was dropped, so the channel stays off.
 
 ## Statusline
 
