@@ -636,7 +636,7 @@ invariant as the exporter.
 
 ### Sweeper-status extension (LUNA-131 — a second, independent trigger)
 
-The headless vault sweeper (`vault-autosync.ps1 -Sweep`) writes a heartbeat,
+The headless vault sweeper writes a heartbeat,
 `<StateDir>\status.json` (default `~/.himmel/luna-sync/status.json`, override
 via `HIMMEL_LUNA_SWEEPER_STATUS`), on **every tick**. `luna-sync-alert.ts`
 reads and `JSON.parse`s that file in `main()` (never inside `checkLunaSync`,

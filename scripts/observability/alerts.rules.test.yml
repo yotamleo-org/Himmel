@@ -5,7 +5,7 @@
 #   "$LOCALAPPDATA/himmel/observability/prometheus-<ver>/promtool.exe" \
 #       test rules alerts.rules.test.yml
 #
-# promtool ships inside the Prometheus release install-stack.ps1 downloads, so
+# promtool ships inside the Prometheus release the stack installer downloads, so
 # no separate install is needed on a station that has run the stack installer
 # once — but it is NOT placed on PATH. `command -v promtool` therefore returns
 # nothing on a station where it is present and working. Three separate workers

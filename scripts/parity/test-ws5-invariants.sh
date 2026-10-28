@@ -770,7 +770,7 @@ fi
 # ----------------------------------------------------------------------------
 # T14 -- locks (AC8).
 # (a) RETIRED 2026-07-13: the D9 no-claude-codex
-#     lock was superseded -- the claude-codex lane (scripts/claude-codex{,.ps1})
+#     lock was superseded -- the claude-codex lane (scripts/claude-codex)
 #     ships with native guard posture (Claude Code IS the harness, same column
 #     as claude-glm). See docs/internals/lane-parity.md "claude-codex lock".
 # (b) no per-token-lane wiring in shipped source;

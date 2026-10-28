@@ -92,7 +92,6 @@ command -v claude  >/dev/null || { echo "ERROR: claude CLI required on PATH" >&2
 # A ledger failure is a warning, never an install failure: an unrecorded
 # registration reads as pre-existing at uninstall, which keeps it (residue over
 # breakage).
-# ponytail: install-plugins.ps1 records nothing — the PowerShell helpers are tracked in HIMMEL-3346.
 # shellcheck source=../lib/provenance.sh
 . "$REPO_ROOT/scripts/lib/provenance.sh"
 # shellcheck source=../lib/provenance-identity.sh
@@ -419,7 +418,6 @@ while IFS= read -r NAME; do
   # An entry already in the file before this run is the
   # operator's (autoUpdate is a convenience, not needed to
   # function) -- leave it exactly as it was, so uninstall has nothing to undo.
-  # ponytail: sh-only, install-plugins.ps1 still patches a pre-existing entry; port the skip under HIMMEL-3584
   if grep -Fqx -- "$NAME" <<<"$AU_PRE_NAMES"; then
     echo "  skip: '$NAME' was already declared in $SETTINGS_FILE — left as it is"
     continue

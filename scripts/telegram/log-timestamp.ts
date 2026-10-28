@@ -1,5 +1,5 @@
 // Timestamp every console.log/console.error line. supervisor.log
-// carries none today: restart-bridge.ps1 launches `bun supervisor.ts > log 2>&1`,
+// carries none today: the bridge launcher runs `bun supervisor.ts > log 2>&1`,
 // and supervisor.ts spawns poller.ts with stdout/stderr "inherit" — both write
 // raw console output straight into that redirected file. A Telegram-API-side
 // outage (e.g. a Bad Gateway storm) then shows up as a bare run of identical

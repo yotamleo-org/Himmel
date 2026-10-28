@@ -54,8 +54,7 @@
 #   # fail-open-ok: <reason>        (shell — on the flagged line)
 #   // fail-open-ok: <reason>       (JS/TS)
 #
-# Known gaps, stated plainly: the PowerShell twins (.ps1) get no coverage
-# (no bash-shaped parsing here); snake_case *_percent readings are not
+# Known gaps, stated plainly: snake_case *_percent readings are not
 # matched (the lane grammar names things *pct*/usedPct); .ts files get
 # quota-zero only (the function-block scanner relies on the lanes .mjs
 # formatting); scripts/telegram/spawn-claudex.ts is owned by a parallel
