@@ -236,7 +236,9 @@ template_version: 3
 > **Writes note:** <context, prior art, stay-off paths and narrowing notes go
 > here, never on Writes. This field is never read for holds. brief-lint refuses
 > an empty Writes line, parentheses or non-path words: the chief fills the
-> path list from the ticket's Writes text. The collision check ignores
+> path list from the ticket's Writes text. Use repo-relative paths or normalized
+> absolute paths under the configured handover root (resolved by handover_root);
+> . and .. path segments and other absolute paths are refused. The collision check ignores
 > parenthesised text on older Writes lines; a bare directory still holds its
 > subtree and --why warns about it. Without Writes it falls back to the older
 > "writes confined to" / "Scope / do not:" parser unchanged.>

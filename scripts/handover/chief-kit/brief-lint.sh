@@ -56,11 +56,24 @@ case "$bare" in
         ;;
 esac
 
-if ! python3 -I - "$doc" "$(dirname "$0")/../../.." <<'PY'
+# shellcheck source=../../lib/handover-path.sh
+. "$(dirname "$0")/../../lib/handover-path.sh"
+# Without a resolved state root, only relative Writes can pass.
+state_root=""
+if resolved_root="$(handover_root)"; then
+    state_root="$resolved_root"
+fi
+if ! python3 -I - "$doc" "$(dirname "$0")/../../.." "$state_root" <<'PY'
 import os, re, sys
 
 lines = open(sys.argv[1], encoding='utf-8', errors='replace').read().splitlines()
 repo = sys.argv[2]
+state_root = os.path.realpath(sys.argv[3]) if sys.argv[3] else ''
+
+def allowed_absolute(p):
+    return (bool(state_root) and os.path.normpath(p) == p.rstrip('/') and
+            os.path.commonpath((state_root, os.path.realpath(p))) == state_root)
+
 for i, line in enumerate(lines):
     if not line.startswith('> **Writes:**'):
         continue
@@ -72,13 +85,14 @@ for i, line in enumerate(lines):
     if text.strip() == 'none named':
         continue
     paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p]
-    if not paths or any(not re.fullmatch(r'[\w.+@/-]+', p) or os.path.isabs(p) or
+    if not paths or any(not re.fullmatch(r'[\w.+@/-]+', p) or
+                        (os.path.isabs(p) and not allowed_absolute(p)) or
                         any(part in ('.', '..') for part in p.split('/')) or
                         not ('/' in p or '.' in p or os.path.exists(os.path.join(repo, p))) for p in paths):
         sys.exit(1)
 PY
 then
-    fail "'> **Writes:**' must contain repo-relative paths without . or .. segments (or 'none named'); the chief fills an empty line from the ticket's Writes text; move parentheses and prose to '> **Writes note:**'"
+    fail "'> **Writes:**' must contain repo-relative paths or normalized absolute paths under the configured handover root, without . or .. segments (or 'none named'); the chief fills an empty line from the ticket's Writes text; move parentheses and prose to '> **Writes note:**'"
 fi
 
 # a fresh brief carries a front-matter `description:` line, the

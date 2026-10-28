@@ -186,6 +186,16 @@ for unsafe_path in 'scripts/lib/../config-ui/panel.ts' 'scripts/./x/a.sh' "$tmp/
 done
 mk writes_dotted "$PA" '> **Writes:** .github/workflows/check.yml scripts/.hidden/file.sh'
 expect_rc "7l dotted names without dot segments still pass" 0 "$tmp/writes_dotted.md"
+mkdir -p "$tmp/state"
+mk writes_state "$PA" "> **Writes:** $tmp/state/specs/design.md"
+HANDOVER_DIR="$tmp/state" expect_rc "7m normalized absolute state path passes" 0 "$tmp/writes_state.md"
+HANDOVER_DIR="$tmp/missing-state" expect_rc "7o relative Writes needs no state root" 0 "$tmp/writes_paths.md"
+HANDOVER_DIR="$tmp/missing-state" expect_rc "7p older brief needs no state root" 0 "$tmp/filled.md"
+HANDOVER_DIR="$tmp/missing-state" expect_rc "7q absolute Writes without a resolvable state root is refused" 1 "$tmp/writes_state.md"
+for unsafe_state_path in "$tmp/state-other/specs/design.md" "$tmp/state/../outside.md" "$tmp/state//specs/design.md"; do
+    mk writes_state_unsafe "$PA" "> **Writes:** $unsafe_state_path"
+    HANDOVER_DIR="$tmp/state" expect_rc "7n noncanonical or outside state path is refused: $unsafe_state_path" 1 "$tmp/writes_state_unsafe.md"
+done
 err="$(bash "$LINT" "$tmp/writes_paren.md" 2>&1 >/dev/null)"
 grep -Fq '> **Writes note:**' <<< "$err" && ok "7g refusal names Writes note as the replacement" || bad "7g refusal lacks Writes note hint: $err"
 rc=0; out="$(run_worker "$tmp/writes_word.md" --profile worker-impl)" || rc=$?
