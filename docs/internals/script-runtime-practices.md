@@ -1,7 +1,7 @@
 # Script runtime practices — invocation, spawn economics, guardrail shape
 
 How, at what cost, and why himmel scripts run the way they do. Platform
-*traps* (WSL stub resolution, MSYS path mangling, PowerShell footguns) live in
+*traps* live in
 [`environment-gotchas.md`](environment-gotchas.md) — this doc does not repeat
 them, only cross-links. Guardrail fail-direction and the hook-chain mechanism
 are owned by [`enforcement.md`](enforcement.md) and
