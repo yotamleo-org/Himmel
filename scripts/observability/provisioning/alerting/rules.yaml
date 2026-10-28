@@ -26,7 +26,7 @@
 # filtering, so `gt -1` on refId B marks a rule that must NEVER use
 # noDataState: NoData.
 #
-# Known limitation: all five NoData rules below
+# ponytail: five NoData rules fire on one dark-data condition, HIMMEL-2485
 # (himmel_orphan_processes,
 # himmel_session_dead, himmel_hook_chain_budget_pressure,
 # himmel_hook_chain_budget_denials, himmel_hook_chain_log_unreadable) fire
