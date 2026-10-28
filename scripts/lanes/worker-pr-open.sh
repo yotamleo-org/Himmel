@@ -221,7 +221,7 @@ fi
 
 # Report chain edge upgrades without flag-wrapping any publication safety gate.
 if [ "$(forge_detect)" = github ]; then
-    if ! bash "$HERE/../handover/chief-kit/chain-push-check.sh" --repo "$(forge_repo_nwo)" --base "origin/$BASE" >&2; then
+    if ! bash "$HERE/../handover/chief-kit/chain-push-check.sh" --base "origin/$BASE" >&2; then
         echo "WARN worker-pr-open: chain push check needs chief attention (advisory; publication gates unchanged)" >&2
     fi
 fi

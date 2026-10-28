@@ -49,7 +49,9 @@ class PushCheck(unittest.TestCase):
                              'if args[:2] == ["pr", "list"]: print("42"); sys.exit(0)\n'
                              'if args[:2] == ["pr", "view"]: print("feat(handover): [HIMMEL-7711] fixture"); sys.exit(0)\n'
                              'if args[:2] == ["pr", "edit"]: sys.exit(0)\n'
-                             'if args[:2] == ["repo", "view"]: print("fixture/repo"); sys.exit(0)\n'
+                             'if args[:2] == ["repo", "view"]:\n'
+                             '    with Path(__file__).with_name("repo-lookups").open("a") as log: log.write("lookup\\n")\n'
+                             '    print("fixture/repo"); sys.exit(0)\n'
                              'if len(args) == 4 and args[0] == "api" and args[2:] == ["--jq", ".head.sha"]:\n'
                              '    print(data[args[1]]); sys.exit(0)\n'
                              'if len(args) != 4 or args[0] != "api" or args[2:] != ["--paginate", "--slurp"]:\n'
@@ -216,6 +218,9 @@ class PushCheck(unittest.TestCase):
         for flag in ('0', '1'):
             with self.subTest(flag=flag):
                 env['HIMMEL_FLAG_CHAIN_PUSH_CHECK'] = flag
+                lookups = self.root / 'repo-lookups'
+                if lookups.exists():
+                    lookups.unlink()
                 p = subprocess.run(['bash', str(worker), str(title), str(body)], cwd=self.repo,
                                    env=env, text=True, capture_output=True)
                 self.assertEqual(p.returncode, 0, p.stderr)
@@ -224,6 +229,8 @@ class PushCheck(unittest.TestCase):
                     self.assertIn('FINDING edge-upgraded 10', p.stderr)
                 else:
                     self.assertNotIn('FINDING', p.stderr)
+                # PR update needs one lookup for its URL; only flag-on adds the checker lookup.
+                self.assertEqual(len(lookups.read_text().splitlines()), 1 if flag == '0' else 2)
 
 
 unittest.main(verbosity=2)
