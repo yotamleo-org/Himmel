@@ -188,7 +188,7 @@ pass the same redactor as the feed; the id fields are left intact, and so are
 would blank) and `failure` (one of four words).
 
 **Journal roots.** A session launched with its own `CLAUDE_CONFIG_DIR` opens
-in the run view once the Fleet page has listed it; before that, and after a
+in the run view once a live Fleet census poll has seen it; before that, and after a
 server restart, its run is `404`. A journal root is a Claude config directory
 whose `projects/` holds session journals. `resolveJournal` searches two
 built-in roots, `~/.claude` (native) and `~/.claude-codex` (claudex, the lane
