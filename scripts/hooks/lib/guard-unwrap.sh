@@ -267,7 +267,7 @@ _gu_flatten_params() {
 # _gu_strip_heredocs CMD — GU_NOHD is CMD with every heredoc body line
 # dropped (opener and terminator lines kept).
 _gu_strip_heredocs() {
-    local line out='' rest d t re='(^|[^<])<<(-?)[[:space:]]*(["'"'"']?)([A-Za-z_][A-Za-z0-9_]*)\3'
+    local line out='' rest d t re='(^|[^<])<<(-?)[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
     local -a pend=()
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "${#pend[@]}" -gt 0 ]; then
@@ -282,7 +282,7 @@ _gu_strip_heredocs() {
         out=$out$line$'\n'
         rest=$line
         while [[ $rest =~ $re ]]; do
-            d=${BASH_REMATCH[4]}
+            d=${BASH_REMATCH[3]//[\"\']/}
             [ -z "${BASH_REMATCH[2]}" ] || d=-$d
             pend[${#pend[@]}]=$d
             rest=${rest#*"${BASH_REMATCH[0]}"}

@@ -179,12 +179,22 @@ fi
 # shellcheck disable=SC2016 # a literal `$` in the ERE, not an expansion
 _noexp_re='(^[[:space:]]*|[;&|(`][[:space:]]*)(\$(\{[^}]*\}|[a-z_][a-z0-9_]*(:[a-z]|\[[^]]*\])*|[0-9#?*@!$-]))+[[:space:]]*'
 _noexp_over=0
+# _sub_first S M R — REPLY is ${S/"$M"/"$R"}: S with its first M replaced by R.
+# bash 3.2 runs that substitution in time quadratic in the length of S, so the
+# 256 passes below over a long command ran for minutes on macOS; the prefix
+# strip and the offset slice here are linear. Bytes, so the offsets agree.
+_sub_first() {
+    local LC_ALL=C pre
+    case $1 in *"$2"*) ;; *) REPLY=$1; return 0 ;; esac
+    pre=${1%%"$2"*}
+    REPLY=$pre$3${1:${#pre}+${#2}}
+}
 # _noexp_strip TEXT — REPLY is TEXT with command-position expansions dropped.
 _noexp_strip() {
     local s=$1 n=0
     while [[ $s =~ $_noexp_re ]]; do
         if [ "$n" -ge 256 ]; then _noexp_over=1; break; fi
-        s=${s/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"}
+        _sub_first "$s" "${BASH_REMATCH[0]}" "${BASH_REMATCH[1]}"; s=$REPLY
         n=$((n + 1))
     done
     REPLY=$s
