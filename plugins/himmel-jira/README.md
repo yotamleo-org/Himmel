@@ -32,7 +32,7 @@ Each command has a matching skill that auto-triggers on Jira intent.
 
 ## Logs
 
-The metadata cache is written to `$XDG_CACHE_HOME/himmel-cli/jira/` when `XDG_CACHE_HOME` is set, otherwise `~/.cache/himmel-cli/jira/`. Inspect any run:
+The metadata cache (`metadata.json`) is written to `$XDG_CACHE_HOME/himmel-cli/jira/` when `XDG_CACHE_HOME` is set, otherwise `~/.cache/himmel-cli/jira/`. `himmel-run` keeps its `normal.log`, `error.log` and run index in the `himmel-cli/jira/` directory under its own cache root (`env-paths`: the same path on Linux, `~/Library/Caches` on macOS). Inspect any run:
 
 ```
 himmel-run jira --inspect <run-id-from-summary-line>
