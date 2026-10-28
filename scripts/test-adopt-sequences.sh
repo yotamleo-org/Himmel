@@ -141,7 +141,7 @@ case "${1:-} ${2:-} ${3:-}" in
   "plugin install "*)
     spec="$3"; scope="$(scope_of "$@")"
     if ! jq -e --arg i "$spec" --arg s "$scope" 'any(.[]; .id==$i and .scope==$s)' "$st/plugins.json" >/dev/null; then
-      jq --arg i "$spec" --arg s "$scope" --arg p "$PWD" '. + [{id:$i,scope:$s} + (if $s=="project" then {projectPath:$p} else {} end)]' "$st/plugins.json" > "$st/p.next" && mv "$st/p.next" "$st/plugins.json"
+      jq --arg i "$spec" --arg s "$scope" --arg p "$(pwd -P)" '. + [{id:$i,scope:$s} + (if $s=="project" then {projectPath:$p} else {} end)]' "$st/plugins.json" > "$st/p.next" && mv "$st/p.next" "$st/plugins.json"
     fi
     jedit "$(settings_for "$scope")" --arg i "$spec" '.enabledPlugins[$i] = true'
     write_installed ;;
