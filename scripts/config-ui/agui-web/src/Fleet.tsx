@@ -5,7 +5,7 @@
 // the fleet landing — /agui/ with a token and no run. Every live session (chiefs, workers, judges,
 // interactive sessions) from GET /api/agui/fleet, polled; a row opens that session's run stream. A
 // worker's row also links to the chief's Health page, whose workers card reads the same handover docs.
-// sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live chief, and
+// sections from fleet-model's fleetSections — Needs you, Needs the chief, Orphans, Running per live chief, and
 // Finished (closed by default) — narrowed by the rail's filters. A card is one line: its name opens the session's run
 // page, its chevron expands it in place to the status (left) and lineage (right) columns.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -139,7 +139,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const { board, error: boardError } = useBoard(token, boardConsole);
   const rollup = useRollup(token);
   const joined = useMemo(() => (board ? joinBoard(all, board) : []), [all, board]);
-  const needs = useMemo(() => needsShown(joined, all, filters), [joined, all, filters]);
+  const needs = needsShown(joined, all, filters).filter((j) => !s.attention.operator.some((a) => a.row.name === j.row?.name));
   const [tab, setTab] = useState(() => parseView(location.hash).tab);
   const initial = parseView(location.hash).k;
   const [drawer, setDrawer] = useState<Drawer | null>(initial ? openAt(null, initial.leg, initial.stage) : null);
@@ -166,7 +166,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet && !unavailable && <span className={`meta${error ? " stale" : ""}`}>
           <Jump to="running">{`${counts.running} running`}</Jump>
           {` · ${counts.waiting} waiting for GO · `}
-          {counts.attention > 0 ? <Jump to="attention" className="fleet-attn-count">{`${counts.attention} need attention`}</Jump> : "0 need attention"}
+          {counts.attention > 0 ? <Jump to={s.attention.operator.length ? "attention" : "attention-chief"} className="fleet-attn-count">{`${counts.attention} need attention`}</Jump> : "0 need attention"}
           {" · "}
           {counts.orphaned > 0 ? <Jump to="orphans" className="fleet-orphan-count">{`${counts.orphaned} orphaned`}</Jump> : "0 orphaned"}
           {" · "}<Jump to="finished">{`${counts.finished} finished`}</Jump>
@@ -190,8 +190,11 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
-        {(s.attention.length > 0 || needs.length > 0) && <Section id="attention" title="Needs attention" count={counts.attention + needs.length} initial={true} className="fleet-attention">
-          <Attention items={s.attention} needs={needs} token={token} now={now} />
+        {s.attention.operator.length > 0 && <Section id="attention" title="Needs you" count={s.attention.operator.length} initial={true} className="fleet-attention">
+          <Attention label="Needs you" items={s.attention.operator} needs={[]} token={token} now={now} />
+        </Section>}
+        {(s.attention.chief.length > 0 || needs.length > 0) && <Section id="attention-chief" title="Needs the chief" count={s.attention.chief.length + needs.length} initial={true} className="fleet-attention">
+          <Attention label="Needs the chief" items={s.attention.chief} needs={needs} token={token} now={now} />
         </Section>}
         {fleet && (s.orphans.length > 0 || s.processOrphans.length > 0 || fleet.processOrphans === null) &&
           <Section id="orphans" title="Orphans" count={counts.orphaned} initial={true} className="fleet-orphans">
@@ -262,9 +265,9 @@ function NameLink({ row, token, className = "" }: { row: Row; token: string; cla
 }
 
 // One line per item, by severity.
-function Attention({ items, needs, token, now }: { items: ReturnType<typeof fleetSections>["attention"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
+function Attention({ label, items, needs, token, now }: { label: string; items: ReturnType<typeof fleetSections>["attention"]["chief"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
   const ctx = useBoardCtx();
-  return <ul className="fleet-attn-list" aria-label="Needs attention">
+  return <ul className="fleet-attn-list" aria-label={label}>
     {needs.map(({ leg, need }) => ctx.board && need && <li key={`need:${leg.leg}`} className="fleet-attn bd-need-row">
       <Swatch board={ctx.board} group="verb" k={need.verb} />
       {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(leg.leg, leg.stage)}>{leg.leg}</button>

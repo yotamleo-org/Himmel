@@ -64,17 +64,38 @@ test("finished: wrapped and dead chiefs fold into one chain, wrapped workers, cl
 
 test("needs attention: BLOCKED/FINDING, then context at 85 % or more, then a CLOUD-DONE PR awaiting its shepherd", () => {
   const s = fleetSections(rows);
-  expect(s.attention.map((a) => [a.row.name, a.why])).toEqual([
+  expect(s.attention.chief.map((a) => [a.row.name, a.why])).toEqual([
     ["blocked", "BLOCKED"],
     ["running-new", "context 93%"],
     ["cloud-HIMMEL-1", "CLOUD-DONE · awaiting shepherd · PR 11"],
   ]);
 });
 
+test("attention owners: a cloud question is operator-owned; context and an unshepherded PR are chief-owned exactly once", () => {
+  const sessions = [
+    row(BU, "console", BU),
+    row("cloud-question", "cloud", BU, cloud("blocked", { ...fill(90), pr: 12 })),
+    row("context-90", "leg", BU, fill(90)),
+    row("cloud-done", "cloud", BU, cloud("done", { pr: 13 })),
+  ];
+  const s = fleetSections(sessions);
+  expect(s.attention).toEqual({
+    operator: [{ row: sessions[1], why: "CLOUD-BLOCKED · a question on the PR · PR 12" }],
+    chief: [
+      { row: sessions[2], why: "context 90%" },
+      { row: sessions[3], why: "CLOUD-DONE · awaiting shepherd · PR 13" },
+    ],
+  });
+  const attention = [...s.attention.operator, ...s.attention.chief];
+  expect(new Set(attention.map((a) => a.row.name)).size).toBe(attention.length);
+  expect(s.counts.attention).toBe(s.attention.operator.length + s.attention.chief.length);
+  expect(fleetSections(sessions, null, { lanes: [], states: ["attention"], text: "" }).counts.shown).toBe(3);
+});
+
 test("a cloud session with a live shepherd is shepherded, not awaiting one; its shepherd sorts under it", () => {
   const withShepherd = [...rows, row("HIMMEL-1-N1-shepherd-2026-10-08", "leg", BU, { parent: "cloud-HIMMEL-1", ticket: "HIMMEL-1", state: "running", ...at(2) })];
   const s = fleetSections(withShepherd);
-  expect(s.attention.map((a) => a.row.name)).not.toContain("cloud-HIMMEL-1");
+  expect(s.attention.chief.map((a) => a.row.name)).not.toContain("cloud-HIMMEL-1");
   expect(cloudPhase(withShepherd.find((r) => r.name === "cloud-HIMMEL-1"), withShepherd)).toBe("shepherded");
   expect(cloudPhase(rows.find((r) => r.name === "cloud-HIMMEL-1"), rows)).toBe("CLOUD-DONE");
   expect(cloudPhase(rows.find((r) => r.name === "cloud-HIMMEL-4"), rows)).toBe("working");
@@ -102,7 +123,7 @@ test("a console filter scopes every section, and its process orphans, to that co
   const procs = [{ pid: 7, owner: "idle-new", ageMin: 45 }, { pid: 8, owner: "orphan", ageMin: 90 }, { pid: 9, owner: "elsewhere", ageMin: 31 }];
   const s = fleetSections(rows, BT, NO_FILTERS, procs);
   expect(s.running).toEqual([]);
-  expect(s.attention).toEqual([]);
+  expect(s.attention).toEqual({ operator: [], chief: [] });
   expect(s.finished.map((e) => e.row.name)).toEqual(["cloud-HIMMEL-2", BT]);
   expect(fleetSections(rows, BU, NO_FILTERS, procs).processOrphans.map((p) => p.pid)).toEqual([7, 8]);
 });
@@ -161,7 +182,7 @@ test("filters apply to every section alike: a hidden live hop leaves its finishe
 test("an orphan's own alarm (BLOCKED, high context) still reaches Needs attention, beside its Orphans row", () => {
   const withAlarm = rows.map((r) => (r.name === "orphan-worker" ? { ...r, marker: "BLOCKED" } : r));
   const s = fleetSections(withAlarm);
-  expect(s.attention.map((a) => [a.row.name, a.why])).toContainEqual(["orphan-worker", "BLOCKED"]);
+  expect(s.attention.chief.map((a) => [a.row.name, a.why])).toContainEqual(["orphan-worker", "BLOCKED"]);
   expect(s.orphans.map((o) => o.row.name)).toEqual(["orphan-worker"]);
 });
 

@@ -58,7 +58,7 @@ export function needsShown(joined: Joined[], rows: Row[], filters: Filters): Joi
   const needing = joined.filter((j) => j.need);
   if (!filters.lanes.length && !filters.states.length && !filters.text.trim()) return needing;
   const s = fleetSections(rows, null, filters);
-  const on = new Set([...s.running.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]), ...s.attention.map((a) => a.row), ...s.orphans.map((a) => a.row)].map((r) => r.name));
+  const on = new Set([...s.running.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]), ...[...s.attention.operator, ...s.attention.chief].map((a) => a.row), ...s.orphans.map((a) => a.row)].map((r) => r.name));
   return needing.filter((j) => j.row && on.has(j.row.name));
 }
 
