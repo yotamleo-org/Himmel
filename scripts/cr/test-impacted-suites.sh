@@ -1138,8 +1138,8 @@ printf 'bash "$d/lib/clo-lib.sh" \377\n' > "$FX/scripts/test-nonutf8.sh"
 change scripts/lib/clo-lib.sh
 ctl="$(run_is "$range")"
 : > "$SHIM4/calls"
-out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>/dev/null )"
-if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out"; fi
+out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>"$SHIM4/stderr" )"
+if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out [stderr: $(head -c 600 "$SHIM4/stderr")]"; fi
 # The control above compares the new selector with itself; this one compares it
 # with the selector as it was before the batching change (a full `git grep -E -f` per
 # round), read from the immutable base commit when this clone holds it.

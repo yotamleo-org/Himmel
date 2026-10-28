@@ -1919,6 +1919,7 @@ mk_stub "$d43" 1 alive
 out43=$(HEADED_ARM_UNAME=Darwin PGREP_CMD="$d43/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43/locks" \
   bash "$d43/bare/headed-arm.sh" "HIMMEL-mac43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1)
 rc43=$?
+[ "$rc43" = 3 ] || echo "  arm said: $(printf '%s' "$out43" | head -c 600)"
 check "43 macOS default: exit 3 when the shim is absent" "$rc43" "3"
 contains "43 macOS default resolves to the konsole-macos.sh shim" "$out43" "konsole-macos.sh"
 not_contains "43 macOS default is never a bare 'konsole'" "$out43" "no 'konsole' on PATH"
@@ -1949,6 +1950,7 @@ mk_stub "$d43b" 1 alive
 out43b=$(env -u KONSOLE_CMD PATH="$d43b:$PATH" HEADED_ARM_UNAME=Linux PGREP_CMD="$d43b/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" \
   bash "$d43b/bare/headed-arm.sh" "HIMMEL-mac43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1)
 wait_record "$d43b" || true
+[ -e "$d43b/record" ] || echo "  arm said: $(printf '%s' "$out43b" | head -c 600)"
 [ -e "$d43b/record" ] && echo "ok - 43b Linux default: the bare konsole on PATH is what launched" \
   || { echo "FAIL - 43b Linux default: the konsole on PATH was never invoked"; fails=$((fails+1)); }
 not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konsole-macos.sh"

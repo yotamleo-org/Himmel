@@ -239,9 +239,9 @@ fi
 if command -v node >/dev/null 2>&1; then
     OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- node --test scripts/lanes/tests/plugin-profiles.test.mjs 2>&1)
     RC=$?
+    [ "$RC" -eq 0 ] || { echo "    node at $(command -v node) said:"; printf '%s\n' "$OUT" | sed -n '1,15p'; }
     assert_rc "suite with node --test <tracked file> unaffected" 0 "$RC"
 else
-    # The macOS cadence runner installs bun, not node; the row runs where node exists
     echo "SKIP 7: node not found on this host - the node --test row needs a node binary"
 fi
 

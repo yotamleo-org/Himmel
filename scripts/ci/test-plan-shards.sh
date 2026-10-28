@@ -169,9 +169,10 @@ if [ "$(wc -l < "$PS/small.list")" -eq 5 ] && [ "$out" = "$want" ]; then pass "P
 # A full sweep (~15000 s) needs nearly every shard; it may drop one or two only
 # because its longest suite (~2300 s) bounds the run at any N.
 out=$(size "$PS/all.list" "$PS/real-ledger.tsv" 8)
+# BSD seq -s also appends the separator after the last number; paste -sd, does not.
 t=$(printf '%s\n' "$out" | sed -n 's/^shard_total=//p')
-case "$t" in 6|7|8) want=$(printf 'shards=[%s]\nabsent_shards=\nshard_total=%s' "$(seq -s, 1 "$t")" "$t") ;; *) want=x ;; esac
-if [ "$out" = "$want" ]; then pass "PS9 every real ledger suite keeps 6-8 of 8 shards"; else fail "PS9 all: got [$out] want [$want] t=[$t]"; fi
+case "$t" in 6|7|8) want=$(printf 'shards=[%s]\nabsent_shards=\nshard_total=%s' "$(seq 1 "$t" | paste -sd, -)" "$t") ;; *) want=x ;; esac
+if [ "$out" = "$want" ]; then pass "PS9 every real ledger suite keeps 6-8 of 8 shards"; else fail "PS9 all: got [$out]"; fi
 
 # PS10: costs 500 400 300 200 100 (sum 1500). LPT spans: N=1 1500, N=2 800,
 # N=3 500 -> N=3 is the first within 600 s.
