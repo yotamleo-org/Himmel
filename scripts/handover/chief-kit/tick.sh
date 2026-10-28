@@ -2188,16 +2188,17 @@ case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
 slot_now="$(date +%s)"
 . "$HERE/../../lib/proc-tree.sh"
 for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
-    [ -f "$slot_dir/owner" ] || continue
-    slot_pid="$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$slot_dir/owner" | head -n 1)"
-    slot_started="$(sed -n 's/^started=\([0-9][0-9]*\)$/\1/p' "$slot_dir/owner" | head -n 1)"
+    # one read of the owner record, so a slot released and retaken mid-parse cannot mix two holders
+    slot_rec="$(cat "$slot_dir/owner" 2>/dev/null)" || continue  # swallow-ok: a slot released mid-read has no holder to report
+    slot_pid="$(printf '%s\n' "$slot_rec" | sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
+    slot_started="$(printf '%s\n' "$slot_rec" | sed -n 's/^started=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
     [ -n "$slot_pid" ] && [ -n "$slot_started" ] || continue
-    slot_id="$(sed -n 's/^identity=//p' "$slot_dir/owner" | head -n 1)"
+    slot_id="$(printf '%s\n' "$slot_rec" | sed -n 's/^identity=//p' | head -n 1)"
     # the semaphore's own liveness: rc 1 is a gone pid or one now naming another process (pid reuse)
     if proc_tree_liveness_matches "$slot_pid" "$slot_id"; then :; else [ "$?" -ne 1 ] || continue; fi
     slot_age=$((slot_now - slot_started))
     [ "$slot_age" -gt "$((10#$slot_cap))" ] || continue
-    slot_detail="$(sed -n 's/^detail=//p' "$slot_dir/owner" | head -n 1)"
+    slot_detail="$(printf '%s\n' "$slot_rec" | sed -n 's/^detail=//p' | head -n 1)"
     slot_worker="$(printf '%s\n' "$slot_detail" | sed -n 's/.*worker=\([^ ]*\).*/\1/p')"
     slot_range="$(printf '%s\n' "$slot_detail" | sed -n 's/.*range=\([^ ]*\).*/\1/p')"
     slot_suites="$(printf '%s\n' "$slot_detail" | sed -n 's/.*suites=\([0-9][0-9]*\).*/\1/p')"
