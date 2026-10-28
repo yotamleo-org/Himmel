@@ -897,8 +897,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
     return;
   }
   // restart is executed IN THIS PROCESS, not by auto-action.sh: rung 1
-  // must exit the caller, and rung 2's relaunch has to outlive the processes it
-  // kills. ORDERING IS LOAD-BEARING — ack, then audit, THEN fire. The reply is an
+  // must exit the caller. For rung 1 ORDERING IS LOAD-BEARING — ack, then audit, THEN fire. The reply is an
   // outbox APPEND (durable on disk); the running poller never gets to flush it,
   // because firing is exactly what kills the transport. The respawned poller drains
   // outbox.jsonl on its next tick, so the operator sees the ack a second or two
@@ -910,9 +909,15 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
       await reply("⚠️ restart is not wired in this poller build");
       return;
     }
-    await reply(route.arg === "full"
-      ? "♻️ restarting the whole bridge (fresh env) — back in a moment"
-      : "♻️ bouncing the poller — back in a moment");
+    // `/restart full` has no executor: report its refusal, never ack a restart
+    // that is not happening.
+    if (route.arg === "full") {
+      const refused = await deps.restart(route.arg);
+      await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: refused.rc, result: auditResult(route.op, refused.rc) });
+      await reply(refused.message);
+      return;
+    }
+    await reply("♻️ bouncing the poller — back in a moment");
     await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: 0, result: auditResult(route.op, 0) });
     const out = await deps.restart(route.arg);
     // Only reached when the fire FAILED (a successful rung 1 never returns).

@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - The template's setup docs, hooks config and helper scripts drop their stale
-  PowerShell-twin and `.ps1` references (Windows support is gone).
+  PowerShell-twin and `.ps1` references. Windows (Git Bash) setup remains documented.
 
 ## [0.4.90] — 2026-10-28
 

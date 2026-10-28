@@ -2635,16 +2635,21 @@ test("/restart acks and audits BEFORE firing — the fire kills the transport (H
   expect(order).not.toContain("script");   // never shelled to auto-action.sh
 });
 
-test("/restart full announces the fresh-env restart and passes the rung through", async () => {
+test("/restart full reports the executor's rc 20 and never acks a restart that is not happening", async () => {
   const order: string[] = [];
+  const rcs: number[] = [];
   await handleAutoCommand("/root", restartMsg(), restartRoute("full"), {
     runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
     reply: async (_c, t) => { order.push(`reply:${t}`); },
-    audit: async (f) => { order.push(`audit:${f.result}`); },
-    restart: async (rung) => { order.push(`fire:${rung}`); return { rc: 0, message: "" }; },
+    audit: async (f) => { order.push(`audit:${f.result}`); rcs.push(f.rc); },
+    restart: async (rung) => { order.push(`fire:${rung}`); return { rc: 20, message: "⚠️ `/restart full` is not supported here" }; },
   });
-  expect(order[0]).toContain("whole bridge");
-  expect(order).toContain("fire:full");
+  expect(order).toEqual([
+    "fire:full",
+    "audit:restart-unsupported",
+    "reply:⚠️ `/restart full` is not supported here",
+  ]);
+  expect(rcs).toEqual([20]);
 });
 
 test("/restart surfaces a FAILED fire instead of leaving an ack and a live bridge", async () => {
@@ -2652,7 +2657,7 @@ test("/restart surfaces a FAILED fire instead of leaving an ack and a live bridg
   // worst outcome: the operator waits for a bridge that never went away.
   const replies: string[] = [];
   const audits: string[] = [];
-  await handleAutoCommand("/root", restartMsg(), restartRoute("full"), {
+  await handleAutoCommand("/root", restartMsg(), restartRoute(), {
     runScript: async () => ({ code: 0, stdout: "", stderr: "" }),
     reply: async (_c, t) => { replies.push(t); },
     audit: async (f) => { audits.push(`${f.result}:${f.rc}`); },
