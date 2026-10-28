@@ -2137,7 +2137,11 @@ raw_obfuscated() {
     # An option value may be quoted, blanks and all (-o "errexit"); each
     # o/O in a short cluster takes its own value (-eo errexit, -oo a b).
     ov="(\"[^\"]*\"|${SQ}[^${SQ}]*${SQ}|[^[:blank:]\"$SQ]+)+"
-    [[ $d =~ ((^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|mksh|source)[\"$SQ]?([[:blank:]]+([-+][^-c[:blank:]]*[oO][^c[:blank:]]*([[:blank:]]+${ov})+|--(rcfile|init-file)[[:blank:]]+${ov}|--[^[:blank:]]*|-[^-c[:blank:]]*|\+[^c[:blank:]]*))*|(^|[\;\|\&\(\`=$NL])[[:blank:]]*(${kw}[[:blank:]]+)*\.)[[:blank:]]+([\*\?\[\{\(\^]|[^#~[:blank:]-][^[:blank:]]*[\*\?\[\{\(\#\^\~]) ]] && so=1 && pobf=1
+    # The bracket classes sit in variables with no backslash: bash 3.2 hands
+    # [\*\?] to regcomp as is, where the backslash is a member, so on macOS
+    # the \c of an env -S string read as a glob (bash 5.2+ drops it).
+    local _ro_q="[\"$SQ]" _ro_sep="[;|&(\`=$NL]" _ro_g1='[*?[{(^]' _ro_g2='[*?[{(#^~]'
+    [[ $d =~ ((^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|mksh|source)${_ro_q}?([[:blank:]]+([-+][^-c[:blank:]]*[oO][^c[:blank:]]*([[:blank:]]+${ov})+|--(rcfile|init-file)[[:blank:]]+${ov}|--[^[:blank:]]*|-[^-c[:blank:]]*|\+[^c[:blank:]]*))*|(^|${_ro_sep})[[:blank:]]*(${kw}[[:blank:]]+)*\.)[[:blank:]]+(${_ro_g1}|[^#~[:blank:]-][^[:blank:]]*${_ro_g2}) ]] && so=1 && pobf=1
     [ "$obf$pobf" = 00 ] && return 0
     clr='(declare|typeset|local)[[:space:]]+(.*[[:space:]])?\+[[:alnum:]]*x|(^|[^[:alnum:]_-])exec[[:space:]]+-|\$\{!|(^|[^[:alnum:]_-])export[[:space:]]+-[[:alnum:]]*n'
     if [ "$obf" = 0 ]; then
