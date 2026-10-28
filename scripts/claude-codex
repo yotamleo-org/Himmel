@@ -870,11 +870,11 @@ export CLAUDE_CODE_SUBAGENT_MODEL="$CODEX_SUBAGENT_MODEL"
 export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
 export CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=3
 export ENABLE_TOOL_SEARCH=false
-# Unset effort defaults to xhigh upstream and reaches Codex verbatim, so pin
-# medium to avoid surprise spend. Per-dispatch CLAUDE_CODE_EFFORT_LEVEL still
-# wins; the env sweeps deliberately leave it untouched. Avoid `max`, whose
-# Codex juice is undocumented. Keep in sync with the .ps1 twin.
-export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-medium}"
+# Unset effort defaults to xhigh upstream and reaches Codex verbatim; decision
+# 223 makes gpt-6.1-sol at xhigh the claudex default, so pin it explicitly.
+# Per-dispatch CLAUDE_CODE_EFFORT_LEVEL still wins; the env sweeps deliberately
+# leave it untouched. Avoid `max`, whose Codex juice is undocumented.
+export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}"
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # The AG-UI fleet reads the lane and backend model from this process's environ rather than
 # guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch

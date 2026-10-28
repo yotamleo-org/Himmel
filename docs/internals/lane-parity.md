@@ -9,7 +9,7 @@ deny-guard x lane table, and `scripts/parity/test-ws5-invariants.sh` checks
 that the gemini / copilot / cursor rows stay `deferred`.
 
 > **Note:** this index records compatibility/parity, not current routing —
-> dormancy status for impl lanes (claudex, hermes-oneshot, codex-exec; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
+> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
 > [`lane-calibration.md`](lane-calibration.md), not here.
 
 ## Doctrine
