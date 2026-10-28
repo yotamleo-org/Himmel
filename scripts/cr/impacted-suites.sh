@@ -1152,7 +1152,7 @@ if [ -s "$pats" ]; then
 fi
 
 # A tree-scan suite asserts a property of the WHOLE tree (every
-# .ps1, every launch site, every ledger), so a file it never names can still
+# script, every launch site, every ledger), so a file it never names can still
 # break it, and the textual match above would skip it. A suite that carries the
 # header line `# selector: tree-scan` is therefore listed whenever the range adds,
 # deletes, renames or retypes (regular file to symlink) any file. The marker is

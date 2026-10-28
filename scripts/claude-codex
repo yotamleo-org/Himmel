@@ -159,8 +159,6 @@ if [ -z "${CLIPROXY_API_KEY-}" ] && [ -f "$HERE/lib/load-dotenv.sh" ]; then
   # load_dotenv leaves surrounding quotes literal (the shared lib does not strip
   # them); drop ONE matching surrounding quote pair so a `.env` value written as
   # CLIPROXY_API_KEY="…" doesn't send the quotes to the API. bash 3.2-safe.
-  # Anchor name: "surrounding-quote-strip" - referenced by name (not line
-  # numbers) from scripts/claude-codex.ps1's twin strip.
   case "${CLIPROXY_API_KEY-}" in
     \"*\") CLIPROXY_API_KEY="${CLIPROXY_API_KEY#\"}"; CLIPROXY_API_KEY="${CLIPROXY_API_KEY%\"}" ;;
     \'*\') CLIPROXY_API_KEY="${CLIPROXY_API_KEY#\'}"; CLIPROXY_API_KEY="${CLIPROXY_API_KEY%\'}" ;;
@@ -474,7 +472,6 @@ while :; do
 done
 
 sanitize_settings() { # $1 src $2 dest — strip model + env.ANTHROPIC_*/CLAUDE_CODE_USE_* (node: himmel dep)
-  # keep in sync with claude-codex.ps1 $SanitizerJs (byte-identical JS)
   node -e '
 const fs=require("fs");
 const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
@@ -865,7 +862,6 @@ export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WINDOW"
 # CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 — that restores the old
 # wait-for-the-API-to-reject behaviour, the opposite of the fix. No extra
 # validation here: this inherits the CODEX_CONTEXT_WINDOW ladder above.
-# Keep in sync with the .ps1 twin (scripts/parity/test-launcher-context-env-parity.sh).
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CODEX_CONTEXT_WINDOW"
 export CLAUDE_CODE_SUBAGENT_MODEL="$CODEX_SUBAGENT_MODEL"
 export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
@@ -881,7 +877,7 @@ export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch
 # reading and the current probe cache (codex-bank-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
 # reads it as the default lane for workers a claudex session arms, and bank-preflight.sh reads it too.
-# ponytail: no launch-time codex-bank reading yet (a bash-only node block breaks the .ps1 twin parity pin), so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds it to both twins.
+# ponytail: no launch-time codex-bank reading yet, so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds the launch-time reading.
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"
 export HIMMEL_SESSION_MODEL

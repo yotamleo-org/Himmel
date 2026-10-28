@@ -10,7 +10,7 @@
 # 'trivial' never beats fail-closed or safety paths (codex-adv).
 # Pure function (deterministic from diff text + CR_TRIVIALITY_OVERRIDE) plus a
 # CLI form guarded by BASH_SOURCE[0] = $0. Mirrors scripts/cr/lane-classify.sh.
-# bash 3.2-safe (no mapfile, no associative arrays); ASCII only; no .ps1 twin.
+# bash 3.2-safe (no mapfile, no associative arrays); ASCII only.
 set -euo pipefail
 
 # Rule 2 helper: is a changed path safety-critical (never trivial, any size)?

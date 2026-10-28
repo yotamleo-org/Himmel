@@ -75,9 +75,7 @@ RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
 # Pinned sha256 of the linux_amd64 asset at v8.0.43, verified against the
-# release's own checksums.txt. Upstream DOES publish per-asset
-# checksums as of this version — the .ps1's "upstream publishes no per-asset
-# checksum" comment is stale; not corrected here (out of scope, Windows file).
+# release's own checksums.txt.
 ASSET_SHA256="7825540634898e11fe9baf255b683856da5d9e75b95c66835891ebb40a79b526"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
@@ -162,7 +160,7 @@ has_oauth() {
 }
 
 lane_workers_live() {
-  # Bounce-safety guard (mirrors Test-LaneWorkersLive in the .ps1): an
+  # Bounce-safety guard: an
   # ESTABLISHED TCP connection to the proxy port means a client is connected
   # right now (mid-stream or on a keep-alive) — the exact condition under
   # which a bounce hurts. Conservative on both edges: fails CLOSED (treats
