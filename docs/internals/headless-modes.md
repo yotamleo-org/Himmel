@@ -35,7 +35,7 @@ directly — one invocation site to audit instead of many
   the same way, per the CLAUDE.md "Claude invocation billing" rule.
 - **Billing:** same 5-hour/weekly subscription usage budget as interactive use — see
   [enforcement.md](enforcement.md#claude-invocation-billing).
-  `claude-headless.sh` calls `scripts/lib/bank-preflight.sh` before
+  `claude-headless.sh` calls `scripts/lib/usage-preflight.sh` before
   dispatching and refuses on a non-`PROCEED` verdict
   (`claude-headless.sh:299-300`).
 - **Confirm / dedup:** the wrapper never trusts `rc` — a denied tool call can

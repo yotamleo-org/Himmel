@@ -97,6 +97,7 @@ if grep -qE "^[[:space:]]*${KEY}=" "$ENV_FILE"; then
         $0 ~ "^[[:space:]]*" key "=" { if (!done) { print repl; done=1 } ; next }
         { print }
     ' "$ENV_FILE" > "$tmp"
+    # prim-ok: the original .env mode is copied onto $tmp above; atomic_write would reset it to 0600 and drop the EXIT-trap cleanup shape.
     mv "$tmp" "$ENV_FILE"
     trap - EXIT
     echo "OK set-env-var: updated $KEY in $ENV_FILE"

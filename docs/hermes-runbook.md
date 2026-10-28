@@ -191,7 +191,7 @@ In short: never pair a free model with write/git/PR control.
 | Route | Reviewer | Cost |
 |---|---|---|
 | `hermes` (**default**) | `scripts/hermes/invoke.sh` with the `scripts/cr/critics.json` `codex` row's model (`gpt-6.1-sol` on `openai-codex`) unless `--model` or `HERMES_CRITIC_MODEL` names another | codex subscription, no Claude usage budget (see below) |
-| `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription usage budget** — gated by `scripts/lib/bank-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
+| `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription usage budget** — gated by `scripts/lib/usage-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
 
 Route selection: an explicit `--route` / `CRITIC_ROUTE` always wins; otherwise
 it is derived from `--implementer`:

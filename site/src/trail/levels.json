@@ -189,7 +189,7 @@
       "example": {
         "title": "Ask before a heavy run",
         "blocks": [
-          { "kind": "cmd", "label": "Run", "text": "$ bash ~/himmel/scripts/lib/bank-preflight.sh" },
+          { "kind": "cmd", "label": "Run", "text": "$ bash ~/himmel/scripts/lib/usage-preflight.sh" },
           { "kind": "out", "label": "You see one word", "text": "PROCEED" },
           { "kind": "p", "html": "Or <code>SKIPPED-BANK</code> when your 5-hour or weekly Claude usage is too high, <code>SKIPPED-FLEET</code> when too many sessions already run, and <code>BANK-STALE</code> or <code>BANK-UNKNOWN</code> when the usage reading is old or missing." }
         ]

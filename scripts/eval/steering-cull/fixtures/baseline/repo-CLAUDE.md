@@ -28,7 +28,7 @@ lacks it → MODULE_NOT_FOUND), never the global `jira` shim.
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
 weekly budget as interactive use. Unattended sites preflight with
-`scripts/lib/bank-preflight.sh`, parse `--output-format json`, and declare an
+`scripts/lib/usage-preflight.sh`, parse `--output-format json`, and declare an
 explicit `--permission-mode` (never `bypassPermissions`).
 Detail: `docs/internals/enforcement.md#claude-invocation-billing`.
 

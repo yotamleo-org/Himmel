@@ -2412,25 +2412,26 @@ redirects (`>`, `>>`, `>|`, `&>`, `<>`), `tee`, `cp`/`mv`/`install`/`ln`/`rsync`
 as a destination, `dd of=`, `sed -i`, `touch`/`truncate`/`patch`, `-o`/`--output`
 options, editors, downloaders and interpreters handed the path, `find -exec`,
 `xargs`, and inline interpreter code (`python3 -c`, `perl -e`, `node -e`, a
-heredoc script) that names `bank-lift.json`, `$BANK_LIFT_FILE` or `bank-lift.sh` —
+heredoc script) that names `bank-lift.json`, `$BANK_LIFT_FILE`, `usage-lift.sh` or `bank-lift.sh` —
 under every spelling of the path: `~`, `$HOME`, `${HOME}`, `/home/<user>`,
 `~user`, relative from `~`, `~/.himmel` or `state/`, `.`/`..` segments, quote
 splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and a
 `cd` before a relative name. A whole-directory write into `state/`, `.himmel/`
 or `~` is refused when its source could put a lift there (a lift-named, glob or
 `$var` source, a `dir/` or `dir/.` contents copy, `-T`, `ln -n`); copying an
-unrelated file in passes. It also refuses `bank-lift.sh set` (and the sourced
-`_bank_lift_cmd set`) under any launcher: `bash`/`sh`/direct/`source`/`.`,
+unrelated file in passes. It also refuses `usage-lift.sh set` (and the sourced
+`_usage_lift_cmd set`; the old `bank-lift.sh` and
+`_bank_lift_cmd` names are fenced the same way) under any launcher: `bash`/`sh`/direct/`source`/`.`,
 `env`/`timeout`/`nohup`/`command`/`exec`/`nice`/`sudo`/`xargs`, `-c` bodies,
 heredocs into a shell, a computed (`$(…)`, `$var`) subcommand or script word.
 Whole-command layer (judge J1874, runs FIRST): a reader can hand the lift
 path to a writer that never names it — `cp x $(jq -rn '"…/bank-lift.json"')`,
 `echo > "$(ls <lift>)"`, `ls <lift> | xargs cp x`. So when the command text
-names `bank-lift.json` or `bank-lift.sh` ANYWHERE — inside `$( )`, backticks,
+names `bank-lift.json`, `usage-lift.sh` or `bank-lift.sh` ANYWHERE — inside `$( )`, backticks,
 heredoc bodies and pipelines, after quote removal and `$'…'` decoding — the
 command passes only if EVERY clause at every depth (pipeline stages,
 substitution bodies, `-c` bodies, `&&`/`||`/`;` lists) is a reader under the
-limits below or `bash scripts/lib/bank-lift.sh show|clear` (also direct, the
+limits below or `bash scripts/lib/usage-lift.sh show|clear` (also direct, the
 script word spelled literally, and only the repo's own copy — see HIMMEL-4458
 below), AND no redirect writes anywhere but
 `/dev/null` (`>`, `>>`, `<>`, `>|`, `&>`, `&>>`; fd dups such as `2>&1` are
@@ -2447,20 +2448,20 @@ heredoc delimiter whose quote does not close on its line) denies; a quoted
 delimiter with a space (`<<'END MARK'`, `<<"E F"`, `<<"E"' F'`) is read as
 one word, as bash does. Over-deny is accepted:
 `test -f <lift> && echo yes`, `cat <lift> > /tmp/copy`, `set -e; bash
-…/bank-lift.sh show`, a heredoc commit message naming the lift, and a
+…/usage-lift.sh show`, a heredoc commit message naming the lift, and a
 write to any lift-NAMED file (`/tmp/x/bank-lift.json`) all deny; split the
 command, or put text in a file. Residual (ponytail): a lift name obfuscated
 by a glob or brace inside a substitution does not trigger this layer.
 HIMMEL-4458 closed these gaps:
-- **Repo-anchored script.** `bank-lift.sh show|clear` passes only when the
-  script word resolves (physically) to `<repo>/scripts/lib/bank-lift.sh` of
+- **Repo-anchored script.** `usage-lift.sh show|clear` passes only when the
+  script word resolves (physically) to `<repo>/scripts/lib/usage-lift.sh` of
   the checkout the hook runs from, or of one of its `.claude/worktrees/*`:
-  `scripts/lib/bank-lift.sh` or `./scripts/lib/bank-lift.sh` from that root
+  `scripts/lib/usage-lift.sh` or `./scripts/lib/usage-lift.sh` from that root
   with no `cd` in the command, or an absolute / `~` / `$HOME` path. A planted
-  `/tmp/x/bank-lift.sh show`, a relative path from another cwd, or a
+  `/tmp/x/usage-lift.sh show`, a relative path from another cwd, or a
   `worktrees/w1/../../..` escape denies. The script itself must be a regular
   file, not a symlink, whose directory resolves physically to that checkout's
-  `scripts/lib`: a symlinked `scripts/lib` or `bank-lift.sh` pointing out of
+  `scripts/lib`: a symlinked `scripts/lib` or `usage-lift.sh` pointing out of
   the checkout denies, as does a path that does not resolve. A symlinked path
   to the checkout itself still passes, since it resolves to the same root.
 - **`cp --parents` / `rsync -R` (`--relative`).** These recreate the source's
@@ -2587,20 +2588,20 @@ Out of the hook's reach by design, bounded at runtime instead: Write-tool
 CONTENT that is itself a script writing the lift, a script FILE that writes
 it without being handed its path, variable indirection that never spells the
 name, a bind mount, and interpreter tricks that never spell it. Judge J1855b
-bounds them where the lift is READ (HIMMEL-4423): `bank-preflight.sh`
+bounds them where the lift is READ (HIMMEL-4423): `usage-preflight.sh`
 honours a lift only when it is account-bound, owner- and mode-checked,
 bounded by the usage cache's seven_day `resets_at`, and well-formed; anything
 else is no lift. A valid lift skips only the seven_day ceiling — five_hour
 still binds and a full seven_day still refuses — so a forged lift buys at
 most the rest of the current 7-day window. Remaining hook gaps
-(ponytail): an edited or planted copy of `scripts/lib/bank-lift.sh` inside a
+(ponytail): an edited or planted copy of `scripts/lib/usage-lift.sh` inside a
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).
 Name rule (chief ruling, applied before the rules above on every clause,
 nested ones included): a clause with a word naming `bank-lift.json` or
-`bank-lift.sh` (not a longer name such as `test-bank-lift.sh`) passes only
-when it is `bash scripts/lib/bank-lift.sh show|clear` or the direct
-`scripts/lib/bank-lift.sh show|clear` (the repo's own copy, as above), or a
+`usage-lift.sh` (not a longer name such as `test-usage-lift.sh`) passes only
+when it is `bash scripts/lib/usage-lift.sh show|clear` or the direct
+`scripts/lib/usage-lift.sh show|clear` (the repo's own copy, as above), or a
 reader: `cat`, `less` without
 `-o`/`-O`/`--log-file`/`+cmd`, `head`, `stat`,
 `ls`, `file`, `wc`, `test`/`[`, `jq` without `-i`/`--in-place`, `tail` without
@@ -2609,14 +2610,14 @@ resolved past assignments and the `env`/`sudo`/`doas`/`nice`/`xargs`/`timeout`/
 `stdbuf`/`ionice`/`chrt`/`taskset`/`setsid`/`nohup` wrappers, but a wrapper
 carrying any option leaves it unknown, so the clause denies. Everything else
 naming the lift denies, including `rm`/`mv`/`cp` of the lift, `source`/`.` of
-`bank-lift.sh`, `bash -c` bodies, `find -exec`, `echo`, `git grep`, and
+`usage-lift.sh`, `bash -c` bodies, `find -exec`, `echo`, `git grep`, and
 commit messages or ticket titles given inline (`git commit -m`, a jira
 `--title`). This overrides the ticket's original allowance for such mentions.
 The remedy for text is a file: `git commit -F <file>`, a jira `--desc-file`.
 Over-deny is accepted: inline interpreter code that only READS the lift, or
-edits a file whose text names `bank-lift.sh`, is refused too (use
+edits a file whose text names `usage-lift.sh`, is refused too (use
 `cat`/`jq`, or the Edit tool). The deny
-names the remedy — the operator runs `! bash scripts/lib/bank-lift.sh set ...`
+names the remedy — the operator runs `! bash scripts/lib/usage-lift.sh set ...`
 — and there is deliberately no env bypass. A must-run chain member in
 `run-hook-with-bash.js`. Fails CLOSED on missing `jq`, malformed JSON or a
 tokenizer error. Residuals are ponytail-marked in the hook. Spec:
@@ -3793,7 +3794,7 @@ that cannot execute.
 absent or unrunnable), the guard falls through to the pre-existing usage budget-aware
 cost guard instead of allowing unconditionally. `IMPL_GUARD_HARD` (default 80)
 and `IMPL_GUARD_WEEKLY_HARD` (default 85) refuse at their respective usage budget ceilings.
-A weekly budget override validated by `scripts/lib/bank-lift.sh` raises weekly HARD to 100;
+A weekly budget override validated by `scripts/lib/usage-lift.sh` raises weekly HARD to 100;
 a standing override also raises five-hour HARD to `CADENCE_USAGE_MAX_PCT` (default
 100). Explicit `IMPL_GUARD_*` overrides win; invalid overrides retain their
 original defaults. Invalid/unreadable lifts warn and retain defaults; absent
@@ -4893,7 +4894,7 @@ re-entry (`stop_hook_active` is not `true`, so it blocks at most once per turn);
 the stopping session holds a `*-chief` queue-lock (best-effort — it recomputes
 `sha256("<session_id>|<handover path>")` and looks for `queue-lock.sh`'s
 persisted per-session token file under `${XDG_RUNTIME_DIR:-/tmp}/himmel-queue-lock/`;
-a false negative only allows); `bank-preflight.sh` and `queue-lock.sh status
+a false negative only allows); `usage-preflight.sh` and `queue-lock.sh status
 --sweep` both answer (sweep rc 0 or 20 are valid, anything else is a fault);
 and **zero worker locks are held** (a straight count of held `slug=` lines other
 than the chief's own — deliberately not gated on freshness, since
@@ -5722,7 +5723,7 @@ https://support.claude.com/en/articles/17154008,
 https://code.claude.com/docs/en/headless.md.
 
 **Rule for scripts in this repo:** scheduled or unattended sites route
-through `scripts/lib/bank-preflight.sh` before spending. Headless calls parse
+through `scripts/lib/usage-preflight.sh` before spending. Headless calls parse
 the result with `--output-format json` rather than sniffing prose and declare
 an explicit `--permission-mode` (never `bypassPermissions`). These are
 review-enforced conventions, not structural guarantees.
@@ -5734,7 +5735,7 @@ mode: [`headless-modes.md`](headless-modes.md).
 HIMMEL-5424 retired the `no-headless-claude` pre-commit gate and its
 `# headless-claude-ok:` marker: it verified marker presence only, never the
 preflight, JSON-output or permission-mode conventions, so it added friction
-at every call site without controlling spend. `bank-preflight.sh` is the
+at every call site without controlling spend. `usage-preflight.sh` is the
 drain control.
 
 **Re-measure recipe:** snapshot the `five_hour` and `seven_day` `utilization`
@@ -5763,7 +5764,7 @@ strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
 console makes it the standing default by exporting `WORKER_SESSION_API_LANE=on` in its own
 launch environment. The switch does not bypass spend control: `claude-api.sh`
 still applies the API credit guard (`~/.himmel/state/api-credit`) and account
-routing per call, and `bank-preflight.sh` still gates the launch itself.
+routing per call, and `usage-preflight.sh` still gates the launch itself.
 
 Subagent transcripts are NOT flat files under the project directory. A
 session's own transcript is `~/.claude/projects/<slugified-cwd>/<sessionId>.jsonl`,
@@ -5777,14 +5778,14 @@ measurement found to be 50.06% of a 4.40e9-token 24-hour window
 usage counters, so counting lines instead of requests inflates the total by
 ~83%.
 
-`scripts/lib/bank-preflight.sh`'s fleet-size cap only REFUSES a caller that
+`scripts/lib/usage-preflight.sh`'s fleet-size cap only REFUSES a caller that
 declares `CADENCE_USAGE_LAUNCH=1` (an actual arm/launch); a plain usage budget read
 (a `/pr-check` critic pass, a statusline probe, a hook-smoke test) gets the
 same verdict and FLEET line but is never refused by it — detail:
 [lane-calibration.md § Launch vs. read (HIMMEL-2789)](lane-calibration.md#fleet-size-cap--a-provisional-4-grounded-in-the-incident).
 
 Refs: HIMMEL-1748; `scripts/graphify/refresh-graph-map.sh`;
-`scripts/lib/bank-preflight.sh`;
+`scripts/lib/usage-preflight.sh`;
 https://code.claude.com/docs/en/headless.md.
 
 ## Operator conventions — worked examples

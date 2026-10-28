@@ -123,7 +123,7 @@ Semantics.)*
   allow cell either corpus has for extraction, and it is a plain `allow`, not
   `allow+log`. `graphmap-cadence.sh`'s weekly semantic refresh reverts to
   `BACKEND="claude-cli"` (its earlier default), drawing
-  the operator's own interactive 5h/weekly subscription usage budget — gated by `bank-preflight.sh`
+  the operator's own interactive 5h/weekly subscription usage budget — gated by `usage-preflight.sh`
   inside `refresh-graph-map.sh`, not by this matrix. `graphify-fence.sh` drops
   `_map_kimi_endpoint` and its `kimi -> moonshot` mapping entirely;
   `--backend kimi` now hits the same undeclared-literal-provider fail-closed

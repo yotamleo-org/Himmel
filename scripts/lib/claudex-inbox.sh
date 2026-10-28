@@ -26,6 +26,7 @@ inbox_with_lock() (
     mkdir -p "$cursor_dir" 2>/dev/null || return 0
     if command -v flock >/dev/null 2>&1; then
         exec 9>"$cursor_dir/$name.lock" || return 0
+        # prim-ok: hook-sourced and fail-open (a lock failure returns 0 and skips the callback); with_lock would add a prim.sh load to the hook path and fail closed.
         flock -x 9 || return 0
     fi
     # The subshell owns descriptor 9, so every exit releases the lock.
@@ -63,6 +64,7 @@ inbox_commit() {
     [ -n "$inbox_cursor_size" ] || return 0
     local tmp
     tmp="$(mktemp "$inbox_cursor_file.tmp.XXXXXX")" || return 1
+    # prim-ok: already a same-directory mktemp + rename with the rc checked; the hook-sourced lib stays free of a prim.sh dependency.
     if printf '%s\n' "$inbox_cursor_size" > "$tmp" && mv -f "$tmp" "$inbox_cursor_file"; then
         inbox_cursor_size=""
     else
