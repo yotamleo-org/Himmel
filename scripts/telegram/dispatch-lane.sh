@@ -274,7 +274,9 @@ if [ -n "$MODEL" ] \
   die2 "lane '$LANE' does not support --model"
 fi
 
-TMP_ROOT="$(mktemp -d "${TMPDIR:-${TEMP:-/tmp}}/himmel-dispatch.XXXXXX")" || exit 1
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh" || exit 1
+TMP_ROOT="$(TMPDIR="${TMPDIR:-${TEMP:-}}" tmpdir)" || exit 1
 TMP_ROOT="$(normalize_path "$TMP_ROOT")"
 SESSION_DIRS_BEFORE="$TMP_ROOT/session-dirs-before"
 : > "$SESSION_DIRS_BEFORE"

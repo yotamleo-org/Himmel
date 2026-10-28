@@ -87,7 +87,6 @@ scripts/adopt.sh	errexit	1
 scripts/adopt.sh	mktemp	1
 scripts/agents-md/test-generate.sh	mktemp	1
 scripts/api-lane/bulk-call.sh	prim-lock	2
-scripts/api-lane/measure-credit.sh	prim-tmpdir	1
 scripts/check-ci.sh	mktemp	1
 scripts/check-marketplace-source-hermetic.sh	errexit	1
 scripts/check-marketplace-source-hermetic.sh	mktemp	2
@@ -134,11 +133,9 @@ scripts/ci/test-tmp-sweep.sh	gnu-flag	1
 scripts/ci/tmp-sweep.sh	mktemp	1
 scripts/ci/tmp-sweep.sh	prim-tmpdir	1
 scripts/ci/workflow-red-issue.sh	prim-tmpdir	1
-scripts/claude-codex	prim-tmpdir	1
 scripts/clean-garden.sh	errexit	1
 scripts/clean.sh	errexit	1
 scripts/cleanup/test-reap-mcp-orphans.sh	mktemp	1
-scripts/cloud/setup-env.sh	prim-tmpdir	1
 scripts/codex/bump-codex-sessionend-timeout.sh	errexit	1
 scripts/codex/bump-codex-sessionend-timeout.sh	gnu-flag	1
 scripts/codex/bump-codex-sessionend-timeout.sh	prim-atomic	1
@@ -189,7 +186,6 @@ scripts/cr/testdata/known-findings/change1.sh	bash32	1
 scripts/cr/testdata/known-findings/change1.sh	mktemp	1
 scripts/cr/testdata/known-findings/change1.sh	prim-tmpdir	3
 scripts/cr/triviality-gate.sh	errexit	1
-scripts/docs/check-dev-graph.sh	prim-tmpdir	1
 scripts/docs/check-doc-terms.sh	errexit	1
 scripts/docs/check-llms-links.sh	errexit	1
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	gnu-flag	1
@@ -210,7 +206,6 @@ scripts/eval/test-worktree-latency-curve.sh	errexit	1
 scripts/eval/worktree-latency-curve.sh	errexit	1
 scripts/gen-changelog.sh	errexit	1
 scripts/git/classify-branches.sh	mktemp	1
-scripts/git/restore-to-head.sh	prim-tmpdir	1
 scripts/glm/append-outbox.sh	errexit	1
 scripts/graphify/ast-update.sh	errexit	2
 scripts/graphify/check-graph-freshness.sh	errexit	1
@@ -340,9 +335,7 @@ scripts/handover/test-resume-slot.sh	mktemp	1
 scripts/handover/test-resume.sh	mktemp	1
 scripts/handover/test-set-handover-dir.sh	mktemp	1
 scripts/handover/test-worker-lifecycle.sh	mktemp	1
-scripts/hermes/egress-gate.sh	prim-tmpdir	1
 scripts/hermes/install-himmel-profile.sh	errexit	1
-scripts/hermes/invoke.sh	prim-tmpdir	1
 scripts/hermes/test-agents-reach.sh	errexit	1
 scripts/hermes/test-dispatch-trusted.sh	mktemp	1
 scripts/hermes/test-install-himmel-profile.sh	errexit	1
@@ -604,7 +597,6 @@ scripts/hooks/test-trigger-cr-on-push.sh	mktemp	1
 scripts/hooks/testdata/bin/claude-stub.sh	prim-atomic	1
 scripts/hooks/trigger-cr-on-pr-create.sh	errexit	1
 scripts/hooks/trigger-cr-on-push.sh	errexit	1
-scripts/insights/session-analyzer.sh	prim-tmpdir	1
 scripts/insights/test-session-analyzer.sh	mktemp	1
 scripts/install/test-capture-operator-profile.sh	errexit	1
 scripts/install/test-himmel-ops-plugin-enablement.sh	errexit	1
@@ -755,10 +747,8 @@ scripts/lib/wire-statusline.sh	errexit	1
 scripts/lib/wire-statusline.sh	mktemp	1
 scripts/lib/wire-statusline.sh	prim-atomic	1
 scripts/lib/worktree-inuse.sh	prim-canon	1
-scripts/lint/check-swallowed-errors.sh	prim-tmpdir	1
 scripts/lint/flag-parity.sh	prim-atomic	1
 scripts/lint/flag-parity.sh	prim-tmpdir	1
-scripts/lint/skill-lint.sh	prim-tmpdir	2
 scripts/lint/test-check-history-comments.sh	bash32	1
 scripts/luna-upgrade-all.sh	mktemp	11
 scripts/luna-vitals/connectors/pull-cadence.sh	errexit	1
@@ -826,7 +816,6 @@ scripts/observability/tool-call-census.sh	errexit	1
 scripts/observability/tool-call-census.sh	mktemp	1
 scripts/openrouter/free-watch.sh	errexit	1
 scripts/openrouter/free-watch.sh	mktemp	1
-scripts/openrouter/free-watch.sh	prim-tmpdir	1
 scripts/openrouter/test-free-watch.sh	errexit	1
 scripts/openrouter/test-free-watch.sh	mktemp	1
 scripts/afk/build-plan.sh	errexit	1
@@ -842,14 +831,10 @@ scripts/parity/test-guard-conformance.sh	mktemp	1
 scripts/plugin-test.sh	errexit	1
 scripts/preflight-adopter.sh	errexit	1
 scripts/probe-check-ci-escalate.sh	mktemp	1
-scripts/probe-check-ci-escalate.sh	prim-tmpdir	1
-scripts/probe-check-ci-forks.sh	prim-tmpdir	1
 scripts/qmd/test-ensure-qmd-daemon-leak.sh	mktemp	2
 scripts/qmd/test-ensure-qmd-daemon.sh	mktemp	1
 scripts/quiet-run.sh	errexit	1
 scripts/release/build-tarball.sh	errexit	1
-scripts/release/build-tarball.sh	prim-tmpdir	1
-scripts/release/converge-check.sh	prim-tmpdir	1
 scripts/release/followup-report.sh	errexit	1
 scripts/roadmap/plan-index.sh	errexit	1
 scripts/roadmap/plan-index.sh	prim-lock	1
@@ -858,7 +843,6 @@ scripts/setup-hooks.sh	errexit	1
 scripts/setup.sh	errexit	1
 scripts/setup.sh	mktemp	2
 scripts/setup/check-jira-key.sh	errexit	1
-scripts/setup/cli-proxy-lane.sh	prim-tmpdir	1
 scripts/setup/fill-env.sh	mktemp	1
 scripts/setup/test-fill-env.sh	mktemp	1
 scripts/setup/test-migrate-env-config.sh	mktemp	1
@@ -867,7 +851,6 @@ scripts/setup/test-setup-preflight.sh	mktemp	1
 scripts/skill-index/build-skill-index.sh	bash32	1
 scripts/skill-index/build-skill-index.sh	mktemp	1
 scripts/telegram/dispatch-lane.sh	kill-after	1
-scripts/telegram/dispatch-lane.sh	prim-tmpdir	1
 scripts/telegram/restart-bridge.sh	errexit	1
 scripts/telegram/restart-bridge.sh	gnu-flag	1
 scripts/telegram/restart-bridge.sh	prim-lock	1
@@ -923,7 +906,6 @@ scripts/testing/check-added-unwired.sh	prim-tmpdir	1
 scripts/tests/test-setup-hooks-guardrail.sh	mktemp	1
 scripts/uninstall.sh	mktemp	1
 scripts/unlanded-work.sh	mktemp	4
-scripts/upstream/run-target-tests.sh	prim-tmpdir	1
 scripts/upstreams/drift-fix-cadence.sh	errexit	1
 scripts/upstreams/test-apply-drift-bump.sh	mktemp	2
 scripts/upstreams/test-apply-tool-upgrade.sh	mktemp	1

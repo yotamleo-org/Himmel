@@ -85,6 +85,7 @@ if [ -n "$cwd" ]; then
     cd "$cwd" || { echo "run-target-tests: cannot cd to '$cwd'" >&2; exit 2; }
 fi
 
+# prim-ok: cleanup() removes only a */hermes-test-home.* path, so the name is a safety check
 sandbox=$(mktemp -d "${TMPDIR:-/tmp}/hermes-test-home.XXXXXX") \
     || { echo "run-target-tests: cannot create a temporary HERMES_HOME" >&2; exit 2; }
 

@@ -48,7 +48,9 @@ RC_ANCHOR='    RC=$?'
 grep -qF "$TIMER_ANCHOR" "$SUITE" || { echo "FATAL: timer anchor not found in $SUITE (suite edited?)" >&2; exit 1; }
 grep -qF "$RC_ANCHOR" "$SUITE" || { echo "FATAL: RC anchor not found in $SUITE (suite edited?)" >&2; exit 1; }
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/checkci-forks-probe.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
+# shellcheck source=lib/prim.sh
+. "$SCRIPT_DIR/lib/prim.sh" || { echo "FATAL: cannot load scripts/lib/prim.sh" >&2; exit 1; }
+WORK=$(tmpdir) || { echo "FATAL: could not create a scratch directory" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 
 # --- 1. static pass: call order -> nearest preceding "# <id> — " label -----

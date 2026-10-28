@@ -28,7 +28,9 @@ SUITE="$SCRIPT_DIR/test-check-ci.sh"
 # block, the B2 block, and the claim/retry block.
 CASES=${*:-"44 45 46 47 48 49 50 51 52 77 78 79 80 81 82 83 84 85 86 90 91 92 93"}
 
-WORK=$(mktemp -d) || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
+# shellcheck source=lib/prim.sh
+. "$SCRIPT_DIR/lib/prim.sh" || { echo "FATAL: cannot load scripts/lib/prim.sh" >&2; exit 1; }
+WORK=$(tmpdir) || { echo "FATAL: could not create a scratch directory" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 SPLICED="$WORK/spliced.sh"
 

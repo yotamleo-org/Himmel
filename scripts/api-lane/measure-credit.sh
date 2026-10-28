@@ -30,7 +30,9 @@ esac
 node "$REPO/scripts/api-lane/grant-snapshot.mjs" "$ACCOUNT" "$BEFORE" || exit 2
 
 # An empty scratch cwd keeps the call small: no project CLAUDE.md or hooks load.
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/measure-credit.XXXXXX")" || exit 2
+# shellcheck source=../lib/prim.sh
+. "$REPO/scripts/lib/prim.sh" || exit 2
+WORK="$(tmpdir)" || exit 2
 trap 'rm -rf "$WORK"' EXIT
 OUT="$WORK/out.json"
 (cd "$WORK" && ANTHROPIC_API_KEY="$KEY" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$ACCOUNT" HIMMEL_API_KEY_ID="$KEY_ID" \

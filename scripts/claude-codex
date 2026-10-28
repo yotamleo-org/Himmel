@@ -87,6 +87,7 @@ if [ -n "${CLAUDE_CODEX_SRT_PROFILE:-}" ]; then
     # box process can reach before the launch: the scratchpad is box-writable, so a
     # box process could rename a HOME there and plant a link to the real HOME
     # between the check and srt's mount
+    # prim-ok: a fixed /tmp so the dir stays outside every writable root; tmpdir follows TMPDIR, which a worker may point inside one
     _srt_gen="$(mktemp -d /tmp/claude-codex-srt.XXXXXX)" || _srt_refuse "cannot create the settings directory"
     _srt_gen="$(cd "$_srt_gen" && pwd -P)"
     case "$_srt_gen/" in
