@@ -18,7 +18,7 @@ latency, a context-compaction default sized for a 200k-token model, an
 identity file that hardcodes a different provider's name — and the new lane
 either timed out spuriously, compacted early, or ran under an
 under-specified persona, before anyone measured what the new lane actually
-needed. The GLM onboarding (the GLM lane is now dormant, HIMMEL-1967) is the worked
+needed. The GLM onboarding (the GLM lane was later removed, HIMMEL-1967, HIMMEL-7481) is the worked
 example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 with the fix now checked into the repo as evidence of what "profile it, then
 tailor it" looks like in practice.
@@ -82,7 +82,7 @@ fit" — codex lanes default to 272k even though the real backend window is
 
 **Tailor:** two separate config points, not one — there's no automatic
 projection from one to the other:
-- `lanes.json`'s per-lane `context.windowTokens` field (`glm`: 1000000, `claudex`:
+- `lanes.json`'s per-lane `context.windowTokens` field (`claudex`:
   900000 — operator ruling, 2026-08-17, launcher default
   unchanged — see the registry, `haiku`: 200000) feeds the lane **resolver**
   (`scripts/lanes/resolve.mjs`), which uses it for the `/lanes` `[ctx: N]`
@@ -91,11 +91,10 @@ projection from one to the other:
   own 272000 constant) — and it does not set any env var itself.
 - `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (the Claude Code env var that actually
   controls when the harness starts compacting) is set by the **launcher**
-  from its own env knob: the GLM launcher's `GLM_CONTEXT_WINDOW` and
-  `spawn-glm --context big|small` preset: `big` =
-  `glm-5.2[1m]` + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`; `small` =
-  `glm-5.2` + 200000; the codex lane's twin, `CODEX_CONTEXT_WINDOW`
-  (`docs/tooling-catalog.md` `claude-codex` section).
+  from its own env knob: the codex lane's `CODEX_CONTEXT_WINDOW`
+  (`docs/tooling-catalog.md` `claude-codex` section). The removed GLM lane
+  did the same with `GLM_CONTEXT_WINDOW` and a `--context big|small` preset
+  (`glm-5.2[1m]` + 1000000, or `glm-5.2` + 200000).
 
 Configure both for a new lane — the registry value and the launcher env
 knob — since neither derives the other; setting only one leaves the other
@@ -109,7 +108,7 @@ documented "prompt too long" deaths. Setting
 **Action:** never let a new lane's model slug silently fall through to Claude
 Code's built-in default window. Look up (or benchmark) the backend's real
 ceiling, decide the cost-optimal operating point, and set the
-auto-compact-window knob explicitly — same pattern as `glm`/`claudex` above.
+auto-compact-window knob explicitly — same pattern as `claudex` above.
 
 ---
 
@@ -130,7 +129,7 @@ it is not a drop-in fit for a new frontier lane:
   by construction, not generic.
 
 **GLM evidence:** a frontier lane dispatched under `himmel-agent.SOUL.md`
-verbatim inherits a false provider claim. The fix is a **per-lane senior
+verbatim inherited a false provider claim. The fix is a **per-lane senior
 profile**: clone the senior SOUL's structure (identity, working principles,
 precedence ladder, hard limits) but swap the provider-specific line for the
 new lane's actual backend.
@@ -277,7 +276,7 @@ default routing — readiness is measured, never asserted.
   treats `down` as **skip-toward-another-lane**, never as a hard refusal.
 
 **GLM evidence:** `lanes.json`'s `$readiness-note` records the live operator
-ruling (2026-08-07): **glm gated at 10 consecutive passes** (down since the
+ruling (2026-08-07): **glm gated at 10 consecutive passes** (the lane has since been removed; down since the
 startup-hang class was found), **claudex on probation at 5**
 consecutive passes to graduate. A lane can be fully *funded* (quota
 available) while still *not ready* (an operator ruling holds it down) —

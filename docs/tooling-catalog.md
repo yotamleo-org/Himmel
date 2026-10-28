@@ -696,100 +696,15 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 ---
 
 <a id="claude-glm"></a>
+<a id="claude-glm-scriptsclaude-glm"></a>
 
-## claude-glm (`scripts/claude-glm`)
+## claude-glm (removed)
 
-> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
-> (HIMMEL-1967); the lane registry offers it only when `GLM_LANE_OK` is set.
-
-**What:** Thin launcher that runs Claude Code against the Z.ai GLM
-Anthropic-compatible endpoint instead of the Anthropic API — a flat-rate
-**overflow lane** for when the Anthropic usage cap is hit. This buys *overflow
-capacity on a flat subscription*, **not** per-token savings: the GLM lane is not
-metered per token, so the framing is "keep working past the cap", never
-"cheaper tokens".
-
-**Env contract (7 vars, set for the child `claude` only):**
-
-| Var | Value |
-|---|---|
-| `ANTHROPIC_BASE_URL` | `https://api.z.ai/api/anthropic` |
-| `ANTHROPIC_AUTH_TOKEN` | `$ZAI_API_KEY` |
-| `ANTHROPIC_MODEL` | `glm-5.2[1m]` |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `glm-4.7` |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `glm-5.2[1m]` |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `glm-5.2[1m]` |
-| `CLAUDE_CONFIG_DIR` | `$HOME/.claude-glm` |
-
-**Key resolution:** shell env `ZAI_API_KEY` first, else the himmel repo `.env`
-(bash via `load-dotenv.sh --root <himmel>`, PS via an inline reader) — pinned to
-the *launcher's* repo, not the cwd, so a session running in the luna vault still
-finds the key. Missing key → **exit 2**. The launcher cannot distinguish shell
-env from `settings.json`-injected env — don't put the key in `settings.json`
-(that hands it to every session); use per-launch shell env or the repo `.env`.
-
-**Isolated config dir (`$HOME/.claude-glm`):** seeded from `~/.claude` on first
-launch (or `--reseed`), and **auto-refreshed** on any
-plain launch when `~/.claude/settings.json`, `plugins/installed_plugins.json`,
-or `plugins/known_marketplaces.json` is newer than the `.seeded` sentinel — or
-deleted while a lane copy remains (true mirror for those three files) — so
-plugin-profile changes (e.g. disabling plugins to slim worker context) reach
-lane workers without a manual `--reseed`. `commands`/`skills`/`hooks`/`agents`
-drift still needs an explicit `--reseed`. **Optional:** set
-`CLAUDE_LANE_AUTO_RESEED=0` in the launching shell to restore the once-only
-seed if auto-reseed ever blocks a launch in your setup (e.g. a settings change
-re-running the seed against a broken `node`). The seed is an allowlist copy — `settings.json`
-(sanitized via node: the `model` key + every `env.ANTHROPIC_*` stripped so they
-don't fight the launcher's env), `CLAUDE.md`, `RTK.md`,
-`commands`/`skills`/`hooks`/`agents`, and the plugin registry
-(`installed_plugins.json`, `known_marketplaces.json`, `marketplaces/`). **Never
-copied:** `.credentials.json`, history. Plugin caches resolve through the
-absolute `installPaths` in the seeded registry — no install step.
-**Seeding is transactional:** a `.seeded` sentinel is written *last*, so any
-copy/sanitize failure (e.g. `node` missing/broken) aborts with **exit 4** — a
-loud refusal that launches nothing and writes no sentinel, and the next launch
-re-seeds (self-heal) rather than running against a half-populated, unsanitized
-dir. A failed `--reseed` first clears the stale sentinel, so it can't
-mask the failure and leave the next plain launch on the stale tree.
-
-**Tiered egress guard (gates the LAUNCH cwd only):**
-- **PHI tier** — a `.salus` marker file in cwd, or cwd under any `phi-roots`
-  line → **REFUSED, exit 3, no override.** PHI never goes to a cloud GLM backend.
-- **Denylist tier** — cwd under any `egress-denylist` line → refused (exit 3)
-  **unless** `--force`, which proceeds after a stderr warning that
-  content WILL be sent to Z.ai.
-- Config at `~/.config/claude-glm/{phi-roots,egress-denylist}`, one path per
-  line (trailing CR + trailing slash tolerated; blank lines skipped — a
-  block-everything lone `/` root is not supported). A guard config that *exists
-  but is not a readable regular file* (e.g. a directory) never silently allows
-  egress: the launcher refuses with **exit 3**.
-- **Limitation — launch-scope only:** the guard checks the cwd *at launch*. A
-  session that later `cd`s into a PHI-marked or denylisted directory is **not**
-  re-checked. Launch from the right place.
-
-**Flags must LEAD:** launcher flags (`--reseed`/`--force`) must come **before**
-any `claude` args; the first non-flag argument stops flag parsing and
-everything from there passes to `claude` verbatim.
-
-**`--settings` env-injection screen:** a `--settings <file|json>`
-arg passes through to `claude` (this is the plugin-profile injection channel —
-see [Lane plugin profiles](#lane-plugin-profiles-scriptslanesplugin-profilesjsonmjs)), but the launcher first
-screens the payload and **refuses (exit 3)** any `--settings` that sets
-`env.ANTHROPIC_*` / `env.CLAUDE_CODE_USE_*` (or is unparseable) — such a payload
-would redirect the lane away from the z.ai endpoint. Twin of claude-codex's
-`screen_settings_arg`; a plugin-only `{"enabledPlugins":{…}}` payload passes.
-
-**Off-peak annotation:** an advisory stderr line notes whether you're inside the
-GLM peak window (14:00–18:00 UTC+8); advisory only, changes no behavior.
-
-**Setup:** `ZAI_API_KEY` sourcing + the `.salus` PHI marker are covered in
-[`docs/setup/new-machine.md`](setup/new-machine.md) §1 and §4d.
-
-**Acceptance:** the hermetic launcher tests in
-`scripts/test-claude-glm.sh` cover the key gate, the seeder, the
-PHI/egress guards, and the `--settings` env-injection screen against a mock
-`claude`; only the live-backend acceptance check is manual — the **Task 8
-checklist**.
+The Z.ai GLM lane was dropped by operator ruling 2026-08-19 (HIMMEL-1967), and
+its code is gone: the `claude-glm` launcher, its seed check and its test
+(HIMMEL-7909), and the lane registry row (HIMMEL-7481). The
+`~/.config/claude-glm/{phi-roots,egress-denylist}` files outlived it: they are
+the PHI config directory every lane still reads (HIMMEL-7898).
 
 ---
 
@@ -828,12 +743,11 @@ dynamically discovered marketplace in the drift report, so they need no
 
 **What:** Named plugin profiles injected per-dispatch so a lane worker runs a
 **lean** plugin set while the operator's own `~/.claude` stays full. A lane worker
-resolves its plugin surface from the operator's config either way — the dormant
-`spawn-glm` (HIMMEL-1967) shares `~/.claude` directly (no `CLAUDE_CONFIG_DIR`, so himmel hooks load), while
-the interactive (dormant) `claude-glm` launcher runs against a seeded `$HOME/.claude-glm`
-**mirror** of `~/.claude` ([claude-glm](#claude-glm-scriptsclaude-glm) above) — so both would otherwise
+resolves its plugin surface from the operator's config — the claudex lane runs
+against a seeded `$HOME/.claude-codex` **mirror** of `~/.claude`
+([claude-codex](#claude-codex) below) — so it would otherwise
 inherit the operator's entire (full) plugin catalog: duplicated plugin context +
-duplicate MCP invocations on every worker, and neither live-mutates the
+duplicate MCP invocations on every worker, without live-mutating the
 operator's primary config. The fix is **lever-b**: resolve a profile to an
 `enabledPlugins` map and inject it as `claude --settings '{"enabledPlugins":{…}}'`
 (highest non-managed precedence, overrides the inherited/mirrored profile without
@@ -861,7 +775,7 @@ changing which config dir loads, so hooks are unaffected).
     claudex worker's effective user scope is `~/.claude-codex` (the launcher owns
     and seeds it AFTER the resolve). A plugin enabled only there, and absent from
     `catalog`, is missing from `opts.installed` and can stay enabled in an
-    unattended worker. See the seam note at `spawn-glm.ts:36-41`.
+    unattended worker.
   - A CATALOG-ONLY caller (one passing no `opts.installed`) retains the gap:
     there, an id absent from `catalog` goes unmentioned and inherits its enabled
     state until added (the same staleness class).
@@ -887,13 +801,12 @@ no opinion, unparseable layer = fail closed). CLI:
 the `--settings` JSON; `--validate` checks the floor/catalog invariants;
 `--list` lists profiles.
 
-**Dispatch flags (`spawn-claudex`, and the dormant `spawn-glm`):** both inject the resolved
+**Dispatch flags (`spawn-claudex`):** it injects the resolved
 profile by default (`lane-impl`); override with `--profile <name>` and layer a
 per-dispatch overlay with `--add-plugins a@m,b@m` (repeatable; e.g. an obsidian
 task on the impl lane adds `claude-obsidian@himmel` for that one dispatch). An
 unknown profile / bad overlay id is a clean usage refusal (exit 2) before any
-worktree side-effect. spawn-glm carries a non-default profile into its
-cap-respawn handover; spawn-claudex dispatches through `claude-codex`, which
+worktree side-effect. spawn-claudex dispatches through `claude-codex`, which
 already screens + forwards `--settings`.
 
 **Measured delta (`claude plugin details`, 2026-07-16 operator machine):**
@@ -926,7 +839,7 @@ subscription usage budget, and opens mixed subagent lanes that the plain codex C
 | `CODEX_MODEL` | `gpt-6.1-sol` by default |
 | `CODEX_HAIKU` | `$CODEX_MODEL` by default |
 | `CODEX_SUBAGENT_MODEL` | `$CODEX_MODEL` by default |
-| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (twin of `GLM_CONTEXT_WINDOW`). Without it Claude Code assumes its ~200k default for the unrecognized `gpt-6.1-sol` slug and compacts early. The window was measured on gpt-5.6, not yet re-measured for gpt-6.1: gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
+| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Without it Claude Code assumes its ~200k default for the unrecognized `gpt-6.1-sol` slug and compacts early. The window was measured on gpt-5.6, not yet re-measured for gpt-6.1: gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
 | `CLIPROXY_API_KEY` | Must match an `api-keys` entry in `~/.cli-proxy-api/config.yaml` |
 | `CLAUDE_CONFIG_DIR` | `$HOME/.claude-codex` |
 
@@ -960,7 +873,7 @@ A PHI-marked workspace is refused with no override; denylisted workspaces requir
 `--force` and warn that content will be sent to OpenAI via the local
 proxy.
 
-**Seeding:** same lane-seed mechanism as the dormant `claude-glm`: an isolated
+**Seeding:** an isolated
 `$HOME/.claude-codex` config dir is seeded from `~/.claude`, sanitized to strip
 model and `env.ANTHROPIC_*`, refreshed by the shared `CLAUDE_LANE_*` reseed and
 lock knobs, and never copies credentials or history.
@@ -983,8 +896,7 @@ operator-accepted.
 OAuth) and `claude-codex` run side by side, even concurrently, because the lane's
 env applies only to its own invocation and its config dir (`~/.claude-codex`),
 guard dir, and seed lock are fully per-lane. Nothing in the codex lane touches
-the stock Claude Code install; it has the same isolation contract as
-the dormant `claude-glm`.
+the stock Claude Code install.
 
 **Effort mapping (verified 2026-07-14).** The launcher pins
 `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1`; Claude Code emits the effort as top-level
@@ -1102,7 +1014,7 @@ APPLIED, one remains UNTESTED, not refuted:
    until this export declared the window. Both env vars get the SAME value so
    the clamp is structurally unreachable; guarded by
    `scripts/parity/test-launcher-context-env-parity.sh`.
-2. **The `[1m]` model-name suffix** — the convention the dormant GLM lane
+2. **The `[1m]` model-name suffix** — the convention the removed GLM lane
    used for its 1M window. Status: **untested through the real
    path, not refuted.** A direct probe of CLIProxyAPI with the suffix already
    attached returned `HTTP 400 unknown provider for model gpt-5.6-sol[1m]`
@@ -1115,11 +1027,10 @@ APPLIED, one remains UNTESTED, not refuted:
 
 ### spawn-claudex dispatch path (`scripts/telegram/spawn-claudex.ts`)
 
-**What:** the codex-lane twin of the dormant `spawn-glm` —
-lets a parent Claude session hand a scoped implementation chunk to an inline
+**What:** lets a parent Claude session hand a scoped implementation chunk to an inline
 codex-lane worker (`gpt-6.1-sol` by default) running the FULL himmel harness (skills/hooks/guardrails/
-worktree) on the **codex weekly subscription usage budget**, with the same review/merge contract as
-the dormant GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
+worktree) on the **codex weekly subscription usage budget**; the parent owns
+review and merge. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
 (`bash <primary-repo>/scripts/claude-codex --permission-mode <mode>
 <pointer-prompt>`, cwd = the minted worker worktree) rather than
 re-implementing any of its trust-boundary guarding — it sets NO `ANTHROPIC_*`
@@ -1240,56 +1151,13 @@ not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 
 ---
 
-## spawn-glm (`scripts/telegram/spawn-glm.ts`)
+## spawn-glm (removed)
 
-> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
-> (HIMMEL-1967); the lane registry offers it only when `GLM_LANE_OK` is set.
-
-**What:** Poller-free CLI that spawns an unattended GLM-lane Claude worker for
-the offload loop (spawn → inspect → validate → push-by-validator). It creates a
-fresh git worktree + `glm/<slug>` branch, resolves the GLM env block
-(`glm-env.ts` — `ZAI_API_KEY` from shell env or the himmel repo `.env`, launcher
--parity `ANTHROPIC_*` vars), runs the PHI egress guard (`phi-egress-guard.ts`), composes
-the worker prompt with minted `outbox.jsonl` / `context.md` paths, and drives
-the run through the `runSession(…, lane:"glm")` seam in `run.ts`. GLM runs pin
-`--model opus` (→ `glm-5.2[1m]`) and ignore `TELEGRAM_CLAUDE_MODEL`. Sessions live
-under `<BRIDGE_ROOT>/glm-sessions/` (default `~/.claude/handover/bridge/`) —
-**outside** the poller's `sessions/` tree, so nothing here is double-spawned or
-Telegram-flushed. A blocked worker can record a capability request and degrade
-gracefully via the **escalation channel** — `spawn-glm --grant`/`--autonomous`
-pre-seed, an `adjudicate list|grant|refuse` CLI, and a per-session append-only
-`grants.jsonl` the deny-hook honors on one arm (TTL/use-bounded, fail-closed).
-
-```
-bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--timeout-mins <n>] [--permission-mode <mode>] [--arm-on-cap | --no-arm-on-cap]
-```
-
-Prints exactly three inspect-contract lines on exit: `session-dir:`,
-`transcript-dir:` (`~/.claude/projects/<escaped-worktree-cwd>/`), `exit:`.
-**Cap guard:** detects the z.ai 5-hour usage cap (429), labels the
-run `capped` in `meta.json` (`cap_window`/`resume_at`/`cap_source`), and by
-default (`--arm-on-cap`) arms a resume at the cycle reset; `--no-arm-on-cap`
-writes `resume_at` without arming. Preflight warns at `GLM_USAGE_WARN_PCT`
-(default `80`).
-Exit codes: **2** usage error / plan refusal (non-himmel cwd, settings
-conflict, missing ZAI key); **3** guard refusal (PHI marker, phi-root, denylist,
-unreadable guard config); **1** operational failure; else the worker's exit code.
-
-**Status:** offload-spike artifact. There is **no mechanical push block** — the
-default-path pushurl tripwire was removed (it fenced nothing and
-could lose operator push configuration), so push protection is **contract-only**
-and every dispatch report says so. A worker inherits operator git credentials
-via the shared `~/.claude`; the in-session accident guard is
-`block-glm-external-writes.sh` and the load-bearing control is the automated review gate (no
-GLM branch merges except by the validating session). The egress guards
-are dormant by construction (himmel-worktree cwd scope). Uses GLM flat-rate
-Coding-Plan quota, sanctioned by the operator directive.
-
-**Acceptance:** bun unit suite in the telegram bridge (guard red paths, env
-builder block + missing-key throw + quote-strip, `runSession` lane env merge
-with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
-settings-conflict preflight, prompt composition
-embedding the minted session paths).
+The unattended GLM worker dispatcher (`spawn-glm.ts`), its env builder
+(`glm-env.ts`) and its escalation-channel CLI were deleted with the GLM lane
+(HIMMEL-7481 slices C and D, PRs #4087 and #4105). The helpers `spawn-claudex.ts`
+still uses moved to `scripts/telegram/spawn-common.ts`. Claudex is the one
+dispatch lane.
 
 ---
 

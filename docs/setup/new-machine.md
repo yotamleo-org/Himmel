@@ -483,7 +483,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |
 | `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
-| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` launcher of the GLM lane, which is dormant (HIMMEL-1967; the lane registry offers it only when `GLM_LANE_OK` is set) (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
+| `ZAI_API_KEY` | Z.ai key read only by `scripts/graphify/refresh-graph-map.sh --backend glm`. The GLM lane and its `claude-glm` launcher were removed (HIMMEL-1967, HIMMEL-7909), and the egress matrix denies the `zai-glm` provider, so nothing needs this key. **Don't put it in `settings.json`** (that hands it to every session). | Leave unset. |
 
 #### Jira Sector (optional)
 
@@ -516,7 +516,7 @@ code change.
 | `HIMMEL_REPO` | Path to your himmel checkout. | **Auto-set** by setup/adopt into `settings.json`; set explicitly only for a non-default clone path. |
 | `HANDOVER_DIR` | Handover state root (Mode B — external state repo). | Run `/handover-setup`. Bridged from `.env`. Unset = inline `<repo>/handovers/`. |
 | `LUNA_VAULT_PATH` | Luna vault root for end-session capture. | Your Obsidian vault path. **Not** bridged — export it. Unset → `~/Documents/luna`. |
-| `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-codex` (and the dormant `claude-glm`) re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
+| `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-codex` re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
 | `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
 | `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
@@ -1200,16 +1200,12 @@ Diagnose any existing install with `/himmel-doctor` (the **C9-scheduler** check
 reports OK / WARN + the exact per-OS remediation; it never runs a privileged
 command).
 
-### 4d. Optional — PHI vault marker for claude-glm
+### 4d. Optional — PHI vault marker
 
-The GLM lane is dormant (HIMMEL-1967; the lane registry offers it only when
-`GLM_LANE_OK` is set). If you still use the `claude-glm` launcher (Claude Code on the Z.ai GLM
-flat-rate lane; see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-drop a `.salus` marker file at the root of every PHI-bearing vault (e.g.
-`~/Documents/salus`). The launcher **refuses to start (exit 3, no override)**
-when the marker sits in the directory you launch from; the check is
-**per-directory, not subtree**: launching from a subdirectory of a marked
-vault does not see the marker. For a hand-rolled PHI vault the marker is
+Drop a `.salus` marker file at the root of every PHI-bearing vault (e.g.
+`~/Documents/salus`). The `claude-codex` launcher **refuses to start (exit 3,
+no override)** when the directory you launch from, or any directory above it,
+carries the marker. For a hand-rolled PHI vault the marker is
 **not placed by any himmel script**; create it by hand (a vault scaffolded
 via `setup.sh --medical` gets it automatically):
 
@@ -1217,9 +1213,10 @@ via `setup.sh --medical` gets it automatically):
 touch ~/Documents/salus/.salus
 ```
 
-For **whole-subtree** coverage (any launch cwd under the root refused), also
-list the absolute PHI roots one-per-line in `~/.config/claude-glm/phi-roots`:
-same PHI-tier refusal, but subtree-wide.
+A PHI root without a marker can instead be listed, one absolute path per line,
+in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
+name outlived the GLM lane, HIMMEL-7898) or `~/.config/claude-codex/phi-roots`;
+the launcher reads both.
 
 ### 4e. qmd search bootstrap (optional)
 
