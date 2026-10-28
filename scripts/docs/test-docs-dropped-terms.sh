@@ -112,7 +112,6 @@ docs/internals/egress-matrix.md	  and `openrouter` plus `anthropic`/`local-ollam
 docs/internals/egress-matrix.md	  This was a *record-integrity* fix, not an incident: nothing routed to GLM —
 docs/internals/egress-matrix.md	  no GLM lane appears in `scripts/lanes/resolve.mjs` — but a live `allow+log`
 docs/internals/egress-matrix.md	  and loses the history), **not `hard`**, and `himmel-code × zai-glm` stays
-docs/internals/egress-matrix.md	  `refresh-graph-map.sh`'s `--backend glm` remap still legitimately serves it.
 docs/internals/egress-matrix.md	  Consumer sweep: `graphify-fence.sh` loses the `luna-clippings × zai-glm`
 docs/internals/egress-matrix.md	  keeps its `glm` provider entry but its egress gate now refuses it, exactly
 docs/internals/egress-matrix.md	- **Provider policy — kimi/moonshot retired (operator ruling
@@ -378,7 +377,6 @@ docs/setup/new-machine.md	- `cygpath` (Windows-only path translation) → `scrip
 docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
 docs/setup/new-machine.md	in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
 docs/setup/new-machine.md	name outlived the GLM lane, HIMMEL-7898) or `~/.config/claude-codex/phi-roots`;
-docs/setup/new-machine.md	| `ZAI_API_KEY` | Z.ai key for `scripts/graphify/refresh-graph-map.sh --backend glm` on public himmel code; every vault cell of the egress matrix denies `zai-glm`. **Don't put it in `settings.json`** (that hands it to every session). | Z.ai console, only if you run that backend; otherwise leave unset. |
 docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | ticketed: HIMMEL-2330 |
 docs/tool-adoption/lane-adoption-playbook.md	example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 docs/tool-adoption/lane-adoption-playbook.md	*config/code knob* the measurement feeds. Where the axis has GLM evidence
@@ -415,11 +413,7 @@ docs/tooling-catalog.md	   attached returned `HTTP 400 unknown provider for mode
 docs/tooling-catalog.md	bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 docs/tooling-catalog.md	**Model tier:** `--model` is optional and selects the GPT-5.6
 docs/tooling-catalog.md	`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
-docs/tooling-catalog.md	  `--backend glm` was a prior lane but zai-glm is de-listed,
-docs/tooling-catalog.md	  and `--backend kimi` (moonshot) is retired —
-docs/tooling-catalog.md	  operator ruling, there is no kimi backend — so both now fail closed on luna
-docs/tooling-catalog.md	  corpora, glm at the egress preflight and kimi as an unclassified provider).
-docs/tooling-catalog.md	  overshoots Z.ai's request limit — `--backend glm` 429s (`rate_limit_error`
+docs/tooling-catalog.md	  `--backend kimi` (moonshot) is retired — operator ruling, there is no kimi backend — so it fails closed on luna corpora as an unclassified provider).
 docs/tooling-catalog.md	  staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
 docs/tooling-catalog.md	  subscription) — the original credential gate (kimi ->
 docs/tooling-catalog.md	  `MOONSHOT_API_KEY`) no longer applies now that kimi is retired, though the
@@ -468,7 +462,6 @@ docs/internals/lane-parity.md	  both lanes because the ruleset was live `~/.clau
 docs/internals/lane-parity.md	- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed).** himmel's CC
 docs/internals/lane-parity.md	engines (gpt-6.1-sol + GLM, removed as a lane but still fenced) the `himmel_agent` profile is pointed
 docs/configuration.md	dormant lane's opt-in). The GLM lane was removed, registry row included
-docs/configuration.md	| Graph-map refresh (`graphify/refresh-graph-map.sh --backend glm`) | `ZAI_API_KEY` |
 EOF
 ALLOW="${ALLOW%$'\n'}"
 

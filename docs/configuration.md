@@ -587,7 +587,6 @@ sites are changed here.
 | Bitbucket (`scripts/bitbucket/src/env.ts`) | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG` |
 | Codex launcher, CLI proxy setup | `CLIPROXY_API_KEY` |
 | DeepSeek launcher | `DEEPSEEK_API_KEY` |
-| Graph-map refresh (`graphify/refresh-graph-map.sh --backend glm`) | `ZAI_API_KEY` |
 | OpenRouter launcher, `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
 | CR critic panel | `CLIPROXY_API_KEY` when the critic registry holds a Codex critic |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
