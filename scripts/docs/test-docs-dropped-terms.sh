@@ -195,8 +195,10 @@ docs/internals/enforcement.md	> arm (settings-chain entries are `Bash`/`PowerShe
 docs/internals/enforcement.md	  The hang armor (the Windows Store python stub was observed wedging
 docs/internals/enforcement.md	rather than an unbounded call. The GNU part is load-bearing on Windows:
 docs/internals/enforcement.md	`command -v timeout` also matches `C:\Windows\System32\timeout.exe`, which is a
-docs/internals/enforcement.md	   `XDG_*` base dirs, `USER`), the `MSYS*` names and the version-manager namespaces (`NVM_*`,
-docs/internals/enforcement.md	   `FNM_*`, `VOLTA_HOME`, `ASDF_*`). Enumerated empirically on Windows Git-Bash
+docs/internals/enforcement.md	first — so a Windows-style spelling such as `scripts\hooks\x.sh` is still caught — and
+docs/internals/enforcement.md	   locale set, `TZ`, the `XDG_*` base dirs), `BUN_INSTALL`, the `MSYS*` names and
+docs/internals/enforcement.md	   list still carries the Windows set (`SYSTEMROOT`, `WINDIR`, `COMSPEC`,
+docs/internals/enforcement.md	   enumerated empirically on Windows Git-Bash — every interpreter and every
 docs/internals/enforcement.md	the gate-off path previously cost ~1.7s of process spawns on Windows Git Bash.
 docs/internals/enforcement.md	cross-platform-sensitive path (`*.sh`, `*.bash`, `*.zsh`, PowerShell files,
 docs/internals/enforcement.md	`pwsh`. Empty (`Platforms tested:`) and unrecognised

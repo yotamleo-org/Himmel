@@ -2313,7 +2313,7 @@ only write-time can.
 Scope is deliberately narrow — at or below `scripts/hooks/`, ending in `.sh`
 (the `case` glob matches a nested subdirectory too, not just a direct child) —
 so it stays cheap enough to run on every write. The path test folds `\` to `/`
-first — `scripts\hooks\x.sh` names the same file as `scripts/hooks/x.sh` — and
+first — so a Windows-style spelling such as `scripts\hooks\x.sh` is still caught — and
 stats the raw path first, falling back to the folded one, so a filename that
 legitimately contains a backslash is never rewritten.
 
@@ -4824,11 +4824,15 @@ this box carries names it does not match (`GGS_MQTT_PASS` is neither `PASSWORD`
 nor `PASSWD`). A job's environment is now built in three layers:
 
 1. **Allowlist base** — named system/interpreter variables and nothing else: the
-   POSIX set (`SHELL`, `TERM`, `LANG`, the `LC_*` locale set, `TZ`, the
-   `XDG_*` base dirs, `USER`), the `MSYS*` names and the version-manager namespaces (`NVM_*`,
-   `FNM_*`, `VOLTA_HOME`, `ASDF_*`). Enumerated empirically on Windows Git-Bash
-   — every interpreter and every queued end-side hook re-run under a narrowed
-   `env -i` — with the cross-platform names justified in the list itself. Every
+   POSIX set (`SHELL`, `TERM`, `LOGNAME`, `USER`, `HOSTNAME`, `LANG`, the `LC_*`
+   locale set, `TZ`, the `XDG_*` base dirs), `BUN_INSTALL`, the `MSYS*` names and
+   the version-manager namespaces (`NVM_*`, `FNM_*`, `VOLTA_HOME`, `ASDF_*`). The
+   list still carries the Windows set (`SYSTEMROOT`, `WINDIR`, `COMSPEC`,
+   `PATHEXT`, `APPDATA`, the `PROGRAMFILES` roots …), left over from the dropped
+   platform; removing it is a code change, not a docs one. The list was
+   enumerated empirically on Windows Git-Bash — every interpreter and every
+   queued end-side hook re-run under a narrowed `env -i` — with the
+   cross-platform names justified in the list itself. Every
    name is spelled out: there are **no prefix wildcards**, because a prefix
    inside an allowlist is a denylist by another name (`^XDG_` would also admit
    `XDG_MQTT_PASS`). The list is `ENV_SYSTEM` in `scripts/hooks/stop-queue.mjs`.
