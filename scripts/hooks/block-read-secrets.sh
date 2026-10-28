@@ -1402,7 +1402,7 @@ scan_clause() {
     local interp_val=0      # the NEXT token is an interpreter option's value (-o x)
     local body_state=0      # 0 = no body yet, 1 = collecting, 2 = closed
     local body="" bodyq=""  # the body's text, and its outer quote char (' or ")
-    local tok dtok this_at_pos0 t
+    local tok dtok this_at_pos0 t ti=0 rest_lt=0
     local -a toks
     if [ "$depth" -gt "$SCAN_MAX_DEPTH" ]; then block=1; return 0; fi
     if [ "${GU_TOKENIZED:-0}" != 1 ]; then g4_clause "$clause"; fi
@@ -1449,6 +1449,7 @@ scan_clause() {
         # the narrow per-token strip the ticket asks for, not a
         # blanket strip that would happen to pass the same probe.
         tok="${tok//$'\r'/}"
+        ti=$((ti + 1))
         # Redirect-from-secret: authoritative for `<`-redirects and
         # independent of command position (e.g. `done <.env`).
         if [ "$prev" = "<" ] && is_secret_path "$tok"; then
@@ -1521,6 +1522,12 @@ scan_clause() {
         # of glob matches in e.g. `rtk proxy grep version *.md` as reader args.
         # Exfil/env checks already ran in g4_clause/g4_segments.
         if [ "$reader" = 0 ] && [ "$interp" = 0 ]; then
+            # Neither flag comes back on, so only the redirect check is left,
+            # and it needs a `<` among this token and the rest. With none,
+            # stop: one pass per glob match cost seconds on bash 3.2.
+            if [ "$rest_lt" = 0 ]; then
+                case "${toks[*]:ti-1}" in *'<'*) rest_lt=1 ;; *) break ;; esac
+            fi
             prev="$tok"; continue
         fi
         # Past the command token: scan its arguments.
