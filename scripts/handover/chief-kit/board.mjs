@@ -33,7 +33,7 @@
 // spans are redacted from everything before it is escaped.
 //
 // Optional Live-state lines the chief may keep (chief-template.md):
-//   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
+//   epics: KEY-1=4, KEY-2=2                 declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
 //   decisions: specs/decisions/chief-decisions-<date>.md (latest #<n>)
 //                                           the `(N) ` entries of the named bucket file(s)
@@ -893,7 +893,7 @@ const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
 const crLoopSection = (() => {
     const out = { window_days: 7, soft_cap: CR_SOFT_CAP, rounds: { prs: 0, mean: null, p90: null }, preflight: { hits: null, per_pr: null, prs: null, merged: null },
-        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror (HIMMEL-6390)' },
+        residual: { inflow: null, outflow: null, net: null, per_merged_pr: null, labelled_share: null, outflow_note: 'outflow needs a resolved date in the mirror ' },
         versions: [], restructure_open: null, before: CR_BEFORE,
         cadence: { stale_after_days: CR_CADENCE_STALE_DAYS, proposals_days: null, proposals_stale: true, restructure_days: null, restructure_stale: true } };
     trend.cr_loop = out;
@@ -1001,7 +1001,7 @@ const crLoopSection = (() => {
     const cadenceTxt = (days, stale) => (days === null ? 'never' : days + 'd') + (stale ? ' (stale)' : '');
     const r = out.residual;
     const dark = out.rounds.mean === null && out.preflight.per_pr === null && r.inflow === null;
-    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · cadence ${cadenceTxt(out.cadence.proposals_days, out.cadence.proposals_stale)} · restructure seen ${cadenceTxt(out.cadence.restructure_days, out.cadence.restructure_stale)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
+    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs a resolved date)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · cadence ${cadenceTxt(out.cadence.proposals_days, out.cadence.proposals_stale)} · restructure seen ${cadenceTxt(out.cadence.restructure_days, out.cadence.restructure_stale)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
@@ -1328,7 +1328,7 @@ const succession = (() => {
     const silent = Math.max(0, liveLegs.length - accepts.length);
     const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;
     const recommendation = liveAt === null ? 'succession still running: no LIVE bullet yet'
-        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps (HIMMEL-5969)`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
+        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
     return [{ tool: 'chief-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
         turns, eq, legs_quoted: accepts.length, legs_silent: silent, target: SUCCESSION_TARGET, pass, recommendation }];
 })();
