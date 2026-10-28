@@ -1054,6 +1054,7 @@ mutant="$mutantdir/scripts/handover/headed-arm.sh"
 sed 's/ --autocompact "$AUTOCOMPACT"//' "$HEADED_ARM" > "$mutant"
 cp "$HERE/../../lib/chief-context.sh" "$mutantdir/scripts/lib/chief-context.sh"
 cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh"
+cp "$HERE/../../lib/prim.sh" "$mutantdir/scripts/lib/prim.sh"
 chmod 755 "$mutant"
 d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"
 mrc=0

@@ -520,8 +520,8 @@ The `claudex` launcher (`scripts/claude-codex`, documented in
 then to `medium` (HIMMEL-2772). Decision 223 makes `gpt-6.1-sol` at
 **`xhigh`** the claudex default (HIMMEL-7580); an explicitly exported value
 still wins. The `medium` step rested on a vendor calibration note, recorded on
-the ticket as reported (we have not re-measured it) and about GPT-6 Astra, not
-the current default model:
+the ticket as reported (we have not re-measured it) and about an earlier model,
+not the current default model:
 
 > OpenAI/Tibo says GPT-6 Astra on **low** performs better than GPT-5.6 Sol on
 > **high**, and anyone who ran Sol at high should move to low or medium on Astra.
