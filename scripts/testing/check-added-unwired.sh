@@ -81,6 +81,7 @@ ref="$1"; shift
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 2
 
+# prim-ok: the suite copies this script into fixture trees that carry no scripts/lib, so it cannot source prim.sh
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/added-unwired.XXXXXX") || exit 2
 trap 'rm -rf "$tmp"' EXIT
 
@@ -344,6 +345,7 @@ while [ "$changed" -eq 1 ]; do
       report="$report$(printf 'UNWIRED %s (%s): %s' "$f" "$k" "$why")"$'\n'
     fi
   done < "$tmp/pending"
+  # prim-ok: scratch file inside this run's private tmpdir, no reader to protect
   mv "$tmp/next" "$tmp/pending"
 done
 if [ -s "$tmp/pending" ]; then

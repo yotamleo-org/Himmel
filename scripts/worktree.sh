@@ -41,6 +41,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/prim.sh
+. "$SCRIPT_DIR/lib/prim.sh" || exit 2
 # Forge-dispatch seam: the merged-PR + open-PR prune signals route
 # through forge_* so prune works on GitHub and Bitbucket Cloud alike.
 # shellcheck source=lib/forge.sh
@@ -238,7 +240,7 @@ note_stuck() {
 # from a sweep that could not read the forge (it could not tell a skip from a
 # resolved one).
 stuck_state_update() {
-    local now key reason first count prior p_first p_count kept="" new_rows="" tmp
+    local now key reason first count prior p_first p_count kept="" new_rows=""
     [ "$DRY_RUN" -eq 0 ] || return 0
     if [ "$HAVE_FORGE" -eq 0 ] || { [ "$FORGE_KIND" = "github" ] && [ "$ORIGIN_PR_CACHE_OK" -eq 0 ]; }; then
         return 0
@@ -270,11 +272,10 @@ EOF
         return 0
     fi
     mkdir -p "$STUCK_DIR" 2>/dev/null || return 0
-    tmp="$STUCK_STATE.$$"
     {
         [ -z "$kept" ] || printf '%s\n' "$kept"
         printf '%s' "$new_rows"
-    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$STUCK_STATE" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+    } | atomic_write "$STUCK_STATE" 2>/dev/null || true
     return 0
 }
 
@@ -729,7 +730,7 @@ checkpoint_worktree() {
         return 1
     fi
 
-    tmp_dir=$(mktemp -d 2>/dev/null)
+    tmp_dir=$(tmpdir 2>/dev/null)
     if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
         echo "WARN clean-garden: could not create temp dir for checkpoint of $br — skipping" >&2
         return 1

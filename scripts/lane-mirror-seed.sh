@@ -276,6 +276,7 @@ seed_with_lock() {
   SEED_LOCK_OWNER="$(printf '%s\n%s' "$$" "$own_start")"
   SEED_LOCK_CANDIDATE="$LOCK.pending.$$.$RANDOM.$RANDOM"
   trap 'seed_lock_cleanup' EXIT
+  # prim-ok: this mkdir stages a candidate dir for the owner-recording, stale-retiring lock publish below; with_lock offers neither and waits unbounded
   mkdir "$SEED_LOCK_CANDIDATE" || seed_fail "create the seed-lock candidate"
   printf '%s\n' "$SEED_LOCK_OWNER" > "$SEED_LOCK_CANDIDATE/owner" || seed_fail "record seed-lock ownership"
   seed_lock_ticks=0

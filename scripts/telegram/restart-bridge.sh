@@ -978,6 +978,7 @@ acquire_lock() {
   mkdir -p "$lockdir"
   if command -v flock >/dev/null 2>&1; then
     exec 200>"$lock"
+    # prim-ok: the lock is held on fd 200 for the rest of the process (start/stop span many commands); with_lock releases when its one command returns
     flock 200
   else
     echo "[restart-bridge] WARNING: 'flock' not found on this host — cannot serialize concurrent start/stop (documented Stage-1 limitation, see this script's header). Proceeding WITHOUT the lock." >&2
