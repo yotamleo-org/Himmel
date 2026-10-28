@@ -13,7 +13,7 @@ deep doc lives.
 |---|---|---|---|
 | [The surface](#the-surface-the-himmel-ui-and-other-views) | the himmel UI's Fleet page, the chief's board, Telegram, the statusline, the morning report and the metrics | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
 | [The fleet](#the-fleet-the-engine) | the chief, its workers, the judge and the GO that gates a merge | opt-in | `/chief new` |
-| [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
+| [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK shifts | off | `/afk-shift` |
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup; lanes fill its ledger as they run |
 | [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
@@ -74,7 +74,7 @@ steer the fleet by messaging the chief.
   handover doc at a set time.
 - **Usage caps.** When a session nears its usage cap,
   `scripts/hooks/auto-arm-on-cap.sh` arms it again for the reset.
-- **Shifts.** `/afk-shift` and `/overnight-shift` run the fleet with nobody at
+- **Shifts.** `/afk-shift` runs the fleet with nobody at
   the keyboard and stop only on the block-only criteria:
   [handover/afk-mode.md](handover/afk-mode.md).
 - **Initiative.** With `HIMMEL_INITIATIVE` set, a session runs the ship steps

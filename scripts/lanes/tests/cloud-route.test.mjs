@@ -372,7 +372,7 @@ test('LOCAL-NATIVE: each state-repo reference alone routes local', () => {
 });
 
 test('CLOUD-OK: repo paths that merely resemble handover state stay cloud', () => {
-  for (const t of ['Edit scripts/handover/chief-kit/tick.sh.', 'Edit docs/handover/overnight-mode.md.', 'Edit scripts/a.sh and scripts/lanes/specs/foo.sh.']) assert.equal(classifyTicket(tk({ description: t }), ctx()).class, 'CLOUD-OK', t);
+  for (const t of ['Edit scripts/handover/chief-kit/tick.sh.', 'Edit docs/handover/afk-mode.md.', 'Edit scripts/a.sh and scripts/lanes/specs/foo.sh.']) assert.equal(classifyTicket(tk({ description: t }), ctx()).class, 'CLOUD-OK', t);
 });
 
 test('brief makes every Jira step conditional on the Atlassian tools, with a PR-body fallback (HIMMEL-5029)', () => {

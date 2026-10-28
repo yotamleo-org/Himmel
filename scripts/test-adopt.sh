@@ -84,10 +84,10 @@ ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inje
 [ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
 mkdir -p "$work/ss-clone"
 printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
-ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
+ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_out" 'Active steps: pr' \
   || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
-ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
+ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
 [ -z "$ss_idle" ] || fail "HIMMEL-6956: the project-scope SessionStart hook injected with no step set: $ss_idle"
 [ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
   || fail "HIMMEL-6956: idempotent re-run left more than one inject-initiative hook"

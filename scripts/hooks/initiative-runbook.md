@@ -1,6 +1,6 @@
 # Initiative runbook
 
-The full text behind the `HIMMEL_INITIATIVE` / `HIMMEL_INITIATIVE_OVERNIGHT`
+The full text behind the `HIMMEL_INITIATIVE` / `HIMMEL_INITIATIVE_AFK`
 SessionStart pointer (`scripts/hooks/inject-initiative.sh`, HIMMEL-2036). The
 hook injects ~370 B naming the **active steps** and pointing here; this file
 carries the bodies. The pointer names the two moments to open it, and an
@@ -100,7 +100,7 @@ Steps run in this canonical order; only the tokens on the pointer's
 ## Turning it off / narrowing it
 
 Unset the variable named in the pointer (`HIMMEL_INITIATIVE`, or
-`HIMMEL_INITIATIVE_OVERNIGHT` under `HIMMEL_OVERNIGHT`) in the **launching**
+`HIMMEL_INITIATIVE_AFK` under `HIMMEL_AFK`) in the **launching**
 shell and restart claude — env vars do not propagate into a running session.
 
 **Unsetting is not always enough:** the hook also reads the himmel clone's

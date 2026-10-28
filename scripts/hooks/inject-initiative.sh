@@ -17,11 +17,10 @@
 # The directive echoes the recognized tokens (`Active steps: …`) so a typo is
 # visible.
 #
-# Profiles (selected by HIMMEL_AFK; the old name HIMMEL_OVERNIGHT is read too):
+# Profiles (selected by HIMMEL_AFK):
 #   - interactive (default): var = HIMMEL_INITIATIVE,     `all` = prcheck,pr,ticket,handover
 #   - afk (selector):        var = HIMMEL_INITIATIVE_AFK, `all` = execute,prcheck,pr,ticket,merge,handover
-# A set falsy HIMMEL_AFK or HIMMEL_OVERNIGHT keeps the interactive profile, and
-# HIMMEL_INITIATIVE_AFK falls back to HIMMEL_INITIATIVE_OVERNIGHT when unset.
+# A set falsy HIMMEL_AFK keeps the interactive profile.
 #
 # Default: OFF. Exit silently when the env is unset, falsy, or resolves to no
 # recognized worker — behaviour then is byte-identical to a session without the
@@ -96,8 +95,7 @@ fi
 if [ -n "$_ii_root" ]; then
     # shellcheck source=/dev/null
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/load-dotenv.sh"
-    load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK \
-        HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT || true
+    load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK || true
 fi
 
 # --- Resolve the active workers via the shared resolver -----------
@@ -106,7 +104,6 @@ fi
 # env) and get back the normalized, canonical-ordered, deduped active worker set.
 # Profile is selected by HIMMEL_AFK: truthy → read HIMMEL_INITIATIVE_AFK
 # (afk `all` = 6 workers), else HIMMEL_INITIATIVE (interactive `all` = legacy 4).
-# resolve_workers_env also reads the old overnight names.
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/initiative-workers.sh"
 

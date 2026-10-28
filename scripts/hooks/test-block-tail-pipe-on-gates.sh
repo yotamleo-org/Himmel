@@ -1063,7 +1063,7 @@ fi
 # --- additionalDirectories guard ------------------------------
 # The operator hand-authored permissions.additionalDirectories in the primary
 # checkout's settings.json to close outside-cwd Read/Grep/Glob prompts that
-# hang an unattended overnight worker (docs/handover/overnight-mode.md). Pin the
+# hang an unattended overnight worker (docs/handover/afk-mode.md). Pin the
 # four entries exactly; SKIP (not fail) mirrors the wiring-contract block
 # above — settings.json is a PRIVATE_PATH absent on public-mirror checkouts.
 if [ ! -f "$SETTINGS" ]; then

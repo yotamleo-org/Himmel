@@ -1001,7 +1001,7 @@ check "$(get_kv "$out25" head)" "$head25" "T25 head matches the worktree HEAD (t
 # file itself must be BRANCH-SCOPED, same reasoning
 # as cr-prior-blocking/<branch> and cr-aggregate-verdicts/<branch> in
 # write-verdicts.sh) safe under the concurrent /pr-check
-# runs on independent branches this repo actually supports (overnight-shift).
+# runs on independent branches this repo actually supports (afk-shift).
 # T20/T21 above prove that anchor-path equality closes the
 # BARE-BOOLEAN gap; T26-T29 prove the NARROWER temporal/identity gap that
 # leaves open - a value that DOES equal the resolved anchor (the shape a
@@ -1379,7 +1379,7 @@ cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
 
 # T30. Concurrency: the capability file must be BRANCH-SCOPED, not one
 # shared file across the anchor's whole git-common-dir. himmel runs
-# concurrent /pr-check on independent branches by design (overnight-shift
+# concurrent /pr-check on independent branches by design (afk-shift
 # treats per-ticket branches as independent products), so two anchors
 # minting for DIFFERENT branches at close to the same time must not collide
 # on one file. Simulates the interleaving directly (two sequential mints,

@@ -131,7 +131,7 @@
 # file: $git_dir is the SAME
 # shared git-common-dir across every worktree in the checkout, and himmel
 # runs concurrent /pr-check on independent branches by design
-# (overnight-shift), so a single unscoped file would let lane B's mint
+# (afk-shift), so a single unscoped file would let lane B's mint
 # overwrite lane A's before lane A's delegate reads it - lane A's
 # verification would then fail on the nonce (fail-safe: it never wrongly
 # ACCEPTS) but, since its own recursion guard never got to fire, it

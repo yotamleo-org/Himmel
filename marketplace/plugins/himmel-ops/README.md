@@ -92,7 +92,7 @@ red-teamed before it advances:
    not implement.
 
 **Gates are mode-driven.** `scripts/autonomy-mode.sh` reports `autonomous` when
-`HIMMEL_INITIATIVE` or `HIMMEL_INITIATIVE_OVERNIGHT` is set to a non-falsy value
+`HIMMEL_INITIATIVE` or `HIMMEL_INITIATIVE_AFK` is set to a non-falsy value
 (non-empty, not `0`/`false`/`off`/`no`; initiative mode, HIMMEL-425) — then the
 critics are the only gate and the pipeline auto-advances.
 Otherwise it reports `interactive` and minerva pauses for the operator after each
