@@ -1844,7 +1844,6 @@ if [ -n "$PROFILE" ]; then
     # Next to the launch log, i.e. inside the per-uid chief work dir the
     # chief already owns and cleans - never /tmp world-readable, never the
     # repo (it is generated, per-worker state).
-    PROFILE_SETTINGS="$(dirname "$LOG")/$NAME.leg-settings.json"
     # Native lane only: the brief's own contract, re-injected by
     # the compact-matcher SessionStart hook below instead of ridden in the
     # preface on every call. Resolved to an absolute path:
@@ -1855,6 +1854,7 @@ if [ -n "$PROFILE" ]; then
         echo "headed-arm-worker: --profile $PROFILE: cannot resolve log directory for $LOG" >&2
         exit 2
     }
+    PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
     PROFILE_CONTRACT="$_worker_log_dir/$NAME.worker-contract.md"
     for _worker_need in "$PROFILES_MJS" "$WORKER_SESSION_SHIM" "$WORKER_SESSION_PREFACE"; do
         if [ ! -f "$_worker_need" ]; then
@@ -2226,7 +2226,7 @@ EOF_CS_FILES
     # Per-worker path, like PROFILE_SETTINGS above - the claudex
     # lane below overrides this to the same shape for its own coordination
     # preface; content is written only at real-launch time further down.
-    WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.worker-preface.md"
+    WORKER_SESSION_PROFILE_PREFACE="$_worker_log_dir/$NAME.worker-preface.md"
     worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     # The consult loads no user/project/local scope: the shim turns this into
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
@@ -2255,7 +2255,7 @@ EOF_CS_FILES
             echo "headed-arm-worker: --profile $PROFILE: mcp-config resolution failed: $MCP_CONFIG_JSON" >&2
             exit 2
         fi
-        PROFILE_MCP_CONFIG="$(dirname "$LOG")/$NAME.leg-mcp.json"
+        PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
         worker_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
     fi
 fi
@@ -2274,7 +2274,7 @@ if [ "$LANE_CHANNEL" = "file" ]; then
         fi
     done
     if [ -n "$PROFILE" ]; then
-        WORKER_SESSION_PROFILE_PREFACE="$(dirname "$LOG")/$NAME.worker-preface.md"
+        WORKER_SESSION_PROFILE_PREFACE="$_worker_log_dir/$NAME.worker-preface.md"
         worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
     else
         WORKER_SESSION_PROFILE_PREFACE="$CLAUDEX_PREFACE"

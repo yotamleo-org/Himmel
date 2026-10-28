@@ -4932,6 +4932,38 @@ wait_record "$d47h" || true
 check "47d same-repo worktree launch: exit 0" "$rc" "0"
 contains "47d same-repo session starts in resume_cwd, not main" \
   "$(cat "$d47h/record" 2>/dev/null || true)" "--workdir $wt47h"
+# Relative launch logs still yield profile files readable from the selected worktree.
+for lane47 in native claudex; do
+  name47="HIMMEL-47-relative-$lane47"
+  d47r="$tmp/c47r-$lane47"; mk_launch_stubs "$d47r" "$name47"
+  model47=claude-sonnet-5; [ "$lane47" != claudex ] || model47=gpt-6.1-sol
+  rc=0
+  (
+    cd "$harness47" || exit 1
+    HANDOVER_REGISTRY="$reg47_none" PLUGIN_PROFILES_REGISTRY="$mcpreg" \
+      HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+      KONSOLE_CMD="$d47r/konsole" PGREP_CMD="$d47r/pgrep" \
+      HEADED_ARM_PROC="$d47r/proc" HEADED_ARM_LOCK_DIR="$d47r/locks" \
+      bash "$harness47/scripts/handover/chief-kit/headed-arm-worker.sh" --profile mcp-empty --lane "$lane47" \
+      "$name47" "$doc47" "$d47r/signal" "$PAST" "../c47r-$lane47/log" "$model47"
+  ) >"$d47r/worker-out" 2>&1 || rc=$?
+  wait_record "$d47r" || true
+  check "47e $lane47 relative-log launch exits 0" "$rc" "0"
+  env47r="$(cat "$d47r/env-record" 2>/dev/null || true)"
+  contains "47e $lane47 settings path is absolute" "$env47r" "WORKER_SESSION_PROFILE_SETTINGS=$d47r/$name47.leg-settings.json"
+  contains "47e $lane47 preface path is absolute" "$env47r" "WORKER_SESSION_PROFILE_PREFACE=$d47r/$name47.worker-preface.md"
+  contains "47e $lane47 MCP path is absolute" "$env47r" "WORKER_SESSION_PROFILE_MCP_CONFIG=$d47r/$name47.leg-mcp.json"
+  rc=0
+  (
+    cd "$wt47h" || exit 1
+    WORKER_SESSION_CLAUDE_BIN=true \
+      WORKER_SESSION_PROFILE_SETTINGS="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_SETTINGS=//p')" \
+      WORKER_SESSION_PROFILE_PREFACE="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_PREFACE=//p')" \
+      WORKER_SESSION_PROFILE_MCP_CONFIG="$(printf '%s\n' "$env47r" | sed -n 's/^WORKER_SESSION_PROFILE_MCP_CONFIG=//p')" \
+      bash "$HERE/../../lanes/worker-claude-launcher.sh" --version
+  ) >"$d47r/shim-out" 2>&1 || rc=$?
+  check "47e $lane47 real shim reads profile artifacts from worktree cwd" "$rc" "0"
+done
 some_doc="$some_doc_47"
 
 echo "---"

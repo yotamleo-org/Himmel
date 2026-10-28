@@ -165,7 +165,8 @@ template_version: 3
 >    the bullet with
 >    `bash /absolute/repo/scripts/handover/chief-kit/append-results.sh /absolute/handover.md "LIVE ..."`
 >    (worker-preface.md), never the Edit tool. The chief replaces the example
->    paths with this repo's and this doc's literal absolute paths before dispatch.
+>    paths with the himmel checkout's script path and this doc's literal absolute
+>    path before dispatch, even when the worker's repo is an adopter.
 >    No variable, loop or xargs around a guarded script. A bullet never
 >    contains `>`; write `→` or `to`. The LIVE bullet moves the
 >    ticket to In Progress and the PR open to In Review, by script
