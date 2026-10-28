@@ -278,7 +278,7 @@ judge_call() {
       scratch="$(git -C "$HERE" rev-parse --show-toplevel)" || return 1 ;;
   esac
   schema="$(jq -c ".$kind" "$HERE/judge-claims-schema.json")" || return 1
-  jdir="$(mktemp -d "$scratch/.lq-judge.XXXXXX")" || return 1
+  jdir="$(mktemp -d "$scratch/.lq-judge.XXXXXX")" || return 1  # prim-ok: the dir is made under $scratch (the checkout root for the openrouter lane), but tmpdir roots only at TMPDIR
   (
     cd "$jdir" || exit 1
     # the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.

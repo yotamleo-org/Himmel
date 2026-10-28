@@ -8,7 +8,7 @@ set -u
 . "$(dirname "$0")/../accept-common.sh"
 WT="$1"
 S="$WT/lq-work/cleanup-old.sh"
-D="$(mktemp -d "${TMPDIR:-/tmp}/lq-cr.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }
+D="$(mktemp -d "${TMPDIR:-/tmp}/lq-cr.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: a frozen pilot accept.sh stays self-contained (only accept-common.sh is sourced)
 # gnu-ok: the fixture needs backdated mtimes; abort rather than pass vacuously
 # backdate: GNU touch -d, else BSD/macOS touch -t from date -v
 backdate() { touch -d '10 days ago' "$@" 2>/dev/null || touch -t "$(date -v-10d +%Y%m%d%H%M)" "$@"; }  # gnu-ok: BSD fallback
