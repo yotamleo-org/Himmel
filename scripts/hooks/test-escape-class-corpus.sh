@@ -288,7 +288,7 @@ if (!$pid) {
   exec('env', '-i', "HOME=$ENV{DG_HOME}", "PATH=$ENV{PATH}", 'PS4=+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ', $ENV{DG_E1}, 'bash', '-x', $hook) or die;
 }
 close $w;
-my $t0 = time; my $p = $t0; my (%ms, %n);
+my $t0 = time; my $p = $t0; my (%ms, %n, @keep);
 $SIG{ALRM} = sub { kill 9, $pid; print "TIMEOUT "; };
 alarm 280;
 while (my $l = <$r>) {
@@ -296,23 +296,25 @@ while (my $l = <$r>) {
   my ($k) = $l =~ /^\++ (\S+)/;
   $k = '?' unless defined $k;
   $ms{$k} += ($t - $p) * 1000; $n{$k}++; $p = $t;
+  push @keep, substr($l, 0, 150) if $ENV{DG_DUMP} && $l !~ /guard-empty/;
 }
 waitpid($pid, 0);
 printf "rc=%d secs=%.1f\n", $? >> 8, time - $t0;
 my @k = sort { $ms{$b} <=> $ms{$a} } keys %ms;
-printf "  %7.0f ms %6d x %s\n", $ms{$_}, $n{$_}, $_ for grep { defined } @k[0 .. 9];
+printf "  %7.0f ms %6d x %s\n", $ms{$_}, $n{$_}, $_ for grep { defined } @k[0 .. 5];
+print "  T ", $_ for (@keep > 30 ? @keep[-30 .. -1] : @keep);
 PERL
   prof() { # prof LABEL HOOK COMMAND LOCALE — per-statement time (arrival delta), top 10 sites
     printf '%s' "$3" > "$DG/cmd.txt"
     jq -Rsc --arg d "$DG/repo" '{tool_name:"Bash",tool_input:{command:.},cwd:$d}' < "$DG/cmd.txt" > "$DG/in.json"
     printf '%s: ' "$1"
-    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="$4" perl "$DG/prof.pl" "$HERE/$2" "$DG/in.json" )
+    ( cd "$DG/repo" && DG_HOME="$DG/home" DG_E1="$4" DG_DUMP="${5:-}" perl "$DG/prof.pl" "$HERE/$2" "$DG/in.json" )
   }
-  prof "els 680 n=1200" block-edit-live-settings.sh "echo $(rep 1200 '~/.c$"l"aude/settings.json ')> /tmp/out.txt" "$U8"
+  prof "els 680 n=600" block-edit-live-settings.sh "echo $(rep 600 '~/.c$"l"aude/settings.json ')> /tmp/out.txt" "$U8"
   # shellcheck disable=SC2016 # the payload is program text, not expanded here
-  prof "qmd cmd-sub program" block-bare-qmd-query.sh '$(echo qmd) query x' "$U8"
+  prof "qmd cmd-sub program" block-bare-qmd-query.sh '$(echo qmd) query x' "$U8" 1
   # shellcheck disable=SC2016 # the payload is program text, not expanded here
-  prof "qmd tmux cmd-sub" block-bare-qmd-query.sh 'timeout -k 5 $f $(echo tmux) new -d x' "$U8"
+  prof "qmd tmux cmd-sub" block-bare-qmd-query.sh 'timeout -k 5 $f $(echo tmux) new -d x' "$U8" 1
   rm -rf "$DG"
   exit 1
 fi

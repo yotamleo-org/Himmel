@@ -25,7 +25,8 @@ assert_rc() {
         echo "PASS $label (rc=$actual)"
     else
         echo "FAIL $label — expected rc=$expected, got rc=$actual"
-        FAILED=$((FAILED + 1))
+        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
     fi
 }
 
@@ -1307,7 +1308,8 @@ if command -v node >/dev/null 2>&1; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
         else
             echo "FAIL $1 took ${ms} ms (budget ${TIMING_BUDGET_MS} ms)"
-            FAILED=$((FAILED + 1))
+            FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
         fi
     }
     # Each shape at just under the tokenizer's 8 KiB cap (the tokenized path)
@@ -1355,7 +1357,8 @@ ${LONG_BODY}EOF"
         echo "PASS 7912a within ${LONG_BUDGET_MS} ms"
     else
         echo "FAIL 7912a took ${ms} ms (budget ${LONG_BUDGET_MS} ms)"
-        FAILED=$((FAILED + 1))
+        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
     fi
     assert_rc "7912b long heredoc then a cp into the live settings.json denies" 2 \
         "$(bash_rc_of "$WT2" "$LONG_ALLOW"$'\n'"cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
@@ -1378,7 +1381,8 @@ ${LONG_BODY}EOF"
             "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
     else
         echo "FAIL 7912e could not create a distinct regular COO-Link"
-        FAILED=$((FAILED + 1))
+        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
     fi
 else
     echo "SKIP 7912a-e (node not installed)"
@@ -1585,7 +1589,8 @@ if [ "$LEX_OUT" = "/x/a/*" ]; then
     echo "PASS 217 lex_resolve leaves a glob-metacharacter segment untouched regardless of files in the hook process's real cwd (got $LEX_OUT)"
 else
     echo "FAIL 217 lex_resolve leaves a glob-metacharacter segment untouched regardless of files in the hook process's real cwd — expected /x/a/*, got $LEX_OUT"
-    FAILED=$((FAILED + 1))
+    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
 fi
 
 # 217b: HIMMEL-4752 — _dc_split_words (the linear space split, HIMMEL-4678) has
@@ -1616,7 +1621,8 @@ if [ -s "$DCSW_BAD" ] && ! cmp -s "$DCSW_SRC" "$DCSW_BAD" && [ "$DCSW_GOT" = "$D
     echo "PASS 217b _dc_split_words splits every space and a broken split fails the control (got $DCSW_GOT; broken $DCSW_BROKE)"
 else
     echo "FAIL 217b _dc_split_words — want $DCSW_WANT, got $DCSW_GOT; broken variant gave $DCSW_BROKE"
-    FAILED=$((FAILED + 1))
+    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
 fi
 
 # 218: HIMMEL-3686 CodeRabbit (round-6) — the TOK=0 fallback's own
@@ -1651,7 +1657,8 @@ if [ "$RC_TRAP_EMPTY" = "$RC_TRAP_MATCH" ] && [ "$RC_TRAP_EMPTY" = 0 ]; then
     echo "PASS 218 TOK=0 fallback's glob write operand gives the same, correct ALLOW verdict regardless of a same-named decoy in the hook process's real cwd (rc=$RC_TRAP_EMPTY both)"
 else
     echo "FAIL 218 TOK=0 fallback's glob write operand verdict depends on the hook process's real cwd contents, or is not ALLOW — got rc=$RC_TRAP_EMPTY with no decoy, rc=$RC_TRAP_MATCH with a same-named decoy present (expected 0 both)"
-    FAILED=$((FAILED + 1))
+    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
 fi
 
 # 219-238 (HIMMEL-3700, J1329O I1-I4): four pre-existing ways a live
@@ -3374,7 +3381,8 @@ cap_rc() { # cap_rc LABEL CMD — wants rc 2 and the cap's reason on stderr
     assert_rc "$1" 2 "$rc"
     case "$err" in
         *'more than 16 nested command bodies'*) echo "PASS $1 names the cap (rc=0)" ;;
-        *) echo "FAIL $1 names the cap — expected rc=0, got rc=1"; FAILED=$((FAILED + 1)) ;;
+        *) echo "FAIL $1 names the cap — expected rc=0, got rc=1"; FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+" ;;
     esac
 }
 cap_rc "960 forty eval segments deny at the body cap" "$(rep 39 'eval echo hi; ')eval echo hi"
@@ -3485,7 +3493,8 @@ if command -v node >/dev/null 2>&1; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
         else
             echo "FAIL $1 took ${ms} ms (budget ${TIMING_BUDGET_MS} ms)"
-            FAILED=$((FAILED + 1))
+            FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
+"
         fi
     }
     # 680 stops at 3000 words: 6000 of them (162 KB) pass the kernel's
