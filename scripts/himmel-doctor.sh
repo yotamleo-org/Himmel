@@ -4716,8 +4716,8 @@ check_c78_shfmt() {
 # --- C79: an installed plugin cache that differs from the checkout at the same version ---
 # Claude Code caches a plugin by version and plugin versions change only in a
 # release cut, so a merged hooks change never reaches the cached copy of the same
-# version: the guard main shows as shipped is not the one running. Compares hooks/
-# and hooks.json of each checkout-sourced @himmel plugin's user-scope installPath
+# version: the guard main shows as shipped is not the one running. Compares hooks/,
+# hooks.json and skills/ of each checkout-sourced @himmel plugin's user-scope installPath
 # against the checkout tree when the installed version equals plugin.json's (a
 # version lag is a different finding) and the plugin is enabled in the user
 # settings (the repair leaves a disabled one alone). WARN names the files; the
@@ -4743,7 +4743,7 @@ check_c79_plugin_cache_drift() {
             [ -n "$f" ] || continue
             cmp -s "$tree/$f" "$path/$f" 2>/dev/null || drift="$drift${drift:+, }$f"
         done <<EOF_FILES
-$({ ( cd "$tree" && find hooks hooks.json -type f 2>/dev/null ) || true; ( cd "$path" && find hooks hooks.json -type f 2>/dev/null ) || true; } | sort -u)
+$({ ( cd "$tree" && find hooks hooks.json skills -type f 2>/dev/null ) || true; ( cd "$path" && find hooks hooks.json skills -type f 2>/dev/null ) || true; } | sort -u)
 EOF_FILES
         [ -z "$drift" ] || drifted="$drifted${drifted:+; }$name@himmel $have: $drift"
     done <<EOF_PLUGINS

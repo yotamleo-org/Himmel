@@ -123,7 +123,7 @@ echo "\$@" >> "$2"
 case "\$*" in
   "plugin install "*@himmel)
     n="\${3%@himmel}"
-    cp "\$DRIFT_STUB_TREE/\$n/hooks/hooks.json" "\$HOME/.claude/plugins/cache/himmel/\$n/1.0.0/hooks/hooks.json" ;;
+    cp -R "\$DRIFT_STUB_TREE/\$n/." "\$HOME/.claude/plugins/cache/himmel/\$n/1.0.0/" ;;
 esac
 exit 0
 EOF
@@ -765,6 +765,24 @@ if [ "$rc" -ne 0 ]; then assert_pass "a failed uninstall fails --only plugin-ref
 assert_contains "the failure names the plugin and says the stale cache stays" "ERROR: uninstall of p1@himmel failed" "$out_drift_un"
 assert_contains "the uninstall was attempted" "plugin uninstall --keep-data p1@himmel" "$(cat "$log_drift_un")"
 assert_not_contains "no install follows a failed uninstall" "plugin install p1@himmel" "$(cat "$log_drift_un")"
+
+echo "Test: a skills-only drift (hooks identical) is detected and repaired (HIMMEL-8016)"
+make_drift_scenario skills
+printf '{ %s }\n' "$drift_main_matcher" > "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
+mkdir -p "$CHECKOUT_DIR/marketplace/plugins/p1/skills/s" "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/skills/s"
+printf 'new\n' > "$CHECKOUT_DIR/marketplace/plugins/p1/skills/s/SKILL.md"
+printf 'old\n' > "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/skills/s/SKILL.md"
+log_drift_skills="$TMP/claude-invocations-drift-skills.log"
+: > "$log_drift_skills"
+claude_stub_drift_skills="$TMP/claude-reinstall-stub-skills"
+make_claude_reinstall_stub "$claude_stub_drift_skills" "$log_drift_skills"
+rc=0
+out_drift_skills=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift_skills" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then assert_pass "skills-only drift refresh succeeds (rc=$rc)"; else assert_fail "skills-only drift refresh rc=$rc — out: $out_drift_skills"; fi
+assert_contains "a skills-only drift triggers the reinstall" "plugin uninstall --keep-data p1@himmel" "$(cat "$log_drift_skills")"
+assert_contains "the reinstall delivers the new skill" "new" "$(cat "$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0/skills/s/SKILL.md")"
 
 echo "Test: a reinstall that leaves the cache differing fails the run (HIMMEL-8016)"
 make_drift_scenario stale

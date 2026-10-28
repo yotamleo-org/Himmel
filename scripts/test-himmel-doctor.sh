@@ -4742,6 +4742,19 @@ else
 fi
 rm -rf "$c79_t"
 
+echo "== C79: a skills-only drift (hooks identical) -> WARN naming the skill file (RED) =="
+c79_setup "$c79_main"
+mkdir -p "$c79_t/repo/marketplace/plugins/p1/skills/s" "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/skills/s"
+printf 'new\n' > "$c79_t/repo/marketplace/plugins/p1/skills/s/SKILL.md"
+printf 'old\n' > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/skills/s/SKILL.md"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'skills/s/SKILL.md'; then
+    pass "C79 skills-only drift -> WARN naming the skill file"
+else
+    fail "C79 skills-only drift -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a

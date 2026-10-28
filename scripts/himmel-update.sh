@@ -2689,19 +2689,19 @@ EOF
 # report "nothing to update". `plugin uninstall` then `plugin install` re-copies
 # the checkout bytes into that version dir. This reinstalls an enabled,
 # checkout-sourced @himmel plugin whose installed version equals its plugin.json
-# version and whose cached hooks differ from the checkout (the version-lag case
+# version and whose cached hooks or skills differ from the checkout (the version-lag case
 # is update_installed_plugins' job). A url-sourced or source-less plugin has no
 # checkout tree to compare, so it is never touched. Runs BEFORE reconcile_plugins
 # (a reinstall re-enables), and a failed install after the uninstall is loud and
 # fails the run: a plugin must never be left uninstalled silently.
-# ponytail: compares hooks/ and hooks.json only and skips a disabled plugin, compare the whole tree if skills/commands drift matters.
+# ponytail: compares hooks/, hooks.json and skills/ and skips a disabled plugin, compare the whole tree if commands/agents drift matters.
 
 # _plugin_cache_drift <checkout plugin tree> <installPath> — prints each file
-# under hooks/ or hooks.json that differs between the two (or exists in only one).
+# under hooks/, hooks.json or skills/ that differs between the two (or exists in only one).
 _plugin_cache_drift() {
     local tree="$1" cache="$2" f
-    { ( cd "$tree" && find hooks hooks.json -type f 2>/dev/null ) || true
-      ( cd "$cache" && find hooks hooks.json -type f 2>/dev/null ) || true
+    { ( cd "$tree" && find hooks hooks.json skills -type f 2>/dev/null ) || true
+      ( cd "$cache" && find hooks hooks.json skills -type f 2>/dev/null ) || true
     } | sort -u | while IFS= read -r f; do
         cmp -s "$tree/$f" "$cache/$f" 2>/dev/null || printf '%s\n' "$f"
     done
