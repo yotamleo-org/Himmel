@@ -1142,6 +1142,11 @@ has "Done category: a mirror wont do blocker still wont do live is resolved" "$c
 archived_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="Archived" run --no-classify)"; archived_rc=$?
 [ "$archived_rc" = 0 ] && pass "Done category: live Archived run exits 0" || fail "Done category: live Archived run exited $archived_rc"
 lacks "Done category: an unlisted live status (Archived) holds the dependent" "$archived_out" "HIMMEL-9304"
+# the disposition list drops a Done-category ticket from the open set and keeps an open one
+dispo_out="$(run --no-classify --priority-pool-only --dispositions)"; dispo_rc=$?
+[ "$dispo_rc" = 0 ] && pass "Done category: --dispositions exits 0" || fail "Done category: --dispositions exited $dispo_rc"
+lacks "Done category: --dispositions does not list a wont do ticket" "$dispo_out" "HIMMEL-9301"
+has "Done category: --dispositions lists an open ticket" "$dispo_out" "# disposition HIMMEL-9302 "
 M="$WORK/jira-mirror/HIMMEL"
 
 printf '\n%d failure(s)\n' "$fails"
