@@ -134,10 +134,8 @@ write_yml_embed() {
         printf 'models:\n  embed: %s\n' "$uri" >"$tmp" || return 1
     fi
     jina_gate_ok "$tmp" "$db" || { rm -f "$tmp"; return 2; }
-    local rc=0
-    atomic_write "$file" < "$tmp" || rc=$?
-    rm -f "$tmp"
-    return "$rc"
+    # prim-ok: after the index swap, publish the validated stage without atomic_write's second allocation.
+    mv -f "$tmp" "$file"
 }
 
 # A config or an environment variable naming a remote (openai:) model must pass

@@ -251,7 +251,8 @@ if [ -n "$HASH_BEFORE" ] && [ -n "$HASH_AFTER" ] && [ "$HASH_BEFORE" != "$HASH_A
     # Non-refresh runs are untouched by this branch (no snapshot exists).
     if [ "${CRYSTALLIZE_REFRESH:-}" = "1" ] && ! _refresh_valid "$NOTE_PATH"; then
         if [ -n "$SNAP_TMP" ] && [ -r "$SNAP_TMP" ]; then
-            atomic_write "$NOTE_PATH" < "$SNAP_TMP" 2>/dev/null && rm -f "$SNAP_TMP" 2>/dev/null || true
+            # prim-ok: rollback reuses the saved inode when no space remains for atomic_write's extra copy.
+            mv -f "$SNAP_TMP" "$NOTE_PATH" 2>/dev/null || true
             SNAP_TMP=""
         fi
     else
