@@ -509,6 +509,7 @@ cov_linked() {
 # One exception: a chain-head finding does not make the round unclean when its effective verdict (its row plus later amends)
 # is fixed, deferred or disproved, its head (and its effective head) is not <head>, and a clean round was written after its
 # last row or amend (that round reviewed the handled code); a finding at <head> itself, or an open one, still blocks.
+# A finding row the same branch recorded again for the same identity (key and original head) is judged by its later row alone.
 # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
 # Its effective row is its own row with every amend written after it against that original head merged over it, in file
 # order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
@@ -536,7 +537,8 @@ cov_ledger_keys() {
         def handled($f): (reduce applied($f)[] as $a ($f; . + $a.set)) as $e
             | ($e.verdict | IN("fixed", "deferred", "disproved")) and (hm($f.head; $h) | not) and (hm($e.head; $h) | not)
               and ((([$f._ln] + (applied($f) | map(._ln))) | max) as $last | any($clean[]; . > $last));
-        ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head) and (handled(.) | not))] | length > 0) as $raised
+        def replaced($f): any($rows[]; .kind == "finding" and .branch == $pb and (.head | type == "string") and (.head | length >= 7) and ak(.; .head) == ak($f; $f.head) and ._ln > $f._ln);
+        ([$rows[] | select(.kind == "finding" and $pb != "" and .branch == $pb and (.head | type == "string") and inchain(.head) and (replaced(.) | not) and (handled(.) | not))] | length > 0) as $raised
         | def at_head($f; $e): hm($e.head; $h)
             or ($pb != "" and $f.branch == $pb
                 and ((inchain($e.head) and (any($rows[]; .kind == "finding" and .branch == $pb and (.head | type == "string") and inchain(.head) and fk(.) == fk($f) and ._ln > $f._ln) | not))

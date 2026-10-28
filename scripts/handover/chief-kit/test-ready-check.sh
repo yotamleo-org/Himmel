@@ -1342,6 +1342,17 @@ seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
 rc=0; out="$(run)" || rc=$?
 check "terminal: a handled finding AT the PR head still blocks the carry: exit 1" "$rc" "1"
 
+# a finding row recorded again for the same identity is judged by its later row alone
+pr4130_shape
+seed_judge agreed; seed_judge fixed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: an open finding row replaced by a later fixed row of the same identity carries: exit 0" "$rc" "0"
+
+pr4130_shape
+seed_judge fixed; seed_judge agreed; seed_hop "$SHA" "$CH_B"; seed_clean_at "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "terminal: a fixed finding row replaced by a later open row of the same identity blocks: exit 1" "$rc" "1"
+
 # a chain of N hops: the clean round sits N hops before the PR head
 chain_of() {
     local n="$1" i prev
