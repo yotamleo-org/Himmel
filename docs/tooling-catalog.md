@@ -698,16 +698,6 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 <a id="claude-glm"></a>
 <a id="claude-glm-scriptsclaude-glm"></a>
 
-## claude-glm (removed)
-
-The Z.ai GLM lane was dropped by operator ruling 2026-08-19 (HIMMEL-1967), and
-its code is gone: the `claude-glm` launcher, its seed check and its test
-(HIMMEL-7909), and the lane registry row (HIMMEL-7481). The
-`~/.config/claude-glm/{phi-roots,egress-denylist}` files outlived it: they are
-the PHI config directory every lane still reads (HIMMEL-7898).
-
----
-
 ## Opt-in role kits (from the research)
 
 Kits are plugin profiles that stack on base and compose per task with
@@ -1151,15 +1141,8 @@ not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 
 ---
 
-## spawn-glm (removed)
-
-The unattended GLM worker dispatcher (`spawn-glm.ts`), its env builder
-(`glm-env.ts`) and its escalation-channel CLI were deleted with the GLM lane
-(HIMMEL-7481 slices C and D, PRs #4087 and #4105). The helpers `spawn-claudex.ts`
-still uses moved to `scripts/telegram/spawn-common.ts`. Claudex is the one
-dispatch lane.
-
----
+<a id="spawn-glm"></a>
+<a id="spawn-glm-scriptstelegramspawn-glmts"></a>
 
 ## Registry-driven implementation dispatch (`scripts/telegram/dispatch-lane.sh`)
 

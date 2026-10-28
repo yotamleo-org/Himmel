@@ -18,7 +18,6 @@ No launcher has a `--force` bypass around it.
 | `scripts/claude-codex` | Codex subscription through a local CLIProxyAPI proxy | Supported; runs the live `claudex` lane |
 | `scripts/claude-openrouter` | OpenRouter, metered | Available, **not health-checked** |
 | `scripts/claude-deepseek` | DeepSeek's Anthropic-compatible endpoint, metered | Available, **not health-checked** |
-| `claude-glm` | Z.ai GLM | **Removed** (see below) |
 
 "Not health-checked" means the launcher is in the repo and works as described
 below, but no scheduled canary currently proves it end to end. Treat a failure
@@ -87,12 +86,6 @@ Runs Claude Code against DeepSeek's Anthropic-compatible endpoint
 | Balance floor | Refuses (exit 5) below `DEEPSEEK_MIN_BALANCE_USD` (default `3`) or when the balance cannot be read. Session cost is the balance delta from the start snapshot printed at launch |
 | `--seed-only` | Seed the lane config directory and exit 0 before the balance probe and launch |
 | `--reseed` | Rebuild the seeded config directory |
-
-## `claude-glm` (removed)
-
-The Z.ai GLM lane was dropped (HIMMEL-1967) and its launcher, seed check and
-dispatcher were deleted (HIMMEL-7909, HIMMEL-7481). Use `claude-codex` or a
-native Claude subagent instead.
 
 ## Not a lane: `himmel-run`
 
