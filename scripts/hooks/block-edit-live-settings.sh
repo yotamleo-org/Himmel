@@ -3915,11 +3915,10 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # copy of the whole command would quadruple the quadratic passes.
         case "$cmd_n" in
             *'$"'*)
-                dq=''
-                while IFS= read -r dql || [ -n "$dql" ]; do
-                    case "$dql" in *'$"'*) dq=$dq$'\n'${dql//\$\"/\"} ;; esac
-                done <<< "$cmd_n"
-                cmd_n=$cmd_n$dq
+                # sed: bash 3.2 runs a global ${l//\$\"/\"} over a long line
+                # in time quadratic in its matches (4.9 s for 700 on macOS)
+                dq=$(printf '%s\n' "$cmd_n" | LC_ALL=C sed -n '/\$"/{s/\$"/"/g;p;}')
+                cmd_n=$cmd_n$'\n'$dq
                 ;;
         esac
         cmd_n=$(printf '%s' "$cmd_n" | tr -d "\"'\\\\")

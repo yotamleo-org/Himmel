@@ -1505,10 +1505,12 @@ qmd_nested() {
 QREADERS=' grep egrep fgrep cat head tail wc ls '
 readers_only() {
     local t=$1 seg w
-    # An fd dup or an &> redirect is no command boundary.
-    t=${t//'>&'/'> '}
-    t=${t//'&>'/' >'}
-    t=${t//[|;&()\{\}\`]/$'\n'}
+    # An fd dup or an &> redirect is no command boundary. sed and tr split in
+    # one linear pass: bash 3.2 runs a global ${t//…} that matches in time
+    # quadratic in the length of t (82 s on a 10 KB command).
+    # shellcheck disable=SC2016,SC2020 # a literal backtick in the tr set; one \n per set member
+    t=$(printf '%s' "$t" | LC_ALL=C sed -e 's/>&/> /g' -e 's/&>/ >/g' |
+        LC_ALL=C tr '|;&(){}`' '\n\n\n\n\n\n\n\n') || return 1
     while IFS= read -r seg; do
         read -r w _ <<<"$seg" || true
         [ -n "$w" ] || continue
