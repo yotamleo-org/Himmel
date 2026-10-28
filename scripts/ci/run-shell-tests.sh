@@ -369,6 +369,12 @@ _suite_timeout_for() {
         # 150s on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux
         # keeps the default.
         printf '1800'; return 0 ;;
+      scripts/hooks/test-block-primary-git-writes.sh|*/scripts/hooks/test-block-primary-git-writes.sh|scripts/hooks/test-block-unresolved-cr-merge.sh|*/scripts/hooks/test-block-unresolved-cr-merge.sh)
+        # macOS: PASS at 461s and 575s (run 40745067827), then both killed at
+        # 603s with every assertion passing (run 40760092281), against 210-421s
+        # on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux keeps
+        # the default.
+        printf '1800'; return 0 ;;
     esac
   fi
 

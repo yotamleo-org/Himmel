@@ -283,7 +283,9 @@ big_case() { # big_case <label> <block|allow> <patch-file> [<max ms>]
 }
 mkdir -p "$T/cwd"
 big_patch 1000 > "$T/p1000.txt"
-big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" 3000
+# bash 3.2 on the macOS runner took 7.3 s here (macos-cadence run 40745067827); the 60 s hook budget is what matters.
+CAP_BOUND_MS=3000; [ "$(uname -s)" = Darwin ] && CAP_BOUND_MS=20000 # prim-ok: Darwin timing budget
+big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" "$CAP_BOUND_MS"
 big_patch 1001 > "$T/p1001.txt"
 big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
 big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
