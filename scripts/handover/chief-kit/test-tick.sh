@@ -3370,6 +3370,33 @@ if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira ca
 elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
 
+# --- slotage=: shared suite slots held past the cap -------------
+# Reads each live slot's owner record under the semaphore dir; the holder's worker, range and
+# suite count come from the detail run-shell-tests.sh records. Advisory: never a wake key.
+sa_dir="$W/sem5788"
+sa_now="$(date +%s)"
+mkdir -p "$sa_dir/slot-1" "$sa_dir/slot-2" "$sa_dir/slot-3" "$sa_dir/slot-4"
+sa_dead="$(sh -c 'echo $$')"
+sa_owner() { # <slot> <pid> <age-seconds> [detail]
+    printf 'pid=%s\nidentity=x\nlabel=run-shell-tests\nstarted=%s\n%s' "$2" "$((sa_now - $3))" "${4:+detail=$4$'\n'}" > "$sa_dir/slot-$1/owner"
+}
+sa_owner 1 $$ 1500 'worker=N3912 range=aaa1111..bbb2222 suites=3'
+sa_owner 2 $$ 60 'worker=N3913 range=ccc..ddd suites=9'
+sa_owner 3 "$sa_dead" 9000 'worker=N3914 range=eee..fff suites=5'
+sa_owner 4 $$ 1300
+sa_tick() { HIMMEL_SUITE_SEMAPHORE_DIR="$sa_dir" bash "$SUT" "$@" 2>/dev/null; }
+sa_out="$(sa_tick)"
+contains 'a live slot held past the cap prints its worker, range, suite count and age (HIMMEL-5788)' "$sa_out" ' slotage=N3912:aaa1111..bbb2222:3suites:25m'
+not_contains 'a slot younger than the cap is not listed (HIMMEL-5788)' "$sa_out" 'N3913'
+not_contains 'a slot whose owner is dead is not listed (HIMMEL-5788)' "$sa_out" 'N3914'
+contains 'a slot past the cap with no detail reads ? for each part (HIMMEL-5788)' "$sa_out" ',?:?:?suites:21m'
+contains 'verbose labels slotage (HIMMEL-5788)' "$(sa_tick --verbose)" 'slot age: N3912:aaa1111..bbb2222:3suites:25m'
+contains 'HIMMEL_SUITE_SLOT_CAP lowers the cap (HIMMEL-5788)' "$(HIMMEL_SUITE_SLOT_CAP=30 sa_tick)" 'N3913:ccc..ddd:9suites:1m'
+not_contains 'a raised cap lists nothing (HIMMEL-5788)' "$(HIMMEL_SUITE_SLOT_CAP=99999 sa_tick)" 'slotage='
+not_contains 'no semaphore dir leaves slotage= off the line (HIMMEL-5788)' "$(HIMMEL_SUITE_SEMAPHORE_DIR="$W/no-sem5788" bash "$SUT" 2>/dev/null)" 'slotage='
+not_contains "slotage= is not in chief-wait's wake key (HIMMEL-5788)" "$cw_keys" 'slotage'
+rm -rf "$sa_dir"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0
