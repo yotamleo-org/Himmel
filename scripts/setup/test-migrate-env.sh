@@ -21,6 +21,8 @@ no_canary() {  # <label> <text>: no fixture value reaches the text
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-migrate-env.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 export HIMMELCTL_CACHE_DIR="$TMP/no-cache"
 mkdir -p "$HOME"
 # The script refuses to apply inside an agent session; these rows are the
@@ -321,6 +323,46 @@ has "the update asks before it moves" "Move these keys now (backup first)? [y/N]
 has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
 lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
 no_canary "the update step prints no value" "$out"
+
+# --- 7b. An operator-set consent finishes the move unattended ---
+# ENV_MIGRATION_CONSENT in the policy file, and only there, stands in for the y.
+consent_fixture() {  # <policy json>: the update-step fixture plus a policy file
+    fixture_env
+    cp -p "$TMP/st/.env" "$FX/.env"
+    printf '%s\n' "$1" > "$HOME/.himmel/config.json"
+}
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+out=$(CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "(a) consent applies with no terminal, in an agent session" "rc=0 status=updated" "$out"
+has "(a) the consented apply still verifies" "verified: load_dotenv" "$out"
+lacks "(a) the consented apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
+if ls "$HOME/.himmel/env-backups/env."* >/dev/null 2>&1; then pass "(a) the consented apply took the backup"; else fail "(a) the consented apply took no backup"; fi
+no_canary "(a) the consented apply prints no value" "$out"
+
+consent_fixture '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0","ENV_MIGRATION_CONSENT":"1"}}'
+out=$(bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "a mismatch still stops under consent" "rc=1 status=failed" "$out"
+has "the consented mismatch names the key" "MISMATCH CR_REQUIRE_CROSS_MODEL (load_policy)" "$out"
+has "the consented mismatch names both sides" "CR_REQUIRE_CROSS_MODEL: $FX/.env  vs  ~/.himmel/config.json .policy" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "the consented mismatch leaves .env untouched"; else fail "the consented mismatch changed .env"; fi
+
+consent_fixture '{"version":1,"policy":{}}'
+printf 'ENV_MIGRATION_CONSENT=1\n' >> "$FX/.env"
+cp -p "$FX/.env" "$TMP/fx.orig"
+out=$(ENV_MIGRATION_CONSENT=1 CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "(b) consent only in the env and .env applies nothing" "rc=0 status=pending" "$out"
+if cmp -s "$FX/.env" "$TMP/fx.orig" && [ ! -e "$HOME/.himmel/env-backups" ]; then
+    pass "(b) consent only in the env and .env writes nothing"
+else
+    fail "(b) consent only in the env and .env wrote something"
+fi
+
+fixture_env
+cp -p "$TMP/st/.env" "$FX/.env"
+out=$(bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "(c) with no consent the update stays pending" "rc=0 status=pending" "$out"
+has "(c) with no consent the update names the apply command" "bash $FX/scripts/setup/migrate-env.sh --env $FX/.env" "$out"
+if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "(c) with no consent nothing is written"; else fail "(c) with no consent .env changed"; fi
 
 # --- 8. A .env vs ~/.himmel mismatch is resolved with the operator ---
 env_val() { sed -n "s/^$1=//p" "$TMP/st.orig"; }   # the fixture .env's value of a key

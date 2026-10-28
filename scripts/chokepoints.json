@@ -1,9 +1,9 @@
 {
   "scripts/cr/clear-review-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/cr/clear-cr-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/merge-on-green.sh": {
     "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO", "MERGE_STATIC_RECHECK", "HIMMEL_LEGACY_NAMES"]
@@ -24,7 +24,7 @@
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/arm-resume.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/headed-arm-worker.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT", "HIMMEL_LEGACY_NAMES"]

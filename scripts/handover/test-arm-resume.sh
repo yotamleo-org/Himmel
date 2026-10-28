@@ -206,6 +206,8 @@ trap 'rm -rf "$TMP"' EXIT
 # No .git under it, so the default worktree isolation never fires outside W9-W17.
 mkdir -p "$TMP/no-primary"
 export ARM_ISOLATION_ROOT="$TMP/no-primary"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 # any case below that fails to stub crontab/at must not be able
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way

@@ -20,6 +20,8 @@ hasnt() { if grep -qE -- "$2" "$3" 2>/dev/null; then bad "$1: /$2/ found in $3";
 # a throwaway HOME and floor key dir — this suite never touches
 # the real ~/.himmel/cr-floor-key.
 export HOME="$W/home" CR_FLOOR_KEY_DIR="$W/keys"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 mkdir -p "$HOME"
 # bank-preflight distrusts a cache whose account doesn't match
 # the current identity — synthesize one so this fixture still verdicts PROCEED.

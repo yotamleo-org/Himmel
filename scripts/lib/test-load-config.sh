@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the config layers in scripts/lib/load-dotenv.sh — the behaviour-config / gate-policy
 # split out of .env. Hermetic: every case runs with HOME pointed at a temp dir,
-# so the operator's real ~/.himmel is never read.
+# so the operator's real ~/.himmel is never read, except row (h), which proves
+# the policy dir ignores HOME.
 # Each case runs in its own $(...) subshell so exports stay scoped.
 # shellcheck disable=SC2030,SC2031,SC2016,SC1090
 set -uo pipefail
@@ -34,6 +35,8 @@ REPO="$TMP/repo"
 mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 export HOME="$TMP/home"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 export HIMMEL_REPO="$REPO" HIMMEL_CONFIG_DIR="$HOME/.himmel"
 export HIMMELCTL_CACHE_DIR="$TMP/no-cache"
 export HIMMEL_SECRETS_KEYRING=off CREDENTIALS_DIRECTORY="$TMP/credentials"
@@ -236,6 +239,23 @@ case "$out" in
     *"once setup reads"*) assert_eq_fp "(g) deprecation notice is current" "no stale clause" "$out" ;;
     *) assert_has "(g) deprecation notice is current" "migrate-env-config.sh" "$out" ;;
 esac
+
+# (h) Without the seam the policy dir is the account's home from its passwd
+# entry, not HOME: a HOME holding a permissive policy file is not the one read.
+# Reads the account's real policy file, read-only, and asserts only that the
+# canary planted under HOME did not win.
+acct_home=$(node -e 'process.stdout.write(require("os").userInfo().homedir)')
+mkdir -p "$TMP/evil/.himmel"
+printf '{"version":1,"policy":{"CR_FLOOR_FALLBACK":"CANARY-evil-floor"}}\n' > "$TMP/evil/.himmel/config.json"
+out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run '_himmel_policy_dir')
+assert_eq_fp "(h) the policy dir ignores HOME" "$acct_home/.himmel" "$out"
+out=$(unset HIMMEL_POLICY_FOLLOWS_HOME; HOME="$TMP/evil" run 'load_policy --root "$REPO" CR_FLOOR_FALLBACK >/dev/null 2>&1; printf "[%s]" "${CR_FLOOR_FALLBACK-}"')
+case "$out" in
+    *CANARY-evil-floor*) assert_eq_fp "(h) load_policy does not read a HOME-planted policy file" "not the canary" "$out" ;;
+    *) echo "PASS (h) load_policy does not read a HOME-planted policy file" ;;
+esac
+out=$(HOME="$TMP/evil" run '_himmel_policy_dir')
+assert_eq_fp "(h) the seam points the policy dir at HOME" "$TMP/evil/.himmel" "$out"
 
 if [ "$FAILED" -gt 0 ]; then
     echo "test-load-config: $FAILED FAILED"
