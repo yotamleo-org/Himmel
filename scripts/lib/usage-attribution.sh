@@ -108,7 +108,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/bank-attribution.XXXXXX")" || exit 1
+# shellcheck source=prim.sh
+. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prim.sh" || die "cannot load scripts/lib/prim.sh"
+WORKDIR="$(tmpdir)" || exit 1
 trap 'rm -rf "$WORKDIR"' EXIT
 
 SUMMARIES="$WORKDIR/summaries.ndjson"

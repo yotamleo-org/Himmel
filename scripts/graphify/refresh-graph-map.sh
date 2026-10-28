@@ -69,7 +69,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # interactive sessions — there is NO separate headless bucket for subscription
 # auth (a 48-chunk luna refresh exhausted the bank ~2.9h in and chunks 27-48
 # all failed). Mitigation: the sonnet model pin below
-# (GRAPHIFY_CLAUDE_CLI_MODEL, overridable), or an API backend (glm) for zero
+# (GRAPHIFY_CLAUDE_CLI_MODEL, overridable), or an API backend for zero
 # bank draw. There is no kimi/moonshot backend (operator ruling); the weekly
 # graphmap-cadence.sh semantic worker accepts the bank draw and is gated by
 # usage-preflight.sh instead (see the bank guard below).
@@ -241,49 +241,6 @@ _endpoint_host_allowed() {
   return 1
 }
 
-# GLM (Z.ai) alias. graphify has NO native `glm` backend — GLM is
-# reached via graphify's `claude` backend pointed at Z.ai's Anthropic-compatible
-# endpoint. The egress matrix + fence classify `--backend glm` as the zai-glm
-# provider, so make `--backend glm` a single-flag process instead of hand-setting
-# ANTHROPIC_* env each run: it remaps to `--backend claude` + ANTHROPIC_BASE_URL=<z.ai> +
-# ANTHROPIC_MODEL=glm-5.2 + ANTHROPIC_API_KEY=<ZAI_API_KEY, loaded from .env, never
-# printed>. A live ANTHROPIC_* env still wins (only fills gaps).
-case "$BACKEND" in
-  glm|zai-glm)
-    BACKEND="claude"
-    : "${ANTHROPIC_BASE_URL:=https://api.z.ai/api/anthropic}"
-    _endpoint_host_allowed "$ANTHROPIC_BASE_URL" api.z.ai open.bigmodel.cn || {
-      echo "refresh-graph-map: ANTHROPIC_BASE_URL is set to an unverified GLM endpoint (value not echoed); refusing scheduled egress (fail-closed). Use exact HTTPS host api.z.ai or open.bigmodel.cn." >&2
-      exit 2
-    }
-    : "${ANTHROPIC_MODEL:=glm-5.2}"
-    if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-      # shellcheck source=../lib/load-dotenv.sh
-      # shellcheck disable=SC1091
-      if . "$(dirname "$0")/../lib/load-dotenv.sh" 2>/dev/null && load_dotenv ZAI_API_KEY 2>/dev/null && [ -n "${ZAI_API_KEY:-}" ]; then
-        ANTHROPIC_API_KEY="$ZAI_API_KEY"
-      else
-        echo "refresh-graph-map: --backend glm needs ZAI_API_KEY (in the primary checkout's .env) or ANTHROPIC_API_KEY set." >&2
-        exit 1
-      fi
-    fi
-    export ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY
-    endpoint_host="$(_endpoint_host "$ANTHROPIC_BASE_URL")"
-    echo "refresh-graph-map: --backend glm -> claude backend @ https://$endpoint_host (model $ANTHROPIC_MODEL)" >&2
-    # DE-LISTED for private content:
-    # every zai-glm VAULT/handover cell is now explicit deny, so the in-script
-    # egress preflight below fails this remap closed on luna-personal,
-    # luna-clippings and handover-state — no code change here is what enforces
-    # that, the matrix is. The remap is KEPT rather than retired because
-    # `himmel-code x * x *` is still `allow` (public code): `--backend glm` on a
-    # himmel-code corpus remains a live, permitted path, and the de-listing is
-    # deliberately not `hard`, so deleting the code would make the reversal
-    # harder to undo than the matrix says it is. claude-cli (the operating
-    # substrate) is the sanctioned luna extraction backend (there is no
-    # kimi/moonshot backend; operator ruling).
-    ;;
-esac
-
 # claude-api is the default backend and the one that never draws the subscription. The
 # lane extraction lives in semantic-update.sh, not here, so an extracting run on
 # claude-api refuses (rc 2) before any work: lane unresolved, or lane on but not wired
@@ -406,7 +363,7 @@ GRAPHIFY_MAP="${GRAPHIFY_MAP_BIN:-graphify}"   # test hook: stub graphify
 # caps only how many requests are IN FLIGHT at once — it is not true rate-limiting
 # (no pacing/backoff between sequential requests), so it reduces request pressure
 # but cannot beat a hard per-key quota. The default 6 overshoots a rate-limited
-# backend badly — `--backend glm` (Z.ai) 429s (rate_limit_error code 1302) on most
+# backend badly — a Z.ai-style quota 429s (rate_limit_error code 1302) on most
 # chunks at 6. Lowering it (e.g. GRAPHIFY_MAX_CONCURRENCY=1) eases the pressure and
 # is worth trying, but is NOT guaranteed to complete: an exhausted/hard request
 # quota 429s even serialized (observed 2026-07-21 — chunk 1 failed at concurrency 1
@@ -417,17 +374,18 @@ GRAPHIFY_MAP="${GRAPHIFY_MAP_BIN:-graphify}"   # test hook: stub graphify
 # is a small incremental, not a full 255-chunk extraction.
 # `-6` (unset-only default), NOT `:-6`: an explicitly-empty value stays empty and
 # is caught by the validation below, rather than silently defaulting to 6.
-# The default stays 6 (not glm-lowered): this script's DEFAULT backend is
-# claude-cli, which is unaffected — lowering the default would 6x-slow
-# every non-glm regen for no gain. glm callers pass the knob explicitly, and a
-# lower value would not rescue glm anyway when the request quota is exhausted
-# (it 429s even serialized, as above). Wiring a throttled default into the glm
-# cadence is a separate concern, out of scope for this knob.
+# The default stays 6 (not lowered for rate-limited backends): this script's
+# DEFAULT backend is claude-cli, which is unaffected — lowering the default
+# would 6x-slow every other regen for no gain. Callers on a rate-limited
+# backend pass the knob explicitly, and a lower value would not rescue them
+# anyway when the request quota is exhausted (it 429s even serialized, as
+# above). Wiring a throttled default into such a cadence is a separate concern,
+# out of scope for this knob.
 # claude-cli NOTE: graphify FORCE-SERIALIZES the claude-cli
 # backend (llm.py: max_concurrency=1 unless GRAPHIFY_CLAUDE_CLI_PARALLEL=1 —
 # parallel `claude -p` subprocesses conflict over session state), so this knob
 # and the --max-concurrency flags below are a NO-OP for claude-cli; they govern
-# the API backends only (claude, the glm remap, deepseek, ...).
+# the API backends only (claude, deepseek, ...).
 # The LOCAL ollama model holds the whole GPU, so default to 1 there
 # (semantic-update.sh pins the same). Local = a loopback endpoint (OLLAMA_BASE_URL
 # verbatim, else OLLAMA_HOST, else graphify's loopback default) AND a non-cloud
@@ -474,10 +432,9 @@ fi
 # genuinely wedged call at the bound, just a higher one (300s -> 900s = 3x, the
 # observed worst case + margin). Backend-scoped: the contention is
 # claude-cli ONLY — `claude` is graphify's Anthropic API backend (ANTHROPIC_API_KEY,
-# pay-as-you-go HTTP, no local-CLI contention), and `--backend glm`/`zai-glm` remaps
-# to `claude` (the Z.ai Anthropic-compatible API endpoint, above). So 900 ONLY for
+# pay-as-you-go HTTP, no local-CLI contention). So 900 ONLY for
 # claude-cli (the sole backend with the observed failure); every other backend —
-# including `claude` and the glm remap — stays at 300 = graphify's OWN default, so its
+# including `claude` — stays at 300 = graphify's OWN default, so its
 # behavior is unchanged (an API worker that needs longer takes its own caller-set
 # GRAPHIFY_API_TIMEOUT; the default is not raised on its behalf). `-900`/`-300`
 # (unset-only), NOT `:-900`/`:-300`: an explicitly-empty value stays empty and is caught
@@ -2287,7 +2244,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     [ -n "$_deadline_bin" ] || echo "refresh-graph-map: no functional timeout(1) — run deadline DISABLED, extraction is unbounded (macOS: brew install coreutils provides gtimeout)" >&2
   fi
 
-  # Bank guard: claude-backed extraction only. API backends (glm/deepseek)
+  # Bank guard: claude-backed extraction only. API backends (deepseek, ...)
   # draw no subscription bank, so gating them would be a false refusal. Branch on the
   # VERDICT TOKEN, never the exit code — bank-preflight always exits 0 by
   # design, so `||` here would be dead code. Only SKIPPED-BANK stops the run:
@@ -2543,7 +2500,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # subscription-authenticated `claude -p` draws from the SAME
   # 5h/weekly usage bank as interactive sessions. The sonnet model pin above is
   # what keeps the cadence's draw acceptable; operators who want zero bank draw
-  # use an API backend (glm) instead. The real control for what those nested
+  # use an API backend instead. The real control for what those nested
   # calls can reach is the reroute-selector clearing above + the egress fence.
   _rc=0
   _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?

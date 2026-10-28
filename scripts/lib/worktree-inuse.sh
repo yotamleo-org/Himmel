@@ -195,6 +195,7 @@ worktree_in_use() {
         for inuse_entry in /proc/[0-9]*; do
             inuse_pid="${inuse_entry#/proc/}"
             # Gated on /proc/self above, i.e. Linux only.
+            # prim-ok: runs once per /proc entry on a sourced lib; canon_path forks a subshell and sources a file per call, and cd's into a cwd link it may not be allowed to enter
             inuse_cwd=$(readlink -f "$inuse_entry/cwd" 2>/dev/null) || continue  # gnu-ok: /proc is Linux-only, where readlink -f is coreutils' own and always present
             # A failed readlink on OTHER users' processes (permission denied)
             # is normal and expected -- tolerate it per-pid. It is only a

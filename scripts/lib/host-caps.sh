@@ -44,6 +44,7 @@ host_mode_of() {
 
 # _host_caps_scratch: print a fresh scratch dir the caller must rm -rf.
 _host_caps_scratch() {
+    # prim-ok: sourced by suites that stub PATH (chmod, ln) to model Git Bash, so it must not source a lib; the host-caps. prefix names the leak
     mktemp -d "${TMPDIR:-/tmp}/host-caps.XXXXXX" 2>/dev/null
 }
 

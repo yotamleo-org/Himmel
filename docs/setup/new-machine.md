@@ -483,7 +483,6 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |
 | `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
-| `ZAI_API_KEY` | Z.ai key for `scripts/graphify/refresh-graph-map.sh --backend glm` on public himmel code; every vault cell of the egress matrix denies `zai-glm`. **Don't put it in `settings.json`** (that hands it to every session). | Z.ai console, only if you run that backend; otherwise leave unset. |
 
 #### Jira Sector (optional)
 
