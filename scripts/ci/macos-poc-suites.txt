@@ -1,4 +1,4 @@
-# macos-poc-suites.txt -- HIMMEL-5007 / HIMMEL-3183: the macOS POC suite set.
+# macos-poc-suites.txt -- the macOS POC suite set.
 #
 # os-verify.yml (macOS) runs ONLY the suites named here (run-shell-tests.sh
 # --only-list). This list IS the macOS proof: there is no Mac in the fleet, so

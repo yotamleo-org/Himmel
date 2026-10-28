@@ -1,5 +1,5 @@
-# flag-parity baseline (HIMMEL-6019): doc<TAB>script<TAB>flag rows accepted as of the first run; only a row not here fails.
-# Triage of the 21 first-run rows (HIMMEL-6288 fixed 10 of them): passthrough/other-tool flags on a mention line (chief-wait --token, check-ci --match-head-commit, enforcement.md gh/forge flags) are false positives;
+# flag-parity baseline: doc<TAB>script<TAB>flag rows accepted as of the first run; only a row not here fails.
+# Triage of the first-run rows: passthrough/other-tool flags on a mention line (chief-wait --token, check-ci --match-head-commit, enforcement.md gh/forge flags) are false positives;
 # the rest are real doc drift to fix by editing the doc and deleting its row. #-lines survive --write-baseline.
 docs/configuration.md	scripts/check-ci.sh	--match-head-commit
 docs/handover/chief-sections/waiter.md	scripts/handover/chief-kit/chief-wait.sh	--token

@@ -54,7 +54,7 @@ The confidence scale above is still how you LABEL a finding — it is just no
 longer a gate on emitting one. Accuracy is enforced by the verify-before-critical
 rule below, which is about evidence, not severity.
 
-## Verify-before-critical (HIMMEL-178)
+## Verify-before-critical
 
 **Hard rule, applied to every Critical finding before you report it:**
 

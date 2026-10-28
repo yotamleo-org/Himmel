@@ -1,4 +1,4 @@
-# claude-p P0 probe results (HIMMEL-2179)
+# claude-p P0 probe results
 
 Epic: HIMMEL-2178 (claude-p dispatch-substrate migration plan).
 CLI version under test: 2.1.250 (Claude Code), Windows / Git Bash.

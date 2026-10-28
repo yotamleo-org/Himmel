@@ -1,4 +1,4 @@
-# workflow-red-list.txt -- HIMMEL-5595. The workflows (by their `name:`) whose
+# workflow-red-list.txt -- the workflows (by their `name:`) whose
 # non-pull_request runs workflow-red.yml tracks: one `ci-red` + `wf:<slug>` issue
 # per workflow and branch, opened on a red run, closed by a later green run.
 # One name per line; blank lines and # comments are ignored. The same names sit in
