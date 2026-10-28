@@ -273,7 +273,7 @@ done
 # short private dir of its own (the inner end connects before bwrap hides /tmp).
 sock="$RUN/tunnel.sock"; sockdir=""
 if [ "$mode" = launch ]; then
-  sockdir="$(mktemp -d /tmp/lq-tun.XXXXXX)" || die "cannot create the tunnel dir"
+  sockdir="$(mktemp -d /tmp/lq-tun.XXXXXX)" || die "cannot create the tunnel dir"  # prim-ok: a fixed short /tmp path keeps the unix socket under its 108-byte cap and visible to the inner end; tmpdir follows a long TMPDIR
   sock="$sockdir/s"; trap 'rm -rf "$sockdir"' EXIT
 fi
 # shellcheck disable=SC2016 # expanded by the inner shell, from its own arguments

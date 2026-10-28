@@ -66,7 +66,9 @@ if [ -z "${WLC_BOUNDED:-}" ]; then
         --steps "$STEPS" --max "$MAX" --timeout "$TIMEOUT" --samples "$SAMPLES"
 fi
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/wlc.XXXXXX")" || exit 1
+# shellcheck source=../lib/prim.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+WORK="$(tmpdir)" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 trap 'exit 143' INT TERM
 
