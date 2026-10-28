@@ -23,7 +23,9 @@
 #   WORKER-STALE      the record says live or idle, but the lock is released or the doc ended
 #   WORKER-COMMENT    the WORKER comment hash differs from the one the record's class gives
 #   TWO-OWNERS        two live docs claim one key
-#   UNOWNED           started, no open PR, no live owner
+#   UNOWNED           started, no open PR, no live owner; not for a `standing`-labelled
+#                     ticket, nor one whose comments cite an OPEN PR whose title names the
+#                     ticket (any repo; that also skips DERIVE-MISMATCH and WORKER-COMMENT)
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
 #                     version than the current one; the fix is an INTAKE request to the current version
@@ -183,6 +185,26 @@ if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swall
 
 is_owner_state() { case "$1" in live|idle|IDLE-HELD) return 0 ;; *) return 1 ;; esac; }
 
+# 0 when a comment on the ticket names a PR that gh reports OPEN and whose title's first [KEY]
+# is this ticket. The pr list above only sees this repo, so a ticket whose PR lives elsewhere
+# looks ownerless without this. The title binds the PR to the ticket: a PR a comment merely
+# cites (another ticket's, an upstream one) exempts nothing. A closed or merged PR, a PR
+# titled for another ticket or none, or a failed gh read is not a yes: the ticket's rows stay.
+xrepo_open() { # <KEY>
+    local urls u row tkey
+    # swallow-ok: an unreadable comment list means no cross-repo PR is known, so the rows stay
+    urls=$(ts_jira comments "$1" 2>/dev/null | grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+' | sort -u)
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        # swallow-ok: a failed gh read is not proof the PR is open, so the rows stay
+        row=$(bounded 20 gh pr view "$u" --json state,title --jq '.state + "\t" + .title' 2>/dev/null) || continue
+        [ "${row%%$'\t'*}" = OPEN ] || continue
+        tkey=$(ticket_key_from_title "${row#*$'\t'}") || continue
+        [ "$tkey" = "$1" ] && return 0
+    done <<<"$urls"
+    return 1
+}
+
 # The status and type of every active key in a few JQL searches, not one `jira get`
 # per key. A key the batch lacks (or a failed chunk) is still read by its own get.
 jbatch=""
@@ -218,9 +240,18 @@ while IFS= read -r key; do
     wstate_derive="$TS_WORKER_STATE" pr_state="$TS_PR_STATE"
     open_prs=$(printf '%s' "$pr_keys" | awk -F'\t' -v k="$key" '$1 == k { printf "%s#%s", (n++ ? "," : ""), $2 }')
 
+    # A started ticket with no PR here is not drift when it is `standing` (started on purpose,
+    # no single PR) or when its PR is open in another repo (that PR is its owner).
+    standing=0 xrepo=0
+    if [ -z "$open_prs" ] && [ "$(ts_rank "$jstatus")" -ge 1 ]; then
+        # swallow-ok: an unreadable ticket is not standing, so its rows stay
+        if jq -e '(.fields.labels // []) | index("standing")' >/dev/null 2>&1 <<<"$(ts_jira get "$key" --json 2>/dev/null)"; then standing=1; fi
+        if xrepo_open "$key"; then xrepo=1; fi
+    fi
+
     if [ "$derived" = no-write ]; then
         [ "$result" != miss ] || add HEALTH "$key" "status unknown (stage=${stage:-?}${rule:+ rule=$rule})" "$FUNNEL" "$SWEEP_FIX"
-    elif [ "$derived" != "$jstatus" ]; then
+    elif [ "$derived" != "$jstatus" ] && [ "$xrepo" = 0 ]; then
         if [ "$(ts_rank "$derived")" -gt "$(ts_rank "$jstatus")" ]; then dir=forward; else dir=backward; fi
         add DERIVE-MISMATCH "$key" "jira=$jstatus derived=$derived rule=$rule dir=$dir" "$FUNNEL --event sweep" "$SWEEP_FIX"
     fi
@@ -239,7 +270,7 @@ while IFS= read -r key; do
         add WORKER-STALE "$key" "record=$rstate but the doc/lock says $wstate" "$FUNNEL --event sweep" "$SWEEP_FIX"
     fi
 
-    if [ "$derived" != no-write ] && [ -n "$worker$doc" ]; then
+    if [ "$derived" != no-write ] && [ "$xrepo" = 0 ] && [ -n "$worker$doc" ]; then
         heads=$(printf '%s' "$pr_state" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
         want=$(printf '%s|%s|%s|%s' "$worker" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
         have=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
@@ -258,7 +289,7 @@ while IFS= read -r key; do
     done <<<"$(printf '%s\n' "$owners" | sort -u)"
     [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
 
-    if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ]; then
+    if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ] && [ "$standing" = 0 ] && [ "$xrepo" = 0 ]; then
         case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX" ;; esac
     fi
 
