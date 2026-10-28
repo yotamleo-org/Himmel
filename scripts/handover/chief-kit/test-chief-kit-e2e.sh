@@ -65,8 +65,8 @@ chmod +x "$W/bin/gh" "$W/bin/atq" "$W/bin/bun"
 cp "$(command -v bash)" "$W/bin/claude"
 export PATH="$W/bin:$PATH"
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
-export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_BANK_CACHE="$W/bank.json" CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_LEDGER=/dev/null
+export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_USAGE_CACHE="$W/bank.json" CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_LEDGER=/dev/null
 export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
 # no wt-orphans probe: the real worktree.sh would read this checkout's fleet
 export TICK_WORKTREE_ORPHANS_PROBE="$W/no-wt-orphans-probe"

@@ -149,10 +149,6 @@ expect_block "Monitor stopped by TaskStop -> block"
 
 run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800; out="$OUT"
 case "$out" in *'--max-wait 1800'*) ok "bound is config: HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800 is named" ;; *) bad "bound 1800 not named — got: $out" ;; esac
-run_guard "$(payload "$T_IDLE")" HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1900; out="$OUT" # old name, read both ways
-case "$out" in *'--max-wait 1900'*) ok "the old name HIMMEL_LEG_CACHE_KEEPALIVE_SECS is still read" ;; *) bad "old-name bound 1900 not named — got: $out" ;; esac
-run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=1800 HIMMEL_LEG_CACHE_KEEPALIVE_SECS=1900; out="$OUT" # old name, read both ways
-case "$out" in *'--max-wait 1800'*) ok "the new name wins over the old one" ;; *) bad "new name did not win — got: $out" ;; esac
 run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=7200; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "bound past the TTL margin (7200) falls back to 3000" ;; *) bad "bound 7200 did not fall back — got: $out" ;; esac
 run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=junk; out="$OUT"

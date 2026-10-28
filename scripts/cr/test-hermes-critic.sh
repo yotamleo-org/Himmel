@@ -170,8 +170,8 @@ ACCT="$(current_account_hash)"
 bank_now="$(date +%s)"
 bank_cache="$work/bank-ok.json"
 printf '{"account":"%s","five_hour":{"utilization":5},"seven_day":{"utilization":5},"primaries_refreshed_at":%s}' "$ACCT" "$bank_now" > "$bank_cache"
-export CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_CACHE="$bank_cache"
-export CADENCE_BANK_LEDGER="$work/bank-ledger.jsonl"
+export CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$bank_cache"
+export CADENCE_USAGE_LEDGER="$work/bank-ledger.jsonl"
 
 out="$(CLAUDE_ARGV_CAPTURE="$work/claude-argv" PATH="$bindir:$PATH" \
     bash "$CRITIC" --repo "$repo" --base "$base" --goal "test goal" --route claude)"
@@ -258,7 +258,7 @@ echo "  ok" >&2
 echo "test: claude route refuses an exhausted bank" >&2
 printf '{"account":"%s","five_hour":{"utilization":99},"seven_day":{"utilization":99},"primaries_refreshed_at":%s}' "$ACCT" "$(date +%s)" > "$work/bank-full.json"
 : > "$work/claude-argv"
-CADENCE_BANK_CACHE="$work/bank-full.json" CLAUDE_ARGV_CAPTURE="$work/claude-argv" PATH="$bindir:$PATH" \
+CADENCE_USAGE_CACHE="$work/bank-full.json" CLAUDE_ARGV_CAPTURE="$work/claude-argv" PATH="$bindir:$PATH" \
     bash "$CRITIC" --repo "$repo" --base "$base" --goal "test goal" --route claude >/dev/null 2>"$work/err8b"
 rc=$?
 [ "$rc" -eq 3 ] || fail "exhausted bank: expected exit 3 (fail-open), got $rc"

@@ -130,9 +130,9 @@ unset HIMMEL_CONSOLE_DOC 2>/dev/null || true
 . "$HERE/../../lib/timeout-bin.sh"
 # The suite owns every launcher input; an ambient worker shell must not silently
 # turn default-native cases into claudex cases.
-unset CADENCE_BANK_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
+unset CADENCE_USAGE_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_REPO_MAP WORKER_SESSION_REPO_MAP_TOKENS WORKER_SESSION_REPO_MAP_TIMEOUT WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_HEADLESS WORKER_SESSION_SUPPRESS_CR_TRIGGER WORKER_SESSION_API_LANE HIMMEL_API_LANE HIMMEL_API_ACCOUNT CR_TRIGGER_SUPPRESS HIMMEL_CONSOLE_NAME CLAUDE_PID SESSION_NAME_CMDLINE_FILE CLAUDE_CODE_EFFORT_LEVEL HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT 2>/dev/null || true
 # read-both: an ambient old spelling reaches the launcher too
-unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_REPO_MAP LEG_REPO_MAP_TOKENS LEG_REPO_MAP_TIMEOUT LEG_EFFORT LEG_CLAUDE_BIN LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID LEG_HEADLESS LEG_SUPPRESS_CR_TRIGGER LEG_API_LANE HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_AUTOCOMPACT HEADED_ARM_LEG_LANES_JSON WORKER_SESSION_ID 2>/dev/null || true
+unset WORKER_SESSION_ID 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-worker-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The launcher resolves every path it writes physically; macOS's TMPDIR sits
@@ -245,7 +245,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|CONSOLE_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_BANK_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -300,7 +300,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'echo SKIPPED-FLEET' > "$SKIPPED_FLEET_PREFL
 chmod 755 "$SKIPPED_FLEET_PREFLIGHT"
 # SKIPPED_BANK_PREFLIGHT: stub a bank-exhausted
 # verdict so case 13b can assert headed-arm-worker.sh actually consults the
-# SKIPPED-BANK token it computes (CADENCE_BANK_LANE="$LANE") instead of
+# SKIPPED-BANK token it computes (CADENCE_USAGE_LANE="$LANE") instead of
 # discarding it, same rationale as SKIPPED_FLEET_PREFLIGHT above.
 # Also write a `pid` file into the
 # reservation it is standing in for, matching CADENCE_USAGE_CALLER_PID - the
@@ -474,9 +474,9 @@ contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: names the allowed mo
 # this exact assertion, not a vaguer one.
 rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
-contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> CONSOLE_CONTEXT=<unset>"
+contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> "
 not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
-# The old name CONSOLE_CONTEXT is scrubbed the same way: headed-arm.sh still
+# The old name CHIEF_CONTEXT is scrubbed the same way: headed-arm.sh still
 # reads it.
 rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0" "$rc" "0"
@@ -559,11 +559,11 @@ done
 # on every lane - so a scrubbed var carried there would come back past the
 # `unset`. The scrub strips it from the token list too; siblings survive.
 for lane in native claudex; do
-  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
   lenv="$(printf '%s\n' "$out" | grep '^headed-arm-worker: lane=')"
   contains "--lane $lane, caller-preset launcher-env: dry-run reached the lane line" "$lenv" "launcher-env="
   not_contains "--lane $lane, caller-preset launcher-env: scrubbed CHIEF_CONTEXT stripped" "$lenv" "CHIEF_CONTEXT="
-  not_contains "--lane $lane, caller-preset launcher-env: scrubbed CONSOLE_CONTEXT stripped" "$lenv" "CONSOLE_CONTEXT="
+  not_contains "--lane $lane, caller-preset launcher-env: scrubbed CHIEF_CONTEXT stripped" "$lenv" "CHIEF_CONTEXT="
   contains "--lane $lane, caller-preset launcher-env: sibling token kept" "$lenv" "KEEP_ME=1"
 done
 
@@ -1012,7 +1012,7 @@ contains "full launch, sanctioned Context line: arm log records context=1m (oper
 # --- 10. IMPL_GUARD_OK reaches the konsole invocation's own environment ----
 env8="$(cat "$d8/env-record" 2>/dev/null || true)"
 not_contains "full launch, native: no added lane env" "$env8" "WORKER_SESSION_LANE="
-not_contains "full launch, native: no added bank lane env" "$env8" "CADENCE_BANK_LANE="
+not_contains "full launch, native: no added bank lane env" "$env8" "CADENCE_USAGE_LANE="
 contains "full launch: IMPL_GUARD_OK=1 in the konsole invocation's env" "$env8" "IMPL_GUARD_OK=1"
 contains "full launch: INLINE_IMPL_OK=1 in the konsole invocation's env" "$env8" "INLINE_IMPL_OK=1"
 contains "full launch: HIMMEL_CONSOLE_LEG=1 in the konsole invocation's env" "$env8" "HIMMEL_CONSOLE_LEG=1"
@@ -1033,7 +1033,7 @@ wait_record "$d10b" || true
 env10b="$(cat "$d10b/env-record" 2>/dev/null || true)"
 check "full launch, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
 not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole invocation's own env" "$env10b" "CHIEF_CONTEXT="
-# The old name CONSOLE_CONTEXT is kept out on the real path the same way.
+# The old name CHIEF_CONTEXT is kept out on the real path the same way.
 d10c="$tmp/c10c"; mk_launch_stubs "$d10c" "HIMMEL-3139-worker"; mkdir -p "$tmp/repo10c"
 rc=0
 CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS=--no-profile run_worker "$d10c" "$tmp/repo10c" "HIMMEL-3139-worker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -1131,21 +1131,20 @@ contains "dry-run --lane claudex: reports lane=claudex" "$out" "lane=claudex"
 contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "claude-codex"
 contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX_LANE_OK=1"
 contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "WORKER_SESSION_LANE=claudex"
-contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
-not_contains "dry-run --lane claudex: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
+contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_USAGE_LANE=claudex"
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
-rc=0; out="$(CADENCE_BANK_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_BANK_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "claudex: stale caller lane tokens do not refuse launch" "$rc" "0"
 contains "claudex: resolved lane replaces stale launcher token" "$out" "WORKER_SESSION_LANE=claudex"
-contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_BANK_LANE=claudex"
+contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_USAGE_LANE=claudex"
 not_contains "claudex: stale lane token is absent" "$out" "WORKER_SESSION_LANE=native"
-not_contains "claudex: stale bank token is absent" "$out" "CADENCE_BANK_LANE=native"
+not_contains "claudex: stale bank token is absent" "$out" "CADENCE_USAGE_LANE=native"
 rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
-contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_BANK_LANE=claudex"
-not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE="
+contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_USAGE_LANE=claudex"
+not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE=native"
 
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
@@ -1187,7 +1186,7 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /
 contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"
 not_contains "dry-run, native: no added lane env" "$out" "WORKER_SESSION_LANE="
-not_contains "dry-run, native: no added bank lane env" "$out" "CADENCE_BANK_LANE="
+not_contains "dry-run, native: no added bank lane env" "$out" "CADENCE_USAGE_LANE="
 not_contains "dry-run, native: no added usage lane env" "$out" "CADENCE_USAGE_LANE="
 
 # a lane typo, missing model mapping or dropped backend must
@@ -1195,8 +1194,7 @@ not_contains "dry-run, native: no added usage lane env" "$out" "CADENCE_USAGE_LA
 rc=0; out="$(WORKER_SESSION_LANE=native bash "$SCRIPT" --dry-run --no-profile --lane openrouter HIMMEL-9999-or "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/or.log" 2>&1)" || rc=$?
 check "openrouter: flag selects lane" "$rc" "0"
 contains "openrouter: lane reported" "$out" "lane=openrouter"
-contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_BANK_LANE=openrouter"
-not_contains "openrouter: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
+contains "openrouter: bank lane remains openrouter" "$out" "CADENCE_USAGE_LANE=openrouter"
 contains "openrouter: default Sonnet slug pinned" "$out" "OPENROUTER_MODEL=anthropic/claude-sonnet-5.5"
 contains "openrouter: backend is claude-openrouter" "$out" "claude-openrouter"
 contains "openrouter: alias route uses sonnet" "$out" " sonnet "
@@ -1219,7 +1217,7 @@ check "deepseek: registry admits the lane" "$rc" "0"
 contains "deepseek: lane reported" "$out" "lane=deepseek"
 contains "deepseek: launcher is claude-deepseek" "$out" "claude-deepseek"
 contains "deepseek: WORKER_SESSION_LANE exported" "$out" "WORKER_SESSION_LANE=deepseek"
-contains "deepseek: bank lane keeps openrouter mapping" "$out" "CADENCE_BANK_LANE=openrouter"
+contains "deepseek: bank lane keeps openrouter mapping" "$out" "CADENCE_USAGE_LANE=openrouter"
 contains "deepseek: recorder enabled" "$out" "recorder=1"
 not_contains "deepseek: no codex env" "$out" "CLAUDEX_LANE_OK"
 ds_stub="$tmp/ds-stub"; printf "#!/bin/sh\nexport ANTHROPIC_MODEL='stub-model'\nexit 0\n" > "$ds_stub"; chmod +x "$ds_stub"
@@ -1388,10 +1386,10 @@ contains "full launch, --lane claudex: --model defaults to gpt-6.1-sol" "$rec16"
 contains "full launch, --lane claudex: --autocompact 200000 (standard context ceiling)" "$rec16" "--autocompact 200000"
 contains "full launch, --lane claudex: CLAUDEX_LANE_OK=1 reaches the konsole argv" "$rec16" "CLAUDEX_LANE_OK=1"
 contains "full launch, --lane claudex: lane reaches launcher argv" "$rec16" "WORKER_SESSION_LANE=claudex"
-contains "full launch, --lane claudex: bank lane reaches launcher argv" "$rec16" "CADENCE_BANK_LANE=claudex"
+contains "full launch, --lane claudex: bank lane reaches launcher argv" "$rec16" "CADENCE_USAGE_LANE=claudex"
 env16="$(cat "$d16/env-record" 2>/dev/null || true)"
 contains "full launch, --lane claudex: lane reaches child env" "$env16" "WORKER_SESSION_LANE=claudex"
-contains "full launch, --lane claudex: bank lane reaches child env" "$env16" "CADENCE_BANK_LANE=claudex"
+contains "full launch, --lane claudex: bank lane reaches child env" "$env16" "CADENCE_USAGE_LANE=claudex"
 contains "full launch, --lane claudex: CLAUDE_CODE_EFFORT_LEVEL=xhigh reaches the konsole argv" "$rec16" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 contains "full launch, --lane claudex: CODEX_MODEL=gpt-6.1-sol reaches the konsole argv" "$rec16" "CODEX_MODEL=gpt-6.1-sol"
 contains "full launch, --lane claudex: CODEX_MODEL reaches child env" "$env16" "CODEX_MODEL=gpt-6.1-sol"
@@ -3062,7 +3060,7 @@ KONSOLE_EOF
   echo claude > "$dir/proc/7777/comm"
   printf 'claude\0daemon\0run\0--origin\0transient\0' > "$dir/proc/7777/cmdline"
   printf '%s\0' HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_CONSOLE_DOC=/stale/chief.md \
-    WORKER_SESSION_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret CHIEF_CONTEXT=1m CONSOLE_CONTEXT=1m PATH=/usr/bin > "$dir/proc/7777/environ"
+    WORKER_SESSION_STALE_MARK=stale HIMMEL_STALE_TOKEN=s3cret CHIEF_CONTEXT=1m PATH=/usr/bin > "$dir/proc/7777/environ"
 }
 run_headless() {
   local stubdir="$1" repo="$2" name="$3"; shift 3
@@ -3106,7 +3104,7 @@ check "29r settings env: daemon-injected hook-integrity bypass blanked" "$(env29
 check "29s settings env: stale chief doc from the daemon blanked" "$(env29 HIMMEL_CONSOLE_DOC)" ""
 check "29t settings env: stale WORKER_SESSION_* from the daemon blanked" "$(env29 WORKER_SESSION_STALE_MARK)" ""
 check "29t2 settings env: daemon CHIEF_CONTEXT=1m blanked" "$(env29 CHIEF_CONTEXT)" ""
-check "29t3 settings env: daemon CONSOLE_CONTEXT=1m blanked (old name)" "$(env29 CONSOLE_CONTEXT)" ""
+check "29t3 settings env: daemon CHIEF_CONTEXT=1m blanked (old name)" "$(env29 CHIEF_CONTEXT)" ""
 check "29u settings env: secret-named daemon var blanked, never copied" "$(env29 HIMMEL_STALE_TOKEN)" ""
 check "29v settings env: secret-named launcher var never copied" "$(env29 HIMMEL_API_TOKEN)" "<absent>"
 check "29w settings env: non-pattern daemon var untouched" "$(env29 PATH)" "<absent>"
@@ -3306,7 +3304,7 @@ contains "31b the wrapper still appends its own vars after the caller's" "$lenv2
 # 31c. A worker-process value containing whitespace is refused loudly (exit 12)
 # rather than silently mis-split into extra bogus HEADED_ARM_LAUNCHER_ENV
 # tokens - the var is a whitespace-split token list with no quoting scheme
-# (same contract as CODEX_BANK_PROBE_CMD). (case 32):
+# (same contract as CODEX_USAGE_PROBE_CMD). (case 32):
 # this refusal is Darwin-only, so pin the seam explicitly rather than rely on
 # the test runner's real platform (this box happens to be Darwin too, but
 # case 32c below proves the non-Darwin branch takes a different path).
@@ -4600,7 +4598,7 @@ check "43g the shim passes WORKER_SESSION_ID as --session-id" \
   "$(WORKER_SESSION_CLAUDE_BIN="$shim43" WORKER_SESSION_ID=22222222-2222-2222-2222-222222222222 bash "$HERE/../../lanes/worker-claude-launcher.sh" -n x | head -n 2 | tr '\n' ' ')" \
   "--session-id 22222222-2222-2222-2222-222222222222 "
 check "43h the shim adds nothing without a session id" \
-  "$(env -u WORKER_SESSION_ID -u LEG_SESSION_ID WORKER_SESSION_CLAUDE_BIN="$shim43" bash "$HERE/../../lanes/worker-claude-launcher.sh" -n x | tr '\n' ' ')" "-n x "
+  "$(env -u WORKER_SESSION_ID WORKER_SESSION_CLAUDE_BIN="$shim43" bash "$HERE/../../lanes/worker-claude-launcher.sh" -n x | tr '\n' ' ')" "-n x "
 # A symlinked doc is never replaced by the temp file's mv (the link would
 # become a plain copy): no id is recorded and the link survives.
 lnk43t="$tmp/HIMMEL-43-N45-target.md"

@@ -98,9 +98,9 @@
 # the threshold only (below it the worker was never told to checkpoint); upgrade
 # path: measure it on a VM worker and re-derive the share.
 #
-# Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (old name LEG_CONTEXT_HANDOFF_OK; a
-# falsy value in either name keeps the guard on) in the launching shell (session-sticky; a
-# per-call prefix does not reach this hook process).
+# Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (a falsy value keeps the guard on)
+# in the launching shell (session-sticky; a per-call prefix does not reach this
+# hook process).
 #
 # Platform guard (gitbash-only): env vars, jq, git, stat -c/-f, sed; bash
 # 3.2-safe, runs unchanged under Git Bash. No .ps1 twin needed.
@@ -113,14 +113,10 @@ set -uo pipefail
 [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
 [ -n "${HIMMEL_CONSOLE_NAME:-}" ] || exit 0
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# An unloadable helper lifts nothing: the guard stays on.
-# shellcheck source=../lib/env-alias.sh
-if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
-    env_alias_permit WORKER_SESSION_CONTEXT_HANDOFF_OK LEG_CONTEXT_HANDOFF_OK && exit 0
-    # old names, read only while HIMMEL_LEGACY_NAMES is on
-    alias_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE HIMMEL_LEG_CONTEXT_SHARE
-    alias_env HIMMEL_WORKER_SESSION_AUTOCOMPACT HIMMEL_LEG_AUTOCOMPACT
-fi
+case "${WORKER_SESSION_CONTEXT_HANDOFF_OK:-}" in
+    ''|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff]) ;;
+    *) exit 0 ;;
+esac
 
 CEILING_SHARE=75
 share="${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-}"
@@ -424,7 +420,7 @@ allowed="SendMessage, ListAgents, ToolSearch, TaskStop, append-results.sh, queue
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
 stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your chief ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
 mode_note="The mode is set at launch by the chief (HIMMEL_WORKER_SESSION_CONTEXT_MODE, old name HIMMEL_LEG_CONTEXT_MODE); it cannot be changed in-session."
-bypass_note="Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (old name LEG_CONTEXT_HANDOFF_OK) in the launching shell."
+bypass_note="Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 in the launching shell."
 if [ "$MODE" = "compact" ]; then
     deny_msg="worker context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} ${bypass_note}"
 else

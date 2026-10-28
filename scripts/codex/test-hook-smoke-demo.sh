@@ -171,10 +171,10 @@ chmod +x "$BIN"/codex "$BIN"/claude "$BIN"/pwsh
 # BANK-STALE and the whole claude worker would silently SKIP.
 jq -n --argjson now "$(date +%s)" \
     '{five_hour:{utilization:5},seven_day:{utilization:5},primaries_refreshed_at:$now}' > "$TMP/bank.json"
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_CACHE="$TMP/bank.json"
-export CADENCE_BANK_LEDGER="$TMP/ledger.jsonl"
-export CADENCE_BANK_MAX_AGE=99999999
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_CACHE="$TMP/bank.json"
+export CADENCE_USAGE_LEDGER="$TMP/ledger.jsonl"
+export CADENCE_USAGE_MAX_AGE=99999999
 export HOME="$TMP/home"; mkdir -p "$HOME"
 export CODEX_HOME="$HOME/.codex"
 # Ambient credentials the runner must blank before any hook runs, plus the one

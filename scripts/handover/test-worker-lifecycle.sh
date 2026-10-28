@@ -50,7 +50,7 @@ chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
 # bank-preflight.sh now RESERVES a fleet slot per declared launch
-# (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
+# (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm) under ${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u) — a
 # real, per-user, machine-shared directory this suite never pinned. Without
 # isolating it, this suite's real arms would both accumulate reservations of
@@ -129,7 +129,7 @@ export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 # test-arm-resume.sh owns the shipped-work gate and sets this per-case.
 export ARM_SHIPPED_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 export ARM_BRIDGE_LIVE=0
 export ARM_MAX_SLOTS=0
 # This suite deliberately arms a $TMP fixture (resume_cwd is $WORK_REPO,

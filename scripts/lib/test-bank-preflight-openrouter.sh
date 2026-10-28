@@ -23,7 +23,7 @@ chmod +x "$W/ps"
 fails=0
 check() {
   local label="$1" expected="$2" actual; shift 2
-  actual="$(env HOME="$W/home" HIMMEL_FLEET_CAP=4 HIMMEL_FLEET_SLOTS="$W/slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" CADENCE_BANK_LEDGER="$W/ledger" CADENCE_BANK_LAUNCH= CADENCE_BANK_LANE=openrouter "$@" bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err")"
+  actual="$(env HOME="$W/home" HIMMEL_FLEET_CAP=4 HIMMEL_FLEET_SLOTS="$W/slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" CADENCE_USAGE_LEDGER="$W/ledger" CADENCE_USAGE_LAUNCH= CADENCE_USAGE_LANE=openrouter "$@" bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err")"
   if [ "$actual" = "$expected" ]; then echo "ok - $label"; else echo "FAIL - $label: expected $expected got $actual"; fails=$((fails+1)); fi
 }
 check 'unrounded sub-floor balance refuses' SKIPPED-BANK OR_READING='balance=3.00:key-limit_remaining spend=?' OR_RAW='balance=2.999:key-limit_remaining spend=?'
@@ -35,6 +35,6 @@ check 'invalid floor falls back to three' SKIPPED-BANK OPENROUTER_MIN_CREDIT_USD
 check 'unknown balance refuses honestly' BANK-UNKNOWN OR_READING='balance=? spend=?'
 check 'negative balance refuses' SKIPPED-BANK OR_READING='balance=-0.50:credit spend=?'
 check 'malformed balance is unknown' BANK-UNKNOWN OR_READING='balance=3.0.0:credit spend=?'
-check 'worker lane marker selects OpenRouter without explicit lane' SKIPPED-BANK CADENCE_BANK_LANE= WORKER_SESSION_LANE=openrouter OR_READING='balance=0.50:key-limit_remaining spend=?'
+check 'worker lane marker selects OpenRouter without explicit lane' SKIPPED-BANK CADENCE_USAGE_LANE= WORKER_SESSION_LANE=openrouter OR_READING='balance=0.50:key-limit_remaining spend=?'
 printf 'test-bank-preflight-openrouter: %s failures\n' "$fails"
 [ "$fails" -eq 0 ]

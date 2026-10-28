@@ -177,28 +177,20 @@ expect "chief, non-Bash tool: allowed" 0 "$rc|$out"
 out=$(printf '%s' 'not json' | env HIMMEL_CONSOLE_DOC=/x/N-chief.md CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "chief, unparseable payload: fails open" 0 "$rc|$out"
 
-# --- the list seam reads CHIEF_FG_LIST, and its old name CONSOLE_FG_LIST still works
+# --- the list seam reads CHIEF_FG_LIST
 printf 'alt-only.sh\n' > "$TMP/alt-list.txt"
 expect "chief, CHIEF_FG_LIST names an alternate list: its script is denied" 2 \
     "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST="$TMP/alt-list.txt")" "alt-only.sh"
-expect "chief, old name CONSOLE_FG_LIST alone still selects the list" 2 \
-    "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST= CONSOLE_FG_LIST="$TMP/alt-list.txt")" "alt-only.sh"
-expect "chief, CHIEF_FG_LIST wins over CONSOLE_FG_LIST" 0 \
-    "$(run_hook yes "bash alt-only.sh" absent CHIEF_FG_LIST="$LIST" CONSOLE_FG_LIST="$TMP/alt-list.txt")"
 
 # --- documented bypass
-expect "chief, CONSOLE_FG_OK=1 in the launching shell: allowed" 0 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CONSOLE_FG_OK=1)" ""
 expect "chief, CHIEF_FG_OK=1 in the launching shell: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=1)" ""
 expect "chief, a per-call CHIEF_FG_OK=1 prefix does not lift the guard" 2 \
     "$(run_hook yes "CHIEF_FG_OK=1 $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
 expect "chief, an empty VAR= prefix does not hide the script" 2 \
     "$(run_hook yes "FOO= $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
-expect "chief, CHIEF_FG_OK=0 with CONSOLE_FG_OK=1 in the launching shell: denied" 2 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=0 CONSOLE_FG_OK=1)" "run_in_background"
-expect "chief, CHIEF_FG_OK=1 with CONSOLE_FG_OK=0 in the launching shell: denied" 2 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=1 CONSOLE_FG_OK=0)" "run_in_background"
+expect "chief, CHIEF_FG_OK=0 in the launching shell: denied" 2 \
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=0)" "run_in_background"
 expect "chief, deny names CHIEF_FG_OK as the bypass" 2 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "CHIEF_FG_OK=1"
 

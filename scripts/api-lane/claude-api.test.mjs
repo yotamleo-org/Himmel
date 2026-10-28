@@ -73,9 +73,9 @@ function fixture() {
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: paths.stub,
     HIMMEL_API_JOB_ID: 'job-1', STUB_LOG: paths.log, STUB_ENV: paths.env, STUB_OUT: ok,
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
-    CADENCE_BANK_LEDGER: join(dir, 'bank-ledger'), CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(dir, 'native-cache.json') };
-  writeFileSync(env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
+    CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+  writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
   const run = (args = good, extra = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
   const status = (account = 'A') => {
@@ -208,7 +208,7 @@ test('empty API account refuses even though native is funded, and never spawns c
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
-  writeFileSync(f.env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
+  writeFileSync(f.env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
   const r = f.run();
   assert.equal(r.status, 2);
   assert.match(r.stderr, /api bank gate said SKIPPED-BANK/);
@@ -702,7 +702,7 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
     const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
     assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
     // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
-    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_BANK_LEG: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
+    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_USAGE_WORKER: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
   } finally { rmSync(hold, { force: true }); }
   assert.equal(second.status, 2);
   assert.match(second.stderr, /api bank gate said SKIPPED-FLEET/);

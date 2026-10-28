@@ -568,17 +568,8 @@ EOF
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
-# CHIEF_CONTEXT and CHIEF_WORK_DIR still read their old names, CONSOLE_*.
-# When the two context names disagree, standard wins, so a stale name never
-# widens the 1m gate.
-[ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
 # shellcheck source=../lib/env-alias.sh
 . "$_csg_dir/../lib/env-alias.sh"
-alias_env ARM_SPLIT_WORKER_WINDOW_SEC ARM_SPLIT_LEG_WINDOW_SEC
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
-alias_env CHIEF_WORK_DIR CONSOLE_WORK_DIR
-alias_env CADENCE_USAGE_SKIP_REFRESH CADENCE_BANK_SKIP_REFRESH
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-}"
 # shellcheck source=../lib/claude-version.sh
@@ -788,12 +779,12 @@ fi
 # the read-only --list-temp-arms sweep arms nothing, so it alone passes,
 # and only as the SOLE argument (the flag beside any other mode or arm arg still refuses).
 # ponytail: the consult is identified by these env vars alone, so a consult that unsets
-# both WORKER_SESSION_PROFILE_NO_SETTING_SOURCES and LEG_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
+# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
 # sandbox bound that, upgrade path = a process-ancestry check or a consult-workdir
 # token file, trigger = an exploit beyond the sandbox.
-if [ -n "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
+if [ -n "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" ] \
     && ! { [ "${LIST_TEMP_ARMS:-0}" -eq 1 ] && [ "$ARGC_AT_START" -eq 1 ]; }; then
-    echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES or LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-worker.sh --consult" >&2
+    echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-worker.sh --consult" >&2
     exit 2
 fi
 
@@ -3590,7 +3581,6 @@ fi
 # canonical worker->file mapping for the audited chain lives next to the files, in
 # the <ticket>-dispatch-session-workers.md doc.
 _arm_split_ok="${ARM_SPLIT_WORKER_OK:-}"
-if [ -z "$_arm_split_ok" ] && legacy_names_on; then _arm_split_ok="${ARM_SPLIT_LEG_OK:-}"; fi # old name
 if [ "$_arm_split_ok" != "1" ] && [ "$FORCE" -eq 0 ] \
    && [ "${ARM_RESUME_SAFETY_ARM:-}" != "1" ]; then
     _sl_base=$(basename "$HANDOVER_PATH")

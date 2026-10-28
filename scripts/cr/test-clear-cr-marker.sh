@@ -2405,7 +2405,7 @@ if grepq "$LAST_CLEAR_OUT" -F '(waited 1s,'; then pass; else
 if marker_exists "$tmp"; then pass; else fail "lock-busy: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# L3b. The retired CR_MARKER_LOCK_WAIT_SECONDS is ignored even with legacy
+# L3b. The retired REVIEW_MARKER_LOCK_WAIT_SECONDS is ignored even with legacy
 # names on (the default): the wait stays the 10 s default.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
@@ -2413,11 +2413,11 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
     acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3b: the fixture did not acquire the marker lock"
-export CR_MARKER_LOCK_WAIT_SECONDS=1 HIMMEL_LEGACY_NAMES=1
+export REVIEW_MARKER_LOCK_WAIT_SECONDS=1 HIMMEL_LEGACY_NAMES=1
 run_clear "$tmp" 13 "L3b held marker lock, old wait name → exit 13"
-unset CR_MARKER_LOCK_WAIT_SECONDS HIMMEL_LEGACY_NAMES
+unset REVIEW_MARKER_LOCK_WAIT_SECONDS HIMMEL_LEGACY_NAMES
 if grepq "$LAST_CLEAR_OUT" -F '(waited 10s,'; then pass; else
-    fail "L3b: CR_MARKER_LOCK_WAIT_SECONDS must be ignored (want the 10s default): $LAST_CLEAR_OUT"; fi
+    fail "L3b: REVIEW_MARKER_LOCK_WAIT_SECONDS must be ignored (want the 10s default): $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 # L4. A STALE lock (its holder died) must not wedge the branch forever: the
@@ -3696,13 +3696,13 @@ if [ ! -s "$tmp/sleeps.log" ]; then pass; else fail "9b: must not sleep past the
 if grep -q 'reason=graphql-budget-exhausted' "$tmp/.git/clear-cr-marker.log" 2>/dev/null; then pass; else fail "9b: audit line names graphql-budget-exhausted"; fi
 rm -rf "$tmp"
 
-# 9b-old. The retired CLEAR_CR_MARKER_BUDGET_WAIT is ignored even with legacy
+# 9b-old. The retired CLEAR_REVIEW_MARKER_BUDGET_WAIT is ignored even with legacy
 # names on (the default): a reset at 200 s sits inside the 300 s default, so
 # the clear waits for it and clears instead of refusing at the old name's 30.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_check_ci "$tmp" 0; stub_budget "$tmp" 200
-HIMMEL_LEGACY_NAMES=1 CLEAR_REVIEW_MARKER_BUDGET_WAIT='' CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)"
+HIMMEL_LEGACY_NAMES=1 CLEAR_REVIEW_MARKER_BUDGET_WAIT='' run_clear "$tmp" 0 "9b-old: is ignored -> waits under the default bound, clears (exit 0)"
 b=$(biggest_sleep "$tmp")
 if [ "${b:-0}" -ge 100 ] 2>/dev/null; then pass; else fail "9b-old slept toward the reset (biggest sleep '${b:-none}', want >= 100, above the old name's 30)"; fi
 rm -rf "$tmp"

@@ -12,7 +12,7 @@
 # hash (233bed9c03b5c4f2 = sha256(uuid-arm-resume-test)) and every later bank
 # read on the host came back BANK-UNKNOWN.
 #
-# Fully hermetic: the producer is a marker stub (CADENCE_BANK_PRODUCER) and the
+# Fully hermetic: the producer is a marker stub (CADENCE_USAGE_PRODUCER) and the
 # cache path is scratch, so this suite can neither run the real producer nor
 # touch /tmp/claude/statusline-usage-cache.json.
 #
@@ -131,10 +131,10 @@ MARKER="$TMP/producer-ran"
 PRODUCER_STUB="$TMP/producer-stub.sh"
 printf '%s\n' '#!/usr/bin/env bash' "printf 'ran\n' >> \"$MARKER\"" > "$PRODUCER_STUB"
 chmod +x "$PRODUCER_STUB"
-export CADENCE_BANK_PRODUCER="$PRODUCER_STUB"
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json"
-export CADENCE_BANK_LEDGER="$TMP/bank-ledger.jsonl"
-unset CADENCE_BANK_SKIP_REFRESH CLAUDE_USAGE_CACHE RESUME_SLOT_CACHE 2>/dev/null || true
+export CADENCE_USAGE_PRODUCER="$PRODUCER_STUB"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_LEDGER="$TMP/bank-ledger.jsonl"
+unset CADENCE_USAGE_SKIP_REFRESH CLAUDE_USAGE_CACHE RESUME_SLOT_CACHE 2>/dev/null || true
 
 # --- control: bank-preflight itself DOES run the producer refresh ---------------
 # Without this the stub wiring could be dead and the arm assertion below would

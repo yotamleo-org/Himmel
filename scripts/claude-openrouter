@@ -77,10 +77,6 @@ CONFIG_DIR="${HOME}/.claude-openrouter"   # per-lane isolation (own seeded confi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"   # launcher lives in <repo>/scripts -> repo root (himmel-code corpus)
-# shellcheck source=lib/env-alias.sh
-. "$HERE/lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_LANE LEG_LANE
 # shellcheck source=lib/load-dotenv.sh
 # Sourcing only DEFINES load_dotenv(); it must be CALLED with the key name.
 # --root pins the .env to the LAUNCHER's repo (himmel), not the CWD repo —

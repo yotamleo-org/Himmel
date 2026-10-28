@@ -290,60 +290,20 @@ _worker_propagate_one() {
     unset -v _worker_prop_name _worker_prop_value _worker_prop_tok
 }
 
-# worker_env_twin NAME - the other name of a worker-session env name (old name
-# for the new one, new for the old), or nothing. The worker reads both names
-# (the new one wins), so every set and every drop below covers the pair;
-# callers pass the new name.
-worker_env_twin() {
-    case "$1" in
-        HIMMEL_LEG_CONTEXT_MODE) echo HIMMEL_WORKER_SESSION_CONTEXT_MODE ;;
-        HIMMEL_LEG_AUTOCOMPACT) echo HIMMEL_WORKER_SESSION_AUTOCOMPACT ;;
-        LEG_LANE) echo WORKER_SESSION_LANE ;;
-        LEG_PROFILE_SETTINGS) echo WORKER_SESSION_PROFILE_SETTINGS ;;
-        LEG_PROFILE_PREFACE) echo WORKER_SESSION_PROFILE_PREFACE ;;
-        LEG_PROFILE_MCP_CONFIG) echo WORKER_SESSION_PROFILE_MCP_CONFIG ;;
-        LEG_PROFILE_NO_SETTING_SOURCES) echo WORKER_SESSION_PROFILE_NO_SETTING_SOURCES ;;
-        LEG_SESSION_ID) echo WORKER_SESSION_ID ;;
-        HIMMEL_LEG_PROFILE) echo HIMMEL_WORKER_SESSION_PROFILE ;;
-        LEG_CLAUDE_BIN) echo WORKER_SESSION_CLAUDE_BIN ;;
-        HIMMEL_LEAN_LEG) echo HIMMEL_LEAN_WORKER_SESSION ;;
-        HIMMEL_WORKER_SESSION_CONTEXT_MODE) echo HIMMEL_LEG_CONTEXT_MODE ;;
-        HIMMEL_WORKER_SESSION_AUTOCOMPACT) echo HIMMEL_LEG_AUTOCOMPACT ;;
-        WORKER_SESSION_LANE) echo LEG_LANE ;;
-        WORKER_SESSION_PROFILE_SETTINGS) echo LEG_PROFILE_SETTINGS ;;
-        WORKER_SESSION_PROFILE_PREFACE) echo LEG_PROFILE_PREFACE ;;
-        WORKER_SESSION_PROFILE_MCP_CONFIG) echo LEG_PROFILE_MCP_CONFIG ;;
-        WORKER_SESSION_PROFILE_NO_SETTING_SOURCES) echo LEG_PROFILE_NO_SETTING_SOURCES ;;
-        WORKER_SESSION_ID) echo LEG_SESSION_ID ;;
-        HIMMEL_WORKER_SESSION_PROFILE) echo HIMMEL_LEG_PROFILE ;;
-        WORKER_SESSION_CLAUDE_BIN) echo LEG_CLAUDE_BIN ;;
-    esac
-}
-
-# worker_propagate_env NAME VALUE - _worker_propagate_one for NAME and its twin.
-# Every twinned name is dropped (worker_env_drop_token) before it is set, so no
-# caller-preset token can leave the pair carrying two values.
+# worker_propagate_env NAME VALUE - _worker_propagate_one for NAME. A
+# caller-preset token is dropped (worker_env_drop_token) before it is set, so no
+# caller-preset token can leave the name carrying two values.
 worker_propagate_env() {
-    _worker_prop_twin="$(worker_env_twin "$1")"
     _worker_propagate_one "$1" "$2"
-    if [ -n "$_worker_prop_twin" ]; then
-        _worker_propagate_one "$_worker_prop_twin" "$2"
-    fi
-    unset -v _worker_prop_twin
 }
 
 # worker_env_drop_token NAME - remove every NAME=... token from a
 # caller-preset HEADED_ARM_LAUNCHER_ENV, keeping the rest in order. For a var
 # this wrapper must own outright (a scrubbed knob, a validated value), where
 # worker_propagate_env's caller-wins de-dupe would otherwise let the preset token
-# reach the worker. set -f so no caller token is glob-expanded. NAME's twin goes too.
+# reach the worker. set -f so no caller token is glob-expanded.
 worker_env_drop_token() {
     _worker_drop_one "$1"
-    _worker_drop_twin="$(worker_env_twin "$1")"
-    if [ -n "$_worker_drop_twin" ]; then
-        _worker_drop_one "$_worker_drop_twin"
-    fi
-    unset -v _worker_drop_twin
 }
 
 _worker_drop_one() {
@@ -389,48 +349,16 @@ NO_PRIOR_ART_CHECK=0
 # shellcheck source=scripts/lib/env-alias.sh
 # shellcheck disable=SC1091
 . "$_csg_dir/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env HEADED_ARM_WORKER_CLAUDEX_BIN HEADED_ARM_LEG_CLAUDEX_BIN
-alias_env HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN
-alias_env HEADED_ARM_WORKER_DEEPSEEK_BIN HEADED_ARM_LEG_DEEPSEEK_BIN
-alias_env HEADED_ARM_WORKER_LANES_JSON HEADED_ARM_LEG_LANES_JSON
-alias_env HEADED_ARM_WORKER_OPENROUTER_BIN HEADED_ARM_LEG_OPENROUTER_BIN
-alias_env HEADED_ARM_WORKER_PREFACE HEADED_ARM_LEG_PREFACE
-alias_env HEADED_ARM_WORKER_PREFLIGHT HEADED_ARM_LEG_PREFLIGHT
-alias_env HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES
-alias_env HEADED_ARM_WORKER_REPO_MAP HEADED_ARM_LEG_REPO_MAP
-alias_env HEADED_ARM_WORKER_SHIM HEADED_ARM_LEG_SHIM
-alias_env HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_ARM_LEG_SYSTEMD_RUN
-alias_env HEADED_ARM_WORKER_TARGET HEADED_ARM_LEG_TARGET
-alias_env HEADED_ARM_WORKER_VMS_JSON HEADED_ARM_LEG_VMS_JSON
-alias_env HEADED_ARM_WORKER_WAKER HEADED_ARM_LEG_WAKER
-alias_env HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_LEG_CONTEXT_MODE
-alias_env HIMMEL_WORKER_SESSION_MEMORY_MAX HIMMEL_LEG_MEMORY_MAX
-alias_env WORKER_SESSION_API_LANE LEG_API_LANE
-alias_env WORKER_SESSION_AUTOCOMPACT_AB LEG_AUTOCOMPACT_AB
-alias_env WORKER_SESSION_BUS_PAIR LEG_BUS_PAIR
-alias_env WORKER_SESSION_CONTEXT LEG_CONTEXT
-alias_env WORKER_SESSION_HEADLESS LEG_HEADLESS
-alias_env WORKER_SESSION_LANE LEG_LANE
-alias_env WORKER_SESSION_PROFILE LEG_PROFILE
-alias_env WORKER_SESSION_REPO LEG_REPO
-alias_env WORKER_SESSION_REPO_MAP LEG_REPO_MAP
-alias_env WORKER_SESSION_REPO_MAP_TIMEOUT LEG_REPO_MAP_TIMEOUT
-alias_env WORKER_SESSION_REPO_MAP_TOKENS LEG_REPO_MAP_TOKENS
-alias_env WORKER_SESSION_SUPPRESS_CR_TRIGGER LEG_SUPPRESS_CR_TRIGGER
-alias_env WORKER_SESSION_EFFORT LEG_EFFORT
 HEADLESS=0
 [ "${WORKER_SESSION_HEADLESS:-}" = "1" ] && HEADLESS=1
 LANE="${WORKER_SESSION_LANE:-native}"
-# WORKER_SESSION_EFFORT is the new name of LEG_EFFORT and wins when set.
 : "${WORKER_SESSION_EFFORT:=}"
 PROFILE="${WORKER_SESSION_PROFILE:-}"
 CHIEF_FLAG=""
 # the worker context guard is off unless the caller asks, by
-# --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name
-# HIMMEL_WORKER_SESSION_CONTEXT_MODE) in the launching env (the flag wins).
+# --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE in the launching env
+# (the flag wins).
 CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
-case "$CONTEXT_GUARD" in ''|none) if legacy_names_on; then CONTEXT_GUARD="${HIMMEL_LEG_CONTEXT_MODE:-$CONTEXT_GUARD}"; fi ;; esac
 FLEET_MANIFEST=""
 while :; do
     case "${1:-}" in
@@ -679,7 +607,7 @@ fi
 # gives the launcher binary (LANE_BIN_NAME under scripts/, LANE_BIN_OVERRIDE
 # is its test seam), the chief channel (sendmessage = native SendMessage,
 # file = document + file inbox, LANE_PREFACE names its worker-preface-<x>.md) and
-# the admission gate (LANE_BANK_GATE is the CADENCE_BANK_LANE bank-preflight
+# the admission gate (LANE_BANK_GATE is the CADENCE_USAGE_LANE usage-preflight
 # checks). The default model stays with each lane's block below; deepseek takes
 # it from the launcher's own export. glm refuses until it has a launcher
 # contract. An unknown lane is a usage error, never a fallback to native.
@@ -888,8 +816,7 @@ fi
 if [ "$RELAY" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-sonnet-5-5
     : "${WORKER_SESSION_EFFORT:=low}"
-    LEG_EFFORT="$WORKER_SESSION_EFFORT"
-    export LEG_EFFORT WORKER_SESSION_EFFORT
+    export WORKER_SESSION_EFFORT
 fi
 
 # --judge defaults MODEL to the Opus tier at high effort, but ONLY on the
@@ -1184,9 +1111,8 @@ fi
 AB_ARM=""
 AB_REASON=""
 _ab_in="${WORKER_SESSION_AUTOCOMPACT_AB:-}"
-unset -v WORKER_SESSION_AUTOCOMPACT_AB LEG_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
+unset -v WORKER_SESSION_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
 worker_env_drop_token WORKER_SESSION_AUTOCOMPACT_AB
-worker_env_drop_token LEG_AUTOCOMPACT_AB # old name, read both ways
 worker_env_drop_token HEADED_ARM_AB_AUTOCOMPACT
 case "$_ab_in" in
     '') ;;
@@ -1230,9 +1156,6 @@ unset -v _ab_in
 # so an `unset` alone let a caller-listed CHIEF_CONTEXT=1m come straight
 # back into the worker.
 #
-# CONSOLE_CONTEXT is the old name of CHIEF_CONTEXT; headed-arm.sh still reads
-# it, so it is scrubbed too.
-#
 # HIMMEL_CONSOLE_JUDGE_EFFORT is the same class of hazard as
 # CHIEF_CONTEXT, not the WORKER_SESSION_PROFILE_* class further down - it is consumed
 # above (line ~469) for THIS invocation only, and a judge's own persisting
@@ -1242,7 +1165,7 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a worker must not hand that worker its mode-2 fence.
-WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT CONSOLE_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
+WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
 for _worker_env_scrub in $WORKER_SESSION_ENV_SCRUB; do
     unset "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
@@ -1267,14 +1190,12 @@ unset -v _worker_env_scrub
 # worker_propagate_env calls are the only thing that can set them again.
 # WORKER_SESSION_PROFILE_NO_SETTING_SOURCES rides the same scrub: only --consult sets it.
 # WORKER_SESSION_ID too: a sibling's id reused here would collide.
-# Each worker-session twin rides the same scrub.
-_worker_env_scrub_old="LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG LEG_PROFILE_NO_SETTING_SOURCES LEG_SESSION_ID" # old names, read both ways
-for _worker_env_scrub in $_worker_env_scrub_old \
+for _worker_env_scrub in \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID; do
     unset -v "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
 done
-unset -v _worker_env_scrub _worker_env_scrub_old
+unset -v _worker_env_scrub
 
 # same "this wrapper's own process may itself BE a worker" hazard as
 # the WORKER_SESSION_PROFILE_* scrub above, but for the rest of the names a worker sets on
@@ -1318,11 +1239,10 @@ unset -v _worker_env_scrub _worker_env_scrub_old
 # that if the judge role ever grows a claudex-arming path.
 for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
     case "$_worker_env_scrub" in
-        HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|LEG_EFFORT|WORKER_SESSION_EFFORT|HEADED_ARM_UNAME) continue ;;
+        HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|WORKER_SESSION_EFFORT|HEADED_ARM_UNAME) continue ;;
         HIMMEL_CONSOLE_LEG) continue ;;
         # the chief's chosen context mode is launch input, read below.
-        HIMMEL_LEG_CONTEXT_MODE|HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
-        LEG_PROFILE_SETTINGS|LEG_PROFILE_PREFACE|LEG_PROFILE_MCP_CONFIG) continue ;; # old names, read both ways
+        HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
     esac
@@ -1356,9 +1276,8 @@ fi
 if [ "$LANE" = "native" ] && [ -n "${HEADED_ARM_WORKER_CLAUDE_BIN:-}" ]; then
     worker_propagate_env WORKER_SESSION_CLAUDE_BIN "$HEADED_ARM_WORKER_CLAUDE_BIN"
 fi
-unset -v HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_LEG_CLAUDE_BIN
+unset -v HEADED_ARM_WORKER_CLAUDE_BIN
 worker_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
-worker_env_drop_token HEADED_ARM_LEG_CLAUDE_BIN # old name, read both ways
 
 # a worker's ceiling is the resolved CLI pair, not the absence of a
 # model suffix. Fail before dry-run reporting or preflight when context already
@@ -1614,7 +1533,7 @@ case "$CONTEXT_GUARD" in
     ''|none) CONTEXT_GUARD="" ;;
     compact|handoff) ;;
     *)
-        echo "headed-arm-worker: --context-guard / HIMMEL_WORKER_SESSION_CONTEXT_MODE (old name HIMMEL_LEG_CONTEXT_MODE) must be compact or handoff, or none for off (got ${CONTEXT_GUARD})" >&2
+        echo "headed-arm-worker: --context-guard / HIMMEL_WORKER_SESSION_CONTEXT_MODE must be compact or handoff, or none for off (got ${CONTEXT_GUARD})" >&2
         exit 2
         ;;
 esac
@@ -1622,7 +1541,7 @@ worker_env_drop_token HIMMEL_WORKER_SESSION_CONTEXT_MODE
 if [ -n "$CONTEXT_GUARD" ]; then
     worker_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_MODE "$CONTEXT_GUARD"
 else
-    unset -v HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
+    unset -v HIMMEL_WORKER_SESSION_CONTEXT_MODE
 fi
 unset -v CONTEXT_GUARD
 worker_env_drop_token HIMMEL_WORKER_SESSION_AUTOCOMPACT
@@ -1739,15 +1658,12 @@ fi
 
 # Propagate the resolved registry values, including DeepSeek's existing
 # openrouter bank gate, rather than inheriting the chief's lane.
-# Only the old name is propagated: bank-preflight reads CADENCE_USAGE_LANE first,
-# so a propagated new name would override an inline CADENCE_BANK_LANE in the worker.
-# Both names are still dropped. Native launches keep their environment unchanged.
+# Native launches keep their environment unchanged.
 if [ "$LANE" != "native" ]; then
     worker_env_drop_token WORKER_SESSION_LANE
-    worker_env_drop_token CADENCE_BANK_LANE
     worker_env_drop_token CADENCE_USAGE_LANE
     worker_propagate_env WORKER_SESSION_LANE "$LANE"
-    worker_propagate_env CADENCE_BANK_LANE "$LANE_BANK_GATE"
+    worker_propagate_env CADENCE_USAGE_LANE "$LANE_BANK_GATE"
 fi
 
 # claudex lane: see the --lane header comment above.
@@ -2357,10 +2273,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the worker's context guard reads.
-    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CONSOLE_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_LEG_CONTEXT_MODE=%s HIMMEL_LEG_AUTOCOMPACT=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
+    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
-        "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CONSOLE_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
-        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT" "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
+        "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
+        "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
         "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
@@ -2737,7 +2653,7 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR LEG_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and

@@ -150,9 +150,9 @@ export HIMMEL_PROVENANCE_DIR="$TMP_ROOT/provenance"
 # a cache path that does not exist -> BANK-UNKNOWN, which is a FAIL-OPEN
 # verdict, so the worker proceeds exactly as it did before the guard existed.
 # The ledger is redirected into the temp tree so no test writes ~/.himmel.
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_CACHE="$TMP_ROOT/no-such-usage-cache.json"
-export CADENCE_BANK_LEDGER="$TMP_ROOT/cadence-ledger.jsonl"
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_CACHE="$TMP_ROOT/no-such-usage-cache.json"
+export CADENCE_USAGE_LEDGER="$TMP_ROOT/cadence-ledger.jsonl"
 
 # Shared fixtures ------------------------------------------------------------
 

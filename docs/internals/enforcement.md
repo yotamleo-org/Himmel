@@ -2410,7 +2410,7 @@ redirects (`>`, `>>`, `>|`, `&>`, `<>`), `tee`, `cp`/`mv`/`install`/`ln`/`rsync`
 as a destination, `dd of=`, `sed -i`, `touch`/`truncate`/`patch`, `-o`/`--output`
 options, editors, downloaders and interpreters handed the path, `find -exec`,
 `xargs`, and inline interpreter code (`python3 -c`, `perl -e`, `node -e`, a
-heredoc script) that names `bank-lift.json`, `$BANK_LIFT_FILE`, `usage-lift.sh` or `bank-lift.sh` —
+heredoc script) that names `bank-lift.json`, `bank-lift.sh`, `usage-lift.json` or `usage-lift.sh` —
 under every spelling of the path: `~`, `$HOME`, `${HOME}`, `/home/<user>`,
 `~user`, relative from `~`, `~/.himmel` or `state/`, `.`/`..` segments, quote
 splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and a
@@ -3876,10 +3876,9 @@ matches `*-chief.md`.
 
 **Audited bypass:** `CHIEF_DISPATCH_OK=1` (deliberate carve-out) or
 `CHIEF_DISPATCH_DISABLE=1` (kill switch), set in the LAUNCHING shell and
-session-sticky; the old names `CONSOLE_DISPATCH_OK` / `CONSOLE_DISPATCH_DISABLE`
-are still read. Every use warns and appends a JSONL audit row to
-`~/.claude/chief-dispatch-guard/overrides.jsonl` (`CHIEF_DISPATCH_LOG`, old
-name `CHIEF_DISPATCH_LOG`, is the test seam).
+session-sticky. Every use warns and appends a JSONL audit row to
+`~/.claude/chief-dispatch-guard/overrides.jsonl` (`CHIEF_DISPATCH_LOG` is the
+test seam).
 
 **Delivery:** shipped via the **himmel-ops plugin `hooks.json`** (matcher
 `Agent`, second entry alongside `guard-implementor-dispatch.sh`); live only
@@ -3900,7 +3899,7 @@ A textual match (interpreter + name, or a path in command position), so a grep t
 names a script is allowed. A workflow nudge: fails open on missing `jq` or an
 unparseable payload.
 
-**Bypass:** `CHIEF_FG_OK=1` (old name `CONSOLE_FG_OK`) in the LAUNCHING shell, session-sticky.
+**Bypass:** `CHIEF_FG_OK=1` in the LAUNCHING shell, session-sticky.
 
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-chief-dispatch.sh`. Spec: `scripts/hooks/test-guard-chief-foreground.sh`.
@@ -4057,7 +4056,7 @@ observed from 157k of 200k (HIMMEL-4089), so 75 % leaves 7k tokens for the
 checkpoint; 85 % would let a compaction fire first, and HIMMEL-4569's 65 %
 stopped every opus worker at 13 %. No window in the snapshot → 75 % of the fill.
 
-**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name `HIMMEL_LEG_CONTEXT_MODE`),** set by the chief at launch
+**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE`,** set by the chief at launch
 (`headed-arm-worker.sh --context-guard`, which validates it and propagates it only
 when set) and read only from the hook process's env, so a worker cannot flip it
 in-session.
@@ -4903,7 +4902,7 @@ dispatch the next queued item, verify a READY PR, or run `/chief next --arm`.
 Every subprocess shares ONE 8 s budget (`HIMMEL_STOP_GUARD_TIMEOUT`, under the
 wired 10 s Stop timeout), and the JSON is printed only as the last statement.
 It does not inspect the held Jira/dispatch queue. Test seams:
-`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT` (old `HIMMEL_STOP_GUARD_BANK_PREFLIGHT` still read), `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
+`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-chief-idle-guard.sh`.
 
 ### `chief-precompact-snapshot.sh` — snapshot a chief's Live state at compaction (HIMMEL-2973)

@@ -36,7 +36,7 @@ printf '%s\n' '---' 'template_version: 1' 'jira: TEST-7' '---' > "$HANDOVER_DIR/
 printf '%s\n' '---' 'processed: true' '---' 'legacy clip' > "$LUNA_VAULT_PATH/Clippings/legacy.md"
 printf '%s\n' 'run scripts/handover/console-kit/go.sh' > "$HANDOVER_DIR/tester/moved-dir.md"
 printf '%s\n' 'open it with bash scripts/lanes/leg-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md"
-printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env"
+printf '%s\n' 'CHIEF_CONTEXT=1m' > "$ROOT/.env"
 SETTINGS="$HOME/.claude/settings.json"
 printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}}' > "$SETTINGS"
 case "${1:-}" in

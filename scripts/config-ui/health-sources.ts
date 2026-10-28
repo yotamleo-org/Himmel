@@ -12,7 +12,6 @@ export const readToolHealth = (env?: Env, query?: URLSearchParams, now?: number)
 // The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";
-import { legacyNamesOn } from "../lib/env-alias.mjs";
 
 type Env = Record<string, string | undefined>;
 export type Section = { state: "ok" | "absent" | "error"; reason?: string; [k: string]: unknown };
@@ -23,7 +22,7 @@ const WORKERS_TIMEOUT_MS = 5000;
 
 // The newest ledger row that carries bank numbers, read from the file's last 64 KiB.
 export function readBank(env: Env): Section {
-  const file = env.CADENCE_USAGE_LEDGER || (legacyNamesOn(env) ? env.CADENCE_BANK_LEDGER : undefined) || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
+  const file = env.CADENCE_USAGE_LEDGER || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
   let text: string;
   try {
     const fd = openSync(file, "r");

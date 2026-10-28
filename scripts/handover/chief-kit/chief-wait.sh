@@ -253,32 +253,6 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 # Every CHIEF_WAIT_* knob still reads its old name.
-# shellcheck source=../../lib/env-alias.sh
-. "$REPO/scripts/lib/env-alias.sh"
-alias_env WORKERS_FROM LEGS_FROM
-alias_env CHIEF_WAIT_USAGE CONSOLE_WAIT_BANK
-alias_env CHIEF_WAIT_WORKER_EVENT CONSOLE_WAIT_LEG_EVENT
-alias_env CHIEF_WAIT_BUDGET CONSOLE_WAIT_BUDGET
-alias_env CHIEF_WAIT_BUDGET_TIMEOUT CONSOLE_WAIT_BUDGET_TIMEOUT
-alias_env CHIEF_WAIT_CLOSE CONSOLE_WAIT_CLOSE
-alias_env CHIEF_WAIT_CLOSE_HANGS CONSOLE_WAIT_CLOSE_HANGS
-alias_env CHIEF_WAIT_CLOSE_TIMEOUT CONSOLE_WAIT_CLOSE_TIMEOUT
-alias_env CHIEF_WAIT_DISPATCH CONSOLE_WAIT_DISPATCH
-alias_env CHIEF_WAIT_DISPATCH_TIMEOUT CONSOLE_WAIT_DISPATCH_TIMEOUT
-alias_env CHIEF_WAIT_FAIL_WAKE CONSOLE_WAIT_FAIL_WAKE
-alias_env CHIEF_WAIT_HANDOVER_MIN CONSOLE_WAIT_HANDOVER_MIN
-alias_env CHIEF_WAIT_INTERVAL CONSOLE_WAIT_INTERVAL
-alias_env CHIEF_WAIT_LOCK_STATUS CONSOLE_WAIT_LOCK_STATUS
-alias_env CHIEF_WAIT_PAGE_CMD CONSOLE_WAIT_PAGE_CMD
-alias_env CHIEF_WAIT_PAGE_TIMEOUT CONSOLE_WAIT_PAGE_TIMEOUT
-alias_env CHIEF_WAIT_POLL_SEC CONSOLE_WAIT_POLL_SEC
-alias_env CHIEF_WAIT_RELAY CONSOLE_WAIT_RELAY
-alias_env CHIEF_WAIT_SUCCESSION_SEC CONSOLE_WAIT_SUCCESSION_SEC
-alias_env CHIEF_WAIT_TICK CONSOLE_WAIT_TICK
-alias_env CHIEF_WAIT_TICK_TIMEOUT CONSOLE_WAIT_TICK_TIMEOUT
-alias_env CHIEF_WAIT_TRACKER CONSOLE_WAIT_TRACKER
-alias_env CHIEF_WAIT_TRACKER_STALE_MIN CONSOLE_WAIT_TRACKER_STALE_MIN
-alias_env CHIEF_WAIT_UNOWNED_REWAKE_MIN CONSOLE_WAIT_UNOWNED_REWAKE_MIN
 
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: chief-wait.sh <inbox-file> [tick.sh args...]" >&2
@@ -413,7 +387,7 @@ bank_word() {
         out="$(bash "$CHIEF_WAIT_USAGE" 2>/dev/null)" || return 1
     else
         # gnu-ok: Linux-only kit (timeout). Same side-effect-free spelling tick.sh uses for its fleet census.
-        out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
+        out="$(CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
             bash "$REPO/scripts/lib/usage-preflight.sh" 2>/dev/null)" || return 1
     fi
     out="$(printf '%s\n' "$out" | tail -n 1)"

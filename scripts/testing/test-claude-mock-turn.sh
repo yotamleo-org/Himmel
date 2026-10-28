@@ -212,8 +212,8 @@ HEOF
     HOME="$H/home" CLAUDE_CONFIG_DIR="$H/cfg" REPO="$REPO" MOCK="$MOCK" H="$H" \
     ANTHROPIC_API_KEY="$FAKEKEY_KEY" ANTHROPIC_DEFAULT_SONNET_MODEL=canary-model-must-be-stripped \
     NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK=1 \
-    HIMMEL_REGISTRY_DIR="$H/reg" HIMMEL_FLEET_SLOTS="$H/slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native \
-    CADENCE_BANK_CACHE="$H/bank-cache.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$H/bank-ledger.jsonl" \
+    HIMMEL_REGISTRY_DIR="$H/reg" HIMMEL_FLEET_SLOTS="$H/slots" HIMMEL_FLEET_CAP=4 CADENCE_USAGE_LANE=native \
+    CADENCE_USAGE_CACHE="$H/bank-cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$H/bank-ledger.jsonl" \
     FLEET_PS_CMD="$H/no-fleet-ps.sh" \
     unshare -rn timeout 60 sh "$H/run.sh" >"$H/outer.out" 2>&1 # gnu-ok: unshare -rn is Linux-only, so this whole case is
   if grepq "$H/outer.out" "cannot read the claude session's cwd" || grepq "$H/headless.err" "cannot read the claude session's cwd"; then

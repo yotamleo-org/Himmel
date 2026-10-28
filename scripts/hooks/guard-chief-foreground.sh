@@ -25,11 +25,10 @@
 # unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md).
 #
 # Single-run bypass (set in the shell that LAUNCHED Claude Code; a per-call
-# prefix does not reach this hook): CHIEF_FG_OK=1. Its old name CONSOLE_FG_OK
-# is still read while HIMMEL_LEGACY_NAMES is on; a set falsy value of either name keeps the guard on.
+# prefix does not reach this hook): CHIEF_FG_OK=1. A set falsy value keeps the
+# guard on.
 #
-# Test seam: CHIEF_FG_LIST (old name CONSOLE_FG_LIST, read while HIMMEL_LEGACY_NAMES is on) points at
-# an alternate list file. Bash
+# Test seam: CHIEF_FG_LIST points at an alternate list file. Bash
 # 3.2-compatible. Exit codes: 0 allow; 2 refuse.
 set -uo pipefail
 
@@ -37,13 +36,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# An unloadable helper lifts nothing: the guard stays on.
-# shellcheck source=scripts/lib/env-alias.sh
-if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
-    env_alias_permit CHIEF_FG_OK CONSOLE_FG_OK && exit 0
-    # old names, read only while HIMMEL_LEGACY_NAMES is on
-    alias_env CHIEF_FG_LIST CONSOLE_FG_LIST
-fi
+case "${CHIEF_FG_OK:-}" in
+    ''|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff]) ;;
+    *) exit 0 ;;
+esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -121,7 +117,7 @@ A bounded run is allowed in the foreground: make \`timeout 90\` (1 to 90 s) the 
 chief-wait.sh and suites stay background. Short scripts (append-results.sh, go.sh, write-verdict.sh,
 fleet-manifest.sh, worker-event.sh) are not on the list and stay foreground. The list is scripts/handover/chief-kit/long-running.txt.
 
-Bypass for one session: relaunch with CHIEF_FG_OK=1 (old name CONSOLE_FG_OK) in the launching
+Bypass for one session: relaunch with CHIEF_FG_OK=1 in the launching
 shell (a per-call prefix does not reach this hook)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
