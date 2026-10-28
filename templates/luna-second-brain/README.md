@@ -35,9 +35,6 @@ git init                                            # your vault is its own repo
 
 # Linux / macOS / Git Bash
 bash scripts/setup.sh
-
-# Windows PowerShell
-powershell -File scripts\setup.ps1
 ```
 
 Setup is idempotent — re-run safely after pulling.
@@ -102,7 +99,7 @@ the detail.
 | **Shared git-state predicates**                 | `scripts/guardrails/lib.sh` (`is_on_main`, `is_main_ref`, `is_dirty` + `guard_call`)   |
 | **Handover-path resolver (HIMMEL-118)**         | `scripts/lib/handover-path.sh` (Mode A inline default, Mode B external via HANDOVER_DIR) |
 | **USER_SLUG resolver (HIMMEL-145)**             | `scripts/lib/user-slug.sh` (env var → git config fallback)                             |
-| **Setup scripts (sh + ps1)**                    | `scripts/setup.sh`, `scripts/setup.ps1`                                                |
+| **Setup script**                                | `scripts/setup.sh`                                                                     |
 
 ## Vault layout
 

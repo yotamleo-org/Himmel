@@ -499,7 +499,7 @@ Claude session — the agent is never in the trust path:
 | `/arm <ticket-or-path> [at HH:MM\|auto\|smart]` | `arm-resume` | schedules a resume session via `arm-resume.sh` (time defaults to `smart`) |
 | `/mergepub <pr> <sha12>` | `merge-public` | SHA-bound squash-merge of a PUBLIC propagation PR |
 | `/restart` | `restart` | bounces the POLLER — supervisor respawns it (rung 1) |
-| `/restart full` | `restart` | relaunches the WHOLE bridge with a fresh environment (rung 2) |
+| `/restart full` | `restart` | unsupported (rung 2): answers `restart-unsupported` (rc 20), restart the bridge by hand |
 
 **All ship disabled.** Enable per-op with `TELEGRAM_AUTO_ACTIONS`, read from the
 bridge's own `~/.claude/channels/telegram/.env` (the file that already holds
@@ -563,14 +563,14 @@ difference is the **environment freeze**:
 | | `/restart` (rung 1) | `/restart full` (rung 2) |
 |---|---|---|
 | What restarts | the poller only | supervisor + poller |
-| Mechanism | poller exits 0, `supervisor.ts` respawns it | unsupported on Linux and macOS (rc 20) |
+| Mechanism | poller exits 0, `supervisor.ts` respawns it | unsupported on every platform (rc 20) |
 | Picks up | anything re-read from a FILE at startup — incl. `TELEGRAM_AUTO_ACTIONS` | n/a |
 | Cost | ~instant | n/a |
 
 Rung 1's respawn inherits the supervisor's environment, frozen when the operator's
-shell launched it. Rung 2 fires a Windows scheduled task, which is gone with
-Windows support: on Linux and macOS `/restart full` answers `restart-unsupported`
-(rc 20), so use rung 1 or `bash scripts/telegram/restart-bridge.sh start`.
+shell launched it. Rung 2 has no executor: `/restart full` answers
+`restart-unsupported` (rc 20) on every platform, without a "restarting" ack, so
+use rung 1 or `bash scripts/telegram/restart-bridge.sh start`.
 
 **Bootstrap, once:** enabling `/restart` for the first time requires a restart, by
 hand, because the flag is read at poller startup. `bash scripts/telegram/restart-bridge.sh start`.

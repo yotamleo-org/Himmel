@@ -5,7 +5,7 @@
 # structured `/arm` command; the spawned `claude` agent is never in the trust path.
 # This script owns the privileged half: resolve a ticket|path to a resume handover,
 # then shell arm-resume.sh. It runs in the real himmel shell environment (.env,
-# handover-path.sh, py-armor, schtasks) — "inherit the system".
+# handover-path.sh, py-armor) — "inherit the system".
 #
 # Exit-code namespace (kept DISTINCT from arm-resume's own rc space so a dedup/
 # already-armed result doesn't collide with a resolution failure):

@@ -61,12 +61,6 @@ Then from inside Git Bash:
 bash scripts/setup.sh
 ```
 
-Or from PowerShell:
-
-```powershell
-powershell -File scripts\setup.ps1
-```
-
 ## 3. Operator-tunable knobs
 
 Both default to sensible fallbacks — most operators never need to set
@@ -102,7 +96,7 @@ Autosync is **opt-in and off by default**. Enable it explicitly to
 auto-commit + push the vault to its remote:
 
 ```bash
-LUNA_VAULT_AUTOSYNC=1 bash scripts/vault-autosync.sh      # or scripts\vault-autosync.ps1
+LUNA_VAULT_AUTOSYNC=1 bash scripts/vault-autosync.sh
 ```
 
 It commits **through** pre-commit (never `--no-verify`), so the `gitleaks`
@@ -127,9 +121,7 @@ This sweeper is the template's default sync path. The bundled **GitHub Sync**
 Obsidian plugin is an alternative, opt-in mechanism (`bash scripts/upgrade.sh
 --with-github-sync`, or `LUNA_WITH_GITHUB_SYNC=1`) — pick one, not both: the
 plugin commits from inside Obsidian on its own ~10-minute tick, which races
-the sweeper's own commits, and `vault-autosync.ps1`'s sanity gate refuses to
-run at all if it finds `github-sync` enabled (`AlarmClass: plugin-resurrected`,
-HIMMEL-3066). See `.obsidian/PLUGINS-SETUP.md`.
+the sweeper's own commits (HIMMEL-3066). See `.obsidian/PLUGINS-SETUP.md`.
 
 ### Push authentication
 
