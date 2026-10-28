@@ -121,6 +121,11 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+slotage=<worker>:<range>:<n>suites:<age>m[,...] (HIMMEL-5788) sits just before tmp= and is ABSENT unless a
+live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
+holder did not record reads ?. Read-only, advisory, not in chief-wait's action key. Env seams:
+HIMMEL_SUITE_SEMAPHORE_DIR, HIMMEL_SUITE_SLOT_CAP.
+
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in chief-wait's action
@@ -2171,6 +2176,36 @@ if [ -n "$tmp_pct" ]; then
     [ "$tmp_pct" -lt "$tmp_warn" ] || tmp_tail="$tmp_tail!"
 fi
 
+# slotage=<worker>:<range>:<n>suites:<age>m[,...] -- shared suite slots (scripts/lib/suite-semaphore.sh)
+# held past HIMMEL_SUITE_SLOT_CAP seconds (default 1200) by a live owner, so a starving holder shows
+# without a worker reporting it. Worker, range and suite count come from the detail
+# run-shell-tests.sh records in the slot's owner file; a part it did not record reads ?. Absent when
+# no slot is past the cap. Advisory: chief-wait's action key does not name it, so it wakes nothing.
+slotage_tail=""
+slot_cap="${HIMMEL_SUITE_SLOT_CAP:-1200}"
+case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
+[ "$((10#$slot_cap))" -gt 0 ] || slot_cap=1200
+slot_now="$(date +%s)"
+. "$HERE/../../lib/proc-tree.sh"
+for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
+    # one read of the owner record, so a slot released and retaken mid-parse cannot mix two holders
+    slot_rec="$(cat "$slot_dir/owner" 2>/dev/null)" || continue  # swallow-ok: a slot released mid-read has no holder to report
+    slot_pid="$(printf '%s\n' "$slot_rec" | sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
+    slot_started="$(printf '%s\n' "$slot_rec" | sed -n 's/^started=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
+    [ -n "$slot_pid" ] && [ -n "$slot_started" ] || continue
+    slot_id="$(printf '%s\n' "$slot_rec" | sed -n 's/^identity=//p' | head -n 1)"
+    # the semaphore's own liveness: rc 1 is a gone pid or one now naming another process (pid reuse)
+    if proc_tree_liveness_matches "$slot_pid" "$slot_id"; then :; else [ "$?" -ne 1 ] || continue; fi
+    slot_age=$((slot_now - slot_started))
+    [ "$slot_age" -gt "$((10#$slot_cap))" ] || continue
+    slot_detail="$(printf '%s\n' "$slot_rec" | sed -n 's/^detail=//p' | head -n 1)"
+    slot_worker="$(printf '%s\n' "$slot_detail" | sed -n 's/.*worker=\([^ ]*\).*/\1/p')"
+    slot_range="$(printf '%s\n' "$slot_detail" | sed -n 's/.*range=\([^ ]*\).*/\1/p')"
+    slot_suites="$(printf '%s\n' "$slot_detail" | sed -n 's/.*suites=\([0-9][0-9]*\).*/\1/p')"
+    slotage_tail="$slotage_tail${slotage_tail:+,}${slot_worker:-?}:${slot_range:-?}:${slot_suites:-?}suites:$((slot_age / 60))m"
+done
+[ -z "$slotage_tail" ] || slotage_tail=" slotage=$slotage_tail"
+
 # fails=<n>/<workers>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
 # worker-failures ledger rows (ts >= the chief lock's `started`): <n> rows, <workers>
 # distinct workers, the class with the most distinct workers (then events, then name),
@@ -2968,6 +3003,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
+    [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
@@ -3039,7 +3075,7 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"
