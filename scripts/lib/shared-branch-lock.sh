@@ -205,6 +205,7 @@ shared_branch_lock_acquire() {
     # Capture the mkdir stderr rather than discarding it: on failure we must
     # tell "already held" (EEXIST -- keep rc 11) apart from a genuine error
     # (rc 2, C2), and the operator needs the real message for the latter.
+    # prim-ok: non-blocking acquire that the lock dir itself holds until a later release call (rc 11 when held, rc 2 on a real mkdir error); with_lock scopes a lock to one command.
     if _sbl_a_mkerr="$(mkdir "$_sbl_a_lockdir" 2>&1)"; then
         _sbl_a_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         _sbl_a_holder_pid="${SHARED_BRANCH_LOCK_HOLDER_PID:-$$}"

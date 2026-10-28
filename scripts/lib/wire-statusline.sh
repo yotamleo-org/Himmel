@@ -393,6 +393,7 @@ wire_statusline() {
     # (CodeRabbit, PR #772).
     local hud_snap="" hud_rec=1
     if [ -f "$hud_cfg_path" ]; then hud_snap="$(_wire_statusline_hud_snapshot "$hud_cfg_path")" || hud_rec=0; fi
+    # prim-ok: publishes a config staged and validated earlier in this function (not a stdin write), ordered against the settings rename below.
     mv "$hud_cfg_tmp" "$hud_cfg_path" \
       || { rm -f "$settings.statusline.tmp" "$hud_cfg_tmp" "$hud_snap"; return 1; }
     if [ "$hud_rec" = 1 ]; then _wire_statusline_record_hud "$hud_cfg_path" "$hud_snap" || hud_rec=0; fi
