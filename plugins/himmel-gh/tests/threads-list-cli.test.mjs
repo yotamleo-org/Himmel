@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { tmpdir, platform } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { cachePath } from '../lib/thread-cache.mjs';
@@ -8,7 +8,6 @@ import { cachePath } from '../lib/thread-cache.mjs';
 let dir;        // env-root
 let cacheRoot;  // <dir>/himmel-cli
 const cli = join(import.meta.dirname, '..', 'lib', 'threads-list-cli.mjs');
-const IS_WIN = platform() === 'win32';
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'himmel-gh-tl-'));
@@ -32,9 +31,7 @@ function fakeGhResponse(threads) {
 }
 
 function envForTest() {
-  return process.platform === 'win32'
-    ? { LOCALAPPDATA: dir }
-    : { XDG_CACHE_HOME: dir, HOME: dir };
+  return { XDG_CACHE_HOME: dir, HOME: dir };
 }
 
 describe('threads-list-cli (with --stdin-json for test injection)', () => {
@@ -83,8 +80,7 @@ describe('threads-list-cli (with --stdin-json for test injection)', () => {
 });
 
 // Signal-killed gh subprocess (no --stdin-json path, uses real spawn → fake gh).
-// Windows can't reliably resolve .cmd shims without shell:true, so POSIX only.
-describe.skipIf(IS_WIN)('threads-list-cli signal-killed gh subprocess', () => {
+describe('threads-list-cli signal-killed gh subprocess', () => {
   let fakeBin;
   beforeEach(() => {
     fakeBin = join(dir, 'bin');
@@ -122,9 +118,8 @@ describe.skipIf(IS_WIN)('threads-list-cli signal-killed gh subprocess', () => {
 });
 
 // Bitbucket forge route (spec §5.3): FORGE=bitbucket + a node-stub bitbucket CLI
-// that emits the `pr comments` payload. Runs on Windows too: the
-// JSON-array BITBUCKET_CLI form is parsed as exact argv with no space-split, so
-// the space in process.execPath (C:\Program Files\nodejs\node.exe) is safe.
+// that emits the `pr comments` payload. The JSON-array BITBUCKET_CLI form is
+// parsed as exact argv with no space-split, so a space in process.execPath is safe.
 describe('threads-list-cli — bitbucket forge route', () => {
   let stub;
   function writeBbStub(body) {
@@ -132,9 +127,8 @@ describe('threads-list-cli — bitbucket forge route', () => {
     writeFileSync(stub, body);
   }
   function envBb() {
-    // envForTest() supplies the platform-correct cache root (LOCALAPPDATA on
-    // Windows, XDG_CACHE_HOME/HOME on POSIX) so the cachePath() assertion below
-    // matches where the spawned CLI writes — required now that this runs on Windows.
+    // envForTest() supplies the cache root (XDG_CACHE_HOME/HOME) so the
+    // cachePath() assertion below matches where the spawned CLI writes.
     return {
       ...process.env,
       ...envForTest(),

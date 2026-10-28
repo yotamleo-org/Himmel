@@ -12,7 +12,7 @@ The plugin lives in this repo. Add via:
 /plugin install ./plugins/himmel-gh
 ```
 
-Requires `gh` CLI on PATH (install separately from https://cli.github.com/) and `himmel-run` on PATH (wired by `scripts/machine-setup/{ubuntu.sh,win11.ps1}`).
+Requires `gh` CLI on PATH (install separately from https://cli.github.com/) and `himmel-run` on PATH (wired by `scripts/machine-setup/ubuntu.sh`).
 
 ## Auth
 
@@ -64,7 +64,7 @@ Each command has a matching skill that auto-triggers on PR/GitHub intent. Skills
 
 ## Logs + cache
 
-`~/.cache/himmel-cli/gh/` (POSIX) or `%LOCALAPPDATA%\himmel-cli\gh\` (Windows):
+`~/.cache/himmel-cli/gh/`:
 
 - `normal.log` — append-only stdout (rotated at 10MB).
 - `error.log` — append-only stderr.

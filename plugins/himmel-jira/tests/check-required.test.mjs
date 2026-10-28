@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir, platform } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -9,16 +9,11 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const checkScript = resolve(__dirname, '..', 'lib', 'check-required.mjs');
 
 function cacheEnv(tmpDir) {
-  if (platform() === 'win32') {
-    return { LOCALAPPDATA: tmpDir };
-  }
   return { HOME: tmpDir, XDG_CACHE_HOME: '' };
 }
 
 function writeStubMeta(cacheRoot, data) {
-  const sub = platform() === 'win32'
-    ? join(cacheRoot, 'himmel-cli', 'jira')
-    : join(cacheRoot, '.cache', 'himmel-cli', 'jira');
+  const sub = join(cacheRoot, '.cache', 'himmel-cli', 'jira');
   mkdirSync(sub, { recursive: true });
   writeFileSync(join(sub, 'metadata.json'), JSON.stringify(data));
 }

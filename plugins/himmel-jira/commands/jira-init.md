@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash(node:*), AskUserQuestion
-description: "Bootstrap Jira auth (.env) + metadata cache (~/.cache/himmel-cli/jira/metadata.json (POSIX) / %LOCALAPPDATA%\\himmel-cli\\jira\\metadata.json (Windows)). Run once per machine."
+description: "Bootstrap Jira auth (.env) + metadata cache (~/.cache/himmel-cli/jira/metadata.json). Run once per machine."
 ---
 
 ## Context

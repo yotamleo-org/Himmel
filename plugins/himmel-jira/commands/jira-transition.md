@@ -4,8 +4,6 @@ description: Transition a Jira issue to a new status. Resolves transition ID fro
 argument-hint: "<KEY> <status-name>"
 ---
 
-> **Note (Windows):** the body uses bash parameter expansion / subshell syntax. Claude Code's `Bash` tool invokes Git Bash on Windows — works as long as Git Bash is on PATH (which it is when this repo's `setup/win11.ps1` ran successfully).
-
 ## Your task
 
 ```
