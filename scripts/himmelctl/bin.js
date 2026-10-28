@@ -187,7 +187,7 @@ commands:
                           or from the himmel checkout for user scope
   ensure                  converge this target toward its desired manifest state:
                           installs/wires whatever status reports red/degraded.
-                          By default this is CONVERGE-ONLY (HIMMEL-2349) —
+                          By default this is CONVERGE-ONLY —
                           unwiring/disabling a removable item that's no longer
                           desired is a separate, higher-risk consent gated
                           behind --prune (never bundled into the same Y/n as a
@@ -217,14 +217,13 @@ commands:
                           the old scope (interactive confirm; --yes skips it;
                           --dry-run prints the plan); refuses to leave any item
                           wired in BOTH scopes (fail-closed) — a refusal that
-                          made ZERO mutation exits 3 (HIMMEL-2464), distinct
+                          made ZERO mutation exits 3, distinct
                           from exit 1/2 for a real error or a usage/consent
                           problem; the fail-closed pre-flight runs BEFORE the
                           --dry-run check, so --dry-run predicting THAT refusal
                           also exits 3, not 0
   trust on|off|status     wire, unwire, or report the trust shadow ledger's hook
                           entries in this project's .claude/settings.json
-                          (HIMMEL-1551; recorder HIMMEL-1529/1539/1547).
                           Idempotent, and 'off' removes only
                           what it added — the recorder's whole claim is that
                           adding it and removing it are both zero behaviour
@@ -232,7 +231,7 @@ commands:
                           existing hooks; an event array that was EMPTY and then
                           wired into normalizes to absent, which is invisible to
                           every consumer.) Hooks take effect on the next matching
-                          event — no restart needed (measured, HIMMEL-1561).
+                          event — no restart needed.
                           Confirm with
                           ${nodeScriptCmd(path.join(himmelRoot(), 'scripts/trust/shadow-ledger.mjs'))} report
                           (an absolute path, so it runs from any directory):
@@ -296,7 +295,7 @@ options:
                           .himmel-dev marker, doc-guard wiring, Jira/Bitbucket CLI
                           builds, shell-test toolchain probes). Never a question —
                           set only via this flag. Requires a himmel checkout.
-  --lanes <csv>          install: v1 (HIMMEL-2352, ruling 34) accepts only 'none'
+  --lanes <csv>          install: v1 accepts only 'none'
                           here — Claude tiers are the only implementation lanes;
                           codex/hermes are CR-only and reachable ONLY via
                           --with-codex/--with-hermes or the interactive prompt,
@@ -322,11 +321,11 @@ options:
   --yes                  ensure/deps ensure/deps upgrade: skip the confirmation
   --prune                ensure: opt-in to the DISABLE phase (converge-only by
                           default; disabling enabled-but-no-longer-desired items
-                          is a separate, higher-risk consent — HIMMEL-2349)
+                          is a separate, higher-risk consent)
   --no-network           ensure: run ONLY items whose manifest entry declares a
                           no-network path (local file wiring); refuse, with a
                           reason, every item that could fetch, build, install
-                          or reindex (HIMMEL-4308). Not valid with --prune
+                          or reindex. Not valid with --prune
   --with-models          deps upgrade: pull qmd's embedding/rerank models
                           (~2.1 GB) non-interactively, without the prompt
   -h, --help             show this help`;
@@ -418,28 +417,28 @@ function parseArgs(argv) {
     subcommand: null,
     fromProfile: null, // reserved (T0: parse only)
     defaultScope: null, // install question default: project|user (null = project)
-    scope: null,       // install: --scope project|user (HIMMEL-2752) — non-interactive install of the shipped adopter-<scope> profile; overrides --from-profile's own scope when both are given
-    contribute: false, // install: layer the dev overlay (HIMMEL-2308, --contribute)
+    scope: null,       // install: --scope project|user — non-interactive install of the shipped adopter-<scope> profile; overrides --from-profile's own scope when both are given
+    contribute: false, // install: layer the dev overlay, --contribute
     dryRun: false,
     items: null,       // status/ensure: --items comma list (null = no filter)
     json: false,       // status: --json
     profile: null,     // ensure: --profile (null = keep the target's stored profile)
     yes: false,        // ensure/scope/deps ensure/deps upgrade: --yes
     scopeVerb: null,   // scope: 'set' | 'get' | 'status' (null = none given)
-    trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given, HIMMEL-1551)
+    trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given)
     targetScope: null, // scope set: 'project' | 'user' (null = none given)
     depsVerb: null,    // deps: status|ensure|upgrade (consumed positionally, see the 'deps' case)
     withModels: false, // deps upgrade: --with-models
     lanes: null,       // install: --lanes csv (null = ask, or take the default)
     withCodex: false,  // install: --with-codex (opt-in lane)
     withHermes: false, // install: --with-hermes (opt-in lane)
-    prune: false,      // ensure: --prune (opt-in — disable/unwire candidates require this; HIMMEL-2349)
-    noNetwork: false,  // ensure: --no-network (only manifest-declared local paths; HIMMEL-4308)
+    prune: false,      // ensure: --prune (opt-in — disable/unwire candidates require this)
+    noNetwork: false,  // ensure: --no-network (only manifest-declared local paths)
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
-    purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it — HIMMEL-3058)
-    port: null,        // ui: --port N (null = ephemeral, HIMMEL-4254)
-    allowAgentSession: false, // ui: --allow-agent-session (operator override of the agent-session refusal, HIMMEL-4350)
-    agui: null,        // ui: --agui [<session-id>|latest] (also print the AG-UI page URL, HIMMEL-4480; 'fleet' = no id, HIMMEL-4712)
+    purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
+    port: null,        // ui: --port N (null = ephemeral)
+    allowAgentSession: false, // ui: --allow-agent-session (operator override of the agent-session refusal)
+    agui: null,        // ui: --agui [<session-id>|latest] (also print the AG-UI page URL; 'fleet' = no id)
     service: null,     // ui: --service install|uninstall|status|url (the always-on systemd user unit)
   };
   // the last process.exit(2) sites in
@@ -4648,7 +4647,7 @@ async function runPlan(answers, args) {
   // inline → no-op (adopt.sh's/setup.sh's own inline handovers/ default).
   // Fail-closed: a failed write must abort BEFORE the core install shell-out
   // rather than silently proceed with an unwired handover destination.
-  provOpen(args); // HIMMEL-3332 S5: idempotent — cmdInstall already opened the session
+  provOpen(args); // idempotent — cmdInstall already opened the session
   provStep = 'behaviour-config';
   adopterProfileLib.applyBehaviourConfig(answers.behaviourConfig || {}, { envFile: envFilePath() });
   provStep = 'handover';
@@ -6842,7 +6841,7 @@ async function cmdEnsure(args) {
   // an operator who declined above, or was refused above for lacking --yes
   // non-interactively, must never have reached this line. Still gated
   // behind !args.dryRun (dry-run's zero-mutation guarantee is unconditional).
-  provOpen(args); // HIMMEL-3332 S5: past every no-op/refusal return, before the first mutation
+  provOpen(args); // past every no-op/refusal return, before the first mutation
   provStep = 'ensure';
   // a scoped (items) run never persists derive/migrate
   // bookkeeping — the recorded target stays byte-identical (the requested
@@ -7351,7 +7350,7 @@ async function cmdScopeSet(args) {
     return 3;
   }
 
-  provOpen(args); // HIMMEL-3332 S5: past the dry-run and fail-closed returns, before Step 3's unwire
+  provOpen(args); // past the dry-run and fail-closed returns, before Step 3's unwire
   provStep = 'scope-set';
 
   // Consent granted (--yes or an interactive confirm). The re-keyed state is
