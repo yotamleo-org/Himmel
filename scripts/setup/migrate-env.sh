@@ -50,8 +50,20 @@
 # backup, copy or verify failed (no line removed from .env), or the final
 # rewrite of .env failed (restore it from the printed backup); 2 usage;
 # 3 nothing written: an agent session or no terminal without the consent
-# key, or not a y.
+# key, or not a y; 96 a chokepoint seam differs from the session's launch env.
 set -uo pipefail
+
+# The consent is read from the policy dir, so the seam that moves that dir is
+# refused when it differs from the session's launch env.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "migrate-env.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/setup/migrate-env.sh || exit 96
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"

@@ -5,6 +5,9 @@
   "scripts/cr/clear-cr-marker.sh": {
     "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
+  "scripts/setup/migrate-env.sh": {
+    "seam_env_vars": ["HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
+  },
   "scripts/handover/merge-on-green.sh": {
     "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO", "MERGE_STATIC_RECHECK", "HIMMEL_LEGACY_NAMES"]
   },

@@ -608,8 +608,11 @@ _himmel_config_layers() {
             done < <(_load_dotenv_extract "$_hc_file" "${_hc_keys[@]}")
         done
     fi
-    if [ "${#_hc_pol[@]}" -gt 0 ] && _hc_dir=$(_himmel_policy_dir) && [ -f "$_hc_dir/config.json" ]; then
-        _himmel_policy_json "$_hc_dir/config.json" "${_hc_pol[@]}" || return 1
+    if [ "${#_hc_pol[@]}" -gt 0 ]; then
+        _hc_dir=$(_himmel_policy_dir) || return 1
+        if [ -f "$_hc_dir/config.json" ]; then
+            _himmel_policy_json "$_hc_dir/config.json" "${_hc_pol[@]}" || return 1
+        fi
     fi
     return 0
 }

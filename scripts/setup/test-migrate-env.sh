@@ -64,7 +64,7 @@ FX="$TMP/fx"
 mkdir -p "$FX/scripts/setup" "$FX/scripts/lib" "$FX/scripts/lanes" "$FX/scripts/jira/dist/release" "$FX/docs/setup"
 cp "$REPO"/scripts/setup/migrate-env*.sh "$REPO"/scripts/setup/migrate-env*.mjs "$FX/scripts/setup/" 2>/dev/null
 rm -f "$FX/scripts/setup/test-"*
-cp "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/prim.sh" "$FX/scripts/lib/"
+cp "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/prim.sh" "$REPO/scripts/lib/chokepoint-seam-guard.sh" "$FX/scripts/lib/"
 cp "$REPO"/scripts/lanes/resolve.mjs "$REPO"/scripts/lanes/probe.mjs "$REPO"/scripts/lanes/bank-status-core.mjs \
     "$REPO"/scripts/lanes/profile-managed.cjs "$FX/scripts/lanes/"
 cp "$REPO/docs/setup/himmel-config.example.json" "$FX/docs/setup/"
