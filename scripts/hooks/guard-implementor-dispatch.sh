@@ -53,8 +53,8 @@
 #
 # this hook is also the Agent-dispatch chokepoint for the
 # reviewed-round guard (scripts/telegram/round-guard.ts) — the
-# same predicate spawn-glm.ts/spawn-claudex.ts already apply, now covering the
-# in-process Agent-tool dispatch path those two scripts never see. Unlike
+# same predicate spawn-claudex.ts / spawn-common.ts already apply, now covering the
+# in-process Agent-tool dispatch path those scripts never see. Unlike
 # every other probe above, a payload cwd that IS given but whose round-guard
 # probe cannot be evaluated (bun missing, script missing, probe crash/timeout)
 # fails CLOSED, not open — see the comment at its call site.
@@ -388,7 +388,7 @@ repo_root="${CLAUDE_PROJECT_DIR:-}"
 # available-but-unfunded lane would strand the caller on a command that cannot
 # answer, which is the one path this guard's fail-open invariant forbids.
 # Verify runnability AND funding before refusing. claudex is the only
-# external lane (glm is dropped); if it does not qualify, no
+# external lane; if it does not qualify, no
 # refusal is emitted and control falls through to the bank guard.
 lane_runnable() {
     local id="$1" script="$2"
@@ -567,8 +567,8 @@ lane_ready() {
 }
 
 # --- the reviewed-round guard runs at THIS
-# chokepoint too, not only in scripts/telegram/spawn-glm.ts / spawn-claudex.ts.
-# Those two lanes are dispatched by an operator/chief over a separate
+# chokepoint too, not only in scripts/telegram/spawn-claudex.ts / spawn-common.ts.
+# Those scripts are dispatched by an operator/chief over a separate
 # subprocess; a real implementor round is just as often an in-process Agent
 # tool call, which reaches neither script. Control has already
 # reached here past every read-only/research/Haiku/lane-exempt-Explore
@@ -582,7 +582,7 @@ lane_ready() {
 # The dispatch's own worktree is the payload's cwd (.tool_input.cwd // .cwd,
 # the same fallback convention used elsewhere in this repo's hooks) — an
 # Agent-tool dispatch runs IN the caller's existing branch, unlike
-# spawn-glm/spawn-claudex's anonymous own-mode dispatches, which mint a fresh
+# spawn-claudex.ts / spawn-common.ts's anonymous own-mode dispatches, which mint a fresh
 # branch and so key off --name instead. A payload with no cwd at all cannot be
 # attributed to any branch — that is a shape issue, not an infra failure, and
 # is skipped here exactly like round-guard.ts's own documented fail-open cases
@@ -596,7 +596,7 @@ lane_ready() {
 # genuine implementor dispatch that fails CLOSED with a clear, self-serviceable
 # message (IMPL_GUARD_DISABLE=1 is the only escape hatch — there is no
 # round-guard-specific bypass; the sanctioned unblock is the same INVARIANT:
-# section spawn-glm/spawn-claudex already honour).
+# section spawn-claudex.ts / spawn-common.ts already honour).
 round_cwd=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev/null || true)
 if [ -n "$round_cwd" ]; then
     round_task_file=$(mktemp "${TMPDIR:-/tmp}/himmel-round-guard.XXXXXX" 2>/dev/null) || round_task_file=""

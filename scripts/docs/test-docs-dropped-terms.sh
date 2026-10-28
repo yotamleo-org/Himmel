@@ -378,7 +378,6 @@ docs/setup/new-machine.md	- `cygpath` (Windows-only path translation) → `scrip
 docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
 docs/setup/new-machine.md	in `~/.config/claude-glm/phi-roots` (the harness-wide PHI config directory; the
 docs/setup/new-machine.md	name outlived the GLM lane, HIMMEL-7898) or `~/.config/claude-codex/phi-roots`;
-docs/setup/new-machine.md	| `ZAI_API_KEY` | Z.ai key for `scripts/graphify/refresh-graph-map.sh --backend glm` on public himmel code; every vault cell of the egress matrix denies `zai-glm`. **Don't put it in `settings.json`** (that hands it to every session). | Z.ai console, only if you run that backend; otherwise leave unset. |
 docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | ticketed: HIMMEL-2330 |
 docs/tool-adoption/lane-adoption-playbook.md	example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 docs/tool-adoption/lane-adoption-playbook.md	*config/code knob* the measurement feeds. Where the axis has GLM evidence

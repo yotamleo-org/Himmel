@@ -1305,7 +1305,7 @@ grep -q "GRAPHIFY_MAX_CONCURRENCY must be" <<<"$out" \
   || pass "T21d --no-update skips throttle validation (invalid value tolerated on publish-only path)"
 
 # --- T23: GRAPHIFY_API_TIMEOUT knob — backend-scoped default
-# (900 for claude-cli ONLY; 300 = graphify's own default otherwise, incl. claude/glm),
+# (900 for claude-cli ONLY; 300 = graphify's own default otherwise, incl. claude),
 # unset-only, validated on the extraction path only (mirrors GRAPHIFY_MAX_CONCURRENCY / T21).
 # The logging stub records (a) the GRAPHIFY_API_TIMEOUT env var visible to the
 # graphify subprocess — graphify's override channel — AND (b) its full argv one
@@ -1416,11 +1416,11 @@ grep -q "GRAPHIFY_API_TIMEOUT must be" <<<"$out" \
   || pass "T23d --no-update skips timeout validation (invalid value tolerated on publish-only path)"
 
 # Backend-matrix (codex-adv-1): the 900 default is claude-cli ONLY. The claude
-# (Anthropic API) backend and the glm remap (-> claude, the Z.ai API endpoint) are
-# NOT contending-headless backends, so they stay at graphify's own 300 default on the
+# (Anthropic API) backend is NOT a contending-headless backend, so it stays at
+# graphify's own 300 default on the
 # --api-timeout flag. The else-branch does NOT export (300 is graphify's own default;
 # an unset env already means 300 to graphify), so the env var visible to the subprocess
-# is EMPTY for these backends (unlike the worker-exported 900 in T23a).
+# is EMPTY for this backend (unlike the worker-exported 900 in T23a).
 
 # (e) --backend claude with GRAPHIFY_API_TIMEOUT unset -> 300 flag, no export (env empty).
 : > "$t23env"; : > "$t23calls"
@@ -1437,28 +1437,20 @@ got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
 [ "$got_flag" = "300" ] && pass "T23e --backend claude --api-timeout flag wired to 300 (graphify's own default)" \
   || fail "T23e --backend claude --api-timeout should be 300 (got: '$got_flag')"
 
-# (f) --backend glm (-> claude remap) with GRAPHIFY_API_TIMEOUT unset + ANTHROPIC_API_KEY
-# set (so the remap's key check passes; the graphify binary is the T23 stub, no real
-# calls) -> reaches claude, so it stays at 300 too, NOT the claude-cli 900.
-# --corpus-class himmel-code: every zai-glm VAULT cell is explicit
-# deny now, so the default luna-personal class would fail this run closed at the
-# egress preflight before graphify is ever called, leaving the timeout wiring --
-# the only thing this case tests -- unexercised. himmel-code x zai-glm is still
-# `allow` (public code, wildcard row), which is exactly the corpus the glm remap
-# still legitimately serves.
+# (f) --backend glm is no backend of this script: the GLM lane is removed, so there is
+# no remap to claude and no ZAI_API_KEY read. It falls through to the egress preflight
+# like any unmapped backend and is refused (rc 2) before graphify is ever called; the
+# output must not carry the old remap's "claude backend @" line or its key prompt.
 : > "$t23env"; : > "$t23calls"
 out=$( env -u GRAPHIFY_API_TIMEOUT ANTHROPIC_API_KEY=dummy-test-key ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic \
   GRAPHIFY_T23_ENVLOG="$t23env" GRAPHIFY_CALL_LOG="$t23calls" \
   GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23f --corpus-root "$T23CORPUS" --corpus-class himmel-code \
+  bash "$SCRIPT" --name t23f --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23f-map --corpus-tag t23f --backend glm 2>&1 ); rc=$?
-[ "$rc" -eq 0 ] || fail "T23f --backend glm run exit 0 (got $rc): $out"
-got_env=$(sed -n 's/^GRAPHIFY_API_TIMEOUT=//p' "$t23env" | head -n 1)
-[ "$got_env" = "" ] && pass "T23f --backend glm (-> claude) does NOT export a raised timeout (env unset = graphify's own 300 default)" \
-  || fail "T23f --backend glm should NOT export GRAPHIFY_API_TIMEOUT (got: '$got_env')"
-got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
-[ "$got_flag" = "300" ] && pass "T23f --backend glm --api-timeout flag wired to 300 (graphify's own default)" \
-  || fail "T23f --backend glm --api-timeout should be 300 (got: '$got_flag')"
+{ [ "$rc" -eq 2 ] && [ ! -s "$t23calls" ] \
+  && ! grep -qF 'claude backend @' <<< "$out" && ! grep -qF 'ZAI_API_KEY' <<< "$out"; } \
+  && pass "T23f --backend glm is refused before graphify (no remap to claude, no ZAI_API_KEY read)" \
+  || fail "T23f --backend glm should be refused rc=2 before graphify with no remap output (rc=$rc): $out calls=$(cat "$t23calls")"
 
 # --- T22: semantic cache continuity. graphify keeps its
 # content-keyed cache inside graphify-out/, while refresh extracts from a fresh
@@ -2680,59 +2672,6 @@ out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic 
 { [ "$rc" -eq 2 ] && grep -qF 'DENY salus x zai-glm x extraction' <<< "$out" && [ ! -s "$KCALLS_DENY" ]; } \
   && pass "T40d glm denied corpus class fails closed before graphify" \
   || fail "T40d glm salus run should fail rc=2 before graphify (got $rc): $out calls=$(cat "$KCALLS_DENY")"
-
-GLM_BAD_CALLS="$WS/glm-bad-calls.log"; GLM_BAD_LEDGER="$WS/glm-bad-ledger.jsonl"
-: > "$GLM_BAD_CALLS"; rm -f "$GLM_BAD_LEDGER"
-out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=https://evil.example/v1 \
-  GRAPHIFY_LEDGER="$GLM_BAD_LEDGER" GRAPHIFY_CALL_LOG="$GLM_BAD_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
-  bash "$SCRIPT" --name glm-bad --corpus-root "$KCORPUS" --backend glm \
-  --maps-dir "$KMAPS" --title "GLM" --slug glm-bad-map --corpus-tag glm 2>&1 ); rc=$?
-{ [ "$rc" -eq 2 ] && grep -q "unverified GLM endpoint" <<< "$out" \
-  && ! grep -q "evil.example" <<< "$out" \
-  && [ ! -s "$GLM_BAD_CALLS" ] && [ ! -e "$GLM_BAD_LEDGER" ]; } \
-  && pass "T40e scheduled GLM rejects a custom effective endpoint before ledger/graphify without echoing it" \
-  || fail "T40e custom GLM endpoint should fail rc=2 before ledger/graphify without URL disclosure (got $rc): $out calls=$(cat "$GLM_BAD_CALLS")"
-
-GLM_OK_CALLS="$WS/glm-ok-calls.log"; GLM_OK_LEDGER="$WS/glm-ok-ledger.jsonl"
-: > "$GLM_OK_CALLS"; rm -f "$GLM_OK_LEDGER"
-out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_MODEL=glm-5.2 ANTHROPIC_BASE_URL='https://test-user:test-pass@api.z.ai:443/api/anthropic?token=secret-token' \
-  GRAPHIFY_LEDGER="$GLM_OK_LEDGER" GRAPHIFY_CALL_LOG="$GLM_OK_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
-  bash "$SCRIPT" --name glm-ok --corpus-root "$KCORPUS" --backend glm \
-  --maps-dir "$KMAPS" --title "GLM" --slug glm-ok-map --corpus-tag glm 2>&1 ); rc=$?
-# luna-personal x zai-glm x extraction is explicit deny now, so this
-# run fails CLOSED instead of proceeding. Both of this case's subjects survive the
-# flip, and one of them gets STRONGER:
-#   (1) REDACTION must still hold on the DENY path -- a deny message that echoed
-#       the userinfo/path/query would leak credentials exactly as an allow one
-#       would, and that path was previously untested.
-#   (2) CLASSIFICATION is still proved, now by the deny naming zai-glm: a run
-#       misclassified as `anthropic` would have hit luna-personal x anthropic =
-#       allow and exited 0, so rc=2-naming-zai-glm discriminates just as the
-#       ledger line used to. The allow+log LEDGER SHAPE this producer emits is
-#       no longer independently pinned by a LIVE matrix rule here: kimi/moonshot,
-#       the only matrix cell that ever reached "allow+log" via this script's own
-#       corpora, is retired — no remaining rule in
-#       egress-matrix.json produces that verdict. T40b2 above restores coverage
-#       of the shape (and its C0-escaping) on a STUBBED allow+log verdict
-#       instead (a `node` shim over egress-matrix-eval.mjs, `--backend claude`
-#       vehicle) since no live cell can vehicle it anymore.
-{ [ "$rc" -eq 2 ] && [ ! -s "$GLM_OK_CALLS" ] \
-  && grep -qF 'DENY luna-personal x zai-glm x extraction' <<< "$out" \
-  && grep -qF 'claude backend @ https://api.z.ai (model glm-5.2)' <<< "$out" \
-  && ! grep -qF 'test-user:test-pass' <<< "$out" && ! grep -qF '/api/anthropic' <<< "$out" \
-  && ! grep -qF 'secret-token' <<< "$out"; } \
-  && pass "T40f de-listed GLM endpoint denies before graphify, still redacting credentials/path/query (HIMMEL-2224)" \
-  || fail "T40f de-listed GLM endpoint should deny rc=2 before graphify naming zai-glm, without URL disclosure (rc=$rc): $out"
-
-GLM_HTTP_CALLS="$WS/glm-http-calls.log"; : > "$GLM_HTTP_CALLS"
-out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=http://api.z.ai/api/anthropic \
-  GRAPHIFY_CALL_LOG="$GLM_HTTP_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
-  bash "$SCRIPT" --name glm-http --corpus-root "$KCORPUS" --backend glm \
-  --maps-dir "$KMAPS" --title "GLM" --slug glm-http-map --corpus-tag glm 2>&1 ); rc=$?
-{ [ "$rc" -eq 2 ] && grep -q "unverified GLM endpoint" <<< "$out" \
-  && ! grep -qF "http://api.z.ai" <<< "$out" && [ ! -s "$GLM_HTTP_CALLS" ]; } \
-  && pass "T40g scheduled GLM rejects plaintext api.z.ai before graphify without echoing it" \
-  || fail "T40g plaintext GLM endpoint should fail rc=2 before graphify without URL disclosure (got $rc): $out"
 
 # --- T40h-l: scheduled claude/claude-cli resolve
 # their effective ANTHROPIC_BASE_URL before any graphify call. Unknown endpoints
