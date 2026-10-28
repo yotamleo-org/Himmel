@@ -57,6 +57,13 @@ check 'claude-codex exports CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WIND
 #    default stays the `${VAR:-x}` form.
 check 'claude-codex defaults CLAUDE_CODE_EFFORT_LEVEL to xhigh (overridable)' \
   "$BASH_TWIN" '^export CLAUDE_CODE_EFFORT_LEVEL="\$\{CLAUDE_CODE_EFFORT_LEVEL:-xhigh\}"'
+last_effort_export=$(grep -E '^export CLAUDE_CODE_EFFORT_LEVEL=' "$BASH_TWIN" | tail -n 1)
+if [ "$last_effort_export" = 'export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}"' ]; then
+  echo "ok: the last CLAUDE_CODE_EFFORT_LEVEL export in claude-codex is the xhigh default"
+else
+  echo "FAIL: the last CLAUDE_CODE_EFFORT_LEVEL export in claude-codex is not the xhigh default (got: $last_effort_export)"
+  fails=$((fails + 1))
+fi
 check 'lanes.json claudex row says the launcher defaults effort to xhigh' \
   "$LANES_JSON" 'launcher defaults effort to xhigh'
 for stale in high medium; do
