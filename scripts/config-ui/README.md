@@ -166,10 +166,14 @@ bun run build   # → agui-web/dist/ (untracked)
 ```
 
 `GET /api/agui/<run>` (token-gated, GET only, `agui/sse.ts`) serves that
-stream. `<run>` must be a lowercase session UUID (else `400`); it names exactly
-one `~/.claude/projects/<slug>/<run>.jsonl` whose real path stays under
-`~/.claude/projects` (none `404`, more than one `409`; a symlink that leaves the
-tree does not count). The response is `text/event-stream`, one
+stream. `resolveJournal(home, run)` finds the file: `<run>` must be a
+lowercase session UUID (else `400`), and it must name exactly one
+`<root>/projects/<slug>/<run>.jsonl` across the journal roots below (none
+`404`; more than one `409`, even when the copies sit in different roots; one
+real file reached through two roots counts once). The
+journal's real path must stay under the real path of its root's `projects`
+directory; a symlinked file or project directory that leaves it does not count.
+The response is `text/event-stream`, one
 `data: <json>` frame per AG-UI event (the `@ag-ui/encoder` wire format,
 hand-encoded: config-ui takes no dependency for it). It maps the file from the
 start, then polls for appends every 500 ms, and ends when the client goes away,
@@ -182,6 +186,40 @@ journal's in timestamp order. Payload fields (deltas, results, errors, state)
 pass the same redactor as the feed; the id fields are left intact, and so are
 `agent` (who acted: a session name is often 32+ characters, which the redactor
 would blank) and `failure` (one of four words).
+
+**Journal roots.** A journal root is a Claude config directory whose
+`projects/` holds session journals. `resolveJournal` searches two built-in
+roots, `~/.claude` (native) and `~/.claude-codex` (claudex), then every custom
+root registered so far.
+
+- **Where custom roots come from.** Only the live census: `readFleet`
+  (`agui/fleet.ts`, behind `GET /api/agui/fleet`) reads each live session's
+  launch environment from `/proc/<pid>/environ` and, when it carries
+  `CLAUDE_CONFIG_DIR`, passes that directory to `registerConfigRoot`
+  (`agui/sse.ts`). No request parameter names a root; `/api/agui/<run>` takes
+  only the session id.
+- **What `registerConfigRoot` refuses.** A path that is relative, contains a
+  `..` segment or is not already normalized; a directory with no `projects/`
+  directory; and one whose `projects/` resolves outside the config directory's
+  real path (a `projects` symlink out of the root). A refused root is never
+  searched.
+- **How long a root stays.** The registry lives in the server's memory, holds at
+  most 32 roots and drops the oldest past that; registering a root again does
+  not refresh its place. A custom root is therefore searched only after a fleet
+  poll has seen a live session launched with it, until the server restarts or
+  the root is dropped.
+- **Built-in versus custom.** `resolveJournal` re-checks a custom root on every
+  lookup: its `projects/` must still resolve inside the config directory, or
+  the root is skipped. The built-in roots skip that check, so a symlinked
+  `~/.claude/projects` still works.
+
+For example, a worker launched with `CLAUDE_CONFIG_DIR=/srv/claude-b` and a
+`/srv/claude-b/sessions/<pid>.json` naming session `<id>`: the fleet poll
+registers `/srv/claude-b` and reads that file for `<id>`, then
+`resolveJournal` searches `~/.claude/projects`, `~/.claude-codex/projects` and
+`/srv/claude-b/projects` and serves `/srv/claude-b/projects/<slug>/<id>.jsonl`.
+Had `/srv/claude-b/projects` been a symlink to `/data/projects`,
+`registerConfigRoot` would have refused the root and the run would be `404`.
 
 `GET /agui/` serves the built page from `agui-web/dist` (`/agui` redirects
 there) with the same CSP and frame headers as every other page. It serves only
