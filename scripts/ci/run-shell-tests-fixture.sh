@@ -55,11 +55,13 @@ fi
 # full-suite run happening elsewhere on the box and refuse with rc 2 — a red
 # suite that says nothing about the behaviour under test. Lock ACQUISITION is
 # covered on purpose in test-suite-concurrency.sh, against its own sandbox.
-# The template is not decoration: a bare `mktemp -d` is not portable to
-# BSD/macOS, and every path below is built on this result, so a failure has to
-# stop the suite here rather than surface as a sandbox rooted at "/suite.lock".
-SUITE_LOCK_SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/himmel-rst-fixture.XXXXXX") || {
-  echo "FAIL: could not create the fixture sandbox (mktemp -d failed)"
+# Every path below is built on this result, so a failure has to stop the suite
+# here rather than surface as a sandbox rooted at "/suite.lock".
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$RST_FIXTURE_DIR/../lib/prim.sh" || { echo "FAIL: cannot load scripts/lib/prim.sh"; exit 1; }
+SUITE_LOCK_SANDBOX=$(tmpdir) || {
+  echo "FAIL: could not create the fixture sandbox (tmpdir failed)"
   exit 1
 }
 export SUITE_LOCK_DIR="$SUITE_LOCK_SANDBOX/suite.lock"

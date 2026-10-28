@@ -96,11 +96,7 @@ scripts/ci/check-host-file-read-sinks.sh	gnu-flag	1
 scripts/ci/fork-drift-issue.sh	mktemp	1
 scripts/ci/jira-cli-smoke.sh	errexit	1
 scripts/ci/orphan-census.sh	mktemp	1
-scripts/ci/run-shell-tests-fixture.sh	prim-tmpdir	2
 scripts/ci/run-shell-tests.sh	mktemp	3
-scripts/ci/run-shell-tests.sh	prim-atomic	1
-scripts/ci/run-shell-tests.sh	prim-lock	3
-scripts/ci/run-shell-tests.sh	prim-tmpdir	1
 scripts/ci/run-unchecked-mktemp-under-bwk.sh	errexit	1
 scripts/ci/test-check-hooks-on-pr-range.sh	errexit	4
 scripts/ci/test-check-host-file-read-sinks.sh	mktemp	1
@@ -670,7 +666,6 @@ scripts/lib/unwire-luna-vault.sh	errexit	1
 scripts/lib/unwire-pretooluse-hooks.sh	errexit	1
 scripts/lib/unwire-statusline.sh	errexit	1
 scripts/lib/unwire-user-claude-md.sh	errexit	1
-scripts/lib/usage-lift.sh	prim-atomic	1
 scripts/lib/watch-loop.sh	kill-after	1
 scripts/lib/wire-handover-dir.sh	errexit	1
 scripts/lib/wire-himmel-repo.sh	errexit	1
