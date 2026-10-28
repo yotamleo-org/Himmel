@@ -58,10 +58,10 @@ docs/evals/review-panel.md	| | gpt-6-sol (09-23 → 09-29) | gpt-6.1-sol (09-29 
 docs/evals/review-panel.md	by 12 points, with intervals that do not overlap. gpt-6-sol also called one
 docs/getting-started.md	install profile lands, the Windows caveat, and the adaptation checklist for a
 docs/glossary.md	| **`HIMMEL_WORKER`** | The dispatched-lane security marker (hook integrity, the GLM write fence, the claudex spawner). A worker does not carry it, so a worker name must never start with `HIMMEL_WORKER_` unless `SESSION_` follows. |
-docs/glossary.md	| Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | — | — |
-docs/glossary.md	| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash, PowerShell) | — | — | — |
-docs/glossary.md	| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash, PowerShell) | — | — | — |
-docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash, PowerShell; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
+docs/glossary.md	| Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, Read, Grep) | — | — | — |
+docs/glossary.md	| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
+docs/glossary.md	| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
+docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
 docs/glossary.md	| Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 docs/guide/installer-journey.html	<span class="d">  [ ] 2. add the vault's absolute path as a line in ~/.config/claude-glm/phi-roots</span>
 docs/guide/installer-journey.html	<span class="d">  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist</span>
@@ -129,17 +129,13 @@ docs/internals/egress-matrix.md	(`scripts/telegram/phi-egress-guard.ts` — rena
 docs/internals/egress-matrix.md	MSYS-form paths (`/c/…` → `c:/…`) for its **lexical** root comparisons (the
 docs/internals/egress-matrix.md	filesystem marker walks use the original path form) so Windows Git-Bash
 docs/internals/egress-matrix.md	candidates and the Bash tool's always-MSYS `$PWD` match the drive-lettered
-docs/internals/egress-matrix.md	script makes itself (cron/schtasks). Non-hook callers — currently
 docs/internals/egress-matrix.md	| `phi-egress-guard.ts` (renamed from `glm-guard.ts`) | same `salus`/denylist row |
 docs/internals/egress-matrix.md	  an unreadable claude-glm config dir, a base URL carrying credentials, and a
 docs/internals/egress-matrix.md	  Windows launchers are out of scope (Windows is dropped).
-docs/internals/enforcement.md	   It appears to work on Windows only because CRLF normalization leaves
 docs/internals/enforcement.md	leftover Codex copy, which was costing a `pwsh`→`cmd`→`bash` spawn on every
 docs/internals/enforcement.md	`block-glm-external-writes.sh` (HIMMEL-654),
 docs/internals/enforcement.md	OPEN (see its own section below); `block-glm-external-writes.sh` fails CLOSED on a detected
 docs/internals/enforcement.md	GLM lane (a missing `jq` blocks rather than allows — see its own section
-docs/internals/enforcement.md	| **synchronous external call** | `60` | the hook itself blocks on `gh`, `schtasks`, or ≥2 `py_armor` calls (each capped at `PY_ARMOR_TIMEOUT`, default 10 s) |
-docs/internals/enforcement.md	`auto-arm-on-subagent-cap.sh` (`py_armor` + `arm-resume.sh` → `schtasks`),
 docs/internals/enforcement.md	**What drops is the node launches, not the Git Bash ones** — the members stay one
 docs/internals/enforcement.md	shell each by design (no extra wrapper shell), so the per-Git-Bash pool cost is
 docs/internals/enforcement.md	- **Matchers are disjoint** — `Bash`, `PowerShell`, `Read|Grep`, the Edit/Write
@@ -152,7 +148,6 @@ docs/internals/enforcement.md	  spelling falls through, as does a drive-letter p
 docs/internals/enforcement.md	- **Windows Git Bash drive-letter paths (HIMMEL-3192).** The three
 docs/internals/enforcement.md	  Linux-only tested — the cases simulate the spelling; Git Bash itself was not run.
 docs/internals/enforcement.md	  literal name. So Windows Git Bash always gets a prompt.
-docs/internals/enforcement.md	Bash on Windows includes it) or `python3` (macOS default — uses
 docs/internals/enforcement.md	Bash/PowerShell payload whose command is missing or not a string.
 docs/internals/enforcement.md	Fires on Edit/Write/MultiEdit/NotebookEdit, plus a textual Bash/PowerShell
 docs/internals/enforcement.md	**The Bash/PowerShell arm is textual and blunt (HIMMEL-1525, HIMMEL-3468,
@@ -168,7 +163,6 @@ docs/internals/enforcement.md	spelling (HIMMEL-1821: `schtasks` mutating verbs, 
 docs/internals/enforcement.md	`Schedule.Service` COM object, while the read-only diagnostics `schtasks
 docs/internals/enforcement.md	`pskill`/`kill -9`), system shutdown/reboot/logoff, Windows registry
 docs/internals/enforcement.md	(`sudo`, `env`, `cmd /c`, `powershell`/`pwsh -c`) and an executable-path
-docs/internals/enforcement.md	first — the Windows lane delivers the same file as `scripts\hooks\x.sh` — and
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Every worktree of a checkout shares ONE `refs/stash`,
 docs/internals/enforcement.md	CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded (ponytail in
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Refuses a tool call that registers an OS scheduler
@@ -201,19 +195,15 @@ docs/internals/enforcement.md	> arm (settings-chain entries are `Bash`/`PowerShe
 docs/internals/enforcement.md	  The hang armor (the Windows Store python stub was observed wedging
 docs/internals/enforcement.md	rather than an unbounded call. The GNU part is load-bearing on Windows:
 docs/internals/enforcement.md	`command -v timeout` also matches `C:\Windows\System32\timeout.exe`, which is a
-docs/internals/enforcement.md	on expiry (`taskkill /T` on Windows, a process-GROUP signal on POSIX); a reap
-docs/internals/enforcement.md	   Windows/Git-Bash set (`SystemRoot`, `ComSpec`,
-docs/internals/enforcement.md	   `PATHEXT`, `MSYSTEM`, `APPDATA`/`LOCALAPPDATA`, the `ProgramFiles` roots …),
-docs/internals/enforcement.md	   `FNM_*`, `VOLTA_HOME`, `ASDF_*`). Enumerated empirically on Windows Git-Bash
+docs/internals/enforcement.md	first — so a Windows-style spelling such as `scripts\hooks\x.sh` is still caught — and
+docs/internals/enforcement.md	   locale set, `TZ`, the `XDG_*` base dirs), `BUN_INSTALL`, the `MSYS*` names and
+docs/internals/enforcement.md	   list still carries the Windows set (`SYSTEMROOT`, `WINDIR`, `COMSPEC`,
+docs/internals/enforcement.md	   enumerated empirically on Windows Git-Bash — every interpreter and every
 docs/internals/enforcement.md	the gate-off path previously cost ~1.7s of process spawns on Windows Git Bash.
 docs/internals/enforcement.md	cross-platform-sensitive path (`*.sh`, `*.bash`, `*.zsh`, PowerShell files,
 docs/internals/enforcement.md	`pwsh`. Empty (`Platforms tested:`) and unrecognised
-docs/internals/enforcement.md	gate forces the operator to think about Linux/macOS-vs-Windows before
 docs/internals/enforcement.md	**Bash-only.** There is no PowerShell execution path for
-docs/internals/enforcement.md	POSIX plugin teardown verifies outcomes (HIMMEL-2796/2804/2800): removal tries plugin scopes plus the install-profile scope and re-lists marketplaces; a listed marketplace is repaired only after a scoped uninstall fails and is never transiently cleaned up; marketplaces-only previews subtract only exact plugin/scope/project handoff rows (legacy marketplace-only rows remain usable for scope replay, not subtraction). PowerShell parity is tracked separately by HIMMEL-2783.
 docs/internals/enforcement.md	(`'VAR': 1`, `VAR: '1'`) and PowerShell `$env:VAR = 1`, and only exactly `1` (not
-docs/internals/enforcement.md	`schtasks /run /tn HimmelTelegramBridge` — the already-registered logon task
-docs/internals/enforcement.md	reboot). Non-Windows refuses rung 2 with rc **20** rather than pretending.
 docs/internals/enforcement.md	`block-glm-external-writes.sh`.** Re-pinning off `origin/<default>` makes
 docs/internals/enforcement.md	definition of "legitimately committed hook content." `block-glm-external-
 docs/internals/enforcement.md	| A `Bash`/`PowerShell` command matching either (i) a keyword/substring hit — `refs/remotes/`, `remotes/origin/`, `symbolic-ref`, `remote set-head`, `remote set-url`, `remote add`, `remote remove`, `remote rm`, `remote rename`, `update-ref`, `insteadOf`, `remote.origin.url` — anywhere in the (lowercased) command text, or (ii) a command-position `git [global-flags] (fetch\|push\|pull)` shape carrying an explicit refspec whose **destination** writes remote-tracking space — `refs/remotes/…`, or an `<a>/<b>` shorthand whose `<a>` is a real remote/tracking namespace in this repo — regardless of which remote is named, and including via `git -C <dir>` | Any `worker_lane` session — GLM (`ANTHROPIC_BASE_URL` = api.z.ai) **or** a native dispatched worker (`HIMMEL_WORKER=1`); a headed operator session never reaches `worker_lane` and is unaffected | Deny, rc=2 | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` set in the **launching** shell (same bypass var as the HIMMEL-2085 pin-dir class — one escape hatch covers both hook-integrity fences; since HIMMEL-3396 it is honoured only inside a linked worktree of the session's recorded repo and audited, so the primary checkout keeps both fences on) |
@@ -228,7 +218,6 @@ docs/internals/harness-compat.md	> target bash (still bash 3.2-safe, for macOS).
 docs/internals/harness-compat.md	| `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
 docs/internals/harness-compat.md	`codex-exec` exits 2 where `pwsh` or `jq` is missing (it is skipped), 1 otherwise.
 docs/internals/harness-compat.md	stubbed `claude`/`codex`/`pwsh` — it never spends a token.
-docs/internals/harness-compat.md	### 1. Hooks — Claude-compatible; Windows wiring + block-decision fixed
 docs/internals/harness-compat.md	- **execution:** Codex source falls back to `cmd.exe /C` (Windows) / `$SHELL -lc`
 docs/internals/harness-compat.md	  (Unix) when no shell is configured, but **live on Windows (0.149.0, 2026-08-21)
 docs/internals/harness-compat.md	  every hook ran as `pwsh.exe -NoProfile -Command "<command>"`** — see the
@@ -236,13 +225,7 @@ docs/internals/harness-compat.md	  Windows-runner subsection below for the two t
 docs/internals/harness-compat.md	  carry `commandWindows` (alias `command_windows`) as a per-platform override.
 docs/internals/harness-compat.md	which fails on Windows under Codex because (1) `$CLAUDE_PROJECT_DIR` is **unset**
 docs/internals/harness-compat.md	`cmd.exe` hits the **WSL `System32\bash.exe` stub trap** (can't read `C:/`, exit
-docs/internals/harness-compat.md	Unix and `commandWindows` through `.codex/run-hook.cmd --sandbox` on Windows.
-docs/internals/harness-compat.md	Both derive + export `CLAUDE_PROJECT_DIR` from their own location; the Windows
-docs/internals/harness-compat.md	wrapper finds Git Bash explicitly (skipping the System32 stub). The wrapper
-docs/internals/harness-compat.md	exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart**, explicit sandbox/no-sandbox mode parsing, and Windows
-docs/internals/harness-compat.md	Git-Bash-startup fail-closed handling
 docs/internals/harness-compat.md	**Setup options / live-verification caveats (codex-cli 0.141.0, Windows):**
-docs/internals/harness-compat.md	- **No-sandbox mode is diagnostic-only.** The Windows wrapper accepts
 docs/internals/harness-compat.md	former WSL twin wrote them, `outcome` ∈ `complete|timeout|error`; and the
 docs/internals/harness-compat.md	**1.6 s** end to end on this Windows box through `run-hook.sh` + the adapter
 docs/internals/harness-compat.md	`msys*/cygwin*/Windows_NT`, so
@@ -256,12 +239,10 @@ docs/internals/harness-compat.md	   after). With WSL wedged on the box (`wsl -l 
 docs/internals/harness-compat.md	   events). Codex kills the `pwsh` tree on timeout, but immediately spawns the
 docs/internals/harness-compat.md	2. **A command that STARTS with a quoted path is a pwsh string expression.**
 docs/internals/harness-compat.md	   leading `& ` (`& "C:\…\bash.exe" "…"`), or Codex's `commandWindows` field.
-docs/internals/harness-compat.md	himmel's own `.codex/hooks.json` entries are immune to both — `commandWindows`
-docs/internals/harness-compat.md	selects an unquoted relative `.cmd` that pins Git Bash internally. **A/B replay
 docs/internals/harness-compat.md	**Tooling (this ticket):** a Windows-only probe (removed with Windows)
 docs/internals/harness-compat.md	**Empirical event / tool-name matrix (codex-cli 0.149.0, Windows, `codex exec`
 docs/internals/harness-compat.md	command text is **PowerShell** (`Get-Content`, `Remove-Item`, …), so reader/
-docs/internals/harness-compat.md	`Bash|PowerShell` are harmless but the `PowerShell` half never matches.
+docs/internals/harness-compat.md	is itself a Codex compat alias (Claude-engine), which is why the `PowerShell`
 docs/internals/harness-compat.md	runs hooks through Git Bash (`bash -c`) with `CLAUDE_PROJECT_DIR`/`CLAUDE_PLUGIN_ROOT`
 docs/internals/harness-compat.md	himmel-ops / codex / qmd) on this Windows box: 51 replayed, **every one ≤1.0s**,
 docs/internals/harness-compat.md	| `end-session-wiki.sh` | NA by choice | self-guards off on Windows and its config path is Claude-scoped (see the Codex caveats above) |
@@ -270,8 +251,6 @@ docs/internals/harness-compat.md	  itself, which a bare `bash` spawned by hermes
 docs/internals/harness-compat.md	  `System32\bash.exe` WSL-stub trap).
 docs/internals/harness-compat.md	superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
 docs/internals/harness-compat.md	`commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
-docs/internals/harness-compat.md	and the first, second and fourth also in the `PowerShell` chain, in the Claude
-docs/internals/harness-compat.md	`PowerShell` matcher. Declared gap: `block-edit-live-settings`' Edit/Write arm
 docs/internals/harness-compat.md	  a pwsh→cmd→bash chain for a guaranteed `exit 0`. Now removed, and
 docs/internals/harness-compat.md	  `bash -c "exit 0"` startup smoke test before the adapter — pwsh → cmd →
 docs/internals/harness-compat.md	  Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
@@ -279,8 +258,6 @@ docs/internals/harness-compat.md	  into the Windows twin meant it never fired on
 docs/internals/harness-compat.md	`pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
 docs/internals/harness-compat.md	diagnostic batches peaked at 119–120 Git Bash processes). A `run-hook.cmd`
 docs/internals/harness-compat.md	| PowerShell | 7 / ~21 | 2 / ~9 | 6-chain + `.*` auto-arm |
-docs/internals/harness-compat.md	  the Windows hook-runner test; `test-codex-hook-parity.sh` refuses a comma outright.
-docs/internals/harness-compat.md	- **Matchers had to become disjoint** for this to pay off: `Bash`, `PowerShell`,
 docs/internals/harness-compat.md	over-declaration is both noise AND a hook killed mid-flight: on Windows the
 docs/internals/known-findings.md	   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository, or with no repository, are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
 docs/internals/known-findings.md	  shell/PowerShell twin drift (5). Those became the `fix` / `checklist` detectors; the
@@ -306,7 +283,6 @@ docs/internals/lane-calibration.md	Opus 5 at `high` on coding and knowledge work
 docs/internals/lane-calibration.md	fleet, and carrying `xhigh` over from Opus 4.8/5 would buy longer, costlier
 docs/internals/lane-calibration.md	> OpenAI/Tibo says GPT-6 Astra on **low** performs better than GPT-5.6 Sol on
 docs/internals/lane-calibration.md	   `gpt-6.1-sol` (`gpt-6-sol` before it) — at
-docs/internals/lane-calibration.md	  `block-terminal-write-fence.sh` on Bash/PowerShell: `git push`, remote-URL
 docs/internals/lane-calibration.md	| `claude-opus-5[1m]` | `claude-opus-5[1m]` | `Opus 5 (1M context)` | yes |
 docs/internals/lane-calibration.md	| `opus[1m]` (alias) | `claude-opus-5[1m]` | `Opus 5 (1M context)` | yes |
 docs/internals/lane-calibration.md	| `claude-opus-4-8[1m]` | `claude-opus-4-8[1m]` | `Opus 4.8 (1M context)` | yes |
@@ -337,8 +313,6 @@ docs/internals/script-runtime-practices.md	| Here-strings / growing content in M
 docs/internals/script-runtime-practices.md	## 2. What it costs — MSYS spawn economics
 docs/internals/script-runtime-practices.md	> Historical: measured on the Windows MSYS host, which is no longer supported.
 docs/internals/stuck-playbook.md	never-delivering stdin pipe (the arm-resume/schtasks shape). The silent no-op —
-docs/internals/testing.md	smoke/PowerShell replay paths before treating those as station-safe. The three
-docs/internals/testing.md	confinement fails the run instead of green-skipping coverage. Windows retains a
 docs/internals/testing.md	`ubuntu-latest` (the required, gating worker on every push/PR). Windows is
 docs/internals/testing.md	nightly and no manual dispatch of `ci.yml` runs a Windows or macOS shard. Running the
 docs/internals/testing.md	macOS is verified by the cadence above (Windows is dropped); nothing else

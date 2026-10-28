@@ -285,9 +285,8 @@ break CI; it quietly removes the check.
 
    The orphan is load-bearing, not stylistic. `git read-tree --empty &&
    git add -A` looks equivalent and is not — re-adding against the *real* HEAD
-   rebuilds an index identical to it, leaving `git diff --cached` empty again.
-   It appears to work on Windows only because CRLF normalization leaves
-   incidental differences; on the ubuntu runner it stages exactly nothing.
+   rebuilds an index identical to it, leaving `git diff --cached` empty again:
+   on the ubuntu runner it stages exactly nothing.
 
    Because the orphan leaves HEAD unborn, **nothing after that step may clone
    the checkout** — cloning an unborn HEAD yields an empty worktree. That is
@@ -671,7 +670,7 @@ normal suite load is worse than 600 s):
 | Tier | Timeout | Membership |
 |---|---|---|
 | **fast guard / injector** | `15` | nothing slow runs *inside the hook's own runtime*: string analysis, a registry read, at most one `py_armor` call — **or** an outbound call that is `detach_run`-ed and therefore outside the bound |
-| **synchronous external call** | `60` | the hook itself blocks on `gh`, `schtasks`, or ≥2 `py_armor` calls (each capped at `PY_ARMOR_TIMEOUT`, default 10 s) |
+| **synchronous external call** | `60` | the hook itself blocks on `gh`, `at`/`crontab`, or ≥2 `py_armor` calls (each capped at `PY_ARMOR_TIMEOUT`, default 10 s) |
 
 Both tiers size a **single** hook. A `--chain` entry (HIMMEL-2002) is bounded as
 a unit, so it takes `60` once it has several members regardless of their tier —
@@ -685,7 +684,7 @@ returns — measured 176–234 ms — so they belong in the fast tier; bounding 
 at 60 s would protect nothing.
 
 60 s members: `block-edit-on-main.sh` (2 `py_armor` calls), `auto-arm-on-cap.sh` /
-`auto-arm-on-subagent-cap.sh` (`py_armor` + `arm-resume.sh` → `schtasks`),
+`auto-arm-on-subagent-cap.sh` (`py_armor` + `arm-resume.sh` → `at`/`crontab`),
 `trigger-cr-on-pr-create.sh` / `trigger-cr-on-push.sh` (`gh api --paginate` +
 `gh pr comment`), `block-merged-pr-commit.sh` / `block-unresolved-cr-merge.sh`
 (gh-backed `branch-shipped.sh` / `review-merge-gate.sh` / `ci-green-gate.sh`).
@@ -1492,8 +1491,7 @@ protected by default); the hook then allows edits in that repo (both cases) and
 skips the block entirely. Anchored to the edited file's repo (`repo_real`), so
 a marker in a parent repo cannot leak the opt-out onto a nested repo.
 
-Dependencies: `jq` plus either GNU `realpath -m` (Linux native; Git
-Bash on Windows includes it) or `python3` (macOS default — uses
+Dependencies: `jq` plus either GNU `realpath -m` (Linux native) or `python3` (macOS default — uses
 `pathlib.Path.resolve(strict=False)` for cross-platform canonicalisation).
 macOS operators who want unprefixed `realpath`:
 `brew install coreutils && export PATH="$(brew --prefix coreutils)/libexec/gnubin:$PATH"`
@@ -2315,7 +2313,7 @@ only write-time can.
 Scope is deliberately narrow — at or below `scripts/hooks/`, ending in `.sh`
 (the `case` glob matches a nested subdirectory too, not just a direct child) —
 so it stays cheap enough to run on every write. The path test folds `\` to `/`
-first — the Windows lane delivers the same file as `scripts\hooks\x.sh` — and
+first — so a Windows-style spelling such as `scripts\hooks\x.sh` is still caught — and
 stats the raw path first, falling back to the folded one, so a filename that
 legitimately contains a backslash is never rewritten.
 
@@ -4732,10 +4730,7 @@ fixed latency and created the opposite problem — the detached work was
 trees (bun, git, curl, node), and HIMMEL-1993 measured this box's kernel pool
 leaking in proportion to exactly that file-handle churn. Nothing throttled them,
 nothing deduped a repeated session, and a session that died mid-flight lost its
-work silently. That pool growth is now watched rather than rediscovered by hand:
-HIMMEL-1604 added four `Himmel{KernelPool*,CommitPressure}` alert rules over the
-already-scraped `windows_memory_pool_*` / commit metrics
-(`scripts/observability/README.md#kernel-pool--commit-pressure-himmel-1604`).
+work silently.
 
 `scripts/hooks/stop-queue.mjs` replaces the fan-out with a durable directory
 plus ONE worker. Stdlib-only node; no new dependency runs on every session end.
@@ -4799,7 +4794,7 @@ child (HIMMEL-2028). The jobs here are trees — `node run-hook-with-bash.js` �
 descendants running outside the concurrency bound and overlapping the job's own
 retry, which is precisely the fan-out the queue exists to remove. The worker
 holds each job's pid while it runs and hands it to `scripts/lib/kill-tree.mjs`
-on expiry (`taskkill /T` on Windows, a process-GROUP signal on POSIX); a reap
+on expiry (a process-GROUP signal); a reap
 that fails says so in the `timeout` log row's `reap_failed` field.
 
 **What goes through it.** The two `.claude/settings.json` end-side hooks are
@@ -4829,13 +4824,15 @@ this box carries names it does not match (`GGS_MQTT_PASS` is neither `PASSWORD`
 nor `PASSWD`). A job's environment is now built in three layers:
 
 1. **Allowlist base** — named system/interpreter variables and nothing else: the
-   Windows/Git-Bash set (`SystemRoot`, `ComSpec`,
-   `PATHEXT`, `MSYSTEM`, `APPDATA`/`LOCALAPPDATA`, the `ProgramFiles` roots …),
-   the POSIX set (`SHELL`, `TERM`, `LANG`, the `LC_*` locale set, `TZ`, the
-   `XDG_*` base dirs, `USER`) and the version-manager namespaces (`NVM_*`,
-   `FNM_*`, `VOLTA_HOME`, `ASDF_*`). Enumerated empirically on Windows Git-Bash
-   — every interpreter and every queued end-side hook re-run under a narrowed
-   `env -i` — with the cross-platform names justified in the list itself. Every
+   POSIX set (`SHELL`, `TERM`, `LOGNAME`, `USER`, `HOSTNAME`, `LANG`, the `LC_*`
+   locale set, `TZ`, the `XDG_*` base dirs), `BUN_INSTALL`, the `MSYS*` names and
+   the version-manager namespaces (`NVM_*`, `FNM_*`, `VOLTA_HOME`, `ASDF_*`). The
+   list still carries the Windows set (`SYSTEMROOT`, `WINDIR`, `COMSPEC`,
+   `PATHEXT`, `APPDATA`, the `PROGRAMFILES` roots …), left over from the dropped
+   platform; removing it is a code change, not a docs one. The list was
+   enumerated empirically on Windows Git-Bash — every interpreter and every
+   queued end-side hook re-run under a narrowed `env -i` — with the
+   cross-platform names justified in the list itself. Every
    name is spelled out: there are **no prefix wildcards**, because a prefix
    inside an allowlist is a denylist by another name (`^XDG_` would also admit
    `XDG_MQTT_PASS`). The list is `ENV_SYSTEM` in `scripts/hooks/stop-queue.mjs`.
@@ -5213,7 +5210,7 @@ The line must name at least one recognised token (case-insensitive):
 (`Platforms tested: yes`) values do NOT satisfy the gate.
 
 Self-attestation only — the hook does not verify the claim, but the
-gate forces the operator to think about Linux/macOS-vs-Windows before
+gate forces the operator to think about Linux-vs-macOS before
 push, which is where bugs like missing `shell:true`, `$Args` collision,
 BOM mojibake, and `python` vs `python3` keep slipping through CR.
 Bypass: `PLATFORMS_TESTED_OK=1 git push ...` or include
@@ -5448,7 +5445,7 @@ Run after any edit to `lib.sh` or `guard-gh.sh` before pushing.
 
 ## `scripts/uninstall.sh` — wet-run REAL_HOME fence (HIMMEL-2505)
 
-POSIX plugin teardown verifies outcomes (HIMMEL-2796/2804/2800): removal tries plugin scopes plus the install-profile scope and re-lists marketplaces; a listed marketplace is repaired only after a scoped uninstall fails and is never transiently cleaned up; marketplaces-only previews subtract only exact plugin/scope/project handoff rows (legacy marketplace-only rows remain usable for scope replay, not subtraction). PowerShell parity is tracked separately by HIMMEL-2783.
+POSIX plugin teardown verifies outcomes (HIMMEL-2796/2804/2800): removal tries plugin scopes plus the install-profile scope and re-lists marketplaces; a listed marketplace is repaired only after a scoped uninstall fails and is never transiently cleaned up; marketplaces-only previews subtract only exact plugin/scope/project handoff rows (legacy marketplace-only rows remain usable for scope replay, not subtraction).
 
 Consent regression coverage (HIMMEL-2755, HIMMEL-2807): non-interactive uninstall without `--yes` refuses with rc=2; run `scripts/himmelctl/test/test-uninstall-confirm.sh`, `scripts/himmelctl/test/test-wizard-uninstall.sh`, `scripts/himmelctl/test/test-wizard-uninstall-converge.sh`, and `scripts/test-e2e-symmetry.sh` (real `--yes` settings roundtrip) when changing that contract.
 
@@ -5596,15 +5593,10 @@ the sender is already pinned to the global operator; the supervisor's
 `POLLER_MAX_FAILS` breaker is the backstop.
 
 Unlike the other two ops it has NO script — it is executed in-process by
-`poller.ts` (`makeRestart`), because rung 1 must exit the caller and rung 2's
-relaunch must outlive the processes it kills. `dispatchAutoAction` refuses it
+`poller.ts` (`makeRestart`), because rung 1 must exit the caller. `dispatchAutoAction` refuses it
 (`SELF_EXECUTED_OPS`) so it can never be laundered into an `auto-action.sh` call.
-Rung 1 exits 0 and lets `supervisor.ts` respawn; rung 2 shells
-`schtasks /run /tn HimmelTelegramBridge` — the already-registered logon task
-(the logon task), fired by the scheduler SERVICE so it is detached from
-the poller it is about to kill, and so it reads the CURRENT User environment (the
-only mechanism that picks up a `SetEnvironmentVariable(…, 'User')` without a
-reboot). Non-Windows refuses rung 2 with rc **20** rather than pretending.
+Rung 1 exits 0 and lets `supervisor.ts` respawn; rung 2 has no executor on any
+platform: it answers rc **20** and the operator restarts the bridge by hand.
 
 The ack is APPENDED to `outbox.jsonl` before firing and is drained by the
 *respawned* poller on its next tick — this process never flushes it, because

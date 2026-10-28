@@ -75,11 +75,9 @@ The canary's execution control is only a harmless touch in a throwaway tmp dir.
 The CI architecture lint enforces `guard-corpus/diff` and the destructive-command
 hook suite. Other fixture/replay owners currently warn, not certify: migrate the
 hook latency and stack benchmarks, sanctioned script registry fixture suite, and Codex
-smoke/PowerShell replay paths before treating those as station-safe. The three
+smoke paths before treating those as station-safe. The three
 sandbox/replay/classification suites select `sandbox-exec` on macOS and missing
-confinement fails the run instead of green-skipping coverage. Windows retains a
-loud capability skip while its confinement backend is parked; it never runs
-these payloads unsandboxed. Linux resource bounds are per process, not aggregate cgroup
+confinement fails the run instead of green-skipping coverage. Linux resource bounds are per process, not aggregate cgroup
 limits; do not use this classification runner for stress or destructive exec.
 The inode scans are preflight observations, not atomic filesystem snapshots.
 Concurrent changes to mounted runtime or fixture trees are outside this runner's

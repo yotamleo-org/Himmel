@@ -433,7 +433,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | No edits in the primary checkout | `block-edit-on-main`, `block-write-into-main-checkout`; Post `detect-dirty-primary` (reports) | `record-primary-baseline` (records) | `block-edit-on-main`, `block-terminal-write-fence`, `record-primary-baseline`, Post `detect-dirty-primary` | pc `check-worktree-isolation`; rt `check-main-ref-transaction` | — | — |
 | No direct push to `main` | none (`permissions.allow` lists bare `git push`) | — | `block-terminal-write-fence` (every push needs `CODEX_EXTERNAL_WRITES_OK=1`) | pp `check-push-target` | — | `merge-on-green.sh` is the merge path |
 | No force push | `block-destructive-commands`; `permissions.deny` (`git push --force`, `-f`, `--mirror`) | — | `block-destructive-commands`, `block-terminal-write-fence` | pp `check-no-force-push`; sw `check-single-writer-push-floor` (`.single-writer` repos) | — | — |
-| Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | — | — |
+| Secrets never read | `block-read-secrets` (Bash, PowerShell, Read, Grep) | — | `block-read-secrets` (Bash, Read, Grep) | — | — | — |
 | Secrets never committed | — | — | — | pc `gitleaks`, `leak-classes`, `git-env-scrub` | `secret-scan` (`check-no-secrets.sh`), `security-scan` (gitleaks), `leak-classes`, `git-env-scrub` | — |
 | Ticket ID on every commit and PR | — | — | — | cm `check-commit-msg` | `commit-lint` (`check-commit-range.sh`), `pr-title-lint` (`scripts/lib/check-pr-title.sh`) | ready-check item 6 |
 | CR before the PR opens | Pre `check-cr-marker-on-pr-create` | — | `check-cr-marker-on-pr-create` | pp `check-cr-before-push` (writes the marker) | — | `clear-cr-marker.sh`, ready-check item 4 |
@@ -441,10 +441,10 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Merge only on green CI and a GO | — | `block-unresolved-cr-merge` (gates 2–3) | `block-terminal-write-fence` (`gh pr merge` needs an opt-in) | pp `check-pr-mergeable` (conflicts only) | — | `go.sh`, `merge-on-green.sh` (exit 17 without the GO file) |
 | Trust-path PRs need a trust-reviewed GO | — | `block-unresolved-cr-merge` (gate 4, every session) | — | — | — | `go.sh --trust-reviewed`, `merge-on-green.sh` (both read `ci-trust-paths.txt`) |
 | Attestation trailers in the first commit | — | — | — | pp `check-platforms-tested`, `check-security-reviewed`; cm `check-commit-msg` (warns only) | `commit-lint` (first commit, PR events only, through `check-hooks-on-pr-range.sh`) | ready-check item 5 |
-| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash, PowerShell) | — | — | — |
+| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
 | Destructive commands denied | `block-destructive-commands` | `block-docker-privesc` | `block-destructive-commands`, `block-docker-privesc` | — | — | — |
-| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash, PowerShell) | — | — | — |
-| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash, PowerShell; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
+| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
+| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
 | Bank lift not writable | `block-bank-lift-writes` (Bash, Edit) | — | `block-bank-lift-writes` (Bash, Edit) | — | — | — |
 | `~/.himmel/config.json` opt-ins not writable | `block-himmel-config-writes` | — | `block-himmel-config-writes` | — | — | — |
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
