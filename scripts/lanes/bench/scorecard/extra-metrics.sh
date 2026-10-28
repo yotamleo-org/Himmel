@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/extra-metrics.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq and gh,
-# both available under git bash unchanged; the transcripts it reads are the
-# same JSONL on every platform.
+# Platform guard: POSIX bash 3.2+ plus jq and gh; the transcripts it reads
+# are the same JSONL on every platform.
 #
 # Adapted from the baseline Appendix B (extra-metrics.sh, worker
 # N207, 2026-09-12):

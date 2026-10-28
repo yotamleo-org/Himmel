@@ -24,7 +24,7 @@
 #                 vacuously.
 #   7. TRAIL   — docs/adoption-trail.html and its level data file
 #                 (site/src/trail/levels.json) carry no claim for a dropped
-#                 platform or plugin (.ps1, WSL, Git Bash, Windows, GLM,
+#                 platform or plugin (Windows shell tooling, GLM,
 #                 superpowers, "the eight"); a fixture with one fails.
 #   8. NOJS     — with every <script> removed, each guide still carries the
 #                 text its script would render (installer-journey: step labels
@@ -36,8 +36,7 @@
 #                 task: each one's first H2 is the pinned user heading, not a
 #                 phase list; a fixture opening on the phase list fails.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq/python3, so
-# it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): POSIX bash 3.2+ plus grep/sed/jq/python3.
 #
 # Usage: bash scripts/docs/test-site-guides.sh [page.html ...]
 #        (no argument = every docs/guide/*.html page)

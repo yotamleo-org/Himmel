@@ -14,8 +14,7 @@
 # A window whose --since is on/after the cutover is unchanged: the plain
 # public count for [since, until), no exclusion, no bundle read.
 #
-# Platform guard: no .ps1 twin, by design, same as the rest of this
-# directory — POSIX bash 3.2+ plus jq and gh.
+# Platform guard: POSIX bash 3.2+ plus jq and gh.
 #
 # Usage: merged-count.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--bundle <path>]
 set -u

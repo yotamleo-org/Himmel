@@ -19,8 +19,7 @@
 #                 keyed on a guardrail-page message fails case 3, so no check
 #                 can pass vacuously.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus git and grep/sed, so it
-# runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): POSIX bash 3.2+ plus git and grep/sed.
 #
 # Usage: bash scripts/docs/test-troubleshooting-page.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).

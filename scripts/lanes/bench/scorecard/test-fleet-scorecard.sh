@@ -3,8 +3,7 @@
 # fleet-scorecard.sh over fixtures/fleet-scorecard/ (2 claudex workers, 2 native
 # workers). House check style, per test-scorecard.sh.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ and python3; it
-# runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ and python3.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

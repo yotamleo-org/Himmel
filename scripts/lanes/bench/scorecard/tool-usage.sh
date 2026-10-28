@@ -2,9 +2,8 @@
 # scripts/lanes/bench/scorecard/tool-usage.sh - tool/skill usage, error rates
 # and guardrail friction over a transcript window.
 #
-# Platform guard: no .ps1 twin, by design, same as every sibling in this dir.
-# POSIX bash 3.2+ plus jq and node; the transcripts and skill/command trees it
-# reads are the same on every platform.
+# Platform guard: POSIX bash 3.2+ plus jq and node; the transcripts and
+# skill/command trees it reads are the same on every platform.
 #
 # Usage: tool-usage.sh --since <ISO8601> [--until <ISO8601>]
 #            [--memory-traps <path>] [--skill-cwd <path>] [--skill-config-dir <path>]

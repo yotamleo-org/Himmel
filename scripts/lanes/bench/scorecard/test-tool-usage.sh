@@ -3,7 +3,7 @@
 # tool-usage.sh. House check_contains/PASS-FAIL style, per
 # test-extra-metrics.sh in this same directory.
 #
-# Platform guard: no .ps1 twin, by design, same as every sibling in this dir.
+# Platform guard: POSIX bash 3.2+.
 # Hermetic: every case points SCORECARD_PROJECTS_DIR / SCORECARD_MEMORY_DIR /
 # --memory-traps / --skill-cwd / --skill-config-dir at fixtures under
 # fixtures/tool-usage/ - never at the live ~/.claude/projects tree or the
