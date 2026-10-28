@@ -715,7 +715,7 @@ means the cache is still the old account's; refresh again, or check the login.
 
 **4. Confirm the weekly budget override voided itself.** An override is bound to the
 account that set it, so it is no override under the new login; only the operator can
-set one (`usage-lift.sh set`, old name `bank-lift.sh`). Verify:
+set one (`usage-lift.sh set`). Verify:
 
 ```bash
 bash scripts/lib/usage-lift.sh show

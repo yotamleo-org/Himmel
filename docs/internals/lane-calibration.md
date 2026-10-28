@@ -32,7 +32,7 @@ cost. Fleet admission still applies, but native Claude and codex subscription
 usage budgets do not. The backend refuses unknown credit or key-limit readings and
 an effective balance below `OPENROUTER_MIN_CREDIT_USD` (default **3 USD**):
 the smaller of account credit and the key's `limit_remaining` is available.
-`bank-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
+`usage-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
 (or `WORKER_SESSION_LANE=openrouter`), reusing the balance helper and the same floor:
 `PROCEED` at/above the floor, `SKIPPED-BANK` below it, `BANK-UNKNOWN` when
 unmeasurable. Tick's `bank=openrouter:<verdict>` reports that lane verdict;
@@ -372,6 +372,8 @@ undelivered bullets as `additionalContext`, no operator paste required. See
 "Claudex file inbox" note for the RETASK-token equivalence this relies on, and
 `scripts/hooks/claudex-inbox-hook.sh` for the delivery hook itself.
 
+**Chief wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `chief-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the chief only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle chief costs zero turns. The one-shot `usage-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the chief tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The chief batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
+
 **`claudex` review and deferral rows:** the panel's first pass never fetches under
 `HIMMEL_SESSION_LANE=claudex`; it reviews against the local
 `refs/remotes/origin/<base>` and refuses when that ref is missing. A deferral row
@@ -383,8 +385,6 @@ keyed reader (`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`,
 `AMEND-REQUEST <pr> <head> <finding-id> deferred_to=<KEY> fu_class=<class> reason=<why out of scope>`
 (a `hardening` request also carries `fu_why=<unseen-failure|no-check|vacuous-check|no-recovery|silent-rot>`),
 and the chief or a native worker runs `ledger-append.sh amend` for it, which signs the row.
-
-**Chief wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `chief-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the chief only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle chief costs zero turns. The one-shot `bank-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the chief tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The chief batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
 
 ## The hermes `himmel_agent` default and the ox-alpha record
 
@@ -563,7 +563,7 @@ usage budget attribution table, which this change leaves untouched.
 
 ## Usage-scarcity routing rule
 
-While the **Claude weekly subscription usage budget is the scarce bucket** (`bank-preflight.sh` now
+While the **Claude weekly subscription usage budget is the scarce bucket** (`usage-preflight.sh` now
 prints both usage budgets on its one line — `five_hour=… seven_day=… codex=5h<n>/wk<n>`,
 `codex=?` when the codex figure is missing, stale or the probe fails, and never
 a refusal on that account), an **Opus parent routes implementation chunks
@@ -843,7 +843,7 @@ general handover sessions, not workers.
 The context pin above answers *how much* window one worker burns; it says
 nothing about *how many* workers run at once. 2026-09-07: 9–11
 concurrent workers exhausted a WEEK's usage bucket in under 48 hours, forcing a
-fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live
+fleet-wide halt. `scripts/lib/usage-preflight.sh` now counts live
 workers (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-chief` — chiefs are not workers) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
@@ -889,7 +889,7 @@ to gate new arms, not reads.
 `headed-arm-worker.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker arm
 through `scripts/claude-codex` — the Claude Code harness running against
 GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
-usage budget** (`bank-preflight.sh` parks a claudex worker on
+usage budget** (`usage-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
 
@@ -1067,7 +1067,7 @@ recalibrate in September against Anthropic's published pricing.
 Pricing and per-lane benchmark analysis are volatile: treat any figure here as
 needing revalidation before it drives a routing decision.
 
-`scripts/lib/bank-attribution.sh` turns a burn on the Claude
+`scripts/lib/usage-attribution.sh` turns a burn on the Claude
 subscription usage budget into a per-session Markdown table — turns, tokens, and wake
 source, read straight from `~/.claude/projects/**/*.jsonl` — instead of an
 unattributed drain. Its cost model: usage budget burn ≈ Σ over sessions of (turns ×
@@ -1132,7 +1132,7 @@ bash scripts/eval/lane-quality/run.sh table ~/.himmel/eval/lane-quality/<run-id>
 ```
 
 Every task is usage budget-preflighted before its agent call
-(`scripts/lib/bank-preflight.sh`; anything but `PROCEED` stops the sweep with
+(`scripts/lib/usage-preflight.sh`; anything but `PROCEED` stops the sweep with
 exit 75). Each agent run and judge run is pinned to
 native auth and declares its permission mode: `auto` for the agent, as workers
 run, and `dontAsk` with no tools for the judge. `--max-usd` (default 3) caps

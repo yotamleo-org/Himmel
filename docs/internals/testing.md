@@ -514,7 +514,7 @@ interactive use — these suites are **on-demand only**, run via
 `/plugin-eval <plugin> <suite>` (`.claude/commands/plugin-eval.md`), never
 wired into CI or a cadence, and never "all suites" in one invocation. The
 command preflights the usage budget (`scripts/plugin-eval-preflight.sh`, refusing when
-`bank-preflight.sh` returns `SKIPPED-BANK`) and checks the `claude` version
+`usage-preflight.sh` returns `SKIPPED-BANK`) and checks the `claude` version
 floor the subcommand needs (2.1.269) before ever shelling out.
 
 Three suites ship:

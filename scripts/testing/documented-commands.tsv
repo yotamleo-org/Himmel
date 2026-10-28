@@ -43,7 +43,7 @@ L40	docs/handover/worker-preface.md	wt	ask	-	bash @ANCHOR@/scripts/handover/queu
 L41	docs/handover/worker-preface.md	wt	ask	-	bash @WT@/scripts/handover/queue-lock.sh acquire @SCRATCH@
 L42	docs/handover/worker-preface.md	wt	ask	-	git log -1 --format=%H
 L43	docs/handover/worker-preface.md	wt	ask	-	git merge-base --is-ancestor @HEAD@ HEAD
-L44	docs/handover/worker-preface.md	wt	ask	-	bash scripts/lib/bank-preflight.sh
+L44	docs/handover/worker-preface.md	wt	ask	-	bash scripts/lib/usage-preflight.sh
 L45	docs/handover/worker-preface.md	wt	ask	-	git grep -n foo -- scripts
 L46	docs/handover/worker-preface.md	wt	ask	-	git ls-files scripts
 L47	docs/handover/worker-preface.md	wt	ask	-	bash scripts/graphify/worker-graph.sh query "how does the chain run"
@@ -70,7 +70,7 @@ L67	docs/handover/chief-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/handover
 L68	docs/handover/chief-template.md	anchor	ask	-	HANDOVER_DIR="@SB@" bash "@ANCHOR@/scripts/handover/queue-lock.sh" status --sweep "@SB@"
 L69	docs/handover/chief-template.md	anchor	ask	-	git -C "@ANCHOR@" log -1 --format=%H
 L70	docs/handover/chief-template.md	anchor	ask	-	git -C "@ANCHOR@" remote -v
-L71	docs/handover/chief-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/lib/bank-preflight.sh"
+L71	docs/handover/chief-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/lib/usage-preflight.sh"
 L72	docs/handover/chief-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/himmel-doctor.sh" | grep C29
 L73	docs/handover/chief-template.md	anchor	ask	-	HANDOVER_DIR="@SB@" bash "@ANCHOR@/scripts/handover/queue-lock.sh" status "@SCRATCH@"
 L74	docs/handover/chief-template.md	anchor	ask	-	bash "@ANCHOR@/scripts/handover/chief-kit/chief-wait.sh" "@SB@/inbox.md" --doc "@SCRATCH@" --token BD-x-1 --workers "@SCRATCH@"
