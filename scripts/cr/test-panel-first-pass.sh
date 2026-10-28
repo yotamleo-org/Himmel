@@ -79,6 +79,10 @@ if [ -n "$_rtk_bin" ]; then
     PATH="$_newpath"; export PATH
 fi
 
+# Native rows below expect a real fetch: a suite run from inside a claudex
+# session must not inherit that lane (T22-T24 set it themselves).
+unset HIMMEL_SESSION_LANE
+
 # --- fixture "scripts" tree --------------------------------------------------
 fx="$tmp/fx"
 mkdir -p "$fx/scripts/cr" "$fx/scripts/guardrails" "$fx/scripts/lib"
@@ -688,6 +692,72 @@ amb_rows="$(grep -F '"kind":"preflight"' "$ledger" | grep -F '"branch":"feature-
 if [ -n "$amb_rows" ]; then ok "T21 preflight row recorded on the git-common ledger"; else bad "T21 no preflight row on the git-common ledger"; fi
 if [ -e "$amb" ]; then bad "T21 the ambient CR_LEDGER file was written"; else ok "T21 the ambient CR_LEDGER file is untouched"; fi
 rm -rf "$repo/.git/cr-review-rounds"
+
+# T22-T24: the claudex lane cannot fetch (no network, and the sandbox cannot
+# write the shared ref store), so a first pass that always fetched aborted exit 7
+# and no fresh review round could run once the branch fell behind main. repo4
+# has an origin that no longer answers and a cached origin/main.
+up4="$tmp/upstream4.git"
+git init -q --bare "$up4"
+repo4="$tmp/repo4"
+mkdir -p "$repo4"
+(
+    fixture_enter_git_init_dir "$repo4" || exit 1
+    git -c init.defaultBranch=main init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    echo A > f.txt
+    git add f.txt
+    git commit -q -m A
+    git remote add origin "$up4"
+    git push -q origin main
+    git checkout -q -b feature
+    echo C >> f.txt
+    git commit -q -am C
+    git remote set-url origin "$tmp/no-such-remote.git"
+) || { echo "FAIL: T22 fixture setup failed" >&2; exit 1; }
+r4_cached_origin_main="$(git -C "$repo4" rev-parse refs/remotes/origin/main)"
+r4_feature="$(git -C "$repo4" rev-parse feature)"
+
+# T22: with the fetch refused, the claudex first pass completes against the
+# local origin base ref, says so, and leaves the cached ref alone.
+rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/err"
+rm -rf "$repo4/.git/cr-review-rounds"
+out="$( (cd "$repo4" && HIMMEL_SESSION_LANE=claudex FAKE_RC=0 FAKE_OUT='[codex-1] f.txt:1 finding' \
+    bash "$SCRIPT" --head "$r4_feature" --branch feature) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+if [ "$rc" -eq 0 ]; then ok "T22 claudex first pass completes without a fetch"; else bad "T22 claudex first pass exit (got $rc; err: $err)"; fi
+assert_has "$out" "captured diff base: main ($r4_cached_origin_main)" "T22 base is the local origin ref"
+assert_has "$err" "claudex lane cannot fetch" "T22 says the fetch was skipped"
+if [ -f "$CALL_LOG" ]; then ok "T22 panel ran"; else bad "T22 panel never ran"; fi
+assert_has "$(git -C "$repo4" rev-parse refs/remotes/origin/main)" "$r4_cached_origin_main" "T22 cached origin ref untouched"
+
+# T23: CONTROL. The same fixture on the native lane still insists on the fetch.
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo4/.git/cr-review-rounds"
+out="$( (cd "$repo4" && FAKE_RC=0 FAKE_OUT='MUST-NOT-REVIEW' \
+    bash "$SCRIPT" --head "$r4_feature" --branch feature) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+if [ "$rc" -eq 7 ]; then ok "T23 native lane with a dead origin aborts exit 7"; else bad "T23 native lane exit (got $rc, want 7)"; fi
+assert_has "$err" "could not fetch origin/main" "T23 names the failed fetch"
+assert_lacks "$out" "MUST-NOT-REVIEW" "T23 no findings from a run that never reviewed"
+if [ -f "$CALL_LOG" ]; then bad "T23 panel invoked past a failed fetch"; else ok "T23 panel never invoked"; fi
+
+# T24: CONTROL. A claudex lane with no local origin base ref has nothing to
+# pin: it aborts exit 7 instead of certifying a local branch.
+git -C "$repo4" update-ref -d refs/remotes/origin/main
+rm -f "$CALL_LOG" "$tmp/err"
+rm -rf "$repo4/.git/cr-review-rounds"
+out="$( (cd "$repo4" && HIMMEL_SESSION_LANE=claudex FAKE_RC=0 FAKE_OUT='MUST-NOT-REVIEW' \
+    bash "$SCRIPT" --head "$r4_feature" --branch feature) 2>"$tmp/err" )"; rc=$?
+err="$(cat "$tmp/err")"
+git -C "$repo4" update-ref refs/remotes/origin/main "$r4_cached_origin_main"
+if [ "$rc" -eq 7 ]; then ok "T24 claudex lane with no origin base ref aborts exit 7"; else bad "T24 claudex no-ref exit (got $rc, want 7)"; fi
+assert_has "$err" "no local refs/remotes/origin/main" "T24 names the missing ref"
+assert_lacks "$out" "MUST-NOT-REVIEW" "T24 no findings from a run that never reviewed"
+if [ -f "$CALL_LOG" ]; then bad "T24 panel invoked without a base ref"; else ok "T24 panel never invoked"; fi
+rm -rf "$repo4/.git/cr-review-rounds"
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*

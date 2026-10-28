@@ -693,7 +693,8 @@ export function launchUrl(base: string, token: string, o: { landing: "fleet" | "
 export function rebuildAguiIfStale(log: (m: string) => void, dist = AGUI_DIST, web = AGUI_WEB): void {
   if (existsSync(join(dist, "index.html")) && !aguiStale(dist, web)) return;
   log("himmelctl: ui: rebuilding the AG-UI page");
-  if (!existsSync(join(web, "node_modules"))) execFileSync("bun", ["install"], { cwd: web, stdio: ["ignore", 2, 2] });
+  // never keyed on node_modules existing: a start killed mid-install leaves it half-populated, and the build would die on it.
+  execFileSync("bun", ["install", "--frozen-lockfile"], { cwd: web, stdio: ["ignore", 2, 2] });
   execFileSync("bun", ["run", "build"], { cwd: web, stdio: ["ignore", 2, 2] });
 }
 

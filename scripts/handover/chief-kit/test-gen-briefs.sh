@@ -38,8 +38,8 @@ export GEN_BRIEFS_NO_WT_CHECK=1  # the older rows use a fixture --repo with no r
 
 cat > "$WORK/legs.json" <<'EOF'
 [
- {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"},
- {"label":"N902","keys":["HIMMEL-9002","HIMMEL-9003"],"slug":"hook-fix","branch":"fix/himmel-9002-hook-fix","title":"a hook fix","desc":"fix the hook thing","why":"the hook is broken","prior":"none found (qmd jira-himmel hook thing)","scope":"`scripts/hooks/h.sh`","scope_short":"h.sh","hook":true,"judge":true,"env":true,"commit":"fix(hooks): [HIMMEL-9002] fix the hook","extra":"GREEN controls stay."}
+ {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"},
+ {"label":"N902","keys":["HIMMEL-9002","HIMMEL-9003"],"slug":"hook-fix","branch":"fix/himmel-9002-hook-fix","title":"a hook fix","desc":"fix the hook thing","why":"the hook is broken","prior":"none found (qmd jira-himmel hook thing)","writes":"scripts/hooks/h.sh","scope":"`scripts/hooks/h.sh`","scope_short":"h.sh","hook":true,"judge":true,"env":true,"commit":"fix(hooks): [HIMMEL-9002] fix the hook","extra":"GREEN controls stay."}
 ]
 EOF
 
@@ -308,6 +308,9 @@ python3 "$SUT" "$WORK/claudex-spec.json" --base 4ccb59d --chief BZ --bucket "$WO
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
 python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "a lane worker with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["writes"]=sys.argv[3]; json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-writes.json" "$SPEC"
+python3 "$SUT" "$WORK/lane-writes.json" --base 4ccb59d --chief BZ --bucket "$WORK/lane-writes" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-writes.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'handover root' "$WORK/lane-writes.err" && [ ! -e "$WORK/lane-writes/launch-N901.sh" ] && pass "the new writes field preserves the lane handover-root restriction" || fail "lane writes restriction rc=$rc"
 # A non-native worker with no model key takes the lane's model: no native model argument in the launcher, the lane model in the brief header.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-nomodel.json"
 python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"; rc=$?
@@ -345,11 +348,25 @@ ct_brief() { # <scope text> <bucket>
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
-wr_brief="$(ct_brief 'writes confined to scripts/wr/a.sh, docs/wr.md (find what scripts/wr-read/ uses). Find callers with grep -rl wr scripts/wr-grep/ and grep -rl "a needle" scripts/wr-quoted/. Impacted suites: scripts/wr/test-a.sh. SINGLE-WRITER: scripts/wr-sw.ts is held by open PR #3791 (N3537). Touches scripts/wr-ci/, a ci-trust-paths pattern. Replace grep -E in scripts/wr/c.sh. SINGLE-WRITER: this worker is the one writer of scripts/wr/d.sh, which PR #3791 only reads. Also find and fix the caller in scripts/wr/b.sh. completes-ticket: no' "$WORK/wr1")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="scripts/wr/a.sh docs/writes-only.md"; l[0]["scope"]="scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"; l[0]["prior"]="HIMMEL-9000: docs/prior.md"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/wr.json"
+python3 "$SUT" "$WORK/wr.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr1" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr.err"; wr_rc=$?
+[ "$wr_rc" = 0 ] && pass "explicit ticket Writes text generates" || fail "explicit Writes generation rc=$wr_rc: $(cat "$WORK/wr.err")"
+wr_brief="$(cat "$WORK/wr1"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
 wr_line="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes:\*\* ')"
-[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/wr.md scripts/wr/c.sh scripts/wr/d.sh scripts/wr/b.sh" ] && pass "the Writes line is exactly the files the scope writes (HIMMEL-7469)" || fail "the Writes line keeps read-only text or drops a write: $wr_line"
-lacks "the Writes line drops a read aside, a quoted-arg grep, another holder's SINGLE-WRITER and Touches boilerplate (HIMMEL-7469)" "$wr_line" "scripts/wr-"
-lacks "the Writes line drops an Impacted suites file (HIMMEL-7469)" "$wr_line" "test-a.sh"
+[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/writes-only.md" ] && pass "Writes derives only from the ticket Writes text, never scope or prior (HIMMEL-7949)" || fail "Writes must use the explicit writes key only: $wr_line"
+wr_note="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes note:\*\* ')"
+has "Writes note retains scope context" "$wr_note" "scripts/wr-context/read.sh"
+has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
+has "Writes note retains prior art paths" "$wr_note" "docs/prior.md"
+has "the original prior art field stays" "$wr_brief" "> **Prior art:** HIMMEL-9000: docs/prior.md"
+has "the original scope field stays" "$wr_brief" "> **Scope / do not:** writes confined to scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/wr-empty.json"
+python3 "$SUT" "$WORK/wr-empty.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr-empty" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr-empty.err"; wr_rc=$?
+[ "$wr_rc" = 0 ] && pass "missing optional writes still generates a draft" || fail "missing writes generation rc=$wr_rc"
+wr_empty_doc="$(find "$WORK/wr-empty" -name '*.md' 2>/dev/null)"
+[ "$(grep '^> \*\*Writes:\*\*' "$wr_empty_doc")" = "> **Writes:** " ] && pass "missing writes renders an empty Writes line, never inferred holds" || fail "missing writes must render an empty Writes line"
+bash "$HERE/brief-lint.sh" "$wr_empty_doc" 2>"$WORK/wr-empty-lint.err"; wr_rc=$?
+[ "$wr_rc" = 1 ] && grep -q 'chief' "$WORK/wr-empty-lint.err" && pass "empty generated Writes is refused until the chief fills it" || fail "empty generated Writes did not fail lint with the chief hint (rc=$wr_rc)"
 ct_count() { printf '%s\n' "$1" | grep -c '^> \*\*Completes ticket:\*\* '; }
 ct_no="$(ct_brief 'one PR. completes-ticket: no' "$WORK/ct1")"
 has "scope ending completes-ticket: no writes the no line" "$ct_no" "> **Completes ticket:** no"
@@ -451,6 +468,8 @@ pl_gen desc 'run the WSL codex lane'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "a desc naming WSL is refused" || fail "wsl desc rc=$rc"
 pl_gen scope 'the .ps1 twin'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "a scope naming a .ps1 file is refused" || fail "ps1 scope rc=$rc"
+pl_gen writes 'scripts/old.ps1'; rc=$?
+[ "$rc" = 1 ] && ! pl_written && pass "the new writes field preserves the dropped-platform restriction" || fail "ps1 writes rc=$rc"
 pl_gen why 'it breaks under Git Bash'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "a why naming Git Bash is refused" || fail "git bash why rc=$rc"
 pl_gen title 'Remove Windows leftovers' yes; rc=$?
@@ -737,7 +756,7 @@ inhbad "an inherited key with no mode is refused" "{'pr': 4033, 'authors': ['Ada
 ui_gen() { # <scope prefix or -> <profile key or ->: one leg generated into $WORK/ui
     rm -rf "$WORK/ui"; ui_rc=1
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
-if sys.argv[3] != "-": l[0]["scope"]=sys.argv[3]+" "+l[0]["scope"]
+if sys.argv[3] != "-": l[0]["writes"]=sys.argv[3]
 if sys.argv[4] != "-": l[0]["profile"]=sys.argv[4]
 json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ui.json" "$1" "$2" || return 1
     python3 "$SUT" "$WORK/ui.json" --base 4ccb59d --chief BZ --bucket "$WORK/ui" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ui.err"; ui_rc=$?

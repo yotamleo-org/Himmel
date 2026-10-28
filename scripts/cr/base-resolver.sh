@@ -6,7 +6,10 @@
 # cr_fetch_base <repo> <bare-branch>
 # Refresh origin/<branch> once at the start of a review row. Repositories with
 # no origin (notably hermetic fixtures) have nothing to fetch and fall through
-# to the local-ref resolver below.
+# to the local-ref resolver below. The claudex lane cannot fetch (no network,
+# no write to the shared ref store): it pins the review to the local
+# refs/remotes/origin/<branch> and says so, and with no such ref it fails
+# closed rather than certify a local branch.
 cr_fetch_base() {
     local _cfr_repo="$1" _cfr_branch="$2"
     case "$_cfr_branch" in
@@ -15,6 +18,15 @@ cr_fetch_base() {
         refs/heads/*) _cfr_branch="${_cfr_branch#refs/heads/}" ;;
     esac
     git -C "$_cfr_repo" remote get-url origin >/dev/null 2>&1 || return 0
+    if [ "${HIMMEL_SESSION_LANE:-}" = claudex ]; then
+        if ! git -C "$_cfr_repo" rev-parse --verify --quiet \
+            "refs/remotes/origin/$_cfr_branch^{commit}" >/dev/null 2>&1; then
+            echo "cr_fetch_base: claudex lane cannot fetch and there is no local refs/remotes/origin/$_cfr_branch to pin the review base to" >&2
+            return 1
+        fi
+        echo "cr_fetch_base: claudex lane cannot fetch - reviewing against the local refs/remotes/origin/$_cfr_branch" >&2
+        return 0
+    fi
     git -C "$_cfr_repo" fetch --quiet origin \
         "+refs/heads/$_cfr_branch:refs/remotes/origin/$_cfr_branch"
 }

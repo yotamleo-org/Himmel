@@ -304,14 +304,16 @@ if date -d '10 days ago' +%s >/dev/null 2>&1; then  # gnu-ok: the probe itself, 
 # with "out of range or illegal time specification" and has `date -v`; shim that host on Linux.
 bsd="$TMP/bsdshim"; mkdir -p "$bsd"
 realtouch="$(command -v touch)"; realdate="$(command -v date)"
-printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -d ] && { echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1; }; done\nexec %s "$@"\n' "$realtouch" >"$bsd/touch"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -d ] && { echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1; }; [ "$a" = -t ] && printf "%%s\\n" "$*" >>"$(dirname "$0")/touch.log"; done\nexec %s "$@"\n' "$realtouch" >"$bsd/touch"
 printf '#!/bin/sh\ncase "$1" in -v-10d) shift; exec %s -d "10 days ago" "$@" ;; -d) echo "date: illegal option -- d" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$realdate" "$realdate" >"$bsd/date"
 chmod +x "$bsd/touch" "$bsd/date"
 git -C "$TMP/src" worktree add -q --detach "$TMP/bsd-cr-fix" HEAD
 bsdfix="$(bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix")"
 bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix" --reference >/dev/null
+: >"$bsd/touch.log"
 PATH="$bsd:$PATH" bash "$HERE/tasks/cr-fix/accept.sh" "$TMP/bsd-cr-fix" "$bsdfix" >"$TMP/bsd-cr-fix.log" 2>&1; bsdrc=$?
-check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d), and acceptance of the reference exits 0" '[ "$bsdrc" -eq 0 ] && grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log"'
+# Count the acceptance fixture's lq-cr paths, not the own tests' lq-cleanup paths.
+check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d), and acceptance of the reference exits 0" '[ "$bsdrc" -eq 0 ] && grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log" && [ "$(grep -c "^-t [0-9]* .*/lq-cr[.][^/]*/[^/]*$" "$bsd/touch.log")" -eq 2 ]'
 mkdir "$TMP/bsdref"; cp "$HERE/tasks/cr-fix/reference/lq-work/cleanup-old.sh" "$TMP/bsdref/" 2>/dev/null; cp "$HERE/tasks/cr-fix/reference/lq-work/test-cleanup-old.sh.ref" "$TMP/bsdref/test-cleanup-old.sh"
 PATH="$bsd:$PATH" bash "$TMP/bsdref/test-cleanup-old.sh" >"$TMP/bsd-ref.log" 2>&1; rc=$?
 check "cr-fix: the reference own test passes on a BSD touch" '[ "$rc" -eq 0 ]'
