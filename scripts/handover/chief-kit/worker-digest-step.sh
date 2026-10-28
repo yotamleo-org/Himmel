@@ -44,7 +44,7 @@
 # (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
 # Platform guard: Linux bash 3.2+ (chief kit; /proc, GNU date and timeout;
-# no .ps1 twin - Windows is parked).
+# no .ps1 twin).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -10,9 +10,8 @@
 # that contract instead of forking it per platform.
 #
 # Platform guard (gitbash-only): macOS only, by construction - it shells out
-# to `open -a`, which exists nowhere else. No .ps1 twin: the Windows station
-# arms through scripts/handover/arm-resume.sh's schtasks backend, and Linux
-# keeps using konsole directly, so neither platform ever reaches this file.
+# to `open -a`, which exists nowhere else. No .ps1 twin: Linux keeps using
+# konsole directly, so it never reaches this file.
 # headed-arm.sh only defaults to it when `uname -s` is Darwin.
 #
 # Accepted argv (exactly what headed-arm.sh emits, nothing more):
