@@ -77,7 +77,9 @@ mkdir -p "$out" || exit 2
 out="$(cd "$out" && pwd)"
 scratch="${REVIEW_PANEL_SCRATCH:-}"
 if [ -z "$scratch" ]; then
-    scratch="$(mktemp -d "${TMPDIR:-/tmp}/review-panel.XXXXXX")" || exit 2
+    # shellcheck source=../../lib/prim.sh
+    . "$HERE/../../lib/prim.sh" || { echo "run.sh: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+    scratch="$(tmpdir)" || exit 2
 fi
 mkdir -p "$scratch" || exit 2
 # The critic must see the diff and nothing else: a scratch inside a checkout

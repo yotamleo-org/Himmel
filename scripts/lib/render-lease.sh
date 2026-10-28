@@ -11,13 +11,12 @@
 # LAYOUT (one directory per lease, under the registry root):
 #   <registry>/<branch-slug>/lease.record   KEY<TAB>VALUE lines (see below)
 #   <registry>/<branch-slug>/heartbeat      ISO-8601 UTC, rewritten ~60s by
-#                                           codex-render-client-lease.ps1
+#                                           the render client
 #   <registry>/<branch-slug>/tokens         cxc broker tokens observed for the
-#                                           render's cwd (ps1-written, optional)
+#                                           render's cwd (optional)
 #   <registry>/.registry.lock/              cross-writer mutex (mkdir = lock)
 #   <registry>/kill-ledger.jsonl            append-only sweep evidence ledger
-#                                           (written/consumed by
-#                                           sweep-codex-orphans.ps1)
+#                                           (written/consumed by the orphan sweep)
 # lease.record keys: branch, worktree (native/mixed path form), acquired_by
 # (wrapper msys pid), started_at (ISO UTC), leader_pid (msys), leader_winpid
 # (native, Windows only), leader_identity (proc_tree_process_identity string),
@@ -66,7 +65,6 @@ render_lease_registry_dir() {
 # uniquely left-to-right: distinct branches (e.g. feat/a+b vs feat/a/b) can
 # NEVER share a lease dir. Byte-wise under LC_ALL=C so multibyte input
 # encodes per byte and every escape stays exactly two hex digits.
-# Mirrored EXACTLY by Get-RenderLeaseSlug in sweep-codex-orphans.ps1.
 render_lease_slug() {
     local branch="$1" out='' ch i len
     local LC_ALL=C
@@ -231,8 +229,7 @@ render_lease_lock_release() {
 
 # render_lease_field <lease_dir> <key> -- print the recorded value (empty when
 # absent/unreadable). Everything after the FIRST tab is the value (r7 glm-3:
-# exact parity with the PS twin's Substring-after-first-tab parse, so a
-# tab-bearing value can never diverge between the twins).
+# a Substring-after-first-tab parse, so a tab-bearing value never splits).
 render_lease_field() {
     awk -F'\t' -v k="$2" '$1==k { sub(/^[^\t]*\t/, ""); print; exit }' "$1/lease.record" 2>/dev/null
 }

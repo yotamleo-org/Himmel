@@ -9,14 +9,11 @@
 # process's OWN environment via Grafana's alerting file-provisioning
 # variable interpolation ($NAME, plain, no braces — confirmed against the
 # Grafana 13.1 docs; a different `$__env{}` syntax exists for datasource
-# provisioning, not used here). install-stack.ps1 sets
-# GRAFANA_TELEGRAM_BOT_TOKEN / GRAFANA_TELEGRAM_CHAT_ID as persistent
-# user-scope environment variables at install time, non-fatally, by reading
-# the bridge's already-established runtime locations (never by writing to
-# them) — see its "Grafana alerting secrets" step. An operator who wants a
-# SEPARATE bot token instead (the design's other sanctioned option) can set
-# both variables manually before running the installer; a pre-set value is
-# left untouched.
+# provisioning, not used here). No installer sets
+# GRAFANA_TELEGRAM_BOT_TOKEN / GRAFANA_TELEGRAM_CHAT_ID: whoever enables this
+# contact point exports both in the Grafana process's environment (a
+# SEPARATE send-only bot token is the sanctioned choice; see
+# docs/configuration.md).
 #
 # message is omitted deliberately: Grafana's built-in default template
 # renders alertname/labels/annotations only — the same fixed-field set this

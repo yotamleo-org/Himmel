@@ -15,7 +15,7 @@
 # CAPABILITY-CONDITIONAL, loud-skip: this needs the real promtool from the
 # stack's own install dir (or PATH), which is not guaranteed to exist on
 # every machine that checks out this repo (a station that never ran
-# install-stack.ps1 has no Prometheus release unpacked at all).
+# the stack installer has no Prometheus release unpacked at all).
 # scripts/ci/run-shell-tests.sh's SUITE_REQUIRE_TOOL table can't express this
 # gate — it keys capability checks on PATH presence, and promtool is
 # deliberately NOT on PATH — so

@@ -815,7 +815,7 @@ contains "dry-run --judge, explicit fable model: refusal is the fable tier gate"
 
 # --judge --lane claudex: the Opus/high-effort default is scoped to the
 # native lane only (the design explicitly leaves composing --judge with
-# claudex out of scope) - claudex keeps its own gpt-6.1-sol/medium-effort
+# claudex out of scope) - claudex keeps its own gpt-6.1-sol/xhigh-effort
 # default untouched, and some/doc.md (no Tier line) proves that default never
 # reached the Opus/Fable tier gate.
 rc=0; out="$(bash "$SCRIPT" --dry-run --judge --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
@@ -1054,6 +1054,7 @@ mutant="$mutantdir/scripts/handover/headed-arm.sh"
 sed 's/ --autocompact "$AUTOCOMPACT"//' "$HEADED_ARM" > "$mutant"
 cp "$HERE/../../lib/chief-context.sh" "$mutantdir/scripts/lib/chief-context.sh"
 cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh"
+cp "$HERE/../../lib/prim.sh" "$mutantdir/scripts/lib/prim.sh"
 chmod 755 "$mutant"
 d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"
 mrc=0
@@ -1132,7 +1133,7 @@ contains "dry-run --lane claudex: env carries CLAUDEX_LANE_OK=1" "$out" "CLAUDEX
 contains "dry-run --lane claudex: resolved lane overrides ambient native" "$out" "WORKER_SESSION_LANE=claudex"
 contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_BANK_LANE=claudex"
 not_contains "dry-run --lane claudex: the usage lane name is not propagated" "$out" "CADENCE_USAGE_LANE="
-contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
 rc=0; out="$(CADENCE_BANK_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_BANK_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
@@ -1147,7 +1148,15 @@ contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_BANK_LA
 not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE="
 
 rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
-contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the medium default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
+contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
+
+rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
+contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
+rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
+contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "claude-sonnet-5"
@@ -1383,7 +1392,7 @@ contains "full launch, --lane claudex: bank lane reaches launcher argv" "$rec16"
 env16="$(cat "$d16/env-record" 2>/dev/null || true)"
 contains "full launch, --lane claudex: lane reaches child env" "$env16" "WORKER_SESSION_LANE=claudex"
 contains "full launch, --lane claudex: bank lane reaches child env" "$env16" "CADENCE_BANK_LANE=claudex"
-contains "full launch, --lane claudex: CLAUDE_CODE_EFFORT_LEVEL=medium reaches the konsole argv" "$rec16" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "full launch, --lane claudex: CLAUDE_CODE_EFFORT_LEVEL=xhigh reaches the konsole argv" "$rec16" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 contains "full launch, --lane claudex: CODEX_MODEL=gpt-6.1-sol reaches the konsole argv" "$rec16" "CODEX_MODEL=gpt-6.1-sol"
 contains "full launch, --lane claudex: CODEX_MODEL reaches child env" "$env16" "CODEX_MODEL=gpt-6.1-sol"
 
@@ -3392,7 +3401,7 @@ not_contains "34c the registry's medium never overwrites the ambient value" "$le
 # WORKER_SESSION_EFFORT-sourced default, never lanes.json's per-model row.
 out34d="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture" CLAUDE_CODE_EFFORT_LEVEL='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker-34d some/doc.md /tmp/nosig 99999999999 "$tmp/leg34d.log" 2>&1)"
 lenv34d="$(printf '%s\n' "$out34d" | grep '^headed-arm-worker: lane=')"
-contains "34d claudex lane still exports its own WORKER_SESSION_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+contains "34d claudex lane still exports its own WORKER_SESSION_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 
 # 34e-34h. On the native lane WORKER_SESSION_EFFORT sits between an explicit
 # CLAUDE_CODE_EFFORT_LEVEL and the registry default. A registry whose opus row

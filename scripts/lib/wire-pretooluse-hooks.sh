@@ -45,9 +45,8 @@
 # guard below dispatches `wire-pretooluse-hooks.sh <settings> <prefix>`).
 set -euo pipefail
 
-# The hook-command composer, shared verbatim with the PowerShell twin
-# (wire-pretooluse-hooks.ps1) -- BOTH the PreToolUse specs and the SessionStart
-# hook object are built through it, so the two composers can never drift.
+# The hook-command composer -- BOTH the PreToolUse specs and the SessionStart
+# hook object are built through it, so the two can never drift.
 #
 # The JSON layer is escaped by jq, but the
 # `command` it carries is a SHELL string that Claude Code hands to a shell. It
@@ -96,8 +95,7 @@ WIRE_HOOK_CMD_JQ='
       + ") -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi";
 '
 
-# The merge program, shared verbatim with the PowerShell twin
-# (wire-pretooluse-hooks.ps1) so the two can never drift. For each spec, walk
+# The merge program. For each spec, walk
 # the PreToolUse array in order and rewrite the `command` of every entry that
 # matches the spec's `pat` IN PLACE (its object, its stanza and their key order
 # untouched). If no entry matched at all, the spec's canonical stanza is
@@ -217,7 +215,7 @@ wire_pretooluse_hooks() {
   # hand-written JSON malformed, and `jq --argjson specs` then rejects the
   # argument outright — the settings file goes unwired. Passing the prefix as a
   # jq --arg lets jq do the escaping, for quotes, backslashes and newlines
-  # alike. Shared verbatim with the PowerShell twin.
+  # alike.
   local specs
   # shellcheck disable=SC2016  # a jq program: $pfx/$cmd/$name/$matcher are jq bindings, not shell expansions
   specs=$(jq -n --arg pfx "$pfx" "$WIRE_HOOK_CMD_JQ"'
@@ -283,7 +281,7 @@ wire_sessionstart_hook() {
   local pfx="${prefix//'\'//}"
   # The command is composed by jq (hookcmd), not by bash string interpolation,
   # so the SessionStart hook carries exactly the same shell escaping as the
-  # PreToolUse trio and the PowerShell twin. The dedup test is
+  # PreToolUse trio. The dedup test is
   # built from the SAME escaped string, inside the same jq program, so the two
   # can never disagree — see the filter below.
   if [[ "$dry_run" -eq 1 ]]; then

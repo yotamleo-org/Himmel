@@ -32,7 +32,9 @@ case "$N" in ''|*[!0-9]*) die "--files must be a whole number" ;; esac
 [ "$N" -gt 0 ] || die "--files must be positive"
 git -C "$REPO" cat-file -e "$BASE^{commit}" 2>/dev/null || die "base sha $BASE not in $REPO"
 
-WT="$(mktemp -d "${TMPDIR:-/tmp}/prune-history.XXXXXX")" || die "mktemp failed"
+# shellcheck source=../../lib/prim.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+WT="$(tmpdir)" || die "mktemp failed"
 trap 'git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WT"' EXIT
 git -C "$REPO" worktree add -q --detach "$WT" "$BASE" || die "worktree add failed"
 

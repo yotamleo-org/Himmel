@@ -177,7 +177,7 @@ test("V4: refusalMessage names the stop command", () => {
   const msg = refusalMessage("the bridge supervisor is running");
   expect(msg).toContain(STOP_COMMAND_POSIX);
   expect(msg).toContain("restart-bridge.sh stop");
-  expect(msg).toContain("supervisor.ts --kill");   // the real Windows stop lever (-Kill on restart-bridge.ps1 relaunches, it doesn't stop)
+  expect(msg).toContain("supervisor.ts --kill");   // the platform-neutral stop lever
 });
 
 test("V4 end-to-end: run() refuses with a real live pid in a sandboxed BRIDGE_ROOT supervisor.pid, exits non-zero, names the stop command", async () => {

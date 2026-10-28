@@ -79,7 +79,7 @@ cfg8="$td/cfg8.json"; printf '%s' '{}' > "$cfg8"
 reg8="$td/reg8.json"; printf '%s' '{"vaults":{}}' > "$reg8"
 # shellcheck disable=SC1091  # sourced at runtime; linted standalone by pre-commit
 . "$here/vault-resolve.sh"
-prev_lvp="${LUNA_VAULT_PATH-__UNSET__}"   # save/restore, like the .ps1 twin
+prev_lvp="${LUNA_VAULT_PATH-__UNSET__}"   # save/restore around the seam
 export LUNA_VAULT_PATH="$wired"
 got8="$(resolve_vault_root "$cfg8" "$reg8")"
 check "seam: settings.json env -> resolver step 3" "$got8" "C:/Users/me/Documents/luna"
@@ -90,8 +90,8 @@ check "seam: settings.json env -> resolver step 3" "$got8" "C:/Users/me/Document
 #    `cygpath -m` before calling the helper; this asserts that prescribed
 #    conversion yields a drive-qualified value the resolver hands back intact.
 #    Skips cleanly off Windows, where cygpath does not exist (and MSYS paths
-#    are the native form anyway). No .ps1 twin: PowerShell never produces an
-#    MSYS path, so its inputs are already drive-qualified (covered by case 8).
+#    are the native form anyway). A Windows-native input is already
+#    drive-qualified (covered by case 8).
 if command -v cygpath >/dev/null 2>&1; then
   s9="$td/s9.json"
   msys_in='/c/Users/me/Documents/luna'

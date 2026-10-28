@@ -45,11 +45,7 @@ export function lockPathForToken(token: string): string {
 // --- refuse-to-start check (V4: single-consumer invariant) ---
 
 export const STOP_COMMAND_POSIX = "bash scripts/telegram/restart-bridge.sh stop";
-// restart-bridge.ps1 has NO stop verb: its `-Kill` is only a MODIFIER for
-// -FromLedger/-Watchdog, and BOTH of those relaunch the bridge after killing —
-// the opposite of what onboarding needs, and a bare `-Kill` falls through to the
-// ordinary restart path. `supervisor.ts --kill` is the real stop
-// lever and works on both platforms.
+// `supervisor.ts --kill` is the real stop lever and works on both platforms.
 export const STOP_COMMAND_WIN = "bun scripts/telegram/supervisor.ts --kill";
 
 export function refusalMessage(reason: string): string {

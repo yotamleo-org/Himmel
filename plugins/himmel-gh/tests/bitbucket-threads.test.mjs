@@ -6,7 +6,7 @@ import { listThreads, replyThread, resolveThread } from '../lib/forge/bitbucket-
 
 // Drive the backend at a node stub passed as a `cli` argv array. Passing the
 // array directly (vs the BITBUCKET_CLI env string) sidesteps the space-split
-// that forces the integration tests to skip on Windows — so these run anywhere.
+// that mangles a spaced execPath — so these run anywhere.
 let workDir;
 let stub;
 

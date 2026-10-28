@@ -237,7 +237,9 @@ else
   START_EPOCH=$(awk -v n="$NOW_EPOCH" -v d="$DAYS" 'BEGIN { printf "%d", n - d * 86400 }')
 fi
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics.XXXXXX")" || die 3 "mktemp -d failed"
+# shellcheck source=../lib/prim.sh
+. "$(cd "$(dirname "$SELF")" && pwd)/../lib/prim.sh" || die 3 "cannot load scripts/lib/prim.sh"
+WORK="$(tmpdir)" || die 3 "could not create a scratch directory"
 trap 'rm -rf "$WORK"' EXIT
 # PRS = merged PRs with their merge-forward rounds; this null file means "not measured".
 echo 'null' > "$WORK/none.json"; PRS="$WORK/none.json"

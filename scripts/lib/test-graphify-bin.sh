@@ -1844,7 +1844,7 @@ assert "adopt.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/
 
 # MCP registration is the shared graphify_register_mcp impl, exposed
 # via the `register-mcp` CLI case, called by both installers (adopt at its scope,
-# setup at user scope) and delegated to by the pwsh mirrors.
+# setup at user scope).
 assert "graphify-bin.sh defines graphify_register_mcp" grep -q 'graphify_register_mcp()' "$SCRIPT_DIR/graphify-bin.sh"
 assert "graphify-bin.sh CLI exposes register-mcp" grep -q 'register-mcp) graphify_register_mcp' "$SCRIPT_DIR/graphify-bin.sh"
 # Scope forwarding: adopt.sh forwards its own $SCOPE to the project registration;

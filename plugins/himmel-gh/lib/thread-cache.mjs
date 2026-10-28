@@ -1,17 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { platform } from 'node:os';
 import { createHash } from 'node:crypto';
 
 function osCacheRoot() {
-  const win = platform() === 'win32';
-  const base = win
-    ? process.env.LOCALAPPDATA
-    : (process.env.XDG_CACHE_HOME || (process.env.HOME && join(process.env.HOME, '.cache')));
+  const base = process.env.XDG_CACHE_HOME || (process.env.HOME && join(process.env.HOME, '.cache'));
   if (!base) {
-    throw new Error(
-      `Cannot resolve cache dir: ${win ? 'LOCALAPPDATA' : 'HOME / XDG_CACHE_HOME'} unset`,
-    );
+    throw new Error('Cannot resolve cache dir: HOME / XDG_CACHE_HOME unset');
   }
   return join(base, 'himmel-cli');
 }
@@ -69,12 +63,10 @@ export function writeThreadCache(cacheRootOverride, owner, repo, number, threads
     threads: buildPrefixMap(threads),
   };
   writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
-  if (platform() !== 'win32') {
-    try {
-      chmodSync(file, 0o600);
-    } catch {
-      /* best-effort */
-    }
+  try {
+    chmodSync(file, 0o600);
+  } catch {
+    /* best-effort */
   }
   return data;
 }

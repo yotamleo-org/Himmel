@@ -19,6 +19,8 @@ if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || { echo "artifact-sync.sh: cannot load prim.sh" >&2; exit 2; }
 
 usage() {
     cat >&2 <<'EOF'
@@ -77,6 +79,7 @@ _af_file_hash() {
 # makes that a bottleneck.
 _af_lock() {
     local _lockdir="${1}.lock" _tries=0
+    # prim-ok: with_lock waits without a deadline; record must give up after ~10s so a stalled holder cannot hang publishing
     while ! mkdir "$_lockdir" 2>/dev/null; do
         _tries=$((_tries + 1))
         [ "$_tries" -lt 100 ] || _af_die "record: could not acquire lock $_lockdir after 10s -- a stale lock from a crashed run? remove it manually if so"
@@ -110,9 +113,43 @@ cmd_slice() {
     trap 'rm -f "$tmpf"' EXIT
     tail -n +2 "$raw" > "$tmpf" || _af_die "slice: strip failed"
     _af_assert_clean "$tmpf"
-    mv "$tmpf" "$out" || _af_die "slice: write failed"
+    atomic_write "$out" < "$tmpf" || _af_die "slice: write failed"
+    rm -f "$tmpf"   # atomic_write copies $tmpf; a rename used to consume it
     trap - EXIT
     echo "$out"
+}
+
+# _af_record_locked <registry> <url_esc> <row> -- body of record's critical
+# section, run between _af_lock and _af_unlock. It sets no EXIT trap (cmd_record
+# owns the one that releases the lock) and reports through its return code, so
+# the temp file is removed on every path.
+_af_record_locked() {
+    local registry="$1" url_esc="$2" row="$3" tmpf grc
+    [ -f "$registry" ] || : > "$registry"
+    tmpf="$(mktemp "${registry}.record.XXXXXX")" || { echo "artifact-sync.sh: record: cannot create temp file" >&2; return 2; }
+    # Drop any existing row for this URL, then append the fresh one -- one row
+    # per URL, always the latest publish. grep -v exits 1 when EVERY line
+    # matched (nothing survives the filter) -- that's a normal outcome, not
+    # an error, so treat it like a clean empty result. Any OTHER nonzero exit
+    # is a genuine read error and must abort rather than silently truncate
+    # the registry to just the new row (codex panel finding).
+    if [ -s "$registry" ]; then
+        grc=0
+        grep -vF "\"url\":\"$url_esc\"" "$registry" > "$tmpf" || grc=$?
+        if [ "$grc" -gt 1 ]; then
+            rm -f "$tmpf"
+            echo "artifact-sync.sh: record: failed to read $registry while filtering (grep rc=$grc) -- refusing to risk dropping unrelated rows" >&2
+            return 2
+        fi
+    else
+        : > "$tmpf"
+    fi
+    if ! { printf '%s\n' "$row" >> "$tmpf" && atomic_write "$registry" < "$tmpf"; }; then
+        rm -f "$tmpf"
+        echo "artifact-sync.sh: record: write failed" >&2
+        return 2
+    fi
+    rm -f "$tmpf"
 }
 
 # ponytail: `record` hashes only the LOCAL file -- it cannot independently
@@ -142,7 +179,7 @@ cmd_record() {
     registry=$(_af_registry_path) || exit 2
     mkdir -p "$(dirname "$registry")" || _af_die "record: cannot create $(dirname "$registry")"
 
-    local url_esc path_esc title_esc row tmpf grc
+    local url_esc path_esc title_esc row
     _hp_json_escape "$url"; url_esc="$_HP_ESC"
     _hp_json_escape "$local_path"; path_esc="$_HP_ESC"
     _hp_json_escape "$title"; title_esc="$_HP_ESC"
@@ -151,31 +188,13 @@ cmd_record() {
 
     # Locked read-modify-write: two concurrent `record` calls must not race
     # and drop each other's row (codex panel finding).
+    local rc=0
     _af_lock "$registry"
     trap '_af_unlock "$registry"' EXIT
-    [ -f "$registry" ] || : > "$registry"
-    tmpf="$(mktemp "${registry}.record.XXXXXX")" || { _af_unlock "$registry"; _af_die "record: cannot create temp file"; }
-    trap '_af_unlock "$registry"; rm -f "$tmpf"' EXIT
-    # Drop any existing row for this URL, then append the fresh one -- one row
-    # per URL, always the latest publish. grep -v exits 1 when EVERY line
-    # matched (nothing survives the filter) -- that's a normal outcome, not
-    # an error, so treat it like a clean empty result. Any OTHER nonzero exit
-    # is a genuine read error and must abort rather than silently truncate
-    # the registry to just the new row (codex panel finding).
-    if [ -s "$registry" ]; then
-        grc=0
-        grep -vF "\"url\":\"$url_esc\"" "$registry" > "$tmpf" || grc=$?
-        if [ "$grc" -gt 1 ]; then
-            _af_unlock "$registry"
-            _af_die "record: failed to read $registry while filtering (grep rc=$grc) -- refusing to risk dropping unrelated rows"
-        fi
-    else
-        : > "$tmpf"
-    fi
-    printf '%s\n' "$row" >> "$tmpf" || { _af_unlock "$registry"; _af_die "record: write failed"; }
-    mv "$tmpf" "$registry" || { _af_unlock "$registry"; _af_die "record: write failed"; }
+    _af_record_locked "$registry" "$url_esc" "$row" || rc=$?
     trap - EXIT
     _af_unlock "$registry"
+    [ "$rc" -eq 0 ] || exit "$rc"
 }
 
 cmd_check() {
