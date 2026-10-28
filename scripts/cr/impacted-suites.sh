@@ -524,6 +524,7 @@ if ! tree=$(git ls-tree -r -z --name-only "$head_sha" | tr '\0' '\n'); then
     echo "impacted-suites.sh: git ls-tree ${head_sha} failed" >&2; exit 2
 fi
 
+# prim-ok: impacted-selection.sh extracts a BASE-commit copy of this script into a temp dir with no scripts/lib, so it cannot source prim.sh
 work=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites.XXXXXX") || { echo "impacted-suites.sh: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 pats="$work/patterns"

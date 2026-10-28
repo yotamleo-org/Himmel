@@ -26,7 +26,9 @@ grep -q 'Jira CLI' <<< "$help_out" || fail "--help output lacks the CLI banner"
 cmds="$(node "$DIST" --list-commands)" || fail "--list-commands exited non-zero"
 grep -qx 'get' <<< "$cmds" || fail "--list-commands does not list get"
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/jira-smoke.XXXXXX")" || fail "mktemp -d failed"
+# shellcheck source=../lib/prim.sh
+. "$ROOT/scripts/lib/prim.sh" || fail "cannot load scripts/lib/prim.sh"
+TMP="$(tmpdir)" || fail "cannot create the scratch dir"
 srv=""
 cleanup() { [ -z "$srv" ] || kill "$srv" 2>/dev/null || true; rm -rf "$TMP"; }
 trap cleanup EXIT

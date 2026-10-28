@@ -293,7 +293,9 @@ for p in $PREFIXES; do
     fi
 done
 
-WORK=$(mktemp -d) || { echo "tmp-sweep: mktemp -d failed" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "tmp-sweep: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+WORK=$(tmpdir) || { echo "tmp-sweep: mktemp -d failed" >&2; exit 2; }
 trap 'rm -rf "$WORK"' EXIT
 LIST="$WORK/matches"
 

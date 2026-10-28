@@ -112,6 +112,7 @@ cmd_up() {
     [ "${GCP_RUNNERS_UNAME:-$(uname -s)}" = Linux ] || die "up: Linux only (the pool lock needs flock)"
     need_net
     exec 9> "$LOCKFILE" || die "cannot open lock $LOCKFILE"
+    # prim-ok: a non-blocking try-lock held on fd 9 for the whole up; with_lock blocks and wraps a single command, so a second up would wait instead of refusing
     flock -n 9 || die "another up is already running, refusing to count the pool twice"
 
     local live=0 name status zone vms
@@ -136,7 +137,9 @@ cmd_up() {
     local tmpd i stamp vm probe created=()
     # up_fail MSG -> strip jit-config from every VM already created, then die: no config outlives a failed up.
     up_fail() { [ "${#created[@]}" -eq 0 ] || ONLINE_WAIT=0 drop_jit "${created[@]}"; die "$1"; }
-    tmpd="$(mktemp -d -t gcp-runners.XXXXXX)" || die "mktemp failed"
+    # shellcheck source=../lib/prim.sh
+    . "$HERE/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+    tmpd="$(tmpdir)" || die "mktemp failed"
     # shellcheck disable=SC2064  # expand now: tmpd is local and gone when the trap fires
     trap "rm -rf '$tmpd'" EXIT
     chmod 700 "$tmpd"

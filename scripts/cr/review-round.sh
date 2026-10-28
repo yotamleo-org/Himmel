@@ -469,7 +469,7 @@ version_only_merge() {
     _vo_mb="$(git merge-base --all "$1" "$2" 2>/dev/null)" || return 1
     case "$_vo_mb" in ''|*"
 "*) return 1 ;; esac
-    _vo_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
+    _vo_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1  # prim-ok: test-pr-check-rounds and test-panel-first-pass run fixture copies of this script with no scripts/lib
     _vo_ok=0
     while IFS= read -r _vo_p; do
         _vo_ok=1
@@ -1053,7 +1053,7 @@ ci_red_delta_lines() {
     # base_sha was verified at argument intake (top of this file).
     _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
     _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
-    _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
+    _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1  # prim-ok: test-pr-check-rounds and test-panel-first-pass run fixture copies of this script with no scripts/lib
     if own_diff "$_cl_ob" "$1" > "$_cl_tmp/a" && own_diff "$_cl_nb" "$2" > "$_cl_tmp/b" \
         && ! grep -qE '^(Binary files |GIT binary patch)' "$_cl_tmp/a" "$_cl_tmp/b"; then
         _cl_rc=0
@@ -1532,8 +1532,8 @@ if [ "$verb" = "start" ]; then
             fi
             if [ "$delta_rc" -ne 0 ] \
                 || ! printf '%s %s %s\n' "$delta_from" "$delta_to" "$delta_trigger" > "$tmp_delta" \
-                || ! mv "$tmp_delta" "$delta_state" \
-                || ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
+                || ! mv "$tmp_delta" "$delta_state" || # prim-ok: the delta and CI-red files are one rolled-back record, and test-pr-check-rounds copies this script without scripts/lib
+                ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
                 # A CI-red round that did not fully land puts the
                 # spent .delta back, so the unlock is not half-consumed.
                 if [ "$delta_trigger" = "postcap-ci-red" ] && [ -f "$bak_delta" ]; then
@@ -1550,7 +1550,7 @@ if [ "$verb" = "start" ]; then
                     || ! ( for record in $delta_verdict; do
                         printf '%s %s %s\n' "$delta_from" "$delta_to" "$record" || exit 1
                     done ) >> "$tmp_verdicts" \
-                    || ! mv "$tmp_verdicts" "$verdict_state"; then
+                    || ! mv "$tmp_verdicts" "$verdict_state"; then  # prim-ok: tmp-then-mv under the counter lock with a restore of .delta; fixture copies of this script have no scripts/lib
                     rm -f "$tmp_verdicts"
                     if [ "$had_delta" -eq 1 ]; then
                         # A failed restore keeps the new pair: still "used".
@@ -1578,7 +1578,7 @@ if [ "$verb" = "start" ]; then
         bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
     if [ "$current_owner" != "$lock_owner" ] \
         || ! printf '%s\n' "$round" > "$tmp_state" \
-        || ! mv "$tmp_state" "$state"; then
+        || ! mv "$tmp_state" "$state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_state"
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
@@ -1603,7 +1603,7 @@ if [ "$verb" = "start" ]; then
     tmp_head="$head_state.tmp.$$"
     if [ -z "$round_head" ] \
         || ! printf '%s\n' "$round_head" > "$tmp_head" \
-        || ! mv "$tmp_head" "$head_state"; then
+        || ! mv "$tmp_head" "$head_state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_head" "$head_state" "$prev_state"
     fi
     # Written under the counter lock, so the pid checks in delta_check and
