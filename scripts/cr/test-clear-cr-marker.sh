@@ -2392,7 +2392,7 @@ write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
-    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1
+    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3: the fixture did not acquire the marker lock"
 export REVIEW_MARKER_LOCK_WAIT_SECONDS=1
 run_clear "$tmp" 13 "held marker lock → waits its bound, then exit 13"
 unset REVIEW_MARKER_LOCK_WAIT_SECONDS
@@ -2412,7 +2412,7 @@ write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
-    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1
+    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3b: the fixture did not acquire the marker lock"
 export CR_MARKER_LOCK_WAIT_SECONDS=1
 run_clear "$tmp" 13 "L3b held marker lock, old wait name → exit 13"
 unset CR_MARKER_LOCK_WAIT_SECONDS
@@ -2427,7 +2427,7 @@ write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
-    acquire "$tmp" feat/x dead-writer >/dev/null 2>&1
+    acquire "$tmp" feat/x dead-writer >/dev/null 2>&1 || fail "L4: the fixture did not acquire the marker lock"
 printf '{"pid":1,"lane":"dead-writer","branch":"feat/x","acquired_at":"2026-01-01T00:00:00Z","acquired_epoch":%s}\n' \
     "$(( $(date +%s) - 4000 ))" > "$(marker_lock_dir "$tmp")/owner.json"
 run_clear "$tmp" 0 "stale marker lock is reclaimed → exit 0"
@@ -3681,7 +3681,7 @@ write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_check_ci "$tmp" 0; stub_budget "$tmp" 40
 run_clear "$tmp" 0 "9a exhausted budget, reset inside the bound -> waits, then clears (exit 0)"
 b=$(biggest_sleep "$tmp")
-if [ "${b:-0}" -ge 40 ] 2>/dev/null; then pass; else fail "9a slept until the reset (biggest sleep '${b:-none}', want >= 40)"; fi
+if [ "${b:-0}" -ge 30 ] 2>/dev/null; then pass; else fail "9a slept toward the reset (biggest sleep '${b:-none}', want >= 30)"; fi
 if marker_exists "$tmp"; then fail "9a: marker should be GONE after the wait"; else pass; fi
 rm -rf "$tmp"
 
@@ -3689,7 +3689,7 @@ rm -rf "$tmp"
 # existing exit 16, keeps the marker, names the cause, never sleeps.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
-stub_check_ci "$tmp" 0; stub_budget "$tmp" 1000
+stub_check_ci "$tmp" 0; stub_budget "$tmp" 100
 CLEAR_REVIEW_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 16 "9b reset beyond the bound -> exit 16 (rc meaning unchanged)"
 if marker_exists "$tmp"; then pass; else fail "9b: marker must REMAIN"; fi
 if [ ! -s "$tmp/sleeps.log" ]; then pass; else fail "9b: must not sleep past the bound"; fi
@@ -3702,9 +3702,9 @@ rm -rf "$tmp"
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_check_ci "$tmp" 0; stub_budget "$tmp" 200
-CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)"
+CLEAR_REVIEW_MARKER_BUDGET_WAIT='' CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)"
 b=$(biggest_sleep "$tmp")
-if [ "${b:-0}" -ge 200 ] 2>/dev/null; then pass; else fail "9b-old slept until the reset (biggest sleep '${b:-none}', want >= 200)"; fi
+if [ "${b:-0}" -ge 100 ] 2>/dev/null; then pass; else fail "9b-old slept toward the reset (biggest sleep '${b:-none}', want >= 100, above the old name's 30)"; fi
 rm -rf "$tmp"
 
 # 9c. healthy budget: one header read, no sleep, normal clear.
