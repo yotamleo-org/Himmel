@@ -164,16 +164,15 @@ done <<EOF
 $V1B_ROWS
 EOF
 
-# --- slice V3: the old command and doc stay as stubs that point at the new file ---
+# --- slice V3: the old command and doc are removed, the new file stays ---
 ROOT="$HERE/../.."
-stub() {
-  local old="$1" new="$2" link
-  link="($(basename "$new"))"
+gone_stub() {
+  local old="$1" new="$2"
   check "$new exists" "yes" "$([ -f "$ROOT/$new" ] && echo yes || echo no)"
-  check "$old points at $new" "yes" "$(grep -qF -- "$link" "$ROOT/$old" 2>/dev/null && echo yes || echo no)"
+  check "$old is gone" "no" "$([ -e "$ROOT/$old" ] && echo yes || echo no)"
 }
-stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
-stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
+gone_stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
+gone_stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
 
 # --- slice V1c: the five usage scripts; bank-preflight.sh and the .ts ones still forward, the other bank-* shell forwarders are removed ---
 V1C_ROWS='bank-attribution.sh|usage-attribution.sh|identifier|old-to-new|V1|X
