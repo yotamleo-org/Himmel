@@ -60,8 +60,7 @@
 # refuse there. Use a headed worker for anything that ships.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
-# itself (konsole is Linux/KDE-only) - no .ps1 twin; the Windows station
-# arms through arm-resume.sh's schtasks backend instead.
+# itself (konsole is Linux/KDE-only) - no .ps1 twin.
 #
 # Seams: HEADED_ARM_WORKER_TARGET overrides the headed-arm.sh path this wrapper
 # execs (default: ../headed-arm.sh next to this script) so a suite can point

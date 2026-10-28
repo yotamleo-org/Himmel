@@ -54,8 +54,7 @@
 # real `## Current direction` block.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+; --arm launches through
-# konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin — the Windows
-# station arms via scripts/handover/arm-resume.sh's schtasks backend.
+# konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
