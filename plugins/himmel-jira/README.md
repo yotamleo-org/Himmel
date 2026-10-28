@@ -14,10 +14,9 @@ The plugin lives in this repo. Add via:
 
 `/jira-init` writes `JIRA_EMAIL`, `JIRA_API_TOKEN`, and `JIRA_BASE_URL` to (all three are required):
 
-- **POSIX:** `<repo-root>/.env` if that `.env` file already exists at the repo root; otherwise `~/.config/himmel-cli/jira.env`.
-- **Windows:** same code path as POSIX — `<repo-root>/.env` if that file exists at repo root; otherwise `%USERPROFILE%\.config\himmel-cli\jira.env`. (Metadata cache is separate: `%LOCALAPPDATA%\himmel-cli\jira\`.)
+- `<repo-root>/.env` if that `.env` file already exists at the repo root; otherwise `~/.config/himmel-cli/jira.env`.
 
-The file is `chmod 600` on POSIX. On Windows, access is governed by the parent directory ACL.
+The file is `chmod 600`.
 
 ## Commands
 
@@ -33,7 +32,7 @@ Each command has a matching skill that auto-triggers on Jira intent.
 
 ## Logs
 
-Cache + logs at `~/.cache/himmel-cli/jira/` (POSIX) or `%LOCALAPPDATA%/himmel-cli/jira/` (Windows). Inspect any run:
+The metadata cache (`metadata.json`) is written to `$XDG_CACHE_HOME/himmel-cli/jira/` when `XDG_CACHE_HOME` is set, otherwise `~/.cache/himmel-cli/jira/`. `himmel-run` keeps its `normal.log`, `error.log` and run index in the `himmel-cli/jira/` directory under its own cache root (`env-paths`: the same path on Linux, `~/Library/Caches` on macOS). Inspect any run:
 
 ```
 himmel-run jira --inspect <run-id-from-summary-line>

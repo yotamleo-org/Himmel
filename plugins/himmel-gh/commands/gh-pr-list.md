@@ -12,4 +12,4 @@ Run exactly:
 himmel-run gh --summary-jq 'length | tostring + " open PR(s)"' -- gh pr list --json number,title,state,author --limit 30 $@
 ```
 
-Output only the runner's one-line summary. Do not add commentary. If the user asks for details, read `~/.cache/himmel-cli/gh/normal.log` (POSIX) / `%LOCALAPPDATA%\himmel-cli\gh\normal.log` (Windows) or run `himmel-run gh --inspect <run-id>`.
+Output only the runner's one-line summary. Do not add commentary. If the user asks for details, read `normal.log` in the `himmel-run` gh log directory (see the README) or run `himmel-run gh --inspect <run-id>`.

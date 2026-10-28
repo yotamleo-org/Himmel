@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
-import { tmpdir, platform } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const CLI = resolve(__dirname, '../lib/repo-context-cli.mjs');
-const IS_WIN = platform() === 'win32';
 
 let workDir;
 let fakeBin;
@@ -16,28 +15,18 @@ let cacheRoot;
 function envWithFakeGh(extras = {}) {
   const env = {
     ...process.env,
-    PATH: `${fakeBin}${IS_WIN ? ';' : ':'}${process.env.PATH}`,
+    PATH: `${fakeBin}:${process.env.PATH}`,
     ...extras,
   };
-  if (IS_WIN) env.LOCALAPPDATA = cacheRoot;
-  else {
-    env.XDG_CACHE_HOME = cacheRoot;
-    delete env.HOME; // force XDG path
-  }
+  env.XDG_CACHE_HOME = cacheRoot;
+  delete env.HOME; // force XDG path
   return env;
 }
 
 function writeFakeGh(script) {
-  if (IS_WIN) {
-    const js = join(fakeBin, 'gh-impl.js');
-    writeFileSync(js, script);
-    const cmd = `@echo off\r\nnode "${js}" %*\r\n`;
-    writeFileSync(join(fakeBin, 'gh.cmd'), cmd);
-  } else {
-    const sh = join(fakeBin, 'gh');
-    writeFileSync(sh, `#!/usr/bin/env node\n${script}\n`);
-    chmodSync(sh, 0o755);
-  }
+  const sh = join(fakeBin, 'gh');
+  writeFileSync(sh, `#!/usr/bin/env node\n${script}\n`);
+  chmodSync(sh, 0o755);
 }
 
 beforeEach(() => {
@@ -48,12 +37,7 @@ beforeEach(() => {
   mkdirSync(cacheRoot, { recursive: true });
 });
 
-// Windows: Node's spawn('gh', ...) without shell:true can't resolve .cmd
-// shims reliably (it only finds .exe on PATH). The fake-gh shim pattern
-// works on POSIX. We skip CLI tests on Windows and rely on lib-level
-// tests (repo-context.test.mjs) for cross-platform coverage. The CLI
-// runs on Windows in production via the real gh.exe.
-describe.skipIf(IS_WIN)('repo-context-cli', () => {
+describe('repo-context-cli', () => {
   it('happy path: gh repo view JSON → owner=... name=... + cache written', () => {
     writeFakeGh(`process.stdout.write(JSON.stringify({ owner: { login: 'yotamleo' }, name: 'himmel' })); process.exit(0);`);
     const r = spawnSync(process.execPath, [CLI], { env: envWithFakeGh(), cwd: workDir, encoding: 'utf8' });
@@ -89,7 +73,7 @@ describe.skipIf(IS_WIN)('repo-context-cli', () => {
     expect(r.stderr).toMatch(/not a github repo/);
   });
 
-  it.skipIf(IS_WIN)('signal-killed close on POSIX → exitCode 129', () => {
+  it('signal-killed close → exitCode 129', () => {
     writeFakeGh(`process.kill(process.pid, 'SIGTERM');`);
     const r = spawnSync(process.execPath, [CLI], { env: envWithFakeGh(), cwd: workDir, encoding: 'utf8' });
     expect(r.status).toBe(129);
