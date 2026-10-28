@@ -279,7 +279,7 @@ The guardrails stay single-sourced — they keep working verbatim under Claude
 Code, which never invokes the adapter (only `.codex/hooks.json` does). Verified
 live against codex-cli 0.141.0: a secret read (`block-read-secrets`) is
 **Blocked**; a benign command is allowed. Unit-tested the wrapper,
-exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart** and explicit sandbox/no-sandbox mode parsing
+exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart** and explicit `--sandbox` mode parsing
 (`scripts/hooks/test-codex-run-hook.sh`). Live Codex lifecycle probes of
 the auto-arm path remain a follow-up; the no-token fixture is the gate that has
 now passed.
@@ -290,10 +290,9 @@ now passed.
   `-s read-only` hook side effects are suppressed; a writable sandbox (the
   interactive default `workspace-write`) is needed for them to act. The adapter
   writes **no temp files** for this reason.
-- **No-sandbox mode is diagnostic-only.** The wrapper accepts
-  `--no-sandbox <script.sh>` and surfaces the raw child exit code. Do not wire it
-  into `.codex/hooks.json`; it is for trusted local debugging, not normal
-  guardrail enforcement.
+- **There is no no-sandbox mode.** `.codex/run-hook.sh` drops `--no-sandbox`
+  the same way it drops `--sandbox` and always runs the adapter, so no path
+  surfaces the raw child exit code.
 - Run from a git **worktree**, Codex resolves the project root to the **main
   checkout** (the worktree's `.git` is a file, not a dir) and loads *its*
   `.codex/hooks.json` — so the live hook config is the main checkout's, not the
@@ -733,7 +732,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   normal path (a block lives in its stdout JSON), so a nonzero code
   in sandbox mode means the adapter never ran → emit the fail-closed deny and
   `exit /b 0`. Propagating that code was strictly worse: Codex rendered
-  "hook exited with code 1" *and* failed open. `--no-sandbox` still surfaces the
+  "hook exited with code 1" *and* failed open. `--no-sandbox` surfaced the
   raw child rc for diagnostics. A **no-permission-gate** hook (SessionStart /
   Stop) instead carries `--lifecycle`: there is nothing to deny there and the
   event's own output schema rejects a PreToolUse deny envelope, so an adapter

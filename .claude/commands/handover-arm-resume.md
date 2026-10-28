@@ -36,8 +36,10 @@ bash scripts/handover/arm-resume.sh $ARGUMENTS
   (`scripts/handover/cap-reset-time.sh`). Use when you explicitly want to wait.
 - **`HH:MM`** — explicit 24h local time; today if still future, else tomorrow.
 
-All forms resolve to a concrete date+time, so a past `HH:MM` (and any
+All forms resolve to a concrete date+time. On `at`, a past `HH:MM` (and any
 multi-day sentinel) is scheduled correctly — `at` gets `-t <stamp>` (fixes the old "time already passed today → never fires" bug).
+The `crontab` backend (macOS, and the Linux fallback) writes a daily `HH:MM`
+entry with no date, so a multi-day target can fire on an earlier day.
 
 Common invocations:
 - `/handover-arm-resume --time smart --handover handovers/<USER_SLUG>/status.md`

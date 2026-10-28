@@ -43,4 +43,5 @@ Record the printed `release-token: ` line — now backticked around the token
 itself (HIMMEL-2910) — in the chief's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
-Linux/macOS only — `--arm` launches through konsole.
+Linux/macOS only — `--arm` launches through konsole on Linux; on macOS it opens
+a terminal with `open -a` through the `konsole-macos.sh` shim and needs no Konsole.
