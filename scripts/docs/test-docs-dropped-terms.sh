@@ -450,7 +450,7 @@ docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-la
 docs/internals/lane-parity.md	| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
 docs/internals/lane-parity.md	**GLM-engine write-fence vs `scripts/hooks/block-glm-external-writes.sh`.** The
 docs/internals/lane-parity.md	`block-glm-external-writes.sh`. So an MCP tool call invokes the guard and is
-docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex, hermes-oneshot, codex-exec; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
+docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
 docs/internals/lane-parity.md	**GLM (removed).** The GLM lane was reachable by three paths, each proven
 docs/internals/lane-parity.md	separately: `glm-spawn` and `glm-launcher` (Claude Code with the backend
 docs/internals/lane-parity.md	swapped; the native PreToolUse hooks plus `block-glm-external-writes.sh`, the

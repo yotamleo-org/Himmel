@@ -782,7 +782,7 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
 // NO GLM-style env block; scripts/claude-codex owns the entire trust
 // boundary and sweeps ambient ANTHROPIC_*/CLAUDE_CODE_USE_* itself. The ONLY
 // overrides this lane makes are the optional per-dispatch effort pin (D5,
-// unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-medium}` default
+// unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}` default
 // applies), the optional per-dispatch model pin (unset =>
 // the launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default applies), the
 // unconditional HIMMEL_WORKER worker-ness marker (see below) —

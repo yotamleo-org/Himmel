@@ -898,7 +898,7 @@ apply`, `mode=level level=<X>`).
 
 | `CLAUDE_CODE_EFFORT_LEVEL` | Level sent to `gpt-6.1-sol` |
 |---|---|
-| _(unset — the lane default)_ | **`medium`** (the launcher pins `CLAUDE_CODE_EFFORT_LEVEL=medium` when unset; a truly bare invocation that bypasses the launcher still falls back to Claude Code's own implicit `xhigh`) |
+| _(unset — the lane default)_ | **`xhigh`** (the launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh` when unset, decision 223; a truly bare invocation that bypasses the launcher lands on Claude Code's own implicit `xhigh` too) |
 | `low` / `medium` / `high` / `xhigh` | `low` / `medium` / `high` / `xhigh` |
 | `max` | `max` (accepted upstream — see caveat) |
 | `ultra`, or any unrecognized value | **`xhigh`** — silently falls back to Claude Code's own implicit default |
@@ -906,7 +906,7 @@ apply`, `mode=level level=<X>`).
 - **`ultra` is unreachable from the Claude Code side.** The effort enum tops out
   at `max`; the literal `ultra` is never forwarded — Claude Code ignores any
   unrecognized value and falls back to its own implicit default (`xhigh`), not
-  the launcher's `medium` pin (which only fires when the var is fully unset). No
+  the launcher's `xhigh` pin (which only fires when the var is fully unset). No
   `CLAUDE_CODE_EFFORT_LEVEL` value produces `level=ultra` to codex, so **no
   launcher guard against `ultra` is needed** (Claude Code itself refuses it).
 - **`max` is the real ultra-risk vector.** It IS reachable and forwarded
@@ -917,7 +917,8 @@ apply`, `mode=level level=<X>`).
   `max` as unverified/avoid — the operating ladder caps explicit
   effort at `xhigh`.
 - **The implicit default is `xhigh`** (theo's "rare" tier) — higher than his
-  recommended medium/high default; the operating rules below pin it down.
+  recommended medium/high default; decision 223 keeps `xhigh` as the claudex
+  default for `gpt-6.1-sol` and the launcher pins it explicitly.
 
 _Method: one bounded `claude -p` turn per tier through the live proxy with
 `debug: true` + `logging-to-file: true` added to `~/.cli-proxy-api/config.yaml`
@@ -931,11 +932,11 @@ encoded where the lane runs (the launcher default + `lanes.json`), not just as
 vault prose; the full mechanics live in luna
 `30-Resources/Tech/CLIProxyAPI.md`.
 
-- **Effort ladder — default `medium`, `low` first for mechanical chunks, `xhigh`
-  rare, never `ultra`/`max`.** The launcher pins `CLAUDE_CODE_EFFORT_LEVEL=medium`
-  when unset (it was `high`, and before the operating rules an implicit
-  `xhigh` — theo's "rare" over-spend tier); override per dispatch for a
-  harder/cheaper task (calibration: `docs/internals/lane-calibration.md`,
+- **Effort ladder — default `xhigh` (decision 223), `low` first for mechanical
+  chunks, never `ultra`/`max`.** The launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh`
+  when unset (it was `medium` from HIMMEL-2772 until HIMMEL-7580, `high` before
+  that, and before the operating rules an implicit `xhigh`); override per
+  dispatch for a cheaper task (calibration: `docs/internals/lane-calibration.md`,
   "Effort calibration"). `ultra` is unreachable (see Effort mapping above); `max` is
   reachable but its codex juice is undocumented — avoid it.
 - **Lane's declared window raised to 900k (2026-08-17 operator
@@ -1053,7 +1054,7 @@ dispatch). WARNs to stderr at `CLAUDEX_USAGE_WARN_PCT` (default `80`);
 capped worker dies mid-run, so the tree survives but the work is lost.
 
 **Effort:** `--effort` is optional; unset lets the launcher's
-own `${CLAUDE_CODE_EFFORT_LEVEL:-medium}` default apply. `spawn-claudex.ts`
+own `${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}` default apply. `spawn-claudex.ts`
 REFUSES `--effort max` (undocumented codex juice) and `--effort ultra`
 (unreachable — Claude Code silently falls back to `xhigh`) at parse time,
 pointing back at this section.

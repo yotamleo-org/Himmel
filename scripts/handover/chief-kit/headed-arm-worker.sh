@@ -101,7 +101,8 @@
 # HEADED_ARM_WORKER_CLAUDEX_BIN, default ../../claude-codex), turns on the `script`
 # tty recorder (HEADED_ARM_RECORDER=1 - load-bearing: konsole -e output is
 # otherwise lost and a silent claudex death is undiagnosable), and exports
-# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${WORKER_SESSION_EFFORT:-medium} into the
+# CLAUDEX_LANE_OK=1 + CLAUDE_CODE_EFFORT_LEVEL=${CLAUDE_CODE_EFFORT_LEVEL:-${WORKER_SESSION_EFFORT:-xhigh}}
+# (an explicit value wins, then WORKER_SESSION_EFFORT, then decision 223's gpt-6.1-sol default) into the
 # launched process via HEADED_ARM_LAUNCHER_ENV. An empty/omitted MODEL
 # defaults to gpt-6.1-sol for this lane (native's own --judge default,
 # claude-opus-5-5, is a Claude tier and would defeat the point of
@@ -1755,7 +1756,7 @@ if [ "$LANE" = "claudex" ]; then
     LANE_BIN="${LANE_BIN_OVERRIDE:-$HERE/../../$LANE_BIN_NAME}"
     export HEADED_ARM_LAUNCHER="$LANE_BIN"
     worker_propagate_env CLAUDEX_LANE_OK 1
-    worker_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${WORKER_SESSION_EFFORT:-medium}"
+    worker_propagate_env CLAUDE_CODE_EFFORT_LEVEL "${CLAUDE_CODE_EFFORT_LEVEL:-${WORKER_SESSION_EFFORT:-xhigh}}"
     export HEADED_ARM_RECORDER=1
     [ -z "$MODEL" ] && MODEL="gpt-6.1-sol"
     # scripts/claude-codex reads only CODEX_MODEL; without this the positional
