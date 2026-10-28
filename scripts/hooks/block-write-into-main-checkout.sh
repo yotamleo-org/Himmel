@@ -4901,6 +4901,7 @@ _bwimc_subst_split() {
     # stub and consume a body in the wrong clause; bash treats it as a plain
     # word byte, so `_` keeps every word and path boundary intact.
     local text="${1//$'\001'/_}" i=0 len c q e body sq se sa j end m
+    local _ww="" _wb=0 _we=0
     text="${text//$'\005'/_}"
     len=${#text}
     _BWIMC_SKEL=""; _BWIMC_BODIES=()
@@ -4914,7 +4915,15 @@ _bwimc_subst_split() {
                 i=$((i+_BWIMC_RUN)); continue
             fi
         fi
-        c="${text:$i:1}"; q="$_BWIMC_Q"; e="$_BWIMC_ESC"
+        if [ -z "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
+            _bwimc_plain_run text "$i"
+            if [ "$_BWIMC_RUN" -gt 0 ]; then
+                _BWIMC_SKEL+="${_BWIMC_RUNTXT}"
+                _BWIMC_ACT=1; _BWIMC_DL=0; i=$((i+_BWIMC_RUN)); continue
+            fi
+        fi
+        if [ "$i" -ge "$_we" ] || [ "$i" -lt "$_wb" ]; then _wb=$i; _ww="${text:$i:264}"; _we=$((i+256)); fi
+        c="${_ww:$((i-_wb)):1}"; q="$_BWIMC_Q"; e="$_BWIMC_ESC"
         body=""; end=-1
         if [ "$e" != 1 ] && [ "$q" != "'" ] && [ "$q" != A ]; then
             if [ "$c" = '`' ]; then
