@@ -372,6 +372,15 @@ undelivered bullets as `additionalContext`, no operator paste required. See
 "Claudex file inbox" note for the RETASK-token equivalence this relies on, and
 `scripts/hooks/claudex-inbox-hook.sh` for the delivery hook itself.
 
+**`claudex` review and deferral rows:** the panel's first pass never fetches under
+`HIMMEL_SESSION_LANE=claudex`; it reviews against the local
+`refs/remotes/origin/<base>` and refuses when that ref is missing. A deferral row
+(gate 7's `deferred_to`) is the chief's to write: under the srt box a claudex worker's scratch
+HOME holds no GO key, so an amend it writes carries no `amend_mac` and every keyed reader
+(`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`) drops it. The worker
+sends the chief `AMEND-REQUEST <pr> <head> <finding-id> deferred_to=<KEY> fu_class=<class>`,
+and the chief or a native worker runs `ledger-append.sh amend` for it, which signs the row.
+
 **Chief wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `chief-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the chief only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle chief costs zero turns. The one-shot `bank-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the chief tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The chief batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
 
 ## The hermes `himmel_agent` default and the ox-alpha record

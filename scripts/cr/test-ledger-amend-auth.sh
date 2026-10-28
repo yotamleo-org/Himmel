@@ -85,6 +85,22 @@ LA_LEDGER="$tmp/la.jsonl"
   --reason "signed by the writer" >/dev/null 2>&1) || echo "FAIL: fixture amend not written"
 check "6: a ledger-append.sh amend verifies" "$(kept "$LA_LEDGER")" "first:first la-1:signed by the writer"
 
+# --- 7. a keyless writer: the claudex lane's scratch HOME ------------------
+# claude-codex swaps HOME for a scratch dir, so the GO key at
+# $HOME/.config/himmel/go-hmac.key is not found there. The amend such a worker
+# writes lands unsigned, and a keyed reader drops it.
+SCRATCH_HOME="$tmp/claudex-home"; mkdir -p "$SCRATCH_HOME"
+L7="$tmp/l7.jsonl"
+(cd "$REPO" && CR_LEDGER="$L7" bash "$LA" finding --branch b --head 2222222222222222222222222222222222222222 --model codex --id cx-1 \
+  --severity sug --file a.sh --line 1 --verdict agreed --text "a finding" >/dev/null 2>&1) || echo "FAIL: fixture finding cx-1 not written"
+{ signed "$(amend b first '{"reason":"x"}' first)"; echo; } >> "$L7"
+(cd "$REPO" && HOME="$SCRATCH_HOME" CR_LEDGER="$L7" bash "$LA" amend --branch b --head 2222222222222222222222222222222222222222 --id cx-1 \
+  --set verdict=deferred --set deferred_to=HIMMEL-7 --set fu_class=polish --set class=new:claudex-lane \
+  --reason "claudex deferral" >"$tmp/l7.out" 2>"$tmp/l7.err") || echo "FAIL: keyless amend refused: $(cat "$tmp/l7.err")"
+check "7a: a keyless writer's lowering amend lands with no mac" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep -vc amend_mac)" "1"
+check "7b: a keyed reader drops it" "$(kept "$L7")" "first:first"
+check "7c: a keyless reader honours it" "$(HOME="$SCRATCH_HOME" kept "$L7")" "first:first cx-1:claudex deferral"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-ledger-amend-auth.sh"
