@@ -157,6 +157,7 @@ _usage_lift_cmd() {
       # Store whole seconds, independent of fractional timestamp spelling.
       if ! ( umask 077; jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "${USER:-unknown}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}' > "$tmp" ); then rm -f "$tmp"; return 1; fi
+      # prim-ok: hooks source this file for usage_lift_valid, and the hook-closure walkers cannot resolve prim.sh's own dynamic source lines, so it must not load prim.sh
       if ! mv "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
       if [ -n "$old" ] && ! rm -f "$old"; then echo "usage-lift: set, but could not remove the old $old" >&2; return 1; fi
       echo "usage-lift: set until $until ($resets)"

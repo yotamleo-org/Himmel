@@ -837,7 +837,7 @@ scripts/hooks/test-block-write-into-main-checkout-forms.sh   # HIMMEL-7490: quar
 # back here, not to an unconditional run: its off-Linux skip (the Windows cap
 # exceedance, never re-measured) still holds.
 SKIP_LIST_NON_LINUX="
-scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203
+scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203  # prim-ok: skip-list reason text, no lock runs here
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
@@ -981,7 +981,7 @@ scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-pus
 scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core (HIMMEL-5978): its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner (HIMMEL-2475 sweep); runs wherever gitleaks exists, loud-skips where it does not
-scripts/handover/chief-kit/test-worker-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
+scripts/handover/chief-kit/test-worker-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not  # prim-ok: capability-table row naming the tool, no lock runs here
 scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not
 scripts/hooks/test-check-hook-file-parse.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
@@ -1791,6 +1791,7 @@ _suite_lock_queue_brand() {
     rm -f "$tmp" 2>/dev/null
     return 1
   fi
+  # prim-ok: the brand temp file must sit beside the ticket dir, never in it (see above), and atomic_write would stage inside $dir; mv is only used here on a path the runner owns.
   if ! mv -f "$tmp" "$dir/owner" 2>/dev/null; then
     rm -f "$tmp" 2>/dev/null
     return 1
@@ -2127,6 +2128,7 @@ _suite_lock_claim() {
     "$$" "$(_suite_lock_host)" "$(date +%s)" "$scan" "$PPID" \
     "$(proc_tree_process_identity "$$" 2>/dev/null || printf '')"; printf x)
   _brand=${_brand%x}
+  # prim-ok: this is the runner's own lock, a branded directory with a queue, stale-owner reclaim and rc 1/2 outcomes; with_lock blocks on a PID file and fails closed on a dead owner, so it cannot replace it.
   if ! mkdir "$SUITE_LOCK_DIR" 2>/dev/null; then
     [ -d "$SUITE_LOCK_DIR" ] && return 1
     return 2
@@ -4448,6 +4450,7 @@ _suite_attempts() {
   # temp root that ended up there made every suite exercising protected_path
   # (test-uninstall*.sh, test-chief.sh, ...) see its own scratch dir as
   # protected. Children still inherit TMPDIR/TMP/TEMP=$suite_tmp below.
+  # prim-ok: tmpdir honours TMPDIR and names the dir prim.*; this root is pinned to literal /tmp (above) under the himmel-suite. prefix the temp sweeper matches.
   suite_tmp=$(mktemp -d "/tmp/himmel-suite.XXXXXX" 2>/dev/null) || suite_tmp=''
   if [ -z "$suite_tmp" ]; then
     printf '[NOTE] %s — could not create a per-suite temp root; running in the shared one\n' "$suite"
