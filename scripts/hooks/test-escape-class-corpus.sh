@@ -282,33 +282,26 @@ PERL
         perl "$DG/run.pl" "$HERE/$2" "$DG/in.json" "$DG/err" )
   }
   rep() { local n=$1 out='' i=0; while [ "$i" -lt "$n" ]; do out=$out$2; i=$((i + 1)); done; printf '%s' "$out"; }
-  echo "DIAG bash=$BASH_VERSION locale: LANG=${LANG:-} LC_ALL=${LC_ALL:-} uname=$(uname -sr)"
+  echo "DIAG bash=$BASH_VERSION uname=$(uname -sr) LANG=${LANG:-} LC_ALL=${LC_ALL:-}"
+  summ() { # per second: trace line count, and the last line that ran in it
+    awk '$1 ~ /^\++$/ && $2 ~ /^[0-9]+$/ {n[$2]++; l[$2]=$0} END{for(s in n) printf "%d %d %s\n", s, n[s], substr(l[s],1,170)}' "$DG/err" | sort -n | head -14
+  }
   for nw in 100 200 400; do
-    dg "els default n=$nw dq" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt"
-    dg "els LC_ALL=C n=$nw dq" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt" LC_ALL=C
-    dg "els default n=$nw plain" block-edit-live-settings.sh "echo $(rep "$nw" '~/.claude/x ')> /tmp/out.txt"
-    dg "els default n=$nw words" block-edit-live-settings.sh "echo $(rep "$nw" 'abcdefghij ')> /tmp/out.txt"
+    dg "els n=$nw dq" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt"
+    dg "els n=$nw dq LC_ALL=C" block-edit-live-settings.sh "echo $(rep "$nw" '~/.cl$"a"ude/x ')> /tmp/out.txt" LC_ALL=C
+    dg "els n=$nw plain" block-edit-live-settings.sh "echo $(rep "$nw" '~/.claude/x ')> /tmp/out.txt"
   done
-  dg "els default n=800 dq" block-edit-live-settings.sh "echo $(rep 800 '~/.cl$"a"ude/x ')> /tmp/out.txt"
-  dg "els trace n=120 dq" block-edit-live-settings.sh "echo $(rep 120 '~/.cl$"a"ude/x ')> /tmp/out.txt" A=1 B=1 -x
-  echo "-- trace lines per second:"; awk '{print $2}' "$DG/err" | sort -n | uniq -c | head -40
-  echo "-- trace top sites:"; awk '{print $3}' "$DG/err" | sort | uniq -c | sort -rn | head -25
+  dg "els trace n=300 dq" block-edit-live-settings.sh "echo $(rep 300 '~/.cl$"a"ude/x ')> /tmp/out.txt" A=1 B=1 -x
+  summ
   for pw in 500 1000 2000; do
     P=$(rep "$pw" 'true ')
     dg "qmd pad=$pw pipe-to-sh" block-bare-qmd-query.sh "${P}; echo qmd query x | sh"
-    dg "qmd pad=$pw 2>&1 pipe-to-sh" block-bare-qmd-query.sh "${P}; echo qmd query x 2>&1 | sh"
     dg "qmd pad=$pw bare verb" block-bare-qmd-query.sh "${P}; qmd query x"
-    dg "qmd pad=$pw status+words" block-bare-qmd-query.sh "qmd status; ${P}"
   done
-  dg "qmd 2>&1 trace pad=300" block-bare-qmd-query.sh "$(rep 300 'true '); echo qmd query x 2>&1 | sh" A=1 B=1 -x
-  echo "-- qmd trace lines per second:"; awk '{print $2}' "$DG/err" | sort -n | uniq -c | head -20
-  echo "-- qmd trace top sites:"; awk '{print $3}' "$DG/err" | sort | uniq -c | sort -rn | head -15
-  dg "prcl plain" guard-pr-check-literal.sh 'bash scripts/cr/pr-check-context.sh'
-  echo "-- prcl plain stderr:"; head -c 600 "$DG/err"; echo
-  dg "prcl ansi-c" guard-pr-check-literal.sh "\$'bash' scripts/cr/pr-check-context.sh"
-  echo "-- prcl ansi-c stderr:"; head -c 800 "$DG/err"; echo
-  dg "prcl ansi-c trace" guard-pr-check-literal.sh "\$'bash' scripts/cr/pr-check-context.sh" A=1 B=1 -x
-  echo "-- prcl trace tail:"; tail -25 "$DG/err" | cut -c1-200
+  dg "qmd trace pad=1000 pipe" block-bare-qmd-query.sh "$(rep 1000 'true '); echo qmd query x | sh" A=1 B=1 -x
+  summ
+  dg "qmd trace pad=2000 bare" block-bare-qmd-query.sh "$(rep 2000 'true '); qmd query x" A=1 B=1 -x
+  summ
   rm -rf "$DG"
   exit 1
 fi
