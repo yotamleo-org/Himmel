@@ -3375,20 +3375,25 @@ elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the t
 # suite count come from the detail run-shell-tests.sh records. Advisory: never a wake key.
 sa_dir="$W/sem5788"
 sa_now="$(date +%s)"
-mkdir -p "$sa_dir/slot-1" "$sa_dir/slot-2" "$sa_dir/slot-3" "$sa_dir/slot-4"
+mkdir -p "$sa_dir/slot-1" "$sa_dir/slot-2" "$sa_dir/slot-3" "$sa_dir/slot-4" "$sa_dir/slot-5"
 sa_dead="$(sh -c 'echo $$')"
-sa_owner() { # <slot> <pid> <age-seconds> [detail]
-    printf 'pid=%s\nidentity=x\nlabel=run-shell-tests\nstarted=%s\n%s' "$2" "$((sa_now - $3))" "${4:+detail=$4$'\n'}" > "$sa_dir/slot-$1/owner"
+# shellcheck source=../../lib/proc-tree.sh
+. "$HERE/../../lib/proc-tree.sh"
+sa_id="$(proc_tree_process_identity "$$")"
+sa_owner() { # <slot> <pid> <age-seconds> [detail] [identity]
+    printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\n%s' "$2" "${5-$sa_id}" "$((sa_now - $3))" "${4:+detail=$4$'\n'}" > "$sa_dir/slot-$1/owner"
 }
 sa_owner 1 $$ 1500 'worker=N3912 range=aaa1111..bbb2222 suites=3'
 sa_owner 2 $$ 60 'worker=N3913 range=ccc..ddd suites=9'
 sa_owner 3 "$sa_dead" 9000 'worker=N3914 range=eee..fff suites=5'
 sa_owner 4 $$ 1300
+sa_owner 5 $$ 9000 'worker=N3915 range=ggg..hhh suites=7' 'reused-pid-other-process'
 sa_tick() { HIMMEL_SUITE_SEMAPHORE_DIR="$sa_dir" bash "$SUT" "$@" 2>/dev/null; }
 sa_out="$(sa_tick)"
 contains 'a live slot held past the cap prints its worker, range, suite count and age (HIMMEL-5788)' "$sa_out" ' slotage=N3912:aaa1111..bbb2222:3suites:25m'
 not_contains 'a slot younger than the cap is not listed (HIMMEL-5788)' "$sa_out" 'N3913'
 not_contains 'a slot whose owner is dead is not listed (HIMMEL-5788)' "$sa_out" 'N3914'
+not_contains 'a slot whose pid now names another process is not listed (HIMMEL-5788)' "$sa_out" 'N3915'
 contains 'a slot past the cap with no detail reads ? for each part (HIMMEL-5788)' "$sa_out" ',?:?:?suites:21m'
 contains 'verbose labels slotage (HIMMEL-5788)' "$(sa_tick --verbose)" 'slot age: N3912:aaa1111..bbb2222:3suites:25m'
 contains 'HIMMEL_SUITE_SLOT_CAP lowers the cap (HIMMEL-5788)' "$(HIMMEL_SUITE_SLOT_CAP=30 sa_tick)" 'N3913:ccc..ddd:9suites:1m'

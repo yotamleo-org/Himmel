@@ -2186,12 +2186,15 @@ slot_cap="${HIMMEL_SUITE_SLOT_CAP:-1200}"
 case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
 [ "$((10#$slot_cap))" -gt 0 ] || slot_cap=1200
 slot_now="$(date +%s)"
+. "$HERE/../../lib/proc-tree.sh"
 for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
     [ -f "$slot_dir/owner" ] || continue
     slot_pid="$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$slot_dir/owner" | head -n 1)"
     slot_started="$(sed -n 's/^started=\([0-9][0-9]*\)$/\1/p' "$slot_dir/owner" | head -n 1)"
     [ -n "$slot_pid" ] && [ -n "$slot_started" ] || continue
-    kill -0 "$slot_pid" 2>/dev/null || continue
+    slot_id="$(sed -n 's/^identity=//p' "$slot_dir/owner" | head -n 1)"
+    # the semaphore's own liveness: rc 1 is a gone pid or one now naming another process (pid reuse)
+    if proc_tree_liveness_matches "$slot_pid" "$slot_id"; then :; else [ "$?" -ne 1 ] || continue; fi
     slot_age=$((slot_now - slot_started))
     [ "$slot_age" -gt "$((10#$slot_cap))" ] || continue
     slot_detail="$(sed -n 's/^detail=//p' "$slot_dir/owner" | head -n 1)"
