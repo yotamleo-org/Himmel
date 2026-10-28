@@ -1151,9 +1151,11 @@ rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
