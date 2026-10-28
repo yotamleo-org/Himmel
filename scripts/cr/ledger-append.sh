@@ -403,7 +403,7 @@ if [ "$kind" = "amend" ]; then
     esac
   done <<< "$set_pairs"
   # An amend that makes a finding a deferral must classify it.
-  if printf '%s' "$set_pairs" | grep -qE '^(verdict=deferred|deferred_to=)' && ! printf '%s' "$set_pairs" | grep -q '^fu_class='; then
+  if grep -qE '^(verdict=deferred|deferred_to=)' <<< "$set_pairs" && ! grep -q '^fu_class=' <<< "$set_pairs"; then
     echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (see docs/release/follow-up-triage.md) - NOTHING was written" >&2
     exit 2
   fi
