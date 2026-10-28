@@ -454,7 +454,7 @@ steal_stale_reclaim_lock() {
 }
 lock_acquire() {
   local tries=0 stale_checked=0 marker_checked=0
-  # prim-ok: admission lock is held across the later claude launch (acquire here, release by the exit trap) with a pid record and bounded stale reclaim; with_lock scopes a lock to one command.
+  # prim-ok: admission lock covers the count and dispatch-row write, then lock_release runs before the later claude launch; it records a pid and supports bounded stale reclaim, and with_lock scopes a lock to one command.
   while ! mkdir "$ADMISSION_LOCK" 2>/dev/null; do
     tries=$((tries + 1))
     # codex-4: a bare mkdir-lock with no owner record blocks EVERY future

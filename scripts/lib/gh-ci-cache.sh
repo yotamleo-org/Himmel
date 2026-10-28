@@ -218,7 +218,7 @@ _cic_write() {
         fi
     fi
     if { printf '%s\t%s\t0\n' "$(cic_now)" "$CIC_HEAD" && printf '%s\n' "$CIC_ROWS"; } > "$tmp" 2>/dev/null; then
-        # prim-ok: adopter-shipped (scripts/adopt.sh copies this file without prim.sh); the entry keeps its umask mode, atomic_write would force 0600.
+        # prim-ok: the entry keeps its umask mode, atomic_write would force 0600.
         mv -f "$tmp" "$CIC_FILE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
     else
         rm -f "$tmp" 2>/dev/null
@@ -239,7 +239,7 @@ _cic_lock() {
     max="${CHECK_CI_LOCK_WAIT:-30}"
     case "$max" in ''|*[!0-9]*) max=30 ;; esac
     max=$((max * 5))
-    # prim-ok: held across later calls until cic_unlock (TERM/EXIT path), bounded by CHECK_CI_LOCK_WAIT and CIC_DEADLINE with a 60 s age-based break; adopter-shipped, no prim.sh there.
+    # prim-ok: held across later calls until cic_unlock (TERM/EXIT path), bounded by CHECK_CI_LOCK_WAIT and CIC_DEADLINE with a 60 s age-based break.
     while ! mkdir "$CIC_LOCK" 2>/dev/null; do
         t=$(cat "$CIC_LOCK/t" 2>/dev/null); now=$(cic_now)
         # A lock older than 60 s belongs to a fetch that died: break it.
