@@ -10,7 +10,7 @@
 # (the compound-find fix), but the swap by itself never
 #   COLLAPSES the result: a guard entry plus a freshly re-added bare entry,
 #   swapped again, yields two guard entries. The full machine-setup scripts
-#   (ubuntu.sh / win11.ps1) run `rtk init -g` exactly once so they never hit
+#   (ubuntu.sh) run `rtk init -g` exactly once so they never hit
 #   this; the gap is when an operator runs `rtk init -g` on its own, OUTSIDE
 #   machine-setup. This helper is the on-demand reconcile for that case.
 #

@@ -39,7 +39,7 @@ out="$(summary_of "TaskCreate was wired into the job queue.
 Added retries.")"
 if printf '%s' "$out" | grep -q 'TaskCreate was wired'; then pass "F2: leading 'TaskCreate'-only line kept (gptoss-1)"; else fail "F2: leading 'TaskCreate'-only line wrongly dropped"; fi
 
-# --- Case 1c: case-insensitive + trailing-whitespace ack drop (twin parity) ---
+# --- Case 1c: case-insensitive + trailing-whitespace ack drop ---
 ack_line="OKAY.   "   # uppercase + trailing whitespace
 out="$(summary_of "${ack_line}
 Wired the webhook handler.")"
