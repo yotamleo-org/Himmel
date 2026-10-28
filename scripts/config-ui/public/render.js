@@ -377,7 +377,7 @@ export function renderInventory(feed, state) {
 </section>`;
 }
 
-export function render(feed, state) {
+export function renderTriage(feed, state) {
   const { rows, triage } = sets(feed);
   const nf = triage.filter((r) => r.health === "fail").length;
   const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
@@ -386,7 +386,11 @@ export function render(feed, state) {
   <p class="sub">Only rows that are failing or drifting. Opt-in items you left off are not listed.</p>
   <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
   ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
-</section>
+</section>`;
+}
+
+export function render(feed, state) {
+  return `${renderTriage(feed, state)}
 ${renderSettings(feed, state)}
 ${renderFleetCap(state.fleetCap)}
 ${renderReviewGate(state.reviewGate)}

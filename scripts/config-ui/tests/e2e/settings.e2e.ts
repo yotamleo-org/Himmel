@@ -54,7 +54,7 @@ test("J3. the Tracker tile points commit rules at ~/.himmel/himmel.conf, not the
   const t = page.locator("#tile-tracker");
   await expect(t).toContainText("~/.himmel/himmel.conf");
   await expect(t).not.toContainText(/shell profile/i);
-  await expect(t.locator(".dryrun")).toHaveCount(1);
+  await expect(t.locator(".cols .col")).toHaveCount(2); // the shared dry-run box appears only once a change is previewed
 });
 
 test("J3. a switch on Configure still previews its dry-run first and runs nothing on cancel", async ({ page }) => {

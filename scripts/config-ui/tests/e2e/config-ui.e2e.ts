@@ -193,7 +193,7 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
 
 test("health: the seven sections appear in spec order", async ({ page }) => {
   await openHealth(page);
-  expect(await page.locator("main h2").allTextContents()).toEqual(SECTIONS);
+  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Triage", "Inventory"]); // Health ends with the Triage and Inventory sections
 });
 
 test("health: fail first with remedy; the open-row button filters Health's inventory to the row", async ({ page }) => {
@@ -328,7 +328,7 @@ test("health: every source absent leaves No data cards that name the source; ver
   await expect(page.locator("#bank .nodata")).toContainText("bank-preflight ledger");
   await expect(page.locator("#legs .nodata")).toContainText("fleet manifest");
   await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running");
-  expect(await page.locator("main h2").allTextContents()).toEqual(SECTIONS);
+  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Triage", "Inventory"]); // Health ends with the Triage and Inventory sections
 });
 
 test("health: at 390 px the page does not scroll horizontally", async ({ page }) => {

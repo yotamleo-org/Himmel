@@ -45,11 +45,11 @@ async function landedOn(hash: string) {
   const painted: unknown[] = [];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderInventory", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "renderToolHealth", "renderKanban", "renderRoadmap", "renderWorkflow", "mountWorkflow",
+  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "renderToolHealth", "renderKanban", "renderRoadmap", "renderWorkflow", "mountWorkflow",
     "parseLanding", "navLinks", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
-    render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
+    render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
     renderHealth: () => "", verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "", mountWorkflow() {},
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
@@ -65,6 +65,8 @@ test("the old #/setup and #/configure routes land on Configure, #/setup with the
   expect(await landedOn("#/configure")).toEqual({ urls: ["/#/config"], tile: null });
   expect(await landedOn("#/config?tile=tracker")).toEqual({ urls: [], tile: "tracker" });
   expect(await landedOn("#/health")).toEqual({ urls: [], tile: null });
+  expect((await landedOn("#/config?tile=__proto__")).tile).toBeNull(); // an unknown tile id opens none, and Configure still paints
+  expect((await landedOn("#/config?tile=nope")).tile).toBeNull();
 });
 
 test("from the AG-UI pages the Configure link carries the token in the fragment", () => {

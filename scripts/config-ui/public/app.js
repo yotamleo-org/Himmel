@@ -1,5 +1,5 @@
 // thin DOM glue. All markup comes from render.js.
-import { renderInventory, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
+import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
@@ -42,7 +42,7 @@ const noTracker = () => `<div class="nodata">No tracker the UI can read is confi
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
-  { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health) + (f ? renderInventory(f, state) : ""), onVisit: () => { if (!health) loadHealth(); } },
+  { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health) + (f ? renderTriage(f, state) + renderInventory(f, state) : ""), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
@@ -54,6 +54,7 @@ let currentPage = PAGES[0];
 // Settings and Setup became the one Configure page: their old routes still land on it, Setup with the Secrets tile open.
 // (nav.js maps the AG-UI rail's page=setup landing the same way.)
 const OLD_ROUTES = { setup: "secrets", configure: null };
+const TILE_IDS = ["secrets", "review", "tracker", "scope"];
 
 function route() {
   const m = /^#\/(\w+)(?:\/([^/?#]+))?(?:\?([^#]*))?/.exec(location.hash) || [];
@@ -61,7 +62,8 @@ function route() {
   const id = old ? "config" : m[1];
   currentPage = PAGES.find((p) => p.id === id) || PAGES[0];
   // the open tile rides the hash (#/config?tile=tracker), so a reload keeps it; any other route leaves none open.
-  state.tile = currentPage.id === "config" ? (old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile")) : null;
+  const asked = old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile");
+  state.tile = currentPage.id === "config" && TILE_IDS.includes(asked) ? asked : null; // an unknown ?tile= opens none (nav.js TILES; slow.test.ts runs this file without its imports)
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
