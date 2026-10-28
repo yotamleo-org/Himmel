@@ -238,9 +238,6 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
 # shellcheck source=../lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$_QL_SCRIPT_DIR/../lib/git-clean.sh"
-# shellcheck source=../lib/prim.sh
-# shellcheck disable=SC1091
-. "$_QL_SCRIPT_DIR/../lib/prim.sh"
 
 _ql_usage() {
     cat <<'EOF'
@@ -463,19 +460,29 @@ _ql_slug() {
 # acquire, pre-988 copies included) still changes and catches it.
 _ql_write_owner() {
     local lockdir="$1" session="$2" host="$3" ho="$4" started="$5" heartbeat="$6"
-    local body
-    body=$(printf '{"session":"%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}' \
+    local tmp="$lockdir/owner.json.tmp.$$"
+    if ! printf '{"session":"%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
         "$(_ql_json_escape "$session")" \
         "$(_ql_json_escape "$host")" \
         "$(_ql_json_escape "$ho")" \
-        "$started" "$heartbeat" 2>/dev/null) || return 1
+        "$started" "$heartbeat" \
+        > "$tmp" 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null
+        return 1
+    fi
     if [ "$#" -ge 7 ] && [ "$(_ql_read_gen "$lockdir")" != "$7" ]; then
+        rm -f "$tmp" 2>/dev/null
         return 3
     fi
     if [ "$#" -ge 8 ] && [ "$(_ql_read_arbiter "$lockdir")" != "$8" ]; then
+        rm -f "$tmp" 2>/dev/null
         return 3
     fi
-    printf '%s\n' "$body" | atomic_write "$lockdir/owner.json" 2>/dev/null || return 1
+    # prim-ok: hooks source this file and hook-integrity cannot resolve lib/prim.sh's dynamic source, so it stays off prim.sh
+    if ! mv -f "$tmp" "$lockdir/owner.json" 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null
+        return 1
+    fi
     return 0
 }
 
@@ -1344,9 +1351,9 @@ _ql_arms_registry_retire_fired() {
         # token-read->rmdir gap documented below.
         cur=$(cat "$reg.lock/owner" 2>/dev/null) || cur=""
         if [ "$cur" = "$tok" ]; then
-            if wfail_err=$(atomic_write "$reg" < "$tmp" 2>&1); then
+            # prim-ok: hooks source this file and hook-integrity cannot resolve lib/prim.sh's dynamic source, so it stays off prim.sh
+            if wfail_err=$(mv -f "$tmp" "$reg" 2>&1); then
                 echo "queue-lock: consumed this host's pending arms-registry record(s) for this handover (arm fired)" >&2
-                rm -f "$tmp" 2>/dev/null   # atomic_write copies $tmp; a rename used to consume it
             else
                 failed=1
             fi
@@ -2010,12 +2017,18 @@ queue_lock_heartbeat() {
 # the file is only rewritten when its content differs so a hook firing on
 # every tool call does not churn the lock dir. Writes ONLY inside <lockdir>.
 _ql_write_liveness() {
-    local lk="$1" tr="$2" want have
+    local lk="$1" tr="$2" want have tmp
     [ -n "$tr" ] && [ -d "$lk" ] || return 0
     want=$(printf 'host=%s\ntranscript=%s\n' "$(_ql_hostname)" "$tr")
     have=$(cat "$lk/liveness" 2>/dev/null) || have=""
     [ "$want" = "$have" ] && return 0
-    printf '%s\n' "$want" | atomic_write "$lk/liveness" 2>/dev/null || true
+    tmp="$lk/liveness.tmp.$$"
+    if printf '%s\n' "$want" > "$tmp" 2>/dev/null; then
+        # prim-ok: hooks source this file and hook-integrity cannot resolve lib/prim.sh's dynamic source, so it stays off prim.sh
+        mv -f "$tmp" "$lk/liveness" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    else
+        rm -f "$tmp" 2>/dev/null
+    fi
     return 0
 }
 
