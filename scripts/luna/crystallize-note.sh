@@ -51,8 +51,6 @@ DEFAULT_BUDGET_USD="1.00"
 # back to the subscription. The test override replaces the launcher, not the gate.
 { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
     || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
-# shellcheck source=../lib/prim.sh
-. "$HIMMEL_ROOT/scripts/lib/prim.sh" || exit 0
 LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
 [ -r "$LAUNCHER" ] \
     || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
@@ -264,8 +262,8 @@ if [ -n "$HASH_BEFORE" ] && [ -n "$HASH_AFTER" ] && [ "$HASH_BEFORE" != "$HASH_A
             fmc==1 && /^crystallized_at:/ { print "crystallized_at: " now; next }
             { print }
         ' "$NOTE_PATH" > "$STAMP_TMP" 2>/dev/null; then
-            atomic_write "$NOTE_PATH" < "$STAMP_TMP" 2>/dev/null || true
-            rm -f "$STAMP_TMP" 2>/dev/null || true
+            # prim-ok: publish the completed stamp without another allocation and retain its umask-derived mode.
+            mv -f "$STAMP_TMP" "$NOTE_PATH" 2>/dev/null || rm -f "$STAMP_TMP" 2>/dev/null || true
         else
             rm -f "$STAMP_TMP" 2>/dev/null || true
         fi
