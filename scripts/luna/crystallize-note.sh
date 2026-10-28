@@ -44,8 +44,6 @@ export CLAUDE_END_SESSION_WIKI=0
 export HIMMEL_WHERE_ARE_WE=0
 
 HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
-# shellcheck source=../lib/prim.sh
-. "$HIMMEL_ROOT/scripts/lib/prim.sh" || exit 0
 DEFAULT_MODEL="claude-opus-4-8"
 DEFAULT_BUDGET_USD="1.00"
 
@@ -53,6 +51,8 @@ DEFAULT_BUDGET_USD="1.00"
 # back to the subscription. The test override replaces the launcher, not the gate.
 { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
     || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$HIMMEL_ROOT/scripts/lib/prim.sh" || exit 0
 LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
 [ -r "$LAUNCHER" ] \
     || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
