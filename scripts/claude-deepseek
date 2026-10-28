@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-deepseek — isolated DeepSeek inference lane (HIMMEL-4084).
+# claude-deepseek — isolated DeepSeek inference lane.
 # bash 3.2-safe. Exit 2: missing dependency/key; 3: egress; 4: seed; 5: balance.
 # Station opt-in is process-environment ONLY; .env supplies only the API key.
 # No --force bypass: neither opt-in nor a permissive matrix overrides PHI/vaults.
@@ -22,7 +22,7 @@ command -v node >/dev/null 2>&1 || { echo 'claude-deepseek: node required; faili
 RESEED=0
 # shellcheck disable=SC2034 # RESEED is consumed by the sourced mirror-seed library.
 if [ "${1-}" = --reseed ]; then RESEED=1; shift; fi
-# HIMMEL-5183: --seed-only seeds the lane config dir (settings.json, mirror, sentinel,
+# --seed-only seeds the lane config dir (settings.json, mirror, sentinel,
 # fingerprint) and exits 0 before the balance probe and the launch; the pilot jail seeds
 # a row's config outside the lane, then binds the policy files read-only.
 SEED_ONLY=0

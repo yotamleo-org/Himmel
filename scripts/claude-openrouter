@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 # claude-openrouter — thin launcher: Claude Code on the OpenRouter metered lane
-# (HIMMEL-1774). bash 3.2-safe. Copy-and-edit of scripts/claude-glm (the WS1
-# extensibility seam: a new backend plugged into the same launcher skeleton),
-# with TWO OpenRouter-specific gates the siblings do not carry:
+# (bash 3.2-safe), with TWO OpenRouter-specific gates:
 #   1. An egress-matrix consultation (HARD REQUIREMENT) — REFUSES fail-closed
 #      until the operator declares an explicit `openrouter` provider + cell in
 #      scripts/guardrails/egress-matrix.json. There is NO --force / proceed-anyway
 #      override for this; the matrix is the authorizing gate for a lane whose
 #      content transits a third party (OpenRouter). Reaching a Claude model
 #      THROUGH OpenRouter is NOT covered by the existing `anthropic` cell.
-#   2. Remaining-credit GATE (HIMMEL-4076) — OpenRouter exposes a metered balance;
+#   2. Remaining-credit GATE — OpenRouter exposes a metered balance;
 #      below OPENROUTER_MIN_CREDIT_USD (default 3) or UNKNOWN refuses with exit 5,
-#      and an UNKNOWN is reported LOUDLY, never silent (the HIMMEL-1771 class).
+#      and an UNKNOWN is reported LOUDLY, never silent.
 # Pin: the target model is a Claude 1M-context tier (CLAUDE_CODE_AUTO_COMPACT_WINDOW
 # = 1000000). Endpoint + slug were verified against OpenRouter's live API and
 # docs on 2026-08-15: the native Anthropic-compatible endpoint needs NO loopback
@@ -32,7 +30,7 @@ set -u
 # env-overridable seam for pointing at a different Anthropic-Messages-compatible
 # endpoint.
 OPENROUTER_ANTHROPIC_BASE_URL="${OPENROUTER_ANTHROPIC_BASE_URL:-https://openrouter.ai/api}"
-# Model pin (HIMMEL-1774 §5, verified 2026-08-15 against
+# Model pin (verified against
 # https://openrouter.ai/api/v1/models — 20 Anthropic models report
 # context_length: 1000000): the 1M Claude tiers are NATIVELY 1M on OpenRouter;
 # do NOT append `:extended` (no such variant exists). Default is the judge tier.
@@ -43,9 +41,7 @@ OPENROUTER_ANTHROPIC_BASE_URL="${OPENROUTER_ANTHROPIC_BASE_URL:-https://openrout
 #   anthropic/claude-sonnet-5
 # `:batch` variants are asynchronous and unsupported by interactive tier overrides.
 OPENROUTER_MODEL="${OPENROUTER_MODEL:-anthropic/claude-opus-5.5}"
-# Independent subagent tiers (HIMMEL-4083), verified against the public catalog
-# 2026-10-02; Haiku re-pinned to 5.5 on 2026-10-11 (HIMMEL-5248: served, 1M
-# context). Sonnet and Opus are 1M. Session pin stays separate.
+# Independent subagent tiers have 1M context. Session pin stays separate.
 OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-5.5}"
 OPENROUTER_SONNET="${OPENROUTER_SONNET:-anthropic/claude-sonnet-5.5}"
 OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
@@ -92,7 +88,7 @@ alias_env WORKER_SESSION_LANE LEG_LANE
 # OpenRouter key; CWD-resolution would exit 2 despite himmel/.env holding the key.
 # CLAUDE_OPENROUTER_DOTENV_ROOT (test hook) overrides that root so hermetic tests
 # never read the real himmel .env — same production code path either way.
-# HIMMEL-1482: when invoked from a linked worktree copy of itself, $HERE/.. is a
+# When invoked from a linked worktree copy of itself, $HERE/.. is a
 # worktree root with no .env — _load_dotenv_primary_for falls back to the primary
 # checkout so the key is still found (same pin-to-the-launcher's-repo contract,
 # just primary-aware; the CWD repo is still never trusted).
@@ -117,7 +113,7 @@ fi
 
 # node is REQUIRED to consult the egress matrix (and to sanitize settings during
 # seeding). Fail CLOSED if it is absent: the egress policy cannot be verified, so
-# reporting ready would let content reach a third party un-audited (HIMMEL-1771).
+# reporting ready would let content reach a third party un-audited.
 if ! command -v node >/dev/null 2>&1; then
   echo "claude-openrouter: node is required to consult the egress matrix and seed the config dir — refusing to launch without it." >&2
   exit 3
@@ -137,7 +133,7 @@ done
 # Guard config dir is DELIBERATELY SHARED with claude-glm (~/.config/claude-glm),
 # NOT a per-lane dir: one guard source of truth means a PHI/egress rule written
 # once governs every launcher variant.
-# HIMMEL-1773 caveat: this guard matches the sibling STRUCTURE but is NOT
+# This guard matches the sibling STRUCTURE but is NOT
 # proven-correct on the real corpus — it keys on a `.salus` marker file, while
 # the live vault carries `.salus-profile`, and the phi-roots fallback list does
 # not exist. So the path-based PHI perimeter is currently INERT on the real vault
@@ -193,7 +189,7 @@ fi
 # — the operator must make an explicit decision per corpus. CLAUDE_OPENROUTER_EGRESS_MATRIX
 # (test hook) points at a hermetic matrix so the suite can exercise both the
 # refuse path (the real matrix, no cell) and the proceed path (a fixture cell).
-# There is NO --force / proceed-anyway bypass for this gate (HIMMEL-1774).
+# There is NO --force / proceed-anyway bypass for this gate.
 EGRESS_MATRIX="${CLAUDE_OPENROUTER_EGRESS_MATRIX:-$HERE/guardrails/egress-matrix.json}"
 egress_consult() { # $1 = matrix path, $2 = himmel-code corpus root
   node -e '
@@ -336,7 +332,7 @@ if [ "${WORKER_SESSION_LANE:-}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ]
   seed_with_lock
 fi
 
-# --- remaining-credit GATE (HIMMEL-1774 §4, hardened by HIMMEL-4076) ------------
+# --- remaining-credit GATE --------------------------------------------------
 # OpenRouter exposes a metered balance at GET <OPENROUTER_API_BASE>/credits. The
 # key holds only a few dollars, so the probe GATES the launch: a balance below
 # OPENROUTER_MIN_CREDIT_USD (default 3; a non-numeric value falls back to 3) or an
@@ -352,7 +348,7 @@ if command -v curl >/dev/null 2>&1; then
   # Parse total_credits - total_usage → remaining. node returns the number on
   # stdout (exit 0) only on a clean parse of the expected shape; anything else
   # exits nonzero and the launcher reports UNKNOWN.
-  # The same block also parses GET /key (HIMMEL-4076): {limit, limit_remaining};
+  # The same block also parses GET /key: {limit, limit_remaining};
   # a null limit prints "none" (uncapped), a capped key prints limit_remaining.
   or_parse() { node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -408,7 +404,7 @@ command -v claude >/dev/null 2>&1 || { echo "claude-openrouter: 'claude' not fou
 
 # --- launch: env contract mirrors the siblings --------------------------------
 # Exported in the shell, NOT passed as `env VAR=...` argv, so the key is not
-# exposed in the process list (claude-codex R9 parity). The base URL points at
+# exposed in the process list. The base URL points at
 # OpenRouter's native Anthropic-compatible endpoint; the model is the pinned
 # Claude 1M tier; AUTO_COMPACT_WINDOW budgets against the real 1M window.
 # ANTHROPIC_API_KEY is DELIBERATELY exported EMPTY — this is load-bearing, not
@@ -451,11 +447,11 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="$or_opus_label"
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 # The client classifier's side query carries no reasoning, and the gateway 400s
 # ("Reasoning is mandatory") on mandatory-reasoning slugs, so every Bash call is
-# refused as "classifier unavailable" (HIMMEL-5248). EXTRA_BODY merges this into
+# refused as "classifier unavailable". EXTRA_BODY merges this into
 # every request; the `thinking` shape works, `reasoning.effort` does not.
 # ponytail: the budget also applies to the main loop, so every turn pays up to
 # 2048 thinking tokens, revisit when the classifier side query can carry its own
-# reasoning setting (HIMMEL-5248 upstream issue).
+# reasoning setting.
 if [ -z "${CLAUDE_CODE_EXTRA_BODY:-}" ]; then
   export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"enabled","budget_tokens":2048}}'
 fi
