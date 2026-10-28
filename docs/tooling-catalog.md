@@ -1445,12 +1445,9 @@ view into the vault — the bridge between the derived graph and the KB.
   (`--backend claude-cli` is the default/sanctioned luna extraction provider —
   the operating-substrate `anthropic` cell, plain `allow` on luna-personal;
   authenticates via the operator's own Claude Code subscription, no API key.
-  `--backend glm` was a prior lane but zai-glm is de-listed,
-  and `--backend kimi` (moonshot) is retired —
-  operator ruling, there is no kimi backend — so both now fail closed on luna
-  corpora, glm at the egress preflight and kimi as an unclassified provider).
+  `--backend kimi` (moonshot) is retired — operator ruling, there is no kimi backend — so it fails closed on luna corpora as an unclassified provider).
   **Throttle knob (`GRAPHIFY_MAX_CONCURRENCY`, default 6):** concurrency 6
-  overshoots Z.ai's request limit — `--backend glm` 429s (`rate_limit_error`
+  overshoots a rate-limited backend's request limit — it 429s (`rate_limit_error`
   1302) on most chunks and the regen fails. `GRAPHIFY_MAX_CONCURRENCY=1`
   serializes the extraction + cluster-only LLM calls, which eases request
   pressure but is NOT true rate-limiting (no pacing/backoff) and cannot beat a
