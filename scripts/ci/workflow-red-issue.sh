@@ -48,7 +48,9 @@ if [ -z "$REPO" ]; then
   exit 2
 fi
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/workflow-red.XXXXXX")" || { echo "workflow-red-issue: mktemp failed" >&2; exit 1; }
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh" || { echo "workflow-red-issue: cannot load scripts/lib/prim.sh" >&2; exit 1; }
+TMP="$(tmpdir)" || { echo "workflow-red-issue: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 
 tab="$(printf '\t')"

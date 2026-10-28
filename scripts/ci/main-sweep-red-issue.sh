@@ -48,7 +48,9 @@ if [ -z "$REPO" ]; then
   exit 2
 fi
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/main-sweep-red.XXXXXX")" || { echo "main-sweep-red-issue: mktemp failed" >&2; exit 1; }
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "main-sweep-red-issue: cannot load scripts/lib/prim.sh" >&2; exit 1; }
+TMP="$(tmpdir)" || { echo "main-sweep-red-issue: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 
 tab="$(printf '\t')"

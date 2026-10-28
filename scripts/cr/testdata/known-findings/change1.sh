@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
 usage() { echo "foo --keep-flag"; }
-t=$(mktemp -d)
-ok=$(mktemp -d "${TMPDIR:-/tmp}/foo.XXXXXX")
+t=$(mktemp -d)  # prim-ok: detector fixture, never executed; the pinned line numbers forbid a rewrite
+ok=$(mktemp -d "${TMPDIR:-/tmp}/foo.XXXXXX")  # prim-ok: detector fixture, never executed; the pinned line numbers forbid a rewrite
 timeout 5 sleep 1
 timeout 5 sleep 1   # gnu-ok: test fixture
 mapfile -t arr < /dev/null
@@ -31,5 +31,5 @@ wait "$pid"
 # git-env-ok: detector fixture, never executed
 gd=$(git rev-parse --git-common-dir)
 top=$(git rev-parse --show-toplevel)
-t2=$(mktemp -d 2>/dev/null)
+t2=$(mktemp -d 2>/dev/null)  # prim-ok: detector fixture, never executed; the pinned line numbers forbid a rewrite
 pid=$$; echo "$flag $gd $top $t2 $pid"

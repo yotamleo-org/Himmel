@@ -73,6 +73,7 @@ selector_blob=$(git rev-parse --verify --quiet "${base_sha}:scripts/cr/impacted-
 if [ -z "${IMPSEL_BASE_TOOLS:-}" ]; then
   git cat-file -e "${base_sha}:scripts/ci/impacted-selection.sh" 2>/dev/null \
     || verdict_full "base-predates-selector" "$base_sha" "$selector_blob"
+  # prim-ok: ci.yml runs a BASE-commit copy extracted next to pr-plan.sh with no scripts/lib, so it cannot source prim.sh
   tools=$(mktemp -d "${TMPDIR:-/tmp}/impacted-selection.XXXXXX") \
     || verdict_full "mktemp-failed" "$base_sha" "$selector_blob"
   # shellcheck disable=SC2064  # expand $tools now: it is the dir to remove

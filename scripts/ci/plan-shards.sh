@@ -46,6 +46,7 @@ if [ "$#" -gt 0 ] && [ "$1" != "--" ]; then root="$1"; shift; fi
 [ "${1:-}" = "--" ] && shift
 here="$(cd "$(dirname "$0")" && pwd)"
 
+# prim-ok: test-plan-shards.sh runs copies of this script beside stubs outside the tree (no ../lib), so it cannot source prim.sh
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/plan-shards.XXXXXX") || exit 2
 trap 'rm -rf "$tmp"' EXIT
 
