@@ -1185,9 +1185,11 @@ function probeCmdHasQmd(item, ctx) {
 function probeQmdIndex(item, ctx) {
   const resolverPath = path.resolve(ctx.repoRoot, 'scripts/lib/qmd-bin.sh');
   const collections = item.probe.collections;
-  const r = spawnBashProbe(['-c', `. "${resolverPath}" && has_qmd && qmd_cmd collection list`],
+  // rc 3 = has_qmd failed (no qmd at all), told apart from a failing `collection list`
+  const r = spawnBashProbe(['-c', `. "${resolverPath}" && { has_qmd || exit 3; } && qmd_cmd collection list`],
     { env: ctx.env || process.env, encoding: 'utf8' });
   if (r.timedOut) return { actual: 'degraded', detail: `qmd-index probe timed out after ${probeTimeoutSecs(r)}s` };
+  if (!r.error && r.status === 3) return { actual: 'absent', detail: 'qmd absent or collection list failed', noQmd: true };
   if (r.error || r.status !== 0) {
     return { actual: 'absent', detail: 'qmd absent or collection list failed' };
   }

@@ -495,6 +495,12 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // platform) never carries this flag — probeBridgePersistence returns
       // 'degraded' (a loud warn) for every one of those, never 'absent', so
       // it never even reaches this red-downgrade branch to begin with.
+      // qmd-himmel-collection is core's register-only qmd item and applies only
+      // where qmd is present: no qmd is a hint, never red (nor an ensure failure).
+      if (item.id === 'qmd-himmel-collection' && probe.noQmd) {
+        severity = 'n/a';
+        detail = 'qmd is not installed — optional: install qmd, then re-run himmelctl ensure to register the himmel search collection';
+      }
       if (item.id === 'bridge-persistence' && probe.cleanAbsence) {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (set bridge.enabled in ~/.himmel/config.json to enable the bridge)`;
