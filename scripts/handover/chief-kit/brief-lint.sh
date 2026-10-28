@@ -56,6 +56,30 @@ case "$bare" in
         ;;
 esac
 
+if ! python3 -I - "$doc" "$(dirname "$0")/../../.." <<'PY'
+import os, re, sys
+
+lines = open(sys.argv[1], encoding='utf-8', errors='replace').read().splitlines()
+repo = sys.argv[2]
+for i, line in enumerate(lines):
+    if not line.startswith('> **Writes:**'):
+        continue
+    text = line[len('> **Writes:**'):]
+    for nxt in lines[i + 1:]:
+        if not nxt.startswith('> ') or nxt.startswith('> **'):
+            break
+        text += ' ' + nxt[2:]
+    if text.strip() == 'none named':
+        continue
+    paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p]
+    if not paths or any(not re.fullmatch(r'[\w.+@/-]+', p) or p in ('.', '..') or
+                        not ('/' in p or '.' in p or os.path.exists(os.path.join(repo, p))) for p in paths):
+        sys.exit(1)
+PY
+then
+    fail "'> **Writes:**' must contain paths only (or 'none named'); the chief fills an empty line from the ticket's Writes text; move parentheses and prose to '> **Writes note:**'"
+fi
+
 # a fresh brief carries a front-matter `description:` line, the
 # plain-language line every surface shows next to the worker's label. A doc whose
 # Results section already holds a bullet has run, and was briefed before the

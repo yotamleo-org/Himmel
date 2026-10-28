@@ -221,8 +221,13 @@ SENT_BREAK_RE = re.compile(r'(?<!\d)(?<!e\.g)(?<!i\.e)\.(?=\s|$)')  # the end of
 
 def write_scope(line):
     # the worker's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
+    if line.startswith('> **Writes note:**'):
+        return ''
     if line.startswith(WRITES_LEAD):
-        return line[len(WRITES_LEAD):]  # a path list, never prose: nothing on it is cleaned away
+        text = line[len(WRITES_LEAD):]
+        while re.search(r'\([^()]*\)', text):
+            text = re.sub(r'\([^()]*\)', ' ', text)
+        return text
     for lead in ('writes confined to', 'Scope / do not:'):
         if lead in line:
             return clean_scope(line.split(lead, 1)[1])
@@ -685,6 +690,10 @@ if workers_from and os.path.isfile(workers_from):
             starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
             mine = [f for i in starts for f in scope_paths(block(i))]
             held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
+            if os.environ.get('ND_WHY') == '1':
+                for f in dict.fromkeys(mine):
+                    if not concrete(f):
+                        print('# warn: %s holds directory %s' % (worker.get('label', '?'), f))
             if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
                 workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
                 print('next-dispatchable: live worker %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (worker.get('label', '?'), os.path.basename(doc)), file=sys.stderr)

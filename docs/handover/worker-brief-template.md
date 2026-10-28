@@ -231,13 +231,15 @@ template_version: 3
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
-> **Writes:** <exactly the files and directories THIS worker edits, on this one
-> line (HIMMEL-7469), as paths only, no prose. The chief's collision check
-> holds every path on this line and cleans nothing off it; without it, it falls
-> back to the "writes confined to" clause and ignores a path inside a backticked
-> or flagged grep/find, an "Impacted suites" list, a "Trust path" note and a
-> "SINGLE-WRITER" note that names another holder. Name a file you only read
-> nowhere on it.>
+> **Writes:** <exact files and directories THIS worker edits, as paths only on this one line; or none named for no writes>
+
+> **Writes note:** <context, prior art, stay-off paths and narrowing notes go
+> here, never on Writes. This field is never read for holds. brief-lint refuses
+> an empty Writes line, parentheses or non-path words: the chief fills the
+> path list from the ticket's Writes text. The collision check ignores
+> parenthesised text on older Writes lines; a bare directory still holds its
+> subtree and --why warns about it. Without Writes it falls back to the older
+> "writes confined to" / "Scope / do not:" parser unchanged.>
 
 > **Do not:** <the specific things THIS worker must not touch — adjacent files
 > another worker owns, protocols that are out of scope, a script another worker

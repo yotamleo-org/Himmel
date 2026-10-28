@@ -151,7 +151,7 @@ rc=0; out="$(run_worker "$tmp/desc_none.md" --relay)" || rc=$?
 DOCS="$HERE/../../../docs/handover"
 fill_template() { # template out
     awk '/^```markdown$/ { inb = 1; next } inb && /^```$/ { exit } inb' "$1" \
-        | sed -E 's/<[^>]*>/filled/g; s/<[^>]*$/filled/' > "$2"
+        | sed -E 's/<[^>]*>/filled/g; s/<[^>]*$/filled/; s/^> \*\*Writes:\*\*.*/> **Writes:** scripts\/fixture.sh/' > "$2"
 }
 fill_template "$DOCS/worker-brief-template.md" "$tmp/filled_worker.md"
 fill_template "$DOCS/judge-brief-template.md" "$tmp/filled_judge.md"
@@ -162,6 +162,28 @@ rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
+
+# 7. Writes is a path list; prose belongs on Writes note.
+mk writes_paren "$PA" '> **Writes:** scripts/x/a.sh (no scripts/lib file until the chief rules)'
+mk writes_word "$PA" '> **Writes:** scripts/x/a.sh and scripts/x/b.sh'
+mk writes_wrapped_word "$PA" '> **Writes:** scripts/x/a.sh' '> no scripts/lib/'
+mk writes_paths "$PA" "> **Writes:** \`scripts/x/a.sh\`, scripts/x/ README.md .gitignore new-file.sh"
+mk writes_note "$PA" '> **Writes:** scripts/x/a.sh' '> **Writes note:** no scripts/lib file until the chief rules (read only)'
+mk writes_none "$PA" '> **Writes:** none named' '> **Writes note:** scripts/lib/ is not a write'
+mk writes_empty "$PA" '> **Writes:**' '> **Writes note:** scripts/lib/ is not a write'
+expect_rc "7i an empty Writes is refused until the chief fills it" 1 "$tmp/writes_empty.md"
+err="$(bash "$LINT" "$tmp/writes_empty.md" 2>&1 >/dev/null)"
+grep -q 'chief' <<< "$err" && ok "7j an empty Writes refusal tells the chief to fill it" || bad "7j empty Writes refusal lacks chief hint: $err"
+expect_rc "7a a parenthetical on Writes is refused" 1 "$tmp/writes_paren.md"
+expect_rc "7b a non-path word on Writes is refused" 1 "$tmp/writes_word.md"
+expect_rc "7c prose on a Writes continuation is refused" 1 "$tmp/writes_wrapped_word.md"
+expect_rc "7d a path-only Writes line passes" 0 "$tmp/writes_paths.md"
+expect_rc "7e prose on Writes note passes" 0 "$tmp/writes_note.md"
+expect_rc "7f explicit none named passes" 0 "$tmp/writes_none.md"
+err="$(bash "$LINT" "$tmp/writes_paren.md" 2>&1 >/dev/null)"
+grep -Fq '> **Writes note:**' <<< "$err" && ok "7g refusal names Writes note as the replacement" || bad "7g refusal lacks Writes note hint: $err"
+rc=0; out="$(run_worker "$tmp/writes_word.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -ne 0 ] && grep -Fq '> **Writes note:**' <<< "$out"; } && ok "7h launcher refuses prose Writes with the fix hint" || bad "7h launcher accepted prose Writes (rc=$rc): $out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
