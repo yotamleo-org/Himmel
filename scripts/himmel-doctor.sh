@@ -4719,8 +4719,9 @@ check_c78_shfmt() {
 # version: the guard main shows as shipped is not the one running. Compares hooks/
 # and hooks.json of each checkout-sourced @himmel plugin's user-scope installPath
 # against the checkout tree when the installed version equals plugin.json's (a
-# version lag is a different finding). WARN names the files; the repair is
-# himmel-update.sh --only plugin-refresh.
+# version lag is a different finding) and the plugin is enabled in the user
+# settings (the repair leaves a disabled one alone). WARN names the files; the
+# repair is himmel-update.sh --only plugin-refresh.
 check_c79_plugin_cache_drift() {
     local manifest="$REPO_ROOT/marketplace/.claude-plugin/marketplace.json"
     local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json"
@@ -4732,6 +4733,7 @@ check_c79_plugin_cache_drift() {
         row="$(jq -r --arg k "$name@himmel" '[.plugins[$k][]? | select(.scope == "user")][0] | "\(.version // "") \(.installPath // "")"' "$installed" 2>/dev/null)" || row=""
         have="${row%% *}"; path="${row#* }"
         [ -n "$have" ] && [ -n "$path" ] && [ -d "$path" ] || continue
+        [ "$(jq -r --arg k "$name@himmel" '.enabledPlugins[$k] // false' "$SETTINGS" 2>/dev/null)" = "true" ] || continue
         tree="$REPO_ROOT/marketplace/$src"
         want="$(jq -r '.version // empty' "$tree/.claude-plugin/plugin.json" 2>/dev/null)" || want=""
         [ -n "$want" ] && [ "$want" = "$have" ] || continue

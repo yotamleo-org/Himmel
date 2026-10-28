@@ -4694,6 +4694,7 @@ c79_setup() {   # <cache hooks.json content>
     printf '%s\n' "$1" > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
     printf '{"version":2,"plugins":{"p1@himmel":[{"scope":"user","installPath":"%s","version":"1.0.0"}]}}\n' \
         "$c79_t/claude/plugins/cache/himmel/p1/1.0.0" > "$c79_t/claude/plugins/installed_plugins.json"
+    printf '{"enabledPlugins":{"p1@himmel":true}}\n' > "$c79_t/claude/settings.json"
 }
 echo "== C79: a same-version cache whose hooks.json differs from the checkout -> WARN naming the file (RED) =="
 c79_setup "$c79_cache"
@@ -4725,6 +4726,19 @@ if ! grepq "$out" 'C79-plugin-cache-drift' && grepq "$out_same" 'WARN C79-plugin
     pass "C79 version lag -> no drift finding (the same fixture at equal versions WARNs)"
 else
     fail "C79 version lag -> $(printf '%s' "$out" | grep -A1 C79) / equal: $(printf '%s' "$out_same" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79: a disabled plugin is skipped, since the repair leaves it alone (RED) =="
+c79_setup "$c79_cache"
+printf '{"enabledPlugins":{"p1@himmel":false}}\n' > "$c79_t/claude/settings.json"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+printf '{"enabledPlugins":{"p1@himmel":true}}\n' > "$c79_t/claude/settings.json"
+out_on="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if ! grepq "$out" 'C79-plugin-cache-drift' && grepq "$out_on" 'WARN C79-plugin-cache-drift'; then
+    pass "C79 disabled plugin -> no drift finding (the same fixture enabled WARNs)"
+else
+    fail "C79 disabled plugin -> $(printf '%s' "$out" | grep -A1 C79) / enabled: $(printf '%s' "$out_on" | grep -A1 C79)"
 fi
 rm -rf "$c79_t"
 

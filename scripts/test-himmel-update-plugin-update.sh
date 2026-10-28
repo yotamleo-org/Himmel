@@ -727,6 +727,29 @@ out_only_fail=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$cla
 if [ "$rc" -ne 0 ]; then assert_pass "--only plugin-refresh exits nonzero when the reinstall fails (rc=$rc)"; else assert_fail "--only plugin-refresh rc=0 after a failed reinstall — out: $out_only_fail"; fi
 assert_contains "--only plugin-refresh failure is loud" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_only_fail"
 
+echo "Test: a disabled plugin and a version-lagged cache are left alone (HIMMEL-8016)"
+make_drift_scenario disabled
+printf '%s\n' '{ "enabledPlugins": { "p1@himmel": false, "same@himmel": true } }' > "$DRIFT_HOME/.claude/settings.json"
+: > "$log_drift"
+rc=0
+out_disabled=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+log_disabled="$(cat "$log_drift")"
+if [ "$rc" -eq 0 ]; then assert_pass "disabled-plugin run completed (rc=$rc)"; else assert_fail "disabled-plugin run rc=$rc — out: $out_disabled"; fi
+assert_not_contains "a disabled plugin with a differing cache is never uninstalled" "p1@himmel" "$log_disabled"
+
+make_drift_scenario lag
+printf '{"name":"p1","version":"1.0.1"}\n' > "$CHECKOUT_DIR/marketplace/plugins/p1/.claude-plugin/plugin.json"
+: > "$log_drift"
+rc=0
+out_lag=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+log_lag="$(cat "$log_drift")"
+if [ "$rc" -eq 0 ]; then assert_pass "version-lag run completed (rc=$rc)"; else assert_fail "version-lag run rc=$rc — out: $out_lag"; fi
+assert_not_contains "a cache older than the checkout is left to the version update" "p1@himmel" "$log_lag"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 [ "$fail" -eq 0 ]
