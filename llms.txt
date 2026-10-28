@@ -6,7 +6,7 @@ Working **inside** this repo? Read [CLAUDE.md](CLAUDE.md) first, the authoritati
 
 ## Install
 
-himmel runs on top of [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`/`npm`, `jq`, `python3`; `gh`, `bun` optional).
+himmel runs on top of [Claude Code](https://claude.com/claude-code) — install that first. The wizard checks the prerequisites (`git`, `bash` 3.2+, `node`, `npm`/`bun`, `jq`, `python3`; `gh` optional).
 
 ```bash
 git clone https://github.com/yotamleo/himmel
