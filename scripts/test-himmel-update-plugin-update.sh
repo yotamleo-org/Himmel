@@ -113,6 +113,23 @@ EOF
     chmod +x "$1"
 }
 
+# Like make_claude_logging_stub, but `plugin install <n>@himmel` re-copies the
+# checkout's hooks.json into the cache, as a real reinstall does. Reads
+# $DRIFT_STUB_TREE (the checkout's marketplace/plugins) and $HOME at run time.
+make_claude_reinstall_stub() {   # <path> <log-file>
+    cat > "$1" <<EOF
+#!/bin/sh
+echo "\$@" >> "$2"
+case "\$*" in
+  "plugin install "*@himmel)
+    n="\${3%@himmel}"
+    cp "\$DRIFT_STUB_TREE/\$n/hooks/hooks.json" "\$HOME/.claude/plugins/cache/himmel/\$n/1.0.0/hooks/hooks.json" ;;
+esac
+exit 0
+EOF
+    chmod +x "$1"
+}
+
 # Like make_claude_logging_stub, but `plugin update <fail-spec>` exits 1.
 make_claude_failing_stub() {   # <path> <log-file> <fail-spec>
     cat > "$1" <<EOF
@@ -632,6 +649,7 @@ make_drift_scenario() {
 }
 EOF
     DRIFT_HOME="$TMP/fake-home-drift-$1"
+    export DRIFT_STUB_TREE="$CHECKOUT_DIR/marketplace/plugins"
     mkdir -p "$DRIFT_HOME/.claude/plugins"
     local n tree cache inst=""
     for n in p1 same remote nosrc; do
@@ -657,7 +675,7 @@ make_drift_scenario apply
 log_drift="$TMP/claude-invocations-drift.log"
 : > "$log_drift"
 claude_stub_drift="$TMP/claude-logging-stub-drift"
-make_claude_logging_stub "$claude_stub_drift" "$log_drift"
+make_claude_reinstall_stub "$claude_stub_drift" "$log_drift"
 rc=0
 out_drift=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
       CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
@@ -730,9 +748,12 @@ assert_contains "--only plugin-refresh failure is loud" "ERROR: p1@himmel was un
 echo "Test: an uninstall that fails leaves the stale cache and fails the run (HIMMEL-8016)"
 make_drift_scenario failuninst
 claude_stub_drift_un="$TMP/claude-uninstall-failing-stub"
-cat > "$claude_stub_drift_un" <<'EOF'
+log_drift_un="$TMP/claude-invocations-drift-un.log"
+: > "$log_drift_un"
+cat > "$claude_stub_drift_un" <<EOF
 #!/bin/sh
-case "$*" in "plugin uninstall --keep-data p1@himmel") exit 1 ;; esac
+echo "\$@" >> "$log_drift_un"
+case "\$*" in "plugin uninstall --keep-data p1@himmel") exit 1 ;; esac
 exit 0
 EOF
 chmod +x "$claude_stub_drift_un"
@@ -742,6 +763,20 @@ out_drift_un=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$clau
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
 if [ "$rc" -ne 0 ]; then assert_pass "a failed uninstall fails --only plugin-refresh (rc=$rc)"; else assert_fail "a failed uninstall left rc=0 — out: $out_drift_un"; fi
 assert_contains "the failure names the plugin and says the stale cache stays" "ERROR: uninstall of p1@himmel failed" "$out_drift_un"
+assert_contains "the uninstall was attempted" "plugin uninstall --keep-data p1@himmel" "$(cat "$log_drift_un")"
+assert_not_contains "no install follows a failed uninstall" "plugin install p1@himmel" "$(cat "$log_drift_un")"
+
+echo "Test: a reinstall that leaves the cache differing fails the run (HIMMEL-8016)"
+make_drift_scenario stale
+log_drift_stale="$TMP/claude-invocations-drift-stale.log"
+claude_stub_drift_stale="$TMP/claude-logging-stub-stale"
+make_claude_logging_stub "$claude_stub_drift_stale" "$log_drift_stale"
+rc=0
+out_drift_stale=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift_stale" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+if [ "$rc" -ne 0 ]; then assert_pass "a reinstall that leaves drift fails --only plugin-refresh (rc=$rc)"; else assert_fail "stale cache after reinstall left rc=0 — out: $out_drift_stale"; fi
+assert_contains "the failure names the plugin and the recovery command" "p1@himmel still differs from the checkout after the reinstall" "$out_drift_stale"
 
 echo "Test: a disabled plugin and a version-lagged cache are left alone (HIMMEL-8016)"
 make_drift_scenario disabled

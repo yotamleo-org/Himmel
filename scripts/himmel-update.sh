@@ -2750,6 +2750,9 @@ refresh_drifted_plugin_caches() {
         if ! "$claude_bin" plugin install "$name@himmel" </dev/null; then
             echo "    ERROR: $name@himmel was uninstalled but the reinstall failed — run: claude plugin install $name@himmel" >&2
             chain_rc=1
+        elif [ -n "$(_plugin_cache_drift "$ROOT/marketplace/$src" "$path")" ]; then
+            echo "    ERROR: $name@himmel still differs from the checkout after the reinstall (the marketplace clone may be older) — run: claude plugin marketplace update himmel, then re-run this step" >&2
+            chain_rc=1
         fi
     done <<EOF
 $(jq -r --slurpfile s "$settings" '.plugins[]? | select(.source | type == "string") | .name as $n
