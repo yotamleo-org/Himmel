@@ -82,6 +82,7 @@ assert_allow() {  # assert_allow <label> <json> [ENV=VAL ...]
         echo "PASS $label (allowed, untouched)"
     else
         echo "FAIL $label -- expected rc=0 with no deny decision, got rc=$RC decision='$decision'"
+        printf '  stderr: %s\n' "$(printf '%s' "$ERR" | head -n 1)"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -516,6 +517,7 @@ assert_deny_unres() {  # assert_deny_unres <label> <json>
         echo "PASS $label (denied as unresolvable)"
     else
         echo "FAIL $label -- expected rc=2 + permissionDecision=deny + unresolvable message, got rc=$RC decision='$decision'"
+        printf '  stderr: %s\n' "$(printf '%s' "$ERR" | head -n 1)"
         FAILED=$((FAILED + 1))
     fi
 }

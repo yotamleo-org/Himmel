@@ -820,6 +820,7 @@ long_start=$(now_ms)
 long_rc=$(run_case "$(j_bash "$LONGCMD")")
 long_ms=$(( $(now_ms) - long_start ))
 assert_rc "7892 long heredoc + 5 default expansions: verdict" 0 "$long_rc"
+if [ "$long_rc" != 0 ]; then j_bash "$LONGCMD" | bash "$HOOK" 2>&1 >/dev/null | head -n 3; fi
 # A ratio against that baseline, not a wall-clock cap: runner load scales both
 # runs alike, where a fixed 8 s cap failed on loaded CI. The
 # fix runs ~5x the baseline, the 32-scan form ~34x, so 12x separates them. The
