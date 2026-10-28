@@ -2743,7 +2743,8 @@ refresh_drifted_plugin_caches() {
         fi
         echo "    ==> reinstall $name@himmel (cache differs from the checkout at $have)"
         if ! "$claude_bin" plugin uninstall --keep-data "$name@himmel" </dev/null; then
-            echo "    warn: uninstall of $name@himmel failed; it stays installed with the stale cache." >&2
+            echo "    ERROR: uninstall of $name@himmel failed; it stays installed with the stale cache." >&2
+            chain_rc=1
             continue
         fi
         if ! "$claude_bin" plugin install "$name@himmel" </dev/null; then

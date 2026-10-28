@@ -727,6 +727,22 @@ out_only_fail=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$cla
 if [ "$rc" -ne 0 ]; then assert_pass "--only plugin-refresh exits nonzero when the reinstall fails (rc=$rc)"; else assert_fail "--only plugin-refresh rc=0 after a failed reinstall — out: $out_only_fail"; fi
 assert_contains "--only plugin-refresh failure is loud" "ERROR: p1@himmel was uninstalled but the reinstall failed" "$out_only_fail"
 
+echo "Test: an uninstall that fails leaves the stale cache and fails the run (HIMMEL-8016)"
+make_drift_scenario failuninst
+claude_stub_drift_un="$TMP/claude-uninstall-failing-stub"
+cat > "$claude_stub_drift_un" <<'EOF'
+#!/bin/sh
+case "$*" in "plugin uninstall --keep-data p1@himmel") exit 1 ;; esac
+exit 0
+EOF
+chmod +x "$claude_stub_drift_un"
+rc=0
+out_drift_un=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift_un" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc=$?
+if [ "$rc" -ne 0 ]; then assert_pass "a failed uninstall fails --only plugin-refresh (rc=$rc)"; else assert_fail "a failed uninstall left rc=0 — out: $out_drift_un"; fi
+assert_contains "the failure names the plugin and says the stale cache stays" "ERROR: uninstall of p1@himmel failed" "$out_drift_un"
+
 echo "Test: a disabled plugin and a version-lagged cache are left alone (HIMMEL-8016)"
 make_drift_scenario disabled
 printf '%s\n' '{ "enabledPlugins": { "p1@himmel": false, "same@himmel": true } }' > "$DRIFT_HOME/.claude/settings.json"
