@@ -139,6 +139,7 @@ wired_scripts() {
 
 echo "== fixture rows (the resolver must flag what it flagged on 2026-10-08)"
 FX="$(mktemp -d "${TMPDIR:-/tmp}/wired-hooks-integrity.XXXXXX")" || exit 1
+FX="$(cd "$FX" && pwd -P)" || exit 1
 trap 'rm -rf "$FX"' EXIT
 mkdir -p "$FX/scripts/hooks" "$FX/scripts/lib"
 cp "$ROOT/scripts/hooks/hook-integrity.js" "$FX/scripts/hooks/"

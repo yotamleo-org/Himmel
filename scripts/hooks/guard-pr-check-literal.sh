@@ -652,6 +652,13 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 # simple command still is not, and a redirect is re-emitted with its target.
 PR_TOKENIZED=0
 st_tokenize "$cmd" && PR_TOKENIZED=1
+# The shared tokenizer cannot decode ANSI-C words before bash 4.4.
+# Keeping their escapes raw can hide git executor names and options.
+if [ "$ST_ANSIC" = 1 ] && { [ "${BASH_VERSINFO[0]}" -lt 4 ] \
+    || { [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; }; then
+    shown="$cmd"
+    deny "ANSI-C quoted words cannot be classified safely by this bash version; use plain literal words"
+fi
 if [ "$PR_TOKENIZED" = 1 ] && [ "$ST_NSEG" -eq 1 ] && [ "$ST_SUBST$ST_HEREDOC$ST_ANSIC$ST_COMMENT" = 0000 ]; then
     tk_cmd=-1 tk_path=-1 tk_pre=0 tk_msg=0 tk_dropped=0 tk_flat='' ST_SED_SCRIPTS=''
     k=0
