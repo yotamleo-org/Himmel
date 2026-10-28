@@ -127,6 +127,7 @@ lg_forge_change_open() {
     }
     if ln "$tmp" "$rec" 2>/dev/null; then
         rm -f "$tmp"
+        # prim-ok: renames of a staged body copy (cp) inside the ln-claimed record transaction, with record rollback; shipped to adopters, which do not carry prim.sh.
         mv -f "$btmp" "$dir/$id.body.md" || { rm -f "$btmp" "$rec"; return 1; }
     else
         if [ ! -f "$rec" ]; then
@@ -140,7 +141,9 @@ lg_forge_change_open() {
             echo "forge(local-git): change id $id already belongs to branch '$owner' — '$branch' collides with it; rename one branch" >&2
             return 2
         fi
+        # prim-ok: same transaction as above (body first, then the record); adopter-shipped, no prim.sh there.
         mv -f "$btmp" "$dir/$id.body.md" || { rm -f "$tmp" "$btmp"; return 1; }
+        # prim-ok: same transaction as above (body first, then the record); adopter-shipped, no prim.sh there.
         mv -f "$tmp" "$rec" || { rm -f "$tmp"; return 1; }
     fi
     printf '%s\n' "$id"

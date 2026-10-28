@@ -392,6 +392,7 @@ reclaim_stale_lock() {
     # Subshell: fd 9 (the lock) dies with it and never reaches the claude
     # launch; the EXIT trap is not inherited by a subshell.
     (
+      # prim-ok: non-blocking try-lock (-n) on a fd the surrounding subshell owns; with_lock only blocks and closes fd 9 for the command.
       flock -n 9 || exit 0
       if [ -d "$ADMISSION_LOCK" ] && lock_is_stale; then
         seam reclaim-prerm
@@ -401,6 +402,7 @@ reclaim_stale_lock() {
     ) 9>"$ADMISSION_LOCK.flock" 2>/dev/null
     return 0
   fi
+  # prim-ok: fail-open try-lock whose pid marker is displaced by steal_stale_reclaim_lock; with_lock waits and fails closed on a dead owner.
   mkdir "$RECLAIM_LOCK" 2>/dev/null || return 0
   printf '%s' "$$" > "$RECLAIM_LOCK/pid" 2>/dev/null || true
   # Re-check we still own the marker after the (slow) staleness read: a steal
@@ -443,6 +445,7 @@ steal_stale_reclaim_lock() {
     # flock on macOS. Also open: an owner pid still empty after
     # 0.2s counts as dead.
     seam steal-restore
+    # prim-ok: atomic create-if-absent that restores a displaced marker; this is the lock protocol itself, not a held critical section.
     if mkdir "$RECLAIM_LOCK" 2>/dev/null; then
       cp "$moved/pid" "$RECLAIM_LOCK/pid" 2>/dev/null || true
     fi
@@ -451,6 +454,7 @@ steal_stale_reclaim_lock() {
 }
 lock_acquire() {
   local tries=0 stale_checked=0 marker_checked=0
+  # prim-ok: admission lock is held across the later claude launch (acquire here, release by the exit trap) with a pid record and bounded stale reclaim; with_lock scopes a lock to one command.
   while ! mkdir "$ADMISSION_LOCK" 2>/dev/null; do
     tries=$((tries + 1))
     # codex-4: a bare mkdir-lock with no owner record blocks EVERY future

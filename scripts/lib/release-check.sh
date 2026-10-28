@@ -163,6 +163,7 @@ _release_put() {
     if [ -L "$2" ]; then rm -f "$2" 2>/dev/null || return 1
     elif [ -d "$2" ]; then return 1; fi
     tmp=$(mktemp "$2.XXXXXX" 2>/dev/null) || return 1
+    # prim-ok: hook-sourced lib whose caller only checks release-check.sh is readable, so it takes no prim.sh dependency; same-directory mktemp + rename with the rc checked.
     if printf '%s\n' "$1" > "$tmp" 2>/dev/null && mv -f "$tmp" "$2" 2>/dev/null; then
         return 0
     fi
