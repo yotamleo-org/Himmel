@@ -73,6 +73,9 @@ case "$1" in
         [ -e "$FX/versions.fail" ] && { echo "boom" >&2; exit 1; }
         cat "$FX/versions.tsv" 2>/dev/null
         exit 0 ;;
+    comments)
+        cat "$FX/comments.$2" 2>/dev/null
+        exit 0 ;;
     comment)
         file=""; edit=""
         for a in "$@"; do
@@ -99,6 +102,10 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr view")
+        case "$3" in http*)
+            [ -e "$FX/xpr.fail" ] && { echo "HTTP 502" >&2; exit 1; }
+            cat "$FX/xpr.state"; exit 0 ;;
+        esac
         if [ "$5" = headRefOid ]; then
             if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
         elif [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
@@ -501,7 +508,7 @@ drift() { bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
 drows() { grep -E "^$1 " "$tmp/dout"; }
 dcount() { drows "$1" | wc -l | tr -d ' '; }
 dlast() { tail -n 1 "$tmp/dout"; }
-nwrites() { grep -cE '^(transition|comment|edit)' "$STUB_LOG" || true; }
+nwrites() { grep -cE '^(transition|comment|edit) ' "$STUB_LOG" || true; }
 wipe_docs() { rm -rf "$tmp/docs"; mkdir -p "$tmp/docs"; }
 logrow() { # <event> <key> <result> <pr> [contract] - a row appended to the outcome log
     mkdir -p "$TICKET_STATUS_STATE_DIR"
@@ -621,6 +628,42 @@ check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
 reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail
 drift
 check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
+
+# a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
+# another repo is owned by that PR (the open-PR list only sees this repo)
+XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
+xpr() { printf 'PR %s is open and parked\n' "$XPR" > "$FX/comments.$K"; printf '%s\n' "$1" > "$FX/xpr.state"; }
+reset "In Progress"; jl "$K" "In Progress"; printf 'standing\n' > "$FX/labels.$K"
+drift
+check "3b: a standing ticket with no PR and no owner is not UNOWNED" "$(dcount UNOWNED)" 0
+check "3b: and a standing ticket is not drift at all" "$(dlast | cut -d: -f1)" "sdrift=0"
+reset "In Progress"; jl "$K" "In Progress"; printf 'other\n' > "$FX/labels.$K"
+drift
+contains "3b: a ticket with another label is still UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+drift
+check "3b: an open cross-repo PR means not UNOWNED" "$(dcount UNOWNED)" 0
+check "3b: an open cross-repo PR means not DERIVE-MISMATCH" "$(dcount DERIVE-MISMATCH)" 0
+check "3b: an open cross-repo PR means not WORKER-COMMENT" "$(dcount WORKER-COMMENT)" 0
+check "3b: the cross-repo PR is read by its URL, once" "$(grep -c "^gh pr view $XPR --json state" "$STUB_LOG")" 1
+check "3b: and the cross-repo read writes no Jira field" "$(nwrites)" 0
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr CLOSED
+drift
+contains "3b: a closed cross-repo PR does not exempt: UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+contains "3b: a closed cross-repo PR does not exempt: DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: a closed cross-repo PR does not exempt: WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr MERGED
+drift
+contains "3b: a merged cross-repo PR does not exempt" "$(drows UNOWNED)" "UNOWNED $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; touch "$FX/xpr.fail"
+drift
+contains "3b: a failed cross-repo read keeps the rows (never a silent green)" "$(drows UNOWNED)" "UNOWNED $K"
+contains "3b: and the failed read still ends in a counted sdrift" "$(dlast)" "sdrift="
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"
+printf 'PR https://github.com/yotamleo-org/himmel/pull/13 is open\n' > "$FX/comments.$K"; printf 'OPEN\n' > "$FX/xpr.state"
+bash "$DRIFT" --repo yotamleo-org/himmel --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
+contains "3b: a PR URL in this repo is not a cross-repo exemption" "$(drows UNOWNED)" "UNOWNED $K"
 
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
 drift
