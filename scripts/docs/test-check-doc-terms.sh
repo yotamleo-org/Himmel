@@ -12,8 +12,7 @@
 # exemptions each get a case, as does the hard-wrap carry that keeps
 # "plugin\nprofile" from reading as a violation.
 #
-# Platform guard (gitbash-only): pure POSIX bash 3.2+ plus git/mktemp, so it
-# runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/mktemp.
 #
 # Usage: bash scripts/docs/test-check-doc-terms.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).

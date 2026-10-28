@@ -3,8 +3,7 @@
 # agg-postpin.sh's --exclude-straddle, --cohort and counted_shifts column. House check/contains style, per
 # scripts/test-context-fill.sh.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
-# git bash unchanged.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

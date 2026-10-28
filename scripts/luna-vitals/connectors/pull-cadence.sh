@@ -78,6 +78,8 @@ case "${1:-}" in
     CRONTAB_BIN="${PULLCADENCE_CRONTAB:-crontab}"
 
     _CADENCE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # shellcheck source=../../lib/prim.sh
+    . "$_CADENCE_SCRIPT_DIR/../../lib/prim.sh"
 
     resolve_user_home() {
         if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
@@ -444,14 +446,16 @@ cmd_arm() {
                 rm -f "$bat_tmp" "$vbs_tmp"; exit 4
             fi
         done
-        if ! mv -f "$vbs_tmp" "$vbs_file"; then
+        if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
             echo "ERR pull-cadence: failed to publish shim to $vbs_file" >&2
             rm -f "$bat_tmp" "$vbs_tmp"; exit 4
         fi
-        if ! mv -f "$bat_tmp" "$bat_file"; then
+        rm -f "$vbs_tmp"
+        if ! atomic_write "$bat_file" < "$bat_tmp"; then
             echo "ERR pull-cadence: failed to publish runner to $bat_file" >&2
             rm -f "$bat_tmp"; exit 4
         fi
+        rm -f "$bat_tmp"
 
         local err_file
         err_file=$(mktemp -t pull-cadence.err.XXXXXX)
@@ -712,6 +716,7 @@ cmd_disarm() {
             rm -f "$tmp_runner"
             exit 4
         fi
+        # prim-ok: the runner must already be executable at publication; atomic_write creates a mode-600 replacement.
         if ! mv -f "$tmp_runner" "$runner"; then
             echo "ERR pull-cadence: failed to publish runner to $runner" >&2
             rm -f "$tmp_runner"

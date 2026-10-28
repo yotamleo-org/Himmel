@@ -14,6 +14,9 @@
 #   scripts/lib/qmd-bin.sh          qmd_fork      (the fork pin)
 #   scripts/lib/graphify-bin.sh     graphify      (the graphify pin)
 #   templates/luna-second-brain/    luna_template (only after the local-edit check)
+#   scripts/telegram/ lanes/ lib/   bridge_restart (systemctl --user restart telegram-bridge.service,
+#                                   at most once per 10 min, stamp ~/.himmel/state/bridge-restart.ts;
+#                                   prints `SKIP bridge_restart <reason>` when it does not run)
 #
 # Not mapped: the hermes step and plugin pins outside marketplace/ have no single
 # path that identifies them, so a merge touching only those is caught by the
@@ -31,7 +34,7 @@
 # clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
-# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE.
+# Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL.
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
 
@@ -80,7 +83,7 @@ elif [ "$FILES" = "-" ]; then paths="$(cat)"
 else paths="$(cat "$FILES")" || usage
 fi
 
-want=""
+want=""; bridge=""
 add() { case " $want " in *" $1 "*) ;; *) want="$want $1" ;; esac; }
 while IFS= read -r p; do
     case "$p" in
@@ -89,6 +92,9 @@ while IFS= read -r p; do
         scripts/lib/qmd-bin.sh) add qmd_fork ;;
         scripts/lib/graphify-bin.sh) add graphify ;;
         templates/luna-second-brain/*) add luna_template ;;
+    esac
+    case "$p" in
+        scripts/telegram/*|scripts/lanes/*|scripts/lib/*) bridge=1 ;;
     esac
 done <<EOF
 $paths
@@ -143,6 +149,28 @@ EOF
     echo "STEP $step rc=$rc"
     [ "$rc" -eq 0 ] || failed="${failed:+$failed,}$step-failed"
 done
+
+# The bridge imports scripts/telegram, scripts/lanes and scripts/lib, so a merge there leaves
+# the running poller on old code (doctor C77). Restart it once, at most every 10 minutes; the
+# stamp is epoch seconds, written only by a successful restart, read by doctor C77.
+BRIDGE_UNIT="telegram-bridge.service"
+BRIDGE_STAMP="$(dirname "$STATE")/bridge-restart.ts"
+SC="${SS_SYSTEMCTL:-systemctl}"
+if [ -z "$bridge" ]; then echo "SKIP bridge_restart no-bridge-path"
+elif ! command -v "$SC" >/dev/null 2>&1; then echo "SKIP bridge_restart no-systemctl"
+elif ! "$SC" --user is-enabled "$BRIDGE_UNIT" >/dev/null 2>&1; then echo "SKIP bridge_restart unit-not-enabled"
+else
+    now="$(date +%s)"
+    last="$(cat "$BRIDGE_STAMP" 2>/dev/null)"  # swallow-ok: no stamp yet means never restarted; the case below reads empty as 0
+    case "$last" in ''|*[!0-9]*) last=0 ;; esac
+    if [ $((now - last)) -lt 600 ]; then echo "SKIP bridge_restart debounce"
+    else
+        "$SC" --user restart "$BRIDGE_UNIT" >/dev/null 2>&1; rc=$?
+        echo "STEP bridge_restart rc=$rc"
+        if [ "$rc" -eq 0 ]; then echo "$now" > "$BRIDGE_STAMP" 2>/dev/null
+        else failed="${failed:+$failed,}bridge_restart-failed"; fi
+    fi
+fi
 
 clone="${SS_QMD_CLONE:-$HOME/.himmel/qmd-fork}"
 if [ -e "$clone/.git" ]; then

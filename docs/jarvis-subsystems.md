@@ -1,21 +1,20 @@
 # Jarvis: the command layer of the agentic OS
 
-himmel is an agentic OS: a harness on top of Claude Code that runs a fleet of
-agent sessions as one software factory. **Jarvis** is its command layer: the
-chief plans the work, hands each ticket to a worker in its own worktree, has
-the result judged, and merges it. **Mission Control** is the
-surface where you watch and steer Jarvis.
+himmel is a control plane for coding agents: its fleet of agent sessions, on
+Claude Code today, runs as one software factory. **Jarvis** is its command
+layer: the chief plans the work, hands each ticket to a worker in its own
+worktree, has the result judged, and merges it. You watch and steer Jarvis
+from **the surface**: the himmel UI and the other views of the fleet.
 
 This page lists what you can use today, how to start each part, and where its
 deep doc lives.
 
 | Part | What it is | Default | Start it with |
 |---|---|---|---|
-| [Mission Control](#mission-control-the-surface) | the Fleet page, the chief's board, Telegram, the statusline, the morning report and the metrics | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
+| [The surface](#the-surface-the-himmel-ui-and-other-views) | the himmel UI's Fleet page, the chief's board, Telegram, the statusline, the morning report and the metrics | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
 | [The fleet](#the-fleet-the-engine) | the chief, its workers, the judge and the GO that gates a merge | opt-in | `/chief new` |
 | [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup; lanes fill its ledger as they run |
-| [Escalation channel](#escalation-channel) | a scoped grant for a sandboxed worker | **off** (no lane writes to it) | a sandboxed worker lane |
 | [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
 > **Default posture: every optional lane is OFF until you configure it.** The
@@ -24,14 +23,14 @@ deep doc lives.
 
 ---
 
-## Mission Control: the surface
+## The surface: the himmel UI and other views
 
-Mission Control is several views of one fleet. None of them gives orders: you
+The surface is several views of one fleet. None of them gives orders: you
 steer the fleet by messaging the chief.
 
-- **The Fleet page** of the config UI. `himmelctl ui` serves it at `/agui/`.
-  It lists every live Claude session, with a run view per session.
-  Detail: [ui.md](ui.md).
+- **The himmel UI's Fleet page**, the one fleet page. `himmelctl ui` serves
+  the himmel UI on `127.0.0.1` and the Fleet page at `/agui/`. It lists every
+  live Claude session, with a run view per session. Detail: [ui.md](ui.md).
 - **The chief's board.**
   `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed`
   renders the fleet size against the cap, each worker's phase, and what waits
@@ -46,11 +45,6 @@ steer the fleet by messaging the chief.
   one page, and you drill into its PRs from there.
 - **Metrics.** The Prometheus and Grafana stack charts session and fleet
   numbers: [architecture.md](architecture.md#5-the-observability-chain).
-
-`scripts/fleet-control/` is an older read-only pane, superseded by the Fleet
-page. `bun scripts/fleet-control/server.ts serve` binds `127.0.0.1:7350`
-(`FLEET_CONTROL_PORT` overrides the port) and serves `/` (the pane), `/fleet`
-and `/escalations` (JSON) and `/events` (SSE).
 
 ## The fleet: the engine
 
@@ -105,33 +99,6 @@ byte-identical canonical record). The shared path resolver is
 touchpoints, such as a lane's cap-guard, with no new fetch and no new poll.
 There is no separate enable step: the ledger fills as those touchpoints run.
 
-## Escalation channel
-
-**What it is.** A sandboxed worker can hit a gated capability, for example a
-push that the deny hook blocks. The channel lets that worker **ask** the
-parent or operator for a scoped grant, instead of deadlocking or running under
-a blanket bypass.
-
-**How it works.** Workers only ever **append** an escalation request to their
-session's `outbox.jsonl`. The parent or operator is the single adjudicator per
-session, and responds with a lean CLI:
-
-```sh
-bun scripts/telegram/adjudicate.ts list                    # surface pending escalations
-bun scripts/telegram/adjudicate.ts grant  <sessionDir> --arm <arm> --pattern <re> [--ttl m] [--uses n]
-bun scripts/telegram/adjudicate.ts refuse <sessionDir> <index>
-```
-
-A **grant** whitelists exactly one command shape on one deny arm
-(`git-push` / `git-url` / `gh` / `network`). Each grant has a TTL and a use
-limit. The deny hook folds valid grant patterns into its allowed-count, so a
-grant re-enables one narrow capability without lifting the wall. A refusal
-clears the escalation.
-
-**Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`.
-The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-was dropped, so the channel stays off.
-
 ## Statusline
 
 **What it is.** A terminal statusline for Claude Code. It shows the session
@@ -155,7 +122,7 @@ removed or absent, the statusline silently disappears and reports no error.
 
 ## What Jarvis does not do today
 
-- **No commands from the UI.** Mission Control shows the fleet. You steer it
+- **No commands from the UI.** The himmel UI shows the fleet. You steer it
   by messaging the chief, from a terminal or from Telegram.
 - **One harness.** The fleet runs Claude Code sessions plus Codex lanes. A
   bridge that drives other agent harnesses is planned.

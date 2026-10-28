@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/agg-burn.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq-free grep/
-# sed over a Claude Code transcript (same JSONL on every platform); it runs
-# under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ plus jq-free grep/sed over a Claude Code
+# transcript (same JSONL on every platform).
 #
 # Copied from the baseline Appendix B (burn-sweep.sh + agg-burn.sh,
 # worker N207, 2026-09-12) and folded into one self-contained script: walks

@@ -17,8 +17,7 @@
 #   since-window inclusive lower edge / until-window exclusive upper edge
 #   worker-burn.sh failure -> FAILS + WARNING on stderr, run still exits 0
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
-# git bash unchanged.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

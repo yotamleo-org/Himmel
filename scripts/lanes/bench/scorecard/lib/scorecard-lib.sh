@@ -2,8 +2,7 @@
 # scripts/lanes/bench/scorecard/lib/scorecard-lib.sh - shared reader helpers for
 # the transcript-reading scorecard scripts.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ / grep / find / awk;
-# it runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ / grep / find / awk.
 #
 # Sourced, never executed. It is the ONE site for the three things every
 # transcript reader must agree on, because a copy that drifts is how a metric

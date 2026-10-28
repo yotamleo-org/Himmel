@@ -1757,6 +1757,10 @@ test('worker-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL
   assert.match(cfg.mcpServers.playwright.args.join(' '), /@playwright\/mcp@\d+\.\d+\.\d+/, 'pinned, never @latest');
 });
 
+test('the catalog Playwright server launches headless, since a worker has no display', () => {
+  assert.ok(REG.mcpCatalog.playwright.args.includes('--headless'), 'playwright args carry --headless');
+});
+
 test('worker-e2e matches worker-impl plugins and leaves the Playwright plugin OFF so only the catalog server exists (HIMMEL-4400)', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'worker-e2e', { installed: [] });
   assert.equal(p['qmd@himmel'], true, 'qmd@himmel');

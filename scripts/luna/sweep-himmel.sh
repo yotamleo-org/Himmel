@@ -343,6 +343,7 @@ case "$MODE" in
         log "wrote $OUT_PATH"
         ;;
     pr)
+        # prim-ok: tmp-sweep.sh recovers luna-brain-sweep- directories after crashes, but does not recognize tmpdir's prim. prefix.
         TMPDIR=$(mktemp -d -t luna-brain-sweep-XXXXXX) || die "mktemp failed"
         trap 'rm -rf "$TMPDIR"' EXIT
 

@@ -2,8 +2,7 @@
 # scripts/lanes/bench/scorecard/fleet-scorecard.sh - one per-worker scorecard for
 # real fleet workers, claudex and native side by side.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ and python3 (stdlib
-# only); it runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ and python3 (stdlib only).
 #
 # Usage:
 #   fleet-scorecard.sh (--manifest <x.fleet.json> | --doc <worker doc>)... [--since <ISO8601>]

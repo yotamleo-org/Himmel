@@ -19,8 +19,7 @@
 # a reused branch name can read the earlier branch's count; upgrade path is the
 # same per-PR rounds= field.
 #
-# Platform guard: no .ps1 twin, by design, same as the rest of this
-# directory - POSIX bash 3.2+ plus jq and gh.
+# Platform guard: POSIX bash 3.2+ plus jq and gh.
 #
 # Usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--tsv]
 # The repo is this checkout's own remote: the counters are this checkout's too.

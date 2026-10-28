@@ -284,8 +284,8 @@ Each default above is one knob; changing it touches only the named sentence.
 
 ## Not built yet
 
-- **Gate state on the Fleet page:** Mission Control's Fleet page
-  (see [Jarvis](../jarvis-subsystems.md#mission-control-the-surface)) shows
+- **Gate state on the Fleet page:** the himmel UI's Fleet page
+  (see [Jarvis](../jarvis-subsystems.md#the-surface-the-himmel-ui-and-other-views)) shows
   each worker's stage, but not gate verdicts or trust-tier state.
 - **Cross-model artifact critic:** when it exists, minerva Stage-2/4 chains
   gain a cross-model lane in the §2 spec/plan row.

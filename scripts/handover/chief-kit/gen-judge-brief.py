@@ -29,9 +29,6 @@ Exit: 0 ok; 1 invalid spec, template drift or an existing brief; 2 usage.
 import argparse, json, os, re, secrets, sys
 from datetime import date as _date
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-import env_alias  # noqa: E402
-
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-opus-5-5'
 REQUIRED = ['qid', 'ticket', 'question', 'reason', 'prior', 'tier']
@@ -193,7 +190,6 @@ def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument('spec')
     ap.add_argument('--chief')
-    ap.add_argument('--console', dest='console_old', help=argparse.SUPPRESS)
     ap.add_argument('--bucket', required=True)
     ap.add_argument('--date', default=_date.today().isoformat())
     ap.add_argument('--letter', default=None)
@@ -205,10 +201,6 @@ def main():
         a = ap.parse_args()
     except SystemExit as e:
         sys.exit(2 if e.code else 0)
-    if a.console_old is not None:
-        if not env_alias.legacy_flag('--console', '--chief'):
-            ap.error('unrecognized arguments: --console')
-        a.chief = a.chief or a.console_old
     if a.chief is None:
         ap.error('the following arguments are required: --chief')
     if not re.fullmatch(r'\d{4}-\d\d-\d\d', a.date):

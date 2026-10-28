@@ -21,8 +21,7 @@
 #   TOTAL cost-eq line: mixed sub-1000 (exact) and >=1000 (worker-burn.sh
 #     0.1k-rounded) per-session magnitudes
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
-# git bash unchanged.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

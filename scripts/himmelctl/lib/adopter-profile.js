@@ -41,6 +41,7 @@
 // after it.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { execFileSync } = require('child_process');
@@ -944,6 +945,150 @@ function resolveActiveFeatures(answers) {
   return active;
 }
 
+const CONFIG_KEYS = require(SECRETS_MANIFEST.configKeys).keys;
+const behaviourConfig = require('./behaviour-config.js');
+const CONFIG_READER = path.resolve(__dirname, '../../lib/load-dotenv.sh');
+
+function configReader(script, args) {
+  try {
+    return execFileSync(process.env.HIMMELCTL_BASH || 'bash',
+      ['-c', '. "$1"; shift; ' + script, 'wizard-config', CONFIG_READER, ...args],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch {
+    // Child errors may carry file contents; never include them in a notice.
+    throw new Error('could not read config through load-dotenv.sh');
+  }
+}
+
+function validateBehaviourConfig(values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    throw new Error('behaviourConfig must be a config key/value object');
+  }
+  const keys = Object.keys(values);
+  if (keys.some(k => !/^[A-Z][A-Z0-9_]*$/.test(k))) throw new Error('invalid config key');
+  const classes = configReader('for key do printf "%s\\n" "$(_himmel_key_class "$key")"; done', keys).trim().split('\n');
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const value = values[key];
+    if (classes[i] !== 'config') throw new Error(`${key} is not a behaviour config key`);
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value) || value !== value.trim()) {
+      throw new Error(`${key} must be a single-line config value`);
+    }
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && (value.length < 2 || value[value.length - 1] !== quote)) {
+      throw new Error(`${key} has an unterminated config quote`);
+    }
+    if (quote !== '"' && quote !== "'" && /[ \t]#/.test(value)) {
+      throw new Error(`${key} contains a config comment; quote the value instead`);
+    }
+  }
+}
+
+function persistedConfig(file, keys) {
+  try { fs.statSync(file); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
+  const raw = configReader('_load_dotenv_extract "$@"', [file, ...keys]);
+  const values = {};
+  for (const line of raw.split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq !== -1) values[line.slice(0, eq)] = line.slice(eq + 1).trim();
+  }
+  return values;
+}
+
+async function askBehaviourConfig(ask, opts = {}) {
+  const log = opts.log || console.log;
+  const values = {};
+  log('Behaviour config: Enter keeps the persisted value or the consumer default. Persisted values are not displayed.');
+  validateBehaviourConfig(Object.fromEntries(CONFIG_KEYS.filter(r => r.class === 'config').map(r => [r.name, ''])));
+  for (const row of CONFIG_KEYS) {
+    const help = `${row.name}: ${row.explanation} Effect: ${row.effect}`;
+    if (row.class === 'policy' || (opts.handledKeys || []).includes(row.name)) { log(help); continue; }
+    for (;;) {
+      const value = (await ask(`? ${help}\n  value (Enter keeps existing/default):\n> `)).trim();
+      if (!value) break;
+      try { validateBehaviourConfig({ [row.name]: value }); } catch (e) { log(e.message); continue; }
+      values[row.name] = value;
+      break;
+    }
+  }
+  return values;
+}
+
+// Only config-class values cross this boundary. Policy stays in the operator's
+// file (and legacy .env); neither migration notices nor the answer cache hold
+// the legacy values. The existing writer preserves luna symlinks.
+function applyBehaviourConfig(values, opts = {}) {
+  validateBehaviourConfig(values);
+  const conf = opts.conf || behaviourConfig.confPath();
+  const envFile = opts.envFile;
+  const log = opts.log || console.log;
+  const keys = CONFIG_KEYS.filter(r => r.class === 'config').map(r => r.name);
+  let original;
+  if (envFile) {
+    try { original = fs.readFileSync(envFile, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  }
+  // The reader is line-oriented. Refuse multiline input rather than moving a
+  // config-looking continuation line out of a credential into tracked config.
+  for (const line of (original || '').split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/);
+    if (!match) continue;
+    const value = match[1];
+    if ((value[0] === '"' && !/^"(?:[^"\\]|\\.)*"(?:\s*(?:#.*)?)?$/.test(value))
+      || (value[0] === "'" && !/^'[^']*'(?:\s*(?:#.*)?)?$/.test(value))) {
+      throw new Error('legacy .env has a multiline or malformed quoted value; nothing migrated');
+    }
+  }
+  const legacy = envFile ? persistedConfig(envFile, keys) : {};
+  validateBehaviourConfig(legacy);
+  const base = persistedConfig(conf, keys);
+  const local = persistedConfig(conf + '.local', keys);
+  const entries = new Map([[conf, []]]);
+  for (const key of keys) {
+    let value;
+    if (Object.hasOwn(values, key)) value = values[key];
+    else if (!base[key] && !local[key] && Object.hasOwn(legacy, key)) value = legacy[key];
+    else continue;
+    const file = local[key] ? conf + '.local' : conf;
+    entries.set(file, [...(entries.get(file) || []), [key, value]]);
+  }
+  if (opts.dryRun) {
+    log(`DRY: would write behaviour config to ${conf}; migrate ${Object.keys(legacy).join(', ') || 'no legacy config keys'}; policy left untouched`);
+    return;
+  }
+  for (const [file, list] of entries) behaviourConfig.upsertConfEntries(file, list);
+  const written = persistedConfig(conf, keys);
+  const overrides = persistedConfig(conf + '.local', keys);
+  for (const key of Object.keys(legacy)) {
+    const expected = Object.hasOwn(values, key) ? values[key] : local[key] || base[key] || legacy[key];
+    const actual = overrides[key] || written[key] || '';
+    if (actual !== expected) throw new Error(`${key} config migration verification failed; .env kept`);
+  }
+  if (Object.keys(legacy).length) {
+    if (fs.readFileSync(envFile, 'utf8') !== original) throw new Error('legacy .env changed during config migration; .env kept');
+    const backupDir = path.join(os.homedir(), '.himmel/env-backups');
+    fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+    fs.chmodSync(backupDir, 0o700);
+    const backup = path.join(backupDir, `env.${Date.now()}.${process.pid}`);
+    fs.writeFileSync(backup, original, { flag: 'wx', mode: 0o600 });
+    log(`himmelctl: backup ${backup} (mode 600); holds your secrets; remove it once you are happy`);
+    const moved = new Set(Object.keys(legacy));
+    const remaining = original.split(/(?<=\n)/).filter(line => {
+      const eq = line.indexOf('=');
+      return eq === -1 || !moved.has(line.slice(0, eq).trim());
+    }).join('');
+    const target = fs.realpathSync(envFile);
+    const tmp = `${target}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tmp, remaining, { flag: 'wx', mode: fs.statSync(target).mode & 0o777 });
+      fs.renameSync(tmp, target);
+    } finally {
+      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+    }
+    log(`himmelctl: migrated ${[...moved].join(', ')} from .env to ${conf}; original saved in a private backup; policy left untouched`);
+  }
+  log(`himmelctl: behaviour config written to ${conf} (key names only; policy left untouched)`);
+}
+
 // ── final honest summary ────────────────────────────────────────────────────
 
 // Build the summary model from the answers + lane probe rows. Pure data, so
@@ -1722,4 +1867,7 @@ module.exports = {
   resolveCadenceDispositions,
   FEATURE_IDS,
   resolveActiveFeatures,
+  askBehaviourConfig,
+  validateBehaviourConfig,
+  applyBehaviourConfig,
 };

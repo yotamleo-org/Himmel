@@ -35,6 +35,8 @@ tmp="$(mktemp -d -t docs-audit-panel-test.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
 # A throwaway HOME: CR_REQUIRE_CROSS_MODEL is gate policy, read from
 # $HOME/.himmel/config.json .policy and never from the process env.
 export HOME="$tmp/home"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 mkdir -p "$HOME/.himmel"
 # set_policy <value> - write the policy file; "" leaves the key out.
 set_policy() {
@@ -48,7 +50,7 @@ root="$tmp/root"
 mkdir -p "$root/scripts/cr" "$root/scripts/lib" "$root/scripts/guardrails"
 cp "$SUT_SRC" "$root/scripts/cr/docs-audit-panel.sh"
 cp "$DIR/anchor-handoff.sh" "$root/scripts/cr/anchor-handoff.sh"
-cp "$DIR/../lib/load-dotenv.sh" "$root/scripts/lib/load-dotenv.sh"
+cp "$DIR/../lib/load-dotenv.sh" "$DIR/../lib/chokepoint-seam-guard.sh" "$root/scripts/lib/"
 cp "$DIR/../guardrails/lib.sh" "$root/scripts/guardrails/lib.sh"
 SUT="$root/scripts/cr/docs-audit-panel.sh"
 

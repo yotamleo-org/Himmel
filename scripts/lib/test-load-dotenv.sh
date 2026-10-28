@@ -45,6 +45,8 @@ trap 'rm -rf "$TMP"' EXIT
 # dir; an empty one keeps every row off the operator's real ~/.himmel.
 mkdir -p "$TMP/himmel-config"
 export HIMMEL_CONFIG_DIR="$TMP/himmel-config"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 
 # Stub keyring. load_dotenv asks scripts/lib/himmel-secrets for secret-class
 # keys, so every row runs with a stub secret-tool and busctl first on PATH and

@@ -1,11 +1,11 @@
-# HIMMEL-4292: Grafana dashboard provider for dashboards/himmel-health.json.
+# Grafana dashboard provider for dashboards/himmel-health.json.
 #
 # INERT ON PURPOSE. Grafana loads only *.yaml / *.yml from this directory, so
 # this .tmpl does nothing as shipped. A provider whose path is missing on the
 # station breaks Grafana provisioning, so no active provider ships
-# until an installer also copies dashboards/ (chief ruling 2026-10-04).
+# until an installer also copies dashboards/.
 #
-# The Linux Grafana installer (HIMMEL-4289) renders it:
+# The Linux Grafana installer renders it:
 #   1. copy scripts/observability/dashboards/ to a machine-local dir;
 #   2. replace @HIMMEL_DASHBOARDS_DIR@ with that dir's absolute path and write
 #      the result as <machine-local grafana-provisioning>/dashboards/himmel-dashboards.yaml.

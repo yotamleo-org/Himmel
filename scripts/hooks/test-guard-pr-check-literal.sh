@@ -110,6 +110,23 @@ need_in_err() { # need_in_err <label> <fixed-string>
 
 HR="HIMMEL_REPO=$PRIMARY"
 
+# macOS job 122539153644: the pre-4.4 tokenizer left ANSI-C escapes raw.
+mkdir -p "$TMP/legacy/hooks"
+ln -s "$(dirname "$HOOK")/../lib" "$TMP/legacy/lib"
+# shellcheck disable=SC2016 # replace version expressions, not their expanded values
+sed 's/${BASH_VERSINFO\[0\]}/3/g; s/${BASH_VERSINFO\[1\]}/2/g' "$HOOK" > "$TMP/legacy/hooks/guard-pr-check-literal.sh"
+SAVED_HOOK="$HOOK"
+HOOK="$TMP/legacy/hooks/guard-pr-check-literal.sh"
+# shellcheck disable=SC2016 # literal command payloads, never executed
+run "7120 legacy bash: hex-escaped git grep opener denies" 2 \
+    "$(payload "git grep \$'\\x2dObash' -- scripts/cr/pr-check-env.sh" "$WT")" "$HR"
+# shellcheck disable=SC2016
+run "7120 legacy bash: hex-escaped git rebase executor denies" 2 \
+    "$(payload "\$'\\x67'it rebase -x scripts/cr/pr-check-env.sh main" "$WT")" "$HR"
+run "7120 legacy bash: plain git pathspec read allows" 0 \
+    "$(payload 'git grep foo -- scripts/cr/pr-check-env.sh' "$WT")" "$HR"
+HOOK="$SAVED_HOOK"
+
 # ---- allow: every condition holds -----------------------------------------
 run "clean himmel-lane worktree root, no cr/lib diff -> allow" 0 "$(payload "$LITERAL" "$WT")" "$HR"
 [ -z "$LAST_ERR" ] || { echo "FAIL allow is silent - stderr: $LAST_ERR"; FAILED=$((FAILED + 1)); }
@@ -778,13 +795,16 @@ run "4516: 32-deep chain (at the cap) judged as before -> allow" 0 \
 run "4516: 33-deep chain (one past the cap) -> deny" 2 \
     "$(payload "$(nest_chain 33)" "$WT")" "$HR"
 need_in_err "4516: 33-deep deny names the cap" "nested more than 32 levels"
+CHAIN_BUDGET_S=5
+# Darwin bash 3.2 takes 7-8s on the cadence runner; stay below the 15s hook limit.
+[ "$(uname -s)" = Darwin ] && CHAIN_BUDGET_S=10
 T0=$SECONDS
 run "4516: 400-deep chain -> deny" 2 "$(payload "$(nest_chain 400)" "$WT")" "$HR"
 need_in_err "4516: 400-deep deny names the cap" "nested more than 32 levels"
-if [ $((SECONDS - T0)) -le 5 ]; then
-    echo "PASS 4516: 400-deep chain finished in $((SECONDS - T0))s (budget 15s)"
+if [ $((SECONDS - T0)) -le "$CHAIN_BUDGET_S" ]; then
+    echo "PASS 4516: 400-deep chain finished in $((SECONDS - T0))s (budget ${CHAIN_BUDGET_S}s)"
 else
-    echo "FAIL 4516: 400-deep chain took $((SECONDS - T0))s (want <= 5s)"
+    echo "FAIL 4516: 400-deep chain took $((SECONDS - T0))s (want <= ${CHAIN_BUDGET_S}s)"
     FAILED=$((FAILED + 1))
 fi
 

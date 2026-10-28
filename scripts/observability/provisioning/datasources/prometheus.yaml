@@ -1,31 +1,11 @@
-# HIMMEL-924: provisions the local Prometheus datasource with a FIXED uid
-# ("prometheus") so provisioning/alerting/rules.yaml can reference it by a
-# stable datasourceUid instead of relying on the operator manually binding
-# the war-room-system.json dashboard's ${DS_PROMETHEUS} template variable to
-# whatever random uid a manually-added datasource gets (README.md's prior
-# "Install on Windows" instructions covered that manual bind step; a
-# provisioned datasource with an explicit uid works for both the dashboard
-# import and alert rules without any manual step).
+# A fixed uid ("prometheus") lets alert rules and imported dashboards
+# reference this datasource without an operator manually binding a random uid.
 apiVersion: 1
 
-# HIMMEL-1881: drop any pre-existing "Prometheus" row before provisioning it.
-#
-# Without this, an aborted install-stack.ps1 run leaves Grafana UNABLE TO START.
-# Measured live 2026-08-17 on OVERLORD8: a `-Hidden` run stopped Grafana mid-run,
-# and every subsequent start died ~2.5s in with
-#   "Failed to provision data sources" / "Datasource provisioning error: data source not found"
-# (zero occurrences in the previous day's rotated log, six in that day's).
-#
-# The provisioning files were unchanged — the conflict is a DB row. Grafana's
-# datasource provisioner resolves an existing datasource by NAME and then updates
-# it by UID, so a stored row whose uid is not "prometheus" makes the update return
-# not-found, and a datasource provisioning error is fatal at startup. The task
-# then sits Ready with LastTaskResult 1 and nothing surfaces it.
-#
-# Deleting first is safe precisely because this datasource is `editable: false`
-# and fully provisioned: there is no hand-made state to lose, it is recreated
-# below with the same fixed uid, and provisioning/alerting/rules.yaml's
-# `datasourceUid: prometheus` stays valid across the delete/recreate.
+# Grafana resolves an existing datasource by name, then updates by uid.
+# A leftover row with another uid makes provisioning fatal at startup.
+# Deleting first is safe because this datasource is non-editable and fully
+# provisioned; it is recreated with the same uid used by alert rules.
 deleteDatasources:
   - name: Prometheus
     orgId: 1

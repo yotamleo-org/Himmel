@@ -16,6 +16,8 @@ lacks() { case "$3" in *"$2"*) fail "$1 — found '$2'" ;; *) pass "$1" ;; esac;
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
+# The policy dir comes from the account entry; this seam points it back at HOME.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 export HIMMELCTL_CACHE_DIR="$TMP/no-cache"
 mkdir -p "$HOME"
 ENVF="$TMP/fixture.env"

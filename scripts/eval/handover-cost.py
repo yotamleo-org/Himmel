@@ -194,12 +194,7 @@ def main(argv=None):
     ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-(console|chief)$")
     ap.add_argument("--since", type=iso_arg)
     ap.add_argument("--workers-after", type=iso_arg)
-    ap.add_argument("--legs-after", type=iso_arg, dest="legs_after", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    if a.legs_after is not None:
-        if not env_alias.legacy_flag("--legs-after", "--workers-after"):
-            ap.error("unrecognized arguments: --legs-after")
-        a.workers_after = a.workers_after or a.legs_after
 
     d = os.path.expanduser(a.dir)
     if not os.path.isdir(d):

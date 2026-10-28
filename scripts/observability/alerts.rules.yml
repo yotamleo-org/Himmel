@@ -1,4 +1,4 @@
-# HIMMEL-924 — alert rule definitions, Prometheus-native rule-file format.
+# Alert rule definitions, Prometheus-native rule-file format.
 #
 # This file is the SOURCE OF TRUTH for every rule's PromQL expression: it is
 # loaded by the live Prometheus (see prometheus.yml's rule_files) so the
@@ -21,11 +21,8 @@
 groups:
   - name: himmel-observability
     rules:
-      # HIMMEL-918 failure mode: the 600s background-wait ceiling truncating
-      # a run mid-batch. Fires within one evaluation cycle of the end row
-      # landing (short window, no `for` grace — a truncated run is already a
-      # completed, terminal fact by the time it's observed).
-      # HIMMEL-1634: alerts on RECENCY of the last failure, not on increase()
+      # A truncated run is already terminal when its end row lands, so no
+      # pending grace is needed. Alert on RECENCY, not on increase()
       # over flow_run_outcome_total — that series is a sliding 14d fold that
       # decreases as rows expire, which increase() reads as a counter reset
       # (spurious page) and which can mask a new failure when an expiry offsets
@@ -40,9 +37,8 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} run truncated in the last 15m'
 
-      # HIMMEL-918 failure mode: transient CLI/API death reporting a nonzero
-      # exit. Same event-time recency shape as HimmelFlowRunTruncated above
-      # (HIMMEL-1634).
+      # A nonzero CLI/API exit uses event-time recency for the same sliding-
+      # fold reason as HimmelFlowRunTruncated above.
       - alert: HimmelFlowRunError
         expr: (time() - flow_run_last_failure_timestamp{outcome="error"}) < 900
         for: 0m
@@ -51,54 +47,15 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} run errored in the last 15m'
 
-      # HIMMEL-918 failure mode: permission-prompt stall / SIGKILL with no
-      # exit code — a start row with no matching end row past the flow's
-      # stall deadline. armed-resume stalls are semi-expected operator behavior
-      # and are excluded here — they remain dashboard-only. That exclusion IS
-      # the alert-fatigue fix (it is what stops the 11 standing armed-resume
-      # stalls paging every 4h).
-      #
-      # Deliberately silent: successful runs, in_flight runs within deadline,
-      # small luna_inbox_backlog oscillations (the 3-day-rise rule is the
-      # backstop), and ambiguous orphan classes. HimmelSessionDead DID prove
-      # noisy (HIMMEL-2149: SessionEnd hook cancellation, see its own comment
-      # below) and moved to warn; the flat 4h Telegram route intentionally
-      # has no severity routing.
-      # HIMMEL-1695: this stays a LEVEL check, NOT increase(). The alert-fatigue
-      # fix is the `flow!="armed-resume"` exclusion above — that alone stops the
-      # 11 standing armed-resume stalls from paging. HIMMEL-1634: the level now
-      # reads flow_run_stalled_current, a gauge of the unpaired starts past their
-      # deadline RIGHT NOW (flow-exporter.ts), not the stalled bucket of
-      # flow_run_outcome_total, which is a sliding-window fold declared a counter.
-      # The gauge drops to 0 when the run ends or ages out of the stalled TTL,
-      # so the alert clears instead of riding a total. Do not substitute
-      # increase() or delta() over flow_run_outcome_total: its value DECREASES
-      # when rows age out or the exporter restarts, which Prometheus reads as a
-      # counter reset.
-      #
-      # HIMMEL-2211: this alert sent 53 Telegram pages in one night for ZERO
-      # real incidents, from two compounding defects, both now fixed:
-      #   1. The exporter's fold could not tell a real stall from a ghost row.
-      #      An unpaired start whose pid is confirmed dead on its own host is
-      #      now exported as `abandoned`, not `stalled` — flow-exporter.ts's
-      #      foldFlowLedger liveness split keeps dead-pid ghost rows (the
-      #      triggering row: hermes-invoke-1787956038-3242214, pid 3242214,
-      #      dead) out of this expr entirely.
-      #   2. The exporter's render (~6.6s avg / ~9.9s peak) was blowing
-      #      Prometheus's default 10s scrape_timeout 51 times/day
-      #      (prometheus.yml). A scrape timeout marks the target DOWN, which
-      #      stales EVERY series it exports — this alert resolves, then
-      #      re-fires on the next good scrape. That flap, not a real stall,
-      #      produced the 53 pages.
-      # `for: 10m` and `keep_firing_for: 30m` are safe ONLY now that (2) is
-      # fixed — `for:` is reset by a data gap, so before the scrape_timeout
-      # fix a real 6h-old stall would have flapped exactly like the ghost row
-      # did, defeating the pending window. `for: 10m` damps a transient count
-      # (e.g. a single bad scrape's read); `keep_firing_for: 30m` is the
-      # actual anti-flap primitive — it means a brief series gap (a scrape
-      # that still times out occasionally, or a Prometheus restart) no longer
-      # resolves the alert, which is what turned one stall into 51 resolve/
-      # fire pairs a night.
+      # Unpaired starts past their deadline are stalls; armed-resume waits
+      # are expected operator behavior and stay dashboard-only. Confirmed
+      # dead-pid starts are exported as abandoned, not stalled.
+      # Use the current gauge, not increase()/delta() over the sliding 14d
+      # outcome fold: expiry and restarts decrease that fold, which Prometheus
+      # mistakes for counter resets. The gauge clears on completion or TTL.
+      # `for: 10m` damps transient counts; keep_firing_for holds an alert
+      # through scrape gaps/restarts. A data gap resets `for:`, so the scrape
+      # timeout in prometheus.yml must exceed the exporter's render duration.
       - alert: HimmelFlowRunStalled
         expr: flow_run_stalled_current{flow!="armed-resume"} > 0
         for: 10m
@@ -108,10 +65,8 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} has a run stalled past its deadline'
 
-      # HIMMEL-918 failure mode (backstop): the 4-day silently-disabled
-      # harvest task — covered directly by HimmelScheduledTaskDisabled below,
-      # but last-success age is a backstop that pages even for a flow with no
-      # scheduled_task_* coverage at all (e.g. armed-resume flows). Per-flow
+      # Last-success age is a backstop even for flows with no scheduled_task_*
+      # coverage (e.g. armed-resume flows). Per-flow
       # threshold is 2x the declared cadence_seconds (design §5), joined by
       # the `flow` label entirely in PromQL — a flow missing EITHER series
       # (no completed run ever, or no declared cadence) is silently absent
@@ -125,19 +80,16 @@ groups:
         annotations:
           summary: 'Flow {{ $labels.flow }} last success is older than 2x its cadence'
 
-      # HIMMEL-918 failure mode: the harvest task sat disabled for 4 days
-      # with nothing noticing. `on (task)` keeps the two families' identical
-      # `task` label sets joined explicitly rather than relying on default
-      # vector matching. HIMMEL-2075: `unless on (task) (scheduled_task_
-      # expected_disabled == 1)` exempts tasks the operator has allowlisted
+      # `on (task)` explicitly joins the two families' identical task label
+      # sets. `unless on (task) (scheduled_task_expected_disabled == 1)`
+      # exempts tasks the operator has allowlisted
       # (ObservabilityConfig.expected_disabled_tasks) as intentionally
       # disabled right now — but it is scoped to ONLY the `enabled == 0` arm,
       # not the whole OR. An allowlisted task that gets DELETED entirely
       # (scheduled_task_exists == 0) must still page: the allowlist promises
       # continued exists/enabled coverage for anything other than the
       # disabled state itself, and folding `unless` over the combined
-      # expression would silently swallow that deletion too (CR-flagged,
-      # codex-1).
+      # expression would silently swallow that deletion too.
       - alert: HimmelScheduledTaskDisabled
         expr: ((scheduled_task_enabled == 0) unless on (task) (scheduled_task_expected_disabled == 1)) or on (task) (scheduled_task_exists == 0)
         for: 0m
@@ -146,12 +98,9 @@ groups:
         annotations:
           summary: 'Scheduled task {{ $labels.task }} is disabled or missing'
 
-      # Host RAM runaway per agent process tree (design §4.1). HIMMEL-2075:
-      # a flat 6 GiB threshold pages on ordinary overnight-swarm fanout (the
-      # incident that prompted this was ~16.8 GiB during a legitimate 6-worker
-      # swarm). Scale the threshold by concurrent subagent count instead of
-      # adding per-class config: base 6 GiB + 1 GiB per active subagent above
-      # 2 (subagent_active_total{host,subagent_type}, HIMMEL-1052). `sum(...)`
+      # A flat 6 GiB threshold pages on ordinary swarm fanout. Scale by
+      # concurrent subagent count: base 6 GiB + 1 GiB per active subagent above
+      # 2 (subagent_active_total{host,subagent_type}). `sum(...)`
       # collapses the per-host/type series to one number — station-wide
       # fanout, not per-class, is what's wanted; `or vector(0)` guards it
       # against an absent subagent_active_total series (no session ledger
@@ -161,15 +110,13 @@ groups:
       # final scalar() converts the single-element result to the number `>`
       # needs. Tune the two literals against real swarm episodes; edit both
       # here and in the Grafana-provisioned twin.
-      # HIMMEL-2149: class="other" is host-detectors.ps1's explicit catch-all
+      # class="other" is host-detectors.ps1's explicit catch-all
       # for everything NOT descended from a recognized agent root (claude,
       # codex-app-server, codex-exec, hermes-gateway, telegram-bridge,
       # mcp-standalone) — by definition the rest of the desktop (browser,
       # chat apps, indexers, memory compression, ...), not an agent tree. On
-      # a normal desktop it dwarfs any per-agent-scaled threshold (evidence:
-      # 17.5 GiB / 307 processes while the box's single largest process was
-      # 1.2 GiB), so it paged permanently regardless of the HIMMEL-2075
-      # swarm-scaled threshold. Excluded from the ALERT, not from the
+      # a normal desktop it dwarfs any per-agent-scaled threshold.
+      # Excluded from the ALERT, not from the
       # dashboard-facing agent_tree_rss_bytes series itself — same
       # "counted, never paged, unless investigated" posture already used for
       # the ambiguous orphan classes below.
@@ -195,12 +142,8 @@ groups:
         annotations:
           summary: '{{ $labels.class }} orphan count is {{ $value }}'
 
-      # HIMMEL-3219: HimmelOrphanProcesses reads orphan_process_count, which
-      # only the win32 host-detectors.ps1 emits (flow-exporter.ts gates it to
-      # win32) and whose classes never covered quiet-run. On 2026-08-29 a
-      # quiet-run.sh suite whose session was closed ran for hours, and 24 h+
-      # `tail -f /tmp/quiet-run-*.log` followers outlived their log's writer,
-      # with this alert dark. quiet_run_orphan_count is the Linux /proc gauge
+      # orphan_process_count is win32-only and does not cover quiet-run.
+      # quiet_run_orphan_count is the Linux /proc gauge
       # (quiet-run-orphans.ts): kind="suite" = a quiet-run wrapper or log writer
       # reparented to init/systemd, kind="tail" = a follower with no writer.
       # A platform that emits no series (win32) or an unreadable /proc leaves
@@ -218,16 +161,10 @@ groups:
       # single-covered by rules that depend on it. Scoped to the two
       # himmel-owned exporters (flow-exporter, windows_exporter) — Prometheus
       # dying is not expressible as a metric Prometheus itself evaluates.
-      # HIMMEL-2365: `for: 5m` still paged 11 times/24h on load-induced
-      # scrape-miss bursts (102 misses/24h, mostly singletons under suite
-      # load; 91 pending vs 11 firing shows most already resolved before 5m
-      # — the rest were bursts long enough to cross it). `for: 10m` absorbs
-      # a bigger burst while staying well under the 15m ceiling for a real
-      # exporter death.
-      # HIMMEL-2184: `for:` resets on every dip, so on a high-churn day the
-      # alert oscillated pending/inactive without ever settling.
-      # `keep_firing_for: 10m` holds a fired alert through a sub-window
-      # flap instead of resolving and re-firing.
+      # `for: 10m` absorbs load-induced scrape-miss bursts while staying
+      # below the 15m detection ceiling for exporter death. Since `for:`
+      # resets on every dip, keep_firing_for holds an already fired alert
+      # through brief flaps rather than resolving and re-firing.
       - alert: HimmelWatcherDown
         expr: up{job=~"flow-exporter|windows_exporter"} == 0
         for: 10m
@@ -249,60 +186,18 @@ groups:
         annotations:
           summary: 'Luna inbox backlog stage {{ $labels.stage }} has risen over the last 3 days'
 
-      # HIMMEL-1635 follow-up to the HIMMEL-1052 session families: a session
-      # with an unpaired start row whose transcript went stale — crashed,
-      # killed, or wedged. `session_dead_total` is a plain per-host GAUGE
-      # (flow-exporter.ts), so this is a level check, same reasoning as
-      # HimmelFlowRunStalled above: the exporter's own staleness threshold has
-      # already elapsed, a terminal fact observed after the fact, not a rate.
-      # HIMMEL-2075: the exporter caps how long a dead session stays counted
-      # in `session_dead_total` at SESSION_DEAD_ALERT_TTL_SECONDS (24h) —
-      # without a rule-side window, this gauge previously paged continuously
-      # for the entire 14d ledger backlog rather than just newly-dead
-      # sessions. The rule expression itself is unchanged; the fix is
-      # exporter-side (flow-exporter.ts has no per-sample age label for
-      # PromQL to window against).
-      # HIMMEL-2149: downgraded page -> warn. Confirmed mechanism (not a
-      # guess): the himmel end-row hook is already on the fastest available
-      # path (scripts/observability/session-run-hook.ts session-end enqueues
-      # through scripts/hooks/stop-queue.mjs, the HIMMEL-2004 bounded
-      # detached-worker queue — durable, sub-second, immune to the harness's
-      # own SessionEnd teardown budget once the entry is written), yet ghost
-      # sessions (transcript idle 16-23h, no end row, started AFTER that
-      # queue landed 2026-08-22) are still observed — see HIMMEL-2148, the
-      # openai-codex plugin's own 5s-timeout SessionEnd hook that "poisons"
-      # the whole SessionEnd envelope (HIMMEL-1902 precedent) and can keep
-      # OUR hook from ever running, a harness-level defect outside this
-      # repo's hooks. Neither offered fix candidate closes it further from
-      # here: the detach pattern is already applied, and a pid/transcript
-      # reconciler is infeasible — SessionStart hook payloads never carry a
-      # numeric pid (empirically confirmed: 862/862 ledger rows null) and
-      # the transcript carries no closing marker, so synthesizing a
-      # crash-vs-clean verdict would be fabricating a state this codebase's
-      # own convention explicitly refuses (see the "dark tile, not a
-      # fabricated firing" reasoning elsewhere in this file).
-      #
-      # Severity ALONE does not reduce Telegram noise here — the flat
-      # notification policy (provisioning/alerting/policies.yaml) pings the
-      # same contact point on the same repeat_interval regardless of
-      # severity (panel round 5, codex-2 caught this: an earlier version of
-      # this comment claimed warn stopped interrupting, which was false
-      # under that flat policy). The actual noise reduction is the nested
-      # `severity = warn` route added there, which drops the repeat interval
-      # to 168h (7d) instead of the page-level 12h — warn still delivers,
-      # just far less often, appropriate for what evidence shows is
-      # presently a false-positive-dominated gauge. Revisit once HIMMEL-2148
-      # lands (its own fix would remove the false positives at the source,
-      # and this could revert to page + the default 12h route).
-      #
-      # HIMMEL-2365: `for: 0m` fired on every 0->1 crossing and the resolve
-      # right after closed the group, so Telegram got a FIRING+RESOLVED pair
-      # per episode (48/24h, 38/6h) — the repeat_interval above is
-      # irrelevant to that, since each episode is a new crossing, not a
-      # repeat. `for: 10m` debounces that; the exporter's own cleanup/TTL
-      # usually clears a false-positive well inside 10m.
-      # HIMMEL-2184: `keep_firing_for: 10m` stops a gauge that oscillates
-      # around 0 on a high session-churn day from resolving and re-firing.
+      # session_dead_total is a per-host gauge of unpaired starts with stale
+      # transcripts, not a rate. The exporter caps membership at 24h because
+      # samples have no age label that PromQL could window against.
+      # SessionEnd cancellation can prevent our end-row hook from running,
+      # even though it uses the durable detached queue. SessionStart carries
+      # no numeric pid and transcripts have no closing marker, so neither
+      # proves crash versus lost row. Keep this noisy signal at warn.
+      # Severity alone does not reduce Telegram noise: the nested warn route
+      # in policies.yaml repeats at 168h instead of the page route's 12h.
+      # `for: 10m` debounces transient crossings; repeat_interval cannot do
+      # that because each crossing is a new episode. keep_firing_for holds
+      # an already fired alert through brief dips around zero.
       - alert: HimmelSessionDead
         expr: session_dead_total > 0
         for: 10m
@@ -312,14 +207,9 @@ groups:
         annotations:
           summary: 'Host {{ $labels.host }} has {{ $value }} dead session(s)'
 
-      # ---- HIMMEL-1604: kernel pool + commit pressure -------------------
-      # OVERLORD8 has two reboot-only kernel-pinned leak families (File /
-      # nonpaged and Token / paged) that track file-handle churn. Two long
-      # diagnostic sessions (2026-07-20, 2026-08-06) were spent on this
-      # because nothing watched the metrics windows_exporter's `memory`
-      # collector was already scraping. Per-tag File/Toke breakdown needs the
-      # poolmon textfile exporter (HIMMEL-1166) and is NOT here — these four
-      # rules use only what is already scraped.
+      # Kernel-pinned File/nonpaged and Token/paged leaks require a reboot
+      # to reclaim. These rules use windows_exporter's memory collector;
+      # per-tag File/Toke attribution requires a separate poolmon exporter.
       #
       # Thresholds are literal defaults, same convention as
       # HimmelAgentTreeRamRunaway above: tune by editing the expression here
@@ -379,13 +269,10 @@ groups:
         annotations:
           summary: 'Committed memory exceeds 85% of the commit limit on {{ $labels.instance }}'
 
-      # ---- HIMMEL-2478/2480: hook-chain budget pressure — early warning for
-      # the 2026-09-03 spawn-storm hang -------------------------------------
-      # scripts/hooks/run-hook-with-bash.js already writes one row per starved
-      # chain member to .claude/logs/hook-chain-skips.jsonl (HIMMEL-2060):
-      # `skip` = the guard silently did not evaluate the tool call, `deny` =
-      # the tool call was refused fail-closed. Nothing read that log before
-      # this ticket. flow-exporter.ts's hookChainMetrics folds it into
+      # scripts/hooks/run-hook-with-bash.js writes one row per starved chain
+      # member to .claude/logs/hook-chain-skips.jsonl: `skip` means the guard
+      # did not evaluate the call; `deny` means it refused fail-closed.
+      # flow-exporter.ts's hookChainMetrics folds it into
       # hook_chain_budget_events_recent{action}, a gauge over the trailing
       # 10-minute window.
       #
@@ -418,19 +305,11 @@ groups:
         annotations:
           summary: '{{ $value }} hook-chain must-run guards were denied fail-closed in the last 10m'
 
-      # ---- HIMMEL-2478/2480 CR follow-up: make a degraded hook-chain reader
-      # visible -----------------------------------------------------------
-      # A critic panel found the reader above can silently fail closed on
-      # itself: a per-log read failure or a present-but-unreadable
-      # .claude/worktrees directory both used to surface ONLY as a `#` scrape
-      # comment on hook_chain_budget_events_recent — and a Prometheus comment
-      # is not alertable, nothing evaluates it. Combined with the family's
-      # own explicit-zero contract (an absent log still renders 0), a
-      # degraded reader and a genuinely healthy fleet could look identical to
-      # every rule above. flow-exporter.ts now also emits
-      # hook_chain_skip_log_unreadable, a gauge counting both failure classes
-      # (always present, 0 when healthy), so this class of failure gets a
-      # real series a rule can fire on instead of prose nobody scrapes.
+      # Prometheus cannot alert on scrape comments. A per-log read failure
+      # or unreadable worktrees directory needs a real gauge, otherwise an
+      # under-counting reader looks healthy under the family's explicit-zero
+      # contract (an absent log renders 0). hook_chain_skip_log_unreadable
+      # counts both failure classes and is always present, 0 when healthy.
       # `for: 10m` (longer than the budget rules' 5m) absorbs a transient
       # filesystem blip rather than notifying on it; `warn` not `page`
       # because this degrades a signal, it is not itself a live incident.
@@ -442,7 +321,6 @@ groups:
         annotations:
           summary: '{{ $value }} hook-chain skip log(s) unreadable — hook_chain_budget_events_recent may be under-counting'
 
-      # ---- HIMMEL-6036: per-guard denial friction -----------------------------
       # himmel_tool_denial_sessions / himmel_tool_sessions come from the same
       # 24h tool-call census fold as himmel_tool_denials_total, but count
       # DISTINCT sessions, so a guard that fires thousands of times on a few
@@ -466,7 +344,6 @@ groups:
         annotations:
           summary: 'one {{ $labels.project }} session was denied {{ $value }} times by guard {{ $labels.guard }} in the last day'
 
-      # ---- HIMMEL-4652: eval drift ------------------------------------------
       # himmel_eval_* come from flow-exporter.ts reading the eval-runs ledger
       # (scripts/eval/lib/eval_runs.py). The regression gauge is the exporter's
       # port of scripts/eval/eval-compare: 1 = the latest ok run is worse than
@@ -494,7 +371,7 @@ groups:
         annotations:
           summary: 'eval {{ $labels.eval }} has had no run for more than 14 days'
 
-      # HIMMEL-4661: the stale alert above needs an age series, so a scheduled
+      # The stale alert above needs an age series, so a scheduled
       # eval that never wrote a ledger row (or whose ledger file is gone) is
       # invisible to it. absent_over_time per scheduled eval; the equality
       # matcher keeps the eval label on the result. Gated on the exporter
