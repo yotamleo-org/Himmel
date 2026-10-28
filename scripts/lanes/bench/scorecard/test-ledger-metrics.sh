@@ -23,7 +23,7 @@
 #   final stat lines: crit/imp/sug/rounds (n/sum/mean/median/max), the
 #     crit+imp combined line, and the merged-window summary line
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq and gh
+# Platform guard: POSIX bash 3.2+ plus jq and gh
 # (stubbed here for hermetic runs), same convention as test-extra-metrics.sh.
 set -u
 

@@ -6,8 +6,7 @@
 # Builds a fixture counter dir (a nested feat/ branch, a flat one, a PR with no
 # counter) and a gh stub returning five merged PRs over two UTC days.
 #
-# Platform guard: no .ps1 twin, by design, same convention as
-# test-merged-count.sh.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

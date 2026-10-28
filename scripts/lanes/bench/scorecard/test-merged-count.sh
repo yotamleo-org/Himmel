@@ -9,8 +9,7 @@
 # non-"(#N)" commit that must NOT count), per the brief. Uses a
 # gh stub returning 2 post-cutover PRs + 1 chore(propagate) PR.
 #
-# Platform guard: no .ps1 twin, by design, same convention as
-# test-ledger-metrics.sh.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
