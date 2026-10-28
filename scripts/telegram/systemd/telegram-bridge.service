@@ -1,6 +1,5 @@
 # telegram-bridge.service — systemd USER unit for the Telegram bun bridge
-# (HIMMEL-2176 Task 9, A12). POSIX Linux persistence twin of
-# install-logon-task.ps1's HimmelTelegramBridge scheduled task.
+# (HIMMEL-2176 Task 9, A12). Linux persistence for the bridge.
 #
 # Installed to ~/.config/systemd/user/telegram-bridge.service by
 # scripts/himmelctl/lib/bridge-persistence.js's installSystemdUnit() — that

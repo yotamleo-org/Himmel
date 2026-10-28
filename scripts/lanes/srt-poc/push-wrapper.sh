@@ -34,13 +34,7 @@ refuse() {
 worker_branch=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --worker-branch|--leg-branch)
-            if [ "$1" = --leg-branch ]; then
-                case "${BASH_SOURCE[0]}" in */*) _pw_dir="${BASH_SOURCE[0]%/*}" ;; *) _pw_dir=. ;; esac
-                # shellcheck source=scripts/lib/legacy-names.sh
-                # shellcheck disable=SC1091
-                { [ -r "$_pw_dir/../../lib/legacy-names.sh" ] && . "$_pw_dir/../../lib/legacy-names.sh" && legacy_flag --leg-branch --worker-branch; } || refuse "unexpected wrapper argument: $1"
-            fi
+        --worker-branch)
             [ "$#" -ge 2 ] || refuse "--worker-branch needs a value"
             worker_branch="$2"
             shift 2

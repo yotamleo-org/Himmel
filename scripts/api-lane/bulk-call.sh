@@ -67,6 +67,7 @@ if [ "${1:-}" = "--cancel" ]; then
   # the running bridge holds this lock for its whole life, so a free lock means no run and the pid file is stale
   # (a reused pid is never signalled)
   if [ ! -f "$ROOT/bulk-$2.lock" ] || ! exec 9<"$ROOT/bulk-$2.lock"; then echo "bulk-call: no running task $2" >&2; exit 3; fi
+  # prim-ok: a non-blocking probe (flock -n) of a lock another process holds for its whole life; with_lock blocks and scopes to one command
   if flock -n 9; then echo "bulk-call: no running task $2" >&2; exit 3; fi
   P="$(cat "$ROOT/bulk-$2/pid" 2>/dev/null)"
   case "$P" in ''|*[!0-9]*) echo "bulk-call: task $2 has no pid yet" >&2; exit 3 ;; esac
@@ -122,6 +123,7 @@ mkdir -p "$ROOT" 2>/dev/null
 [ -d "$ROOT" ] && [ ! -L "$ROOT" ] && [ -O "$ROOT" ] || usage "$ROOT must be a real directory owned by this user"
 chmod 700 "$ROOT" || usage "cannot restrict $ROOT to this user"
 exec 9>"$ROOT/bulk-$TASK.lock" || usage "cannot open the task lock"
+# prim-ok: fail-fast (flock -n) and held on fd 9 until the process exits; with_lock blocks and scopes to one command
 flock -n 9 || usage "task $TASK is already running"
 rm -rf "$WORK"
 mkdir -p "$WORK/cwd" || usage "cannot create $WORK"

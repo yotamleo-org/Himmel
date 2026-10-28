@@ -10,9 +10,8 @@
 # that contract instead of forking it per platform.
 #
 # Platform guard (gitbash-only): macOS only, by construction - it shells out
-# to `open -a`, which exists nowhere else. No .ps1 twin: the Windows station
-# arms through scripts/handover/arm-resume.sh's schtasks backend, and Linux
-# keeps using konsole directly, so neither platform ever reaches this file.
+# to `open -a`, which exists nowhere else. No .ps1 twin: Linux keeps using
+# konsole directly, so it never reaches this file.
 # headed-arm.sh only defaults to it when `uname -s` is Darwin.
 #
 # Accepted argv (exactly what headed-arm.sh emits, nothing more):
@@ -234,14 +233,12 @@ if [ -n "$TABTITLE" ]; then
     # Title via the terminal's own OSC escape rather than AppleScript: it
     # works identically in iTerm and Terminal.app, needs no Automation
     # (TCC) permission prompt, and cannot fail the launch.
-    _tmp="$RUNDIR/titled.command"
     {
         printf '#!/bin/sh\n'
         printf 'printf "\\033]0;%%s\\007" %s\n' "$(printf '%q' "$TABTITLE")"
         tail -n +2 "$CMDFILE"
-    } > "$_tmp"
-    chmod +x "$_tmp"
-    mv "$_tmp" "$CMDFILE"
+    } | atomic_write "$CMDFILE"
+    chmod +x "$CMDFILE"
 fi
 
 # Open the worker in the arming session's own iTerm window (#3602). `open -a`

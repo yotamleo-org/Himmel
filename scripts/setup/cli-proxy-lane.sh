@@ -338,7 +338,9 @@ install_binary() {
   if [ -x "$EXE" ] && systemctl --user is-active --quiet "$UNIT_NAME" 2>/dev/null && [ "$FORCE" != "1" ]; then
     die "installed version '${installed_ver:-unknown}' != pinned v${VERSION} and the proxy unit is RUNNING — run 'systemctl --user stop ${UNIT_NAME}' first, then --install, then --register (or pass --force)."
   fi
-  TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cli-proxy-lane.XXXXXX")" || die "mktemp failed"
+  # shellcheck source=../lib/prim.sh
+  . "$HERE/../lib/prim.sh" || die "cannot load scripts/lib/prim.sh"
+  TMP_DIR="$(tmpdir)" || die "mktemp failed"
   echo "downloading CLIProxyAPI v${VERSION} ..."
   curl -sfL -o "$TMP_DIR/$ASSET" "$RELEASE_URL" || die "download failed: $RELEASE_URL"
   local got_sha

@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
-import { tmpdir, platform } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { writeThreadCache } from '../lib/thread-cache.mjs';
 import { expandPrefix } from '../lib/thread-prefix.mjs';
 
-const IS_WIN = platform() === 'win32';
 const REPLY_CLI = join(import.meta.dirname, '..', 'lib', 'thread-reply-cli.mjs');
 const RESOLVE_CLI = join(import.meta.dirname, '..', 'lib', 'thread-resolve-action-cli.mjs');
 
@@ -21,8 +20,7 @@ function seedCache(owner, repo, number, nodes) {
 }
 
 function cacheEnv(extra = {}) {
-  const base = IS_WIN ? { LOCALAPPDATA: dir } : { XDG_CACHE_HOME: dir, HOME: dir };
-  return { ...process.env, ...base, ...extra };
+  return { ...process.env, XDG_CACHE_HOME: dir, HOME: dir, ...extra };
 }
 
 beforeEach(() => {
@@ -36,30 +34,26 @@ describe('expandPrefix (shared helper)', () => {
     const [prefix] = seedCache('o', 'r', 1, [{ id: 'PRRT_a', path: 'a', line: 1, isResolved: false }]);
     // writeThreadCache wrote under cacheRoot; readThreadCache (inside expandPrefix)
     // uses osCacheRoot, so point the env at the same root for this in-process call.
-    const saved = IS_WIN ? process.env.LOCALAPPDATA : process.env.XDG_CACHE_HOME;
-    if (IS_WIN) process.env.LOCALAPPDATA = dir;
-    else process.env.XDG_CACHE_HOME = dir;
+    const saved = process.env.XDG_CACHE_HOME;
+    process.env.XDG_CACHE_HOME = dir;
     try {
       const res = expandPrefix({ owner: 'o', repo: 'r', number: 1, prefix });
       expect(res).toEqual({ ok: true, id: 'PRRT_a' });
     } finally {
-      if (IS_WIN) process.env.LOCALAPPDATA = saved;
-      else process.env.XDG_CACHE_HOME = saved;
+      process.env.XDG_CACHE_HOME = saved;
     }
   });
 
   it('returns no-match for an unknown prefix', () => {
     seedCache('o', 'r', 1, [{ id: 'PRRT_a', path: 'a', line: 1, isResolved: false }]);
-    const saved = IS_WIN ? process.env.LOCALAPPDATA : process.env.XDG_CACHE_HOME;
-    if (IS_WIN) process.env.LOCALAPPDATA = dir;
-    else process.env.XDG_CACHE_HOME = dir;
+    const saved = process.env.XDG_CACHE_HOME;
+    process.env.XDG_CACHE_HOME = dir;
     try {
       const res = expandPrefix({ owner: 'o', repo: 'r', number: 1, prefix: 'ffffff' });
       expect(res.ok).toBe(false);
       expect(res.message).toMatch(/no-match/);
     } finally {
-      if (IS_WIN) process.env.LOCALAPPDATA = saved;
-      else process.env.XDG_CACHE_HOME = saved;
+      process.env.XDG_CACHE_HOME = saved;
     }
   });
 
@@ -78,16 +72,14 @@ describe('expandPrefix (shared helper)', () => {
     const shared = Object.values(byFirst).find((g) => g.length >= 2);
     expect(shared).toBeDefined();
     const short = shared[0][0];
-    const saved = IS_WIN ? process.env.LOCALAPPDATA : process.env.XDG_CACHE_HOME;
-    if (IS_WIN) process.env.LOCALAPPDATA = dir;
-    else process.env.XDG_CACHE_HOME = dir;
+    const saved = process.env.XDG_CACHE_HOME;
+    process.env.XDG_CACHE_HOME = dir;
     try {
       const res = expandPrefix({ owner: 'o', repo: 'r', number: 2, prefix: short });
       expect(res.ok).toBe(false);
       expect(res.message).toMatch(/ambiguous/);
     } finally {
-      if (IS_WIN) process.env.LOCALAPPDATA = saved;
-      else process.env.XDG_CACHE_HOME = saved;
+      process.env.XDG_CACHE_HOME = saved;
     }
   });
 });
@@ -115,9 +107,9 @@ describe('thread-reply-cli / thread-resolve-action-cli — no-cache', () => {
   });
 });
 
-// Bitbucket forge route: stub bitbucket CLI via env. Runs on Windows too:
-// the JSON-array BITBUCKET_CLI is parsed as exact argv, so the space in
-// process.execPath never reaches the (space-splitting) legacy path.
+// Bitbucket forge route: stub bitbucket CLI via env. The JSON-array
+// BITBUCKET_CLI is parsed as exact argv, so a space in process.execPath
+// never reaches the (space-splitting) legacy path.
 describe('thread mutate CLIs — bitbucket forge route', () => {
   let stub;
   function writeBbStub(body) {
@@ -230,8 +222,8 @@ describe('thread mutate CLIs — bitbucket forge route', () => {
 
 // GitHub route with a fake `gh` first on PATH that logs each argv. A resolve
 // must carry a reason, post it as a thread reply, and resolve only after the
-// reply lands. POSIX only: the fake is a shell script.
-describe.skipIf(IS_WIN)('thread-resolve-action-cli — mandatory reason (github route)', () => {
+// reply lands. The fake is a shell script.
+describe('thread-resolve-action-cli — mandatory reason (github route)', () => {
   let log;
   function writeFakeGh({ failReply = false, prNumber = 9, prOwner = 'o', prRepo = 'r' } = {}) {
     const bin = join(dir, 'bin');

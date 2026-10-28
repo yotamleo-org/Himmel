@@ -90,7 +90,9 @@ TMP_PROJS="$(mktemp 2>/dev/null)"      || TMP_PROJS="/tmp/sa-prj-$_rnd"
 TMP_SESSIONS="$(mktemp 2>/dev/null)"   || TMP_SESSIONS="/tmp/sa-ses-$_rnd"
 TMP_JQ_ROWS="$(mktemp 2>/dev/null)"    || TMP_JQ_ROWS="/tmp/sa-jqr-$_rnd"
 TMP_REPORT="$(mktemp 2>/dev/null)"     || TMP_REPORT="/tmp/sa-rpt-$_rnd"
-TMP_FRICTION_DIR="$(mktemp -d 2>/dev/null)" || { TMP_FRICTION_DIR="/tmp/sa-fric-$_rnd"; mkdir -p "$TMP_FRICTION_DIR"; }
+# shellcheck source=../lib/prim.sh
+. "$LIB_DIR/prim.sh" || { printf 'session-analyzer: cannot source %s\n' "$LIB_DIR/prim.sh" >&2; exit 1; }
+TMP_FRICTION_DIR="$(tmpdir 2>/dev/null)" || { TMP_FRICTION_DIR="/tmp/sa-fric-$_rnd"; mkdir -p "$TMP_FRICTION_DIR"; }
 
 _cleanup() {
     rm -f "$TMP_JSONL_ALL" "$TMP_JSONL_SESS" "$TMP_MONTHS" "$TMP_PROJS" \

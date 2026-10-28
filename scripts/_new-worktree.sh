@@ -202,6 +202,7 @@ fi
 # ponytail: no flock (e.g. stock macOS) creates unlocked and the race stays open, install util-linux flock; HIMMEL-1860.
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
+    # prim-ok: the wait is bounded (HIMMEL_WORKTREE_LOCK_TIMEOUT, default 120 s) and the lock spans the rest of the script; with_lock waits unbounded and scopes to one command
     if ! flock -w "${HIMMEL_WORKTREE_LOCK_TIMEOUT:-120}" 9; then
         echo "ERR new-worktree: timed out waiting for the worktree creation lock — refusing" >&2
         exit 1

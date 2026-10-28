@@ -63,7 +63,7 @@ while [ "$#" -gt 0 ]; do
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || usage; prefix="$2"; shift 2 ;;
         --acquire) acquire=1; shift ;;
-        --render-workers|--render-legs) [ "$1" = --render-workers ] || legacy_flag --render-legs --render-workers || usage; render=1; shift ;;
+        --render-workers) render=1; shift ;;
         --lock-only) lockonly=1; shift ;;
         *) usage ;;
     esac

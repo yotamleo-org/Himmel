@@ -3763,8 +3763,7 @@ the scarce Claude subscription usage budget and bypassing the flow-run ledger.
 not enforcement. The guard refuses only when it can positively establish BOTH
 that the dispatch is implementation-shaped and that a suitable external lane
 is currently available. The refusal is one line and names the concrete command
-(`bun scripts/telegram/spawn-claudex.ts ...`, falling back to
-`spawn-glm.ts`) because the original failure was not knowing the dispatcher
+(`bun scripts/telegram/spawn-claudex.ts ...`) because the original failure was not knowing the dispatcher
 entry point; a bare "use a lane" refusal would reproduce the stall.
 
 **Classification:** the hook reads both Agent `description` and `prompt`.
@@ -3783,10 +3782,8 @@ local profile suppression, and `LANES_REGISTRY` test overrides remain the
 single source of truth for registry availability. A registry-available lane
 must also be RUNNABLE before the guard refuses toward it: `bun` must be on
 `PATH` and the lane's `scripts/telegram/spawn-<lane>.ts` dispatcher must exist
-on disk. An unrunnable lane is skipped with a warning, so `claudex` is still
-preferred; `glm` stays the guard's fallback whenever `ZAI_API_KEY` is set and
-the lane is runnable, ready and funded (`GLM_LANE_OK` gates only
-`scripts/telegram/dispatch-lane.sh`). No suitable lane, an unrunnable
+on disk. An unrunnable lane is skipped with a warning; `claudex` is the only
+external lane (the GLM fallback was removed, HIMMEL-7481). No suitable lane, an unrunnable
 lane, missing bun/jq/node/resolver, a missing dispatcher script, malformed
 hook input, resolver failure, or invalid resolver output all fail OPEN and
 allow the Agent dispatch — the orchestrator is never stranded on a command
@@ -3826,7 +3823,7 @@ Agent-dispatch chokepoint for HIMMEL-1553's reviewed-round guard
 via a CLI entry point on that same script (`bun round-guard.ts check --cwd
 <dir> [--branch <name>] --task-file <path>`) — never a shell
 reimplementation, so exactly one predicate backs this hook and
-`spawn-glm.ts`/`spawn-claudex.ts`. Thresholds are unchanged:
+`spawn-claudex.ts`. Thresholds are unchanged:
 `ROUND_WARN_THRESHOLD` (2) allows with a substantive `INVARIANT:` section;
 `ROUND_ESCALATE_THRESHOLD` (3) refuses the cheap lane unconditionally (no
 `--rounds-override` is wired here, so there is no unblock at 3+ rounds at this
@@ -3913,10 +3910,11 @@ unparseable payload.
 
 Fires on `Bash|PowerShell|mcp__.*`. The deterministic classifier substitute for
 third-party offload lanes, which have no auto-mode classifier and usually run
-`--permission-mode bypassPermissions` (GLM workers via `spawn-glm.ts`,
-`claude-glm` sessions). Detects the lane by `ANTHROPIC_BASE_URL` containing
-`api.z.ai` (set by `glm-env.ts` `buildGlmEnv` / the `scripts/claude-glm`
-launchers, inherited by hook processes); off-lane sessions exit 0 on the first
+`--permission-mode bypassPermissions`. The GLM lane it was written for is
+removed (its `spawn-glm.ts` dispatcher, `glm-env.ts` and `claude-glm`
+launcher are deleted, HIMMEL-7909, HIMMEL-7481); the fence stays until
+HIMMEL-7907 retires it. Detects the lane by `ANTHROPIC_BASE_URL` containing
+`api.z.ai` (inherited by hook processes); off-lane sessions exit 0 on the first
 env check — near-zero overhead, before the jq check.
 
 On-lane it hard-blocks: `git push`, remote-URL rewrites (`git remote set-url`,
@@ -5426,7 +5424,7 @@ shapes one apiece (an unreadable denylist reading as empty; a null usage budget
 reading passing a `>=` refuse gate; a malformed transcript resolving at zero
 cost). `lint-fail-open.sh` lints the SHAPE over the guard surfaces
 (`scripts/guardrails/`, `scripts/hooks/`, lanes preflights + bench,
-`spawn-glm.ts`, the launcher family, `refresh-graph-map.sh`): a `-f`-gated
+the launcher family, `refresh-graph-map.sh`): a `-f`-gated
 read with no `-r` and no failure handling, a fallback classification
 literal with no hard-deny comparison, a `*pct*` threshold compare with no
 unknown branch, a money reading coalesced to `0` instead of `?? null`. A

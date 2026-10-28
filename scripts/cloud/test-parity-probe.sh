@@ -70,9 +70,13 @@ case "$OUT3" in *$'guard:block-git-stash\tMISSING'*) ok "absent guard reads MISS
 # graphify sat at 0.9.77 against a 0.9.80 pin. The qmd row resolves through
 # qmd-bounded.sh; graphify-at-pin names the drift.
 QB="$TMP/qbin"; mkdir -p "$QB" "$TMP/qfix/scripts/lib"
-for t in bash env sh grep sed tr cut head tail awk sort wc cat rm mktemp date uname id sha256sum dirname basename find timeout; do
+for t in bash env sh grep sed tr cut head tail awk sort wc cat rm mktemp date uname id sha256sum dirname basename find sleep pkill; do
   p="$(command -v "$t" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$QB/$t"
 done
+# A stock macOS runner has no `timeout`, so the probe's bound is the bash shim, which
+# needs sleep and pkill on PATH; without them its watcher fires at once and kills the command it bounds.
+# The shim is used on every host so Linux exercises the same path.
+ln -sf "$ROOT/scripts/lib/shims/timeout" "$QB/timeout"
 # shellcheck disable=SC2016  # $1 belongs to the stub script
 printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "qmd 9.9.9"\nexit 0\n' > "$TMP/qfix/scripts/lib/qmd-bounded.sh"
 printf '#!/bin/sh\necho "graphify 0.9.77"\n' > "$QB/graphify"; chmod +x "$QB/graphify"

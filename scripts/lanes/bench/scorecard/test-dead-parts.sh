@@ -10,7 +10,7 @@
 # the outer himmel repo). The transcript scan uses SCORECARD_PROJECTS_DIR
 # fixtures, same convention as test-extra-metrics.sh.
 #
-# Platform guard: no .ps1 twin, by design.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

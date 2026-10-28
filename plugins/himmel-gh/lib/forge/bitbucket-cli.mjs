@@ -4,10 +4,10 @@
 // Default mirrors the Jira-CLI convention: invoke dist/index.js by absolute
 // path from the repo root (dist/ is an untracked build artifact). Override via
 // env.BITBUCKET_CLI — the test seam, exact parallel to the shell's BITBUCKET_CMD.
-// Two forms: a JSON array (`["node","C:\\…\\index.js"]`) is parsed as an exact
-// argv with NO splitting — the Windows-safe form, since `process.execPath`
-// contains a space (`C:\Program Files\nodejs\node.exe`) that the space-split
-// form mangles; any other string is space-split for back-compat.
+// Two forms: a JSON array (`["node","/path/to/index.js"]`) is parsed as an exact
+// argv with NO splitting — the safe form when `process.execPath` or the script
+// path contains a space, which the space-split form mangles; any other string
+// is space-split for back-compat.
 
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';

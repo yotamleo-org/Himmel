@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/lane-quality/pilot-4869/pilot.sh - the HIMMEL-4869 phase B pilot
+# scripts/eval/lane-quality/pilot-4869/pilot.sh - the phase B pilot
 # kit: a matched DeepSeek / native / claudex cohort on the HEADED lane, scored
 # blind. The shared runner (run.sh) refuses the deepseek and claudex lanes, so
 # this kit never runs an agent itself: `prepare` prints the launch line, the
@@ -89,7 +89,7 @@ cmd_init() {
   local chief="" floor=3 b a
   while [ $# -gt 0 ]; do
     case "$1" in
-      --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || die "init: unknown flag '$1'"; chief="$2"; shift 2 ;;
+      --chief) chief="$2"; shift 2 ;;
       --floor) floor="$2"; shift 2 ;;
       *) die "init: unknown flag '$1'" ;;
     esac
@@ -111,7 +111,7 @@ load_env() { [ -r "$ROOT/pilot.env" ] || die "not initialised; run: pilot.sh ini
 
 materialize_row() { # $1 task, $2 worktree -> fixture sha
   local task="$1" wt="$2"
-  # HIMMEL-5200: the jail binds the worktree read-only and only lq-work/ writable, so the row
+  # The jail binds the worktree read-only and only lq-work/ writable, so the row
   # cannot create it itself (the tasks with no fixture, like shell-red-green, start without one).
   mkdir -p "$wt/lq-work" || die "cannot create $wt/lq-work"
   if [ "$task" = bench-t4 ]; then
@@ -388,7 +388,7 @@ cmd_finish() {
   timeout 120 "${jail[@]}" bash "$acc_sh" "$WT" "$FIX" >"$ROOT/private/$row.accept.log" 2>&1; acc_rc=$? # gnu-ok: the pilot is Linux-only (its rows run in a bwrap jail)
   acc="$(grep -E '^accept: [0-9]+/[0-9]+$' "$ROOT/private/$row.accept.log" | tail -1)"
   "${jail[@]}" git add -A -- . ':!.claude/settings.local.json'
-  # HIMMEL-5200: settings.local.json is gitignored and carries the jail guard, so it is
+  # settings.local.json is gitignored and carries the jail guard, so it is
   # not part of the judged diff, but a row that rewrote, replaced or removed it is
   # scored out of scope: staged with -f here, or named when it is gone. The expected
   # content is the guard prepare wrote (a native row has none).

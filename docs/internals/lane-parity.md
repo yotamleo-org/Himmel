@@ -9,7 +9,7 @@ deny-guard x lane table, and `scripts/parity/test-ws5-invariants.sh` checks
 that the gemini / copilot / cursor rows stay `deferred`.
 
 > **Note:** this index records compatibility/parity, not current routing —
-> dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec) lives in `scripts/lanes/lanes.json` /
+> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
 > [`lane-calibration.md`](lane-calibration.md), not here.
 
 ## Doctrine
@@ -22,8 +22,7 @@ this index makes it drift loudly instead of silently.
 
 **One ruleset, N adapted projections.** Root `CLAUDE.md` is the single source.
 Each runtime reads an ADAPTED projection: Claude Code reads `CLAUDE.md` native;
-the `glm-spawn` fleet reads live `~/.claude`; the `claude-glm` launcher reads a
-seeded `~/.claude-glm` copy; Codex / Cursor / Copilot read the generated
+Codex / Cursor / Copilot read the generated
 `AGENTS.md` (freshness-gated by `agents-md-fresh`); hermes reads `SOUL.md`
 (identity) plus a per-context `AGENTS.md` / `CLAUDE.md`. The projections are
 not all kept in lockstep today; the two tested columns (rule-projection
@@ -35,24 +34,14 @@ merge-trust column is a view of the verdict the lane gate in
 that the column exists for every non-native lane. "Row green" is a composite,
 not a trust ruling.
 
-**GLM is reachable by THREE paths, with THREE different guard mechanisms -- so
-"GLM is guarded" is proven per-path, not asserted once:**
-
-1. `glm-spawn` -- Claude Code with the backend swapped, reads live `~/.claude`;
-   the native PreToolUse hooks fire unchanged, plus
-   `block-glm-external-writes.sh` (the classifier substitute for the
-   write-authority dimension).
-2. `glm-launcher` -- Claude Code with the backend swapped, reads a seeded
-   `~/.claude-glm` copy; same guards as (1), plus a config-seed drift dimension.
-3. GLM-via-hermes -- the hermes runtime drives GLM; himmel's Claude Code
-   PreToolUse hooks do NOT load here, so the fence is `parity_guard.py`, not
-   the CC hook. It enforces every deny-guard below (see the hermes table at the
-   end of this page).
-
-Same model, three runtimes, three guard mechanisms. A single "GLM is guarded"
-claim collapses three distinct proofs; this index keeps them separate. All
-three GLM paths are dormant: no work routes to them, and their rows stay so
-the proofs remain on record.
+**GLM (removed).** The GLM lane was reachable by three paths, each proven
+separately: `glm-spawn` and `glm-launcher` (Claude Code with the backend
+swapped; the native PreToolUse hooks plus `block-glm-external-writes.sh`, the
+classifier substitute for the write-authority dimension) and GLM-via-hermes
+(fenced by `parity_guard.py`, since the CC hooks do not load under hermes). Its
+dispatcher, launcher and registry row are deleted (HIMMEL-7909, HIMMEL-7481).
+The two CC GLM columns stay below while the write-fence hook exists (HIMMEL-7907
+retires it), and `parity_guard.py` still refuses a GLM engine as untrusted.
 
 ## Invariant guard set
 
@@ -94,10 +83,10 @@ so every write-fence cell sits in a real row (no home-less cell).
 | Lane | Write-authority / external-write fence |
 |---|---|
 | main-claude | auto-mode classifier |
-| glm-spawn (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
-| glm-launcher (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+| glm-spawn (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+| glm-launcher (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
-| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 | gemini / copilot / cursor | `deferred` |
 
 ## Token vocabulary (machine-readable; defined once)
@@ -132,14 +121,14 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 | Lane | Rule projection | Guardrail firing | Skills/cmds | Vault/memory | Merge-trust |
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
-| glm-spawn (dormant) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-| glm-launcher (dormant) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | gemini / copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
-Notes on the guardrail-firing cells. GLM IS Claude Code, so on the two CC GLM
-lanes the native block-* hooks fire unchanged; the proving pointer is
+Notes on the guardrail-firing cells. GLM ran as Claude Code, so on the two removed
+CC GLM lanes the native block-* hooks fired unchanged; the proving pointer is
 `test-block-glm-external-writes.sh`, which covers the lane-specific write-fence
 (push / git-remote-URL / network / `mcp__*` deny, with the Jira-CLI + gh-read
 carveout). codex-direct reaches the native block-* hooks THROUGH the
@@ -152,8 +141,7 @@ in the hermes table at the end of this page.
 
 **claudex (`scripts/claude-codex`).** Claude Code with its backend swapped to
 the Codex subscription through a self-hosted CLIProxyAPI that serves an
-Anthropic-compatible endpoint. Every PreToolUse hook fires natively, exactly
-as in the `claude-glm` lane, so its guard posture is the native column. It has
+Anthropic-compatible endpoint. Every PreToolUse hook fires natively, so its guard posture is the native column. It has
 no row of its own in this index yet.
 
 ## Guard-firing conformance sub-table (deny-guard x lane)
@@ -176,7 +164,7 @@ hermes, so the hermes-main column is `tested`-green.
 
 <!-- BEGIN guard-lane-conformance -->
 
-| deny-guard | glm-spawn (dormant) | glm-launcher (dormant) | codex-direct | hermes-main (gpt-6.1-sol; GLM dormant) |
+| deny-guard | glm-spawn (removed) | glm-launcher (removed) | codex-direct | hermes-main (gpt-6.1-sol; GLM removed) |
 |---|---|---|---|---|
 | block-edit-on-main | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
 | block-read-secrets | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
@@ -190,13 +178,13 @@ hermes, so the hermes-main column is `tested`-green.
 
 Notes on the cells:
 
-- **glm-spawn + glm-launcher (dormant).** GLM IS Claude Code, so on these two
-  CC GLM lanes the native block-* deny-guard hooks fire unchanged; the single
+- **glm-spawn + glm-launcher (removed).** GLM ran as Claude Code, so on these two
+  CC GLM lanes the native block-* deny-guard hooks fired unchanged; the single
   lane-specific proving pointer is
   `tested:scripts/hooks/test-block-glm-external-writes.sh` (covers push /
   git-remote-URL / network / `mcp__*` deny, with the Jira-CLI + `gh`-read
-  carveout). The native `test-block-<guard>.sh` fixtures fire unchanged for
-  both lanes because the ruleset is live `~/.claude` (glm-spawn) or the seeded
+  carveout). The native `test-block-<guard>.sh` fixtures fired unchanged for
+  both lanes because the ruleset was live `~/.claude` (glm-spawn) or the seeded
   `~/.claude-glm` copy (glm-launcher).
 - **codex-direct.** Each deny-guard is proved by the codex proving PAIR --
   `tested:scripts/hooks/test-codex-run-hook.sh` (the `.codex/hooks.json`
@@ -217,7 +205,7 @@ Notes on the cells:
   `.single-writer`), unit-tested by
   `scripts/hooks/test-block-terminal-write-fence.sh` and e2e-proved through the
   adapter. The codex-direct column is `tested`-green.
-- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant).** himmel's CC
+- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed).** himmel's CC
   PreToolUse hooks do NOT load under hermes, so `parity_guard.py` is the sole
   fence; both engines are exercised by
   `tested:scripts/hermes/test-parity-guard.sh`. The write-fence in
@@ -233,7 +221,7 @@ The contract side of the index: for each invariant DENY-guard (the six
 PreToolUse deny-hooks PLUS the cross-lane write-authority dimension), what
 `scripts/hermes/assets/parity_guard.py` -- the SOLE fence under hermes, since
 himmel's Claude Code PreToolUse hooks do NOT load there -- enforces, for BOTH
-engines (gpt-6.1-sol + the dormant GLM) the `himmel_agent` profile is pointed
+engines (gpt-6.1-sol + GLM, removed as a lane but still fenced) the `himmel_agent` profile is pointed
 at. Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
 (Claude-Code-specific mechanics with no hermes analog), `GAP` (not enforced).
 

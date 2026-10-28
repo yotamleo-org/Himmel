@@ -1,4 +1,4 @@
-# Probe 3e result — `--settings` overlay vs. project hooks (HIMMEL-2178)
+# Probe 3e result — `--settings` overlay vs. project hooks
 
 Run with `bash scripts/probes/claude-p/07-settings-overlay-hooks.sh` (guarded
 by `bank-preflight.sh`; SKIPs loudly if the bank is not available). CLI under

@@ -7,7 +7,7 @@
 # scripts (headed-arm.sh, arm-resume.sh, chief.sh), himmel update and
 # himmel-doctor all read the floor from here so they cannot drift apart.
 #
-# Bash 3.2-compatible, no python (adopters and the Windows twin may lack it).
+# Bash 3.2-compatible, no python (adopters may lack it).
 #
 # Functions:
 #   claude_version_bare <text>        -- prints the first x.y.z in text

@@ -35,9 +35,6 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=scripts/lib/legacy-names.sh
-. "$HERE/../../lib/legacy-names.sh"
-
 usage() {
     echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
     exit 2
@@ -52,7 +49,7 @@ while [ "$#" -gt 0 ]; do
         --effort)        [ "$#" -ge 2 ] || usage; EFFORT="$2"; shift 2 ;;
         --pr)            [ "$#" -ge 2 ] || usage; PR="$2"; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE="$2"; shift 2 ;;
-        --worker|--leg)     [ "$1" = --worker ] || legacy_flag --leg --worker || usage; [ "$#" -ge 2 ] || usage; WORKER="$2"; shift 2 ;;
+        --worker)        [ "$#" -ge 2 ] || usage; WORKER="$2"; shift 2 ;;
         --doc)           [ "$#" -ge 2 ] || usage; DOC="$2"; shift 2 ;;
         --prior)         [ "$#" -ge 2 ] || usage; PRIOR="$2"; shift 2 ;;
         --residual-of)   [ "$#" -ge 2 ] || usage; RESIDUAL_OF="$2"; shift 2 ;;

@@ -104,7 +104,9 @@ if [ -z "$first" ]; then
   no_range "no commits in $base..$tip"
 fi
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/hooks-on-range.XXXXXX")" ||{ echo "ERR hooks-on-range: mktemp failed" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$HOOKS/scripts/lib/prim.sh" || { echo "ERR hooks-on-range: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+tmp="$(tmpdir)" || { echo "ERR hooks-on-range: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/bin" || exit 2
 printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/gh"; chmod +x "$tmp/bin/gh"

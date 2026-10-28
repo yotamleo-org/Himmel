@@ -153,6 +153,7 @@ cmd_run() {
     mkdir -p "$(dirname "$tsv")" || return 1
     # ponytail: mkdir lock, 30s wait; a kill -9 mid-append leaves tsv.lock to remove by hand, upgrade to flock if it recurs
     locked=0
+    # prim-ok: the wait is bounded at 30 s and each early return releases it; with_lock waits unbounded and cannot return from this function
     for _ in $(seq 1 30); do mkdir "$tsv.lock" 2>/dev/null && { locked=1; break; }; sleep 1; done
     [ "$locked" -eq 1 ] || { echo "ERR scorecard: cannot take $tsv.lock" >&2; return 1; }
     if [ -f "$tsv" ] && cut -f1 "$tsv" | grep -qx "$date_arg"; then

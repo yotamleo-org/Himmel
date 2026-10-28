@@ -31,8 +31,7 @@
 //
 // Test overrides (see test-capture-operator-profile.sh):
 //   HOME / USERPROFILE, CLAUDE_CONFIG_DIR, HIMMEL_OBSERVABILITY_CONFIG,
-//   LANES_REGISTRY, HIMMEL_CAPTURE_SCHTASKS_CMD (stub schtasks binary),
-//   WHISPER_DIR / WHISPER_MODEL.
+//   LANES_REGISTRY, PATH (stub crontab), WHISPER_DIR / WHISPER_MODEL.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -81,12 +80,10 @@ function buildScrubRegexes(home, user) {
   if (home) {
     variants.add(home);
     variants.add(home.replace(/\\/g, '/'));
-    // Under Git Bash, HOME/USERPROFILE reach node MSYS-translated to
-    // forward-slash form ("C:/Users/x"), so homedir() itself is
-    // forward-slash — but OS-native strings this fix's scrubText() now also
-    // scrubs (fs error messages, path.join output) always use backslash on
-    // win32. Without this reverse variant, only a home path's USERNAME
-    // segment would get redacted out of such a message, not the full path.
+    // The backslash form too: captured data can carry a backslash path
+    // (an old observability.json scriptPath). Without this reverse variant,
+    // only a home path's USERNAME segment would get redacted out of such a
+    // string, not the full path.
     variants.add(home.replace(/\//g, '\\'));
     // assertScrubbed tests JSON.stringify(obj) output, which doubles every
     // backslash — a raw single-backslash home regex can silently fail to
@@ -251,23 +248,6 @@ const CADENCE_TASK_GROUPS = {
 // wizard's binary luna-cadence question cannot select/report these).
 const EXTRA_KNOWN_TASKS = ['HIMMEL-ForkResync', 'HIMMEL-BootPreflight', 'HimmelTelegramBridge'];
 
-// isHimmelRelevantTask(name) — check if a task name belongs to CADENCE_TASK_GROUPS
-// or EXTRA_KNOWN_TASKS. Used to scope statusUnrecognized to only himmel-relevant
-// names, preventing unrelated third-party task names from polluting the delta.
-function isHimmelRelevantTask(name) {
-  // Check exact matches in any CADENCE_TASK_GROUPS fixed-name list
-  for (const spec of Object.values(CADENCE_TASK_GROUPS)) {
-    if (Array.isArray(spec) && spec.includes(name)) return true;
-  }
-  // Check prefix matches in any CADENCE_TASK_GROUPS prefix spec
-  for (const spec of Object.values(CADENCE_TASK_GROUPS)) {
-    if (spec && typeof spec === 'object' && spec.prefix && name.startsWith(spec.prefix)) return true;
-  }
-  // Check EXTRA_KNOWN_TASKS
-  if (EXTRA_KNOWN_TASKS.includes(name)) return true;
-  return false;
-}
-
 // ── cadence-registry schema boundary ────────────────────────────────────
 // Schema ruling (locked, chief-approved): the v2
 // profile's `cadences` section carries ONLY ids from
@@ -299,76 +279,23 @@ function splitCadencesByRegistry(cadences, registryIds) {
   return { registryCadences, nonRegistryCadences };
 }
 
-// HIMMEL_CAPTURE_SCHTASKS_CMD may be a bare binary ("schtasks") or a
-// space-separated command ("node C:/path/to/stub.mjs") — the latter is what
-// the test suite uses, since a bare .cmd/.bat stub cannot be exec'd directly
-// on Windows without shell:true (verified: EINVAL), while a "node <script>"
-// prefix runs everywhere execFileSync already trusts a bare PATH lookup
-// (same idiom as this repo's own execFileSync('bun', ...) / ('git', ...)).
-function schtasksCommand() {
-  const override = process.env.HIMMEL_CAPTURE_SCHTASKS_CMD;
-  if (!override) return ['schtasks'];
-  return override.split(/\s+/).filter(Boolean);
-}
-
-// listScheduledTaskNames() -> { ok:true, names:Set<string>, statusUnrecognized:string[] } | { ok:false, reason }
-// MSYS_NO_PATHCONV=1 mirrors scripts/luna/pipeline-cadence.sh's run_schtasks —
-// without it Git-Bash mangles /query into a Windows-rooted path.
-//
-// CSV columns (no /s): "TaskName","Next Run Time","Status". A present task
-// whose Status is Disabled must NOT count as armed — previously
-// only the name column was parsed, so a disabled task read as armed. Only
-// the known English "Ready"/"Running" strings are trusted as armed; a
-// non-English/unexpected Status string (localized Windows) fails toward
-// still counting the task as armed, but is named in statusUnrecognized so
-// the delta can flag it rather than silently trusting an unknown string.
-//
-// Uncertainty convention: a TOTAL probe failure
-// (no data — devOverlay probe degraded, scheduler query failed) fails strict
-// capture loudly (exit 2), never fabricates a boolean. A single-attribute
-// AMBIGUITY on otherwise-good data (unrecognized/localized task status,
-// unknown systemd unit state) resolves conservative-toward-armed WITH a
-// visible delta flag (statusUnrecognized / bridgeUnitStateUnknown): for a
-// migration-loss-prevention artifact, overstating an obligation is
-// recoverable, silently dropping one is not.
-const KNOWN_ARMED_STATUSES = new Set(['Ready', 'Running']);
-function listScheduledTaskNames() {
-  try {
-    const [bin, ...prefixArgs] = schtasksCommand();
-    const out = execFileSync(bin, [...prefixArgs, '/query', '/fo', 'CSV', '/nh'], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, MSYS_NO_PATHCONV: '1' },
-    });
-    const names = new Set();
-    const statusUnrecognized = [];
-    for (const m of out.matchAll(/^"\\?([^"]+)","[^"]*","([^"]*)"/gm)) {
-      const name = m[1];
-      const status = m[2];
-      if (status === 'Disabled') continue; // known-off — never counted as armed
-      names.add(name);
-      if (!KNOWN_ARMED_STATUSES.has(status) && isHimmelRelevantTask(name)) statusUnrecognized.push(name);
-    }
-    return { ok: true, names, statusUnrecognized: statusUnrecognized.sort() };
-  } catch (e) {
-    // Real schtasks: rc=1 with EMPTY stderr is the trusted "empty scheduler"
-    // signature (mirrors pipeline-cadence.sh's list_existing). Anything else
-    // is a genuine query failure — report it, don't guess "no tasks".
-    if (e && e.status === 1 && !(e.stderr && String(e.stderr).trim())) return { ok: true, names: new Set(), statusUnrecognized: [] };
-    return { ok: false, reason: `schtasks query failed (rc=${e?.status ?? 'spawn error'})` };
-  }
-}
-
 // classifyCrontabError(e) -> { ok:true, text:'' } | { ok:false, reason }
-// Distinguishes a genuinely empty POSIX scheduler (rc=1 with empty stderr,
+// Distinguishes a genuinely empty scheduler (rc=1 with empty stderr,
 // or the well-known "no crontab for <user>" message — the same trusted
 // signature scripts/luna/pipeline-cadence.sh's cron_read() already uses)
 // from every other failure (binary missing, spawn error, unexpected
 // rc/stderr), which must be reported as queryFailed rather than silently
-// rendered as "off" — the same honesty contract listScheduledTaskNames()
-// already applies to schtasks. Exported (pure, no spawn) so the test suite
-// can exercise it without spawning a real crontab binary — a bare-name PATH
-// stub can't be exec'd on Windows without shell:true (verified ENOENT; see
-// HIMMEL_CAPTURE_SCHTASKS_CMD's own comment above for the same gotcha).
+// rendered as "off".
+//
+// Uncertainty convention: a TOTAL probe failure
+// (no data — devOverlay probe degraded, scheduler query failed) fails strict
+// capture loudly (exit 2), never fabricates a boolean. A single-attribute
+// AMBIGUITY on otherwise-good data (unknown systemd unit state) resolves
+// conservative-toward-armed WITH a visible delta flag
+// (bridgeUnitStateUnknown): for a migration-loss-prevention artifact,
+// overstating an obligation is recoverable, silently dropping one is not.
+// Exported (pure, no spawn) so the test suite can exercise each signature
+// on a synthetic error object.
 function classifyCrontabError(e) {
   const stderr = e && e.stderr ? String(e.stderr).trim() : '';
   if (e && e.status === 1 && (!stderr || /no crontab/i.test(stderr))) return { ok: true, text: '' };
@@ -389,24 +316,7 @@ function crontabResult() {
 // caller can omit the whole optional `cadences` profile field rather than
 // fabricate an "off" map from a query that never ran.
 function computeCadences() {
-  const useSchtasks = Boolean(process.env.HIMMEL_CAPTURE_SCHTASKS_CMD);
-  if (useSchtasks) {
-    const snap = listScheduledTaskNames();
-    if (!snap.ok) return { cadences: null, taskDetail: {}, extraArmedTasks: [], queryFailed: snap.reason, statusUnrecognized: [] };
-    const names = snap.names;
-    const cadences = {};
-    const taskDetail = {};
-    for (const [id, spec] of Object.entries(CADENCE_TASK_GROUPS)) {
-      const found = Array.isArray(spec)
-        ? spec.filter((n) => names.has(n)).sort()
-        : [...names].filter((n) => n.startsWith(spec.prefix)).sort();
-      cadences[id] = found.length > 0 ? 'armed' : 'off';
-      taskDetail[id] = found;
-    }
-    const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => names.has(n)).sort();
-    return { cadences, taskDetail, extraArmedTasks, queryFailed: null, statusUnrecognized: snap.statusUnrecognized };
-  }
-  // POSIX best-effort: crontab has no discrete task "names". Fixed-name
+  // Best-effort: crontab has no discrete task "names". Fixed-name
   // groups match by substring; prefix-based groups (graphmap/qmd) match any
   // crontab line carrying the prefix, extracting just the prefixed token
   // (up to the next whitespace) — never a full cron line — into taskDetail.
@@ -699,7 +609,7 @@ function checkSystemdUnitEnabled() {
 // (absent or an unrecognized exit code), this fails toward the OLD
 // file-exists-only behavior (never a false negative) but flags
 // bridgeUnitStateUnknown so the delta can say so.
-// (See uncertainty convention comment near statusUnrecognized.)
+// (See the uncertainty convention comment near classifyCrontabError.)
 function decideBridgePersistence(fileExists, unitState) {
   if (unitState === 'unknown') {
     return { installPersistence: fileExists, bridgeUnitDisabled: false, bridgeUnitStateUnknown: true };
@@ -973,4 +883,4 @@ if (isMain(import.meta.url)) {
   }
 }
 
-export { capture, sortKeysDeep, diffPaths, buildScrubRegexes, scrubDeep, scrubText, assertScrubbed, classifyCrontabError, matchCadenceGroups, filterCommentedLines, displayPath, EXTRA_KNOWN_TASKS, isHimmelRelevantTask, decideBridgePersistence, normalizeDotenvValue, splitCadencesByRegistry };
+export { capture, sortKeysDeep, diffPaths, buildScrubRegexes, scrubDeep, scrubText, assertScrubbed, classifyCrontabError, matchCadenceGroups, filterCommentedLines, displayPath, EXTRA_KNOWN_TASKS, decideBridgePersistence, normalizeDotenvValue, splitCadencesByRegistry };

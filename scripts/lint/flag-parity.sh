@@ -53,10 +53,13 @@ if [ "$write_baseline" = 1 ] && [ -z "$baseline" ]; then
   echo "flag-parity: --write-baseline needs --baseline FILE" >&2; exit 2
 fi
 
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/prim.sh" || { echo "flag-parity: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+
 root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "flag-parity: not a git repository" >&2; exit 2; }
 cd "$root" || exit 2
 
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/flag-parity.XXXXXX") || exit 2
+tmp=$(tmpdir) || exit 2
 trap 'rm -rf "$tmp"' EXIT
 
 git ls-files -- '*.sh' > "$tmp/scripts"
@@ -138,6 +141,7 @@ case "$mode" in
 esac
 if [ "$mode" != all ]; then
   awk -F'\t' 'FILENAME == ARGV[1] { t[$0] = 1; next } ($1 in t) || ($2 in t)' "$tmp/touched" "$tmp/drift" > "$tmp/scoped"
+  # prim-ok: scratch file inside this run's private tmpdir, no reader to protect
   mv "$tmp/scoped" "$tmp/drift"
 fi
 

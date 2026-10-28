@@ -107,6 +107,7 @@ for arg in "$@"; do
     RELS+=("$rel")
 done
 
+# prim-ok: the restore-to-head.XXXXXX backup name is the recovery path documented in docs/internals/stuck-playbook.md
 RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/restore-to-head.XXXXXX") || {
     echo "restore-to-head: could not create a private backup directory under ${TMPDIR:-/tmp}" >&2
     exit 2

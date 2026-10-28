@@ -62,9 +62,11 @@ mkdir -p "$DIR" 2>/dev/null && [ -d "$DIR" ] || die "cannot create $DIR"
 # starting together on one PR and suffix must not both pass the check
 if command -v flock >/dev/null 2>&1; then
     [ ! -L "$DIR/.lock" ] || die "refusing $DIR: .lock is a symlink"
+    # prim-ok: bounded 10 s wait that dies naming the dir; with_lock waits unbounded and its lock ends with one command
     exec 9>"$DIR/.lock" && flock -x -w 10 9 || die "cannot lock $DIR"
-else # no flock (macOS): an atomic mkdir is the lock, removed on every exit path
+else # no flock (macOS): an atomic mkdir is the lock, removed on every exit path  # prim-ok: bounded 10 s fallback, dies naming the stale dir
     n=0
+    # prim-ok: bounded 10 s fallback; the lock must outlive this block, so with_lock cannot wrap it
     until mkdir "$DIR/.lock.d" 2>/dev/null; do
         n=$((n+1))
         [ "$n" -lt 100 ] || die "cannot lock $DIR: $DIR/.lock.d still held after 10 s (remove it if no judge is running)"

@@ -18,8 +18,7 @@
 #   the handover-doc glob ignores undated filenames; a dated doc worker-identity.sh
 #     does not call a worker is skipped as no-worker-token
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
-# git bash unchanged.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -19,7 +19,7 @@ setting, but never looser.
 | Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
-| Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE` |
+| Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` |
 | Adopter config | `~/.himmel/config.json`, other fields | `himmelctl install`; `jira.sectorField` by the operator | no | luna cadence, bridge, PHI declarations, the Jira Sector field id (`jira.sectorField`) |
 | Install profile | `~/.claude/himmel/install-profile.json` | `himmelctl install` | no | the wizard's answers, replayed by `--from-profile` |
 | Handover registry | `~/.claude/handover/registry.json` | `/handover` | no | handover repos, buckets, branch prefixes |
@@ -66,9 +66,16 @@ A policy key exported from a shell profile (for example a sourced
 notice. Move it into `config.json` `.policy`; a behaviour key exported there
 still wins, as the list above says.
 
-The directory is always `$HOME/.himmel`. No environment variable moves it
-(`HIMMEL_LUNA_CONFIG_PATH`, which `himmelctl` honours for its own fields, is
-not consulted for policy).
+The policy directory is `<account home>/.himmel`, where the home comes from
+the account's passwd entry (`getent passwd`, or `dscl` on macOS), never from
+`$HOME`. So `HOME=/tmp/x bash scripts/cr/clear-cr-marker.sh` still reads the
+operator's own policy file, not one planted under `/tmp/x`. Behaviour keys in
+`himmel.conf` still follow `$HOME` (or `HIMMEL_CONFIG_DIR`).
+`HIMMEL_LUNA_CONFIG_PATH`, which `himmelctl` honours for its own fields, is
+not consulted for policy. The test suites set `HIMMEL_POLICY_FOLLOWS_HOME=1`
+to point the policy directory back at their temp `$HOME`. That variable is a
+registered seam on the gates that read policy (`scripts/chokepoints.json`),
+so a per-call prefix or export of it in a session is refused.
 
 ### The project override
 
@@ -131,6 +138,7 @@ never the project file. Outside a git repo there is no project file.
 | `config.json` missing | n/a | notice; legacy `.env` or the safe default |
 | `config.json` not valid JSON | notice; legacy `.env` | `load_policy` returns non-zero; `clear-cr-marker.sh` refuses (exit 14) |
 | `.env` present but unreadable | key stays unset | `load_policy` returns non-zero; the gate refuses |
+| the account's passwd entry cannot be read | n/a | `load_policy` returns non-zero; the gate refuses |
 
 `himmel-doctor` check C74 reports a half-migrated station: `himmel.conf`
 missing or unparseable, behaviour keys still in `.env`, and gate keys the
@@ -183,10 +191,24 @@ barrier: an agent can still reach `get` by sourcing the script
 `himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
 secret names are still served from `.env` (`C75-secrets`), names only.
 
-Moving a station: `bash scripts/lib/himmel-secrets import-env <primary
-checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
-as the fallback; import-env skips a secret the manifest does not list, so add
-a new one to `stationSecrets` first.
+Moving a station: import-env skips a secret the manifest does not list, so
+add a new one to `stationSecrets` first. Then:
+
+1. `bash scripts/lib/himmel-secrets import-env <primary checkout>/.env`. It
+   prints `stored KEY` for each key it moved.
+2. `himmel-secrets status KEY…` with those keys names `keyring` for each one.
+   `env`, `credentials` or `keyring-project` means another layer still serves
+   that key ahead of the stored item: settle that layer first.
+3. Delete from `.env` exactly the lines import-env printed as `stored`, and
+   nothing else. Until you do, each secret is still in plain text on disk.
+   A line it skipped stays: a config key until it moves to `~/.himmel`, and
+   `HIMMEL_FLEET_CAP`, a guarded variable kept in `.env` (see the fleet cap
+   example below). Do not delete by key class: `HIMMEL_FLEET_CAP` reads as a
+   secret there, and the `DEPRECATED: secret … read from .env` line still
+   names it after the move.
+4. `bash scripts/himmel-doctor.sh --only C75` shows `OK C75-secrets: no secret
+   comes from .env`. C75 counts only the manifest's secrets, so the
+   `HIMMEL_FLEET_CAP` line left in `.env` does not fail it.
 
 ## The .env split: what moves, what stays, and a mismatch
 
@@ -222,7 +244,7 @@ key the operator has moved; the shell, the Jira CLI
 and the config UI all resolve it that way.
 
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
-`CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
+`CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` (read only from `config.json`).
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
 class has not been decided yet: other account emails, chat IDs, cookie-file
@@ -369,6 +391,23 @@ with the real readers, and only then the removal of the moved lines from
 `.env` ([updating.md](../setup/updating.md#the-env-migration)). Preview it with
 `bash scripts/setup/migrate-env.sh --dry-run`. The steps below are the manual
 route for behaviour and policy keys.
+
+The confirmation needs a terminal, so an update run by an agent stops at
+`env_migration pending`. To let it finish unattended, set
+`"ENV_MIGRATION_CONSENT": "1"` under `"policy"` in `~/.himmel/config.json`
+yourself. The key is read only from that file: the process env and `.env`
+cannot grant it. With it set, the migration skips the prompt but keeps the
+backup and the check. A mismatch still stops before anything is removed, and
+names the key and both readers, never the values; only you, at a terminal,
+choose which side wins.
+
+The consent covers less than a typed `y`, so an agent cannot use it to change
+gate policy or move your files elsewhere:
+
+- Gate-policy keys stay in `.env`. Run the move at your own prompt to move them.
+- It applies only to the checkout's own `.env`, never a `--env` file somewhere else.
+- It writes only into your account's own `~/.himmel`. With `HOME` or
+  `HIMMEL_CONFIG_DIR` pointing elsewhere, it writes nothing.
 
 Setup, adopt and `himmelctl` read and write the behaviour keys in
 `~/.himmel/himmel.conf` (a key already set in `.env` is still read as a

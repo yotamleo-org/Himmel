@@ -1,4 +1,4 @@
-# scripts/ci/pr-job-gates.txt — HIMMEL-5524: which diff paths feed which
+# scripts/ci/pr-job-gates.txt — which diff paths feed which
 # pull_request job. Read by scripts/ci/pr-plan.sh from the BASE commit, so a PR
 # cannot narrow its own gates except by editing this file, which is a trust path
 # (scripts/ci/) and so forces every gate true.

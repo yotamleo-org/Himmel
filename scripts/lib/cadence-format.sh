@@ -41,7 +41,7 @@
 # vault path carries one of those characters must `arm --force` to pick the fix
 # up. Everyone else's regenerated runner is byte-identical bar the stamp.
 # v6: a legacy pwsh runner gained a THIRD payload worker
-# (reap-superseded-fleets.ps1 -Kill, the duplicate-fleet-under-a-LIVE-broker
+# (reap-superseded-fleets -Kill, the duplicate-fleet-under-a-LIVE-broker
 # check) and its trigger gained an intra-day <Repetition>. An armed v5 cadence
 # still fires, but only the two old workers and only once a day — so the leak class
 # this version exists to cover keeps accumulating unswept. Nudge `arm --force`.

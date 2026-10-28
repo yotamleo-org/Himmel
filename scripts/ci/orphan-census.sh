@@ -106,7 +106,9 @@ HIM_ROOT="${HIM_ROOT%/.claude/worktrees/*}"
 # pass folds backslashes to `/` before matching).
 HIM_ROOT_WIN=$(printf '%s' "$HIM_ROOT" | sed -E 's#^/([a-zA-Z])/#\1:/#')
 
-WORK=$(mktemp -d) || { echo "orphan-census: mktemp -d failed" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "orphan-census: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+WORK=$(tmpdir) || { echo "orphan-census: mktemp -d failed" >&2; exit 2; }
 trap 'rm -rf "$WORK"' EXIT
 TABLE="$WORK/procs"
 

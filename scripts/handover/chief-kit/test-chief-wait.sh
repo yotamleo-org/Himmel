@@ -54,6 +54,9 @@ EOF
 export STUB
 export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2
+# No row here reads the pool (test-chief-wait-pool.sh does): an absent dispatcher makes the
+# probe a no-op, never a next-dispatchable.sh run over the real mirror.
+export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
 # A failure streak wakes only in (f4); elsewhere a failed sample is just "not a change".
 export CHIEF_WAIT_FAIL_WAKE=1000
 # a denials rise pages the operator. The suite owns the sender and
@@ -369,7 +372,7 @@ printf '1\n' > "$STUB/tick.rc"
 wait_exit "$WPID"
 check "(f4) a streak of failed samples ends the wait" "0" "$rc"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
-check "(f4) the wake names the failure streak" "WAKE tick-fail samples=3" "$(head -n1 "$WORK/f4.out")"
+check "(f4) the wake names the failure streak and the failing step" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4.out")"
 CHIEF_WAIT_FAIL_WAKE=3 timeout 6 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(f4) the re-arm during the same streak runs silent" "124" "$rc"
 check "(f4) the re-arm during the same streak prints nothing" "" "$(cat "$WORK/f4b.out")"
@@ -377,7 +380,7 @@ rm -f "$STUB/tick.rc"
 CHIEF_WAIT_FAIL_WAKE=3 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1  # gnu-ok: Linux-only kit; pipefail-ok: none set
 printf '1\n' > "$STUB/tick.rc"
 CHIEF_WAIT_FAIL_WAKE=3 timeout 8 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/f4c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3" "$(head -n1 "$WORK/f4c.out")"
+check "(f4) a new streak after a success wakes again" "WAKE tick-fail samples=3 step=tick-exit:1" "$(head -n1 "$WORK/f4c.out")"
 
 # --- (g) a Telegram line wakes at once; a re-arm replays nothing -----------
 reset_stub
@@ -499,7 +502,7 @@ wait_hb "$I" || fail "(r) no baseline heartbeat"
 sed 's/ tails=N1:LIVE//' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
 check "(r) a streak of malformed samples ends the wait" "0" "$rc"
-check "(r) the wake is tick-fail, never a changed key from an empty field" "WAKE tick-fail samples=2" "$(head -n1 "$WORK/r.out")"
+check "(r) the wake is tick-fail, never a changed key from an empty field, naming the field" "WAKE tick-fail samples=2 step=missing-field:tails" "$(head -n1 "$WORK/r.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
 # --- (s) .wait.state is written atomically (temp file + rename), never with

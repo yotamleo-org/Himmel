@@ -344,10 +344,6 @@ lane's expectation.
 - `himmel_agent` main tier: `openai-codex` + `gpt-5.5` was a **272K Codex
   window** when measured on 2026-07-07. This is expected even though the
   direct OpenAI API slug is larger.
-- GLM / Z.ai lanes (GLM lane dormant, HIMMEL-1967): request the explicit long-context model id
-  `glm-5.2[1m]` on Claude Code-compatible launchers. Bare `glm-5.2` can run
-  capped below the advertised maximum, so it is not the desired full-control
-  lane.
 - Hermes `/model` and delegation switches recalculate context for the new
   provider/model. A top-level `model.context_length` override applies to that
   profile's active model; it is not a generic guarantee for aliases or sibling

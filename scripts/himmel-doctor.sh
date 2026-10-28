@@ -4752,7 +4752,8 @@ run_heavy() {
         "$fn"; return
     fi
     if [ -z "$HEAVY_DIR" ]; then
-        HEAVY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-heavy.XXXXXX")" || { "$fn"; return; }
+        # shellcheck source=lib/prim.sh
+        { . "$SELF_DIR/lib/prim.sh" && HEAVY_DIR="$(tmpdir)"; } || { HEAVY_DIR=""; "$fn"; return; }
     fi
     rows="$HEAVY_DIR/$id.rows"
     "$_TIMEOUT_BIN" -k 2 "$HEAVY_T" bash "$SELF_DIR/$(basename "${BASH_SOURCE[0]:-$0}")" \

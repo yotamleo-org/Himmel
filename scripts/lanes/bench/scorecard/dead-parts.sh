@@ -57,7 +57,7 @@
 # sc_transcript_roots(), same as every sibling metric; the two scopes are
 # independent by design; a fixture repo has no matching real transcripts.
 #
-# Platform guard: no .ps1 twin, by design.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 usage() { echo "usage: dead-parts.sh --since <ISO8601> [--until <ISO8601>] [--repo-root <path>]" >&2; }

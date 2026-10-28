@@ -1160,6 +1160,7 @@ PRE_1344_LIB="$SCRIPT_DIR/fixtures/handover-path-pre-himmel-1344.sh"
 mkdir -p "$FAKE_QL/handover" "$FAKE_QL/lib"
 cp "$SCRIPT_DIR/queue-lock.sh" "$FAKE_QL/handover/queue-lock.sh"
 cp "$SCRIPT_DIR/../lib/py-armor.sh" "$FAKE_QL/lib/py-armor.sh"
+cp "$SCRIPT_DIR/../lib/prim.sh" "$FAKE_QL/lib/prim.sh"
 if cp "$PRE_1344_LIB" "$FAKE_QL/lib/handover-path.sh" \
     && ! grep -q '^_arm_registry_identity_path()' "$FAKE_QL/lib/handover-path.sh" \
     && ! grep -q '^_hp_arms_record_matches_path()' "$FAKE_QL/lib/handover-path.sh"; then

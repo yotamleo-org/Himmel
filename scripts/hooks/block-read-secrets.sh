@@ -1516,6 +1516,13 @@ scan_clause() {
             prev="$tok"
             continue
         fi
+        # Nonreader arguments cannot affect the reader verdict or a shell
+        # body. Keep the redirect check above, but do not reclassify thousands
+        # of glob matches in e.g. `rtk proxy grep version *.md` as reader args.
+        # Exfil/env checks already ran in g4_clause/g4_segments.
+        if [ "$reader" = 0 ] && [ "$interp" = 0 ]; then
+            prev="$tok"; continue
+        fi
         # Past the command token: scan its arguments.
         this_at_pos0="$at_pos0"; at_pos0=0
         if is_inplace_token "$tok"; then inplace=1; fi

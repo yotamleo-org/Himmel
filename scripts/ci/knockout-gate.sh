@@ -27,7 +27,9 @@ root=$(git rev-parse --show-toplevel) || fail not-a-worktree
 cd "$root" || fail worktree-unreadable
 # The selector uses the PR merge-base, so both halves use that same diff.
 base=$(git merge-base "$base" "$head") || fail no-merge-base
-work=$(mktemp -d "${TMPDIR:-/tmp}/knockout-gate.XXXXXX") || fail scratch-create
+# shellcheck source=../lib/prim.sh
+. "$TOOLS/../lib/prim.sh" || fail prim-lib-missing
+work=$(tmpdir) || fail scratch-create
 work=$(cd "$work" && pwd) || fail scratch-unreadable
 tree="$work/tree"
 cleanup() {

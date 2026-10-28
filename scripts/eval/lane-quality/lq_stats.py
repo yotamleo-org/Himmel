@@ -224,12 +224,12 @@ def load_rows(dirs, sample=None):
     keep = None
     if sample:
         with open(sample, encoding="utf-8") as fh:
-            keep = {os.path.abspath(l.strip()) for l in fh if l.strip()}
+            keep = {os.path.realpath(l.strip()) for l in fh if l.strip()}
     rows = []
     for d in dirs:
         for r in read_rows(os.path.join(d, "runs.jsonl")):
             r["_dir"] = d
-            if keep is None or os.path.abspath(os.path.join(d, stem(r) + ".judge-packet.md")) in keep:
+            if keep is None or os.path.realpath(os.path.join(d, stem(r) + ".judge-packet.md")) in keep:
                 rows.append(r)
     return rows
 

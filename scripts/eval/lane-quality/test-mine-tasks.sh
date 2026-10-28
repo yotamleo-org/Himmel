@@ -109,9 +109,11 @@ T3="$TMP/lq/tasks/real-himmel-9002-42"
 
 echo "3. validate"
 python3 "$MT" validate "$T1" --repo "$TMP/src" >"$TMP/val1.out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] || sed -n "1,12p" "$TMP/val1.out" | sed "s/^/    val1: /"
 check "a hidden test that fails at the base and passes at the merge is kept" '[ "$rc" -eq 0 ] && grep -q "base: fails" "$TMP/val1.out" && grep -q "merge: passes" "$TMP/val1.out"'
 python3 "$MT" validate "$T3" --repo "$TMP/src" >"$TMP/val3.out" 2>&1; rc=$?
 check "a hidden test that already passes at the base is refused" '[ "$rc" -ne 0 ] && grep -q "base: passes" "$TMP/val3.out"'
+grep -q "base: passes" "$TMP/val3.out" || sed -n "1,12p" "$TMP/val3.out" | sed "s/^/    val3: /"
 
 echo "4. acceptance replaces the agent's copy of the test"
 tree() { mkdir -p "$TMP/$1" && git -C "$TMP/src" archive "$2" | tar -x -C "$TMP/$1"; }
@@ -297,6 +299,25 @@ for pair in cr-fix:lq-work/test-cleanup-old.sh hook-refusal:lq-work/test-block-c
   bash "$HERE/tasks/$t/accept.sh" "$wt" "$(cat "$TMP/noop-$t.fix")" >"$TMP/helper-$t.log" 2>&1; rc=$?
   check "$t: an own test that fails only for want of its helper fails acceptance" '[ "$rc" -ne 0 ] && grep -q "^FAIL own-test-catches" "$TMP/helper-$t.log"'
 done
+if date -d '10 days ago' +%s >/dev/null 2>&1; then  # gnu-ok: the probe itself, the shim below needs a GNU date
+# BSD touch (macOS) rejects GNU `touch -d '10 days ago'`
+# with "out of range or illegal time specification" and has `date -v`; shim that host on Linux.
+bsd="$TMP/bsdshim"; mkdir -p "$bsd"
+realtouch="$(command -v touch)"; realdate="$(command -v date)"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -d ] && { echo "touch: out of range or illegal time specification: YYYY-MM-DDThh:mm:SS[.frac][tz]" >&2; exit 1; }; done\nexec %s "$@"\n' "$realtouch" >"$bsd/touch"
+printf '#!/bin/sh\ncase "$1" in -v-10d) shift; exec %s -d "10 days ago" "$@" ;; -d) echo "date: illegal option -- d" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$realdate" "$realdate" >"$bsd/date"
+chmod +x "$bsd/touch" "$bsd/date"
+git -C "$TMP/src" worktree add -q --detach "$TMP/bsd-cr-fix" HEAD
+bsdfix="$(bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix")"
+bash "$RUN" materialize cr-fix "$TMP/bsd-cr-fix" --reference >/dev/null
+PATH="$bsd:$PATH" bash "$HERE/tasks/cr-fix/accept.sh" "$TMP/bsd-cr-fix" "$bsdfix" >"$TMP/bsd-cr-fix.log" 2>&1; bsdrc=$?
+check "cr-fix: the backdated fixture builds on a BSD touch (no GNU -d), and acceptance of the reference exits 0" '[ "$bsdrc" -eq 0 ] && grep -q "^ok r2-space-name-deleted" "$TMP/bsd-cr-fix.log" && grep -q "^ok r3-trap-dir-kept" "$TMP/bsd-cr-fix.log" && ! grep -q "touch -d unsupported" "$TMP/bsd-cr-fix.log"'
+mkdir "$TMP/bsdref"; cp "$HERE/tasks/cr-fix/reference/lq-work/cleanup-old.sh" "$TMP/bsdref/" 2>/dev/null; cp "$HERE/tasks/cr-fix/reference/lq-work/test-cleanup-old.sh.ref" "$TMP/bsdref/test-cleanup-old.sh"
+PATH="$bsd:$PATH" bash "$TMP/bsdref/test-cleanup-old.sh" >"$TMP/bsd-ref.log" 2>&1; rc=$?
+check "cr-fix: the reference own test passes on a BSD touch" '[ "$rc" -eq 0 ]'
+else
+  echo "  SKIP the BSD touch rows: the shim maps date -v to GNU date -d; macOS runs the real BSD tools in the cr-fix control rows"
+fi
 LQ_FAKE_DOC=ref bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \
   --base "$C1" --out "$TMP/out-doc" >/dev/null 2>&1
 LQ_FAKE_DOC=noop bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \

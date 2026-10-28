@@ -44,7 +44,7 @@
 # (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
 # Platform guard: Linux bash 3.2+ (chief kit; /proc, GNU date and timeout;
-# no .ps1 twin - Windows is parked).
+# no .ps1 twin).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -78,7 +78,7 @@ while [ "$#" -gt 0 ]; do
         --transcript) JOURNAL="$2" ;;
         --pid) PID="$2" ;;
         --projects) PROJECTS="$2" ;;
-        --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || usage; CHIEF="$2" ;;
+        --chief) CHIEF="$2" ;;
         *) usage ;;
     esac
     shift 2

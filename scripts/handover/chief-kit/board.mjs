@@ -33,7 +33,7 @@
 // spans are redacted from everything before it is escaped.
 //
 // Optional Live-state lines the chief may keep (chief-template.md):
-//   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
+//   epics: KEY-1=4, KEY-2=2                 declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
 //   decisions: specs/decisions/chief-decisions-<date>.md (latest #<n>)
 //                                           the `(N) ` entries of the named bucket file(s)
@@ -337,6 +337,9 @@ const tails = pairs(field.tails);
 const [fleetLive, fleetCap] = (field.fleet || '').split('/').map(Number);
 const fleetOk = Number.isFinite(fleetLive) && Number.isFinite(fleetCap) && fleetCap > 0;
 const idle = fleetOk ? Math.max(0, fleetCap - fleetLive) : 0;
+const poolValues = /^(\d+)\/(\d+)\/(\d+)\/(\d+)$/.exec(field.pool || '');
+const pool = poolValues ? Object.fromEntries(['open', 'in_flight', 'dispositioned', 'undispositioned'].map((k, i) => [k, Number(poolValues[i + 1])])) : null;
+const poolSig = pool ? field.pool : '?';
 
 // ---------------------------------------------------------------- gh
 // A chief always runs in himmel; the checkout it is FOR is recorded on the
@@ -998,7 +1001,7 @@ const crLoopSection = (() => {
     const cadenceTxt = (days, stale) => (days === null ? 'never' : days + 'd') + (stale ? ' (stale)' : '');
     const r = out.residual;
     const dark = out.rounds.mean === null && out.preflight.per_pr === null && r.inflow === null;
-    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs HIMMEL-6390)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · cadence ${cadenceTxt(out.cadence.proposals_days, out.cadence.proposals_stale)} · restructure seen ${cadenceTxt(out.cadence.restructure_days, out.cadence.restructure_stale)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
+    const line = dark ? 'n/a — no readable CR ledger or Jira mirror' : `rounds/PR ${na(out.rounds.mean, (v) => v.toFixed(1))} (p90 ${na(out.rounds.p90, String)}) · preflight ${na(out.preflight.prs, String)}/${na(out.preflight.merged, String)} PRs · ${na(out.preflight.per_pr, (v) => v.toFixed(1))} hits/PR · residuals/PR ${na(r.per_merged_pr, (v) => v.toFixed(2))} (labelled ${na(r.labelled_share, (v) => Math.round(v * 100))} %) · residuals in ${na(r.inflow, String)} · out ${na(r.outflow, String)}${r.outflow === null ? ' (needs a resolved date)' : ''} · net ${na(r.net, (v) => (v > 0 ? `+${v}` : String(v)))} · restructure open ${na(out.restructure_open, String)} · cadence ${cadenceTxt(out.cadence.proposals_days, out.cadence.proposals_stale)} · restructure seen ${cadenceTxt(out.cadence.restructure_days, out.cadence.restructure_stale)} · before ${CR_BEFORE.rounds_mean}/PR, ${CR_BEFORE.residual_inflow_per_week}/wk in`;
     const rows = out.versions.map((v) => `<li data-cr-version="${esc(v.version)}" data-over="${v.over ? 1 : 0}">${esc(v.version)} ${v.slots}/${CR_SOFT_CAP} slots${v.over ? ' — past the soft cap' : ''}</li>`).join('\n');
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
@@ -1072,6 +1075,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
 ${fp ? `<meta name="chief-board-fp" content="${fp}">` : ''}
+<meta name="chief-board-pool-fp" content="${poolSig}">
 ${ciFleetSig ? `<meta name="chief-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="chief-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="chief-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="chief-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="chief-board-cap-fp" content="${esc(capSig)}">` : ''}
 <style>
 :root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
@@ -1112,6 +1116,7 @@ ${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels 
 <section>
 <h2>Fleet</h2>
 ${fleetOk ? `<div class="fleet" data-fleet="${fleetLive}/${fleetCap}">${fleetLive}<small>/${fleetCap} legs live</small></div>${idle ? `<div class="idle" data-idle="${idle}">${idle} idle slot${idle === 1 ? '' : 's'} — underfilled</div>` : ''}` : '<p class="none">fleet unavailable</p>'}
+${pool ? `<p class="sub" data-pool="${poolSig}">Current version: ${pool.open} open · ${pool.in_flight} in flight · ${pool.dispositioned} dispositioned · ${pool.undispositioned} undispositioned</p>` : '<p class="none">version pool unavailable</p>'}
 <p class="sub">subscription usage budget ${safe(usage || '?')} · gql ${safe(field.gql || '?')}</p>
 ${bankLiftLine}
 </section>
@@ -1323,7 +1328,7 @@ const succession = (() => {
     const silent = Math.max(0, liveLegs.length - accepts.length);
     const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;
     const recommendation = liveAt === null ? 'succession still running: no LIVE bullet yet'
-        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps (HIMMEL-5969)`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
+        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
     return [{ tool: 'chief-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
         turns, eq, legs_quoted: accepts.length, legs_silent: silent, target: SUCCESSION_TARGET, pass, recommendation }];
 })();
@@ -1376,6 +1381,7 @@ const boardModel = {
     generated_at: isoOf(now.getTime()),
     console: { name: consoleName, archive_legs: doneLegs.length },
     headline: { live: fleetOk ? fleetLive : liveLegs.length, cap: fleetOk ? fleetCap : null, merged_today: mergedToday, needs_you: needsYou.length, blocked: countState('blocked') },
+    pool,
     bank: bankOut,
     ci: ciOut,
     red_main: redMain,
@@ -1397,8 +1403,10 @@ let oldReleaseSig = '';
 let oldCiFleetSig = '';
 let oldManifestSig = '';
 let oldCapSig = '';
+let oldPoolSig = '';
 if (changedFlag && existsSync(outPath)) {
     const prev = readFileSync(outPath, 'utf8');
+    oldPoolSig = (/<meta name="chief-board-pool-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldFp = (/<meta name="(?:chief|console)-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
     oldCensusSig = (/<meta name="(?:chief|console)-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
     oldCiFleetSig = (/<meta name="(?:chief|console)-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
@@ -1420,7 +1428,7 @@ renameSync(archiveTmp, archivePath);
     renameSync(jsonTmp, jsonPath);
 }
 if (changedFlag) {
-    console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig || esc(capSig) !== oldCapSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
+    console.log(`${poolSig !== oldPoolSig || fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig || esc(capSig) !== oldCapSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
 } else {
     console.log(outPath);
 }

@@ -463,7 +463,7 @@ fi
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
+expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip pool=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -2992,6 +2992,67 @@ owk="$(ow_of "$(OW_MERGED_FAIL=1 ow_tick)")"
 [ "$owk" = "?" ] && pass 'orphans-wip= is ? when the merged-PR read fails, not an all-clear' || fail "orphans-wip= on merged read failure is '$owk'"
 OW="$OW_SAVE"
 
+# The same read-only interpreter serves the tick field and the waiter's wake.
+pd_doc="$W/handover/pool-chief.md"
+printf '%s\n' '# chief' '' '## Live state' \
+    'pool-disposition: HIMMEL-4 question operator decision 268' \
+    'pool-disposition: HIMMEL-5 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-6 close PR 3905' \
+    'pool-disposition: HIMMEL-7 question' \
+    'pool-disposition: HIMMEL-999 question operator decision 268' \
+    '' '## Results' 'pool-disposition: HIMMEL-8 question not live state' > "$pd_doc"
+printf '%s\n' \
+    '# disposition HIMMEL-1 in-flight owned by worker N1' \
+    '# disposition HIMMEL-2 collision scripts/a.sh held by PR #20' \
+    '# disposition HIMMEL-3 blocker HIMMEL-900 (In Progress, live)' \
+    '# disposition HIMMEL-4 label operator-decision' \
+    '# disposition HIMMEL-5 classification BLOCKED: broad task' \
+    '# disposition HIMMEL-6 listed MERGED-NOT-CLOSED' \
+    '# disposition HIMMEL-7 listed LOCAL' \
+    '# disposition HIMMEL-8 below --top 7' \
+    '# disposition HIMMEL-9 blocker HIMMEL-901 (not in mirror)' \
+    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' > "$W/pool.rows"
+pd_out="$(bash "$SUT" --pool-dispositions --doc "$pd_doc" < "$W/pool.rows" 2>/dev/null)"
+contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 10/1/6/4'
+contains 'malformed chief decisions remain named and unresolved' "$pd_out" '# pool-unresolved invalid HIMMEL-7 '
+contains 'a non-Live-state decision never dispositions a key' "$pd_out" '# pool-unresolved below HIMMEL-8 '
+contains 'an unread blocker is not a named live blocker' "$pd_out" '# pool-unresolved blocker HIMMEL-9 '
+contains 'a listed candidate is not a live file holder' "$pd_out" '# pool-unresolved collision HIMMEL-10 '
+contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '# pool-unresolved invalid HIMMEL-999 '
+same 'standalone pool mode resolves handover-relative document paths' "$(bash "$SUT" --pool-dispositions --doc pool-chief.md < "$W/pool.rows" 2>/dev/null)" "$pd_out"
+same 'standalone pool mode resolves extensionless document names' "$(bash "$SUT" --pool-dispositions --doc pool-chief < "$W/pool.rows" 2>/dev/null)" "$pd_out"
+
+PD="$W/pd-mirror/HIMMEL"; mkdir -p "$PD"
+for n in 901 902 904; do sed 's/fixVersions: \[\]/fixVersions: ["v1.1.3"]/' "$OW/HIMMEL-$n.md" > "$PD/HIMMEL-$n.md"; done
+printf 'v1.1.3\tfalse\t\n' > "$W/pd-mirror/HIMMEL.versions.tsv"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-904 question operator decision 268\n' > "$pd_doc"
+# shellcheck disable=SC2016  # the fixture expands arguments when the classifier runs
+printf '#!/bin/sh\nfor k in "$@"; do printf "%%s\\tLOCAL-NATIVE\\tstub\\n" "$k"; done\n' > "$W/pd-classify"
+chmod +x "$W/pd-classify"
+pd_tick="$(NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TOKEN='' bash "$SUT" --doc "$pd_doc" 2>/dev/null)"
+contains 'a real tick uses the shared pool interpretation with PR ownership and chief decisions' "$pd_tick" ' pool=3/1/2/1 '
+
+# The pool snapshot classifies every version ticket (140 s on a 23-worker fleet),
+# so a slow one never holds the tick: it reads ? until the detached snapshot lands, then counts.
+# The kit is the real one, file by file, but its next-dispatchable.sh sleeps 8 s on the pool call.
+if [ -n "$_TIMEOUT_BIN" ]; then
+    real_scripts="$(cd "$HERE/../.." && pwd)"
+    sk="$W/slowrepo/scripts"
+    mkdir -p "$sk/handover/chief-kit"
+    for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f##*/}"; done
+    for f in "$real_scripts"/handover/*; do [ "${f##*/}" = chief-kit ] || ln -s "$f" "$sk/handover/${f##*/}"; done
+    for f in "$HERE"/*; do [ "${f##*/}" = next-dispatchable.sh ] || ln -s "$f" "$sk/handover/chief-kit/${f##*/}"; done
+    printf '#!/usr/bin/env bash\ncase " $* " in *" --dispositions "*) sleep 8 ;; esac\nexec bash %q "$@"\n' "$HERE/next-dispatchable.sh" > "$sk/handover/chief-kit/next-dispatchable.sh"
+    pd_slow() { NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_POOL_WAIT=1 TICK_STATE_DIR="$W/pd-slow-state" TOKEN='' "$_TIMEOUT_BIN" -k 2 6 bash "$sk/handover/chief-kit/tick.sh" --doc "$pd_doc" 2>/dev/null; }
+    pd_slow_out="$(pd_slow)"; pd_rc=$?
+    [ "$pd_rc" -eq 0 ] && pass 'a slow pool snapshot never holds the tick past its budget (HIMMEL-7609)' || fail "a slow pool snapshot held the tick past its 6 s budget (rc $pd_rc)"
+    contains 'the tick reads pool=? until the slow snapshot lands (HIMMEL-7609)' "$pd_slow_out" ' pool=? '
+    for _ in $(seq 1 40); do [ -z "$(find "$W/pd-slow-state" -name 'tick-pool-*.rows' 2>/dev/null)" ] || break; sleep 0.5; done
+    contains 'the next tick counts from the finished snapshot (HIMMEL-7609)' "$(pd_slow)" ' pool=3/1/2/1 '
+else
+    skip 'a slow pool snapshot never holds the tick: no timeout'
+fi
+
 # --- pool-closed=<closed>/<total>: Done or wont-do keys on the Live state priority: line.
 mk_ow 911 "Done" Task
 mk_ow 912 "wont do" Task
@@ -3308,6 +3369,38 @@ not_contains 'no focus-state file leaves sdrift= off the line (HIMMEL-6829)' "$f
 if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers (HIMMEL-6829)'
 elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
+
+# --- slotage=: shared suite slots held past the cap -------------
+# Reads each live slot's owner record under the semaphore dir; the holder's worker, range and
+# suite count come from the detail run-shell-tests.sh records. Advisory: never a wake key.
+sa_dir="$W/sem5788"
+sa_now="$(date +%s)"
+mkdir -p "$sa_dir/slot-1" "$sa_dir/slot-2" "$sa_dir/slot-3" "$sa_dir/slot-4" "$sa_dir/slot-5"
+sa_dead="$(sh -c 'echo $$')"
+# shellcheck source=../../lib/proc-tree.sh
+. "$HERE/../../lib/proc-tree.sh"
+sa_id="$(proc_tree_process_identity "$$")"
+sa_owner() { # <slot> <pid> <age-seconds> [detail] [identity]
+    printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\n%s' "$2" "${5-$sa_id}" "$((sa_now - $3))" "${4:+detail=$4$'\n'}" > "$sa_dir/slot-$1/owner"
+}
+sa_owner 1 $$ 1500 'worker=N3912 range=aaa1111..bbb2222 suites=3'
+sa_owner 2 $$ 60 'worker=N3913 range=ccc..ddd suites=9'
+sa_owner 3 "$sa_dead" 9000 'worker=N3914 range=eee..fff suites=5'
+sa_owner 4 $$ 1300
+sa_owner 5 $$ 9000 'worker=N3915 range=ggg..hhh suites=7' 'reused-pid-other-process'
+sa_tick() { HIMMEL_SUITE_SEMAPHORE_DIR="$sa_dir" bash "$SUT" "$@" 2>/dev/null; }
+sa_out="$(sa_tick)"
+contains 'a live slot held past the cap prints its worker, range, suite count and age (HIMMEL-5788)' "$sa_out" ' slotage=N3912:aaa1111..bbb2222:3suites:25m'
+not_contains 'a slot younger than the cap is not listed (HIMMEL-5788)' "$sa_out" 'N3913'
+not_contains 'a slot whose owner is dead is not listed (HIMMEL-5788)' "$sa_out" 'N3914'
+not_contains 'a slot whose pid now names another process is not listed (HIMMEL-5788)' "$sa_out" 'N3915'
+contains 'a slot past the cap with no detail reads ? for each part (HIMMEL-5788)' "$sa_out" ',?:?:?suites:21m'
+contains 'verbose labels slotage (HIMMEL-5788)' "$(sa_tick --verbose)" 'slot age: N3912:aaa1111..bbb2222:3suites:25m'
+contains 'HIMMEL_SUITE_SLOT_CAP lowers the cap (HIMMEL-5788)' "$(HIMMEL_SUITE_SLOT_CAP=30 sa_tick)" 'N3913:ccc..ddd:9suites:1m'
+not_contains 'a raised cap lists nothing (HIMMEL-5788)' "$(HIMMEL_SUITE_SLOT_CAP=99999 sa_tick)" 'slotage='
+not_contains 'no semaphore dir leaves slotage= off the line (HIMMEL-5788)' "$(HIMMEL_SUITE_SEMAPHORE_DIR="$W/no-sem5788" bash "$SUT" 2>/dev/null)" 'slotage='
+not_contains "slotage= is not in chief-wait's wake key (HIMMEL-5788)" "$cw_keys" 'slotage'
+rm -rf "$sa_dir"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

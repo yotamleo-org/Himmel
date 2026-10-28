@@ -21,8 +21,7 @@
 # stubs and healthy stubs (dist present) are left alone, so the script
 # auto-no-ops once the upstream fix lands. A plugin update creates a new
 # <version>/ dir with a fresh broken stub — re-run on setup
-# (scripts/setup.sh, scripts/setup.ps1, scripts/machine-setup/ubuntu.sh all
-# invoke this) or standalone.
+# (scripts/setup.sh and scripts/adopt.sh invoke this) or standalone.
 #
 # Intended semantics for ambiguous states:
 #   - A marker-less stub without dist/ is ALWAYS rewritten — including an

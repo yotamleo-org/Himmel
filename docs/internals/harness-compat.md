@@ -998,8 +998,7 @@ prose. "The content isn't lacked, just rough around the edges."
 
 ### 10. Cheap-lane branch provenance — the `codex/*` convention
 
-Hermes-Codex work branches are named `codex/<slug>` (mirrors the spawn-glm
-`glm/<slug>` convention). This prefix is the Codex lane's positive cheap-lane
+Hermes-Codex work branches are named `codex/<slug>`. This prefix is the Codex lane's positive cheap-lane
 provenance marker — `scripts/cr/lane-classify.sh` reads it to route the branch
 through the cheap-lane gate (see
 [`docs/internals/validation-gates.md`](validation-gates.md)). Codex work

@@ -32,6 +32,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
 EOF
 cat > "$STUB/bank.sh" <<'EOF'
@@ -64,7 +65,8 @@ case " $* " in
         [ -f "$STUB/pool.slow" ] && exec sleep 30
         [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
         if [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
-        else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi ;;
+        else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
+        case " $* " in *" --dispositions "*) [ ! -f "$STUB/dispositions" ] || cat "$STUB/dispositions" ;; esac ;;
 esac
 EOF
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
@@ -154,6 +156,67 @@ sed 's/ capacity=[^ ]*/ capacity=UNDERFILLED:7/' "$STUB/tick.line" > "$STUB/tick
 arm "$I" "$WORK/rpok2.out" 6
 check "(rp-ok) a new streak after capacity=ok wakes at once (rc 0)" "0" "$rc"
 
+# Replay 10-25: 52 To Do, 34 dropped (15 collision, 10 BLOCKED, 3 residual,
+# 2 blocker, 2 label, 1 platform, 1 type), plus four in-flight tickets.
+# A drop reason alone must not silence a ticket that needs the chief's decision.
+: > "$STUB/dispositions"
+for n in $(seq 1 56); do
+    case "$n" in
+        1[0-5]|[1-9]) reason="collision scripts/lib/held$n.sh held by worker N$n" ;;
+        1[6-9]|2[0-5]) reason='classification BLOCKED: needs slicing' ;;
+        2[6-8]) reason='residual-depth 1' ;;
+        29|30) reason='blocker HIMMEL-999 (In Progress, live)' ;;
+        31|32) reason='label operator-decision' ;;
+        33) reason='platform (windows/wsl title)' ;;
+        34) reason='type Epic' ;;
+        5[3-6]) reason='in-flight owned by worker N99' ;;
+        *) reason='listed LOCAL' ;;
+    esac
+    printf '# disposition HIMMEL-%s %s\n' "$n" "$reason" >> "$STUB/dispositions"
+done
+printf '# chief\n\n## Live state\n\n## Results\n' > "$WORK/replay-chief.md"
+I="$(new_inbox replay)"
+timeout 12 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replay1.out" 2>/dev/null; rc=$?
+check '(replay) undispositioned tickets wake pool-unresolved' 1 "$(grep -c '^WAKE pool-unresolved .*pool=56/4/21/35' "$WORK/replay1.out")"
+check '(replay) BLOCKED keys are named by class' 1 "$(grep -c '^# pool-unresolved classification HIMMEL-16 ' "$WORK/replay1.out")"
+check '(replay) listed but undispatched keys remain unresolved' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-35 ' "$WORK/replay1.out")"
+arm "$I" "$WORK/replay2.out" 4
+check '(replay) unresolved keys re-wake unchanged on the bounded cadence' 1 "$(grep -c '^WAKE pool-unresolved' "$WORK/replay2.out")"
+# Capacity is no excuse for silently dropping the open pool.
+sed 's/ capacity=[^ ]*/ capacity=ok/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+I="$(new_inbox replayfull)"
+timeout 12 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replayfull.out" 2>/dev/null; rc=$?
+check '(replay) a full fleet still wakes on an unresolved version pool' 1 "$(grep -c '^WAKE pool-unresolved' "$WORK/replayfull.out")"
+# Explicit chief decisions clear only keys they actually name.
+{
+    printf '# chief\n\n## Live state\n'
+    for n in $(seq 16 28) $(seq 31 52); do printf 'pool-disposition: HIMMEL-%s question operator decision 268\n' "$n"; done
+    printf '\n## Results\n'
+} > "$WORK/replay-chief.md"
+timeout 4 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replaydone.out" 2>/dev/null; rc=$?
+check '(replay) when every key is dispositioned the pool wake stops' 124 "$rc"
+sed 's/ capacity=[^ ]*/ capacity=UNDERFILLED:7/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+I="$(new_inbox replaydoneunderfill)"
+timeout 4 bash "$WAIT" "$I" --doc "$WORK/replay-chief.md" --workers N1.md > "$WORK/replaydoneunderfill.out" 2>/dev/null; rc=$?
+check '(replay) a fully dispositioned pool also stays quiet when underfilled' 124 "$rc"
+
+# --- (tf) a failing tick never masks the pool: no sample, still a pool-unresolved wake ---
+: > "$STUB/tick.fail"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-16 question operator decision 268\n\n## Results\n' > "$WORK/tf-chief.md"
+printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n# disposition HIMMEL-77 listed LOCAL\n' > "$STUB/dispositions"
+I="$(new_inbox tickfail)"
+timeout 8 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/tickfail.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check '(tf) a failing tick sample with an unresolved pool still wakes (rc 0)' 0 "$rc"
+check '(tf) the wake is pool-unresolved and says the tick failed' 1 "$(grep -c '^WAKE pool-unresolved capacity=? ' "$WORK/tickfail.out")"
+check '(tf) the failure stands in for the tick line' 'tick-fail samples=1 step=tick-exit:1' "$(sed -n 2p "$WORK/tickfail.out")"
+check '(tf) the wake names the unresolved key' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-77 ' "$WORK/tickfail.out")"
+printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
+I="$(new_inbox tickfailquiet)"
+timeout 4 bash "$WAIT" "$I" --doc "$WORK/tf-chief.md" --workers N1.md > "$WORK/tickfailquiet.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check '(tf) a failing tick with a dispositioned pool stays quiet' 124 "$rc"
+rm -f "$STUB/tick.fail"
+rm -f "$STUB/dispositions"
+
 # --- (rp-real) the waiter's pool output is the hand run's, drop summary included -----------
 M="$WORK/mirror/HIMMEL"; mkdir -p "$M"
 mk() { # <key> <labels json> <title> <body>
@@ -176,7 +239,7 @@ hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$W
 I="$(new_inbox rpreal)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/rpreal.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
-check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d' "$WORK/rpreal.out")"
+check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d' "$WORK/rpreal.out")"
 check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-real) the wake block carries the drop summary" "1" "$(grep -c '^# dropped from v1.0.1: 1 of 2 To Do (tier 1)' "$WORK/rpreal.out")"
 
@@ -189,7 +252,7 @@ I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-workers) the hand run keeps the held worker's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
-check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d' "$WORK/rplegs.out")"
+check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d' "$WORK/rplegs.out")"
 
 # --- (lp) a LOW pool (2 of 7) still lists the plain current-version rows under their own heading ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
@@ -205,7 +268,7 @@ check "(lp) the pool rows are listed" "2" "$(grep -c '^LOCAL.HIMMEL-[13]	' "$WOR
 check "(lp) every plain current-version To Do row is listed" "5" "$(grep -c '^LOCAL.HIMMEL-1[0-4]	' "$WORK/lp.out")"
 check "(lp) a pool row is not listed twice" "1" "$(grep -c '^LOCAL.HIMMEL-1	' "$WORK/lp.out")"
 check "(lp) the plain rows sit under their own heading" "1" "$(grep -c '^# version backlog' "$WORK/lp.out")"
-check "(lp) the wake line carries the one count of dispatchable rows" "WAKE underfilled capacity=UNDERFILLED:7 dispatchable=7" "$(head -n1 "$WORK/lp.out")"
+check "(lp) the wake line carries the one count of dispatchable rows" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=7/0/0/7 dispatchable=7" "$(head -n1 "$WORK/lp.out")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

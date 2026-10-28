@@ -27,8 +27,8 @@ res() { jq -nc --arg id "$1" --argjson e "$2" --arg t "$3" '{type:"user",message
 
 # denied_n <file> <count> <command>: append <count> denied attempts of <command>.
 denied_n() {
-    local f="$1" k="$2" c="$3"
-    for _ in $(seq 1 "$k"); do
+    local f="$1" k="$2" c="$3" i
+    for ((i = 0; i < k; i++)); do
         n=$((n + 1))
         tu "t$n" "$c" >>"$f"
         res "t$n" true "$DENY_MSG" >>"$f"

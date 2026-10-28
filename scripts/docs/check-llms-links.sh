@@ -23,8 +23,7 @@
 #                 here because it is only decidable after a `../` link has been
 #                 resolved against the document's own directory.
 #
-# Platform guard (gitbash-only): pure POSIX bash 3.2+ plus git/grep/sed/wc, so
-# it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/grep/sed/wc.
 #
 # Usage: bash scripts/docs/check-llms-links.sh [<file>]   (default: llms.txt)
 # Exit:  0 = all invariants hold, 1 = at least one violation (all are printed).

@@ -60,8 +60,6 @@ from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
-sys.path.insert(0, os.path.join(HERE, "..", "..", "lib"))
-import env_alias  # noqa: E402
 import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/worker-digest/worker_ledger.py"
@@ -567,8 +565,6 @@ def main(argv=None):
     r.add_argument("--digest", required=True)
     r.add_argument("--worker", dest="leg")
     r.add_argument("--chief", dest="console")
-    r.add_argument("--leg", dest="leg_old", help=argparse.SUPPRESS)
-    r.add_argument("--console", dest="console_old", help=argparse.SUPPRESS)
     for k in ("ticket", "doc", "lane", "launch-name"):
         r.add_argument("--" + k)
     r.add_argument("--pr", type=int)
@@ -591,14 +587,6 @@ def main(argv=None):
         except ValueError:
             ap.error("--since must be YYYY-MM-DD")
         return backfill(a)
-    for old, new, dest in (("--leg", "--worker", "leg"), ("--console", "--chief", "console")):
-        val = getattr(a, dest + "_old")
-        if val is None:
-            continue
-        if not env_alias.legacy_flag(old, new):
-            ap.error("unrecognized arguments: " + old)
-        if getattr(a, dest) is None:
-            setattr(a, dest, val)
     try:
         with open(a.digest, encoding="utf-8") as fh:
             digest = json.load(fh)

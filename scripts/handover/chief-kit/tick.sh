@@ -121,6 +121,11 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+slotage=<worker>:<range>:<n>suites:<age>m[,...] (HIMMEL-5788) sits just before tmp= and is ABSENT unless a
+live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
+holder did not record reads ?. Read-only, advisory, not in chief-wait's action key. Env seams:
+HIMMEL_SUITE_SEMAPHORE_DIR, HIMMEL_SUITE_SLOT_CAP.
+
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in chief-wait's action
@@ -342,6 +347,15 @@ in a frozen version with no frozen-set membership and no admissions-ledger row. 
 (then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
 or the active version is not frozen. Read-only, and not part of chief-wait's wake key.
 
+pool=<open>/<in-flight>/<dispositioned>/<undispositioned> counts every open ticket
+of the current version from a next-dispatchable.sh --dispositions snapshot the tick
+refreshes in the background (TICK_POOL_MIN_SECS, TICK_POOL_WAIT, TICK_POOL_TTL). In-flight is
+included in dispositioned. A listed row or unexplained drop is not a decision.
+Live-state pool-disposition: KEY slice|close|question <named target> lines record
+explicit chief decisions. Malformed, duplicate or unknown decisions stay unresolved.
+--pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
+and unresolved keys by class; it does not take a tick or perform network reads.
+
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
 non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
@@ -369,8 +383,65 @@ on a wake-up budget and this reads every project's transcripts.
 USAGE
 }
 
+# One interpretation for both the tick and waiter; stdin is a complete
+# next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
+pool_dispositions() {
+    python3 -I - "$1" 3<&0 <<'PY'
+import re, sys
+rows = {}
+text = open(3).read()
+for line in text.splitlines():
+    m = re.fullmatch(r"# disposition ([A-Z]+-\d+) (.+)", line)
+    if m:
+        rows[m[1]] = m[2]
+decisions, invalid = {}, {}
+if sys.argv[1]:
+    try:
+        doc = open(sys.argv[1]).read().splitlines()
+    except OSError:
+        print("# pool-counts ?")
+        sys.exit(0)
+    live = False
+    for line in doc:
+        if line.startswith("## "):
+            live = line == "## Live state"
+        if not live or not line.startswith("pool-disposition:"):
+            continue
+        value = line.split(":", 1)[1].strip()
+        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
+        key = value.split()[0] if value else "?"
+        if not m or key not in rows or key in decisions or key in invalid:
+            invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        else:
+            decisions[key] = value
+if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
+    print("# pool-counts ?")
+    sys.exit(0)
+inflight = disposed = 0
+unresolved = []
+for key, reason in rows.items():
+    owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
+    inflight += int(owned)
+    holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
+    blocker = reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?!Done,|Closed,)[^()]+, live\)", reason))
+    if key in invalid:
+        unresolved.append(("invalid", key, invalid[key]))
+    elif owned or holder or blocker or key in decisions:
+        disposed += 1
+    else:
+        unresolved.append((reason.split()[0], key, reason))
+print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
+for cls, key, reason in sorted(unresolved):
+    print("# pool-unresolved %s %s %s" % (cls, key, reason))
+for key, reason in sorted(invalid.items()):
+    if key not in rows:
+        print("# pool-unresolved invalid %s %s" % (key, reason))
+PY
+}
+
 verbose=0
 burn=0
+pool_mode=0
 emit_fp=0
 ready_mode=0
 ready_dir=""
@@ -386,6 +457,7 @@ while [ "$#" -gt 0 ]; do
         --burn) burn=1; shift ;;
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
+        --pool-dispositions) pool_mode=1; shift ;;
         --doc|--token|--workers|--workers-from|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
             case "$1" in --legs) legacy_flag --legs --workers || { usage >&2; exit 2; } ;; --legs-from) legacy_flag --legs-from --workers-from || { usage >&2; exit 2; } ;; esac
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
@@ -409,15 +481,6 @@ done
 # --handover-dir (rather than an already-exported env var) supplied it.
 [ -z "${HANDOVER_DIR:-}" ] || export HANDOVER_DIR
 
-# the fleet manifest is re-read on every run. An unreadable one is
-# a failed tick (before the heartbeat or any other side effect), never an empty
-# fleet that reads as every worker gone.
-from_docs=""
-if [ -n "$WORKERS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$WORKERS_FROM")"; then
-    printf 'tick: cannot read fleet manifest: %s\n' "$WORKERS_FROM" >&2
-    exit 1
-fi
-
 if [ -n "${HANDOVER_DIR:-}" ]; then
     root="$(handover_root 2>/dev/null)" || root=""
 else
@@ -431,6 +494,21 @@ resolve_doc() {
         *) printf '%s/%s.md\n' "$root" "$1" ;;
     esac
 }
+
+if [ "$pool_mode" -eq 1 ]; then
+    [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
+    pool_dispositions "$DOC"
+    exit $?
+fi
+
+# the fleet manifest is re-read on every run. An unreadable one is
+# a failed tick (before the heartbeat or any other side effect), never an empty
+# fleet that reads as every worker gone.
+from_docs=""
+if [ -n "$WORKERS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$WORKERS_FROM")"; then
+    printf 'tick: cannot read fleet manifest: %s\n' "$WORKERS_FROM" >&2
+    exit 1
+fi
 
 # uniq_join <sep> <comma list> -- sorted, de-duplicated, re-joined with <sep>.
 uniq_join() {
@@ -1864,6 +1942,42 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
+# The pool snapshot classifies every version ticket: 140 s on a 23-worker fleet,
+# longer than the waiter's whole tick budget. It runs detached under flock, at most once per
+# TICK_POOL_MIN_SECS (default 600), and the tick waits TICK_POOL_WAIT seconds (default 10)
+# for it; the counts come from the newest snapshot younger than TICK_POOL_TTL (default 1800),
+# else ?. The chief's current pool-disposition lines are read on every tick.
+pool_summary=skip
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    pool_summary='?'
+    pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    pd_base="$pd_dir/tick-pool-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
+    pd_age=999999999
+    pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
+    case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
+    pd_gap="${TICK_POOL_MIN_SECS:-600}"; case "$pd_gap" in '' | *[!0-9]*) pd_gap=600 ;; esac
+    if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
+        pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
+        [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
+        # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
+        # A running snapshot holds the lock, so this launch exits at once.
+        # shellcheck disable=SC2016  # the inner script expands its own positional arguments
+        setsid -w flock -n -E 75 "$pd_base.lock" bash -c 'timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"' _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_pid=$!
+        pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
+        pd_end=$(( $(date +%s) + pd_wait ))
+        while kill -0 "$pd_pid" 2>/dev/null && [ "$(date +%s)" -lt "$pd_end" ]; do sleep 0.2; done
+        pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
+        case "$pd_m" in '' | *[!0-9]*) ;; *) pd_age=$(( $(date +%s) - pd_m )) ;; esac
+    fi
+    pd_ttl="${TICK_POOL_TTL:-1800}"; case "$pd_ttl" in '' | *[!0-9]*) pd_ttl=1800 ;; esac
+    if [ "$pd_age" -lt "$pd_ttl" ]; then
+        pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
+        pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
+        [ -n "$pool_summary" ] || pool_summary='?'
+    fi
+fi
+
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in chief-wait's wake key.
 pool_closed=skip
@@ -2061,6 +2175,36 @@ if [ -n "$tmp_pct" ]; then
     tmp_tail=" tmp=$tmp_pct"
     [ "$tmp_pct" -lt "$tmp_warn" ] || tmp_tail="$tmp_tail!"
 fi
+
+# slotage=<worker>:<range>:<n>suites:<age>m[,...] -- shared suite slots (scripts/lib/suite-semaphore.sh)
+# held past HIMMEL_SUITE_SLOT_CAP seconds (default 1200) by a live owner, so a starving holder shows
+# without a worker reporting it. Worker, range and suite count come from the detail
+# run-shell-tests.sh records in the slot's owner file; a part it did not record reads ?. Absent when
+# no slot is past the cap. Advisory: chief-wait's action key does not name it, so it wakes nothing.
+slotage_tail=""
+slot_cap="${HIMMEL_SUITE_SLOT_CAP:-1200}"
+case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
+[ "$((10#$slot_cap))" -gt 0 ] || slot_cap=1200
+slot_now="$(date +%s)"
+. "$HERE/../../lib/proc-tree.sh"
+for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
+    # one read of the owner record, so a slot released and retaken mid-parse cannot mix two holders
+    slot_rec="$(cat "$slot_dir/owner" 2>/dev/null)" || continue  # swallow-ok: a slot released mid-read has no holder to report
+    slot_pid="$(printf '%s\n' "$slot_rec" | sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
+    slot_started="$(printf '%s\n' "$slot_rec" | sed -n 's/^started=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
+    [ -n "$slot_pid" ] && [ -n "$slot_started" ] || continue
+    slot_id="$(printf '%s\n' "$slot_rec" | sed -n 's/^identity=//p' | head -n 1)"
+    # the semaphore's own liveness: rc 1 is a gone pid or one now naming another process (pid reuse)
+    if proc_tree_liveness_matches "$slot_pid" "$slot_id"; then :; else [ "$?" -ne 1 ] || continue; fi
+    slot_age=$((slot_now - slot_started))
+    [ "$slot_age" -gt "$((10#$slot_cap))" ] || continue
+    slot_detail="$(printf '%s\n' "$slot_rec" | sed -n 's/^detail=//p' | head -n 1)"
+    slot_worker="$(printf '%s\n' "$slot_detail" | sed -n 's/.*worker=\([^ ]*\).*/\1/p')"
+    slot_range="$(printf '%s\n' "$slot_detail" | sed -n 's/.*range=\([^ ]*\).*/\1/p')"
+    slot_suites="$(printf '%s\n' "$slot_detail" | sed -n 's/.*suites=\([0-9][0-9]*\).*/\1/p')"
+    slotage_tail="$slotage_tail${slotage_tail:+,}${slot_worker:-?}:${slot_range:-?}:${slot_suites:-?}suites:$((slot_age / 60))m"
+done
+[ -z "$slotage_tail" ] || slotage_tail=" slotage=$slotage_tail"
 
 # fails=<n>/<workers>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
 # worker-failures ledger rows (ts >= the chief lock's `started`): <n> rows, <workers>
@@ -2852,12 +2996,14 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
+    printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
     [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
+    [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
@@ -2910,6 +3056,7 @@ else
     compact_field vault "$vault_summary"
     compact_field cloud "$cloud_summary"
     compact_field orphans-wip "$orphans_wip"
+    compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
@@ -2928,7 +3075,7 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"

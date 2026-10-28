@@ -16,8 +16,7 @@
 #      code span has to be real. A checklist that tells an adopter to set a
 #      flag that no longer exists is worse than no checklist.
 #
-# Platform guard (gitbash-only): pure POSIX bash 3.2+ plus git/grep/sed/awk, so
-# it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/grep/sed/awk.
 #
 # Usage: bash scripts/docs/check-doc-terms.sh [<file> ...]
 #        (default: the three v1 docs)

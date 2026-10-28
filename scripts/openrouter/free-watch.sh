@@ -80,7 +80,9 @@ if [ -z "$REGISTRY" ]; then
 fi
 [ -f "$REGISTRY" ] || { echo "free-watch: registry not found: $REGISTRY" >&2; exit 1; }
 
-TMP_DIR="$(mktemp -d)"
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh"
+TMP_DIR="$(tmpdir)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 # ---- 1. catalog ------------------------------------------------------------

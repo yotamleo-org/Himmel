@@ -1096,6 +1096,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/py-armor.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/py-armor.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh" || { echo "arm-resume: cannot load scripts/lib/prim.sh" >&2; exit 2; }
 
 # shared with konsole-macos.sh's own ARM_TERMINAL_APP /
 # ARM_APP_DIRS resolution -- one copy of the decision instead of two.
@@ -3864,6 +3867,7 @@ _arm_registry_mutex_acquire() {
     local _reg="$1" _lockd _tries=0 _m _now _tok
     _lockd="$_reg.lock"
     while :; do
+        # prim-ok: an owner-branded lease that outlives the call and is reclaimed when stale; with_lock fails closed on a dead owner
         if mkdir "$_lockd" 2>/dev/null; then
             # Brand the lock (see queue-lock.sh's twin for the full uutils
             # rationale): mkdir is NOT a reliable mutex primitive
@@ -3987,7 +3991,7 @@ _arm_registry_replace_and_append() {
             # _arm_registry_mutex_release's token-read->rmdir gap.
             _cur=$(cat "$_reg.lock/owner" 2>/dev/null) || _cur=""
             if [ "$_cur" = "$_tok" ]; then
-                _werr=$(mv -f "$_tmp" "$_reg" 2>&1) || _rc=1
+                _werr=$(atomic_write "$_reg" < "$_tmp" 2>&1) || _rc=1
             else
                 _rc=1   # reclaimed mid-rewrite: snapshot stale, skip the mv
             fi
@@ -3995,8 +3999,8 @@ _arm_registry_replace_and_append() {
     else
         _rc=1
     fi
+    rm -f "$_tmp" 2>/dev/null   # atomic_write copies $_tmp; a rename used to consume it on success
     if [ "$_rc" -ne 0 ]; then
-        rm -f "$_tmp" 2>/dev/null
         [ -n "$_werr" ] && _ARM_REGISTRY_REPLACE_ERR="${_werr%%$'\n'*}"
     fi
     _arm_registry_mutex_release "$_reg" "$_tok" || true

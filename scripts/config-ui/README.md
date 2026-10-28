@@ -233,13 +233,18 @@ GitHub is read in one batched GraphQL query per minute at most
 still running after 2 seconds, shows the nodes as "GitHub status unknown" for
 that poll and never holds up the page longer.
 
-**Sections, orphans and filters.** The page has four sections:
+**Sections, orphans and filters.** Empty attention lists are hidden:
 
-- **Needs attention** lists sessions that want a chief action, by severity:
+- **Needs you** lists operator-owned `CLOUD-BLOCKED` questions on a PR.
+- **Needs the chief** lists chief actions, by severity:
   - a `BLOCKED` or `FINDING` marker;
   - context at 85 % or more of the session's real window (the launch's declared
     `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, then `--autocompact`, then the model's);
   - a `CLOUD-DONE` PR awaiting its shepherd.
+  The chief board's action cards also appear here. Each session's highest-severity
+  attention reason has one owner, defined in `fleet-model.ts`; the attention count
+  and state filter cover both lists. Permission prompts and MCP-auth waits need
+  structured row signals before they can be assigned to the operator.
 - **Orphans** lists live sessions no live chief watches, with the reason and
   "adopt via relay / close". It also lists the shell-tool wrappers the chief
   tick reports, read from the chief kit's `orphan-loops.sh --list`, with pid,

@@ -265,7 +265,7 @@ check "valid short TTL is honored (dead-wrapper record frees)" "$rc" "0"
 rc=0; RENDER_LEASE_TTL_SECS='garbage' render_lease_probe 'feat/ttl' || rc=$?
 check "garbage TTL env falls back to the 600s default" "$rc" "1"
 
-# --- r7: first-tab field split (PS twin parity on tab-bearing values) ---------
+# --- r7: first-tab field split (tab-bearing values) ---------
 mkdir -p "$tmp/tab-lease"
 printf 'worktree\tval\twith\ttabs\nstatus\trunning\n' > "$tmp/tab-lease/lease.record"
 tab_expected=$(printf 'val\twith\ttabs')

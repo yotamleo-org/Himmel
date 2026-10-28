@@ -547,6 +547,7 @@ emit_runner() {
     # mkdir, not a lockfile: it is the one atomic create-or-fail primitive
     # available in POSIX sh with no flock dependency (absent on macOS).
     printf 'lock="$log.lock"\n'
+    # prim-ok: generated POSIX sh must skip live owners and report stale ones; with_lock requires bash and waits.
     printf 'if ! mkdir "$lock" 2>/dev/null; then\n'
     # NO AUTOMATIC STALE-LOCK TAKEOVER — deliberately, after three attempts at
     # one. Recovering a stale lock in shell means reading an owner pid, judging
@@ -778,7 +779,7 @@ cmd_arm() {
         echo "    existing runner file left untouched" >&2
         exit 4
     fi
-    mv -f "$tmp_runner" "$CRON_RUNNER"
+    mv -f "$tmp_runner" "$CRON_RUNNER"  # prim-ok: publish the pre-chmod-ed runner after cron succeeds; atomic_write resets executable permissions.
     cadence_prov_record "$TASK_REINDEX"
 
     cat <<EOF

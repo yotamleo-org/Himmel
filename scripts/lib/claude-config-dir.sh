@@ -13,8 +13,7 @@
 # therefore treated as UNSET. Without the trim the two disagree: the installer
 # would write the hud config under a padded — i.e. different — directory from
 # the one the hud reads it back from, and a whitespace-only value would make
-# bash resolve a RELATIVE directory literally named with spaces. The
-# PowerShell twin already had this via IsNullOrWhiteSpace.
+# bash resolve a RELATIVE directory literally named with spaces.
 claude_config_dir() {
   local d="${CLAUDE_CONFIG_DIR:-}"
   # Strip leading and trailing whitespace (bash 3.2-safe: no ${var@Q}, no =~).

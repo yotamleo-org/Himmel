@@ -25,7 +25,8 @@ This is a solo-operator-first project, so response is best-effort:
 
 ## Scope notes
 
-himmel is a harness that runs Claude Code as an orchestrated agent. A few
+himmel is a control plane for coding agents; today it runs Claude Code as an
+orchestrated agent. A few
 areas are intentionally security-relevant — please pay particular attention
 to them when reporting:
 

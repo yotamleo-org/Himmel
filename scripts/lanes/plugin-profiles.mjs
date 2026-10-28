@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { legacyNamesOn } from '../lib/env-alias.mjs';
+import { isMain } from '../lib/is-main.mjs';
 // skill-listing.mjs / skill-cost.mjs are imported lazily, only by a
 // caller that opts in via opts.skillEntries. The telegram poller's cachebust loader
 // copies THIS file alone into a tmp dir (scripts/telegram/poller.ts), so a static
@@ -873,7 +874,7 @@ export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marke
 //   `--settings` JSON ({"enabledPlugins":{…}}) to stdout, or nothing for operator.
 // node plugin-profiles.mjs --list      -> one profile name per line.
 // node plugin-profiles.mjs --validate  -> prints registry errors (exit 1 if any).
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const argv = process.argv.slice(2);
   const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
   try {

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/ledger-metrics.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq and gh,
-# both available under git bash unchanged; the ledger it reads is a plain
-# JSONL file.
+# Platform guard: POSIX bash 3.2+ plus jq and gh; the ledger it reads is a
+# plain JSONL file.
 #
 # Adapted from the baseline Appendix B (ledger-metrics.sh, worker
 # N207, 2026-09-12): per merged branch in the window, crit/imp/sug findings

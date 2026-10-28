@@ -11,8 +11,6 @@ for the helpers that write it. The helpers ship in two dialects that emit
 | bash | `scripts/lib/provenance.sh` | shell writers (`source` it) |
 | node | `scripts/himmelctl/lib/provenance.js` | `himmelctl` writers (`require` it, or run it as a CLI) |
 
-The PowerShell dialect is not shipped: Windows is not supported.
-
 Tests: `scripts/lib/test-provenance.sh` (bash) and
 `scripts/himmelctl/test/test-provenance-js.sh` (node, plus the bash-vs-node
 byte-identity cross-check).

@@ -1627,7 +1627,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
         elif [ -z "$timeout_bin" ]; then
           echo "refresh-graph-map: single-writer pre-pull auto-commit SKIPPED — no 'timeout'/'gtimeout' supporting GNU -k is available to bound the vault hooks; freshness pull skipped as before" >&2
         elif git -C "$CORPUS_ROOT" add -A >/dev/null 2>&1; then
-          if "$timeout_bin" -k 5 60 git -C "$CORPUS_ROOT" commit -q -m "chore: pre-pull auto-commit (refresh-graph-map, HIMMEL-1748)" >/dev/null 2>&1; then
+          if "$timeout_bin" -k 5 60 git -C "$CORPUS_ROOT" commit -q -m "chore: pre-pull auto-commit (refresh-graph-map)" >/dev/null 2>&1; then
             echo "refresh-graph-map: single-writer corpus was dirty — auto-committed before the freshness pull" >&2
           else
             git -C "$CORPUS_ROOT" reset -q

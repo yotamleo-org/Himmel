@@ -8,7 +8,7 @@ set -u
 . "$(dirname "$0")/../accept-common.sh"
 WT="$1"; FIX="$2"
 SW="$WT/lq-work/sweep"
-G="$(mktemp -d "${TMPDIR:-/tmp}/lq-sw.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }
+G="$(mktemp -d "${TMPDIR:-/tmp}/lq-sw.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: accept.sh is self-contained and does not source prim.sh
 mkdir -p "$G/out"
 NO="$G/does-not-exist"
 

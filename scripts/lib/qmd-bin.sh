@@ -51,9 +51,8 @@
 # qmd_register_collection() is the shared idempotent collection-
 # registration helper used by setup.sh + adopt.sh. Executed directly
 # (not sourced), this file also answers `install` on argv (see the CLI
-# entry at the bottom) so the pwsh mirrors (scripts/setup.ps1,
-# scripts/adopt.ps1) can delegate to this ONE implementation instead of
-# duplicating the clone/build/link recipe natively.
+# entry at the bottom) so a caller can run this ONE implementation as a
+# subprocess instead of duplicating the clone/build/link recipe.
 
 # qmd_cmd runs qmd under qmd_bounded: a deadline that kills the
 # whole process tree, since `timeout` alone orphans qmd's bun child.
@@ -433,7 +432,7 @@ _qmd_ensure_global_link() {
 # the old upstream bun-global install (the exact population this change
 # migrates) is qmd-PRESENT but not fork-served, and a presence gate would
 # skip the migration entirely. Also exposed as the `fork-served` CLI verb so
-# the pwsh mirrors share the same predicate.
+# non-sourcing callers share the same predicate.
 qmd_fork_served() {
   local ver head stamp
   _qmd_global_points_to_fork || return 1
@@ -465,7 +464,7 @@ qmd_fork_served() {
 # Install/update the qmd fork and serve it from the bun-global @tobilu/qmd
 # path. Returns an honest rc: 0 ONLY when `qmd_cmd --version`
 # verifiably succeeds afterward. WARN-not-fail by contract -- callers
-# (adopt.sh/adopt.ps1, setup.sh/setup.ps1, ubuntu.sh) decide whether a qmd
+# (adopt.sh, setup.sh, ubuntu.sh) decide whether a qmd
 # failure aborts. Every external command is under an `if`/`&&` guard so a
 # caller's `set -e` cannot abort mid-install before the rc is returned.
 #
@@ -1068,10 +1067,9 @@ has_index() {
   [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]
 }
 
-# CLI entry -- only when EXECUTED (not sourced). Lets the pwsh mirrors
-# (scripts/setup.ps1, scripts/adopt.ps1) delegate to this ONE
-# implementation (`bash scripts/lib/qmd-bin.sh install`) instead of
-# duplicating the fork clone/build/link recipe natively.
+# CLI entry -- only when EXECUTED (not sourced). Lets a caller run this ONE
+# implementation as a subprocess (`bash scripts/lib/qmd-bin.sh install`)
+# instead of duplicating the fork clone/build/link recipe.
 if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   case "${1:-}" in
     install) qmd_install ;;

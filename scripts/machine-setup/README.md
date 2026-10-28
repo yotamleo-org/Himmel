@@ -4,24 +4,6 @@ Automate a bare OS → full dev environment. Run **before** the himmel repo is a
 
 ---
 
-## Win11
-
-**Requirements:** PowerShell 7+ as Administrator, internet access.
-
-```powershell
-# 1. Download
-Invoke-WebRequest "https://raw.githubusercontent.com/yotamleo/Himmel/main/scripts/machine-setup/win11.ps1" -OutFile "$env:TEMP\win11.ps1"
-
-# 2. Run
-pwsh -ExecutionPolicy Bypass -File "$env:TEMP\win11.ps1" -LunaRemote "https://github.com/<you>/<your-vault>.git"
-```
-
-**What it installs:** winget packages (git, node LTS, python, jq), uv+uvx, bun, Claude Code CLI, RTK, himmel repo + setup, claude-hud statusline, CLAUDE.md + RTK.md, obsidian-second-brain plugin, Luna vault + pre-commit, `~/.claude/settings.json` (shallow top-level merge), **end-session-wiki SessionEnd hook (prompted: PowerShell / Bash / Both / Skip)**, Obsidian.
-
-**After run:** Complete the printed manual checklist (Jira token, Atlassian MCP token, qmd embed).
-
----
-
 ## Ubuntu
 
 **Requirements:** Standard user with sudo, internet access.
@@ -69,7 +51,7 @@ statusline (the cap *trigger*), the auto-arm-on-cap PreToolUse hook (the cap
 *action*), verifies `crontab` (the macOS scheduler backend — arm-resume uses
 crontab, **not** `at`/atrun, which is off-by-default / SIP-fragile), and hands
 off to the himmelctl install wizard (cadences, plugins, hooks — same
-delegation ubuntu.sh/win11.ps1 already end with). Idempotent. On modern macOS,
+delegation ubuntu.sh already ends with). Idempotent. On modern macOS,
 cron may need Full Disk Access granted to `/usr/sbin/cron` — the script prints
 this caveat.
 
@@ -83,13 +65,13 @@ Steps 1–6 are fatal — any failure aborts immediately (no core tools = unusab
 
 ## Re-running
 
-Safe to re-run. `apt install -y` and `winget install` are idempotent. Git clones will error if the target already exists (delete first, or treat the clone failure as non-fatal on retry). On Win11, `settings.json` is merged shallowly: existing top-level keys win on conflict, so nested objects (e.g. `hooks`, `mcpServers`) you've customised are preserved as-is — but new nested entries from the template will be **dropped** rather than merged. On Ubuntu, settings.json is deep-merged with jq (existing wins).
+Safe to re-run. `apt install -y` is idempotent. Git clones will error if the target already exists (delete first, or treat the clone failure as non-fatal on retry). On Ubuntu, settings.json is deep-merged with jq (existing wins).
 
 ---
 
 ## End-session-wiki SessionEnd hook
 
-Both setup scripts prompt you near the end to register `scripts/hooks/end-session-wiki.{ps1,sh}` as a `SessionEnd` hook in `~/.claude/settings.json`. Before any write the script backs up `settings.json` to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS`. If `hooks.SessionEnd` is already populated the script asks Overwrite / Append / Skip. Skip the prompt entirely with the default (Both on Win11, Yes on Ubuntu) — only press other keys if you know what you want.
+The setup script prompts you near the end to register `scripts/hooks/end-session-wiki.sh` as a `SessionEnd` hook in `~/.claude/settings.json`. Before any write the script backs up `settings.json` to `~/.claude/settings.json.bak.YYYYMMDD-HHMMSS`. If `hooks.SessionEnd` is already populated the script asks Overwrite / Append / Skip. Skip the prompt entirely with the default (Yes on Ubuntu) — only press other keys if you know what you want.
 
 See [`docs/luna/end-session-wiki.md`](../../docs/luna/end-session-wiki.md) for opt-out + per-repo override.
 

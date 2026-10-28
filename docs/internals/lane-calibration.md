@@ -351,8 +351,8 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
-| `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
-| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.1-sol`; launcher default `medium`; a chief-dispatched worker runs `xhigh` through its brief's `effort` key; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
+| `glm` — GLM lane | impl | — | — | — | removed: dropped (HIMMEL-1967), registry row and dispatcher deleted (HIMMEL-7909, HIMMEL-7481) |
+| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.1-sol`; launcher default `xhigh` (decision 223); a brief's `effort` key or `WORKER_SESSION_EFFORT` overrides it per dispatch; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default that `hermes-oneshot`/dispatch-trusted rides; not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
@@ -513,13 +513,15 @@ point a reader would check it
 (`handovers/yotamleo/himmel/specs/eval/HIMMEL-fable51-prompting-audit-2026-09-05.md`). Same audit's safeguard-false-positive mitigations:
 [`safeguard-false-positives.md`](safeguard-false-positives.md).
 
-### claudex effort — the launcher defaults to `medium`, `low` first
+### claudex effort — the launcher defaults to `xhigh` (decision 223), `low` first for mechanical chunks
 
 The `claudex` launcher (`scripts/claude-codex`, documented in
-`scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`. It
-now defaults to **`medium`** (an explicitly exported value still wins). The
-reason is a vendor calibration note, recorded on the ticket as reported (we have
-not re-measured it):
+`scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`,
+then to `medium` (HIMMEL-2772). Decision 223 makes `gpt-6.1-sol` at
+**`xhigh`** the claudex default (HIMMEL-7580); an explicitly exported value
+still wins. The `medium` step rested on a vendor calibration note, recorded on
+the ticket as reported (we have not re-measured it) and about an earlier model,
+not the current default model:
 
 > OpenAI/Tibo says GPT-6 Astra on **low** performs better than GPT-5.6 Sol on
 > **high**, and anyone who ran Sol at high should move to low or medium on Astra.
@@ -528,19 +530,20 @@ The ladder stays; only its resting point moves. Mind which model each lane runs:
 `codex-exec` follows the `codex` critic in `scripts/cr/critics.json` (currently
 `gpt-6.1-sol`), and the `claudex` launcher's own default model now
 matches it (`gpt-6.1-sol`, `CODEX_MODEL` in `scripts/claude-codex`, overridable) —
-both lanes run at effort medium by default; export
-`CLAUDE_CODE_EFFORT_LEVEL=high` there if `medium` under-delivers. The rungs:
+the claudex launcher runs at effort `xhigh` by default; export
+`CLAUDE_CODE_EFFORT_LEVEL` (or set `WORKER_SESSION_EFFORT` on a worker) to
+step down when a brief does not need it. The rungs:
 
 | Effort | Use for |
 |---|---|
 | `low` | the **first lever** for a mechanical chunk — rename, fan-out edit, fixture/doc sync, a change whose acceptance check is a single command |
-| `medium` | **default** — a well-specified single-worker implementation brief |
+| `medium` | a well-specified single-worker implementation brief that does not need the full default |
 | `high` | a multi-file or long-running brief where `medium` measurably under-delivers |
-| `xhigh` | rare; a hard reasoning call, not a default |
+| `xhigh` | **default** — the claudex launcher and worker resting point (decision 223) |
 
-Raise effort per dispatch, not per station: a fleet-wide `high` default spends
-codex usage budget tokens on every worker for a quality gain the note above says Astra does
-not need. What is **not** in this change: the measured before/after (an effort
+Lower effort per dispatch, not per station: the `xhigh` default spends codex
+usage budget tokens on every worker, so a mechanical chunk steps down to `low`
+explicitly. What is **not** in this change: the measured before/after (an effort
 sweep on real briefs) that the ticket also asks for — it belongs to the
 usage budget attribution table, which this change leaves untouched.
 
@@ -885,8 +888,8 @@ routes reach it:
 
 - **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.1-sol` by
   default (a brief's `model` key overrides it). The launcher's own default
-  effort is `medium`; a chief-dispatched worker runs at `xhigh` through its
-  brief's `effort` key, which exports `WORKER_SESSION_EFFORT`.
+  effort is `xhigh`; a brief's `effort` key exports `WORKER_SESSION_EFFORT`
+  to override it per dispatch.
 - **A one-off dispatch** (`dispatch-lane.sh --lane claudex`) is accepted once
   the flow-runs ledger holds 5 consecutive verified passes on `claudex/`
   branches (`readiness.passesRequired`). Until then the readiness gate refuses
@@ -915,9 +918,10 @@ above, not a separate claudex-only scale:
 
 | `WORKER_SESSION_EFFORT` | When |
 |---|---|
-| `medium` (default, unset) | routine single-worker implementation briefs — the common case |
-| `high` | multi-file or long-running briefs — raise before reaching for a native tier |
-| `xhigh` | genuinely hard worker work only — rare |
+| `xhigh` (default, unset) | the claudex resting point (decision 223) |
+| `high` | a multi-file or long-running brief that does not need the full default |
+| `medium` | routine single-worker implementation briefs |
+| `low` | a mechanical chunk whose acceptance check is a single command |
 
 **What stays on Claude tiers.** claudex is an **impl-only** lane (`class:
 "impl"` in `lanes.json`) reached through one wrapper script that cannot see

@@ -41,12 +41,25 @@
 # usage: claude-floor-review.sh --branch <branch> --base <ref> [--head <sha>]
 # exit: 0 reviewed + recorded; 2 usage; 3 not eligible (nothing spent);
 #       1 the review ran but failed (dispatch refused, is_error, bad output) —
-#       recorded as `avail claude-floor unavailable` with a reason.
+#       recorded as `avail claude-floor unavailable` with a reason;
+#       96 a chokepoint seam differs from the session's launch env.
 # Env: CR_LEDGER (ledger path, default <git-common-dir>/cr-critic-scores.jsonl;
 #      the gate itself reads only the default), HIMMEL_CLAUDE_BIN and the
 #      CADENCE_USAGE_* / HIMMEL_REGISTRY_DIR knobs pass through to
 #      scripts/lib/claude-headless.sh (tests inject a fake claude there).
 set -uo pipefail
+
+# Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
+# what is sourced or run.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "claude-floor-review.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/cr/claude-floor-review.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/worker-over-by-day.sh - P0.1 scorecard recipe.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ over a Claude Code
-# transcript (same JSONL on every platform); it runs under git bash unchanged.
+# Platform guard: POSIX bash 3.2+ over a Claude Code transcript
+# (same JSONL on every platform).
 #
 # Adapted from the baseline Appendix B (worker-over-by-day.sh, worker
 # N207, 2026-09-12): workers classified over/under a 200k avg-ctx threshold,

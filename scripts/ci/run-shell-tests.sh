@@ -364,6 +364,11 @@ _suite_timeout_for() {
         # row passing (995 rows reached), against 151s on the Linux ledger.
         # 1800s is the cap x3 (the loaded-budget rule); Linux keeps the default.
         printf '1800'; return 0 ;;
+      scripts/test-adopt-sequences.sh|*/scripts/test-adopt-sequences.sh)
+        # macOS run 40633905316: killed at 603s on both attempts, against about
+        # 150s on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux
+        # keeps the default.
+        printf '1800'; return 0 ;;
     esac
   fi
 

@@ -63,12 +63,25 @@
 #       consumes it); or critic-panel.sh's --head/--branch/--base-sha pin
 #       mismatch, on the first attempt OR the rtk
 #       retry.
+#   96 - a chokepoint seam differs from the session's launch env.
 #
 # bash 3.2-safe (Git Bash on Windows and Linux).
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
+
+# Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
+# what is sourced or run.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "docs-audit-panel.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/cr/docs-audit-panel.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

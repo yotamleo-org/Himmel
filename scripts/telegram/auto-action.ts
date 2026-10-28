@@ -4,7 +4,7 @@
 // owns the bridge-side concerns: the closed op allow-list, the per-op enable-list flag,
 // the typed/non-forwarded eligibility guard, rc->message mapping, and the audit line.
 // The privileged resolution + scheduler invocation live in auto-action.sh (it needs the
-// real himmel shell env: .env, handover-path.sh, py-armor, schtasks).
+// real himmel shell env: .env, handover-path.sh, py-armor).
 import { join } from "node:path";
 import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { appendLine } from "./bus";
@@ -18,10 +18,9 @@ import type { Route } from "./router";
 // RECOGNIZABLE, never enabled). No per-op arg validators in the table (validation lives
 // in auto-action.sh, which owns the privileged half + the real shell env).
 // v3 adds "restart" — the bridge bouncing ITSELF. It is the one op
-// with no `script`: rung 1 is the poller exiting 0 so the supervisor respawns it,
-// and rung 2 fires the already-registered HimmelTelegramBridge scheduled task.
-// Neither can be done by a child of auto-action.sh (rung 1 must exit the CALLER;
-// rung 2's relaunch has to outlive the processes it kills), so restart is executed
+// with no `script`: rung 1 is the poller exiting 0 so the supervisor respawns it
+// (rung 2, `/restart full`, is unsupported and answers rc 20). Rung 1 cannot be
+// done by a child of auto-action.sh (it must exit the CALLER), so restart is executed
 // in poller.ts and never reaches dispatchAutoAction. It is listed here because THIS
 // table is the closed allow-list that TELEGRAM_AUTO_ACTIONS parses against.
 export const OPS: Record<string, { script: string | null }> = {

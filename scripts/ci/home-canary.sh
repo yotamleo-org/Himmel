@@ -46,7 +46,9 @@ TIMEOUT_S="${HOME_CANARY_TIMEOUT:-1500}"
 case "$TIMEOUT_S" in ''|*[!0-9]*) echo "home-canary: HOME_CANARY_TIMEOUT must be a positive integer" >&2; exit 2 ;; esac
 [ "$((10#$TIMEOUT_S))" -gt 0 ] || { echo "home-canary: HOME_CANARY_TIMEOUT must be a positive integer" >&2; exit 2; }
 
-SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/home-canary.XXXXXX")" || { echo "home-canary: cannot allocate sandbox" >&2; exit 2; }
+# shellcheck source=../lib/prim.sh
+. "$ROOT/scripts/lib/prim.sh" || { echo "home-canary: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+SANDBOX="$(tmpdir)" || { echo "home-canary: cannot allocate sandbox" >&2; exit 2; }
 : "${SANDBOX:?}"
 trap 'rm -rf "$SANDBOX"' EXIT
 
