@@ -189,6 +189,12 @@ expect_rc "7l dotted names without dot segments still pass" 0 "$tmp/writes_dotte
 mkdir -p "$tmp/state"
 mk writes_state "$PA" "> **Writes:** $tmp/state/specs/design.md"
 HANDOVER_DIR="$tmp/state" expect_rc "7m normalized absolute state path passes" 0 "$tmp/writes_state.md"
+mkdir -p "$tmp/outside"
+ln -s "$tmp/outside" "$tmp/state/link"
+mk writes_state_symlink "$PA" "> **Writes:** $tmp/state/link/spec.md"
+HANDOVER_DIR="$tmp/state" expect_rc "7r absolute state symlink escaping the root is refused" 1 "$tmp/writes_state_symlink.md"
+rc=0; out="$(HANDOVER_DIR="$tmp/state" run_worker "$tmp/writes_state.md" --profile worker-impl)" || rc=$?
+[ "$rc" -eq 0 ] && ok "7s launcher preserves the configured state root for absolute Writes" || bad "7s launcher lost the configured state root (rc=$rc): $out"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7o relative Writes needs no state root" 0 "$tmp/writes_paths.md"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7p older brief needs no state root" 0 "$tmp/filled.md"
 HANDOVER_DIR="$tmp/missing-state" expect_rc "7q absolute Writes without a resolvable state root is refused" 1 "$tmp/writes_state.md"
