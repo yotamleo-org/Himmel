@@ -69,6 +69,7 @@ qmd_bounded() {
     grace="${QMD_KILL_GRACE_SECS:-5}"
     # The watchdog creates the marker; it never exists before, so a failed
     # cleanup (no rm on a hermetic PATH) cannot read as a fired deadline.
+    # prim-ok: this sourced lib runs under a hermetic PATH and errexit callers and sources nothing; the qmd-bounded. prefix names the leak
     fdir="$(mktemp -d "${TMPDIR:-/tmp}/qmd-bounded.XXXXXX")" || exit 2
     fired="$fdir/fired"
     # bash hands a background job /dev/null for stdin; keep the caller's on fd

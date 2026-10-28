@@ -877,6 +877,7 @@ _graphify_ollama_extra_ok() {
 # every path. rc 0 proven; rc 1 with the reason on stdout.
 _graphify_stage_install() {
   local spec="$1" pin="$2" s got reason=""
+  # prim-ok: this lib is sourced by installers and hooks that may not have prim.sh beside it, and the graphify-stage. prefix names the leak; the dir is removed on every path below
   s="$(mktemp -d "${TMPDIR:-/tmp}/graphify-stage.XXXXXX" 2>/dev/null)" || {
     printf 'cannot create a scratch dir\n'; return 1; }
   if ! UV_TOOL_DIR="$s/tools" UV_TOOL_BIN_DIR="$s/bin" uv tool install --with "$(_graphify_mcp_req)" "$spec" >&2; then
@@ -1048,6 +1049,7 @@ _graphify_pin_skip_track() {  # $1 = short reason (e.g. "N holders" / "unprobeab
   # ORIGINAL $marker-write concern regardless of what currently occupies it.
   local marker_tmp
   marker_tmp="$(mktemp "$marker.XXXXXX" 2>/dev/null)" || marker_tmp=""
+  # prim-ok: already the same-directory mktemp then mv -f that atomic_write does; this sourced lib keeps its write_rc contract and the symlink-safety note above
   if [ -n "$marker_tmp" ] && printf '%s\n' "$n" > "$marker_tmp" 2>/dev/null && mv -f "$marker_tmp" "$marker" 2>/dev/null; then
     :
   else
@@ -1150,7 +1152,9 @@ _graphify_skill_refresh_one() {
     echo "  WARNING: graphify skill refresh ($label) SKIPPED -- unsafe staging target under $dst could not be cleared; skill stays at ${skill_ver:-absent} (package $inst). Close sessions holding it and re-run." >&2
     return 0
   fi
+  # prim-ok: both dirs are siblings of $dst so the rename into place stays on one filesystem; tmpdir would put them under TMPDIR
   stage="$(mktemp -d "$dst.refresh.XXXXXX" 2>/dev/null)" || stage=""
+  # prim-ok: a sibling of $dst for the same-filesystem rename, as the stage dir above
   backup="$(mktemp -d "$dst.backup.XXXXXX" 2>/dev/null)" || backup=""
   if [ -z "$stage" ] || [ -z "$backup" ]; then
     [ -n "$stage" ] && rm -rf "$stage" 2>/dev/null

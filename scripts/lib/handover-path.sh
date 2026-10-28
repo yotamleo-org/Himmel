@@ -137,6 +137,7 @@ _arm_realpath_walk() {
 # and the arms-registry contract so those two keys cannot drift
 _arm_realpath() {
     local _p=""
+    # prim-ok: on the hook hot path, where sourcing prim.sh adds a process to every hook; canon_path also needs an existing path and this one tolerates a missing one (realpath -m)
     _p=$(realpath -m "$1" 2>/dev/null) || _p=""
     if [ -z "$_p" ] && command -v py_armor_capture >/dev/null 2>&1; then
         if py_armor_capture -c 'import sys,pathlib;print(pathlib.Path(sys.argv[1]).resolve(strict=False))' "$1" 2>/dev/null; then
@@ -315,6 +316,7 @@ _arm_cache_dir_usable() {
 }
 if ! _arm_cache_dir_usable; then
     _arm_cache_dir_gc
+    # prim-ok: on the hook hot path, where sourcing prim.sh would add a process to every hook; the arm-resume-cache. prefix is reaped by _arm_cache_dir_gc above
     _ARM_CACHE_DIR=$(mktemp -d -t arm-resume-cache.XXXXXX 2>/dev/null) || _ARM_CACHE_DIR=""
     export _ARM_CACHE_DIR
 fi

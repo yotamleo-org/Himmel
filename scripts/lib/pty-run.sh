@@ -56,10 +56,11 @@ _himmel_pty_run() (
     # and whatever replaced it would become the session's stdin.
     _hp_d=
     _hp_f=
-    if command -v "$_hp_script" >/dev/null 2>&1 \
-        && _hp_d=$(mktemp -d "${TMPDIR:-/tmp}/himmel-pty.XXXXXX" 2>/dev/null) \
-        && _hp_f=$_hp_d/in \
-        && mkfifo -m 600 "$_hp_f" 2>/dev/null; then
+    if command -v "$_hp_script" >/dev/null 2>&1 &&
+        # prim-ok: this sourced lib sources nothing, and a failed mktemp must fall through to the no-pty launch below; the himmel-pty. prefix names the leak
+        _hp_d=$(mktemp -d "${TMPDIR:-/tmp}/himmel-pty.XXXXXX" 2>/dev/null) && # mktemp-unchecked-ok: a failed mktemp ends the && chain and takes the else branch
+        _hp_f=$_hp_d/in &&
+        mkfifo -m 600 "$_hp_f" 2>/dev/null; then
         :
     else
         [ -n "$_hp_d" ] && rmdir "$_hp_d" 2>/dev/null
