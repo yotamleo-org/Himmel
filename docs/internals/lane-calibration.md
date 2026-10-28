@@ -375,9 +375,10 @@ undelivered bullets as `additionalContext`, no operator paste required. See
 **`claudex` review and deferral rows:** the panel's first pass never fetches under
 `HIMMEL_SESSION_LANE=claudex`; it reviews against the local
 `refs/remotes/origin/<base>` and refuses when that ref is missing. A deferral row
-(gate 7's `deferred_to`) is the chief's to write: under the srt box a claudex worker's scratch
-HOME holds no GO key, so an amend it writes carries no `amend_mac` and every keyed reader
-(`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`) drops it. The worker
+(gate 7's `deferred_to`) is the chief's to write: under a keyless HOME (the srt box, not yet
+used in production; HIMMEL-5720) a claudex worker's scratch HOME holds no GO key, so an amend
+it writes carries no `amend_mac` and every keyed reader (`review-round.sh`,
+`clear-review-marker.sh`, `cr-disposition.sh`, `review-ledger-evidence.sh`) drops it. The worker
 sends the chief `AMEND-REQUEST <pr> <head> <finding-id> deferred_to=<KEY> fu_class=<class>`,
 and the chief or a native worker runs `ledger-append.sh amend` for it, which signs the row.
 
