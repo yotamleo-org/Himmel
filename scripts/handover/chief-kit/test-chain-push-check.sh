@@ -190,6 +190,16 @@ class PushCheck(unittest.TestCase):
         self.assertEqual(p.returncode, 2, p.stderr)
         self.assertIn('FINDING edge-upgraded 10', p.stdout)
 
+    def test_deleted_fork_warns_and_remaining_prs_are_checked(self):
+        orphan = self.pr(19, self.clean, 'local')
+        orphan[0]['head']['repo'] = None
+        self.responses([orphan, self.pr(10, self.conflict, 'conflict')])
+        p = self.check()
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertIn('WARN', p.stderr)
+        self.assertIn('PR 19', p.stderr)
+        self.assertIn('FINDING edge-upgraded 10', p.stdout)
+
     def test_worker_pr_open_surfaces_advisory_without_changing_publication(self):
         self.git('branch', '-m', 'feat/himmel-7711-local')
         self.git('remote', 'add', 'origin', 'https://github.com/fixture/repo.git')

@@ -67,6 +67,9 @@ try:
         number, peer = pr['number'], pr['head']['sha']
         if not isinstance(number, int) or number <= 0 or not re.fullmatch(r'[0-9a-f]{40}', peer):
             raise ValueError('invalid PR number or head')
+        if pr['head']['repo'] is None:
+            print('chain-push-check: WARN PR %d has a deleted head repository; skipping' % number, file=sys.stderr)
+            continue
         if peer == head or (branch and pr['head']['ref'] == branch
                             and pr['head']['repo']['full_name'].lower() == repo.lower()):
             continue
