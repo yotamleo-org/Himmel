@@ -2238,6 +2238,20 @@ if grepq "$out" 'WARN C77-bridge-stale' && grepq "$out" -F 'fix: lib change'; th
 else
     fail "C77 stale poller -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
+mkdir -p "$t/home/.himmel/state"
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F 'last restart: never'; then
+    pass "C77 fix line says the restart is automatic and that none has run yet (HIMMEL-7936)"
+else
+    fail "C77 fix line (no stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
+fi
+printf '1792000000\n' > "$t/home/.himmel/state/bridge-restart.ts"
+out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
+if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M')"; then  # gnu-ok: test host is Linux (the check is Linux-only)
+    pass "C77 fix line names when station-sync last restarted the bridge (HIMMEL-7936)"
+else
+    fail "C77 fix line (stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
+fi
 fake_systemctl "$t/probe" enabled 424242 0 '@1893000000'
 # 1893000000 = 2029: the poller started after the newest commit
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
