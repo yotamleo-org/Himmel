@@ -138,6 +138,11 @@ bash "$SUT" 18 19 >/dev/null 2>&1
 check "18-19: the run slept for the reset" "$(grep -c '^slept' "$SLEEPS" | tr -d ' ')" "1"
 check "19: recorded after the wait" "$(count_rows 19)" "1"
 
+# ── only the CodeRabbit bot's own threads count, not a lookalike login ──────────
+mkpr 20 feat/x20 MERGED 4000 "$FAR" "$(thread T9 false 2026-10-20T08:30:00Z H1 90 coderabbitai-example 'A lookalike remark')"
+bash "$SUT" 20 >/dev/null 2>&1
+check "20: a lookalike bot login gets no row" "$(count_rows 20)" "0"
+
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
 mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; chmod 555 "$tmp/ro"
 out="$(CR_LEDGER="$tmp/ro/ledger.jsonl" bash "$SUT" 12 2>&1)"; rc=$?

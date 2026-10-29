@@ -149,7 +149,12 @@ _fetch_pr() {
     page=$(printf '%s' "$resp" | jq -c "$SHAPE") && [ -n "$page" ] && [ "$(printf '%s' "$page" | jq -r '.number // empty')" != "" ] || {
       echo "cr-thread-recorder: PR #$num: unreadable GraphQL answer" >&2; return 1; }
     if [ ! -s "$out" ]; then printf '%s\n' "$page" > "$out"
-    else more=$(printf '%s' "$page" | jq -c '.threads'); jq -c --argjson m "$more" '.threads += $m' "$out" > "$out.n" && mv "$out.n" "$out"; fi
+    else
+      more=$(printf '%s' "$page" | jq -c '.threads')
+      if ! { jq -c --argjson m "$more" '.threads += $m' "$out" > "$out.n" && mv "$out.n" "$out"; }; then
+        echo "cr-thread-recorder: PR #$num: could not combine the thread pages" >&2; return 1
+      fi
+    fi
     rem=$(printf '%s' "$resp" | jq -r '.data.rateLimit.remaining // empty')
     rst=$(printf '%s' "$resp" | jq -r '.data.rateLimit.resetAt // empty | fromdateiso8601? // empty')
     case "$rem" in ''|*[!0-9]*) ;; *) [ "$rem" -ge "$FLOOR" ] || _park "$rst" ;; esac
@@ -239,7 +244,7 @@ const titleOf = b => { const m = String(b).match(/\*\*([^*\n][^\n]*?)\*\*/);
   if (m) return m[1]; return (String(b).split("\n").find(l => l.trim() && !l.trim().startsWith("_")) || "").replace(/[*`]/g, ""); };
 const rows = []; let matched = 0, dup = 0, inline = 0, out = 0;
 for (const t of pr.threads) {
-  if (!/^coderabbitai/.test(t.author || "")) continue;
+  if (!/^coderabbitai(\[bot\])?$/.test(t.author || "")) continue;
   inline++;
   if (seenThread.has(t.id)) { dup++; continue; }
   const title = titleOf(t.body), head = t.oid || pr.headOid;
