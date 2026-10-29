@@ -86,6 +86,10 @@ _wa_truthy "${HIMMEL_WHERE_ARE_WE:-}" || exit 0
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/resolve-node.sh"
 _wa_node="$(resolve_node)" || exit 0
+# prim.sh is best-effort: without it the digest is injected inline (fail-open).
+_wa_prim=0
+# shellcheck source=/dev/null
+if { [ -r "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" ] && . "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh"; } 2>/dev/null; then _wa_prim=1; fi
 
 # --- Paths ------------------------------------------------------------------
 _wa_dir="${WHERE_ARE_WE_STATE_DIR:-$_wa_root/.where-are-we}"
@@ -140,19 +144,15 @@ if [ -n "$_wa_out" ]; then
         # Global digest → pointerize. latest.md is RESERVED for the digest: only
         # this route ever writes it, so a concurrent/later active-ticket card
         # session (same state dir) cannot overwrite the pointer target with its
-        # card. Persist atomically (temp + mv); skip if the target exists but is
-        # NOT a regular file so mv can't orphan the temp inside a directory. Any
-        # write/mv failure → fail-open, inject the digest inline below.
+        # card. Persist atomically (atomic_write); skip if the target exists but
+        # is NOT a regular file. Any write failure (or no prim.sh) → fail-open,
+        # inject the digest inline below.
         _wa_latest="$_wa_dir/latest.md"
         _wa_persisted=0
-        if [ ! -e "$_wa_latest" ] || [ -f "$_wa_latest" ]; then
-            _wa_tmp="$_wa_latest.tmp.$$"
-            if printf '%s\n' "$_wa_out" > "$_wa_tmp" 2>/dev/null \
-                && mv -f "$_wa_tmp" "$_wa_latest" 2>/dev/null \
+        if [ "$_wa_prim" = 1 ] && { [ ! -e "$_wa_latest" ] || [ -f "$_wa_latest" ]; }; then
+            if printf '%s\n' "$_wa_out" | atomic_write "$_wa_latest" 2>/dev/null \
                 && [ -f "$_wa_latest" ]; then
                 _wa_persisted=1
-            else
-                rm -f "$_wa_tmp" 2>/dev/null || true
             fi
         fi
         if [ "$_wa_persisted" = 1 ]; then

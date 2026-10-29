@@ -141,6 +141,10 @@ if [ -n "$non_claude_lane" ]; then
 fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
+# Best-effort (this is a fail-open watchdog): a missing prim.sh only loses the
+# last-resort scratch-dir snapshot below, and the existing MALFUNCTION path covers it.
+# shellcheck source=/dev/null
+{ [ -r "$hook_dir/../lib/prim.sh" ] && . "$hook_dir/../lib/prim.sh"; } 2>/dev/null || true
 
 # >>> WS9-QUOTA-GAUGE: best-effort cross-lane quota-gauge observation.
 # Source the ledger lib best-effort — a missing lib must NOT break this
@@ -875,7 +879,7 @@ if ! write_snapshot "$snapshot"; then
         # Both preferred locations unwritable — one last attempt in a
         # mktemp scratch dir so the arm can still proceed.
         _tmp_snap_dir=""
-        if _tmp_snap_dir=$(mktemp -d "${TMPDIR:-/tmp}/auto-arm-snap-XXXXXX" 2>/dev/null); then
+        if _tmp_snap_dir=$(tmpdir 2>/dev/null); then
             snapshot="$_tmp_snap_dir/auto-arm-status-$fired_key.md"
         fi
         if [ -z "$_tmp_snap_dir" ] || ! write_snapshot "$snapshot"; then
