@@ -13,10 +13,8 @@
 # 2026-09-13): write case (a) first, run it RED against the pre-fix copy,
 # THEN implement — RED and GREEN both go in the PR body side by side.
 #
-# No .ps1 twin: the atomic mkdir admission/reservation mechanism it exercises
-# is a POSIX tmpfs (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>) construct
-# with no Windows equivalent in usage-preflight.sh (project convention: a
-# documented platform guard suffices for a test harness).
+# Platform: the atomic mkdir admission/reservation mechanism it exercises
+# is a POSIX tmpfs (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>) construct.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="${FLEET_SUT:-$REPO/scripts/lib/usage-preflight.sh}"

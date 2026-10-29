@@ -9,13 +9,10 @@
 # directory). These cases pin the CONTRACT itself, so the next regression is
 # caught here rather than in a downstream fixture's confusing red.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+. Pure
-# shell over a scratch dir; NOT ported to native PowerShell. A test harness needs
-# no .ps1 twin (project convention: a documented platform guard suffices for a
-# test fixture) -- this is the T15 marker scripts/parity/test-ws5-invariants.sh
-# looks for. The library under test is itself sourced only by shell suites, and
-# HERMETIC_EXE_SUFFIX carries the Windows half of its behaviour, which these
-# cases exercise through that variable rather than through a second twin.
+# Platform guard: POSIX bash 3.2+. Pure shell over a scratch dir.
+# The library under test is itself sourced only by shell suites, and
+# HERMETIC_EXE_SUFFIX carries the .exe-suffix half of its behaviour, which these
+# cases exercise through that variable.
 #
 # Usage: bash scripts/lib/test-hermetic-path.sh
 set -uo pipefail

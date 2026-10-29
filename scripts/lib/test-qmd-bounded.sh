@@ -5,8 +5,7 @@
 # Hermetic: a sh trampoline stands in for the qmd launcher (node, which forwards
 # no signals) and a TERM-ignoring sleep stands in for bun blocked in native
 # llama.cpp. No GPU, no qmd install.
-# Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1
-# twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
