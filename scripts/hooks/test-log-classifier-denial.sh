@@ -386,6 +386,10 @@ ag_tool=$(printf '%s' "$row_ag" | jq -r .tool); ag_head=$(printf '%s' "$row_ag" 
 if [ "$wf_tool" = "WebFetch" ] && [[ "$wf_head" == *'https://example.test/page'* ]]; then pass "WebFetch row names the tool and the url"; else fail "WebFetch row names the tool and the url"; fi
 if [ "$ag_tool" = "Agent" ] && [[ "$ag_head" == *Explore* ]] && [[ "$ag_head" == *'audit the hooks'* ]]; then pass "Agent row names the tool, subagent_type and description"; else fail "Agent row names the tool, subagent_type and description"; fi
 if grep -qF "PROMPT-BODY-MARKER" "$LOG16" 2>/dev/null; then fail "WebFetch/Agent rows never carry the prompt body"; else pass "WebFetch/Agent rows never carry the prompt body"; fi
+# A tool_input that is not an object must still land a row, not vanish in jq.
+LOG16B="$WORKDIR/c16b.jsonl"
+run_hook '{"session_id":"s16b","cwd":"/tmp/repo","tool_name":"Agent","tool_input":"not-an-object","reason":"[X]"}' "$LOG16B" >/dev/null
+if [ "$(wc -l <"$LOG16B" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then pass "a non-object Agent tool_input still writes one row"; else fail "a non-object Agent tool_input still writes one row"; fi
 
 # The wiring: the PermissionDenied entry that runs this hook must select every
 # tool the classifier can deny, not just the file/shell set.
