@@ -72,7 +72,7 @@ events=$(printf '%s' "$hist" | jq -r '
     [.[] | .created as $c | .items[]? | select((.field | ascii_downcase) == "link")
      | (.toString // .fromString // "") as $t | select($t | test("relates to"))
      | {key: ($t | capture("(?<k>[A-Z][A-Z0-9]*-[0-9]+)").k), kind: (if .toString then "added" else "removed" end), created: $c}]
-    | group_by(.key)[] | .[-1] | [.key, .kind, .created] | @tsv') || { echo "known-bugs-sync: unreadable history for $CHECKER" >&2; exit 1; }
+    | sort_by(.created) | group_by(.key)[] | .[-1] | [.key, .kind, .created] | @tsv') || { echo "known-bugs-sync: unreadable history for $CHECKER" >&2; exit 1; }
 
 in_jira() { printf '%s\n' "$jira_keys" | grep -Fxq "$1"; }
 event_of() { printf '%s\n' "$events" | awk -F'\t' -v k="$1" '$1 == k { print $2 "\t" $3 }'; }
@@ -97,6 +97,7 @@ if [ -f "$TSV" ]; then
             continue
         fi
         "${JIRA[@]}" link "$CHECKER" "$key" --type Relates >/dev/null 2>&1 || { echo "known-bugs-sync: jira link $CHECKER $key failed" >&2; exit 1; }
+        jira_keys="$jira_keys"$'\n'"$key" # later rows of the same key see the link
         log "$key linked in Jira: the file row's edit at $edited is newer than the Jira side"
         printf '%s\n' "$line" >> "$tmp"
     done < "$TSV"

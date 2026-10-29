@@ -114,7 +114,7 @@ if (raw !== null) {
   const last = lines.length ? lines[lines.length - 1] : '';
   const m = last.match(/^sdrift=(.+)$/);
   out.sdrift = m ? m[1] : null;
-  out.unknown = !m || m[1] === 'unknown';
+  out.unknown = !m || !/^\d+:\S+$/.test(m[1]);
 
   const known = readKnown();
   for (const line of m ? lines.slice(0, -1) : lines) {

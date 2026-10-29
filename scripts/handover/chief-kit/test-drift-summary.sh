@@ -196,5 +196,24 @@ printf '5\tBlocks\tinward=HIMMEL-7980\toutward=HIMMEL-7000\tHIMMEL-7980 blocks H
 run_sync > /dev/null
 eq 'a Blocks link is not read as a known-bug pairing' "$(grep -c HIMMEL-7000 "$KNOWN")" 0
 
+# one key paired under several classes is linked once
+reset_sync
+printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7848\t2026-10-29T12:00:00Z\nHIMMEL-7980\tWORKER-COMMENT\tHIMMEL-7848\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+run_sync > /dev/null
+eq 'a key paired under two classes is linked in Jira once' "$(grep -c '^link HIMMEL-7980 HIMMEL-7848' "$JF/calls")" 1
+eq 'and both file rows stay' "$(grep -c HIMMEL-7848 "$KNOWN")" 2
+
+# the newest link event wins whatever order the history comes in
+reset_sync
+printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T10:00:00Z\n' >> "$KNOWN"
+printf '[%s,%s]\n' "$(hist removed HIMMEL-7588 2026-10-29T11:00:00.000+0000)" "$(hist added HIMMEL-7588 2026-10-29T09:00:00.000+0000)" > "$JF/history.json"
+run_sync > /dev/null
+eq 'a history listed newest first still reads the removal as the latest event' "$(grep -c HIMMEL-7588 "$KNOWN")" 0
+
+# an sdrift trailer that is not count:signature is an unreadable run
+printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+out="$(sum)"
+eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
+
 if [ "$fails" -gt 0 ]; then printf '%s failure(s)\n' "$fails"; exit 1; fi
 echo "all passed"
