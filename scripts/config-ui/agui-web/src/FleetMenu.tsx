@@ -31,6 +31,7 @@ function FilterBlock({ rows, procs }: { rows: Row[]; procs: ProcessOrphan[] | nu
       onChange={(e) => set({ ...f, text: e.currentTarget.value })} />
     <div className="fleet-chips" aria-label="Lane">{LANES.map((l) => chip(l, l, f.lanes.includes(l), (x) => ({ ...x, lanes: toggle(x.lanes, l) })))}</div>
     <div className="fleet-chips" aria-label="State">{STATES.map(([v, label]) => chip(v, label, f.states.includes(v), (x) => ({ ...x, states: toggle(x.states, v) })))}</div>
+    <p className="quiet">waiting includes background shell waits and waiting for GO.</p>
     <div className="fleet-chips">{chip("finished-inline", "show finished inline", f.finished, (x) => ({ ...x, finished: !x.finished }))}</div>
     {(filtering(f) || f.finished) && <button type="button" className="fleet-clear" onClick={() => set(EMPTY_FILTERS)}>clear filters</button>}
   </div>;
