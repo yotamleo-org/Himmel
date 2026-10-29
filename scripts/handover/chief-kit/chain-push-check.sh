@@ -42,7 +42,7 @@ try:
     LIMIT = float(os.environ.get('CHAIN_PUSH_CHECK_TIMEOUT', '60'))
 except ValueError:
     LIMIT = 60.0
-if LIMIT <= 0:
+if not 0 < LIMIT < float('inf'):
     LIMIT = 60.0
 
 
