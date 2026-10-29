@@ -24,6 +24,7 @@ test("J3. the page is Configure: its rail entry and title, then the four tiles i
   await page.locator('button.tile[data-tile="review"]').click();
   await expect(page.locator('button.tile[aria-expanded="true"]')).toHaveCount(1);
   await expect(page.locator('button.tile[data-tile="review"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('button.tile[data-tile="review"]')).toBeFocused(); // the repaint keeps a keyboard user on the tile
   await page.locator('button.tile[data-tile="review"]').click();
   await expect(page.locator('button.tile[aria-expanded="true"]')).toHaveCount(0);
 });
