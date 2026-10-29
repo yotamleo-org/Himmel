@@ -47,7 +47,13 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || exit 0
 # hooks reference); `denial_reason` is the name this hook wrongly read, kept as
 # A fallback.
 denial_reason=$(printf '%s' "$input" | jq -r '.reason // .denial_reason // ""' 2>/dev/null) || exit 0
-tool_input_flat=$(printf '%s' "$input" | jq -r '[.tool_input // {} | .. | strings] | join(" ")' 2>/dev/null) || exit 0
+# WebFetch and Agent carry a free-text `prompt` that is not a target: log the
+# url, or the subagent_type + description, and never the prompt body. Every
+# other tool keeps the all-strings flatten.
+tool_input_flat=$(printf '%s' "$input" | jq -r '
+    if .tool_name == "WebFetch" then [.tool_input.url // empty]
+    elif .tool_name == "Agent" or .tool_name == "Task" then [.tool_input.subagent_type // empty, .tool_input.description // empty]
+    else [.tool_input // {} | .. | strings] end | join(" ")' 2>/dev/null) || exit 0
 
 [ -n "$tool" ] || exit 0
 
