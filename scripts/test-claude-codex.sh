@@ -54,6 +54,20 @@ MOCK
 CLAUDE_CODE_AUTO_MODE_SERVER=1 run_launcher "gateway forces client-side auto mode"
 grep -qxF 'CLAUDE_CODE_AUTO_MODE_SERVER=0' "$FAKEHOME/child-env.txt" || { echo "FAIL: child env missing CLAUDE_CODE_AUTO_MODE_SERVER=0"; FAILS=$((FAILS + 1)); }
 
+# a claudex session started from another Claude session's Bash tool must not
+# inherit that session's job dir or messaging socket/token: claude would adopt
+# the launcher's name from the job's state.json and route messages as the launcher.
+setup
+cat > "$BIN/claude" <<'MOCK'
+#!/usr/bin/env bash
+env > "$HOME/child-env.txt"
+MOCK
+CLAUDE_JOB_DIR=/nonexistent/jobs/launcher CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/launcher.sock \
+  CLAUDE_CODE_MESSAGING_TOKEN=launcher-token run_launcher "claudex launch drops the launching session's identity"
+for _v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
+  ! grep -q "^${_v}=" "$FAKEHOME/child-env.txt" || { echo "FAIL: child env still carries $_v"; FAILS=$((FAILS + 1)); }
+done
+
 # like run_launcher, but for cases that must exit NONZERO — an
 # expected exit code plus a substring the combined stdout+stderr must contain
 # (an empty needle skips the substring check).
