@@ -4818,7 +4818,7 @@ check_c81_hook_layers() {
     _c81_rows() { # <layer> <settings-or-hooks.json>
         [ -r "$2" ] || return 0
         jq -r --arg layer "$1" '(.hooks // {}) | to_entries[] | .key as $ev | (.value // [])[]? | (.hooks // [])[]? | (.command // "")
-            | select((contains("guardrail-skip-in-himmel") or contains(".claude/settings.json")) | not)
+            | select((contains("guardrail-skip-in-himmel") or contains("CLAUDE_PROJECT_DIR/.claude/settings.json")) | not)
             | [scan("hooks/[A-Za-z0-9_-]+\\.sh") | ltrimstr("hooks/")] | unique[] | [$layer, $ev, .] | @tsv' "$2" 2>/dev/null
     }
     rows="$(_c81_rows user "$SETTINGS"; _c81_rows project "$REPO_ROOT/.claude/settings.json")"
@@ -4837,8 +4837,8 @@ $(_c81_rows "plugin:$name" "$f")"
         emit OK C81-hook-layers "no hook script is wired from more than one layer (user settings, project settings, enabled plugins)"
         return 0
     fi
-    emit FAIL C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups" \
-        "keep one owner per hook (docs/setup/install.md#hook-owner): drop the extra entry from the user layer with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\", or disable the plugin"
+    emit WARN C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups -- accept guardrail-block-global (it goes quiet inside a himmel checkout)" \
+        "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
 }
 
 # --- check dispatch: --only selector + bounded parallel heavy checks ---

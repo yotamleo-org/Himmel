@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is the pass/fail idiom; the planted hooks.json keeps a literal ${CLAUDE_PLUGIN_ROOT}
 # test-himmel-doctor-hook-layers.sh — each guard hook runs once per call.
-#   1. doctor C81-hook-layers FAILs when one hook script is wired from two layers
+#   1. doctor C81-hook-layers WARNs when one hook script is wired from two layers
 #      (user settings, project settings, an enabled plugin) and stays OK for a skip-aware
 #      user entry (guardrail-skip-in-himmel.js) or a skip-aware plugin entry.
-#   2. himmelctl's user-scope pretooluse install is skipped, and its probe reads present,
-#      when the project layer already wires the trio; a repo with no project entry still wires.
+#   2. himmelctl still wires the trio at user scope when the user layer has no trio, even if
+#      the project layer wires it; the probe reads a self-skipping user entry as present.
 #   3. the himmel-guard plugin command exits 0 without running when the project layer wires
 #      block-destructive-commands, and still runs it otherwise.
 # Every fixture lives under a temp dir; the real HOME and settings are never read.
@@ -41,18 +41,18 @@ user_settings() { # <body of the hooks object>; plugins stay as planted by the c
 }
 doctor() { HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C81 --no-color 2>&1; }
 
-echo "== C81: one script wired from user AND project -> FAIL naming it =="
+echo "== C81: one script wired from user AND project -> WARN naming it =="
 user_settings "$(jq -cn --arg c "$(raw_cmd auto-approve-safe-bash.sh)" '{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",command:$c}]}]}')"
 out="$(doctor)"; rc=$?
-has "C81 two layers -> FAIL row" "$out" "FAIL C81-hook-layers"
+has "C81 two layers -> WARN row" "$out" "WARN C81-hook-layers"
 has "C81 names the script" "$out" "auto-approve-safe-bash.sh"
 has "C81 names both layers" "$out" "user"
 has "C81 names the project layer" "$out" "project"
 
-echo "== C81: SessionStart script wired from both layers -> FAIL =="
+echo "== C81: SessionStart script wired from both layers -> WARN =="
 user_settings "$(jq -cn --arg c "$(raw_cmd inject-initiative.sh)" '{SessionStart:[{hooks:[{type:"command",command:$c}]}]}')"
 out="$(doctor)"
-has "C81 inject-initiative doubled -> FAIL" "$out" "FAIL C81-hook-layers"
+has "C81 inject-initiative doubled -> WARN" "$out" "WARN C81-hook-layers"
 has "C81 names inject-initiative.sh" "$out" "inject-initiative.sh"
 
 echo "== C81: user layer carries nothing the project wires -> OK =="
@@ -65,13 +65,13 @@ user_settings "$(jq -cn '{PreToolUse:[{matcher:"Bash",hooks:[{type:"command",com
 out="$(doctor)"
 has "C81 wrapped user entry -> OK" "$out" "OK   C81-hook-layers"
 
-echo "== C81: enabled plugin wiring a script the project wires -> FAIL; guarded plugin -> OK =="
+echo "== C81: enabled plugin wiring a script the project wires -> WARN; guarded plugin -> OK =="
 PLUG="$WORK/claude/plugins/cache/himmel/himmel-guard/0.1.5/hooks"
 mkdir -p "$PLUG"
 printf '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell","hooks":[{"type":"command","command":"bash \\"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\\"","timeout":15}]}]}}\n' > "$PLUG/hooks.json"
 user_settings '{}' ',"enabledPlugins":{"himmel-guard@himmel":true}'
 out="$(doctor)"
-has "C81 plugin doubles the project -> FAIL" "$out" "FAIL C81-hook-layers"
+has "C81 plugin doubles the project -> WARN" "$out" "WARN C81-hook-layers"
 has "C81 names the script" "$out" "block-destructive-commands.sh"
 has "C81 names the plugin layer" "$out" "plugin:himmel-guard"
 cp "$ROOT/marketplace/plugins/himmel-guard/hooks/hooks.json" "$PLUG/hooks.json"
@@ -81,12 +81,12 @@ user_settings '{}' ',"enabledPlugins":{"himmel-guard@himmel":false}'
 printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\\""}]}]}}\n' > "$PLUG/hooks.json"
 out="$(doctor)"
 has "C81 disabled plugin is not a layer -> OK" "$out" "OK   C81-hook-layers"
-echo "== C81: FAIL exits non-zero =="
+echo "== C81: the WARN prints the guardrail-block-global remedy =="
 user_settings "$(jq -cn --arg c "$(raw_cmd block-edit-on-main.sh)" '{PreToolUse:[{matcher:"Edit",hooks:[{type:"command",command:$c}]}]}')"
-doctor >/dev/null; rc=$?
-[ "$rc" -eq 1 ] && pass "C81 FAIL -> doctor exit $rc" || fail "C81 FAIL kept exit 0"
+out="$(doctor)"
+has "C81 WARN names guardrail-block-global" "$out" "accept guardrail-block-global"
 
-# --- himmelctl: user-scope install skips what the project layer wires ----------------------
+# --- himmelctl: user-scope install keeps the trio unless a self-skipping owner is there ------
 export INSTALL_ENGINE_LIB="$ROOT/scripts/himmelctl/lib/install-engine.js"
 export PROBES_LIB="$ROOT/scripts/himmelctl/lib/probes.js"
 mkrepo() { # <dir> <with-project-settings 0|1>
@@ -110,16 +110,14 @@ const plan = planInstall(items, ctx);
 console.log(JSON.stringify({ result: runInstall(plan, { dryRun: false }), plan: plan.map((p) => (p.args || []).join(' ')) }));
 " 2>&1
 }
-echo "== install: project layer wires the trio -> user-scope wire is skipped =="
+echo "== install: user layer has no trio and no guardrail-block-global, project layer wires the trio -> the wire still runs =="
 out="$(install_run "$WORK/repo-owned")"
-[ ! -f "$WORK/marker-repo-owned" ] && pass "owned: wire-pretooluse-hooks.sh never ran" || fail "owned: the user-level wire ran although the project layer owns the trio"
-has "owned: item still lands in ran[]" "$out" '"ran":[{"id":"wiring-pretooluse"'
-has "owned: the skip names the project layer" "$out" "project layer"
-echo "== install: no project entry -> user-scope wire still runs =="
+[ -f "$WORK/marker-repo-owned" ] && pass "owned: wire-pretooluse-hooks.sh ran (no unguarded repo)" || fail "owned: the user-level wire was skipped ($out)"
+echo "== install: no project entry -> user-scope wire runs =="
 out="$(install_run "$WORK/repo-bare")"
 [ -f "$WORK/marker-repo-bare" ] && pass "bare: wire-pretooluse-hooks.sh ran" || fail "bare: the wire did not run ($out)"
 
-echo "== probe: user settings empty, project layer wires the trio -> present =="
+echo "== probe: a self-skipping user entry reads present, an empty user layer reads absent =="
 probe_run() { # <repo>
     REPO="$1" UHOME="$WORK/uhome" node -e "
 const { runProbe } = require(process.env.PROBES_LIB);
@@ -129,9 +127,14 @@ console.log(r.actual + ' | ' + r.detail);
 " 2>&1
 }
 out="$(probe_run "$WORK/repo-owned")"
-has "probe owned -> present" "$out" "present"
-out="$(probe_run "$WORK/repo-bare")"
-has "probe bare -> absent" "$out" "absent"
+has "probe empty user layer, project wires trio -> absent" "$out" "absent"
+wrapped="$(jq -cn '{hooks:{PreToolUse:[
+  {matcher:"Bash",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/auto-approve-safe-bash.sh\""}]},
+  {matcher:"Edit",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/block-edit-on-main.sh\""}]},
+  {matcher:"Read",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/block-read-secrets.sh\""}]}]}}')"
+printf '%s\n' "$wrapped" > "$WORK/uhome/.claude/settings.json"
+out="$(probe_run "$WORK/repo-owned")"
+has "probe guardrail-block-global wrapper -> present" "$out" "present"
 
 # --- himmel-guard plugin command ------------------------------------------------------------
 echo "== himmel-guard: command skips when the project layer wires block-destructive-commands =="

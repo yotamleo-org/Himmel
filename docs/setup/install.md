@@ -349,12 +349,14 @@ A guard hook wired from two settings layers (user settings, project settings, an
 
 | Where the session runs | Owner | How the other layer stays quiet |
 |---|---|---|
-| Inside a himmel checkout | The project layer (`.claude/settings.json`) | `himmelctl install` skips the user-level `wiring-pretooluse` wire while the checkout's project settings carry `auto-approve-safe-bash`, `block-edit-on-main` and `block-read-secrets`; its probe reads that as present. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
-| An adopted repo with no project entry | The user layer | The install wires the hooks there as before. `guardrail-block-global` installs the form that skips itself wherever a project layer covers the script. |
+| Inside a himmel checkout | The project layer (`.claude/settings.json`) | The user layer carries `guardrail-block-global`, the form that goes quiet where a project layer covers the script. `himmelctl install` reads that form as the trio being present and wires nothing more at the user level. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
+| An adopted repo with no project entry | The user layer | The install wires the hooks there, and `guardrail-block-global` runs them in every repo. |
+
+A station that has not accepted `guardrail-block-global` keeps the raw user-level wire, so the trio still guards every repo, and inside a himmel checkout each trio hook runs twice per call. The doctor reports that as a WARN: run `himmelctl ensure` interactively once and answer yes to `guardrail-block-global` (it waits for your consent), then drop the raw user entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
 
 `inject-initiative` (SessionStart) is wired by `scripts/setup.sh` and `adopt --scope user`, not by `himmelctl install`, so it is not skipped for you: on a station that wired it at the user layer, remove that entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
 
-`bash scripts/himmel-doctor.sh --only C81` FAILs and names any script wired from more than one layer. A user entry run through `guardrail-skip-in-himmel.js` and a plugin entry that reads the project settings do not count.
+`bash scripts/himmel-doctor.sh --only C81` WARNs and names any script wired from more than one layer. A user entry run through `guardrail-skip-in-himmel.js` and a plugin entry that reads the project settings do not count.
 
 ## Lifecycle
 
