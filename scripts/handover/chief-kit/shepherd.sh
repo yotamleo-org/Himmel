@@ -30,7 +30,8 @@
 # ok row for the head it says "panel: NOT-RUN" and the PR needs a /pr-check
 # round. ponytail: a PR is a READY-CANDIDATE only once /pr-check already ran at
 # its head, non-shell suites (mjs/ts) are listed but never run here, upgrade
-# path HIMMEL-4942 lever 2 (a lean Haiku shepherd for the PRs this flags).
+# path: a lean Haiku shepherd for the PRs this flags.
+# ponytail: upgrade path HIMMEL-4942 lever 2.
 #
 # Output (stable):
 #   SHEPHERD <pr> <head> READY-CANDIDATE

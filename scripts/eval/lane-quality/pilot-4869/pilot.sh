@@ -128,7 +128,7 @@ resume_cwd: $2
 description: HIMMEL-4869 pilot row $1, one frozen eval task
 ---
 
-# HIMMEL-4869 pilot row $1: one eval task
+# Pilot row $1: one eval task
 
 > **Eval run, not a ticket worker.** This overrides the worker rules wherever they
 > differ: do NOT commit, push, open a PR, touch Jira or spawn subagents, and

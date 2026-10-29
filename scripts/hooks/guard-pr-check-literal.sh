@@ -347,8 +347,8 @@ st_tokenize() {
                             fi
                         done
                         [ "$j" -lt "$n" ] || return 1
-                        # The shell runs the decoded word (`$'\x2dr'` is -r,
-                        # HIMMEL-4576). ${…@E} is bash 4.4+; an older bash
+                        # The shell runs the decoded word (`$'\x2dr'` is -r).
+                        # ${…@E} is bash 4.4+; an older bash
                         # keeps the raw body, as before (declining here would
                         # switch guard_unwrap off for the whole command, J1946
                         # B1). The eval'd text is constant, never input.
@@ -1298,7 +1298,8 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
     case "$sub" in commit | tag | notes) exempt=1 ;; esac
     # ponytail: the positional words of an alias or an unknown subcommand, and of
     # `submodule foreach`, are not run through meta_value, so text parsing cannot
-    # close this class; upgrade path HIMMEL-4852 (structural fix).
+    # close this class.
+    # ponytail: upgrade path HIMMEL-4852 (structural fix).
     # A read-only subcommand: only --opt=value and -O are values; a word after a
     # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
     case "$sub" in
@@ -2398,7 +2399,8 @@ env_split_option() { # env_split_option <raw command> - false only when
     # reader (rbash, fish, python3 -c, `. /dev/stdin`, any interpreter).
     # ponytail: a shell word after a list separator flags every earlier pipe
     # writer in the command, so `git diff | head; bash x` over-denies when the
-    # diff text carries env -S; upgrade path: HIMMEL-5560 models compounds.
+    # diff text carries env -S.
+    # ponytail: upgrade path HIMMEL-5560 models compounds.
     local i j e w sk sg b k x depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=() pp=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then

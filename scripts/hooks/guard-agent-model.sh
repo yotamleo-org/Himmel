@@ -47,7 +47,8 @@
 #
 # ponytail: covers the Agent tool only — a Workflow script's agent() dispatches
 # run inside the one Workflow tool call and no per-dispatch hook seam is known,
-# so they are not covered; upgrade path is HIMMEL-3849.
+# so they are not covered.
+# ponytail: upgrade path HIMMEL-3849.
 set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0
