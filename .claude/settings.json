@@ -591,7 +591,6 @@
         ]
       },
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
