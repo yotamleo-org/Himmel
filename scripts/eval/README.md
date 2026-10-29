@@ -240,7 +240,7 @@ test before/after/delta, noise and `min_gain`.
 ```bash
 bash scripts/eval/routing/run.sh --model haiku --dry-run                  # list the cases, no call
 HIMMEL_BILLED_OK=1 bash scripts/eval/routing/run.sh --model haiku --out D  # billed: one claude -p per case
-python3 scripts/eval/routing/score.py lint --listing <listing.mjs --json output>
+node scripts/eval/routing/listing.mjs --json >/tmp/listing.json && python3 scripts/eval/routing/score.py lint --listing /tmp/listing.json
 ```
 
 `routing/cases/open.jsonl` and `sealed.jsonl` hold 47 cases mined from real

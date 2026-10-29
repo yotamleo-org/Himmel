@@ -60,11 +60,14 @@ done
 case "$split" in open|sealed|all) ;; *) die "--split open|sealed|all, not '$split'" ;; esac
 case "$tmo" in ''|*[!0-9]*|0|00*) die "--timeout needs a positive integer of seconds, not '$tmo'" ;; esac
 for v in "$max_usd" "$ceiling"; do
-    python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) > 0 else 1)' "$v" 2>/dev/null || die "a usd limit needs a positive number, not '$v'"
+    python3 -c 'import math,sys; v = float(sys.argv[1]); sys.exit(0 if math.isfinite(v) and v > 0 else 1)' "$v" 2>/dev/null || die "a usd limit needs a finite positive number, not '$v'"
 done
 
 # shellcheck source=../../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 2
+# shellcheck source=../../lib/portable-timeout.sh
+. "$REPO/scripts/lib/portable-timeout.sh" || exit 2
+sha16() { python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest()[:16])'; }
 scratch="$(tmpdir)" || exit 2
 trap 'rm -rf "$scratch"' EXIT
 listing_args=(--json)
@@ -100,7 +103,7 @@ Reply with exactly one JSON line and nothing else: {"pick": "<exact listed name>
 EOF
 node "$HERE/listing.mjs" "${SOURCES[@]}" ${seed:+--seed-broken "$seed"} >>"$scratch/system.txt" || die "listing.mjs failed"
 lsha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha"])' "$scratch/listing.json")"
-psha="$(sha256sum "$scratch/system.txt" | cut -c1-16)"
+psha="$(sha16 <"$scratch/system.txt")" || die "cannot hash the system prompt"
 
 if [ "$dry" = 1 ]; then
     python3 -c 'import json,sys
@@ -125,7 +128,7 @@ out="$(cd "$out" && pwd)"
 mkdir "$out/.lock" 2>/dev/null || { echo "run.sh: another run holds $out (remove $out/.lock if none does)" >&2; exit 3; }
 trap 'rm -rf "$scratch" "$out/.lock"' EXIT
 # A resume must ask the same question: same model, effort, listing, prompt and cases.
-cset="$(cat "$CASES/open.jsonl" "$CASES/sealed.jsonl" | sha256sum | cut -c1-16)"
+cset="$(cat "$CASES/open.jsonl" "$CASES/sealed.jsonl" | sha16)" || die "cannot hash the case set"
 python3 -c 'import json,os,sys
 path = sys.argv[1]
 new = {"model": sys.argv[2], "effort": sys.argv[3], "listing_sha": sys.argv[4], "prompt_sha": sys.argv[5],

@@ -4,7 +4,7 @@
 # claude (a lexical router: it picks the entry whose description shares the most words with
 # the request, the first listed on a tie, none on no overlap) and a stub bank-preflight over a
 # fixture listing. No model call.
-set -u
+set -uo pipefail
 export HIMMEL_BILLED_OK=1   # stub claude only; run.sh refuses a bare run
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -83,7 +83,7 @@ import json, os, re, sys
 a = sys.argv[1:]
 sysp, prompt = a[a.index("--system-prompt") + 1], a[a.index("-p") + 1]
 with open(os.environ["STUB_LOG"], "a") as fh:
-    fh.write(" ".join(x for x in a if x.startswith("--")) + "\n")
+    fh.write(" ".join(x for x in a if x.startswith("--")) + " budget=" + a[a.index("--max-budget-usd") + 1] + "\n")
 words = lambda s: {w for w in re.findall(r"[a-z]+", s.lower()) if len(w) > 3}
 req = words(prompt.split("Request:", 1)[1])
 best, pick = 0, "none"
@@ -104,7 +104,7 @@ printf '#!/usr/bin/env bash\n[ "${STUB_BANK:-}" = 1 ] && echo SKIPPED-BANK || ec
 unset STUB_ERROR STUB_NOCOST STUB_BANK
 export RT_CLAUDE="$TMP/claude" RT_PREFLIGHT="$TMP/preflight" STUB_LOG="$TMP/calls.log"
 export RT_REPO="$FIX/repo" RT_INVENTORY="$FIX/inventory.json" RT_CASES="$FIX/cases"
-fix_sha() { cat "$FIX"/repo/.claude/skills/*/SKILL.md "$FIX"/repo/.claude/agents/*.md | sha256sum; }
+fix_sha() { cat "$FIX"/repo/.claude/skills/*/SKILL.md "$FIX"/repo/.claude/agents/*.md | python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'; }
 fix_before="$(fix_sha)"
 metric() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metrics"][sys.argv[2]])' "$1" "$2"; }
 
@@ -114,7 +114,7 @@ eq "run: the fixture sweep exits 0" "$?" "0"
 eq "run: one call per case" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "40"
 call="$(head -1 "$TMP/calls.log")"
 has "run: the call declares an explicit permission mode" "$call" "--permission-mode"
-has "run: the call caps its spend" "$call" "--max-budget-usd"
+has "run: the call caps its spend at --max-usd" "$call" "budget=0.10"
 has "run: the call parses json output" "$call" "--output-format"
 hasnt "run: the call never bypasses permissions" "$(grep -F -- --permission-mode "$RUN")" "bypassPermissions"
 eq "score: accuracy 34 of 40" "$(metric "$TMP/base/results.json" accuracy)" "0.85"
@@ -137,11 +137,14 @@ print(len(r), r[0]["eval"], r[0]["model"], r[0]["cases"]["s19"], r[0]["ci_method
 # --- resume, config pinning, ceiling, bank refusal, errored calls ---
 : >"$TMP/calls.log"
 bash "$RUN" --model haiku --out "$TMP/base" --no-ledger >/dev/null 2>&1
+eq "resume: a finished run exits 0" "$?" "0"
 eq "resume: a finished run makes no call" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "0"
 eq "resume: another model on the same out is refused" "$(bash "$RUN" --model sonnet --out "$TMP/base" >/dev/null 2>&1; echo $?)" "2"
 cp -R "$FIX/cases" "$TMP/cases-edited"
 sed -i.bak 's/"request": "/"request": "Please /' "$TMP/cases-edited/open.jsonl"
 eq "resume: an edited case set on the same out is refused" "$(RT_CASES="$TMP/cases-edited" bash "$RUN" --model haiku --out "$TMP/base" >/dev/null 2>&1; echo $?)" "2"
+eq "limits: an infinite ceiling is refused" "$(bash "$RUN" --model haiku --ceiling-usd inf --dry-run >/dev/null 2>&1; echo $?)" "2"
+eq "limits: a NaN per-call cap is refused" "$(bash "$RUN" --model haiku --max-usd nan --dry-run >/dev/null 2>&1; echo $?)" "2"
 eq "cases: a selection that matches nothing is refused" "$(bash "$RUN" --model haiku --split open --cases s01 --dry-run >/dev/null 2>&1; echo $?)" "2"
 mkdir -p "$TMP/two"
 printf '%s\n' '{"subtype": "success", "result": "{\"pick\": \"brew-coffee\"}\n{\"pick\": \"none\"}", "total_cost_usd": 0.001}' >"$TMP/two/o01.json"
