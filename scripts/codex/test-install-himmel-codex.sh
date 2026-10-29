@@ -218,9 +218,9 @@ if [ "$(cat "$HJ")" = "$before" ]; then pass "external plugin hooks.json left un
 if grepq "$out" -iE '^--- 3\. sanitize|sanitize step'; then fail "installer still runs/announces a sanitize phase"; else pass "no sanitize phase in installer output"; fi
 rm -rf "$TMP/codex-home/plugins"
 
-echo "== scenario M: Codex searches through the shared qmd daemon, not upstream's stdio qmd (HIMMEL-8118) =="
+echo "== scenario M: Codex searches through the shared qmd server, not upstream's stdio qmd (HIMMEL-8118) =="
 QMD_URL="http://localhost:8181/mcp"
-unset QMD_MCP_URL   # the rows assume the default daemon URL, whatever the host exports
+unset QMD_MCP_URL   # the rows assume the default 8181 URL, whatever the host exports
 # station shape (real ~/.codex/config.toml): upstream qmd marketplace + enabled qmd@qmd plugin
 S="$TMP/M1"; mk_state "$S"
 printf 'himmel\nqmd\n' > "$S/marketplaces.txt"
@@ -228,9 +228,9 @@ printf 'himmel\nqmd\n' > "$S/marketplaces.txt"
 run "$S" >/dev/null
 assert_log_has   "$S/calls.log" "plugin remove qmd@qmd"  "M1 removes the upstream qmd@qmd plugin"
 assert_log_has   "$S/calls.log" "marketplace remove qmd" "M1 removes the upstream qmd marketplace"
-assert_log_has   "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M1 adds the 8181 daemon entry with an env-var bearer"
+assert_log_has   "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M1 adds the 8181 entry with an env-var bearer"
 assert_log_lacks "$S/calls.log" "remove himmel" "M1 never touches the himmel marketplace"
-S="$TMP/M2"; mk_state "$S"   # already converged: no upstream plugin, daemon entry present
+S="$TMP/M2"; mk_state "$S"   # already converged: no upstream plugin, 8181 entry present
 printf 'himmel\n' > "$S/marketplaces.txt"
 { for p in $DEFAULT_SET; do printf '%s@himmel\tinstalled, enabled\n' "$p"; done; } > "$S/plugins.txt"
 printf 'qmd\t%s\n' "$QMD_URL" > "$S/mcp.txt"
@@ -242,13 +242,13 @@ printf 'himmel\n' > "$S/marketplaces.txt"
 printf 'qmd\t-\n' > "$S/mcp.txt"
 run "$S" --plugins=himmel-ops >/dev/null
 assert_log_has "$S/calls.log" "mcp remove qmd" "M3 drops a stdio qmd server"
-assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL" "M3 replaces it with the daemon entry"
+assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL" "M3 replaces it with the 8181 entry"
 S="$TMP/M4"; mk_state "$S"   # dry-run on the station shape
 printf 'himmel\nqmd\n' > "$S/marketplaces.txt"; printf 'qmd@qmd\tinstalled, enabled\n' > "$S/plugins.txt"
 out="$(run "$S" --dry-run --plugins=himmel-ops)"
 assert_log_lacks "$S/calls.log" "qmd" "M4 --dry-run mutates no qmd state"
 if grepq "$out" 'WOULD.*qmd'; then pass "M4 --dry-run reports the qmd changes"; else fail "M4 --dry-run did not report qmd changes"; fi
-S="$TMP/M5"; mk_state "$S"   # QMD_MCP_URL override, the variable the daemon scripts read
+S="$TMP/M5"; mk_state "$S"   # QMD_MCP_URL override, the variable the qmd launch scripts read
 printf 'himmel\n' > "$S/marketplaces.txt"
 QMD_MCP_URL="http://localhost:9999/mcp" run "$S" --plugins=himmel-ops >/dev/null
 assert_log_has "$S/calls.log" "mcp add qmd --url http://localhost:9999/mcp" "M5 honours QMD_MCP_URL"
@@ -269,11 +269,11 @@ printf 'qmd\t%s\tnobearer\n' "$QMD_URL" > "$S/mcp.txt"
 QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
 assert_log_has "$S/calls.log" "mcp remove qmd" "M8 removes a qmd entry that has the URL but no bearer"
 assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8 re-adds it with the env-var bearer"
-S="$TMP/M8b"; mk_state "$S"   # a longer URL that merely starts with the daemon URL is a different endpoint
+S="$TMP/M8b"; mk_state "$S"   # a longer URL that merely starts with the 8181 URL is a different endpoint
 printf 'himmel\n' > "$S/marketplaces.txt"
 printf 'qmd\t%s-old\n' "$QMD_URL" > "$S/mcp.txt"
 QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
-assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8b replaces a qmd entry whose URL only starts with the daemon URL"
+assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8b replaces a qmd entry whose URL only starts with the 8181 URL"
 S="$TMP/M8c"; mk_state "$S"   # right URL and bearer but disabled: not converged
 printf 'himmel\n' > "$S/marketplaces.txt"
 printf 'qmd\t%s\tdisabled\n' "$QMD_URL" > "$S/mcp.txt"

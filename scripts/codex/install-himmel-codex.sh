@@ -120,7 +120,7 @@ done
 # and point Codex at the daemon. Codex reads a bearer only from an env var NAME
 # (no headers helper), so the token is never written to config.toml: the
 # launching environment must export $QMD_TOKEN_ENV.
-QMD_URL="${QMD_MCP_URL:-http://localhost:8181/mcp}"   # same override the daemon scripts read
+QMD_URL="${QMD_MCP_URL:-http://localhost:8181/mcp}"   # same override the qmd launch scripts read
 QMD_TOKEN_ENV="QMD_HTTP_TOKEN"
 QMD_PLUGIN="qmd@qmd"
 QMD_MARKET="qmd"
