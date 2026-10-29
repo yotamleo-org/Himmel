@@ -17,7 +17,9 @@ text carries {"pick": "<name>" | "none"}.
 Outcome per case: exact (the expected pick, or none when none was expected), near (a listed
 near name), miss (none when an entry was expected), false (any other pick, an unlisted name
 included). A case with no envelope, an error envelope or no parsable pick is unscored.
-accuracy = exact / scored, and near_rate, miss_rate and false_pick_rate likewise.
+accuracy = exact / scored, and near_rate, miss_rate and false_pick_rate likewise. The first
+{"pick": ...} in the result text is the one scored. cost_usd sums every envelope read plus
+<outputs>/errored-spend.log, the cost of the calls run.sh did not keep.
 
 Split (eval_feedback.py, HIMMEL-7519). Every metric is also reported per half as
 open.<metric> and sealed.<metric>. Tuning reads the open half only; the sealed half only
@@ -106,7 +108,7 @@ def read_pick(path):
     m = PICK_RE.findall(str(env.get("result") or ""))
     if not m:
         return None, cost, "no pick in the result"
-    return m[-1].strip().lstrip("/"), cost, None
+    return m[0].strip().lstrip("/"), cost, None
 
 
 def outcome(case, pick):
@@ -133,6 +135,10 @@ def score(cases, names, outputs):
             continue
         rows[c["id"]] = {"split": c["split"], "pick": pick, "outcome": outcome(c, pick),
                          "unlisted": pick != "none" and pick not in names}
+    errored = os.path.join(outputs, "errored-spend.log")
+    if os.path.exists(errored):
+        with open(errored, encoding="utf-8") as fh:
+            cost += sum(float(x) for x in fh if x.strip())
     metrics, ci = {}, {}
     for prefix, members in (("", rows), *(("%s." % h, {k: r for k, r in rows.items() if r["split"] == h})
                                           for h in HALVES)):

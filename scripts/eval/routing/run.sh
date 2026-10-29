@@ -88,6 +88,7 @@ for half in ("open", "sealed"):
 bad = [x for x in only if x not in seen]
 if bad:
     sys.exit("unknown case: " + ",".join(bad))' "$CASES" "$split" "$only" >"$scratch/cases.tsv" || die "cannot read the cases"
+[ -s "$scratch/cases.tsv" ] || die "no case matches --split $split${only:+ --cases $only}"
 
 cat >"$scratch/system.txt" <<'EOF'
 You route a request made in a Claude Code session. The session can invoke the entries listed
@@ -119,16 +120,18 @@ fi
 [ -n "$out" ] || die "--out <dir> is required"
 mkdir -p "$out" || exit 2
 out="$(cd "$out" && pwd)"
-# A resume must ask the same question: same model, effort, listing and prompt.
+# A resume must ask the same question: same model, effort, listing, prompt and cases.
+cset="$(cat "$CASES/open.jsonl" "$CASES/sealed.jsonl" | sha256sum | cut -c1-16)"
 python3 -c 'import json,os,sys
 path = sys.argv[1]
-new = {"model": sys.argv[2], "effort": sys.argv[3], "listing_sha": sys.argv[4], "prompt_sha": sys.argv[5], "seed_broken": sys.argv[6]}
+new = {"model": sys.argv[2], "effort": sys.argv[3], "listing_sha": sys.argv[4], "prompt_sha": sys.argv[5],
+       "seed_broken": sys.argv[6], "case_set": sys.argv[7]}
 if os.path.exists(path) and json.load(open(path)) != new:
     sys.exit(3)
-json.dump(new, open(path, "w"))' "$out/run-config.json" "$model" "$effort" "$lsha" "$psha" "$seed"
+json.dump(new, open(path, "w"))' "$out/run-config.json" "$model" "$effort" "$lsha" "$psha" "$seed" "$cset"
 case $? in
     0) ;;
-    3) die "$out was run with another model, effort, listing or prompt (run-config.json); use a fresh --out" ;;
+    3) die "$out was run with another model, effort, listing, prompt or case set (run-config.json); use a fresh --out" ;;
     *) exit 2 ;;
 esac
 cp "$scratch/listing.json" "$out/listing.json"

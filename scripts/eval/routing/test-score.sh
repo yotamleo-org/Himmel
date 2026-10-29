@@ -135,6 +135,15 @@ print(len(r), r[0]["eval"], r[0]["model"], r[0]["cases"]["s19"], r[0]["ci_method
 bash "$RUN" --model haiku --out "$TMP/base" --no-ledger >/dev/null 2>&1
 eq "resume: a finished run makes no call" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "0"
 eq "resume: another model on the same out is refused" "$(bash "$RUN" --model sonnet --out "$TMP/base" >/dev/null 2>&1; echo $?)" "2"
+cp -R "$FIX/cases" "$TMP/cases-edited"
+sed -i.bak 's/"request": "/"request": "Please /' "$TMP/cases-edited/open.jsonl"
+eq "resume: an edited case set on the same out is refused" "$(RT_CASES="$TMP/cases-edited" bash "$RUN" --model haiku --out "$TMP/base" >/dev/null 2>&1; echo $?)" "2"
+eq "cases: a selection that matches nothing is refused" "$(bash "$RUN" --model haiku --split open --cases s01 --dry-run >/dev/null 2>&1; echo $?)" "2"
+mkdir -p "$TMP/two"
+printf '%s\n' '{"subtype": "success", "result": "{\"pick\": \"brew-coffee\"}\n{\"pick\": \"none\"}", "total_cost_usd": 0.001}' >"$TMP/two/o01.json"
+python3 "$HERE/score.py" score --cases "$FIX/cases" --listing "$TMP/base/listing.json" --outputs "$TMP/two" --only o01 \
+    --json "$TMP/two/results.json" --no-ledger >/dev/null
+eq "score: the first of two picks is the one scored" "$(metric "$TMP/two/results.json" accuracy)" "1.0"
 eq "ceiling: stops before the call that would cross it" "$(bash "$RUN" --model haiku --out "$TMP/ceil" --ceiling-usd 0.0025 --no-ledger >/dev/null 2>&1; echo $?)" "3"
 eq "ceiling: three calls made before the stop" "$(find "$TMP/ceil" -name '[os][0-9]*.json' | wc -l | tr -d ' ')" "3"
 : >"$TMP/calls.log"
@@ -142,6 +151,7 @@ eq "preflight: a bank refusal stops the run" "$(STUB_BANK=1 bash "$RUN" --model 
 eq "preflight: no call after a bank refusal" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "0"
 eq "errored calls: exit 4" "$(STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/err" --split open --no-ledger >/dev/null 2>&1; echo $?)" "4"
 eq "errored calls: every case unscored, none kept" "$(metric "$TMP/err/results.json" unscored)" "20"
+eq "errored calls: their spend is in the cost" "$(metric "$TMP/err/results.json" cost_usd)" "0.02"
 
 # --- the seeded-broken control: water-plants given brew-coffee's trigger text ---
 bash "$RUN" --model haiku --out "$TMP/seeded" --seed-broken brew-coffee,water-plants --no-ledger >/dev/null 2>&1
