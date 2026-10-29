@@ -228,6 +228,7 @@ check_ceiling() {
   # its worst case (~90s: 30s kill wait + the ~59s start path) is cleared. The
   # stamp re-check after mkdir stops a session that read the stamp before the
   # winner wrote it.
+  # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; this is a non-blocking mkdir try-lock with its own stale clear, and with_lock would wait instead of yielding
   if ! mkdir "$recycle_lock" 2>/dev/null; then
     last="$(cat "$recycle_lock/at" 2>/dev/null)"
     case "$last" in
@@ -386,6 +387,7 @@ swap_lock_reclaim() {
   if [ -n "$(find "$swap_lock.reclaim" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
     rmdir "$swap_lock.reclaim" 2>/dev/null
   fi
+  # prim-ok: the plugin installs without scripts/lib; a one-shot mkdir try-lock serializing the stale clear, a loser just returns
   mkdir "$swap_lock.reclaim" 2>/dev/null || return 0
   if swap_lock_stale "$swap_lock"; then
     rm -rf "$swap_lock"
@@ -394,6 +396,7 @@ swap_lock_reclaim() {
   return 0
 }
 mkdir -p "$qmd_state_dir" 2>/dev/null
+# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended ensure or off start exits at once, a swap start retries it for up to 8 x 0.25 s
 if ! mkdir "$swap_lock" 2>/dev/null; then
   swap_pid="$(cat "$swap_lock/pid" 2>/dev/null)"
   if swap_lock_stale "$swap_lock"; then
@@ -412,6 +415,7 @@ if ! mkdir "$swap_lock" 2>/dev/null; then
       ensure|off) exit 0 ;;
       swap) break ;;
     esac
+    # prim-ok: the plugin installs without scripts/lib; a bounded retry (8 x 0.25 s) of the same swap lock above
     if mkdir "$swap_lock" 2>/dev/null; then swap_role=mine; break; fi
     swap_i=$((swap_i + 1))
     if [ "$swap_i" -ge 8 ]; then break; fi

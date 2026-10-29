@@ -2516,13 +2516,14 @@ _dc_can_be_claude() {
 }
 
 # _dc_split_words TEXT -- the CALLER's local array f is TEXT split at every
-# space, in the C locale (HIMMEL-4678): in a UTF-8 locale bash's ${1// /…}
-# re-decodes the text for every match, which took 2.5 s on a 45 KB heredoc of
-# prose, against 5 ms byte-wise. A space byte never occurs inside a UTF-8
-# multibyte sequence, so the bytes come out the same either way.
+# space, byte-wise: a UTF-8 ${1// /…} re-decodes the text for
+# every match (2.5 s on a 45 KB heredoc of prose, 5 ms byte-wise), and bash 3.2
+# runs any global substitution that matches in time quadratic in its matches
+# (29 s for 2400 spaces on macOS), so tr splits it. A space byte never occurs
+# inside a UTF-8 multibyte sequence, so the bytes come out the same.
 _dc_split_words() {
-    local LC_ALL=C s=$'\037'
-    IFS=$s read -r -d '' -a f <<< "${1// /$s}" || true
+    local s=$'\037'
+    IFS=$s read -r -d '' -a f < <(printf '%s\n' "$1" | LC_ALL=C tr ' ' '\037') || true
 }
 
 # _dc_name_fold TEXT — _DCF is TEXT with every path component that can expand
@@ -3915,11 +3916,10 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # copy of the whole command would quadruple the quadratic passes.
         case "$cmd_n" in
             *'$"'*)
-                dq=''
-                while IFS= read -r dql || [ -n "$dql" ]; do
-                    case "$dql" in *'$"'*) dq=$dq$'\n'${dql//\$\"/\"} ;; esac
-                done <<< "$cmd_n"
-                cmd_n=$cmd_n$dq
+                # sed: bash 3.2 runs a global ${l//\$\"/\"} over a long line
+                # in time quadratic in its matches (4.9 s for 700 on macOS)
+                dq=$(printf '%s\n' "$cmd_n" | LC_ALL=C sed -n '/\$"/{s/\$"/"/g;p;}')
+                cmd_n=$cmd_n$'\n'$dq
                 ;;
         esac
         cmd_n=$(printf '%s' "$cmd_n" | tr -d "\"'\\\\")

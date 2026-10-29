@@ -1149,5 +1149,24 @@ lacks "Done category: --dispositions does not list a wont do ticket" "$dispo_out
 has "Done category: --dispositions lists an open ticket" "$dispo_out" "# disposition HIMMEL-9302 "
 M="$WORK/jira-mirror/HIMMEL"
 
+# more than 60 fresh blocker keys: every one is read live (no silent cut), so a ticket whose 70 mirror-open blockers are all Done live is dispatchable
+CAP_DIR="$WORK/jira-mirror-cap"; M="$CAP_DIR/HIMMEL"; mkdir -p "$M"
+printf 'v1.0.1\tfalse\t\n' > "$CAP_DIR/HIMMEL.versions.tsv"
+cap_blockers=""
+for n in $(seq 9400 9469); do
+    mk "HIMMEL-$n" "In Progress" High '[]' '["v1.0.1"]' '[]' "cap blocker $n" "Edit scripts/lib/cap-$n.sh."
+    cap_blockers="${cap_blockers:+$cap_blockers, }\"HIMMEL-$n\""
+done
+mk HIMMEL-9500 "To Do" High '[]' '["v1.0.1"]' "[$cap_blockers]" "blocked by 70 mirror-open tickets" "Edit scripts/lib/cap-dependent.sh."
+CAP_LOG="$WORK/jira-cap.log"; : > "$CAP_LOG"
+# shellcheck disable=SC2016  # the $ names are literal text of the fake Jira CLI, expanded when it runs
+printf '#!/usr/bin/env bash\n[ "$1" = get ] || exit 2\nprintf "%%s\\n" "$2" >> "$CAP_LOG"\nprintf "%%s\\tTask\\tDone\\tt\\n" "$2"\n' > "$WORK/jira-cap"; chmod +x "$WORK/jira-cap"
+cap_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-cap" CAP_LOG="$CAP_LOG" run --no-classify --why)"; cap_rc=$?
+[ "$cap_rc" = 0 ] && pass "live cap: the 70-blocker run exits 0" || fail "live cap: the 70-blocker run exited $cap_rc"
+[ "$(sort -u "$CAP_LOG" | grep -c .)" = 70 ] && pass "live cap: all 70 blocker keys are read live" || fail "live cap: expected 70 live reads, got $(sort -u "$CAP_LOG" | grep -c .)"
+lacks "live cap: a ticket whose 70 blockers are all Done live is not dropped for a blocker" "$cap_out" "# drop HIMMEL-9500 blocker"
+has "live cap: that ticket is a collision-free candidate" "$cap_out" "1 To Do candidate(s), 1 collision-free"
+M="$WORK/jira-mirror/HIMMEL"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
