@@ -7946,6 +7946,11 @@ function cmdConfigGet(pathParts) {
     }
     return cmdConfigGetLane(rest[0]);
   }
+  if (pathParts.join('.') === 'tracker.teamMode') {
+    const v = readConfigVar(TEAM_MODE_KEY).value.trim().toLowerCase();
+    console.log(['on', '1', 'true'].includes(v) ? 'on' : 'off');
+    return 0;
+  }
   if (ns === 'hooks') {
     // himmelctl config does not READ hook state — neither hooks.* path exposes a
     // value config owns: improveOnSubmit lives only in the launching shell's env,
@@ -8038,6 +8043,10 @@ function cmdConfigSetPath(name, value, args) {
   return writeConfigVar(key, value, args, [behaviourConfigLib.writeTarget(key)]) ? 0 : 1;
 }
 
+// config set tracker.teamMode on|off: the board's team-mode switch (drift-summary.mjs and the doctor's C80 read it
+// straight from himmel.conf.local, then himmel.conf); an unset key means off.
+const TEAM_MODE_KEY = 'HIMMEL_TRACKER_TEAM_MODE';
+
 function cmdConfigSet(pathParts, value, args) {
   if (pathParts[0] === 'commit') return cmdConfigSetCommit(pathParts.slice(1), value, args);
   if (Object.prototype.hasOwnProperty.call(CONFIG_PATH_KEYS, pathParts.join('.'))) return cmdConfigSetPath(pathParts.join('.'), value, args);
@@ -8046,6 +8055,7 @@ function cmdConfigSet(pathParts, value, args) {
     return 2;
   }
   const [ns, ...rest] = pathParts;
+  if (pathParts.join('.') === 'tracker.teamMode') return writeConfigVar(TEAM_MODE_KEY, value, args, [behaviourConfigLib.writeTarget(TEAM_MODE_KEY)]) ? 0 : 1;
   if (ns === 'initiative' && rest.length === 1) return cmdConfigSetInitiative(rest[0], value, args);
   if (ns === 'lanes' && rest.length === 1) return cmdConfigSetLane(rest[0], value, args);
   if (ns === 'hooks' && rest.length >= 1) return cmdConfigSetHook(rest, value, args);
