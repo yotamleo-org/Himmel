@@ -13,8 +13,9 @@ const read = (f: string) => readFileSync(f, "utf8");
 
 // A colour written as a literal: hex, rgb()/hsl() and their alpha forms. In a .js file only inside a style context
 // (a CSS property name on the same declaration), so "#123" in a sentence is not one.
-const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/;
-const JS_STYLE = /(?:color|background|fill|stroke|border|outline|shadow)[\w-]*\s*[:=]\s*["'`]?[^;"'`<>]*?(#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\()/gi;
+const COLOUR = String.raw`#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(`;
+const LITERAL = new RegExp(COLOUR);
+const JS_STYLE = new RegExp(String.raw`(?:color|background|fill|stroke|border|outline|shadow)[\w-]*\s*[:=]\s*["'\`]?[^;"'\`<>]*?(${COLOUR})`, "gi");
 
 // Every off-token colour and undefined custom property in a public/ directory, as "file:line: what".
 export function drift(dir: string): string[] {
@@ -61,6 +62,8 @@ test("a planted off-token colour, in CSS or in a module's inline style, is drift
     writeFileSync(join(dir, "app.css"), "body{color:var(--ink)}");
     writeFileSync(join(dir, "page.js"), 'const s = `<i style="background:rgba(0,0,0,.2)">`;');
     expect(drift(dir)).toEqual(["page.js:1: colour literal rgba("]);
+    writeFileSync(join(dir, "page.js"), 'const s = `<i style="color:oklch(60% .1 200)">`;');
+    expect(drift(dir)).toEqual(["page.js:1: colour literal oklch("]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
