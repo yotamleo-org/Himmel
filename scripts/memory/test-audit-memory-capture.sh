@@ -83,7 +83,7 @@ run; assert_rc "missing index + topic file = orphan flagged" 1 "$?"
 noncmd_err="$SB/noncmd.err"
 ( cd "$SB" && env -u MEMDIR MEMORY_CAPTURE_LOG="$SB/capture.jsonl" MEMORY_AUDIT_SKIP_QMD=1 bash "$AUDIT" >/dev/null 2>"$noncmd_err" )
 noncmd_rc=$?
-assert_rc "non-repo cwd fails loudly (no MEMDIR)" 1 "$noncmd_rc"
+assert_rc "non-repo cwd fails loudly (no MEMDIR)" 2 "$noncmd_rc"
 if grep -q 'not inside a git repo' "$noncmd_err"; then
     echo "PASS non-repo cwd diagnostic present"
 else

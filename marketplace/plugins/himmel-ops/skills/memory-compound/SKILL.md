@@ -218,12 +218,12 @@ BEFORE="$SNAPS/$(date +%F)-<key>"
 ```
 
 After each step that wrote to the store, take a checkpoint
-(`memory-snapshot.sh take "$SNAPS/$(date +%F)-<key>-cp<N>"`). To roll back, pass
+(`memory-snapshot.sh take "$BEFORE-cp<N>"`). To roll back, pass
 the **latest** checkpoint, which is what lets restore tell the pass's own edits
 from another writer's:
 
 ```bash
-"$HIMMEL/scripts/memory/memory-snapshot.sh" restore "$BEFORE" --expect "$SNAPS/$(date +%F)-<key>-cp<N>"
+"$HIMMEL/scripts/memory/memory-snapshot.sh" restore "$BEFORE" --expect "$BEFORE-cp<N>"
 ```
 
 A file the pass added moves to `<before>.removed-<UTC ts>/` (never deleted);

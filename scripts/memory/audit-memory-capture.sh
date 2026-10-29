@@ -70,7 +70,7 @@ done
 . "$HERE/../lib/prim.sh" || exit 2
 . "$HERE/../lib/memory-slug.sh"
 if [ -z "${MEMDIR:-}" ]; then
-    MEMDIR="$(memory_resolve_memdir)" || exit 1
+    MEMDIR="$(memory_resolve_memdir)" || exit 2
 fi
 if [ ! -d "$MEMDIR" ]; then
     printf 'memory-capture audit: memory dir not found: %s\n' "$MEMDIR" >&2
