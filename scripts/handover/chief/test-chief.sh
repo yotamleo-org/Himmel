@@ -1709,6 +1709,8 @@ out61o="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USE
     CHIEF_WORK_DIR="$tmp/work" CONSOLE_MODEL=claude-fable-5-1 bash "$C" new --bucket modeldefault --dry-run --arm ) )" # old-term-ok
 check "61 the retired model env name is ignored: no fable model" \
     "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "0"
+check "61 the retired model env name is ignored: the default launch line is still printed" \
+    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-opus-5-5 ')" "1"
 out61c="$( ( cd "$fixture_repo" && CHIEF_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
 check "61 CHIEF_MODEL=claude-fable-5-1 still launches Fable" \

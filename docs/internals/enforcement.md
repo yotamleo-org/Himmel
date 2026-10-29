@@ -4076,7 +4076,7 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 `transcript_path`, and the window from the same claude-hud snapshot.
 
 **Off by default (HIMMEL-4710).** With no `HIMMEL_WORKER_SESSION_CONTEXT_MODE`
-or old `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
+(or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on. One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
