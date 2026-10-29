@@ -61,6 +61,15 @@ mkdir -p "$EMPTY_BIN_DIR"
 got=$(unset VBOXMANAGE_PATH; PATH="$EMPTY_BIN_DIR" resolve)
 assert_eq "T3 falls back to the bare name when PATH has nothing" "VBoxManage" "$got"
 
+# T6: with that bare name and nothing on PATH, _run() raises FileNotFoundError
+# to its caller instead of swallowing it.
+t6_rc=0
+t6_err=$(unset VBOXMANAGE_PATH; PATH="$EMPTY_BIN_DIR" "$PYTHON3" -c \
+    "import sys; sys.path.insert(0, sys.argv[1]); import vbox; vbox._run('list')" "$LIB_DIR_NATIVE" 2>&1 >/dev/null) || t6_rc=$?
+case "$t6_err" in *FileNotFoundError*) t6_seen=yes ;; *) t6_seen=no ;; esac
+assert_eq "T6 a missing VBoxManage reaches the caller as FileNotFoundError" "nonzero yes" \
+    "$([ "$t6_rc" -ne 0 ] && echo nonzero || echo zero) $t6_seen"
+
 # T4: VBoxManage runs with cwd $HOME, not the caller's cwd, so
 # the VBoxSVC it may spawn cannot pin a worktree. The fake prints its cwd.
 T4_HOME="$TMP/t4-home"; T4_CALLER="$TMP/t4-caller"; mkdir -p "$T4_HOME" "$T4_CALLER"
