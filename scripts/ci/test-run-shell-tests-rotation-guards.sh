@@ -22,8 +22,7 @@
 # Shared fixtures, including mk_rotate_sandbox, are in
 # run-shell-tests-fixture.sh.
 #
-# Platform guard: bash-only, like every suite in this family, and no .ps1
-# twin — it runs under Git Bash on Windows as well as Linux.
+# Platform guard: bash-only, like every suite in this family; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-run-shell-tests-rotation-guards.sh
 #

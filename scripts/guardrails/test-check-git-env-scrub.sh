@@ -5,8 +5,7 @@
 # test-fixtures/ — the checker itself excludes paths under those directory
 # names, which would make every fixture here invisible to it).
 #
-# Platform guard: POSIX bash 3.2+, same as the other guardrail tests here —
-# no .ps1 twin.
+# Platform guard: POSIX bash 3.2+, same as the other guardrail tests here.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"

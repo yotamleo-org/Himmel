@@ -2,8 +2,7 @@
 # Smoke test for check-marketplace-source-hermetic.sh. Drives the guard with
 # fixture settings-template.json files via its env-override seam.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure jq + POSIX shell; no .ps1 twin needed.
+# Platform guard: pure jq + POSIX shell, bash 3.2+.
 set -euo pipefail
 HERE="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD="$HERE/check-marketplace-source-hermetic.sh"

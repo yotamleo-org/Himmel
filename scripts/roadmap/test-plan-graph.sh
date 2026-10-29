@@ -7,7 +7,7 @@
 # dir / any graphify-out left untouched. Fixture plan dir + stub qmd + temp out dir;
 # graphify is only ever pointed at the temp graph by absolute --graph, from a temp cwd.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — operator-side roadmap tooling (Linux);
+# PLATFORM GUARD: operator-side roadmap tooling (Linux);
 # this suite needs bash + python3.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail
 set -uo pipefail

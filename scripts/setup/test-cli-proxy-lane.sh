@@ -3,10 +3,9 @@
 #
 # Usage: bash scripts/setup/test-cli-proxy-lane.sh
 #
-# Scope (deliberately narrow — the .sh has no -AsLibrary seam like the .ps1
-# twin, so every real system call is shadowed via a per-test PATH-prepended
+# Scope: every real system call is shadowed via a per-test PATH-prepended
 # stub dir; HOME is redirected per test so nothing touches the real
-# ~/.cli-proxy-api). Covers exactly the following, no more:
+# ~/.cli-proxy-api. Covers exactly the following, no more:
 #   1. --install writes config with the loopback host + port
 #   2. CLIPROXY_API_KEY is sourced from env only (unset + no .env -> refuses)
 #   3. --register's unit-file shape (grepped; the unit is never really loaded)

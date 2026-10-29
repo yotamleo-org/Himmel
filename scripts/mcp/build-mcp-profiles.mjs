@@ -18,7 +18,7 @@
 // PLUGIN_SERVERS below.
 //
 // Usage:  node scripts/mcp/build-mcp-profiles.mjs [--list]
-// Cross-platform: pure node, no shell — no .ps1 twin needed.
+// Cross-platform: pure node, no shell.
 
 import fs from "node:fs";
 import os from "node:os";

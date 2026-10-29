@@ -2,7 +2,7 @@
 # scripts/usage/test-usage.sh -- fixture test for usage-compute.sh and
 # usage-read.sh. Synthetic transcripts and a synthetic CR ledger
 # only: no real transcript, no network.
-# Platform guard (gitbash-only): pure bash 3.2-safe + jq, no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe + jq.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

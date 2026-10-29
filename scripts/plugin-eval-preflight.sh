@@ -4,8 +4,7 @@
 # invocation on this script's exit code. Exit 0 prints PROCEED on stdout;
 # exit 1 prints the refusal reason on stderr.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + coreutils (grep, sort -V); no .ps1 twin needed.
+# Platform guard: POSIX bash 3.2+ and coreutils (grep, sort -V).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

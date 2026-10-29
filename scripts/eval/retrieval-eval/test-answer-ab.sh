@@ -3,8 +3,7 @@
 # screen, the arms, the token accounting and the billing stops. No real claude, qmd or
 # graphify call: all three are stub commands, and grep runs over a scratch git repo.
 #
-# Platform guard: Linux/macOS bash; no .ps1 twin (the eval is operator-run on a
-# station).
+# Platform guard: Linux/macOS bash; the eval is operator-run on a station.
 set -uo pipefail
 export HIMMEL_BILLED_OK=1   # stubbed claude/codex only; the guarded script refuses a bare run
 

@@ -15,8 +15,7 @@
 # Runs in a throwaway PRIMARY repo plus a linked WORKTREE built under
 # mktemp -d, never the real repo, so it never touches real history.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + POSIX shell; no .ps1 twin needed.
+# Platform guard: pure git + POSIX shell, bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

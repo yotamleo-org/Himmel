@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/eval/test-context-replay.sh - tests for context-replay.py.
 # Synthetic session: 60 calls, context 50k growing 10k per call, 100 out each.
-# Platform guard: POSIX bash + python3; no .ps1 twin (eval tooling, linux only).
+# Platform guard: POSIX bash + python3; Linux-only eval tooling.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/context-replay.XXXXXX")" || exit 1

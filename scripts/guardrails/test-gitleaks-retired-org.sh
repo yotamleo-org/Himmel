@@ -8,8 +8,7 @@
 # file) so the scanner catches the SAME string a real leak would contain,
 # without this test file itself becoming a hit.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as the other
-# guardrail tests here — no .ps1 twin.
+# Platform guard: POSIX bash 3.2+, same as the other guardrail tests here.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"

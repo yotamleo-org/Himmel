@@ -3,7 +3,7 @@
 # external network. X/IG parsing runs on fixtures/*.html (--from-html); the
 # plain-host path hits a throwaway 127.0.0.1 http.server; exit 3 runs with an
 # empty HOME and a python that cannot import scrapling.
-# Platform guard (gitbash-only): bash + python3 + curl-free; no .ps1 twin needed.
+# Platform guard: bash + python3 + curl-free.
 # ok/bad never fail, so `[ ] && ok || bad` is the if/else it reads as.
 # shellcheck disable=SC2015
 set -uo pipefail

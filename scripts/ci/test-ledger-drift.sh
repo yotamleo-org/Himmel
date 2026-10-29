@@ -20,7 +20,7 @@
 #   LD5d a [FLAKE] line counts like a [PASS] line
 #   LD6  the workflow runs it on a schedule, never on pull_request or push
 #
-# Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
+# Platform guard: bash-only; Linux CI is the caller.
 #
 # Usage: bash scripts/ci/test-ledger-drift.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.
