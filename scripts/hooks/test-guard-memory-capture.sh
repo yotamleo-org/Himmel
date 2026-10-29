@@ -667,10 +667,16 @@ assert_contains "N4 notice calls the ceiling himmel's routing rule" "routing rul
 rm -rf "$SB/n5link"; ln -s "$N2" "$SB/n5link"
 out="$(MEMDIR="$SB/n5link" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
 assert_contains "N5 a symlinked memory dir still reports topic-cap" "topic-cap"
+case "$out" in *"Do NOT append"*) echo "FAIL N5b a topic-only notice tells the agent not to append index lines"; FAILED=1 ;; *) echo "PASS N5b a topic-only notice leaves the index instruction out" ;; esac
 rm -f "$N2/big.md" "$SB/n5link"
 { i=0; while [ "$i" -lt 200 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; printf 'prose last'; } > "$N2/MEMORY.md"
 out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
 assert_contains "N6 a 201st line without a trailing newline prints load-limit" "load-limit"
+assert_contains "N6b an index violation still carries the index instruction" "Do NOT append"
+printf -- '- a\n- b\n' > "$N2/MEMORY.md"
+out="$(MEMORY_LOAD_LINES=1 MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N7 a configured load threshold is reported as the notice threshold" "notice threshold of 1 lines"
+case "$out" in *"loads only the first 1 "*) echo "FAIL N7 a configured threshold is presented as the harness limit"; FAILED=1 ;; *) echo "PASS N7 a configured threshold is not presented as the harness limit" ;; esac
 
 # --- pin: guard, notice, Bash re-check and audit share the defaults
 BASHCHK="$(cd "$(dirname "$0")" && pwd)/memory-bash-line-check.sh"

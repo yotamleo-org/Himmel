@@ -114,7 +114,7 @@ if [ "$over_ceil" -eq 1 ]; then
     printf -- '- line-ceiling: %s pointer lines (ceiling %s). That ceiling is himmel'"'"'s routing rule (one routing line per theme), not the harness load limit: it keeps the index small enough to route.\n' "$n" "$LINE_CEIL"
 fi
 if [ "$over_load" -eq 1 ]; then
-    printf -- '- load-limit: MEMORY.md is %s lines / %s bytes; the harness loads only the first %s lines or ~25 KB (%s bytes), so the lines after that are not loaded at all.\n' "$idx_lines" "$idx_bytes" "$LOAD_LINES" "$BUDGET"
+    printf -- '- load-limit: MEMORY.md is %s lines / %s bytes, past the notice threshold of %s lines / %s bytes; the harness loads only about the first 200 lines or 25 KB of an index, so lines past that are not loaded.\n' "$idx_lines" "$idx_bytes" "$LOAD_LINES" "$BUDGET"
 fi
 if [ "$k" -gt 0 ]; then
     printf -- '- line-too-long: %s pointer line(s) exceed %s chars (line%s %s).\n' "$k" "$LINE_MAX" "$([ "$k" -gt 1 ] && printf s)" "$lines"
@@ -124,6 +124,10 @@ if [ "$n_topic" -gt 0 ]; then
 fi
 printf '\nfile: %s\n' "$idx"
 printf 'guard-memory-capture.sh only sees Write/Edit; a heredoc, sed or script write reaches the file unseen, so this reads the files itself.\n'
-printf 'Tell the operator in your first reply. Do NOT append more index lines; evict facts to their theme topic files (himmel-ops:memory-compound).\n'
+printf 'Tell the operator in your first reply.'
+if [ "$over_ceil" -eq 1 ] || [ "$k" -gt 0 ] || [ "$over_load" -eq 1 ]; then
+    printf ' Do NOT append more index lines; evict facts to their theme topic files (himmel-ops:memory-compound).'
+fi
+printf '\n'
 printf '</system-reminder>\n'
 exit 0

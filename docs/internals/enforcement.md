@@ -2155,8 +2155,9 @@ a write.
 the cap.
 
 **Capture log.** Every row carries `session_id` (the payload's, empty when
-absent); deny and warn rows also carry `old` and `new` (pointer lines for the
-index rules, bytes for `topic-cap`).
+absent); deny and warn rows also carry `old` and `new` when both sizes are known
+(pointer lines for the index rules, bytes for `topic-cap`). A `topic-cap-undecidable`
+warn row omits them.
 
 Fires on Edit/Write/MultiEdit/NotebookEdit, scoped to the Claude Code
 auto-memory store (`*/.claude/projects/*/memory/*`). The always-loaded
