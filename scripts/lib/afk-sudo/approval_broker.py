@@ -170,8 +170,20 @@ class Broker:
             self._sender_ok(rid, sender, chat, meta)
             if t < s["locked_until"]:
                 self._refuse("code-check", "locked", meta, id=rid)
+            seed = open(self.seed_path).read().strip()
+            step = int(t // STEP_S)
+            hit = None
+            if re.fullmatch(r"[0-9]{%d}" % DIGITS, code or ""):
+                for cand in (step - 1, step):
+                    if hmac.compare_digest(totp(seed, cand), code):
+                        hit = cand
+            # A valid code sent to an expired or unknown id is spent all the
+            # same, so it can never approve the next request.
+            spend = hit is not None and hit > s["last_step"]
             if p and p["id"] == rid and t > p["expires"]:
                 self._expire(s, t)
+                if spend:
+                    s["last_step"] = hit
                 self._save(s)
                 self._refuse("code-check", "expired", meta, id=rid)
             self._expire(s, t)
@@ -180,15 +192,10 @@ class Broker:
                 if p:
                     self._finish(s, p["id"], "burned")
                     s["pending"] = None
+                if spend:
+                    s["last_step"] = hit
                 self._save(s)
                 self._refuse("code-check", "no-pending", meta, id=rid)
-            seed = open(self.seed_path).read().strip()
-            step = int(t // STEP_S)
-            hit = None
-            if re.fullmatch(r"\d{%d}" % DIGITS, code or ""):
-                for cand in (step - 1, step):
-                    if hmac.compare_digest(totp(seed, cand), code):
-                        hit = cand
             if hit is None or hit <= s["last_step"]:
                 result = "no-code" if not code else "replay" if hit is not None else "wrong-code"
                 if result != "replay":

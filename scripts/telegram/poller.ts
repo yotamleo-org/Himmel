@@ -435,7 +435,8 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
 // afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
 export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean };
-const afkSudoConsumed = (auto: AutoGate | undefined, msg: DeliveredMsg): boolean => auto?.afkSudo?.(msg) === true;
+// Under lockdown the line is not consumed: it falls through to the lockdown policy, which drops it.
+const afkSudoConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean => !lockdownEnabled(root) && auto?.afkSudo?.(msg) === true;
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -600,7 +601,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // `model:`-prefixed message from a member is answered, just not re-modelled).
   // An afk-sudo approve/deny line is consumed before anything else can queue it,
   // so its TOTP code never reaches an inbox or a run.
-  if (afkSudoConsumed(auto, msg)) return;
+  if (afkSudoConsumed(root, auto, msg)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;

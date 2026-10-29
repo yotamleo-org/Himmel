@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$session" ] && [ -n "$ticket" ] && [ $# -gt 0 ] || usage
 
-field() { printf '%s\n' "$2" | sed -n "s/^result=[^ ]* .*\\b$1=\\([^ ]*\\).*/\\1/p" | head -1; }
+field() { printf '%s\n' "$2" | sed -n "s/^result=[^ ]* \\(.* \\)\\{0,1\\}$1=\\([^ ]*\\).*/\\2/p" | head -1; }
 
 if ! out=$(sudo -n "$HELPER" request --session "$session" --ticket "$ticket" --cwd "$PWD" -- "$@" 2>&1); then
     printf 'afk-sudo-request: refused: %s\n' "${out:-helper not installed}" >&2

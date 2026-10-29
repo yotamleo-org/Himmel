@@ -716,15 +716,23 @@ now_ts=$(date -u +%FT%TZ)
     printf '{"argv": ["/usr/bin/systemctl", "restart", "x.service"], "event": "run", "exit": 0, "id": "aaaaaaaa", "result": "ran", "session": "S1", "ticket": "HIMMEL-1", "ts": "%s"}\n' "$now_ts"
     printf '{"event": "request", "id": "bbbbbbbb", "result": "pending", "ts": "%s"}\n' "$now_ts"
     printf '{"event": "code-check", "id": "bbbbbbbb", "result": "wrong-code", "ts": "%s"}\n' "$now_ts"
+    printf '{"event": "request", "id": "dddddddd", "result": "pending", "ts": "%s"}\n' "$now_ts"
+    printf '{"event": "expire", "id": "dddddddd", "result": "expired", "ts": "%s"}\n' "$now_ts"
+    printf '{"event": "code-check", "id": "dddddddd", "result": "expired", "ts": "%s"}\n' "$now_ts"
+    printf '{"argv": ["/usr/bin/echo", "a b"], "event": "run", "exit": 0, "id": "eeeeeeee", "result": "ran", "ts": "%s"}\n' "$now_ts"
     printf '{"event": "request", "id": "cccccccc", "result": "pending", "ts": "2020-01-01T00:00:00Z"}\n'
 } > "$AS_LEDGER"
-report=$(AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "the AFK sudo section has its heading" "## AFK sudo approvals" "$report"
-assert_contains "requests inside 24 h are counted, older ones are not" "**2 requests** in the last 24 h: approved 1, wrong-code 1." "$report"
+assert_contains "requests inside 24 h are counted once each, older ones are not" "**3 requests** in the last 24 h: approved 1, expired 1, wrong-code 1." "$report"
 # shellcheck disable=SC2016  # the backticks are literal report text
 assert_contains "a run line carries its argv and exit status" '`aaaaaaaa` /usr/bin/systemctl restart x.service, exit 0 (session S1, ticket HIMMEL-1)' "$report"
+# shellcheck disable=SC2016  # the backticks are literal report text
+assert_contains "an argument with a space keeps its boundary" "\`eeeeeeee\` /usr/bin/echo 'a b', exit 0" "$report"
+runlines=$(printf '%s\n' "$report" | grep -c '^- .* exit ')
+if [ "$runlines" = 2 ]; then pass "one run line per run event, none for bbbbbbbb"; else fail "one run line per run event, none for bbbbbbbb" "$runlines"; fi
 : > "$AS_LEDGER"
-report=$(AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "an empty window renders None" "no AFK sudo request in the last 24 h" "$report"
 
 # Summary --------------------------------------------------------------

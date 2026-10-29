@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeAfkSudoGate, parseAfkSudo, type AfkSudoDeps } from "./afk-sudo-route";
@@ -105,6 +105,19 @@ test("handleInbound: a consumed approve line is never appended to an inbox or ru
   await handleInbound(r, dm("approve abcdefgh 123456"), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
   await settle();
   expect(calls.length).toBe(1);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+});
+
+test("handleInbound: under lockdown an approve line never reaches the helper", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  writeFileSync(join(r, "lockdown"), "locked\n");
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps) };
+  await handleInbound(r, dm("approve abcdefgh 123456"), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
+  await settle();
+  expect(calls.length).toBe(0);
   expect(ran).toEqual([]);
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });

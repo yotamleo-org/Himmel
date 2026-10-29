@@ -470,7 +470,7 @@ sec_afk_sudo() {
     [ -e "$ledger" ] || return 0
     # shellcheck disable=SC2016  # a python program; its backticks are markdown
     out="$(python3 -I -c '
-import calendar, json, sys, time
+import calendar, json, shlex, sys, time
 from collections import Counter
 since = time.time() - 86400
 rows = []
@@ -485,11 +485,13 @@ if not rows:
     print("_None — no AFK sudo request in the last 24 h._")
     sys.exit()
 n = sum(1 for r in rows if r.get("event") == "request")
-tally = Counter(r.get("result") for r in rows if r.get("result") not in ("pending", "ran"))
+# An approve after expiry logs an expire row and an expired code-check: count it once.
+tally = Counter(r.get("result") for r in rows if r.get("result") not in ("pending", "ran")
+                and not (r.get("event") == "code-check" and r.get("result") == "expired"))
 print("**%d requests** in the last 24 h: %s." % (n, ", ".join("%s %d" % kv for kv in sorted(tally.items())) or "no outcome yet"))
 for r in rows:
     if r.get("event") == "run":
-        print("- %s `%s` %s, exit %s (session %s, ticket %s)" % (r["ts"], r.get("id"), " ".join(r.get("argv", [])), r.get("exit"), r.get("session"), r.get("ticket")))
+        print("- %s `%s` %s, exit %s (session %s, ticket %s)" % (r["ts"], r.get("id"), shlex.join(r.get("argv", [])), r.get("exit"), r.get("session"), r.get("ticket")))
 ' "$ledger" 2>/dev/null)" || out="_afk-sudo ledger unavailable._"
     printf '## AFK sudo approvals\n\n%s' "$out"
 }

@@ -20,6 +20,11 @@ fail() { printf '  FAIL  %s\n' "$1"; [ -n "${2:-}" ] && printf '        got: %s\
 assert_contains() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "$3" ;; esac; }
 assert_absent() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
 
+# The helper honours AFK_SUDO_ROOT only for a non-root euid, and refuses a
+# group- or world-writable tree, so neither may come from the caller.
+[ "$(id -u)" -ne 0 ] || { echo "FAIL: run as a non-root user (as root the helper reads the real /etc/himmel)"; exit 1; }
+umask 022
+
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/afk-sudo-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 
@@ -45,7 +50,7 @@ approve() { printf '%s\n' "$3" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) py
 # code <now-offset>: the TOTP the operator's authenticator shows at that time.
 code() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; print(b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' "$LIB" "$R/etc/himmel/afk-sudo/totp.seed" $((T0 + $1)); }
 req() { h "$1" request --session S1 --ticket HIMMEL-8066 --cwd /work -- systemctl restart himmel-test.service; }
-rid() { printf '%s\n' "$1" | sed -n 's/.*\bid=\([a-z2-7]*\).*/\1/p' | head -1; }
+rid() { printf '%s\n' "$1" | sed -n 's/^result=[^ ]* id=\([a-z2-7]*\).*/\1/p' | head -1; }
 ledger() { cat "$R/var/log/himmel/afk-sudo.jsonl" 2>/dev/null; }
 runs() { wc -l < "$R/ran.log" | tr -d ' '; }
 
@@ -108,6 +113,25 @@ out=$(req 100); id=$(rid "$out")
 out=$(approve 221 "$id" "$(code 221)")
 assert_contains "an id past the 2-minute window denies" "result=expired" "$out"
 assert_contains "no denied case ran the command" "0" "$(runs)"
+
+echo "== a valid code refused before its check is spent =="
+new_root spend
+out=$(req 0); id=$(rid "$out")
+out=$(approve 125 "$id" "$(code 125)")
+assert_contains "a valid code on an expired id denies" "result=expired" "$out"
+out=$(req 126); id=$(rid "$out")
+out=$(approve 127 "$id" "$(code 125)")
+assert_contains "the code sent to the expired id cannot approve the next request" "result=replay" "$out"
+out=$(req 200); id=$(rid "$out")
+out=$(approve 201 zzzzzzzz "$(code 201)")
+assert_contains "a valid code on an unknown id denies" "result=no-pending" "$out"
+out=$(req 202); id=$(rid "$out")
+out=$(approve 203 "$id" "$(code 201)")
+assert_contains "the code sent to the unknown id cannot approve the next request" "result=replay" "$out"
+assert_contains "no spent code ran the command" "0" "$(runs)"
+out=$(req 300); id=$(rid "$out")
+out=$(approve 301 "$id" "١٢٣٤٥٦")
+assert_contains "a code in non-ASCII digits is a wrong code, logged" "result=wrong-code" "$out"
 
 echo "== only the operator can approve; deny works =="
 new_root sender
