@@ -11,8 +11,8 @@
 #   --dry-run       list the cases (a sealed case by id only), the listing size and the call; no call
 #   --seed-broken   render the listing with B carrying A's description (listing.mjs): the control
 #   --max-usd       per-call budget, passed as --max-budget-usd (default 0.10)
-#   --ceiling-usd   stop before the next call once <out> has spent this much (default 5; three
-#                   models stay under $15)
+#   --ceiling-usd   stop before a call whose --max-usd would take <out>'s spend past this
+#                   (default 5; three models stay under $15)
 # The child runs from an empty scratch cwd with --setting-sources project, --tools "",
 # --strict-mcp-config and --disable-slash-commands, so it sees only the listing text: no
 # CLAUDE.md, hooks, memory, skills or MCP servers. Before each call usage-preflight must print
@@ -158,8 +158,8 @@ errored=0
 while IFS=$'\t' read -r cid half req ctx; do
     [ -f "$out/$cid.json" ] && continue
     s="$(spent)" || { echo "run.sh: cannot sum the spend before $cid - stopped" >&2; exit 3; }
-    if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)' "$s" "$ceiling"; then
-        echo "run.sh: spent \$$s, ceiling \$$ceiling reached before $cid - stopped" >&2
+    if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) + float(sys.argv[2]) > float(sys.argv[3]) else 1)' "$s" "$max_usd" "$ceiling"; then
+        echo "run.sh: spent \$$s, a \$$max_usd call would cross the ceiling \$$ceiling before $cid - stopped" >&2
         exit 3
     fi
     if ! pf="$(bash "$PREFLIGHT" 2>&1)" || ! grep -qx PROCEED <<<"$pf"; then

@@ -101,6 +101,7 @@ EOF
 chmod +x "$TMP/claude"
 # shellcheck disable=SC2016  # the stub expands STUB_BANK when it runs
 printf '#!/usr/bin/env bash\n[ "${STUB_BANK:-}" = 1 ] && echo SKIPPED-BANK || echo PROCEED\n' >"$TMP/preflight"
+unset STUB_ERROR STUB_NOCOST STUB_BANK
 export RT_CLAUDE="$TMP/claude" RT_PREFLIGHT="$TMP/preflight" STUB_LOG="$TMP/calls.log"
 export RT_REPO="$FIX/repo" RT_INVENTORY="$FIX/inventory.json" RT_CASES="$FIX/cases"
 fix_sha() { cat "$FIX"/repo/.claude/skills/*/SKILL.md "$FIX"/repo/.claude/agents/*.md | sha256sum; }
@@ -147,8 +148,8 @@ printf '%s\n' '{"subtype": "success", "result": "{\"pick\": \"brew-coffee\"}\n{\
 python3 "$HERE/score.py" score --cases "$FIX/cases" --listing "$TMP/base/listing.json" --outputs "$TMP/two" --only o01 \
     --json "$TMP/two/results.json" --no-ledger >/dev/null
 eq "score: the first of two picks is the one scored" "$(metric "$TMP/two/results.json" accuracy)" "1.0"
-eq "ceiling: stops before the call that would cross it" "$(bash "$RUN" --model haiku --out "$TMP/ceil" --ceiling-usd 0.0025 --no-ledger >/dev/null 2>&1; echo $?)" "3"
-eq "ceiling: three calls made before the stop" "$(find "$TMP/ceil" -name '[os][0-9]*.json' | wc -l | tr -d ' ')" "3"
+eq "ceiling: stops before the call whose cap would cross it" "$(bash "$RUN" --model haiku --out "$TMP/ceil" --max-usd 0.001 --ceiling-usd 0.0025 --no-ledger >/dev/null 2>&1; echo $?)" "3"
+eq "ceiling: two calls made before the stop" "$(find "$TMP/ceil" -name '[os][0-9]*.json' | wc -l | tr -d ' ')" "2"
 : >"$TMP/calls.log"
 eq "preflight: a bank refusal stops the run" "$(STUB_BANK=1 bash "$RUN" --model haiku --out "$TMP/bank" --no-ledger >/dev/null 2>&1; echo $?)" "3"
 eq "preflight: no call after a bank refusal" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "0"
