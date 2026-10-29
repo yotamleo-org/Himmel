@@ -235,6 +235,43 @@ revert: the record's `reason` names the first failing check (unmeasured test,
 insufficient train or test gain, or unmeasured/excessive noise), beside the
 test before/after/delta, noise and `min_gain`.
 
+## routing: which skill, command, agent or MCP tool a model picks
+
+```bash
+bash scripts/eval/routing/run.sh --model haiku --dry-run                  # list the cases, no call
+HIMMEL_BILLED_OK=1 bash scripts/eval/routing/run.sh --model haiku --out D  # billed: one claude -p per case
+node scripts/eval/routing/listing.mjs --json >/tmp/listing.json && python3 scripts/eval/routing/score.py lint --listing /tmp/listing.json
+```
+
+`routing/cases/open.jsonl` and `sealed.jsonl` hold 47 cases mined from real
+misroutes and session picks: request, context, the expected pick (or `none`),
+near picks and a source line. `listing.mjs` renders the listing a model sees:
+the repo's and the `inventory.json` plugins' skills, commands and agents, the
+himmel-bus MCP tools, and the frozen entries of `external.json` that himmel
+does not own. `run.sh` gives each case to `claude -p` with that listing as the
+system prompt, no tools and an empty cwd, and keeps the JSON envelope.
+`score.py` scores the first pick as exact, near, miss or false, and writes
+`results.json`, a per-case `table.md` and one `routing` ledger row with
+per-case `exact` and `false_pick`. Every metric also comes as `open.*` and
+`sealed.*`; tuning reads the open half only. Spend is capped at $0.10 a call
+(`--max-usd`) and $5 a run (`--ceiling-usd`). `--seed-broken A,B` gives B the
+description of A in the rendered listing only, the eval's broken control;
+`test-score.sh` proves that control drops sealed accuracy by 25 points on a
+fixture with a stub model.
+
+Baseline (2026-10-29, listing of 155 entries, about 4,700 tokens;
+`routing/results/`):
+
+| model | accuracy | open | sealed | near | false pick | cost |
+|---|---|---|---|---|---|---|
+| haiku | 0.81 | 0.87 | 0.75 | 0.15 | 0.04 | $0.01 |
+| sonnet | 0.85 | 0.96 | 0.75 | 0.15 | 0.00 | $0.20 |
+| opus | 0.91 | 0.96 | 0.88 | 0.09 | 0.00 | $0.39 |
+
+**ponytail:** the listing renders every description uncapped, as an operator
+session sees it; upgrade: a `--profile` flag that applies a launch profile's
+name-only overrides and lists MCP tools by name until ToolSearch.
+
 ## lane-quality: repeats and judge calibration
 
 `run.sh run --reps N` runs the task set N times into one run dir. `table`

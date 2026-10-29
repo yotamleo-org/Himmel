@@ -1167,3 +1167,4 @@ scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C8
 scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
 scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
+scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
