@@ -12,6 +12,10 @@ GEN="$SCRIPT_DIR/../agents-md/generate.mjs"
 if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails/lib.sh"; } 2>/dev/null; then
     echo "→ agents-md-fresh: cannot source guardrails/lib.sh — fail-closed" >&2; exit 2
 fi
+# shellcheck disable=SC1091
+if ! { [ -r "$SCRIPT_DIR/../lib/prim.sh" ] && . "$SCRIPT_DIR/../lib/prim.sh"; } 2>/dev/null; then
+    echo "→ agents-md-fresh: cannot source lib/prim.sh — fail-closed" >&2; exit 2
+fi
 rc=0; is_himmel_dev_repo || rc=$?
 [ "$rc" -eq 2 ] && { echo "→ agents-md-fresh: cannot resolve repo root — fail-closed" >&2; exit 2; }
 [ "$rc" -eq 1 ] && exit 0   # not a himmel-dev checkout → no-op (mirrors doc-guard)
@@ -38,7 +42,7 @@ fi
 # — NOT the working tree. A partial `git add CLAUDE.md` (without the regenerated
 # AGENTS.md) must be caught even when the working tree happens to be consistent.
 # Index path specs (`:path`) are repo-root-relative regardless of cwd.
-tmpd=$(mktemp -d) || { echo "→ agents-md-fresh: mktemp failed — fail-closed" >&2; exit 2; }
+tmpd=$(tmpdir) || { echo "→ agents-md-fresh: mktemp failed — fail-closed" >&2; exit 2; }
 trap 'rm -rf "$tmpd"' EXIT
 
 if ! git show ":CLAUDE.md" > "$tmpd/CLAUDE.md" 2>/dev/null; then

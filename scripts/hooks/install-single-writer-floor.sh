@@ -86,6 +86,7 @@ fi
 exec bash "$target" "$@"
 HOOK
 chmod +x "$tmp" && [ -x "$tmp" ] || { rm -f "$tmp"; die "cannot make the pre-push hook executable"; }
+# prim-ok: atomic_write publishes a private 0600 file, but git skips a non-executable hook, so the shim must be chmod +x and verified BEFORE the rename (a push in the window would run unprotected)
 mv -f "$tmp" "$hooks_dir/pre-push" || { rm -f "$tmp"; die "cannot move the hook into place at $hooks_dir/pre-push"; }
 echo "install-single-writer-floor: pre-push floor installed at $hooks_dir/pre-push"
 
