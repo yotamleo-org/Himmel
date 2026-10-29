@@ -32,8 +32,8 @@ export type AfkSudoDeps = {
 export function parseAfkSudo(text: string): AfkSudoLine | null {
   const m = LINE.exec(text);
   if (!m) return null;
+  // Anything after the id is the code; the helper refuses one that is not six digits.
   const rest = m[3].replace(/\s+/g, "");
-  if (rest && !/^\d+$/.test(rest)) return null;
   return { verb: m[1].toLowerCase() as "approve" | "deny", id: m[2].toLowerCase(), code: m[1].toLowerCase() === "approve" ? rest : "" };
 }
 

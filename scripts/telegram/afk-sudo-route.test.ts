@@ -43,6 +43,13 @@ test("the operator's typed DM approve reaches the helper with the code on stdin,
   expect(replies[0]).toContain("result=ran");
 });
 
+test("an approve line with trailing words is consumed, so the code never reaches a session", async () => {
+  const { deps, calls } = fake();
+  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh 123456 please"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456please\n" }]);
+});
+
 test("deny reaches the helper with an empty stdin", async () => {
   const { deps, calls } = fake();
   expect(makeAfkSudoGate(deps)(dm("deny abcdefgh"))).toBe(true);

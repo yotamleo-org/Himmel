@@ -58,7 +58,12 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     st=$(sudo -n "$HELPER" status "$id" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p')
     case "$st" in
         pending | running) sleep 3 ;;
-        ran:*) echo "afk-sudo-request: request $id ran, exit ${st#ran:}"; exit "${st#ran:}" ;;
+        ran:*)
+            n=${st#ran:}
+            echo "afk-sudo-request: request $id ran, exit $n"
+            # A signal-killed command reports -N; exit with the shell's 128+N.
+            [ "$n" -ge 0 ] || n=$((128 - n))
+            exit "$n" ;;
         denied* | burned) echo "afk-sudo-request: request $id denied ($st)" >&2; exit 3 ;;
         expired) echo "afk-sudo-request: request $id expired" >&2; exit 4 ;;
         *) echo "afk-sudo-request: request $id status '$st'" >&2; exit 5 ;;
