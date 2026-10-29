@@ -71,8 +71,9 @@ Claude, and automatic charts for MCP results that are metrics over time".
   Claude Code mechanism, not tested against this tool.
 
 `bash scripts/himmel-doctor.sh --only C82` lists every MCP server entry with its
-source layer: user config (`~/.claude.json` `mcpServers`), project `.mcp.json`, an
-enabled plugin's `.mcp.json`, the himmel lane catalog (`scripts/lanes/plugin-profiles.json`
+source layer: user config (`~/.claude.json` `mcpServers`), the local project config
+(`~/.claude.json` `projects.<this repo>.mcpServers`), project `.mcp.json`, an
+enabled plugin's `.mcp.json` (the version `installed_plugins.json` pins), the himmel lane catalog (`scripts/lanes/plugin-profiles.json`
 `mcpCatalog`) and runtime built-ins such as easel. It reads key names only, never a value.
 
 ## Tasks and elicitation (protocol 2026-07-28)
