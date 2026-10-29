@@ -17,6 +17,8 @@ import { GROUP_ANONYMOUS_BOT_ID, isAllowed, type Access } from "./gate";
 
 export const AFK_SUDO_HELPER = "/usr/local/libexec/himmel/afk-sudo";
 const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
+// An approve with a malformed id but a code-shaped run of six digits.
+const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
 export type AfkSudoMsg = { from: number; chat_id: number; text: string; forwarded?: boolean; caption?: boolean };
@@ -48,7 +50,14 @@ export function makeAfkSudoGate(deps: AfkSudoDeps): (msg: AfkSudoMsg) => boolean
   return (msg) => {
     if (!deps.installed()) return false;
     const line = parseAfkSudo(msg.text);
-    if (!line) return false;
+    if (!line) {
+      if (!MALFORMED.test(msg.text)) return false;
+      deps.log("[afk-sudo] approve with a malformed id consumed");
+      if (eligible(deps.access(), msg)) {
+        void deps.reply(msg.chat_id, "⚠️ afk-sudo: the id is not 8 letters, nothing ran").catch(() => {});
+      }
+      return true;
+    }
     if (!eligible(deps.access(), msg)) {
       deps.log(`[afk-sudo] ${line.verb} ${line.id} refused: not a typed message in the operator's private chat`);
       return true;

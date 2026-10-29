@@ -50,6 +50,17 @@ test("an approve line with trailing words is consumed, so the code never reaches
   expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456please\n" }]);
 });
 
+test("an approve line with a mistyped id and a code is consumed, and never reaches the helper or a session", async () => {
+  for (const text of ["approve abcdefg 123456", "approve abcdefghi 123 456", "approve abc-defgh 123456"]) {
+    const { deps, calls, replies } = fake();
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(replies[0]).toContain("nothing ran");
+  }
+  expect(makeAfkSudoGate(fake().deps)(dm("approve PR 4204"))).toBe(false);
+});
+
 test("deny reaches the helper with an empty stdin", async () => {
   const { deps, calls } = fake();
   expect(makeAfkSudoGate(deps)(dm("deny abcdefgh"))).toBe(true);
