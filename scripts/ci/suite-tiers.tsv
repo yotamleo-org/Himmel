@@ -213,6 +213,7 @@ scripts/cr/test-cr-guarded-closure.sh	pr	catch:2878
 scripts/cr/test-cr-pending-audit.sh	pr	trust-path
 scripts/cr/test-cr-round-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-cr-scores.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-cr-thread-recorder.sh	pr	trust-path
 scripts/cr/test-cr-tune.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-first-pass-claude.sh	local	new since the audit, behaviour suite
 scripts/cr/test-critic-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1167,3 +1168,4 @@ scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
 scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
 scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
+scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role, HIMMEL-8061

@@ -57,6 +57,8 @@
 ^scripts/cr/(write-verdicts|ledger-append|d1-verdict|triviality-gate|known-findings|residue-scan|orphan-check|review-round|base-resolver|install-cr-gate|cr-pending-audit|cr-reset|pr-check-|emit-gate-fail|failure-classify|lane-classify|handover-bridge|claude-floor|critics\.json|file-deferred-issues|live-gate-e2e)
 # The writer of the Dependabot review row the merge gate reads.
 ^scripts/cr/dependabot-go\.sh$
+# The CodeRabbit thread recorder merge-on-green.sh runs after a merge.
+^scripts/cr/cr-thread-recorder\.sh$
 # Hook config files outside the audited dirs.
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$

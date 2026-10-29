@@ -912,6 +912,10 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       if(spec.disposition_round) rec.disposition_round=Number(spec.disposition_round);
       else if(spec.verdict&&spec.round) rec.disposition_round=Number(spec.round);
       if(spec.disposition_severity) rec.disposition_severity=spec.disposition_severity;
+      // cr-thread-recorder.sh rows: the PR, the producer tag and the GitHub thread id.
+      if(spec.pr&&Number.isInteger(Number(spec.pr))) rec.pr=Number(spec.pr);
+      if(spec.source) rec.source=cleanFree(spec.source);
+      if(spec.thread_id) rec.thread_id=cleanFree(spec.thread_id);
       if(spec.text){
         const fullText=scrubSecrets(String(spec.text).replace(/[\r\n]/g," "));
         rec.fingerprint=findingFingerprint(spec.model,spec.file,fullText);

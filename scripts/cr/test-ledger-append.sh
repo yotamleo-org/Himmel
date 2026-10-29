@@ -1153,6 +1153,21 @@ check "batch mode scrubs a secret in text" "$(L="$BFT" node -e 'const o=require(
 check "batch mode scrubs a token split across an embedded newline" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-5");console.log(o.text.includes("apikeyvalue1234567890")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 check "batch mode scrubs a token split across a lone carriage return" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-6");console.log(o.text.includes("zxywvutsrqponmlkjihg")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 
+# A batch row may carry the PR number, a source tag and an external thread id
+# (cr-thread-recorder.sh writes its CodeRabbit rows this way); they land on the
+# row, and an identical repeat stays a quiet no-op.
+BFP="$tmp/batch-thread.jsonl"; : > "$BFP"
+BFPF="$tmp/batch-thread-rows.jsonl"
+printf '{"branch":"b","head":"%s","model":"coderabbit","id":"cr-thread-1","severity":"imp","file":"f","line":1,"verdict":"fixed","pr":4196,"thread_id":"PRRT_x1","source":"cr-thread-recorder"}\n' "$BHEAD" > "$BFPF"
+CR_LEDGER="$BFP" bash "$LA" finding --batch-file "$BFPF" 2>/dev/null
+check "batch row with pr/thread_id/source exits 0" "$?" "0"
+check "batch row keeps pr, thread_id and source" "$(L="$BFP" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="cr-thread-1");console.log(o.pr+","+o.thread_id+","+o.source)')" "4196,PRRT_x1,cr-thread-recorder"
+CR_LEDGER="$BFP" bash "$LA" finding --batch-file "$BFPF" 2>/dev/null
+check "an identical thread row repeated is a quiet no-op" "$?:$(wc -l < "$BFP" | tr -d ' ')" "0:1"
+printf '{"branch":"b","head":"%s","model":"coderabbit","id":"cr-thread-2","severity":"imp","file":"f","line":2,"verdict":""}\n' "$BHEAD" > "$BFPF"
+CR_LEDGER="$BFP" bash "$LA" finding --batch-file "$BFPF" 2>/dev/null
+check "a batch row without them gets none of the three keys" "$(L="$BFP" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="cr-thread-2");console.log(("pr" in o)+","+("thread_id" in o)+","+("source" in o))')" "false,false,false"
+
 # Fingerprint the complete claim before the 500-character display
 # cap. Claims whose persisted text is identical but whose suffix differs must
 # not collide. Single-row and batch writers must derive the same fingerprint.
