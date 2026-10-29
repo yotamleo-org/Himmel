@@ -11,8 +11,8 @@ Inputs. cases/open.jsonl and cases/sealed.jsonl hold one case per line: id, spli
 file's half), request, context, expect (a listed name, or "none" when no entry should be
 used), near (listed names that count as a near pick) and source (where the case was mined).
 --listing is `listing.mjs --json`: the names a pick is checked against, its sha and tokens.
-<outputs>/<id>.json is the `claude -p --output-format json` envelope for that case; its
-result text carries {"pick": "<name>" | "none"}.
+<outputs>/<id>.json is the JSON result envelope run.sh kept for that case; its result
+text carries {"pick": "<name>" | "none"}.
 
 Outcome per case: exact (the expected pick, or none when none was expected), near (a listed
 near name), miss (none when an entry was expected), false (any other pick, an unlisted name

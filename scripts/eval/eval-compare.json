@@ -19,6 +19,13 @@
       "cost_per_accepted": {"higher_is_better": false}
     }
   },
+  "routing": {
+    "*accuracy": {"higher_is_better": true, "band": 0.05},
+    "*false_pick_rate": {"higher_is_better": false, "band": 0.05},
+    "unscored": {"higher_is_better": false, "band": 0},
+    "cost_usd": {"higher_is_better": false, "band_rel": 0.5},
+    "_cases": {"exact": {"higher_is_better": true}, "false_pick": {"higher_is_better": false}}
+  },
   "review-panel": {
     "_cases": {"hit": {"higher_is_better": true}, "fp": {"higher_is_better": false}}
   },

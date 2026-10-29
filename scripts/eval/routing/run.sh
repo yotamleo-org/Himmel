@@ -108,7 +108,7 @@ for line in open(sys.argv[4], encoding="utf-8"):
     cid, half, req, ctx = line.rstrip("\n").split("\t")
     print("%s %-6s %s" % (cid, half, req if half == "open" else "(sealed)"))' \
         "$scratch/listing.json" "$model" "$lsha" "$scratch/cases.tsv"
-    echo "call per case: $CLAUDE_BIN -p <case> --model $model --system-prompt <listing $psha> --tools \"\" --permission-mode dontAsk --max-budget-usd $max_usd (ceiling \$$ceiling)"
+    echo "per case: one $model call, system prompt $psha, no tools, permission mode dontAsk, budget \$$max_usd (run ceiling \$$ceiling)"
     exit 0
 fi
 

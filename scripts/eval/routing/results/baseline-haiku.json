@@ -1,0 +1,395 @@
+{
+  "case_set": "24f510cc0afaf5fc",
+  "cases": [
+    {
+      "expect": "cr-scores",
+      "id": "o01",
+      "outcome": "exact",
+      "pick": "cr-scores",
+      "request": "btw as we used more of code rabbit, what is our CR eval currently?",
+      "split": "open"
+    },
+    {
+      "expect": "cr-learnings-refresh",
+      "id": "o02",
+      "outcome": "exact",
+      "pick": "cr-learnings-refresh",
+      "request": "'~/Downloads/learnings (4).csv' new learnings export from code rabbit, refresh what we know",
+      "split": "open"
+    },
+    {
+      "expect": "afk-shift",
+      "id": "o03",
+      "outcome": "exact",
+      "pick": "afk-shift",
+      "request": "i am going to sleep, continue until 100% usage and drain the 1.1.3 board",
+      "split": "open"
+    },
+    {
+      "expect": "obsidian-triage:watch-youtube",
+      "id": "o04",
+      "outcome": "exact",
+      "pick": "obsidian-triage:watch-youtube",
+      "request": "https://www.youtube.com/watch?v=e_rjzB8rpuI what do we think of the chair if we only watched this video? fetch it using our fetching and analyse",
+      "split": "open"
+    },
+    {
+      "expect": "none",
+      "id": "o05",
+      "outcome": "exact",
+      "pick": "none",
+      "request": "Read ticket HIMMEL-5512 and summarise it in one line.",
+      "split": "open"
+    },
+    {
+      "expect": "obsidian-triage:vault-lint",
+      "id": "o06",
+      "outcome": "exact",
+      "pick": "obsidian-triage:vault-lint",
+      "request": "run a health check on the luna vault and find orphans and broken wikilinks",
+      "split": "open"
+    },
+    {
+      "expect": "himmel-ops:memory-compound",
+      "id": "o07",
+      "outcome": "exact",
+      "pick": "himmel-ops:memory-compound",
+      "request": "the auto-memory is over its size budget, trim it and split the big topic files",
+      "split": "open"
+    },
+    {
+      "expect": "mcp__himmel-bus__read",
+      "id": "o08",
+      "outcome": "exact",
+      "pick": "mcp__himmel-bus__read",
+      "request": "You have unread himmel messages: read them now.",
+      "split": "open"
+    },
+    {
+      "expect": "mcp__himmel-bus__send",
+      "id": "o09",
+      "outcome": "exact",
+      "pick": "mcp__himmel-bus__send",
+      "request": "tell the chief that PR 4100 is merged",
+      "split": "open"
+    },
+    {
+      "expect": "none",
+      "id": "o10",
+      "outcome": "exact",
+      "pick": "none",
+      "request": "explain what set -euo pipefail does in a bash script",
+      "split": "open"
+    },
+    {
+      "expect": "obsidian-triage:luna-ingest",
+      "id": "o11",
+      "outcome": "exact",
+      "pick": "obsidian-triage:luna-ingest",
+      "request": "https://github.com/garrytan/gstack save this repo to luna",
+      "split": "open"
+    },
+    {
+      "expect": "obsidian-triage:grow-feed-log",
+      "id": "o12",
+      "outcome": "exact",
+      "pick": "obsidian-triage:grow-feed-log",
+      "request": "log this from telegram: big tent fed today, 2 ml/L CalMag, pH 6.1, 1.2 EC",
+      "split": "open"
+    },
+    {
+      "expect": "obsidian-triage:luna-upgrade-all",
+      "id": "o13",
+      "outcome": "near",
+      "pick": "luna-upgrade-all",
+      "request": "upgrade all my luna vaults to the current template, dry run first",
+      "split": "open"
+    },
+    {
+      "expect": "himmel-ops:vm",
+      "id": "o14",
+      "outcome": "exact",
+      "pick": "himmel-ops:vm",
+      "request": "start the ubuntu test VM and run the e2e on it",
+      "split": "open"
+    },
+    {
+      "expect": "lean-skills:grilling",
+      "id": "o15",
+      "outcome": "exact",
+      "pick": "lean-skills:grilling",
+      "request": "grill me on this plan before I commit to it",
+      "split": "open"
+    },
+    {
+      "expect": "lean-skills:systematic-debugging",
+      "id": "o16",
+      "outcome": "exact",
+      "pick": "lean-skills:systematic-debugging",
+      "request": "test-merge-on-green fails on CI about one run in five and passes locally, find out why",
+      "split": "open"
+    },
+    {
+      "expect": "check-ci",
+      "id": "o17",
+      "outcome": "false",
+      "pick": "himmel-ops:pr-check",
+      "request": "watch CI on PR 4206 and tell me when it is mergeable",
+      "split": "open"
+    },
+    {
+      "expect": "anthropic-skills:google-workspace",
+      "id": "o18",
+      "outcome": "exact",
+      "pick": "anthropic-skills:google-workspace",
+      "request": "make all of these appointments events in my google calendar",
+      "split": "open"
+    },
+    {
+      "expect": "artifact-design",
+      "id": "o19",
+      "outcome": "exact",
+      "pick": "artifact-design",
+      "request": "make me an HTML page of this plan so it is easy to understand",
+      "split": "open"
+    },
+    {
+      "expect": "mcp__qmd__query",
+      "id": "o20",
+      "outcome": "near",
+      "pick": "qmd:qmd",
+      "request": "find our notes on the overwatch local shader caching",
+      "split": "open"
+    },
+    {
+      "expect": "claude-md-audit",
+      "id": "o21",
+      "outcome": "exact",
+      "pick": "claude-md-audit",
+      "request": "audit the CLAUDE.md I changed before I open the PR",
+      "split": "open"
+    },
+    {
+      "expect": "morning-report",
+      "id": "o22",
+      "outcome": "exact",
+      "pick": "morning-report",
+      "request": "give me this morning's report",
+      "split": "open"
+    },
+    {
+      "expect": "none",
+      "id": "o23",
+      "outcome": "exact",
+      "pick": "none",
+      "request": "how many workers do we have live right now?",
+      "split": "open"
+    },
+    {
+      "id": "s01",
+      "outcome": "exact",
+      "pick": "lean-skills:systematic-debugging",
+      "split": "sealed"
+    },
+    {
+      "id": "s02",
+      "outcome": "exact",
+      "pick": "himmel-ops:pr-check",
+      "split": "sealed"
+    },
+    {
+      "id": "s03",
+      "outcome": "near",
+      "pick": "obsidian-second-brain:x-read",
+      "split": "sealed"
+    },
+    {
+      "id": "s04",
+      "outcome": "near",
+      "pick": "luna-upgrade",
+      "split": "sealed"
+    },
+    {
+      "id": "s05",
+      "outcome": "near",
+      "pick": "telegram-clip",
+      "split": "sealed"
+    },
+    {
+      "id": "s06",
+      "outcome": "false",
+      "pick": "qmd:qmd",
+      "split": "sealed"
+    },
+    {
+      "id": "s07",
+      "outcome": "exact",
+      "pick": "obsidian-triage:luna-ingest",
+      "split": "sealed"
+    },
+    {
+      "id": "s08",
+      "outcome": "exact",
+      "pick": "himmel-ops:chief",
+      "split": "sealed"
+    },
+    {
+      "id": "s09",
+      "outcome": "exact",
+      "pick": "himmel-ops:release-manager",
+      "split": "sealed"
+    },
+    {
+      "id": "s10",
+      "outcome": "exact",
+      "pick": "himmel-ops:effort-assess",
+      "split": "sealed"
+    },
+    {
+      "id": "s11",
+      "outcome": "exact",
+      "pick": "himmel-ops:ticket-standard",
+      "split": "sealed"
+    },
+    {
+      "id": "s12",
+      "outcome": "exact",
+      "pick": "himmel-ops:stuck-playbook",
+      "split": "sealed"
+    },
+    {
+      "id": "s13",
+      "outcome": "exact",
+      "pick": "himmel-ops:fanout",
+      "split": "sealed"
+    },
+    {
+      "id": "s14",
+      "outcome": "exact",
+      "pick": "himmel-ops:minerva",
+      "split": "sealed"
+    },
+    {
+      "id": "s15",
+      "outcome": "exact",
+      "pick": "lean-skills:context7-mcp",
+      "split": "sealed"
+    },
+    {
+      "id": "s16",
+      "outcome": "exact",
+      "pick": "none",
+      "split": "sealed"
+    },
+    {
+      "id": "s17",
+      "outcome": "exact",
+      "pick": "test-audit",
+      "split": "sealed"
+    },
+    {
+      "id": "s18",
+      "outcome": "exact",
+      "pick": "unslop",
+      "split": "sealed"
+    },
+    {
+      "id": "s19",
+      "outcome": "near",
+      "pick": "comment-sicko",
+      "split": "sealed"
+    },
+    {
+      "id": "s20",
+      "outcome": "exact",
+      "pick": "judge",
+      "split": "sealed"
+    },
+    {
+      "id": "s21",
+      "outcome": "near",
+      "pick": "clean_garden",
+      "split": "sealed"
+    },
+    {
+      "id": "s22",
+      "outcome": "exact",
+      "pick": "retitle",
+      "split": "sealed"
+    },
+    {
+      "id": "s23",
+      "outcome": "exact",
+      "pick": "none",
+      "split": "sealed"
+    },
+    {
+      "id": "s24",
+      "outcome": "exact",
+      "pick": "claude-code-guide",
+      "split": "sealed"
+    }
+  ],
+  "ci": {
+    "accuracy": {
+      "hi": 0.8958,
+      "lo": 0.6746
+    },
+    "false_pick_rate": {
+      "hi": 0.1425,
+      "lo": 0.0117
+    },
+    "open.accuracy": {
+      "hi": 0.9546,
+      "lo": 0.6787
+    },
+    "open.false_pick_rate": {
+      "hi": 0.2099,
+      "lo": 0.0077
+    },
+    "sealed.accuracy": {
+      "hi": 0.88,
+      "lo": 0.551
+    },
+    "sealed.false_pick_rate": {
+      "hi": 0.2024,
+      "lo": 0.0074
+    }
+  },
+  "eval": "routing",
+  "listing": {
+    "sha": "0955aade5bc0e90b",
+    "tokens": {
+      "agent": 543,
+      "mcp": 143,
+      "owned": 3960,
+      "skill": 4026,
+      "total": 4711
+    }
+  },
+  "metrics": {
+    "accuracy": 0.8085,
+    "cost_usd": 0.0123,
+    "false_pick_rate": 0.0426,
+    "miss_rate": 0.0,
+    "n": 47,
+    "near_rate": 0.1489,
+    "open.accuracy": 0.8696,
+    "open.false_pick_rate": 0.0435,
+    "open.miss_rate": 0.0,
+    "open.n": 23,
+    "open.near_rate": 0.087,
+    "open.unlisted_picks": 0,
+    "sealed.accuracy": 0.75,
+    "sealed.false_pick_rate": 0.0417,
+    "sealed.miss_rate": 0.0,
+    "sealed.n": 24,
+    "sealed.near_rate": 0.2083,
+    "sealed.unlisted_picks": 0,
+    "unlisted_picks": 0,
+    "unscored": 0
+  },
+  "model": "haiku",
+  "status": "ok",
+  "unscored": []
+}
