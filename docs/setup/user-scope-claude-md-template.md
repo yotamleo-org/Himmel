@@ -42,13 +42,19 @@ Use judgement on trivial tasks.
 4. **Verify before you claim** — turn the task into a check that fails if the
    work is wrong (e.g. a test that reproduces the bug). Make it pass, then
    report the actual result.
-<!-- mem:e9c0126c43f0 -->
 5. **POC before build** — a new mechanism or tool gets a live end-to-end proof
    of concept, plus a check that it is used and worth its cost, before more is
    built on top of it.
-<!-- mem:6dcc4aece8c1 -->
 6. **Top tier for the hard call only** — routine ops work (pipeline drains,
    ingests, bulk triage) never runs on the scarcest model tier, and is never
    orchestrated from a parent session on it. Spend that tier on the one
    judgement call that needs it.
 <!-- END HIMMEL:working-principles -->
+
+The memory-row anchors for principles 5 and 6 sit below the END marker, so
+the installer never copies them into an adopter's file:
+
+<!-- mem:e9c0126c43f0 -->
+- principle 5, POC before build
+<!-- mem:6dcc4aece8c1 -->
+- principle 6, top tier for the hard call only

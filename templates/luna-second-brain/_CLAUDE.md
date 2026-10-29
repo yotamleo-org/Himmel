@@ -273,7 +273,9 @@ must apply this contract itself.
 
 <!-- mem:49268e70dd6e -->
 <!-- mem:99f1b1f48ac5 -->
-- **Never `pre-commit install` in this vault.** Its hook stashes every
+- **Never `pre-commit install` for the pre-commit stage in this vault**
+  (`scripts/setup.sh` runs the framework installer only with
+  `--hook-type pre-push`). The pre-commit-stage hook stashes every
   unstaged change before the hooks run and re-applies the stash after. With
   Obsidian running, `.obsidian/plugins/*` files are rewritten mid-hook, the
   re-apply fails ("patch does not apply"), and pre-commit rolls back,

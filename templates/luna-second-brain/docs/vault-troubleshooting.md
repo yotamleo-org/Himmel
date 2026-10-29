@@ -56,16 +56,19 @@ your own sections survive an upgrade.
 
 <!-- mem:9993e75c03ba -->
 `/triage-clips` moves every clip it marks `processed: true` into
-`Clippings/_evidence/`, and `/archive-clips` moves clips on to `_done/`. An
-audit that counts or searches only the top level of `Clippings/` misses every
+`Clippings/_evidence/`. `/archive-clips` never reads `_evidence/`; it moves
+only top-level stragglers to `_done/`. An audit that counts or searches only the top level of `Clippings/` misses every
 triaged clip and reports a false negative ("clip never captured"). Search
 `Clippings/` recursively.
 
 ## Searching and pushing
 
 <!-- mem:a552ac14a466 -->
-The obsidian-vault MCP's `obsidian_simple_search` is a fuzzy substring match,
-not a word or phrase match: a hit is a candidate, so read the note before
-relying on it, and a near-miss spelling can still match. On the push side, a
+The obsidian-vault MCP's `obsidian_simple_search` matches each space-separated
+query word as a substring anywhere in a note, not as a whole word, a phrase or
+a fuzzy match, so a hit is only a candidate to read and a misspelled word finds
+nothing. On the push side, a
 vault branch with no upstream makes an automated `git push` fail with "has no
 upstream branch"; set it once with `git push -u origin <branch>`.
+
+Next: setting the vault up on another machine, [`setup/new-machine.md`](setup/new-machine.md).

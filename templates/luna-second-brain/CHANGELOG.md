@@ -8,13 +8,13 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.92] — 2026-10-29
+## [0.4.93] — 2026-10-29
 
 ### Added
 - `docs/vault-troubleshooting.md`: diagnosing a vault commit STALL, gitleaks
   findings on token shapes, a parallel session's staged secret,
   upgrade-withheld edits to template-owned files, clip audits that miss
-  `Clippings/_evidence/`, and fuzzy `simple_search` matches.
+  `Clippings/_evidence/`, and how `simple_search` matches query words.
 - `_CLAUDE.md` "pre-commit trap": why the vault uses stash-free hooks and
   never `pre-commit install`, with a pointer to the troubleshooting page.
 
