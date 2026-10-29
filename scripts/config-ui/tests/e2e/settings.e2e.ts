@@ -8,6 +8,8 @@ test.afterEach(async () => { await h?.stop(); });
 const TILES = ["Secrets", "Review", "Tracker", "Project scope"];
 // the Settings groups that sit under the Project scope tile
 const SCOPE_GROUPS = ["Auto-ship steps", "Plugins", "Scheduled jobs", "Your install answers"];
+// the setup read can take longer than a poll's default 5 s (the CodeRabbit probe alone allows 5 s)
+const SETUP_WAIT = { timeout: 20_000 };
 
 async function open(page: Page, tracker: TrackerKind = "jira", tile?: string) {
   h = await boot({}, { tracker });
@@ -36,14 +38,14 @@ test("J3. the Check this install strip sits under the tile row", async ({ page }
     const tiles = await page.locator(".tiles").boundingBox();
     const chk = await page.locator(".chk").boundingBox();
     return tiles && chk ? chk.y - tiles.y : -1;
-  }).toBeGreaterThan(0);
+  }, SETUP_WAIT).toBeGreaterThan(0);
   await expect(page.locator(".chk")).toContainText("Check this install");
 });
 
 test("J3. every Project scope row shows its command, when it takes effect and a Learn more link to the docs site", async ({ page }) => {
   await open(page, "jira", "scope");
   const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
-  await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(5);
+  await expect.poll(() => rows.count(), SETUP_WAIT).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
     await expect(r.locator("pre code")).not.toBeEmpty();
     await expect(r).toContainText("takes effect: ");
@@ -101,11 +103,11 @@ test("J4. on a 3840 px screen the panel stays a readable width and every secret 
     await expect.poll(async () => {
       const w = (await page.locator(`#tile-${t}`).boundingBox())?.width ?? 0;
       return w > 0 && w <= 3840 * 0.45 ? "readable" : `${t} panel ${w}px`;
-    }).toBe("readable");
+    }, SETUP_WAIT).toBe("readable");
   }
   await page.locator('button.tile[data-tile="secrets"]').click();
   await expect.poll(async () => {
     const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
     return edges.length > 1 && new Set(edges).size === 1 ? "one edge" : `input right edges ${edges}`;
-  }).toBe("one edge");
+  }, SETUP_WAIT).toBe("one edge");
 });
