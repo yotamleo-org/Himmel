@@ -1168,5 +1168,43 @@ lacks "live cap: a ticket whose 70 blockers are all Done live is not dropped for
 has "live cap: that ticket is a collision-free candidate" "$cap_out" "1 To Do candidate(s), 1 collision-free"
 M="$WORK/jira-mirror/HIMMEL"
 
+# the live blocker re-check, both directions: every hard blocker of a candidate is read live, an unreadable one is unknown
+LB_DIR="$WORK/jira-mirror-lb"; M="$LB_DIR/HIMMEL"; mkdir -p "$M"
+printf 'v1.0.1\tfalse\t\n' > "$LB_DIR/HIMMEL.versions.tsv"
+mk HIMMEL-9601 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror, open live" "Edit scripts/lib/lb-9601.sh."
+mk HIMMEL-9602 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9601"]' "blocked by a reopened ticket" "Edit scripts/lib/lb-9602.sh."
+mk HIMMEL-9603 "In Progress" High '[]' '["v1.0.1"]' '[]' "blocker open in the mirror, unreadable live" "Edit scripts/lib/lb-9603.sh."
+mk HIMMEL-9604 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9603"]' "blocked by an unreadable ticket" "Edit scripts/lib/lb-9604.sh."
+mk HIMMEL-9605 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9699"]' "blocked by a ticket the mirror lacks" "Edit scripts/lib/lb-9605.sh."
+mk HIMMEL-9606 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror and live" "Edit scripts/lib/lb-9606.sh."
+mk HIMMEL-9607 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9606"]' "blocked by a ticket Done everywhere" "Edit scripts/lib/lb-9607.sh."
+mk HIMMEL-9608 "In Progress" High '[]' '["v1.0.1"]' '[]' "blocker open in the mirror, Done live" "Edit scripts/lib/lb-9608.sh."
+mk HIMMEL-9609 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9608"]' "blocked by a ticket the mirror lags" "Edit scripts/lib/lb-9609.sh."
+cat > "$WORK/jira-lb" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = get ] || exit 2
+case "$2" in
+    HIMMEL-9601) st="In Progress" ;;
+    HIMMEL-9603|HIMMEL-9699) exit 1 ;;
+    *) st="Done" ;;
+esac
+printf '%s\tTask\t%s\tt\n' "$2" "$st"
+EOF
+chmod +x "$WORK/jira-lb"
+lb_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-lb" run --no-classify --why)"; lb_rc=$?
+[ "$lb_rc" = 0 ] && pass "live blockers: the run exits 0" || fail "live blockers: the run exited $lb_rc"
+has "live blockers: a blocker Done in the mirror but open live drops the candidate" "$lb_out" "# drop HIMMEL-9602 blocker HIMMEL-9601 (reopened live)"
+has "live blockers: a failed live read is blocker-unknown" "$lb_out" "# drop HIMMEL-9604 blocker-unknown HIMMEL-9603"
+has "live blockers: a blocker missing from the mirror and unreadable live is blocker-unknown" "$lb_out" "# drop HIMMEL-9605 blocker-unknown HIMMEL-9699"
+lacks "live blockers: an unreadable blocker is never listed" "$lb_out" "LOCAL?	HIMMEL-9604"
+has "live blockers: a blocker Done in the mirror and live is cleared" "$lb_out" "LOCAL?	HIMMEL-9607"
+has "live blockers: a blocker open in the mirror but Done live is cleared" "$lb_out" "LOCAL?	HIMMEL-9609"
+has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min="
+# a mirror directory that does not exist is an error, never an empty pool
+nomirror_out="$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; nomirror_rc=$?
+[ "$nomirror_rc" != 0 ] && pass "missing mirror: the dispatcher exits non-zero" || fail "missing mirror: the dispatcher exited 0"
+has "missing mirror: the error says so" "$nomirror_out" "mirror missing"
+M="$WORK/jira-mirror/HIMMEL"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
