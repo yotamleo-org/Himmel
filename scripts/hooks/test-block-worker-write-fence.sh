@@ -81,7 +81,7 @@ assert_rc "off-lane git push"            0 "$(run_case "$(j_bash 'git push origi
 assert_rc "off-lane gh pr create"        0 "$(run_case "$(j_bash 'gh pr create --title x')")"
 assert_rc "off-lane mcp tool"            0 "$(run_case '{"tool_name":"mcp__plugin_github_github__merge_pull_request","tool_input":{}}')"
 assert_rc "anthropic-url non-glm"        0 "$(run_case "$(j_bash 'git push')" "ANTHROPIC_BASE_URL=https://api.anthropic.com")"
-assert_rc "glm url alone is not a worker lane (HIMMEL-7907)" 0 "$(run_case "$(j_bash 'git push origin main')" "ANTHROPIC_BASE_URL=$GLM_URL")"
+assert_rc "glm url alone is not a worker lane (HIMMEL-7907)" 0 "$(run_case "$(j_bash 'git config --get remote.origin.url')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 
 # The plugin registration fails closed on the lane-agnostic worker marker.
 HOOKS_JSON="$(cd "$(dirname "$HOOK")/../.." && pwd -P)/marketplace/plugins/himmel-ops/hooks/hooks.json"
