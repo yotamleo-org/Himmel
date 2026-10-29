@@ -147,7 +147,9 @@ same document.
 That prefix is load-bearing, not decoration: you are almost always pasting into
 a terminal that was itself spawned from a claude session, and it clears the
 `CLAUDE_CODE_CHILD_SESSION` / `CLAUDE_PID` / `CLAUDE_CODE_SESSION_ID` variables
-that shell inherited. A chief that keeps them writes no transcript and gets
+that shell inherited, plus the `CLAUDE_CODE_MESSAGING_SOCKET` / `_TOKEN` pair
+and `CLAUDE_JOB_DIR`: a session that keeps them answers to the name of the
+session that launched it. A chief that keeps the first three writes no transcript and gets
 `UNKNOWN` from `scripts/context-fill.sh --percent`, which is the signal its
 own handover contract runs on. Trimming the line to just
 `claude …` silently recreates that failure.
@@ -157,6 +159,7 @@ own:
 
 ```text
 env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR \
     CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 \
     claude --model '<model>' --autocompact auto -n <session-name> "load <doc> and continue"
 ```
