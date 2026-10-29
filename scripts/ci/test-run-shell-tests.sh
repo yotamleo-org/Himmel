@@ -2551,12 +2551,12 @@ scripts/hooks/test-block-destructive-commands-b.sh	540
 scripts/hooks/test-block-destructive-commands-c.sh	608
 scripts/hooks/test-block-destructive-commands-d.sh	590
 scripts/hooks/test-block-edit-live-settings.sh	151
-scripts/hooks/test-block-glm-external-writes.sh	26
 scripts/hooks/test-block-jira-compound-write.sh	17
 scripts/hooks/test-block-primary-git-writes.sh	423
 scripts/hooks/test-block-read-secrets.sh	21
 scripts/hooks/test-block-tail-pipe-on-gates.sh	19
 scripts/hooks/test-block-unresolved-cr-merge.sh	403
+scripts/hooks/test-block-worker-write-fence.sh	26
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	42
 scripts/hooks/test-block-write-into-main-checkout-evaldata.sh	164
 scripts/hooks/test-block-write-into-main-checkout-forms.sh	305
