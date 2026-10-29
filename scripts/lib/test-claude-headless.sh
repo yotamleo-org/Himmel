@@ -535,7 +535,11 @@ check "18 control: alias shadows installed, no proxy: launch happens" "launched"
   printf '%s\n' 'trap '"'"'echo "[$BASH_COMMAND]" >> "$PROBE_OUT"'"'"' DEBUG' > "$SH18/probe-env.sh"; }
 BASH_ENV="$SH18/probe-env.sh" PROBE_OUT="$W/probe-cmds" bash "$SH18/probe.sh" >/dev/null 2>&1
 echo "diag - bash=$(command -v bash) $(bash -c 'echo $BASH_VERSION') probe-commands: $(tr '\n' ' ' < "$W/probe-cmds" 2>/dev/null)"
-echo "diag - SUT head: $(sed -n '30,38p' "$SUT" | tr '\n' ' ')"
+{ cat "$SH18/gate.sh"; cat "$SH18/probe-env.sh"; } > "$SH18/probe-sut-env.sh"
+rm -f "$W/probe-sut-cmds"
+( BASH_ENV="$SH18/probe-sut-env.sh" PROBE_OUT="$W/probe-sut-cmds" run_sut "$FAKE_OK" "$W/art18-probe" >/dev/null 2>&1 )
+echo "diag - SUT trap saw $(wc -l < "$W/probe-sut-cmds" 2>/dev/null) commands, first: $(head -n 14 "$W/probe-sut-cmds" 2>/dev/null | cut -c1-70 | tr '\n' ' ')"
+echo "diag - SUT SCRIPT_DIR lines: $(grep -c 'SCRIPT_DIR=' "$W/probe-sut-cmds" 2>/dev/null)"
 rm -f "$LIVE_DIR"/*.json
 
 # --- 19: the loopback-mock seam gate keeps EXACT names only. With

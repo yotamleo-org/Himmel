@@ -1300,6 +1300,10 @@ else
   check_os_timeout_2267 Linux "scripts/test-adopt-sequences.sh" "600"
   check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1800"
   check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1800"
+  # macOS runs 40664974972 and 40786835131 killed it at 1203s against the 1200s Linux cap; the Linux ledger is 457s.
+  check_os_timeout_2267 Linux "scripts/test-adopt-features.sh" "1200"
+  check_os_timeout_2267 Darwin "scripts/test-adopt-features.sh" "3600"
+  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-features.sh" "3600"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
