@@ -211,10 +211,11 @@ export const reviewGateDraft = (d) => [
   ...(d.dropped || []).map((slug) => ({ slug, mode: (d.droppedBase?.[slug]?.mode) || "best-effort", required: d.droppedBase?.[slug]?.required === true, enabled: false })),
 ];
 const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note", advisory: "critic findings are notes until precision reaches the floor; review threads still hold" };
-export function renderReviewGate(rg) {
+// extra: html drawn under the reviewers (the Configure page folds CodeRabbit's install state in there).
+export function renderReviewGate(rg, extra = "") {
   const head = `<h2 id="h-review-gate">Review gate</h2><p class="sub">Who reviews a pull request before it merges, in what order, and what happens when one of them cannot.</p>`;
-  if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div></section>`;
-  if (!rg.data) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="nodata">${esc(rg.error)}</div></section>`;
+  if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div>${extra}</section>`;
+  if (!rg.data) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="nodata">${esc(rg.error)}</div>${extra}</section>`;
   const d = rg.data, draft = rg.draft || reviewGateDraft(d);
   const by = Object.fromEntries(d.reviewers.map((r) => [r.slug, r]));
   const rows = draft.map((x) => {
@@ -237,7 +238,7 @@ export function renderReviewGate(rg) {
   const msg = rg.msg ? `<div class="${rg.msg.ok ? "ro" : "nodata"}" role="status">${esc(rg.msg.text)}</div>` : "";
   return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="card">
     <p class="sub">Reviewers run in this order. Changes are saved to <code>${esc(d.overlay)}</code> on this machine; the shared critics.json is never written.</p>
-    ${rows}
+    ${rows}${extra}
     <p class="sub">${esc(d.rateLimit)}</p>
     <button class="btn" data-act="review-gate-save">save</button>${msg}</div>
     <div class="card"><h3>Timeouts and tiers</h3>${env}</div></section>`;
@@ -328,16 +329,28 @@ function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }
     <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
 }
 
-export function renderSettings(feed, state) {
+// The Settings groups by id, in page order; the Configure page draws its tiles from them. ids = all when omitted.
+// fold: show a group's first N rows and put the rest under a "M more" disclosure.
+export function renderSettingsGroups(feed, state, ids, fold) {
   const toggles = (feed.rows || []).filter((r) => r.control.class === "toggle");
-  const groups = SETTINGS_GROUPS.map((g) => {
+  return SETTINGS_GROUPS.filter((g) => !ids || ids.includes(g.id)).map((g) => {
     const fed = toggles.filter((r) => g.feed && g.feed.includes(r.control.action)).map((r) => ({
       id: r.id, title: r.id, detail: (r.installed && r.installed.detail) || "", cmd: feedCommand(r), effect: settingsEffect(r.control.action), slot: slot(r, "settings"), health: r.health,
     }));
     const all = [...(g.first || []), ...fed, ...(g.shown || [])];
+    const rowsHtml = all.map((x) => setRow(g, state, x));
+    // a row folded away that holds an open plan keeps the disclosure open, so a pending confirm is never hidden.
+    const planOpen = (x) => (x.keys || [`settings|${x.id}`]).some((k) => state.plans && state.plans[k]);
+    const body = fold && rowsHtml.length > fold + 1
+      ? `${rowsHtml.slice(0, fold).join("")}<details class="more"${all.slice(fold).some(planOpen) ? " open" : ""}><summary>${rowsHtml.length - fold} more</summary>${rowsHtml.slice(fold).join("")}</details>`
+      : rowsHtml.join("");
     return `<div class="setgroup"><h3 id="sg-${g.id}">${esc(g.title)}</h3><p class="sub">${esc(g.intro)}</p>
-    ${all.map((x) => setRow(g, state, x)).join("")}</div>`;
+    ${body}</div>`;
   }).join("");
+}
+
+export function renderSettings(feed, state) {
+  const groups = renderSettingsGroups(feed, state);
   return `<section id="settings" aria-labelledby="h-settings">
   <h2 id="h-settings">Settings</h2>
   <p class="sub">What you can change, and where it lives. Each row says when a change takes effect. Toggles here run the same himmelctl command shown under them, so the terminal and this page never disagree. Every switch previews its dry-run first; nothing changes until you confirm.</p>
@@ -345,11 +358,10 @@ export function renderSettings(feed, state) {
 </section>`;
 }
 
-export function render(feed, state) {
-  const { rows, triage } = sets(feed);
+// Inventory: every row, filterable. render() draws it, and the Health page draws it too (Configure no longer does).
+export function renderInventory(feed, state) {
+  const { rows } = sets(feed);
   const filt = state.filt || {};
-  const nf = triage.filter((r) => r.health === "fail").length;
-  const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
   const q = (filt.q || "").toLowerCase();
   const inv = rows.filter((r) => (!filt.health || r.health === filt.health) && (!filt.kind || kindOf(r) === filt.kind) && (!q || r.id.toLowerCase().includes(q)) && (!filt.problems || isTriage(r)));
   const empty = !q && filt.problems && !filt.health && !filt.kind ? "Nothing failing or drifting." : "No rows match these filters.";
@@ -357,20 +369,31 @@ export function render(feed, state) {
   const kinds = [...new Set(rows.map(kindOf))];
   const chips = ["fail", "warn", "ok", "off", "info"].map((h) => `<button class="chip" data-f="health" data-v="${h}" aria-pressed="${filt.health === h}">${h}</button>`)
     .concat(kinds.map((k) => `<button class="chip" data-f="kind" data-v="${esc(k)}" aria-pressed="${filt.kind === k}">${esc(k)}</button>`)).join("");
-  return `<section id="triage" aria-labelledby="h-triage">
-  <h2 id="h-triage">Triage</h2>
-  <p class="sub">Only rows that are failing or drifting. Opt-in items you left off are not listed.</p>
-  <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
-  ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
-</section>
-${renderSettings(feed, state)}
-${renderFleetCap(state.fleetCap)}
-${renderReviewGate(state.reviewGate)}
-${renderVm(state.vm)}
-<section id="inventory" aria-labelledby="h-inv">
+  return `<section id="inventory" aria-labelledby="h-inv">
   <h2 id="h-inv">Inventory</h2>
   <p class="sub">Every item, check, flag and secret, grouped by feature.</p>
   <div class="filters"><input id="q" placeholder="filter by id" value="${esc(filt.q || "")}" aria-label="Filter by id">${prob}${chips}</div>
   ${inv.length ? bundled(inv, rows, "inventory", state, feed, q) : `<div class="empty">${empty}</div>`}
 </section>`;
+}
+
+export function renderTriage(feed, state) {
+  const { rows, triage } = sets(feed);
+  const nf = triage.filter((r) => r.health === "fail").length;
+  const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
+  return `<section id="triage" aria-labelledby="h-triage">
+  <h2 id="h-triage">Triage</h2>
+  <p class="sub">Only rows that are failing or drifting. Opt-in items you left off are not listed.</p>
+  <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
+  ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
+</section>`;
+}
+
+export function render(feed, state) {
+  return `${renderTriage(feed, state)}
+${renderSettings(feed, state)}
+${renderFleetCap(state.fleetCap)}
+${renderReviewGate(state.reviewGate)}
+${renderVm(state.vm)}
+${renderInventory(feed, state)}`;
 }

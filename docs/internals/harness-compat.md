@@ -755,13 +755,13 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   entries that look like duplicates of the plugin's SessionStart/SessionEnd are
   therefore the *only* working copies — do not "de-duplicate" them.
 
-**PreToolUse dispatcher (RAM program P0-2).** Codex launches a full
+**PreToolUse dispatcher (RAM program P0-2).** Codex launched a full
 `pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
 PreToolUse entries a Bash tool call matched cost nine of them (parallel
 diagnostic batches peaked at 119–120 Git Bash processes). A `.codex/run-hook.sh`
 argument may now be a **chain** — `a.sh+b.sh+c.sh` — that one adapter runs in
-order. Guardrail set and order are unchanged; only the number of adapter
-launches drops:
+order. The guardrail set and order stayed the same; only the number of adapter
+launches dropped. The table is a snapshot from when the dispatcher shipped:
 
 | tool | before | after | chain |
 |---|---|---|---|
@@ -769,9 +769,14 @@ launches drops:
 | Read, Grep | 2 / ~6 | 2 / ~4 | 1 + `.*` auto-arm |
 | Edit/Write family | 3 | 2 / ~5 | 2-chain + `.*` auto-arm |
 
-- **The separator is `+`, never `,`.** cmd.exe treats `,` (like space, tab, `;`,
-  `=`) as an argument delimiter, so `--sandbox a.sh,b.sh` arrives as `%2=a.sh`
-  and the chain silently truncates to its first guardrail — every later guard
+Today `.codex/hooks.json` has a 19-member Bash chain, a 4-member Edit/Write
+chain and a 2-member Read/Grep chain, and every tool also matches two `.*`
+entries (`auto-arm-on-cap` and `guard-worker-context-handoff`). SessionStart is
+one 5-member chain.
+
+- **The separator is `+`, never `,`.** cmd.exe treated `,` (like space, tab, `;`,
+  `=`) as an argument delimiter, so `--sandbox a.sh,b.sh` arrived as `%2=a.sh`
+  and the chain silently truncated to its first guardrail — every later guard
   quietly not running, with nothing downstream able to detect it. Measured on
   cmd.exe 10.0.26200; `test-codex-hook-parity.sh` refuses a comma outright.
 - **First deny wins and short-circuits.** Codex ran every matched hook and then

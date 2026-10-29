@@ -201,5 +201,26 @@ cyc="$(python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cach
 same 'the JSON edge carries cycle for a mutual Blocks link' "$cyc" 'True'
 rm -f "$F/links-HIMMEL-901.txt" "$F/links-HIMMEL-902.txt"
 
+# --pair <pred>@<premerge> <pr>: after the predecessor squash-merges, the pair is rebuilt from its
+# premerge head against the main it merged into, so the S2 row-registry pair stays S2 (the merged main already
+# holds the predecessor's rows, and read against it the pair would look like a key collision)
+g checkout -q -b merged11 main
+g merge -q --squash ra; g commit -q -m "[HIMMEL-911] ra (#11)"
+M11="$(g rev-parse HEAD)"
+g checkout -q main
+printf '{"number":11,"title":"[HIMMEL-911] ra","headRefOid":"%s","headRefName":"ra","state":"MERGED","mergeCommit":{"oid":"%s"}}\n' "$(g rev-parse ra)" "$M11" > "$F/pr-11.json"
+pair() { python3 "$SUT" --pair "$@" --repo-dir "$R" --cache-dir "$W/cache" --json 2>"$W/err"; }
+rm -rf "$W/cache"; mkdir "$W/cache"
+pj="$(pair "11@$(g rev-parse ra)" 12)"
+same '--pair: a merged predecessor and the successor are S2 again' \
+    "$(printf '%s' "$pj" | python3 -c 'import json,sys; e=json.load(sys.stdin)["edges"][0]; print(e["kind"], e["det"], e["from"], e["to"])')" 'S2 D6 #11 #12'
+same '--pair: the predecessor node carries the premerge head' \
+    "$(printf '%s' "$pj" | python3 -c 'import json,sys; print(json.load(sys.stdin)["nodes"][0]["head"])')" "$(g rev-parse ra)"
+same '--pair: the base is the main the predecessor merged into' \
+    "$(printf '%s' "$pj" | python3 -c 'import json,sys; print(json.load(sys.stdin)["base_sha"])')" "$(g rev-parse main)"
+contains '--pair: the graph carries generated_at (UTC)' "$pj" '"generated_at": "20'
+same 'control: the same pair read against the merged main is not S2' "$(edge 11 12 --base merged11 --head "11=$(g rev-parse ra)")" 'H2 D3 #11 #12'
+if pair "11" 12 >/dev/null; then fail '--pair without @<sha> must exit 2'; else pass '--pair without @<sha> exits non-zero'; fi
+
 [ "$fails" -eq 0 ] && printf 'PASS - test-chain-graph.sh\n' || printf 'FAIL - test-chain-graph.sh (%d)\n' "$fails"
 [ "$fails" -eq 0 ]

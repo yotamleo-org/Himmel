@@ -131,4 +131,142 @@ same "unknown flag: exit 2" "$rc" 2
 a="$(plan 1 --graph "$W/dep.json" --ready 10,12)"; b="$(plan 1 --graph "$W/dep.json" --ready 10,12)"
 same "deterministic" "$a" "$b"
 
+# 12. the wrapper's default output is byte-identical to the pre-core planner
+nl=$'\n'
+same "parity: S2 pair, byte for byte" "$(plan 1 --graph "$W/s2.json")" "chain-plan: chain_merge_plan on${nl}ORDER 10 11${nl}MERGE-FORWARD 11 after 10 (S2 D4)"
+same "parity: ready, H2 and S2, byte for byte" "$(plan 1 --graph "$W/dep.json" --ready 10,12)" \
+    "chain-plan: chain_merge_plan on${nl}ORDER 12 10 13${nl}HOLD 13 for 12 (H2 D4)${nl}MERGE-FORWARD 10 after 12 (S2 D4)"
+same "parity: PR-less node, byte for byte" "$(plan 1 --graph "$W/key.json")" "chain-plan: chain_merge_plan on${nl}ORDER 50 HIMMEL-9${nl}HOLD HIMMEL-9 for 50 (H1 D4)"
+same "parity: flag off, byte for byte" "$(plan 0 --graph "$W/s2.json")" "chain-plan: chain_merge_plan off - no plan"
+out="$(plan 0 --graph "$W/missing.json")"; rc=$?
+same "parity: flag off still checks the arguments first (exit 2)" "$rc" 2
+
+# 13. --evidence skips the flag: only the MERGE-FORWARD lines, the same at flag 0 and 1
+CORE="${CHAIN_PLAN_CORE_SUT:-$HERE/chain-plan-core.sh}"
+e0="$(plan 0 --evidence --graph "$W/dep.json" --ready 10,12)"; rc0=$?
+e1="$(plan 1 --evidence --graph "$W/dep.json" --ready 10,12)"; rc1=$?
+same "--evidence: exit 0 at flag 0" "$rc0" 0
+same "--evidence: exit 0 at flag 1" "$rc1" 0
+same "--evidence: the same lines at flag 0 and 1" "$e0" "$e1"
+same "--evidence: only the MERGE-FORWARD lines" "$e1" 'MERGE-FORWARD 10 after 12 (S2 D4)'
+same "--evidence: the core prints the same lines" "$(HIMMEL_FLAG_CHAIN_MERGE_PLAN=0 bash "$CORE" --evidence --graph "$W/dep.json" --ready 10,12 2>&1)" "$e1"
+out="$(plan 0 --evidence --graph "$W/h2.json")"; rc=$?
+same "--evidence: no S2 pair, no line, exit 0" "$rc:$out" "0:"
+out="$(plan 0 --evidence --graph "$W/cyc.json")"; rc=$?
+same "--evidence: a hard cycle is exit 1" "$rc" 1
+
+# 14. --go-check <pr> --graph <g>: the pre-GO check. gh, the jira CLI and chain-push-check.sh are stubs.
+mkdir -p "$W/bin" "$W/gc"
+cat > "$W/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1 $2" = "pr view" ] || exit 2
+cat "$GC_FIX/head-$3.json" 2>/dev/null || exit 1  # read-sink-ok: stub reads its own fixture dir only
+STUB
+cat > "$W/bin/jira" <<'STUB'
+#!/usr/bin/env bash
+f="$GC_FIX/$1-$2.txt"
+[ -f "$f" ] || exit 1
+cat "$f"  # read-sink-ok: stub reads its own fixture dir only
+[ -f "$GC_FIX/rc-$1-$2" ] && exit "$(cat "$GC_FIX/rc-$1-$2")"  # read-sink-ok: stub reads its own fixture dir only
+exit 0
+STUB
+cat > "$W/bin/push" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GC_FIX/push-calls"
+cat "$GC_FIX/push-out" 2>/dev/null  # read-sink-ok: stub reads its own fixture dir only
+exit "$(cat "$GC_FIX/push-rc")"
+STUB
+chmod +x "$W/bin/gh" "$W/bin/jira" "$W/bin/push"
+H11=1111111111111111111111111111111111111111 H12=2222222222222222222222222222222222222222
+# gcgraph <file> <generated_at> <jira_links>: #11 (key 2) with an S1 peer #12 and an independent #13
+gcgraph() {
+    printf '{"generated_at":"%s","jira_links":"%s","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"},{"id":"#12","pr":12,"key":"HIMMEL-3","head":"%s"},{"id":"#13","pr":13,"key":"HIMMEL-4","head":"x"}],"edges":[{"from":"#12","to":"#11","kind":"S1","det":"D4"},{"from":"#11","to":"#13","kind":"independent","det":""}]}\n' \
+        "$1" "$2" "$H11" "$H12" > "$W/gc/graph.json"
+}
+gcreset() {
+    gcgraph "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ok
+    printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H11" > "$W/gc/head-11.json"
+    printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H12" > "$W/gc/head-12.json"
+    # both directions: key 5 blocks key 2 (Done), key 2 blocks key 9 (open, but a successor)
+    printf '1\tBlocks\tinward=HIMMEL-5\toutward=HIMMEL-2\tHIMMEL-5 blocks HIMMEL-2\n2\tBlocks\tinward=HIMMEL-2\toutward=HIMMEL-9\tHIMMEL-2 blocks HIMMEL-9\n' > "$W/gc/links-HIMMEL-2.txt"
+    printf 'HIMMEL-5\tTask\tDone\tthe blocker\n' > "$W/gc/get-HIMMEL-5.txt"
+    printf 'HIMMEL-9\tTask\tTo Do\tthe blocked\n' > "$W/gc/get-HIMMEL-9.txt"
+    printf 'HEADS 11=%s 12=%s\nCHECKED 12 clean\nPEERS checked=1 skipped=0 conflicting=0\n' "$H11" "$H12" > "$W/gc/push-out"
+    echo 0 > "$W/gc/push-rc"; : > "$W/gc/push-calls"; rm -f "$W/gc/rc-get-HIMMEL-5"
+}
+gc() { PATH="$W/bin:$PATH" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" bash "$SUT" --go-check "$@" 2>&1; }
+gcreset
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+gsha="$(sha256sum "$W/gc/graph.json" | cut -d' ' -f1)"
+same "--go-check all good: exit 0" "$rc" 0
+has "--go-check all good: the OK line names the head and the graph identity" "$out" "GO-CHECK OK 11 head=$H11 graph=sha256:$gsha at="
+same "--go-check all good: the push check ran for the S1 peer only" "$(cat "$W/gc/push-calls")" '--pr 11 --peer 12'
+gcgraph "$(date -u +%Y-%m-%dT%H:%M:%SZ)" unreadable
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check jira_links unreadable: exit 1" "$rc" 1
+has "--go-check jira_links unreadable: REFUSE" "$out" 'REFUSE'
+printf '{"generated_at":"%s","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"}],"edges":[]}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$H11" > "$W/gc/graph.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check jira_links missing (unknown): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '{"headRefOid":"%s","state":"CLOSED"}\n' "$H11" > "$W/gc/head-11.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a PR that is no longer open: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '{"headRefOid":"%s","state":"MERGED"}\n' "$H12" > "$W/gc/head-12.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an S1 peer that has merged (its push check is stale): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; rm -f "$W/gc/head-12.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an S1 peer whose state is unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H12" > "$W/gc/head-11.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check stale head: exit 1" "$rc" 1
+has "--go-check stale head: REFUSE names the live head" "$out" "$H12"
+gcreset; gcgraph "$(date -u -d '-31 min' +%Y-%m-%dT%H:%M:%SZ)" ok
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a 31-minute-old graph: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; gcgraph '' ok
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a graph with no generated_at: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; gcgraph "$(date -u -d '+10 min' +%Y-%m-%dT%H:%M:%SZ)" ok
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a graph generated 10 minutes in the future: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset
+printf '{"generated_at":"%s","jira_links":"ok","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"}],"edges":"S1 #12 #11"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$H11" > "$W/gc/graph.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a graph whose edges are not an array (an S1 peer may hide): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset
+printf '{"generated_at":"%s","jira_links":"ok","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"}],"edges":[{"from":"#12","to":"#11","kind":"s1","det":"D4"}]}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$H11" > "$W/gc/graph.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an edge with an unknown kind (an S1 peer may hide): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf 'HIMMEL-5\tTask\tIn Progress\tthe blocker\n' > "$W/gc/get-HIMMEL-5.txt"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an unmerged hard predecessor: exit 1" "$rc" 1
+has "--go-check an unmerged hard predecessor: REFUSE names it" "$out" 'HIMMEL-5'
+gcreset; rm -f "$W/gc/links-HIMMEL-2.txt"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check live Jira links unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; rm -f "$W/gc/get-HIMMEL-5.txt"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a predecessor whose status is unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; echo 1 > "$W/gc/rc-get-HIMMEL-5"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a status read that prints Done and then fails: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '1\tBlocks\tinward=HIMMEL-5\toutward=HIMMEL-2\tHIMMEL-5 now blocks HIMMEL-2\n' > "$W/gc/links-HIMMEL-2.txt"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a Blocks row in an unknown format: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; echo 3 > "$W/gc/push-rc"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check the push check exits 3 (unknown): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; echo 1 > "$W/gc/push-rc"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check the push check finds a conflict: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; : > "$W/gc/push-out"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a push check that exits 0 with no HEADS line: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset
+out="$(gc 99 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a PR the graph does not list: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+out="$(gc 11)"; rc=$?
+same "--go-check without --graph: usage (exit 2)" "$rc" 2
+
 if [ "$fails" -eq 0 ]; then printf 'PASS: chain-plan\n'; else printf 'FAIL: chain-plan (%d)\n' "$fails"; exit 1; fi

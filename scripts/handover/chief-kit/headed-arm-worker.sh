@@ -1214,7 +1214,7 @@ unset -v _ab_in
 
 # chief-only knobs that must never reach a worker's own process,
 # and therefore never reach the konsole child this wrapper execs into via
-# headed-arm.sh (whose env -u list only clears the three
+# headed-arm.sh (whose env -u list only clears the
 # session-identity vars, not this one). CHIEF_CONTEXT is read by
 # headed-arm.sh to pick a CHIEF's --autocompact ceiling; a worker's ceiling is
 # already pinned above via WORKER_SESSION_CONTEXT/RESOLVED_AUTOCOMPACT, which never

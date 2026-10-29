@@ -579,6 +579,62 @@ After that the bridge can bounce itself.
 Semantics + threat model: [`docs/internals/enforcement.md`](../../docs/internals/enforcement.md).
 Where each knob is set: [`docs/configuration.md`](../../docs/configuration.md).
 
+## AFK sudo approval — `approve <id> <code>` / `deny <id>` (default OFF)
+
+An AFK session that needs one privileged command asks for it with
+`scripts/lib/afk-sudo-request --session S --ticket T -- systemctl restart x.service`.
+The request reaches your Telegram DM with the command, cwd, session, ticket and an
+8-letter id. Reply with `approve <id> <code>` (the 6-digit code from your
+authenticator app) or `deny <id>`. The command runs once, as root, only if
+a valid code arrives inside the 2-minute window.
+
+The code is checked by a root-owned helper, never by the bridge or the session.
+The helper is `/usr/local/libexec/himmel/afk-sudo`, installed from
+`scripts/lib/afk-sudo/`. A same-uid agent can read the user keyring, so the
+seed, config, state and ledger are all root-owned, and the helper refuses to run
+(`result=unsafe-perms`) if any of them is not owned by root or is group- or
+world-writable.
+
+Install on a test VM first, then on the station. You run this yourself; an agent
+never does:
+
+```sh
+sudo bash scripts/lib/afk-sudo/install.sh --user "$USER"   # prints the otpauth URI ONCE
+sudoedit /etc/himmel/afk-sudo.json
+```
+
+```json
+{
+  "enabled": true,
+  "operator_id": 123456789,
+  "window_s": 120,
+  "classes": {
+    "restart-bridge": { "argv": ["/usr/bin/systemctl", "restart", "{unit}"], "unit": ["telegram-bridge.service"] }
+  }
+}
+```
+
+- `operator_id` is your Telegram user id, the same number as in `allowFrom`.
+- A class is an exact argv. `{unit}` matches only a name in that class's
+  `unit` list. Nothing else is approvable: no other command, no shell wrapper,
+  no extra argument. An off-allowlist request is refused and logged.
+- Only a typed message (not forwarded, not a caption or a voice transcript) from
+  the `allowFrom` operator in your private chat with the bot reaches the helper.
+  Every other `approve`/`deny` line is dropped, so a code never lands in a
+  session inbox.
+- One request is pending at a time. A wrong id, a wrong code or a missing code
+  burns it, a used code is never accepted again, three wrong codes lock the
+  helper for 15 minutes, and at most 6 requests are accepted per hour.
+- Every request, code check and exit status goes to the append-only ledger
+  `/var/log/himmel/afk-sudo.jsonl`. The ledger never holds the code. The
+  morning report's `afk_sudo` section summarises the last 24 h.
+- Off switch: set `"enabled": false`, or `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`,
+  which removes the helper and its sudoers rule and keeps the ledger.
+
+A stolen phone gives an attacker your Telegram but not your authenticator code.
+A stolen phone that also holds the authenticator lets them approve only a request
+a session has already opened, and only for an allowlisted command.
+
 ## Group triage
 
 Plain group/channel chat is fronted by a cheap classifier before the bridge
@@ -735,6 +791,7 @@ measured history of failing purely with ambient load.
 | `systemd/telegram-bridge.service` | systemd **user** unit template (`@HIMMEL_REPO@` placeholder), Linux reboot-persistence |
 | `run-prompt.md` | the prompt contract handed to each bounded run |
 | `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use |
+| `afk-sudo-route.ts` | hands the operator's `approve`/`deny` lines to the root afk-sudo helper (HIMMEL-8066) |
 
 Bot: `@<your-bot-username>`. Token: `~/.claude/channels/telegram/.env`
 (`TELEGRAM_BOT_TOKEN=`). Logs + pidfile: `~/.claude/channels/telegram/`.
