@@ -153,7 +153,7 @@ check "21: an unparseable outside-diff list exits 3" "$rc" "3"
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
 mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; mkdir "$tmp/ro/ledger.jsonl.lock"
 out="$(CR_LEDGER="$tmp/ro/ledger.jsonl" bash "$SUT" 12 2>&1)"; rc=$?
-check "bad ledger path: the run exits 3" "$rc" "3"
-check "bad ledger path: the PR is not counted as read" "$(grep -c '^cr-thread-recorder: 1 PR(s) read' <<< "$out" | tr -d ' ')" "0"
+check "ledger append blocked by a held lock path: the run exits 3" "$rc" "3"
+check "ledger append blocked by a held lock path: the PR is not counted as read" "$(grep -c '^cr-thread-recorder: 1 PR(s) read' <<< "$out" | tr -d ' ')" "0"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
