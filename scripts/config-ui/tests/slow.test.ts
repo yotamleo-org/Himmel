@@ -163,11 +163,15 @@ test("page: a repaint after a review gate control changes puts the focus back on
   expect(focused).toEqual(["required:claude"]);
 });
 
-test("page: a path field the operator emptied stays empty through a repaint", async () => {
+// before: the path field as the page holds it; after: the same field as the repaint renders it from the fresh read
+for (const [name, before, after, want] of [
+  ["a path field the operator emptied stays empty through a repaint", { value: "", defaultValue: "/saved/path" }, "/saved/path", ""],
+  ["a path field the operator left untouched takes the path a fresh read brings", { value: "", defaultValue: "" }, "/set/elsewhere", "/set/elsewhere"],
+] as [string, { value: string; defaultValue: string }, string, string][]) test(`page: ${name}`, async () => {
   const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
     .replace(/^import .*$/gm, "").concat("\nglobalThis.__paint = paint;\n");
-  const emptied = { dataset: { path: "handover-root" }, value: "", selectionStart: 0, selectionEnd: 0 }; // the field before the repaint
-  const repainted = { value: "/saved/path", focus() {}, setSelectionRange() {} }; // the same field as the repaint renders it, with the saved path
+  const emptied = { dataset: { path: "handover-root" }, ...before, selectionStart: 0, selectionEnd: 0 };
+  const repainted = { value: after, focus() {}, setSelectionRange() {} };
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
   const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
@@ -183,7 +187,7 @@ test("page: a path field the operator emptied stays empty through a repaint", as
     new Function(src)();
     (g.__paint as () => void)();
   } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
-  expect(repainted.value).toBe("");
+  expect(repainted.value).toBe(want);
 });
 
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {
