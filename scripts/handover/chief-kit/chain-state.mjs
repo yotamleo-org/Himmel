@@ -189,6 +189,14 @@ for (const iss of issues.values()) {
 }
 const chainsOf = key => [...chains.values()].filter(c => c.members.has(key)).map(c => c.id).sort();
 
+// orders(h): a hold sets the chain's order once added, unless it was released before its target completed.
+function orders(h) {
+    if (h.added > now) return false;
+    if (h.released === null || h.released > now) return true;
+    const c = completeAt(h.on);
+    return c !== null && c <= h.released;
+}
+
 // steps (L1): a ticket's step is one past its latest in-chain predecessor. A pair linked both
 // ways (a reorder) keeps the later link; a cycle left after that is cut where the walk meets it.
 function layer(chain) {
@@ -197,7 +205,7 @@ function layer(chain) {
         const iss = issues.get(k);
         for (const on of iss.blockedBy) if (chain.members.has(on)) edges.set(`${k}>${on}`, -Infinity);
         for (const h of holds) {
-            if (h.key === k && h.on && chain.members.has(h.on)) edges.set(`${k}>${h.on}`, Math.max(edges.get(`${k}>${h.on}`) ?? -Infinity, h.added));
+            if (h.key === k && h.on && chain.members.has(h.on) && orders(h)) edges.set(`${k}>${h.on}`, Math.max(edges.get(`${k}>${h.on}`) ?? -Infinity, h.added));
         }
     }
     const preds = new Map();

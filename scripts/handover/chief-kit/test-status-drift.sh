@@ -523,6 +523,8 @@ hold "$K" --reason r --owner o --kind date; rc=$?
 check "3a: a date hold without --until is a usage error" "$rc" 2
 hold "$K" --reason r --owner o --on not-a-key; rc=$?
 check "3a: --on a non-key is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --on himmel-1; rc=$?
+check "3a: --on a lowercase key is a usage error" "$rc" 2
 hold "$K" --release --on HIMMEL-1; rc=$?
 check "3a: a release takes no --on" "$rc" 2
 check "3a: and these call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0

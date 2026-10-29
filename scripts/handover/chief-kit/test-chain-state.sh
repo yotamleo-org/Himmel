@@ -123,6 +123,15 @@ check "E30: the change log lists each change in time order" \
     "$(q '.chains[0].log | map(.change) | join(" ")')" "hold release hold add remove"
 check "E30: with its kind, reason and source" "$(q '.chains[0].log[2] | .kind + " " + .reason + " " + .who')" "chain-order docs land first chief"
 check "E30: n/m follows the chain's tickets" "$(q '.chains[0] | "\(.done)/\(.total)"')" "1/3"
+reset
+issue HIMMEL-8009 "To Do" labels='["chain-mem"]'
+issue HIMMEL-8010 "To Do" labels='["chain-mem"]'
+cl '{"ts":"2026-10-28T20:56:00Z","change":"hold","key":"HIMMEL-8010","kind":"chain-order","on":"HIMMEL-8009","who":"chief","reason":"r"}'
+cl '{"ts":"2026-11-03T12:00:00Z","change":"release","key":"HIMMEL-8010","who":"chief"}'
+cl '{"ts":"2026-11-06T00:00:00Z","change":"hold","key":"HIMMEL-8009","kind":"chain-order","on":"HIMMEL-8010","who":"chief","reason":"r"}'
+cs
+check "E30: a hold released before its target completed, and one not yet set, add no step" \
+    "$(tk HIMMEL-8010 '.chains[0].step') $(tk HIMMEL-8009 '.chains[0].step')" "1 1"
 
 # --- E33: links across other work ---------------------------------------------
 reset

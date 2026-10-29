@@ -61,7 +61,7 @@ else
 fi
 case "$KIND" in "" | chain-order | gate | file-collision | operator | date) ;; *) usage ;; esac
 [ "$KIND" != date ] || [ -n "$UNTIL" ] || usage
-[ -z "$ON" ] || [[ "$ON" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]] || usage
+[ -z "$ON" ] || [[ "$ON" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || usage
 if [ -n "$UNTIL" ]; then
     [[ "$UNTIL" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || usage
 fi
