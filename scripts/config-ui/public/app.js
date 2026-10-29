@@ -307,7 +307,7 @@ async function loadSetup() {
     data = r.ok ? await r.json() : { error: `setup failed (${r.status})` };
   } catch (_) { data = { error: "server unreachable" }; }
   if (gen !== setupGen) return;
-  setup = data;
+  if (!data.error || !setup) setup = data; // a failed refresh keeps the last good read, so an open form stays
   if (currentPage.id === "config") paint();
 }
 async function runVerify() {
