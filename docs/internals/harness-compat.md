@@ -686,9 +686,7 @@ Codex `SessionEnd` (not `Stop` — see the paragraph above). Plugins: the
 response-compression plugin was OFF both sides (Codex global file had stale
 entries — removed) and is gone entirely; hookify ON only in
 Codex (now off); security-guidance ON both, Codex side now off (runner-fatal);
-superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
-`commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
-by design, mirrored into the project file).
+superpowers ON both; himmel-ops ON both (Codex side inert by design, mirrored into the project file).
 
 **Shell-surface guards mirrored.** `block-git-stash`,
 `block-rogue-claude-schedule`, `require-quiet-run` and `block-edit-live-settings`
@@ -756,14 +754,11 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   `/scripts/hooks/x.sh`, misses, and exits 0 silently. The `.codex/hooks.json`
   entries that look like duplicates of the plugin's SessionStart/SessionEnd are
   therefore the *only* working copies — do not "de-duplicate" them.
-- Phase 4 of `install-himmel-codex.**sh**` ran the probe advisorily on
-  Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
-  into the Windows twin meant it never fired on the update path.
 
 **PreToolUse dispatcher (RAM program P0-2).** Codex launches a full
 `pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
 PreToolUse entries a Bash tool call matched cost nine of them (parallel
-diagnostic batches peaked at 119–120 Git Bash processes). A `run-hook.cmd`
+diagnostic batches peaked at 119–120 Git Bash processes). A `.codex/run-hook.sh`
 argument may now be a **chain** — `a.sh+b.sh+c.sh` — that one adapter runs in
 order. Guardrail set and order are unchanged; only the number of adapter
 launches drops:
@@ -771,7 +766,6 @@ launches drops:
 | tool | before | after | chain |
 |---|---|---|---|
 | Bash | 9 entries / ~27 launches | 2 entries / ~11 | 8-chain + `.*` auto-arm |
-| PowerShell | 7 / ~21 | 2 / ~9 | 6-chain + `.*` auto-arm |
 | Read, Grep | 2 / ~6 | 2 / ~4 | 1 + `.*` auto-arm |
 | Edit/Write family | 3 | 2 / ~5 | 2-chain + `.*` auto-arm |
 
@@ -796,7 +790,7 @@ launches drops:
   diff.
 - `--lifecycle` semantics are untouched, and Stop stays one entry per hook.
   SessionStart is now chained too: ONE
-  `.codex/run-hook.cmd --sandbox --lifecycle a.sh+b.sh+c.sh+d.sh` entry, 4
+  `.codex/run-hook.sh --sandbox --lifecycle a.sh+b.sh+c.sh+d.sh` entry, 4
   launches → 1 — so its positional trust keys shift 4→1 and the operator must
   **re-trust the hook once**, exactly as after #1804 (see the trap below).
 - **The Claude wiring now mirrors this**: `.claude/settings.json`
@@ -888,8 +882,8 @@ Tier-A skills split by **delivery mechanism**: the enabled himmel plugins
 their own skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
 vm, himmel-doctor, himmel-update) require `himmel-ops@himmel` enabled in
 user-global `~/.codex/config.toml` — provisioned **reproducibly** by
-`scripts/codex/install-himmel-codex.{sh,ps1}` (the codex-CLI half of
-the install split, twin of the hermes `scripts/hermes/install-himmel-profile.*`).
+`scripts/codex/install-himmel-codex.sh` (the codex-CLI half of
+the install split, counterpart of the hermes `scripts/hermes/install-himmel-profile.sh`).
 The installer drives the `codex` CLI (`codex plugin marketplace add` /
 `codex plugin add`), idempotent + non-destructive. Independent of plugin-skill
 loading, the **verified** Codex skill-discovery path is project-local
