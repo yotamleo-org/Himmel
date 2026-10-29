@@ -67,7 +67,7 @@
 #      the gate are exempt (reason=missing-preflight).
 #   4f. A lane=full marker whose diff changes a non-test guard or gate file
 #      (scripts/hooks/, scripts/ci/check-*, clear-review-marker.sh,
-#      clear-review-marker.sh, scripts/testing/check-*, chief-kit
+#      scripts/testing/check-*, chief-kit
 #      ready-check.sh) needs a `blast` row stamped with this branch at any
 #      head: the blast-radius pass ran, or an `off` row with a reason (audited
 #      as blast=off on the CLEARED line). As in 4e, a branch with no `score`
