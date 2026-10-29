@@ -653,6 +653,14 @@ mk_index 61
 out="$(MEMDIR="$MEM" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
 case "$out" in *"cut at"*) echo "FAIL N4 notice still claims the 60-line ceiling truncates the index"; FAILED=1 ;; *) echo "PASS N4 notice no longer claims the 60-line ceiling truncates the index" ;; esac
 assert_contains "N4 notice calls the ceiling himmel's routing rule" "routing rule"
+{ printf -- '- a\n'; } > "$N2/MEMORY.md"; fill 8193 > "$N2/big.md"
+rm -rf "$SB/n5link"; ln -s "$N2" "$SB/n5link"
+out="$(MEMDIR="$SB/n5link" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N5 a symlinked memory dir still reports topic-cap" "topic-cap"
+rm -f "$N2/big.md" "$SB/n5link"
+{ i=0; while [ "$i" -lt 200 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; printf 'prose last'; } > "$N2/MEMORY.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N6 a 201st line without a trailing newline prints load-limit" "load-limit"
 
 # --- pin: guard, notice, Bash re-check and audit share the defaults
 BASHCHK="$(cd "$(dirname "$0")" && pwd)/memory-bash-line-check.sh"

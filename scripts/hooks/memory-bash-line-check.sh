@@ -39,7 +39,14 @@ big=""
 # plus the two common home spellings, resolved below).
 # Read line by line (an unquoted $(...) would glob a `*` in the command text) and
 # dedupe, so a command naming one path 5000 times checks it once.
-paths="$(printf '%s' "$cmd" | grep -oE '[^[:space:]"'"'"'=<>|;&()]*/\.claude/projects/[^[:space:]"'"'"'/]+/memory/[^[:space:]"'"'"'/]+\.md' | sort -u)"
+paths="$(printf '%s' "$cmd" | grep -oE '[^[:space:]"'"'"'=<>|;&()]*/\.claude/projects/[^[:space:]"'"'"'/]+/memory/[^[:space:]"'"'"'/]+\.md')"
+# The guard also covers $CLAUDE_CONFIG_DIR/projects/*/memory/*; match that store too.
+cfg="${CLAUDE_CONFIG_DIR:-}"; cfg="${cfg%/}"
+if [ -n "$cfg" ]; then
+    more="$(printf '%s' "$cmd" | grep -oE '[^[:space:]"'"'"'=<>|;&()]*/projects/[^[:space:]"'"'"'/]+/memory/[^[:space:]"'"'"'/]+\.md' | grep -F "$cfg/projects/")"
+    paths="$(printf '%s\n%s\n' "$paths" "$more")"
+fi
+paths="$(printf '%s\n' "$paths" | sort -u)"
 while IFS= read -r p; do
     [ -n "$p" ] || continue
     # shellcheck disable=SC2088,SC2016  # literal command TEXT, deliberately unexpanded

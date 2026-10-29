@@ -91,4 +91,11 @@ head -c 8193 /dev/zero | tr '\0' 'a' > "$TOP"
 MEMORY_CAPTURE_OK=1 run Bash "cat >> $TOP <<'EOF'"; assert_rc "MEMORY_CAPTURE_OK=1 bypasses the topic-cap warning" 0 "$?"
 MEMORY_TOPIC_MAX=9000 run Bash "cat >> $TOP <<'EOF'"; assert_rc "MEMORY_TOPIC_MAX=9000 knob honoured" 0 "$?"
 
+# 12: with CLAUDE_CONFIG_DIR set, its projects/*/memory store is checked too;
+# the same path is ignored when that variable is unset.
+CFG="$SB/cfg"; mkdir -p "$CFG/projects/p/memory"
+head -c 8193 /dev/zero | tr '\0' 'a' > "$CFG/projects/p/memory/theme.md"
+CLAUDE_CONFIG_DIR="$CFG" run Bash "cat >> $CFG/projects/p/memory/theme.md <<'EOF'"; assert_rc "topic file under CLAUDE_CONFIG_DIR flagged" 2 "$?"
+run Bash "cat >> $CFG/projects/p/memory/theme.md <<'EOF'"; assert_rc "same path ignored when CLAUDE_CONFIG_DIR is unset" 0 "$?"
+
 exit "$FAILED"

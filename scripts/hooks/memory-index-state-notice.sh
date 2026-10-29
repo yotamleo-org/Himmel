@@ -97,12 +97,12 @@ over_ceil=0; [ "$n" -gt "$LINE_CEIL" ] && over_ceil=1
 
 # The harness loads only the first 200 lines / 25 KB of the index: a different
 # (and harder) limit than himmel's 60-line routing ceiling.
-idx_lines="$(wc -l 2>/dev/null < "$idx" | tr -d ' ')"; idx_bytes="$(wc -c 2>/dev/null < "$idx" | tr -d ' ')"  # swallow-ok: a non-numeric count resets to 0 on the next line; the notice fails open
+idx_lines="$(awk 'END{print NR+0}' "$idx" 2>/dev/null)"; idx_bytes="$(wc -c 2>/dev/null < "$idx" | tr -d ' ')"  # swallow-ok: a non-numeric count resets to 0 on the next line; the notice fails open
 case "$idx_lines$idx_bytes" in ''|*[!0-9]*) idx_lines=0; idx_bytes=0 ;; esac
 over_load=0; { [ "$idx_lines" -gt "$LOAD_LINES" ] || [ "$idx_bytes" -gt "$BUDGET" ]; } 2>/dev/null && over_load=1
 
 # One top-level listing: topic files (*.md other than the index) past the cap.
-topics="$(find "$MEMDIR" -maxdepth 1 -type f -name '*.md' ! -name MEMORY.md -size +"$TOPIC_MAX"c 2>/dev/null | sort)"  # swallow-ok: a failed listing reads as no oversized topic files; the notice fails open
+topics="$(find -H "$MEMDIR" -maxdepth 1 -type f -name '*.md' ! -name MEMORY.md -size +"$TOPIC_MAX"c 2>/dev/null | sort)"  # swallow-ok: a failed listing reads as no oversized topic files; the notice fails open
 n_topic=0; [ -n "$topics" ] && n_topic="$(printf '%s\n' "$topics" | awk 'END{print NR+0}')"
 case "$n_topic" in ''|*[!0-9]*) n_topic=0 ;; esac
 
