@@ -144,8 +144,8 @@ for (const r of events) {
 function completing(key) {
     const iss = issues.get(key);
     if (!iss?.known || !iss.done) return null;
-    // A past successful merge cannot complete a reopened ticket or an older Done epoch.
-    const rows = (mergesOf.get(key) || []).filter(r => iss.epoch === null || ms(r.ts) >= iss.epoch);
+    // Preserve the completing PR for the audit, including a PR merged before manual closure.
+    const rows = mergesOf.get(key) || [];
     const yes = rows.filter(r => r.contract === 'yes' && (r.result === 'moved' || r.result === 'noop'));
     if (yes.length) return yes[yes.length - 1];
     const before = iss.resolved === null ? rows : rows.filter(r => ms(r.ts) <= iss.resolved);
@@ -163,8 +163,8 @@ function completeAt(key, at = now) {
         return iss.resolved !== null && iss.resolved <= at ? iss.resolved : null;
     }
     const m = completing(key);
-    if (m) return ms(m.ts);
-    if (iss?.known && iss.done) return iss.resolved ?? iss.epoch ?? 0;
+    // Audit identity and current clearing time are separate: an older merge cannot clear a new Done epoch.
+    if (iss?.known && iss.done) return Math.max(m ? ms(m.ts) : iss.resolved ?? 0, iss.epoch ?? 0);
     return null;
 }
 const isDone = key => completeAt(key) !== null && completeAt(key) <= now;

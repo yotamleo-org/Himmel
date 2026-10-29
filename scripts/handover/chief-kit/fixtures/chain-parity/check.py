@@ -88,6 +88,7 @@ with tempfile.TemporaryDirectory(prefix='chain-parity-') as temp:
         prepare(root, case)
         result, data = invoke(root)
         check(case['name'] + ' exits 0', result.returncode, 0)
+        check(case['name'] + ' output parses as JSON', data is not None, True)
         if result.returncode or data is None:
             print(result.stderr)
             continue
@@ -116,6 +117,10 @@ with tempfile.TemporaryDirectory(prefix='chain-parity-') as temp:
         if 'out_of_order' in case and READER == 'state':
             check(case['name'] + ' historical order uses new Done epoch',
                   data['tickets']['HIMMEL-%s' % case['out_of_order']]['check']['result'], 'out-of-order')
+        for n, pr in case.get('audit_merge', {}).items():
+            if READER == 'state':
+                check(case['name'] + ' retains merge identity for order audit',
+                      (data['tickets']['HIMMEL-' + n]['check'].get('merge') or {}).get('pr'), pr)
         if 'order_held' in case and READER == 'state':
             check(case['name'] + ' preserves historical completion before reopen',
                   data['tickets']['HIMMEL-%s' % case['order_held']]['check']['result'], 'order-held')
