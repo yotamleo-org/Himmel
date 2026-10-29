@@ -284,7 +284,13 @@ while IFS= read -r g; do
     verdict "$hook" "$mode" "$envs" "$c"
     tk=$(known_ticket "$hook" "$id")
     if [ "$V" = deny ]; then
-      if [ -n "$tk" ]; then
+      if [ -n "$tk" ] && [ "$hook $id" = "guard-pr-check-literal.sh ansi-c-command-word" ] &&
+        { [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; }; then
+        # below bash 4.4 the guard cannot classify an ANSI-C quoted word and
+        # denies it by design (guard-pr-check-literal.sh: "cannot be classified
+        # safely by this bash version"), so the listed miss does not exist there
+        pass=$((pass+1))
+      elif [ -n "$tk" ]; then
         fail=$((fail+1)); echo "FAIL $hook $id is now denied but is listed KNOWN_FAILURES ($tk): remove the entry"
       else
         pass=$((pass+1))

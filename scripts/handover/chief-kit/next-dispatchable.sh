@@ -576,7 +576,7 @@ except OSError:
     pass
 
 # A blocker the mirror still shows open may be Done: the mirror lags. Its live status is read once, bounded (20 s a key,
-# 8 in parallel), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
+# 8 in parallel, every key read: no cap), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
 # jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
 # leaves the blocker open as the mirror shows it.
 DONE_STATES = ('Done', 'Closed')
@@ -606,7 +606,7 @@ def live_read(key):
         return None
 
 def live_fetch(keys):
-    fresh = sorted({k for k in keys if k not in live_cache})[:60]
+    fresh = sorted({k for k in keys if k not in live_cache})
     if not (live_on and fresh):
         return
     from concurrent.futures import ThreadPoolExecutor

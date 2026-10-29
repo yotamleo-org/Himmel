@@ -255,6 +255,8 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 # Every CHIEF_WAIT_* knob still reads its old name.
 # shellcheck source=../../lib/env-alias.sh
 . "$REPO/scripts/lib/env-alias.sh"
+# shellcheck source=../../lib/prim.sh
+. "$REPO/scripts/lib/prim.sh" || exit 2
 alias_env WORKERS_FROM LEGS_FROM
 alias_env CHIEF_WAIT_USAGE CONSOLE_WAIT_BANK
 alias_env CHIEF_WAIT_WORKER_EVENT CONSOLE_WAIT_LEG_EVENT
@@ -329,7 +331,7 @@ if ! mkdir -p "$(dirname "$inbox")" || ! exec 9>>"$inbox.wait.lock"; then
     echo "chief-wait: cannot open $inbox.wait.lock" >&2
     exit 1
 fi
-if ! flock -n 9; then  # gnu-ok: Linux-only kit (util-linux flock, PLATFORM GUARD)
+if ! flock -n 9; then  # gnu-ok: Linux-only kit (util-linux flock, PLATFORM GUARD)  # prim-ok: a non-blocking try-lock held on fd 9 for the waiter's whole life; with_lock blocks and scopes to one command
     # swallow-ok: the pid only decorates the refusal message below; exit 3 does not depend on it
     other="$(sed -n 's/.* pid=\([0-9][0-9]*\) .*/\1/p' "$hb_file" 2>/dev/null | head -n 1)"
     echo "chief-wait: a waiter is already live on $inbox (pid ${other:-?}) — not starting a second" >&2
@@ -1130,12 +1132,7 @@ if [ -f "$key_file" ] && [ "$(sed -n 1p "$key_file")" = "$args_hash" ]; then
     saved="$(old_key_names "$(sed -n 2p "$key_file")")"
 fi
 save_key() {
-    tmp="$(mktemp "$key_file.XXXXXX" 2>/dev/null)" || return 0
-    if printf '%s\n%s\n' "$args_hash" "$1" > "$tmp" 2>/dev/null; then
-        mv -f "$tmp" "$key_file" 2>/dev/null || rm -f "$tmp" 2>/dev/null
-    else
-        rm -f "$tmp" 2>/dev/null
-    fi
+    printf '%s\n%s\n' "$args_hash" "$1" | atomic_write "$key_file" 2>/dev/null || return 0  # swallow-ok: a key file that cannot be written only re-arms the next start
 }
 # Line 3 `failwoke` = this failure streak already woke the chief once.
 fail_woke() {
@@ -1355,13 +1352,7 @@ while :; do
             # A monitor that stays broken is an event too, but only once per
             # streak: the re-arm stays quiet until a sample succeeds.
             if [ "$fail_streak" -ge "$fail_wake" ] && ! fail_woke; then
-                if tmp="$(mktemp "$key_file.XXXXXX" 2>/dev/null)"; then
-                    if printf '%s\n%s\nfailwoke\n' "$args_hash" "$saved" > "$tmp" 2>/dev/null; then
-                        mv -f "$tmp" "$key_file" 2>/dev/null || rm -f "$tmp" 2>/dev/null
-                    else
-                        rm -f "$tmp" 2>/dev/null
-                    fi
-                fi
+                printf '%s\n%s\nfailwoke\n' "$args_hash" "$saved" | atomic_write "$key_file" 2>/dev/null  # swallow-ok: a key file that cannot be written only repeats the wake once
                 printf 'WAKE tick-fail samples=%s step=%s\n' "$fail_streak" "$fail_step"
                 exit_reason='wake-tick-fail'; exit 0
             fi

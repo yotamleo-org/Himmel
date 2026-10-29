@@ -1594,7 +1594,7 @@ DCSW_SRC="$SANDBOX/dc_split_words_extract.sh"
 sed -n '/^_dc_split_words() {/,/^}/p' "$HOOK" > "$DCSW_SRC"
 DCSW_BAD="$SANDBOX/dc_split_words_broken.sh"
 # broken: drops the space-to-separator rewrite, so every word merges into one
-sed 's|\${1// /\$s}|${1}|' "$DCSW_SRC" > "$DCSW_BAD"
+sed "s|tr ' ' '\\\\037'|tr ' ' ' '|" "$DCSW_SRC" > "$DCSW_BAD"
 dcsw_run() {
     bash -c '
         source "$1"
@@ -2132,8 +2132,12 @@ assert_rc "395 nested worktree ln -sf \$SJ ~/.cl{a,}ude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl{a,}ude" HOME="$FAKEHOME")"
 assert_rc "396 nested worktree ln -sf \$SJ \$HOME/.cla{ude,x}/ denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ \$HOME/.cla{ude,x}/" HOME="$FAKEHOME")"
+# bash 3.2 brace-expands a nested group written inside the quoted payload of a
+# "$(…)" argument, running the hook once per word, so the payload is held in a
+# variable (an assignment never brace-expands) and passed quoted.
+NESTED_BRACE="ln -sf $SJ ~/{x,{.claude,y}}/"
 assert_rc "397 nested worktree ln -sf \$SJ ~/{x,{.claude,y}}/ (nested brace) denies" 2 \
-    "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/{x,{.claude,y}}/" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$NESTED_WT" "$NESTED_BRACE" HOME="$FAKEHOME")"
 assert_rc "398 nested worktree ln -sf \$SJ ~/.cl\$X denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl\$X" HOME="$FAKEHOME")"
 assert_rc "399 nested worktree cp -t ~/.c[[:alpha:]]aude \$SJ denies" 2 \
