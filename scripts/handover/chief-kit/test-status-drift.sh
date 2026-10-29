@@ -844,8 +844,14 @@ esac
 echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 echo "sdrift=1:0a1b2c3d"
 EOS
-chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift"
-export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift"
+cat >"$tmp/frbin/ksync" <<'EOS'
+#!/usr/bin/env bash
+echo "ksync $* jira=${KBS_JIRA:-}" >> "$FX/ksync.log"
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync ] && exit 1
+exit 0
+EOS
+chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync"
+export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
 fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
     reset "To Do"
@@ -886,6 +892,7 @@ contains "3c: the render reads the worker records" "$trk" "--workers-dir $TICKET
 contains "3c: the render reads the staged PR snapshot" "$trk" "--prs-file"
 contains "3c: the render reads the mirror it was given" "$trk" "--mirror-dir $FR/mir/HIMMEL"
 check "3c: the drift rows are kept beside the page" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+contains "3c: the known-bugs sync runs after the drift stage with the Jira CLI" "$(cat "$FX/ksync.log")" "--checker HIMMEL-7980 --log $FR/doc/known-bugs-sync.log jira=$tmp/frbin/jira"
 fr
 check "3c: a second refresh is generation 2" "$(fst gen)" 2
 check "3c: an unchanged fingerprint leaves the page alone" "$(head -n 1 "$PAGE")" "render 1"
@@ -901,6 +908,11 @@ fr
 check "3c: a page of another version under an unchanged .vfp is restored" "$(head -n 1 "$PAGE")" "render 5"
 contains "3c: the sweep keeps its snapshot in the stage" "$(grep '^sweep ' "$FX/fr.log" | tail -n 1)" "--snapshot-out $FR/doc/.focus-stage."
 contains "3c: the drift pass reads that snapshot" "$(grep '^drift ' "$FX/fr.log" | tail -n 1)" "--snapshot $FR/doc/.focus-stage."
+echo ksync > "$FX/fr.fail"
+fr
+check "3c: a failed known-bugs sync does not fail the refresh" "$(frout)" "focus=ok"
+contains "3c: and warns on stderr" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
+rm -f "$FX/fr.fail"
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.
 fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]

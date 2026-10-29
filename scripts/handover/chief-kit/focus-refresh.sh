@@ -25,6 +25,7 @@
 #             snapshot read it could not finish (gh, jira, ...), unknown
 #   prs       one `gh pr list` snapshot, staged
 #   render    tracker.py --version, staged
+#   known-bugs-sync.sh runs once the drift file is published (best effort; its log is known-bugs-sync.log).
 #   drift     status-drift.sh over the sweep's snapshot, staged (report only). It fails as
 #             drift:<why>: timeout, rc<n>, budget (its own cut-off), gh, jira, no-sdrift, unknown
 #   publish   the page and its fingerprint (.vfp) replace the old ones unless the page on
@@ -46,7 +47,7 @@
 # ponytail: one current-version page and no per-version refresh, upgrade path = a
 # --version loop over the doc's tracker-<version> lines.
 #
-# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT (each one executable),
+# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_KNOWN_SYNC (each one executable),
 # TICK_TRACKER_MIRROR_DIR.
 # Platform guard: POSIX bash 3.2+, flock optional; no .ps1 twin by design (shell-only harness).
 set -u
@@ -190,6 +191,7 @@ if [ -n "${FR_JIRA:-}" ]; then JIRA=("$FR_JIRA"); else JIRA=(node "$PRIMARY/scri
 if [ -n "${FR_SWEEP:-}" ]; then SWEEP=("$FR_SWEEP"); else SWEEP=(bash "$HERE/status-sweep.sh"); fi
 if [ -n "${FR_TRACKER:-}" ]; then TRACKER=("$FR_TRACKER"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${FR_DRIFT:-}" ]; then DRIFT=("$FR_DRIFT"); else DRIFT=(bash "$HERE/status-drift.sh"); fi
+if [ -n "${FR_KNOWN_SYNC:-}" ]; then KSYNC=("$FR_KNOWN_SYNC"); else KSYNC=(bash "$HERE/known-bugs-sync.sh"); fi
 
 bounded() {
     local s=$1
@@ -282,6 +284,9 @@ if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
+# Keep the known-checker-bugs file and the checker ticket's Jira links in step. Best effort: a failed sync never fails the refresh.
+KBS_JIRA="${FR_JIRA:-}" bounded 60 "${KSYNC[@]}" --checker HIMMEL-7980 --log "$DIR/known-bugs-sync.log" >/dev/null 2>&1 \
+    || echo "focus-refresh: WARN: known-bugs-sync failed; the known-checker-bugs file is as it was" >&2
 S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER"
 again=""
 [ ! -f "$AGAIN" ] || again=$(cat "$AGAIN")
