@@ -189,19 +189,17 @@ export function renderVm(vm) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
 }
 
-// the fleet cap card. fc = { data: GET /api/fleet-cap, error, draft: the cap as typed, msg }. The server validates and writes the one .env line.
+// the fleet cap card. fc = { data: GET /api/fleet-cap, error }. Read-only: the cap is gate policy, edited by hand in config.json.
 export function renderFleetCap(fc) {
   const head = `<h2 id="h-fleet-cap">Fleet cap</h2><p class="sub">How many workers may run at once. Launching one more than this is refused.</p>`;
   if (!fc || (!fc.data && !fc.error)) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="empty">loading…</div></section>`;
   if (!fc.data) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="nodata">${esc(fc.error)}</div></section>`;
-  const d = fc.data, v = fc.draft === undefined || fc.draft === null ? d.cap : fc.draft;
-  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over .env until the UI restarts without it${d.fileValue !== null ? ` (saved in .env: ${esc(d.fileValue)})` : ""}</div>` : "";
-  const msg = fc.msg ? `<div class="${fc.msg.ok ? "ro" : "nodata"}" role="status">${esc(fc.msg.text)}</div>` : "";
+  const d = fc.data;
+  const from = d.source === "config.json" ? `set in <code>${esc(d.configFile)}</code>` : d.source === ".env" ? `set in the legacy <code>${esc(d.envFile)}</code>; move it to <code>${esc(d.configFile)}</code>` : "not set";
   return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="card">
-    <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">whole number from ${esc(d.min)} to ${esc(d.max)}</span>
-    <span class="slot"><label>cap <input type="text" inputmode="numeric" data-fc="cap" value="${esc(v)}" aria-label="fleet cap"></label></span></div>
-    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · saved to <code>${esc(d.envFile)}</code>, read at the next worker launch</div></div>${over}
-    <button class="btn" data-act="fleet-cap-save">save</button>${msg}</div></section>`;
+    <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">gate policy, read-only here</span>
+    <span class="slot"><label>cap <input type="text" data-fc="cap" value="${esc(d.cap)}" readonly aria-label="fleet cap"></label></span></div>
+    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · ${from}. To change it, edit <code>${esc(d.edit)}</code> by hand; the launching shell does not count.</div></div></div></section>`;
 }
 
 // the review gate card. rg = { data: GET /api/review-gate, error, draft: [{ slug, mode, required, enabled }], msg }.

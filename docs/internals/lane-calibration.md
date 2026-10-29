@@ -847,7 +847,8 @@ fleet-wide halt. `scripts/lib/usage-preflight.sh` now counts live
 workers (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-chief` — chiefs are not workers) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
-`HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
+`HIMMEL_FLEET_CAP` (`~/.himmel/config.json` `.policy`, else a legacy `.env`
+line, default **4**; the process env is ignored). Wired at ARM time in
 both `scripts/handover/chief-kit/headed-arm-worker.sh` and
 `scripts/handover/arm-resume.sh`, so a new worker is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than
@@ -855,13 +856,13 @@ refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
 *launching* shell only (a per-call prefix is refused by
 `block-chokepoint-env-prefix.sh`, `scripts/chokepoints.json`).
 
-`load_dotenv` resolves the PRIMARY checkout's `.env` even when
-`HEADED_ARM_REPO` is a linked worktree (the gitignored file lives only in the
-primary), but only a value actually set there counts: if the launcher's
-environment does not export `HIMMEL_FLEET_CAP` and the primary `.env` does
-not set it, the cap falls to 4 and the fifth worker is refused with a
-full-looking census. Put `HIMMEL_FLEET_CAP` on the launcher line itself
-rather than relying on the file.
+`load_policy` reads the cap as gate policy: `~/.himmel/config.json`
+`.policy.HIMMEL_FLEET_CAP` first, then the PRIMARY checkout's legacy `.env`
+(with a `DEPRECATED` notice) even when `HEADED_ARM_REPO` is a linked worktree.
+A value exported in the launching shell or put on the launcher line is
+ignored. If neither file sets the cap, or `config.json` cannot be read, the cap
+is 4 and the fifth worker is refused with a full-looking census. Set it in
+`config.json`.
 
 **Why 4, not some other number.** 4 is a provisional operational cap, not a
 derived sustainability figure — no session's own measured burn rate or duty

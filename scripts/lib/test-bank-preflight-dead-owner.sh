@@ -8,6 +8,9 @@ trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/repo/scripts/lib" "$W/repo/scripts/lanes" "$W/home" "$W/proc"
 cp "$REPO/scripts/lib/"*.sh "$W/repo/scripts/lib/"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "balance=10.00:credit spend=?"' > "$W/repo/scripts/lanes/openrouter-cost.sh"
+# The fleet cap is gate policy, read from ~/.himmel/config.json, never the env.
+mkdir -p "$W/home/.himmel"
+printf '{"policy":{"HIMMEL_FLEET_CAP":1}}\n' > "$W/home/.himmel/config.json"
 cat > "$W/ps" <<'STUB'
 #!/usr/bin/env bash
 if [ -n "${PS_COUNTER:-}" ]; then
@@ -33,7 +36,7 @@ run() {
   local slots="$1"; shift
   # Grace 0 keeps the earlier cases about identity, not timing; the
   # grace cases below pass their own value ("$@" comes later, so it wins).
-  env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_FLEET_CAP=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_USAGE_LEDGER="$W/ledger" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_LANE=openrouter CADENCE_USAGE_WORKER=HIMMEL-9001-test CADENCE_USAGE_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err"
+  env FLEET_RECLAIM_GRACE_SECS=0 "$@" HOME="$W/home" HIMMEL_POLICY_FOLLOWS_HOME=1 HIMMEL_FLEET_SLOTS="$W/$slots" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" PS_DATA="$W/ps.data" CADENCE_USAGE_LEDGER="$W/ledger" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_LANE=openrouter CADENCE_USAGE_WORKER=HIMMEL-9001-test CADENCE_USAGE_CALLER_PID="$$" FLEET_CAP_OK= bash "$W/repo/scripts/lib/usage-preflight.sh" 2>"$W/err"
 }
 check() {
   if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: expected $2 got $3"; fails=$((fails+1)); fi

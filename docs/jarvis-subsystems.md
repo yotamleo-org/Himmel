@@ -56,8 +56,9 @@ steer the fleet by messaging the chief.
   (native Claude, or a Codex lane) and its model come from
   `scripts/lanes/lanes.json`. Detail:
   [internals/lane-calibration.md](internals/lane-calibration.md).
-- **The fleet cap** bounds how many workers run at once (1 to 50, default 4).
-  Set it on the Settings page or with `HIMMEL_FLEET_CAP`.
+- **The fleet cap** bounds how many workers run at once (default 4).
+  Set it by hand in `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`; the
+  Settings page shows it read-only.
 - **The judge.** Before a merge, the chief has the diff judged at the
   cheapest tier that can rule on it (`scripts/handover/chief-kit/judge-ladder.sh`).
   A worker merges only on the chief's signed `GO`, through

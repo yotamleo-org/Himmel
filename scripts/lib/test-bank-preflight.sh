@@ -24,6 +24,12 @@ NO_FLEET="$W/no-fleet-ps.sh"; printf '%s\n' '#!/usr/bin/env bash' 'true' > "$NO_
 # further down explicitly unsets HOME for one call to cover that path; it
 # uses env -u HOME on that one subshell only, so this export is unaffected.
 export HOME="$W/home"; mkdir -p "$HOME"
+# The fleet cap is gate policy: load_policy reads it from ~/.himmel/config.json
+# and ignores the env, so pin the policy dir to this HOME and the cap to 4.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
+set_cap() { mkdir -p "$HOME/.himmel"; printf '{"policy":{"HIMMEL_FLEET_CAP":%s}}\n' "$1" > "$HOME/.himmel/config.json"; }
+with_cap() { local cap="$1" rc; shift; set_cap "$cap"; "$@"; rc=$?; set_cap 4; return "$rc"; }
+set_cap 4
 export USAGE_LIFT_FILE="$W/home/.himmel/state/usage-lift.json"  # never inherit an operator lift (HIMMEL-4423)
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-preflight-test"}}' > "$HOME/.claude.json"
 IDLIB="$REPO/scripts/lib/usage-cache-identity.sh"
@@ -379,7 +385,18 @@ check "2 workers + 2 workers with chief/console in the slug, cap=4 -> SKIPPED-FL
 
 # HIMMEL_FLEET_CAP is configurable: the same 3-worker fixture trips a cap of 2.
 check "3 workers, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET \
+  "$(with_cap 2 fleet_verdict "$p3")"
+
+# The cap is gate policy: an exported HIMMEL_FLEET_CAP cannot lower or raise it,
+# and a config.json that cannot be parsed keeps the default 4.
+check "3 workers, config cap=4, env HIMMEL_FLEET_CAP=2 -> PROCEED (env ignored)" PROCEED \
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"
+check "4 workers, config cap=4, env HIMMEL_FLEET_CAP=50 -> SKIPPED-FLEET (env ignored)" SKIPPED-FLEET \
+  "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=50)"
+printf '{' > "$HOME/.himmel/config.json"
+check "4 workers, unparseable config.json, env HIMMEL_FLEET_CAP=50 -> SKIPPED-FLEET (default 4)" SKIPPED-FLEET \
+  "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=50)"
+set_cap 4
 
 # FLEET n/CAP is printed on EVERY call, including a PROCEED (below cap).
 # The line now names the lane breakdown too - p3's fixture has
@@ -466,7 +483,7 @@ pwrapper="$W/pswrapper"; mk_ps_stub "$pwrapper" \
   '9002:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
   '9003:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc'
 check "wrapper + its real child count as ONE worker, cap=3 -> PROCEED (comm-filtered, codex-3)" PROCEED \
-  "$(fleet_verdict "$pwrapper" HIMMEL_FLEET_CAP=3)"
+  "$(with_cap 3 fleet_verdict "$pwrapper")"
 
 # codex-2 (CR review, 2nd panel round): a host with NO usable procfs at
 # FLEET_PROC must not silently report fleet_n=0 forever (which would
@@ -494,7 +511,7 @@ fleet_verdict_no_procfs() {
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
 check "no procfs at FLEET_PROC, cap=3 -> SKIPPED-FLEET (argv-only fallback, codex-2)" SKIPPED-FLEET \
-  "$(fleet_verdict_no_procfs "$pwrapper" HIMMEL_FLEET_CAP=3)"
+  "$(with_cap 3 fleet_verdict_no_procfs "$pwrapper")"
 if grep -q 'comm unreadable for at least one fleet candidate' "$W/err.log" 2>/dev/null; then
   PASS=$((PASS+1)); echo "ok - no-procfs fallback logs the degradation loudly"
 else
@@ -516,7 +533,7 @@ ppartial="$W/pspartial"; mk_ps_stub "$ppartial" \
   '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc'
 rm -f "$ppartial/proc/9003/comm"
 check "readable procfs root, one unreadable comm file, cap=3 -> SKIPPED-FLEET (per-candidate fallback, codex-2 round 3)" SKIPPED-FLEET \
-  "$(fleet_verdict "$ppartial" HIMMEL_FLEET_CAP=3)"
+  "$(with_cap 3 fleet_verdict "$ppartial")"
 
 # codex-3 (CR review, 3rd panel round): a FAILED census command (ps
 # missing, an unsupported FLEET_PS_CMD) must not be indistinguishable from
@@ -743,7 +760,7 @@ check "fleet reports all three lanes and total" \
   'bank-preflight: FLEET native=1 claudex=1 openrouter=1 reserved=0 total=3/4' \
   "$(grep '^bank-preflight: FLEET ' "$W/err.log")"
 check "OpenRouter processes count toward fleet refusal" SKIPPED-FLEET \
-  "$(fleet_verdict "$por" HIMMEL_FLEET_CAP=3 CADENCE_USAGE_LANE=openrouter)"
+  "$(with_cap 3 fleet_verdict "$por" CADENCE_USAGE_LANE=openrouter)"
 
 # usage-lift. An operator-set, expiring, account-bound lift skips
 # ONLY the seven_day comparison. USAGE_LIFT_FILE points into the scratch HOME.
