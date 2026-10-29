@@ -443,7 +443,7 @@ if [ "$MODE" = plain ] && [ "$QMD_SKIP" != "1" ] && command -v qmd >/dev/null 2>
     # shellcheck source=../lib/qmd-bounded.sh
     . "$HERE/../lib/qmd-bounded.sh"
     if qmd_status="$(qmd_bounded "${QMD_TIMEOUT_SECS:-60}" qmd status 2>/dev/null)"; then
-        if ! printf '%s\n' "$qmd_status" | grep -qF -- 'luna (qmd://luna/)'; then
+        if ! grep -qF -- 'luna (qmd://luna/)' <<< "$qmd_status"; then
             note "COLLECTION FRESHNESS: qmd is on PATH but the luna collection is absent — re-landed facts may not be findable"
         fi
     fi

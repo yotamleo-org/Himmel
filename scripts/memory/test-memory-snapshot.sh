@@ -18,8 +18,8 @@ mkdir -p "$BIN"
 
 ok() { if "${@:2}"; then echo "PASS $1"; else echo "FAIL $1"; FAILED=1; fi; }
 assert_rc() { if [ "$3" = "$2" ]; then echo "PASS $1 (rc=$3)"; else echo "FAIL $1 (want $2, got $3)"; FAILED=1; fi; }
-has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
-lacks() { ! printf '%s\n' "$1" | grep -qF -- "$2"; }
+has() { grep -qF -- "$2" <<< "$1"; }
+lacks() { ! grep -qF -- "$2" <<< "$1"; }
 body() { [ "$(cat "$MEM/$1" 2>/dev/null; echo x)" = "$2"$'\n'x ]; }
 
 # --- the macOS-shaped toolbox: real tools, no sha256sum, a shasum shim ---

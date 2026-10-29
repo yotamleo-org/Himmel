@@ -128,8 +128,8 @@ NOTICE="$HERE/../hooks/memory-index-state-notice.sh"
 GUARD="$HERE/../hooks/guard-memory-capture.sh"
 LIB="$HERE/../lib/memory-slug.sh"
 
-assert_has() { if printf '%s\n' "$3" | grep -qF -- "$2"; then echo "PASS $1"; else echo "FAIL $1 (missing: $2)"; FAILED=1; fi; }
-assert_lacks() { if printf '%s\n' "$3" | grep -qF -- "$2"; then echo "FAIL $1 (unexpected: $2)"; FAILED=1; else echo "PASS $1"; fi; }
+assert_has() { if grep -qF -- "$2" <<< "$3"; then echo "PASS $1"; else echo "FAIL $1 (missing: $2)"; FAILED=1; fi; }
+assert_lacks() { if grep -qF -- "$2" <<< "$3"; then echo "FAIL $1 (unexpected: $2)"; FAILED=1; else echo "PASS $1"; fi; }
 # st <memdir> [audit args...] -> ST_OUT (stdout+stderr), ST_RC. ST_VAULT overrides the vault ("" = unresolvable).
 st() {
     local d="$1"; shift
