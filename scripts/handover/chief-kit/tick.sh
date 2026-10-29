@@ -37,15 +37,6 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-alias_env WORKERS LEGS
-alias_env WORKERS_FROM LEGS_FROM
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CADENCE_USAGE_LANE CADENCE_BANK_LANE
-alias_env HIMMEL_WORKER_SESSION_FAILURES_LEDGER HIMMEL_LEG_FAILURES_LEDGER
-alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
-alias_env WORKER_SESSION_LANE LEG_LANE
 
 usage() {
     cat <<'USAGE'
@@ -2597,9 +2588,9 @@ fi
 # (a second count here would be the drift this field exists to end). Run as a
 # plain read: CADENCE_USAGE_LAUNCH stays empty so it can never refuse anything,
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
-# ponytail: bank-preflight still takes its fleet admission lock and prunes
-# expired/consumed reservations while it counts, exactly as any bank read does.
-fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
+# ponytail: usage-preflight still takes its fleet admission lock and prunes
+# expired/consumed reservations while it counts, exactly as any usage read does.
+fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
 if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; then
