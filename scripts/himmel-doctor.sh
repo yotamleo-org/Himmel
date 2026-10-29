@@ -4855,7 +4855,7 @@ check_c82_mcp_sources() {
     local rows="" enabled="" key name mkt f n
     _c82_keys() { # <label> <json file> <jq path to the server object>
         local out
-        [ -r "$2" ] || return 0
+        [ -e "$2" ] || return 0
         out="$(jq -r --arg l "$1" "($3 // {}) | keys[] | . + \" [\" + \$l + \"]\"" "$2" 2>/dev/null)" \
             || { printf 'unreadable JSON [%s]\n' "$1"; return 0; }
         [ -z "$out" ] || printf '%s\n' "$out"
@@ -4868,7 +4868,7 @@ $(_c82_keys "project .mcp.json" "$REPO_ROOT/.mcp.json" .mcpServers)"
 unreadable JSON [settings enabledPlugins]"
         for key in $enabled; do
             name="${key%%@*}"; mkt="${key#*@}"
-            f="$(printf '%s\n' "$CLAUDE_DIR_R"/plugins/cache/"$mkt"/"$name"/*/.mcp.json | sort -V | tail -n 1)"
+            f="$(printf '%s\n' "$CLAUDE_DIR_R"/plugins/cache/"$mkt"/"$name"/*/ | sort -V | tail -n 1).mcp.json"
             [ -f "$f" ] || { [ "$mkt" = himmel ] && f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"; }
             rows="$rows
 $(_c82_keys "plugin $name" "$f" '(.mcpServers // .)')"
@@ -4881,11 +4881,11 @@ plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Cla
     rows="$(printf '%s\n' "$rows" | sed '/^$/d')"
     n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
     if [[ "$rows" == *"unreadable JSON ["* ]]; then
-        emit WARN C82-mcp-sources "an MCP config file is not valid JSON, so its servers are missing from the listing: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
+        emit WARN C82-mcp-sources "an MCP config file is not valid JSON or not readable, so its servers are missing from the listing: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
             "fix the file named by the layer in brackets (user config is ~/.claude.json, project is .mcp.json)"
         return 0
     fi
-    emit OK C82-mcp-sources "$n MCP server entries by source layer: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+    emit OK C82-mcp-sources "$n MCP server entries by source layer (runtime built-ins are the sources a server can come from; whether one is active depends on platform, feature flag and org policy): $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
 }
 
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
