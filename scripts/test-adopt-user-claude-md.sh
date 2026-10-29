@@ -292,7 +292,8 @@ target10="$home10/.claude/CLAUDE.md"
 printf 'intro\n<!-- BEGIN %s -->\nan older principle line\ntrailing operator text\n' "$MARKER" > "$target10"
 before10="$home10/before.txt"; cp "$target10" "$before10"
 DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target10" >/dev/null 2>&1
-if cmp -s "$before10" "$target10"; then pass "u4: BEGIN-without-END target unchanged"; else fail "u4: BEGIN-without-END target CHANGED"; fi
+rc10=$?
+if [ "$rc10" -eq 0 ] && cmp -s "$before10" "$target10"; then pass "u4: BEGIN-without-END target unchanged"; else fail "u4: BEGIN-without-END target CHANGED or rc $rc10"; fi
 rm -rf "$home10"
 
 # ── Case 11: the callers (adopt.sh, himmel-update.sh) run under
@@ -313,6 +314,7 @@ else
   fail "append path died under errexit (rc $rc11)"
 fi
 sed -i.bak 's/^Use judgement on trivial tasks\.$/Use an older line./' "$target11" && rm -f "$target11.bak"
+grep -q "Use an older line" "$target11" || fail "case 11 setup: the older line was not seeded (template wording changed?)"
 # shellcheck source=lib/user-claude-md.sh
 # shellcheck disable=SC1091
 ( set -euo pipefail; . "$LIB"; wire_user_claude_md "$TEMPLATE" "$target11" ) >/dev/null 2>&1
@@ -337,6 +339,7 @@ DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target12" >/dev/null 2>&1
 prefix12="$home12/prefix.txt"
 head -c "$(wc -c < "$orig12" | tr -d '[:space:]')" "$target12" > "$prefix12"
 if cmp -s "$orig12" "$prefix12"; then pass "quoting prose kept byte-identical"; else fail "prose quoting the markers was overwritten"; fi
+if grep -qx "<!-- BEGIN $MARKER -->" "$target12" && grep -qx "<!-- END $MARKER -->" "$target12"; then pass "the block was still appended after the quoting prose"; else fail "quoting prose suppressed the install"; fi
 rm -rf "$home12"
 
 # ── Case 13: a read-only target is the operator's choice -- the refresh
@@ -411,6 +414,21 @@ DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$link18" >/dev/null 2>&1
 if [ -L "$link18" ] && ! grep -q '^old$' "$real18"; then pass "symlink kept, the file it points at is refreshed"; else fail "symlink replaced or file not refreshed"; fi
 if [ -n "$(find "$real18" -prune -perm 640)" ]; then pass "mode 640 preserved"; else fail "mode changed"; fi
 rm -rf "$home18"
+
+# ── Case 19: a target that is only the block (BEGIN on line 1) is refreshed ──
+echo "== Case 19: block starts on line 1 =="
+home19="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home19/.claude"
+target19="$home19/.claude/CLAUDE.md"
+printf '<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$target19"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target19" >/dev/null 2>&1
+rc19=$?
+if [ "$rc19" -eq 0 ] && ! grep -q '^old$' "$target19" && [ "$(head -n 1 "$target19")" = "<!-- BEGIN $MARKER -->" ] && [ "$(tail -n 1 "$target19")" = tail ]; then
+  pass "line-1 block refreshed, text below kept"
+else
+  fail "line-1 block not refreshed (rc $rc19)"
+fi
+rm -rf "$home19"
 
 # Final tally
 if [ "$failures" -eq 0 ]; then

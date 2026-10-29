@@ -140,8 +140,9 @@ wire_user_claude_md() {
           echo "  user CLAUDE.md: cannot create a temp file next to $real — leaving it unchanged" >&2
           return 1
         }
+        # BSD head rejects a count of 0, so the lines above the block are copied only when there are any.
         if ! cp -p -- "$real" "$tmp" \
-          || ! { head -n "$((begin_ln - 1))" "$real" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$real"; } > "$tmp" \
+          || ! { { [ "$begin_ln" -le 1 ] || head -n "$((begin_ln - 1))" "$real"; } && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$real"; } > "$tmp" \
           || ! mv -f -- "$tmp" "$real"; then
           rm -f "$tmp"
           echo "  user CLAUDE.md: could not write $real — leaving it unchanged" >&2
