@@ -81,7 +81,7 @@ for (const l of fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean)) {
   try { records.push(JSON.parse(l)); } catch (_) { /* skip malformed */ }
 }
 // calls[branch][model] = {ok, unavailable, est_total}; heads[branch] = Set
-const calls = {}, heads = {}, findings = {};
+const calls = Object.create(null), heads = Object.create(null), findings = Object.create(null);
 for (const r of records) {
   const b = r.branch;
   if (!b) continue;                       // pre-branch records: not attributable
@@ -104,7 +104,7 @@ for (const r of records) {
 // branch (the head of the row with the max ts for that branch, across any
 // record kind) with no EFFECTIVE verdict. Mirrors clear-review-marker.sh gate 4b:
 // amend supersede records are applied before a finding verdict is judged.
-const lastRow = {};
+const lastRow = Object.create(null);
 for (const r of records) {
   const b = r.branch;
   if (!b || !r.head) continue;
@@ -138,7 +138,7 @@ for (const r of records) {
   const k2 = [b, r.finding_id, r.artifact || "diff", r.perspective || "off"].join(SEP);
   unadjByKey.set(k2, { b, verdict: typeof eff.verdict === "string" ? eff.verdict.trim() : eff.verdict });
 }
-const unadjudicated = {};
+const unadjudicated = Object.create(null);
 for (const v of unadjByKey.values()) {
   if (v.verdict === undefined || v.verdict === null || v.verdict === "") {
     unadjudicated[v.b] = (unadjudicated[v.b] || 0) + 1;
@@ -242,14 +242,14 @@ const filteredRecords = records.filter(r => {
 // are built from every row, not the filtered ones (the recorder writes artifact
 // diff / perspective off, so a filter would hide the PR a row belongs to), and a
 // head or branch seen under two PRs (a reused branch) maps to neither.
-const headPrs = {}, branchPrs = {};
+const headPrs = Object.create(null), branchPrs = Object.create(null);
 for (const r of records) {
   const n = Number(r.pr);
   if (!Number.isInteger(n) || n <= 0) continue;
   if (r.head) (headPrs[r.head] = headPrs[r.head] || new Set()).add(n);
   if (r.branch) (branchPrs[r.branch] = branchPrs[r.branch] || new Set()).add(n);
 }
-const headPr = {}, branchPr = {};
+const headPr = Object.create(null), branchPr = Object.create(null);
 for (const [k, s] of Object.entries(headPrs)) if (s.size === 1) headPr[k] = [...s][0];
 for (const [k, s] of Object.entries(branchPrs)) if (s.size === 1) branchPr[k] = [...s][0];
 function unitOf(r) {

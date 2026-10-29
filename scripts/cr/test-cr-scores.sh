@@ -435,5 +435,16 @@ reuse_out="$(CR_LEDGER="$LB" bash "$CS" --window 2 2>&1)"; reuse_rc=$?
 check "reused branch: cr-scores exits 0" "$reuse_rc" "0"
 check "a reused branch does not pull a no-pr row into the last PR's window unit" "$(gamma_win "$reuse_out")" "2"
 
+# branch names that are Object.prototype members are ordinary keys
+LO="$tmp/pr-proto-branch.jsonl"
+{
+  echo '{"kind":"finding","ts":"2026-10-01T00:00:00Z","branch":"constructor","head":"D1","model":"gamma","finding_id":"c-1","severity":"sug","file":"f","line":1,"verdict":"fixed","pr":301}'
+  echo '{"kind":"finding","ts":"2026-10-02T00:00:00Z","branch":"__proto__","head":"D2","model":"gamma","finding_id":"c-2","severity":"sug","file":"f","line":2,"verdict":"fixed","pr":302}'
+  echo '{"kind":"finding","ts":"2026-10-03T00:00:00Z","branch":"toString","head":"D3","model":"gamma","finding_id":"c-3","severity":"sug","file":"f","line":3,"verdict":"fixed"}'
+} > "$LO"
+proto_out="$(CR_LEDGER="$LO" bash "$CS" --window 3 2>&1)"; proto_rc=$?
+check "prototype-named branches: cr-scores exits 0" "$proto_rc" "0"
+check "prototype-named branches count as three window units" "$(gamma_win "$proto_out")" "3"
+
 # ── Final ──────────────────────────────────────────────────────────────────
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
