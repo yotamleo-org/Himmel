@@ -527,6 +527,7 @@ tc() {
     if [ "$2" = 1 ]; then
         case "$out" in *additionalContext*"sub-file linked from its hub"*) echo "PASS $1 warn advisory names the hub procedure" ;; *) echo "FAIL $1 warn advisory missing (out: $out)"; FAILED=1 ;; esac
         log_has '"event":"warn","rule":"topic-cap"'; assert_rc "$1 logs a topic-cap warn row" 0 "$?"
+        case "$out" in *permissionDecision*) echo "FAIL $1 warn carries a permissionDecision (out: $out)"; FAILED=1 ;; *) echo "PASS $1 warn carries no permissionDecision" ;; esac
         : > "$MEMORY_CAPTURE_LOG"
         MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 (deny mode)" 2 "$?"
         grep -q 'MEMORY_CAPTURE_OK=1' "$SB/err"; assert_rc "$1 deny text names the bypass" 0 "$?"
@@ -590,6 +591,15 @@ wp Write "$M2/MEMORY.md.bak" "$(fill 30720)"; tc "d: 30 KB MEMORY.md.bak is clea
 wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"; tc "d: a 30 KB MEMORY.md itself is not a topic-cap target" 0
 wp Write "$SB/outside.md" "$(fill 9216)"; tc "d: a path outside the memory dir is clean" 0
 wp Write "$M2/notes.txt" "$(fill 9216)"; tc "d: a non-.md file in the memory dir is clean" 0
+# a traversal out of the store is out of scope: no advisory, no decision
+wp Write "$M2/../../skills/x/SKILL.md" "$(fill 9216)"; tc "k: memory/../../skills/x/SKILL.md over 8 KB is clean" 0
+case "$out" in *allow*) echo "FAIL k: a traversal path is auto-approved (out: $out)"; FAILED=1 ;; *) echo "PASS k: a traversal path is not auto-approved" ;; esac
+wp Write "$M2/./../outside.md" "$(fill 9216)"; tc "k2: memory/./../outside.md over 8 KB is clean" 0
+# a traversal that stays inside the store is still gated
+wp Write "$M2/../memory/via.md" "$(fill 9216)"; tc "k3: memory/../memory/via.md over 8 KB fires" 1
+idx_n 62
+wp Write "$M2/../memory/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'
+hook_rc; assert_rc "k4: 62 to 63 through memory/../memory/MEMORY.md stays denied" 2 "$?"
 
 # --- fail-open on topic files, fail-closed on MEMORY.md (stub node = crashing simulator)
 mkdir -p "$SB/badnode"; printf '#!/bin/sh\nexit 1\n' > "$SB/badnode/node"; chmod +x "$SB/badnode/node"

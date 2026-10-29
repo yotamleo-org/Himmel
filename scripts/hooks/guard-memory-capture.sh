@@ -85,6 +85,29 @@ content="$(printf '%s' "$payload" | jq -r '.tool_input.content // .tool_input.ne
 #    SC1003's false single-quote-escape warning on a literal '\\').
 fp="$(printf '%s' "$fp" | tr '\134' '/')"
 
+# 2b. Resolve `.` and `..` segments lexically BEFORE the scope match: the glob below
+#     reads the raw path, so `memory/../../skills/x/SKILL.md` would otherwise count as
+#     in scope (and one that stays inside the store, `memory/../memory/MEMORY.md`,
+#     must still be gated). Pure bash, 3.2-safe; no realpath (macOS lacks -m).
+norm_path() { # $1=absolute path
+    local IFS=/ seg out="" n=0
+    local -a stack
+    set -f
+    for seg in $1; do
+        case "$seg" in
+            ""|.) ;;
+            ..) if [ "$n" -gt 0 ]; then n=$((n - 1)); unset "stack[$n]"; fi ;;
+            *) stack[n]="$seg"; n=$((n + 1)) ;;
+        esac
+    done
+    set +f
+    if [ "$n" -gt 0 ]; then
+        for seg in "${stack[@]}"; do out="$out/$seg"; done
+    fi
+    printf '%s' "${out:-/}"
+}
+case "$fp" in */../*|*/./*|*/..|*/.) fp="$(norm_path "$fp")" ;; esac
+
 # 3. Scope: only the auto-memory store.
 in_scope=0
 case "$fp" in */.claude/projects/*/memory/*) in_scope=1 ;; esac
@@ -160,7 +183,8 @@ if [ "$base" = "MEMORY.md" ]; then
     # dies -> the hook exits 1 -> PreToolUse treats exit 1 as a NON-BLOCKING
     # error -> the write PROCEEDS ungated and unlogged (fail-open on exactly the
     # writes this hook exists to gate). awk has no exit-status trap.
-    old_lines=0; [ -f "$fp" ] && old_lines="$(awk '/^- /{n++} END{print n+0}' "$fp")"  # fail-open-ok: unreadable index reads as an empty awk sum → 0 baseline → the growth/ceiling caps get STRICTER, not looser
+    old_lines=0; [ -f "$fp" ] && old_lines="$(awk '/^- /{n++} END{print n+0}' "$fp")"  # fail-open-ok: gawk prints nothing for an unreadable file; the next line coerces that to a 0 baseline, so the growth/ceiling caps get STRICTER, not looser
+    [ -n "$old_lines" ] || old_lines=0
     new_lines="$(printf '%s\n' "$content" | awk '/^- /{n++} END{print n+0}')"
     lines_delta="$((new_lines - old_lines))"
     LOG_OLD="$old_lines"; LOG_NEW="$new_lines"
@@ -284,7 +308,7 @@ case "$base" in
         fi
         log_rec warn topic-cap 0
         jq -nc --arg m "Memory topic-cap advisory (warn-only): $tc_msg" \
-          '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$m}}'
+          '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$m}}'
         exit 0
     fi
 } ;;

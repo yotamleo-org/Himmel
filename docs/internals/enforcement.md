@@ -2146,7 +2146,11 @@ simulator crashes, or the old file is unreadable for an Edit) is allowed in both
 modes and logs one `topic-cap-undecidable` warn row; an unreadable old file under
 a Write counts as 0 bytes. `MEMORY.md` keeps its fail-closed
 `undecidable-payload` deny. The guard's scope also covers
-`$CLAUDE_CONFIG_DIR/projects/*/memory/*` when that variable is set.
+`$CLAUDE_CONFIG_DIR/projects/*/memory/*` when that variable is set, matched on the
+path with `.` and `..` segments resolved (a `memory/../../x.md` is out of scope; a
+`memory/../memory/MEMORY.md` is still gated). The topic-cap warning is an
+`additionalContext` advisory with no `permissionDecision`, so it never auto-approves
+a write.
 `memory-bash-line-check.sh` also warns when a Bash command names a topic file over
 the cap.
 
