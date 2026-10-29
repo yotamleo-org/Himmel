@@ -122,6 +122,7 @@ function verifyStep(v) {
 
 // ---- the Configure page: Settings and Setup as four group tiles, one open at a time, under a Check this install strip ----
 const TILE_NAME = { secrets: "Secrets", review: "Review", tracker: "Tracker", scope: "Project scope" };
+const TILE_ICON = { secrets: "⚿", review: "✓", tracker: "#", scope: "▶" };
 const isJira = (s) => s.name.startsWith("JIRA_");
 const TRACKER_NAME = Object.fromEntries(TRACKERS);
 
@@ -147,7 +148,7 @@ function tileChip(id, { state }) {
   if (!d) return "";
   const rec = d.reviewers.filter((r) => r.recommended);
   const same = rec.length > 0 && rec.every((r) => r.recommended.mode === r.mode && r.recommended.required === r.required && r.recommended.enabled);
-  return same ? `<span class="st ok">matches our pick</span>` : "";
+  return same ? `<span class="m ok">matches our pick</span>` : "";
 }
 
 function checkStrip(v) {
@@ -198,7 +199,8 @@ function trackerPanel({ setup, state, msgs }) {
   const jira = setup.secrets.filter(isJira);
   const connection = c.tracker === "local" || c.tracker === "none" ? "" : jira.map((s) => secretRow(s, msgs[s.name])).join("");
   const open = [TK, RK].filter((k) => plans[k]);
-  return `<div class="cols">
+  return `<p class="sub">Where your tickets live, and what every commit must carry. Each change shows a dry run before it writes.</p>
+    <div class="cols">
     <div class="col"><h3>Connection</h3>${trackerRow(c)}${connection}</div>
     <div class="col"><h3>Commit rules</h3>${ticketRow(c)}<p class="sub">The ticket ID pattern is typed in the terminal: <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code>.</p></div></div>
     ${open.length ? `<div class="dryrun">${open.map((k) => planHtml(k, plans[k])).join("")}</div>` : ""}
@@ -211,7 +213,8 @@ function scopePanel({ setup, feed, state }) {
   const choices = setup && setup.choices;
   const paths = !setup || setup.error ? setupFailed(setup)
     : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
-  return `${group(["plugins"], 3)}${group(["auto-ship", "scheduled-jobs"])}${paths}
+  return `<p class="sub">What himmel does on its own in this install, which plugins and jobs it runs, and where its state lives. Each switch shows a dry run before it writes.</p>
+    ${group(["plugins"], 3)}${group(["auto-ship", "scheduled-jobs"])}${paths}
     <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}</div>
     ${group(["install-answers"])}`;
 }
@@ -224,13 +227,13 @@ const PANELS = { secrets: secretsPanel, review: reviewPanel, tracker: trackerPan
 export function renderConfigure(feed, config) {
   const c = { ...config, feed };
   const tiles = TILES.map((id) => `<button class="tile g-${id}" type="button" data-act="tile" data-tile="${id}" aria-expanded="${c.tile === id}">
-      <span class="tname">${TILE_NAME[id]}</span><span class="tval">${esc(tileValue(id, c))}</span>${tileChip(id, c)}</button>`).join("");
+      <span class="ic" aria-hidden="true">${TILE_ICON[id]}</span><span class="tname">${TILE_NAME[id]}</span><span class="tval">${esc(tileValue(id, c))}</span>${tileChip(id, c)}</button>`).join("");
   const panel = PANELS[c.tile];
   return `<h2 id="h-configure">Configure</h2><p class="sub">Change what himmel does, any time.</p>
     <div class="tiles">${tiles}</div>
     ${checkStrip(c.verify)}
-    <p class="sub">Not here, on purpose: the safety hooks (<code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code>, <code>DESTRUCTIVE_OK=1</code>, <code>.single-writer</code>). Set one in the shell that starts Claude Code. Triage and Inventory moved to <a href="#/health">Health</a>.</p>
-    ${panel ? `<div class="cpanel" id="tile-${c.tile}" role="region" aria-label="${TILE_NAME[c.tile]}">${panel(c)}</div>` : ""}`;
+    ${panel ? `<div class="cpanel" id="tile-${c.tile}" role="region" aria-label="${TILE_NAME[c.tile]}">${panel(c)}</div>` : ""}
+    <p class="not"><b>Not here, on purpose:</b> the safety hooks (<code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code>, <code>DESTRUCTIVE_OK=1</code>, <code>.single-writer</code>). Set one in the shell that starts Claude Code. Triage and Inventory moved to <a href="#/health">Health</a>.</p>`;
 }
 
 export function renderSetup(setup, plans, msgs, verify = null) {
