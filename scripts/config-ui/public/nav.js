@@ -5,13 +5,18 @@ export const PAGES = [
   { id: "fleet", label: "Fleet" },
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
-  { id: "config", label: "Settings" },
-  { id: "setup", label: "Setup" },
+  { id: "config", label: "Configure" },
   { id: "roadmap", label: "Roadmap" },
   { id: "kanban", label: "Kanban" },
   { id: "workflow", label: "Workflow" },
 ];
-const CHIEF = ["config", "setup", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+const CHIEF = ["config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+
+// Settings and Setup became one Configure page. The old ids (and the himmelctl install hand-off's page=setup) still land
+// on it: Setup with the Secrets tile picked. TILES are the Configure page's four groups. (app.js maps the #/setup route
+// the same way: tests/slow.test.ts runs it without this file's exports.)
+export const TILES = ["secrets", "review", "tracker", "scope"];
+const OLD_PAGE = { setup: { id: "config", tile: "secrets" }, configure: { id: "config" } };
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
@@ -47,6 +52,8 @@ export function parseLanding(hash) {
   const p = new URLSearchParams(hash.replace(/^#/, ""));
   const token = p.get("t");
   if (!token || !/^[0-9a-f]+$/.test(token)) return null;
+  const old = OLD_PAGE[p.get("page")];
+  if (old) return { token, page: old.id, ...(old.tile ? { tile: old.tile } : {}) };
   return { token, page: CHIEF.includes(p.get("page")) ? p.get("page") : "config" };
 }
 

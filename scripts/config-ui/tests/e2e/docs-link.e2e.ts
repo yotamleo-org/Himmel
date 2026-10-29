@@ -8,7 +8,7 @@ test.afterEach(async () => { await h?.stop(); });
 async function open(page: import("@playwright/test").Page, scheme: "light" | "dark") {
   await page.emulateMedia({ colorScheme: scheme });
   h = await boot();
-  await page.goto(h.url);
+  await page.goto(`${h.url}&page=health`);
   await page.locator("#inventory .bhead").first().waitFor();
 }
 const token = (page: import("@playwright/test").Page, name: string) =>

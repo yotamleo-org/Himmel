@@ -292,6 +292,9 @@ else echo "FAIL - happy path: konsole IS invoked (positive control)"; fails=$((f
 contains "happy path: clears CLAUDE_CODE_CHILD_SESSION" "$rec1" "-u CLAUDE_CODE_CHILD_SESSION"
 contains "happy path: clears CLAUDE_PID"                "$rec1" "-u CLAUDE_PID"
 contains "happy path: clears CLAUDE_CODE_SESSION_ID"    "$rec1" "-u CLAUDE_CODE_SESSION_ID"
+contains "happy path: clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec1" "-u CLAUDE_CODE_MESSAGING_SOCKET"
+contains "happy path: clears CLAUDE_CODE_MESSAGING_TOKEN"  "$rec1" "-u CLAUDE_CODE_MESSAGING_TOKEN"
+contains "happy path: clears CLAUDE_JOB_DIR"               "$rec1" "-u CLAUDE_JOB_DIR"
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-worker"
@@ -1650,6 +1653,9 @@ contains "resolved launcher: the launcher path reaches the recorded argv" "$rec3
 not_contains "resolved launcher: not force-wrapped in bash (execs via its own shebang)" "$rec36b" "bash /some/repo/scripts/claude-codex"
 contains "resolved launcher: still carries --model gpt-6-astra, bare (HIMMEL-5501)" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
+contains "resolved launcher (recorder branch): clears CLAUDE_JOB_DIR" "$rec36b" "-u CLAUDE_JOB_DIR"
+contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec36b" "-u CLAUDE_CODE_MESSAGING_SOCKET"
+contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKEN" "$rec36b" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 # `script -c` interprets $LAUNCH_CMD (bash %q
 # quoting) with the shell named by ITS OWN $SHELL, not necessarily bash -
 # force it via an explicit SHELL=<bash> token ahead of `script` in the
@@ -2275,6 +2281,9 @@ out43=$(HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_A
 check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the chief --settings (HIMMEL-4052)" "$out43" "--settings"
+contains "43 dry-run launch line: clears CLAUDE_JOB_DIR" "$out43" "-u CLAUDE_JOB_DIR"
+contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_SOCKET" "$out43" "-u CLAUDE_CODE_MESSAGING_SOCKET"
+contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_TOKEN" "$out43" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 
 # --- 43b: a chief arm launches with only the chief profile's
 # MCP servers: --mcp-config <file> + --strict-mcp-config, so a user-level server

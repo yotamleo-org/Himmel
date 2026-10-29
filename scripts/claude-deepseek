@@ -168,5 +168,11 @@ export CLAUDE_CODE_EFFORT_LEVEL=max
 # ponytail: gateway lacks safeguard results, remove after HIMMEL-4086 verifies support.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
+# Launching session's identity: a deepseek session started from another Claude
+# session's Bash tool inherits that session's job dir and messaging socket/token.
+# Claude watches the job dir's state.json and adopts its name, and the socket
+# pair routes this session's messages as the launcher's, so this session would
+# show up under the launcher's name. Clear all three so it registers its own.
+unset CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN 2>/dev/null || true
 echo "claude-deepseek: lane=deepseek model=$ANTHROPIC_MODEL labels=$ANTHROPIC_DEFAULT_OPUS_MODEL_NAME/$ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME balance=$balance USD (start snapshot; session cost is balance delta)" >&2
 exec claude "$@"

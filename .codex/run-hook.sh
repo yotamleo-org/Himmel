@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# himmel Codex hook wrapper. Unix-only; Codex selects
-# this file through command. Windows uses run-hook.cmd through commandWindows.
+# himmel Codex hook wrapper; Codex selects this file through command.
 #
 # Resolve + run the adapter, which runs the guardrail and translates an exit-2
 # block into the JSON deny Codex understands.
@@ -12,9 +11,9 @@ export CLAUDE_PROJECT_DIR
 # deny), so it is passed straight through rather than gated with a bare exit 2.
 # --lifecycle is not merely stripped: it is EXPORTED, because the adapter has its
 # own fail-closed preconditions (missing guardrail file, unset project dir) and
-# must honour the same no-permission-gate contract the cmd branch does.
-# Cleared first for the same reason the cmd branch clears it: this wrapper is the
-# only authority, and an inherited value must never promote a gate hook.
+# must honour the same no-permission-gate contract.
+# Cleared first: this wrapper is the only authority, and an inherited value must
+# never promote a gate hook.
 HIMMEL_CODEX_HOOK_LIFECYCLE=""
 export HIMMEL_CODEX_HOOK_LIFECYCLE
 while :; do

@@ -3026,6 +3026,7 @@ if [ "\${1:-}" = agents ]; then
   exit 0
 fi
 printf '%s\n' "\$*" >> "\$d/record"
+env > "\$d/child-env"
 : > "\$d/confirmable"
 printf 'backgrounded · abc12345 · %s\n' "$name"
 exit 0
@@ -3060,9 +3061,20 @@ run_headless() {
 }
 
 d29="$tmp/c29"; mk_headless_stubs "$d29" "HIMMEL-3403-hl"; mkdir -p "$tmp/repo29"
+# The launching session's identity variables are exported by a shim between the wrapper and
+# headed-arm.sh, not set on the wrapper's own environment: the wrapper's seam guard refuses a
+# process whose exec-time environ carries a CLAUDE_CODE_* marker beside a seam (exit 96 on the
+# CI anchor copy), and the shim still hands them to headed-arm.sh's headless launch.
+cat > "$d29/headed-arm-leak.sh" <<SHIM_EOF
+#!/usr/bin/env bash
+export CLAUDE_JOB_DIR=/leaked/job CLAUDE_CODE_MESSAGING_SOCKET=/leaked/sock CLAUDE_CODE_MESSAGING_TOKEN=leaked-token
+exec "$HEADED_ARM" "\$@"
+SHIM_EOF
+chmod 755 "$d29/headed-arm-leak.sh"
 rc=0
 HIMMEL_HOOK_INTEGRITY_BYPASS_OK='' HIMMEL_API_TOKEN=abc HIMMEL_MQTT_PASS=p1 HIMMEL_GITHUB_PAT=p2 \
   HIMMEL_PAT_RO=p3 HIMMEL_X_AUTH=p4 HIMMEL_SSH_KEY=p5 HIMMEL_DB_URL=p6 HIMMEL_EXAMPLE_BYPASS_OK=1 JIRA_PROJECT_KEY=HIMMEL \
+  HEADED_ARM="$d29/headed-arm-leak.sh" \
   run_headless "$d29" "$tmp/repo29" "HIMMEL-3403-hl" --headless --profile worker-impl >/dev/null 2>&1 || rc=$?
 rec29="$(cat "$d29/record" 2>/dev/null || true)"
 log29="$(cat "$d29/log" 2>/dev/null || true)"
@@ -3074,6 +3086,13 @@ contains "29d --headless: autocompact pin kept" "$rec29" "--autocompact 200000"
 contains "29e --headless: session name kept" "$rec29" "-n HIMMEL-3403-hl"
 contains "29f --headless: profile settings still injected" "$rec29" "--settings $set29"
 check "29g --headless: konsole never called" "$([ -e "$d29/konsole-called" ] && echo called || echo none)" "none"
+# 29g2: the launching session's identity must not reach the background session. The child
+# env capture must exist before the negated grep means anything.
+child29="$(cat "$d29/child-env" 2>/dev/null || true)"
+contains "29g2 --headless: child env capture exists" "$child29" "FORCE_SESSION_PERSISTENCE=1"
+for v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
+  not_contains "29g2 --headless: child env does not carry the launcher's $v" "$child29" "$v="
+done
 contains "29h launch log: headless=1" "$log29" "headless=1"
 contains "29i launch log: claude pid" "$log29" "pid=4242"
 contains "29j launch log: session id" "$log29" "session-id=11111111-2222-3333-4444-555555555555"

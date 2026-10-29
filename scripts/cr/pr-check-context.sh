@@ -808,7 +808,7 @@ scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/t
 scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
-scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
+scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
 scripts/telegram/triage.ts scripts/telegram/transcribe.ts
 scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
@@ -839,7 +839,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
-    ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts'
+    ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts' ':(top)scripts/telegram/afk-sudo-route.ts'
     ':(top)scripts/telegram/run.ts' ':(top)scripts/telegram/triage.ts'
     ':(top)scripts/telegram/transcribe.ts'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'

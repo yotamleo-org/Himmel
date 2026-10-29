@@ -35,7 +35,7 @@
 #     worker's own plugin set already carries.
 #
 # Env (set by headed-arm-worker.sh --profile, exported so it survives konsole's
-# `-e env -u ...` line, which only unsets three vars):
+# `-e env -u ...` line, which only unsets the session-identity vars):
 #   WORKER_SESSION_PROFILE_SETTINGS   path to the resolved settings JSON  -> --settings
 #   WORKER_SESSION_PROFILE_PREFACE    path to docs/handover/worker-preface.md
 #                                                   -> --append-system-prompt-file

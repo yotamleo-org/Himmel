@@ -50,21 +50,10 @@ Run this from the **code repo** whose sessions you want captured. Be idempotent 
    fi
    [ -n "$REPO" ] && [ -f "$REPO/scripts/lib/wire-luna-vault.sh" ] || { echo "ERR: cannot locate himmel checkout — set HIMMEL_REPO to your himmel clone" >&2; exit 1; }
 
-   # Persist a DRIVE-QUALIFIED path on Windows. Git Bash expands ~/Documents/luna
-   # to the MSYS form /c/Users/…, which the PowerShell SessionEnd hook resolves
-   # under \c\Users\… (Join-Path reads a leading / as the current drive root) —
-   # capture would land in the wrong place or fail. cygpath -m converts
-   # /c/Users/… -> C:/Users/…; it is absent on POSIX, where the path passes through.
-   vault="<expanded-path>"
-   case "$vault" in
-     /*) command -v cygpath >/dev/null 2>&1 && vault="$(cygpath -m "$vault")" ;;
-   esac
-   bash "$REPO/scripts/lib/wire-luna-vault.sh" "$HOME/.claude/settings.json" "$vault"
+   bash "$REPO/scripts/lib/wire-luna-vault.sh" "$HOME/.claude/settings.json" "<expanded-path>"
    ```
 
-   PowerShell twin (same contract, and already native — PowerShell never produces an MSYS path): `pwsh -File "$REPO/scripts/lib/wire-luna-vault.ps1" -SettingsPath "$HOME/.claude/settings.json" -VaultPath "<expanded-path>"`.
-
-   A `settings.json` `env` block is applied at **session start**, so say plainly that the value takes effect for **new** sessions — the current session keeps whatever vault it started with. (For a one-off in the current shell, `export LUNA_VAULT_PATH=<path>` before launching `claude` — same drive-qualified requirement on Windows, so `export LUNA_VAULT_PATH="$(cygpath -m ~/Documents/luna)"`, not the bare `~/…` form.)
+   A `settings.json` `env` block is applied at **session start**, so say plainly that the value takes effect for **new** sessions — the current session keeps whatever vault it started with. (For a one-off in the current shell, `export LUNA_VAULT_PATH=<path>` before launching `claude`.)
 
    **Legacy `.env` cleanup — tell the operator, don't go read the file.** An earlier version of this step wrote `LUNA_VAULT_PATH=` into the repo-root `.env`. That line is inert for the capture hook, but it is NOT inert everywhere: `/himmel-update`'s luna-template step still bridges the key from `.env`, and a bridged value only loses to a value already live in the environment. So a **standalone** `himmelctl update` from a plain shell (no Claude session, nothing exporting the new value) would upgrade the OLD vault. Advise removing or updating that stale line. Do not grep for it yourself — the `block-read-secrets` guard hard-blocks any Bash command whose text contains a `.env` path.
 
