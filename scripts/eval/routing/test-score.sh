@@ -162,6 +162,9 @@ eq "preflight: no call after a bank refusal" "$(wc -l <"$TMP/calls.log" | tr -d 
 eq "errored calls: exit 4" "$(STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/err" --split open --no-ledger >/dev/null 2>&1; echo $?)" "4"
 eq "errored calls: every case unscored, none kept" "$(metric "$TMP/err/results.json" unscored)" "20"
 eq "errored calls: their spend is in the cost" "$(metric "$TMP/err/results.json" cost_usd)" "0.02"
+STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/errs" --split sealed --no-ledger >"$TMP/errs.log" 2>&1
+eq "errored calls: a sealed unscored case is counted, never named" "$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1])); print(d["metrics"]["unscored"], len(d["unscored"]))' "$TMP/errs/results.json") $(grep -c 'UNSCORED s' "$TMP/errs.log")" "20 0 0"
 eq "no cost: a call with no cost stops the run" "$(STUB_NOCOST=1 bash "$RUN" --model haiku --out "$TMP/nocost" --no-ledger >/dev/null 2>&1; echo $?)" "3"
 eq "no cost: the call is charged at the per-call cap" "$(cat "$TMP/nocost/errored-spend.log" 2>/dev/null)" "0.10"
 mkdir -p "$TMP/held/.lock"

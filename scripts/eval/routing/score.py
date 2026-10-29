@@ -131,7 +131,7 @@ def score(cases, names, outputs):
         pick, usd, why = read_pick(os.path.join(outputs, c["id"] + ".json"))
         cost += usd
         if why:
-            unscored.append({"id": c["id"], "why": why})
+            unscored.append({"id": c["id"], "split": c["split"], "why": why})
             continue
         rows[c["id"]] = {"split": c["split"], "pick": pick, "outcome": outcome(c, pick),
                          "unlisted": pick != "none" and pick not in names}
@@ -178,6 +178,11 @@ def public_rows(cases, res):
     return out
 
 
+def public_unscored(res):
+    """Unscored entries for the results file and stdout: open cases only; sealed ones count in metrics."""
+    return [u for u in res["unscored"] if u["split"] == "open"]
+
+
 def table(model, rows, metrics):
     out = ["| id | split | expect | pick | outcome |", "|---|---|---|---|---|"]
     for r in rows:
@@ -199,7 +204,7 @@ def report(model, res):
         out.append("%-7s %-9s %-6s %-6s %-6s %d" % (label, f(m[prefix + "accuracy"]), f(m[prefix + "near_rate"]),
                                                    f(m[prefix + "miss_rate"]), f(m[prefix + "false_pick_rate"]),
                                                    m[prefix + "n"]))
-    for u in res["unscored"]:
+    for u in public_unscored(res):
         out.append("UNSCORED %s: %s" % (u["id"], u["why"]))
     return "\n".join(out)
 
@@ -259,7 +264,7 @@ def main(argv=None):
     if a.json:
         doc = {"eval": EVAL_ID, "model": a.model, "status": res["status"], "case_set": case_set_hash(a.cases),
                "listing": {"sha": listing.get("sha"), "tokens": listing.get("tokens")},
-               "metrics": res["metrics"], "ci": res["ci"], "cases": rows, "unscored": res["unscored"]}
+               "metrics": res["metrics"], "ci": res["ci"], "cases": rows, "unscored": public_unscored(res)}
         with open(a.json, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, indent=2, sort_keys=True)
             fh.write("\n")
