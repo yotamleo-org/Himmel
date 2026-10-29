@@ -26,7 +26,11 @@ case "$1 $2" in
   "pr list") cat "$FIX/prs.txt"; exit 0 ;;
 esac
 case "$1:$2" in
-  api:graphql) case " $* " in *" after="*) cat "$FIX/pr-$num-p2.json" ;; *) cat "$FIX/pr-$num.json" ;; esac; exit 0 ;;
+  api:graphql) case " $* " in
+      *" after=c1 "*) cat "$FIX/pr-$num-p2.json" ;;
+      *" after="*) echo "shim: unexpected cursor in gh $*" >&2; exit 1 ;;
+      *) cat "$FIX/pr-$num.json" ;;
+    esac; exit 0 ;;
   api:repos/o/r/pulls/*/reviews) n="${2#repos/o/r/pulls/}"; n="${n%/reviews}"
     if [ -f "$FIX/reviews-$n.json" ]; then cat "$FIX/reviews-$n.json"; else echo '[]'; fi; exit 0 ;;
 esac
