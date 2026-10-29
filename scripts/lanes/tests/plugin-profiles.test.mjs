@@ -1512,7 +1512,6 @@ const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/handover/chief-kit/inbox-send.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/write-verdicts.sh:*)',
   MARKER_ANCHOR_RULE,
-  'Bash(bash /home/u/himmel/scripts/cr/clear-review-marker.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/panel-first-pass.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/docs-audit-panel.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/ledger-append.sh:*)',
