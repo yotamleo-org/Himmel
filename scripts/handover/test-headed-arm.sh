@@ -1742,13 +1742,17 @@ contains "38d --role bogus: error names 'console' as the valid role" "$outd38d" 
 not_contains "38d --role bogus: error does not advertise relay as valid" "$outd38d" "relay or chief"
 
 # 38c2. the old value console is refused even with legacy names on: no alias,
-# no deprecation line, no launch.
-outc38c2=$(HIMMEL_LEGACY_NAMES=1 bash "$SCRIPT" --role console "HIMMEL-role38c2" "doc38c2.md" "$tmp/signal-never-38c2" "$PAST" "$tmp/log38c2" 2>&1)
+# no deprecation line, no launch. Hermetic like 38a: stub konsole/pgrep and a
+# private lock dir, so a regression that accepts the value spawns nothing real.
+d38c2="$tmp/c38c2"; mk_stub "$d38c2" 1 alive "HIMMEL-role38c2"
+outc38c2=$(HIMMEL_LEGACY_NAMES=1 KONSOLE_CMD="$d38c2/konsole" PGREP_CMD="$d38c2/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38c2/locks" HEADED_ARM_PROC="$d38c2/proc" \
+  bash "$SCRIPT" --role console "HIMMEL-role38c2" "doc38c2.md" "$d38c2/signal-never" "$PAST" "$d38c2/log" 2>&1)
 rc38c2=$?
 check "38c2 --role console: exit 2" "$rc38c2" "2"
 contains "38c2 --role console: error names chief as the only valid role" "$outc38c2" "--role must be chief, got: console"
 not_contains "38c2 --role console: not forwarded as a chief arm" "$outc38c2" "armed"
-check "38c2 --role console: no log written" "$([ -e "$tmp/log38c2" ] && echo yes || echo no)" "no"
+check "38c2 --role console: no log written" "$([ -e "$d38c2/log" ] && echo yes || echo no)" "no"
+check "38c2 --role console: stub konsole never launched" "$([ -e "$d38c2/record" ] && echo yes || echo no)" "no"
 
 # 38e. --role with no value: exit 2.
 oute38e=$(bash "$SCRIPT" --role 2>&1)
