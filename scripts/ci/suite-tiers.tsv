@@ -297,6 +297,7 @@ scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in
 scripts/eval/retrieval-eval/test-answer-ab.sh	local	behaviour suite, new eval with no catches yet
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/review-panel/test-review-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/design-review/test-design-review.sh	local	behaviour suite, new HIMMEL-8085; the eval it covers is on-demand and billed
 scripts/eval/sandbox-poc/test-probe.sh	pr	guard
 scripts/eval/scrape-bench/test-scrape-bench.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-autocompact-ab.sh	local	behaviour suite, 0 catches in the 400-PR audit window

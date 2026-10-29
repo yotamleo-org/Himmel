@@ -22,6 +22,9 @@
   "review-panel": {
     "_cases": {"hit": {"higher_is_better": true}, "fp": {"higher_is_better": false}}
   },
+  "design-review": {
+    "_cases": {"hit": {"higher_is_better": true}, "false_alarm": {"higher_is_better": false}}
+  },
   "qmd-quality": {
     "*.mrr": {"higher_is_better": true, "band": 0.05},
     "*.hit1": {"higher_is_better": true, "band": 0.08},
