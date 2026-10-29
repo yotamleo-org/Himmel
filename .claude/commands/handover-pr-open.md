@@ -1,5 +1,5 @@
 ---
-description: Open or update the PR for the current handover/<TICKET>-<slug> branch.
+description: Open or update the current handover branch's PR.
 argument-hint: [--dry-run] [--base <branch>]
 ---
 

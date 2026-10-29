@@ -23,8 +23,8 @@ accuracy = exact / scored, and near_rate, miss_rate and false_pick_rate likewise
 
 Split (eval_feedback.py, HIMMEL-7519). Every metric is also reported per half as
 open.<metric> and sealed.<metric>. Tuning reads the open half only; the sealed half only
-decides keep or revert. The results JSON and table show a sealed case by id, pick and
-outcome only, never its request or expected pick.
+decides keep or revert. The results JSON and table carry per-case rows for the open half only
+and the sealed half as aggregate metrics: a sealed pick or outcome hints at what it expects.
 
 Exit: 0 scored / lint clean; 1 lint problems; 2 refused input. Stdlib only; no model call.
 """
@@ -131,7 +131,7 @@ def score(cases, names, outputs):
         pick, usd, why = read_pick(os.path.join(outputs, c["id"] + ".json"))
         cost += usd
         if why:
-            unscored.append({"id": c["id"], "why": why})
+            unscored.append({"id": c["id"], "split": c["split"], "why": why})
             continue
         rows[c["id"]] = {"split": c["split"], "pick": pick, "outcome": outcome(c, pick),
                          "unlisted": pick != "none" and pick not in names}
@@ -166,24 +166,30 @@ def case_set_hash(cases_dir):
 
 
 def public_rows(cases, res):
-    """Per-case rows for the results file: a sealed case shows id, pick and outcome only."""
+    """Per-case rows for the results file: open cases only; a sealed pick or outcome would tell the
+    tuner what the sealed half expects."""
     out = []
     for c in cases:
+        if c["split"] != "open":
+            continue
         r = res["rows"].get(c["id"])
-        row = {"id": c["id"], "split": c["split"], "pick": r["pick"] if r else None,
-               "outcome": r["outcome"] if r else "unscored"}
-        if c["split"] == "open":
-            row.update(request=c["request"], expect=c["expect"])
-        out.append(row)
+        out.append({"id": c["id"], "split": c["split"], "pick": r["pick"] if r else None,
+                    "outcome": r["outcome"] if r else "unscored", "request": c["request"], "expect": c["expect"]})
     return out
 
 
-def table(model, rows):
+def public_unscored(res):
+    """Unscored entries for the results file and stdout: open cases only; sealed ones count in metrics."""
+    return [u for u in res["unscored"] if u["split"] == "open"]
+
+
+def table(model, rows, metrics):
     out = ["| id | split | expect | pick | outcome |", "|---|---|---|---|---|"]
     for r in rows:
-        out.append("| %s | %s | %s | %s | %s |" % (r["id"], r["split"], r.get("expect", "(sealed)"),
-                                                  r["pick"] or "-", r["outcome"]))
-    return "routing %s, per case\n\n%s\n" % (model or "?", "\n".join(out))
+        out.append("| %s | %s | %s | %s | %s |" % (r["id"], r["split"], r["expect"], r["pick"] or "-", r["outcome"]))
+    n = metrics["sealed.n"]
+    sealed = "sealed: %d of %d exact (aggregate only)" % (round((metrics["sealed.accuracy"] or 0) * n), n)
+    return "routing %s, per open case\n\n%s\n\n%s\n" % (model or "?", "\n".join(out), sealed)
 
 
 def report(model, res):
@@ -198,7 +204,7 @@ def report(model, res):
         out.append("%-7s %-9s %-6s %-6s %-6s %d" % (label, f(m[prefix + "accuracy"]), f(m[prefix + "near_rate"]),
                                                    f(m[prefix + "miss_rate"]), f(m[prefix + "false_pick_rate"]),
                                                    m[prefix + "n"]))
-    for u in res["unscored"]:
+    for u in public_unscored(res):
         out.append("UNSCORED %s: %s" % (u["id"], u["why"]))
     return "\n".join(out)
 
@@ -247,19 +253,24 @@ def main(argv=None):
         print("score.py: --only names unknown cases: %s" % ",".join(unknown), file=sys.stderr)
         return 2
     ran = [c for c in cases if not only or c["id"] in only]
+    sealed_ran = sum(c["split"] == "sealed" for c in ran)
+    if 0 < sealed_ran < sum(c["split"] == "sealed" for c in cases):
+        print("score.py: --only names part of the sealed half; its aggregate would show those cases' outcomes, "
+              "so score all of the sealed half or none of it", file=sys.stderr)
+        return 2
     res = score(ran, names, a.outputs)
     print(report(a.model, res))
     rows = public_rows(ran, res)
     if a.json:
         doc = {"eval": EVAL_ID, "model": a.model, "status": res["status"], "case_set": case_set_hash(a.cases),
                "listing": {"sha": listing.get("sha"), "tokens": listing.get("tokens")},
-               "metrics": res["metrics"], "ci": res["ci"], "cases": rows, "unscored": res["unscored"]}
+               "metrics": res["metrics"], "ci": res["ci"], "cases": rows, "unscored": public_unscored(res)}
         with open(a.json, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, indent=2, sort_keys=True)
             fh.write("\n")
     if a.table:
         with open(a.table, "w", encoding="utf-8") as fh:
-            fh.write(table(a.model, rows))
+            fh.write(table(a.model, rows, res["metrics"]))
     if not a.no_ledger:
         config = {"case_set": case_set_hash(a.cases), "listing_sha": listing.get("sha"),
                   "cases": sorted(c["id"] for c in ran)}

@@ -1,5 +1,5 @@
 ---
-description: Fan out N work items to the right lane by TYPE; refuses to route destructive/irreversible work below the judgement tier.
+description: Fan out work to lanes by type.
 argument-hint: [work items, one per line or a numbered list]
 ---
 

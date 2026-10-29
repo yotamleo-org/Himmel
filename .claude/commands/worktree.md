@@ -1,5 +1,5 @@
 ---
-description: Create a new worktree under .claude/worktrees/ (no prune). Thin alias for /clean_garden --no-prune.
+description: Create a .claude/worktrees/ worktree.
 argument-hint: <branch-name> [--no-install] [--verbose] [--dry-run]
 ---
 

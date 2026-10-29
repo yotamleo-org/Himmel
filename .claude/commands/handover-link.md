@@ -1,5 +1,5 @@
 ---
-description: Report or check where Claude is reading/writing handover state (inline ./handovers or external $HANDOVER_DIR)
+description: Show where handover state is read and written.
 argument-hint: [status|doctor]
 ---
 

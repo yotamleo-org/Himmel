@@ -1,5 +1,5 @@
 ---
-description: Arm the OS scheduler to relaunch claude at a given time with a given handover. Dedup-guarded.
+description: Schedule a timed claude relaunch on a handover.
 argument-hint: --time <HH:MM|smart|auto> --handover <path> [--force] [--dedup-any] [--dry-run] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>]
 ---
 

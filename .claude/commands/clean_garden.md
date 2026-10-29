@@ -1,5 +1,5 @@
 ---
-description: Prune merged-PR worktrees and (optionally) create a new one in the same shot
+description: Prune merged worktrees, optionally make one.
 argument-hint: [branch-name] [--prune-only] [--only <path|branch>] [--no-prune] [--no-install] [--dry-run] [--verbose]
 ---
 

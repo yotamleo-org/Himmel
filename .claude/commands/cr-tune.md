@@ -1,5 +1,5 @@
 ---
-description: Mine the CR ledger for disproved classes per critic and draft citation-backed tuning proposals. Never auto-applied.
+description: Draft CR critic tuning proposals.
 ---
 
 1. Run the mechanical miner and the scorecard:

@@ -251,9 +251,11 @@ himmel-bus MCP tools, and the frozen entries of `external.json` that himmel
 does not own. `run.sh` gives each case to `claude -p` with that listing as the
 system prompt, no tools and an empty cwd, and keeps the JSON envelope.
 `score.py` scores the first pick as exact, near, miss or false, and writes
-`results.json`, a per-case `table.md` and one `routing` ledger row with
+`results.json`, a `table.md` and one `routing` ledger row with
 per-case `exact` and `false_pick`. Every metric also comes as `open.*` and
-`sealed.*`; tuning reads the open half only. Spend is capped at $0.10 a call
+`sealed.*`; tuning reads the open half only. The results files and the run log
+carry per-case rows for the open half only and the sealed half as aggregate
+numbers, since a sealed pick or outcome hints at what the case expects. Spend is capped at $0.10 a call
 (`--max-usd`) and $5 a run (`--ceiling-usd`). `--seed-broken A,B` gives B the
 description of A in the rendered listing only, the eval's broken control;
 `test-score.sh` proves that control drops sealed accuracy by 25 points on a
@@ -267,6 +269,10 @@ Baseline (2026-10-29, listing of 155 entries, about 4,700 tokens;
 | haiku | 0.81 | 0.87 | 0.75 | 0.15 | 0.04 | $0.01 |
 | sonnet | 0.85 | 0.96 | 0.75 | 0.15 | 0.00 | $0.20 |
 | opus | 0.91 | 0.96 | 0.88 | 0.09 | 0.00 | $0.39 |
+
+Phase 2 (HIMMEL-8088) hill-climbed the descriptions, then trimmed the listing to
+3,257 tokens. Sealed accuracy after the trim is haiku 0.86, sonnet 0.89 and opus
+0.93, means over 3 to 5 reps. `routing/results/phase2-summary.md` has every arm.
 
 **ponytail:** the listing renders every description uncapped, as an operator
 session sees it; upgrade: a `--profile` flag that applies a launch profile's

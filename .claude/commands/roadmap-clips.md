@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Write, Skill
-description: Aggregate actionable items across the luna vault into a sequenced 60-Maps/ roadmap note. Proposals only.
+description: Wrapper; use obsidian-triage:roadmap-clips.
 argument-hint: "[--vault <path>] [--dry-run]"
 ---
 
