@@ -26,7 +26,7 @@ case "$1 $2" in
   "pr list") cat "$FIX/prs.txt"; exit 0 ;;
 esac
 case "$1:$2" in
-  api:graphql) cat "$FIX/pr-$num.json"; exit 0 ;;
+  api:graphql) case " $* " in *" after="*) cat "$FIX/pr-$num-p2.json" ;; *) cat "$FIX/pr-$num.json" ;; esac; exit 0 ;;
   api:repos/o/r/pulls/*/reviews) n="${2#repos/o/r/pulls/}"; n="${n%/reviews}"
     if [ -f "$FIX/reviews-$n.json" ]; then cat "$FIX/reviews-$n.json"; else echo '[]'; fi; exit 0 ;;
 esac
@@ -55,9 +55,9 @@ thread() {
 # mkpr <num> <branch> <state> <remaining> <resetAt> <thread-json>... — the GraphQL answer for one PR
 mkpr() {
   local num="$1" br="$2" st="$3" rem="$4" rst="$5"; shift 5
-  local nodes; nodes="$(printf '%s\n' "$@" | jq -s --arg n "$num" 'map(.id = $n + ":" + .id)')"
-  jq -n --argjson num "$num" --arg br "$br" --arg st "$st" --argjson rem "$rem" --arg rst "$rst" --argjson nodes "$nodes" \
-    '{data:{rateLimit:{cost:1,remaining:$rem,resetAt:$rst},
+  printf '%s\n' "$@" | jq -s --arg n "$num" 'map(.id = $n + ":" + .id)' > "$FIX/nodes.tmp"
+  jq -n --argjson num "$num" --arg br "$br" --arg st "$st" --argjson rem "$rem" --arg rst "$rst" --slurpfile nodes "$FIX/nodes.tmp" \
+    '$nodes[0] as $nodes | {data:{rateLimit:{cost:1,remaining:$rem,resetAt:$rst},
        repository:{pullRequest:{number:$num,state:$st,mergedAt:"2026-10-20T10:00:00Z",headRefName:$br,headRefOid:"1111111111111111111111111111111111111111",
          commits:{nodes:[{commit:{committedDate:"2026-10-20T09:00:00Z"}}]},
          reviewThreads:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$nodes}}}}}' > "$FIX/pr-$num.json"
@@ -90,7 +90,9 @@ check "12: inline rows carry branch, head, model" \
 
 # ── a re-run adds nothing ───────────────────────────────────────────────────
 before="$(wc -l < "$LEDGER" | tr -d ' ')"
-bash "$SUT" 12 >/dev/null 2>&1
+out="$(bash "$SUT" 12 2>&1)"; rc=$?
+check "12: the re-run exits 0" "$rc" "0"
+check "12: the re-run reads the PR" "$(grep -c '^cr-thread-recorder: 1 PR(s) read' <<< "$out" | tr -d ' ')" "1"
 check "12: a re-run adds no rows" "$(wc -l < "$LEDGER" | tr -d ' ')" "$before"
 
 # ── an existing hand-written row is neither duplicated nor rewritten ────────
@@ -165,6 +167,18 @@ check "23: recorder exits 0" "$rc" "0"
 # shellcheck disable=SC2016  # literal backticks in the expected title
 check "23: a title with an asterisk inside is kept whole" \
   "$(grep '"thread_id":"23:T23"' "$LEDGER" | jq -r '.text')" 'Handle `*.sh` files'
+
+# ── a later page of threads larger than one exec argument is still combined ──
+BODY5K="$(head -c 5000 /dev/zero | tr '\0' 'x')"
+pg2=(); for i in $(seq 1 40); do
+  pg2+=("$(thread "B$i" false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 $((100 + i)) coderabbitai t "$BODY5K")"); done
+mkpr 25 feat/x24 MERGED 4000 "$FAR" "${pg2[@]}"
+jq -c '.data.repository.pullRequest.number = 24' "$FIX/pr-25.json" > "$FIX/pr-24-p2.json"
+mkpr 24 feat/x24 MERGED 4000 "$FAR" "$T_OPEN"
+jq -c '.data.repository.pullRequest.reviewThreads.pageInfo = {hasNextPage:true,endCursor:"c1"}' "$FIX/pr-24.json" > "$FIX/pr-24.n" && mv "$FIX/pr-24.n" "$FIX/pr-24.json"
+bash "$SUT" 24 >/dev/null 2>&1; rc=$?
+check "24: a 200 KB second page of threads is recorded, the run exits 0" "$rc" "0"
+check "24: both pages are recorded (1 + 40 rows)" "$(count_rows 24)" "41"
 
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
 mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; mkdir "$tmp/ro/ledger.jsonl.lock"

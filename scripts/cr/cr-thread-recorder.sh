@@ -131,7 +131,7 @@ SHAPE='.data.repository.pullRequest as $p
 
 # _fetch_pr <num> <out-file> — the PR with ALL its threads as one JSON document.
 _fetch_pr() {
-  local num="$1" out="$2" after="" resp err page more tries rem rst
+  local num="$1" out="$2" after="" resp err page tries rem rst
   : > "$out"
   while :; do
     tries=0
@@ -152,8 +152,8 @@ _fetch_pr() {
       echo "cr-thread-recorder: PR #$num: unreadable GraphQL answer" >&2; return 1; }
     if [ ! -s "$out" ]; then printf '%s\n' "$page" > "$out"
     else
-      more=$(printf '%s' "$page" | jq -c '.threads')
-      if ! { jq -c --argjson m "$more" '.threads += $m' "$out" > "$out.n" && mv "$out.n" "$out"; }; then
+      if ! { printf '%s' "$page" | jq -c '.threads' > "$out.p" &&
+             jq -c --slurpfile m "$out.p" '.threads += $m[0]' "$out" > "$out.n" && mv "$out.n" "$out"; }; then
         echo "cr-thread-recorder: PR #$num: could not combine the thread pages" >&2; return 1
       fi
     fi
