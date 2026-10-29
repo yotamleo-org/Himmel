@@ -42,10 +42,12 @@ class PushCheck(unittest.TestCase):
         self.fixture = self.root / 'responses.json'
         self.fake = self.root / 'gh'
         self.fake.write_text('#!/usr/bin/env python3\n'
-                             'import json, sys\n'
+                             'import json, sys, time\n'
                              'from pathlib import Path\n'
                              'data = json.loads(Path(__file__).with_name("responses.json").read_text())\n'
                              'args = sys.argv[1:]\n'
+                             'if len(args) > 1 and args[1] in data.get("hang", []): time.sleep(120)\n'
+                             'if args[:2] == ["pr", "view"] and "headRefOid" in args: print(data["pr-heads"][args[2]]); sys.exit(0)\n'
                              'if args[:2] == ["pr", "list"]: print("42"); sys.exit(0)\n'
                              'if args[:2] == ["pr", "view"]: print("feat(handover): [HIMMEL-7711] fixture"); sys.exit(0)\n'
                              'if args[:2] == ["pr", "edit"]: sys.exit(0)\n'
@@ -85,20 +87,22 @@ class PushCheck(unittest.TestCase):
 
     def responses(self, prs):
         # One PR per page catches accidentally ignoring pagination.
-        data = {'repos/fixture/repo/pulls?state=open&per_page=100': [[pr] for pr, _ in prs] or [[]]}
+        data = {'repos/fixture/repo/pulls?state=open&per_page=100': [[pr] for pr, _ in prs] or [[]],
+                'pr-heads': {str(pr['number']): pr['head']['sha'] for pr, _ in prs}, 'hang': []}
         for pr, file in prs:
             data['repos/fixture/repo/pulls/%d/files?per_page=100' % pr['number']] = [[], [file]]
             data['repos/fixture/repo/pulls/%d' % pr['number']] = pr['head']['sha']
         self.fixture.write_text(json.dumps(data))
 
-    def check(self, flag='1', **env):
+    def check(self, flag='1', args=('--base', 'main'), **env):
         e = dict(self.env, **env)
         if flag is None:
             e.pop('HIMMEL_FLAG_CHAIN_PUSH_CHECK', None)
         else:
             e['HIMMEL_FLAG_CHAIN_PUSH_CHECK'] = flag
-        return subprocess.run(['bash', SUT, '--repo-dir', str(self.repo), '--repo', 'fixture/repo',
-                               '--base', 'main'], env=e, text=True, capture_output=True)
+        # The bound keeps a hung stub from stalling the suite; main hangs here and fails the row.
+        return subprocess.run(['bash', SUT, '--repo-dir', str(self.repo), '--repo', 'fixture/repo', *args],
+                              env=e, text=True, capture_output=True, timeout=30)
 
     def test_conflict_upgrades_edge_and_preserves_dirty_worktree(self):
         self.responses([self.pr(10, self.conflict, 'conflict')])
@@ -172,7 +176,9 @@ class PushCheck(unittest.TestCase):
         self.responses([self.pr(16, 'f' * 40, 'missing')])
         p = self.check()
         self.assertEqual(p.returncode, 2, p.stderr)
-        self.assertIn('unavailable locally', p.stderr)
+        self.assertIn('SKIPPED 16 ', p.stdout)
+        self.assertIn('unavailable locally', p.stdout)
+        self.assertIn('PEERS checked=0 skipped=1 conflicting=0', p.stdout)
 
     def test_peer_push_during_file_read_is_not_clean(self):
         self.responses([self.pr(17, self.clean, 'moving', filename='other')])
@@ -181,7 +187,8 @@ class PushCheck(unittest.TestCase):
         self.fixture.write_text(json.dumps(data))
         p = self.check()
         self.assertEqual(p.returncode, 2, p.stderr)
-        self.assertIn('head changed', p.stderr)
+        self.assertIn('SKIPPED 17 ', p.stdout)
+        self.assertIn('head changed', p.stdout)
 
     def test_later_read_failure_does_not_hide_found_conflict(self):
         self.responses([self.pr(10, self.conflict, 'conflict'), self.pr(18, self.clean, 'clean')])
@@ -189,8 +196,51 @@ class PushCheck(unittest.TestCase):
         del data['repos/fixture/repo/pulls/18/files?per_page=100']
         self.fixture.write_text(json.dumps(data))
         p = self.check()
-        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(p.returncode, 1, p.stderr)
         self.assertIn('FINDING edge-upgraded 10', p.stdout)
+        self.assertIn('CONFLICT 10 ', p.stdout)
+        self.assertIn('SKIPPED 18 ', p.stdout)
+        self.assertIn('PEERS checked=1 skipped=1 conflicting=1', p.stdout)
+
+    def test_unreadable_peer_is_skipped_and_the_others_are_checked(self):
+        self.responses([self.pr(11, self.clean, 'clean'), self.pr(16, 'f' * 40, 'missing')])
+        p = self.check()
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertIn('CHECKED 11 clean', p.stdout)
+        self.assertIn('SKIPPED 16 ', p.stdout)
+        self.assertIn('PEERS checked=1 skipped=1 conflicting=0', p.stdout)
+
+    def test_hanging_gh_is_bounded_and_reported_as_timeout(self):
+        self.responses([self.pr(10, self.conflict, 'conflict'), self.pr(11, self.clean, 'clean')])
+        data = json.loads(self.fixture.read_text())
+        data['hang'] = ['repos/fixture/repo/pulls/10/files?per_page=100']
+        self.fixture.write_text(json.dumps(data))
+        p = self.check(CHAIN_PUSH_CHECK_TIMEOUT='1')
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertIn('TIMEOUT 10 ', p.stdout)
+        self.assertIn('CHECKED 11 clean', p.stdout)
+        self.assertIn('PEERS checked=1 skipped=1 conflicting=0', p.stdout)
+
+    def test_pr_peer_mode_reads_current_heads(self):
+        pair = ('--pr', '20', '--peer', '12')
+        self.responses([self.pr(20, self.local, 'local'), self.pr(12, self.conflict, 'conflict')])
+        p = self.check(args=pair)
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertIn('HEADS 20=%s 12=%s' % (self.local, self.conflict), p.stdout)
+        self.assertIn('CONFLICT 12 ', p.stdout)
+        self.assertIn('PEERS checked=1 skipped=0 conflicting=1', p.stdout)
+        # A new push to PR 12 changes the heads the next call reports.
+        self.responses([self.pr(20, self.local, 'local'), self.pr(12, self.clean, 'clean')])
+        p = self.check(args=pair)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('HEADS 20=%s 12=%s' % (self.local, self.clean), p.stdout)
+        self.assertIn('CHECKED 12 clean', p.stdout)
+
+    def test_pr_peer_mode_runs_with_the_flag_off(self):
+        self.responses([self.pr(20, self.local, 'local'), self.pr(12, self.conflict, 'conflict')])
+        p = self.check(None, args=('--pr', '20', '--peer', '12'))
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertIn('HEADS 20=', p.stdout)
 
     def test_deleted_fork_warns_and_remaining_prs_are_checked(self):
         orphan = self.pr(19, self.clean, 'local')
