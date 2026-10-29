@@ -480,61 +480,127 @@ printf 'shell-unit-shard (ubuntu-latest, 1)\tsuccess\nshell-unit-shard (ubuntu-l
 printf '%s\tX\n' "$SHP" > "$tmp/pr-cases"
 run "a PR job with no failing case recorded still REFUSEs under the renamed jobs" 1 'REFUSE.*shell-unit.*no failing case'
 
-# --- the chain-s2 reason: a green PR merges main forward after the S2 predecessor chain-plan.sh named.
-# The checker reads no flag: the evidence is the plan file chain-plan.sh writes, and with chain_merge_plan off that
-# file holds no MERGE-FORWARD line, so the reason has nothing to stand on.
-CHAIN_PLAN="${CHAIN_PLAN:-$HERE/chief-kit/chain-plan.sh}"
+# --- the chain-s2 reason: a green PR merges main forward after its S2 predecessor has merged.
+# The checker derives its own evidence: it binds <pr> to HEAD's PR, reads the predecessor from gh (MERGED, merge sha
+# on origin/main), rebuilds the pair with chain-graph.py --pair from the predecessor's premerge head, and runs the
+# flag-free planner. gh is a PATH stub reading $CS_FIX; no plan file and no flag value can change the verdict.
+CORE="${CHAIN_PLAN_CORE:-$HERE/chief-kit/chain-plan-core.sh}"
+CGRAPH="${CHAIN_GRAPH:-$HERE/chief-kit/chain-graph.py}"
+mkdir -p "$tmp/csbin" "$tmp/csfix"
+cat > "$tmp/csbin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr view") n=""; for a in "${@:3}"; do case "$a" in [0-9]*) n="$a"; break ;; --*) break ;; esac; done
+             cat "$CS_FIX/pr-${n:-head}.json" 2>/dev/null || exit 1 ;;  # read-sink-ok: stub reads its own fixture dir only
+  "api repos/"*) n="${2#repos/*/pulls/}"; cat "$CS_FIX/files-${n%%/*}.tsv" 2>/dev/null || exit 1 ;;  # read-sink-ok: stub reads its own fixture dir only
+  "run list") echo success ;;
+  *) exit 2 ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/csbin/jira"
+chmod +x "$tmp/csbin/gh" "$tmp/csbin/jira"
 git init -q --bare -b main "$tmp/o2.git"
 git init -q -b main "$tmp/w2"
 git -C "$tmp/w2" config user.name t; git -C "$tmp/w2" config user.email t@t
-git -C "$tmp/w2" commit -q --allow-empty -m base
+mkdir -p "$tmp/w2/scripts/ci" "$tmp/w2/docs"
+printf '^scripts/ci/\n' > "$tmp/w2/scripts/ci/ci-trust-paths.txt"
+seq 1 12 | awk '{printf "scripts/r%d/test-r.sh\tlocal\tr\n", $1}' > "$tmp/w2/scripts/ci/suite-tiers.tsv"
+echo doc > "$tmp/w2/docs/x.md"
+git -C "$tmp/w2" add -A; git -C "$tmp/w2" commit -q -m base
 git -C "$tmp/w2" remote add origin "$tmp/o2.git"
 git -C "$tmp/w2" push -q origin main 2>/dev/null
 git clone -q "$tmp/o2.git" "$tmp/cs" 2>/dev/null
 git -C "$tmp/cs" config user.name t; git -C "$tmp/cs" config user.email t@t
-git -C "$tmp/w2" commit -q --allow-empty -m "feat: [HIMMEL-1] the predecessor (#10)"
-git -C "$tmp/w2" push -q origin main 2>/dev/null
-PRED="$(git -C "$tmp/w2" rev-parse HEAD)"
-git -C "$tmp/w2" commit -q --allow-empty -m "feat: [HIMMEL-2] an unrelated merge (#99)"
-git -C "$tmp/w2" push -q origin main 2>/dev/null
-OTHER="$(git -C "$tmp/w2" rev-parse HEAD)"
-printf '{"nodes":[{"id":"#10"},{"id":"#11"}],"edges":[{"from":"#10","to":"#11","kind":"S2","det":"D6","evidence":"x","files":[],"source":"derived","cycle":false}]}\n' > "$tmp/graph.json"
-HIMMEL_FLAG_CHAIN_MERGE_PLAN=1 bash "$CHAIN_PLAN" --graph "$tmp/graph.json" > "$tmp/plan-on" 2>&1
-HIMMEL_FLAG_CHAIN_MERGE_PLAN=0 bash "$CHAIN_PLAN" --graph "$tmp/graph.json" > "$tmp/plan-off" 2>&1
-printf 'a\tsuccess\nb\tsuccess\n' > "$tmp/cs-pr"
+# the predecessor #10 adds a row near the top of the row registry; #99 touches an unrelated doc
+git -C "$tmp/w2" checkout -q -b p10
+awk 'NR==2{print "scripts/p/test-p.sh\tlocal\tp"} 1' "$tmp/w2/scripts/ci/suite-tiers.tsv" > "$tmp/w2/t" && mv "$tmp/w2/t" "$tmp/w2/scripts/ci/suite-tiers.tsv"
+git -C "$tmp/w2" commit -q -am "feat: [HIMMEL-1] the predecessor"
+P10="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" checkout -q -b p99 main
+echo more >> "$tmp/w2/docs/x.md"
+git -C "$tmp/w2" commit -q -am "feat: [HIMMEL-3] an unrelated change"
+P99="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" push -q origin "$P10:refs/pull/10/head" "$P99:refs/pull/99/head" 2>/dev/null
+git -C "$tmp/w2" checkout -q main
+# the successor #11 (this worktree) appends a row at the end: a disjoint row addition, so the pair is S2
+printf 'scripts/s/test-s.sh\tlocal\ts\n' >> "$tmp/cs/scripts/ci/suite-tiers.tsv"
+git -C "$tmp/cs" commit -q -am "feat: [HIMMEL-2] the successor"
 CSHEAD="$(git -C "$tmp/cs" rev-parse HEAD)"
+git -C "$tmp/cs" push -q origin "$CSHEAD:refs/pull/11/head" 2>/dev/null
+prjson() { printf '{"number":%s,"title":"%s","headRefOid":"%s","headRefName":"b%s","baseRefName":"main","state":"%s","mergeCommit":%s}\n' "$1" "$2" "$3" "$1" "$4" "$5" > "$tmp/csfix/pr-$6.json"; }
+prjson 10 "feat: [HIMMEL-1] the predecessor" "$P10" OPEN null 10
+prjson 11 "feat: [HIMMEL-2] the successor" "$CSHEAD" OPEN null 11
+prjson 11 "feat: [HIMMEL-2] the successor" "$CSHEAD" OPEN null head
+printf 'scripts/ci/suite-tiers.tsv\tmodified\t\n' > "$tmp/csfix/files-10.tsv"
+cp "$tmp/csfix/files-10.tsv" "$tmp/csfix/files-11.tsv"
+csenv() { PATH="$tmp/csbin:$PATH" CS_FIX="$tmp/csfix" CHAIN_GRAPH_JIRA="$tmp/csbin/jira" "$@"; }
+# while both PRs are open, the flag-free planner derives the S2 pair from the two heads
+(cd "$tmp/cs" && csenv python3 "$CGRAPH" --prs 10,11 --base origin/main --cache-dir "$tmp/cscache0" --json) > "$tmp/cs-open.json" 2> "$tmp/cs-open.err"
+out="$(bash "$CORE" --evidence --graph "$tmp/cs-open.json" 2>&1)"
+if [ "$out" = 'MERGE-FORWARD 11 after 10 (S2 D6)' ]; then ok "chain-s2: both PRs open, the planner derives 11 after 10 (S2)"; else bad "chain-s2: both open, S2 derived" "$out $(cat "$tmp/cs-open.err")"; fi
+# the predecessor squash-merges onto main, then #99
+git -C "$tmp/w2" merge -q --squash p10 && git -C "$tmp/w2" commit -q -m "feat: [HIMMEL-1] the predecessor (#10)"
+M10="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" merge -q --squash p99 && git -C "$tmp/w2" commit -q -m "feat: [HIMMEL-3] an unrelated change (#99)"
+M99="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" push -q origin main 2>/dev/null
+prjson 10 "feat: [HIMMEL-1] the predecessor" "$P10" MERGED "{\"oid\":\"$M10\"}" 10
+prjson 99 "feat: [HIMMEL-3] an unrelated change" "$P99" MERGED "{\"oid\":\"$M99\"}" 99
+printf 'a\tsuccess\nb\tsuccess\n' > "$tmp/cs-pr"
 cs() {
   local d="$1" want="$2" re="$3" out rc; shift 3
-  out=$(cd "$tmp/cs" && bash "$MF" --chain-s2 11 --chain-plan "$tmp/plan-on" --chain-after-sha "$PRED" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" "$@" 2>&1); rc=$?
+  out=$(cd "$tmp/cs" && csenv bash "$MF" --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" "$@" 2>&1); rc=$?
   if [ "$rc" -eq "$want" ] && grep -Eq -- "$re" <<< "$out"; then ok "$d"; else bad "$d (rc=$rc, want $want)" "$out"; fi
 }
-cs "chain-s2: a plan naming 11 after 10, 10's merge on origin/main and not in HEAD, a green PR: ALLOW, and says it proves only that predecessor" 0 'ALLOW chain-s2 11.*after #?10.*proves only #?10'
+csflag() { local fl="$1"; shift; out=$(cd "$tmp/cs" && HIMMEL_FLAG_CHAIN_MERGE_PLAN="$fl" csenv bash "$MF" "$@" 2>&1); echo "rc=$? $out"; }
+cs "chain-s2: the predecessor merged, its merge on origin/main and not in HEAD, the pair S2, a green PR: ALLOW" 0 "ALLOW chain-s2 11.*#10.*$M10"
+a0="$(csflag 0 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+a1="$(csflag 1 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+if [ "$a0" = "$a1" ] && [ "${a0%% *}" = "rc=0" ]; then ok "chain-s2: the verdict is the same at flag 0 and 1 (ALLOW)"; else bad "chain-s2: ALLOW flag parity" "$a0 | $a1"; fi
+# a caller-written plan file is never trusted: --chain-plan is dropped, flag on and off
+printf 'chain-plan: chain_merge_plan on\nORDER 10 11\nMERGE-FORWARD 11 after 10 (S2 D6)\n' > "$tmp/plan-hand"
+r0="$(csflag 0 --chain-s2 11 --chain-plan "$tmp/plan-hand" --chain-after-sha "$M10" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+r1="$(csflag 1 --chain-s2 11 --chain-plan "$tmp/plan-hand" --chain-after-sha "$M10" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+case "$r0" in "rc=1 "*REFUSE*never\ trusted*) ok "chain-s2: a hand-written plan file (flag 0): REFUSE" ;; *) bad "chain-s2: a hand-written plan file (flag 0) REFUSEs" "$r0" ;; esac
+case "$r1" in "rc=1 "*REFUSE*never\ trusted*) ok "chain-s2: a hand-written plan file (flag 1): REFUSE" ;; *) bad "chain-s2: a hand-written plan file (flag 1) REFUSEs" "$r1" ;; esac
+cs "chain-s2: --chain-plan beside --predecessor: REFUSE" 1 'REFUSE.*never trusted' --chain-plan "$tmp/plan-hand"
+cs "chain-s2: <pr> is not HEAD's PR: REFUSE" 1 'REFUSE.*HEAD.*#11' --chain-s2 12
+cs "chain-s2: the wrong predecessor (#99, no S2 pair with 11): REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --predecessor 99
+prjson 10 "feat: [HIMMEL-1] the predecessor" "$P10" OPEN null 10
+cs "chain-s2: the predecessor is still open: REFUSE" 1 'REFUSE.*#10.*MERGED'
+git -C "$tmp/w2" checkout -q -b side main~2
+git -C "$tmp/w2" commit -q --allow-empty -m "feat: off main (#10)"
+OFF="$(git -C "$tmp/w2" rev-parse HEAD)"
+git -C "$tmp/w2" push -q origin "$OFF:refs/heads/side" 2>/dev/null
+git -C "$tmp/w2" checkout -q main
+git -C "$tmp/cs" fetch -q origin side
+prjson 10 "feat: [HIMMEL-1] the predecessor" "$P10" MERGED "{\"oid\":\"$OFF\"}" 10
+cs "chain-s2: the merge sha is not an ancestor of origin/main: REFUSE" 1 'REFUSE.*origin/main'
+prjson 10 "feat: [HIMMEL-1] the predecessor" "$P10" MERGED "{\"oid\":\"$M10\"}" 10
+git -C "$tmp/cs" commit -q --allow-empty -m "feat: [HIMMEL-2] a later commit"
+MOVED="$(git -C "$tmp/cs" rev-parse HEAD)"
+cs "chain-s2: HEAD moved past the PR run: REFUSE" 1 'REFUSE.*HEAD'
+cs "chain-s2: HEAD is not the PR's head on GitHub: REFUSE" 1 'REFUSE.*HEAD' --pr-sha "$MOVED"
+git -C "$tmp/cs" reset -q --hard "$CSHEAD"
 printf 'a\tskipped\nb\tneutral\n' > "$tmp/cs-skipped"
 cs "chain-s2: a run with no success row (only skipped or neutral): REFUSE" 1 'REFUSE.*no (passing|success)' --pr "$tmp/cs-skipped"
-cs "chain-s2: the flag-off plan carries no MERGE-FORWARD line: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-off"
-: > "$tmp/plan-empty"
-cs "chain-s2: an empty plan file: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-empty"
-grep -v '^chain-plan:' "$tmp/plan-on" > "$tmp/plan-nohdr"
-cs "chain-s2: a plan without the chain-plan header: REFUSE" 1 'REFUSE.*header' --chain-plan "$tmp/plan-nohdr"
-cs "chain-s2: the PR the plan does not name: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-s2 12
-cs "chain-s2: the sha is not the predecessor's merge (subject names #99): REFUSE" 1 'REFUSE.*#10' --chain-after-sha "$OTHER"
-git -C "$tmp/cs" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "feat: local only (#10)"
-LOCAL="$(git -C "$tmp/cs" rev-parse HEAD)"
-cs "chain-s2: the sha is not on origin/main: REFUSE" 1 'REFUSE.*origin/main' --chain-after-sha "$LOCAL" --pr-sha "$LOCAL"
-git -C "$tmp/cs" reset -q --hard "$CSHEAD"
-cs "chain-s2: an ancestor of HEAD that is not the predecessor's merge: REFUSE, never 'already merged'" 1 'REFUSE.*#10' --chain-after-sha "$CSHEAD"
-git -C "$tmp/cs" fetch -q origin
-git -C "$tmp/cs" -c user.name=t -c user.email=t@t merge -q --no-edit "$PRED" 2>/dev/null
-MERGED="$(git -C "$tmp/cs" rev-parse HEAD)"
-cs "chain-s2: the predecessor is already in HEAD: nothing to merge forward (exit 3)" 3 'nothing to merge forward' --pr-sha "$MERGED"
-git -C "$tmp/cs" reset -q --hard "$CSHEAD"
 printf 'a\tsuccess\nb\tfailure\n' > "$tmp/cs-red"
 cs "chain-s2: a red on the PR is the inherited-red path, not this reason: REFUSE" 1 'REFUSE.*red' --pr "$tmp/cs-red"
-cs "chain-s2: the PR run is for another head: REFUSE" 1 'REFUSE.*HEAD' --pr-sha "$PRED"
-cs "chain-s2: a short after-sha: usage error" 2 'usage' --chain-after-sha "${PRED:0:12}"
+cs "chain-s2: the PR run is for another head: REFUSE" 1 'REFUSE.*HEAD' --pr-sha "$P10"
+w0="$(csflag 0 --chain-s2 11 --predecessor 99 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+w1="$(csflag 1 --chain-s2 11 --predecessor 99 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
+if [ "$w0" = "$w1" ] && [ "${w0%% *}" = "rc=1" ]; then ok "chain-s2: the verdict is the same at flag 0 and 1 (REFUSE)"; else bad "chain-s2: REFUSE flag parity" "$w0 | $w1"; fi
+git -C "$tmp/cs" fetch -q origin
+git -C "$tmp/cs" merge -q --no-edit origin/main 2>/dev/null
+MERGED="$(git -C "$tmp/cs" rev-parse HEAD)"
+prjson 11 "feat: [HIMMEL-2] the successor" "$MERGED" OPEN null head
+cs "chain-s2: the predecessor is already in HEAD: nothing to merge forward (exit 3)" 3 'nothing to merge forward' --pr-sha "$MERGED"
+git -C "$tmp/cs" reset -q --hard "$CSHEAD"
+prjson 11 "feat: [HIMMEL-2] the successor" "$CSHEAD" OPEN null head
+cs "chain-s2: a non-numeric predecessor: usage error" 2 'usage' --predecessor 'x;y'
 cs "chain-s2: mixing the inherited-red flags in: usage error" 2 'usage' --main-base "$tmp/cs-pr"
-out=$(cd "$tmp/cs" && bash "$MF" --chain-s2 11 --chain-plan "$tmp/plan-on" 2>&1); rc=$?
-if [ "$rc" -eq 2 ]; then ok "chain-s2: missing --chain-after-sha: usage error"; else bad "chain-s2 missing args exits 2 (rc=$rc)" "$out"; fi
+out=$(cd "$tmp/cs" && csenv bash "$MF" --chain-s2 11 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then ok "chain-s2: missing --predecessor: usage error"; else bad "chain-s2 missing --predecessor exits 2 (rc=$rc)" "$out"; fi
 set3 'shell-tests\tfailure\n' 'shell-tests\tsuccess\n' 'shell-tests\tsuccess\n'
 run "chain-s2 present in the file does not loosen the inherited-red rule (own red still REFUSEs)" 1 'REFUSE.*shell-tests.*not inherited'
 

@@ -5,8 +5,9 @@
 #                HIMMEL_FLAG_<N>) that the registry does not list
 #   unread       a registered flag that no code reads
 #   forbidden    a flag read under scripts/hooks/, in a gate script (scripts/cr/,
-#                merge-on-green.sh, go.sh) or on a path in ci-trust-paths.txt or
-#                ci-trust-paths-core.txt: a flag never wraps a safety rail
+#                merge-on-green.sh, go.sh, merge-forward-check.sh) or on a path in ci-trust-paths.txt or
+#                ci-trust-paths-core.txt, or in a file one of those sources or execs by a literal
+#                path (one level down): a flag never wraps a safety rail
 #   malformed / duplicate   a registry row that is not 7 columns, has a default other than
 #                on|off, a kind other than feature|content, a bad date, or repeats a name
 #
@@ -17,6 +18,8 @@
 # ponytail: a text match, not data flow: a flag name built at run time is not seen, and a
 # comment that names a flag counts as a read, a call split across lines is not seen, and `expires`
 # is checked as a date only (no birth column, so the 14-day cap is the author's); upgrade path is an AST rule in the swallowed-error lint family.
+#
+# A flag with 3 days or fewer left prints `WARN flag <name> expires <date> (in <n> days)` and does not fail.
 #
 # Exit: 0 clean; 1 findings (one `FAIL <class>: ...` line each); 2 usage or unreadable registry.
 # Platform guard (gitbash-only): POSIX bash 3.2+, git or find, grep, awk, xargs.
@@ -57,6 +60,13 @@ real_date() {
   [ "$d" -le "$max" ]
 }
 finding() { printf 'FAIL %s\n' "$1"; findings=$((findings + 1)); }
+# day_num YYYY-MM-DD: a day count (days from civil), so two dates subtract to the days between them
+day_num() {
+  local y m d
+  y=$((10#${1:0:4})); m=$((10#${1:5:2})); d=$((10#${1:8:2}))
+  if [ "$m" -le 2 ]; then y=$((y - 1)); m=$((m + 12)); fi
+  echo $((365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + d))
+}
 
 # --- registry ---
 NAMES="$SCRATCH/names"; : > "$NAMES"
@@ -80,6 +90,8 @@ while IFS= read -r line || [ -n "$line" ]; do
   if grep -qxF "$name" "$NAMES"; then finding "duplicate: $name"; continue; fi
   printf '%s\n' "$name" >> "$NAMES"
   [ "$expires" \< "$TODAY" ] && finding "expired: $name (expires $expires, today $TODAY; remove the flag or file the flip)"
+  left=$(($(day_num "$expires") - $(day_num "$TODAY")))
+  if [ "$left" -ge 0 ] && [ "$left" -le 3 ]; then printf 'WARN flag %s expires %s (in %d days)\n' "$name" "$expires" "$left"; fi
 done < "$REG"
 
 # --- code reads ---
@@ -114,7 +126,9 @@ TRUST="$SCRATCH/trust"
     [ -r "$f" ] || { echo "check-flags: cannot read $f (fail-closed)" >&2; exit 2; }
     grep -Ev '^[[:space:]]*(#|$)' "$f"
   done; } > "$TRUST"
-GATE_RE='^scripts/hooks/|^scripts/cr/|(^|/)merge-on-green\.sh$|(^|/)go\.sh$'
+GATE_RE='^scripts/hooks/|^scripts/cr/|(^|/)merge-on-green\.sh$|(^|/)go\.sh$|(^|/)merge-forward-check\.sh$'
+GATES="$SCRATCH/gates"
+{ grep -E "$GATE_RE" "$FILES"; [ -s "$TRUST" ] && grep -E -f "$TRUST" "$FILES"; } | sort -u > "$GATES"
 
 while IFS="$(printf '\t')" read -r name file; do
   [ -n "$name" ] || continue
@@ -126,6 +140,38 @@ while IFS="$(printf '\t')" read -r name file; do
     finding "forbidden: $name read in $file (a flag never wraps a hook, a gate or a ci-trust-paths path)"
   fi
 done < "$READS"
+
+# one level down: a file a gate sources or execs by a literal path is checked as that gate.
+# The path is read after `.`, source, bash, sh, exec or python3 (options skipped): `"$VAR/x"` and a bare
+# relative path resolve against the gate's directory, `scripts/...` against the root.
+# ponytail: one level and literal paths only (a computed path or a helper's own helper is not followed);
+# upgrade path is a call graph in the same AST rule as the read scan.
+norm_path() {
+  local IFS=/ p o=""
+  for p in $1; do
+    case "$p" in ''|.) ;; ..) case "$o" in */*) o="${o%/*}" ;; *) o="" ;; esac ;; *) o="${o:+$o/}$p" ;; esac
+  done
+  printf '%s' "$o"
+}
+# shellcheck disable=SC2094  # $GATES is only read here; the pipeline writes $SCRATCH/reached
+while IFS= read -r gate; do
+  [ -r "$ROOT/$gate" ] || continue
+  gdir="$(dirname "$gate")"
+  grep -oE '(^|[;&|({[:space:]])((\.|source|bash|sh|exec|python3)([[:space:]]+-[A-Za-z]+)*[[:space:]]+)+"?(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)?[A-Za-z0-9_./-]+' "$ROOT/$gate" 2>/dev/null \
+    | sed -E 's/.*[[:space:]]"?//' | sort -u | while IFS= read -r ref; do
+    case "$ref" in
+      '$'*) helper="$(norm_path "$gdir/${ref#*/}")" ;;
+      scripts/*) helper="$(norm_path "$ref")" ;;
+      *) helper="$(norm_path "$gdir/$ref")" ;;
+    esac
+    [ -n "$helper" ] && [ "$helper" != "$gate" ] || continue
+    grep -qxF "$helper" "$GATES" && continue
+    awk -F'\t' -v f="$helper" '$2 == f {print $1}' "$READS" | while IFS= read -r name; do
+      printf 'forbidden: %s read in %s (reached from %s)\n' "$name" "$helper" "$gate"
+    done
+  done
+done < "$GATES" | sort -u > "$SCRATCH/reached"
+while IFS= read -r line; do finding "$line"; done < "$SCRATCH/reached"
 
 while IFS= read -r name; do
   cut -f1 "$READS" | grep -qxF "$name" || finding "unread: $name (registered, but no code reads it; delete the row or add the read)"
