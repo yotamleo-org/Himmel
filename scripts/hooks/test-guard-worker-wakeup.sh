@@ -13,8 +13,7 @@
 # usually run from inside a worker, which already exports it): every case runs under
 # `env -u HIMMEL_CONSOLE_LEG` first, so an inherited marker never leaks in.
 #
-# bash 3.2-safe. Platform guard (gitbash-only): plain env var + jq checks, no
-# git/path work; runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# bash 3.2-safe. Platform guard: plain env var + jq checks, no git/path work.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

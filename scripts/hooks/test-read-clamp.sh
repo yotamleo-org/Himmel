@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-read-clamp.sh — house-style test harness for read-clamp.sh.
-# Platform guard: bash-only, no .ps1 twin -- exercises the bash-only hook above.
+# Platform guard: bash-only -- exercises the bash-only hook above.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

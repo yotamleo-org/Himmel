@@ -7,7 +7,7 @@
 # compaction) and writes NOTHING for a session that is not a chief.
 #
 # Hermetic: temp HOME / HANDOVER_DIR / workdir; never the live ~/.claude or
-# /run/user/<uid>. PLATFORM GUARD: no .ps1 twin — bash 3.2-safe.
+# /run/user/<uid>. PLATFORM GUARD: bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

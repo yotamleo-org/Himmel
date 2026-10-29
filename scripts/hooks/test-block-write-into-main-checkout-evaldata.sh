@@ -9,8 +9,8 @@
 # command (the shared tokenizer), so a quoted, escaped or spaced spelling of a
 # shadowing word or a PATH change is the same word (rows 218-220), and an eval
 # of ANY variable is denied (a variable set by an earlier call is not seen).
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+ (same as the
-# guard; no .ps1 twin). A sibling of test-block-write-into-main-checkout.sh,
+# Platform guard: any POSIX bash 3.2+ (same as the guard). A sibling of
+# test-block-write-into-main-checkout.sh,
 # split out so the parent suite stays under the CI per-suite cap; the harness
 # below is a trimmed copy of the -wrappers sibling's (same fixtures).
 #
