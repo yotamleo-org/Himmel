@@ -20,12 +20,11 @@
 # always printed, after the same argument check.
 #
 # --go-check REFUSEs (exit 1, one `REFUSE <reason>` line) when the graph's jira_links is not ok (missing =
-# unknown), the graph's head for <pr> is not the PR's live head (gh pr view), the graph's generated_at is missing
-# or more than 30 minutes old, <pr>'s ticket has a hard predecessor (a live `links` read, either direction of the
-# link, "X blocks <key>") whose live status is not done or cannot be read, or chain-push-check.sh --pr <pr> --peer
-# <m> exits non-zero or prints no `HEADS <pr>=<head>` line for any S1 peer m (exit 3 = unknown = REFUSE; a script
-# without the --pr/--peer mode prints no HEADS line, so this fails closed until that mode is on main). On a pass it
-# prints `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash of the graph file> at=<UTC>`.
+# unknown), the graph's head for <pr> is not the PR's live head (gh pr view), <pr> or an S1 peer is not open, the
+# graph's generated_at is missing or more than 30 minutes old, <pr>'s ticket has a hard predecessor (a live `links`
+# read, either direction of the link, "X blocks <key>") whose live status is not done or cannot be read, or
+# chain-push-check.sh --pr <pr> --peer <m> exits non-zero or prints no `HEADS <pr>=<head>` line for any S1 peer m
+# (exit 3 = unknown = REFUSE; a missing HEADS line is unknown too). On a pass it prints `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash of the graph file> at=<UTC>`.
 # Environment: CHAIN_PLAN_JIRA_CMD (the jira CLI: `<cmd> links KEY`, `<cmd> get KEY`; default node <primary
 # checkout>/scripts/jira/dist/index.js), CHAIN_PLAN_PUSH_CHECK (default chain-push-check.sh beside this file).
 # ponytail: --go-check is procedural, the chief runs it before writing GO and nothing forces that; upgrade path is
@@ -78,9 +77,10 @@ go_check() {
   row="$(jq -r --arg id "#$pr" '.nodes[] | select(.id == $id) | [.head // "", .key // ""] | @tsv' "$graph")"
   [ -n "$row" ] || refuse "the graph lists no node #$pr."
   IFS=$'\t' read -r head key <<< "$row"
-  out="$(gh pr view "$pr" --json headRefOid 2>/dev/null)" || out=""  # swallow-ok: an unread head is empty, which REFUSEs below
+  out="$(gh pr view "$pr" --json headRefOid,state 2>/dev/null)" || out=""  # swallow-ok: an unread head is empty, which REFUSEs below
   live="$(jq -r '.headRefOid // ""' <<< "$out" 2>/dev/null)" || live=""  # swallow-ok: an unparsable head is empty, which REFUSEs on the next line
   [ -n "$live" ] || refuse "cannot read PR $pr's live head: unknown."
+  [ "$(jq -r '.state // ""' <<< "$out" 2>/dev/null)" = OPEN ] || refuse "PR $pr is not open: nothing to GO."  # swallow-ok: an unparsable state is not OPEN, which REFUSEs
   [ "$live" = "$head" ] || refuse "the graph has PR $pr at $head, but its head is now $live: rebuild the graph."
   [ -n "$key" ] || refuse "node #$pr carries no ticket key: its hard predecessors cannot be read."
   links="$(jira links "$key" 2>/dev/null)" || refuse "cannot read $key's Jira links: unknown, never cleared."  # swallow-ok: an unread link list REFUSEs
@@ -98,6 +98,8 @@ go_check() {
                                    | (if .from == $id then .to else .from end) | ltrimstr("#")' "$graph")" \
     || refuse "cannot read the graph's S1 edges: PR $pr's peers are unknown. Rebuild the graph."
   for m in $peers; do
+    out="$(gh pr view "$m" --json state 2>/dev/null)" || out=""  # swallow-ok: an unread state is empty, which REFUSEs on the next line
+    [ "$(jq -r '.state // ""' <<< "$out" 2>/dev/null)" = OPEN ] || refuse "S1 peer PR $m is not open (or unreadable): rebuild the graph."  # swallow-ok: an unparsable state is not OPEN, which REFUSEs
     out="$(bash "${CHAIN_PLAN_PUSH_CHECK:-$SCRIPT_DIR/chain-push-check.sh}" --pr "$pr" --peer "$m" 2>&1)" \
       || refuse "chain-push-check.sh --pr $pr --peer $m exited $? (1 conflict, 3 unknown): ${out:0:200}"
     grep -q "^HEADS $pr=$head " <<< "$out" \

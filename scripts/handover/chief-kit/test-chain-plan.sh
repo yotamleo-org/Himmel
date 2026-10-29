@@ -185,7 +185,8 @@ gcgraph() {
 }
 gcreset() {
     gcgraph "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ok
-    printf '{"headRefOid":"%s"}\n' "$H11" > "$W/gc/head-11.json"
+    printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H11" > "$W/gc/head-11.json"
+    printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H12" > "$W/gc/head-12.json"
     # both directions: key 5 blocks key 2 (Done), key 2 blocks key 9 (open, but a successor)
     printf '1\tBlocks\tinward=HIMMEL-5\toutward=HIMMEL-2\tHIMMEL-5 blocks HIMMEL-2\n2\tBlocks\tinward=HIMMEL-2\toutward=HIMMEL-9\tHIMMEL-2 blocks HIMMEL-9\n' > "$W/gc/links-HIMMEL-2.txt"
     printf 'HIMMEL-5\tTask\tDone\tthe blocker\n' > "$W/gc/get-HIMMEL-5.txt"
@@ -207,7 +208,16 @@ has "--go-check jira_links unreadable: REFUSE" "$out" 'REFUSE'
 printf '{"generated_at":"%s","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"}],"edges":[]}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$H11" > "$W/gc/graph.json"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check jira_links missing (unknown): REFUSE" "$rc:${out%% *}" '1:REFUSE'
-gcreset; printf '{"headRefOid":"%s"}\n' "$H12" > "$W/gc/head-11.json"
+gcreset; printf '{"headRefOid":"%s","state":"CLOSED"}\n' "$H11" > "$W/gc/head-11.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a PR that is no longer open: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '{"headRefOid":"%s","state":"MERGED"}\n' "$H12" > "$W/gc/head-12.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an S1 peer that has merged (its push check is stale): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; rm -f "$W/gc/head-12.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check an S1 peer whose state is unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '{"headRefOid":"%s","state":"OPEN"}\n' "$H12" > "$W/gc/head-11.json"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check stale head: exit 1" "$rc" 1
 has "--go-check stale head: REFUSE names the live head" "$out" "$H12"
@@ -250,10 +260,9 @@ same "--go-check the push check exits 3 (unknown): REFUSE" "$rc:${out%% *}" '1:R
 gcreset; echo 1 > "$W/gc/push-rc"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check the push check finds a conflict: REFUSE" "$rc:${out%% *}" '1:REFUSE'
-# today's chain-push-check.sh has no --pr/--peer mode: flag off it exits 0 and prints nothing
 gcreset; : > "$W/gc/push-out"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
-same "--go-check a push check without the --pr/--peer mode (exit 0, no HEADS line): REFUSE" "$rc:${out%% *}" '1:REFUSE'
+same "--go-check a push check that exits 0 with no HEADS line: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset
 out="$(gc 99 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a PR the graph does not list: REFUSE" "$rc:${out%% *}" '1:REFUSE'

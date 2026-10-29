@@ -109,10 +109,10 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   `bash scripts/handover/chief-kit/chain-plan.sh --go-check <pr> --graph <graph>`
   and GO only on `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash> at=<UTC>`. It
   REFUSEs when the graph's Jira links are not `ok`, its head for the PR is not the
-  PR's current head, the graph is over 30 minutes old, the PR's ticket has an
-  unmerged hard predecessor (Jira read live), or the pair push check
-  (`chain-push-check.sh`, its PR-and-peer mode) does not pass for an S1 peer; it
-  refuses until that mode is on main. It is procedural: `go.sh` does not run it yet.
+  PR's current head, the PR or an S1 peer is no longer open, the graph is over 30
+  minutes old, the PR's ticket has an unmerged hard predecessor (Jira read live),
+  or the pair push check (`chain-push-check.sh --pr <pr> --peer <m>`) does not pass
+  for an S1 peer. It is procedural: `go.sh` does not run it yet.
 - A hard-edge cycle exits 1: the planner prints no order; break the cycle by hand.
 
 **Trust-path PRs.** A PR whose diff touches a pattern in
