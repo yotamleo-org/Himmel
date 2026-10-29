@@ -308,8 +308,8 @@ Four pre-launch checks that each cost a chief a dead worker when skipped:
 - **No live session may own the target worktree.** Disjoint file sets do not
   prove it is safe: a session still running there may be mid-commit on the
   same fix. Check `ListAgents` and `pgrep -af 'claude .*-n <name>'` against
-  the ticket before fanout. Judge a session's liveness by its last-write mtime
-  and commit count, not by its process tree. A killed session's uncommitted
+  the ticket before fanout. A quiet worktree does not prove the session is
+  dead: one running tests or awaiting a reply writes nothing. A killed session's uncommitted
   files survive, but only in its own worktree, so re-dispatch into that
   worktree rather than a fresh one.
 
