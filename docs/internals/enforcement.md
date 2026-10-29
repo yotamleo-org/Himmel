@@ -2096,11 +2096,15 @@ named as `ponytail:` notes in the hook header (HIMMEL-4438).
 ### `guard-memory-capture.sh` — auto-memory capture guard (HIMMEL-570 / HIMMEL-1088)
 
 **Ceiling, and the gap the guard cannot close alone (HIMMEL-3313 / HIMMEL-3314).**
-Besides the ≤200-char line rule the guard holds an absolute ceiling of
-`MEMORY_LINE_CEIL` (default 60) pointer lines, so a compound pass that only
-shortens lines cannot land on an index that is over the ceiling — it must
-consolidate (HIMMEL-3313 went 115 → 56 lines, every dropped line folded
-verbatim into its theme file). The capture log showed `line-ceiling` /
+Besides the ≤200-char line rule the guard holds a ceiling of
+`MEMORY_LINE_CEIL` (default 60) pointer lines. The ceiling is himmel's routing
+rule (one routing line per theme), not the harness load limit (Claude Code loads
+the first 200 lines or 25 KB of the index). It refuses a write that **adds**
+pointer lines past the ceiling; a write that does not add any (HIMMEL-8005: a
+shrink, or a same-count in-place edit) passes even while the index is over it, so
+an over-ceiling index can be worked down one line at a time (HIMMEL-3313 went
+115 → 56 lines, every dropped line folded verbatim into its theme file). The
+capture log showed `line-ceiling` /
 `line-too-long` denies on 2026-09-18/19 while the index still grew from 74 to
 134 lines. The mechanism is not one rogue writer: the guard is registered only
 on `Edit|Write|MultiEdit|NotebookEdit`, and the default way of working in
@@ -2112,8 +2116,11 @@ noisy. The denies were the guard working on the path it can see.
 (last-but-one member of the `--chain --lifecycle` group) that reads
 `MEMORY.md` itself: it reports `line-ceiling` (pointer lines > `MEMORY_LINE_CEIL`)
 and `line-too-long` (any pointer line > `MEMORY_LINE_MAX` chars), whichever tool
-wrote the file, at the moment the harm lands — an over-long index is cut at
-session load, dropping its newest routing lines. Same rules, knobs and defaults
+wrote the file, at the moment the harm lands. It also reports `load-limit` (the
+index past `MEMORY_LOAD_LINES`, default 200, or `MEMORY_BUDGET_BYTES`, default
+24400: lines beyond the harness load limit are not loaded at all) and `topic-cap`
+(topic files over `MEMORY_TOPIC_MAX`, from one top-level listing of the memory
+dir). Same rules, knobs and defaults
 as the guard (a suite case pins that they do not drift); whole-file rather than
 diff-scoped, so a legacy violation keeps ringing until the file is fixed. **It
 detects and reports; it does not prevent the write.** Residual gap: a
@@ -2121,8 +2128,36 @@ non-Write/Edit writer can still break the ceiling within a session and is
 caught at the next session start, not at the write. Silent when healthy, and it
 **fails open** — every error path exits 0, because it runs on every session
 start including chiefs and workers. Cost: one `git rev-parse` and one `awk` pass
-over at most the first 256 KiB of the index. Tests live in
-`test-guard-memory-capture.sh` (S/F/D/W cases).
+over at most the first 256 KiB of the index, plus one top-level `find`. Tests
+live in `test-guard-memory-capture.sh` (S/F/D/W/N cases).
+
+**Topic-file cap (HIMMEL-8005).** A Write, Edit or MultiEdit that leaves a topic
+file (`*.md` other than `MEMORY.md`; `*.bak` stays exempt) over `MEMORY_TOPIC_MAX`
+(default 8192) bytes **and** bigger than before fires `topic-cap`. Shrinking never
+fires. `MEMORY_TOPIC_MODE` (default `warn`) picks the outcome: `warn` allows the
+write with an `additionalContext` advisory (no `permissionDecision`) and
+logs a `warn` row; `deny` exits 2, naming the bypass `MEMORY_CAPTURE_OK=1` in the
+launching shell. Both texts send the session to `himmel-ops:memory-compound` to
+split the theme into a hub plus sub-files of about 5 KB, or, mid-task, to add the
+new fact to a sub-file linked from its hub. Writes are sized with
+`jq -j … | wc -c` piped straight through, never through `$( )`, which strips
+trailing newlines. **Fails open:** a topic write the guard cannot size (the
+simulator crashes, or the old file is unreadable for an Edit) is allowed in both
+modes and logs one `topic-cap-undecidable` warn row; an unreadable old file under
+a Write counts as 0 bytes. `MEMORY.md` keeps its fail-closed
+`undecidable-payload` deny. The guard's scope also covers
+`$CLAUDE_CONFIG_DIR/projects/*/memory/*` when that variable is set, matched on the
+path with `.` and `..` segments resolved (a `memory/../../x.md` is out of scope; a
+`memory/../memory/MEMORY.md` is still gated). The topic-cap warning is an
+`additionalContext` advisory with no `permissionDecision`, so it never auto-approves
+a write.
+`memory-bash-line-check.sh` also warns when a Bash command names a topic file over
+the cap.
+
+**Capture log.** Every row carries `session_id` (the payload's, empty when
+absent); deny and warn rows also carry `old` and `new` when both sizes are known
+(pointer lines for the index rules, bytes for `topic-cap`). A `topic-cap-undecidable`
+warn row omits them.
 
 Fires on Edit/Write/MultiEdit/NotebookEdit, scoped to the Claude Code
 auto-memory store (`*/.claude/projects/*/memory/*`). The always-loaded
@@ -2135,8 +2170,9 @@ status-only? does a theme already cover it?) is left to the model + the
 
 What it gates, by target:
 - **`MEMORY.md`** — (1) any `- ` pointer line >200 **characters** → deny; (2)
-  more than ~60 pointer lines → deny (the structural ceiling on `n`, the
-  O(facts) backstop); (3) net growth >400B in one write → deny (raises evasion
+  a write that ends over ~60 pointer lines **and adds pointer lines** → deny (the
+  structural ceiling on `n`, the O(facts) backstop; a same-count or shrinking
+  write passes, so a bloated index can be shrunk); (3) net growth >400B in one write → deny (raises evasion
   friction, does not close it); and it logs a **line-count-delta tripwire** on
   every allowed write. The char rule pins `LC_ALL=C` and then counts characters
   explicitly — it drops UTF-8 continuation bytes (`\200-\277`) before measuring
@@ -2154,8 +2190,9 @@ What it gates, by target:
   cannot drift between `Write` and `Edit`. `NotebookEdit` is still denied — its
   payload doesn't reveal the resulting content, so the guard forces a
   whole-file `Write` it can inspect.
-- **topic files** — the tier-2 landing spot; **unrestricted** (no body cap,
-  `Edit` allowed). This is what makes capture always work.
+- **topic files** — the tier-2 landing spot; `Edit` allowed. A write that ends
+  over `MEMORY_TOPIC_MAX` bytes and grows the file gets a warn-only advisory; only
+  `MEMORY_TOPIC_MODE=deny` refuses it. This is what makes capture always work.
 - **`*.bak`** — exempt (compound writes a ~25KB backup by design).
 
 Adopter story is **unconditional**: no vault/qmd predicate. A machine with no
