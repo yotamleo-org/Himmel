@@ -855,11 +855,6 @@ write_marker_for_branch() {
     # Tuning knob for the WAIT only (both directions fail closed: a shorter
     # wait refuses sooner, a longer one waits longer). The 300s TTL is a
     # constant — see the lock lib's TTL RECLAMATION header.
-    # old names, read only while HIMMEL_LEGACY_NAMES is on
-    # shellcheck source=../lib/env-alias.sh
-    # shellcheck disable=SC1091
-    { [ -r "$SCRIPT_DIR/../lib/env-alias.sh" ] && . "$SCRIPT_DIR/../lib/env-alias.sh" \
-        && alias_env REVIEW_MARKER_LOCK_WAIT_SECONDS CR_MARKER_LOCK_WAIT_SECONDS; } 2>/dev/null || true
     _lock_wait_env="${REVIEW_MARKER_LOCK_WAIT_SECONDS:-}"
     case "$_lock_wait_env" in
         ''|*[!0-9]*) lock_wait=30 ;;

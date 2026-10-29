@@ -95,8 +95,6 @@ build_repo_template() {
         || { echo "FAIL: mkdir of template scaffold dirs failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$CLEAR" "$REPO_TEMPLATE/scripts/cr/clear-review-marker.sh" \
         || { echo "FAIL: cp clear-review-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    cp "$(dirname "$CLEAR")/clear-cr-marker.sh" "$REPO_TEMPLATE/scripts/cr/clear-cr-marker.sh" \
-        || { echo "FAIL: cp clear-cr-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
@@ -369,7 +367,7 @@ fi
 # The clear invocation is now spelled with the substituted
 # literal `'<branch>'`, not the shell variable `"$branch"` (same fence-block
 # rationale as above).
-if grep -Eq "$(skill_invocation_re clear-cr-marker "'<branch>'")" "$CODEX_SKILL"; then pass; else
+if grep -Eq "$(skill_invocation_re clear-review-marker "'<branch>'")" "$CODEX_SKILL"; then pass; else
     fail "Codex skill routes marker clearing through clear-review-marker.sh"
 fi
 # shellcheck disable=SC2016  # literal forbidden contract; do not expand $marker
@@ -405,7 +403,7 @@ contract_order_ok() {
         !head  && /bash [^[:space:]]*pr-check-context\.sh"?/                { head = NR }
         !find_ && /bash [^[:space:]]*ledger-append\.sh"?[[:space:]]+amend/   { find_ = NR }
         !avail && /bash [^[:space:]]*ledger-append\.sh"?[[:space:]]+avail/   { avail = NR }
-        !clear && /bash [^[:space:]]*clear-cr-marker\.sh"?[[:space:]]+.?<branch>/ { clear = NR }
+        !clear && /bash [^[:space:]]*clear-review-marker\.sh"?[[:space:]]+.?<branch>/ { clear = NR }
         END { exit !(head && find_ && avail && clear &&
                      head < find_ && head < avail &&
                      find_ < clear && avail < clear) }
@@ -468,19 +466,6 @@ make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:7}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "short-sha ledger head matches full tip → exit 0"
-rm -rf "$tmp"
-
-# 2c. The deprecated clear-cr-marker.sh path still clears, with one deprecation line.
-make_repo || exit 1
-write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
-stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-rc=0
-out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ]; then pass; else fail "legacy clear-cr-marker.sh path (expected rc=0, got $rc)"; echo "    out: $out" >&2; fi
-if marker_exists "$tmp"; then fail "legacy path: marker should be GONE"; else pass; fi
-if grepq "$out" -F "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead"; then pass; else
-    fail "legacy path: deprecation line missing"
-fi
 rm -rf "$tmp"
 
 # stub_git_log_lsremote_argv <tmp> — records the exact argv of every
@@ -2405,7 +2390,7 @@ if grepq "$LAST_CLEAR_OUT" -F '(waited 1s,'; then pass; else
 if marker_exists "$tmp"; then pass; else fail "lock-busy: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# L3b. The retired CR_MARKER_LOCK_WAIT_SECONDS is ignored even with legacy
+# L3b. The retired CR_MARKER_LOCK_WAIT_SECONDS is ignored even with legacy # old-term-ok
 # names on (the default): the wait stays the 10 s default.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
@@ -2413,11 +2398,11 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
     acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3b: the fixture did not acquire the marker lock"
-export CR_MARKER_LOCK_WAIT_SECONDS=1 HIMMEL_LEGACY_NAMES=1
+export CR_MARKER_LOCK_WAIT_SECONDS=1 HIMMEL_LEGACY_NAMES=1 # old-term-ok
 run_clear "$tmp" 13 "L3b held marker lock, old wait name → exit 13"
-unset CR_MARKER_LOCK_WAIT_SECONDS HIMMEL_LEGACY_NAMES
+unset CR_MARKER_LOCK_WAIT_SECONDS HIMMEL_LEGACY_NAMES # old-term-ok
 if grepq "$LAST_CLEAR_OUT" -F '(waited 10s,'; then pass; else
-    fail "L3b: CR_MARKER_LOCK_WAIT_SECONDS must be ignored (want the 10s default): $LAST_CLEAR_OUT"; fi
+    fail "L3b: CR_MARKER_LOCK_WAIT_SECONDS must be ignored (want the 10s default): $LAST_CLEAR_OUT"; fi # old-term-ok
 rm -rf "$tmp"
 
 # L4. A STALE lock (its holder died) must not wedge the branch forever: the
@@ -3696,13 +3681,13 @@ if [ ! -s "$tmp/sleeps.log" ]; then pass; else fail "9b: must not sleep past the
 if grep -q 'reason=graphql-budget-exhausted' "$tmp/.git/clear-cr-marker.log" 2>/dev/null; then pass; else fail "9b: audit line names graphql-budget-exhausted"; fi
 rm -rf "$tmp"
 
-# 9b-old. The retired CLEAR_CR_MARKER_BUDGET_WAIT is ignored even with legacy
+# 9b-old. The retired CLEAR_CR_MARKER_BUDGET_WAIT is ignored even with legacy # old-term-ok
 # names on (the default): a reset at 200 s sits inside the 300 s default, so
 # the clear waits for it and clears instead of refusing at the old name's 30.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_check_ci "$tmp" 0; stub_budget "$tmp" 200
-HIMMEL_LEGACY_NAMES=1 CLEAR_REVIEW_MARKER_BUDGET_WAIT='' CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)"
+HIMMEL_LEGACY_NAMES=1 CLEAR_REVIEW_MARKER_BUDGET_WAIT='' CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)" # old-term-ok
 b=$(biggest_sleep "$tmp")
 if [ "${b:-0}" -ge 100 ] 2>/dev/null; then pass; else fail "9b-old slept toward the reset (biggest sleep '${b:-none}', want >= 100, above the old name's 30)"; fi
 rm -rf "$tmp"

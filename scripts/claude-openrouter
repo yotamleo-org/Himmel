@@ -77,10 +77,6 @@ CONFIG_DIR="${HOME}/.claude-openrouter"   # per-lane isolation (own seeded confi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"   # launcher lives in <repo>/scripts -> repo root (himmel-code corpus)
-# shellcheck source=lib/env-alias.sh
-. "$HERE/lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_LANE LEG_LANE
 # shellcheck source=lib/load-dotenv.sh
 # Sourcing only DEFINES load_dotenv(); it must be CALLED with the key name.
 # --root pins the .env to the LAUNCHER's repo (himmel), not the CWD repo —
@@ -460,4 +456,10 @@ if [ "${WORKER_SESSION_LANE:-}" = openrouter ]; then
 fi
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$OPENROUTER_CONTEXT_WINDOW"
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
+# Launching session's identity: an openrouter session started from another Claude
+# session's Bash tool inherits that session's job dir and messaging socket/token.
+# Claude watches the job dir's state.json and adopts its name, and the socket
+# pair routes this session's messages as the launcher's, so this session would
+# show up under the launcher's name. Clear all three so it registers its own.
+unset CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN 2>/dev/null || true
 exec claude "$@"

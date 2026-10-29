@@ -25,6 +25,9 @@ import sys
 import time
 import argparse
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import vbox
+
 try:
     import paramiko
 except ImportError:
@@ -75,8 +78,7 @@ def run(client, cmd, sudo=False, timeout=300):
 
 
 def vboxmanage(*args):
-    vbm = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
-    result = subprocess.run([vbm, *args], capture_output=True, text=True)
+    result = subprocess.run([vbox.VBOXMANAGE, *args], capture_output=True, text=True)
     return result.returncode, result.stdout + result.stderr
 
 

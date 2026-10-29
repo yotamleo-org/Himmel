@@ -76,7 +76,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // this destination-based twin closes that gap for the Bash chain.
   'block-write-into-main-checkout.sh',
   // Denies every Bash write to the operator-only bank lift
-  // (~/.himmel/state/bank-lift.json) and `bank-lift.sh set` — see the sibling
+  // (~/.himmel/state/usage-lift.json) and `usage-lift.sh set` — see the sibling
   // entry on the Edit|Write|MultiEdit|NotebookEdit chain below.
   'block-bank-lift-writes.sh',
   // Speed bump over ~/.himmel/config.json, which

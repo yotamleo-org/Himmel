@@ -29,10 +29,6 @@
 #   3  no tickets matched (warn — operator can still proceed manually)
 set -euo pipefail
 
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-# shellcheck source=../lib/env-alias.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
-for _an in PROJECT STATUS LIMIT PRIORITY; do alias_env "AFK_$_an" "OVERNIGHT_$_an"; done
 PROJECT="${AFK_PROJECT:-}"
 STATUS="${AFK_STATUS:-To Do,In Progress}"
 LIMIT="${AFK_LIMIT:-5}"
@@ -71,7 +67,6 @@ Environment overrides:
   AFK_STATUS         Default status filter.
   AFK_LIMIT          Default limit.
   AFK_PRIORITY       Default priority order.
-                     Each AFK_* falls back to its old OVERNIGHT_* name while HIMMEL_LEGACY_NAMES is on.
   WHERE_ARE_WE_LEDGER  Override the where-are-we ledger path (L3
                      push-side provisioning; default
                      `$repo/.where-are-we/ledger.jsonl`). Tests seed a temp ledger.

@@ -27,8 +27,7 @@
 #      (one carrying a <status>) or a TaskStop result (toolUseResult.task_id).
 #   5. HIMMEL_RELEASE_MANAGER is not 1: a release manager's STANDBY is exempt.
 #
-# The keepalive bound is HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS (old name
-# HIMMEL_LEG_CACHE_KEEPALIVE_SECS, read while HIMMEL_LEGACY_NAMES is on, the new one wins; launch
+# The keepalive bound is HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS (launch
 # env, default 3000 = 50 min, 60-3300 accepted, anything else = the default);
 # the refusal names it so the wait the worker arms returns before the TTL.
 #
@@ -122,11 +121,6 @@ running="$(jq -R -r '
 case "$running" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$running" -eq 0 ] || exit 0
 
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-# shellcheck source=../lib/env-alias.sh
-if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS HIMMEL_LEG_CACHE_KEEPALIVE_SECS
-fi
 bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-3000}"
 case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
 if [ "${#bound}" -gt 5 ] || [ "$bound" -lt 60 ] || [ "$bound" -gt 3300 ]; then bound=3000; fi

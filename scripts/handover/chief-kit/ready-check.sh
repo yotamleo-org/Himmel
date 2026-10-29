@@ -438,7 +438,7 @@ else
     if . "$RC_SCRIPT_DIR/../../lib/load-dotenv.sh" 2>/dev/null; then
         # pin to this script's OWN checkout, never the caller's
         # CWD repo (load_dotenv with no --root resolves via the process CWD's
-        # git repo — see bank-preflight.sh for the failure mode).
+        # git repo — see usage-preflight.sh for the failure mode).
         load_dotenv --root "$(_load_dotenv_primary_for "$RC_SCRIPT_DIR/../../..")" TICKET_ID_PATTERN JIRA_PROJECT_KEY || true
     fi
     TICKET_PATTERN="${TICKET_ID_PATTERN:-}"

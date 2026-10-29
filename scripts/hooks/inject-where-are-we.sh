@@ -29,14 +29,6 @@
 #   WHERE_ARE_WE_BRANCH_OVERRIDE      override the branch handed to dock.mjs (default: git)
 
 set -euo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_LEAN_WORKER_SESSION HIMMEL_LEAN_LEG
-fi
-unset _ea_dir
 
 # Always exit clean; never block session start.
 trap 'exit 0' ERR

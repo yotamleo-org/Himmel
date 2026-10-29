@@ -53,7 +53,7 @@ mkproject() {
 # inproj <dir> <cmd...> — run a command from <dir> with the scratch HOME and shared root.
 inproj() {
     local d="$1"; shift
-    (cd "$d" && env -u AFK_STOP_DIR -u OVERNIGHT_STOP_DIR -u AFK_PROJECT -u OVERNIGHT_PROJECT \
+    (cd "$d" && env -u AFK_STOP_DIR -u AFK_PROJECT \
         HOME="$FAKE_HOME" HANDOVER_DIR="$SHARED_ROOT" JIRA_CMD="$FAKE_JIRA" PROVISION_CMD=false "$@")
 }
 

@@ -2,9 +2,6 @@
   "scripts/cr/clear-review-marker.sh": {
     "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
-  "scripts/cr/clear-cr-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
-  },
   "scripts/cr/claude-floor-review.sh": {
     "seam_env_vars": ["HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
@@ -27,16 +24,13 @@
     "seam_env_vars": ["STOP_WORKER_GRACE_SECS", "STOP_WORKER_BRIDGE_ROOT_OVERRIDE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/usage-preflight.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
-  },
-  "scripts/lib/bank-preflight.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/arm-resume.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/headed-arm-worker.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/claude-headless.sh": {
     "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK", "HIMMEL_LEGACY_NAMES"]

@@ -86,6 +86,16 @@ got=$(cd "$T4_CALLER" && HOME="$T4_HOME" VBOXMANAGE_PATH="./rel-vbm" "$PYTHON3" 
     "import sys; sys.path.insert(0, sys.argv[1]); import vbox; print(vbox._run('list')[1].strip())" "$LIB_DIR_NATIVE")
 assert_eq "T5 relative VBOXMANAGE_PATH still runs under cwd HOME" "relative-ok" "$got"
 
+# T7: ubuntu-vm-setup.py's vboxmanage() runs the binary this resolver picks.
+# paramiko and dotenv are stubbed, so the script loads without its pip deps.
+T7_STUBS="$TMP/t7-stubs"; mkdir -p "$T7_STUBS"
+: > "$T7_STUBS/paramiko.py"
+printf 'def dotenv_values(*a, **k):\n    return {}\n\n\ndef find_dotenv(*a, **k):\n    return ""\n' > "$T7_STUBS/dotenv.py"
+got=$(ubuntu_vm_user=u ubuntu_vm_pass=p VBOXMANAGE_PATH="$FAKE_VBOXMANAGE" "$PYTHON3" -c \
+    "import sys, importlib.util; sys.path.insert(0, sys.argv[1]); s = importlib.util.spec_from_file_location('ubuntu_vm_setup', sys.argv[2]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); rc, out = m.vboxmanage('--version'); print(rc, out.strip())" \
+    "$T7_STUBS" "$LIB_DIR_NATIVE/../machine-setup/ubuntu-vm-setup.py" 2>/dev/null)
+assert_eq "T7 ubuntu-vm-setup.py vboxmanage() runs the resolved VBoxManage" "0 fake VBoxManage --version" "$got"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0

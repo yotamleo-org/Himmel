@@ -182,7 +182,6 @@ PORTABLE_FILES=(
   scripts/lib/forge-github.sh
   scripts/lib/forge-bitbucket.sh
   scripts/lib/coderabbit-trigger-ledger.sh
-  scripts/lib/cr-available.sh
   scripts/lib/coderabbit-available.sh
   scripts/lib/branch-shipped.sh
   scripts/lib/worktree-inuse.sh
@@ -221,7 +220,6 @@ PORTABLE_FILES=(
   scripts/lib/prim.sh
   scripts/lib/canon-path.sh
   scripts/lib/usage-preflight.sh
-  scripts/lib/bank-preflight.sh
   scripts/lib/chokepoint-seam-guard.sh
   scripts/lib/env-alias.sh
   scripts/lib/legacy-names.sh

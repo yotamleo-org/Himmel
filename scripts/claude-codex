@@ -881,8 +881,8 @@ export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}"
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # The AG-UI fleet reads the lane and backend model from this process's environ rather than
 # guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch
-# reading and the current probe cache (codex-bank-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
-# reads it as the default lane for workers a claudex session arms, and bank-preflight.sh reads it too.
+# reading and the current probe cache (codex-usage-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
+# reads it as the default lane for workers a claudex session arms, and usage-preflight.sh reads it too.
 # ponytail: no launch-time codex-bank reading yet, so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds the launch-time reading.
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"

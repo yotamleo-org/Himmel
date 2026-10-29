@@ -6,7 +6,7 @@
 # gets back a canonical name, so no script keeps its own copy of the list.
 #
 #   claude-cli  subscription `claude -p`; draws the 5h/weekly bank, so the
-#               caller still runs scripts/lib/bank-preflight.sh (cli path only)
+#               caller still runs scripts/lib/usage-preflight.sh (cli path only)
 #   claude-api  API credit through scripts/api-lane/claude-api.sh; needs
 #               HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT, and the lane checks
 #               its own credit (no bank-preflight on this path)

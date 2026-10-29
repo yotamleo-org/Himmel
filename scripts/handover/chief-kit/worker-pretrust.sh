@@ -30,13 +30,6 @@ set -uo pipefail
 # shellcheck source=../../lib/git-clean.sh
 . "$(dirname "$0")/../../lib/git-clean.sh"
 git_env_scrub   # an inherited GIT_DIR would make the worktree check read the wrong repo
-# shellcheck source=scripts/lib/env-alias.sh
-. "$(dirname "$0")/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_PRETRUST_HOME LEG_PRETRUST_HOME
-alias_env WORKER_SESSION_PRETRUST_KEY LEG_PRETRUST_KEY
-alias_env WORKER_SESSION_PRETRUST_CONFIG LEG_PRETRUST_CONFIG
-alias_env WORKER_SESSION_PRETRUST_LOCK_TRIES LEG_PRETRUST_LOCK_TRIES
 
 lane="${1:-}"; dir="${2:-}"
 if [ -z "$lane" ] || [ -z "$dir" ]; then

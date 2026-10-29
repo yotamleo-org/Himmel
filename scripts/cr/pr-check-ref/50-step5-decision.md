@@ -6,7 +6,7 @@
    pasted, shell-parsed operand, and a git ref may legitimately contain `;`,
    `$` or a backtick):
    ```bash
-   bash "<himmel_dir>/scripts/cr/clear-cr-marker.sh" '<branch>'
+   bash "<himmel_dir>/scripts/cr/clear-review-marker.sh" '<branch>'
    ```
    A raw `rm` of `cr-pending/<branch>` is byte-identical to the
    self-declare-clean pattern the auto-mode classifier flags as **[CI Bypass]**,

@@ -27,14 +27,6 @@
 #
 # Platform guard: Linux bash 3.2+, same as close-wrapped-worker.sh (no .ps1 twin).
 set -u
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN CLOSE_WRAPPED_LEGS_MAX_AGE_MIN
-fi
-unset _ea_dir
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 

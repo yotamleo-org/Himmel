@@ -332,8 +332,8 @@ Grammar: a master switch `1`/`true`/`on`/`yes`/`all` (= the four auto-ship steps
 or a comma-separated subset of the full vocabulary
 `plan,execute,prcheck,pr,ticket,merge,public,handover`. Case-insensitive,
 whitespace-tolerant; an unset/falsy/typo value is **OFF** (the default), a
-byte-identical no-op. A separate overnight profile (`HIMMEL_OVERNIGHT` +
-`HIMMEL_INITIATIVE_OVERNIGHT`) widens `all` to six auto-ship steps for
+byte-identical no-op. A separate afk profile (`HIMMEL_AFK` +
+`HIMMEL_INITIATIVE_AFK`) widens `all` to six auto-ship steps for
 unattended runs. Grammar, per-step semantics, and profiles are in
 [configuration.md](configuration.md).
 

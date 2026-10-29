@@ -22,7 +22,7 @@ Classes, two seeded cases each: `logic`, `quoting`, `fail-open`, `toctou`,
 
 Every fixture is one paid panel call (the codex row, `tier: paid`), so a sweep
 is 24 calls; workers never run it. From the primary checkout, after
-`bash scripts/lib/bank-preflight.sh` says PROCEED and with the codex
+`bash scripts/lib/usage-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 
 ```bash

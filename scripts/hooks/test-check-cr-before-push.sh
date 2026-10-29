@@ -1223,9 +1223,9 @@ echo "TEST: a held marker lock refuses the push instead of overwriting the marke
 rm -f "$m_lock"
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$LOCK_LIB" \
     acquire "$REPO" feat/lock-1558 clear-cr-marker >/dev/null 2>&1
-export CR_MARKER_LOCK_WAIT_SECONDS=1
+export REVIEW_MARKER_LOCK_WAIT_SECONDS=1
 rc=0; out=$(run_hook_refs "$lock_line") || rc=$?
-unset CR_MARKER_LOCK_WAIT_SECONDS
+unset REVIEW_MARKER_LOCK_WAIT_SECONDS
 if [ "$rc" -eq 2 ]; then
     pass "held marker lock -> exit 2 (fail closed)"
 else

@@ -319,7 +319,7 @@ lane), so run:
 `/pr-check` reads the marker's lane: a `full`-lane marker runs the cross-model
 critic panel and adjudicates its findings; a `docs-audit`-lane marker (our toy
 docs change) applies the docs charter inline (see the callout above). Either
-way the marker is cleared only through `clear-cr-marker.sh`, and only when
+way the marker is cleared only through `clear-review-marker.sh`, and only when
 there are no blocking findings, no unresolved review threads and every
 impacted suite passed. If findings are critical, address them before
 continuing.

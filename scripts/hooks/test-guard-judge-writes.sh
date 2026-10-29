@@ -108,7 +108,6 @@ row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit
 row "jira create" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js create --type Task --summary s')"
 row "jira comment" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js comment HIMMEL-1 --comment-file c.md')"
 row "jira transition" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js transition HIMMEL-1 Done')"
-row "leg-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/leg-jira-status.sh HIMMEL-1 Done')"
 row "worker-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/worker-jira-status.sh HIMMEL-1 Done')"
 row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_message')"
 # --- inbox sends ---

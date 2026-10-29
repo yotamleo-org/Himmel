@@ -121,7 +121,7 @@ def ignored_dirs(root):
 def moved_stub(full):
     # A pointer page ("# Moved: ..." + a link) holds no facts: the model omits it, so it
     # backed off, kept its old nodes and read as stuck on every run.
-    # ponytail: the first line starting "# Moved:" (colon), as docs/handover/overnight-mode.md is written; another stub style needs .graphify-corpus-ignore.
+    # ponytail: the first line starting "# Moved:" (colon), as a moved-page stub is written; another stub style needs .graphify-corpus-ignore.
     try:
         with open(full, encoding="utf-8", errors="replace") as f:
             return f.read(256).lstrip().startswith("# Moved:")

@@ -649,7 +649,7 @@ bare_source_ere() {
 varsrc="$work/varsrc"   # every .sh file that sources a "$variable"
 # The start of a source-edge match. The keyword is preceded by the
 # line start / an indent, or by a separator after a first character that is not
-# `#` — so the word "source" in a full-line comment (bank-preflight.sh:
+# `#` — so the word "source" in a full-line comment (usage-preflight.sh:
 # "# Same source and spelling as tick.sh's ...") is prose, never an edge. Only a
 # line whose first non-blank character is `#` is skipped: a `#` later in a line
 # (a quoted string, a trailing comment after a real source) never hides one.

@@ -48,15 +48,6 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
-alias_env WORKER_SESSION_DIGEST_SETTLE_MAX LEG_DIGEST_SETTLE_MAX
-alias_env WORKER_SESSION_DIGEST_SETTLE_QUIET LEG_DIGEST_SETTLE_QUIET
-alias_env WORKER_SESSION_DIGEST_BIN LEG_DIGEST_BIN
-alias_env WORKER_SESSION_DIGEST_TIMEOUT LEG_DIGEST_TIMEOUT
-alias_env WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN LEG_DIGEST_CHAIN_SLACK_MIN
 LD_DIR="$HERE/../../eval/worker-digest"
 STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}"
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
