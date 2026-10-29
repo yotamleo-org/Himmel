@@ -56,11 +56,17 @@ function readText(file) {
   try { return fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
 }
 
+// a side input that cannot be read reads as absent: the mode falls to its default, a pairing or a
+// checker status goes unknown, and the rows stay real
+function softText(file) {
+  try { return readText(file); } catch { return null; }
+}
+
 // himmel.conf.local, then himmel.conf: the first layer that sets the key non-empty wins
 function readMode() {
   const dir = process.env.HIMMEL_CONFIG_DIR || path.join(os.homedir(), '.himmel');
   for (const file of [path.join(dir, 'himmel.conf.local'), path.join(dir, 'himmel.conf')]) {
-    const raw = readText(file);
+    const raw = softText(file);
     if (raw === null) continue;
     for (const line of raw.split('\n')) {
       const m = line.trim().match(new RegExp(`^${TEAM_KEY}\\s*=\\s*(.*)$`));
@@ -72,7 +78,7 @@ function readMode() {
 }
 
 function readKnown() {
-  const raw = readText(knownFile) || '';
+  const raw = softText(knownFile) || '';
   const rows = [];
   for (const line of raw.split('\n')) {
     if (!line.trim() || line.startsWith('#')) continue;
@@ -86,7 +92,7 @@ function readKnown() {
 const statusCache = new Map();
 function checkerStatus(key) {
   if (!statusCache.has(key)) {
-    const raw = readText(path.join(mirrorDir, `${key}.md`));
+    const raw = softText(path.join(mirrorDir, `${key}.md`));
     const m = raw && raw.match(/^statusCategory:\s*"?([^"\n]*?)"?\s*$/m);
     statusCache.set(key, m ? m[1] : 'unknown');
   }

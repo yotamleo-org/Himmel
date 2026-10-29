@@ -13,7 +13,10 @@
 # Usage: known-bugs-sync.sh --checker <KEY> [--tsv <file>] [--log <file>]
 #   --tsv defaults to known-checker-bugs.tsv beside this script (rows: checker, class, key, edited-at)
 # Env: KBS_JIRA (an executable standing in for the Jira CLI, tests), JIRA_PROJECT_KEY (default HIMMEL).
-# Exit: 0 synced, 1 a Jira read or write failed (the file is then left as it was), 2 usage.
+# Exit: 0 synced, 1 a Jira read or write failed or the file could not be read or staged (the file is
+# then left as it was), 2 usage.
+# One sync at a time: focus-refresh runs it inside its own exclusive refresh lock; a hand run needs
+# no refresh in flight.
 #
 # ponytail: a row deleted from the file by hand comes back as class `unset` on the next sync,
 # upgrade path = a tombstone row with an edit time.
@@ -79,14 +82,17 @@ event_of() { printf '%s\n' "$events" | awk -F'\t' -v k="$1" '$1 == k { print $2 
 
 tmp="$TSV.sync.$$"
 trap 'rm -f "$tmp"' EXIT
-: > "$tmp"
+: > "$tmp" || { echo "known-bugs-sync: cannot stage $tmp" >&2; exit 1; }
+# a staging write that fails stops the sync before anything is published
+emit() { printf '%s\n' "$1" >> "$tmp" || { echo "known-bugs-sync: cannot write $tmp" >&2; exit 1; }; }
 file_keys=""
 if [ -f "$TSV" ]; then
+    [ -r "$TSV" ] || { echo "known-bugs-sync: cannot read $TSV" >&2; exit 1; }
     while IFS= read -r line || [ -n "$line" ]; do
         IFS=$'\t' read -r checker _ key edited <<< "$line"
-        if [ "$checker" != "$CHECKER" ] || [ -z "$key" ]; then printf '%s\n' "$line" >> "$tmp"; continue; fi
+        if [ "$checker" != "$CHECKER" ] || [ -z "$key" ]; then emit "$line"; continue; fi
         file_keys="$file_keys$key"$'\n'
-        if in_jira "$key"; then printf '%s\n' "$line" >> "$tmp"; continue; fi
+        if in_jira "$key"; then emit "$line"; continue; fi
         ev=$(event_of "$key")
         kind="${ev%%$'\t'*}" jat="${ev#*$'\t'}"
         fe=$(epoch "$edited") || fe=0
@@ -99,7 +105,7 @@ if [ -f "$TSV" ]; then
         "${JIRA[@]}" link "$CHECKER" "$key" --type Relates >/dev/null 2>&1 || { echo "known-bugs-sync: jira link $CHECKER $key failed" >&2; exit 1; }
         jira_keys="$jira_keys"$'\n'"$key" # later rows of the same key see the link
         log "$key linked in Jira: the file row's edit at $edited is newer than the Jira side"
-        printf '%s\n' "$line" >> "$tmp"
+        emit "$line"
     done < "$TSV"
 fi
 while IFS= read -r key; do
@@ -108,7 +114,7 @@ while IFS= read -r key; do
     ev=$(event_of "$key")
     jat="${ev#*$'\t'}"
     je=$(epoch "$jat") || je=$(date +%s)
-    printf '%s\tunset\t%s\t%s\n' "$CHECKER" "$key" "$(iso "$je")" >> "$tmp"
+    emit "$(printf '%s\tunset\t%s\t%s' "$CHECKER" "$key" "$(iso "$je")")"
     log "$key added to the file from Jira as class unset (Jira edit at $jat)"
 done <<EOF_KEYS
 $jira_keys

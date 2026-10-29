@@ -103,6 +103,10 @@ eq 'E23 and no row is listed as a known checker bug' "$(jqv "$out" '.counts.know
 rm -f "$MIR/HIMMEL-7980.md"
 out="$(sum)"
 eq 'E23 an unreadable checker status counts the row (a drift is a bug until shown otherwise)' "$(jqv "$out" '.counts.real')" 3
+mkdir "$MIR/HIMMEL-7980.md"
+out="$(sum)"
+eq 'E23 a checker mirror that cannot be read keeps the rows real instead of failing the summary' "$(jqv "$out" '.counts.real')" 3
+rmdir "$MIR/HIMMEL-7980.md"
 mirror HIMMEL-7980 "To Do"
 
 # E21: the mode key, default off
@@ -214,6 +218,22 @@ eq 'a history listed newest first still reads the removal as the latest event' "
 printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
 out="$(sum)"
 eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
+
+# a file the sync cannot read is left as it was, never rewritten from the Jira side alone
+reset_sync
+printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf '99\tRelates\tinward=HIMMEL-7980\toutward=HIMMEL-7900\tHIMMEL-7980 relates to HIMMEL-7900\n' > "$JF/links"
+printf '[%s]\n' "$(hist added HIMMEL-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
+chmod 000 "$KNOWN"
+if [ -r "$KNOWN" ]; then
+    echo "SKIP: this user reads a mode-000 file, the unreadable-TSV case cannot be built"
+else
+    run_sync > /dev/null; rc=$?
+    chmod 600 "$KNOWN"
+    eq 'an unreadable known-bugs file makes the sync fail' "$([ "$rc" -ne 0 ] && echo failed || echo ran)" failed
+    eq 'and its pairings are still there' "$(grep -c HIMMEL-7588 "$KNOWN")" 1
+fi
+chmod 600 "$KNOWN"
 
 if [ "$fails" -gt 0 ]; then printf '%s failure(s)\n' "$fails"; exit 1; fi
 echo "all passed"
