@@ -46,11 +46,11 @@ export GH_CMD="$tmp/gh" FIX SHIM_LOG SLEEPS CR_LEDGER="$LEDGER" CR_RECORDER_REPO
 # thread <id> <resolved> <created> <sha> <line> <author> <title> — one reviewThreads node
 thread() {
   jq -n --arg id "$1" --argjson res "$2" --arg at "$3" --arg sha "$4" --argjson line "$5" \
-        --arg who "$6" --arg title "$7" \
+        --arg who "$6" --arg title "$7" --arg body "${8:-}" \
     '{id:$id,isResolved:$res,isOutdated:false,path:"a.sh",line:$line,originalLine:$line,
       resolvedBy:(if $res then {login:"dev"} else null end),
       comments:{nodes:[{author:{login:$who},createdAt:$at,originalCommit:{oid:$sha},
-        body:("_⚠️ Potential issue_ | _🟠 Major_\n\n**"+$title+"**\n\nbecause reasons.")}]}}'
+        body:(if $body != "" then $body else "_⚠️ Potential issue_ | _🟠 Major_\n\n**"+$title+"**\n\nbecause reasons." end)}]}}'
 }
 # mkpr <num> <branch> <state> <remaining> <resetAt> <thread-json>... — the GraphQL answer for one PR
 mkpr() {
@@ -149,6 +149,13 @@ jq -n '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"111111111
   body:"> **⚠️ Outside diff range comments (2)**\n\nnothing parseable here\n"}]' > "$FIX/reviews-21.json"
 bash "$SUT" 21 >/dev/null 2>&1; rc=$?
 check "21: an unparseable outside-diff list exits 3" "$rc" "3"
+
+# ── CodeRabbit's real comment format: a bold severity header line, then the bold title ──
+REAL_BODY="$(printf '_⚠️ Potential issue_ | _🟡 Minor_\n\n**<picture><img alt="Minor" src="x"/></picture> Minor** · **Stability & Availability** · **Quick win**\n\n**Select the finding title, not the header.**\n\nbecause reasons.')"
+mkpr 22 feat/x22 MERGED 4000 "$FAR" "$(thread T22 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 50 coderabbitai 'unused' "$REAL_BODY")"
+bash "$SUT" 22 >/dev/null 2>&1
+check "22: the stored text is the finding title, not the severity header" \
+  "$(grep '"thread_id":"22:T22"' "$LEDGER" | jq -r '.text')" "Select the finding title, not the header."
 
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
 mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; mkdir "$tmp/ro/ledger.jsonl.lock"
