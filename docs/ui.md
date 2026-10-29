@@ -42,7 +42,7 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 
 Configure is one page with four group tiles: Secrets, Review, Tracker and Project scope. One tile is open at a time and
 the open one rides the address (`#/config?tile=tracker`). Under the tile row, a Check this install strip runs the doctor
-(see below). The old Settings and Setup pages are gone: `#/setup` lands here with the Secrets
+(see below); it hides while a tile is open and shows again when the tile closes. The old Settings and Setup pages are gone: `#/setup` lands here with the Secrets
 tile open, and the install hand-off link below still works. Triage and the inventory moved to the Health page.
 Tracker holds the Jira connection (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`) next to the
 commit rules, with one shared dry-run box; Secrets holds the other file-stored secrets and lists the terminal-only
@@ -68,10 +68,10 @@ reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both 
 The Project scope tile has Setup choices: the handover root and the luna vault path, each prefilled from
 `~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
 confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
-`git config himmel.forge` in the terminal. The plugin set, Review by a second model and Auto-ship steps are
-shown on the same tile, not repeated.
+`git config himmel.forge` in the terminal. The plugin set and the Auto-ship steps are shown on the same tile,
+not repeated; Review by a second model is on the Review tile.
 
-The Check this install strip runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
+The Check this install strip (shown while no tile is open) runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
 checks; never `--fix`) and shows a fail, warn and ok count with one row per warning or failure, its remedy, and an
 Open in Health link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the

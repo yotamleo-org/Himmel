@@ -42,7 +42,7 @@ const noTracker = () => `<div class="nodata">No tracker the UI can read is confi
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
-  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => renderHealth(f, health) + (f ? renderTriage(f, state) + renderInventory(f, state) : ""), onVisit: () => { if (!health) loadHealth(); } },
+  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => renderHealth(f, health) + (f ? renderTriage(f, state) + renderInventory(f, state) : probeStatus()), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
@@ -50,6 +50,7 @@ const PAGES = [
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
+const probeStatus = () => (lastProbe ? renderProbe(lastProbe) : `<p class="sub" id="status">loading…</p>`); // what a page that waits on, or shows, the report says meanwhile
 
 // Settings and Setup became the one Configure page: their old routes still land on it, Setup with the Secrets tile open.
 // (nav.js maps the AG-UI rail's page=setup landing the same way.)
@@ -73,7 +74,7 @@ function route() {
   loadFleet();
   if (currentPage.onVisit) currentPage.onVisit();
   if (feed || currentPage.needsFeed === false) paint();
-  else { $("#main").innerHTML = lastProbe ? renderProbe(lastProbe) : `<p class="sub" id="status">loading…</p>`; $("#nav").innerHTML = ""; } // no stale page under this tab
+  else { $("#main").innerHTML = probeStatus(); $("#nav").innerHTML = ""; } // no stale page under this tab
   // back on Configure (or another feed page), pick up a newer report the server loaded in the background.
   if (feed && (currentPage.needsFeed !== false || currentPage.refreshFeed)) refreshFeed();
 }
@@ -546,7 +547,7 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   try {
     // the probe status (step, n of N, a progress bar) replaces #status on a page that waits for the feed.
-    const r = await fetchFeed((j) => { const el = $("#status"); if (el && currentPage.needsFeed !== false) el.outerHTML = renderProbe(j); });
+    const r = await fetchFeed((j) => { const el = $("#status"); if (el) el.outerHTML = renderProbe(j); });
     if (r.status === 401) { setStatus("Not authorised: open the URL printed by `himmelctl ui` (it carries the session token), or log in at /login."); return; }
     if (!r.ok) {
       let why = "";

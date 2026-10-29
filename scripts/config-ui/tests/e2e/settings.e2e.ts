@@ -7,7 +7,7 @@ test.afterEach(async () => { await h?.stop(); });
 
 const TILES = ["Secrets", "Review", "Tracker", "Project scope"];
 // the Settings groups that sit under the Project scope tile
-const SCOPE_GROUPS = ["Plugins", "Auto-ship steps", "Scheduled jobs", "Your install answers"];
+const SCOPE_GROUPS = ["Auto-ship steps", "Plugins", "Scheduled jobs", "Your install answers"];
 
 async function open(page: Page, tracker: TrackerKind = "jira", tile?: string) {
   h = await boot({}, { tracker });
@@ -39,7 +39,7 @@ test("J3. the Check this install strip sits under the tile row", async ({ page }
 
 test("J3. every Project scope row shows its command, when it takes effect and a Learn more link to the docs site", async ({ page }) => {
   await open(page, "jira", "scope");
-  const rows = page.locator("#tile-scope .setrow");
+  const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
   expect(await rows.count()).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
     await expect(r.locator("pre code")).not.toBeEmpty();
@@ -77,3 +77,14 @@ for (const [tracker, shown] of [["none", false], ["local", false], ["jira", true
     expect((await rail.allTextContents()).includes("Kanban")).toBe(shown);
   });
 }
+
+test("J3. at 390 px no tile makes the page scroll sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await open(page);
+  for (const t of ["secrets", "review", "tracker", "scope"]) {
+    await page.locator(`button.tile[data-tile="${t}"]`).click();
+    await expect(page.locator(`#tile-${t}`)).toBeVisible();
+    const w = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(w.scroll, `${t}: page ${w.scroll}px in a ${w.client}px window`).toBeLessThanOrEqual(w.client);
+  }
+});

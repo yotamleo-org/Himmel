@@ -432,7 +432,7 @@ imports, so its suite runs in CI without an install.
 - Configure e2e (`settings.e2e.ts`, journey J3, same opt-in suite): Configure is
   the one rail entry (it replaced Settings and Setup; `#/setup` and the install
   hand-off's `page=setup` land on it with the Secrets tile open) with four tiles
-  in order, one open at a time, and the Check this install strip under them.
+  in order, one open at a time, and the Check this install strip under them (hidden while a tile is open).
   Every Project scope row shows its command, when it takes effect and a Learn
   more link to the docs site, the Tracker tile points commit rules at
   `~/.himmel/himmel.conf`, a switch previews its dry-run first, and Roadmap and
@@ -472,7 +472,7 @@ node scripts/himmelctl/bin.js ui --port 0
 ```
 
 Open the printed URL, `http://127.0.0.1:<port>/#t=<64 hex>` (the token rides
-the fragment). The first report can take a couple of minutes.
+the fragment). The printed URL opens Configure; click Health in the rail first, because items 1-7 are about Inventory, which lives there. The first report can take a couple of minutes.
 
 - [ ] 1. Controls and Inventory render as bundles in table order (Search & graph … Install & toolchain).
 - [ ] 2. A bundle with no fail or warn row is collapsed; one with a fail or warn row opens by default.

@@ -163,7 +163,7 @@ const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Sch
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
-  await page.getByRole("link", { name: /^Health\b/ }).click();
+  await page.locator("nav.pages").getByRole("link", { name: /^Health\b/ }).click();
   await page.locator("#verdict .word").waitFor();
 }
 const verdictWord = (page: Page) => page.locator("#verdict .word");
@@ -171,7 +171,7 @@ const verdictWord = (page: Page) => page.locator("#verdict .word");
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await openConfig(page);
   expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  await page.getByRole("link", { name: /^Health\b/ }).click();
+  await page.locator("nav.pages").getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");
   await expect(page.locator("header.top")).toHaveCount(1);

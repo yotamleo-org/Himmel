@@ -86,7 +86,9 @@ test("J5. a saved secret is set in the store and its value is nowhere else", asy
   expect(statSync(store()).mode & 0o777).toBe(0o600);
   expect(await leaks(page, secret)).toEqual([]);
   // a fresh load (the token rides the URL fragment, so a plain reload would lose it) reads presence from the server and still holds no value
+  await page.goto("about:blank"); // a hash-only goto from the loaded page is a same-document move that skips the landing
   await page.goto(`${h.url}&page=setup`);
+  await page.locator("#h-configure").waitFor();
   await expect(row.locator(".st")).toHaveText("set");
   expect(await leaks(page, secret)).toEqual([]);
 });

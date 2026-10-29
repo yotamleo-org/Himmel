@@ -148,6 +148,11 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .cpanel details.more>summary{color:var(--accent);font:11px var(--font-mono)}
 .cpanel code{font-family:var(--font-mono);font-size:.92em}
 .cpanel .foot{color:var(--muted);font-size:var(--fs-xs);border-top:1px dashed var(--rule);padding-top:var(--s2);margin:0;overflow-wrap:anywhere}
+.cpanel>*,.cpanel .setgroup,.cpanel .setrow,.cpanel .sethead,.cpanel .card,.cpanel .more{min-width:0;max-width:100%}
+.cpanel .setrow pre,.cpanel .card pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:visible}
+.cpanel .id,.cpanel .det,.cpanel .slot{overflow-wrap:anywhere}.cpanel .slot{white-space:normal}
+.cpanel .tag{font:700 10px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--surface-2);color:var(--muted);margin-left:var(--s1);text-transform:none;letter-spacing:0}
+.cpanel .fld{display:grid;gap:2px;flex:1 1 140px;min-width:0;font:700 11px var(--font-ui);color:var(--muted)}.cpanel .fld input{width:auto;min-width:0}
 .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
 .col{min-width:0;border:1px solid var(--rule);border-radius:8px;padding:var(--s3);background:var(--bg);display:grid;gap:var(--s2);align-content:start}.col .srow{grid-template-columns:minmax(0,1fr)}
 .dryrun{border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);padding:var(--s3)}

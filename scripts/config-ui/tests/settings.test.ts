@@ -156,15 +156,33 @@ test("Configure draws four group tiles in order, and only the picked one is open
   expect(cfg(null)).not.toContain('class="cpanel"');
 });
 
-test("the Check this install strip sits under the tile row and above the open panel, and runs the old Verify", () => {
-  const html = cfg("secrets");
-  const [tiles, chk, open] = ["class=\"tiles\"", "class=\"chk\"", "class=\"cpanel\""].map((s) => html.indexOf(s));
+test("the Check this install strip sits under the tile row, runs the old Verify, and hides while a tile is open", () => {
+  const html = cfg(null);
+  const [tiles, chk] = ["class=\"tiles\"", "class=\"chk\""].map((s) => html.indexOf(s));
   expect(tiles).toBeGreaterThan(-1);
   expect(chk).toBeGreaterThan(tiles);
-  expect(open).toBeGreaterThan(chk);
   expect(html).toContain("Check this install");
   expect(html).toContain('data-act="setup-verify"');
-  expect(cfg("secrets", { verify: { state: "done", ok: 2, info: 0, warn: 1, fail: 1, findings: [{ sev: "FAIL", id: "C5", msg: "m", remedy: "r" }] } })).toMatch(/1 fail[\s\S]*1 warn[\s\S]*2 ok/);
+  expect(cfg(null, { verify: { state: "done", ok: 2, info: 0, warn: 1, fail: 1, findings: [{ sev: "FAIL", id: "C5", msg: "m", remedy: "r" }] } })).toMatch(/1 fail[\s\S]*1 warn[\s\S]*2 ok/);
+  for (const t of ["secrets", "review", "tracker", "scope"]) {
+    expect(cfg(t)).not.toContain('class="chk"');
+    expect(cfg(t)).not.toContain("Check this install");
+  }
+});
+
+test("a Jira value already saved can still be removed when the tracker is Local or None", () => {
+  const stored = { ...setupData, commit: { tracker: "local", ticketIdRequired: true }, secrets: setupData.secrets.map((s) => (s.name === "JIRA_API_TOKEN" ? { ...s, status: "set" } : s)) };
+  const p = panel(cfg("tracker", { setup: stored }));
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_API_TOKEN"]);
+  expect(p).toContain('data-act="setup-remove" data-name="JIRA_API_TOKEN"');
+});
+
+test("the Secrets tile says Telegram is not set and whether a login exists; the Review tile names who must pass", () => {
+  const html = cfg(null);
+  expect(html).toContain("Telegram not set");
+  expect(html).toContain("0 of 3 set · login set");
+  expect(cfg(null, { setup: { ...setupData, secrets: setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, status: "set" } : s)) } })).not.toContain("Telegram not set");
+  expect(html).toContain("Claude must pass");
 });
 
 test("the Secrets tile has the account, 3 saveable entries and the terminal-only ones read-only, and no 0600 anywhere", () => {
@@ -223,4 +241,10 @@ test("Configure leaves Triage and Inventory out, and shows the loading note, not
   expect(html).not.toContain('id="inventory"');
   expect(panel(cfg("scope", { feed: null }))).toMatch(/loading/);
   expect(cfg("secrets", { setup: null })).toMatch(/loading/);
+});
+
+test("the Secrets tile lists the required entry first, whatever order the server sent", () => {
+  const secrets = setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, required: "required" } : s.name.startsWith("BITBUCKET") ? { ...s, required: "optional" } : s));
+  const p = panel(cfg("secrets", { setup: { ...setupData, secrets: [...secrets.filter((s) => s.name !== "TELEGRAM_BOT_TOKEN"), secrets.find((s) => s.name === "TELEGRAM_BOT_TOKEN")!] } }));
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])[0]).toBe("TELEGRAM_BOT_TOKEN");
 });
