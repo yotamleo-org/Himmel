@@ -2123,7 +2123,27 @@ mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/macos-cadence.y
 mac_wf_run "" "$RUNDIR/broad-added.patch"
 check "macos-cadence suites run refused for its workflow diff, main red on shard 1: exit 1" "$rc" "1"
 notcontains "macos-cadence suites run refused for its workflow diff: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
-rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json
+contains "macos-cadence suites run refused, no full run beside it: keeps the refusal's reason" "$out" "changes more than the suites wiring"
+# the refusal is final for the suites run only: a separate full dispatch run at the head is still judged
+# against main on its own, and a suites run is never the run that gets judged that way
+printf '[{"conclusion":"failure","databaseId":501,"displayTitle":"macos-cadence suites: %s","event":"workflow_dispatch","headSha":"%s","status":"completed"},{"conclusion":"failure","databaseId":601,"displayTitle":"CI (os:macos cadence)","event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$MAC_A" "$SHA" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+jobs_json "macos-cadence / shell (macos-latest, 8)" > "$RUNDIR/jobs-601.json"
+jobs_json "macos-cadence / shell (macos-latest, 3)" > "$RUNDIR/jobs-222.json"
+log_fail "macos-cadence / shell (macos-latest, 8)" "$TT" > "$RUNDIR/log-601.txt"
+log_fail "macos-cadence / shell (macos-latest, 3)" "$TT" > "$RUNDIR/log-222.txt"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "refused suites run beside a full run red only where main is: exit 0" "$rc" "0"
+contains "refused suites run beside a full run red only where main is: check 10 passes" "$out" "[PASS] 10."
+contains "refused suites run beside a full run red only where main is: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "refused suites run beside a full run red only where main is: judges the full run" "$out" "run 601"
+contains "refused suites run beside a full run red only where main is: names the suite" "$out" "$TT"
+log_fail "macos-cadence / shell (macos-latest, 8)" "$TT" "$TTY" > "$RUNDIR/log-601.txt"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "refused suites run beside a full run with a new failed suite: exit 1" "$rc" "1"
+contains "refused suites run beside a full run with a new failed suite: check 10 fails" "$out" "[FAIL] 10."
+contains "refused suites run beside a full run with a new failed suite: names the new suite" "$out" "$TTY"
+notcontains "refused suites run beside a full run with a new failed suite: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-601.txt "$RUNDIR"/log-222.txt
 
 mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"

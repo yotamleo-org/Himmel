@@ -977,8 +977,10 @@ LINES
     # wiring only, and the run's log carries the runner's own `[PASS] <suite> (` for every named suite: the
     # text right after the log's tab-separated timestamp field, so a failed suite's indented forwarded output
     # cannot echo one. rc 1: no such run (the caller falls through to the whole-run rules). rc 2: such a run
-    # exists but is not proven; wf_why says why and the verdict is final, because the job-level PRE-EXISTING
-    # comparison says nothing about which named suite failed, and a run that proves too little stays refused.
+    # exists but is not proven; wf_why says why and the verdict is final for that suites run, because the
+    # job-level PRE-EXISTING comparison says nothing about which named suite failed, and a run that proves
+    # too little stays refused. It never blocks judging a separate full (non-suites) failed dispatch run at
+    # the head: the caller judges that run on its own, and with no such run the refusal stands.
     wf_suites_proof() {
         local wf_name="$1" row id title names s f log changed_suites pass="" bad="" uncovered=""
         wf_why=""
@@ -1096,15 +1098,16 @@ EOF
                 wf_ids="$wf_ids ${wf_base}=$wf_ok_id"
                 continue
             fi
-            wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
+            wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure" and ((.displayTitle // "") | startswith("macos-cadence suites:") | not))][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
             wf_head_runs=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h)] | length' 2>/dev/null) || wf_head_runs=1  # swallow-ok: an unreadable list counts the head as having a run, so the ancestor fallback is refused
             wf_why=""; wf_sp_rc=0
             wf_suites_proof "$wf_base" "$wf_runs" || wf_sp_rc=$?
+            wf_sp_why="$wf_why"
             if [ "$wf_sp_rc" -eq 0 ]; then
                 wf_ids="$wf_ids ${wf_base}=$wf_sp_id"
                 wf_notes="$wf_notes
        $wf_note"
-            elif [ "$wf_sp_rc" -eq 1 ] && [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
+            elif [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
                 wf_notes="$wf_notes
        $wf_note"
@@ -1113,6 +1116,7 @@ EOF
                 wf_notes="$wf_notes
        $wf_note"
             else
+                wf_why="${wf_why:-$wf_sp_why}"
                 wf_err="$wf_err; $wf has no completed successful workflow_dispatch run at $SHA${wf_why:+ ($wf_why)} — run: gh workflow run $wf_base --ref ${wf_branch:-<branch>} --repo $nwo"
             fi
         done <<EOF
