@@ -847,6 +847,7 @@ EOS
 cat >"$tmp/frbin/ksync" <<'EOS'
 #!/usr/bin/env bash
 echo "ksync $* jira=${KBS_JIRA:-}" >> "$FX/ksync.log"
+echo "ksync" >> "$FX/fr.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync ] && exit 1
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync-hang ] && sleep 30
 exit 0
@@ -880,7 +881,7 @@ fr_reset
 fr
 check "3c: a full refresh prints ok" "$(frout)" "focus=ok"
 check "3c: and exits 0" "$(frrc)" 0
-check "3c: the steps run in order: mirror, versions, sweep, render, drift" "$(frseq)" "jira,jira,sweep,tracker,drift"
+check "3c: the steps run in order: mirror, versions, sweep, render, drift, known-bugs sync" "$(frseq)" "jira,jira,sweep,tracker,drift,ksync"
 check "3c: the page is written" "$(head -n 1 "$PAGE")" "render 1"
 check "3c: the state records status ok" "$(fst status)" ok
 check "3c: the state records generation 1" "$(fst gen)" 1
@@ -985,7 +986,7 @@ done
 fr_reset
 mkdir -p "$FR/m2"
 fr --mirror-fresh "$FR/m2"
-check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift"
+check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift,ksync"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
 for stage in mirror versions sweep:rc1 render drift:rc1; do
@@ -1032,7 +1033,7 @@ fr
 check "3c: a drift pass with no sdrift line is FAILED:drift:no-sdrift" "$(frout)" "focus=FAILED:drift:no-sdrift"
 fr_reset; echo 2 > "$FX/sweep.moved"
 fr
-check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift"
+check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift,ksync"
 check "3c: and the refresh is ok" "$(frout)" "focus=ok"
 fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
 fr
