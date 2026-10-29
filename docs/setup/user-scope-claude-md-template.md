@@ -2,11 +2,12 @@
 
 `scripts/adopt.sh` appends the fenced block below to your
 user-scope `~/.claude/CLAUDE.md` (creating the file if absent). The block is
-delimited by the `HIMMEL:working-principles` markers; the installer skips
-entirely when the start marker is already present, so re-running adopt adds
-nothing and never rewrites a hand-edited file.
+delimited by the `HIMMEL:working-principles` markers. When the file already
+holds both marker lines, install and update replace the text between them
+with this block (a no-op when equal); text outside the markers is never
+touched, and a file with the principles but no markers is left alone.
 
-These four defaults used to sit in himmel's project `CLAUDE.md`. They are
+The first four defaults used to sit in himmel's project `CLAUDE.md`. They are
 general engineering defaults, not himmel invariants, so they belong on the
 user-scope layer where every project gets them once instead of every himmel
 session paying for them. Operator machines that already carry a
@@ -41,4 +42,13 @@ Use judgement on trivial tasks.
 4. **Verify before you claim** — turn the task into a check that fails if the
    work is wrong (e.g. a test that reproduces the bug). Make it pass, then
    report the actual result.
+<!-- mem:e9c0126c43f0 -->
+5. **POC before build** — a new mechanism or tool gets a live end-to-end proof
+   of concept, plus a check that it is used and worth its cost, before more is
+   built on top of it.
+<!-- mem:6dcc4aece8c1 -->
+6. **Top tier for the hard call only** — routine ops work (pipeline drains,
+   ingests, bulk triage) never runs on the scarcest model tier, and is never
+   orchestrated from a parent session on it. Spend that tier on the one
+   judgement call that needs it.
 <!-- END HIMMEL:working-principles -->
