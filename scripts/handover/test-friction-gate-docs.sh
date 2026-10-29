@@ -11,7 +11,7 @@
 #      blocker; the worker re-runs check-ci until green or red and triages a red,
 #      bounded: past 3 re-runs or 90 min (or zero checks) it posts BLOCKED
 #      ci-pending and takes the bounded inbox hold.
-# Docs-only reads. PLATFORM GUARD: no .ps1 twin — Bash 3.2, grep/tr only.
+# Docs-only reads. PLATFORM GUARD: Bash 3.2, grep/tr only.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

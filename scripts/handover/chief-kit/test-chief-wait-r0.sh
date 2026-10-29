@@ -25,7 +25,7 @@
 # tick.sh, the bank verdict and worker-event.sh are stubbed (CHIEF_WAIT_TICK,
 # CHIEF_WAIT_USAGE, CHIEF_WAIT_WORKER_EVENT): nothing closes a window here.
 #
-# Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
+# Linux-only: this suite uses GNU
 # timeout, so run-shell-tests.sh skips it off-Linux.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-r0.sh

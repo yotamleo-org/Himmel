@@ -3,7 +3,7 @@
 # commit health for the chief tick (ok | STALL:<age>,<n> | PUSH-LAG:<age> |
 # skip | unknown); bucket-gitleaks.sh is the worker-side pre-check of a bucket
 # file. Fixture git repos under a scratch dir only: the real vault is never read.
-# PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only).
+# PLATFORM GUARD: the chief kit is Linux-only.
 # Run: bash scripts/handover/chief-kit/test-vault-status.sh
 set -uo pipefail
 

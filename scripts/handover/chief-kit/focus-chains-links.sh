@@ -32,7 +32,7 @@
 # failed; 2 usage.
 #
 # Test seam (env): FCL_JIRA (an executable standing in for the jira CLI).
-# Platform guard: POSIX bash 3.2+, needs python3; no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+, needs python3 (shell-only harness).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

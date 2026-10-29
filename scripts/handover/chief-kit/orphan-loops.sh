@@ -21,7 +21,7 @@
 # instead of the summary, so the chief has a pid to hand to the worker.
 #
 # READ-ONLY: this script never signals a process. Bash 3.2-compatible.
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps ps, /proc), like
+# PLATFORM GUARD: Linux-only (procps ps, /proc), like
 # the rest of the chief kit.
 set -uo pipefail
 

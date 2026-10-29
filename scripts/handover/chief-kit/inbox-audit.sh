@@ -7,7 +7,7 @@
 # ledger-write failure (see inbox-send.sh header). Read-only: writes
 # nothing, only reports.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — audits the
+# PLATFORM GUARD: audits the
 # Linux/konsole-only ledger inbox-send.sh writes (see its own header); no
 # Windows-side sent-record exists to audit.
 #

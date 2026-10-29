@@ -21,7 +21,7 @@
 # default: the primary checkout's dist/index.js).
 # ponytail: a Done ticket moved out through `jira move` is not excluded, so a
 # moved source in the project would count; exclude moves once one shows up.
-# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
+# bash 3.2-safe (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh

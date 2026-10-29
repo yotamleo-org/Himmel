@@ -8,7 +8,7 @@
 # remaining-only switch, live workers; tracker-model-check.js runs the page's model.
 # Synthetic plan dir + mirror under a mktemp dir; no real plan data, no network.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only
+# PLATFORM GUARD: The chief kit is Linux-only
 # (see test-tick.sh); this suite renders one static page with python3.
 set -uo pipefail
 

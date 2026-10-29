@@ -94,7 +94,7 @@
 #      could not prove it has none; retry once they finish
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
-# no .ps1 twin - konsole workers are Linux/KDE-only, same guard as
+# konsole workers are Linux/KDE-only, same guard as
 # headed-arm-worker.sh's konsole launch path).
 set -u
 

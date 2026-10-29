@@ -47,7 +47,7 @@
 // render, so a merged PR older than 24 h survives there only as its worker's line; upgrade
 // path: merge the previous archive's PR lines into the new one.
 //
-// PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (tick.sh
+// PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: the epic "merged" count is PRs whose title cites [KEY], from one

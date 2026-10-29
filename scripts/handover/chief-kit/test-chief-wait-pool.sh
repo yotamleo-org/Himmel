@@ -10,7 +10,7 @@
 # CHIEF_WAIT overrides the script under test (the RED
 # control: the pre-change once-per-streak waiter fails the re-wake rows).
 #
-# Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
+# Linux-only: this suite uses GNU
 # timeout and stat -c.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-pool.sh

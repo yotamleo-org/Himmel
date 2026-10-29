@@ -20,7 +20,7 @@
 #
 # ponytail: a row deleted from the file by hand comes back as class `unset` on the next sync,
 # upgrade path = a tombstone row with an edit time.
-# Platform guard: bash 3.2+ with GNU date and jq; the chief kit is Linux-only, no .ps1 twin by design.
+# Platform guard: bash 3.2+ with GNU date and jq; the chief kit is Linux-only.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh

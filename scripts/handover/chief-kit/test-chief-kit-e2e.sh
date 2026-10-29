@@ -21,7 +21,7 @@
 # same box for the ~15 s of a run (a worker-shaped name must derive an N<k> label,
 # so no prefix hides them); the EXIT trap reaps every one and its children.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (tick.sh
+# PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 # reads pgrep, atq, /proc); this suite exits 0 elsewhere.
 set -uo pipefail
 

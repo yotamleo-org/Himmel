@@ -5,7 +5,7 @@
 # process table is a PATH `ps` stub over a fixture; nothing live is read and
 # nothing is signalled.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps `ps`), like the
+# PLATFORM GUARD: Linux-only (procps `ps`), like the
 # rest of the handover wrap tooling it gates; this Bash 3.2 suite exercises
 # that platform-specific script.
 set -uo pipefail

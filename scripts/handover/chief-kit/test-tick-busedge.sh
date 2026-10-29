@@ -4,7 +4,7 @@
 # every held worker has a record, when the bus has no peers dir, or for a free worker.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
+# PLATFORM GUARD: The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 

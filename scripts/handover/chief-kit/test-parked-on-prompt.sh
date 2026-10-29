@@ -4,7 +4,7 @@
 # unanswered permission prompt. The ledger is a fixture under a temp dir
 # (--ledger); the real ~/.claude/himmel/trust ledger is never read.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
+# PLATFORM GUARD: the chief kit is Linux-only
 # (GNU date -d); this Bash 3.2 suite exercises that platform-specific script.
 set -uo pipefail
 

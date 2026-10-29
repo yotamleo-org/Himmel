@@ -18,7 +18,7 @@
 // snapshot (so the JSON endpoint is as clean as the page); the page renders with
 // textContent only, and the embedded snapshot has `<` escaped.
 //
-// PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (/proc, the
+// PLATFORM GUARD: The chief kit is Linux-only (/proc, the
 // konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: board.mjs exports nothing and runs on import, so its parsers (the
