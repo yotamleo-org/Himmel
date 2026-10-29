@@ -387,6 +387,17 @@ check "2 workers + 2 workers with chief/console in the slug, cap=4 -> SKIPPED-FL
 check "3 workers, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(with_cap 2 fleet_verdict "$p3")"
 
+# The cap is gate policy: an exported HIMMEL_FLEET_CAP cannot lower or raise it,
+# and a config.json that cannot be parsed keeps the default 4.
+check "3 workers, config cap=4, env HIMMEL_FLEET_CAP=2 -> PROCEED (env ignored)" PROCEED \
+  "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"
+check "4 workers, config cap=4, env HIMMEL_FLEET_CAP=50 -> SKIPPED-FLEET (env ignored)" SKIPPED-FLEET \
+  "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=50)"
+printf '{' > "$HOME/.himmel/config.json"
+check "4 workers, unparseable config.json, env HIMMEL_FLEET_CAP=50 -> SKIPPED-FLEET (default 4)" SKIPPED-FLEET \
+  "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=50)"
+set_cap 4
+
 # FLEET n/CAP is printed on EVERY call, including a PROCEED (below cap).
 # The line now names the lane breakdown too - p3's fixture has
 # no environ files (mk_ps_stub only writes comm), so every candidate falls
