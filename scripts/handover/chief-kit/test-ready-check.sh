@@ -1876,6 +1876,67 @@ rc=0; out="$(run)" || rc=$?; SHA="$ANC_REAL_SHA"
 check "PR file list dies mid-pagination: exit 1" "$rc" "1"
 contains "PR file list dies mid-pagination: says the file list cannot be read" "$out" "cannot read PR files"
 notcontains "PR file list dies mid-pagination: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+# A merge-forward that edits ANOTHER hunk of a file the PR changes moves that file's blob,
+# yet the PR's own patch to it is the same. History: M0 (main) <- PR1 (the dispatch commit, edits line 3)
+# and M0 <- M1 (main edits line 28); the head merges M1 into PR1. origin/main is M1.
+anc_merge() {  # <tree: workflow blob> <pr file blob> <main file blob> <parent 1> <parent 2> -> a merge commit
+    local c
+    c=$(anc_commit - "$1" "$2" "$3")
+    git -C "$REPO" commit-tree "$c^{tree}" -p "$4" -p "$5" -m "Merge fixture"
+}
+P0=$(seq 1 30 | sed 's/^/line /')
+B_P0=$(anc_blob "$P0")
+B_PPR=$(anc_blob "$(printf '%s\n' "$P0" | sed '3s/.*/line 3 pr/')")
+B_PMAIN=$(anc_blob "$(printf '%s\n' "$P0" | sed '28s/.*/line 28 main/')")
+B_PBOTH=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 3 pr/' -e '28s/.*/line 28 main/')")
+B_PEDIT=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 3 pr, edited after the dispatch/' -e '28s/.*/line 28 main/')")
+HP_M0=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN1")
+HP_PR1=$(anc_commit "$HP_M0" "$B_WF2" "$B_PPR" "$B_MAIN1")
+HP_M1=$(anc_commit "$HP_M0" "$B_WF" "$B_PMAIN" "$B_MAIN2")
+HP_HEAD=$(anc_merge "$B_WF2" "$B_PBOTH" "$B_MAIN2" "$HP_PR1" "$HP_M1")
+HP_HEAD_EDIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PEDIT" "$B_MAIN2")
+B_PWS=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line  3 pr/' -e '28s/.*/line 28 main/')")
+HP_HEAD_WS=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PWS" "$B_MAIN2")
+B_PDIGIT=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 5 pr/' -e '28s/.*/line 28 main/')")
+HP_HEAD_DIGIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PDIGIT" "$B_MAIN2")
+HP_ORPHAN=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN2")
+ANC_ORIGIN="$tmp/anc-origin.git"
+git init -q --bare "$ANC_ORIGIN"
+git -C "$REPO" remote add origin "$ANC_ORIGIN"
+anc_main() { git -C "$REPO" push -q -f origin "$1:refs/heads/main"; }  # <commit> -> origin/main
+anc_row 40073661474 "$HP_PR1" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_main "$HP_M1"
+anc_run "$HP_HEAD"
+check "merge-forward edits another hunk of a PR file: exit 0" "$rc" "0"
+contains "merge-forward edits another hunk of a PR file: check 10 passes" "$out" "[PASS] 10."
+contains "merge-forward edits another hunk of a PR file: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "merge-forward edits another hunk of a PR file: names the ancestor" "$out" "$HP_PR1"
+anc_run "$HP_HEAD_EDIT"
+check "the PR's own hunk edited after the dispatch: exit 1" "$rc" "1"
+contains "the PR's own hunk edited after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "the PR's own hunk edited after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_run "$HP_HEAD_WS"
+check "the PR's own hunk changed only in whitespace after the dispatch: exit 1" "$rc" "1"
+contains "the PR's own hunk changed only in whitespace after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "the PR's own hunk changed only in whitespace after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" config diff.lossy.textconv "sed s/[0-9]//g"
+printf '%s diff=lossy\n' "$ANC_PRFILE" > "$REPO/.gitattributes"
+anc_run "$HP_HEAD_DIGIT"
+rm -f "$REPO/.gitattributes"
+git -C "$REPO" config --unset diff.lossy.textconv
+check "a textconv driver hides the PR's own edit after the dispatch: exit 1" "$rc" "1"
+contains "a textconv driver hides the PR's own edit after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "a textconv driver hides the PR's own edit after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_main "$HP_ORPHAN"
+anc_run "$HP_HEAD"
+check "no merge-base with origin/main: exit 1" "$rc" "1"
+contains "no merge-base with origin/main: check 10 fails" "$out" "[FAIL] 10."
+notcontains "no merge-base with origin/main: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" remote remove origin
+anc_run "$HP_HEAD"
+check "origin/main cannot be fetched: exit 1" "$rc" "1"
+notcontains "origin/main cannot be fetched: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR"/*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
