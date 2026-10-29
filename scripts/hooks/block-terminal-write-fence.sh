@@ -5,8 +5,9 @@
 # .codex/hooks.json adapter, but block-edit-on-main.sh is wired ONLY on the
 # Edit|Write|MultiEdit matcher — so the PATCH path (Edit/Write tools) is fenced
 # while the TERMINAL path (a shell command that writes a file, pushes, or hits
-# the network) is not. On the Claude lane the auto-mode classifier + the
-# GLM-lane block-worker-write-fence.sh cover that terminal surface; codex has
+# the network) is not. On the Claude lane the auto-mode classifier covers that
+# terminal surface (block-worker-write-fence.sh fences only the pin dir and the
+# origin/<default> anchor); codex has
 # NO classifier layer (ratified deterministic-guards-only for codex),
 # so this hook is the codex-lane classifier SUBSTITUTE for the terminal write
 # surface. It is the behavioural port of hermes's parity_guard.py
@@ -100,8 +101,8 @@ count_cmd() {
 }
 
 # ------------------------------------------------------------------ class (a)
-# External-write fence (port of parity_guard.terminal_external_write_reason /
-# block-worker-write-fence.sh shapes). FAIL-CLOSED unless the operator opts in.
+# External-write fence (port of parity_guard.terminal_external_write_reason).
+# FAIL-CLOSED unless the operator opts in.
 if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     deny_ext() {
         {
