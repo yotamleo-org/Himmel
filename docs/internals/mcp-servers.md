@@ -41,7 +41,39 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
+| `easel` | Not ours: a built-in plugin of the Claude Code binary, see [Runtime-registered servers](#runtime-registered-servers-easel); policy registry | Not applicable, no tracked implementation | In-process, registered through `$.tool.register` | **1** policy entry (`chart`) | Vendor-owned; the policy row only classes the call. Not configured by the operator. |
 | `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.4.0** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
+
+## Runtime-registered servers (easel)
+
+A session lists tools as `mcp__easel__chart` with the server instruction
+"Tools registered by the cc-plugin-easel plugin through $.tool.register".
+Source (HIMMEL-8061, checked 2026-10-29 against Claude Code 2.1.312): **`cc-plugin-easel`
+is a built-in plugin compiled into the Claude Code binary**, not a file anyone
+configured. It sits beside `cc-plugin-mermaid`, `cc-plugin-diff`,
+`cc-plugin-plugin-authoring` and other `cc-plugin-*` names found in the binary,
+and its description reads "Draws charts in the transcript: a chart tool for
+Claude, and automatic charts for MCP results that are metrics over time".
+
+- It is absent from `mcpServers` in `~/.claude.json`, from any project `.mcp.json`,
+  and from `~/.claude/plugins/installed_plugins.json`; that is why a file search finds nothing.
+- Availability is decided inside the binary: a server-side feature flag
+  (`tengu_joyful_otter`), Linux or macOS only, and off under HIPAA or ZDR
+  organizations. The operator does not set the flag.
+- Its plugin options are `autoCharts` (default on: draw a chart under an MCP result
+  that is metrics over time) and `autoChartSkip` (comma-separated MCP servers that never
+  get an auto chart).
+- Policy: `scripts/guardrails/mcp-policy.json` has a `servers.easel` row, `chart` classed
+  `read` (it draws, no state change), egress `local`. Unlisted easel tools record
+  `unlisted-tool`.
+- To turn it off: **unverified** here. The policy hook runs in observe mode and
+  does not block it; a permission `deny` rule on `mcp__easel__chart` is the standard
+  Claude Code mechanism, not tested against this tool.
+
+`bash scripts/himmel-doctor.sh --only C82` lists every MCP server entry with its
+source layer: user config (`~/.claude.json` `mcpServers`), project `.mcp.json`, an
+enabled plugin's `.mcp.json`, the himmel lane catalog (`scripts/lanes/plugin-profiles.json`
+`mcpCatalog`) and runtime built-ins such as easel. It reads key names only, never a value.
 
 ## Tasks and elicitation (protocol 2026-07-28)
 

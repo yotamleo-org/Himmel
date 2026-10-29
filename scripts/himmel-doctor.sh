@@ -4841,6 +4841,42 @@ $(_c81_rows "plugin:$name" "$f")"
         "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
 }
 
+# --- C82-mcp-sources: every MCP server with the layer it comes from ---
+# Read only, key names only: never an env, header or argument value. Layers: user config
+# (~/.claude.json mcpServers), project .mcp.json, an enabled plugin's .mcp.json (newest
+# cached copy, else the repo's marketplace copy), the himmel lane catalog (scripts/lanes/
+# plugin-profiles.json mcpCatalog) and the runtime built-ins: plugins compiled into the
+# Claude Code binary that register a tool through $.tool.register, so no file of ours
+# names them (docs/internals/mcp-servers.md#runtime-registered-servers-easel).
+# ponytail: the built-in list is two verified names, upgrade by reading the binary's own
+# plugin table when Claude Code exposes one.
+check_c82_mcp_sources() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C82-mcp-sources "jq not on PATH -- MCP source listing skipped"; return 0; }
+    local rows="" name f c n
+    _c82_keys() { # <label> <json file> <jq path to the server object>
+        [ -r "$2" ] || return 0
+        jq -r --arg l "$1" "($3 // {}) | keys[] | . + \" [\" + \$l + \"]\"" "$2" 2>/dev/null
+    }
+    rows="$(_c82_keys "user config" "${HOME:-}/.claude.json" .mcpServers)
+$(_c82_keys "project .mcp.json" "$REPO_ROOT/.mcp.json" .mcpServers)"
+    if [ -r "$SETTINGS" ]; then
+        for name in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | split("@")[0]' "$SETTINGS" 2>/dev/null); do
+            f=""
+            for c in "$CLAUDE_DIR_R"/plugins/cache/*/"$name"/*/.mcp.json; do [ -f "$c" ] && f="$c"; done
+            [ -n "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"
+            rows="$rows
+$(_c82_keys "plugin $name" "$f" '(.mcpServers // .)')"
+        done
+    fi
+    rows="$rows
+$(_c82_keys "himmel lane catalog" "$REPO_ROOT/scripts/lanes/plugin-profiles.json" .mcpCatalog)
+easel [runtime: built-in cc-plugin-easel plugin of the Claude Code binary]
+plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Claude Code binary]"
+    rows="$(printf '%s\n' "$rows" | sed '/^$/d')"
+    n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
+    emit OK C82-mcp-sources "$n MCP server entries by source layer: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4994,6 +5030,7 @@ run_check C78 check_c78_shfmt
 run_check C79 check_c79_plugin_cache_drift
 run_check C80 check_c80_status_drift
 run_check C81 check_c81_hook_layers
+run_check C82 check_c82_mcp_sources
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

@@ -71,6 +71,13 @@ expect "observe: tool_name without a tool part allowed, would-deny" 0 malformed 
 run_hook ''
 expect "observe: empty stdin allowed, would-deny" 0 malformed deny
 
+# easel is a built-in Claude Code plugin (docs/internals/mcp-servers.md): its chart tool
+# has an explicit row, so it is classed read and would-allowed, not unknown-server.
+run_hook "$(call mcp__easel__chart)"
+expect "observe: easel chart tool is an explicit read row, would-allow" 0 read allow
+run_hook "$(call mcp__easel__other_tool)"
+expect "observe: an unlisted easel tool is unlisted-tool, would-deny" 0 unlisted-tool deny
+
 # --- 2. every seeded read tool is allowed and classed read -------------------
 seeded_fail=0
 seeded_n=0
