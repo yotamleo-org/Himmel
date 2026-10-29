@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# test-uninstall-plugins-scope.sh — Platform guard: POSIX-only bash test (no
-# .ps1 twin; mirrors test-install-plugins-verify.sh, which also ships
-# POSIX-only) for the --scope fix in
+# test-uninstall-plugins-scope.sh — Platform guard: POSIX-only bash test
+# (mirrors test-install-plugins-verify.sh) for the --scope fix in
 # scripts/machine-setup/uninstall-plugins.sh.
 #
 # A project/local-scope plugin install could never be

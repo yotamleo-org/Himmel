@@ -15,9 +15,9 @@
 #
 # Assertions use `case` glob matching, not `printf | grep -q`.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + shell against a temp repo; no .ps1 twin needed -- the only
-# consumer is this shell test suite, which is itself gitbash-only.
+# Platform guard: any POSIX bash 3.2+.
+# Pure git + shell against a temp repo; the only
+# consumer is this shell test suite.
 #
 # Usage: bash scripts/parity/test-t13a-allowlist.sh
 # Exit 0 if all cases pass, 1 otherwise.

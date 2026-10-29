@@ -7,7 +7,7 @@
 # no-op shim so /etc is never read.
 #
 # Platform guard (linux-only): the inventory runs on an Ubuntu guest (GNU find
-# -printf, sha256sum); no .ps1 twin needed for a test harness.
+# -printf, sha256sum).
 #
 # Usage: bash scripts/vm/test-inventory.sh
 set -uo pipefail

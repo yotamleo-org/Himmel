@@ -11,10 +11,8 @@
 # $CALL_LOG instead of touching anything real, so a case can assert EXACTLY
 # which writes happened (or that none did).
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Stubs the claude CLI and relies on git, jq, and temporary directories; NOT ported to native
-# PowerShell. A test harness needs no .ps1 twin (project convention: a
-# documented platform guard suffices for a test fixture).
+# Platform guard: any POSIX bash 3.2+.
+# Stubs the claude CLI and relies on git, jq, and temporary directories.
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -448,9 +446,7 @@ assert_rc "--json non-array payload falls back to text parser" 0 "$rc"
 assert_has "--json non-array fallback reads the text list" "[enabled] od-a@mkt" "$out"
 STUB_LIST_JSON=; STUB_LIVE=
 
-# Help and both operator references must define `full` as installed-only, and
-# the PowerShell twin must carry the same wording. Static PS coverage is used
-# because this host has no pwsh runtime.
+# Help and both operator references must define `full` as installed-only.
 out=$(run --help); rc=$?
 assert_rc "help exits 0" 0 "$rc"
 assert_has "bash help defines full as installed-only at user scope" "Enable every installed on-demand plugin at user scope" "$out"

@@ -14,9 +14,8 @@
 # not merely the presence of the ERROR/DRY-RUN FAILED text.
 #
 # Platform guard (linux-only): a bash test harness driving a FAKE
-# VBoxManage plus a real loopback TCP listener, never a real VM — a
-# documented guard suffices here (project convention: a test harness
-# needs no .ps1 twin). Bash-only because the script it covers,
+# VBoxManage plus a real loopback TCP listener, never a real VM.
+# Bash-only because the script it covers,
 # dry-run-restore.sh, is itself linux-only.
 #
 # Usage: bash scripts/vm/test-dry-run-restore.sh

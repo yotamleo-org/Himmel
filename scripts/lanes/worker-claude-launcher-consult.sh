@@ -17,8 +17,8 @@
 # BASH_SOURCE names the in-repo directory and the shim beside it.
 #
 # Platform: /bin/bash (macOS ships 3.2 there; Linux has it on every
-# distribution this kit supports). No .ps1 twin: the consult launcher is
-# Linux/KDE-only, like headed-arm.sh.
+# distribution this kit supports). The consult launcher is Linux/KDE-only,
+# like headed-arm.sh.
 set -u
 
 _lcc_dir="${BASH_SOURCE[0]%/*}"

@@ -3,9 +3,7 @@
 # clones (himmel-ar-1 .. himmel-ar-$HIMMEL_VM_AR_MAX).
 #
 # Platform guard (linux-only): shells out to `VBoxManage list`/`showvminfo`
-# on the Linux station; NOT ported to native PowerShell. A Windows port
-# needs a VBoxManage.exe equivalent for both calls, and no Windows VM lane
-# exists to test it against.
+# on the Linux station.
 #
 # Sourced by scripts/vm/after-report.sh and unit-tested directly by
 # scripts/vm/test-after-report.sh (source it, stub VBoxManage on PATH, call

@@ -44,7 +44,7 @@
 # returning 3) by checking whether the captured output is empty, not by rc
 # alone (see ceiling-conformance.sh).
 #
-# Platform guard: no .ps1 twin, by design -- Linux-only when /proc exists;
+# Platform guard: Linux-only when /proc exists;
 # the lossy fallback (pgrep -x + ps -o pid=,args=) is the cross-platform
 # path, verified on both BSD (macOS) and GNU. Bash 3.2-compatible: no
 # mapfile, no associative arrays.

@@ -6,10 +6,7 @@
 # ticket's hardening responds to; the operator runs this, not this session).
 #
 # Platform guard (linux-only): drives VirtualBox via VBoxManage/vbox.py and
-# ssh-probes the guest on the Linux station; NOT ported to native
-# PowerShell. Same sibling as after-report.sh — a Windows port needs a
-# VBoxManage.exe equivalent for every call here, and no Windows VM lane
-# exists to test it against.
+# ssh-probes the guest on the Linux station. Same sibling as after-report.sh.
 #
 # Does exactly four real VBoxManage-touching things, in order, all under the
 # SAME vm-lock as after-report.sh (scripts/vm/vm-lock.sh) so it can never

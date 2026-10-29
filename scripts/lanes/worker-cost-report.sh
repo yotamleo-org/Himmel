@@ -10,7 +10,7 @@
 # the mean of the middle two; p80 is nearest-rank (the ceil(0.8*n)-th value).
 # Unparseable ledger lines are skipped. Exit: 0 report, 1 no ledger, 2 usage.
 #
-# Platform guard: no .ps1 twin, by design - the ledger writer is the Linux-only
+# Platform guard: the ledger writer is the Linux-only
 # chief kit. POSIX bash 3.2+ and jq.
 set -u -o pipefail
 
