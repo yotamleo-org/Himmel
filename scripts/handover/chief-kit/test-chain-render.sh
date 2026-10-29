@@ -12,6 +12,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'SKIP - test-chain-render.sh (python3 not installed)\n'
     exit 0
 fi
+python3 -I "$HERE/fixtures/chain-parity/check.py" render || exit 1
 W="$(mktemp -d "${TMPDIR:-/tmp}/chain-render-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
