@@ -18,10 +18,8 @@
 # (FLEET_SUT) so this SAME suite runs against the pre-fix script for genuine
 # RED evidence and against the fixed one for GREEN.
 #
-# No .ps1 twin: the mkdir-based admission lock lives on a POSIX tmpfs
-# (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>) with no Windows equivalent
-# (project convention: a documented platform guard suffices for a test
-# harness).
+# Platform: the mkdir-based admission lock lives on a POSIX tmpfs
+# (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>).
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="${FLEET_SUT:-$REPO/scripts/lib/usage-preflight.sh}"

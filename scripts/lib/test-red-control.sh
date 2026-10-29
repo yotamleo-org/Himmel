@@ -15,12 +15,8 @@
 # empty or merely different. That is the defect class this helper exists for,
 # asserted rather than asserted-about.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure shell over a scratch dir; NOT ported to native PowerShell -- a test
-# harness needs no .ps1 twin (project convention: a documented platform guard
-# suffices for a test fixture), and the library under test is itself
-# gitbash-only for the same reason. This is the T15 marker
-# scripts/parity/test-ws5-invariants.sh looks for.
+# Platform guard: POSIX bash 3.2+.
+# Pure shell over a scratch dir.
 #
 # Usage: bash scripts/lib/test-red-control.sh
 set -uo pipefail

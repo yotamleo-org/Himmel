@@ -10,7 +10,7 @@
 # directory, as for load_dotenv), then the registry default. A flag is never read from .env.
 # HIMMEL_FLAGS_TSV points the reader at another registry (the test suites use it).
 # flags.py and flags.mjs read the same TSV by the same rules.
-# Platform guard (gitbash-only): POSIX bash 3.2+, no external commands beyond tr.
+# Platform guard: POSIX bash 3.2+, no external commands beyond tr.
 
 _HIMMEL_FLAGS_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -6,7 +6,7 @@
 # predicate (scripts/lib/unchecked-mktemp.sh) and its gate
 # (scripts/hooks/check-unchecked-mktemp.sh).
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 #
 # The predicate's contract is deliberately simple -- see
 # scripts/lib/unchecked-mktemp.sh's header for the full rule list and why it

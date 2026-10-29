@@ -8,7 +8,7 @@
 # RENAME_ALIASES_FILE points the rows at another copy of the registry, so a
 # mutant (the HIMMEL_WORKER row deleted) can be shown to turn a row red.
 #
-# Platform guard (gitbash-only): pure awk and bash 3.2-safe, no .ps1 twin needed.
+# Platform guard: pure awk and bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

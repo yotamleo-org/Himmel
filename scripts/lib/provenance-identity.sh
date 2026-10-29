@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows, jq only.
+# Platform guard: POSIX bash 3.2+, jq only.
 #
 # provenance-identity.sh -- the live-identity reader for register-kind
 # provenance units (register-identity design

@@ -4,7 +4,7 @@
 # (scripts/lib/fleet-reservation-key.sh): usage-preflight.sh reserves under it
 # and arm-resume.sh releases by it, so the two can never disagree.
 #
-# No .ps1 twin: the reservation dir is a POSIX tmpfs construct (same
+# Platform: the reservation dir is a POSIX tmpfs construct (same
 # rationale as test-bank-preflight-fleet.sh).
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

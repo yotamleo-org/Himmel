@@ -6,7 +6,7 @@
 # STATUS_MARKER_SCRIPT points the rows at another copy of the helper, so a
 # mutant (PARKED-USAGE not accepted) can be shown to turn a row red.
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe, no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

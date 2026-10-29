@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows, jq only
+# Platform guard: POSIX bash 3.2+, jq only
 # (no sha256sum/shasum requirement of its own -- prov_sha_file/prov_sha_json,
 # reused from provenance.sh, bring their own hasher fallback).
 #

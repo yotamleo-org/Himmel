@@ -11,8 +11,7 @@
 # launches, and the affected hook suites self-scrub for the launch paths that do
 # not go through the runner (quiet-run, direct bash).
 #
-# Platform guard (gitbash-only): bash + git + grep only; runs unchanged under Git
-# Bash on Windows. No .ps1 twin needed.
+# Platform guard: bash + git + grep only.
 set -uo pipefail
 
 # shellcheck source=../ci/run-shell-tests-fixture.sh

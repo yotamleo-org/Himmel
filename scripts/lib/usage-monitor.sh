@@ -30,7 +30,7 @@
 # fields. The chief tick can read them without a later normal run seeing a
 # repeated cache stamp (state=stale) and swallowing a state-change line.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. This is Bash 3.2-compatible and is
+# PLATFORM GUARD: this is Bash 3.2-compatible and is
 # consumed by the Linux chief kit; its codex-bank reader is the Bun CLI.
 set -uo pipefail
 

@@ -26,7 +26,7 @@
 #
 # Usage: bash scripts/lib/test-suite-semaphore.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed
-# Platform guard (gitbash-only): POSIX bash 3.2+, ps, coreutils. ASCII only.
+# Platform guard: POSIX bash 3.2+, ps, coreutils. ASCII only.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

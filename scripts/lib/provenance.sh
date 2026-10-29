@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+, jq + sha256sum|shasum + dd only.
+# Platform guard: POSIX bash 3.2+, jq + sha256sum|shasum + dd only.
 # Twin: scripts/himmelctl/lib/provenance.js (node) writes byte-identical rows.
 #
 # provenance.sh -- the install-provenance ledger writer.

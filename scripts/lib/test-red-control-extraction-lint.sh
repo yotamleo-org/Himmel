@@ -7,8 +7,8 @@
 # scripts/, so this file being red is what makes the class fail CI -- no
 # separate wiring needed.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+,
-# matching the tool under test -- no .ps1 twin.
+# Platform guard: POSIX bash 3.2+,
+# matching the tool under test.
 #
 # Usage: bash scripts/lib/test-red-control-extraction-lint.sh
 set -uo pipefail

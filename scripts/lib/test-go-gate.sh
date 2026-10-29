@@ -21,7 +21,7 @@
 #   point this suite's *_SRC override at it, rerun -- FAIL naming the site;
 #   then `bash scripts/git/restore-to-head.sh <path>` to restore.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, no .ps1 twin needed (no hook
+# Platform guard: POSIX bash 3.2+ (no hook
 # dispatch here).
 set -u
 
