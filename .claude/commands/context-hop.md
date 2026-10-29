@@ -16,7 +16,7 @@ fi
 ```
 
 - `/handover-arm-resume` is **cron-armed at a chosen future time** (typical usage: arm overnight when you stop work for the night, expecting to pick up tomorrow morning).
-- `/context-hop` is **operator-invoked NOW** with a short delay (default 2 minutes) so the relaunch fires just after you /exit the current session. Same dedup safeguard + cd-into-repo + MSYS_NO_PATHCONV contract (inherits from `arm-resume.sh`, PRs #137 + #139).
+- `/context-hop` is **operator-invoked NOW** with a short delay (default 2 minutes) so the relaunch fires just after you /exit the current session. Same dedup safeguard + cd-into-repo contract (inherits from `arm-resume.sh`, PRs #137 + #139).
 
 ## Snapshot
 

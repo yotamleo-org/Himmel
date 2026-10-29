@@ -16,14 +16,9 @@
 # Usage: resolve_workers <initiative_val> <afk_val> <afk_selector>
 # Echoes the active workers space-separated in canonical order, or empty string.
 #
-# resolve_workers_env is the one entry that reads the live env: it resolves the
-# afk names against their old overnight names (scripts/lib/env-alias.sh) and
-# calls resolve_workers. HIMMEL_AFK / HIMMEL_OVERNIGHT is a widening switch
-# (env_alias_permit: a set falsy name keeps the interactive profile);
-# HIMMEL_INITIATIVE_AFK / HIMMEL_INITIATIVE_OVERNIGHT is a value (alias_env).
-
-# shellcheck source=/dev/null
-. "$(dirname "${BASH_SOURCE[0]}")/env-alias.sh"
+# resolve_workers_env is the one entry that reads the live env: it reads the afk
+# names and calls resolve_workers. HIMMEL_AFK is a widening switch (a set falsy
+# value keeps the interactive profile); HIMMEL_INITIATIVE_AFK is a value.
 
 # Canonical vocabulary order — every emitted set is filtered through this.
 _IL_VOCAB="plan execute prcheck pr ticket merge public handover"
@@ -67,13 +62,17 @@ resolve_workers() {
   _il_filter ",$norm,"                                  # comma-subset (canonical, deduped)
 }
 
-# il_afk_active → rc 0 when the afk profile is selected (HIMMEL_AFK, read-both).
-il_afk_active() { env_alias_permit HIMMEL_AFK HIMMEL_OVERNIGHT; }
+# il_afk_active → rc 0 when the afk profile is selected (HIMMEL_AFK set and not falsy).
+il_afk_active() {
+  case "${HIMMEL_AFK:-}" in
+    ''|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff]) return 1 ;;
+  esac
+  return 0
+}
 
 # resolve_workers_env → resolve_workers over the live env (see the header).
 resolve_workers_env() {
   local sel=""
-  alias_env HIMMEL_INITIATIVE_AFK HIMMEL_INITIATIVE_OVERNIGHT
   if il_afk_active; then sel=1; fi
   resolve_workers "${HIMMEL_INITIATIVE:-}" "${HIMMEL_INITIATIVE_AFK:-}" "$sel"
 }

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash | Edit|Write|MultiEdit|NotebookEdit | apply_patch) —
 # Keeps to the literal-path core. The usage lift
-# (~/.himmel/state/usage-lift.json, written by `scripts/lib/usage-lift.sh set`;
-# the old names bank-lift.json / bank-lift.sh are fenced the same way)
+# (~/.himmel/state/usage-lift.json, written by `scripts/lib/usage-lift.sh set`)
 # relaxes the 7-day bank gate while it is valid. Raising your own
 # spending ceiling is an OPERATOR call, so an agent session may not:
 #   1. write the lift file by a LITERAL path (~, $HOME, ${HOME}, /home/<user>,
@@ -13,10 +12,10 @@
 #      interpreter handed the path or inline code that spells its name, or the
 #      Write/Edit/NotebookEdit/apply_patch tools; nor fill the state dir (or an
 #      ancestor of it) with a lift-named entry;
-#   2. run `usage-lift.sh set` or `bank-lift.sh set` (bash/sh/direct/source/.;
+#   2. run `usage-lift.sh set` (bash/sh/direct/source/.;
 #      through env, sudo, timeout, nice-style wrappers; in a bash -c / eval /
 #      stdin script, a literal echo/printf piped into a shell included), or
-#      copy either script to another name.
+#      copy the script to another name.
 # Reading the lift, `usage-lift.sh show` / `clear`, and any text that merely
 # NAMES the lift (a commit message, a ticket title, a Results bullet) stay
 # allowed. Remedy named in every deny: the operator runs
@@ -28,7 +27,7 @@
 # proof. A spelling that needs evaluation to read is NOT chased here; it
 # belongs to the OS (sandbox) layer. Left to that layer: a destination built from a variable the command
 # assigns, from $( ) / backticks or `$_`; an inherited env value or a ${E-x} /
-# ${!R} / zsh-flag expansion naming the lift; a brace-built or split ("bank"+
+# ${!R} / zsh-flag expansion naming the lift; a brace-built or split ("usage"+
 # "-lift") name; the lift path handed to a writer through a reader, xargs or
 # find -exec; a shell reading a script a file or a non-literal word supplies
 # (`cat f | bash`, `echo "$x" | bash`) or an escape echo -e / printf decodes; an archive extraction (tar/unzip/cpio/7z/…) into HOME or the
@@ -41,7 +40,7 @@
 # ponytail: text-level literal-path fence, sandbox layer HIMMEL-5685 owns the rest — it cannot see Write-tool CONTENT
 # that is itself a script writing the lift, a script FILE that writes the lift
 # without being handed its path, or a bind mount. Those are bounded at RUNTIME:
-# bank-preflight honours only an account-bound lift capped by the seven_day
+# usage-preflight honours only an account-bound lift capped by the seven_day
 # resets_at and fails closed on anything else, so a forged lift buys at most
 # the rest of one window; upgrade path is an operator-owned lift the gate verifies.
 # ponytail: a `cd`/`pushd`/`popd` word anywhere makes the cwd unknown, so a
@@ -63,7 +62,7 @@ deny() {
     {
         echo "block-bank-lift-writes: refusing — $1."
         echo
-        echo "    ~/.himmel/state/usage-lift.json (old name bank-lift.json) relaxes the"
+        echo "    ~/.himmel/state/usage-lift.json relaxes the"
         echo "    7-day usage gate, so setting it is operator-only. Ask the operator"
         echo "    to run, at their own prompt:"
         echo
@@ -88,7 +87,7 @@ esac
 CWD=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || CWD=""
 [ -n "$CWD" ] || CWD=$PWD
 
-LIFT_NAMES='usage-lift.json bank-lift.json'  # the new name, then the read-both old one
+LIFT_NAMES='usage-lift.json'
 STATE_REAL="$HOME/.himmel/state"
 CWD_UNPROVEN=0  # set for Bash: a cd/pushd/popd word makes the cwd unknown
 LREF=NONE       # lift_ref result: LIFT | STATE | HIMMEL | HOME | NONE
@@ -191,8 +190,8 @@ _is_lift_name() {
     for n in $LIFT_NAMES; do _name_matches "$1" "$n" && return 0; done
     return 1
 }
-# _is_lift_script <component>: the component could name either lift script.
-_is_lift_script() { _name_matches "$1" usage-lift.sh || _name_matches "$1" bank-lift.sh; }
+# _is_lift_script <component>: the component could name the lift script.
+_is_lift_script() { _name_matches "$1" usage-lift.sh; }
 
 # _is_pure_glob <s>: nothing left after removing glob metacharacters.
 _is_pure_glob() { local t="${1//[\*\?\[\]\{\},]/}"; [ -z "$t" ]; }
@@ -249,11 +248,10 @@ _lift_ref1() {
 is_lift() { _lift_ref1 "$1" 0; [ "$LREF" = LIFT ]; }
 
 # _names_lift_lit <text>: the text spells a lift file or script name
-# (usage-lift / bank-lift, .json / .sh) literally, in any case (inline
+# (usage-lift, .json / .sh) literally, in any case (inline
 # interpreter code).
 _names_lift_lit() {
     case "$1" in
-        *[bB][aA][nN][kK]-[lL][iI][fF][tT].[jJ][sS][oO][nN]*|*[bB][aA][nN][kK]-[lL][iI][fF][tT].[sS][hH]*) return 0 ;;
         *[uU][sS][aA][gG][eE]-[lL][iI][fF][tT].[jJ][sS][oO][nN]*|*[uU][sS][aA][gG][eE]-[lL][iI][fF][tT].[sS][hH]*) return 0 ;;
     esac
     return 1
@@ -494,7 +492,7 @@ _lb() { R="${1%/}"; R="${R##*/}"; case "$R" in *[A-Z]*) R=$(_lower "$R") ;; esac
 set_rule() {
     local scrb="${1%/}"
     scrb="${scrb##*/}"
-    if [ "$3" = 1 ] && { [ "$scrb" = "_usage_lift_cmd" ] || [ "$scrb" = "_bank_lift_cmd" ] || { ! _is_dynamic "$scrb" && _is_lift_script "$scrb"; }; }; then
+    if [ "$3" = 1 ] && { [ "$scrb" = "_usage_lift_cmd" ] || { ! _is_dynamic "$scrb" && _is_lift_script "$scrb"; }; }; then
         if ! _is_dynamic "$2" && _name_matches "$2" set; then deny "\`usage-lift.sh set\` is operator-only"; fi
     fi
     return 0
@@ -663,6 +661,7 @@ check_sed() {
     fi
     if [ "$inplace" = 1 ]; then
         for a in ${files[@]+"${files[@]}"}; do
+            # prim-ok: deny-message text naming sed -i, not a sed -i call
             is_lift "$a" && deny "sed -i edits the bank lift ($a)"
         done
     fi

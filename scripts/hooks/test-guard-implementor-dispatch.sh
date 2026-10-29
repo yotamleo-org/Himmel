@@ -50,7 +50,7 @@ cp "$REPO_ROOT/scripts/lanes/profile-managed.cjs" "$FAKE_REPO_NO_CLAUDEX/scripts
 : > "$FAKE_REPO_NO_CLAUDEX/scripts/telegram/spawn-glm.ts"
 
 # Funded-bank fixtures. A fake project root carrying BOTH dispatchers
-# (so claudex AND glm pass lane_runnable) but NO bank-status.ts — proves the
+# (so claudex AND glm pass lane_runnable) but NO usage-status.ts — proves the
 # default-path helper-missing branch reports UNKNOWN and skips the lane rather
 # than routing toward unmeasured capacity.
 FAKE_REPO_NO_BANK="$TMP/fake-repo-no-bank"
@@ -153,7 +153,7 @@ EOF
 chmod +x "$STUB_BUN_DIR/bun"
 
 # Funded-bank fixtures. The guard's lane_funded() runs the
-# bank-status probe under IMPL_GUARD_BANK_STATUS_CMD; stubbing it (rather than
+# bank-status probe under IMPL_GUARD_USAGE_STATUS_CMD; stubbing it (rather than
 # building live codex-rollout / glm-ledger fixtures) keeps the suite hermetic
 # and independent of the operator's actual bank state (the codex weekly bank is
 # spent on the operator's station right now — without this stub, RC34 and the
@@ -282,7 +282,7 @@ run_hook() {
     # below re-adds IMPL_GUARD_OK=1 explicitly via "$@" to test the override
     # path on purpose, and that explicit assignment still wins (env applies
     # -u before later NAME=VALUE args in "$@").
-    printf '%s' "$json" | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT -u CADENCE_USAGE_MAX_PCT -u IMPL_GUARD_USAGE_STATUS_CMD -u IMPL_GUARD_USAGE_BUDGET_SECS HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$REPO_ROOT" LANES_REGISTRY="$registry" PATH="$STUB_BUN_DIR:$PATH" IMPL_GUARD_BANK_STATUS_CMD="$BANK_FUNDED_CMD" IMPL_GUARD_READINESS_CMD="$READY_ALL_CMD" "$@" "$BASH_ABS" "$HOOK" \
+    printf '%s' "$json" | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_USAGE_MAX_PCT -u IMPL_GUARD_USAGE_STATUS_CMD -u IMPL_GUARD_USAGE_BUDGET_SECS HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$REPO_ROOT" LANES_REGISTRY="$registry" PATH="$STUB_BUN_DIR:$PATH" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_FUNDED_CMD" IMPL_GUARD_READINESS_CMD="$READY_ALL_CMD" "$@" "$BASH_ABS" "$HOOK" \
         >"$TMP/out-$name" 2>"$TMP/err-$name"
     echo "$?"
 }
@@ -744,7 +744,7 @@ assert_rc "malformed input allows" 0 "$RC14"
 MISSING_ROOT="$TMP/no-repo"
 mkdir -p "$MISSING_ROOT"
 printf '%s' "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code.')" \
-    | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_BANK_MAX_PCT -u CADENCE_USAGE_MAX_PCT -u IMPL_GUARD_USAGE_STATUS_CMD -u IMPL_GUARD_USAGE_BUDGET_SECS HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$MISSING_ROOT" LANES_REGISTRY="$REG_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW" bash "$HOOK" \
+    | env -u IMPL_GUARD_OK -u IMPL_GUARD_DISABLE -u IMPL_GUARD_HARD -u IMPL_GUARD_WARN -u IMPL_GUARD_WEEKLY_HARD -u IMPL_GUARD_WEEKLY_WARN -u CADENCE_USAGE_MAX_PCT -u IMPL_GUARD_USAGE_STATUS_CMD -u IMPL_GUARD_USAGE_BUDGET_SECS HOME="$TMP/home" CLAUDE_ACCOUNT_CONFIG="$TMP/home/.claude.json" USAGE_LIFT_FILE="$TMP/no-lift.json" CLAUDE_PROJECT_DIR="$MISSING_ROOT" LANES_REGISTRY="$REG_CLAUDEX" IMPL_GUARD_CACHE_PATH="$CACHE_LOW" bash "$HOOK" \
         >"$TMP/out-missing" 2>"$TMP/err-missing"
 RC15=$?
 assert_rc "missing resolver allows when bank cannot be checked" 0 "$RC15"
@@ -918,11 +918,9 @@ assert_rc 'window lift leaves five-hour default unchanged' 2 "$(lift_hook lift-w
 lift_policy 1 "$LIFT_ACCOUNT" true
 assert_rc 'standing lift allows five-hour 90' 0 "$(lift_hook lift-standing-five)"
 assert_rc 'explicit five-hour HARD overrides standing lift' 2 "$(lift_hook lift-env-five IMPL_GUARD_HARD=80)"
-assert_rc 'explicit cadence ceiling controls standing five-hour' 2 "$(lift_hook lift-cadence CADENCE_BANK_MAX_PCT=85)"
-assert_rc 'hook HARD wins over cadence ceiling' 0 "$(lift_hook lift-precedence CADENCE_BANK_MAX_PCT=85 IMPL_GUARD_HARD=95)"
+assert_rc 'explicit cadence ceiling controls standing five-hour' 2 "$(lift_hook lift-cadence CADENCE_USAGE_MAX_PCT=85)"
+assert_rc 'hook HARD wins over cadence ceiling' 0 "$(lift_hook lift-precedence CADENCE_USAGE_MAX_PCT=85 IMPL_GUARD_HARD=95)"
 assert_rc 'explicit CADENCE_USAGE_MAX_PCT controls standing five-hour' 2 "$(lift_hook lift-usage-cadence CADENCE_USAGE_MAX_PCT=85)"
-assert_rc 'a wider CADENCE_USAGE_MAX_PCT cannot widen CADENCE_BANK_MAX_PCT' 2 "$(lift_hook lift-usage-wider CADENCE_USAGE_MAX_PCT=99 CADENCE_BANK_MAX_PCT=85)"
-assert_rc 'a wider CADENCE_BANK_MAX_PCT cannot widen CADENCE_USAGE_MAX_PCT' 2 "$(lift_hook lift-bank-wider CADENCE_USAGE_MAX_PCT=85 CADENCE_BANK_MAX_PCT=99)"
 lift_cache 100 10
 assert_rc 'standing lift still refuses full five-hour bank' 2 "$(lift_hook lift-five-full)"
 lift_cache 10 100
@@ -942,30 +940,22 @@ REAL_HOOK="$HOOK"
 HOOK="$NOVAL_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 assert_rc 'lib without validator still refuses weekly 90 (fail closed)' 2 "$(lift_hook lift-noval)"
 HOOK="$REAL_HOOK"
-# an unloadable env-alias.sh must keep the default HARD 80, not drop the old cap to 100.
-NOALIAS_ROOT="$TMP/noalias-repo"
-mkdir -p "$NOALIAS_ROOT/scripts/hooks" "$NOALIAS_ROOT/scripts/lib"
-cp "$REAL_HOOK" "$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
-cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$NOALIAS_ROOT/scripts/lib/"
-lift_cache 82 10
-HOOK="$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
-assert_rc 'an unloadable env-alias.sh keeps HARD 80 under a standing lift' 2 "$(lift_hook lift-noalias CADENCE_BANK_MAX_PCT=85)"
-HOOK="$REAL_HOOK"
 if grepq "$(cat "$TMP/err-lift-noval")" -F 'unbound variable'; then
     echo "FAIL lib without validator must not hit an unbound variable"; fail=$((fail + 1))
 else
     echo "ok   lib without validator has no unbound variable"; pass=$((pass + 1))
 fi
 lift_policy 1 "$LIFT_ACCOUNT" true
-lift_cache 100 10
-assert_rc 'CADENCE_BANK_MAX_PCT=150 clamps to 100 and refuses full five-hour' 2 "$(lift_hook lift-cadence-150 CADENCE_BANK_MAX_PCT=150)"
 lift_cache 90 10
-assert_rc 'CADENCE_BANK_MAX_PCT=-5 falls back to default HARD' 2 "$(lift_hook lift-cadence-neg CADENCE_BANK_MAX_PCT=-5)"
-assert_contains 'negative cadence ceiling warns' 'CADENCE_BANK_MAX_PCT=-5 is not a positive number' "$(cat "$TMP/err-lift-cadence-neg")"
-assert_rc 'CADENCE_BANK_MAX_PCT=abc falls back to default HARD' 2 "$(lift_hook lift-cadence-abc CADENCE_BANK_MAX_PCT=abc)"
-assert_contains 'non-numeric cadence ceiling warns' 'CADENCE_BANK_MAX_PCT=abc is not a positive number' "$(cat "$TMP/err-lift-cadence-abc")"
-assert_rc 'CADENCE_USAGE_MAX_PCT=abc falls back to default HARD' 2 "$(lift_hook lift-usage-abc CADENCE_USAGE_MAX_PCT=abc)"
-assert_rc 'a non-numeric CADENCE_BANK_MAX_PCT beside a numeric new name falls back to default HARD' 2 "$(lift_hook lift-usage-oldabc CADENCE_USAGE_MAX_PCT=99 CADENCE_BANK_MAX_PCT=abc)"
+assert_rc 'CADENCE_USAGE_MAX_PCT=85 sets the ceiling: a standing lift refuses a five-hour bank at 90' 2 "$(lift_hook lift-usage-cap CADENCE_USAGE_MAX_PCT=85)"
+assert_rc 'the retired CADENCE_BANK_MAX_PCT sets no ceiling: a standing lift still admits a five-hour bank at 90' 0 "$(lift_hook lift-retired-cap CADENCE_BANK_MAX_PCT=85)" # old-term-ok
+lift_cache 100 10
+assert_rc 'CADENCE_USAGE_MAX_PCT=150 clamps to 100 and refuses full five-hour' 2 "$(lift_hook lift-cadence-150 CADENCE_USAGE_MAX_PCT=150)"
+lift_cache 90 10
+assert_rc 'CADENCE_USAGE_MAX_PCT=-5 falls back to default HARD' 2 "$(lift_hook lift-cadence-neg CADENCE_USAGE_MAX_PCT=-5)"
+assert_contains 'negative cadence ceiling warns' 'CADENCE_USAGE_MAX_PCT=-5 is not a positive number' "$(cat "$TMP/err-lift-cadence-neg")"
+assert_rc 'CADENCE_USAGE_MAX_PCT=abc falls back to default HARD' 2 "$(lift_hook lift-cadence-abc CADENCE_USAGE_MAX_PCT=abc)"
+assert_contains 'non-numeric cadence ceiling warns' 'CADENCE_USAGE_MAX_PCT=abc is not a positive number' "$(cat "$TMP/err-lift-cadence-abc")"
 
 echo "=== HIMMEL-2653: weekly (seven_day) bank ceiling ==="
 
@@ -1113,7 +1103,7 @@ echo "=== HIMMEL-1513: a runnable lane must also be FUNDED ==="
 # 1. claudex runnable + bank SPENT, glm runnable + funded -> no lane refusal:
 # glm is dropped, so control falls through to the bank guard
 # and never strands the caller toward the spent claudex lane.
-RC35=$(run_hook claudex-spent-glm-funded "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_CLAUDEX_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC35=$(run_hook claudex-spent-glm-funded "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent claudex never falls through to glm (low bank -> allow)" 0 "$RC35"
 assert_not_contains "spent-claudex never names the glm dispatcher" "spawn-glm" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 assert_contains "spent-claudex warns why claudex was skipped" "bank is spent" "$(cat "$TMP/err-claudex-spent-glm-funded")"
@@ -1122,7 +1112,7 @@ assert_not_contains "spent-claudex does NOT name the claudex dispatcher" "spawn-
 # 2. BOTH lanes spent -> NO lane refusal is emitted; control falls through to
 # the independent bank guard (low bank here -> allow). This is the
 # intended behaviour: an unfunded lane never produces a new hard-block.
-RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "both lanes spent falls through to the bank guard (low bank -> allow)" 0 "$RC36"
 assert_contains "both-spent warns claudex spent" "lane 'claudex' is runnable but its bank is spent" "$(cat "$TMP/err-both-spent")"
 assert_not_contains "both-spent emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-both-spent")"
@@ -1132,7 +1122,7 @@ assert_contains "IMPL_GUARD_USAGE_STATUS_CMD is the probe the guard runs" "lane 
 
 # 2b. A probe that emits `spent` AND exits NON-ZERO has no usable verdict.
 # The lane must be skipped loudly rather than accepted on a partial line.
-RC35B=$(run_hook spent-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="printf 'claudex spent\\nglm spent\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC35B=$(run_hook spent-but-rc-nonzero "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'claudex spent\\nglm spent\\n'; exit 3" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent+rc!=0 leaves both banks unknown and falls through" 0 "$RC35B"
 assert_contains "spent+rc!=0 warns the probe did not finish cleanly" "did not finish cleanly (rc=3)" "$(cat "$TMP/err-spent-but-rc-nonzero")"
 assert_contains "spent+rc!=0 names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-spent-but-rc-nonzero")"
@@ -1140,29 +1130,29 @@ assert_not_contains "spent+rc!=0 does NOT accept the partial spent verdict" "ban
 
 # 3. A spent preferred lane with NO other lane available also falls through
 # (no claudex in the registry, glm spent) — no refusal, just the bank guard.
-RC37=$(run_hook glm-spent-no-claudex "$REG_GLM" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="printf 'glm spent\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC37=$(run_hook glm-spent-no-claudex "$REG_GLM" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="printf 'glm spent\\n'" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "spent glm with no claudex falls through (low bank -> allow)" 0 "$RC37"
 assert_not_contains "spent-glm emits NO lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-glm-spent-no-claudex")"
 
 # 4. Every unreadable-bank shape reports UNKNOWN and skips the lane. Covers an
 # explicit unknown verdict plus helper-missing, timeout, and garbage output.
-RC37B=$(run_hook bank-explicit-unknown "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1768' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_CLAUDEX_UNKNOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC37B=$(run_hook bank-explicit-unknown "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1768' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_CLAUDEX_UNKNOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "unknown claudex never skips to measured-funded glm" 0 "$RC37B"
 assert_contains "explicit unknown is loud at the gate" "lane 'claudex' bank is UNKNOWN" "$(cat "$TMP/err-bank-explicit-unknown")"
 assert_not_contains "explicit unknown never names glm" "spawn-glm" "$(cat "$TMP/err-bank-explicit-unknown")"
 assert_not_contains "explicit unknown never treats claudex as funded" "spawn-claudex" "$(cat "$TMP/err-bank-explicit-unknown")"
 
-RC38=$(run_hook bank-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_BANK_STATUS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC38=$(run_hook bank-helper-missing "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" CLAUDE_PROJECT_DIR="$FAKE_REPO_NO_BANK" IMPL_GUARD_USAGE_STATUS_CMD="" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "missing probe helper leaves both banks unknown and falls through" 0 "$RC38"
 assert_contains "missing-helper names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-helper-missing")"
 assert_not_contains "missing-helper emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-helper-missing")"
 
-RC39=$(run_hook bank-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_HANG_CMD" IMPL_GUARD_BANK_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC39=$(run_hook bank-timeout "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_HANG_CMD" IMPL_GUARD_USAGE_BUDGET_SECS=1 IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "timed-out probe skips claudex and falls through" 0 "$RC39"
 assert_contains "timeout names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-timeout")"
 assert_not_contains "timeout emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-timeout")"
 
-RC40=$(run_hook bank-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
+RC40=$(run_hook bank-garbage "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_USAGE_STATUS_CMD="$BANK_GARBAGE_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "garbage probe output skips claudex and falls through" 0 "$RC40"
 assert_contains "garbage output names UNKNOWN" "bank UNKNOWN; skipping it" "$(cat "$TMP/err-bank-garbage")"
 assert_not_contains "garbage emits no lane refusal" "refusing implementation-shaped" "$(cat "$TMP/err-bank-garbage")"

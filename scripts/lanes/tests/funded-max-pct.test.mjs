@@ -41,22 +41,21 @@ test('partially numeric values fall back to 90 (CR round 2: parseFloat accepted 
   assert.equal(parseFundedMaxPct(' 50 '), 50); // trimmed whole-string numeric is fine
 });
 
-test('resolveFundedMaxPct: default 90; LANE_FUNDED_MAX_PCT wins; CLAUDEX_BANK_REFUSE_PCT is an alias', () => {
+test('resolveFundedMaxPct: default 90; LANE_FUNDED_MAX_PCT wins; CLAUDEX_USAGE_REFUSE_PCT is an alias', () => {
   assert.equal(DEFAULT_FUNDED_MAX_PCT, 90);
   assert.equal(resolveFundedMaxPct({}), 90);
-  assert.equal(resolveFundedMaxPct({ CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60' }), 60);
-  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60', CLAUDEX_BANK_REFUSE_PCT: '70' }), 60);
+  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 60);
   // an invalid primary falls through to the alias, an invalid alias to the default
-  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: 'abc', CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
-  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '', CLAUDEX_BANK_REFUSE_PCT: '-3' }), 90);
+  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: 'abc', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
+  assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '', CLAUDEX_USAGE_REFUSE_PCT: '-3' }), 90);
 });
 
-test('resolveFundedMaxPct: CLAUDEX_USAGE_REFUSE_PCT is read beside the old name, and the narrower one wins', () => {
-  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
-  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '95', CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
-  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '70', CLAUDEX_BANK_REFUSE_PCT: '95' }), 70);
-  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: 'abc', CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
+test('resolveFundedMaxPct: the retired CLAUDEX_BANK_REFUSE_PCT is ignored', () => { // old-term-ok
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_BANK_REFUSE_PCT: '70' }), 90); // old-term-ok
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: '95', CLAUDEX_BANK_REFUSE_PCT: '70' }), 95); // old-term-ok
+  assert.equal(resolveFundedMaxPct({ CLAUDEX_USAGE_REFUSE_PCT: 'abc', CLAUDEX_BANK_REFUSE_PCT: '70' }), 90); // old-term-ok
   assert.equal(resolveFundedMaxPct({ LANE_FUNDED_MAX_PCT: '60', CLAUDEX_USAGE_REFUSE_PCT: '70' }), 60);
 });
 
@@ -69,10 +68,10 @@ test('HIMMEL-1700 band: codex weekly at 95% is spent under the shared default (w
 
 test('HIMMEL-1700 scope: only codex takes the shared 90; claude keeps 99 and a 95% reading stays funded', () => {
   assert.equal(fundedMaxPctForBank('codex', {}), 90);
-  assert.equal(fundedMaxPctForBank('codex', { CLAUDEX_BANK_REFUSE_PCT: '70' }), 70);
+  assert.equal(fundedMaxPctForBank('codex', { CLAUDEX_USAGE_REFUSE_PCT: '70' }), 70);
   for (const bank of ['claude']) {
     assert.equal(fundedMaxPctForBank(bank, {}), 99);
-    assert.equal(fundedMaxPctForBank(bank, { CLAUDEX_BANK_REFUSE_PCT: '70' }), 99); // alias is codex-only
+    assert.equal(fundedMaxPctForBank(bank, { CLAUDEX_USAGE_REFUSE_PCT: '70' }), 99); // alias is codex-only
     assert.equal(fundedMaxPctForBank(bank, { LANE_FUNDED_MAX_PCT: '60' }), 60); // override still honored
     const active = { ok: true, path: { kind: 'subscription', windows: ['weekly'] } };
     const at95 = { kind: 'measured', readings: [{ window: 'weekly', usedPct: 95 }] };

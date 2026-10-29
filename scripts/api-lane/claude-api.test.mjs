@@ -26,7 +26,7 @@ echo called >> "$STUB_LOG"
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
   echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"; echo "cache_ttl=\${CLAUDE_CODE_PROMPT_CACHE_TTL:-}"
-  echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
+  echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV"
@@ -73,9 +73,9 @@ function fixture() {
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: paths.stub,
     HIMMEL_API_JOB_ID: 'job-1', STUB_LOG: paths.log, STUB_ENV: paths.env, STUB_OUT: ok,
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
-    CADENCE_BANK_LEDGER: join(dir, 'bank-ledger'), CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(dir, 'native-cache.json') };
-  writeFileSync(env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
+    CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+  writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
   const run = (args = good, extra = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
   const status = (account = 'A') => {
@@ -185,7 +185,8 @@ test('HIMMEL-5544: HIMMEL_API_TOOLS can never widen the grant: an unknown, wider
 test('HIMMEL-5433: a lane call from inside a Claude Code session drops the session markers, so it bills as -p/Agent SDK usage', () => {
   const f = fixture();
   const env = { ...f.env, CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SESSION_ID: 's-1',
-    CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 'msg-dummy', CLAUDE_CODE_EFFORT_LEVEL: 'max',
+    CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 'msg-dummy', CLAUDE_CODE_MESSAGING_SOCKET: '/x/s.sock',
+    CLAUDE_JOB_DIR: '/x/jobs/launcher', CLAUDE_CODE_EFFORT_LEVEL: 'max',
     CLAUDE_EFFORT: 'max', CLAUDE_PID: '1', AI_AGENT: 'claude-code' };
   const r = spawnSync('bash', [LAUNCH, ...f.good], { env, encoding: 'utf8', argv0: SESSION_ARGV0 });
   assert.equal(r.status, 0, r.stderr);
@@ -208,7 +209,7 @@ test('empty API account refuses even though native is funded, and never spawns c
   const f = fixture();
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
-  writeFileSync(f.env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
+  writeFileSync(f.env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
   const r = f.run();
   assert.equal(r.status, 2);
   assert.match(r.stderr, /api bank gate said SKIPPED-BANK/);
@@ -702,7 +703,7 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
     const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
     assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
     // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
-    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_BANK_LEG: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
+    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_USAGE_WORKER: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
   } finally { rmSync(hold, { force: true }); }
   assert.equal(second.status, 2);
   assert.match(second.stderr, /api bank gate said SKIPPED-FLEET/);

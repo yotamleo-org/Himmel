@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
@@ -378,7 +378,6 @@ interface PlacementOptions {
   backlog?: boolean;
   gate?: string;
   chiefOverride?: string;
-  consoleOverride?: string;
   sector?: string;
   followUpOf?: string;
 }
@@ -595,7 +594,6 @@ export function registerCreate(program: Command): void {
       '--chief-override <reason>',
       'Chief only (HIMMEL_CONSOLE=1): file into --fix-version with a reason, recorded in the admissions ledger',
     )
-    .addOption(new Option('--console-override <reason>').hideHelp())
     .option(
       '--affects-version <name>',
       "Set the affectsVersion (validated against the project's versions; `current` = the earliest unreleased version)",
@@ -642,7 +640,6 @@ export function registerCreate(program: Command): void {
         backlog?: boolean;
         gate?: string;
         chiefOverride?: string;
-        consoleOverride?: string;
         affectsVersion?: string;
         residualOf?: string;
         followUpOf?: string;

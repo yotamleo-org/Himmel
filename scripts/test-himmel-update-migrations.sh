@@ -36,9 +36,9 @@ printf '%s\n' '---' 'template_version: 1' 'jira: TEST-7' '---' > "$HANDOVER_DIR/
 printf '%s\n' '---' 'processed: true' '---' 'legacy clip' > "$LUNA_VAULT_PATH/Clippings/legacy.md"
 printf '%s\n' 'run scripts/handover/console-kit/go.sh' > "$HANDOVER_DIR/tester/moved-dir.md"
 printf '%s\n' 'open it with bash scripts/lanes/leg-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md"
-printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env"
+printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env" # old-term-ok
 SETTINGS="$HOME/.claude/settings.json"
-printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}}' > "$SETTINGS"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}, "permissions": {"allow": ["Bash(bash scripts/cr/clear-cr-marker.sh:*)"]}}' > "$SETTINGS" # old-term-ok
 case "${1:-}" in
     --real-clip) cp "$2" "$LUNA_VAULT_PATH/Clippings/legacy.md" ;;
     --real-vault) cp -R "$2/." "$LUNA_VAULT_PATH/" ;;
@@ -95,6 +95,51 @@ assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh
 assert_warning 'renamed-names' "$ROOT/.env" 'migrate-renamed-names.py --dry-run'
 assert_warning 'renamed-names' "$SETTINGS" 'migrate-renamed-names.py --dry-run'
 assert_unchanged 'check: fixture trees and files byte-identical' "$before"
+
+# A retired script name whose forwarder is gone is renamed in the install's allow rules too.
+migrator="$ROOT/scripts/setup/migrate-renamed-names.py"
+preview="$(python3 -I "$migrator" --dry-run "$SETTINGS" 2>&1)"
+if grep -Eq '^[+].*clear-review-marker[.]sh' <<< "$preview"; then
+    assert_pass 'renamed-names: the preview adds the renamed allow rule for a retired script name'
+else
+    assert_fail "renamed-names: no renamed allow rule in the preview ($preview)"
+fi
+settings_copy="$TMP/settings-apply.json"
+cp "$SETTINGS" "$settings_copy"
+python3 -I "$migrator" --apply "$settings_copy" > /dev/null 2>&1
+check_rc=0
+python3 -I "$migrator" --check "$settings_copy" > /dev/null 2>&1 || check_rc=$?
+if grep -Fq '"Bash(bash scripts/cr/clear-review-marker.sh:*)"' "$settings_copy" && [ "$check_rc" = 0 ]; then
+    assert_pass 'renamed-names: --apply adds the renamed allow rule and a second --check finds nothing'
+else
+    assert_fail "renamed-names: --apply left the allow list unrenamed or still pending (check rc $check_rc)"
+fi
+
+# A retired script name matches only as a scripts/ path: another project's script sharing the bare name is left alone.
+other_settings="$TMP/settings-other-project.json"
+own_root="$(cd "$ROOT" && pwd -P)"
+printf '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)", "Bash(/some/other/project/scripts/console.sh:*)", "Bash(/backup%s/scripts/console.sh:*)", "Bash(/backup+%s/scripts/console.sh:*)", "Bash(%s/scripts/../../other/scripts/console.sh:*)"]}}\n' "$own_root" "$own_root" "$own_root" > "$other_settings" # old-term-ok
+other_before="$(cat "$other_settings")"
+other_rc=0
+python3 -I "$migrator" --apply "$other_settings" > /dev/null 2>&1 || other_rc=$?
+if [ "$other_rc" = 0 ] && [ "$(cat "$other_settings")" = "$other_before" ] && [ ! -e "$other_settings.bak-renamed-names" ]; then
+    assert_pass 'renamed-names: --apply leaves another project script sharing a retired bare name unchanged'
+else
+    assert_fail "renamed-names: --apply rewrote another project's script ($(cat "$other_settings"))"
+fi
+# The install's own absolute scripts/ path still migrates (negative control for the anchor above).
+own_settings="$TMP/settings-own-root.json"
+# shellcheck disable=SC2016 # the literal $HIMMEL_REPO belongs in the settings file
+printf '{"permissions": {"allow": ["Bash(%s/scripts/console.sh:*)", "Bash($HIMMEL_REPO/scripts/console.sh:*)"]}}\n' "$own_root" > "$own_settings" # old-term-ok
+own_rc=0
+python3 -I "$migrator" --apply "$own_settings" > /dev/null 2>&1 || own_rc=$?
+# shellcheck disable=SC2016 # matching the literal $HIMMEL_REPO
+if [ "$own_rc" = 0 ] && grep -Fq "Bash($own_root/scripts/console.sh:*)" "$own_settings" && grep -Fq "Bash($own_root/scripts/chief.sh:*)" "$own_settings" \
+    && grep -Fq 'Bash($HIMMEL_REPO/scripts/console.sh:*)' "$own_settings" && grep -Fq 'Bash($HIMMEL_REPO/scripts/chief.sh:*)' "$own_settings"; then # old-term-ok
+    assert_pass 'renamed-names: --apply still renames a retired script under this install'"'"'s own scripts/ path'
+else
+    assert_fail "renamed-names: --apply left this install's own script unrenamed ($(cat "$own_settings"))"
+fi
 
 # The printed commands must actually target these installs, even with spaces.
 if [ "$fail" -eq 0 ]; then

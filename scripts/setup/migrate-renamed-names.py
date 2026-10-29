@@ -5,7 +5,8 @@
 
 A settings file (*.json) has every slice W `path` row rewritten in its hook commands: an old script or hook
 path becomes its new path, matched as a whole path run (the rule of move-renamed-dirs.sh). A permissions rule
-naming an old path stays and gains the renamed rule beside it. Any other FILE is an env file: a line
+naming an old path stays and gains the renamed rule beside it. A script name the registry marks for
+removal (remove-at X) whose file is gone from this checkout is renamed the same way. Any other FILE is an env file: a line
 that assigns an old slice W `env` name (`NAME=` or `export NAME=`) is renamed to the new name, value kept.
   --check    print "<count>\t<file>" for each file with old names; exit 1 when any is pending.
   --dry-run  print the unified diff it would make; change nothing. (default)
@@ -20,30 +21,52 @@ import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_EXT = (".sh", ".ts", ".mjs", ".js", ".py")
+SKIP_DIRS = {"fixtures", "node_modules", "testdata", "dist", ".git"}
+
+
+def live_names(root):
+    """File names under root/scripts: a retired name still in use there is not retired."""
+    names = set()
+    for _, dirs, files in os.walk(os.path.join(root, "scripts")):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        names.update(files)
+    return names
 
 
 def rows(registry):
-    paths, envs = [], []
+    paths, envs, scripts = [], [], []
     with open(registry, encoding="utf-8") as fh:
         for line in fh:
             if line.startswith("#"):
                 continue
             c = line.rstrip("\n").split("\t")
-            if len(c) < 6 or c[4] != "W" or not c[0] or not c[1]:
+            if len(c) < 6 or not c[0] or not c[1]:
                 continue
-            if c[2] == "path":
+            if c[4] == "W" and c[2] == "path":
                 paths.append((c[0], c[1]))
-            elif c[2] == "env":
+            elif c[4] == "W" and c[2] == "env":
                 envs.append((c[0], c[1]))
+            elif c[5] == "X" and c[2] == "identifier" and c[0].endswith(SCRIPT_EXT):
+                scripts.append((c[0], c[1]))
+    root = os.path.realpath(os.path.join(HERE, "..", ".."))
+    live = live_names(root)
+    paths += [(old, new, root) for old, new in scripts if old not in live]
     paths.sort(key=lambda p: len(p[0]), reverse=True)
     return paths, envs
 
 
 def rename_paths(s, paths):
     n = 0
-    for old, new in paths:
-        rx = re.compile(r"(?<![A-Za-z0-9_.-])" + re.escape(old) + r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9_])")
-        s, c = rx.subn(new, s)
+    for old, new, *anchored in paths:
+        # A bare script name is renamed only inside this checkout's scripts/ path: relative, under its root, or under $HIMMEL_REPO.
+        if anchored:
+            prefix = "(?:" + re.escape(anchored[0] + "/") + r"|\$HIMMEL_REPO/|\$\{HIMMEL_REPO\}/|\./)?"
+            head = r"(?<![A-Za-z0-9_./+-])(" + prefix + r"scripts/(?:(?!\.\./)[A-Za-z0-9_.-]+/)*)"
+        else:
+            head = r"(?<![A-Za-z0-9_.-])()"
+        rx = re.compile(head + re.escape(old) + r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9_])")
+        s, c = rx.subn(lambda m, new=new: m.group(1) + new, s)
         n += c
     return s, n
 

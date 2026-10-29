@@ -200,6 +200,9 @@ printf '[{"label":"N903","keys":["HIMMEL-1"]}]\n' > "$WORK/short.json"
 python3 "$SUT" "$WORK/short.json" --base 4ccb59d --chief BZ --bucket "$BUCKET" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/short.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'missing' "$WORK/short.err" && pass "a worker missing required keys is refused" || fail "missing keys rc=$rc"
 
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$WORK/b-oldflag" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/oldflag.err"; rc=$?
+[ "$rc" = 2 ] && grep -q 'unrecognized arguments: --console' "$WORK/oldflag.err" && [ ! -e "$WORK/b-oldflag/launch-N901.sh" ] && pass "the retired --console flag is refused (rc 2, nothing written)" || fail "--console rc=$rc"
+
 sed 's#fix/himmel-9001-plain-fix#fix/fail-me#' "$WORK/legs.json" > "$WORK/wtfail.json"
 python3 "$SUT" "$WORK/wtfail.json" --base 4ccb59d --chief BZ --bucket "$WORK/b2" --repo "$REPO" --handover-root /h >/dev/null 2>"$WORK/wtfail.err"; rc=$?
 [ "$rc" = 1 ] && [ ! -e "$WORK/b2/launch-N901.sh" ] && pass "a failed worktree writes no brief for that worker" || fail "worktree failure rc=$rc"
@@ -520,13 +523,11 @@ tr '\n' ' ' < "$HANDOVER_DOCS/worker-preface.md" | grep -Eq 'ONE +turn.*text-onl
     && pass "worker-preface.md tells a worker to batch tool calls into ONE turn and skip text-only turns" \
     || fail "worker-preface.md lacks the batch-tool-calls / no text-only turn rule"
 
-# The renamed templates keep a symlink at the old path, so a launcher, chief or
-# brief that names the old path reads the same bytes until the removal release.
-for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do
+# The renamed templates are regular files and the old paths are gone.
+for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do # old-term-ok
     old="${pair%%:*}"; new="${pair##*:}"
     [ -f "$HANDOVER_DOCS/$new" ] && [ ! -L "$HANDOVER_DOCS/$new" ] && pass "$new is a regular file" || fail "$new is missing or not a regular file"
-    [ "$(readlink "$HANDOVER_DOCS/$old" 2>/dev/null)" = "$new" ] && pass "$old is a symlink to $new" || fail "$old is not a symlink to $new"
-    cmp -s "$HANDOVER_DOCS/$old" "$HANDOVER_DOCS/$new" && pass "$old reads byte-identical to $new" || fail "$old does not read the same bytes as $new"
+    [ ! -e "$HANDOVER_DOCS/$old" ] && [ ! -L "$HANDOVER_DOCS/$old" ] && pass "$old is gone" || fail "$old still exists" # old-term-ok
 done
 # A worker launched through the launcher's default preface path (the plain
 # worker branch, last of the role defaults) gets the worker preface.

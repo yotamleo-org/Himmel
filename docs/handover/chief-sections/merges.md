@@ -93,17 +93,26 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   later PR merges `origin/main` forward once, re-runs `impacted-suites.sh` over the
   merged diff, regenerates generated files and pushes once. A trust-path PR still
   needs a fresh judge and GO at the new head.
-- **The worker's proof:** send it the `MERGE-FORWARD` line and the plan file, and only
-  once every S2 predecessor of that PR has merged (the line names the last one in
-  `ORDER`, and the check proves that one's merge only). It runs
-  `bash scripts/handover/merge-forward-check.sh --chain-s2 <pr> --chain-plan <plan file> --chain-after-sha <the predecessor's squash-merge sha> --pr <job file> --pr-sha <HEAD>`
+- **The S2 forward, after the predecessor merges:** send the worker the predecessor's
+  PR number once every S2 predecessor of its PR has merged (the check proves that one's
+  merge only). It runs
+  `bash scripts/handover/merge-forward-check.sh --chain-s2 <pr> --predecessor <pred> --pr <job file> --pr-sha <HEAD>`
   and merges forward only on `ALLOW chain-s2` (exit 0; exit 3 = the predecessor is
-  already in HEAD, nothing to merge forward). The reason needs a green PR run (a
-  red goes through the inherited-red rules) and a sha that is on `origin/main`, not
-  in HEAD, with a subject ending `(#<predecessor>)`.
-- **Flag off:** the planner prints one notice and no `MERGE-FORWARD` line, so the
-  `--chain-s2` reason REFUSEs. `merge-forward-check.sh` reads no flag, and its
-  existing mode is unchanged.
+  already in HEAD, nothing to merge forward). The check derives its own evidence:
+  `<pr>` must be HEAD's PR, `<pred>` must be MERGED with its merge commit on
+  `origin/main`, and the pair rebuilt by `chain-graph.py --pair` from the
+  predecessor's premerge head must plan to `MERGE-FORWARD <pr> after <pred>`
+  (`chain-plan-core.sh --evidence`). It needs a green PR run (a red goes through the
+  inherited-red rules). It reads no flag and takes no plan file: `--chain-plan` is
+  refused, so the flag only decides whether you see the plan above.
+- **Before every GO on a planned chain:** run
+  `bash scripts/handover/chief-kit/chain-plan.sh --go-check <pr> --graph <graph>`
+  and GO only on `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash> at=<UTC>`. It
+  REFUSEs when the graph's Jira links are not `ok`, its head for the PR is not the
+  PR's current head, the PR or an S1 peer is no longer open, the graph is over 30
+  minutes old, the PR's ticket has an unmerged hard predecessor (Jira read live),
+  or the pair push check (`chain-push-check.sh --pr <pr> --peer <m>`) does not pass
+  for an S1 peer. It is procedural: `go.sh` does not run it yet.
 - A hard-edge cycle exits 1: the planner prints no order; break the cycle by hand.
 
 **Trust-path PRs.** A PR whose diff touches a pattern in

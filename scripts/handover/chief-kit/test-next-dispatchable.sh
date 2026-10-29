@@ -1110,6 +1110,7 @@ printf '%s\n' '> **Writes:** scripts/lib scripts/lib/' '> **Writes note:** docs/
 note_wide="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a bare directory still holds its subtree" "$note_wide" "# drop HIMMEL-9202 collision scripts/lib/nd-note-free.sh held by live worker N920"
 [ "$(printf '%s\n' "$note_wide" | grep -c '^# warn: N920 holds directory scripts/lib/$')" = 1 ] && pass "Writes note: --why warns once per held directory" || fail "Writes note: --why must warn once for scripts/lib/: $note_wide"
+case "$note_wide" in "# source mirror_age_min="*) pass "Writes note: the age header comes before the directory warning" ;; *) fail "Writes note: the age header is not first (got: ${note_wide%%$'\n'*})" ;; esac
 lacks "Writes note: normal output has no directory warning" "$(run --no-classify --workers-from "$WORK/fleet-note.json")" "# warn: N920 holds directory"
 printf '%s\n' '> **Writes:** none named' '> **Writes note:** writes confined to scripts/lib/.' > "$NOTE_WORKER"
 note_empty="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
@@ -1166,6 +1167,64 @@ cap_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-cap" CAP_LOG="$CAP_LOG" run --no-c
 [ "$(sort -u "$CAP_LOG" | grep -c .)" = 70 ] && pass "live cap: all 70 blocker keys are read live" || fail "live cap: expected 70 live reads, got $(sort -u "$CAP_LOG" | grep -c .)"
 lacks "live cap: a ticket whose 70 blockers are all Done live is not dropped for a blocker" "$cap_out" "# drop HIMMEL-9500 blocker"
 has "live cap: that ticket is a collision-free candidate" "$cap_out" "1 To Do candidate(s), 1 collision-free"
+M="$WORK/jira-mirror/HIMMEL"
+
+# the live blocker re-check, both directions: every hard blocker of a candidate is read live, an unreadable one is unknown
+LB_DIR="$WORK/jira-mirror-lb"; M="$LB_DIR/HIMMEL"; mkdir -p "$M"
+printf 'v1.0.1\tfalse\t\n' > "$LB_DIR/HIMMEL.versions.tsv"
+mk HIMMEL-9601 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror, open live" "Edit scripts/lib/lb-9601.sh."
+mk HIMMEL-9602 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9601"]' "blocked by a reopened ticket" "Edit scripts/lib/lb-9602.sh."
+mk HIMMEL-9603 "In Progress" High '[]' '["v1.0.1"]' '[]' "blocker open in the mirror, unreadable live" "Edit scripts/lib/lb-9603.sh."
+mk HIMMEL-9604 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9603"]' "blocked by an unreadable ticket" "Edit scripts/lib/lb-9604.sh."
+mk HIMMEL-9605 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9699"]' "blocked by a ticket the mirror lacks" "Edit scripts/lib/lb-9605.sh."
+mk HIMMEL-9606 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror and live" "Edit scripts/lib/lb-9606.sh."
+mk HIMMEL-9607 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9606"]' "blocked by a ticket Done everywhere" "Edit scripts/lib/lb-9607.sh."
+mk HIMMEL-9608 "In Progress" High '[]' '["v1.0.1"]' '[]' "blocker open in the mirror, Done live" "Edit scripts/lib/lb-9608.sh."
+mk HIMMEL-9609 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9608"]' "blocked by a ticket the mirror lags" "Edit scripts/lib/lb-9609.sh."
+mk HIMMEL-9611 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror, open live, read only for a RESUME row" "Edit scripts/lib/lb-9611.sh."
+mk HIMMEL-9612 "In Progress" High '[]' '["v1.0.1"]' '["HIMMEL-9611"]' "an orphan whose mirror-Done blocker is reopened live" "Edit scripts/lib/lb-9612.sh."
+mk HIMMEL-9613 "In Progress" High '[]' '["v1.0.1"]' '["HIMMEL-9606"]' "an orphan whose blocker is Done everywhere" "Edit scripts/lib/lb-9613.sh."
+cat > "$WORK/jira-lb" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = get ] || exit 2
+case "$2" in
+    HIMMEL-9601|HIMMEL-9611) st="In Progress" ;;
+    HIMMEL-9603|HIMMEL-9699) exit 1 ;;
+    *) st="Done" ;;
+esac
+printf '%s\tTask\t%s\tt\n' "$2" "$st"
+EOF
+chmod +x "$WORK/jira-lb"
+python3 -I -c 'import os, sys, time; t = time.time() - 5400; [os.utime(p, (t, t)) for p in sys.argv[1:]]' "$M"/*.md || fail "live blockers: setting the fixture's age failed"  # a controlled mirror age for the header row below (no touch -d: BSD and GNU differ)
+lb_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-lb" run --no-classify --why)"; lb_rc=$?
+[ "$lb_rc" = 0 ] && pass "live blockers: the run exits 0" || fail "live blockers: the run exited $lb_rc"
+has "live blockers: a blocker Done in the mirror but open live drops the candidate" "$lb_out" "# drop HIMMEL-9602 blocker HIMMEL-9601 (reopened live)"
+has "live blockers: a failed live read is blocker-unknown" "$lb_out" "# drop HIMMEL-9604 blocker-unknown HIMMEL-9603"
+has "live blockers: a blocker missing from the mirror and unreadable live is blocker-unknown" "$lb_out" "# drop HIMMEL-9605 blocker-unknown HIMMEL-9699"
+lacks "live blockers: an unreadable blocker is never listed" "$lb_out" "LOCAL?	HIMMEL-9604"
+has "live blockers: a blocker Done in the mirror and live is cleared" "$lb_out" "LOCAL?	HIMMEL-9607"
+has "live blockers: a blocker open in the mirror but Done live is cleared" "$lb_out" "LOCAL?	HIMMEL-9609"
+lacks "live blockers: a RESUME row whose mirror-Done blocker is reopened live is not listed" "$lb_out" "RESUME	HIMMEL-9612"
+has "live blockers: a RESUME row whose blocker is Done everywhere is listed" "$lb_out" "RESUME	HIMMEL-9613"
+has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min=90"
+has "live blockers: the header counts the live reads of the run" "$lb_out" "# source live_reads=6"
+case "$lb_out" in "# source mirror_age_min=90"*) pass "live blockers: the age header is the first line, ahead of every warning" ;; *) fail "live blockers: the age header is not first (got: ${lb_out%%$'\n'*})" ;; esac
+# a mirror directory that does not exist is an error, never an empty pool
+nomirror_out="$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; nomirror_rc=$?
+[ "$nomirror_rc" = 3 ] && pass "missing mirror: the dispatcher exits 3" || fail "missing mirror: the dispatcher exited $nomirror_rc"
+has "missing mirror: the error says so" "$nomirror_out" "mirror missing"
+# a listed mirror file that cannot be read is the same error, not a traceback
+M="$WORK/jira-mirror-ur/HIMMEL"; mkdir -p "$M"
+mk HIMMEL-9690 "To Do" High '[]' '["v1.0.1"]' '[]' "an unreadable mirror file" "Edit scripts/lib/ur-9690.sh."
+chmod 000 "$M/HIMMEL-9690.md"
+if [ -r "$M/HIMMEL-9690.md" ]; then
+    pass "unreadable mirror file: skipped (this user can read a mode 000 file)"
+else
+    ur_out="$(NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; ur_rc=$?
+    [ "$ur_rc" = 3 ] && pass "unreadable mirror file: the dispatcher exits 3" || fail "unreadable mirror file: the dispatcher exited $ur_rc"
+    has "unreadable mirror file: the error says so" "$ur_out" "mirror missing or unreadable"
+fi
+chmod 600 "$M/HIMMEL-9690.md"
 M="$WORK/jira-mirror/HIMMEL"
 
 printf '\n%d failure(s)\n' "$fails"

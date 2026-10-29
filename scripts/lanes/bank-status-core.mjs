@@ -3,7 +3,7 @@
 // The remedy every fail-closed codex reason names: the ONLY way
 // to refresh the codex bank reading is to run the bounded probe — bank-status
 // itself never spawns it.
-export const CODEX_BANK_PROBE_REMEDY = 'run: bun scripts/lanes/codex-usage-probe.ts';
+export const CODEX_USAGE_PROBE_REMEDY = 'run: bun scripts/lanes/codex-usage-probe.ts';
 
 // Mirrors windowLabel() in scripts/observability/quota-sources.ts (300->5h,
 // 10080->weekly, 43200->monthly). This .mjs copy exists because this module
@@ -55,7 +55,7 @@ function parseCacheTimestampMs(v) {
  */
 export function readCodexBankCache(text, nowMs, ttlSeconds) {
   /** @type {(reason: string) => CodexBankCacheResult} */
-  const unmeasurable = (reason) => ({ kind: 'unmeasurable', reason: `${reason} — ${CODEX_BANK_PROBE_REMEDY}` });
+  const unmeasurable = (reason) => ({ kind: 'unmeasurable', reason: `${reason} — ${CODEX_USAGE_PROBE_REMEDY}` });
   let parsed;
   try { parsed = JSON.parse(String(text)); } catch { return unmeasurable('codex bank cache unparseable'); }
   if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.limits)) {

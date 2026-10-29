@@ -47,6 +47,19 @@ expect_rc "an expired row fails" "$t" 1 "expired: alpha"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-26\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "a row expiring today still passes" "$t" 0
 
+# the expiry warning: three days or fewer left prints a WARN and still exits 0
+t="$(tree expiring)"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-28\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "a flag expiring in 2 days warns and passes" "$t" 0 "WARN flag alpha expires 2026-10-28 (in 2 days)"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-11-02\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "a flag expiring across a month end in 7 days does not warn" "$t" 0
+grep -q WARN "$WORK/out"; case $? in 1) pass "a flag 7 days out prints no WARN" ;; *) fail "a flag 7 days out must not warn" ;; esac
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-29\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "a flag expiring in 3 days warns" "$t" 0 "WARN flag alpha expires 2026-10-29 (in 3 days)"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-30\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "a flag expiring in 4 days passes" "$t" 0
+grep -q WARN "$WORK/out"; case $? in 1) pass "a flag 4 days out prints no WARN" ;; *) fail "a flag 4 days out must not warn" ;; esac
+
 t="$(tree unregistered)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/user.sh"
 expect_rc "a shell read of an unregistered flag fails" "$t" 1 "unregistered: beta"
@@ -82,6 +95,24 @@ expect_rc "a read in merge-on-green.sh fails" "$t" 1 "forbidden: alpha read in s
 t="$(tree gate-go)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/chief-kit/go.sh"
 expect_rc "a read in go.sh fails" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/go.sh"
+
+t="$(tree gate-mfc)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/merge-forward-check.sh"
+expect_rc "a read in merge-forward-check.sh fails" "$t" 1 "forbidden: alpha read in scripts/handover/merge-forward-check.sh"
+
+# one level down: a gate that execs or sources a helper by a literal path inherits the helper's reads
+t="$(tree gate-exec)"
+printf '#!/usr/bin/env bash\nSCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\nexec bash "$SCRIPT_DIR/chief-kit/user.sh" "$@"\n' > "$t/scripts/handover/merge-forward-check.sh"
+expect_rc "a gate that execs a helper reading a flag fails" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/handover/merge-forward-check.sh)"
+printf '#!/usr/bin/env bash\n. "$HERE/../handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
+rm -f "$t/scripts/handover/merge-forward-check.sh"
+expect_rc "a gate that sources a helper reading a flag fails" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/cr/gate.sh)"
+printf '#!/usr/bin/env bash\npython3 -I scripts/handover/chief-kit/user.sh\n' > "$t/scripts/cr/gate.sh"
+expect_rc "a repo-root literal path is followed too" "$t" 1 "(reached from scripts/cr/gate.sh)"
+printf '#!/usr/bin/env bash\nbash "$ROOT/scripts/handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
+expect_rc "a variable-rooted path is followed against the root too" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/cr/gate.sh)"
+printf '#!/usr/bin/env bash\necho "see scripts/handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
+expect_rc "a gate that only names the helper is clean" "$t" 0
 
 t="$(tree trust)"
 mkdir -p "$t/scripts/trusted"

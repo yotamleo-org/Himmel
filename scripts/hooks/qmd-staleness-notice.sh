@@ -36,14 +36,6 @@
 # ~50x slower than the host, so the fix is a host-side push
 # (scripts/luna/ship-index.sh), never a local rebuild.
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_LEAN_WORKER_SESSION HIMMEL_LEAN_LEG
-fi
-unset _ea_dir
 
 # a worker launched by headed-arm-worker.sh --profile
 # carries HIMMEL_LEAN_WORKER_SESSION=1. SessionStart output is not paid once - it sits in
@@ -249,6 +241,7 @@ _qmd_dir_ok() {
 # shellcheck disable=SC2317,SC2329  # invoked indirectly, via the EXIT trap.
 _qmd_publish() {
     exec >/dev/null 2>&1 || true
+    # prim-ok: the capture file is already the same-directory O_EXCL temp the child streamed into; atomic_write would re-copy it
     mv -f "$_cache_tmp" "$CACHE" 2>/dev/null || rm -f "$_cache_tmp" 2>/dev/null || true
     rmdir "$CACHE.lock" 2>/dev/null || true
 }
@@ -274,6 +267,7 @@ if [ "${QMD_STALENESS_REFRESH:-0}" = "1" ]; then
     if [ -n "$_lock_age" ] && [ "$_lock_age" -gt 300 ]; then
         rmdir "$CACHE.lock" 2>/dev/null || true
     fi
+    # prim-ok: a non-blocking try-lock (a loser exits at once) with a stale-age reap; with_lock blocks, so the semantics differ
     mkdir "$CACHE.lock" 2>/dev/null || exit 0   # another refresh is already running
     # mktemp, not "$CACHE.$$.tmp": a PID-derived name is guessable, and a plain
     # `>` redirect FOLLOWS a symlink someone else pre-placed there — which would

@@ -77,7 +77,7 @@ pre-commit hooks, which fire for any harness that runs real git.
 |---|---|---|---|
 | Pending-CR marker written on push (`check-cr-before-push.sh`) | git hook | git hook | git hook (same clone) |
 | `gh pr create` refused while the marker is pending | `check-cr-marker-on-pr-create.sh` | `.codex/hooks.json` parity | `parity_guard.py` `_pending_cr_reason`: fail-closed on an unreadable marker; skipped when the repo or branch cannot be determined |
-| Marker clears only with a responder and no blocker (`clear-cr-marker.sh`) | chokepoint | chokepoint | chokepoint |
+| Marker clears only with a responder and no blocker (`clear-review-marker.sh`) | chokepoint | chokepoint | chokepoint |
 | Cross-model review (`CR_REQUIRE_CROSS_MODEL`) | opt-in policy key | same | same |
 | Cross-family review: a responder outside the implementer's family (gate 3c) | opt-in per branch | same | same |
 

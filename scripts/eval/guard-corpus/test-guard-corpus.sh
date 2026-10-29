@@ -454,8 +454,8 @@ REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 if git -C "$REPO_ROOT" cat-file -e "HEAD:scripts/hooks/block-chokepoint-env-prefix.sh" 2>/dev/null \
    && command -v jq >/dev/null 2>&1; then
   cat > "$TMP/choke-seeds.txt" <<SEEDS
-env-prefix	deny	CR_REQUIRE_CROSS_MODEL=1 bash scripts/cr/clear-cr-marker.sh --list
-env-prefix	deny	env CR_REQUIRE_CROSS_MODEL=x bash scripts/cr/clear-cr-marker.sh
+env-prefix	deny	CR_REQUIRE_CROSS_MODEL=1 bash scripts/cr/clear-review-marker.sh --list
+env-prefix	deny	env CR_REQUIRE_CROSS_MODEL=x bash scripts/cr/clear-review-marker.sh
 exec-probe	allow	touch $TMP/choke-must-not-exist
 SEEDS
   python3 "$GEN" --seed 1 --seeds-file "$TMP/choke-seeds.txt" -o "$TMP/choke-corpus.jsonl"

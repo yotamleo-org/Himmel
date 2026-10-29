@@ -42,14 +42,6 @@
 # No timeout binary: the probes run unbounded, with a WARN line.
 # Exit: 0; 1 if --render-workers could not render; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env ACTION_ZERO_WORKERS_TIMEOUT ACTION_ZERO_LEGS_TIMEOUT
-fi
-unset _ea_dir
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

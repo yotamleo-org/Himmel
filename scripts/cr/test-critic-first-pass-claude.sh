@@ -26,7 +26,7 @@ ACCT="$(current_account_hash)"
 bank() { # bank <five_hour %>: a fresh usage cache at that utilization
     printf '{"account":"%s","five_hour":{"utilization":%s},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}\n' "$ACCT" "$1" "$(date +%s)" > "$W/bank.json"
 }
-export CADENCE_BANK_CACHE="$W/bank.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
+export CADENCE_USAGE_CACHE="$W/bank.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/bank-ledger.jsonl"
 printf '%s\n' '#!/usr/bin/env bash' 'true' > "$W/no-fleet.sh"; chmod +x "$W/no-fleet.sh"
 export FLEET_PS_CMD="$W/no-fleet.sh"
 

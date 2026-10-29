@@ -18,13 +18,12 @@ import { basename, join, resolve } from "node:path";
 import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
-import { legacyNamesOn } from "../../lib/env-alias.mjs";
 import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
 
 const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
-const laneEnv = process.env.WORKER_SESSION_LANE || (legacyNamesOn() ? process.env.LEG_LANE : undefined) || "";
+const laneEnv = process.env.WORKER_SESSION_LANE || "";
 const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
 // Only conventional lowercase MCP identifiers, never result/argument text.
 const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";

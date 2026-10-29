@@ -364,8 +364,8 @@ scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches 
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
-scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
-scripts/handover/chief-kit/test-chain-plan.sh	local	behaviour suite, hermetic planner, no gate role
+scripts/handover/chief-kit/test-chain-graph.sh	pr	trust-path
+scripts/handover/chief-kit/test-chain-plan.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-push-check.sh	local	behaviour suite, offline trial merges and advisory PR-open integration, no gate role
 scripts/handover/chief-kit/test-chain-state.sh	local	new, behaviour suite for chain-state.mjs (board v4 chains), no gate role, HIMMEL-6827
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -489,7 +489,7 @@ scripts/handover/test-lessons-sweep.sh	local	behaviour suite, 0 catches in the 4
 scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/test-merge-forward-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/test-merge-forward-check.sh	pr	trust-path
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
@@ -1164,3 +1164,5 @@ scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new HIMMEL-7
 scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suite, new HIMMEL-8013
 scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role, HIMMEL-6827
 scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role, HIMMEL-6827
+scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
+scripts/lib/test-afk-sudo.sh	pr	trust-path

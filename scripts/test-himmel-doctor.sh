@@ -72,7 +72,7 @@ export CODEX_HOME=""
 HIMMEL_DOCTOR_NOOP_HANDOVER="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-tests-handover.XXXXXX")"
 export HANDOVER_DIR="$HIMMEL_DOCTOR_NOOP_HANDOVER"
 # Never inspect the operator's bank policy in unrelated doctor fixtures.
-export USAGE_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"; unset BANK_LIFT_FILE
+export USAGE_LIFT_FILE="$HIMMEL_DOCTOR_NOOP_HANDOVER/no-lift.json"
 
 # Hermeticity: C14 reads OLLAMA_NO_CLOUD from the live env — never let an
 # inherited value from the launching shell leak into the default test runs.
@@ -214,7 +214,6 @@ export HIMMEL_DOCTOR_GRAPHIFY_VENV="$FAKEROOT/no-such-graphify-venv"
 export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
-export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 export CODEX_USAGE_CACHE="$FAKEROOT/no-such-codex-bank.json"
 
 # Same for C60/C61: never read the operator's real hermes checkout
@@ -4064,16 +4063,16 @@ mkdir -p "$t/scripts/lib" "$t/home/.himmel/state"
 cp "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$t/scripts/lib/"
 printf '%s' '{broken' > "$t/home/.himmel/state/usage-lift.json"
 chmod 600 "$t/home/.himmel/state/usage-lift.json"
-out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_USAGE_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
 if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 explains malformed lift"; else fail "C34 missing invalid lift reason"; fi
 chmod 666 "$t/home/.himmel/state/usage-lift.json"
-out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
+out="$(USAGE_LIFT_FILE="$t/home/.himmel/state/usage-lift.json" CADENCE_USAGE_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home")"
 if grepq "$out" -F 'lift set but INVALID: trust'; then pass "C34 explains untrusted lift"; else fail "C34 missing trust reason"; fi
 rm -f "$t/home/.himmel/state/usage-lift.json"
-printf '%s' '{broken' > "$t/home/.himmel/state/bank-lift.json"
-chmod 600 "$t/home/.himmel/state/bank-lift.json"
-out="$( (unset USAGE_LIFT_FILE BANK_LIFT_FILE; CADENCE_BANK_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home") )"
-if grepq "$out" -F 'lift set but INVALID: parse'; then pass "C34 still reads the old bank-lift.json"; else fail "C34 ignored the old bank-lift.json"; fi
+printf '%s' '{broken' > "$t/home/.himmel/state/bank-lift.json" # old-term-ok
+chmod 600 "$t/home/.himmel/state/bank-lift.json" # old-term-ok
+out="$( (unset USAGE_LIFT_FILE; CADENCE_USAGE_CACHE="$t/cache.json" run_doctor_fake_repo "$t" "$t/home") )"
+if grepq "$out" -F 'lift set but INVALID: parse'; then fail "C34 read the retired bank-lift.json"; else pass "C34 ignores the retired bank-lift.json"; fi # old-term-ok
 rm -rf "$t"
 
 echo "== C34: everything wired (real copies of the 3 target files) -> all three rows OK =="
@@ -6519,34 +6518,36 @@ c59_write() { # <age seconds>
     local at; at="$(date -u -d "@$(( $(date +%s) - $1 ))" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$(( $(date +%s) - $1 ))" +%Y-%m-%dT%H:%M:%S.000Z)"
     printf '{"limits":[],"planType":"prolite","capturedAt":"%s"}\n' "$at" > "$c59_t/codex-bank.json"
 }
-c59_run() { CODEX_BANK_CACHE="$c59_t/codex-bank.json" CLAUDE_DIR="$c59_t/home/claude" HOME="$c59_t/home" bash "$DOC" --no-color 2>&1; }
+c59_run() { CLAUDE_DIR="$c59_t/home/claude" HOME="$c59_t/home" bash "$DOC" --no-color 2>&1; }
 
 echo "== C59-codex-bank-cache: cache older than the TTL -> WARN naming the refresh command (RED) =="
 c59_write 172800
-out="$(CODEX_USAGE_CACHE='' c59_run)"
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-bank.json" c59_run)"
 if grepq "$out" -F 'WARN C59-codex-bank-cache' && grepq "$out" -F 'codex-usage-probe.ts'; then pass "C59 stale -> WARN"; else fail "C59 stale -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: fresh cache -> OK =="
 c59_write 60
-out="$(CODEX_USAGE_CACHE='' c59_run)"
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-bank.json" c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 fresh -> OK"; else fail "C59 fresh -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
 echo "== C59-codex-bank-cache: a leading-zero TTL is read as decimal, not octal =="
 c59_write 60
-out="$(CODEX_USAGE_CACHE='' CODEX_BANK_CACHE_TTL_SECONDS=0099999 c59_run)"
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-bank.json" CODEX_USAGE_CACHE_TTL_SECONDS=0099999 c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache' && ! grepq "$out" -F 'value too great'; then pass "C59 TTL 0099999 -> decimal"; else fail "C59 TTL 0099999 -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 
-echo "== C59-codex-bank-cache: CODEX_USAGE_CACHE and its TTL win over the old names =="
+echo "== C59-codex-bank-cache: the retired cache and TTL names are ignored =="
 c59_write 172800
 mv "$c59_t/codex-bank.json" "$c59_t/codex-usage.json"
 c59_write 60
 out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" c59_run)"
 if grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE"; else fail "C59 CODEX_USAGE_CACHE -> $(printf '%s' "$out" | grep -A1 C59)"; fi
-out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS=999999 CODEX_BANK_CACHE_TTL_SECONDS=60 c59_run)"
+out="$(CODEX_USAGE_CACHE='' CODEX_BANK_CACHE="$c59_t/codex-bank.json" c59_run)" # old-term-ok
+if grepq "$out" -F 'no codex bank cache at'; then pass "C59 ignores the retired CODEX_BANK_CACHE"; else fail "C59 read the retired CODEX_BANK_CACHE -> $(printf '%s' "$out" | grep -A1 C59)"; fi # old-term-ok
+out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS=999999 c59_run)"
 if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 reads CODEX_USAGE_CACHE_TTL_SECONDS"; else fail "C59 CODEX_USAGE_CACHE_TTL_SECONDS -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 for c59_new in 0 -5 junk; do
-  out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS="$c59_new" CODEX_BANK_CACHE_TTL_SECONDS=999999 c59_run)"
-  if grepq "$out" -F 'OK   C59-codex-bank-cache'; then pass "C59 new TTL '$c59_new' falls back to the old TTL"; else fail "C59 new TTL '$c59_new' -> $(printf '%s' "$out" | grep -A1 C59)"; fi
+  out="$(CODEX_USAGE_CACHE="$c59_t/codex-usage.json" CODEX_USAGE_CACHE_TTL_SECONDS="$c59_new" CODEX_BANK_CACHE_TTL_SECONDS=999999 c59_run)" # old-term-ok
+  if grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 new TTL '$c59_new' falls back to the 6 h default, not the retired TTL"; else fail "C59 new TTL '$c59_new' -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 done
 rm -f "$c59_t/codex-usage.json"
 

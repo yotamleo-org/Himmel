@@ -64,10 +64,6 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 
 warn() { echo "WARN worker-jira-status: $* (continuing; the worker is not blocked)" >&2; exit 0; }
 

@@ -15,7 +15,7 @@ trap 'rm -rf "$TMP"' EXIT
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs"
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"

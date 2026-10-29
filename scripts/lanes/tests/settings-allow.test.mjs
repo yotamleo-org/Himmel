@@ -30,7 +30,7 @@ const STEP0 = [
 // so the LITERAL_FILE wildcard-tail shape below does not apply to them.
 // scripts/cr/cr-scores.sh is deliberately NOT here — its
 // gateAllow grant is a `:*`-tail rule (args vary by call site), modeled the
-// same as the pre-existing ledger-append.sh/clear-cr-marker.sh `:*` grants,
+// same as the pre-existing ledger-append.sh/clear-review-marker.sh `:*` grants,
 // so it is excluded from the RIDERS check below for the same reason (see
 // that check's comment) rather than asserted exact.
 const EXACT_LITERALS = [
@@ -100,16 +100,16 @@ const TRUST_SPELLINGS = [
   // invocation of any of the three is sanctioned for a WORKER session only, see
   // WORKER_SESSION_SANCTIONED below. These two prove the wildcard tail cannot be ridden
   // past the granted script's own filename into a trust-root escape.
-  'bash scripts/cr/impacted-suites.sh/../clear-cr-marker.sh',
-  'bash scripts/cr/review-round.sh/../clear-cr-marker.sh',
-  'bash scripts//cr/clear-cr-marker.sh',
-  'bash ./scripts/cr/clear-cr-marker.sh',
-  'bash scripts/{cr,x}/clear-cr-marker.sh',
-  'bash scripts/c?/clear-cr-marker.sh',
-  'CR_X=1 bash scripts/cr/clear-cr-marker.sh',
-  'bash scripts/lanes/../cr/clear-cr-marker.sh',
-  'bash scripts/check-ci.sh/../cr/clear-cr-marker.sh',
-  'bash scripts/handover/test-x/../../cr/clear-cr-marker.sh',
+  'bash scripts/cr/impacted-suites.sh/../clear-review-marker.sh',
+  'bash scripts/cr/review-round.sh/../clear-review-marker.sh',
+  'bash scripts//cr/clear-review-marker.sh',
+  'bash ./scripts/cr/clear-review-marker.sh',
+  'bash scripts/{cr,x}/clear-review-marker.sh',
+  'bash scripts/c?/clear-review-marker.sh',
+  'CR_X=1 bash scripts/cr/clear-review-marker.sh',
+  'bash scripts/lanes/../cr/clear-review-marker.sh',
+  'bash scripts/check-ci.sh/../cr/clear-review-marker.sh',
+  'bash scripts/handover/test-x/../../cr/clear-review-marker.sh',
   'bash scripts/hooks/test-x/../../evil.sh',
   'bash scripts/hooks/guard-pr-check-literal.sh',
   'bash scripts/guardrails/leak-classes.sh',
@@ -117,8 +117,8 @@ const TRUST_SPELLINGS = [
   'bash scripts/quiet-run.sh suite -- bash scripts/cr/y.sh',
   'bash scripts/cr/pr-check-context.sh --x',
   'bash scripts/cr/pr-check-env.sh CR_PROFILE',
-  'bash tests/../scripts/cr/clear-cr-marker.sh',
-  'bash marketplace/plugins/../../scripts/cr/clear-cr-marker.sh',
+  'bash tests/../scripts/cr/clear-review-marker.sh',
+  'bash marketplace/plugins/../../scripts/cr/clear-review-marker.sh',
 ];
 
 for (const command of TRUST_SPELLINGS) {
@@ -138,7 +138,7 @@ for (const command of TRUST_SPELLINGS.filter((c) => !/^bash scripts\/cr\/(clear-
 // An exact scripts/cr literal with a second command riding
 // behind it must match no rule either - the literal grants that one command,
 // never a compound. (The `:*` gateAllow rules, including ledger-append.sh,
-// clear-cr-marker.sh and cr-scores.sh, are left out: this text
+// clear-review-marker.sh and cr-scores.sh, are left out: this text
 // model lets a `:*` tail absorb anything after a space, including a
 // `; rider`, while the harness matches each subcommand. All three scripts
 // are TARGETS of guard-pr-check-literal.sh, which
@@ -177,7 +177,7 @@ const SANCTIONED = [
   'bash scripts/handover/chief-kit/go.sh 1090 abc',
   'bash scripts/lanes/worker-burn.sh HIMMEL-1-N1-x',
   'bash scripts/lanes/worker-pr-open.sh /t/title /t/body',
-  'bash scripts/lib/bank-preflight.sh',
+  'bash scripts/lib/usage-preflight.sh',
   'bash scripts/git/restore-to-head.sh scripts/x.sh',
   'git push',
   'bash scripts/quiet-run.sh suite -- bash scripts/cr/test-clear-cr-marker.sh',

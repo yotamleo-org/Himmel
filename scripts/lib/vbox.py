@@ -2,16 +2,15 @@
 """
 VirtualBox control helper (HIMMEL-491 seed for the cross-OS provisioning SDK).
 
-Covers the two infra needs surfaced while bootstrapping the Windows test VM:
-  - power on / off / ensure-running by VM name, so we never run both the Ubuntu
-    and Windows VMs at once and OOM the host (concurrent VMs + a Windows Update
-    servicing run wedged the host this session).
+Covers two infra needs:
+  - power on / off / ensure-running by VM name, so we never run two test VMs
+    at once and OOM the host.
   - persist the NAT ssh forward via `modifyvm` (survives a full power-cycle),
     instead of the runtime `controlvm natpf1` rule which is lost on power-off.
 
 Pure stdlib (subprocess) so it has no dependency beyond VBoxManage itself.
 
-Used by scripts/machine-setup/windows-vm-setup.py and (later) the full SDK.
+Used by scripts/lib/vmsdk.py.
 """
 
 import os
@@ -20,27 +19,21 @@ import socket
 import subprocess
 import time
 
-# Standard install path on Windows, used only as a last-resort fallback.
-_WINDOWS_DEFAULT = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
-
 
 def _resolve_vboxmanage():
     """Resolve the VBoxManage binary to invoke.
 
     An explicit VBOXMANAGE_PATH env override always wins. Otherwise resolve
-    via PATH (covers Linux/macOS installs, where VBoxManage is a normal PATH
-    binary), falling back to the standard Windows install path when `which`
-    finds nothing there.
+    via PATH, falling back to the bare name when `which` finds nothing, so a
+    missing VBoxManage fails as a plain not-found when it runs.
     """
     override = os.environ.get("VBOXMANAGE_PATH")
     if override:
         # A relative path must resolve now: _run() runs it under cwd=$HOME.
-        # (A drive-qualified `C:/..` value is absolute on Windows already.)
-        if (("/" in override or os.sep in override) and override[1:2] != ":"
-                and not os.path.isabs(override)):
+        if "/" in override and not os.path.isabs(override):
             return os.path.abspath(override)
         return override
-    return shutil.which("VBoxManage") or _WINDOWS_DEFAULT
+    return shutil.which("VBoxManage") or "VBoxManage"
 
 
 VBOXMANAGE = _resolve_vboxmanage()

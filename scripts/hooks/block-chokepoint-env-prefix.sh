@@ -1365,6 +1365,7 @@ pobf_xglob() {
 
 # Every command name pobf_relief gives relief to (plus sed/awk, which lost
 # theirs); a function may not shadow one.
+# prim-ok: a command-name list the guard matches against, not a realpath call
 POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du jq basename dirname realpath readlink test tr column nl tac rev fold fmt paste rm find git bash sh zsh dash ksh mksh gh printf sort rg sed gsed awk gawk mawk python python3 node perl ruby command builtin time'
 
 # pobf_relief <raw text> [<env-clear regex>] -- over-deny relief (the

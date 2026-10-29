@@ -35,7 +35,7 @@ t() { # t <name> <expected-exit> — runs launcher in the prepared sandbox.
 }
 
 setup() { # fresh sandbox: fake HOME with minimal ~/.claude, mock claude in BIN
-  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS LEG_LANE WORKER_SESSION_LANE
+  unset OPENROUTER_MODEL OPENROUTER_HAIKU OPENROUTER_SONNET OPENROUTER_OPUS WORKER_SESSION_LANE
   FAKEHOME="$(mktemp -d)"; WORK="$(mktemp -d)"; BIN="$(mktemp -d)"
   MATRIX=""   # empty -> t() defaults to the REAL matrix (no openrouter cell)
   API_BASE="http://127.0.0.1:1/api/v1"   # fast-failing loopback -> credit UNKNOWN, no network
@@ -286,6 +286,19 @@ write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 t "ambient ANTHROPIC_API_KEY neutralized to empty" 0
 grep -qxF "ANTHROPIC_API_KEY=" "$WORK/child-env.txt" || { echo "FAIL: ambient ANTHROPIC_API_KEY not neutralized"; FAILS=$((FAILS+1)); }
 unset ANTHROPIC_API_KEY
+
+# --- T3e2: a session started from another Claude session's Bash tool must not
+# inherit that session's job dir or messaging socket/token: claude would adopt the
+# launcher's name from the job's state.json and route messages as the launcher.
+setup; KEY="or-test-123"
+export CLAUDE_JOB_DIR=/nonexistent/jobs/launcher CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/launcher.sock CLAUDE_CODE_MESSAGING_TOKEN=launcher-token
+write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
+t "launching session identity dropped" 0
+grep -q "^ANTHROPIC_AUTH_TOKEN=or-test-123" "$WORK/child-env.txt" || { echo "FAIL: child env capture missing or unreadable"; FAILS=$((FAILS+1)); }
+for _v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
+  ! grep -q "^${_v}=" "$WORK/child-env.txt" || { echo "FAIL: child env still carries $_v"; FAILS=$((FAILS+1)); }
+done
+unset CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 
 # --- T3f/T3g/T3h: the egress gate is PURPOSE-aware. The launcher
 # performs inference, so (f) an allow scoped to a DIFFERENT purpose must NOT

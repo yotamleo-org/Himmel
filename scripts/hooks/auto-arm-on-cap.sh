@@ -141,6 +141,10 @@ if [ -n "$non_claude_lane" ]; then
 fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
+# Best-effort (this is a fail-open watchdog): a missing prim.sh only loses the
+# last-resort scratch-dir snapshot below, and the existing MALFUNCTION path covers it.
+# shellcheck source=/dev/null
+{ [ -r "$hook_dir/../lib/prim.sh" ] && . "$hook_dir/../lib/prim.sh"; } 2>/dev/null || true
 
 # >>> WS9-QUOTA-GAUGE: best-effort cross-lane quota-gauge observation.
 # Source the ledger lib best-effort — a missing lib must NOT break this
@@ -660,8 +664,8 @@ py_err="$STATE_DIR/auto-arm-py-err"
 py_out="$STATE_DIR/auto-arm-py-out"
 # honor the operator's validated bank lift, the way bank-preflight
 # and guard-implementor-dispatch do. A valid lift spends seven_day to 100; a
-# standing lift also spends five_hour to 100 unless CADENCE_USAGE_MAX_PCT or the
-# old CADENCE_BANK_MAX_PCT is explicit. Anything else (missing, expired, other account, unreadable lib) is
+# standing lift also spends five_hour to 100 unless CADENCE_USAGE_MAX_PCT is
+# explicit. Anything else (missing, expired, other account, unreadable lib) is
 # no lift: both windows keep $THRESHOLD, exactly as before (fail-open).
 FH_THRESHOLD="$THRESHOLD"
 SD_THRESHOLD="$THRESHOLD"
@@ -671,7 +675,7 @@ _lift_lib="$hook_dir/../lib/usage-lift.sh"
 # shellcheck disable=SC1091
 if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null && usage_lift_valid "$CACHE_PATH" 2>/dev/null; then
     SD_THRESHOLD=100
-    if [ "${USAGE_LIFT_STANDING:-}" = true ] && [ -z "${CADENCE_USAGE_MAX_PCT:-}${CADENCE_BANK_MAX_PCT:-}" ]; then FH_THRESHOLD=100; fi
+    if [ "${USAGE_LIFT_STANDING:-}" = true ] && [ -z "${CADENCE_USAGE_MAX_PCT:-}" ]; then FH_THRESHOLD=100; fi
 fi
 set +e
 py_armor - "$CACHE_PATH" "$THRESHOLD" "$FH_THRESHOLD" "$SD_THRESHOLD" <<'PY' >"$py_out" 2>"$py_err"
@@ -875,7 +879,7 @@ if ! write_snapshot "$snapshot"; then
         # Both preferred locations unwritable — one last attempt in a
         # mktemp scratch dir so the arm can still proceed.
         _tmp_snap_dir=""
-        if _tmp_snap_dir=$(mktemp -d "${TMPDIR:-/tmp}/auto-arm-snap-XXXXXX" 2>/dev/null); then
+        if _tmp_snap_dir=$(tmpdir 2>/dev/null); then
             snapshot="$_tmp_snap_dir/auto-arm-status-$fired_key.md"
         fi
         if [ -z "$_tmp_snap_dir" ] || ! write_snapshot "$snapshot"; then

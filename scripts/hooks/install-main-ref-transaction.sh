@@ -247,6 +247,7 @@ HOOK
         rm -f "$tmp_path"
         return 2
     fi
+    # prim-ok: atomic_write publishes a private 0600 file, but git skips a non-executable hook, so the shim must be chmod +x and verified BEFORE the rename (a ref update in the window would run unguarded)
     if ! mv -f "$tmp_path" "$hook_path"; then
         echo "install-main-ref-transaction: cannot move $tmp_path into place at $hook_path -- any previously-installed hook there is untouched" >&2
         rm -f "$tmp_path"

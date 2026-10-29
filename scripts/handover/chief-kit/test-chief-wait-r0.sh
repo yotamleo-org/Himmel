@@ -31,7 +31,7 @@
 # Run: bash scripts/handover/chief-kit/test-chief-wait-r0.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/chief-wait.sh}}"
+WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }

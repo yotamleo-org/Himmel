@@ -54,7 +54,7 @@
       "hooks": [
         "scripts/hooks/guard-chief-dispatch.sh"
       ],
-      "bypasses": "Skips the \"guard chief dispatch\" guard (scripts/hooks/guard-chief-dispatch.sh). Old name: CONSOLE_DISPATCH_OK.",
+      "bypasses": "Skips the \"guard chief dispatch\" guard (scripts/hooks/guard-chief-dispatch.sh).",
       "remedy": "CHIEF_DISPATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
@@ -62,7 +62,7 @@
       "hooks": [
         "scripts/hooks/guard-chief-foreground.sh"
       ],
-      "bypasses": "Skips the \"guard chief foreground\" guard (scripts/hooks/guard-chief-foreground.sh). Old name: CONSOLE_FG_OK.",
+      "bypasses": "Skips the \"guard chief foreground\" guard (scripts/hooks/guard-chief-foreground.sh).",
       "remedy": "CHIEF_FG_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
@@ -80,22 +80,6 @@
       ],
       "bypasses": "Skips the \"block terminal write fence\" guard (scripts/hooks/block-terminal-write-fence.sh).",
       "remedy": "CODEX_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
-      "name": "CONSOLE_DISPATCH_OK",
-      "hooks": [
-        "scripts/hooks/guard-chief-dispatch.sh"
-      ],
-      "bypasses": "Skips the \"guard chief dispatch\" guard (scripts/hooks/guard-chief-dispatch.sh).",
-      "remedy": "CONSOLE_DISPATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
-      "name": "CONSOLE_FG_OK",
-      "hooks": [
-        "scripts/hooks/guard-chief-foreground.sh"
-      ],
-      "bypasses": "Skips the \"guard chief foreground\" guard (scripts/hooks/guard-chief-foreground.sh).",
-      "remedy": "CONSOLE_FG_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
       "name": "CR_MERGE_GATE_OK",
@@ -287,14 +271,6 @@
       "remedy": "LANES_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
-      "name": "LEG_CONTEXT_HANDOFF_OK",
-      "hooks": [
-        "scripts/hooks/guard-worker-context-handoff.sh"
-      ],
-      "bypasses": "Lets a chief-spawned worker launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first.",
-      "remedy": "LEG_CONTEXT_HANDOFF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
       "name": "MAIN_REF_TRANSACTION_OK",
       "hooks": [
         "scripts/hooks/check-main-ref-transaction.sh"
@@ -445,7 +421,7 @@
       "hooks": [
         "scripts/hooks/guard-worker-context-handoff.sh"
       ],
-      "bypasses": "Lets a chief-spawned worker session launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first. Old name: LEG_CONTEXT_HANDOFF_OK.",
+      "bypasses": "Lets a chief-spawned worker session launched with the context guard on keep working past its threshold (75 % of its autocompact ceiling) without a CHECKPOINT or RESUME doc first.",
       "remedy": "WORKER_SESSION_CONTEXT_HANDOFF_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     }
   ]

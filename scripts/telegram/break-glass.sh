@@ -66,15 +66,6 @@
 # BREAK_GLASS_MERGE_TRIES / BREAK_GLASS_MERGE_SLEEP, BREAK_GLASS_ALLOW_REGISTRY
 # (registry file), BREAK_GLASS_ALLOW_TARGET (file allow-rule writes).
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env BREAK_GLASS_CHIEF_CMD BREAK_GLASS_CONSOLE_CMD
-    alias_env BREAK_GLASS_WORKER_CMD BREAK_GLASS_LEG_CMD
-fi
-unset _ea_dir
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/git-clean.sh

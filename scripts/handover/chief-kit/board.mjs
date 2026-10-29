@@ -67,7 +67,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitClean } from '../../lanes/git-clean.mjs';
 import { readToolHealth } from '../../eval/worker-digest/tool-health.mjs';
-import { legacyFlag, legacyNamesOn } from '../../lib/env-alias.mjs';
+import { legacyFlag } from '../../lib/env-alias.mjs';
 import { redact } from './redact.mjs';
 import { collect as collectCloud } from './cloud-liveness.mjs';
 import { goalOf, renderUserBoard } from './board-user.mjs';
@@ -644,11 +644,11 @@ const cloudPanel = (() => {
 })();
 
 // Usage lift: one read-only line from the lift's `show` output -- the
-// same reason source as the doctor's C34 row. BOARD_USAGE_LIFT (old name
-// BOARD_BANK_LIFT) overrides the script (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS).
-// Reads the usage-lift: and the old bank-lift: prefix. Never renders the account or any
+// same reason source as the doctor's C34 row. BOARD_USAGE_LIFT
+// overrides the script (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS).
+// Reads the usage-lift: prefix. Never renders the account or any
 // field but until/standing; not part of the fingerprint; never fatal.
-const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || (legacyNamesOn() ? process.env.BOARD_BANK_LIFT : undefined) || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
+const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
 const bankLiftLine = (() => {
     const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">weekly budget override: ${text}</p>`;
     try {
@@ -660,16 +660,15 @@ const bankLiftLine = (() => {
         }
         const lines = out.split('\n').map((l) => l.replace(/\r$/, ''));
         let status = null;
-        for (const l of lines) { const m = /^(?:usage|bank)-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
+        for (const l of lines) { const m = /^usage-lift: (VALID|INVALID: (.+))$/.exec(l); if (m) status = m; }
         if (!status) return row('?', 'unavailable');
-        if (lines.some((l) => /^(?:usage|bank)-lift: none$/.test(l)) || status[2] === 'missing') return row('none', 'no lift set');
+        if (lines.some((l) => /^usage-lift: none$/.test(l)) || status[2] === 'missing') return row('none', 'no lift set');
         if (status[1] !== 'VALID') return row('invalid', `lift set but INVALID: ${safe(status[2], 40)}`);
         let tail = '';
         try {
-            // With both lift files read, show the stricter of the two, as the validator does.
             const blocks = [[]];
             for (const l of lines) {
-                if (/^(?:usage|bank)-lift:/.test(l)) blocks.push([]);
+                if (/^usage-lift:/.test(l)) blocks.push([]);
                 else blocks[blocks.length - 1].push(l);
             }
             const js = blocks.filter((b) => b.join('').trim()).map((b) => JSON.parse(b.join('\n')));
@@ -698,7 +697,7 @@ const archiveTables = [];
 // the render. Not part of the fingerprint: --changed does not move on a new ledger row.
 const costSection = (() => {
     try {
-        const ledger = (process.env.WORKER_SESSION_COST_LEDGER || (legacyNamesOn() ? process.env.LEG_COST_LEDGER : undefined))
+        const ledger = process.env.WORKER_SESSION_COST_LEDGER
             || (process.env.HANDOVER_DIR ? join(process.env.HANDOVER_DIR, '.ledger', 'leg-cost.jsonl') : '');
         if (!ledger) return '';
         const d = new Date();
@@ -732,10 +731,10 @@ const costSection = (() => {
 // nothing and never fails the render; not part of the fingerprint.
 const explorationSection = (() => {
     try {
-        const dir = (process.env.WORKER_SESSION_DIGEST_STATE_DIR || (legacyNamesOn() ? process.env.LEG_DIGEST_STATE_DIR : undefined)) || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
+        const dir = process.env.WORKER_SESSION_DIGEST_STATE_DIR || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
         const hours = Number.parseInt(process.env.BOARD_EXPLORATION_HOURS || '', 10);
         const since = Date.now() - (hours > 0 ? hours : 24) * 3600 * 1000;
-        const limit = Number.parseInt((process.env.WORKER_SESSION_EXPLORATION_FLAG_TOKENS || (legacyNamesOn() ? process.env.LEG_EXPLORATION_FLAG_TOKENS : undefined)) || '', 10);
+        const limit = Number.parseInt(process.env.WORKER_SESSION_EXPLORATION_FLAG_TOKENS || '', 10);
         const flagAt = limit > 0 ? limit : 100000;
         const rows = [];
         for (const name of readdirSync(dir)) {
@@ -795,7 +794,7 @@ const failuresSection = (() => {
         const start = (/"started":"([0-9TZ:-]+)"/.exec(lock) || [])[1];
         if (!start) return unavailable;
         const home = process.env.HOME || '';
-        const rows = jsonRows(process.env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || (legacyNamesOn() ? process.env.HIMMEL_LEG_FAILURES_LEDGER : undefined) || join(home, '.himmel', 'leg-failures.jsonl'), start);
+        const rows = jsonRows(process.env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl'), start);
         const routes = jsonRows(process.env.HIMMEL_FAILURE_ROUTES_LOG || join(home, '.himmel', 'state', 'failure-routes.log.jsonl'), start);
         const byClass = new Map();
         for (const r of rows) {

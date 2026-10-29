@@ -88,14 +88,13 @@ fail_precondition() {
 
 name="${1:-}"
 [ -n "$name" ] || fail_precondition "codex-hook-adapter: missing script name — fail closed"
-# run-hook.cmd exports CLAUDE_PROJECT_DIR with backslashes;
-# normalise a copy to forward slashes so the guardrail path resolves under Git
-# Bash. The bash branch already exports a forward-slash path (no-op here).
+# Normalise a copy of CLAUDE_PROJECT_DIR to forward slashes; run-hook.sh already
+# exports a forward-slash path, so this is a no-op there.
 [ -n "${CLAUDE_PROJECT_DIR:-}" ] || fail_precondition "codex-hook-adapter: CLAUDE_PROJECT_DIR unset — fail closed"
 proj="${CLAUDE_PROJECT_DIR//\\//}"
 
 # <name> may be a PLUS-separated CHAIN — `a.sh+b.sh+c.sh`. Codex
-# launches one cmd.exe -> Git Bash -> adapter stack PER hook entry, so nine
+# launches one wrapper -> adapter stack PER hook entry, so nine
 # PreToolUse entries on a Bash tool call cost nine of them; a chain runs the same
 # guardrails, in the same order, inside ONE adapter. Order is the order Codex
 # would have fired them in (block order in hooks.json, then within-block order) —
@@ -103,13 +102,9 @@ proj="${CLAUDE_PROJECT_DIR//\\//}"
 # scripts/codex/test-codex-hook-parity.sh maps every element back to its Claude
 # wiring. A single name is just a chain of one, so nothing below is special-cased.
 #
-# The separator is `+`, NOT a comma: cmd.exe treats `,` (like space, tab, `;` and
-# `=`) as an ARGUMENT DELIMITER, so `run-hook.cmd --sandbox a.sh,b.sh,c.sh`
-# arrives as %2=a.sh %3=b.sh and the chain would silently truncate to its first
-# guardrail — every later guard quietly not running. Measured on cmd.exe
-# 10.0.26200; `+` passes through intact. The parity gate rejects a comma in a
-# run-hook.cmd command precisely because the truncation happens BEFORE the
-# adapter can see it.
+# The separator is `+`, NOT a comma: the removed Windows wrapper split a comma
+# chain into separate arguments and silently ran only its first guardrail, before
+# the adapter could see it. The parity gate still rejects a comma in a chain.
 #
 # Validate the WHOLE string before splitting: bash's treatment of empty fields
 # under a non-whitespace IFS is exactly the kind of edge a security path should

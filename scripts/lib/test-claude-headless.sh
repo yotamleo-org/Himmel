@@ -10,7 +10,7 @@ SUT="$REPO/scripts/lib/claude-headless.sh"
 PASS=0; FAIL=0; SKIP=0
 W="$(mktemp -d -t claude-headless-test.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 # A bank read can prune dead reservations; never inspect the real slot root.
-export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
+export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_USAGE_LANE=native
 
 # bank-preflight now distrusts a cache whose account doesn't
 # match the current identity — synthesize one so mk_bank_cache's fixture
@@ -28,15 +28,15 @@ check_ne() { if [ "$2" != "$3" ]; then PASS=$((PASS+1)); echo "ok - $1";
   else FAIL=$((FAIL+1)); echo "FAIL - $1: expected NOT '$2'"; fi; }
 
 # A fake bank-preflight cache that always verdicts PROCEED, hermetic (no
-# network, no real usage cache). bank-preflight.sh reads primaries_refreshed_at
-# freshly, so re-stamp it per-call via CADENCE_BANK_SKIP_REFRESH.
+# network, no real usage cache). usage-preflight.sh reads primaries_refreshed_at
+# freshly, so re-stamp it per-call via CADENCE_USAGE_SKIP_REFRESH.
 BANK_CACHE="$W/bank-cache.json"
 mk_bank_cache() { printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}\n' "$ACCT" "$(date +%s)" > "$BANK_CACHE"; }
 mk_bank_cache
-export CADENCE_BANK_CACHE="$BANK_CACHE"
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
-# bank-preflight.sh now also counts live WORKER sessions via a real
+export CADENCE_USAGE_CACHE="$BANK_CACHE"
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_LEDGER="$W/bank-ledger.jsonl"
+# usage-preflight.sh now also counts live WORKER sessions via a real
 # `ps -eo args` by default - without this, every "happy path" case below
 # would call the REAL fleet count against THIS machine's own ambient process
 # table and could spuriously refuse (bank preflight refused dispatch:
@@ -500,7 +500,7 @@ rm -f "$LIVE_DIR"/*.json
 SH18="$W/shadow18"; mkdir -p "$SH18"
 # The shadows come from the shell-startup file and are installed ONLY in
 # claude-headless.sh itself (a ps test: bash 3.2 runs the startup file before it
-# sets $0, so a $0 test never matches there): bank-preflight.sh and the other children
+# sets $0, so a $0 test never matches there): usage-preflight.sh and the other children
 # must stay intact, or the launch is refused for the wrong reason and the rows
 # go vacuous. They arm from a DEBUG trap at the first command AFTER the
 # seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier

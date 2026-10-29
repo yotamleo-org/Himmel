@@ -186,13 +186,11 @@ plan=$(JIRA_CMD="$FAKE_JIRA" FAKE_JIRA_OUT=$'HIMMEL-101\tTask\tTo Do\tWidget A' 
 assert_contains     "plan still builds"            "HIMMEL-101"          "$plan"
 assert_not_contains "no provisioning block w/o ledger" "prior ledger state:" "$plan"
 
-# Test 11: AFK_* defaults, each falling back to its OVERNIGHT_* name ---
+# Test 11: AFK_LIMIT sets the limit ---
 
-echo "TEST: AFK_LIMIT wins, OVERNIGHT_LIMIT is the fallback"
-plan=$(AFK_LIMIT=2 OVERNIGHT_LIMIT=4 JIRA_CMD="$FAKE_JIRA" FAKE_JIRA_OUT=$'HIMMEL-1\tTask\tTo Do\tOne' bash "$SCRIPT")
-assert_contains "new name wins"      "limit: \`2\`" "$plan"
-plan=$(env -u AFK_LIMIT OVERNIGHT_LIMIT=4 JIRA_CMD="$FAKE_JIRA" FAKE_JIRA_OUT=$'HIMMEL-1\tTask\tTo Do\tOne' bash "$SCRIPT")
-assert_contains "old name still read" "limit: \`4\`" "$plan"
+echo "TEST: AFK_LIMIT sets the limit"
+plan=$(AFK_LIMIT=2 JIRA_CMD="$FAKE_JIRA" FAKE_JIRA_OUT=$'HIMMEL-1\tTask\tTo Do\tOne' bash "$SCRIPT")
+assert_contains "AFK_LIMIT is read"      "limit: \`2\`" "$plan"
 
 # Summary --------------------------------------------------------------
 

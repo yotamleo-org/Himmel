@@ -31,7 +31,6 @@ import { join, resolve, dirname } from "node:path";
 import { spawn } from "bun";
 import { BASH_BIN, REPO_ROOT, killTree, detectContentFilter, NON_INTERACTIVE_EDITOR_ENV, type PermissionMode } from "./run";
 import { SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { transcriptDirFor, PUSH_PROTECTION_DISCLOSURE, composeDispatchGitState, gitCapture, ensureWorkspaceTrust, preflightWindowCheck, measureOverheadChars, finalMeta, resolveProfileSettings, teardownMintedWorktree, DEFAULT_LANE_PROFILE, mintRetaskNonce, mintSpawnStamp, composeRetaskBlock, STASH_BAN_LINE, composeBashShapeWarning, composeOutboxWriteHint, composeWorkerSettings, refuseBypassPermissions, refuseUnknownPermissionMode, isHelpFlag, writeLiveWorkerMeta, readBriefFile, armStartupWatchdog, resolveFailfastWindowMs } from "./spawn-common";
 // symptom-brief loop breaker, two-stage — shared with spawn-glm
 // so both worker lanes carry one decision table: invariant required at the
@@ -49,7 +48,7 @@ import { parseAddPlugins } from "../lanes/plugin-profiles.mjs";
 // shared declarative flag-table parser — see spawn-glm.ts's
 // GLM_FLAG_TABLE for the twin.
 import { parseLaneArgs, type FlagTable } from "./lane-args";
-import { CODEX_BANK_PROBE_REMEDY, readCodexBankCache } from "../lanes/bank-status-core.mjs";
+import { CODEX_USAGE_PROBE_REMEDY, readCodexBankCache } from "../lanes/bank-status-core.mjs";
 import { resolveFundedMaxPct } from "../lanes/funded-max-pct.mjs";
 import { claudexSessionRoots } from "../lanes/claudex-session-root.mjs";
 
@@ -451,10 +450,10 @@ export function parseClaudexArgs(argv: string[]): { ok: true; args: ClaudexParse
 // dispatch leaks a process whenever the kill fails, and the dispatch path is
 // exactly where that would compound. A stale/absent cache refuses, and the
 // refusal names the probe as the remedy.
-const CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches usage-status.ts
+const CODEX_USAGE_CACHE_TTL_DEFAULT_SECONDS = 6 * 60 * 60; // matches usage-status.ts
 
 export function codexBankCachePath(home: string, env: Record<string, string | undefined> = process.env): string {
-  return env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
+  return env.CODEX_USAGE_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
 }
 
 export type CodexBankRead = { usedPct: number | null; reason: string | null };
@@ -465,7 +464,7 @@ export type CodexBankRead = { usedPct: number | null; reason: string | null };
 export function fetchCodexWeeklyUsedPercent(
   home: string,
   nowMs: number = Date.now(),
-  ttlSeconds: number = CODEX_BANK_CACHE_TTL_DEFAULT_SECONDS,
+  ttlSeconds: number = CODEX_USAGE_CACHE_TTL_DEFAULT_SECONDS,
   readFile: (path: string) => string = (path) => readFileSync(path, "utf8"),
 ): CodexBankRead {
   const path = codexBankCachePath(home);
@@ -473,7 +472,7 @@ export function fetchCodexWeeklyUsedPercent(
   try {
     text = readFile(path);
   } catch {
-    return { usedPct: null, reason: `codex bank cache missing/unreadable at ${path} — ${CODEX_BANK_PROBE_REMEDY}` };
+    return { usedPct: null, reason: `codex bank cache missing/unreadable at ${path} — ${CODEX_USAGE_PROBE_REMEDY}` };
   }
   const result = readCodexBankCache(text, nowMs, ttlSeconds);
   if (result.kind !== "measured") return { usedPct: null, reason: result.reason };
@@ -483,7 +482,7 @@ export function fetchCodexWeeklyUsedPercent(
   // windows keep their own reset instants and are none of this lane's business
   // (no single global reset is ever synthesized).
   const weekly = result.readings.find((r) => r.window === "weekly");
-  if (weekly === undefined) return { usedPct: null, reason: `codex bank cache holds no live WEEKLY window — ${CODEX_BANK_PROBE_REMEDY}` };
+  if (weekly === undefined) return { usedPct: null, reason: `codex bank cache holds no live WEEKLY window — ${CODEX_USAGE_PROBE_REMEDY}` };
   return { usedPct: weekly.usedPct, reason: null };
 }
 
@@ -494,22 +493,14 @@ export function parsePct(raw: string | undefined, fallback: number): number {
   return s !== undefined && s !== "" && Number.isFinite(n) && n >= 0 && n <= 100 ? n : fallback;
 }
 
-// CLAUDEX_USAGE_OK is the new name of CLAUDEX_BANK_OK: the override needs one of
-// them at 1, and either one set to anything else refuses it. With legacy names
-// off only the new name grants; the old one still refuses.
+// CLAUDEX_USAGE_OK=1 grants the override; any other non-empty value refuses it.
 export function codexBankOverride(env: Record<string, string | undefined>): boolean {
-  const isSet = (v: string | undefined) => v !== undefined && v !== "";
-  const grants = [env.CLAUDEX_USAGE_OK, legacyNamesOn(env) ? env.CLAUDEX_BANK_OK : undefined].filter(isSet);
-  const set = [env.CLAUDEX_USAGE_OK, env.CLAUDEX_BANK_OK].filter(isSet);
-  return grants.length > 0 && set.every((v) => v === "1");
+  return env.CLAUDEX_USAGE_OK === "1";
 }
 
-// CLAUDEX_USAGE_WARN_PCT beside the old CLAUDEX_BANK_WARN_PCT: the narrower counts.
+// CLAUDEX_USAGE_WARN_PCT sets the warn point; unset or invalid falls back to 80.
 export function codexBankWarnPct(env: Record<string, string | undefined>): number {
-  const set = [env.CLAUDEX_USAGE_WARN_PCT, env.CLAUDEX_BANK_WARN_PCT]
-    .map((v) => parsePct(v, NaN))
-    .filter((n) => !Number.isNaN(n));
-  return set.length ? Math.min(...set) : 80;
+  return parsePct(env.CLAUDEX_USAGE_WARN_PCT, 80);
 }
 
 export type BankPreflightResult = { action: "ok" | "warn" | "refuse"; usedPct: number | null; message?: string };
@@ -521,7 +512,7 @@ export type BankPreflightResult = { action: "ok" | "warn" | "refuse"; usedPct: n
 // dies mid-run — the tree survives but the work is lost.
 export function evaluateCodexBankPreflight(usedPct: number | null, opts: { warnPct: number; refusePct: number; override: boolean; reason?: string | null }): BankPreflightResult {
   if (usedPct === null) {
-    const why = opts.reason ?? `codex weekly bank unreadable — ${CODEX_BANK_PROBE_REMEDY}`;
+    const why = opts.reason ?? `codex weekly bank unreadable — ${CODEX_USAGE_PROBE_REMEDY}`;
     return opts.override
       ? { action: "warn", usedPct: null, message: `${why} — proceeding under explicit override after no bank preflight was possible` }
       : { action: "refuse", usedPct: null, message: `${why} — refusing because no bank preflight was possible. Override with CLAUDEX_USAGE_OK=1 or --force only after checking capacity manually.` };

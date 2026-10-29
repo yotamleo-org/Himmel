@@ -3,7 +3,7 @@
 # Only prim_-prefixed state and the four public functions are installed.
 # Paths must be in caller-controlled directories on one local host.
 
-prim_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" || return 1
+prim_lib_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
 
 # atomic_write FILE: stdin is published by a same-directory rename. Readers
 # see the old or new file, never an incomplete write. Existing permissions are

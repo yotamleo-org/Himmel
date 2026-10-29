@@ -24,8 +24,8 @@ HERMETIC_HOME="$WS/hermetic-home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_CACHE="$WS/no-bank-cache.json"
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_CACHE="$WS/no-bank-cache.json"
 unset CLAUDE_USAGE_CACHE CLAUDE_ACCOUNT_CONFIG GRAPHIFY_MAX_CHUNKS_PER_RUN GRAPHIFY_SECONDS_PER_CHUNK GRAPHIFY_HOLLOW_RETRY_MAX
 export GRAPHIFY_CLAUDE_CONFIG_DIR="$WS/claude-graphify"
 export GRAPHIFY_CLAUDE_SOURCE_CONFIG_DIR="$HOME/.claude"

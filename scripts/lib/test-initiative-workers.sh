@@ -33,13 +33,11 @@ check "overnight subset"                "execute merge"               "$(resolve
 check "selector wins over initiative"   "execute"                     "$(resolve_workers all execute 1)"
 check "overnight falsy → empty"         ""                            "$(resolve_workers '' 0 1)"
 
-# resolve_workers_env over the live env: afk names, old overnight names, precedence.
+# resolve_workers_env over the live env: afk names, precedence.
 env_workers() { env -u HIMMEL_INITIATIVE -u HIMMEL_INITIATIVE_AFK -u HIMMEL_AFK \
-  -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_OVERNIGHT "$@" \
+  "$@" \
   bash -c ". '$here/initiative-workers.sh'; resolve_workers_env"; }
 check "env afk names → afk steps"       "execute merge"               "$(env_workers HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK='merge,execute')"
-check "env old names still work"        "execute"                     "$(env_workers HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=execute)"
-check "env afk step list wins over old" "merge"                       "$(env_workers HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK=merge HIMMEL_INITIATIVE_OVERNIGHT=execute)"
-check "env afk=0 blocks overnight=1"    "prcheck"                     "$(env_workers HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_OVERNIGHT=execute)"
+check "env afk=0 keeps the day profile" "prcheck"                     "$(env_workers HIMMEL_AFK=0 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_AFK=execute)"
 
 [ "$fail" = 0 ] && echo "ALL PASS" || { echo "FAILURES"; exit 1; }

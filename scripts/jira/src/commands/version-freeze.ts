@@ -1,4 +1,4 @@
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { request, projectKey } from '../client.js';
@@ -261,7 +261,7 @@ async function readinessRows(
 export async function versionReady(
   project: string,
   name: string,
-  opts: { consoleOverride?: Override[] },
+  opts: { chiefOverride?: Override[] },
 ): Promise<string[]> {
   const version = await findVersion(project, name);
   const frozen = parseFrozen(version.description);
@@ -269,7 +269,7 @@ export async function versionReady(
   const checked = await readinessRows(project, name, version.description, ledger);
   let rows = checked.rows;
   const lines: string[] = [];
-  const overrides = opts.consoleOverride ?? [];
+  const overrides = opts.chiefOverride ?? [];
   if (overrides.length > 0) {
     if (!hasConsoleMarker()) lines.push('chief-override ignored: no chief marker (HIMMEL_CONSOLE=1 is not set)');
     else {
@@ -358,13 +358,12 @@ export function registerVersionFreeze(program: Command): void {
       '--chief-override <values...>',
       'Chief only (HIMMEL_CONSOLE=1), repeatable, as <row-id> "<reason>": turn one FAIL row into an overridden PASS, recording the reason in the admissions ledger',
     )
-    .addOption(new Option('--console-override <values...>').hideHelp())
-    .action(async (name: string, options: { project?: string; chiefOverride?: string[]; consoleOverride?: string[] }) => {
+    .action(async (name: string, options: { project?: string; chiefOverride?: string[] }) => {
       const flat = chiefOverrideOf(options) ?? [];
       if (flat.length % 2 !== 0) throw new Error('--chief-override takes <row-id> "<reason>" pairs');
-      const consoleOverride: Override[] = [];
-      for (let i = 0; i < flat.length; i += 2) consoleOverride.push({ id: flat[i], reason: flat[i + 1] });
-      for (const line of await versionReady(options.project ?? projectKey(), name, { consoleOverride })) console.log(line);
+      const chiefOverride: Override[] = [];
+      for (let i = 0; i < flat.length; i += 2) chiefOverride.push({ id: flat[i], reason: flat[i + 1] });
+      for (const line of await versionReady(options.project ?? projectKey(), name, { chiefOverride })) console.log(line);
     });
 
   program

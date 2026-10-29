@@ -38,20 +38,6 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/lib/usage-preflight.sh || exit 96
-# read-both: CADENCE_USAGE_* is read, CADENCE_BANK_* still is (rename-aliases.tsv).
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if ! { [ -r "$_csg_dir/env-alias.sh" ] && . "$_csg_dir/env-alias.sh"; }; then
-    echo "usage-preflight.sh: cannot load $_csg_dir/env-alias.sh - refusing" >&2
-    exit 96
-fi
-alias_env CADENCE_USAGE_WORKER CADENCE_USAGE_LEG
-alias_env CADENCE_USAGE_WORKER CADENCE_BANK_LEG
-for _ua in PRODUCER MAX_AGE CACHE LEDGER LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
-    alias_env "CADENCE_USAGE_$_ua" "CADENCE_BANK_$_ua"
-done
-alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT
-alias_env WORKER_SESSION_LANE LEG_LANE
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
@@ -208,7 +194,6 @@ _fleet_lane_of() {
     return
   fi
   lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
-  [ -n "$lane" ] || ! legacy_names_on || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
   if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 
