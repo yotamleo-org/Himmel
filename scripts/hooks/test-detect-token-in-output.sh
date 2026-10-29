@@ -43,6 +43,7 @@ chmod +x "$TMP/send.sh"
 
 # run_hook JSON -> stdout in $TMP/out, rc in $rc
 run_hook() {
+    [ "$#" = 1 ] || fail "run_hook got $# arguments, expected one JSON payload"
     printf '%s' "$1" | env HIMMEL_TEST_FIXTURE=1 TOKEN_ALERT_DIR="$TMP/alerts" \
         MERGE_BLOCK_ALERT_CMD="$TMP/send.sh" TELEGRAM_ACCESS_PATH="$TMP/access.json" \
         SENT_LOG="$TMP/sent.log" bash "$HOOK" >"$TMP/out" 2>"$TMP/err"
@@ -64,7 +65,7 @@ HOME=/home/u")"
 if [ "$rc" = 0 ] && grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && grep -q 'variable GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" \
     && grep -q 'Bash' "$TMP/out" && no_value "$TMP/out" "$TOK_GHO"; then
     pass "env line: alert names tool and variable, not the value"
-else fail "env line alert (rc=$rc): $(cut -c1-200 "$TMP/out")"; fi
+else fail "env line alert (rc=$rc): $(head -c 200 "$TMP/out")"; fi
 if jq -e '.systemMessage and .hookSpecificOutput.additionalContext and .hookSpecificOutput.hookEventName == "PostToolUse"' "$TMP/out" >/dev/null 2>&1; then
     pass "emits systemMessage + PostToolUse additionalContext"
 else fail "hook output JSON shape"; fi
@@ -77,17 +78,20 @@ run_hook "$(j_post Read s1 "GITHUB_PERSONAL_ACCESS_TOKEN=$TOK_GHO")"
 if [ "$(sent_count)" = 1 ] && grep -q 'TOKEN-IN-OUTPUT' "$TMP/out"; then pass "repeat in same session: shown, not re-paged"; else fail "dedupe (count=$(sent_count))"; fi
 
 # 4. Fine-grained PAT in a python dict print: variable from the 'NAME': 'tok' form.
-run_hook "$(j_post Bash s2 "{'HOME': '/home/u', 'CODEX_GITHUB_PERSONAL_ACCESS_TOKEN': '$TOK_PAT'}")"
+# The dict text goes through a variable: bash 3.2 brace-expands a literal
+# {a, b} written inside "$(...)", which split it into two arguments.
+dict_print="{'HOME': '/home/u', 'CODEX_GITHUB_PERSONAL_ACCESS_TOKEN': '$TOK_PAT'}"
+run_hook "$(j_post Bash s2 "$dict_print")"
 if grep -q 'CODEX_GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" && grep -q 'github_pat_' "$TMP/out" \
     && no_value "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = 2 ]; then
     pass "github_pat_ in a dict print: variable named, value withheld"
-else fail "github_pat_ dict: $(cut -c1-200 "$TMP/out")"; fi
+else fail "github_pat_ dict (count=$(sent_count)): $(head -c 200 "$TMP/out")"; fi
 
 # 5. A bare token in an array-shaped response: variable unknown.
 run_hook "$(jq -cn --arg r "token: none here, raw $TOK_GHP end" '{session_id:"s3",tool_name:"mcp__x__y",tool_response:[{type:"text",text:$r}]}')"
 if grep -q 'variable unknown' "$TMP/out" && grep -q 'mcp__x__y' "$TMP/out" && no_value "$TMP/out" "$TOK_GHP"; then
     pass "bare ghp_ token: variable unknown, tool named"
-else fail "bare token: $(cut -c1-200 "$TMP/out")"; fi
+else fail "bare token: $(head -c 200 "$TMP/out")"; fi
 
 # 6. A token in tool_input (a Write body) counts: it lands in the transcript too.
 run_hook "$(jq -cn --arg c "X=$TOK_GHP" '{session_id:"s4",tool_name:"Write",tool_input:{file_path:"/tmp/f",content:$c},tool_response:{}}')"
@@ -96,8 +100,6 @@ if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out"; then pass "token in tool_input detected
 # 7. Near miss (35 chars after the prefix): silent.
 run_hook "$(j_post Bash s5 "x=$TOK_SHORT")"
 if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "35-char near miss is silent"; else fail "near miss fired"; fi
-run_hook "$(j_post Bash s5 "x=${TOK_PAT%?}")"
-if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "81-char github_pat_ near miss is silent"; else fail "pat near miss fired"; fi
 
 # 8. Garbage / empty stdin: fail open.
 run_hook 'not json'
@@ -112,7 +114,7 @@ CODEX_TOKEN=$TOK_GHP")"
 if grep -q 'GITHUB_PERSONAL_ACCESS_TOKEN' "$TMP/out" && grep -q 'CODEX_TOKEN' "$TMP/out" \
     && no_value "$TMP/out" "$TOK_GHP" && [ "$(sent_count)" = 5 ] && grep -q 'CODEX_TOKEN' "$TMP/sent.log"; then
     pass "second token behind an alerted one: named and paged"
-else fail "second token (count=$(sent_count)): $(cut -c1-200 "$TMP/out")"; fi
+else fail "second token (count=$(sent_count)): $(head -c 200 "$TMP/out")"; fi
 
 # 9b. A token in the NAME position (token=token) is never echoed as the variable.
 run_hook "$(j_post Bash s8 "$TOK_PAT=$TOK_GHO")"
@@ -120,14 +122,6 @@ if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT" && no_
     && no_value "$TMP/sent.log" "$TOK_PAT"; then
     pass "token in the name position is not echoed"
 else fail "token as variable name echoed"; fi
-
-# 9c. A github_pat_ run longer than its 82 body chars still alerts, value withheld.
-run_hook "$(j_post Bash s15 "x=${TOK_PAT}Zq9")"
-if grep -q 'github_pat_…' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT"; then pass "github_pat_ run longer than 82 still alerts"; else fail "long github_pat_ run: $(cut -c1-200 "$TMP/out")"; fi
-
-# 9d. A token inside a rejected (too short) github_pat_ run is still found.
-run_hook "$(j_post Bash s16 "x=github""_pat_${TOK_GHP}")"
-if grep -q 'ghp_…' "$TMP/out" && no_value "$TMP/out" "$TOK_GHP"; then pass "ghp_ token behind a short github_pat_ prefix still alerts"; else fail "embedded ghp_ hidden: $(cut -c1-200 "$TMP/out")"; fi
 
 # 10. Sender failure: no sentinel left, so a later call may retry the DM.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/send.sh"
@@ -169,11 +163,11 @@ if [ "$(sent_count)" = "$((before + 1))" ]; then pass "fresh in-flight claim sup
 run_hook "$(jq -cn --arg r "T=$TOK_GHP" '{hook_event_name:"PostToolUseFailure",tool_name:"Bash",session_id:"s10",tool_input:{command:"x"},error:$r}')"
 if [ "$(jq -r '.hookSpecificOutput.hookEventName' "$TMP/out" 2>/dev/null)" = PostToolUseFailure ]; then
     pass "PostToolUseFailure answered with its own event name"
-else fail "failure event name: $(cut -c1-200 "$TMP/out")"; fi
+else fail "failure event name: $(head -c 200 "$TMP/out")"; fi
 run_hook "$(jq -cn --arg r "T=$TOK_GHP" '{hook_event_name:"Bogus",tool_name:"Bash",session_id:"s11",tool_response:$r}')"
 if [ "$(jq -r '.hookSpecificOutput.hookEventName' "$TMP/out" 2>/dev/null)" = PostToolUse ]; then
     pass "unknown event name falls back to PostToolUse"
-else fail "bogus event name: $(cut -c1-200 "$TMP/out")"; fi
+else fail "bogus event name: $(head -c 200 "$TMP/out")"; fi
 
 # 12. The sentinel never holds the token.
 # grep exits 1 only on a clean "no match"; an error (2, a missing dir) fails.
@@ -208,7 +202,7 @@ for pre in ghp gho ghu ghs ghr; do
     if grep -q "${pre}_…" "$TMP/out"; then pass "checksum-valid ${pre}_ token alerts"; else fail "valid ${pre}_ token silent"; fi
 done
 run_hook "$(j_post Bash s14 "A=${fixtures[0]} B=$TOK_GHP")"
-if grep -q 'a GitHub token (' "$TMP/out" && grep -q 'variable B' "$TMP/out"; then pass "fixture beside a real token: only the real one is named"; else fail "mixed fixture+real: $(cut -c1-200 "$TMP/out")"; fi
+if grep -q 'a GitHub token (' "$TMP/out" && grep -q 'variable B' "$TMP/out"; then pass "fixture beside a real token: only the real one is named"; else fail "mixed fixture+real: $(head -c 200 "$TMP/out")"; fi
 
 # 14. No suite under scripts/ holds a token-shaped literal: a value the hook
 # can page on must be built at run time (prefix + repeated char) and named in

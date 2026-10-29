@@ -38,9 +38,7 @@
 # `read`, a builtin, so the clean path forks nothing (rc 1 at EOF is expected).
 IFS= read -r -d '' input 2>/dev/null || :
 
-# github_pat_ is matched as an open run and cut to its 82 body chars in bash: the
-# macOS regex engine behind bash 3.2 never matched the `{82}` interval form.
-tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]+)'
+tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
 
 # A test fixture is never a credential, and we call a value one only when two
@@ -85,20 +83,11 @@ tokens=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
     t="${BASH_REMATCH[1]}"
-    skip="$t"
-    case "$t" in github_pat_*)
-        t="${t:0:93}"
-        # A run shorter than 82 body chars (93 in all) is no token: step past
-        # its prefix only, so a token inside that run is still scanned.
-        if [ "${#t}" -eq 93 ]; then skip="$t"; else skip="github_pat_"; t="" ; fi ;;
+    case " ${tokens[*]-} " in
+        *" $t "*) ;;
+        *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
     esac
-    if [ -n "$t" ]; then
-        case " ${tokens[*]-} " in
-            *" $t "*) ;;
-            *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
-        esac
-    fi
-    rest="${rest#*"$skip"}"
+    rest="${rest#*"$t"}"
 done
 [ "${#tokens[@]}" -gt 0 ] || exit 0
 
