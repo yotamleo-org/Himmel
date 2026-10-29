@@ -43,6 +43,7 @@
 # Marker + heuristic phrase are shared between the extractor and the skip
 # checks below, so keep them declared once.
 _HIMMEL_USER_CLAUDE_MD_MARKER="HIMMEL:working-principles"
+_UCM_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ponytail: distinctive-phrase heuristic, not a real "did the operator already
 # say this" detector -- a hand-written CLAUDE.md that phrases the same idea
 # without ever using these two words together would still get appended to.
@@ -96,43 +97,66 @@ wire_user_claude_md() {
   esac
 
   if [ -f "$target" ]; then
-    # A marker is a WHOLE line (trailing blanks aside), not a substring — prose
-    # that merely quotes <!-- BEGIN HIMMEL:working-principles --> must neither
-    # suppress the install nor have its surrounding text overwritten.
-    local begin_ln end_ln current
-    begin_ln="$(awk -v m="<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" '{l=$0; sub(/[ \t\r]+$/,"",l)} l==m{print NR; exit}' "$target")"
-    if [ -n "$begin_ln" ]; then
-      end_ln="$(awk -v b="$begin_ln" -v m="<!-- END ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" '{l=$0; sub(/[ \t\r]+$/,"",l)} NR>=b && l==m{print NR; exit}' "$target")"
-      if [ -z "$end_ln" ]; then
-        echo "  user CLAUDE.md: BEGIN marker with no END marker — leaving $target unchanged" >&2
-        return 0
-      fi
-      current="$(sed -n "${begin_ln},${end_ln}p" "$target")"
-      if [ "$current" = "$payload" ]; then
-        echo "  user CLAUDE.md: working-principles block already present — skipping ($target)"
-        return 0
-      fi
-      if [ "${DRY_RUN:-0}" = "1" ]; then
-        echo "DRY: refresh working-principles block → $target"
-        return 0
-      fi
-      local tmp
-      tmp="$(mktemp "${TMPDIR:-/tmp}/ucm.XXXXXX")" || return 1
-      # Every piece must have been written before the target is touched.
-      if ! { head -n "$((begin_ln - 1))" "$target" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$target"; } > "$tmp"; then
-        rm -f "$tmp"; return 1
-      fi
-      # Written in place (not mv'd over) so a symlinked or hard-linked target
-      # keeps its identity and mode; if the write fails the finished text stays.
-      if ! cat "$tmp" > "$target"; then
-        echo "  user CLAUDE.md: could not write $target; the finished text is kept at $tmp" >&2
-        return 1
-      fi
-      rm -f "$tmp"
-      _ucm_record_block "$target" "$payload" false replace "$current"
-      echo "  user CLAUDE.md: refreshed working-principles block in place → $target"
+    # Which lines are himmel's block is decided by the SAME scan the uninstall
+    # side runs (unwire-user-claude-md.sh --extract / _ucm_scan): exact marker
+    # lines outside code fences, one BEGIN above one END, no CRLF. Anything it
+    # refuses (duplicate or open-fence markers, CRLF, BEGIN without END) is left
+    # byte-identical with one advisory; rc 3 = no marker line, so the heuristic
+    # and append paths below apply as before.
+    local unwire="$_UCM_LIB_DIR/unwire-user-claude-md.sh" ext ext_rc=0 scan begin_ln end_ln
+    if [ ! -f "$unwire" ]; then
+      echo "  user CLAUDE.md: $unwire not found — leaving $target unchanged" >&2
       return 0
     fi
+    ext="$(bash "$unwire" --extract "$target" 2>/dev/null)" || ext_rc=$?
+    case "$ext_rc" in
+      0)
+        scan="$(bash -c '. "$1"; _ucm_scan "$2"' _ "$unwire" "$target" 2>/dev/null)" || scan=""
+        read -r _ _ begin_ln end_ln _ <<< "$scan"
+        case "${begin_ln:-x}${end_ln:-x}" in
+          *[!0-9]*)
+            echo "  user CLAUDE.md: could not locate the himmel block in $target — leaving it unchanged" >&2
+            return 0
+            ;;
+        esac
+        if [ "$ext" = "$payload" ]; then
+          echo "  user CLAUDE.md: working-principles block already present — skipping ($target)"
+          return 0
+        fi
+        if [ "${DRY_RUN:-0}" = "1" ]; then
+          echo "DRY: refresh working-principles block → $target"
+          return 0
+        fi
+        # Write the finished text next to the file the target resolves to, with
+        # that file's mode, then rename it over: a failure at any point leaves the
+        # target exactly as it was, and a symlinked target keeps its link.
+        local real tmp
+        real="$(readlink -f -- "$target" 2>/dev/null)" || real="$target" # gnu-ok: falls back to the unresolved path where readlink -f is absent # prim-ok: canon_path resolves directories, not a file symlink
+        if [ ! -w "$real" ]; then
+          echo "  user CLAUDE.md: $real is read-only — leaving it unchanged" >&2
+          return 1
+        fi
+        tmp="$(mktemp "$(dirname "$real")/.ucm.XXXXXX")" || {
+          echo "  user CLAUDE.md: cannot create a temp file next to $real — leaving it unchanged" >&2
+          return 1
+        }
+        if ! cp -p -- "$real" "$tmp" \
+          || ! { head -n "$((begin_ln - 1))" "$real" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$real"; } > "$tmp" \
+          || ! mv -f -- "$tmp" "$real"; then
+          rm -f "$tmp"
+          echo "  user CLAUDE.md: could not write $real — leaving it unchanged" >&2
+          return 1
+        fi
+        _ucm_record_block "$target" "$payload" false replace "$ext"
+        echo "  user CLAUDE.md: refreshed working-principles block in place → $target"
+        return 0
+        ;;
+      3) ;;
+      *)
+        echo "  user CLAUDE.md: the himmel marker lines in $target cannot be told apart from text (duplicate, inside an open code fence, CRLF, or BEGIN without END) — leaving it unchanged" >&2
+        return 0
+        ;;
+    esac
     if grep -qi "$_HIMMEL_USER_CLAUDE_MD_HEURISTIC" "$target"; then
       echo "  user CLAUDE.md: no marker, but looks like working principles are already stated by hand (heuristic match on '$_HIMMEL_USER_CLAUDE_MD_HEURISTIC') — skipping, not appending; the current block is in $template ($target)"
       return 0

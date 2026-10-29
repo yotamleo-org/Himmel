@@ -339,10 +339,9 @@ head -c "$(wc -c < "$orig12" | tr -d '[:space:]')" "$target12" > "$prefix12"
 if cmp -s "$orig12" "$prefix12"; then pass "quoting prose kept byte-identical"; else fail "prose quoting the markers was overwritten"; fi
 rm -rf "$home12"
 
-# ── Case 13: a refresh that cannot write the target fails loudly, leaves the
-#             target as it was and keeps the finished text where the operator
-#             can find it ──
-echo "== Case 13: unwritable target keeps a recovery copy =="
+# ── Case 13: a read-only target is the operator's choice -- the refresh
+#             refuses, loudly, and leaves it exactly as it was ──
+echo "== Case 13: read-only target is refused and left unchanged =="
 home13="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
 mkdir -p "$home13/.claude"
 target13="$home13/.claude/CLAUDE.md"
@@ -356,16 +355,62 @@ else
   rc13=$?
   chmod 644 "$target13"
   if [ "$rc13" -ne 0 ] && cmp -s "$before13" "$target13"; then pass "unwritable target: non-zero rc, target unchanged"; else fail "unwritable target: rc $rc13 or target changed"; fi
-  recovery13="$(sed -n 's/.*the finished text is kept at //p' <<< "$out13" | head -n 1)"
-  if [ -n "$recovery13" ] && grep -q -- "<!-- END $MARKER -->" "$recovery13" 2>/dev/null; then
-    pass "recovery copy named and present"
-  else
-    fail "no recovery copy named, got: $out13"
-  fi
-  if [ -n "$recovery13" ]; then rm -f "$recovery13"; fi
+  if grepq "$out13" -F "$target13"; then pass "the refusal names the target"; else fail "no message naming the target, got: $out13"; fi
 fi
 chmod 644 "$target13"
 rm -rf "$home13"
+
+# ── Cases 14-16: the block is only refreshed when the SAME grammar the uninstall
+#                 side uses (unwire-user-claude-md.sh) can tell it from text; any
+#                 doubt leaves the file byte-identical and prints one advisory ──
+refuse_row() { # <label> <printf-format> <args...>: the target must stay byte-identical
+  local label="$1" fmt="$2" h t o out rc; shift 2
+  h="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+  mkdir -p "$h/.claude"; t="$h/.claude/CLAUDE.md"; o="$h/orig.txt"
+  # shellcheck disable=SC2059
+  printf "$fmt" "$@" > "$o"
+  cp "$o" "$t"
+  out="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$t" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ] && cmp -s "$o" "$t"; then pass "$label: unchanged"; else fail "$label: rc $rc or the target changed"; fi
+  if grepq "$out" -F "$t"; then pass "$label: advisory names the target"; else fail "$label: no advisory, got: $out"; fi
+  rm -rf "$h"
+}
+echo "== Case 14: duplicate BEGIN marker is refused =="
+refuse_row "duplicate BEGIN" 'top\n<!-- BEGIN %s -->\nmy own text\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\nbottom\n' "$MARKER" "$MARKER" "$MARKER"
+echo "== Case 15: both markers quoted inside a fence that never closes =="
+refuse_row "unclosed fence quote" 'intro\n```\n<!-- BEGIN %s -->\nquoted\n<!-- END %s -->\n' "$MARKER" "$MARKER"
+echo "== Case 16: CRLF marker lines are refused =="
+refuse_row "CRLF markers" 'top\r\n<!-- BEGIN %s -->\r\nold\r\n<!-- END %s -->\r\nbottom\r\n' "$MARKER" "$MARKER"
+
+# ── Case 17: a closed fence quoting both markers BEFORE the real block: the quote
+#             is text, only the real block is refreshed ──
+echo "== Case 17: closed fenced quote before the real block =="
+home17="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home17/.claude"
+target17="$home17/.claude/CLAUDE.md"
+# shellcheck disable=SC2016 # the backticks are literal fence characters
+printf 'how to wire it:\n```\n<!-- BEGIN %s -->\nquoted\n<!-- END %s -->\n```\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\nbottom\n' "$MARKER" "$MARKER" "$MARKER" "$MARKER" > "$target17"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target17" >/dev/null 2>&1
+if grep -q '^quoted$' "$target17" && ! grep -q '^old$' "$target17" && [ "$(tail -n 1 "$target17")" = bottom ]; then
+  pass "fenced quote kept, real block refreshed, text below kept"
+else
+  fail "fenced-quote target not handled as expected"
+fi
+rm -rf "$home17"
+
+# ── Case 18: the refresh keeps the target's mode and a symlink to it ──
+echo "== Case 18: mode and symlink survive the refresh =="
+home18="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home18/.claude" "$home18/dotfiles"
+real18="$home18/dotfiles/CLAUDE.md"
+link18="$home18/.claude/CLAUDE.md"
+printf 'head\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$real18"
+chmod 640 "$real18"
+ln -s "$real18" "$link18"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$link18" >/dev/null 2>&1
+if [ -L "$link18" ] && ! grep -q '^old$' "$real18"; then pass "symlink kept, the file it points at is refreshed"; else fail "symlink replaced or file not refreshed"; fi
+if [ -n "$(find "$real18" -prune -perm 640)" ]; then pass "mode 640 preserved"; else fail "mode changed"; fi
+rm -rf "$home18"
 
 # Final tally
 if [ "$failures" -eq 0 ]; then
