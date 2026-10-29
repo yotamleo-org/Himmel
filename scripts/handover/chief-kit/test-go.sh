@@ -129,7 +129,7 @@ contains "write: by= is the chief session name" "$body" "by=chief-x"
 grepq "$body" -Ex 'at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
   && echo "ok - write: at= is ISO-8601 UTC" || { echo "FAIL - write: at= not ISO-8601 UTC: [$body]"; fails=$((fails+1)); }
 
-# --- 2a. CHIEF_SESSION_NAME is the by= name; the retired CONSOLE_SESSION_NAME is ignored
+# --- 2a. CHIEF_SESSION_NAME is the by= name; the retired console session-name variable is ignored
 ROOT2A="$tmp/root2a"; mkdir -p "$ROOT2A"
 rc=0; HANDOVER_DIR="$ROOT2A" CHIEF_SESSION_NAME=chief-x CONSOLE_SESSION_NAME=console-y bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$? # old-term-ok
 check "write: CHIEF_SESSION_NAME set -> exit 0" "$rc" "0"

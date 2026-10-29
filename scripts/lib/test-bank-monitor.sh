@@ -291,7 +291,7 @@ check 'five_hour_reset_in: --spare carries the field' 'five_hour_reset_in=2.0h' 
 check 'five_hour_reset_in: --spare stays read-only (no state)' 'no' "$([ -e "$USAGE_MONITOR_STATE_FILE" ] && echo yes || echo no)"
 check 'five_hour_reset_in: --spare leaves the ring byte-identical' "$ring_before" "$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 
-# the USAGE_MONITOR_* names decide the cache, state and samples files; the retired BANK_STATE_FILE is ignored
+# the USAGE_MONITOR_* names decide the cache, state and samples files; the retired state-file variable is ignored
 export BANK_STATE_FILE="$W/alias-old-state" # old-term-ok
 sample 10 20
 mv "$USAGE_MONITOR_CACHE_FILE" "$W/alias-cache.json"
@@ -300,7 +300,7 @@ out="$(USAGE_MONITOR_CACHE_FILE="$W/alias-cache.json" USAGE_MONITOR_STATE_FILE="
 case "$out" in 'BANK 12:00 '*) pass 'USAGE_MONITOR_CACHE_FILE is the cache read' ;; *) fail "USAGE_MONITOR_CACHE_FILE is the cache read (out='$out')" ;; esac
 check 'USAGE_MONITOR_STATE_FILE is the state written' 'yes' "$([ -s "$W/alias-new-state" ] && echo yes || echo no)"
 check 'USAGE_MONITOR_SAMPLES_FILE is the ring written' 'yes' "$([ -s "$W/alias-new-samples" ] && echo yes || echo no)"
-check 'the retired BANK_STATE_FILE is never written' 'no' \
+check 'the retired state-file variable is never written' 'no' \
     "$([ -e "$W/alias-old-state" ] || [ -e "$W/alias-old-state.samples" ] && echo yes || echo no)" # old-term-ok
 
 if [ "$fails" -eq 0 ]; then

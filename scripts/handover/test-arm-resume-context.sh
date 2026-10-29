@@ -348,7 +348,7 @@ assert_contains "e3: guard line resolves 1m" 'context=1m (' "$out"
 assert_contains_either "e3: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 
 # ---------------------------------------------------------------------------
-# (e3b) the retired CONSOLE_CONTEXT=standard is ignored beside CHIEF_CONTEXT=1m:
+# (e3b) the retired console-context variable (standard) is ignored beside CHIEF_CONTEXT=1m:
 #       the 1m gate opens.
 # ---------------------------------------------------------------------------
 HO_E3B=$(make_handover "arm-context-chief.md")

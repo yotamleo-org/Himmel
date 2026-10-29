@@ -1796,7 +1796,7 @@ test('every headed worker profile opts in to himmel-bus and allows its tools (HI
 // chief.sh registers a chief only when `plugin-profiles.mjs chief --mcp-servers`
 // lists himmel-bus; the chief profile had no mcpServers, so no chief was ever on the bus and a
 // worker's send was refused with "no edge". Reads the real registry, the same one chief.sh resolves.
-test('chief profile opts in to himmel-bus so console.sh registers the console on launch (HIMMEL-5241)', () => {
+test('chief profile opts in to himmel-bus so chief.sh registers the console on launch (HIMMEL-5241)', () => {
   assert.ok(mcpServersForProfile(REG, 'console')?.includes('himmel-bus'), 'chief must list himmel-bus');
   assert.deepEqual(validateRegistry(REG), []);
 });
