@@ -177,6 +177,21 @@ test("a Jira value already saved can still be removed when the tracker is Local 
   expect(p).toContain('data-act="setup-remove" data-name="JIRA_API_TOKEN"');
 });
 
+test("the Jira rows read Site, Email, API token, Project key whatever order the server sent", () => {
+  const byName = (n: string) => setupData.secrets.find((s) => s.name === n)!;
+  const shuffled = { ...setupData, secrets: [byName("JIRA_API_TOKEN"), byName("JIRA_PROJECT_KEY"), byName("JIRA_EMAIL"), byName("JIRA_BASE_URL")] };
+  const p = panel(cfg("tracker", { setup: shuffled }));
+  expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);
+});
+
+test("a secret row keeps save and remove in one actions box so every input ends on the same edge", () => {
+  const stored = { ...setupData, secrets: setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, status: "set" } : s)) };
+  const forms = [...panel(cfg("secrets", { setup: stored })).matchAll(/<form class="sform" data-setup-form[\s\S]*?<\/form>/g)].map((m) => m[0]);
+  expect(forms.length).toBe(3);
+  for (const f of forms) expect(f).toMatch(/<span class="acts"><button class="btn primary" type="submit">save<\/button>(<button class="btn"[^>]*>remove<\/button>)?<\/span><\/form>/);
+  expect(forms.filter((f) => f.includes("remove")).length).toBe(1);
+});
+
 test("the Secrets tile says Telegram is not set and whether a login exists; the Review tile names who must pass", () => {
   const html = cfg(null);
   expect(html).toContain("Telegram not set");

@@ -8,6 +8,7 @@ const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", p
 const TRACKERS = [["jira", "Jira"], ["local", "Local"], ["none", "None"]];
 
 const JIRA_LABEL = { JIRA_BASE_URL: "Site", JIRA_EMAIL: "Email", JIRA_API_TOKEN: "API token", JIRA_PROJECT_KEY: "Project key" };
+const JIRA_ORDER = Object.keys(JIRA_LABEL);
 
 // cfg: the Configure look, a friendly name with the key as its meta line, and the example as the field's placeholder.
 function secretRow(s, msg, cfg) {
@@ -20,7 +21,7 @@ function secretRow(s, msg, cfg) {
   return `<div class="srow">${what}${status}
     <form class="sform" data-setup-form data-name="${esc(s.name)}" autocomplete="off">
       <input type="password" data-secret="${esc(s.name)}" autocomplete="new-password" spellcheck="false" aria-label="${esc(s.name)} value"${cfg && s.example ? ` placeholder="e.g. ${esc(s.example)}"` : ""}>
-      <button class="btn primary" type="submit">save</button>${remove}</form>
+      ${cfg ? `<span class="acts"><button class="btn primary" type="submit">save</button>${remove}</span>` : `<button class="btn primary" type="submit">save</button>${remove}`}</form>
     ${s.example && !cfg ? `<span class="ro">e.g. ${esc(s.example)}</span>` : ""}
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
 }
@@ -214,7 +215,7 @@ function trackerPanel({ setup, state, msgs }) {
   if (!setup || setup.error) return setupFailed(setup);
   const c = setup.commit, plans = state.plans || {};
   const connected = c.tracker !== "local" && c.tracker !== "none";
-  const connection = setup.secrets.filter(isJira).filter((s) => connected || s.status === "set").map((s) => secretRow(s, msgs[s.name], true)).join("");
+  const connection = setup.secrets.filter(isJira).filter((s) => connected || s.status === "set").sort((a, b) => JIRA_ORDER.indexOf(a.name) - JIRA_ORDER.indexOf(b.name)).map((s) => secretRow(s, msgs[s.name], true)).join("");
   const open = [TK, RK].filter((k) => plans[k]);
   return `<p class="sub">Where your tickets live, and what every commit must carry. Each change shows a dry run before it writes.</p>
     <div class="cols">

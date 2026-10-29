@@ -88,3 +88,17 @@ test("J3. at 390 px no tile makes the page scroll sideways", async ({ page }) =>
     expect(w.scroll, `${t}: page ${w.scroll}px in a ${w.client}px window`).toBeLessThanOrEqual(w.client);
   }
 });
+
+test("J4. on a 3840 px screen the panel stays a readable width and every secret input ends on one edge", async ({ page }) => {
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await open(page);
+  for (const t of ["secrets", "review", "tracker", "scope"]) {
+    await page.locator(`button.tile[data-tile="${t}"]`).click();
+    const box = await page.locator(`#tile-${t}`).boundingBox();
+    expect(box!.width, `${t} panel`).toBeLessThanOrEqual(3840 * 0.45);
+  }
+  await page.locator('button.tile[data-tile="secrets"]').click();
+  const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+  expect(edges.length).toBeGreaterThan(1);
+  expect(new Set(edges).size, `input right edges ${edges}`).toBe(1);
+});

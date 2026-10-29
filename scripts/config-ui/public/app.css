@@ -126,13 +126,15 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .chk .st.fail{background:var(--crit-soft);color:var(--crit)}.chk .st.warn{background:var(--beta-soft);color:var(--beta)}.chk .st.ok{background:var(--ship-soft);color:var(--ship)}.chk .st.info{background:var(--surface-2);color:var(--muted)}
 .cpanel{display:grid;gap:var(--s3);align-content:start;padding:var(--s3) var(--s4);border:1px solid var(--rule);border-left:4px solid var(--gc);border-radius:10px;background:var(--surface);margin:var(--s3) 0;font:var(--fs-sm)/1.5 var(--font-ui);min-width:0}
 .cpanel>*{margin:0}.cpanel .sub{font:var(--fs-sm)/1.5 var(--font-ui);color:var(--muted);max-width:74ch;margin:0}
-.cpanel h3{font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--gc);margin:0 0 var(--s1)}
+.cpanel h2,.cpanel h3{font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--gc);margin:0 0 var(--s1)}
 .cpanel .srow,.cpanel .setrow{padding:var(--s2) 0;border:0;border-top:1px solid var(--rule);font-size:var(--fs-sm)}
 .cpanel .srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px var(--s3);align-items:baseline;min-height:0}
 .cpanel .srow>*{grid-column:1/-1;min-width:0}.cpanel .srow>.id{grid-column:1;grid-row:1}.cpanel .srow>.st{grid-column:2;grid-row:1}
 .cpanel .srow .det{white-space:normal;overflow:visible}
 .cpanel .st{font:700 11px var(--font-mono)}
 .cpanel .sform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.cpanel .sform input{flex:1 1 180px;width:auto;min-width:0}
+.cpanel .sform .acts{display:flex;gap:6px;justify-content:flex-end;flex:0 0 auto;min-width:8.5rem}
+.cpanel .slot label{display:inline-flex;align-items:center;gap:6px}
 .cpanel .chips{gap:6px}.cpanel .chips .ro{border:1px solid var(--rule-strong);border-radius:999px;background:var(--surface-2);padding:0 10px;font:11px var(--font-mono)}
 .cpanel .id{font-weight:600}.cpanel .det,.cpanel .ro{color:var(--muted);font-size:var(--fs-xs)}
 .cpanel a,.chk a,.not a{color:var(--accent)}
@@ -144,6 +146,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .cpanel input[type=text],.cpanel input[type=password],.cpanel input:not([type]),.cpanel select{background:var(--bg);color:var(--ink);border:1px solid var(--rule-strong);border-radius:4px;font:12px var(--font-mono);padding:5px 8px}
 .cpanel .card{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s3);margin:0}
 .cpanel .card h3{margin:0 0 var(--s2)}
+#h-configure,#h-configure~*{max-width:min(100%,max(1240px,40vw))}
 .cpanel select{border-radius:4px}
 .cpanel details.more>summary{color:var(--accent);font:11px var(--font-mono)}
 .cpanel code{font-family:var(--font-mono);font-size:.92em}
@@ -154,7 +157,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .cpanel .tag{font:700 10px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--surface-2);color:var(--muted);margin-left:var(--s1);text-transform:none;letter-spacing:0}
 .cpanel .fld{display:grid;gap:2px;flex:1 1 140px;min-width:0;font:700 11px var(--font-ui);color:var(--muted)}.cpanel .fld input{width:auto;min-width:0}
 .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
-.col{min-width:0;border:1px solid var(--rule);border-radius:8px;padding:var(--s3);background:var(--bg);display:grid;gap:var(--s2);align-content:start}.col .srow{grid-template-columns:minmax(0,1fr)}
+.col{min-width:0;border:1px solid var(--rule);border-radius:8px;padding:var(--s3);background:var(--bg);display:grid;gap:var(--s2);align-content:start}
 .dryrun{border:1px solid var(--rule);border-radius:8px;background:var(--surface-2);padding:var(--s3)}
 .dryrun .plan{border:0;background:none;padding:0}
 .chips{display:flex;flex-wrap:wrap;gap:4px 10px;grid-column:span 2}
