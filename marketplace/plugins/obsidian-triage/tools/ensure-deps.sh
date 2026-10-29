@@ -49,6 +49,7 @@ LOCK_DIR="$TOOLS_DIR/.ensure-deps.lock"
 _locked=0
 _waited=0
 while [ "$_waited" -lt 120 ]; do
+  # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; the wait is bounded (120 s) and the lock spans the rest of the script, which with_lock does not
   if mkdir "$LOCK_DIR" 2>/dev/null; then
     _locked=1
     trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
