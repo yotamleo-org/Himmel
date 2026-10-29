@@ -6,7 +6,9 @@
 # the review body (outside the diff), and nothing wrote them down, so cr-scores
 # showed it at 0 findings while it reviewed nearly every PR. For each MERGED PR
 # this reads the review threads whose first comment is CodeRabbit's (GraphQL) and
-# appends one `finding` row per thread to the ledger, carrying pr + thread_id:
+# appends one `finding` row per thread to the ledger, carrying pr + thread_id.
+# The rows go in through `ledger-append.sh finding --batch-file`, the only writer of
+# the ledger, never straight into the file:
 #   resolved after a later commit on the branch  -> verdict fixed
 #   resolved with no later commit (dismissed)    -> verdict disproved
 #   still open at merge                          -> verdict unaddressed
@@ -199,22 +201,12 @@ if [ -n "$SINCE" ]; then
   PRS="$PRS $(printf '%s\n' "$listed" | sort -n | tr '\n' ' ')"
 fi
 
-before=$(_cr_rows); n_pr=0; n_skip=0; n_fail=0; rc_all=0
-for num in $PRS; do
-  pj="$WORK/pr-$num.json"; ot="$WORK/out-$num.tsv"
-  _fetch_pr "$num" "$pj"; rc=$?
-  if [ "$rc" -eq 3 ]; then rc_all=3; break; fi
-  if [ "$rc" -ne 0 ]; then n_fail=$((n_fail + 1)); rc_all=3; continue; fi
-  if [ "$(jq -r '.state' "$pj")" != "MERGED" ]; then
-    echo "cr-thread-recorder: PR #$num is not merged — skipped"; n_skip=$((n_skip + 1)); continue
-  fi
-  if ! _outside "$num" "$(jq -r '.headOid' "$pj")" "$ot"; then
-    echo "cr-thread-recorder: PR #$num: outside-diff findings may be missing (a read failed or a review body no longer parses)" >&2
-    rc_all=3
-  fi
+# _record_pr — runs under the lock: read the ledger, write this PR's new rows to $bf, then hand them to
+# ledger-append.sh, the only writer of the CR ledger (its batch mode dedups again and refuses a bad row).
+# shellcheck disable=SC2329  # called through with_lock
+_record_pr() {
   # shellcheck disable=SC2016  # JS program, not shell
-  # The ledger read and the append share one lock, so two recorder runs cannot both miss a row and both add it.
-  with_lock "$LEDGER.lock" env PRFILE="$pj" OUTFILE="$ot" LEDGER="$LEDGER" node -e '
+  PRFILE="$pj" OUTFILE="$ot" LEDGER="$LEDGER" BATCHFILE="$bf" node -e '
 const fs = require("fs"), crypto = require("crypto"), e = process.env;
 const pr = JSON.parse(fs.readFileSync(e.PRFILE, "utf8"));
 const outside = fs.existsSync(e.OUTFILE) ? fs.readFileSync(e.OUTFILE, "utf8").split("\n").filter(Boolean).map(l => {
@@ -257,7 +249,7 @@ for (const t of pr.threads) {
   else if (pr.lastCommit && pr.lastCommit > t.createdAt) { verdict = "fixed"; reason = "thread resolved after a later commit on the branch"; }
   else { verdict = "disproved"; reason = "thread resolved by " + (t.resolvedBy || "unknown") + " with no later commit"; }
   rows.push({ kind: "finding", ts: t.createdAt, branch: pr.branch, head, model: "coderabbit",
-    finding_id: "cr-thread-" + crypto.createHash("sha256").update(t.id).digest("hex").slice(0, 12),
+    id: "cr-thread-" + crypto.createHash("sha256").update(t.id).digest("hex").slice(0, 12),
     severity: sevOf(t.body), file: t.path, line: t.line || 0, verdict, artifact: "diff", perspective: "off",
     reason, text: clean(title), pr: pr.number, thread_id: t.id, source: "cr-thread-recorder" });
 }
@@ -265,13 +257,34 @@ for (const o of outside) {
   out++;
   if (seenKey.has(o.head + "\x1f" + o.id)) { dup++; continue; }
   rows.push({ kind: "finding", ts: pr.mergedAt, branch: pr.branch, head: o.head, model: "coderabbit-outside",
-    finding_id: o.id, severity: o.sev, file: o.file, line: Number(o.line) || o.line, verdict: "unaddressed",
+    id: o.id, severity: o.sev, file: o.file, line: Number(o.line) || o.line, verdict: "unaddressed",
     artifact: "diff", perspective: "off", reason: "no disposition recorded for this outside-diff finding",
     text: clean(o.title), pr: pr.number, source: "cr-thread-recorder" });
 }
-if (rows.length) fs.appendFileSync(e.LEDGER, rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+fs.writeFileSync(e.BATCHFILE, rows.map(r => JSON.stringify(r) + "\n").join(""));
 console.log("+" + rows.length + " row(s) (" + inline + " thread(s), " + out + " outside, " + matched + " matched a hand-written row, " + dup + " already recorded)");
-' | sed "s/^/cr-thread-recorder: PR #$num: /" || {
+' || return 1
+  [ -s "$bf" ] || return 0
+  CR_LEDGER="$LEDGER" bash "$HERE/ledger-append.sh" finding --batch-file "$bf" 2>"$bf.err" >/dev/null || {
+    tail -n 5 "$bf.err" >&2; return 1; }
+}
+
+before=$(_cr_rows); n_pr=0; n_skip=0; n_fail=0; rc_all=0
+for num in $PRS; do
+  pj="$WORK/pr-$num.json"; ot="$WORK/out-$num.tsv"
+  _fetch_pr "$num" "$pj"; rc=$?
+  if [ "$rc" -eq 3 ]; then rc_all=3; break; fi
+  if [ "$rc" -ne 0 ]; then n_fail=$((n_fail + 1)); rc_all=3; continue; fi
+  if [ "$(jq -r '.state' "$pj")" != "MERGED" ]; then
+    echo "cr-thread-recorder: PR #$num is not merged — skipped"; n_skip=$((n_skip + 1)); continue
+  fi
+  if ! _outside "$num" "$(jq -r '.headOid' "$pj")" "$ot"; then
+    echo "cr-thread-recorder: PR #$num: outside-diff findings may be missing (a read failed or a review body no longer parses)" >&2
+    rc_all=3
+  fi
+  # The ledger read and the append share one lock, so two recorder runs cannot both miss a row and both add it.
+  bf="$WORK/batch-$num.jsonl"
+  with_lock "$LEDGER.lock" _record_pr | sed "s/^/cr-thread-recorder: PR #$num: /" || {
     echo "cr-thread-recorder: PR #$num: could not read or append the ledger — re-run to retry" >&2
     n_fail=$((n_fail + 1)); rc_all=3; continue; }
   n_pr=$((n_pr + 1))

@@ -58,7 +58,7 @@ mkpr() {
   local nodes; nodes="$(printf '%s\n' "$@" | jq -s --arg n "$num" 'map(.id = $n + ":" + .id)')"
   jq -n --argjson num "$num" --arg br "$br" --arg st "$st" --argjson rem "$rem" --arg rst "$rst" --argjson nodes "$nodes" \
     '{data:{rateLimit:{cost:1,remaining:$rem,resetAt:$rst},
-       repository:{pullRequest:{number:$num,state:$st,mergedAt:"2026-10-20T10:00:00Z",headRefName:$br,headRefOid:"HEADX",
+       repository:{pullRequest:{number:$num,state:$st,mergedAt:"2026-10-20T10:00:00Z",headRefName:$br,headRefOid:"1111111111111111111111111111111111111111",
          commits:{nodes:[{commit:{committedDate:"2026-10-20T09:00:00Z"}}]},
          reviewThreads:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$nodes}}}}}' > "$FIX/pr-$num.json"
 }
@@ -66,16 +66,16 @@ FAR="2030-01-01T00:00:00Z"
 count_rows() { grep -c "\"pr\":$1," "$LEDGER" | tr -d ' '; }
 verdict_of() { grep "\"thread_id\":\"$1:$2\"" "$LEDGER" | jq -r --argjson p "$1" 'select(.pr==$p)|.verdict'; }
 
-T_FIXED="$(thread T1 true  2026-10-20T08:00:00Z H1 10 coderabbitai 'Fix the thing')"
-T_DISPR="$(thread T2 true  2026-10-20T09:30:00Z H1 20 coderabbitai 'Rename the other thing')"
-T_OPEN="$(thread T3 false 2026-10-20T08:30:00Z H1 30 coderabbitai 'Handle the empty case')"
-T_HUMAN="$(thread T4 false 2026-10-20T08:30:00Z H1 40 someone 'A human remark')"
+T_FIXED="$(thread T1 true  2026-10-20T08:00:00Z 2222222222222222222222222222222222222222 10 coderabbitai 'Fix the thing')"
+T_DISPR="$(thread T2 true  2026-10-20T09:30:00Z 2222222222222222222222222222222222222222 20 coderabbitai 'Rename the other thing')"
+T_OPEN="$(thread T3 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 30 coderabbitai 'Handle the empty case')"
+T_HUMAN="$(thread T4 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 40 someone 'A human remark')"
 
 # ── PR 12: three CodeRabbit threads (fixed, disproved, open) + one human thread
 # + one outside-diff finding in the review body at the head ──────────────────
 mkpr 12 feat/x12 MERGED 4000 "$FAR" "$T_FIXED" "$T_DISPR" "$T_OPEN" "$T_HUMAN"
 jq -n --rawfile body "$FIXB/pr-777-outside-diff-blockquote.body.txt" \
-  '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"HEADX",submitted_at:"2026-10-20T09:50:00Z",body:$body}]' > "$FIX/reviews-12.json"
+  '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"1111111111111111111111111111111111111111",submitted_at:"2026-10-20T09:50:00Z",body:$body}]' > "$FIX/reviews-12.json"
 out="$(bash "$SUT" 12 2>&1)"; rc=$?
 check "12: recorder exits 0" "$rc" "0"
 check "12: three threads + one outside finding = 4 rows" "$(count_rows 12)" "4"
@@ -86,7 +86,7 @@ check "12: the human thread gets no row" "$(grep -c '"thread_id":"12:T4"' "$LEDG
 check "12: the outside-diff finding is a coderabbit-outside row" \
   "$(grep '"pr":12,' "$LEDGER" | jq -r 'select(.model=="coderabbit-outside")|.finding_id' )" "cr-od-39c3193c8945"
 check "12: inline rows carry branch, head, model" \
-  "$(grep '"thread_id":"12:T1"' "$LEDGER" | jq -r '[.branch,.head,.model,.kind]|join(" ")')" "feat/x12 H1 coderabbit finding"
+  "$(grep '"thread_id":"12:T1"' "$LEDGER" | jq -r '[.branch,.head,.model,.kind]|join(" ")')" "feat/x12 2222222222222222222222222222222222222222 coderabbit finding"
 
 # ── a re-run adds nothing ───────────────────────────────────────────────────
 before="$(wc -l < "$LEDGER" | tr -d ' ')"
@@ -95,7 +95,7 @@ check "12: a re-run adds no rows" "$(wc -l < "$LEDGER" | tr -d ' ')" "$before"
 
 # ── an existing hand-written row is neither duplicated nor rewritten ────────
 mkpr 13 feat/x13 MERGED 4000 "$FAR" "$T_FIXED" "$T_DISPR"
-HAND='{"kind":"finding","ts":"2026-10-20T08:10:00Z","branch":"feat/x13","head":"H1","model":"coderabbit","finding_id":"cr-a-10","severity":"imp","file":"a.sh","line":10,"verdict":"fixed","artifact":"diff","perspective":"off","text":"Fix the thing"}'
+HAND='{"kind":"finding","ts":"2026-10-20T08:10:00Z","branch":"feat/x13","head":"2222222222222222222222222222222222222222","model":"coderabbit","finding_id":"cr-a-10","severity":"imp","file":"a.sh","line":10,"verdict":"fixed","artifact":"diff","perspective":"off","text":"Fix the thing"}'
 echo "$HAND" >> "$LEDGER"
 bash "$SUT" 13 >/dev/null 2>&1
 check "13: the hand-written finding is matched, only the other thread is added" "$(count_rows 13)" "1"
@@ -139,13 +139,13 @@ check "18-19: the run slept for the reset" "$(grep -c '^slept' "$SLEEPS" | tr -d
 check "19: recorded after the wait" "$(count_rows 19)" "1"
 
 # ── only the CodeRabbit bot's own threads count, not a lookalike login ──────────
-mkpr 20 feat/x20 MERGED 4000 "$FAR" "$(thread T9 false 2026-10-20T08:30:00Z H1 90 coderabbitai-example 'A lookalike remark')"
+mkpr 20 feat/x20 MERGED 4000 "$FAR" "$(thread T9 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 90 coderabbitai-example 'A lookalike remark')"
 bash "$SUT" 20 >/dev/null 2>&1
 check "20: a lookalike bot login gets no row" "$(count_rows 20)" "0"
 
 # ── an outside-diff list that no longer parses is a partial run, not a clean one ──
 mkpr 21 feat/x21 MERGED 4000 "$FAR" "$T_OPEN"
-jq -n '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"HEADX",submitted_at:"2026-10-20T09:50:00Z",
+jq -n '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"1111111111111111111111111111111111111111",submitted_at:"2026-10-20T09:50:00Z",
   body:"> **⚠️ Outside diff range comments (2)**\n\nnothing parseable here\n"}]' > "$FIX/reviews-21.json"
 bash "$SUT" 21 >/dev/null 2>&1; rc=$?
 check "21: an unparseable outside-diff list exits 3" "$rc" "3"
