@@ -342,46 +342,31 @@ _suite_timeout_for() {
     return 0
   fi
 
-  if [ "$(uname -s)" = Darwin ]; then
+  # On macOS a suite's cap is its Linux cap times one multiplier
+  # (macOS runs killed 8 suites at 600-1800s caps in run 40664974972), so a
+  # suite no longer needs its own Darwin row. A row below is kept only where the
+  # measured macOS time is beyond multiplier x Linux cap. The second argument
+  # `linux` returns the unmultiplied Linux cap.
+  if [ "$(uname -s)" = Darwin ] && [ "${2:-}" != linux ]; then
+    darwin_cap_mult=2
     case "${1#./}" in
       scripts/ci/test-tier-replay.sh|*/scripts/ci/test-tier-replay.sh)
         # macOS cadence runs: PASS at 495s, then 874s (run 39986815551), against
-        # the 600s default. 1800s is the slower figure x2 (the loaded-budget
-        # rule); Linux keeps the default.
+        # the 600s default (x2 = 1200s, 1.4x headroom). 1800s is the slower
+        # figure x2 (the loaded-budget rule).
         printf '1800'; return 0 ;;
       scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
-        # Same run: PASS at 1700s against the 1200s Linux arm below. 3400s is
-        # that x2; the Linux arm is untouched.
+        # Same run: PASS at 1700s against the 1200s Linux cap (x2 = 2400s, 1.4x
+        # headroom). 3400s is that x2 (the loaded-budget rule).
         printf '3400'; return 0 ;;
-      scripts/ci/test-run-shell-tests.sh|*/scripts/ci/test-run-shell-tests.sh)
-        # macOS run 40408566333: killed at 603s on both attempts with every
-        # assertion passing (129s on the Linux ledger), the last case still
-        # pending. Run 40413314701 ran it to the end in 911s. 2000s is that
-        # figure x2 (the loaded-budget rule); the Linux default is untouched.
-        printf '2000'; return 0 ;;
       scripts/hooks/test-block-edit-live-settings.sh|*/scripts/hooks/test-block-edit-live-settings.sh)
-        # macOS runs 40457809286 and 40514166576: killed at 603s with every
-        # row passing (995 rows reached), against 151s on the Linux ledger.
-        # 1800s is the cap x3 (the loaded-budget rule); Linux keeps the default.
-        printf '1800'; return 0 ;;
-      scripts/test-adopt-sequences.sh|*/scripts/test-adopt-sequences.sh)
-        # macOS run 40633905316: killed at 603s on both attempts, against about
-        # 150s on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux
-        # keeps the default.
-        printf '1800'; return 0 ;;
-      scripts/test-adopt-features.sh|*/scripts/test-adopt-features.sh)
-        # macOS runs 40664974972 and 40786835131: killed at 1203s against the
-        # 1200s Linux arm below (457s on the Linux ledger), the macOS time sitting
-        # at the cap edge. 3600s is the cap x3 (the loaded-budget rule); Linux
-        # keeps the default.
+        # macOS run 40664974972: killed at 1803s against a 1800s Darwin row
+        # (995 rows reached by 603s in runs 40457809286 and 40514166576, 151s on
+        # the Linux ledger). 3600s is that cap x2 (the loaded-budget rule).
         printf '3600'; return 0 ;;
-      scripts/hooks/test-block-primary-git-writes.sh|*/scripts/hooks/test-block-primary-git-writes.sh|scripts/hooks/test-block-unresolved-cr-merge.sh|*/scripts/hooks/test-block-unresolved-cr-merge.sh)
-        # macOS: PASS at 461s and 575s (run 40745067827), then both killed at
-        # 603s with every assertion passing (run 40760092281), against 210-421s
-        # on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux keeps
-        # the default.
-        printf '1800'; return 0 ;;
     esac
+    printf '%s' $(( $(_suite_timeout_for "$1" linux) * darwin_cap_mult ))
+    return 0
   fi
 
   case "${1#./}" in
