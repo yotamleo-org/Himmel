@@ -392,17 +392,48 @@ LP="$tmp/pr-window.jsonl"
   echo '{"kind":"finding","ts":"2026-10-02T00:00:00Z","branch":"p2","head":"B1","model":"gamma","finding_id":"g-3","severity":"sug","file":"f","line":3,"verdict":"fixed","pr":102,"thread_id":"T3"}'
 } > "$LP"
 gamma_win() { printf '%s\n' "$1" | awk '/Last-/{f=1} f && $1=="gamma"{print $2; exit}'; }
-pr_out="$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)"
+pr_out="$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)"; pr_rc=$?
+check "window of 2 PRs: cr-scores exits 0" "$pr_rc" "0"
 check "window of 2 PRs counts all 3 findings across 3 heads" "$(gamma_win "$pr_out")" "3"
 contains "header says the window unit is PR" "$pr_out" "window unit: PR"
-pr1_out="$(CR_LEDGER="$LP" bash "$CS" --window 1 2>&1)"
+pr1_out="$(CR_LEDGER="$LP" bash "$CS" --window 1 2>&1)"; pr1_rc=$?
+check "window of 1 PR: cr-scores exits 0" "$pr1_rc" "0"
 check "window of 1 PR counts only the newest PR's finding" "$(gamma_win "$pr1_out")" "1"
 # a hand-written row with no pr joins the PR its head maps to
 echo '{"kind":"finding","ts":"2026-10-01T00:30:00Z","branch":"p1","head":"A2","model":"gamma","finding_id":"g-4","severity":"sug","file":"f","line":4,"verdict":"agreed"}' >> "$LP"
-check "a no-pr row on a known head follows its PR into the window" "$(gamma_win "$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)")" "4"
+pr4_out="$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)"; pr4_rc=$?
+check "no-pr row on a known head: cr-scores exits 0" "$pr4_rc" "0"
+check "a no-pr row on a known head follows its PR into the window" "$(gamma_win "$pr4_out")" "4"
 # a ledger with no pr field anywhere keeps the head window and says so
-head_out="$(CR_LEDGER="$L" bash "$CS" --window 2 2>&1)"
+head_out="$(CR_LEDGER="$L" bash "$CS" --window 2 2>&1)"; head_rc=$?
+check "head fallback: cr-scores exits 0" "$head_rc" "0"
 contains "header says head fallback when no row carries a pr" "$head_out" "window unit: head"
+
+# the PR mapping is built from every row, so a perspective filter keeps it: the
+# recorder rows (perspective off) map heads A1 and A2 to PR 101 while the
+# findings scored are the perspective-on rows with no pr of their own.
+LF2="$tmp/pr-filter.jsonl"
+{
+  echo '{"kind":"finding","ts":"2026-10-01T00:00:00Z","branch":"p1","head":"A1","model":"gamma","finding_id":"r-1","severity":"sug","file":"f","line":1,"verdict":"fixed","pr":101,"perspective":"off"}'
+  echo '{"kind":"finding","ts":"2026-10-01T01:00:00Z","branch":"p1","head":"A2","model":"gamma","finding_id":"r-2","severity":"sug","file":"f","line":2,"verdict":"fixed","pr":101,"perspective":"off"}'
+  echo '{"kind":"finding","ts":"2026-10-01T00:10:00Z","branch":"p1","head":"A1","model":"gamma","finding_id":"o-1","severity":"sug","file":"f","line":3,"verdict":"fixed","perspective":"on"}'
+  echo '{"kind":"finding","ts":"2026-10-01T01:10:00Z","branch":"p1","head":"A2","model":"gamma","finding_id":"o-2","severity":"sug","file":"f","line":4,"verdict":"fixed","perspective":"on"}'
+  echo '{"kind":"finding","ts":"2026-10-02T00:10:00Z","branch":"p2","head":"B1","model":"gamma","finding_id":"o-3","severity":"sug","file":"f","line":5,"verdict":"fixed","perspective":"on","pr":102}'
+} > "$LF2"
+flt_out="$(CR_LEDGER="$LF2" bash "$CS" --perspective on --window 2 2>&1)"; flt_rc=$?
+check "perspective filter: cr-scores exits 0" "$flt_rc" "0"
+check "a perspective filter keeps the PR mapping, so two heads of one PR are one window unit" "$(gamma_win "$flt_out")" "3"
+
+# a branch seen under two PRs (reused) maps a no-pr row to neither
+LB="$tmp/pr-reused-branch.jsonl"
+{
+  echo '{"kind":"finding","ts":"2026-10-01T00:00:00Z","branch":"p3","head":"C1","model":"gamma","finding_id":"b-1","severity":"sug","file":"f","line":1,"verdict":"fixed","pr":201}'
+  echo '{"kind":"finding","ts":"2026-10-02T00:00:00Z","branch":"p3","head":"C3","model":"gamma","finding_id":"b-2","severity":"sug","file":"f","line":2,"verdict":"fixed"}'
+  echo '{"kind":"finding","ts":"2026-10-03T00:00:00Z","branch":"p3","head":"C2","model":"gamma","finding_id":"b-3","severity":"sug","file":"f","line":3,"verdict":"fixed","pr":202}'
+} > "$LB"
+reuse_out="$(CR_LEDGER="$LB" bash "$CS" --window 2 2>&1)"; reuse_rc=$?
+check "reused branch: cr-scores exits 0" "$reuse_rc" "0"
+check "a reused branch does not pull a no-pr row into the last PR's window unit" "$(gamma_win "$reuse_out")" "2"
 
 # ── Final ──────────────────────────────────────────────────────────────────
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

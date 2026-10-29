@@ -238,14 +238,20 @@ const filteredRecords = records.filter(r => {
 
 // The window counts PRs. A row carries its PR in `pr`; a row without one
 // (the hand-written rows) joins the PR its head maps to, then the PR its branch
-// maps to, and only a row neither reaches stays its own head-sized unit.
-const headPr = {}, branchPr = {};
-for (const r of filteredRecords) {
+// maps to, and only a row neither reaches stays its own head-sized unit. The maps
+// are built from every row, not the filtered ones (the recorder writes artifact
+// diff / perspective off, so a filter would hide the PR a row belongs to), and a
+// head or branch seen under two PRs (a reused branch) maps to neither.
+const headPrs = {}, branchPrs = {};
+for (const r of records) {
   const n = Number(r.pr);
   if (!Number.isInteger(n) || n <= 0) continue;
-  if (r.head) headPr[r.head] = n;
-  if (r.branch) branchPr[r.branch] = n;
+  if (r.head) (headPrs[r.head] = headPrs[r.head] || new Set()).add(n);
+  if (r.branch) (branchPrs[r.branch] = branchPrs[r.branch] || new Set()).add(n);
 }
+const headPr = {}, branchPr = {};
+for (const [k, s] of Object.entries(headPrs)) if (s.size === 1) headPr[k] = [...s][0];
+for (const [k, s] of Object.entries(branchPrs)) if (s.size === 1) branchPr[k] = [...s][0];
 function unitOf(r) {
   const n = Number(r.pr);
   if (Number.isInteger(n) && n > 0) return "pr:" + n;
@@ -262,7 +268,7 @@ for (const r of filteredRecords) {
 }
 const allUnits = Object.entries(unitTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
 const windowUnits = new Set(allUnits.slice(-WINDOW_N));
-const anyPr = Object.keys(headPr).length > 0 || Object.keys(branchPr).length > 0 ||
+const anyPr = Object.keys(headPrs).length > 0 || Object.keys(branchPrs).length > 0 ||
   filteredRecords.some(r => Number.isInteger(Number(r.pr)) && Number(r.pr) > 0);
 const winPrs = [...windowUnits].filter(u => u.startsWith("pr:")).length;
 const windowNote = anyPr

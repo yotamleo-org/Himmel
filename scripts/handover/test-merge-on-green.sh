@@ -2885,12 +2885,12 @@ mog_nt_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-nt.XXXXXX") || mog_nt_farm=""
 if [ -z "$mog_nt_farm" ] || [ ! -d "$mog_nt_farm" ]; then
     fail "11y: setup: no scratch dir for the no-timeout PATH"
 else
-    mog_nt_dirs=(); IFS=: read -r -a mog_nt_path <<< "$PATH"
+    IFS=: read -r -a mog_nt_path <<< "$PATH"
+    # Forward order and no -f, so the earliest PATH entry wins a name clash (and no
+    # array is built: an empty one trips set -u on bash 3.2).
     for mog_nt_d in "${mog_nt_path[@]}"; do
-        case "$mog_nt_d" in /*) [ -d "$mog_nt_d" ] && mog_nt_dirs=("$mog_nt_d" "${mog_nt_dirs[@]}") ;; esac
+        case "$mog_nt_d" in /*) [ -d "$mog_nt_d" ] && { ln -s "$mog_nt_d"/* "$mog_nt_farm"/ 2>/dev/null || true; } ;; esac
     done
-    # Reverse order so the earliest PATH entry wins a name clash.
-    for mog_nt_d in "${mog_nt_dirs[@]}"; do ln -sf "$mog_nt_d"/* "$mog_nt_farm"/ 2>/dev/null || true; done
     rm -f "$mog_nt_farm/timeout" "$mog_nt_farm/gtimeout"
     MOG_PATH_BASE="$mog_nt_farm" MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11y: no timeout binary never fails the merge"
     assert_audit_has "11y: audit records the missing timeout" "cr-threads=no-timeout"
