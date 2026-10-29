@@ -695,9 +695,12 @@ on the successor's informational `WAKE succession partial`.
 <!-- mem:8d14bb881ebb -->
 A session's "safe to exit" is not evidence either. Before you exit a detached
 session, commit and push its work, `TaskStop` any monitor it left running, and
-confirm it has zero live children
+confirm it has no live descendants
 (`bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>` prints
-`CLOSABLE:`); an exit with a worker still running orphans its uncommitted work.
+`CLOSABLE:`) and no orphaned shell, which that check cannot see once it is
+reparented (`bash scripts/handover/chief-kit/orphan-loops.sh --list` shows no
+`owner=orphan` row; it counts only wrappers older than 30 minutes); an exit
+with a worker still running orphans its uncommitted work.
 
 **Wrap only with no subagent still running**. An in-process
 subagent, a judge subagent above all, dies with its parent session and its verdict
@@ -726,10 +729,10 @@ does not need the predecessor's transcript at all.
 
 <!-- mem:606678f8c0a1 -->
 Its list of running things is a snapshot, though. Before you pass on a "close
-these windows" or "still open" line, or any other claim about live sessions,
-workers, monitors or suites, run `ListAgents` or
-`pgrep -af 'claude .*-n <prefix>'` and name only what is actually live; by the
-time a successor reads the doc, the operator has usually closed them.
+these windows" or "still open" line, or any other claim about live sessions or
+workers, run `ListAgents` or `pgrep -af 'claude .*-n <prefix>'`; check a
+monitor or a suite by its own task id or pid. Name only what is actually live;
+by the time a successor reads the doc, the operator has usually closed them.
 
 ## Switching the Claude account
 
