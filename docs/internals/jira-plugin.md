@@ -121,6 +121,7 @@ Passing the numeric ID back can print a plausible-looking path (e.g.
 Always pass the NAME, and always re-`get` the ticket afterward to verify the
 status actually changed — the printed path is not the artifact.
 
+<!-- mem:0331f73f49e9 -->
 **`--desc-file`/`--comment-file` bodies are markdown, and Jira wiki markup
 corrupts them.** These flags are parsed as markdown → ADF. Writing Jira wiki
 markup (`h2.`, `||header||`, `{code}`, `{{mono}}`) does not render — the

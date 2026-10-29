@@ -418,6 +418,7 @@ a subscription lands.
 **Tier:** ON-DEMAND (`codex@openai-codex` — installed, disabled by default; `plugin-profile.sh enable codex`). The codex worker lanes need the plugin INSTALLED for its cached companion script, never enabled.
 **What:** The OpenAI codex companion plugin — the codex CLI runtime, the `codex:codex-rescue` / `codex:setup` skills, and the `codex-companion.mjs` script under `$HOME/.claude/plugins/cache/openai-codex/codex/<version>/` (the version segment drifts on plugin update — glob-resolve it, never hardcode).
 
+<!-- mem:9c89869c803e -->
 **Tiered vendor posture (operator ruling 2026-08-28):** large established
 vendors — the codex plugin, the claude CLI, hermes (see the hermes pin revert
 precedent, #1929) — deliberately track upstream LATEST, with our last
@@ -1001,6 +1002,7 @@ Two OTHER levers existed for verifying the CLIProxyAPI path on its own
 evidence (as distinct from the operator-ruling override above) — one is now
 APPLIED, one remains UNTESTED, not refuted:
 
+<!-- mem:d6fed4174c67 -->
 1. **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** — an official, documented,
    name-independent Claude Code env var for declaring an unrecognized model's
    context window. Distinct from `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (which only

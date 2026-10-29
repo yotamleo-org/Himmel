@@ -69,6 +69,8 @@ All canonically documented: these are the structural gates. Linked, not restated
     Suggestion by the same critic). Two critics naming the SAME line at
     different severities is where the real defect usually is.
   <!-- mem:cd1f593f52d8 -->
+  <!-- mem:ac2888b6f488 -->
+  <!-- mem:674c5ff91c0e -->
   - **Four non-convergence signatures, not just "keep going N rounds":**
     (1) severity DECREASING = the expected adversarial-onion case, cap at
     ~2-3 rounds and defer the tail; (2) severity FLAT or RISING = a
@@ -163,6 +165,7 @@ Standing engineering requirements for anything himmel ships, not per-task:
   return codes and different wording. Any parse of a human-readable label
   needs `LC_ALL=C` on the command producing it, because locale changes the literal
   string being matched.
+<!-- mem:243e3a2a1e18 -->
 - **Before trusting a before/after measurement, trace the caller chain and
   confirm the code path under test actually ran.** A flag chosen for safety
   (disabling an expensive pass) can silently disable the very pass being
@@ -180,6 +183,7 @@ Standing engineering requirements for anything himmel ships, not per-task:
   regenerating from scratch. A fixture's SIZE is part of the control too: a
   bug that only manifests above some input size is invisible to a suite
   whose fixtures never grow past it.
+<!-- mem:5b0ac32cd394 -->
 - **After merging upstream into a fork, attribute failures against BOTH a
   pre-merge baseline AND a pristine-upstream control**, never raw counts:
   merge-caused = merged − (baseline ∪ upstream). Most "new" failures after a

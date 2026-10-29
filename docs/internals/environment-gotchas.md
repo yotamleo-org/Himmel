@@ -903,6 +903,7 @@ so a stray kill can't take the launching session with it. After any
 unexpected session restart, check for an orphaned runner still holding a
 suite's lock before re-arming.
 
+<!-- mem:42c19cedf5fd -->
 ## `git branch -d` DOES delete a squash-merged branch
 
 The common assumption that `-d` refuses a squash-merged branch (because it
@@ -975,6 +976,7 @@ Prefer a proper text-editing tool for multi-line shell edits; reach for a
 heredoc only when the edit is genuinely programmatic, and verify the bytes
 either way.
 
+<!-- mem:9f065ad455dd -->
 ## `pre-commit run` stashes ALL unstaged files repo-wide, not just the linted ones
 
 Running any `pre-commit run <hook>` stashes **every unstaged file in the

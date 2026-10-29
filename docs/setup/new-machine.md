@@ -350,6 +350,7 @@ primary checkout's `.env` (see
 [Required `.env` values](#required-env-values-per-variable-walkthrough)
 above); pass `--project` only for cross-project work.
 
+<!-- mem:de122f6daf8c -->
 **Station traps, one line each.** Arch ships `/usr/bin/pre-commit` and
 co-locates `node` with coreutils in `/usr/bin`; a hermetic-PATH test fixture
 that pins `PATH=/usr/bin:/bin` or scrubs the PATH must **stub** these tools

@@ -135,6 +135,7 @@ a CodeRabbit delta on the new range, a fresh `READY` and a fresh `GO` at the new
 Measured 10-24: 8 of the last 40 merged PRs merged main in, and open-to-merge had a
 median of 2.2 h. So do not merge main in speculatively "to be current".
 
+<!-- mem:a2054d2d92a1 -->
 ## main-linux and main-macos are separate states
 
 "Main red" means **`ci.yml` on main**, the Linux CI, and nothing else. The macOS cadence

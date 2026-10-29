@@ -208,6 +208,7 @@ the github-repo ingest skill these dispatch to.
 
 **Companion (not a stage):** `/read-link <url>` (obsidian-triage, LUNA-78) — vault-first link reader: read an already-harvested clip for a URL before any live fetch; enrich a thin clip, else live-fetch (fxtwitter / WebFetch / luna-ingest) as the last resort. Never Grok. UX inspired by eugeniughelbur/obsidian-second-brain's `/x-read` (clean-room, no vendored fork).
 
+<!-- mem:d87dfc8833af -->
 **Companion (not a stage):** `/watch-youtube <url> [--visual]` (obsidian-triage, HIMMEL-5715) — on-demand cookieless YouTube watch/summarize: Scrapling metadata + yt-dlp transcript, optional ffmpeg scene frames (`-fps_mode vfr`); no Gemini/Grok key. Use it instead of the vault plugin's `/youtube`.
 
 ## Plugin skills & ops (himmel-ops, obsidian-triage)
