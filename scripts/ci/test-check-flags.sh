@@ -109,6 +109,8 @@ rm -f "$t/scripts/handover/merge-forward-check.sh"
 expect_rc "a gate that sources a helper reading a flag fails" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/cr/gate.sh)"
 printf '#!/usr/bin/env bash\npython3 -I scripts/handover/chief-kit/user.sh\n' > "$t/scripts/cr/gate.sh"
 expect_rc "a repo-root literal path is followed too" "$t" 1 "(reached from scripts/cr/gate.sh)"
+printf '#!/usr/bin/env bash\nbash "$ROOT/scripts/handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
+expect_rc "a variable-rooted path is followed against the root too" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/cr/gate.sh)"
 printf '#!/usr/bin/env bash\necho "see scripts/handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
 expect_rc "a gate that only names the helper is clean" "$t" 0
 

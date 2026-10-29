@@ -142,8 +142,8 @@ while IFS="$(printf '\t')" read -r name file; do
 done < "$READS"
 
 # one level down: a file a gate sources or execs by a literal path is checked as that gate.
-# The path is read after `.`, source, bash, sh, exec or python3 (options skipped): `"$VAR/x"` and a bare
-# relative path resolve against the gate's directory, `scripts/...` against the root.
+# The path is read after `.`, source, bash, sh, exec or python3 (options skipped): a bare relative path
+# resolves against the gate's directory, `scripts/...` against the root, and `"$VAR/x"` against both.
 # ponytail: one level and literal paths only (a computed path or a helper's own helper is not followed);
 # upgrade path is a call graph in the same AST rule as the read scan.
 norm_path() {
@@ -160,14 +160,16 @@ while IFS= read -r gate; do
   grep -oE '(^|[;&|({[:space:]])((\.|source|bash|sh|exec|python3)([[:space:]]+-[A-Za-z]+)*[[:space:]]+)+"?(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)?[A-Za-z0-9_./-]+' "$ROOT/$gate" 2>/dev/null \
     | sed -E 's/.*[[:space:]]"?//' | sort -u | while IFS= read -r ref; do
     case "$ref" in
-      '$'*) helper="$(norm_path "$gdir/${ref#*/}")" ;;
-      scripts/*) helper="$(norm_path "$ref")" ;;
-      *) helper="$(norm_path "$gdir/$ref")" ;;
+      '$'*) cands="$(norm_path "$gdir/${ref#*/}") $(norm_path "${ref#*/}")" ;;
+      scripts/*) cands="$(norm_path "$ref")" ;;
+      *) cands="$(norm_path "$gdir/$ref")" ;;
     esac
-    [ -n "$helper" ] && [ "$helper" != "$gate" ] || continue
-    grep -qxF "$helper" "$GATES" && continue
-    awk -F'\t' -v f="$helper" '$2 == f {print $1}' "$READS" | while IFS= read -r name; do
-      printf 'forbidden: %s read in %s (reached from %s)\n' "$name" "$helper" "$gate"
+    for helper in $cands; do
+      [ "$helper" != "$gate" ] || continue
+      grep -qxF "$helper" "$GATES" && continue
+      awk -F'\t' -v f="$helper" '$2 == f {print $1}' "$READS" | while IFS= read -r name; do
+        printf 'forbidden: %s read in %s (reached from %s)\n' "$name" "$helper" "$gate"
+      done
     done
   done
 done < "$GATES" | sort -u > "$SCRATCH/reached"

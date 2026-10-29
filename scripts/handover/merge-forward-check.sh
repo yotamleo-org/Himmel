@@ -108,7 +108,7 @@ is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="can
 # ponytail: the Jira command seam of chain-graph.py stays honoured, like gh on PATH: the caller's environment
 # is trusted to reach the real Jira; upgrade path is resolving both from the primary checkout here.
 chain_s2() {
-  local cpr="" pred="" jobs="" psha="" bad=0 a tip head reds view num hro state moid phead rmoid sd jl out edge line
+  local cpr="" pred="" jobs="" psha="" bad=0 a tip head reds view num hro state moid phead rmoid sd ghead jl out edge line
   for a in "$@"; do
     if [ "$a" = --chain-plan ]; then
       echo "usage: merge-forward-check.sh --chain-s2 <pr> --predecessor <pred> --pr <file> --pr-sha <sha> (--chain-plan is dropped)" >&2
@@ -191,6 +191,11 @@ chain_s2() {
   if ! env -u CHAIN_GRAPH_GH python3 "$SCRIPT_DIR/chief-kit/chain-graph.py" --pair "$pred@$phead" "$cpr" \
         --cache-dir "$sd/cache" --json > "$sd/graph.json" 2> "$sd/err"; then
     echo "REFUSE — chain-graph.py --pair $pred@$phead $cpr failed: $(head -c 300 "$sd/err"). The pair is unknown. Do not merge forward."
+    exit 1
+  fi
+  ghead="$(jq -r --arg id "#$cpr" '.nodes[] | select(.id == $id) | .head // ""' "$sd/graph.json" 2>/dev/null)" || ghead=""  # swallow-ok: an unread head is empty, which REFUSEs below
+  if [ "$ghead" != "$head" ]; then
+    echo "REFUSE — the pair graph has PR #$cpr at ${ghead:-unknown}, but HEAD is $head: the PR moved while the pair was rebuilt. Re-run the check. Do not merge forward."
     exit 1
   fi
   jl="$(jq -r '.jira_links // "unknown"' "$sd/graph.json" 2>/dev/null)" || jl=unknown  # swallow-ok: an unparsable graph reads as unknown, which REFUSEs below

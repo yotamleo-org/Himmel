@@ -63,8 +63,10 @@ go_check() {
   refuse() { echo "REFUSE $1"; exit 1; }
   jl="$(jq -r '.jira_links // "unknown"' "$graph" 2>/dev/null)" || usage  # swallow-ok: an unreadable graph is a usage error
   [ "$jl" = ok ] || refuse "the graph's jira_links is $jl: an unread Jira Blocks link may hold PR $pr. Rebuild the graph."
-  jq -e '(.nodes | type == "array") and (.edges | type == "array")' "$graph" > /dev/null 2>&1 \
-    || refuse "the graph has no nodes and edges arrays: a malformed graph could hide an S1 peer. Rebuild it."
+  jq -e '(.nodes | type == "array") and (.edges | type == "array")
+         and all(.edges[]; type == "object" and (.kind | IN("H1", "H2", "S1", "S2", "independent"))
+                           and (.from | type == "string") and (.to | type == "string"))' "$graph" > /dev/null 2>&1 \
+    || refuse "the graph's nodes or edges are malformed (an edge without a known kind, from and to): it could hide an S1 peer. Rebuild it."
   gen="$(jq -r '.generated_at // ""' "$graph")"
   now="$(date -u +%s)"
   if [ -z "$gen" ] || ! age="$(date -u -d "$gen" +%s 2>/dev/null)"; then  # swallow-ok: an unparsable date REFUSEs

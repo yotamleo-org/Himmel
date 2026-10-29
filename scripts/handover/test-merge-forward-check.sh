@@ -560,6 +560,10 @@ if [ "$a0" = "$a1" ] && [ "${a0%% *}" = "rc=0" ]; then ok "chain-s2: the verdict
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/csbin/jira"
 cs "chain-s2: Jira unreadable (a Blocks link may hide an H1 pair): REFUSE" 1 'REFUSE.*Jira links are unreadable'
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/csbin/jira"
+MOVED="$(git -C "$tmp/cs" commit-tree "$CSHEAD^{tree}" -p "$CSHEAD" -m "feat: [HIMMEL-2] a later push")"
+prjson 11 "feat: [HIMMEL-2] the successor" "$MOVED" OPEN null 11
+cs "chain-s2: the PR moves while the pair is rebuilt (graph head is not HEAD): REFUSE" 1 'REFUSE.*PR moved'
+prjson 11 "feat: [HIMMEL-2] the successor" "$CSHEAD" OPEN null 11
 # a caller-written plan file is never trusted: --chain-plan is dropped, flag on and off
 printf 'chain-plan: chain_merge_plan on\nORDER 10 11\nMERGE-FORWARD 11 after 10 (S2 D6)\n' > "$tmp/plan-hand"
 r0="$(csflag 0 --chain-s2 11 --chain-plan "$tmp/plan-hand" --chain-after-sha "$M10" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
