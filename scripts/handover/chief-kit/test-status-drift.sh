@@ -848,6 +848,7 @@ cat >"$tmp/frbin/ksync" <<'EOS'
 #!/usr/bin/env bash
 echo "ksync $* jira=${KBS_JIRA:-}" >> "$FX/ksync.log"
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync ] && exit 1
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync-hang ] && sleep 30
 exit 0
 EOS
 chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync"
@@ -912,6 +913,11 @@ echo ksync > "$FX/fr.fail"
 fr
 check "3c: a failed known-bugs sync does not fail the refresh" "$(frout)" "focus=ok"
 contains "3c: and warns on stderr" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
+fr_reset; echo ksync-hang > "$FX/fr.fail"
+FOCUS_REFRESH_BUDGET=12 fr
+check "3c: a hung known-bugs sync cannot turn a published refresh into a timeout" "$(frout)" "focus=ok"
+check "3c: and the state records status ok" "$(fst status)" ok
+check "3c: and the drift rows were published" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 rm -f "$FX/fr.fail"
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.

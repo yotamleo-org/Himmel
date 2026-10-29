@@ -25,12 +25,13 @@
 #             snapshot read it could not finish (gh, jira, ...), unknown
 #   prs       one `gh pr list` snapshot, staged
 #   render    tracker.py --version, staged
-#   known-bugs-sync.sh runs once the drift file is published (best effort; its log is known-bugs-sync.log).
-#   drift     status-drift.sh over the sweep's snapshot, staged (report only). It fails as
+#   drift    status-drift.sh over the sweep's snapshot, staged (report only). It fails as
 #             drift:<why>: timeout, rc<n>, budget (its own cut-off), gh, jira, no-sdrift, unknown
 #   publish   the page and its fingerprint (.vfp) replace the old ones unless the page on
 #             disk already carries `<meta name="himmel-focus" content="<version> <fp>">`
 #             for this version and fingerprint, then focus-state is written
+#   known-bugs-sync.sh runs between the drift file's publish and the focus-state write, bounded by the
+#             budget left (best effort, skipped under 5 s; its log is known-bugs-sync.log)
 # `focus=ok` (exit 0) means all of it ran. A page whose fingerprint did not move is
 # left alone, so the republish stamp is not disturbed; a page another writer
 # replaced is restored.
@@ -285,8 +286,14 @@ if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
 # Keep the known-checker-bugs file and the checker ticket's Jira links in step. Best effort: a failed sync never fails the refresh.
-KBS_JIRA="${FR_JIRA:-}" bounded 60 "${KSYNC[@]}" --checker HIMMEL-7980 --log "$DIR/known-bugs-sync.log" >/dev/null 2>&1 \
-    || echo "focus-refresh: WARN: known-bugs-sync failed; the known-checker-bugs file is as it was" >&2
+ksync_left=$((BUDGET - SECONDS - 5)) # leave the run's own cut-off out of reach, so a slow sync never turns a published refresh into FAILED:timeout
+[ "$ksync_left" -le 60 ] || ksync_left=60
+if [ "$ksync_left" -ge 5 ]; then
+    KBS_JIRA="${FR_JIRA:-}" bounded "$ksync_left" "${KSYNC[@]}" --checker HIMMEL-7980 --log "$DIR/known-bugs-sync.log" >/dev/null 2>&1 \
+        || echo "focus-refresh: WARN: known-bugs-sync failed; the known-checker-bugs file is as it was" >&2
+else
+    echo "focus-refresh: WARN: known-bugs-sync skipped; too little of the refresh budget is left" >&2
+fi
 S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER"
 again=""
 [ ! -f "$AGAIN" ] || again=$(cat "$AGAIN")

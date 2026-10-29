@@ -148,9 +148,9 @@ export KBS_JIRA="$WORK/jira"
 SLOG="$WORK/sync.log"
 hist() { # <added|removed> <key> <iso>  -> one changelog entry
     if [ "$1" = added ]; then
-        printf '{"created":"%s","items":[{"field":"Link","fromString":null,"toString":"This issue relates to %s"}]}' "$3" "$2"
+        printf '{"created":"%s","items":[{"field":"Link","fromString":null,"toString":"This work item relates to %s"}]}' "$3" "$2"
     else
-        printf '{"created":"%s","items":[{"field":"Link","fromString":"This issue relates to %s","toString":null}]}' "$3" "$2"
+        printf '{"created":"%s","items":[{"field":"Link","fromString":"This work item relates to %s","toString":null}]}' "$3" "$2"
     fi
 }
 reset_sync() {
@@ -217,6 +217,13 @@ printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7848\t2026-10-29T12:00:00Z\nHIMMEL-7980\tWO
 run_sync > /dev/null
 eq 'a key paired under two classes is linked in Jira once' "$(grep -c '^link HIMMEL-7980 HIMMEL-7848' "$JF/calls")" 1
 eq 'and both file rows stay' "$(grep -c HIMMEL-7848 "$KNOWN")" 2
+
+# a key that is not a ticket key is never handed to the Jira CLI
+reset_sync
+printf 'HIMMEL-7980\tUNOWNED\t--bogus\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+run_sync > /dev/null
+lacks 'a malformed key is not linked' "$(cat "$JF/calls")" 'link HIMMEL-7980'
+eq 'and its row stays in the file' "$(grep -c -e '--bogus' "$KNOWN")" 1
 
 # the newest link event wins whatever order the history comes in
 reset_sync
