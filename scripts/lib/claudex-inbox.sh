@@ -3,7 +3,7 @@
 # scripts (PostToolUse and the SessionStart mirror) and exercised directly by
 # scripts/hooks/test-inbox-hook.sh.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the claudex lane is Linux-only.
+# PLATFORM GUARD: Linux-only (the claudex lane).
 # Source scripts/lib/handover-path.sh before this file for handover_root().
 #
 # Delivery transaction: inbox_with_lock holds a session-keyed

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ suite; no .ps1 twin.
+# Platform guard: POSIX bash 3.2+ suite.
 # test-vm-guest-excludes.sh — hermetic coverage for scripts/lib/vm-guest-excludes.sh
 #: the host->guest copy must never carry the gitignored-but-present
 # secret set (.env, .env.*, *.local.json incl. .claude/settings.local.json), and

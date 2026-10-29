@@ -6,8 +6,7 @@
 # anchor copy under a live claude ancestor, which a suite never is - that
 # end-to-end path is covered by the static wiring rows plus the fail-closed
 # source rows (each chokepoint copied WITHOUT the lib must exit 96).
-# Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1
-# twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"

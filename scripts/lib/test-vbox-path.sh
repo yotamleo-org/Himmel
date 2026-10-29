@@ -3,8 +3,7 @@
 #: PATH-first, explicit VBOXMANAGE_PATH always wins, and the bare
 # name is the fallback when `which` finds nothing. Hermetic — never invokes a
 # real VBoxManage.
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a test
-# fixture needs no .ps1 twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"

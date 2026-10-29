@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + jq only.
+# Platform guard: bash + jq only.
 # test-provenance-identity.sh -- tests for scripts/lib/provenance-identity.sh
 # the live-identity reader for register-kind units. A stub
 # `qmd` first on PATH stands in for the registrar; BUN_INSTALL points at a

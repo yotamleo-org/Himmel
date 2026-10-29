@@ -5,8 +5,7 @@
 # a real pid's /proc/<pid>/cmdline can't be fabricated in a test).
 # Run: bash scripts/lib/test-session-name.sh
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — tests a Linux-only
-# seam (see session-name.sh's header).
+# PLATFORM GUARD: tests a Linux-only seam (see session-name.sh's header).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null

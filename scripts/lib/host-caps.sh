@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a
-# test-fixture helper needs no .ps1 twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+ (macOS, Linux).
 # Sourced by shell-test fixtures: capability probes for what a
 # fixture is about to ASSERT, so a host that cannot express the case SKIPs it
 # loudly instead of failing it (or, worse, passing it vacuously).

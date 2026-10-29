@@ -2,8 +2,8 @@
 # session-name.sh — resolve the running Claude Code session's `-n` name from
 # inside a hook or tool subprocess.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — this reads
-# /proc/<pid>/cmdline, a Linux-only seam (no /proc on macOS/Windows).
+# PLATFORM GUARD: Linux-only — this reads
+# /proc/<pid>/cmdline, a Linux-only seam (no /proc on macOS).
 #
 # There is no CLAUDE_SESSION_NAME env var in this codebase (checked: no hit
 # anywhere in scripts/ or docs/internals/). What DOES exist: claude exports

@@ -15,7 +15,7 @@
 # Test seams: GAP_AUDIT_ROOT, GAP_AUDIT_NOW (epoch), GAP_AUDIT_DOCTOR_CMD,
 # GAP_AUDIT_QMD_STATUS_FILE, GAP_AUDIT_GRAPH_OUT, GAP_AUDIT_MIRROR,
 # GAP_AUDIT_RESUME_CMD (set-but-empty disables the check).
-# PLATFORM GUARD: no .ps1 twin, by design — himmel-update.sh is bash-only.
+# PLATFORM GUARD: bash-only, like himmel-update.sh.
 
 GAP_AUDIT_ROOT_DEFAULT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." 2>/dev/null && pwd)"
 GAP_AUDIT_FINDINGS=""
