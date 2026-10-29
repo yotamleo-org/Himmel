@@ -421,6 +421,7 @@ if [ ! -e "$KEY" ]; then
     if [ -n "$TMPKEY" ]; then
         ( umask 077; openssl rand -hex 32 > "$TMPKEY" ) 2>/dev/null || true
         if grep -qxE '[0-9a-f]{64}' "$TMPKEY" 2>/dev/null; then
+            # prim-ok: mv -n never clobbers a key another process minted first; atomic_write would replace it
             mv -n "$TMPKEY" "$KEY" 2>/dev/null || true
         fi
         rm -f "$TMPKEY" 2>/dev/null || true
@@ -456,7 +457,7 @@ fi
 if ! { printf 'pr=%s\nhead=%s\nby=%s\nat=%s\n' "$PR" "$SHA" "$BY" "$AT" \
         && { [ -z "$TRUST" ] || printf 'trust-reviewed=%s\n' "$TRUST"; } \
         && { [ "$FIX_SET" -eq 0 ] || printf 'fix-main-red-run=%s\n' "$FIXRUN"; } \
-        && printf 'mac=%s\n' "$MAC"; } > "$TMP" || ! mv -f "$TMP" "$DEST"; then
+        && printf 'mac=%s\n' "$MAC"; } > "$TMP" || ! mv -f "$TMP" "$DEST"; then # prim-ok: any failed printf must fail the GO write; a pipe into atomic_write hides the producer's status
     rm -f "$TMP"
     echo "go: could not write $DEST" >&2
     exit 1

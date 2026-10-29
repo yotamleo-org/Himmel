@@ -162,13 +162,6 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/cr/clear-review-marker.sh || exit 96
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_csg_dir/../lib/env-alias.sh" ] && . "$_csg_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env REVIEW_MARKER_LOCK_WAIT_SECONDS CR_MARKER_LOCK_WAIT_SECONDS
-    alias_env CLEAR_REVIEW_MARKER_BUDGET_WAIT CLEAR_CR_MARKER_BUDGET_WAIT
-fi
 # NOT set -e: this script inspects sub-call exit codes explicitly and must fail
 # CLOSED with its own codes, never abort mid-gate.
 # Every git call below (ls-remote, ancestry/base checks) resolves

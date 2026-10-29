@@ -175,7 +175,7 @@ stub() {
 stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
 stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
 
-# --- slice V1c: the five usage scripts, each old path a forwarder to the new one ---
+# --- slice V1c: the five usage scripts; bank-preflight.sh and the .ts ones still forward, the other bank-* shell forwarders are removed ---
 V1C_ROWS='bank-attribution.sh|usage-attribution.sh|identifier|old-to-new|V1|X
 bank-monitor.sh|usage-monitor.sh|identifier|old-to-new|V1|X
 bank-preflight.sh|usage-preflight.sh|identifier|old-to-new|V1|X
@@ -222,8 +222,11 @@ forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
 SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
 TS_STUB='process.stdout.write("NEW:" + process.argv.slice(2).join("|")); process.exit(7);'
 forwards bash scripts/lib bank-preflight.sh usage-preflight.sh "$SH_STUB"
-forwards bash scripts/lib bank-monitor.sh usage-monitor.sh "$SH_STUB"
-forwards bash scripts/lib bank-attribution.sh usage-attribution.sh "$SH_STUB"
+# The other V1 bank-* shell forwarders are removed; their registry rows stay.
+for gone in lift attribution monitor; do
+  check "scripts/lib/usage-$gone.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/usage-$gone.sh" ] && echo yes || echo no)"
+  check "scripts/lib/bank-$gone.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/bank-$gone.sh" ] && echo yes || echo no)"
+done
 forwards bun scripts/lanes bank-status.ts usage-status.ts "$TS_STUB"
 forwards bun scripts/lanes codex-bank-probe.ts codex-usage-probe.ts "$TS_STUB"
 

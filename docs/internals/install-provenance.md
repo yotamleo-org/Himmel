@@ -116,7 +116,7 @@ prov_end ok
   `container_created`, `file_created`, `preexisted`, `elem_sha`. The keys named
   in the table above are reserved. A repeated key keeps its first position and
   takes its last value.
-- **Dry runs** (`DRY_RUN=1`, `--dry-run`, `-DryRun`) write nothing and print
+- **Dry runs** (`DRY_RUN=1`, `--dry-run`) write nothing and print
   `DRY: record <op> <kind> <path>`; `begin`/`end` stay silent.
 - **Failures**: usage errors are rc 2 (bash/node CLI) and I/O or missing-tool
   failures rc 1, with `provenance: <why>` on stderr. Whether a failed record is fatal is the caller's call.

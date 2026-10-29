@@ -96,11 +96,7 @@ scripts/ci/check-host-file-read-sinks.sh	gnu-flag	1
 scripts/ci/fork-drift-issue.sh	mktemp	1
 scripts/ci/jira-cli-smoke.sh	errexit	1
 scripts/ci/orphan-census.sh	mktemp	1
-scripts/ci/run-shell-tests-fixture.sh	prim-tmpdir	2
 scripts/ci/run-shell-tests.sh	mktemp	3
-scripts/ci/run-shell-tests.sh	prim-atomic	1
-scripts/ci/run-shell-tests.sh	prim-lock	3
-scripts/ci/run-shell-tests.sh	prim-tmpdir	1
 scripts/ci/run-unchecked-mktemp-under-bwk.sh	errexit	1
 scripts/ci/test-check-hooks-on-pr-range.sh	errexit	4
 scripts/ci/test-check-host-file-read-sinks.sh	mktemp	1
@@ -234,10 +230,6 @@ scripts/handover/auto-commit.sh	mktemp	1
 scripts/handover/cap-reset-time.sh	errexit	1
 scripts/handover/chief-kit/chief-wait.sh	prim-atomic	2	renamed from console-wait.sh
 scripts/handover/chief-kit/chief-wait.sh	prim-lock	1	renamed from console-wait.sh
-scripts/handover/chief-kit/denial-ack-lib.sh	prim-atomic	1
-scripts/handover/chief-kit/go.sh	prim-atomic	2
-scripts/handover/chief-kit/grant-round.sh	prim-atomic	2
-scripts/handover/chief-kit/judge-ladder.sh	prim-lock	1
 scripts/handover/chief-kit/launch-cloud.sh	errexit	1
 scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-digest-step.sh with its 10 findings; the old path is a forwarder, so git sees no rename
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1
@@ -248,9 +240,6 @@ scripts/handover/chief-kit/test-inbox-send.sh	gnu-flag	1
 scripts/handover/chief-kit/test-next-dispatchable.sh	gnu-flag	1
 scripts/handover/chief-kit/test-ops-run.sh	gnu-flag	1
 scripts/handover/chief-kit/tick.sh	mktemp	1
-scripts/handover/chief-kit/wrap-merged.sh	prim-atomic	1
-scripts/handover/chief-kit/write-verdict.sh	prim-atomic	1
-scripts/handover/chief-kit/write-verdict.sh	prim-lock	1
 scripts/handover/chief/chief.sh	errexit	1
 scripts/handover/chief/chief-bus-exec.sh	kill-after	1
 scripts/handover/chief/test-chief.sh	gnu-flag	2
@@ -258,8 +247,6 @@ scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
 scripts/handover/hop.sh	errexit	1
 scripts/handover/hop.sh	gnu-flag	2
-scripts/handover/merge-on-green.sh	prim-canon	1
-scripts/handover/merge-on-green.sh	prim-tmpdir	1
 scripts/handover/pr-merge.sh	errexit	1
 scripts/handover/pr-open.sh	errexit	1
 scripts/handover/register-state.sh	errexit	1
@@ -604,27 +591,13 @@ scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2
 scripts/lanes/stop-worker.sh	gnu-flag	1
 scripts/lib/adopt-test-fixture.sh	mktemp	1
 scripts/lib/usage-attribution.sh	errexit	1
-scripts/lib/usage-monitor.sh	prim-atomic	2
 scripts/lib/branch-shipped.sh	mktemp	1
-scripts/lib/claude-headless.sh	prim-lock	4
-scripts/lib/claudex-inbox.sh	prim-atomic	1
-scripts/lib/claudex-inbox.sh	prim-lock	1
-scripts/lib/forge-localgit.sh	prim-atomic	3
-scripts/lib/gh-ci-cache.sh	prim-atomic	1
-scripts/lib/gh-ci-cache.sh	prim-lock	1
 scripts/lib/gh-graphql-budget.sh	gnu-flag	1
-scripts/lib/observability-registry.sh	prim-atomic	1
-scripts/lib/observability-registry.sh	prim-lock	1
 scripts/lib/orphan-branches.sh	kill-after	1
 scripts/lib/py-armor.sh	gnu-flag	1
 scripts/lib/qmd-bin.sh	gnu-flag	1
 scripts/lib/register-auto-arm-hook.sh	errexit	1
-scripts/lib/release-check.sh	prim-atomic	1
-scripts/lib/render-lease.sh	prim-atomic	1
-scripts/lib/render-lease.sh	prim-lock	1
 scripts/lib/set-env-var.sh	errexit	1
-scripts/lib/set-env-var.sh	prim-atomic	1
-scripts/lib/shared-branch-lock.sh	prim-lock	1
 scripts/lib/test-bank-attribution.sh	errexit	1
 scripts/lib/test-bank-preflight.sh	gnu-flag	1
 scripts/lib/test-bash-ast.sh	bash32	1
@@ -677,7 +650,6 @@ scripts/lib/test-wire-pretooluse-hooks.sh	mktemp	1
 scripts/lib/test-wire-statusline.sh	errexit	1
 scripts/lib/test-wire-statusline.sh	mktemp	1
 scripts/lib/test-worktree-inuse.sh	shellcheck	1
-scripts/lib/tracker-local.sh	prim-lock	2
 scripts/lib/unwire-handover-dir.sh	errexit	1
 scripts/lib/unwire-himmel-repo.sh	errexit	1
 scripts/lib/unwire-hud-config.sh	errexit	1
@@ -685,7 +657,6 @@ scripts/lib/unwire-luna-vault.sh	errexit	1
 scripts/lib/unwire-pretooluse-hooks.sh	errexit	1
 scripts/lib/unwire-statusline.sh	errexit	1
 scripts/lib/unwire-user-claude-md.sh	errexit	1
-scripts/lib/usage-lift.sh	prim-atomic	1
 scripts/lib/watch-loop.sh	kill-after	1
 scripts/lib/wire-handover-dir.sh	errexit	1
 scripts/lib/wire-himmel-repo.sh	errexit	1
@@ -693,7 +664,6 @@ scripts/lib/wire-luna-vault.sh	errexit	1
 scripts/lib/wire-pretooluse-hooks.sh	errexit	1
 scripts/lib/wire-statusline.sh	errexit	1
 scripts/lib/wire-statusline.sh	mktemp	1
-scripts/lib/wire-statusline.sh	prim-atomic	1
 scripts/lint/test-check-history-comments.sh	bash32	1
 scripts/luna-upgrade-all.sh	mktemp	11
 scripts/luna-vitals/connectors/pull-cadence.sh	errexit	1

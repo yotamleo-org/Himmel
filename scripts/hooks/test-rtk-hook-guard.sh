@@ -96,7 +96,7 @@ trap 'rm -rf "$stub_dir"' EXIT
 cat > "$stub_dir/rtk" <<'STUB'
 #!/usr/bin/env bash
 # Stub of `rtk hook claude` (contract observed on rtk 0.40.0).
-# jq-based parse + emit (HIMMEL-264): robust to trailing payload fields
+# jq-based parse + emit: robust to trailing payload fields
 # and always emits valid JSON regardless of quoting in the command.
 [ "${1:-}" = "hook" ] && [ "${2:-}" = "claude" ] || exit 1
 payload=$(cat)

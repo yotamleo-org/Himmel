@@ -41,6 +41,8 @@ REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"
 # old names, read only while HIMMEL_LEGACY_NAMES is on
 # shellcheck source=scripts/lib/env-alias.sh
 . "$HERE/env-alias.sh"
+# shellcheck source=scripts/lib/prim.sh
+. "$HERE/prim.sh" || { echo "usage-monitor.sh: cannot load scripts/lib/prim.sh" >&2; exit 1; }
 alias_env USAGE_MONITOR_CACHE_FILE BANK_CACHE_FILE
 alias_env USAGE_MONITOR_STATE_FILE BANK_STATE_FILE
 alias_env USAGE_MONITOR_SAMPLES_FILE BANK_SAMPLES_FILE
@@ -164,20 +166,18 @@ else
     esac
 
     cutoff=$((now - 1800))
-    samples_tmp="$samples_file.tmp.$$"
+    kept=''
     if [ -r "$samples_file" ]; then
         # A dash invalidates only the resetting window, retaining the other.
-        awk -v cutoff="$cutoff" -v now="$now" -v rf="$reset_five" -v rs="$reset_seven" '
+        kept="$(awk -v cutoff="$cutoff" -v now="$now" -v rf="$reset_five" -v rs="$reset_seven" '
             $1 ~ /^[0-9]+$/ && $1 >= cutoff && $1 <= now {
                 if (rf) $2="-"
                 if (rs) $3="-"
                 if ($2 != "-" || $3 != "-") print $1, $2, $3, $4
-            }' "$samples_file" > "$samples_tmp" 2>/dev/null || : > "$samples_tmp"
-    else
-        : > "$samples_tmp"
+            }' "$samples_file" 2>/dev/null)" || kept=''
     fi
-    printf '%s %s %s %s\n' "$now" "$five" "$seven" "$cache_stamp" >> "$samples_tmp"
-    mv -f "$samples_tmp" "$samples_file" 2>/dev/null || exit 0
+    { [ -z "$kept" ] || printf '%s\n' "$kept"
+      printf '%s %s %s %s\n' "$now" "$five" "$seven" "$cache_stamp"; } | atomic_write "$samples_file" 2>/dev/null || exit 0
 fi
 
 if [ "$spare_only" -eq 0 ]; then
@@ -247,8 +247,7 @@ emit=0
 [ "$state" = "$previous_state" ] || emit=1
 [ "$below" -eq 1 ] && [ "$previous_below" -ne 1 ] && emit=1
 
-state_tmp="$state_file.tmp.$$"
-printf '%s %s\n' "$state" "$below" > "$state_tmp" 2>/dev/null && mv -f "$state_tmp" "$state_file" 2>/dev/null
+printf '%s %s\n' "$state" "$below" | atomic_write "$state_file" 2>/dev/null
 
 codex='?'
 if [ -n "$codex_five" ] || [ -n "$codex_seven" ]; then

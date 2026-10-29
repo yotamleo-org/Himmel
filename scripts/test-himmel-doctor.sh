@@ -4678,6 +4678,83 @@ else
 fi
 rm -rf "$c78_t"
 
+# --- C79: an installed plugin cache that differs from the checkout at the same version ---
+# The hooks.json lines are copied from the real station cache
+# (~/.claude/plugins/cache/himmel/himmel-ops/0.4.141/hooks/hooks.json): the cache
+# lacks the `Bash|` alternative main's egress matcher carries.
+c79_main='{ "matcher": "Bash|mcp__.*[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee].*" }'
+c79_cache='{ "matcher": "mcp__.*[Aa][Gg][Ee][Nn][Tt][-_][Nn][Aa][Tt][Ii][Vv][Ee].*" }'
+c79_setup() {   # <cache hooks.json content>
+    c79_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c79.XXXXXX")" || { fail "C79 setup: mktemp -d failed"; exit 1; }
+    mkdir -p "$c79_t/repo/marketplace/.claude-plugin" "$c79_t/repo/marketplace/plugins/p1/.claude-plugin" "$c79_t/repo/marketplace/plugins/p1/hooks" \
+             "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/hooks" "$c79_t/home"
+    printf '{"name":"himmel","plugins":[{"name":"p1","source":"./plugins/p1"}]}\n' > "$c79_t/repo/marketplace/.claude-plugin/marketplace.json"
+    printf '{"name":"p1","version":"1.0.0"}\n' > "$c79_t/repo/marketplace/plugins/p1/.claude-plugin/plugin.json"
+    printf '%s\n' "$c79_main" > "$c79_t/repo/marketplace/plugins/p1/hooks/hooks.json"
+    printf '%s\n' "$1" > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
+    printf '{"version":2,"plugins":{"p1@himmel":[{"scope":"user","installPath":"%s","version":"1.0.0"}]}}\n' \
+        "$c79_t/claude/plugins/cache/himmel/p1/1.0.0" > "$c79_t/claude/plugins/installed_plugins.json"
+    printf '{"enabledPlugins":{"p1@himmel":true}}\n' > "$c79_t/claude/settings.json"
+}
+echo "== C79: a same-version cache whose hooks.json differs from the checkout -> WARN naming the file (RED) =="
+c79_setup "$c79_cache"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'p1@himmel' && grepq "$out" -F 'hooks/hooks.json' && grepq "$out" -F 'himmel-update.sh --only plugin-refresh'; then
+    pass "C79 drifted cache -> WARN naming the plugin, the file and the repair"
+else
+    fail "C79 drifted cache -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79: an identical cache -> OK, no WARN =="
+c79_setup "$c79_main"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'OK   C79-plugin-cache-drift' && ! grepq "$out" 'WARN C79-plugin-cache-drift'; then
+    pass "C79 identical cache -> OK"
+else
+    fail "C79 identical cache -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79: a cache at an older version than the checkout is not this check's finding =="
+c79_setup "$c79_cache"
+printf '{"name":"p1","version":"1.0.1"}\n' > "$c79_t/repo/marketplace/plugins/p1/.claude-plugin/plugin.json"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+printf '{"name":"p1","version":"1.0.0"}\n' > "$c79_t/repo/marketplace/plugins/p1/.claude-plugin/plugin.json"
+out_same="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if ! grepq "$out" 'C79-plugin-cache-drift' && grepq "$out_same" 'WARN C79-plugin-cache-drift'; then
+    pass "C79 version lag -> no drift finding (the same fixture at equal versions WARNs)"
+else
+    fail "C79 version lag -> $(printf '%s' "$out" | grep -A1 C79) / equal: $(printf '%s' "$out_same" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79: a disabled plugin is skipped, since the repair leaves it alone (RED) =="
+c79_setup "$c79_cache"
+printf '{"enabledPlugins":{"p1@himmel":false}}\n' > "$c79_t/claude/settings.json"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+printf '{"enabledPlugins":{"p1@himmel":true}}\n' > "$c79_t/claude/settings.json"
+out_on="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if ! grepq "$out" 'C79-plugin-cache-drift' && grepq "$out_on" 'WARN C79-plugin-cache-drift'; then
+    pass "C79 disabled plugin -> no drift finding (the same fixture enabled WARNs)"
+else
+    fail "C79 disabled plugin -> $(printf '%s' "$out" | grep -A1 C79) / enabled: $(printf '%s' "$out_on" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79: a skills-only drift (hooks identical) -> WARN naming the skill file (RED) =="
+c79_setup "$c79_main"
+mkdir -p "$c79_t/repo/marketplace/plugins/p1/skills/s" "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/skills/s"
+printf 'new\n' > "$c79_t/repo/marketplace/plugins/p1/skills/s/SKILL.md"
+printf 'old\n' > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/skills/s/SKILL.md"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'skills/s/SKILL.md'; then
+    pass "C79 skills-only drift -> WARN naming the skill file"
+else
+    fail "C79 skills-only drift -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a

@@ -128,9 +128,9 @@ PreToolUse bypass is a session env var set in the **launching shell**
 (e.g. `EDIT_ON_MAIN_OK=1 claude`); a per-call prefix does NOT reach the
 hook process.
 
-## End-side hooks: enqueue, don't fan out (HIMMEL-2004)
+## End-side hooks: enqueue, don't fan out
 A `Stop`/`SessionEnd` hook must not spawn its own detached tree — that is the
-unbounded fan-out HIMMEL-1993 traced the kernel-pool leak to. Route it through
+unbounded fan-out that leaks kernel pool. Route it through
 the bounded queue instead: wrap the wired command in
 `stop-queue.mjs enqueue --key <name> -- <command>`, or, if the hook already
 full-body-detaches itself, swap that one `detach_run` for `detach_queued <key>`.

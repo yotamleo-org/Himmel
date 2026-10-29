@@ -61,6 +61,7 @@ case "$cmd" in
     # mkdir is atomic: one convening at a time reads, checks and appends.
     lock="$state.lock"
     tries=0
+    # prim-ok: a bounded ~10 s try that refuses with exit 3; with_lock waits without a deadline
     until mkdir "$lock" 2>/dev/null; do
       tries=$((tries + 1))
       [ "$tries" -lt 100 ] || { echo "judge-ladder: state lock busy; refusing" >&2; exit 3; }

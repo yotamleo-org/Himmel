@@ -23,12 +23,8 @@
 # Failure policy (#27): hook MUST NEVER exit non-zero. See epic success
 # criterion #5.
 
-# Platform guard: this hook is the Linux/macOS variant. On Windows the
-# companion end-session-wiki.ps1 runs instead. Both are registered in
-# .claude/settings.json because Claude Code's `shell` field is an
-# interpreter spec, not a platform filter — without this guard both
-# would fire on the same platform and the second write would overwrite
-# the first (silent vault inconsistency, see PR #56 review).
+# Platform guard: this hook is the Linux/macOS variant; it is a no-op under a
+# Windows shell (msys/cygwin/Windows_NT).
 case "${OSTYPE:-}${OS:-}" in
     msys*|cygwin*|*Windows_NT*) exit 0 ;;
 esac
@@ -53,8 +49,7 @@ CONFIG_PATH="${PROJECT_DIR}/.claude/end-session-wiki.json"
 # the log + rotation + degraded marker OUT of any repo tree, keyed per-project
 # by the SAME cwd-slug encoding Claude Code itself uses for its
 # ~/.claude/projects/<slug> dirs (path separators/colon -> "-"; e.g.
-# `C:\Users\x\repo` -> `C--Users-x-repo`). The .ps1 twin derives this
-# byte-for-byte identically so both land at the same path on the same machine.
+# `C:\Users\x\repo` -> `C--Users-x-repo`).
 PROJECT_SLUG="$(printf '%s' "$PROJECT_DIR" | sed 's/[\/\\:]/-/g')"
 LOG_DIR="${HOME}/.claude/logs/end-session-wiki"
 # dry-run logs can carry raw transcript text (secrets), so
@@ -359,8 +354,8 @@ fi
 
 TRANSCRIPT_PATH="$(echo "$PAYLOAD" | jq -r '.transcript_path // empty')"
 SESSION_CWD="$(echo "$PAYLOAD"     | jq -r '.cwd // empty')"
-# session_id and reason are part of the SessionEnd contract; read for parity
-# with the .ps1 implementation and to make them available for future use.
+# session_id and reason are part of the SessionEnd contract; read to make them
+# available for future use.
 # shellcheck disable=SC2034
 SESSION_ID="$(echo "$PAYLOAD"      | jq -r '.session_id // empty')"
 # shellcheck disable=SC2034

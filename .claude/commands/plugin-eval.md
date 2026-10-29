@@ -18,7 +18,7 @@ Steps:
 
 1. **Preflight — usage check and version floor, before anything else.**
    `scripts/plugin-eval-preflight.sh` wraps both checks (it calls
-   `bank-preflight.sh` directly, mirroring `scripts/cr/hermes-critic.sh`'s
+   `usage-preflight.sh` directly, mirroring `scripts/cr/hermes-critic.sh`'s
    own direct-call convention, then checks `claude --version` against the
    2.1.269 floor `claude plugin eval` needs) and never invokes
    `claude plugin eval` itself — this command gates that invocation on its

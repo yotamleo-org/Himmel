@@ -17,7 +17,7 @@ Take initiative: drive the current work to done without waiting for an explicit
 of work is finished AND verified), never on every small edit, and never
 mid-task.
 
-## First — seed the tasklist (HIMMEL-539)
+## First — seed the tasklist
 
 If this session was resumed from a handover (you were asked to "load
 `<handover>`"), seed your native tasklist from the handover's ordered step list

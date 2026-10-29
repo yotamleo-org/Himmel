@@ -450,7 +450,7 @@ END {
                 if (substr(s, i + 1, 1) == "-") i++
                 while (substr(s, i + 1, 1) == " " || substr(s, i + 1, 1) == "\t") i++
                 del = ""; dq = 0; inq = ""
-                # HIMMEL-4458: the delimiter is one shell word — quoted parts
+                # The delimiter is one shell word — quoted parts
                 # keep spaces and the other quote char, `\` escapes as bash's.
                 while (i < n) {
                     x = substr(s, i + 1, 1)

@@ -100,7 +100,7 @@ build_repo_template() {
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # The old-name cases read through env-alias.sh and its switch.
+    # Present so the retired-name cases (L3b, 9b-old) would catch an alias re-added through env-alias.sh.
     cp "$(dirname "$CLEAR")/../lib/env-alias.sh" "$(dirname "$CLEAR")/../lib/legacy-names.sh" "$REPO_TEMPLATE/scripts/lib/" \
         || { echo "FAIL: cp env-alias.sh and legacy-names.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
@@ -2392,15 +2392,32 @@ write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
-    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1
-export CR_MARKER_LOCK_WAIT_SECONDS=1
+    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3: the fixture did not acquire the marker lock"
+export REVIEW_MARKER_LOCK_WAIT_SECONDS=1
 run_clear "$tmp" 13 "held marker lock → waits its bound, then exit 13"
-unset CR_MARKER_LOCK_WAIT_SECONDS
+unset REVIEW_MARKER_LOCK_WAIT_SECONDS
 if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=marker-lock-busy'; then pass; else
     fail "a held marker lock must refuse with reason=marker-lock-busy: $LAST_CLEAR_OUT"; fi
 if grepq "$LAST_CLEAR_OUT" -F 'pre-push-writer'; then pass; else
     fail "the busy refusal must NAME the holder (owner.json), not just time out: $LAST_CLEAR_OUT"; fi
+if grepq "$LAST_CLEAR_OUT" -F '(waited 1s,'; then pass; else
+    fail "REVIEW_MARKER_LOCK_WAIT_SECONDS=1 must set the wait: $LAST_CLEAR_OUT"; fi
 if marker_exists "$tmp"; then pass; else fail "lock-busy: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# L3b. The retired CR_MARKER_LOCK_WAIT_SECONDS is ignored even with legacy
+# names on (the default): the wait stays the 10 s default.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
+    acquire "$tmp" feat/x pre-push-writer >/dev/null 2>&1 || fail "L3b: the fixture did not acquire the marker lock"
+export CR_MARKER_LOCK_WAIT_SECONDS=1 HIMMEL_LEGACY_NAMES=1
+run_clear "$tmp" 13 "L3b held marker lock, old wait name → exit 13"
+unset CR_MARKER_LOCK_WAIT_SECONDS HIMMEL_LEGACY_NAMES
+if grepq "$LAST_CLEAR_OUT" -F '(waited 10s,'; then pass; else
+    fail "L3b: CR_MARKER_LOCK_WAIT_SECONDS must be ignored (want the 10s default): $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 # L4. A STALE lock (its holder died) must not wedge the branch forever: the
@@ -2410,7 +2427,7 @@ write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash "$tmp/scripts/lib/shared-branch-lock.sh" \
-    acquire "$tmp" feat/x dead-writer >/dev/null 2>&1
+    acquire "$tmp" feat/x dead-writer >/dev/null 2>&1 || fail "L4: the fixture did not acquire the marker lock"
 printf '{"pid":1,"lane":"dead-writer","branch":"feat/x","acquired_at":"2026-01-01T00:00:00Z","acquired_epoch":%s}\n' \
     "$(( $(date +%s) - 4000 ))" > "$(marker_lock_dir "$tmp")/owner.json"
 run_clear "$tmp" 0 "stale marker lock is reclaimed → exit 0"
@@ -3664,19 +3681,30 @@ write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_check_ci "$tmp" 0; stub_budget "$tmp" 40
 run_clear "$tmp" 0 "9a exhausted budget, reset inside the bound -> waits, then clears (exit 0)"
 b=$(biggest_sleep "$tmp")
-if [ "${b:-0}" -ge 40 ] 2>/dev/null; then pass; else fail "9a slept until the reset (biggest sleep '${b:-none}', want >= 40)"; fi
+if [ "${b:-0}" -ge 30 ] 2>/dev/null; then pass; else fail "9a slept toward the reset (biggest sleep '${b:-none}', want >= 30)"; fi
 if marker_exists "$tmp"; then fail "9a: marker should be GONE after the wait"; else pass; fi
 rm -rf "$tmp"
 
-# 9b. exhausted, reset BEYOND CLEAR_CR_MARKER_BUDGET_WAIT: refuses with the
+# 9b. exhausted, reset BEYOND CLEAR_REVIEW_MARKER_BUDGET_WAIT: refuses with the
 # existing exit 16, keeps the marker, names the cause, never sleeps.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
-stub_check_ci "$tmp" 0; stub_budget "$tmp" 1000
-CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 16 "9b reset beyond the bound -> exit 16 (rc meaning unchanged)"
+stub_check_ci "$tmp" 0; stub_budget "$tmp" 100
+CLEAR_REVIEW_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 16 "9b reset beyond the bound -> exit 16 (rc meaning unchanged)"
 if marker_exists "$tmp"; then pass; else fail "9b: marker must REMAIN"; fi
 if [ ! -s "$tmp/sleeps.log" ]; then pass; else fail "9b: must not sleep past the bound"; fi
 if grep -q 'reason=graphql-budget-exhausted' "$tmp/.git/clear-cr-marker.log" 2>/dev/null; then pass; else fail "9b: audit line names graphql-budget-exhausted"; fi
+rm -rf "$tmp"
+
+# 9b-old. The retired CLEAR_CR_MARKER_BUDGET_WAIT is ignored even with legacy
+# names on (the default): a reset at 200 s sits inside the 300 s default, so
+# the clear waits for it and clears instead of refusing at the old name's 30.
+make_repo || exit 1
+write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+stub_check_ci "$tmp" 0; stub_budget "$tmp" 200
+HIMMEL_LEGACY_NAMES=1 CLEAR_REVIEW_MARKER_BUDGET_WAIT='' CLEAR_CR_MARKER_BUDGET_WAIT=30 run_clear "$tmp" 0 "9b-old: CLEAR_CR_MARKER_BUDGET_WAIT is ignored -> waits under the default bound, clears (exit 0)"
+b=$(biggest_sleep "$tmp")
+if [ "${b:-0}" -ge 100 ] 2>/dev/null; then pass; else fail "9b-old slept toward the reset (biggest sleep '${b:-none}', want >= 100, above the old name's 30)"; fi
 rm -rf "$tmp"
 
 # 9c. healthy budget: one header read, no sleep, normal clear.

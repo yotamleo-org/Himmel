@@ -8,3 +8,4 @@
 chain_soft_edges	off	feature	HIMMEL-7708	HIMMEL-7711	2026-11-09	next-dispatchable.sh keeps a ticket whose files overlap an open PR when the trial merge is clean, 2 files or fewer, no trust path
 chain_render	off	feature	HIMMEL-7709	HIMMEL-7711	2026-11-09	chain-render.py rewrites focus-chains.json from the chain graph; off leaves the hand-kept file untouched
 chain_merge_plan	off	feature	HIMMEL-7710	HIMMEL-7711	2026-11-09	chain-plan.sh prints the S2 merge order, HOLD and MERGE-FORWARD lines the chain-s2 reason of merge-forward-check.sh reads
+chain_push_check	off	feature	HIMMEL-7711	HIMMEL-7711	2026-11-11	chain-push-check.sh trial-merges HEAD against open PRs sharing a file and reports FINDING edge-upgraded on a conflict

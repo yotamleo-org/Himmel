@@ -30,8 +30,8 @@ if [ "$mode" = "--pre-push" ]; then
     db=$(default_branch)
     # On the default branch itself, or a detached HEAD: no feature-branch range
     # to check. is_on_main returns false on a detached HEAD (empty branch), so
-    # check detached explicitly too — mirrors the .ps1 twin's `$branch -eq 'HEAD'`
-    # skip and check-platforms-tested.sh's detached-HEAD handling.
+    # check detached explicitly too — mirrors check-platforms-tested.sh's
+    # detached-HEAD handling.
     cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
     if [ "$cur" = "HEAD" ] || is_on_main; then exit 0; fi
     # Offline seam mirrors check-platforms-tested.sh (plan-critic r1, finding 3):

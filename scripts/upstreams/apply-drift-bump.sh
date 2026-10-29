@@ -261,9 +261,8 @@ if not os.path.isfile(pin_path):
     die(4, "version_pin file not found: %s" % pin_path)
 
 # --- companion pins -------------------------------------------
-# An entry whose pin literal lives in more than one place (cli-proxy-api: the
-# registry's version_pin is the .ps1, the Linux twin's VERSION= and ASSET_SHA256=
-# are separate literals) declares the rest as `companion_pins`, each
+# An entry whose pin literal lives in more than one place declares the rest
+# as `companion_pins`, each
 # {file, template} with ONE placeholder: {version}, or {sha256} for a checksum
 # the caller supplies with --sha256 (this script stays offline, so it cannot
 # derive one). The bump moves every pin or none -- a half-moved split pin is the

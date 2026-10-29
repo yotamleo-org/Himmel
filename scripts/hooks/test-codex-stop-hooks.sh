@@ -46,11 +46,10 @@
 # dogfooding machine and the test would go LIVE). Ambient HIMMEL_* profile vars are
 # stripped and HOME is pointed at a temp dir (so no HOME-rooted lookup -- vault
 # resolution, jira breadcrumb store -- ever touches real machine state). No network,
-# no real Telegram (relay stubbed). bash 3.2-safe. The Windows run-hook.cmd
-# wrapper is covered by the existing .ps1 twin (test-codex-run-hook.ps1).
+# no real Telegram (relay stubbed). bash 3.2-safe.
 #
 # Coverage note: end-session-wiki.sh self-guards out on msys*/cygwin*/Windows_NT
-# (its .ps1 is the Windows-Claude path; run-hook.sh is Unix-only), so on a Windows
+# (run-hook.sh is Unix-only), so on a Windows
 # Git-Bash runner its section-2 smoke is a trivial exit-0 -- its Stop routing is
 # exercised end-to-end only on POSIX. The adapter Stop branch itself is fully
 # covered cross-platform by sections 3 (nudge) + 4 (stub).

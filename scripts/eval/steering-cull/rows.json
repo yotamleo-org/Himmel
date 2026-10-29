@@ -23,7 +23,7 @@
     },
     {
       "id": "r4-billing", "num": "4", "scope": "repo", "lines": "CLAUDE.md:28-33", "ruling": "yes: the one-line same-budget fact plus the pointer",
-      "old": "### Claude invocation billing\nSubscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /\nweekly budget as interactive use. Unattended sites preflight with\n`scripts/lib/bank-preflight.sh`, parse `--output-format json`, and declare an\nexplicit `--permission-mode` (never `bypassPermissions`).\nDetail: `docs/internals/enforcement.md#claude-invocation-billing`.\n",
+      "old": "### Claude invocation billing\nSubscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /\nweekly budget as interactive use. Unattended sites preflight with\n`scripts/lib/usage-preflight.sh`, parse `--output-format json`, and declare an\nexplicit `--permission-mode` (never `bypassPermissions`).\nDetail: `docs/internals/enforcement.md#claude-invocation-billing`.\n",
       "cut": "### Claude invocation billing\nSubscription `claude -p` draws the SAME 5-hour / weekly budget as interactive use:\n`docs/internals/enforcement.md#claude-invocation-billing`.\n"
     },
     {

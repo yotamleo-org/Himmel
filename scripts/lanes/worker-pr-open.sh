@@ -219,6 +219,13 @@ if [ "$head_sha" != "$upstream_sha" ]; then
     exit 1
 fi
 
+# Report chain edge upgrades without flag-wrapping any publication safety gate.
+if [ "$(forge_detect)" = github ]; then
+    if ! bash "$HERE/../handover/chief-kit/chain-push-check.sh" --base "origin/$BASE" >&2; then
+        echo "WARN worker-pr-open: chain push check needs chief attention (advisory; publication gates unchanged)" >&2
+    fi
+fi
+
 existing_pr=""
 # Same separation as the create path below: a `gh`/`bb` warning on stdin's
 # stderr (even on a SUCCESSFUL lookup, rc=0) must never leak into the value

@@ -162,6 +162,7 @@ render_lease_lock_acquire() {
     delay_secs=$(_render_lease_delay "${RENDER_LEASE_LOCK_DELAY_SECS:-}")
     attempt=0
     while [ "$attempt" -lt "$max_attempts" ]; do
+        # prim-ok: bounded retry loop (RENDER_LEASE_LOCK_ATTEMPTS/DELAY) with dead-owner and age-based stale breaking; with_lock fails closed on a dead owner.
         if mkdir "$lock" 2>/dev/null; then
             printf 'msys:%s\n' "$$" > "$lock/owner.pid" 2>/dev/null || true
             return 0
@@ -256,6 +257,7 @@ _render_lease_write_record() {
         printf 'status\t%s\n' "$status" &&
         printf 'claim_nonce\t%s\n' "$claim_nonce"
     } > "$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
+    # prim-ok: the record keeps its umask mode (atomic_write would force 0600) and the rc is checked with the staged file removed.
     mv -f "$tmpf" "$dir/lease.record" 2>/dev/null || { rm -f "$tmpf"; return 1; }
     return 0
 }

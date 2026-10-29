@@ -25,6 +25,7 @@ _observability_registry_warn() {
 # just means a retry (the next arm/disarm) merges cleanly.
 _observability_registry_lock() {
     local lockdir="$1.lock" tries=0
+    # prim-ok: bounded ~2 s try-lock that proceeds UNLOCKED on timeout (best-effort registration); with_lock blocks without a deadline.
     while ! mkdir "$lockdir" 2>/dev/null; do
         tries=$((tries + 1))
         [ "$tries" -ge 20 ] && return 1
@@ -102,6 +103,7 @@ _observability_registry_update_body() {
         rm -f "$tmp"
         return 0
     fi
+    # prim-ok: $tmp is already a same-directory mktemp (0600) published after the cmp dedupe, with the rc warned on; sourced by cadence arm scripts without a prim.sh dependency.
     if ! mv -f "$tmp" "$registry"; then
         rm -f "$tmp"
         _observability_registry_warn "could not publish registry update to $registry"

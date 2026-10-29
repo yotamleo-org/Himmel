@@ -96,7 +96,7 @@ so a broken hook set can never touch the real checkout — and runs four checks:
 |---|---|
 | `codex-exec` | a real `codex exec` turn (a shell call plus a file read) exits 0, proves both tool calls, and emits no hook-failure banner in stdout/stderr or the session rollout |
 | `codex-replay` | **unavailable**: it needs the hook-replay probe, which was Windows-only and is removed with Windows. It was the positive control that every project hook **executes** (separating "clean" from "never fired") |
-| `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `bank-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
+| `claude-print` | the same turn under `claude -p --model haiku` (gated on the subscription usage budget via `usage-preflight.sh`; skips on `SKIPPED-BANK`/`BANK-STALE`) |
 | `claude-replay` | every `run-hook-with-bash.js` PreToolUse entry in `.claude/settings.json` is fed a canned benign payload and must exit **0** |
 
 The two replay checks are deliberately asymmetric. `codex-replay` covers every
@@ -164,7 +164,7 @@ untracked, so the clone itself carries no credentials and no Jira CLI either.
 
 ## Codex deep-dive
 
-### 1. Hooks — Claude-compatible; Windows wiring + block-decision fixed
+### 1. Hooks — Claude-compatible; block-decision fixed
 
 Codex implements a hook engine literally named `ClaudeHooksEngine`. The
 PreToolUse contract mirrors Claude Code's:
@@ -209,10 +209,8 @@ guardrail that merely exits 2 is reported as a *failed (non-blocking)* hook and
 would *fire but never block*.
 
 **The fix.** Tracked
-`.codex/hooks.json` routes `command` through `.codex/run-hook.sh --sandbox` on
-Unix and `commandWindows` through `.codex/run-hook.cmd --sandbox` on Windows.
-Both derive + export `CLAUDE_PROJECT_DIR` from their own location; the Windows
-wrapper finds Git Bash explicitly (skipping the System32 stub). The wrapper
+`.codex/hooks.json` routes `command` through `.codex/run-hook.sh --sandbox`,
+which derives + exports `CLAUDE_PROJECT_DIR` from its own location. The wrapper
 delegates to `.codex/codex-hook-adapter.sh`, which runs the guardrail and,
 for PreToolUse/PermissionRequest exit 2, re-emits the block as Codex's JSON
 `permissionDecision:"deny"` (the guardrail's stderr → reason) and exits 0.
@@ -280,10 +278,9 @@ ledger may not refresh (known limitation; the render is the load-bearing half).
 The guardrails stay single-sourced — they keep working verbatim under Claude
 Code, which never invokes the adapter (only `.codex/hooks.json` does). Verified
 live against codex-cli 0.141.0: a secret read (`block-read-secrets`) is
-**Blocked**; a benign command is allowed. Unit-tested both platform wrappers,
-exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart**, explicit sandbox/no-sandbox mode parsing, and Windows
-Git-Bash-startup fail-closed handling
-(`scripts/hooks/test-codex-run-hook.{sh,ps1}`). Live Codex lifecycle probes of
+**Blocked**; a benign command is allowed. Unit-tested the wrapper,
+exit-2→deny translation, **exit-2→additionalContext for PostToolUse/SessionStart** and explicit `--sandbox` mode parsing
+(`scripts/hooks/test-codex-run-hook.sh`). Live Codex lifecycle probes of
 the auto-arm path remain a follow-up; the no-token fixture is the gate that has
 now passed.
 
@@ -293,10 +290,9 @@ now passed.
   `-s read-only` hook side effects are suppressed; a writable sandbox (the
   interactive default `workspace-write`) is needed for them to act. The adapter
   writes **no temp files** for this reason.
-- **No-sandbox mode is diagnostic-only.** The Windows wrapper accepts
-  `--no-sandbox <script.sh>` and surfaces the raw child exit code. Do not wire it
-  into `.codex/hooks.json`; it is for trusted local debugging, not normal
-  guardrail enforcement.
+- **There is no no-sandbox mode.** `.codex/run-hook.sh` drops `--no-sandbox`
+  the same way it drops `--sandbox` and always runs the adapter, so no path
+  surfaces the raw child exit code.
 - Run from a git **worktree**, Codex resolves the project root to the **main
   checkout** (the worktree's `.git` is a file, not a dir) and loads *its*
   `.codex/hooks.json` — so the live hook config is the main checkout's, not the
@@ -476,8 +472,8 @@ tree under `codex.exe` showed every hook running as
    `ParserError` → **rc=1 in 0.4s** (the "exit code 1" spam). Fix shape: a
    leading `& ` (`& "C:\…\bash.exe" "…"`), or Codex's `commandWindows` field.
 
-himmel's own `.codex/hooks.json` entries are immune to both — `commandWindows`
-selects an unquoted relative `.cmd` that pins Git Bash internally. **A/B replay
+himmel's own `.codex/hooks.json` entries were immune to both: a per-platform
+override selected an unquoted relative wrapper that pinned its shell. **A/B replay
 (same stdin per event; arm A = registry Machine+User
 PATH as Codex inherits it, arm B = `Git\bin` prepended):** all 18 project hooks
 ok (<1.4s) on both arms; arm A → `rtk-hook-guard` + 4× security-guidance
@@ -519,8 +515,8 @@ does not carry (the paths sit in `*** Add/Update/Delete File:` lines; the guard
 exits 0 on an empty path = fails open). `Bash`-matched guards *do* fire, but the
 command text is **PowerShell** (`Get-Content`, `Remove-Item`, …), so reader/
 destructive token lists tuned for bash shapes under-match. The `Bash` tool name
-is itself a Codex compat alias (Claude-engine), which is why the project matchers
-`Bash|PowerShell` are harmless but the `PowerShell` half never matches.
+is itself a Codex compat alias (Claude-engine), which is why the `PowerShell`
+half of the project matchers of the time never matched.
 
 **Same benchmark on the other two harnesses (2026-08-21, no finding):** Claude Code
 runs hooks through Git Bash (`bash -c`) with `CLAUDE_PROJECT_DIR`/`CLAUDE_PLUGIN_ROOT`
@@ -690,18 +686,14 @@ Codex `SessionEnd` (not `Stop` — see the paragraph above). Plugins: the
 response-compression plugin was OFF both sides (Codex global file had stale
 entries — removed) and is gone entirely; hookify ON only in
 Codex (now off); security-guidance ON both, Codex side now off (runner-fatal);
-superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
-`commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
-by design, mirrored into the project file).
+superpowers ON both; himmel-ops ON both (Codex side inert by design, mirrored into the project file).
 
 **Shell-surface guards mirrored.** `block-git-stash`,
 `block-rogue-claude-schedule`, `require-quiet-run` and `block-edit-live-settings`
 were wired for Claude only; they are now in the `.codex/hooks.json` `Bash` chain,
-and the first, second and fourth also in the `PowerShell` chain, in the Claude
-chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
+in the Claude chain's relative order. All four read `tool_input.command` (or `cmd`) on a shell
 tool, which is the Codex shell payload too, so no hook script changed.
-`require-quiet-run` is `Bash`-only by its own tool-name test, so it is not on the
-`PowerShell` matcher. Declared gap: `block-edit-live-settings`' Edit/Write arm
+Declared gap: `block-edit-live-settings`' Edit/Write arm
 reads `file_path`/`notebook_path`/`path`, and Codex edits through `apply_patch`,
 whose target paths sit in the patch text in `tool_input.command`; the hook has no
 `apply_patch` branch, so it is deliberately not wired on the edit matcher (it
@@ -738,7 +730,7 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   normal path (a block lives in its stdout JSON), so a nonzero code
   in sandbox mode means the adapter never ran → emit the fail-closed deny and
   `exit /b 0`. Propagating that code was strictly worse: Codex rendered
-  "hook exited with code 1" *and* failed open. `--no-sandbox` still surfaces the
+  "hook exited with code 1" *and* failed open. `--no-sandbox` surfaced the
   raw child rc for diagnostics. A **no-permission-gate** hook (SessionStart /
   Stop) instead carries `--lifecycle`: there is nothing to deny there and the
   event's own output schema rejects a PreToolUse deny envelope, so an adapter
@@ -762,14 +754,11 @@ follow-up symptom — 5 SessionStart timeouts (5/10/15s) and 2 UserPromptSubmit
   `/scripts/hooks/x.sh`, misses, and exits 0 silently. The `.codex/hooks.json`
   entries that look like duplicates of the plugin's SessionStart/SessionEnd are
   therefore the *only* working copies — do not "de-duplicate" them.
-- Phase 4 of `install-himmel-codex.**sh**` ran the probe advisorily on
-  Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
-  into the Windows twin meant it never fired on the update path.
 
 **PreToolUse dispatcher (RAM program P0-2).** Codex launches a full
 `pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
 PreToolUse entries a Bash tool call matched cost nine of them (parallel
-diagnostic batches peaked at 119–120 Git Bash processes). A `run-hook.cmd`
+diagnostic batches peaked at 119–120 Git Bash processes). A `.codex/run-hook.sh`
 argument may now be a **chain** — `a.sh+b.sh+c.sh` — that one adapter runs in
 order. Guardrail set and order are unchanged; only the number of adapter
 launches drops:
@@ -777,7 +766,6 @@ launches drops:
 | tool | before | after | chain |
 |---|---|---|---|
 | Bash | 9 entries / ~27 launches | 2 entries / ~11 | 8-chain + `.*` auto-arm |
-| PowerShell | 7 / ~21 | 2 / ~9 | 6-chain + `.*` auto-arm |
 | Read, Grep | 2 / ~6 | 2 / ~4 | 1 + `.*` auto-arm |
 | Edit/Write family | 3 | 2 / ~5 | 2-chain + `.*` auto-arm |
 
@@ -785,8 +773,7 @@ launches drops:
   `=`) as an argument delimiter, so `--sandbox a.sh,b.sh` arrives as `%2=a.sh`
   and the chain silently truncates to its first guardrail — every later guard
   quietly not running, with nothing downstream able to detect it. Measured on
-  cmd.exe 10.0.26200 and pinned as a named canary in
-  the Windows hook-runner test; `test-codex-hook-parity.sh` refuses a comma outright.
+  cmd.exe 10.0.26200; `test-codex-hook-parity.sh` refuses a comma outright.
 - **First deny wins and short-circuits.** Codex ran every matched hook and then
   honoured the deny; the chain stops at the first. Safe because every himmel
   PreToolUse guardrail is a pure check — the one side-effecting hook,
@@ -796,14 +783,14 @@ launches drops:
 - **A bad member denies before any member runs** — never a prefix of the chain
   with the rest skipped. Malformed chains (`++`, leading/trailing `+`, any
   character outside `[A-Za-z0-9._+-]`) fail closed.
-- **Matchers had to become disjoint** for this to pay off: `Bash`, `PowerShell`,
+- **Matchers had to become disjoint** for this to pay off: `Bash`,
   `Read|Grep`, the Edit/Write family and the atlassian MCP matcher now each match
   a tool at most once (`.*` exempt). The parity gate asserts that, because two
   matching blocks silently re-multiply the launches and would not stand out in a
   diff.
 - `--lifecycle` semantics are untouched, and Stop stays one entry per hook.
   SessionStart is now chained too: ONE
-  `.codex/run-hook.cmd --sandbox --lifecycle a.sh+b.sh+c.sh+d.sh` entry, 4
+  `.codex/run-hook.sh --sandbox --lifecycle a.sh+b.sh+c.sh+d.sh` entry, 4
   launches → 1 — so its positional trust keys shift 4→1 and the operator must
   **re-trust the hook once**, exactly as after #1804 (see the trap below).
 - **The Claude wiring now mirrors this**: `.claude/settings.json`
@@ -895,8 +882,8 @@ Tier-A skills split by **delivery mechanism**: the enabled himmel plugins
 their own skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
 vm, himmel-doctor, himmel-update) require `himmel-ops@himmel` enabled in
 user-global `~/.codex/config.toml` — provisioned **reproducibly** by
-`scripts/codex/install-himmel-codex.{sh,ps1}` (the codex-CLI half of
-the install split, twin of the hermes `scripts/hermes/install-himmel-profile.*`).
+`scripts/codex/install-himmel-codex.sh` (the codex-CLI half of
+the install split, counterpart of the hermes `scripts/hermes/install-himmel-profile.sh`).
 The installer drives the `codex` CLI (`codex plugin marketplace add` /
 `codex plugin add`), idempotent + non-destructive. Independent of plugin-skill
 loading, the **verified** Codex skill-discovery path is project-local

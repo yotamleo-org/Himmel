@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 # Validates commit message format.
 # Required: conventional commit  type[(scope)]: message
-# A ticket reference is required by DEFAULT (HIMMEL-2442); TICKET_ID_REQUIRED=0
+# A ticket reference is required by DEFAULT; TICKET_ID_REQUIRED=0
 # opts out. The pattern comes from TICKET_ID_PATTERN, else JIRA_PROJECT_KEY
 # (PROJECT-N), else himmel's own `#N` enumeration — the no-Jira ticket system
 # the handover skill's new-epic/new-task allocates, not a relaxed fallback.
-# scripts/lib/project-mode.sh resolves all of it (HIMMEL-4758).
+# scripts/lib/project-mode.sh resolves all of it.
 # Skips: merge commits and revert commits. fixup/squash skip only the shape check.
 
-# HIMMEL-2461: resolve the message file, and FAIL CLOSED when there is not one.
-# .pre-commit-config.yaml wired this hook with `pass_filenames: false`, so
-# pre-commit never handed it the message path: `$1` was empty, `cat ""` failed
-# to stderr underneath pre-commit's own "Passed" line, COMMIT_MSG was empty and
-# the gate exited 0 — on every commit, including messages that are not
-# conventional commits at all. Silence plus rc=0 is exactly how a gate certifies
-# nothing for months, so an unreadable message is now a rejection naming the
-# wiring, never a pass. The .git/COMMIT_EDITMSG fallback keeps the hook working
-# under any other wiring that invokes it with no argument.
+# Resolve the message file, and FAIL CLOSED when there is not one.
+# A wiring with `pass_filenames: false` never hands the hook the message path:
+# `$1` is empty, `cat ""` fails to stderr underneath pre-commit's own "Passed"
+# line, COMMIT_MSG is empty and the gate would exit 0 on every commit, including
+# messages that are not conventional commits at all. Silence plus rc=0 is how a
+# gate certifies nothing for months, so an unreadable message is a rejection
+# naming the wiring, never a pass. The .git/COMMIT_EDITMSG fallback keeps the
+# hook working under any other wiring that invokes it with no argument.
 #
 # --ticket-optional (before the file) skips only the ticket requirement, as
 # TICKET_ID_REQUIRED=0 does, so a CI caller exempting an external author does
@@ -53,7 +52,7 @@ if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then
   load_dotenv TICKET_ID_REQUIRED TICKET_ID_PATTERN TICKET_ID_EXEMPT_AUTHORS JIRA_PROJECT_KEY TRACKER || true
 fi
 
-# HIMMEL-2183: WARN-only negative-existence claim linter. Never blocks (exit
+# WARN-only negative-existence claim linter. Never blocks (exit
 # code is untouched) and fails open on any error inside it — a broken regex
 # or a garbled line must degrade to silence, not to a crash or a false deny.
 warn_negative_existence_claims() {
@@ -91,12 +90,11 @@ ${lines[$((i+1))]}"
 }
 warn_negative_existence_claims "${COMMIT_MSG}" || true
 
-# HIMMEL-3022 (HIMMEL-2982 Ask 3): WARN-only, at commit time, when an
-# attestation trailer is present but will not satisfy its pre-push gate —
-# `Security reviewed:` with a token that is not one of the four accepted
-# (check-security-reviewed.sh TOKEN_RE, HIMMEL-1681), or `Platforms tested:`
-# with an empty value (check-platforms-tested.sh). Two workers burned a
-# follow-up commit each on 2026-09-12 discovering this at push time instead.
+# WARN-only, at commit time, when an attestation trailer is present but will
+# not satisfy its pre-push gate — `Security reviewed:` with a token that is not
+# one of the four accepted (check-security-reviewed.sh TOKEN_RE), or
+# `Platforms tested:` with an empty value (check-platforms-tested.sh). Catching
+# it here saves a follow-up commit discovered only at push time.
 # Never blocks (exit code untouched) and fails open on any error, same
 # contract as warn_negative_existence_claims above.
 #
@@ -117,8 +115,7 @@ warn_nonconforming_attestation_trailers() {
   local sec_skip_re='^[[:space:]]*\[skip security-review\]'
   # Same token vocabulary as check-security-reviewed.sh's TOKEN_RE — kept as
   # separate literal text (not sourced) since that script is pre-push-only
-  # and out of scope for this hook to depend on; HIMMEL-1681 is the anchor
-  # that keeps the two from drifting apart.
+  # and out of scope for this hook to depend on; keep the two in step.
   local sec_token_re='(manual|claude-code-security-review|pr-review-toolkit|ad-hoc)([[:space:]]|$|[.,;])'
   local sec_trailer_re='^[[:space:]]*Security reviewed:'
   local sec_attest_re="${sec_trailer_re}[[:space:]]*${sec_token_re}"
@@ -154,7 +151,7 @@ FIRST_LINE=$(printf '%s\n' "${COMMIT_MSG}" | head -1)
 
 # Git-generated revert commits are exempt from both checks. fixup/squash retain
 # their generated shape, but strict mode still requires the referenced ticket.
-# HIMMEL-1483 CR1: the reverted hash must resolve to a real commit object
+# The reverted hash must resolve to a real commit object
 # (git cat-file -e <hash>^{commit}); a revert-shaped MESSAGE alone is not
 # enough, or a hand-typed revert with a fabricated hash bypasses both the
 # conventional-format and the strict ticket check. On resolution failure fall
@@ -205,7 +202,7 @@ if [ "${SKIP_CONVENTIONAL}" -eq 0 ] && ! printf '%s\n' "${FIRST_LINE}" | grep -E
   exit 1
 fi
 
-# HIMMEL-4758: the tracker, and from it the ticket requirement and pattern,
+# The tracker, and from it the ticket requirement and pattern,
 # come from scripts/lib/project-mode.sh — the one owner of that decision. A
 # missing resolver fails CLOSED: an env-only fallback would quietly gate a
 # repo on rules nobody chose. adopt.sh ships the resolver beside this hook.
@@ -228,16 +225,12 @@ PM_TRACKER="${PM_TRACKER#TRACKER=}"
 PM_REQUIRED="${PM_REQUIRED#TICKET_ID_REQUIRED=}"
 PM_PATTERN="${PM_PATTERN#TICKET_ID_PATTERN=}"
 
-# HIMMEL-2442: default ON. An adopter with no .env at all is gated; the
-# explicit opt-out is TICKET_ID_REQUIRED=0 (or TRACKER=none, which the
-# resolver turns into 0; forcing it back on is refused below, HIMMEL-4787).
+# Default ON. An adopter with no .env at all is gated; the explicit opt-out is
+# TICKET_ID_REQUIRED=0 (or TRACKER=none, which the resolver turns into 0;
+# forcing it back on is refused below).
 #
-# CR3: normalize case instead of enumerating spellings. This arm used to list
-# only `false|FALSE`, while the .ps1 twin's `switch -Regex` is case-insensitive
-# by DEFAULT — so `TICKET_ID_REQUIRED=False` in one .env silently disabled the
-# gate on Windows and rejected the commit as invalid config under bash. A
-# half-enumerated grammar is what diverged; normalizing closes it for every
-# spelling at once rather than adding two more arms.
+# Case is normalized rather than enumerated, so every spelling of the value
+# (`false`, `False`, `FALSE`) means the same thing.
 if [ "${TICKET_OPTIONAL}" = 1 ]; then
   exit 0
 fi
@@ -252,7 +245,7 @@ case "${TICKET_REQUIRED}" in
     ;;
 esac
 
-# HIMMEL-4787: tracker none has no ticket pattern, so a forced requirement
+# Tracker none has no ticket pattern, so a forced requirement
 # would pass every message. Refuse the contradiction instead (rc 2, a config
 # error like the resolver's own refusals). An explicit TICKET_ID_PATTERN still
 # gives the gate something to match, so only the patternless case is refused.
@@ -274,7 +267,7 @@ AUTHOR_EXEMPT=0
 TRUSTED_AUTHOR_EXEMPT=0
 OLD_IFS=$IFS
 IFS=','
-# HIMMEL-1483 CR2: the unquoted expansion below is deliberate (field split on
+# The unquoted expansion below is deliberate (field split on
 # IFS) but must not ALSO pathname-expand — `dependabot[bot]` is a glob, and a
 # file like `dependabotb` in the repo root would replace it and silently break
 # the exemption. Globbing off for the split, restored right after.
@@ -296,8 +289,8 @@ fi
 
 # The resolver's pattern: TICKET_ID_PATTERN, else the escaped JIRA_PROJECT_KEY
 # (tracker jira), else `#N` or <himmel.trackerPrefix>-N (tracker local), else
-# none. CR2: the `#N` boundaries are character classes rather than `\b` so the
-# SAME regex works under GNU `grep -E` and the .ps1 twin's .NET engine. It is
+# none. The `#N` boundaries are character classes rather than `\b` so the
+# same regex works under GNU and BSD `grep -E`. It is
 # never empty here: tracker none with no pattern was refused above.
 TICKET_PATTERN="${PM_PATTERN}"
 

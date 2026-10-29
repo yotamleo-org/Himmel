@@ -34,6 +34,9 @@ assert_file_contains() {
     if grep -qF "$needle" "$file" 2>/dev/null; then pass "$label"; else fail "$label ($file missing: $needle)"; fi
 }
 
+grep -Eq 'windows_refuse|\.ps1' "$CADENCE"
+assert_rc "C14 cadence has no archived Windows dispatch references" 1 "$?"
+
 TMP="$(mktemp -d -t reconcile-cadence.XXXXXX)" || { echo "FAIL: mktemp"; exit 1; }
 SLEEPER_PID=""
 # shellcheck disable=SC2317,SC2329  # invoked by the EXIT trap below.

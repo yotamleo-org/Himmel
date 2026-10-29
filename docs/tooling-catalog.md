@@ -166,7 +166,7 @@ Installed via `extraKnownMarketplaces` in `settings.json`.
 > actions. Left floating on purpose: `setup-node` `'22'` (an LTS line, not an
 > exact version, with no drift row able to track a major line), `npm i -g npm@^11`
 > (a deliberate floor), `apt-get install at` and the runner-image
-> shellcheck/pwsh (the image owns them).
+> shellcheck (the image owns it).
 
 > **Boundary ownership:** which optimizer owns which token boundary (rtk vs
 > MCP-output vs cache vs routing) is governed by
@@ -1472,7 +1472,7 @@ view into the vault — the bridge between the derived graph and the KB.
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
   staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
   original default) — drawing the SAME interactive 5h/weekly Anthropic
-  subscription usage budget as a live session, gated by `bank-preflight.sh` inside
+  subscription usage budget as a live session, gated by `usage-preflight.sh` inside
   `refresh-graph-map.sh` (SKIPPED-BANK stops the run) — each firing
   `refresh-graph-map.sh` for its corpus. The
   structural/AST pair (`HIMMEL-GraphMapAst-Luna` / `-Himmel`) is **asymmetric**

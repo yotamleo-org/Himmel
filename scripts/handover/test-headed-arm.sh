@@ -19,8 +19,7 @@
 #   7. the signal-file path (not just the deadline) also triggers a launch.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
-# itself - no .ps1 twin (the script under test has none either; the Windows
-# station arms through arm-resume.sh's schtasks backend instead).
+# itself - no .ps1 twin (the script under test has none either).
 #
 # Seams used (see headed-arm.sh's own header): KONSOLE_CMD / PGREP_CMD point
 # at stub binaries this suite writes per case; HEADED_ARM_REPO points at a

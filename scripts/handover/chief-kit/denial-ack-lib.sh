@@ -29,6 +29,9 @@
 #   yet; upgrade path: key launches by the resume_cwd's dir label if such workers
 #   appear, HIMMEL-3724.
 
+# shellcheck source=../../lib/prim.sh
+. "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../../lib/prim.sh" || return 1
+
 denial_ack_dir() { printf '%s' "${HIMMEL_DENIAL_ACK_DIR:-$HOME/.himmel/state/denial-acks}"; }
 
 # denial_key <label>: a filename-safe key. Path separators and anything outside
@@ -62,18 +65,11 @@ denial_field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
 # denial_record_write <file> <label> <count> <class> <ts>: atomic, 0600 file in
 # a 0700 dir. rc 1 when the dir or file cannot be written.
 denial_record_write() {
-    local dir tmp
+    local dir
     dir="$(dirname "$1")"
     # Created 0700; an existing dir is left as the operator set it.
     [ -d "$dir" ] || { ( umask 077; mkdir -p "$dir" ) 2>/dev/null && chmod 700 "$dir" 2>/dev/null; } || return 1
-    tmp="$( umask 077; mktemp "$dir/.rec.XXXXXX" 2>/dev/null )" || return 1
-    if printf 'leg=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" > "$tmp" 2>/dev/null \
-        && chmod 600 "$tmp" 2>/dev/null \
-        && mv -f "$tmp" "$1" 2>/dev/null; then
-        return 0
-    fi
-    rm -f "$tmp" 2>/dev/null
-    return 1
+    printf 'leg=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" | atomic_write "$1" 2>/dev/null
 }
 
 # denial_page_write <label> <count> <class>: record that a page was sent (or

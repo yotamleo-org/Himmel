@@ -6,7 +6,7 @@
 #   usage-lift.sh show          print the lift file and whether it is valid now
 #   usage-lift.sh clear         remove it
 #
-# Sourced by bank-preflight.sh for `usage_lift_valid <cache>` (rc 0 = valid).
+# Sourced by usage-preflight.sh for `usage_lift_valid <cache>` (rc 0 = valid).
 # Operator-set only — nothing calls `set` automatically. Window lifts expire
 # at `until`, bounded by the current reset plus one second of API jitter.
 # A standing policy persists across resets, defaults both usage ceilings to 100,
@@ -19,7 +19,7 @@
 # The old names stay read: BANK_LIFT_FILE (while HIMMEL_LEGACY_NAMES is on) names the file when USAGE_LIFT_FILE is
 # unset, and with neither set the old bank-lift.json beside it is read too. When
 # both files exist each must be valid and the stricter one wins; `set` retires
-# the old file and `clear` removes both. bank-lift.sh forwards here.
+# the old file and `clear` removes both.
 
 _UL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=usage-cache-identity.sh
@@ -157,6 +157,7 @@ _usage_lift_cmd() {
       # Store whole seconds, independent of fractional timestamp spelling.
       if ! ( umask 077; jq -n --argjson u "$until" --argjson s "$standing" --arg a "$acct" --arg by "${USER:-unknown}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}' > "$tmp" ); then rm -f "$tmp"; return 1; fi
+      # prim-ok: hooks source this file for usage_lift_valid, and the hook-closure walkers cannot resolve prim.sh's own dynamic source lines, so it must not load prim.sh
       if ! mv "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
       if [ -n "$old" ] && ! rm -f "$old"; then echo "usage-lift: set, but could not remove the old $old" >&2; return 1; fi
       echo "usage-lift: set until $until ($resets)"

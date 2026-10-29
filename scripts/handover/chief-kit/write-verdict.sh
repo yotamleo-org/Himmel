@@ -491,6 +491,7 @@ TARGET="$dir/$NAME.md"
 lockd="$dir/.write-verdict.lock"
 tmpf=""
 tries=0
+# prim-ok: a bounded ~5 s try with an owner record and a recovery line at exit 5; with_lock waits without a deadline
 until mkdir "$lockd" 2>/dev/null; do
     tries=$((tries + 1))
     if [ "$tries" -ge 50 ]; then
@@ -589,6 +590,7 @@ else
     echo "write-verdict: cannot sign the verdict - no readable GO key at $(go_key_file) (go.sh mints it on the chief's first GO), or openssl is missing; nothing written" >&2
     exit 3
 fi
+# prim-ok: the verdict is staged in a file because the mac signs its bytes, then the mac line is appended before the rename
 if { [ "$SIGNED" -ne 1 ] || printf 'mac: %s\n' "$MAC" >> "$tmpf"; } && mv -f "$tmpf" "$TARGET"; then
     :
 else

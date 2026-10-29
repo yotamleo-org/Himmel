@@ -81,6 +81,7 @@ _tracker_local_pid_alive() {
 _tracker_local_lock() {
     local lock="$1/.lock" tries="${TRACKER_LOCK_TRIES:-200}" owner again
     while :; do
+        # prim-ok: held across the mint until _tracker_local_unlock, bounded by TRACKER_LOCK_TRIES with a dead-owner reclaim; with_lock scopes a lock to one command.
         if mkdir "$lock" 2>/dev/null; then
             # $BASHPID is the real process inside a $(...) mint; $$ (bash 3.2 has
             # no BASHPID) names the parent shell, which can outlive the minter
@@ -91,6 +92,7 @@ _tracker_local_lock() {
         if [ -n "$owner" ] && ! _tracker_local_pid_alive "$owner"; then
             # reclaim under a second mutex so two reclaimers cannot remove a lock
             # the first one has just re-taken
+            # prim-ok: reclaim mutex taken inside the lock loop above; a failed take just retries, so it neither blocks nor needs a held critical section.
             if mkdir "$1/.lock.reclaim" 2>/dev/null; then
                 again=$(cat "$lock/owner" 2>/dev/null)
                 [ "$again" != "$owner" ] || rm -rf "$lock"
