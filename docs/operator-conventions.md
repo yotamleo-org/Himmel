@@ -258,7 +258,8 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   killed mid-edit leaves a tree that looks finished but may hold a
   half-applied edit, which passes a casual look. Test the artifact against the
   brief, never the worker's own report: the brief's named done-criteria,
-  `git diff --stat` showing only in-scope files, and the parent running the
+  `git diff --stat <base sha>` (its commits plus staged and unstaged changes)
+  showing only in-scope files, and the parent running the
   named test cases. The default is do not adopt; recovered work re-enters as
   an ordinary diff that is gated again. A handover's "never started" means no
   commits, not no work: check `git status --porcelain` in that worktree.
