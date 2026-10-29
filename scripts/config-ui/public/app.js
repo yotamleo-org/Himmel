@@ -307,8 +307,10 @@ async function loadSetup() {
     data = r.ok ? await r.json() : { error: `setup failed (${r.status})` };
   } catch (_) { data = { error: "server unreachable" }; }
   if (gen !== setupGen) return;
-  if (!data.error || !setup) setup = data; // a failed refresh keeps the last good read, so an open form stays
+  const stale = data.error && setup && !setup.error; // a failed refresh keeps the last good read, so an open form stays
+  if (!stale) setup = data;
   if (currentPage.id === "config") paint();
+  if (stale && currentPage.id === "config") toast(`${data.error}: showing the last read, change a setting or reopen the page to retry`);
 }
 async function runVerify() {
   if (verify && verify.state === "running") return;

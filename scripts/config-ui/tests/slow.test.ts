@@ -190,9 +190,10 @@ for (const [name, before, after, want] of [
   expect(repainted.value).toBe(want);
 });
 
-test("page: a failed setup refresh keeps the last good setup instead of replacing the forms with an error", async () => {
+test("page: a failed setup refresh keeps the last good setup and says so, instead of replacing the forms with an error", async () => {
   const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
     .replace(/^import .*$/gm, "").concat("\nglobalThis.__loadSetup = loadSetup;\nglobalThis.__setup = () => setup;\n");
+  const toastEl = { textContent: "", hidden: true };
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   let failing = false;
   const g = globalThis as Record<string, unknown>;
@@ -201,7 +202,7 @@ test("page: a failed setup refresh keeps the last good setup instead of replacin
   Object.assign(g, {
     render: () => "", renderNav: () => "", renderHeader: () => "",
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
-    document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
+    document: { querySelector: (q: string) => (q === "#toast" ? toastEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
     fetch: (url: string) => (url === "/api/setup"
       ? Promise.resolve(failing ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, json: async () => ({ secrets: [] }) })
@@ -217,6 +218,7 @@ test("page: a failed setup refresh keeps the last good setup instead of replacin
     kept = (g.__setup as () => unknown)();
   } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
   expect(kept).toEqual({ secrets: [] });
+  expect(toastEl.textContent).toContain("setup failed (500)");
 });
 
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {
