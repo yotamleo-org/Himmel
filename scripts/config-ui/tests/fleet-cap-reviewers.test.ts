@@ -84,7 +84,7 @@ test("an unreadable config.json shows the 4 the preflight falls back to, not the
   expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "default" });
 });
 
-test("a config.json that exists but cannot be opened shows 4, not the .env value", async () => {
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a config.json that exists but cannot be opened shows 4, not the .env value", async () => {
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   writeFileSync(configFile, '{"policy":{"HIMMEL_FLEET_CAP":7}}\n');
   chmodSync(configFile, 0o000);
