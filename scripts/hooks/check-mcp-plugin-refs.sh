@@ -42,7 +42,7 @@ is_exempt() {
         scripts/hooks/wire-hook-bash.test.mjs) return 0 ;;
         scripts/hooks/check-mcp-plugin-refs.sh) return 0 ;;
         scripts/hooks/test-check-mcp-plugin-refs.sh) return 0 ;;
-        scripts/hooks/test-block-glm-external-writes.sh) return 0 ;;
+        scripts/hooks/test-block-worker-write-fence.sh) return 0 ;;
         *) return 1 ;;
     esac
 }

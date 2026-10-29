@@ -2597,13 +2597,13 @@ scripts/hooks/test-block-destructive-commands-d.sh	84
 scripts/hooks/test-block-docker-privesc.sh	19
 scripts/hooks/test-block-edit-live-settings.sh	153
 scripts/hooks/test-block-git-stash.sh	13
-scripts/hooks/test-block-glm-external-writes.sh	26
 scripts/hooks/test-block-graphify-egress.sh	23
 scripts/hooks/test-block-jira-compound-write.sh	19
 scripts/hooks/test-block-primary-git-writes.sh	311
 scripts/hooks/test-block-read-secrets.sh	53
 scripts/hooks/test-block-tail-pipe-on-gates.sh	26
 scripts/hooks/test-block-unresolved-cr-merge.sh	435
+scripts/hooks/test-block-worker-write-fence.sh	26
 scripts/hooks/test-block-write-into-main-checkout-adopted.sh	17
 scripts/hooks/test-block-write-into-main-checkout-cd.sh	46
 scripts/hooks/test-block-write-into-main-checkout-evaldata.sh	87

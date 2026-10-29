@@ -5,8 +5,9 @@
 # .codex/hooks.json adapter, but block-edit-on-main.sh is wired ONLY on the
 # Edit|Write|MultiEdit matcher — so the PATCH path (Edit/Write tools) is fenced
 # while the TERMINAL path (a shell command that writes a file, pushes, or hits
-# the network) is not. On the Claude lane the auto-mode classifier + the
-# GLM-lane block-glm-external-writes.sh cover that terminal surface; codex has
+# the network) is not. On the Claude lane the auto-mode classifier covers that
+# terminal surface (block-worker-write-fence.sh fences only the pin dir and the
+# origin/<default> anchor); codex has
 # NO classifier layer (ratified deterministic-guards-only for codex),
 # so this hook is the codex-lane classifier SUBSTITUTE for the terminal write
 # surface. It is the behavioural port of hermes's parity_guard.py
@@ -21,7 +22,7 @@
 #       view/diff/checks/status/list, gh run view/list/watch); and network CLIs
 #       (curl/wget/iwr/irm/Invoke-WebRequest/Invoke-RestMethod). FAIL-CLOSED:
 #       denied UNLESS the named opt-in CODEX_EXTERNAL_WRITES_OK=1 is set (mirrors
-#       HERMES_EXTERNAL_WRITES_OK / GLM_EXTERNAL_WRITES_OK semantics).
+#       HERMES_EXTERNAL_WRITES_OK semantics).
 #
 #   (b) WRITE-ON-MAIN — DESTINATION-based rather than
 #       cwd-only: a write-shaped terminal command (redirect > / >>, tee,
@@ -41,7 +42,7 @@
 #       byte-identically by the Claude Bash PreToolUse chain instead of a
 #       second copy drifting.
 #
-# Known limitations (accidental-shape guard, like block-glm-external-writes /
+# Known limitations (accidental-shape guard, like block-worker-write-fence /
 # block-read-secrets): a write verb displaced from command position (env-prefix
 # `FOO=1 git push`, sudo/xargs/timeout wrappers, hyphenated aliases) is missed
 # (under-block); command-text scanning shares those wrapper/quoting gaps. A
@@ -53,7 +54,7 @@ set -euo pipefail
 # On a security-relevant hook a TOP-LEVEL errexit abort must BLOCK (exit 2),
 # never slip through as a non-blocking exit 1 (only exit 2 denies under Claude
 # Code, and the codex adapter only translates exit 2 -> JSON deny). Mirrors
-# block-glm-external-writes.sh's clamp. The malformed-JSON path below stays
+# block-worker-write-fence.sh's clamp. The malformed-JSON path below stays
 # fail-OPEN (sibling-hook parity — Claude Code / codex emit valid JSON).
 # shellcheck disable=SC2154  # rc is assigned by rc=$? inside the same trap string
 trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
@@ -86,7 +87,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null ||
 # Lower-case + flatten newlines TO ';' (a newline separates commands like ';';
 # flattening to spaces would UNDER-block a two-line "gh pr view 1\ngh pr merge 1"
 # by reading it as one command). Keeps command boundaries visible to the
-# (^|[;&|(]) anchor. Mirrors block-glm-external-writes.sh.
+# (^|[;&|(]) anchor. Mirrors block-worker-write-fence.sh.
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;')
 
 # Command-position occurrence counter (start-of-command or right after ; & | ( —
@@ -100,8 +101,8 @@ count_cmd() {
 }
 
 # ------------------------------------------------------------------ class (a)
-# External-write fence (port of parity_guard.terminal_external_write_reason /
-# block-glm-external-writes.sh shapes). FAIL-CLOSED unless the operator opts in.
+# External-write fence (port of parity_guard.terminal_external_write_reason).
+# FAIL-CLOSED unless the operator opts in.
 if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     deny_ext() {
         {

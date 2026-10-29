@@ -71,7 +71,7 @@ function normalize(candidate) {
 // (a) the pin file itself lives in an ordinary user-writable directory; a
 // worker with unrestricted Bash runs as the SAME OS user record-hook-
 // integrity.sh does. The class of attack this used to warn
-// was fully open: block-glm-external-writes.sh's pin-dir write-fence now
+// was fully open: block-worker-write-fence.sh's pin-dir write-fence now
 // denies a Bash/PowerShell command that references this directory for EVERY
 // dispatched worker lane (keyed on the general HIMMEL_WORKER marker, not just
 // GLM) — see that hook's header for the mechanism and its own residual (a
@@ -1017,7 +1017,7 @@ function resolveMismatchInner(context) {
 // once per member, so a call that overrides several tampered members appends one
 // line for each.
 // Residual: HIMMEL_HOOK_INTEGRITY_BYPASS_OK is shared with the command-text
-// fences in block-glm-external-writes.sh, which this does NOT scope.
+// fences in block-worker-write-fence.sh, which this does NOT scope.
 const BYPASS_AUDIT_FILE = 'hook-integrity-bypass.jsonl';
 const BYPASS_SCOPE = 'The bypass is honoured only when the session cwd is inside CLAUDE_PROJECT_DIR, the '
   + "session's recorded repo lists that directory as a linked git worktree (it is ignored in the primary "

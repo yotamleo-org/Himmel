@@ -337,7 +337,6 @@ scripts/eval/test-weekly-rollup.sh	3
 scripts/eval/test-worktree-latency-curve.sh	0
 scripts/git/test-classify-branches.sh	1
 scripts/git/test-restore-to-head.sh	2
-scripts/glm/test-append-outbox.sh	1
 scripts/graphify/test-anchor-seeds.sh	1
 scripts/graphify/test-ast-update.sh	3
 scripts/graphify/test-check-graph-freshness.sh	2
@@ -599,8 +598,8 @@ scripts/hooks/test-block-docker-privesc.sh	19
 scripts/hooks/test-block-edit-live-settings.sh	153
 scripts/hooks/test-block-edit-on-main.sh	4
 scripts/hooks/test-block-git-stash.sh	13
-scripts/hooks/test-block-glm-bypass-scope.sh	3
-scripts/hooks/test-block-glm-external-writes.sh	26
+scripts/hooks/test-block-worker-bypass-scope.sh	3
+scripts/hooks/test-block-worker-write-fence.sh	26
 scripts/hooks/test-block-graphify-egress.sh	23
 scripts/hooks/test-block-himmel-config-writes.sh	7
 scripts/hooks/test-block-infra-destroy.sh	5

@@ -41,7 +41,7 @@
 # Bash (Bash(node *)/Bash(bash *), WORKER_BASH_ALLOW) runs as the SAME OS user
 # this hook does — nothing at the filesystem level stops
 # `bash -c 'echo ... > $out_dir/$session_id.json'` from forging a pin to match
-# a tampered guard. block-glm-external-writes.sh's pin-dir write-fence class
+# a tampered guard. block-worker-write-fence.sh's pin-dir write-fence class
 # now denies that Bash/PowerShell shape for EVERY dispatched worker lane (GLM
 # or native, keyed on the general HIMMEL_WORKER marker, not just GLM), closing
 # the class of attack this comment used to warn was fully open. It remains a

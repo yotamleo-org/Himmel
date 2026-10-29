@@ -181,8 +181,6 @@ scripts/hooks/block-edit-on-main.sh	cmdsub-devnull	5
 scripts/hooks/block-edit-on-main.sh	true-after-read	5
 scripts/hooks/block-git-stash.sh	cmdsub-devnull	1
 scripts/hooks/block-git-stash.sh	true-after-read	1
-scripts/hooks/block-glm-external-writes.sh	cmdsub-devnull	25
-scripts/hooks/block-glm-external-writes.sh	true-after-read	11
 scripts/hooks/block-graphify-egress.sh	cmdsub-devnull	3
 scripts/hooks/block-graphify-egress.sh	true-after-read	3
 scripts/hooks/block-himmel-config-writes.sh	cmdsub-devnull	10
@@ -207,6 +205,8 @@ scripts/hooks/block-terminal-write-fence.sh	true-after-read	3
 scripts/hooks/block-unresolved-cr-merge.sh	cmdsub-devnull	22
 scripts/hooks/block-unresolved-cr-merge.sh	true-after-read	8
 scripts/hooks/block-worker-askuserquestion.sh	cmdsub-devnull	2
+scripts/hooks/block-worker-write-fence.sh	cmdsub-devnull	12
+scripts/hooks/block-worker-write-fence.sh	true-after-read	5
 scripts/hooks/block-write-into-main-checkout.sh	cmdsub-devnull	19
 scripts/hooks/block-write-into-main-checkout.sh	true-after-read	3
 scripts/hooks/bus-deliver-hook.sh	cmdsub-devnull	2

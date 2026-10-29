@@ -233,7 +233,7 @@ export function composeOutboxWriteHint(outbox: string): string {
 // ── permission hardening (prevention, not just detection) ─────
 //
 // Design: bypassPermissions is FORBIDDEN for an unattended worker (it strips
-// EVERY guardrail — block-glm-external-writes.sh, block-read-secrets.sh, all
+// EVERY guardrail — block-worker-write-fence.sh, block-read-secrets.sh, all
 // of it — trading the hang class this ticket fixes for a much worse one). The chosen mechanism is
 // `--permission-mode dontAsk` (verified via `claude --help` on the installed
 // v2.1.220 CLI as a real accepted value, and via current Claude Code
@@ -302,7 +302,7 @@ export const WORKER_BASH_ALLOW: readonly string[] = [
 // profile settings resolveProfileSettings already produced,
 // into ONE `--settings` JSON string — `--settings` loads as an ADDITIONAL
 // layer (verified against current Claude Code docs), so the operator's own
-// ~/.claude hooks (block-glm-external-writes.sh, block-read-secrets.sh,
+// ~/.claude hooks (block-worker-write-fence.sh, block-read-secrets.sh,
 // block-edit-on-main.sh, auto-approve-safe-bash.sh) keep firing unchanged;
 // this only ADDS allow-rules and (redundantly, defense-in-depth alongside
 // the --permission-mode CLI flag) restates defaultMode. Always returns a
@@ -340,7 +340,7 @@ export function composeWorkerSettings(pluginSettingsJson: string | undefined, wo
 }
 
 // Structural forbid (operator design constraint): bypassPermissions
-// strips every guardrail this lane relies on (block-glm-external-writes.sh,
+// strips every guardrail this lane relies on (block-worker-write-fence.sh,
 // block-read-secrets.sh, the deny-list, all of it) — the same reason
 // arm-resume.sh never relaunches a session with skip-permissions. A caller
 // asking for it is a usage error (exit 2), not a silent downgrade to
@@ -425,7 +425,7 @@ export function preflightWindowCheck(p: { briefChars: number; overheadChars: num
 // deny-hook. That accident-layer depth is knowingly traded away, because the
 // only thing providing it could permanently lose the operator's push
 // configuration, and a lost remote costs more than the accident it prevents.
-// The remaining layers are the worker contract, block-glm-external-writes.sh
+// The remaining layers are the worker contract, block-worker-write-fence.sh
 // on the command shapes, and the parent CR gate. The decision, its threat
 // model (a worker misreading a parent-authored brief, not an adversary), and
 // the named conditions that would reverse it are recorded on the removal ticket. Push protection here is CONTRACT-ONLY and the

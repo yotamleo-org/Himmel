@@ -16,7 +16,7 @@ install-main-ref-transaction.sh|installer invoked from setup scripts, not a hook
 install-cr-pre-push-legacy.sh|installer for the legacy CR pre-push path, invoked from setup scripts, not a hook
 hook-integrity-lock.sh|called by hook-integrity.js and record-hook-integrity.sh, not a registered hook
 capture-baseline.sh|operator-run fixture capture for end-session-wiki golden notes, not a hook
-hook-integrity.js|module required by the himmel-ops plugin hook runner and block-glm-external-writes.sh
+hook-integrity.js|module required by the himmel-ops plugin hook runner and block-worker-write-fence.sh
 guardrail-skip-in-himmel.js|module required by guardrail-block.mjs, himmel-update.sh and himmelctl probes
 guardrail-block.mjs|CLI invoked by himmel-doctor.sh, himmel-update.sh and himmelctl, not a registered hook
 simulate-memory-edit.js|module required by guard-memory-capture.sh

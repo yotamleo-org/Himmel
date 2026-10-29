@@ -80,7 +80,7 @@ export function deriveTicket(branch, explicit) {
 // the no-upstream failure has two very different causes — a
 // branch that plain doesn't exist, and a branch that exists WITH commits but
 // was never pushed. The GLM lane's structural push-block
-// (block-glm-external-writes.sh) makes the second shape common and
+// (block-worker-write-fence.sh) makes the second shape common and
 // non-obvious: a worker cannot push by design, so "no upstream" here often
 // just means the parent hasn't finished the push yet, not that the work is
 // missing. Best-effort: any exec failure (branch genuinely absent, no
