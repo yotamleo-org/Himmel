@@ -290,8 +290,9 @@ Four pre-launch checks that each cost a chief a dead worker when skipped:
   nothing in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
   `refusing` in its output. Never probe with a real launch under `timeout`
   instead: the launch reserves a fleet slot under the session name for the
-  deadline plus 60 s, so the real launch then refuses with "fleet-size cap
-  reached" even when the fleet is far under cap. If a name is stranded,
+  deadline plus 60 s, and a killed probe does not release it, so the real
+  launch then refuses with "fleet-size cap reached" in its log (a duplicate
+  reservation underneath) even when the fleet is far under cap. If a name is stranded,
   relaunch under a fresh session name.
 - **Design-profile workers need a one-time interactive OAuth login.** The `design`
   profile enables `builder-visual@himmel`, whose `.mcp.json` registers the hosted

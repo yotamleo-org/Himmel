@@ -201,7 +201,7 @@ Habits for anything that leaves this repo toward an upstream/external project:
 <!-- mem:645f0031401f -->
 - **Open the companion PR with the issue when the fix is unambiguous.** An issue filed alone gets its fix taken by someone else's PR within hours, and the credit for closing the bug goes with it. Keep issue-only for defects tangled in design, and for a contested ask: there the companion PR becomes a liability. If another PR already exists, stand down at once and never compete; the issue keeps the discovery credit. A scanner false-positive is filed against the scanner, never dodged by rewriting the scanned code, which reads as evasion to a maintainer.
 <!-- mem:b48605ba9194 -->
-- **No PR where outside contributors are never merged.** Before drafting one, check the merged PRs touching the target path (`gh pr list --repo <r> --state merged --search <path>` and each author's `author_association`). If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. `anthropics/*` repos are issues-only.
+- **No PR where outside contributors are never merged.** Before drafting one, check who authored the merged PRs that touched the target path: GitHub's PR search does not match changed-file paths, so list the commits on the path (`git log -- <path>` in a clone) and look up each one's PR and its author's association to the repo. If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. `anthropics/*` repos are issues-only.
 
 ## Autonomy & arming
 

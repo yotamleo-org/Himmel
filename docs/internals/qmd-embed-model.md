@@ -125,7 +125,10 @@ To test the file itself, run
 `sqlite3 "file:<index>?immutable=1" "pragma quick_check"`. Then:
 
 1. Kill every `qmd mcp` daemon.
-2. Remove the `-shm` and `-wal` files beside the index.
+2. Remove the `-shm` and `-wal` files beside the index. They belong to the
+   index you swapped out, not the one now in place; if you may still want
+   anything the old daemons wrote, move the swapped-out index together with
+   its sidecars aside first instead of deleting them.
 3. Run `bash scripts/luna/qmd-embed-model.sh set <model>`, then `check`.
 4. Only now let a daemon start.
 
