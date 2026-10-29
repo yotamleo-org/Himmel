@@ -117,6 +117,23 @@ keeps the old index as `index.sqlite.pre-swap-<timestamp>` and the old config as
 `index.yml.pre-swap-<timestamp>`, and prints the rollback commands if its
 post-swap check fails. Delete the `.pre-swap-` files once you are satisfied.
 
+<!-- mem:ad0fbcf0d5ac -->
+**Rolling back by hand.** If you swap `index.sqlite` back yourself, the order
+matters. A daemon still running keeps the old file open, and the stale
+`index.sqlite-shm` makes new readers report "database disk image is malformed".
+To test the file itself, run
+`sqlite3 "file:<index>?immutable=1" "pragma quick_check"`. Then:
+
+1. Kill every `qmd mcp` daemon.
+2. Remove the `-shm` and `-wal` files beside the index.
+3. Run `bash scripts/luna/qmd-embed-model.sh set <model>`, then `check`.
+4. Only now let a daemon start.
+
+A session start before step 3 relaunches the daemon on the OLD config; compare
+the daemon's `ps -o lstart` with the config file's mtime. Two daemons can run
+side by side, with the old one still holding the port: confirm with
+`ss -ltnp`, and run one live vec query before you call it done.
+
 Switching back to gemma is the same procedure with `--model gemma`.
 
 `set gemma|qwen` alone only writes `models.embed` into `~/.config/qmd/index.yml`.

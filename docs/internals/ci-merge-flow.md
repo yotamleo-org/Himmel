@@ -62,8 +62,11 @@ First classify the red, then act:
 | **Real blocker** | product breakage, a guard or invariant regression, a broken install or ship path | **HOLD the fleet.** Freeze GOs and merges until main is fixed. Dispatch the fix. |
 | **Complex fix** | the cause or the fix is beyond the worker that found it | **Escalate** to a higher tier, a judge or the operator. Never leave it skipped and forgotten. |
 
+<!-- mem:a79804f5adf1 -->
 Before acting on a red, check what it actually is:
 
+- A red **on an open PR** belongs to that PR's own worker; the chief rules only on
+  scope questions.
 - Read the newest `ci.yml` run on main **and its head sha**. A scheduled run at an older
   head says nothing about the current head. `gh workflow run ci.yml --ref main` only
   queues a run: wait until that run completes, then check its `headSha` and `conclusion`
