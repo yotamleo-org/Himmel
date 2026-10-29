@@ -5,7 +5,7 @@
 # key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
 # CHIEF_WAIT_USAGE), so no gh, lock or bank read happens here. bash 3.2-safe.
 #
-# CHIEF_WAIT (old name) overrides the script under test (the RED
+# CHIEF_WAIT overrides the script under test (the RED
 # control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
 # idle cases).
 #

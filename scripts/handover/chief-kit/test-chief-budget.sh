@@ -54,10 +54,10 @@ run "$tmp/t149.jsonl"
 check    "2: 149 turns still OK (rc 0)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "2: CHIEF_TURN_BUDGET overrides (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "2: the old name CHIEF_TURN_BUDGET still overrides (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=200 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "2: CHIEF_TURN_BUDGET wins over the old name (rc 0)" "$rc" 0
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+check    "2: the retired name CONSOLE_TURN_BUDGET is ignored (rc 0)" "$rc" 0 # old-term-ok
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=200 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+check    "2: CHIEF_TURN_BUDGET alone decides beside the retired name (rc 0)" "$rc" 0
 
 # --- 3. cache-read at the budget -----------------------------------------------
 mk "$tmp/cr.jsonl" 30 1000000
@@ -69,8 +69,8 @@ run "$tmp/cr2.jsonl"
 check    "3: 29.0M still OK (rc 0)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: CHIEF_CACHE_READ_BUDGET_M overrides (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "3: the old name CHIEF_CACHE_READ_BUDGET_M still overrides (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CONSOLE_CACHE_READ_BUDGET_M=20 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+check    "3: the retired name CONSOLE_CACHE_READ_BUDGET_M is ignored (rc 0)" "$rc" 0 # old-term-ok
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=08 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: leading-zero budget 08 is decimal (rc 3, no octal abort)" "$rc" 3
 contains "3: leading-zero budget still prints the line" "$out" "verdict=HANDOVER"

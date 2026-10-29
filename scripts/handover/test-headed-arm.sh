@@ -321,23 +321,24 @@ log1b="$(cat "$d1b/log" 2>/dev/null || true)"
 contains     "CHIEF_CONTEXT=1m: log spells the source (explicit)" "$log1b" "context=1m (explicit)"
 not_contains "CHIEF_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CHIEF_CONTEXT=1m)"
 
-# --- 1b-old. the old name CHIEF_CONTEXT=1m still opts in -
+# --- 1b-old. the retired name CONSOLE_CONTEXT=1m does not opt in - # old-term-ok
 d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "HIMMEL-9999bo-worker"
 rc1bo=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-worker" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$?
+CHIEF_CONTEXT=standard CONSOLE_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-worker" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$? # old-term-ok
 wait_record "$d1bo" || true
 rec1bo="$(cat "$d1bo/record" 2>/dev/null || true)"
-check "CHIEF_CONTEXT=1m (old name): exit 0" "$rc1bo" "0"
-contains "CHIEF_CONTEXT=1m (old name): passes autocompact auto" "$rec1bo" "--autocompact auto"
+check "CONSOLE_CONTEXT=1m (retired): exit 0" "$rc1bo" "0" # old-term-ok
+contains "CONSOLE_CONTEXT=1m (retired): autocompact stays 200000" "$rec1bo" "--autocompact 200000" # old-term-ok
+not_contains "CONSOLE_CONTEXT=1m (retired): no autocompact auto" "$rec1bo" "--autocompact auto" # old-term-ok
 
-# --- 1b-conflict. the two names disagree: standard wins, never 1m -
+# --- 1b-conflict. the retired name disagrees: ignored, CHIEF_CONTEXT=1m still opts in -
 d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "HIMMEL-9999bx-worker"
 rc1bx=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-worker" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$?
+CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-worker" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$? # old-term-ok
 wait_record "$d1bx" || true
 rec1bx="$(cat "$d1bx/record" 2>/dev/null || true)"
-check "CHIEF_CONTEXT=1m exit 0" "$rc1bx" "0"
-not_contains "CHIEF_CONTEXT=1m no autocompact auto" "$rec1bx" "--autocompact auto"
+check "CHIEF_CONTEXT=1m beside the retired CONSOLE_CONTEXT=standard: exit 0" "$rc1bx" "0" # old-term-ok
+contains "CHIEF_CONTEXT=1m beside the retired CONSOLE_CONTEXT=standard: autocompact auto" "$rec1bx" "--autocompact auto" # old-term-ok
 
 # --- 1c. positional 1m needs no environment workaround ----
 d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-worker"

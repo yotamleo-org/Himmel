@@ -1706,9 +1706,9 @@ out61b="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USE
 check "61 explicit --model claude-fable-5-1 still launches Fable" \
     "$(printf '%s\n' "$out61b" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
 out61o="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
-check "61 the old name CHIEF_MODEL still sets the model" \
-    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
+    CHIEF_WORK_DIR="$tmp/work" CONSOLE_MODEL=claude-fable-5-1 bash "$C" new --bucket modeldefault --dry-run --arm ) )" # old-term-ok
+check "61 the retired model env name is ignored: no fable model" \
+    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "0"
 out61c="$( ( cd "$fixture_repo" && CHIEF_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
 check "61 CHIEF_MODEL=claude-fable-5-1 still launches Fable" \
@@ -1878,12 +1878,9 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
 # happens not to print".
 {
     printf 'WORKER_SESSION_PROFILE_SETTINGS=%s\n' "\${WORKER_SESSION_PROFILE_SETTINGS+set}"
-    printf 'WORKER_SESSION_PROFILE_SETTINGS=%s\n' "\${WORKER_SESSION_PROFILE_SETTINGS+set}" # old name, read both ways
     printf 'HIMMEL_WORKER_SESSION_PROFILE=%s\n' "\${HIMMEL_WORKER_SESSION_PROFILE+set}"
-    printf 'HIMMEL_WORKER_SESSION_PROFILE=%s\n' "\${HIMMEL_WORKER_SESSION_PROFILE+set}" # old name, read both ways
     printf 'HIMMEL_CONSOLE_LEG=%s\n' "\${HIMMEL_CONSOLE_LEG+set}"
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
-    printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}" # old name, read both ways
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
 } > "$tmp/child-env-66.txt"
@@ -1930,7 +1927,6 @@ check "66 no leaked worker-profile value reaches the armed chief's argv/env" \
     "$(printf '%s\n' "$out66b" | grep -c 'leaked-66')" "0"
 check "66 armed child's OWN environment still lacks WORKER_SESSION_PROFILE_SETTINGS (not just unprinted)" \
     "$(grep -c '^WORKER_SESSION_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
-check "66 armed child's OWN environment still lacks the old name WORKER_SESSION_PROFILE_SETTINGS (read both ways)" "$(grep -c '^WORKER_SESSION_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just unprinted)" \
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \

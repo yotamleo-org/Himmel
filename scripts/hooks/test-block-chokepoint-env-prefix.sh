@@ -116,11 +116,9 @@ done < <(jq -r 'to_entries[] | "\(.key)\t\((.value.seam_env_vars // []) | join("
 assert_deny "USAGE_LIFT_FILE= on usage-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
 assert_deny "HIMMEL_FLEET_CAP= on usage-preflight.sh" "$(j "HIMMEL_FLEET_CAP=99 bash scripts/lib/usage-preflight.sh")"
 
-# The worker launcher under its new name and the forwarding old one.
+# The worker launcher.
 assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh" "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
-assert_deny "HEADED_ARM_WORKER_PREFLIGHT= (old name) on headed-arm-worker.sh" "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_FLEET_CAP= on headed-arm-worker.sh"            "$(j "HIMMEL_FLEET_CAP=99 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
-assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh"    "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"

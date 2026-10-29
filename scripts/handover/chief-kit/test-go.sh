@@ -129,11 +129,15 @@ contains "write: by= is the chief session name" "$body" "by=chief-x"
 grepq "$body" -Ex 'at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
   && echo "ok - write: at= is ISO-8601 UTC" || { echo "FAIL - write: at= not ISO-8601 UTC: [$body]"; fails=$((fails+1)); }
 
-# --- 2a. CHIEF_SESSION_NAME is the by= name, over its old name
+# --- 2a. CHIEF_SESSION_NAME is the by= name; the retired CONSOLE_SESSION_NAME is ignored
 ROOT2A="$tmp/root2a"; mkdir -p "$ROOT2A"
-rc=0; HANDOVER_DIR="$ROOT2A" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; HANDOVER_DIR="$ROOT2A" CHIEF_SESSION_NAME=chief-x CONSOLE_SESSION_NAME=console-y bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$? # old-term-ok
 check "write: CHIEF_SESSION_NAME set -> exit 0" "$rc" "0"
-contains "write: by= is CHIEF_SESSION_NAME when both names are set" "$(cat "$ROOT2A/.locks/go/77.$SHA" 2>/dev/null)" "by=chief-x"
+contains "write: by= is CHIEF_SESSION_NAME beside the retired name" "$(cat "$ROOT2A/.locks/go/77.$SHA" 2>/dev/null)" "by=chief-x"
+ROOT2A2="$tmp/root2a2"; mkdir -p "$ROOT2A2"
+rc=0; HANDOVER_DIR="$ROOT2A2" CONSOLE_SESSION_NAME=console-y bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$? # old-term-ok
+check "write: the retired CONSOLE_SESSION_NAME alone -> exit 0" "$rc" "0" # old-term-ok
+check "write: the retired CONSOLE_SESSION_NAME is not the by= name" "$(grep -c 'console-y' "$ROOT2A2/.locks/go/77.$SHA" 2>/dev/null)" "0" # old-term-ok
 
 # --- 2b. the read token is optional ------------------------------
 # go.sh reads through gh-read.sh; with no read token anywhere (an empty .env root)

@@ -940,21 +940,15 @@ REAL_HOOK="$HOOK"
 HOOK="$NOVAL_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
 assert_rc 'lib without validator still refuses weekly 90 (fail closed)' 2 "$(lift_hook lift-noval)"
 HOOK="$REAL_HOOK"
-# an unloadable env-alias.sh must keep the default HARD 80, not drop the old cap to 100.
-NOALIAS_ROOT="$TMP/noalias-repo"
-mkdir -p "$NOALIAS_ROOT/scripts/hooks" "$NOALIAS_ROOT/scripts/lib"
-cp "$REAL_HOOK" "$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
-cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$NOALIAS_ROOT/scripts/lib/"
-lift_cache 82 10
-HOOK="$NOALIAS_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
-assert_rc 'an unloadable env-alias.sh keeps HARD 80 under a standing lift' 2 "$(lift_hook lift-noalias CADENCE_USAGE_MAX_PCT=85)"
-HOOK="$REAL_HOOK"
 if grepq "$(cat "$TMP/err-lift-noval")" -F 'unbound variable'; then
     echo "FAIL lib without validator must not hit an unbound variable"; fail=$((fail + 1))
 else
     echo "ok   lib without validator has no unbound variable"; pass=$((pass + 1))
 fi
 lift_policy 1 "$LIFT_ACCOUNT" true
+lift_cache 90 10
+assert_rc 'CADENCE_USAGE_MAX_PCT=85 sets the ceiling: a standing lift refuses a five-hour bank at 90' 2 "$(lift_hook lift-usage-cap CADENCE_USAGE_MAX_PCT=85)"
+assert_rc 'the retired CADENCE_BANK_MAX_PCT sets no ceiling: a standing lift still admits a five-hour bank at 90' 0 "$(lift_hook lift-retired-cap CADENCE_BANK_MAX_PCT=85)" # old-term-ok
 lift_cache 100 10
 assert_rc 'CADENCE_USAGE_MAX_PCT=150 clamps to 100 and refuses full five-hour' 2 "$(lift_hook lift-cadence-150 CADENCE_USAGE_MAX_PCT=150)"
 lift_cache 90 10
@@ -962,7 +956,6 @@ assert_rc 'CADENCE_USAGE_MAX_PCT=-5 falls back to default HARD' 2 "$(lift_hook l
 assert_contains 'negative cadence ceiling warns' 'CADENCE_USAGE_MAX_PCT=-5 is not a positive number' "$(cat "$TMP/err-lift-cadence-neg")"
 assert_rc 'CADENCE_USAGE_MAX_PCT=abc falls back to default HARD' 2 "$(lift_hook lift-cadence-abc CADENCE_USAGE_MAX_PCT=abc)"
 assert_contains 'non-numeric cadence ceiling warns' 'CADENCE_USAGE_MAX_PCT=abc is not a positive number' "$(cat "$TMP/err-lift-cadence-abc")"
-assert_rc 'CADENCE_USAGE_MAX_PCT=abc falls back to default HARD' 2 "$(lift_hook lift-usage-abc CADENCE_USAGE_MAX_PCT=abc)"
 
 echo "=== HIMMEL-2653: weekly (seven_day) bank ceiling ==="
 

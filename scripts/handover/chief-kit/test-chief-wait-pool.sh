@@ -7,7 +7,7 @@
 # drop summary included. tick.sh, the bank verdict and the dispatch command are
 # stubbed (CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE / CHIEF_WAIT_DISPATCH). bash 3.2-safe.
 #
-# CHIEF_WAIT (old name) overrides the script under test (the RED
+# CHIEF_WAIT overrides the script under test (the RED
 # control: the pre-change once-per-streak waiter fails the re-wake rows).
 #
 # Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU

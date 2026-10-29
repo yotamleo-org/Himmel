@@ -476,12 +476,6 @@ rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' b
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
 contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> "
 not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
-# The old name CHIEF_CONTEXT is scrubbed the same way: headed-arm.sh still
-# reads it.
-rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
-check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0" "$rc" "0"
-contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset>" "$out" "CHIEF_CONTEXT=<unset>"
-not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
 
 # --- HIMMEL_CONSOLE_NAME resolution (--chief, launching
 # shell's HIMMEL_CONSOLE_NAME, this process's own session name via
@@ -1033,14 +1027,6 @@ wait_record "$d10b" || true
 env10b="$(cat "$d10b/env-record" 2>/dev/null || true)"
 check "full launch, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
 not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole invocation's own env" "$env10b" "CHIEF_CONTEXT="
-# The old name CHIEF_CONTEXT is kept out on the real path the same way.
-d10c="$tmp/c10c"; mk_launch_stubs "$d10c" "HIMMEL-3139-worker"; mkdir -p "$tmp/repo10c"
-rc=0
-CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS=--no-profile run_worker "$d10c" "$tmp/repo10c" "HIMMEL-3139-worker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
-wait_record "$d10c" || true
-env10c="$(cat "$d10c/env-record" 2>/dev/null || true)"
-check "full launch, ambient CHIEF_CONTEXT=1m: exit 0" "$rc" "0"
-not_contains "full launch, ambient CHIEF_CONTEXT=1m: absent from the konsole invocation's own env" "$env10c" "CHIEF_CONTEXT="
 
 # --- 12. RED control: mutate the ACTUAL headed-arm launch renderer to drop
 # --autocompact, then drive the wrapper's full non-dry path. The shared argv
@@ -3104,7 +3090,6 @@ check "29r settings env: daemon-injected hook-integrity bypass blanked" "$(env29
 check "29s settings env: stale chief doc from the daemon blanked" "$(env29 HIMMEL_CONSOLE_DOC)" ""
 check "29t settings env: stale WORKER_SESSION_* from the daemon blanked" "$(env29 WORKER_SESSION_STALE_MARK)" ""
 check "29t2 settings env: daemon CHIEF_CONTEXT=1m blanked" "$(env29 CHIEF_CONTEXT)" ""
-check "29t3 settings env: daemon CHIEF_CONTEXT=1m blanked (old name)" "$(env29 CHIEF_CONTEXT)" ""
 check "29u settings env: secret-named daemon var blanked, never copied" "$(env29 HIMMEL_STALE_TOKEN)" ""
 check "29v settings env: secret-named launcher var never copied" "$(env29 HIMMEL_API_TOKEN)" "<absent>"
 check "29w settings env: non-pattern daemon var untouched" "$(env29 PATH)" "<absent>"

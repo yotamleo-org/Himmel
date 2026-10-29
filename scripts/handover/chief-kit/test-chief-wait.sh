@@ -5,7 +5,7 @@
 # key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
 # CHIEF_WAIT_USAGE), so no gh, lock or bank read happens here. bash 3.2-safe.
 #
-# CHIEF_WAIT (old name) overrides the script under test (the RED
+# CHIEF_WAIT overrides the script under test (the RED
 # control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
 # idle cases).
 #
@@ -215,15 +215,15 @@ sleep 3
 check "(hs) a stale handover marker does not suppress ticks" "yes" "$([ -e "$WORK/hs.ticked" ] && echo yes || echo no)"
 kill "$WPID" 2>/dev/null
 
-# --- (hso) the old name CHIEF_WAIT_TICK alone still names the tick command ---
+# --- (hso) the retired name CONSOLE_WAIT_TICK never names the tick command --- # old-term-ok
 reset_stub
 I="$(new_inbox hso)"
 # shellcheck disable=SC2016  # $STUB is meant to expand in the generated stub, not here
 printf '#!/usr/bin/env bash\ntouch "%s/hso.ticked"\ncat "$STUB/tick.line"\n' "$WORK" > "$STUB/tick-old.sh"
-env -u CHIEF_WAIT_TICK bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hso.out" 2>"$WORK/hso.out.err" &
+CONSOLE_WAIT_TICK="$STUB/tick-old.sh" bash "$WAIT" "$I" --workers "N1.md" > "$WORK/hso.out" 2>"$WORK/hso.out.err" & # old-term-ok
 WPID=$!
 wait_hb "$I" || fail "(hso) no baseline heartbeat"
-check "(hso) CHIEF_WAIT_TICK still names the tick command" "yes" "$([ -e "$WORK/hso.ticked" ] && echo yes || echo no)"
+check "(hso) the retired CONSOLE_WAIT_TICK is never run" "no" "$([ -e "$WORK/hso.ticked" ] && echo yes || echo no)" # old-term-ok
 kill "$WPID" 2>/dev/null
 
 # --- (b3724) a denials= class change wakes, naming denials ---

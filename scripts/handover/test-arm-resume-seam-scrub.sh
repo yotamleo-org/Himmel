@@ -74,10 +74,9 @@ BODY=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu bash "$ARM" --time "$(futur
       | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}')
 case "$BODY" in *"cd "*) echo "PASS S0 dry-run yields an at body" ;; *) echo "FAIL S0 no at body"; FAILED=$((FAILED + 1)) ;; esac
 
-SEAM_OLD="WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_CLAUDE_BIN" # old names, read both ways
-OLD_SEAM_ENV="WORKER_SESSION_PROFILE_SETTINGS=/x/s.json WORKER_SESSION_PROFILE_PREFACE=/x/p.md WORKER_SESSION_PROFILE_MCP_CONFIG=/x/m.json WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 WORKER_SESSION_CLAUDE_BIN=/x/claude" # old names, read both ways
-OLD_NSS=WORKER_SESSION_PROFILE_NO_SETTING_SOURCES # old name, read both ways
-SEAM="$SEAM_OLD HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV
+NSS=WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
+RETIRED_NSS=LEG_PROFILE_NO_SETTING_SOURCES # old-term-ok
+SEAM="HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV
       WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG
       WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_CLAUDE_BIN"
 KEEP="HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_WORKER"
@@ -86,7 +85,7 @@ REC="$TMP/rec"
 # No pty (HIMMEL_PTY_SCRIPT_CMD points nowhere): the bare fallback runs the stub directly.
 # shellcheck disable=SC2086
 env PATH="$STUB_BIN:$PATH" CLAUDE_REC="$REC" WATCH="$SEAM $KEEP" HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" \
-    $OLD_SEAM_ENV HEADED_ARM_LAUNCHER=/x/shim.sh \
+    HEADED_ARM_LAUNCHER=/x/shim.sh \
     HEADED_ARM_LAUNCHER_ENV=A=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$HANDOVER_DIR" HIMMEL_WORKER=1 \
     WORKER_SESSION_PROFILE_SETTINGS=/x/s.json WORKER_SESSION_PROFILE_PREFACE=/x/p.md \
     WORKER_SESSION_PROFILE_MCP_CONFIG=/x/m.json WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
@@ -104,7 +103,7 @@ done
 # clearing the seam (above) leaves a resumed consult as a bare, UNconfined
 # claude, so arm-resume refuses to arm from inside a consult at all (fail closed).
 rc=0
-OUT3=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$OLD_NSS=1" bash "$ARM" --time "$(future_time)" \
+OUT3=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$NSS=1" bash "$ARM" --time "$(future_time)" \
         --handover "$HANDOVER" --dry-run 2>&1) || rc=$?
 assert_eq "S3 arm-resume from inside a consult refuses (exit 2)" "2" "$rc"
 case "$OUT3" in *"refusing to arm from inside a consult"*) echo "PASS S3 refusal says why" ;; *) echo "FAIL S3 refusal text missing: $OUT3"; FAILED=$((FAILED + 1)) ;; esac
@@ -112,26 +111,25 @@ case "$OUT3" in *"would at -t"*) echo "FAIL S3 an at body was still produced"; F
 # Counter-example: an empty value is not a consult (the shim confines only on exactly 1,
 # but any non-empty value refuses, fail closed); empty still arms.
 rc=0
-env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$OLD_NSS=" bash "$ARM" --time "$(future_time)" \
+env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$NSS=" bash "$ARM" --time "$(future_time)" \
     --handover "$HANDOVER" --dry-run >/dev/null 2>&1 || rc=$?
-assert_eq "S3 an empty old-name no-setting-sources flag still arms (exit 0)" "0" "$rc"
-# The new name confines exactly as the old one does.
+assert_eq "S3 an empty no-setting-sources flag still arms (exit 0)" "0" "$rc"
+# The retired name no longer marks a consult: it is ignored and the arm proceeds.
 rc=0
-OUT3N=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 bash "$ARM" --time "$(future_time)" \
-        --handover "$HANDOVER" --dry-run 2>&1) || rc=$?
-assert_eq "S3 WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 refuses (exit 2)" "2" "$rc"
-case "$OUT3N" in *"would at -t"*) echo "FAIL S3 new name: an at body was still produced"; FAILED=$((FAILED + 1)) ;; *) echo "PASS S3 new name: no at body" ;; esac
+env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$RETIRED_NSS=1" bash "$ARM" --time "$(future_time)" \
+    --handover "$HANDOVER" --dry-run >/dev/null 2>&1 || rc=$?
+assert_eq "S3 the retired no-setting-sources name is ignored and still arms (exit 0)" "0" "$rc"
 
 # the read-only --list-temp-arms sweep arms nothing, so a consult may run it,
 # but ONLY as the sole argument; every other mode, or the flag beside one, still refuses.
 rc=0
-OUT4=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$OLD_NSS=1" bash "$ARM" --list-temp-arms 2>&1) || rc=$?
+OUT4=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$NSS=1" bash "$ARM" --list-temp-arms 2>&1) || rc=$?
 case "$OUT4" in *"refusing to arm from inside a consult"*) echo "FAIL S4 --list-temp-arms refused in a consult: $OUT4"; FAILED=$((FAILED + 1)) ;; *) echo "PASS S4 --list-temp-arms is not refused in a consult" ;; esac
 case "$rc" in 0|16|18) echo "PASS S4 sweep ran (exit $rc)" ;; *) echo "FAIL S4 sweep exit $rc"; FAILED=$((FAILED + 1)) ;; esac
 for combo in "--list-temp-arms --dry-run" "--dry-run --list-temp-arms" "--list-temp-arms --time 23:59" "--list-temp-arms --force" "--time 23:59 --handover $HANDOVER --dry-run"; do
     rc=0
     # shellcheck disable=SC2086
-    OUT5=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$OLD_NSS=1" bash "$ARM" $combo 2>&1) || rc=$?
+    OUT5=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu "$NSS=1" bash "$ARM" $combo 2>&1) || rc=$?
     assert_eq "S4 consult + '$combo' refuses (exit 2)" "2" "$rc"
     case "$OUT5" in *"refusing to arm from inside a consult"*) echo "PASS S4 '$combo' refusal says why" ;; *) echo "FAIL S4 '$combo' refusal text missing: $OUT5"; FAILED=$((FAILED + 1)) ;; esac
 done
