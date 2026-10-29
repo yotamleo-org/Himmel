@@ -36,9 +36,9 @@ printf '%s\n' '---' 'template_version: 1' 'jira: TEST-7' '---' > "$HANDOVER_DIR/
 printf '%s\n' '---' 'processed: true' '---' 'legacy clip' > "$LUNA_VAULT_PATH/Clippings/legacy.md"
 printf '%s\n' 'run scripts/handover/console-kit/go.sh' > "$HANDOVER_DIR/tester/moved-dir.md"
 printf '%s\n' 'open it with bash scripts/lanes/leg-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md"
-printf '%s\n' 'CHIEF_CONTEXT=1m' > "$ROOT/.env"
+printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env" # old-term-ok
 SETTINGS="$HOME/.claude/settings.json"
-printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}}' > "$SETTINGS"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}, "permissions": {"allow": ["Bash(bash scripts/cr/clear-cr-marker.sh:*)"]}}' > "$SETTINGS" # old-term-ok
 case "${1:-}" in
     --real-clip) cp "$2" "$LUNA_VAULT_PATH/Clippings/legacy.md" ;;
     --real-vault) cp -R "$2/." "$LUNA_VAULT_PATH/" ;;
@@ -95,6 +95,25 @@ assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh
 assert_warning 'renamed-names' "$ROOT/.env" 'migrate-renamed-names.py --dry-run'
 assert_warning 'renamed-names' "$SETTINGS" 'migrate-renamed-names.py --dry-run'
 assert_unchanged 'check: fixture trees and files byte-identical' "$before"
+
+# A retired script name whose forwarder is gone is renamed in the install's allow rules too.
+migrator="$ROOT/scripts/setup/migrate-renamed-names.py"
+preview="$(python3 -I "$migrator" --dry-run "$SETTINGS" 2>&1)"
+if grep -Eq '^[+].*clear-review-marker[.]sh' <<< "$preview"; then
+    assert_pass 'renamed-names: the preview adds the renamed allow rule for a retired script name'
+else
+    assert_fail "renamed-names: no renamed allow rule in the preview ($preview)"
+fi
+settings_copy="$TMP/settings-apply.json"
+cp "$SETTINGS" "$settings_copy"
+python3 -I "$migrator" --apply "$settings_copy" > /dev/null 2>&1
+check_rc=0
+python3 -I "$migrator" --check "$settings_copy" > /dev/null 2>&1 || check_rc=$?
+if grep -Fq '"Bash(bash scripts/cr/clear-review-marker.sh:*)"' "$settings_copy" && [ "$check_rc" = 0 ]; then
+    assert_pass 'renamed-names: --apply adds the renamed allow rule and a second --check finds nothing'
+else
+    assert_fail "renamed-names: --apply left the allow list unrenamed or still pending (check rc $check_rc)"
+fi
 
 # The printed commands must actually target these installs, even with spaces.
 if [ "$fail" -eq 0 ]; then
