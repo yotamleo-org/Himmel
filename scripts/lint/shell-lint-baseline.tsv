@@ -430,7 +430,6 @@ scripts/hooks/check-update-available.sh	gnu-flag	1
 scripts/hooks/check-uv-lock.sh	errexit	1
 scripts/hooks/detect-dirty-primary.sh	prim-atomic	2
 scripts/hooks/guard-judge-writes.sh	gnu-flag	2
-scripts/hooks/guard-judge-writes.sh	prim-canon	2
 scripts/hooks/guard-pr-check-literal.sh	bash32	1
 scripts/hooks/guard-relay-writes.sh	gnu-flag	5
 scripts/hooks/guard-relay-writes.sh	prim-canon	5
