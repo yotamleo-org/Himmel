@@ -4877,7 +4877,7 @@ easel [runtime: built-in cc-plugin-easel plugin of the Claude Code binary]
 plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Claude Code binary]"
     rows="$(printf '%s\n' "$rows" | sed '/^$/d')"
     n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
-    if printf '%s\n' "$rows" | grep -q '^unreadable JSON'; then
+    if [[ "$rows" == *"unreadable JSON ["* ]]; then
         emit WARN C82-mcp-sources "an MCP config file is not valid JSON, so its servers are missing from the listing: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
             "fix the file named by the layer in brackets (user config is ~/.claude.json, project is .mcp.json)"
         return 0
