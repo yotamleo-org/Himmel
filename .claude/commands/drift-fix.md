@@ -328,7 +328,7 @@ chore(HIMMEL-<N>): bump <name> pin <old> -> <new> (fork-drift #<issue>)
 <one paragraph: which upstream release, what the guard said, that
 apply-drift-bump.sh applied both halves mechanically>
 
-Platforms tested: windows
+Platforms tested: linux
 Security reviewed: <token>
 ```
 
