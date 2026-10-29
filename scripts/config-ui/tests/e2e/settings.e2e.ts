@@ -31,10 +31,12 @@ test("J3. the page is Configure: its rail entry and title, then the four tiles i
 
 test("J3. the Check this install strip sits under the tile row", async ({ page }) => {
   await open(page);
-  await expect(page.locator(".chk")).toBeVisible();
-  const tiles = await page.locator(".tiles").boundingBox();
-  const chk = await page.locator(".chk").boundingBox();
-  expect(chk!.y).toBeGreaterThan(tiles!.y);
+  // a repaint when the setup read lands replaces both nodes, so read the two boxes together and retry
+  await expect.poll(async () => {
+    const tiles = await page.locator(".tiles").boundingBox();
+    const chk = await page.locator(".chk").boundingBox();
+    return tiles && chk ? chk.y - tiles.y : -1;
+  }).toBeGreaterThan(0);
   await expect(page.locator(".chk")).toContainText("Check this install");
 });
 

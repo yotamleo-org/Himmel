@@ -478,7 +478,11 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
-  if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
+  if (b.dataset.act === "setup-remove") {
+    const field = b.closest("[data-setup-form]")?.querySelector("input");
+    if (field) field.value = ""; // remove sends no value, so the typed text must not be put back by the repaint
+    return void saveSecret(b.dataset.name, "remove", null);
+  }
   if (b.dataset.act === "setup-verify") return void runVerify();
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") { // a check's finding opens its row in Health's inventory

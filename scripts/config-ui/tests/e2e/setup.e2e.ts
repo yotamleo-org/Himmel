@@ -137,6 +137,7 @@ test("J5. remove with text in the field removes and does not save", async ({ pag
   await row.locator('button[data-act="setup-remove"]').click();
   await expect(row).toContainText("removed");
   await expect(row.locator(".st")).toHaveText("not set");
+  await expect(row.locator("input")).toHaveValue(""); // the typed text does not survive the repaint
   expect(readFileSync(store(), "utf8")).not.toContain(NAME);
 });
 
