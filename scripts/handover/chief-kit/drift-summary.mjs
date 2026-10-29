@@ -94,7 +94,7 @@ function checkerStatus(key) {
   if (!statusCache.has(key)) {
     const raw = softText(path.join(mirrorDir, `${key}.md`));
     const m = raw && raw.match(/^statusCategory:\s*"?([^"\n]*?)"?\s*$/m);
-    statusCache.set(key, m ? m[1] : 'unknown');
+    statusCache.set(key, m && m[1] ? m[1] : 'unknown');
   }
   return statusCache.get(key);
 }
@@ -127,10 +127,11 @@ if (raw !== null) {
     const r = line.match(/^([A-Z][A-Z-]*) (\S+)(?: |$)/);
     if (!r) continue;
     const row = { class: r[1], key: r[2], line };
-    const pair = known.find((k) => k.key === row.key && (k.class === row.class || k.class === 'unset'));
-    if (pair && checkerStatus(pair.checker) !== 'Done' && checkerStatus(pair.checker) !== 'unknown') {
-      out.known.push({ ...row, checker: pair.checker, checkerStatus: checkerStatus(pair.checker) });
-    } else if (!pair && TRANSIENT_CLASSES.has(row.class)) {
+    const pairs = known.filter((k) => k.key === row.key && (k.class === row.class || k.class === 'unset'));
+    const open = pairs.find((k) => !['Done', 'unknown'].includes(checkerStatus(k.checker)));
+    if (open) {
+      out.known.push({ ...row, checker: open.checker, checkerStatus: checkerStatus(open.checker) });
+    } else if (!pairs.length && TRANSIENT_CLASSES.has(row.class)) {
       out.transient.push(row);
     } else {
       out.real.push(row);

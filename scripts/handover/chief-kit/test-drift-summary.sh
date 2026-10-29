@@ -107,6 +107,17 @@ mkdir "$MIR/HIMMEL-7980.md"
 out="$(sum)"
 eq 'E23 a checker mirror that cannot be read keeps the rows real instead of failing the summary' "$(jqv "$out" '.counts.real')" 3
 rmdir "$MIR/HIMMEL-7980.md"
+cp "$DRIFT" "$WORK/drift.keep"; cp "$KNOWN" "$WORK/known.keep"
+printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=1:aaaaaaaa\n' > "$DRIFT"; touch -d "@$((NOW - 60))" "$DRIFT"
+printf -- '---\nkey: "HIMMEL-7980"\nstatusCategory: ""\n---\n' > "$MIR/HIMMEL-7980.md"
+out="$(sum)"
+eq 'E23 an empty checker status is unreadable, so the row counts' "$(jqv "$out" '.counts.known')" 0
+mirror HIMMEL-7980 Done
+mirror HIMMEL-7981 "To Do"
+printf 'HIMMEL-7981\tUNOWNED\tHIMMEL-7588\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
+out="$(sum)"
+eq 'E23 a row paired with a Done checker and an open one stays a known bug' "$(jqv "$out" '[.known[].checker] | join(",")')" HIMMEL-7981
+cp "$WORK/drift.keep" "$DRIFT"; cp "$WORK/known.keep" "$KNOWN"; touch -d "@$((NOW - 600))" "$DRIFT"
 mirror HIMMEL-7980 "To Do"
 
 # E21: the mode key, default off
