@@ -92,8 +92,11 @@ for m in re.finditer(r"^- ([^:\s]+): (.*)$", sysp, re.M):
     if n > best:
         best, pick = n, m.group(1)
 err = os.environ.get("STUB_ERROR") == "1"
-print(json.dumps({"type": "result", "subtype": "error_max_budget_usd" if err else "success", "is_error": err,
-                  "result": json.dumps({"pick": pick}), "total_cost_usd": 0.001}))
+env = {"type": "result", "subtype": "error_max_budget_usd" if err else "success", "is_error": err,
+       "result": json.dumps({"pick": pick}), "total_cost_usd": 0.001}
+if os.environ.get("STUB_NOCOST") == "1":
+    del env["total_cost_usd"]
+print(json.dumps(env))
 EOF
 chmod +x "$TMP/claude"
 # shellcheck disable=SC2016  # the stub expands STUB_BANK when it runs
@@ -152,6 +155,13 @@ eq "preflight: no call after a bank refusal" "$(wc -l <"$TMP/calls.log" | tr -d 
 eq "errored calls: exit 4" "$(STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/err" --split open --no-ledger >/dev/null 2>&1; echo $?)" "4"
 eq "errored calls: every case unscored, none kept" "$(metric "$TMP/err/results.json" unscored)" "20"
 eq "errored calls: their spend is in the cost" "$(metric "$TMP/err/results.json" cost_usd)" "0.02"
+eq "no cost: a call with no cost stops the run" "$(STUB_NOCOST=1 bash "$RUN" --model haiku --out "$TMP/nocost" --no-ledger >/dev/null 2>&1; echo $?)" "3"
+eq "no cost: the call is charged at the per-call cap" "$(cat "$TMP/nocost/errored-spend.log" 2>/dev/null)" "0.10"
+mkdir -p "$TMP/held/.lock"
+: >"$TMP/calls.log"
+eq "lock: an out another run holds is refused" "$(bash "$RUN" --model haiku --out "$TMP/held" --no-ledger >/dev/null 2>&1; echo $?)" "3"
+eq "lock: no call on a held out" "$(wc -l <"$TMP/calls.log" | tr -d ' ')" "0"
+eq "lock: a finished run releases its out" "$(find "$TMP/base" -maxdepth 1 -name .lock | wc -l | tr -d ' ')" "0"
 
 # --- the seeded-broken control: water-plants given brew-coffee's trigger text ---
 bash "$RUN" --model haiku --out "$TMP/seeded" --seed-broken brew-coffee,water-plants --no-ledger >/dev/null 2>&1

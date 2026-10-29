@@ -21,9 +21,9 @@
 #      RT_REPO, RT_INVENTORY and RT_CASES (default this repo, inventory.json, cases/) - the test
 #      seams.
 # Exit: 0 done; 2 usage, an <out> run under another config, unreadable cases or listing, or
-#       score.py refused its input; 3 stopped before a call (bank refusal, ceiling, the spend so
-#       far unreadable) or after one (a call with no cost to sum); 4 run, but some calls errored
-#       (re-run to retry).
+#       score.py refused its input; 3 stopped before a call (another run holds <out>, bank
+#       refusal, ceiling, the spend so far unreadable) or after one (a call with no cost to sum,
+#       charged at --max-usd); 4 run, but some calls errored (re-run to retry).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -120,6 +120,10 @@ fi
 [ -n "$out" ] || die "--out <dir> is required"
 mkdir -p "$out" || exit 2
 out="$(cd "$out" && pwd)"
+# One run per <out>: two would bill the same case and each miss the other's spend.
+# prim-ok: a try-lock held for the whole run that refuses a second one; with_lock waits and wraps one command
+mkdir "$out/.lock" 2>/dev/null || { echo "run.sh: another run holds $out (remove $out/.lock if none does)" >&2; exit 3; }
+trap 'rm -rf "$scratch" "$out/.lock"' EXIT
 # A resume must ask the same question: same model, effort, listing, prompt and cases.
 cset="$(cat "$CASES/open.jsonl" "$CASES/sealed.jsonl" | sha256sum | cut -c1-16)"
 python3 -c 'import json,os,sys
@@ -184,6 +188,8 @@ print(("ok " if ok else "err ") + ("" if cost is None else str(cost)))' "$out/$c
         "err "?*) printf '%s\n' "${verdict#err }" >>"$out/errored-spend.log"; rm -f "$out/$cid.tmp"
                   errored=$((errored + 1)); echo "run.sh: $cid errored, retried on the next run" >&2 ;;
         *) rm -f "$out/$cid.tmp"
+           # The call may have billed: charge it at the cap so a re-run's ceiling still counts it.
+           printf '%s\n' "$max_usd" >>"$out/errored-spend.log"
            echo "run.sh: $cid reported no cost to sum against the ceiling - stopped (see $out/$cid.stderr)" >&2
            exit 3 ;;
     esac
