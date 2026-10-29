@@ -341,6 +341,7 @@ hil_lock_acquire() {
     poll_secs=$(awk -v ms="$HIL_LOCK_POLL_MS" 'BEGIN { printf "%.3f", ms / 1000 }' 2>/dev/null)
     [ -n "$poll_secs" ] || poll_secs=0.01
     while :; do
+        # prim-ok: a bounded-retry lock with pid-namespace owner records and dead-owner reclaim, which with_lock cannot express; the pin writer must not depend on sourcing prim.sh
         if mkdir "$lock" 2>/dev/null; then
             if _hil_write_owner "$lock" "$pid" "$ns" "$start"; then
                 return 0

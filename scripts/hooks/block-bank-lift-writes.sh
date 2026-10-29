@@ -661,6 +661,7 @@ check_sed() {
     fi
     if [ "$inplace" = 1 ]; then
         for a in ${files[@]+"${files[@]}"}; do
+            # prim-ok: deny-message text naming sed -i, not a sed -i call
             is_lift "$a" && deny "sed -i edits the bank lift ($a)"
         done
     fi

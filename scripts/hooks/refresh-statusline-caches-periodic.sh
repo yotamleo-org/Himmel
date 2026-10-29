@@ -267,6 +267,7 @@ if command -v rebuild_all_sessions_index >/dev/null 2>&1 \
             fi
         fi
     fi
+    # prim-ok: a non-blocking try-lock with a dead-owner reap and signal traps; with_lock blocks and fails closed on a dead owner, so the semantics differ
     if mkdir "$lock" 2>/dev/null; then
         printf '%s\n' "$$" > "$lock/owner.pid" 2>/dev/null || true
         # SIGKILL cannot be trapped — that path is covered by the dead-owner

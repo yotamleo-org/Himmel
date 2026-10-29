@@ -533,6 +533,7 @@ CANON_MODE=""
 if [ -n "${CANON_FORCE:-}" ]; then
     CANON_MODE="$CANON_FORCE"
 else
+    # prim-ok: capability probe of the tool itself, and this fail-closed guard must not depend on sourcing prim.sh (canon_path semantics differ on a missing path)
     probe=$(realpath -m /nonexistent-canon-probe 2>/dev/null || true)
     if [ "$probe" = "/nonexistent-canon-probe" ]; then
         CANON_MODE="realpath-m"
@@ -588,6 +589,7 @@ canon() {
     local p; p=$(normalize_drive_form "$1")
     case "$CANON_MODE" in
         realpath-m)
+            # prim-ok: the probed realpath -m arm of this guard's own mode dispatch; canon_path would change its allow/deny decisions
             realpath -m "$p" 2>/dev/null
             ;;
         python3)

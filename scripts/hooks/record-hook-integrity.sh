@@ -459,6 +459,7 @@ if [ -e "$dest" ]; then
     chmod 600 "$dest" 2>/dev/null || true
     command -v attrib >/dev/null 2>&1 && attrib -R "$dest" >/dev/null 2>&1
 fi
+# prim-ok: the pin writer publishes a jq-validated same-directory temp after a chmod-before-rename, and must not depend on sourcing prim.sh
 mv -f "$tmp" "$dest" 2>/dev/null || exit 0
 # Read-only best-effort (see the residual note above — deterrent, not a
 # defense). chmod is the POSIX/Git-Bash path; attrib covers a native cmd.exe
