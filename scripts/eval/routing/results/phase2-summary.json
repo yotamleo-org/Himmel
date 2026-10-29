@@ -145,7 +145,7 @@
   },
   {
    "arm": "final",
-   "what": "shipped plus 3 description lines restored after review (this PR's head)",
+   "what": "shipped plus 3 description lines restored after review (f31cf402d)",
    "listing": {
     "tokens": 3282,
     "sha": "433523b73ca28054"
