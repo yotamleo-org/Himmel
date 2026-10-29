@@ -271,5 +271,9 @@ FB="$SB/failbin"; mkdir -p "$FB"; printf '#!/bin/sh\nexit 1\n' > "$FB/awk"; chmo
 mk; printf 'x\n' > "$SN/a.md"; printf 'y\n' > "$LV/a.md"
 LL_OUT="$(PATH="$FB:$PATH" MEMDIR="$LV" LUNA_VAULT_PATH="$VAULT" MEMORY_AUDIT_SKIP_QMD=1 bash "$AUDIT" --lost-lines "$SN" 2>/dev/null)"; LL_RC=$?
 assert_rc "L6 a failing reader exits 2" 2 "$LL_RC"
+# L7: an empty live store loses every snapshot line (exit 1, not a failure).
+mk; printf 'x\n' > "$SN/a.md"; printf '{"n":1}\n' > "$LV/.capture-log.jsonl"
+ll "$LV" "$SN"
+assert_rc "L7 empty live store exits 1" 1 "$LL_RC"
 
 exit "$FAILED"

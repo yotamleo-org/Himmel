@@ -103,7 +103,10 @@ warn() { printf '%s\n' "$1"; }
 
 # Top-level regular files of a memory dir, one name per line, minus the capture
 # log and the snapshot manifest (never part of the store's content).
-store_files() { ( cd "$1" && find . -maxdepth 1 -type f | sed 's|^\./||' | grep -vxF -e .capture-log.jsonl -e .snapshot-manifest ); }
+store_files() {
+    ( cd "$1" && find . -maxdepth 1 -type f | sed 's|^\./||' \
+        | { grep -vxF -e .capture-log.jsonl -e .snapshot-manifest; [ "$?" -le 1 ]; } )
+}
 
 # ---- --lost-lines: every non-blank, non-frontmatter line of the snapshot that
 # no current file still holds (multiset: a line held twice with one copy gone
@@ -347,8 +350,11 @@ n_deadwiki=0
 if [ -s "$TMP/deadwiki" ]; then
     if [ "$substrate_ok" -eq 1 ]; then
         if [ "$MODE" = structure ]; then
-            ( cd "$SUB" && find . -name '.?*' -prune -o \( -type f -o -type l \) -name '*.md' -print ) \
-                | sed -e 's#.*/##' -e 's#\.md$##' | sort -u > "$TMP/vaultnames"
+            if ! ( cd "$SUB" && find . -name '.?*' -prune -o \( -type f -o -type l \) -name '*.md' -print ) \
+                | sed -e 's#.*/##' -e 's#\.md$##' | sort -u > "$TMP/vaultnames"; then
+                printf '%s\n' 'memory-capture audit: cannot enumerate the vault notes — refusing to report dead wikilinks' >&2
+                exit 2
+            fi
             while IFS="$TAB" read -r a b; do
                 grep -qxF -- "$b" "$TMP/vaultnames" && continue
                 n_deadwiki=$((n_deadwiki+1)); note "DEAD WIKILINK: $a [[$b]]"
@@ -368,7 +374,10 @@ fi
 # 6. TOPIC CAP (sizes in bytes: a topic file is read whole on a keyword match).
 n_cap=0
 if [ "$MODE" = structure ]; then
-    find "$MEMDIR" -maxdepth 1 -name '*.md' ! -name MEMORY.md ! -type d -size +"$TOPIC_MAX"c | sort > "$TMP/caps"
+    if ! find "$MEMDIR" -maxdepth 1 -name '*.md' ! -name MEMORY.md ! -type d -size +"$TOPIC_MAX"c | sort > "$TMP/caps"; then
+        printf '%s\n' 'memory-capture audit: cannot list the topic files — refusing to report clean' >&2
+        exit 2
+    fi
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         n_cap=$((n_cap+1))
@@ -395,7 +404,13 @@ fi
 n_topic="$(grep -c '\.md$' "$TMP/listing")"; [ -f "$MEMDIR/MEMORY.md" ] && n_topic=$((n_topic-1))
 if [ -f "$MEMDIR/MEMORY.md" ]; then
     b="$(wc -c < "$MEMDIR/MEMORY.md" | tr -d ' ')"
-    over="$(MEMORY_LINE_MAX="$LINE_MAX" bash "$HERE/../hooks/memory-line-check.sh" < "$MEMDIR/MEMORY.md" | awk 'END{print NR+0}')"
+    # The checker exits 1 when it prints offending lines; anything above 1 is a failure.
+    MEMORY_LINE_MAX="$LINE_MAX" bash "$HERE/../hooks/memory-line-check.sh" < "$MEMDIR/MEMORY.md" > "$TMP/overlines"
+    if [ "$?" -gt 1 ]; then
+        printf '%s\n' 'memory-capture audit: the line-length checker failed — refusing to report clean' >&2
+        exit 2
+    fi
+    over="$(awk 'END{print NR+0}' "$TMP/overlines")"
     printf 'index: %sB (budget %sB), over-length lines: %s, topic files: %s\n' "$b" "$BUDGET" "$over" "$n_topic"
     [ "$MODE" = plain ] && [ "$b" -gt "$BUDGET" ] && note "OVER BUDGET: ${b}B > ${BUDGET}B — content is being silently dropped"
     [ "$over" -gt 0 ] && note "LINE DISCIPLINE: $over line(s) exceed ${LINE_MAX} chars"

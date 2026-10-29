@@ -66,7 +66,7 @@ usage() {
 # log and the manifest.
 store_files() {
     ( cd "$1" && find . -maxdepth 1 -type f | sed 's|^\./||' \
-        | grep -vxF -e .capture-log.jsonl -e "$MANIFEST" | LC_ALL=C sort )
+        | { grep -vxF -e .capture-log.jsonl -e "$MANIFEST"; [ "$?" -le 1 ]; } | LC_ALL=C sort )
 }
 # hash of <dir>/<name>, or empty when the file is absent.
 hash_in() { [ -f "$1/$2" ] && sha256_hex "$1/$2"; }
@@ -146,8 +146,8 @@ restore)
         hl="$(hash_in "$MEMDIR" "$n")"
         if [ -n "$hb" ] && [ "$hb" = "$hc" ]; then                          # R1
             skipped=$((skipped+1))
-        elif [ -z "$hl" ] && [ -f "$MEMDIR/$n" ]; then                     # present but unhashable
-            printf 'conflict: %s (cannot hash the live file; left untouched)\n' "$n"
+        elif [ -z "$hl" ] && { [ -e "$MEMDIR/$n" ] || [ -L "$MEMDIR/$n" ]; }; then   # present but not a hashable file
+            printf 'conflict: %s (cannot hash the live entry; left untouched)\n' "$n"
             conflicts=$((conflicts+1))
         elif [ -n "$hb" ] && [ "$hl" = "$hc" ]; then                        # R2
             cp -p "$before/$n" "$MEMDIR/$n" || die "cannot restore $n"

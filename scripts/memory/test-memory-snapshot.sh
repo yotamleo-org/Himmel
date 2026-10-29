@@ -12,7 +12,9 @@ set -uo pipefail
 
 SNAPSHOT="$(cd "$(dirname "$0")" && pwd)/memory-snapshot.sh"
 
-FAILED=0; SB="$(mktemp -d "${TMPDIR:-/tmp}/memsnap.XXXXXX")"; trap 'rm -rf "$SB"' EXIT
+FAILED=0; SB="$(mktemp -d "${TMPDIR:-/tmp}/memsnap.XXXXXX")" || exit 2
+[ -d "$SB" ] || exit 2
+trap 'rm -rf "$SB"' EXIT
 MEM="$SB/mem"; SNAPS="$SB/snaps"; BIN="$SB/bin"
 mkdir -p "$BIN"
 
@@ -164,6 +166,18 @@ out="$(PATH="$BIN3" MEMDIR="$MEM" "$BASH" "$SNAPSHOT" restore "$SNAPS/A" --expec
 assert_rc "S12 unhashable live file exits 1" 1 "$rc"
 ok "S12 the live bytes stay" body b.md other-writer
 ok "S12 conflict names the file" has "$out" "b.md"
+
+# S13: a directory another writer put where the pass deleted a file is a conflict.
+fresh; pass
+mkdir "$MEM/b.md"
+out="$(snap restore "$SNAPS/A" --expect "$SNAPS/B" 2>&1)"; rc=$?
+assert_rc "S13 directory in place of a file exits 1" 1 "$rc"
+ok "S13 nothing copied into the directory" test -z "$(ls -A "$MEM/b.md")"
+
+# S14: a store holding only the capture log still snapshots.
+fresh; rm -f "$MEM"/*.md
+out="$(snap take "$SNAPS/E" 2>&1)"; rc=$?
+assert_rc "S14 empty store take" 0 "$rc"
 
 # Hashing went through shasum, never sha256sum; no cp names the memory path.
 ok "P1 sha256sum hidden from the script's PATH" test -z "$(PATH="$BIN"; command -v sha256sum)"
