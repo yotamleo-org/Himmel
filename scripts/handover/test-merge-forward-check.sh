@@ -557,6 +557,9 @@ cs "chain-s2: the predecessor merged, its merge on origin/main and not in HEAD, 
 a0="$(csflag 0 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 a1="$(csflag 1 --chain-s2 11 --predecessor 10 --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"
 if [ "$a0" = "$a1" ] && [ "${a0%% *}" = "rc=0" ]; then ok "chain-s2: the verdict is the same at flag 0 and 1 (ALLOW)"; else bad "chain-s2: ALLOW flag parity" "$a0 | $a1"; fi
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/csbin/jira"
+cs "chain-s2: Jira unreadable (a Blocks link may hide an H1 pair): REFUSE" 1 'REFUSE.*Jira links are unreadable'
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/csbin/jira"
 # a caller-written plan file is never trusted: --chain-plan is dropped, flag on and off
 printf 'chain-plan: chain_merge_plan on\nORDER 10 11\nMERGE-FORWARD 11 after 10 (S2 D6)\n' > "$tmp/plan-hand"
 r0="$(csflag 0 --chain-s2 11 --chain-plan "$tmp/plan-hand" --chain-after-sha "$M10" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD")"

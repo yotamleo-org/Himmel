@@ -215,6 +215,13 @@ same "--go-check a 31-minute-old graph: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset; gcgraph '' ok
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a graph with no generated_at: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; gcgraph "$(date -u -d '+10 min' +%Y-%m-%dT%H:%M:%SZ)" ok
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a graph generated 10 minutes in the future: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset
+printf '{"generated_at":"%s","jira_links":"ok","nodes":[{"id":"#11","pr":11,"key":"HIMMEL-2","head":"%s"}],"edges":"S1 #12 #11"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$H11" > "$W/gc/graph.json"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a graph whose edges are not an array (an S1 peer may hide): REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset; printf 'HIMMEL-5\tTask\tIn Progress\tthe blocker\n' > "$W/gc/get-HIMMEL-5.txt"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check an unmerged hard predecessor: exit 1" "$rc" 1

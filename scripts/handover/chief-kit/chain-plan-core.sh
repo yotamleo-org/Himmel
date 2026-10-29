@@ -63,12 +63,15 @@ go_check() {
   refuse() { echo "REFUSE $1"; exit 1; }
   jl="$(jq -r '.jira_links // "unknown"' "$graph" 2>/dev/null)" || usage  # swallow-ok: an unreadable graph is a usage error
   [ "$jl" = ok ] || refuse "the graph's jira_links is $jl: an unread Jira Blocks link may hold PR $pr. Rebuild the graph."
+  jq -e '(.nodes | type == "array") and (.edges | type == "array")' "$graph" > /dev/null 2>&1 \
+    || refuse "the graph has no nodes and edges arrays: a malformed graph could hide an S1 peer. Rebuild it."
   gen="$(jq -r '.generated_at // ""' "$graph")"
   now="$(date -u +%s)"
   if [ -z "$gen" ] || ! age="$(date -u -d "$gen" +%s 2>/dev/null)"; then  # swallow-ok: an unparsable date REFUSEs
     refuse "the graph carries no readable generated_at: its age is unknown. Rebuild it with chain-graph.py --json."
   fi
   age=$((now - age))
+  [ "$age" -ge -60 ] || refuse "the graph's generated_at $gen is in the future: its age is unknown. Rebuild it."
   [ "$age" -le 1800 ] || refuse "the graph is $((age / 60)) minutes old (over 30): rebuild it."
   row="$(jq -r --arg id "#$pr" '.nodes[] | select(.id == $id) | [.head // "", .key // ""] | @tsv' "$graph")"
   [ -n "$row" ] || refuse "the graph lists no node #$pr."
@@ -86,7 +89,8 @@ go_check() {
     [[ "$st" =~ $DONE_RE ]] || refuse "$key has an unmerged hard predecessor: $p is $st."
   done
   peers="$(jq -r --arg id "#$pr" '.edges[] | select(.kind == "S1" and (.from == $id or .to == $id))
-                                   | (if .from == $id then .to else .from end) | ltrimstr("#")' "$graph")"
+                                   | (if .from == $id then .to else .from end) | ltrimstr("#")' "$graph")" \
+    || refuse "cannot read the graph's S1 edges: PR $pr's peers are unknown. Rebuild the graph."
   for m in $peers; do
     out="$(bash "${CHAIN_PLAN_PUSH_CHECK:-$SCRIPT_DIR/chain-push-check.sh}" --pr "$pr" --peer "$m" 2>&1)" \
       || refuse "chain-push-check.sh --pr $pr --peer $m exited $? (1 conflict, 3 unknown): ${out:0:200}"

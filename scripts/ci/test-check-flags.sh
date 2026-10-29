@@ -53,12 +53,12 @@ printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-28\ta flag\n' > "$t/scripts/lib/f
 expect_rc "a flag expiring in 2 days warns and passes" "$t" 0 "WARN flag alpha expires 2026-10-28 (in 2 days)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-11-02\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "a flag expiring across a month end in 7 days does not warn" "$t" 0
-grep -q WARN "$WORK/out" && fail "a flag 7 days out must not warn" || pass "a flag 7 days out prints no WARN"
+grep -q WARN "$WORK/out"; case $? in 1) pass "a flag 7 days out prints no WARN" ;; *) fail "a flag 7 days out must not warn" ;; esac
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-29\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "a flag expiring in 3 days warns" "$t" 0 "WARN flag alpha expires 2026-10-29 (in 3 days)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-10-30\ta flag\n' > "$t/scripts/lib/flags.tsv"
-rc="$(run "$t")"
-grep -q WARN "$WORK/out" && fail "a flag 4 days out must not warn" || pass "a flag 4 days out prints no WARN"
+expect_rc "a flag expiring in 4 days passes" "$t" 0
+grep -q WARN "$WORK/out"; case $? in 1) pass "a flag 4 days out prints no WARN" ;; *) fail "a flag 4 days out must not warn" ;; esac
 
 t="$(tree unregistered)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\nhimmel_flag beta\n' > "$t/scripts/handover/chief-kit/user.sh"
