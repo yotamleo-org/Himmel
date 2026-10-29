@@ -119,9 +119,14 @@ wire_user_claude_md() {
       local tmp
       tmp="$(mktemp "${TMPDIR:-/tmp}/ucm.XXXXXX")" || return 1
       # Every piece must have been written before the target is touched.
-      if ! { head -n "$((begin_ln - 1))" "$target" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$target"; } > "$tmp" \
-         || ! cat "$tmp" > "$target"; then
+      if ! { head -n "$((begin_ln - 1))" "$target" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$target"; } > "$tmp"; then
         rm -f "$tmp"; return 1
+      fi
+      # Written in place (not mv'd over) so a symlinked or hard-linked target
+      # keeps its identity and mode; if the write fails the finished text stays.
+      if ! cat "$tmp" > "$target"; then
+        echo "  user CLAUDE.md: could not write $target; the finished text is kept at $tmp" >&2
+        return 1
       fi
       rm -f "$tmp"
       _ucm_record_block "$target" "$payload" false replace "$current"

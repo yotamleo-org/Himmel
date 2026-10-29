@@ -339,6 +339,34 @@ head -c "$(wc -c < "$orig12" | tr -d '[:space:]')" "$target12" > "$prefix12"
 if cmp -s "$orig12" "$prefix12"; then pass "quoting prose kept byte-identical"; else fail "prose quoting the markers was overwritten"; fi
 rm -rf "$home12"
 
+# ── Case 13: a refresh that cannot write the target fails loudly, leaves the
+#             target as it was and keeps the finished text where the operator
+#             can find it ──
+echo "== Case 13: unwritable target keeps a recovery copy =="
+home13="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home13/.claude"
+target13="$home13/.claude/CLAUDE.md"
+printf 'head\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$target13"
+before13="$home13/before.txt"; cp "$target13" "$before13"
+chmod 444 "$target13"
+if [ -w "$target13" ]; then
+  pass "running as a user that ignores file modes: unwritable-target row not applicable"
+else
+  out13="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target13" 2>&1)"
+  rc13=$?
+  chmod 644 "$target13"
+  if [ "$rc13" -ne 0 ] && cmp -s "$before13" "$target13"; then pass "unwritable target: non-zero rc, target unchanged"; else fail "unwritable target: rc $rc13 or target changed"; fi
+  recovery13="$(sed -n 's/.*the finished text is kept at //p' <<< "$out13" | head -n 1)"
+  if [ -n "$recovery13" ] && grep -q -- "<!-- END $MARKER -->" "$recovery13" 2>/dev/null; then
+    pass "recovery copy named and present"
+  else
+    fail "no recovery copy named, got: $out13"
+  fi
+  if [ -n "$recovery13" ]; then rm -f "$recovery13"; fi
+fi
+chmod 644 "$target13"
+rm -rf "$home13"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
