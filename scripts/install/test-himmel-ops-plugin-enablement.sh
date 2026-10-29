@@ -2,7 +2,7 @@
 # test-himmel-ops-plugin-enablement.sh — regression guard for the himmel-ops plugin's live enablement.
 #
 # himmel-ops (marketplace/plugins/himmel-ops/hooks/hooks.json) delivers
-# block-glm-external-writes.sh — but delivery isn't enablement: a plugin can
+# block-worker-write-fence.sh — but delivery isn't enablement: a plugin can
 # be fully wired and still sit at "himmel-ops@himmel": false in a machine's
 # live ~/.claude/settings.json (existence != enablement), leaving the guard
 # silently inert. This suite closes that structurally:

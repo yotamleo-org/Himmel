@@ -36,7 +36,7 @@
 #     failure of the first Edit must not cost the legitimate retry).
 #     DENY (structured permissionDecision:"deny" on
 #     stdout, which overrides the exit code, PLUS exit 2 + stderr — the
-#     belt-and-braces idiom; see test-block-glm-external-writes.sh).
+#     belt-and-braces idiom; see test-block-worker-write-fence.sh).
 #   - The deny message carries the sanctioned recovery: dispatch via the Agent
 #     tool with an explicit model tier (CLAUDE.md subagent policy;
 #     impl routes to native Claude subagents only, NOT
