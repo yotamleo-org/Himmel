@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
+import { filterCount, NO_FILTERS } from "../agui-web/src/fleet-model";
 import { CLOUD, customConfig, fleetFixture, FLEET, PRIOR_CHIEF } from "./agui-fleet-fixture";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -56,6 +57,20 @@ test("3 live sessions and 1 wrapped: roles, tickets, PR, state, activity, subage
 
   // A wrapped worker is wrapped whatever its process says, never running.
   expect(by[FLEET.wrapped.name]).toMatchObject({ role: "leg", state: "wrapped", ticket: "HIMMEL-903" });
+});
+
+test("a session waiting on its background shell is waiting, not idle or running", async () => {
+  const s = boot();
+  const record = join(s.home, ".claude", "sessions", `${FLEET.leg.pid}.json`);
+  const rec = JSON.parse(readFileSync(record, "utf8"));
+  writeFileSync(record, JSON.stringify({ ...rec, status: "shell" }));
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.pid === FLEET.leg.pid);
+  expect(row.state).not.toBe("idle");
+  expect(row.state).not.toBe("running");
+  expect(row).toMatchObject({ run: FLEET.leg.run, state: "waiting", live: true, marker: "LIVE" });
+  expect(filterCount([row], { ...NO_FILTERS, states: ["waiting"] })).toBe(1);
+  expect(filterCount([row], { ...NO_FILTERS, states: ["idle"] })).toBe(0);
+  expect(filterCount([row], { ...NO_FILTERS, states: ["running"] })).toBe(0);
 });
 
 // a row carries its doc's last marker, the doc's last write and its PR's URL; the fleet carries the

@@ -50,7 +50,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R
   return out;
 }
 
-export type FleetState = "running" | "idle" | "waiting for GO" | "wrapped" | "unknown";
+export type FleetState = "running" | "idle" | "waiting" | "waiting for GO" | "wrapped" | "unknown";
 export type FleetRow = {
   run: string | null; pid: number | null; name: string; role: "console" | "leg" | "judge" | "consult" | "interactive" | "cloud"; model: string | null;
   ticket: string | null; pr: number | null; state: FleetState;
@@ -359,10 +359,11 @@ function runtimeOf(start: unknown, fallback: number | undefined, doc: string, wr
   return { startedAt, endedAt, elapsedMs: Math.max(0, (endedAt ?? now) - startedAt) };
 }
 
-function stateOf(status: string, busy: boolean): FleetState {
+function stateOf(status: string, sessionStatus: unknown): FleetState {
   if (status === "WRAPPED") return "wrapped";
   if (status === "READY") return "waiting for GO";
-  return busy ? "running" : "idle";
+  if (sessionStatus === "shell") return "waiting";
+  return sessionStatus === "busy" ? "running" : "idle";
 }
 
 // The one argument that says what a call is doing (App.tsx's summarize, on the server side).
@@ -483,7 +484,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     return {
       run, pid: Number(c.pid), name, role, model: c.model || null,
       ticket, pr: role === "leg" ? prOf(doc) : null,
-      state: role === "console" && !live && !wrapped ? "unknown" : stateOf(status, rec.status === "busy"),
+      state: role === "console" && !live && !wrapped ? "unknown" : stateOf(status, rec.status),
       activity: tools[0] && t0 !== undefined ? { tool: tools[0].name, summary: opts.redact(summarize(tools[0].args)).slice(0, 120), at: t0 + tools[0].start } : null,
       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
