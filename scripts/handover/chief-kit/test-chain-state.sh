@@ -14,6 +14,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/chain-state.mjs"
+python3 -I "$HERE/fixtures/chain-parity/check.py" state || exit 1
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/chain-state-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
@@ -22,7 +23,10 @@ check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
 
 M="$tmp/mirror" S="$tmp/state" NOW=2026-11-05T00:00:00Z
-reset() { rm -rf "$M" "$S"; mkdir -p "$M" "$S"; }
+reg() {
+    node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({schema:"himmel.chain-registry/1", chains:process.argv.slice(2).map(s => {const [id,ks]=s.split("="); return {id,goal:"Goal for " + id,members:ks.split(",").map(k=>"HIMMEL-"+k)};})}));' "$tmp/registry.json" "$@"
+}
+reset() { rm -rf "$M" "$S"; mkdir -p "$M" "$S"; reg; }
 
 # issue <KEY> <status> [type=|parent=|labels=|versions=|bb=|resolved=]...
 issue() {
@@ -45,12 +49,13 @@ issue() {
 ev() { printf '%s\n' "$1" >> "$S/status-events.jsonl"; }
 cl() { printf '%s\n' "$1" >> "$S/chain-log.jsonl"; }
 merge() { ev "{\"ts\":\"$1\",\"event\":\"merge\",\"key\":\"$2\",\"pr\":\"$3\",\"contract\":\"$4\",\"result\":\"moved\"}"; }
-cs() { node "$SUT" --json --mirror "$M" --state "$S" --version v1 --now "$NOW" > "$tmp/out" 2>"$tmp/err"; }
+cs() { node "$SUT" --json --registry "$tmp/registry.json" --mirror "$M" --state "$S" --version v1 --now "$NOW" > "$tmp/out" 2>"$tmp/err"; }
 q()  { jq -r "$1" "$tmp/out" 2>/dev/null; }
 tk() { q ".tickets[\"$1\"]$2"; }
 
 # --- E25: blocked means a real block ----------------------------------------
 reset
+reg chain-mem=1,2,3,4
 issue HIMMEL-1 "In Progress" labels='["chain-mem"]'
 issue HIMMEL-2 "To Do" labels='["chain-mem"]' bb='["HIMMEL-1"]'
 issue HIMMEL-3 "To Do" labels='["chain-mem"]' bb='["HIMMEL-9"]'
@@ -68,6 +73,7 @@ check "E25: a ticket in no chain is not listed" "$(tk HIMMEL-9 .key)" "null"
 
 # --- E29: the order check at the completing merge ----------------------------
 reset
+reg chain-8004=8005,7379,7125,7380
 issue HIMMEL-8004 "To Do" type=Epic
 issue HIMMEL-8005 Done parent=HIMMEL-8004 resolved=2026-11-02T15:20:00.000+0000
 issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T18:52:00.000+0000
@@ -93,6 +99,7 @@ check "E29: a ticket completed before the chain existed is not checked" "$(tk HI
 check "E29: a ticket closed by hand is read at its last PR merged before Jira went Done" "$(tk HIMMEL-7380 .check.merge.pr)" "302"
 
 reset
+reg chain-8004=8005,7379
 issue HIMMEL-8004 "To Do" type=Epic
 issue HIMMEL-8005 Done parent=HIMMEL-8004 resolved=2026-11-02T15:20:00.000+0000
 issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T14:10:00.000+0000
@@ -105,6 +112,7 @@ check "E29: with the hold record that stood open" "$(tk HIMMEL-7379 '.check.link
     "HIMMEL-8005 file-collision open 2026-10-28T20:56:00Z"
 
 reset
+reg chain-8004=7379,7381,7382
 issue HIMMEL-8004 "To Do" type=Epic
 issue HIMMEL-7379 "In Progress" parent=HIMMEL-8004
 issue HIMMEL-7381 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-7379"]'
@@ -121,6 +129,7 @@ check "E29: closed by hand afterwards, the check reads that merge" "$(tk HIMMEL-
 
 # --- E30: a chain changes ----------------------------------------------------
 reset
+reg chain-mem=8009,8010,8011
 issue HIMMEL-8009 "To Do" labels='["chain-mem"]'
 issue HIMMEL-8010 Done labels='["chain-mem"]' resolved=2026-11-03T14:30:00.000+0000
 issue HIMMEL-8011 "To Do" labels='["chain-mem"]'
@@ -139,6 +148,7 @@ check "E30: the change log lists each change in time order" \
 check "E30: with its kind, reason and source" "$(q '.chains[0].log[2] | .kind + " " + .reason + " " + .who')" "chain-order docs land first chief"
 check "E30: n/m follows the chain's tickets" "$(q '.chains[0] | "\(.done)/\(.total)"')" "1/3"
 reset
+reg chain-mem=8009,8010
 issue HIMMEL-8009 "To Do" labels='["chain-mem"]'
 issue HIMMEL-8010 "To Do" labels='["chain-mem"]'
 cl '{"ts":"2026-10-28T20:56:00Z","change":"hold","key":"HIMMEL-8010","kind":"chain-order","on":"HIMMEL-8009","who":"chief","reason":"r"}'
@@ -150,6 +160,7 @@ check "E30: a hold released before its target completed, and one not yet set, ad
 
 # --- E33: links across other work ---------------------------------------------
 reset
+reg chain-6000=6713 chain-macos=7120,7101
 issue HIMMEL-6000 "To Do" type=Epic
 issue HIMMEL-6713 "In Progress" parent=HIMMEL-6000
 issue HIMMEL-7120 "In Progress" labels='["chain-macos"]'
@@ -157,12 +168,12 @@ issue HIMMEL-7101 "To Do" labels='["chain-macos"]' bb='["HIMMEL-6000"]'
 cl '{"ts":"2026-10-28T20:56:00Z","change":"hold","key":"HIMMEL-6713","kind":"file-collision","on":"HIMMEL-7120","who":"chief","reason":"scripts/hooks/"}'
 cs
 check "E33: the waiting chain lists the link across other work" \
-    "$(q '.chains[] | select(.id == "HIMMEL-6000") | .across[] | select(.on == "HIMMEL-7120") | .dir + " " + .key + " " + .kind + " " + (.chains | join(","))')" \
+    "$(q '.chains[] | select(.id == "chain-6000") | .across[] | select(.on == "HIMMEL-7120") | .dir + " " + .key + " " + .kind + " " + (.chains | join(","))')" \
     "waits-on HIMMEL-6713 file-collision chain-macos"
 check "E33: the held-up chain lists the same link" \
     "$(q '.chains[] | select(.id == "chain-macos") | .across[] | select(.key == "HIMMEL-6713") | .dir + " " + .on + " " + .kind')" \
     "holds-up HIMMEL-7120 file-collision"
-check "E33: a chain is named by its epic or its chain- label" "$(q '[.chains[] | .id + ":" + .source] | join(" ")')" "HIMMEL-6000:epic chain-macos:label"
+check "E33: chains come only from the registry" "$(q '[.chains[] | .id + ":" + .source] | join(" ")')" "chain-6000:registry chain-macos:registry"
 check "E33: a Jira link across chains shows too" "$(q '[.chains[] | select(.id == "chain-macos") | .across[] | select(.kind == "jira-link") | .on] | join(" ")')" "HIMMEL-6000"
 issue HIMMEL-7101 "To Do" labels='["chain-macos"]'
 cs
@@ -170,18 +181,20 @@ check "E33: removing it from Jira removes it from both chains" "$(q '[.chains[].
 
 # --- E24: step, steps and the badge cap ---------------------------------------
 reset
+reg chain-8004=8016,8005,8006 chain-a=8005 chain-b=8005
 issue HIMMEL-8004 "To Do" type=Epic
 issue HIMMEL-8016 "In Progress" parent=HIMMEL-8004
 issue HIMMEL-8005 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-8016"]' labels='["chain-a","chain-b"]'
 issue HIMMEL-8006 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-8005"]'
 cs
-check "E24: a ticket's badge gives its step of the chain's steps" "$(tk HIMMEL-8005 '.chains[] | select(.id == "HIMMEL-8004") | "\(.step)/\(.steps)"')" "2/3"
+check "E24: a ticket's badge gives its step of the chain's steps" "$(tk HIMMEL-8005 '.chains[] | select(.id == "chain-8004") | "\(.step)/\(.steps)"')" "2/3"
 check "E24: a ticket in three chains shows two badges" "$(tk HIMMEL-8005 '.badges | length')" "2"
 check "E24: then +1" "$(tk HIMMEL-8005 .more)" "1"
-check "E24: next is the lowest step that can launch" "$(q '.chains[] | select(.id == "HIMMEL-8004") | .next')" "null"
+check "E24: next is the lowest step that can launch" "$(q '.chains[] | select(.id == "chain-8004") | .next')" "null"
 
 # --- hold kinds: waits on you, date-gated --------------------------------------
 reset
+reg chain-x=1,2,3
 issue HIMMEL-1 "To Do" labels='["chain-x"]'
 issue HIMMEL-2 "To Do" labels='["chain-x"]'
 issue HIMMEL-3 "To Do" labels='["chain-x"]'
@@ -198,11 +211,13 @@ NOW=2026-11-08T00:00:00Z cs
 check "kinds: past its date the date hold clears" "$(tk HIMMEL-2 .state)" "can launch"
 check "kinds: next is the lowest step that can launch" "$(q '.chains[0].next | "\(.step) " + (.keys | join(" "))')" "1 HIMMEL-2"
 reset
+reg chain-x=1
 issue HIMMEL-1 "To Do" labels='["chain-x"]'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"operator","result":"moved"}'
 cs
 check "kinds: a typed hold whose chain-log row is missing still waits, from its event row" "$(tk HIMMEL-1 .state)" "waits on you"
 reset
+reg chain-x=1
 issue HIMMEL-1 "To Do" labels='["chain-x"]'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"date","until":"2026-11-07","result":"moved"}'
 NOW=2026-11-08T00:00:00Z cs

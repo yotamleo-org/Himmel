@@ -1,0 +1,19 @@
+[
+ {"name":"next and done", "members":[[1,2,3,4]], "issues":{"1":{"statusCategory":"Done"},"2":{"blocked_by":["HIMMEL-1"],"labels":["chain-memory"]},"3":{"blocked_by":["HIMMEL-2"]},"4":{}}, "next":[[2,4]], "done":[[1]]},
+ {"name":"Won't-Do", "members":[[1,2]], "issues":{"1":{"statusCategory":"Done","resolution":"Won't Do"},"2":{"blocked_by":["HIMMEL-1"]}}, "next":[[2]], "done":[[1]]},
+ {"name":"hold", "members":[[1,2]], "issues":{"1":{},"2":{}}, "holds":[{"ts":"2026-11-01T00:00:00Z","change":"hold","key":"HIMMEL-1","kind":"operator"}], "next":[[2]], "done":[[]]},
+ {"name":"external blocker", "members":[[1]], "issues":{"1":{"blocked_by":["HIMMEL-9"]},"9":{"fixVersions":["v2"]}}, "next":[[]], "done":[[]]},
+ {"name":"cross-chain cycle", "members":[[1],[2]], "issues":{"1":{"blocked_by":["HIMMEL-2"]},"2":{"blocked_by":["HIMMEL-1"]}}, "cycle":[1,2], "next":[[],[]], "done":[[],[]]},
+ {"name":"self cycle", "members":[[1]], "issues":{"1":{"blocked_by":["HIMMEL-1"]}}, "cycle":[1], "next":[[]], "done":[[]]},
+ {"name":"shared member", "members":[[1,2],[2,3]], "issues":{"1":{"statusCategory":"Done"},"2":{},"3":{"blocked_by":["HIMMEL-2"]}}, "next":[[2],[2]], "done":[[1],[]]},
+ {"name":"reopened blocker", "members":[[1,2]], "issues":{"1":{"status":"To Do","statuscategorychangedate":"2026-11-03T00:00:00Z","resolved":"2026-11-01T00:00:00Z"},"2":{"blocked_by":["HIMMEL-1"]}}, "next":[[1]], "done":[[]]},
+ {"name":"successful merge then reopened", "members":[[1,2]], "issues":{"1":{"status":"To Do","statuscategorychangedate":"2026-11-03T00:00:00Z","resolved":"2026-11-01T00:00:00Z"},"2":{"blocked_by":["HIMMEL-1"]}}, "events":[{"ts":"2026-11-01T00:00:00Z","event":"merge","key":"HIMMEL-1","pr":"42","contract":"yes","result":"moved"}], "next":[[1]], "done":[[]]},
+ {"name":"new Done epoch ignores old merge", "members":[[1,2]], "issues":{"1":{"statusCategory":"Done","statuscategorychangedate":"2026-11-04T00:00:00Z","resolved":"2026-11-04T00:00:00Z"},"2":{"statusCategory":"Done","resolved":"2026-11-02T00:00:00Z","blocked_by":["HIMMEL-1"]}}, "events":[{"ts":"2026-11-01T00:00:00Z","event":"merge","key":"HIMMEL-1","pr":"42","contract":"yes","result":"moved"},{"ts":"2026-11-02T00:00:00Z","event":"merge","key":"HIMMEL-2","pr":"43","contract":"yes","result":"moved"}], "next":[[]], "done":[[1,2]], "out_of_order":2},
+ {"name":"historical audit before reopen", "members":[[1,2]], "issues":{"1":{"status":"To Do","statuscategorychangedate":"2026-11-03T00:00:00Z","resolved":"2026-11-01T00:00:00Z"},"2":{"statusCategory":"Done","resolved":"2026-11-02T00:00:00Z","blocked_by":["HIMMEL-1"]}}, "events":[{"ts":"2026-11-01T00:00:00Z","event":"merge","key":"HIMMEL-1","pr":"42","contract":"yes","result":"moved"},{"ts":"2026-11-02T00:00:00Z","event":"merge","key":"HIMMEL-2","pr":"43","contract":"yes","result":"moved"}], "next":[[1]], "done":[[2]], "order_held":2},
+ {"name":"reopened without epoch", "members":[[1,2]], "issues":{"1":{"status":"To Do","resolved":"2026-11-01T00:00:00Z"},"2":{"blocked_by":["HIMMEL-1"]}}, "events":[{"ts":"2026-11-01T00:00:00Z","event":"merge","key":"HIMMEL-1","pr":"42","contract":"yes","result":"moved"}], "next":[[1]], "done":[[]]},
+ {"name":"partial mirror blocker", "members":[[1]], "issues":{"1":{"blocked_by":["HIMMEL-9"]}}, "unknown":[1], "next":[[]], "done":[[]]},
+ {"name":"partial mirror member", "members":[[1,2]], "issues":{"2":{"blocked_by":["HIMMEL-1"]}}, "unknown":[1,2], "next":[[]], "done":[[]]},
+ {"name":"partial mirror status", "members":[[1,2]], "issues":{"1":{"statusCategory":null},"2":{"blocked_by":["HIMMEL-1"]}}, "unknown":[1,2], "next":[[]], "done":[[]]},
+ {"name":"unchained version ticket", "members":[[1]], "issues":{"1":{},"2":{},"3":{"labels":["standalone"]},"4":{"statusCategory":"Done"}}, "unchained":[2], "next":[[1]], "done":[[]]},
+ {"name":"epic is not a chain", "members":[], "issues":{"1":{"type":"Epic"},"2":{"parent":"HIMMEL-1","labels":["chain-memory"]}}, "next":[], "done":[]}
+]
