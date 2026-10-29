@@ -103,7 +103,8 @@ function readMirror(dir) {
         const title = /^# [A-Z][A-Z0-9]*-\d+: (.*)$/m.exec(m[2]);
         out.set(fm.key, {
             key: fm.key, title: title ? title[1].trim() : '', type: fm.type, status: fm.status,
-            known: typeof fm.status === 'string' && ['To Do', 'In Progress', 'Done'].includes(fm.statusCategory),
+            known: typeof fm.status === 'string' && ['To Do', 'In Progress', 'Done'].includes(fm.statusCategory)
+                && Array.isArray(fm.fixVersions),
             done: fm.statusCategory === 'Done', labels: arr(fm.labels), versions: arr(fm.fixVersions),
             epoch: typeof fm.statuscategorychangedate === 'string' ? ms(fm.statuscategorychangedate) : null,
             resolved: typeof fm.resolved === 'string' ? ms(fm.resolved) : null,
@@ -219,7 +220,7 @@ const inVersion = iss => !opt.version || iss.versions.includes(opt.version);
 const chains = new Map();
 for (const c of registry.chains) {
     for (const key of c.members) if (!issues.get(key)?.known) warn(`unknown-member ${key}`);
-    const members = c.members.filter(k => !issues.has(k) || inVersion(issues.get(k)));
+    const members = c.members.filter(k => !issues.get(k)?.known || inVersion(issues.get(k)));
     if (opt.version && !members.length) continue;
     chains.set(c.id, { id: c.id, name: c.goal.trim(), source: 'registry', members: new Set(members) });
 }

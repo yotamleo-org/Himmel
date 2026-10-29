@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory(prefix='chain-parity-') as temp:
             check(case['name'] + ' source_age_min', header['source_age_min'], 10)
         for n in case.get('unknown', []):
             key = 'HIMMEL-%s' % n
-            actual = data['tickets'][key]['state'] if READER == 'state' else (
+            actual = data['tickets'].get(key, {'state': 'missing'})['state'] if READER == 'state' else (
                 'unknown' if any(key in c['unknown'] for c in chains) else 'not unknown')
             check(case['name'] + ' unknown ' + key, actual, 'unknown')
         if 'cycle' in case:
