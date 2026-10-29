@@ -4852,18 +4852,21 @@ $(_c81_rows "plugin:$name" "$f")"
 # plugin table when Claude Code exposes one.
 check_c82_mcp_sources() {
     command -v jq >/dev/null 2>&1 || { emit INFO C82-mcp-sources "jq not on PATH -- MCP source listing skipped"; return 0; }
-    local rows="" name f c n
+    local rows="" key name mkt f n
     _c82_keys() { # <label> <json file> <jq path to the server object>
+        local out
         [ -r "$2" ] || return 0
-        jq -r --arg l "$1" "($3 // {}) | keys[] | . + \" [\" + \$l + \"]\"" "$2" 2>/dev/null
+        out="$(jq -r --arg l "$1" "($3 // {}) | keys[] | . + \" [\" + \$l + \"]\"" "$2" 2>/dev/null)" \
+            || { printf 'unreadable JSON [%s]\n' "$1"; return 0; }
+        [ -z "$out" ] || printf '%s\n' "$out"
     }
     rows="$(_c82_keys "user config" "${HOME:-}/.claude.json" .mcpServers)
 $(_c82_keys "project .mcp.json" "$REPO_ROOT/.mcp.json" .mcpServers)"
     if [ -r "$SETTINGS" ]; then
-        for name in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | split("@")[0]' "$SETTINGS" 2>/dev/null); do
-            f=""
-            for c in "$CLAUDE_DIR_R"/plugins/cache/*/"$name"/*/.mcp.json; do [ -f "$c" ] && f="$c"; done
-            [ -n "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"
+        for key in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' "$SETTINGS" 2>/dev/null); do
+            name="${key%%@*}"; mkt="${key#*@}"
+            f="$(printf '%s\n' "$CLAUDE_DIR_R"/plugins/cache/"$mkt"/"$name"/*/.mcp.json | sort -V | tail -n 1)"
+            [ -f "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"
             rows="$rows
 $(_c82_keys "plugin $name" "$f" '(.mcpServers // .)')"
         done
@@ -4874,6 +4877,11 @@ easel [runtime: built-in cc-plugin-easel plugin of the Claude Code binary]
 plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Claude Code binary]"
     rows="$(printf '%s\n' "$rows" | sed '/^$/d')"
     n="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
+    if printf '%s\n' "$rows" | grep -q '^unreadable JSON'; then
+        emit WARN C82-mcp-sources "an MCP config file is not valid JSON, so its servers are missing from the listing: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
+            "fix the file named by the layer in brackets (user config is ~/.claude.json, project is .mcp.json)"
+        return 0
+    fi
     emit OK C82-mcp-sources "$n MCP server entries by source layer: $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
 }
 

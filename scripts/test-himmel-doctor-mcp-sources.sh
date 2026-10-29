@@ -19,12 +19,15 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/doctor-mcp-sources-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 
 PROJ="$WORK/root"
-mkdir -p "$PROJ" "$WORK/home" "$WORK/claude/plugins/cache/fixmkt/fixplug/1.0.0"
+CACHE="$WORK/claude/plugins/cache"
+mkdir -p "$PROJ" "$WORK/home" "$CACHE/fixmkt/fixplug/10.0.0" "$CACHE/fixmkt/fixplug/9.0.0" "$CACHE/othermkt/fixplug/99.0.0"
 ln -s "$ROOT/scripts" "$PROJ/scripts"
 printf '{"mcpServers":{"fixture-user":{"command":"x","env":{"TOKEN":"SECRET-ENV-VALUE-1"}}}}\n' > "$WORK/home/.claude.json"
 printf '{"mcpServers":{"fixture-proj":{"command":"y","env":{"TOKEN":"SECRET-ENV-VALUE-2"}}}}\n' > "$PROJ/.mcp.json"
 printf '{"enabledPlugins":{"fixplug@fixmkt":true}}\n' > "$WORK/claude/settings.json"
-printf '{"mcpServers":{"fixture-plug":{"command":"z"}}}\n' > "$WORK/claude/plugins/cache/fixmkt/fixplug/1.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-plug":{"command":"z"}}}\n' > "$CACHE/fixmkt/fixplug/10.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-old":{"command":"z"}}}\n' > "$CACHE/fixmkt/fixplug/9.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-other-mkt":{"command":"z"}}}\n' > "$CACHE/othermkt/fixplug/99.0.0/.mcp.json"
 
 out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
 
@@ -32,7 +35,9 @@ echo "== C82: every source layer is listed with its server =="
 has "C82 row present" "C82-mcp-sources" "$out"
 has "C82 user config" "fixture-user [user config]" "$out"
 has "C82 project .mcp.json" "fixture-proj [project .mcp.json]" "$out"
-has "C82 enabled plugin" "fixture-plug [plugin fixplug]" "$out"
+has "C82 enabled plugin, newest version by version order" "fixture-plug [plugin fixplug]" "$out"
+lacks "C82 older version not listed" "fixture-old" "$out"
+lacks "C82 same-named plugin of another marketplace not listed" "fixture-other-mkt" "$out"
 has "C82 lane catalog" "himmel-bus [himmel lane catalog]" "$out"
 
 echo "== C82: easel has a named source, never unknown =="
@@ -42,6 +47,12 @@ lacks "C82 no unknown source" "unknown" "$out"
 echo "== C82: no env or secret value is printed =="
 lacks "C82 first env value" "SECRET-ENV-VALUE-1" "$out"
 lacks "C82 second env value" "SECRET-ENV-VALUE-2" "$out"
+
+echo "== C82: a config file that is not valid JSON is a WARN, not a silent gap =="
+printf '{' > "$WORK/home/.claude.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 malformed user config -> WARN" "WARN C82-mcp-sources" "$out"
+has "C82 names the layer" "unreadable JSON [user config]" "$out"
 
 [ "$fails" -eq 0 ] && echo "all passed" && exit 0
 echo "$fails failed"; exit 1
