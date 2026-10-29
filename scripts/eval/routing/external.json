@@ -1,0 +1,49 @@
+{
+  "_comment": "HIMMEL-8088: listing entries a session sees that himmel does not own, frozen 2026-10-29 from a live session listing (Claude Code bundled skills and built-in agents, the anthropic-skills plugin), the qmd MCP server's tools/list (first sentence of each), and obsidian-second-brain 0.18.1 commands (vendored; the commands that collide with obsidian-triage). An empty description is a name-only entry, as the live listing shows it. The climb never edits these.",
+  "skills": [
+    {"name": "update-config", "description": ""},
+    {"name": "keybindings-help", "description": ""},
+    {"name": "code-review", "description": ""},
+    {"name": "simplify", "description": ""},
+    {"name": "fewer-permission-prompts", "description": ""},
+    {"name": "loop", "description": ""},
+    {"name": "schedule", "description": ""},
+    {"name": "claude-api", "description": ""},
+    {"name": "run", "description": ""},
+    {"name": "init", "description": ""},
+    {"name": "security-review", "description": ""},
+    {"name": "dataviz", "description": ""},
+    {"name": "artifact-design", "description": "Design guidance and fundamentals for Artifacts. Load before writing any artifact, including a skill-instructed Markdown one."},
+    {"name": "plugin-authoring", "description": "Make a mod: a change to Claude's own interface or behaviour, such as a panel, status line, toast, slash command, or hook on tool calls."},
+    {"name": "anthropic-skills:chrome-browser", "description": ""},
+    {"name": "anthropic-skills:built-in-browser", "description": ""},
+    {"name": "anthropic-skills:computer-use", "description": ""},
+    {"name": "anthropic-skills:deep-research", "description": "Use when the prompt requires researching a topic across multiple sources and synthesizing it into a narrative report."},
+    {"name": "anthropic-skills:docs", "description": ""},
+    {"name": "anthropic-skills:docx", "description": ""},
+    {"name": "anthropic-skills:google-workspace", "description": ""},
+    {"name": "anthropic-skills:pdf", "description": ""},
+    {"name": "anthropic-skills:pptx", "description": ""},
+    {"name": "anthropic-skills:xlsx", "description": ""},
+    {"name": "anthropic-skills:skill-creator", "description": ""},
+    {"name": "obsidian-second-brain:youtube", "description": "Extract transcript, metadata, and top comments from a YouTube video - summarized via Gemini (free tier) or Grok and saved to vault. Add --visual to also read the video's frames (scene detection)"},
+    {"name": "obsidian-second-brain:obsidian-health", "description": "Run a vault health check - grouped by severity, detects contradictions, concept gaps, stale claims, and structural issues"},
+    {"name": "obsidian-second-brain:obsidian-ingest", "description": "Ingest a source into the vault - the vault rewrites itself around new knowledge. Every ingest updates entities, rewrites stale claims, synthesizes new concepts, and resolves contradictions."},
+    {"name": "obsidian-second-brain:obsidian-save", "description": "Save everything worth keeping from this conversation to the vault"},
+    {"name": "obsidian-second-brain:x-read", "description": "Deep-read an X (Twitter) post via Grok x_search - verbatim post, thread, TL;DR, claims, reply sentiment, voices to watch"},
+    {"name": "obsidian-second-brain:research", "description": "Web research with citations - Perplexity Sonar when an API key is set, free key-less sources otherwise. Deep dossier with summary, facts, timeline, players, contrarian views, open questions"}
+  ],
+  "agents": [
+    {"name": "general-purpose", "description": "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks."},
+    {"name": "Explore", "description": "Read-only search agent for broad fan-out searches, when answering means sweeping many files and you only need the conclusion."},
+    {"name": "Plan", "description": "Software architect agent for designing implementation plans: step-by-step plans, critical files, architectural trade-offs."},
+    {"name": "claude-code-guide", "description": "Answers questions about Claude Code (the CLI tool), the Claude Agent SDK and the Claude API: features, hooks, slash commands, MCP servers, settings."},
+    {"name": "statusline-setup", "description": "Use this agent to configure the user's Claude Code status line setting."}
+  ],
+  "mcp": [
+    {"name": "mcp__qmd__query", "description": "Search the knowledge base using a query document - one or more typed sub-queries combined for best recall."},
+    {"name": "mcp__qmd__get", "description": "Retrieve the full content of a document by its file path or docid."},
+    {"name": "mcp__qmd__multi_get", "description": "Retrieve multiple documents by glob pattern, comma-separated list, or docids."},
+    {"name": "mcp__qmd__status", "description": "Show the status of the QMD index: collections, document counts, and health information."}
+  ]
+}
