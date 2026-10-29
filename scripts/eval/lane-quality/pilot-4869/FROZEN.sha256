@@ -1,4 +1,4 @@
-1cb7c0f32f78a00316137f9482e870063e59af199968d58f8ebc4a21352d2239  tasks/shell-red-green/accept.sh
+8342140ca0818aef32b5f903245d842ebc2c664a68a7d0a096b74c9bf18dfd11  tasks/shell-red-green/accept.sh
 db549760d350b3a699058c8aa1f8d099a8cf2af0de3ccdb21db4ae6297da2a26  tasks/shell-red-green/prompt.md
 17c64e5b029175162686c2d44a18581246b456ce4c1d278523d9e2cf6fc85d68  tasks/shell-red-green/reference/lq-work/semver-cmp.sh
 610a1ac93416226a339746d92d9f6c0433ea6b4eb368b68b0871b2730a90480f  tasks/shell-red-green/reference/lq-work/test-semver-cmp.sh.ref

@@ -414,7 +414,7 @@ for key, reason in rows.items():
     owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
     inflight += int(owned)
     holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
-    blocker = reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?!Done,|Closed,)[^()]+, live\)", reason))
+    blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
     elif owned or holder or blocker or key in decisions:
@@ -449,14 +449,13 @@ while [ "$#" -gt 0 ]; do
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
         --pool-dispositions) pool_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
-            case "$1" in --legs) legacy_flag --legs --workers || { usage >&2; exit 2; } ;; --legs-from) legacy_flag --legs-from --workers-from || { usage >&2; exit 2; } ;; esac
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
-                --workers|--legs) WORKERS="$2" ;;
-                --workers-from|--legs-from) WORKERS_FROM="$2" ;;
+                --workers) WORKERS="$2" ;;
+                --workers-from) WORKERS_FROM="$2" ;;
                 --handover-dir) HANDOVER_DIR="$2" ;;
                 --repo) REPO="$2" ;;
                 --ready-dir) ready_dir="$2" ;;

@@ -1165,4 +1165,5 @@ scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new HIMMEL-7
 scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suite, new HIMMEL-8013
 scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role, HIMMEL-6827
 scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role, HIMMEL-6827
+scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path

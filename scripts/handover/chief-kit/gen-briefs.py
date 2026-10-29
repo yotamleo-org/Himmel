@@ -669,7 +669,6 @@ def main():
     ap.add_argument('legs')
     ap.add_argument('--base', required=True)
     ap.add_argument('--chief')
-    ap.add_argument('--console', dest='console_old', help=argparse.SUPPRESS)
     ap.add_argument('--bucket', required=True)
     ap.add_argument('--date', default=_date.today().isoformat())
     ap.add_argument('--repo', default=os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')))
@@ -685,12 +684,6 @@ def main():
     except SystemExit as e:
         sys.exit(2 if e.code else 0)
     a.repo = os.path.abspath(a.repo)  # the launcher runs from any cwd, so its worktree paths must be absolute
-    if a.console_old is not None:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-        import env_alias
-        if not env_alias.legacy_flag('--console', '--chief'):
-            ap.error('unrecognized arguments: --console')
-        a.chief = a.chief or a.console_old
     if a.chief is None:
         ap.error('the following arguments are required: --chief')
 

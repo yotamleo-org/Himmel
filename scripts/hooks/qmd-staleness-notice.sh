@@ -241,6 +241,7 @@ _qmd_dir_ok() {
 # shellcheck disable=SC2317,SC2329  # invoked indirectly, via the EXIT trap.
 _qmd_publish() {
     exec >/dev/null 2>&1 || true
+    # prim-ok: the capture file is already the same-directory O_EXCL temp the child streamed into; atomic_write would re-copy it
     mv -f "$_cache_tmp" "$CACHE" 2>/dev/null || rm -f "$_cache_tmp" 2>/dev/null || true
     rmdir "$CACHE.lock" 2>/dev/null || true
 }
@@ -266,6 +267,7 @@ if [ "${QMD_STALENESS_REFRESH:-0}" = "1" ]; then
     if [ -n "$_lock_age" ] && [ "$_lock_age" -gt 300 ]; then
         rmdir "$CACHE.lock" 2>/dev/null || true
     fi
+    # prim-ok: a non-blocking try-lock (a loser exits at once) with a stale-age reap; with_lock blocks, so the semantics differ
     mkdir "$CACHE.lock" 2>/dev/null || exit 0   # another refresh is already running
     # mktemp, not "$CACHE.$$.tmp": a PID-derived name is guessable, and a plain
     # `>` redirect FOLLOWS a symlink someone else pre-placed there — which would

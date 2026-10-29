@@ -22,6 +22,7 @@ command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 # shellcheck source=lib-fixture-root.sh
 . "$HOOKS/lib-fixture-root.sh"
 _FROOT=$(fixture_root) || exit 1
+# prim-ok: the fixture must live under the fixture root (not TMPDIR) so the fence sees the intended layout
 FIX=$(mktemp -d "$_FROOT/.himmel-2526-fencefix-XXXXXX") || exit 1
 TMPFIX=""
 trap 'rm -rf "$FIX" "$TMPFIX"' EXIT
@@ -76,6 +77,7 @@ touch "$FIX/swrepo/.single-writer"
 # `mktemp -d`: this row asserts a `*/tmp/*` pattern match, and on macOS both
 # of those resolve TMPDIR to `/var/folders/.../T/`, which matches neither
 # `*/tmp/*` nor `*/temp/*` — the row would fail there for an unrelated reason.
+# prim-ok: the hardcoded /tmp prefix is the assertion (see above); tmpdir honours TMPDIR and would break the row on macOS
 TMPFIX=$(mktemp -d /tmp/himmel-2526-bwimc-tmpfix.XXXXXX) || exit 1
 mkrepo_committed "$TMPFIX/primary" main
 

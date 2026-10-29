@@ -1685,6 +1685,72 @@ check "main's newest run is green, an older one red: exit 1" "$rc" "1"
 notcontains "main's newest run is green, an older one red: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR"/jobs-*.json
 
+# A re-shard moves a suite that is already red on main to another job, so the job-name
+# comparison reads it as new red. When it fails a job, the failed SUITES in the runs' logs
+# (`<job>\t<step>\t<ts> [FAIL] <suite> (rc=..)`, the runner's own line) are compared instead: every
+# new job must show failed suites, and all of them must also have failed somewhere on main. Names
+# are the real case: main schedule run 40457809286 shard 3 vs PR 4197 dispatch run 40824556047 shard 8.
+TT=scripts/lib/test-timeout-bin.sh
+TTY=scripts/lib/test-other.sh
+log_fail() {  # <job> <suite>... -> run-log lines for the failed suites of one job
+    local j="$1" s
+    shift
+    for s in "$@"; do
+        printf '%s\tRun suites\t2026-10-29T10:00:00.1234567Z [FAIL] %s (rc=1, 3s)\n' "$j" "$s"
+        printf '%s\tRun suites\t2026-10-29T10:00:00.2234567Z     [FAIL] %s (indented tail echo)\n' "$j" "$s.echo"
+    done
+}
+printf '[{"conclusion":"failure","databaseId":111,"event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$SHA" > "$RUNDIR/ci.yml.json"
+main_run schedule failure 222 > "$RUNDIR/ci.yml.main.json"
+jobs_json "macos / shell (8)" > "$RUNDIR/jobs-111.json"
+jobs_json "macos / shell (3)" > "$RUNDIR/jobs-222.json"
+log_fail "macos / shell (8)" "$TT" > "$RUNDIR/log-111.txt"
+log_fail "macos / shell (3)" "$TT" > "$RUNDIR/log-222.txt"
+wf_run ".github/workflows/ci.yml"
+check "suite moved to another shard, red on main: exit 0" "$rc" "0"
+contains "suite moved to another shard, red on main: check 10 passes" "$out" "[PASS] 10."
+contains "suite moved to another shard, red on main: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "suite moved to another shard, red on main: names the suite" "$out" "$TT"
+notcontains "suite moved to another shard: an indented echo is not a failed suite" "$out" "$TT.echo"
+
+log_fail "macos / shell (8)" "$TT" "$TTY" > "$RUNDIR/log-111.txt"
+wf_run ".github/workflows/ci.yml"
+check "moved shard also fails a suite main does not: exit 1" "$rc" "1"
+contains "moved shard also fails a suite main does not: check 10 fails" "$out" "[FAIL] 10."
+contains "moved shard also fails a suite main does not: names the new suite" "$out" "$TTY"
+notcontains "moved shard also fails a suite main does not: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+rm -f "$RUNDIR/log-111.txt"
+wf_run ".github/workflows/ci.yml"
+check "PR run log unreadable: exit 1" "$rc" "1"
+contains "PR run log unreadable: check 10 fails" "$out" "[FAIL] 10."
+notcontains "PR run log unreadable: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+log_fail "macos / shell (8)" "$TT" > "$RUNDIR/log-111.txt"
+rm -f "$RUNDIR/log-222.txt"
+wf_run ".github/workflows/ci.yml"
+check "main run log unreadable: exit 1" "$rc" "1"
+notcontains "main run log unreadable: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+log_fail "macos / shell (3)" "$TT" > "$RUNDIR/log-222.txt"
+printf 'macos / shell (8)\tRun suites\t2026-10-29T10:00:00.1Z setup failed, no suite ran\n' > "$RUNDIR/log-111.txt"
+wf_run ".github/workflows/ci.yml"
+check "new job's log names no failed suite: exit 1" "$rc" "1"
+notcontains "new job's log names no failed suite: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+# one job moved shard, another is red for a reason no suite line explains: the second keeps the FAIL
+jobs_json "macos / shell (8)" "macos / shell (5)" > "$RUNDIR/jobs-111.json"
+log_fail "macos / shell (8)" "$TT" > "$RUNDIR/log-111.txt"
+wf_run ".github/workflows/ci.yml"
+check "one moved job, one job with no failed suite in its log: exit 1" "$rc" "1"
+notcontains "one moved job, one job with no failed suite in its log: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+# the job-name comparison stays first: same job names on both runs pass with no log at all
+jobs_json "macos / shell (3)" > "$RUNDIR/jobs-111.json"
+rm -f "$RUNDIR/log-111.txt" "$RUNDIR/log-222.txt"
+wf_run ".github/workflows/ci.yml"
+check "same job red on both runs, no logs: exit 0 (job-name check first)" "$rc" "0"
+contains "same job red on both runs, no logs: PRE-EXISTING line" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR/ci.yml.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-111.txt "$RUNDIR"/log-222.txt
+
 # A merge-forward head carries no dispatch run of its own; its proof is a PRE-EXISTING-red dispatch
 # run at an ANCESTOR commit on the PR branch, accepted only when every file the PR changes is the
 # same blob at that ancestor and at the head. The run row is the shape `gh run list --workflow
@@ -1810,6 +1876,67 @@ rc=0; out="$(run)" || rc=$?; SHA="$ANC_REAL_SHA"
 check "PR file list dies mid-pagination: exit 1" "$rc" "1"
 contains "PR file list dies mid-pagination: says the file list cannot be read" "$out" "cannot read PR files"
 notcontains "PR file list dies mid-pagination: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+# A merge-forward that edits ANOTHER hunk of a file the PR changes moves that file's blob,
+# yet the PR's own patch to it is the same. History: M0 (main) <- PR1 (the dispatch commit, edits line 3)
+# and M0 <- M1 (main edits line 28); the head merges M1 into PR1. origin/main is M1.
+anc_merge() {  # <tree: workflow blob> <pr file blob> <main file blob> <parent 1> <parent 2> -> a merge commit
+    local c
+    c=$(anc_commit - "$1" "$2" "$3")
+    git -C "$REPO" commit-tree "$c^{tree}" -p "$4" -p "$5" -m "Merge fixture"
+}
+P0=$(seq 1 30 | sed 's/^/line /')
+B_P0=$(anc_blob "$P0")
+B_PPR=$(anc_blob "$(printf '%s\n' "$P0" | sed '3s/.*/line 3 pr/')")
+B_PMAIN=$(anc_blob "$(printf '%s\n' "$P0" | sed '28s/.*/line 28 main/')")
+B_PBOTH=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 3 pr/' -e '28s/.*/line 28 main/')")
+B_PEDIT=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 3 pr, edited after the dispatch/' -e '28s/.*/line 28 main/')")
+HP_M0=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN1")
+HP_PR1=$(anc_commit "$HP_M0" "$B_WF2" "$B_PPR" "$B_MAIN1")
+HP_M1=$(anc_commit "$HP_M0" "$B_WF" "$B_PMAIN" "$B_MAIN2")
+HP_HEAD=$(anc_merge "$B_WF2" "$B_PBOTH" "$B_MAIN2" "$HP_PR1" "$HP_M1")
+HP_HEAD_EDIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PEDIT" "$B_MAIN2")
+B_PWS=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line  3 pr/' -e '28s/.*/line 28 main/')")
+HP_HEAD_WS=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PWS" "$B_MAIN2")
+B_PDIGIT=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 5 pr/' -e '28s/.*/line 28 main/')")
+HP_HEAD_DIGIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PDIGIT" "$B_MAIN2")
+HP_ORPHAN=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN2")
+ANC_ORIGIN="$tmp/anc-origin.git"
+git init -q --bare "$ANC_ORIGIN"
+git -C "$REPO" remote add origin "$ANC_ORIGIN"
+anc_main() { git -C "$REPO" push -q -f origin "$1:refs/heads/main"; }  # <commit> -> origin/main
+anc_row 40073661474 "$HP_PR1" "$ANC_BRANCH" > "$RUNDIR/macos-cadence.yml.pr-branch.json"
+anc_main "$HP_M1"
+anc_run "$HP_HEAD"
+check "merge-forward edits another hunk of a PR file: exit 0" "$rc" "0"
+contains "merge-forward edits another hunk of a PR file: check 10 passes" "$out" "[PASS] 10."
+contains "merge-forward edits another hunk of a PR file: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "merge-forward edits another hunk of a PR file: names the ancestor" "$out" "$HP_PR1"
+anc_run "$HP_HEAD_EDIT"
+check "the PR's own hunk edited after the dispatch: exit 1" "$rc" "1"
+contains "the PR's own hunk edited after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "the PR's own hunk edited after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_run "$HP_HEAD_WS"
+check "the PR's own hunk changed only in whitespace after the dispatch: exit 1" "$rc" "1"
+contains "the PR's own hunk changed only in whitespace after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "the PR's own hunk changed only in whitespace after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" config diff.lossy.textconv "sed s/[0-9]//g"
+printf '%s diff=lossy\n' "$ANC_PRFILE" > "$REPO/.gitattributes"
+anc_run "$HP_HEAD_DIGIT"
+rm -f "$REPO/.gitattributes"
+git -C "$REPO" config --unset diff.lossy.textconv
+check "a textconv driver hides the PR's own edit after the dispatch: exit 1" "$rc" "1"
+contains "a textconv driver hides the PR's own edit after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "a textconv driver hides the PR's own edit after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+anc_main "$HP_ORPHAN"
+anc_run "$HP_HEAD"
+check "no merge-base with origin/main: exit 1" "$rc" "1"
+contains "no merge-base with origin/main: check 10 fails" "$out" "[FAIL] 10."
+notcontains "no merge-base with origin/main: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" remote remove origin
+anc_run "$HP_HEAD"
+check "origin/main cannot be fetched: exit 1" "$rc" "1"
+notcontains "origin/main cannot be fetched: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR"/*.json
 
 real_run in_progress "" "$SHA" > "$RUNDIR/ci.yml.json"
@@ -2057,7 +2184,27 @@ mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/macos-cadence.y
 mac_wf_run "" "$RUNDIR/broad-added.patch"
 check "macos-cadence suites run refused for its workflow diff, main red on shard 1: exit 1" "$rc" "1"
 notcontains "macos-cadence suites run refused for its workflow diff: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
-rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json
+contains "macos-cadence suites run refused, no full run beside it: keeps the refusal's reason" "$out" "changes more than the suites wiring"
+# the refusal is final for the suites run only: a separate full dispatch run at the head is still judged
+# against main on its own, and a suites run is never the run that gets judged that way
+printf '[{"conclusion":"failure","databaseId":501,"displayTitle":"macos-cadence suites: %s","event":"workflow_dispatch","headSha":"%s","status":"completed"},{"conclusion":"failure","databaseId":601,"displayTitle":"CI (os:macos cadence)","event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$MAC_A" "$SHA" "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+jobs_json "macos-cadence / shell (macos-latest, 8)" > "$RUNDIR/jobs-601.json"
+jobs_json "macos-cadence / shell (macos-latest, 3)" > "$RUNDIR/jobs-222.json"
+log_fail "macos-cadence / shell (macos-latest, 8)" "$TT" > "$RUNDIR/log-601.txt"
+log_fail "macos-cadence / shell (macos-latest, 3)" "$TT" > "$RUNDIR/log-222.txt"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "refused suites run beside a full run red only where main is: exit 0" "$rc" "0"
+contains "refused suites run beside a full run red only where main is: check 10 passes" "$out" "[PASS] 10."
+contains "refused suites run beside a full run red only where main is: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "refused suites run beside a full run red only where main is: judges the full run" "$out" "run 601"
+contains "refused suites run beside a full run red only where main is: names the suite" "$out" "$TT"
+log_fail "macos-cadence / shell (macos-latest, 8)" "$TT" "$TTY" > "$RUNDIR/log-601.txt"
+mac_wf_run "" "$RUNDIR/broad-added.patch"
+check "refused suites run beside a full run with a new failed suite: exit 1" "$rc" "1"
+contains "refused suites run beside a full run with a new failed suite: check 10 fails" "$out" "[FAIL] 10."
+contains "refused suites run beside a full run with a new failed suite: names the new suite" "$out" "$TTY"
+notcontains "refused suites run beside a full run with a new failed suite: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-601.txt "$RUNDIR"/log-222.txt
 
 mac_run failure "macos-cadence suites: $MAC_A" "$SHA" > "$RUNDIR/ci.yml.json"
 wf_run ".github/workflows/ci.yml"

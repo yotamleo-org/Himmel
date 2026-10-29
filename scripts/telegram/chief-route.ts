@@ -3,7 +3,6 @@ import { readdir, readFile, stat, mkdir, open, unlink } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
-import { legacyFlag } from "../lib/env-alias.mjs";
 
 // Operator Telegram message -> a named RUNNING chief.
 //
@@ -283,7 +282,7 @@ if (import.meta.main) {
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
   } else {
-    const name = args[0] === "--chief" || (args[0] === "--console" && legacyFlag("--console", "--chief")) ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
+    const name = args[0] === "--chief" ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
     const satellite = verb === "reply" && args[0] === "--satellite" ? args.splice(0, 2)[1] : undefined;
     const [chat, ...rest] = args;
     const chatId = Number(chat);
