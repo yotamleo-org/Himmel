@@ -88,7 +88,6 @@ for path in \
     .codex/run-hook.cmd \
     .codex/run-hook.sh \
     .codex/codex-hook-adapter.sh \
-    scripts/lib/cr-signal.sh \
     scripts/lib/coderabbit-signal.sh \
     scripts/lib/review-merge-gate.sh \
     .pre-commit-config.yaml

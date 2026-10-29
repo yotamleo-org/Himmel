@@ -18,8 +18,8 @@
 old	new	kind	direction	slice	remove-at
 console	chief	prose	fail	V5	never
 leg	worker	prose	fail	V4a	never
-supervisor session	chief	prose	warn	D	never
-worker session	worker	prose	warn	D	never
+supervisor session	chief	prose	fail	D	never
+worker session	worker	prose	fail	D	never
 ticket sequence	dependency chain	prose	fail	R2	never
 batch of workers	parallel wave	prose	fail	R2	never
 wave	parallel wave	prose	fail	R2	never

@@ -46,7 +46,7 @@ command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 # shellcheck disable=SC2016  # payloads are literal text with $ expansions, never expanded here
 GUARDS='
 auto-approve-safe-bash.sh|||noapprove|||-|||-|||rm -rf /tmp/x
-block-bank-lift-writes.sh|||deny|||-|||-|||echo {} > ~/.himmel/state/bank-lift.json
+block-bank-lift-writes.sh|||deny|||-|||-|||echo {} > ~/.himmel/state/usage-lift.json
 block-bare-qmd-query.sh|||deny|||-|||-|||qmd query hello
 block-chokepoint-env-prefix.sh|||deny|||-|||-|||ARMAUTOMERGE=1 bash scripts/handover/merge-on-green.sh
 block-destructive-commands.sh|||deny|||-|||-|||rm -rf /tmp/x

@@ -49,7 +49,7 @@ function baseEnv(extra) {
     ...process.env,
     BENCH_CLAUDE_CODEX_BIN: FAKE_LAUNCHER,
     BENCH_LUNA_TIMEOUT_SECS: '30',
-    CODEX_BANK_CACHE: codexCache,
+    CODEX_USAGE_CACHE: codexCache,
     CLAUDE_USAGE_CACHE: claudeCache,
     ...extra,
   };
@@ -144,7 +144,7 @@ test('dispatch-luna: the bank check runs before the first paid attempt', () => {
     BENCH_SCRATCH_ROOT: scratchRoot,
     FAKE_LAUNCHER_STATE_DIR: stateDir,
     FAKE_LAUNCHER_CONFIG_DIR: configDir,
-    CODEX_BANK_CACHE: bankCache, // usage-status.ts test hook (bank-status.test.mjs uses the same one)
+    CODEX_USAGE_CACHE: bankCache, // usage-status.ts test hook (bank-status.test.mjs uses the same one)
   });
 
   assert.throws(() => execFileSync(BASH_BIN, [
@@ -179,13 +179,13 @@ test('dispatch-luna: a mid-batch bank breach aborts, and a healthy re-run comple
     BENCH_SCRATCH_ROOT: scratchRoot,
     FAKE_LAUNCHER_STATE_DIR: stateDir,
     FAKE_LAUNCHER_CONFIG_DIR: configDir,
-    CODEX_BANK_CACHE: healthyCache,
+    CODEX_USAGE_CACHE: healthyCache,
   });
   const dispatch = (bankCache, tasks) => execFileSync(BASH_BIN, [
     RUN_BATCH, 'dispatch-luna', '--tasks-dir', tasksDir, '--runs-dir', runsDir,
     '--reps', '1', '--cells', 'luna', '--retry-cap', '2', '--bank-check-every', '1',
     ...(tasks ? ['--tasks', tasks] : []),
-  ], { encoding: 'utf8', env: { ...env, CODEX_BANK_CACHE: bankCache } });
+  ], { encoding: 'utf8', env: { ...env, CODEX_USAGE_CACHE: bankCache } });
 
   // Pass 1 (healthy bank): complete R1 only.
   dispatch(healthyCache, 'R1');

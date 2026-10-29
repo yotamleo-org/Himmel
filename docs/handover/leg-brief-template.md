@@ -1,1 +1,0 @@
-worker-brief-template.md

@@ -60,7 +60,7 @@ mutation spot-check for every guard, gate or timeout (remove it, a test must
 go RED); the recurring classes (env override away from its reader, fail-open
 default, silent rc-0 drop, symlink replaced not refused, a cross-process
 string compare without `TZ` and `LC_ALL` pinned); the tree-scan suites run in
-full for an added script, ledger, launch site or `.ps1`.
+full for an added script, ledger or launch site.
 
 Run a hook or script against a fixture under a deadline that kills its whole
 process group (`qmd_bounded` from `scripts/lib/qmd-bounded.sh`), with a

@@ -50,7 +50,7 @@ check_contains "basic: skill invocation counted across both sessions" \
 check_contains "basic: slash command counted" \
     "$OUT" "slash=/graphify count=1 sessions=1"
 check_contains "basic: himmel script call counted" \
-    "$OUT" "script=scripts/lib/bank-preflight.sh count=1"
+    "$OUT" "script=scripts/lib/usage-preflight.sh count=1"
 check_contains "basic: jira op call counted under a jira: key" \
     "$OUT" "script=jira:get count=1"
 check_contains "basic: a failed script call raises its error rate" \
@@ -184,7 +184,7 @@ else
     fails=$((fails + 1))
 fi
 check_contains "chained: the first script in a chained Bash command is counted" \
-    "$OUT" "script=scripts/lib/bank-preflight.sh count=1"
+    "$OUT" "script=scripts/lib/usage-preflight.sh count=1"
 check_contains "chained: the second script in the SAME chained Bash command is also counted" \
     "$OUT" "script=scripts/lanes/bench/scorecard/agg-burn.sh count=1"
 
@@ -249,7 +249,7 @@ fi
 check_not_contains "partial-write: a command from a file whose enrichment pass jq-failed is never counted" \
     "$OUT" "slash=/leaked-cmd"
 check_not_contains "partial-write: a tool_use preceding the malformed timestamp is never counted either (EVENTS staged per-file, same as CMDS)" \
-    "$OUT" "script=scripts/lib/bank-preflight.sh count=1"
+    "$OUT" "script=scripts/lib/usage-preflight.sh count=1"
 check_contains "partial-write: the file is counted as jq-failed, not parsed" \
     "$OUT" "coverage: roots=1 discovered=1 parsed=0 skipped=1 (jq-failed=1)"
 check_contains "partial-write: the jq-failure warning is surfaced" \

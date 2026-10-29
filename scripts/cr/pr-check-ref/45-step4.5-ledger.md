@@ -126,7 +126,7 @@
    while a blocking `finding` append fails, the chokepoint sees "a responder and
    zero findings" and clears the marker on a review that actually found a
    blocker. Check the exit status of EVERY `ledger-append.sh` call. If any append
-   fails, do NOT invoke `clear-cr-marker.sh` — treat the run as step 6 (marker
+   fails, do NOT invoke `clear-review-marker.sh` — treat the run as step 6 (marker
    stays), surface the failure, and re-run once the ledger is writable. An
    unrecorded finding must never read as no finding.
 
@@ -245,7 +245,7 @@
    reads every `finding` row at this head, applying any `amend` supersession
    first — so a finding adjudicated to `deferred` is seen as deferred, and an
    amend that re-keys a row onto another head moves it, exactly as
-   `clear-cr-marker.sh` evaluates the same records. 4.6 receives every severity
+   `clear-review-marker.sh` evaluates the same records. 4.6 receives every severity
    (`crit`, `imp` AND `sug` — `append-cr-findings.sh` records all three; only
    the blocking COUNT in step 4 excludes `sug`). 4.7 receives only `crit`/`imp`
    findings that are still open: one adjudicated to `disproved` or `deferred`

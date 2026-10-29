@@ -27,7 +27,7 @@ QL="$SCRIPT_DIR/queue-lock.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, this
 # suite's real-arm cases (T10/T11/T12/T15/T7c) call the REAL fleet count
 # against THIS machine's own ambient process table and can spuriously
@@ -38,8 +38,8 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# bank-preflight.sh now RESERVES a fleet slot per declared launch
-# (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
+# usage-preflight.sh now RESERVES a fleet slot per declared launch
+# (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes — so the FLEET_PS_CMD stub
 # above no longer zeroes the fleet count by itself: this suite's several real
 # arms (T15/T19/T20/T21/T22) each leave their own unconsumed reservation
@@ -77,7 +77,7 @@ unset QUEUE_LOCK_TAKEOVER QUEUE_LOCK_TTL_SECONDS ARM_DUP_OK 2>/dev/null || true
 # test-arm-resume.sh carries.
 export ARM_TEMP_CWD_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Split-worker shield: this suite's fixtures are a flat POOL of
 # next-session-<N>.md files in ONE directory, all created seconds apart and
 # none of them ever a relaunch point — which is exactly the shape the split-worker

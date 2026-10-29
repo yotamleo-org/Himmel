@@ -9,7 +9,7 @@ question asked about. worker-graph.sh uses the two verbs below to fix that from 
       Prints one node id per line for each anchor that resolves. An anchor is a question token
       carrying a path, an extension, '-' or '_'. It resolves to a file node by path, path
       suffix, basename or stem; else to a file named in the other fleet vocabulary (the rename
-      registry's swaps via scripts/qmd/vocab-expand.py: headed-arm-worker.sh is headed-arm-leg.sh),
+      registry's swaps via scripts/qmd/vocab-expand.py: headed-arm-worker.sh is headed-arm-leg.sh), # old-term-ok
       never one the registry marks other-sense; else to a node whose label without '()' is the
       token (case ignored). A test file loses to a non-test one unless the token names a test. At most
       MAX_PER_ANCHOR ids per anchor. Prints nothing when nothing resolves.

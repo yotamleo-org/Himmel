@@ -36,13 +36,13 @@ printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
 # Preamble pin: keep every run-path case hermetic w.r.t. the LIVE
-# bank. refresh-graph-map.sh runs bank-preflight.sh for claude/claude-cli, which
+# bank. refresh-graph-map.sh runs usage-preflight.sh for claude/claude-cli, which
 # otherwise refreshes and reads the operator's ambient usage cache — at the 85 %
 # weekly ceiling every run-path case read SKIPPED-BANK and went red. A missing
 # cache gives the fail-open BANK-UNKNOWN; T-bank-skip asserts the SKIP path
 # deliberately against a fixture cache.
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_CACHE="$WS/no-bank-cache.json"
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_CACHE="$WS/no-bank-cache.json"
 unset CLAUDE_USAGE_CACHE CLAUDE_ACCOUNT_CONFIG
 # End of the preamble pin
 export GIT_AUTHOR_NAME="himmel test" GIT_AUTHOR_EMAIL="test@himmel.invalid"
@@ -2987,7 +2987,7 @@ fi
 # Reuses NOBIN (timeout + gtimeout present but failing the GNU -k probe).
 NT2CORPUS="$WS/nt2corpus"; NT2MAPS="$WS/nt2maps"; mkdir -p "$NT2CORPUS/notes" "$NT2MAPS"
 printf '# n\ncontent\n' > "$NT2CORPUS/notes/a.md"
-out=$( PATH="$NOBIN:$PATH" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_CACHE="$WS/no-bank-cache.json" \
+out=$( PATH="$NOBIN:$PATH" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$WS/no-bank-cache.json" \
   bash "$SCRIPT" --name nt2 --corpus-root "$NT2CORPUS" --backend claude-cli \
   --maps-dir "$NT2MAPS" --title NT2 --slug nt2-map 2>&1 ); rc=$?
 if [ "$rc" -eq 0 ] && grep -q "run deadline DISABLED" <<< "$out" \
@@ -3350,8 +3350,8 @@ exit 0
 STUB
 chmod +x "$ARTBIN/graphify"
 out=$( HOME="$ARTHOME" PATH="$ARTBIN:$PATH" GRAPHIFY_MAP_BIN="$ARTBIN/graphify" \
-  GRAPHIFY_CLAUDE_CONFIG_DIR="$ARTHOME/.claude-graphify" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_CACHE="$WS/no-bank-cache.json" GRAPHIFY_RUN_DEADLINE_SECONDS=0 \
+  GRAPHIFY_CLAUDE_CONFIG_DIR="$ARTHOME/.claude-graphify" CADENCE_USAGE_SKIP_REFRESH=1 \
+  CADENCE_USAGE_CACHE="$WS/no-bank-cache.json" GRAPHIFY_RUN_DEADLINE_SECONDS=0 \
   bash "$SCRIPT" --name artifact --corpus-root "$ARTCORPUS" --backend claude-cli \
   --maps-dir "$ARTMAPS" --title Artifact --slug artifact-map 2>&1 ); rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$ARTLOG" ] \
@@ -4163,11 +4163,11 @@ else
       "$1" "$(date +%s)" "$bank_acct" > "$WS/bank85/cache.json"
   }
   bank_run() { # <name> <corpus> <maps>
-    # CADENCE_BANK_MAX_PCT/MAX_AGE pinned: the 85/10 % fixtures
+    # CADENCE_USAGE_MAX_PCT/MAX_AGE pinned: the 85/10 % fixtures
     # assume the default threshold; a launching env exporting 95 or 99 made the
     # 85 % fixture run instead of skip.
-    CLAUDE_ACCOUNT_CONFIG="$bank_cfg" CADENCE_BANK_CACHE="$WS/bank85/cache.json" CADENCE_BANK_SKIP_REFRESH=1 \
-      CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600 GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name "$1" --corpus-root "$2" \
+    CLAUDE_ACCOUNT_CONFIG="$bank_cfg" CADENCE_USAGE_CACHE="$WS/bank85/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+      CADENCE_USAGE_MAX_PCT=85 CADENCE_USAGE_MAX_AGE=600 GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" --name "$1" --corpus-root "$2" \
       --backend claude-cli --maps-dir "$3" --title "Bank $1" --slug "$1-map" 2>&1
   }
   BSCORPUS="$WS/bank85-corpus"; BSMAPS="$WS/bank85-maps"; mkdir -p "$BSCORPUS/notes" "$BSMAPS"

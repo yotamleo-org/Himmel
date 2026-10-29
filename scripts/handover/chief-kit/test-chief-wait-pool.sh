@@ -7,7 +7,7 @@
 # drop summary included. tick.sh, the bank verdict and the dispatch command are
 # stubbed (CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE / CHIEF_WAIT_DISPATCH). bash 3.2-safe.
 #
-# CHIEF_WAIT (old name CONSOLE_WAIT) overrides the script under test (the RED
+# CHIEF_WAIT overrides the script under test (the RED
 # control: the pre-change once-per-streak waiter fails the re-wake rows).
 #
 # Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
@@ -16,7 +16,7 @@
 # Run: bash scripts/handover/chief-kit/test-chief-wait-pool.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WAIT="${CHIEF_WAIT:-${CONSOLE_WAIT:-$HERE/chief-wait.sh}}"
+WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }

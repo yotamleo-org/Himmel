@@ -115,14 +115,6 @@
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
 # PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
 set -u
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env WORKERS_FROM LEGS_FROM
-fi
-unset _ea_dir
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 

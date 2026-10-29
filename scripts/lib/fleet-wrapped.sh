@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/fleet-wrapped.sh. Sourced by
-# scripts/lib/bank-preflight.sh's fleet census: a worker that has WRAPPED
+# scripts/lib/usage-preflight.sh's fleet census: a worker that has WRAPPED
 # (queue lock released, its handover doc's last status bullet reads
 # WRAPPED) but whose process is still alive should not hold a FLEET_CAP
 # slot. This defines the read-only check that decides that; it mutates

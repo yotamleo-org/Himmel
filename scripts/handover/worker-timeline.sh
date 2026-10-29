@@ -58,16 +58,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/prim.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 2
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX LEG_TIMELINE_WORKER_CLAUDEX
-alias_env WORKER_SESSION_TIMELINE_CHAIN_LEDGER LEG_TIMELINE_CHAIN_LEDGER
-alias_env WORKER_SESSION_TIMELINE_CR_LEDGER LEG_TIMELINE_CR_LEDGER
 # pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# bank-preflight.sh for the failure mode).
+# usage-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
 claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-}"

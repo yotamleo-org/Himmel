@@ -5,7 +5,7 @@
 # WHY: `cmd | tail` makes `$?` the status of TAIL, not of `cmd`. Agents here trim
 # output for context constantly and then read the exit code — silently getting 0
 # from a command that failed. The highest-consequence instance: a gate
-# orchestrator ran `clear-cr-marker.sh … | tail` and read `CLEAR_RC=0` when the
+# orchestrator ran `clear-review-marker.sh … | tail` and read `CLEAR_RC=0` when the
 # true exit was 16, so it believed the CR gate had CLEARED when it had not. The
 # CR marker is the control that HARD-BLOCKS `gh pr create` until a clean review,
 # so that misread defeats the review gate itself.
@@ -52,7 +52,7 @@
 #     forward-slash only and anchored at a `/` boundary, so `bash …`,
 #     `./scripts/…`, `"$ROOT/scripts/…"` and an absolute path all count while a
 #     lookalike suffix does not:
-#       scripts/cr/clear-cr-marker.sh, scripts/ci/run-shell-tests.sh,
+#       scripts/cr/clear-review-marker.sh, scripts/ci/run-shell-tests.sh,
 #       scripts/check-ci.sh, scripts/handover/merge-on-green.sh,
 #       scripts/handover/pr-merge.sh, and scripts/<dir>/test-*.sh.
 #     A backslash-separated Windows path is a documented miss — nothing here
@@ -236,7 +236,7 @@ if :; then
 fi
 
 # Registered gate paths, anchored: the token must END with one, at a `/` boundary.
-GATE_RE='(^|/)scripts/(cr/clear-cr-marker\.sh|cr/clear-review-marker\.sh|ci/run-shell-tests\.sh|check-ci\.sh|handover/merge-on-green\.sh|handover/pr-merge\.sh|[A-Za-z0-9._-]+/test-[A-Za-z0-9._-]*\.sh)$'
+GATE_RE='(^|/)scripts/(cr/clear-review-marker\.sh|ci/run-shell-tests\.sh|check-ci\.sh|handover/merge-on-green\.sh|handover/pr-merge\.sh|[A-Za-z0-9._-]+/test-[A-Za-z0-9._-]*\.sh)$'
 # invoked_program's env case returns this instead of a real
 # program name when it sees -S/--split-string — see that case's comment.
 # scan_line treats it as a gate match without consulting GATE_RE.
@@ -1312,7 +1312,7 @@ fi
 # printf, not echo: echo joins its arguments with a space, which would leave a
 # stray space at the head of every continuation line in this multi-line message.
 printf '%s\n' \
-  "block-tail-pipe-on-gates: DENIED — this pipes an exit-code-critical himmel gate command into tail/head. Unless the invoking shell has \`pipefail\` set (a Bash tool call cannot assume it does), \$? becomes tail's status (0) and the gate's real exit code is LOST. That misread is what made a session record CLEAR_RC=0 when clear-cr-marker.sh had exited 16. Even under pipefail the \`| tail\` throws away the head of the output several incidents needed to diagnose." \
+  "block-tail-pipe-on-gates: DENIED — this pipes an exit-code-critical himmel gate command into tail/head. Unless the invoking shell has \`pipefail\` set (a Bash tool call cannot assume it does), \$? becomes tail's status (0) and the gate's real exit code is LOST. That misread is what made a session record CLEAR_RC=0 when clear-review-marker.sh had exited 16. Even under pipefail the \`| tail\` throws away the head of the output several incidents needed to diagnose." \
   "Offending pipeline:" \
   "    $(printf '%s' "$offender" | sed 's/^[[:space:]]*//')" \
   "Use the redirect shape instead — it keeps the exit code AND the full output you would otherwise throw away:" \

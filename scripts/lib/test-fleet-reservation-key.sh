@@ -54,8 +54,8 @@ mkdir -p "$W/proc"
 reserve_under() { # <worker> -> prints the directory names left in a fresh slot dir
   local slots="$W/slots-$RANDOM$RANDOM"
   mkdir -p "$slots"
-  FLEET_PROC="$W/proc" CADENCE_BANK_SKIP_REFRESH=1 FLEET_CAP_OK='' \
-    CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_LEDGER=/dev/null CADENCE_BANK_LAUNCH=1 \
+  FLEET_PROC="$W/proc" CADENCE_USAGE_SKIP_REFRESH=1 FLEET_CAP_OK='' \
+    CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_LEDGER=/dev/null CADENCE_USAGE_LAUNCH=1 \
     CADENCE_USAGE_WORKER="$1" HIMMEL_FLEET_SLOTS="$slots" HIMMEL_FLEET_CAP=4 FLEET_PS_CMD="$W/ps" \
     bash "$PREFLIGHT" </dev/null >/dev/null 2>&1
   (cd "$slots" && ls -A)

@@ -131,7 +131,7 @@
 # file: $git_dir is the SAME
 # shared git-common-dir across every worktree in the checkout, and himmel
 # runs concurrent /pr-check on independent branches by design
-# (overnight-shift), so a single unscoped file would let lane B's mint
+# (afk-shift), so a single unscoped file would let lane B's mint
 # overwrite lane A's before lane A's delegate reads it - lane A's
 # verification would then fail on the nonce (fail-safe: it never wrongly
 # ACCEPTS) but, since its own recursion guard never got to fire, it
@@ -743,8 +743,8 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # append-cr-{findings,bugs}.sh (and bug.sh) to node, critic-panel.sh runs
 # ${CRITIC_INVOKE:-.../hermes/invoke.sh} (egress-gate.sh and the egress
 # matrix it evaluates, the alibaba quota probe under scripts/telegram/), and
-# bank-preflight.sh runs the statusline usage-cache producer and the
-# scripts/lanes/bank-status.ts chain. Those are guarded file by file, not by
+# usage-preflight.sh runs the statusline usage-cache producer and the
+# scripts/lanes/usage-status.ts chain. Those are guarded file by file, not by
 # directory, so a branch touching an unrelated lane or telegram file keeps
 # its relative himmel-lane spelling. egress-matrix.json is data, not code,
 # but it is the egress policy invoke.sh enforces, so it is guarded too.
@@ -801,22 +801,22 @@ scripts/observability/session-run-hook.ts scripts/observability/session-run-ledg
 scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh
 scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json
 scripts/statusline/usage-cache-producer.sh
-scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/openrouter-cost.sh
+scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/openrouter-cost.sh
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/console-route.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
-scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
+scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
 scripts/telegram/triage.ts scripts/telegram/transcribe.ts
 scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
 scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/worker-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
-scripts/handover/chief-kit/leg-jira-status.sh scripts/handover/chief-kit/worker-jira-status.sh
+scripts/handover/chief-kit/worker-jira-status.sh
 scripts/handover/chief-kit/chain-push-check.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
-scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/leg-doc-lock.sh scripts/handover/chief-kit/worker-doc-lock.sh
+scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh
 scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-status.sh"
 cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
     ':(top)scripts/handover/resolve-active-item.sh'
@@ -829,27 +829,27 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/hermes/invoke.sh' ':(top)scripts/hermes/egress-gate.sh'
     ':(top)scripts/guardrails/egress-matrix-eval.mjs' ':(top)scripts/guardrails/egress-matrix.json'
     ':(top)scripts/statusline/usage-cache-producer.sh'
-    ':(top)scripts/lanes/bank-status.ts' ':(top)scripts/lanes/usage-status.ts' ':(top)scripts/lanes/bank-status-core.mjs' ':(top)scripts/lanes/funded-max-pct.mjs' ':(top)scripts/lanes/openrouter-cost.sh'
+    ':(top)scripts/lanes/usage-status.ts' ':(top)scripts/lanes/bank-status-core.mjs' ':(top)scripts/lanes/funded-max-pct.mjs' ':(top)scripts/lanes/openrouter-cost.sh'
     ':(top)scripts/lanes/resolve.mjs' ':(top)scripts/lanes/check.mjs' ':(top)scripts/lanes/probe.mjs'
     ':(top)scripts/lanes/set-lane-override.mjs' ':(top)scripts/lanes/profile-managed.cjs'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/console-route.ts' ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
-    ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts'
+    ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts' ':(top)scripts/telegram/afk-sudo-route.ts'
     ':(top)scripts/telegram/run.ts' ':(top)scripts/telegram/triage.ts'
     ':(top)scripts/telegram/transcribe.ts'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'
     ':(top)scripts/telegram/phi-egress-guard.ts' ':(top)scripts/telegram/round-guard.ts'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'
     ':(top)scripts/lanes/leg-pr-open.sh' ':(top)scripts/lanes/worker-pr-open.sh' ':(top)scripts/lanes/leg-burn.sh' ':(top)scripts/lanes/worker-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
-    ':(top)scripts/handover/chief-kit/leg-jira-status.sh' ':(top)scripts/handover/chief-kit/worker-jira-status.sh'
+    ':(top)scripts/handover/chief-kit/worker-jira-status.sh'
     ':(top)scripts/handover/chief-kit/chain-push-check.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
-    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/leg-doc-lock.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
+    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
     ':(top)scripts/handover/chief-kit/bucket-gitleaks.sh' ':(top)scripts/handover/chief-kit/vault-status.sh'
     ':(top,exclude,glob)scripts/**/__pycache__/**')
 cr_manifest() { # cr_manifest <root> - "<mode> <blob-id> <path>" per guarded file, sorted

@@ -18,10 +18,6 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_BUS_CLI CONSOLE_BUS_CLI
 session="$1"; shift
 predecessor=""
 if [ "${1:-}" = --predecessor ]; then predecessor="$2"; shift 2; fi

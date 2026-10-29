@@ -31,8 +31,6 @@ set -uo pipefail
 
 # shellcheck source=project-state.sh
 . "$(dirname "${BASH_SOURCE[0]}")/project-state.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env AFK_STOP_DIR OVERNIGHT_STOP_DIR
 MARKER_DIR=$(afk_stop_dir) || {
     # An unresolvable project still honours the clone's global stop.
     [ "${1:-}" = check ] && [ -f "$HOME/.claude/.overnight-stop" ] && exit 0
@@ -60,7 +58,7 @@ Subcommands:
   status    Print human-readable state. Always exits 0.
 
 Environment:
-  AFK_STOP_DIR          Override marker directory (old name OVERNIGHT_STOP_DIR, read while HIMMEL_LEGACY_NAMES is on).
+  AFK_STOP_DIR          Override marker directory.
                         Default: $HOME/.claude in the himmel clone,
                         $HOME/.claude/afk/<project key> in an adopted project.
 EOF

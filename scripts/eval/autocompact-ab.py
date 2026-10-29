@@ -7,7 +7,7 @@
 #                     [--projects <dir>] [--all] [--json]
 #
 # Legs come from fleet manifests (legs[].doc, optional legs[].arm) and/or --doc.
-# One row per TICKET-N<k> (scripts/lib/leg-identity.sh): a RESUME successor,
+# One row per TICKET-N<k> (scripts/lib/worker-identity.sh): a RESUME successor,
 # listed or found beside its parent, folds into the parent's row, and the leg is
 # wrapped when the LAST doc in the chain ends in WRAPPED. Only wrapped legs are
 # reported unless --all, and --all rows are marked open and never averaged. The
@@ -31,13 +31,11 @@
 # A/B has data worth that.
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-import env_alias
 
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1") if env_alias.legacy_names_on() else "0.1"))
-W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25") if env_alias.legacy_names_on() else "1.25"))
-W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1") if env_alias.legacy_names_on() else "1"))
-W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5") if env_alias.legacy_names_on() else "5"))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", "0.1"))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", "5"))
 
 BULLET = re.compile(r"^- (?:\d{2}:\d{2} )?([A-Z][A-Z-]*)\b")
 ARM_LINE = re.compile(r"^> \*\*Context:\*\* ab-(200k|400k) ")
@@ -156,7 +154,7 @@ _IDENTITY_CACHE = {}
 
 
 def identity(doc):
-    """(label, base, session names) from scripts/lib/leg-identity.sh, the one
+    """(label, base, session names) from scripts/lib/worker-identity.sh, the one
     derivation of a leg's identity; never a local regex. Warns on stderr when
     the call fails or the doc name is not a leg doc (the stem is its own leg)."""
     if doc in _IDENTITY_CACHE:

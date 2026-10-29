@@ -1,6 +1,6 @@
 // lane.ts — a session's lane, what it is priced against, and how it scored.
 //
-// The lane comes from the launch record (WORKER_SESSION_LANE or the old LEG_LANE, the launcher's HIMMEL_SESSION_LANE, the config dir, the worker doc),
+// The lane comes from the launch record (WORKER_SESSION_LANE, the launcher's HIMMEL_SESSION_LANE, the config dir, the worker doc),
 // never guessed from the model string. A claudex session is priced from the codex weekly bank (the used% delta across
 // the worker's window), never at Claude worker-burn weights; the eval row is the per-lane quality measure (CR rounds, judge
 // NO-GO rate, red-before-green, LIVE→READY, denials). Read-only: nothing here writes.
@@ -10,7 +10,7 @@ import { SUITE } from "./journal-mapper.ts";
 
 export type Lane = "native" | "claudex" | "openrouter" | "cloud";
 export const LANES: readonly Lane[] = ["native", "claudex", "openrouter", "cloud"];
-export type LaneFrom = "WORKER_SESSION_LANE" | "LEG_LANE" | "launcher" | "config-dir" | "doc" | "default";
+export type LaneFrom = "WORKER_SESSION_LANE" | "launcher" | "config-dir" | "doc" | "default";
 
 const REAL = ["native", "claudex", "openrouter"] as const;
 const real = (s: string | undefined): Lane | null => ((REAL as readonly string[]).includes(s ?? "") ? (s as Lane) : null);
@@ -18,8 +18,6 @@ const real = (s: string | undefined): Lane | null => ((REAL as readonly string[]
 export function laneOf(launch: Record<string, string>, doc: string): { lane: Lane; laneFrom: LaneFrom } {
   const worker = real(launch.WORKER_SESSION_LANE);
   if (worker) return { lane: worker, laneFrom: "WORKER_SESSION_LANE" };
-  const leg = real(launch.LEG_LANE); // old name, read both ways
-  if (leg) return { lane: leg, laneFrom: "LEG_LANE" }; // old name
   const launcher = real(launch.HIMMEL_SESSION_LANE);
   if (launcher) return { lane: launcher, laneFrom: "launcher" };
   const dir = (launch.CLAUDE_CONFIG_DIR ?? "").replace(/\/+$/, "").split("/").pop();

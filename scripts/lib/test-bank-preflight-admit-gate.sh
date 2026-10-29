@@ -363,8 +363,8 @@ slots_i="$W/slots-i"; mkdir -p "$slots_i/.admit.reclaim" "$slots_i/.admit.stale.
 printf '%s\n' "$NOW" > "$slots_i/.admit.reclaim/acquired"
 mkdir -p "$W/ps/proc"; printf '%s\n' '#!/usr/bin/env bash' 'true' > "$W/ps/ps"; chmod +x "$W/ps/ps"
 printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s,"account":"%s"}' "$NOW" "$ACCT" > "$W/c.json"
-env -u FLEET_ADMIT_TEST_HOOK FLEET_ADMIT_GATE_STALE_SECS=0 FLEET_CAP_OK= CADENCE_BANK_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_i" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
-  CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
+env -u FLEET_ADMIT_TEST_HOOK FLEET_ADMIT_GATE_STALE_SECS=0 FLEET_CAP_OK= CADENCE_USAGE_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_i" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
+  CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
   bash "$SUT" </dev/null >"$W/i.out" 2>"$W/i.err"
 if grep -q 'reserved=0 total=0/4' "$W/i.err"; then PASS=$((PASS+1)); echo "ok - (i) dot-prefixed gate/victim dirs are not counted as reservations"
 else FAIL=$((FAIL+1)); echo "FAIL - (i) a dot-prefixed lock dir was counted as a fleet reservation"; grep 'FLEET' "$W/i.err" || true; fi
@@ -434,9 +434,9 @@ printf '%s\n' '#!/usr/bin/env bash' 'c="$(cat "$0.n" 2>/dev/null || echo 0)"; ec
 # shellcheck disable=SC2016
 printf '%s\n' '#!/usr/bin/env bash' 'c="$(cat "$0.n" 2>/dev/null || echo 0)"; echo $((c+1)) > "$0.n"' '[ "$c" -eq 0 ]' > "$W/k/ps.sh"
 chmod +x "$W/k/hook.sh" "$W/k/ps.sh"
-env FLEET_ADMIT_TEST_HOOK="$W/k/hook.sh" FLEET_ADMIT_RELEASE_ITERS=2 FLEET_ADMIT_RETRY_SLEEP=0.01 FLEET_ADMIT_GATE_STALE_SECS=3600 FLEET_CAP_OK= CADENCE_BANK_LAUNCH= \
-  HIMMEL_FLEET_SLOTS="$slots_k" FLEET_PS_CMD="$W/k/ps.sh" FLEET_PROC="$W/ps/proc" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 bash "$SUT" </dev/null >"$W/k.out" 2>"$W/k.err"
+env FLEET_ADMIT_TEST_HOOK="$W/k/hook.sh" FLEET_ADMIT_RELEASE_ITERS=2 FLEET_ADMIT_RETRY_SLEEP=0.01 FLEET_ADMIT_GATE_STALE_SECS=3600 FLEET_CAP_OK= CADENCE_USAGE_LAUNCH= \
+  HIMMEL_FLEET_SLOTS="$slots_k" FLEET_PS_CMD="$W/k/ps.sh" FLEET_PROC="$W/ps/proc" CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+  CADENCE_USAGE_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 bash "$SUT" </dev/null >"$W/k.out" 2>"$W/k.err"
 check "(k) the in-lock census failed (precondition)" 1 "$(grep -c 'in-lock fleet census failed' "$W/k.err")"
 check "(k) the first release met the busy gate and gave up (precondition)" 1 "$(grep -c 'could not take the admit-lock gate' "$W/k.err")"
 check "(k) the final cleanup retried and released the lock" absent "$([ -e "$slots_k/.admit" ] && echo present || echo absent)"
@@ -679,8 +679,8 @@ builtin printf '%s\n' "$((NOW - 7200))" > "$slots_n/.admit.stale.1.1/seen"
 builtin printf '%s\n' "$((NOW - 7200))" > "$slots_n/.admit.reclaim.broken.1.1/seen"
 builtin printf '%s\n' "$NOW" > "$slots_n/.admit.stale.3.3/seen"
 builtin printf '%s\n' "$((NOW + 3600))" > "$slots_n/HIMMEL-resv/expires"
-env -u FLEET_ADMIT_TEST_HOOK FLEET_CAP_OK= CADENCE_BANK_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_n" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
-  CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
+env -u FLEET_ADMIT_TEST_HOOK FLEET_CAP_OK= CADENCE_USAGE_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_n" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
+  CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
   bash "$SUT" </dev/null >"$W/n.out" 2>"$W/n.err"
 check "(n) the run completes to a PROCEED verdict" PROCEED "$(cat "$W/n.out")"
 check "(n) long-seen .admit.stale.* debris is pruned" gone "$([ -e "$slots_n/.admit.stale.1.1" ] && echo present || echo gone)"
@@ -704,8 +704,8 @@ slots_o="$W/slots-o"; rm -rf "$slots_o"
 mkdir -p "$slots_o/.admit.stale.1.1" "$slots_o/.admit.stale.2.2"
 builtin printf '%s\n' 0000000008 > "$slots_o/.admit.stale.1.1/seen"
 builtin printf '%s\n' 000000000000000000000000000001 > "$slots_o/.admit.stale.2.2/seen"
-env -u FLEET_ADMIT_TEST_HOOK FLEET_CAP_OK= CADENCE_BANK_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_o" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
-  CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
+env -u FLEET_ADMIT_TEST_HOOK FLEET_CAP_OK= CADENCE_USAGE_LAUNCH= HIMMEL_FLEET_SLOTS="$slots_o" FLEET_PS_CMD="$W/ps/ps" FLEET_PROC="$W/ps/proc" \
+  CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" HIMMEL_FLEET_CAP=4 \
   bash "$SUT" </dev/null >"$W/o.out" 2>"$W/o.err"
 check "(o) the run completes to a PROCEED verdict" PROCEED "$(cat "$W/o.out")"
 check "(o) leading-zero stamp raises no arithmetic error" absent "$(if grep -q 'value too great' "$W/o.err"; then echo present; else echo absent; fi)"

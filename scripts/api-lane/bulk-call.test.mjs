@@ -68,9 +68,9 @@ function fixture() {
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: p.stub,
     STUB_LOG: p.log, STUB_ENV: p.env, STUB_OUT: result(JSON.stringify({ sites: [{ file: p.a, line: 2, why: 'unquoted $x' }] })),
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: p.ps, FLEET_PROC: dir,
-    CADENCE_BANK_LEDGER: join(dir, 'bank-ledger'), CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(dir, 'native-cache.json') };
-  writeFileSync(env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
+    CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+  writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--task-id', id, '--class-file', p.cls, '--paths-file', p.paths,
     '--model', 'claude-haiku-5-5', '--max-budget-usd', '0.05'];
   made.push(join(SCRATCH, `bulk-${id}`), join(SCRATCH, `bulk-${id}.lock`));

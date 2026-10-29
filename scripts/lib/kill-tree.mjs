@@ -2,7 +2,7 @@
 // the harness.
 //
 // WHY THIS FILE EXISTS: two copies of a killTree lived here (telegram/run.ts
-// for the worker timeout paths, lanes/codex-bank-probe.ts for the codex
+// for the worker timeout paths, lanes/codex-usage-probe.ts for the codex
 // app-server), and both carried the same defect -- the name promises a TREE
 // kill but on POSIX they signalled the direct child only, so anything the
 // child spawned survived. Every caller is a TIMEOUT path, so a survivor keeps

@@ -56,8 +56,8 @@ printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primarie
 
 out="$W/out"; err="$W/err.log"
 ( cd "$foreign/nested/bucket" && env HIMMEL_FLEET_CAP= FLEET_PS_CMD="$p0/ps" FLEET_PROC="$p0/proc" \
-    HIMMEL_FLEET_SLOTS="$W/slots" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-    CADENCE_BANK_LEDGER="$W/ledger.jsonl" bash "$SUT" </dev/null > "$out" 2>"$err" )
+    HIMMEL_FLEET_SLOTS="$W/slots" CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
+    CADENCE_USAGE_LEDGER="$W/ledger.jsonl" bash "$SUT" </dev/null > "$out" 2>"$err" )
 
 fleet_line="$(grep -o 'FLEET .*total=[0-9]*/[0-9]*' "$err" || true)"
 cap="${fleet_line##*/}"

@@ -81,13 +81,7 @@ GUARD_TIMEOUT_SECS="${HIMMEL_STOP_GUARD_TIMEOUT:-8}"
 GUARD_DEADLINE_EPOCH=$(( $(date +%s) + GUARD_TIMEOUT_SECS ))
 # Test seams (default: the real scripts) -- so the fault-injection tests can
 # point these at a stub without PATH tricks, the same convention as tick.sh's
-# TICK_BANK_CACHE_FILE / FLEET_PS_CMD. HIMMEL_STOP_GUARD_USAGE_PREFLIGHT wins over
-# the old HIMMEL_STOP_GUARD_BANK_PREFLIGHT, read while HIMMEL_LEGACY_NAMES is on.
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-# shellcheck source=../lib/env-alias.sh
-if { [ -r "$HERE/../lib/env-alias.sh" ] && . "$HERE/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_STOP_GUARD_USAGE_PREFLIGHT HIMMEL_STOP_GUARD_BANK_PREFLIGHT
-fi
+# TICK_BANK_CACHE_FILE / FLEET_PS_CMD.
 BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_USAGE_PREFLIGHT:-$REPO/scripts/lib/usage-preflight.sh}"
 QUEUE_LOCK_SH="${HIMMEL_STOP_GUARD_QUEUE_LOCK:-$REPO/scripts/handover/queue-lock.sh}"
 

@@ -84,10 +84,10 @@ ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inje
 [ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
 mkdir -p "$work/ss-clone"
 printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
-ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
+ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_out" 'Active steps: pr' \
   || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
-ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
+ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
 [ -z "$ss_idle" ] || fail "HIMMEL-6956: the project-scope SessionStart hook injected with no step set: $ss_idle"
 [ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
   || fail "HIMMEL-6956: idempotent re-run left more than one inject-initiative hook"
@@ -1324,9 +1324,7 @@ HOME="$pchome" git init -q -b main "$uptarget"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$uptarget" 2>&1) \
   || fail "HIMMEL-6965: adopt failed: $out"
-for f in usage-preflight.sh bank-preflight.sh; do
-  [ -f "$uptarget/scripts/lib/$f" ] || fail "HIMMEL-6965: $f was not copied into the project"
-done
+[ -f "$uptarget/scripts/lib/usage-preflight.sh" ] || fail "HIMMEL-6965: usage-preflight.sh was not copied into the project"
 printf '{"oauthAccount":{"accountUuid":"11111111-2222-3333-4444-555555555555"}}\n' > "$uphome/.claude.json"
 if command -v sha256sum >/dev/null 2>&1; then
   up_acct=$(printf '%s' "11111111-2222-3333-4444-555555555555" | sha256sum | cut -c1-16)
@@ -1355,16 +1353,13 @@ up_cache 10 99
 out=$(up_run usage-preflight.sh) || fail "HIMMEL-6965: usage-preflight.sh failed on a high-usage cache"
 [ "$out" = "SKIPPED-BANK" ] \
   || fail "HIMMEL-6965: the project's usage-preflight.sh did not hold on a 99% seven_day cache: $out"
-up_cache 10 20
-out=$(up_run bank-preflight.sh) || fail "HIMMEL-6965: the old-name forwarder failed: $(cat "$work/usagepf-6965.err")"
-[ "$out" = "PROCEED" ] \
-  || fail "HIMMEL-6965: the project's bank-preflight.sh forwarder did not PROCEED: $out $(cat "$work/usagepf-6965.err")"
+[ ! -e "$uptarget/scripts/lib/bank-preflight.sh" ] || fail "HIMMEL-6965: the retired bank-preflight.sh was copied into the project" # old-term-ok
 grep -q '"verdict":"PROCEED"' "$uphome/.himmel/cadence-ledger.jsonl" \
   || fail "HIMMEL-6965: the preflight did not write its ledger row under the project's HOME"
 if grep -q -i 'yotamleo' "$uptarget/scripts/lib/usage-preflight.sh"; then
   fail "HIMMEL-6965: the copied usage-preflight.sh names the himmel repo"
 fi
-echo "ok: HIMMEL-6965 the adopted usage-preflight.sh and its forwarder read the project's cache and print PROCEED / SKIPPED-BANK"
+echo "ok: HIMMEL-6965 the adopted usage-preflight.sh reads the project's cache and print PROCEED / SKIPPED-BANK"
 
 # The adopted project's own copies of the review-loop commands and the scripts
 # they call read the PROJECT's review ledger (<project>/.git/cr-critic-scores.jsonl)

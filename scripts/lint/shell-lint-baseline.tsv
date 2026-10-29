@@ -371,9 +371,7 @@ scripts/himmelctl/test/test-wizard-uninstall.sh	errexit	1
 scripts/himmelctl/test/test-wizard-update.sh	errexit	1
 scripts/himmelctl/test/test-wizard-update.sh	mktemp	1
 scripts/hooks/auto-arm-on-cap.sh	errexit	1
-scripts/hooks/auto-arm-on-cap.sh	prim-tmpdir	1
 scripts/hooks/auto-arm-on-subagent-cap.sh	errexit	1
-scripts/hooks/auto-arm-on-subagent-cap.sh	prim-tmpdir	1
 scripts/hooks/block-backend-tier.sh	errexit	1
 scripts/hooks/block-bank-lift-writes.sh	gnu-flag	1
 scripts/hooks/block-bank-lift-writes.sh	prim-atomic	1
@@ -397,7 +395,6 @@ scripts/hooks/capture-baseline.sh	mktemp	3
 scripts/hooks/capture-baseline.sh	prim-tmpdir	3
 scripts/hooks/check-agents-md-fresh.sh	errexit	1
 scripts/hooks/check-agents-md-fresh.sh	mktemp	1
-scripts/hooks/check-agents-md-fresh.sh	prim-tmpdir	1
 scripts/hooks/check-artifact-leakage.sh	errexit	1
 scripts/hooks/check-cr-before-push.sh	errexit	1
 scripts/hooks/check-cr-marker-on-pr-create.sh	errexit	1
@@ -405,7 +402,6 @@ scripts/hooks/check-cr-marker-on-pr-create.sh	gnu-flag	1
 scripts/hooks/check-cr-marker-on-pr-create.sh	regex-class	1
 scripts/hooks/check-debrand-coverage.sh	errexit	1
 scripts/hooks/check-debrand-coverage.sh	mktemp	1
-scripts/hooks/check-debrand-coverage.sh	prim-tmpdir	1
 scripts/hooks/check-doc-guard.sh	errexit	1
 scripts/hooks/check-fail-open-lint.sh	errexit	1
 scripts/hooks/check-graph-artifact-branch.sh	errexit	1
@@ -440,10 +436,7 @@ scripts/hooks/inject-initiative.sh	errexit	1
 scripts/hooks/inject-initiative.sh	gnu-flag	1
 scripts/hooks/inject-initiative.sh	regex-class	1
 scripts/hooks/inject-where-are-we.sh	errexit	1
-scripts/hooks/inject-where-are-we.sh	prim-atomic	1
 scripts/hooks/inject-worktree-nudge.sh	errexit	1
-scripts/hooks/install-main-ref-transaction.sh	prim-atomic	1
-scripts/hooks/install-single-writer-floor.sh	prim-atomic	1
 scripts/hooks/lib-test-write-fence-matrix.sh	gnu-flag	3
 scripts/hooks/lib-test-write-fence-matrix.sh	prim-atomic	3
 scripts/hooks/lib-test-write-fence.sh	prim-tmpdir	2

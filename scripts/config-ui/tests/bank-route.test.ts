@@ -22,11 +22,8 @@ function boot(files: { claude?: unknown; codex?: unknown } = {}, usageNames = fa
   const s = startServer({
     port: 0, token: TOKEN, now: () => NOW,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
-      CLAUDE_USAGE_CACHE: claude, CODEX_BANK_CACHE: codex,
-      ...(usageNames ? { CODEX_USAGE_CACHE: codex, CODEX_BANK_CACHE: join(dir, "absent.json"),
-        CODEX_USAGE_CACHE_TTL_SECONDS: "60", CODEX_BANK_CACHE_TTL_SECONDS: "999999",
-        CADENCE_USAGE_CACHE: claude, CADENCE_BANK_CACHE: join(dir, "absent.json"),
-        CADENCE_USAGE_MAX_AGE: "60", CADENCE_BANK_MAX_AGE: "999999" } : {}) },
+      CLAUDE_USAGE_CACHE: claude, CODEX_USAGE_CACHE: codex,
+      ...(usageNames ? { CADENCE_USAGE_CACHE: claude, CODEX_USAGE_CACHE_TTL_SECONDS: "60", CADENCE_USAGE_MAX_AGE: "60" } : {}) },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   return s;
@@ -54,12 +51,12 @@ test("fresh caches: used_pct, resets_at, captured_at, age_s and state ok per ban
   expect(b.codex.weekly.captured_at).toBe("2026-10-13T10:00:00.000Z");
 });
 
-test("CODEX_USAGE_CACHE and CODEX_USAGE_CACHE_TTL_SECONDS win over the old CODEX_BANK_* names", async () => {
+test("CODEX_USAGE_CACHE_TTL_SECONDS and CADENCE_USAGE_MAX_AGE set the staleness bound", async () => {
   const s = boot({ codex: codexCache("2026-10-13T10:00:00Z", [weekly(12, epoch("2026-10-18T00:00:00Z"))]) }, true);
   expect((await get(s.port)).codex.weekly).toMatchObject({ used_pct: 12, state: "stale", age_s: 7200 });
 });
 
-test("CADENCE_USAGE_CACHE and CADENCE_USAGE_MAX_AGE win over the old CADENCE_BANK_* names", async () => {
+test("CADENCE_USAGE_CACHE and CADENCE_USAGE_MAX_AGE set the Claude staleness bound", async () => {
   const s = boot({ claude: claudeCache("2026-10-13T11:58:00Z") }, true);
   expect((await get(s.port)).claude.five_hour).toMatchObject({ used_pct: 9, state: "stale", age_s: 120 });
 });
@@ -117,8 +114,8 @@ test("the route needs the token and a UI request spawns no probe or producer", a
   const s = startServer({
     port: 0, token: TOKEN, now: () => NOW,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: dir,
-      CLAUDE_USAGE_CACHE: join(dir, "none-c.json"), CODEX_BANK_CACHE: join(dir, "none-x.json"),
-      CADENCE_BANK_PRODUCER: sh, CODEX_BANK_PROBE_CMD: sh, USAGE_FORCE_REFRESH: "1" },
+      CLAUDE_USAGE_CACHE: join(dir, "none-c.json"), CODEX_USAGE_CACHE: join(dir, "none-x.json"),
+      CADENCE_USAGE_PRODUCER: sh, CODEX_USAGE_PROBE_CMD: sh, USAGE_FORCE_REFRESH: "1" },
   });
   cleanups.push(() => s.stop());
   expect((await fetch(`http://127.0.0.1:${s.port}/api/bank`)).status).toBe(401);

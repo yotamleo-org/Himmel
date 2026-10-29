@@ -14,14 +14,6 @@
 # checker's own REMEDIATION line (`refresh-graph-map.sh --name … --corpus-root
 # …`), re-printed below via `$out` — not hardcoded here.
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_LEAN_WORKER_SESSION HIMMEL_LEAN_LEG
-fi
-unset _ea_dir
 
 # warn-only watch for core.bare on the SHARED git config, placed
 # ahead of the lean-worker exit below because a worker is exactly who burns a run on

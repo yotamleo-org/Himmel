@@ -8,8 +8,6 @@
     { "name": "HIMMEL_INITIATIVE", "class": "config", "explanation": "Comma-separated workflow steps to perform proactively.", "effect": "Enables named initiative steps, without bypassing their safety gates." },
     { "name": "HIMMEL_INITIATIVE_AFK", "class": "config", "explanation": "Initiative mode for unattended sessions.", "effect": "Selects proactive work while the operator is away." },
     { "name": "HIMMEL_AFK", "class": "config", "explanation": "Away-from-keyboard workflow switch.", "effect": "Changes session guidance for unattended work." },
-    { "name": "HIMMEL_INITIATIVE_OVERNIGHT", "class": "config", "explanation": "Initiative steps for overnight sessions.", "effect": "Selects overnight proactive workflow steps." },
-    { "name": "HIMMEL_OVERNIGHT", "class": "config", "explanation": "Overnight workflow switch.", "effect": "Enables overnight session guidance." },
     { "name": "HIMMEL_WHERE_ARE_WE", "class": "config", "explanation": "Session position reminder switch.", "effect": "Controls the where-are-we context reminder." },
     { "name": "HIMMEL_WHERE_ARE_WE_STALE_HOURS", "class": "config", "explanation": "Hours before a context reminder is stale.", "effect": "Changes when the session position reminder refreshes." },
     { "name": "HIMMEL_WORKTREE_NUDGE", "class": "config", "explanation": "Worktree reminder switch.", "effect": "Controls reminders to isolate feature work in a worktree." },

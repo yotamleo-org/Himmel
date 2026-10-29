@@ -1,7 +1,7 @@
 // scripts/lanes/tests/codex-bank-probe.test.mjs
 // Fixture-driven tests for the codex bank probe + TTL'd cache read. No test
 // spawns the real `codex` binary: the probe e2e tests drive it against
-// fixtures/codex-appserver-stub.mjs via CODEX_BANK_PROBE_CMD, and everything
+// fixtures/codex-appserver-stub.mjs via CODEX_USAGE_PROBE_CMD, and everything
 // else exercises the pure helpers in codex-bank-probe-core.mjs /
 // bank-status-core.mjs directly.
 import { test } from 'node:test';
@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { encodeJsonRpcLine, normalizeRateLimits, takeJsonRpcMessage } from '../codex-bank-probe-core.mjs';
-import { CODEX_BANK_PROBE_REMEDY, formatMeasured, readCodexBankCache } from '../bank-status-core.mjs';
+import { CODEX_USAGE_PROBE_REMEDY, formatMeasured, readCodexBankCache } from '../bank-status-core.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PROBE = join(TEST_DIR, '..', 'codex-usage-probe.ts');
@@ -175,7 +175,7 @@ test('readCodexBankCache: a cache older than the TTL is unmeasurable and names t
   const result = readCodexBankCache(JSON.stringify(stale), now, 21600);
   assert.equal(result.kind, 'unmeasurable');
   assert.match(result.reason, /stale \(age 420min > TTL 360min\)/);
-  assert.ok(result.reason.includes(CODEX_BANK_PROBE_REMEDY), 'the reason must name how to fix it');
+  assert.ok(result.reason.includes(CODEX_USAGE_PROBE_REMEDY), 'the reason must name how to fix it');
 });
 
 test('readCodexBankCache: unparseable/malformed caches are unmeasurable, never fabricated', () => {
@@ -183,7 +183,7 @@ test('readCodexBankCache: unparseable/malformed caches are unmeasurable, never f
   for (const text of ['not json', '{}', '[]', JSON.stringify({ limits: 'x', capturedAt: new Date().toISOString() })]) {
     const result = readCodexBankCache(text, now, 21600);
     assert.equal(result.kind, 'unmeasurable', `expected unmeasurable for ${text}`);
-    assert.ok(result.reason.includes(CODEX_BANK_PROBE_REMEDY));
+    assert.ok(result.reason.includes(CODEX_USAGE_PROBE_REMEDY));
   }
   const noStamp = JSON.stringify({ limits: twoLimitPayload(now).limits });
   assert.equal(readCodexBankCache(noStamp, now, 21600).kind, 'unmeasurable');
@@ -250,13 +250,13 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable â€
   }));
   const fresh = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
-    env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: cache },
+    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: cache },
   });
   assert.match(fresh, /^claudex funded measured weekly used=20% free=80% resets=\S+Z$/m);
 
   const missing = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
-    env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: join(dir, 'absent.json') },
+    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: join(dir, 'absent.json') },
   });
   assert.match(missing, /^claudex unknown unmeasurable reason="codex bank cache missing â€” run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
   assert.doesNotMatch(missing, /^claudex funded /m);
@@ -268,12 +268,12 @@ test('bank-status CLI: fresh cache measured, missing/stale cache unmeasurable â€
   }));
   const stale = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
-    env: { ...process.env, LANES_REGISTRY: registry, CODEX_BANK_CACHE: cache, CODEX_BANK_CACHE_TTL_SECONDS: '1' },
+    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: cache, CODEX_USAGE_CACHE_TTL_SECONDS: '1' },
   });
   assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\) â€” run: bun scripts\/lanes\/codex-usage-probe\.ts"$/m);
 });
 
-test('bank-status CLI and probe read the CODEX_USAGE_* names over the old ones', { skip: BUN_SKIP }, () => {
+test('bank-status CLI and probe read the CODEX_USAGE_* names and ignore the retired ones',{ skip: BUN_SKIP }, () => {
   const dir = makeTmpDir('codex-usage-names-');
   const registry = fixtureRegistry(dir);
   const cache = join(dir, 'codex-usage.json');
@@ -283,7 +283,7 @@ test('bank-status CLI and probe read the CODEX_USAGE_* names over the old ones',
     env: {
       ...process.env,
       CODEX_USAGE_CACHE: cache, CODEX_USAGE_PROBE_CMD: `node ${STUB}`,
-      CODEX_BANK_CACHE: join(dir, 'old.json'), CODEX_BANK_PROBE_CMD: join(dir, 'no-such-codex'),
+      CODEX_BANK_CACHE: join(dir, 'old.json'), CODEX_BANK_PROBE_CMD: join(dir, 'no-such-codex'), // old-term-ok
       STUB_PID_FILE: join(dir, 'stub.pid'),
     },
   });
@@ -295,8 +295,8 @@ test('bank-status CLI and probe read the CODEX_USAGE_* names over the old ones',
   }));
   const stale = execFileSync('bun', [BANK_STATUS], {
     encoding: 'utf8',
-    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: cache, CODEX_BANK_CACHE: join(dir, 'absent.json'),
-      CODEX_USAGE_CACHE_TTL_SECONDS: '1', CODEX_BANK_CACHE_TTL_SECONDS: '999999' },
+    env: { ...process.env, LANES_REGISTRY: registry, CODEX_USAGE_CACHE: cache, CODEX_BANK_CACHE: join(dir, 'absent.json'), // old-term-ok
+      CODEX_USAGE_CACHE_TTL_SECONDS: '1', CODEX_BANK_CACHE_TTL_SECONDS: '999999' }, // old-term-ok
   });
   assert.match(stale, /^claudex unknown unmeasurable reason="codex bank cache stale \(age 60min > TTL 0min\)/m);
 });
@@ -310,8 +310,8 @@ test('probe: bounded handshake against a STUB app-server writes the cache AND ki
     timeout: 60_000,
     env: {
       ...process.env,
-      CODEX_BANK_CACHE: cache,
-      CODEX_BANK_PROBE_CMD: `node ${STUB}`,
+      CODEX_USAGE_CACHE: cache,
+      CODEX_USAGE_PROBE_CMD: `node ${STUB}`,
       STUB_PID_FILE: pidFile,
     },
   });
@@ -346,11 +346,11 @@ test('probe: a silent app-server times out, writes no cache, and is still killed
     timeout: 60_000,
     env: {
       ...process.env,
-      CODEX_BANK_CACHE: cache,
-      CODEX_BANK_PROBE_CMD: `node ${STUB}`,
+      CODEX_USAGE_CACHE: cache,
+      CODEX_USAGE_PROBE_CMD: `node ${STUB}`,
       STUB_PID_FILE: pidFile,
       STUB_SILENT: '1',
-      CODEX_BANK_PROBE_TIMEOUT_MS: '800',
+      CODEX_USAGE_PROBE_TIMEOUT_MS: '800',
     },
   });
   assert.equal(run.status, 1);
