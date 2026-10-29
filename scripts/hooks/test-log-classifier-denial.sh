@@ -395,14 +395,20 @@ else fail "WebFetch/Agent rows never carry the prompt body (got ${leak_hits:-gre
 LOG16B="$WORKDIR/c16b.jsonl"
 run_hook '{"session_id":"s16b","cwd":"/tmp/repo","tool_name":"Agent","tool_input":"not-an-object","reason":"[X]"}' "$LOG16B" >/dev/null
 if [ "$(wc -l <"$LOG16B" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then pass "a non-object Agent tool_input still writes one row"; else fail "a non-object Agent tool_input still writes one row"; fi
+# Likewise a non-string url or description must not drop the row.
+LOG16C="$WORKDIR/c16c.jsonl"
+run_hook '{"session_id":"s16c","cwd":"/tmp/repo","tool_name":"WebFetch","tool_input":{"url":{"a":"b"}},"reason":"[X]"}' "$LOG16C" >/dev/null
+run_hook '{"session_id":"s16c","cwd":"/tmp/repo","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":["x"]},"reason":"[X]"}' "$LOG16C" >/dev/null
+if [ "$(wc -l <"$LOG16C" 2>/dev/null | tr -d '[:space:]')" = "2" ]; then pass "a non-string WebFetch url or Agent description still writes a row"; else fail "a non-string WebFetch url or Agent description still writes a row"; fi
 
 # The wiring: the PermissionDenied entry that runs this hook must select every
 # tool the classifier can deny, not just the file/shell set.
 SETTINGS="$REPO_ROOT/.claude/settings.json"
 if [ -f "$SETTINGS" ]; then
-    matcher=$(jq -r '[.hooks.PermissionDenied[]? | select(any(.hooks[]?; (.command // "") | contains("log-classifier-denial.sh"))) | (.matcher // "")] | first // "NOENTRY"' "$SETTINGS" 2>/dev/null)
+    matcher=$(jq -r '[.hooks.PermissionDenied[]? | select(any(.hooks[]?; (.command // "") | contains("log-classifier-denial.sh"))) | (.matcher // "")] | first // "NOENTRY"' "$SETTINGS" 2>/dev/null) || matcher="JQFAIL"
     for t in Bash Edit Write MultiEdit NotebookEdit WebFetch Agent; do
-        if [ "$matcher" = "NOENTRY" ]; then fail "PermissionDenied wiring selects $t (no log-classifier-denial entry)"
+        if [ "$matcher" = "JQFAIL" ]; then fail "PermissionDenied wiring selects $t (settings.json did not parse)"
+        elif [ "$matcher" = "NOENTRY" ]; then fail "PermissionDenied wiring selects $t (no log-classifier-denial entry)"
         elif [ -z "$matcher" ] || [ "$matcher" = "*" ] || [[ "$t" =~ ^($matcher)$ ]]; then pass "PermissionDenied wiring selects $t"
         else fail "PermissionDenied wiring selects $t (matcher: $matcher)"; fi
     done
