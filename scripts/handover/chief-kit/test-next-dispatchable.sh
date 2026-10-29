@@ -1110,6 +1110,7 @@ printf '%s\n' '> **Writes:** scripts/lib scripts/lib/' '> **Writes note:** docs/
 note_wide="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a bare directory still holds its subtree" "$note_wide" "# drop HIMMEL-9202 collision scripts/lib/nd-note-free.sh held by live worker N920"
 [ "$(printf '%s\n' "$note_wide" | grep -c '^# warn: N920 holds directory scripts/lib/$')" = 1 ] && pass "Writes note: --why warns once per held directory" || fail "Writes note: --why must warn once for scripts/lib/: $note_wide"
+case "$note_wide" in "# source mirror_age_min="*) pass "Writes note: the age header comes before the directory warning" ;; *) fail "Writes note: the age header is not first (got: ${note_wide%%$'\n'*})" ;; esac
 lacks "Writes note: normal output has no directory warning" "$(run --no-classify --workers-from "$WORK/fleet-note.json")" "# warn: N920 holds directory"
 printf '%s\n' '> **Writes:** none named' '> **Writes note:** writes confined to scripts/lib/.' > "$NOTE_WORKER"
 note_empty="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
@@ -1191,7 +1192,7 @@ esac
 printf '%s\tTask\t%s\tt\n' "$2" "$st"
 EOF
 chmod +x "$WORK/jira-lb"
-touch -d '90 minutes ago' "$M"/*.md   # a controlled mirror age for the header row below
+python3 -I -c 'import os, sys, time; t = time.time() - 5400; [os.utime(p, (t, t)) for p in sys.argv[1:]]' "$M"/*.md || fail "live blockers: setting the fixture's age failed"  # a controlled mirror age for the header row below (no touch -d: BSD and GNU differ)
 lb_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-lb" run --no-classify --why)"; lb_rc=$?
 [ "$lb_rc" = 0 ] && pass "live blockers: the run exits 0" || fail "live blockers: the run exited $lb_rc"
 has "live blockers: a blocker Done in the mirror but open live drops the candidate" "$lb_out" "# drop HIMMEL-9602 blocker HIMMEL-9601 (reopened live)"
@@ -1201,10 +1202,23 @@ lacks "live blockers: an unreadable blocker is never listed" "$lb_out" "LOCAL?	H
 has "live blockers: a blocker Done in the mirror and live is cleared" "$lb_out" "LOCAL?	HIMMEL-9607"
 has "live blockers: a blocker open in the mirror but Done live is cleared" "$lb_out" "LOCAL?	HIMMEL-9609"
 has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min=90"
+case "$lb_out" in "# source mirror_age_min=90"*) pass "live blockers: the age header is the first line, ahead of every warning" ;; *) fail "live blockers: the age header is not first (got: ${lb_out%%$'\n'*})" ;; esac
 # a mirror directory that does not exist is an error, never an empty pool
 nomirror_out="$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; nomirror_rc=$?
 [ "$nomirror_rc" = 3 ] && pass "missing mirror: the dispatcher exits 3" || fail "missing mirror: the dispatcher exited $nomirror_rc"
 has "missing mirror: the error says so" "$nomirror_out" "mirror missing"
+# a listed mirror file that cannot be read is the same error, not a traceback
+M="$WORK/jira-mirror-ur/HIMMEL"; mkdir -p "$M"
+mk HIMMEL-9690 "To Do" High '[]' '["v1.0.1"]' '[]' "an unreadable mirror file" "Edit scripts/lib/ur-9690.sh."
+chmod 000 "$M/HIMMEL-9690.md"
+if [ -r "$M/HIMMEL-9690.md" ]; then
+    pass "unreadable mirror file: skipped (this user can read a mode 000 file)"
+else
+    ur_out="$(NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; ur_rc=$?
+    [ "$ur_rc" = 3 ] && pass "unreadable mirror file: the dispatcher exits 3" || fail "unreadable mirror file: the dispatcher exited $ur_rc"
+    has "unreadable mirror file: the error says so" "$ur_out" "mirror missing or unreadable"
+fi
+chmod 600 "$M/HIMMEL-9690.md"
 M="$WORK/jira-mirror/HIMMEL"
 
 printf '\n%d failure(s)\n' "$fails"

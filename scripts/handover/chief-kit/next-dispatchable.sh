@@ -362,8 +362,12 @@ try:
     mirror_age_min = int((time.time() - max([os.path.getmtime(os.path.join(mirror, n)) for n in names] or [os.path.getmtime(mirror)])) // 60)
 except OSError:
     mirror_age_min = -1  # swallow-ok: a file that vanished between the listing and the stat leaves the age unknown, shown as -1
+print('# source mirror_age_min=%d' % mirror_age_min)  # first on stdout, ahead of every warning
 for n in names:
-    txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
+    try:
+        txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
+    except OSError as e:
+        print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # a listed file that cannot be read is the same error
     m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
     if not m:
         continue
@@ -870,7 +874,6 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# source mirror_age_min=%d' % mirror_age_min)
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
