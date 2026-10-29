@@ -364,6 +364,11 @@ _suite_timeout_for() {
         # (995 rows reached by 603s in runs 40457809286 and 40514166576, 151s on
         # the Linux ledger). 3600s is that cap x2 (the loaded-budget rule).
         printf '3600'; return 0 ;;
+      scripts/hooks/test-block-write-into-main-checkout-evaldata.sh|*/scripts/hooks/test-block-write-into-main-checkout-evaldata.sh)
+        # macOS suites dispatch 40903741163: killed at 1203s against the 1200s
+        # (2 x 600s) cap, and at 603s in run 40664974972 (87s on the Linux
+        # ledger). 3600s is that kill x3 (the loaded-budget rule).
+        printf '3600'; return 0 ;;
     esac
     printf '%s' $(( $(_suite_timeout_for "$1" linux) * darwin_cap_mult ))
     return 0

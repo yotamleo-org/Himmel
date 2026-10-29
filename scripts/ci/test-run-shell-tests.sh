@@ -1295,6 +1295,11 @@ else
   check_os_timeout_2267 Linux "scripts/hooks/test-block-edit-live-settings.sh" "600"
   check_os_timeout_2267 Darwin "scripts/hooks/test-block-edit-live-settings.sh" "3600"
   check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-edit-live-settings.sh" "3600"
+  # The macOS suites dispatch at the 2x cap killed it at 1203s of 1200s, so it is
+  # an outlier row too; Linux keeps the default.
+  check_os_timeout_2267 Linux "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "3600"
+  check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "3600"
   check_os_timeout_2267 Linux "scripts/test-adopt-sequences.sh" "600"
   check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1200"
   check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1200"
@@ -1307,8 +1312,7 @@ else
   # Every non-outlier suite on Darwin is exactly 2x its Linux cap.
   for p2267 in scripts/test-adopt.sh scripts/test-adopt-features.sh scripts/test-himmel-doctor.sh \
                scripts/hooks/test-block-bare-qmd-query.sh scripts/hooks/test-block-primary-git-writes.sh \
-               scripts/hooks/test-block-unresolved-cr-merge.sh scripts/hooks/test-block-destructive-commands-d.sh \
-               scripts/hooks/test-block-write-into-main-checkout-evaldata.sh; do
+               scripts/hooks/test-block-unresolved-cr-merge.sh scripts/hooks/test-block-destructive-commands-d.sh; do
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     lin2267=$(eval "$fn2267"; uname() { printf 'Linux\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$p2267")
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
@@ -1336,7 +1340,8 @@ else
     fi
   done
   # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
-  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 911"; do
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 911" \
+               "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh 1203"; do
     s2267=${m2267% *}; d2267=${m2267#* }
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")
