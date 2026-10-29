@@ -99,7 +99,7 @@ wire_user_claude_md() {
     # Exact BEGIN line, not the bare marker substring — prose that merely
     # mentions HIMMEL:working-principles must not suppress the install.
     local begin_ln end_ln current
-    begin_ln="$(grep -nF -m1 "<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" "$target" | cut -d: -f1)"
+    begin_ln="$(awk -v m="<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" 'index($0,m){print NR; exit}' "$target")"
     if [ -n "$begin_ln" ]; then
       end_ln="$(awk -v b="$begin_ln" -v m="<!-- END ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" 'NR>=b && index($0,m){print NR; exit}' "$target")"
       if [ -z "$end_ln" ]; then

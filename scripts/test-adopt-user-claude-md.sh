@@ -295,6 +295,35 @@ DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target10" >/dev/null 2>&1
 if cmp -s "$before10" "$target10"; then pass "u4: BEGIN-without-END target unchanged"; else fail "u4: BEGIN-without-END target CHANGED"; fi
 rm -rf "$home10"
 
+# ── Case 11: the callers (adopt.sh, himmel-update.sh) run under
+#             `set -euo pipefail`, so the append path of a marker-less target
+#             must survive errexit ──
+echo "== Case 11: marker-less target under set -euo pipefail =="
+home11="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home11/.claude"
+target11="$home11/.claude/CLAUDE.md"
+printf '# my own notes\nsome unrelated content\n' > "$target11"
+# shellcheck source=lib/user-claude-md.sh
+# shellcheck disable=SC1091
+( set -euo pipefail; . "$LIB"; wire_user_claude_md "$TEMPLATE" "$target11" ) >/dev/null 2>&1
+rc11=$?
+if [ "$rc11" -eq 0 ] && grep -q -- "<!-- BEGIN $MARKER -->" "$target11"; then
+  pass "append path survives errexit (rc 0, block appended)"
+else
+  fail "append path died under errexit (rc $rc11)"
+fi
+sed -i.bak 's/^Use judgement on trivial tasks\.$/Use an older line./' "$target11" && rm -f "$target11.bak"
+# shellcheck source=lib/user-claude-md.sh
+# shellcheck disable=SC1091
+( set -euo pipefail; . "$LIB"; wire_user_claude_md "$TEMPLATE" "$target11" ) >/dev/null 2>&1
+rc11=$?
+if [ "$rc11" -eq 0 ] && ! grep -q "Use an older line" "$target11"; then
+  pass "refresh path survives errexit (rc 0, older line replaced)"
+else
+  fail "refresh path died or did not refresh under errexit (rc $rc11)"
+fi
+rm -rf "$home11"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
