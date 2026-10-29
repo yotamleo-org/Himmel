@@ -15,7 +15,7 @@
 # Git plumbing only, no index refresh, read-only (--no-optional-locks), bounded.
 # ponytail: age is the oldest file mtime / oldest unpushed commit time, not the
 # moment the hook began failing; the thresholds absorb that, a stage-time ledger is overkill.
-# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
+# bash 3.2-safe (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/timeout-bin.sh

@@ -48,7 +48,7 @@
 # this defaults to there, which translates the SAME konsole argv into the
 # house `open -a <App> <file>.command` launch arm-resume.sh already uses.
 # macOS has no /proc, so the confirmation reads each pid's argv via ps -
-# see session_confirmed() below. No .ps1 twin. This marker sits ABOVE the
+# see session_confirmed() below. This marker sits ABOVE the
 # exit-code table below, rather than after it: that table gains an entry
 # almost every change and would otherwise keep pushing this marker toward
 # (and eventually past) the first 60 lines of the file, the window

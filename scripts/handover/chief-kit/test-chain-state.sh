@@ -9,7 +9,7 @@
 #   E33  a link across two chains shows on both, and goes when Jira drops it
 #   E24  step and steps, two badges then more
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

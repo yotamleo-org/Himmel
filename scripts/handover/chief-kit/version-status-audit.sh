@@ -31,7 +31,7 @@
 # unreadable; 3 not fully audited
 # (mirror unreadable or empty, versions file missing, a mirror file without
 # front matter, or the worker manifest unreadable: its unowned rows print UNKNOWN).
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
+# PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; workers_from="${WORKERS_FROM:-}"; owners=""
 while [ $# -gt 0 ]; do

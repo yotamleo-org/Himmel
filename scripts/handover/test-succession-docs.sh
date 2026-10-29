@@ -11,7 +11,7 @@
 # BEFORE releasing the lock). RED first: against a tree without the rule every
 # assertion below fails, none of them vacuously.
 #
-# Docs-only reads, no network, no live state. PLATFORM GUARD: no .ps1 twin —
+# Docs-only reads, no network, no live state. PLATFORM GUARD:
 # Bash 3.2, grep/awk/sed only.
 set -uo pipefail
 

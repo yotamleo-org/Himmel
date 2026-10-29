@@ -30,8 +30,7 @@
 # BOTH operands (`--model "opus[1m]"`, `--autocompact "auto"`) rather than
 # %q-quoting them bare. The positive command-rendering
 # assertions therefore go through assert_contains_either and accept either
-# rendering. No .ps1 twin (project convention: a documented platform guard
-# suffices for a test harness).
+# rendering.
 set -uo pipefail
 
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"

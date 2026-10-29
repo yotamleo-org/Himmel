@@ -18,8 +18,7 @@
 #      deadline -> exit 2, konsole missing from PATH -> exit 3.
 #   7. the signal-file path (not just the deadline) also triggers a launch.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
-# itself - no .ps1 twin (the script under test has none either).
+# Platform guard: POSIX bash 3.2+, same as headed-arm.sh itself.
 #
 # Seams used (see headed-arm.sh's own header): KONSOLE_CMD / PGREP_CMD point
 # at stub binaries this suite writes per case; HEADED_ARM_REPO points at a

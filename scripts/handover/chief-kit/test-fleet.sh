@@ -8,7 +8,7 @@
 # suite reads no live queue, process table or GitHub state. Worker identity is the REAL
 # scripts/lib/worker-identity.sh.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (fleet.mjs
+# PLATFORM GUARD: The chief kit is Linux-only (fleet.mjs
 # reads /proc and the konsole/launch logs); this suite exercises a kit script.
 # shellcheck disable=SC2016  # the fixture bullets carry literal backticks, not expansions
 set -uo pipefail

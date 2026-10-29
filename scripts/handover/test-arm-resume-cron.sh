@@ -52,7 +52,7 @@
 # Platform guard (gitbash-only): the suite itself runs under any POSIX bash
 # 3.2+; its assertions target arm-resume.sh's POSIX crontab emitter
 # specifically (forced via OSTYPE), so they hold on a Windows host too — the
-# Windows .bat branch is never entered here. No .ps1 twin.
+# Windows .bat branch is never entered here.
 set -uo pipefail
 
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"

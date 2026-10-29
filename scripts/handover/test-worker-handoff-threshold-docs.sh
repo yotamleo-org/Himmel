@@ -16,7 +16,7 @@
 # The judge preface keeps 60 %: a judge holds design-grade reasoning in
 # context and loses it at compaction (judge-brief-template.md).
 #
-# Docs-only reads, no network, no live state. PLATFORM GUARD: no .ps1 twin —
+# Docs-only reads, no network, no live state. PLATFORM GUARD:
 # Bash 3.2, grep only.
 set -uo pipefail
 

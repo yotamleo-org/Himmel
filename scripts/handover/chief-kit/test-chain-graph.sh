@@ -3,7 +3,7 @@
 # gh and the jira CLI are stubs reading a fixture dir (CHAIN_GRAPH_GH / CHAIN_GRAPH_JIRA), so the suite
 # never touches the network, Jira or GitHub.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only; this suite exercises a kit script.
+# PLATFORM GUARD: The chief kit is Linux-only; this suite exercises a kit script.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -8,7 +8,7 @@
 # Relative DOC/WORKERS values resolve under the handover root. When HANDOVER_DIR is
 # a global state root, include the bucket prefix (for example <user>/<repo>/...).
 #
-# PLATFORM GUARD: no .ps1 twin, by design. This chief kit is Linux-only:
+# PLATFORM GUARD: This chief kit is Linux-only:
 # it observes pgrep, atq, /tmp suite locks, and the claudex/konsole lane.
 # Bash 3.2-compatible; no associative arrays or mapfile.
 set -uo pipefail

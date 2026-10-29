@@ -13,7 +13,7 @@
 #   6b. add refuses a doc with whitespace or a glob character (tick word-splits)
 #   7. concurrent adds (two dispatches at once) lose no entry
 #
-# Hermetic: temp dir only. PLATFORM GUARD: no .ps1 twin, by design -- the
+# Hermetic: temp dir only. PLATFORM GUARD: the
 # chief kit is Linux-only (util-linux flock). bash 3.2-safe.
 set -uo pipefail
 

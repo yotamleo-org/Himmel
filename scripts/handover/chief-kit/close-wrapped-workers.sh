@@ -25,7 +25,7 @@
 # Exit: 0 every sweep ran; 1 a sweep failed; 2 usage, no bucket resolved, or
 # the bucket's manifests could not be listed.
 #
-# Platform guard: Linux bash 3.2+, same as close-wrapped-worker.sh (no .ps1 twin).
+# Platform guard: Linux bash 3.2+, same as close-wrapped-worker.sh.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
