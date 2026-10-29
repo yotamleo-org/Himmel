@@ -1002,6 +1002,7 @@ Two OTHER levers existed for verifying the CLIProxyAPI path on its own
 evidence (as distinct from the operator-ruling override above) — one is now
 APPLIED, one remains UNTESTED, not refuted:
 
+<!-- mem:d6fed4174c67 -->
 1. **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** — an official, documented,
    name-independent Claude Code env var for declaring an unrecognized model's
    context window. Distinct from `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (which only

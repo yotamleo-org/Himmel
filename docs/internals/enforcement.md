@@ -3158,6 +3158,7 @@ mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
 
+<!-- mem:9d6b22f2b7eb -->
 **HIMMEL-1072 — CodeRabbit posts a STATUS, not a check-run.** This gate used to
 query `check-runs` for `.name=="CodeRabbit"`, which matched **nothing on every
 PR since it shipped** (verified on 5 consecutive live PRs: `check-runs` = 0,
@@ -4068,7 +4069,6 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on. One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
-<!-- mem:d6fed4174c67 -->
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling
 is `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when numeric (it outranks the flag), else
 `HIMMEL_WORKER_SESSION_AUTOCOMPACT` (the launcher's resolved `--autocompact`; unset = the
