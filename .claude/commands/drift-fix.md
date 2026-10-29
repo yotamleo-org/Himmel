@@ -262,10 +262,10 @@ Per collected entry, one call:
 bash scripts/upstreams/apply-drift-bump.sh <name> <target-version> --published <the target release's published_at; rc 5 = younger than 72 h, skip it until it ages>
 ```
 
-An entry with `companion_pins` (cli-proxy-api: the Linux twin's `VERSION=` and
-`ASSET_SHA256=`) also needs `--sha256 <64-hex>`, the new release asset's
+An entry with `companion_pins` (cli-proxy-api: `ASSET_SHA256=` beside its
+`VERSION=` pin) also needs `--sha256 <64-hex>`, the new release asset's
 checksum from that release's own `checksums.txt`; without it the bump exits 2.
-The registry, the `.ps1` pin and every companion move together or not at all.
+The registry, the version pin and every companion move together or not at all.
 
 Handle the exit code — do not paper over any of them:
 
