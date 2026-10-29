@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + jq + (sha256sum|shasum).
+# Platform guard: bash + jq + (sha256sum|shasum).
 # test-provenance.sh -- tests for scripts/lib/provenance.sh.
 # Everything runs under a scratch HOME / HIMMEL_PROVENANCE_DIR; the real
 # ~/.himmel is never read or written. The node twin and the bash<->node

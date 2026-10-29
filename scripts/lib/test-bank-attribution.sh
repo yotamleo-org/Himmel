@@ -16,7 +16,7 @@
 # deliberately-wrong RED control so a silently-vacuous assertion would be
 # caught.
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe + jq, no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe + jq.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

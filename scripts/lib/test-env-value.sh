@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 #
 # Test for scripts/lib/env-value.sh (config, then discovery, then fail closed).
 #

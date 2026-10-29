@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + jq only.
+# Platform guard: bash + jq only.
 # test-provenance-read.sh -- tests for scripts/lib/provenance-read.sh.
 # Everything runs under a scratch HOME / HIMMEL_PROVENANCE_DIR; the real
 # ~/.himmel is never read or written, and uninstall.sh is never run.

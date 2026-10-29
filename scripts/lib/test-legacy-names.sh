@@ -6,7 +6,7 @@
 # its old name stays on); every old-path forwarder that obeys the switch
 # carries the same falsy pattern as legacy-names.sh.
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe, no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe.
 # shellcheck disable=SC2016  # snippets are meant to expand in the child, not here
 set -uo pipefail
 

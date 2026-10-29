@@ -20,7 +20,7 @@
 # neither the token nor the provider key (which only the daemon holds) can reach
 # the output.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; curl and jq required.
+# Platform guard: POSIX bash 3.2+; curl and jq required.
 
 set -u
 # An inherited xtrace (SHELLOPTS, BASH_ENV) would print the bearer; switch it off first.

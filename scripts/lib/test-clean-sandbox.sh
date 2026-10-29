@@ -3,8 +3,7 @@
 # Usage: bash scripts/lib/test-clean-sandbox.sh
 # Hermetic: every launch gets a scratch dir under a mktemp root; the operator's
 # real ~/.himmel/provenance.jsonl is hashed before and after and must not move.
-# Platform guard (linux/macos-only): POSIX bash 3.2+, same as clean-sandbox.sh -
-# no .ps1 twin; a test fixture needs none (WS5 T15 convention).
+# Platform guard (linux/macos-only): POSIX bash 3.2+, same as clean-sandbox.sh.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
