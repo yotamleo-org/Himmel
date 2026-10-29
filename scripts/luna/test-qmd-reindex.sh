@@ -960,7 +960,7 @@ assert_contains "embed names the salus index" "--index salus embed" "$(calls)"
 assert_contains "cleanup names the salus index" "--index salus cleanup" "$(calls)"
 assert_contains "the log shows --index salus" "--index salus" "$out"
 assert_contains "the refresh stamp lands next to salus.sqlite" "salus.refresh-stamp" "$(ls "$HOME/.cache/qmd" 2>/dev/null)"
-assert_not_contains "the default index stamp is left alone" "refresh-stamp" "$(find "$HOME/.cache/qmd" -maxdepth 1 -name '*refresh-stamp' ! -name 'salus.*' 2>/dev/null)"
+assert_not_contains "the default index stamp is left alone" "refresh-stamp" "$(find "$HOME/.cache/qmd" -name '*refresh-stamp' ! -name 'salus.*' 2>/dev/null)"
 rm -rf "$HOME/.cache/qmd"
 
 echo "TEST: the default run never passes --index"

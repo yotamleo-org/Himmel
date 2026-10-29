@@ -127,7 +127,10 @@
 #   2  qmd executable not found or not usable — NOT a claim about the index.
 #      This is the "adopter never installed qmd" case, and it is the ONLY
 #      not-an-index-verdict code a caller may treat as silence.
-#   3  STALE — last update is older than the budget
+#   3  STALE — last update is older than the budget; or, for a named index
+#      (--index NAME, and salus on every default run when salus.yml exists),
+#      notes are newer than its last refresh while that refresh is older than
+#      the budget. A default run keeps its own non-zero code over this one.
 #   4  INCOMPLETE — chunks are still pending embedding
 #   5  STALE and INCOMPLETE
 #   6  could not READ `qmd status` (qmd reworded its output) — fail-closed,
@@ -251,7 +254,7 @@ EOF
     [ "$n" -gt 0 ] || return 0
     if [ -z "$ref" ]; then
         ref_desc="never refreshed"
-    elif [ -z "$(find "$ref" -mmin "+$(( MAX_AGE_HOURS * 60 ))" 2>/dev/null)" ]; then
+    elif [ -z "$(find "$ref" -mmin "+$(( 10#$MAX_AGE_HOURS * 60 ))" 2>/dev/null)" ]; then
         return 0
     else
         ref_desc="last refreshed over ${MAX_AGE_HOURS}h ago"

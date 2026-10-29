@@ -4592,7 +4592,8 @@ the session context, so anything else reads as no cache at all and the hook
 probes inline instead.
 
 Guard exit codes (`scripts/luna/qmd-staleness.sh`): 0 healthy · 1 usage/config
-· 2 qmd not installed · 3 STALE · 4 INCOMPLETE · 5 both · 6 unreadable report ·
+· 2 qmd not installed · 3 STALE (also a named index, `--index NAME` or salus
+when `salus.yml` exists, with notes newer than its last refresh) · 4 INCOMPLETE · 5 both · 6 unreadable report ·
 7 `qmd status` failed · 8 required collection absent (outranks 3/4/5 in the
 exit code; the banner still names every condition). A bad
 `QMD_STALENESS_MAX_AGE_HOURS` or `QMD_STALENESS_REQUIRE_COLLECTIONS` surfaces
