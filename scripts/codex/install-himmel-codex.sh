@@ -11,7 +11,9 @@
 # never hand-edits config.toml — so Codex owns all config writes (trust hashes,
 # MCP secrets, long-path marketplace sources). NON-DESTRUCTIVE + idempotent: it
 # only registers the himmel marketplace when absent and enables the himmel plugin
-# set; it never removes or disables anything, and re-runs are no-ops.
+# set; it never removes or disables a himmel plugin, and re-runs are no-ops. The one
+# removal is upstream's qmd@qmd plugin + marketplace, replaced by an MCP entry for
+# the shared qmd daemon (token via $QMD_HTTP_TOKEN, never in config).
 #
 #   install-himmel-codex.sh                 # register marketplace + enable default set
 #   install-himmel-codex.sh --all           # also enable luna-correlate
@@ -111,9 +113,61 @@ for p in $PLUGINS; do
   fi
 done
 
-# (No phase 3: this installer does not rewrite third-party plugin hooks.json.
-# codex < rust-v0.143.0 rejects a top-level `description` in them; installs
-# pinned that low run scripts/codex/sanitize-plugin-hooks.sh by hand.)
+# --- 3. qmd: the shared daemon, never upstream's per-thread stdio qmd --------
+# Upstream's qmd@qmd plugin declares a stdio `qmd mcp` server, so every Codex
+# thread starts a private runtime that skips the daemon's bearer token, egress
+# gate and post-bump restart. Drop that plugin + its marketplace
+# and point Codex at the daemon. Codex reads a bearer only from an env var NAME
+# (no headers helper), so the token is never written to config.toml: the
+# launching environment must export $QMD_TOKEN_ENV.
+QMD_URL="${QMD_MCP_URL:-http://localhost:8181/mcp}"   # same override the daemon scripts read
+QMD_TOKEN_ENV="QMD_HTTP_TOKEN"
+QMD_PLUGIN="qmd@qmd"
+QMD_MARKET="qmd"
+if printf '%s\n' "$plugin_list" | awk -v s="$QMD_PLUGIN" '$1==s{f=1} END{exit f?0:1}'; then
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "WOULD REMOVE: plugin $QMD_PLUGIN (upstream stdio qmd)"
+  else
+    "$CODEX" plugin remove "$QMD_PLUGIN" >/dev/null
+    echo "CHANGED     : removed plugin $QMD_PLUGIN (upstream stdio qmd)"
+  fi
+  changed=$((changed + 1))
+fi
+if "$CODEX" plugin marketplace list 2>/dev/null | awk -v n="$QMD_MARKET" '$1==n{f=1} END{exit f?0:1}'; then
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "WOULD REMOVE: marketplace '$QMD_MARKET' (upstream tobi/qmd)"
+  else
+    "$CODEX" plugin marketplace remove "$QMD_MARKET" >/dev/null
+    echo "CHANGED     : removed marketplace '$QMD_MARKET' (upstream tobi/qmd)"
+  fi
+  changed=$((changed + 1))
+fi
+# Under --dry-run the plugin is still present, and it is what makes `mcp get qmd`
+# answer, so the dry run reports the add on its own.
+if [ "$DRY_RUN" != "1" ] && qmd_cfg="$("$CODEX" mcp get qmd 2>/dev/null)" && printf '%s\n' "$qmd_cfg" | grep -qF "$QMD_URL"; then
+  echo "UNCHANGED   : mcp server qmd -> $QMD_URL"
+else
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "WOULD ADD   : mcp server qmd -> $QMD_URL (bearer from \$$QMD_TOKEN_ENV)"
+  else
+    [ -n "${qmd_cfg:-}" ] && "$CODEX" mcp remove qmd >/dev/null   # a stale stdio/other-URL qmd entry
+    "$CODEX" mcp add qmd --url "$QMD_URL" --bearer-token-env-var "$QMD_TOKEN_ENV" >/dev/null
+    echo "CHANGED     : mcp server qmd -> $QMD_URL (bearer from \$$QMD_TOKEN_ENV)"
+  fi
+  changed=$((changed + 1))
+fi
+
+# Without the export Codex's qmd server answers 401 and qmd silently vanishes
+# from Codex: warn with the exact launch-env line (path only, never the value).
+if [ -z "${QMD_HTTP_TOKEN:-}" ]; then
+  QMD_TOKEN_FILE="${QMD_HTTP_AUTH_FILE:-${QMD_HTTP_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd/http-token}}"   # same resolution as qmd-auth-headers.sh
+  echo "WARN        : $QMD_TOKEN_ENV is not set in this environment; Codex's qmd server needs it at launch or qmd answers 401."
+  echo "              Add to the environment that launches Codex: export $QMD_TOKEN_ENV=\"\$(cat $QMD_TOKEN_FILE)\""
+fi
+
+# (No phase for third-party plugin hooks.json: codex < rust-v0.143.0 rejects a
+# top-level `description` in them; installs pinned that low run
+# scripts/codex/sanitize-plugin-hooks.sh by hand.)
 
 echo ""
 if [ "$DRY_RUN" = "1" ]; then
