@@ -77,4 +77,18 @@ run Bash "cat $IDX; cat $IDX; cat $IDX"; assert_rc "repeated path flagged" 2 "$?
 n="$(grep -c 'line 2' "$SB/err")"
 if [ "$n" = 1 ]; then echo "PASS repeated path reported once"; else echo "FAIL repeated path reported $n times"; FAILED=1; fi
 
+# 11: a Bash write naming a topic file over MEMORY_TOPIC_MAX prints a
+# topic-cap warning; 8192 bytes is clean; a topic file outside the store is ignored.
+TOP="$MEM/theme.md"
+head -c 8193 /dev/zero | tr '\0' 'a' > "$TOP"
+run Bash "cat >> $TOP <<'EOF'"; assert_rc "8193-byte topic file named by a Bash write is flagged" 2 "$?"
+if grep -q 'topic-cap' "$SB/err" && grep -q 'theme.md' "$SB/err"; then echo "PASS topic-cap warning names the file"; else echo "FAIL no topic-cap warning naming the file"; FAILED=1; fi
+head -c 8192 /dev/zero | tr '\0' 'a' > "$TOP"
+run Bash "cat >> $TOP <<'EOF'"; assert_rc "8192-byte topic file is clean" 0 "$?"
+head -c 8193 /dev/zero | tr '\0' 'a' > "$SB/other/theme.md"
+run Bash "cat >> $SB/other/theme.md <<'EOF'"; assert_rc "topic file outside the auto-memory store ignored" 0 "$?"
+head -c 8193 /dev/zero | tr '\0' 'a' > "$TOP"
+MEMORY_CAPTURE_OK=1 run Bash "cat >> $TOP <<'EOF'"; assert_rc "MEMORY_CAPTURE_OK=1 bypasses the topic-cap warning" 0 "$?"
+MEMORY_TOPIC_MAX=9000 run Bash "cat >> $TOP <<'EOF'"; assert_rc "MEMORY_TOPIC_MAX=9000 knob honoured" 0 "$?"
+
 exit "$FAILED"

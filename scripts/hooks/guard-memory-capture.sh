@@ -13,13 +13,20 @@
 # and the 2026-07-17 Phase-0 spike (INDEX_APPEND_TOOL=Edit -> Write|Edit matcher +
 # .new_string deny-log fallback are load-bearing, not optional).
 #
-# Scope: only files under */.claude/projects/*/memory/*.
-#   MEMORY.md  -> line rule + ~60-line ceiling + growth cap + tripwire log;
+# Scope: only files under */.claude/projects/*/memory/* (and
+# $CLAUDE_CONFIG_DIR/projects/*/memory/* when CLAUDE_CONFIG_DIR is set).
+#   MEMORY.md  -> line rule + ~60-line ceiling (himmel's routing rule, not the
+#                 harness load limit; a write that does not ADD pointer lines
+#                 passes even over it) + growth cap + tripwire log;
 #                 Edit/MultiEdit are simulated against the on-disk file (via
 #                 simulate-memory-edit.js) and the RESULT runs the same checks
 #                 as Write; NotebookEdit still denied (payload doesn't reveal
 #                 the resulting content).
-#   topic file -> tier-2 landing spot; UNRESTRICTED (no body cap, Edit allowed).
+#   topic file -> tier-2 landing spot; a write that leaves it over
+#                 MEMORY_TOPIC_MAX (8192) bytes AND bigger than before gets a
+#                 topic-cap advisory (MEMORY_TOPIC_MODE=warn, default) or a deny
+#                 (=deny). Shrinking never fires. A write the guard cannot size
+#                 is ALLOWED in both modes (topic-cap-undecidable warn row).
 #   *.bak      -> exempt (compound writes a ~25KB backup by design).
 #
 # Adopter story is UNCONDITIONAL: no vault/qmd predicate. A machine with no
@@ -29,6 +36,11 @@
 # Exit semantics: 0 = allow (optional JSON advisory on stdout); 2 = deny, with a
 # retry contract on stderr (shown to the model). deny != ask — `ask` hangs
 # unattended sessions.
+#
+# ponytail: two sessions appending to one topic file at once can together pass the cap, per-write check only
+# ponytail: a heredoc, sed or script write is unseen by this PreToolUse guard, the Bash re-check and the SessionStart notice catch it
+# ponytail: a store moved by autoMemoryDirectory or named by CLAUDE_CODE_PROJECT_DIR_NAME is outside the scope match, extend the match if adopters use them
+# ponytail: a topic write the guard cannot size passes unchecked, logged as topic-cap-undecidable, tighten when HIMMEL-8006 flips the mode
 set -uo pipefail
 
 # Pin the BYTE locale, then count characters explicitly (see the line rule
@@ -46,9 +58,12 @@ export LC_ALL=C
 LINE_MAX="${MEMORY_LINE_MAX:-200}"
 LINE_CEIL="${MEMORY_LINE_CEIL:-60}"
 GROWTH_MAX="${MEMORY_GROWTH_MAX:-400}"
+TOPIC_MAX="${MEMORY_TOPIC_MAX:-8192}"
+TOPIC_MODE="${MEMORY_TOPIC_MODE:-warn}"
 
 payload="$(cat)"
 tool="$(printf '%s' "$payload" | jq -r '.tool_name // ""')"
+sid="$(printf '%s' "$payload" | jq -r '.session_id // ""')"
 fp="$(printf '%s' "$payload"   | jq -r '.tool_input.file_path // ""')"
 # `.content` is Write; `.new_string` is Edit/MultiEdit. WITHOUT the fallback an
 # Edit deny logs an empty hash+excerpt, and the audit's orphaned-deny loop skips
@@ -71,10 +86,12 @@ content="$(printf '%s' "$payload" | jq -r '.tool_input.content // .tool_input.ne
 fp="$(printf '%s' "$fp" | tr '\134' '/')"
 
 # 3. Scope: only the auto-memory store.
-case "$fp" in
-    */.claude/projects/*/memory/*) ;;
-    *) exit 0 ;;
-esac
+in_scope=0
+case "$fp" in */.claude/projects/*/memory/*) in_scope=1 ;; esac
+if [ "$in_scope" = 0 ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+    case "$fp" in "${CLAUDE_CONFIG_DIR%/}"/projects/*/memory/*) in_scope=1 ;; esac
+fi
+[ "$in_scope" = 1 ] || exit 0
 
 # 4. *.bak exempt (compound writes a ~25KB backup by design).
 case "$fp" in *.bak) exit 0 ;; esac
@@ -84,23 +101,28 @@ LOG="${MEMORY_CAPTURE_LOG:-$MEMDIR/.capture-log.jsonl}"
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 lane="$(hostname 2>/dev/null || echo unknown)"
 
+LOG_OLD=""; LOG_NEW=""   # set before a deny/warn: pointer lines (index) or bytes (topic-cap)
 log_rec() { # $1=event $2=rule $3=lines_delta
     hash="$(printf '%s' "$content" | sha256sum 2>/dev/null | cut -d' ' -f1)"
     excerpt="$(printf '%s' "$content" | tr '\n' ' ' | cut -c1-120)"
     jq -nc --arg ts "$now" --arg e "$1" --arg r "$2" --arg h "${hash:-}" \
            --arg x "$excerpt" --arg t "$MEMDIR" --arg l "$lane" \
-           --argjson d "${3:-0}" \
-      '{ts:$ts,event:$e,rule:$r,hash:$h,excerpt:$x,target:$t,lines_delta:$d,lane:$l}' \
+           --argjson d "${3:-0}" --arg s "$sid" --arg o "$LOG_OLD" --arg n "$LOG_NEW" \
+      '{ts:$ts,event:$e,rule:$r,hash:$h,excerpt:$x,target:$t,lines_delta:$d,lane:$l,session_id:$s}
+       + (if $o == "" or $n == "" or $e == "write" then {} else {old:($o|tonumber),new:($n|tonumber)} end)' \
       >> "$LOG" 2>/dev/null || true
 }
 
 deny() { # $1=rule $2=message
     log_rec deny "$1" 0
     printf 'MEMORY CAPTURE DENIED (%s)\n\n%s\n\n' "$1" "$2" >&2
-    printf 'Remedy, in this session: append the durable body to the theme topic\n' >&2
-    printf 'file named by a routing line in this index (create a new theme note if\n' >&2
-    printf 'none fits), then retry this write with a <=%s-char routing line:\n' "$LINE_MAX" >&2
-    printf '"<keyword hook> -> luna [[note]]".\n' >&2
+    if [ "$1" != topic-cap ]; then
+        printf 'Remedy, in this session: append the durable body to the theme topic\n' >&2
+        printf 'file named by a routing line in this index\n' >&2
+        printf '(if none fits, add a sub-file linked from the nearest hub), then retry this\n' >&2
+        printf 'write with a <=%s-char routing line:\n' "$LINE_MAX" >&2
+        printf '"<keyword hook> -> luna [[note]]".\n' >&2
+    fi
     exit 2
 }
 
@@ -141,6 +163,7 @@ if [ "$base" = "MEMORY.md" ]; then
     old_lines=0; [ -f "$fp" ] && old_lines="$(awk '/^- /{n++} END{print n+0}' "$fp")"  # fail-open-ok: unreadable index reads as an empty awk sum → 0 baseline → the growth/ceiling caps get STRICTER, not looser
     new_lines="$(printf '%s\n' "$content" | awk '/^- /{n++} END{print n+0}')"
     lines_delta="$((new_lines - old_lines))"
+    LOG_OLD="$old_lines"; LOG_NEW="$new_lines"
 
     # a. Any ADDED/CHANGED pointer line over the length budget -> deny.
     #    Char count, not byte count: under the pinned C locale `length()` is
@@ -203,16 +226,25 @@ if [ "$base" = "MEMORY.md" ]; then
         deny "line-too-long" "An added/changed pointer line exceeds ${LINE_MAX} chars. The index routes; it does not store — split the fact into its theme topic file."
     fi
 
-    # b. Hard pointer-line ceiling (Rev2 D4) — the structural bound on n. Judgement
-    #    still allocates lines WITHIN the ceiling; O(facts) degeneration hits a wall.
-    if [ "$new_lines" -gt "$LINE_CEIL" ]; then
+    # b. Hard pointer-line ceiling (Rev2 D4) — himmel's routing rule, the structural
+    #    bound on n. Judgement still allocates lines WITHIN the ceiling; O(facts)
+    #    degeneration hits a wall. Only a write that ADDS pointer lines is refused:
+    #    an index already over the ceiling can still be shrunk or edited in place.
+    if [ "$new_lines" -gt "$LINE_CEIL" ] && [ "$new_lines" -gt "$old_lines" ]; then
         deny "line-ceiling" "MEMORY.md would carry ${new_lines} pointer lines (ceiling ${LINE_CEIL}). Themes are degenerating into per-fact lines — evict facts to their topic files."
     fi
 
     # c. Net growth cap. Raises evasion friction; does NOT prevent it (sequential
     #    <=400B writes evade it — claim downgraded accordingly).
     old_b=0; [ -f "$fp" ] && old_b="$(wc -c < "$fp" | tr -d ' ')"
-    new_b="$(printf '%s' "$content" | wc -c | tr -d ' ')"
+    # A Write is measured straight off the payload: `$content` went through `$( )`,
+    # which strips trailing newlines and undercounts the bytes. Edit/MultiEdit's
+    # simulated content keeps them (EOT sentinel), so it is measured as is.
+    if [ "$tool" = Write ]; then
+        new_b="$(printf '%s' "$payload" | jq -j '.tool_input.content // ""' | wc -c | tr -d ' ')"
+    else
+        new_b="$(printf '%s' "$content" | wc -c | tr -d ' ')"
+    fi
     if [ "$((new_b - old_b))" -gt "$GROWTH_MAX" ]; then
         deny "growth-cap" "This write grows MEMORY.md by $((new_b - old_b))B (cap ${GROWTH_MAX}B)."
     fi
@@ -222,8 +254,41 @@ if [ "$base" = "MEMORY.md" ]; then
     # phantom lines -> false TRIPWIRE findings in the audit.)
     log_rec write "line-delta" "$lines_delta"
 fi
-# Topic files: tier-2 landing spot under the theme-file design — unrestricted
-# (no body cap, Edit allowed). Nothing to gate. Fall through to allow.
+
+case "$base" in
+*.md) [ "$base" = "MEMORY.md" ] || {
+    # Topic file. Fail OPEN: a size the guard cannot establish is allowed in both
+    # modes (the MEMORY.md path above keeps its own undecidable-payload deny).
+    old_t=0; new_t=""
+    old_t="$(wc -c 2>/dev/null < "$fp" | tr -d ' ')"; [ -n "$old_t" ] || old_t=0   # swallow-ok: an unreadable old file counts as 0 bytes, so a Write still sizes against 0
+    case "$tool" in
+        Write)
+            new_t="$(printf '%s' "$payload" | jq -j '.tool_input.content // ""' | wc -c | tr -d ' ')" ;;
+        Edit|MultiEdit)
+            hookdir="$(cd "$(dirname "$0")" && pwd)"
+            sim="$(printf '%s' "$payload" | node "$hookdir/simulate-memory-edit.js" 2>/dev/null)"  # swallow-ok: sim_rc is read next; a crash fails open on topic files
+            sim_rc=$?
+            case "$sim_rc" in
+                0) sim="${sim%$'\004'}"; new_t="$(printf '%s' "$sim" | wc -c | tr -d ' ')" ;;
+                3) exit 0 ;; # old_string not found; the Edit tool itself errors on this
+                *) new_t="" ;;
+            esac ;;
+    esac
+    if [ -z "$new_t" ]; then
+        case "$tool" in Write|Edit|MultiEdit) log_rec warn topic-cap-undecidable 0 ;; esac
+    elif [ "$new_t" -gt "$TOPIC_MAX" ] && [ "$new_t" -gt "$old_t" ]; then
+        LOG_OLD="$old_t"; LOG_NEW="$new_t"
+        tc_msg="$base would be ${new_t}B (cap ${TOPIC_MAX}B, was ${old_t}B). Run himmel-ops:memory-compound to split the theme into a hub plus sub-files of at most about 5 KB; mid-task, add the new fact to a new sub-file linked from its hub (a link line in the hub file, not a new index line: the index is near its ${LINE_CEIL}-line ceiling, so an unlinked new file is unreachable and fails --structure)."
+        if [ "$TOPIC_MODE" = deny ]; then
+            deny "topic-cap" "$tc_msg Bypass: MEMORY_CAPTURE_OK=1 in the launching shell."
+        fi
+        log_rec warn topic-cap 0
+        jq -nc --arg m "Memory topic-cap advisory (warn-only): $tc_msg" \
+          '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$m}}'
+        exit 0
+    fi
+} ;;
+esac
 
 # 5. Allow. Optional advisory — ONLY meaningful because the spike verified
 #    additionalContext reaches the model on this client, and it arrives
