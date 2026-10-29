@@ -17,7 +17,6 @@ HOOK="$(cd "$(dirname "$0")" && pwd)/block-edit-live-settings.sh"
 [ -x "$HOOK" ] || chmod +x "$HOOK"
 
 FAILED=0
-DGT=""
 
 assert_rc() {
     local label="$1" expected="$2" actual="$3"
@@ -25,8 +24,7 @@ assert_rc() {
         echo "PASS $label (rc=$actual)"
     else
         echo "FAIL $label — expected rc=$expected, got rc=$actual"
-        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+        FAILED=$((FAILED + 1))
     fi
 }
 
@@ -1301,15 +1299,12 @@ if command -v node >/dev/null 2>&1; then
         rc=$(bash_rc_of "$PRIMARY" "$2" HOME="$FAKEHOME")
         ms=$(( $(now_ms) - t0 ))
         echo "  $1 timing: ${#2} bytes, ${ms} ms"
-        DGT="$DGT$SECONDS:${1%% *}:${ms}
-"
         assert_rc "$1 denies" 2 "$rc"
         if [ "$ms" -lt "$TIMING_BUDGET_MS" ]; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
         else
             echo "FAIL $1 took ${ms} ms (budget ${TIMING_BUDGET_MS} ms)"
-            FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+            FAILED=$((FAILED + 1))
         fi
     }
     # Each shape at just under the tokenizer's 8 KiB cap (the tokenized path)
@@ -1357,8 +1352,7 @@ ${LONG_BODY}EOF"
         echo "PASS 7912a within ${LONG_BUDGET_MS} ms"
     else
         echo "FAIL 7912a took ${ms} ms (budget ${LONG_BUDGET_MS} ms)"
-        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+        FAILED=$((FAILED + 1))
     fi
     assert_rc "7912b long heredoc then a cp into the live settings.json denies" 2 \
         "$(bash_rc_of "$WT2" "$LONG_ALLOW"$'\n'"cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
@@ -1381,8 +1375,7 @@ ${LONG_BODY}EOF"
             "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
     else
         echo "FAIL 7912e could not create a distinct regular COO-Link"
-        FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+        FAILED=$((FAILED + 1))
     fi
 else
     echo "SKIP 7912a-e (node not installed)"
@@ -1589,8 +1582,7 @@ if [ "$LEX_OUT" = "/x/a/*" ]; then
     echo "PASS 217 lex_resolve leaves a glob-metacharacter segment untouched regardless of files in the hook process's real cwd (got $LEX_OUT)"
 else
     echo "FAIL 217 lex_resolve leaves a glob-metacharacter segment untouched regardless of files in the hook process's real cwd — expected /x/a/*, got $LEX_OUT"
-    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+    FAILED=$((FAILED + 1))
 fi
 
 # 217b: HIMMEL-4752 — _dc_split_words (the linear space split, HIMMEL-4678) has
@@ -1621,8 +1613,7 @@ if [ -s "$DCSW_BAD" ] && ! cmp -s "$DCSW_SRC" "$DCSW_BAD" && [ "$DCSW_GOT" = "$D
     echo "PASS 217b _dc_split_words splits every space and a broken split fails the control (got $DCSW_GOT; broken $DCSW_BROKE)"
 else
     echo "FAIL 217b _dc_split_words — want $DCSW_WANT, got $DCSW_GOT; broken variant gave $DCSW_BROKE"
-    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+    FAILED=$((FAILED + 1))
 fi
 
 # 218: HIMMEL-3686 CodeRabbit (round-6) — the TOK=0 fallback's own
@@ -1657,8 +1648,7 @@ if [ "$RC_TRAP_EMPTY" = "$RC_TRAP_MATCH" ] && [ "$RC_TRAP_EMPTY" = 0 ]; then
     echo "PASS 218 TOK=0 fallback's glob write operand gives the same, correct ALLOW verdict regardless of a same-named decoy in the hook process's real cwd (rc=$RC_TRAP_EMPTY both)"
 else
     echo "FAIL 218 TOK=0 fallback's glob write operand verdict depends on the hook process's real cwd contents, or is not ALLOW — got rc=$RC_TRAP_EMPTY with no decoy, rc=$RC_TRAP_MATCH with a same-named decoy present (expected 0 both)"
-    FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+    FAILED=$((FAILED + 1))
 fi
 
 # 219-238 (HIMMEL-3700, J1329O I1-I4): four pre-existing ways a live
@@ -2142,20 +2132,12 @@ assert_rc "395 nested worktree ln -sf \$SJ ~/.cl{a,}ude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl{a,}ude" HOME="$FAKEHOME")"
 assert_rc "396 nested worktree ln -sf \$SJ \$HOME/.cla{ude,x}/ denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ \$HOME/.cla{ude,x}/" HOME="$FAKEHOME")"
-# DIAG-7120 begin (temporary)
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    jq -n --arg cmd "ln -sf $SJ ~/{x,{.claude,y}}/" --arg cwd "$NESTED_WT" \
-        '{tool_name: "Bash", tool_input: {command: $cmd, cwd: $cwd}}' > "$SANDBOX/d397.json"
-    echo "D397 bash=$BASH_VERSION plain=$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/{x,{.claude,y}}/" HOME="$FAKEHOME")"
-    env HOME="$FAKEHOME" PS4='+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-} ' bash -x "$HOOK" < "$SANDBOX/d397.json" > "$SANDBOX/d397.out" 2> "$SANDBOX/d397.err"
-    echo "D397 traced=$?"
-    cut -c1-200 "$SANDBOX/d397.out" | head -3
-    grep -n 'brace_dir_dest\|has_unquoted_brace\|has_brace_climb\|nested_wt\|deny' "$SANDBOX/d397.err" | cut -c1-170 | tail -40
-    exit 1
-fi
-# DIAG-7120 end
+# bash 3.2 brace-expands a nested group written inside the quoted payload of a
+# "$(…)" argument, running the hook once per word, so the payload is held in a
+# variable (an assignment never brace-expands) and passed quoted.
+NESTED_BRACE="ln -sf $SJ ~/{x,{.claude,y}}/"
 assert_rc "397 nested worktree ln -sf \$SJ ~/{x,{.claude,y}}/ (nested brace) denies" 2 \
-    "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/{x,{.claude,y}}/" HOME="$FAKEHOME")"
+    "$(bash_rc_of "$NESTED_WT" "$NESTED_BRACE" HOME="$FAKEHOME")"
 assert_rc "398 nested worktree ln -sf \$SJ ~/.cl\$X denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl\$X" HOME="$FAKEHOME")"
 assert_rc "399 nested worktree cp -t ~/.c[[:alpha:]]aude \$SJ denies" 2 \
@@ -3393,8 +3375,7 @@ cap_rc() { # cap_rc LABEL CMD — wants rc 2 and the cap's reason on stderr
     assert_rc "$1" 2 "$rc"
     case "$err" in
         *'more than 16 nested command bodies'*) echo "PASS $1 names the cap (rc=0)" ;;
-        *) echo "FAIL $1 names the cap — expected rc=0, got rc=1"; FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-" ;;
+        *) echo "FAIL $1 names the cap — expected rc=0, got rc=1"; FAILED=$((FAILED + 1)) ;;
     esac
 }
 cap_rc "960 forty eval segments deny at the body cap" "$(rep 39 'eval echo hi; ')eval echo hi"
@@ -3498,15 +3479,12 @@ if command -v node >/dev/null 2>&1; then
         rc=$(bash_rc_of "$PRIMARY" "$3" HOME="$FAKEHOME")
         ms=$(( $(now_ms) - t0 ))
         echo "  $1 timing: ${#3} bytes, ${ms} ms"
-        DGT="$DGT$SECONDS:${1%% *}:${ms}
-"
         assert_rc "$1 rc" "$2" "$rc"
         if [ "$ms" -lt "$TIMING_BUDGET_MS" ]; then
             echo "PASS $1 within ${TIMING_BUDGET_MS} ms"
         else
             echo "FAIL $1 took ${ms} ms (budget ${TIMING_BUDGET_MS} ms)"
-            FAILED=$((FAILED + 1)); DGT="$DGT#FAIL@${LINENO}:${1:0:70}
-"
+            FAILED=$((FAILED + 1))
         fi
     }
     # 680 stops at 3000 words: 6000 of them (162 KB) pass the kernel's
@@ -3761,8 +3739,6 @@ git -C "$SANDBOX/primary" worktree remove --force "$HOMEWT" 2>/dev/null || true
 git -C "$SANDBOX/primary" worktree remove --force "$WTDIRECT" 2>/dev/null || true
 rm -rf "$SANDBOX" 2>/dev/null || true
 
-printf "DIAGT bash=%s total=%ss\n%b" "$BASH_VERSION" "$SECONDS" "$DGT" | tr "\n" " " | fold -w 200
-echo
 if [ "$FAILED" -gt 0 ]; then
     echo "---"
     echo "FAIL $FAILED case(s)"
