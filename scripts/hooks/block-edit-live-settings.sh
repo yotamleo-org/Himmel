@@ -226,8 +226,8 @@ st_tokenize() {
                             fi
                         done
                         [ "$j" -lt "$n" ] || return 1
-                        # The shell runs the decoded word (`$'\x2dr'` is -r,
-                        # HIMMEL-4576). ${…@E} is bash 4.4+; an older bash
+                        # The shell runs the decoded word (`$'\x2dr'` is -r).
+                        # ${…@E} is bash 4.4+; an older bash
                         # keeps the raw body, as before (declining here would
                         # switch guard_unwrap off for the whole command, J1946
                         # B1). The eval'd text is constant, never input.
@@ -937,8 +937,8 @@ interp_write_api() {
 # and passes 'w' to another call; ri + rh bound that, fail-closed.
 # ponytail: a body the text does not hold (`base64 -d | python3`, `python3
 # x.py`, `-c "$(cat f)"`) is not seen, it names no API; a shell `$HOME` spliced
-# into the body is the variable-built path the header ponytail already names
-# (HIMMEL-4220). Upgrade path: HIMMEL-4317.
+# into the body is the variable-built path the header ponytail already names.
+# ponytail: upgrade path HIMMEL-4317.
 interp_home_write() {
     local LC_ALL=C
     # shellcheck disable=SC2016 # literal `$` text in the home-API pattern
@@ -988,8 +988,8 @@ interp_dyn_api() {
 # (`os.environ['HOME']`) or holds `$`, `@` or `{` (interpolation) is kept.
 # ponytail: a body that writes a literal as code to a file and runs it in the
 # same command (`import x` of a just-written x.py) reads as data — the same
-# ceiling as `python3 x.py` (interp_home_write's ponytail); upgrade path:
-# HIMMEL-4317.
+# ceiling as `python3 x.py` (interp_home_write's ponytail).
+# ponytail: upgrade path HIMMEL-4317.
 interp_literal_blank() {
     local LC_ALL=C k=0 w b out=''
     local rint='^(python[0-9.]*|pypy[0-9.]*|node|nodejs|bun|deno|perl[0-9.]*|ruby[0-9.]*)$'
@@ -1138,7 +1138,7 @@ python_heredoc_readonly() {
 # ponytail: a bare `;` vetoes the whole command unconditionally, even when
 # every `;`-separated segment is independently read-only (e.g.
 # `SP=/some/path; jq '...' "$SP/a.json"; jq '...' "$SP/b.json"` denies).
-# HIMMEL-3465/3517 panel rounds 2 and 3 both found a real bypass in a
+# Panel rounds 2 and 3 both found a real bypass in a
 # narrower per-segment allowlist (a same-line assignment shortcut riding
 # past a later write on a newline-embedded segment; the same shortcut then
 # recurring for a different segment shape one round later) — rising-severity
@@ -1146,7 +1146,7 @@ python_heredoc_readonly() {
 # HALT-and-simplify signal fired and the per-segment split was reverted back
 # to this blunt veto rather than patched a third time. A real fix needs
 # quote-aware tokenization of the whole command, not another metacharacter
-# scan. Upgrade path: HIMMEL-3546 did that for Bash (_tok_readonly_ok);
+# scan. The Bash side does that (_tok_readonly_ok);
 # PowerShell would need its own tokenizer, if a false deny there recurs.
 is_readonly_allowlisted() {
     local c="$1" first second
@@ -1432,7 +1432,7 @@ _unjudged_cmd_word() {
 # _wrapper_opt_arg WRAPPER OPT_LC — 0 when the exec wrapper's option takes the
 # next word as its argument. OPT_LC is lowercased, so `-U`/`-u` share a row.
 # ponytail: lowercasing reads `sudo -Hu root` as `-h u`, so `root` is judged
-# as the command; HIMMEL-4175 judges both case readings (a case-exact table
+# as the command; the code judges both case readings (a case-exact table
 # alone turns `sudo -H root /opt/t/plant` from deny to allow).
 _wrapper_opt_arg() {
     local o=$2 i=1 ch
@@ -2542,13 +2542,15 @@ _dc_split_words() {
 # `cp src/* d/` is left alone.
 # ponytail: a name built only from a variable or substitution (`~/$X`,
 # `~/$(printf .claude)`) is not folded, it can name anything; a fold-time
-# reading would deny every `$(pwd)/x`. Upgrade path: HIMMEL-4220.
+# reading would deny every `$(pwd)/x`.
+# ponytail: upgrade path HIMMEL-4220.
 # ponytail: DC_DOTS reads only the command text, so a dotglob/GLOB_DOTS left
-# on by the shell profile is unseen and `~/*/x` passes. Upgrade path: HIMMEL-4222.
+# on by the shell profile is unseen and `~/*/x` passes.
+# ponytail: upgrade path HIMMEL-4222.
 #
 # A long TEXT is folded in chunks cut at a space no component can cross: bash
 # copies the whole remaining text on every name, so one pass over 6000 `$"`
-# words was quadratic (HIMMEL-4298). A component crosses a space only inside
+# words was quadratic. A component crosses a space only inside
 # a `$(…)`, `${…}` or backtick span, so a cut waits while a `(` or `{` is
 # open and never falls between the text's first and last backtick (which
 # backticks pair depends on where a match starts). _DCO is the folded text
@@ -3233,8 +3235,9 @@ has_brace_climb_word() {
 # still brace-expands an unquoted `{...}` segment even when another part of
 # the SAME word is quoted, so that per-word flag cannot safely exempt this
 # check. Accepted false-deny, same fail-closed direction as this file's other
-# documented residuals. Upgrade path: HIMMEL-3696 (per-character quote
-# tracking in the tokenizer).
+# documented residuals. Upgrade path: per-character quote
+# tracking in the tokenizer.
+# ponytail: upgrade path HIMMEL-3696.
 
 # changes_directory CMD_LC CMD_N — a cd/pushd/popd word anywhere in the
 # command, with the same complement-of-a-word-character boundary as the verb
@@ -3255,21 +3258,21 @@ has_brace_climb_word() {
 # ponytail: a relative `find … -exec` naming `.claude` as its target is still
 # not matched by either mechanism — the remaining documented residual.
 # (A settings-named GLOB leaf behind a cd/pushd is resolved against the cd
-# bases — _cd_bases, HIMMEL-4394; the symlink residual below is unchanged.)
+# bases — _cd_bases; the symlink residual below is unchanged.)
 # ponytail: a cd/pushd/popd/-C matched here relocates the real target
 # directory, but neither _check_write_operand()'s `wabs` nor check_target()'s
 # own relative-join (both use the fixed PreToolUse $cwd) adjust for it — so
 # `cd sub && cp y link`, where `sub/link` is a pre-existing symlink into the
 # primary's live settings.json, resolves `link` against the wrong base and
-# silently evades items 1 and 3 (HIMMEL-3686 round-4 codex-2). Deferred
+# silently evades items 1 and 3. Deferred
 # rather than blunt-denied: the write-verb operand scan already inspects
 # every word including the verb itself (round-2 codex-1's accepted ruling),
 # so a blind "deny any relative operand when this function matches" would
 # deny virtually any write-verb command containing a cd from a nested
 # worktree, unrelated to .claude — a materially bigger blast radius than
-# this function's existing HIMMEL-3468 role, where it only ever fires as an
+# this function's existing role, where it only ever fires as an
 # additional forcing factor on a command ALREADY flagged by another signal.
-# Upgrade path: HIMMEL-3694 (track the real post-cd cwd per command segment
+# ponytail: upgrade path HIMMEL-3694 (track the real post-cd cwd per command segment
 # via the tokenizer's own ST_S/ST_SEP arrays, falling back to deny only when
 # a cd target isn't a simple literal).
 changes_directory() {
@@ -3461,7 +3464,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # ponytail: a `-C <dir>`/`--chdir` (git, make, env) does not move the
     # shell's own redirect, so it is not a base; changes_directory still voids
     # the worktree exemption for it. A CDPATH name spelled through an
-    # expansion (`declare CD${x}PATH=`) is not seen. Upgrade path: HIMMEL-3694.
+    # expansion (`declare CD${x}PATH=`) is not seen.
+    # ponytail: upgrade path HIMMEL-3694.
     CD_B=() CD_UNK=${HIMMEL_LSB_CDUNK:-0} CD_DONE=0
     if [ -n "${HIMMEL_LSB_CDB:-}" ]; then
         while IFS= read -r w; do
@@ -3585,7 +3589,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # `watch '…'` bodies stay one word, and an `eval` behind a construct
         # the command-word walk below does not know (an unlisted wrapper) is
         # not a body — a `case` arm's `;;` fails the tokenizer, so its body is
-        # judged by the TOK=0 split instead (HIMMEL-4394). Upgrade path: add
+        # judged by the TOK=0 split instead. Upgrade path: add
         # the name when a bypass report names one.
         # The scan stays linear (J1818a): `eval` is a body only as a segment's
         # command word (after assignments, `if`/`then`/`do`/`!`/`{` and exec
@@ -3594,7 +3598,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # is one word, so it is matched anywhere (`find -exec sh -c`, `xargs
         # bash -c`). Nesting is capped: a body found HIMMEL_LSB_DEPTH (the
         # child count above this run) 3 levels down is refused fail-closed.
-        # HIMMEL-4393: the NUMBER of runs is capped too, across all levels:
+        # The NUMBER of runs is capped too, across all levels:
         # a command with hundreds of bodies spawned hundreds of runs that
         # outlived the hook chain's timeout. The top-level run makes one
         # tally file, every run below inherits it (HIMMEL_LSB_TALLY), and
@@ -3659,8 +3663,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # quote — so the caller stays fail-closed.
             # ponytail: a text decoder cannot close the shell/option-parsing
             # class (env option spellings, operands spliced after the text,
-            # separator-led words), each judge round finds another; upgrade
-            # path: HIMMEL-5233, then HIMMEL-5236 (deny live-settings writes
+            # separator-led words), each judge round finds another;
+            # ponytail: upgrade path HIMMEL-5233, then HIMMEL-5236 (deny live-settings writes
             # by effect, path or inode, not by command text).
             # shellcheck disable=SC1003,SC2016 # literal \ $ and ' bytes
             _envs_decode() {
@@ -3975,7 +3979,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # so padding cannot skip it.
     # ponytail: a heredoc body is read as code, and a `"…"` around a `$(…)`
     # with its own quotes is mis-paired, so the heredoc case is left to the
-    # text layer as on main. Upgrade path: HIMMEL-4229.
+    # text layer as on main.
+    # ponytail: upgrade path HIMMEL-4229.
     if [ "$tool_name" = Bash ] && [ "$dc_zq" = 1 ] \
         && [ "$ST_HEREDOC" = 0 ] && [ "$ST_ANSIC" = 0 ]; then
         _dc_unquoted "$ST_LOWER"
@@ -4173,7 +4178,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # leaf filter exists to keep the padded-command case cheap, per
             # the comment above) — an arbitrary new file, just not
             # settings.json, can still land in the live .claude/ this way.
-            # Upgrade path: HIMMEL-3697 (a cheaper parent-existence check that
+            # ponytail: upgrade path HIMMEL-3697 (a cheaper parent-existence check that
             # does not require narrowing to a settings-only leaf name).
             *) return ;;
         esac
@@ -4289,7 +4294,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # ponytail: a glob in another DIRECTORY component, a source
     # tree with the settings file deeper than `<src>/.claude/`, and a case-
     # insensitive `DLINK/` spelling (needs a case-insensitive filesystem to
-    # model) are not judged; upgrade path: a path-expanding parse (HIMMEL-3934).
+    # model) are not judged.
+    # ponytail: upgrade path HIMMEL-3934, a path-expanding parse.
     variant_dest=0
     # _cv_op P — _check_one_operand P, and P with its `..` resolved
     # lexically too (J1909 B2): `~/.config/../.claude/sett*.json` names the

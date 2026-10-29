@@ -301,7 +301,7 @@ resolve_diff_base() {
         # that no refs/remotes/<name>/$db can ever exist to require.
         # ponytail: a NAMED remote whose name happens to equal its own URL
         # (unusual, but legal) is indistinguishable at this boundary from an
-        # anonymous URL push and takes this branch too (HIMMEL-3634 M3) — git
+        # anonymous URL push and takes this branch too — git
         # itself gives the hook no way to tell the two apart (same argv
         # convention for both), so there is no smaller fix than accepting the
         # ambiguity; harmless here since either branch still resolves a real,
@@ -466,8 +466,8 @@ resolve_diff_base() {
 #     push url -> fork: same). The one shape it cannot catch is a genuine
 #     fork-workflow clone where url AND pushurl both name the same fork —
 #     there both fetches resolve to the identical repository and agree, and
-#     there is no independent local datum left to check against (ponytail:
-#     HIMMEL-3634 residual, HIMMEL-3654).
+#     there is no independent local datum left to check against.
+# ponytail: HIMMEL-3634 residual, HIMMEL-3654.
 #   - Pushing to any OTHER remote — a named non-origin remote, or an
 #     explicit-URL push (resolve_diff_base's explicit-URL branch, e.g. pushing
 #     to your own fork whose default branch already has the tip) — the empty

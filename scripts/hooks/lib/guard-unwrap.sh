@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # guard-unwrap.sh — re-scan the forms a must-run guard's text matcher cannot
-# see (HIMMEL-4438). Sourced by block-read-secrets, block-git-stash,
+# see. Sourced by block-read-secrets, block-git-stash,
 # block-destructive-commands, block-tail-pipe-on-gates and require-quiet-run.
 #
 # Each of those hooks matches the command TEXT. The shell runs a different
@@ -34,7 +34,7 @@
 # Exports to the caller after guard_unwrap returns 0:
 #   GU_CWD_UNKNOWN  1 when this command (cd, pushd, popd, env -C, sudo -D) or
 #                   an enclosing one moved the cwd, so a glob in it does not
-#                   expand against the hook's cwd (HIMMEL-4502)
+#                   expand against the hook's cwd
 #   GU_TOKENIZED       1 when the tokenizer read the command (ST_* hold it)
 #   GU_SW[s]        the non-redirect word indices of segment s, space-joined
 #   GU_CORE[s]      the position in GU_SW[s] of segment s's command word,
@@ -191,7 +191,7 @@ _gu_core() {
 # _gu_shell_bodies S — queue the `-c` body of every shell word in segment S,
 # at any position (`find -exec sh -c`, `xargs bash -c`). In a short option
 # bundle, each o/O takes the next word as its value before the body
-# (HIMMEL-4506: `bash -co pipefail 'cmd'`).
+# (`bash -co pipefail 'cmd'`).
 _gu_shell_bodies() {
     local s=$1 n j q w b found nval l
     local -a idx
@@ -199,7 +199,7 @@ _gu_shell_bodies() {
     n=${#idx[@]}
     # A segment whose command word is a builtin that never executes its
     # arguments (`echo bash -c 'git stash'`) holds shell words as data
-    # (HIMMEL-4543). Skipped only when GU_FUNC=0: a top-level call whose whole
+    # Skipped only when GU_FUNC=0: a top-level call whose whole
     # text is one plain segment (see guard_unwrap), with a literal allowlisted
     # command word at position 0. Past a wrapper, a value the option tables
     # missed (`sudo -R echo bash -c …`) can masquerade as the core word.
@@ -310,7 +310,7 @@ guard_unwrap() {
     [ "$depth" -gt 0 ] || xkept=0
     # A render that already dropped a wrapper no longer shows what the
     # wrapper's options took, so its child never trusts the data-position
-    # skip (HIMMEL-4543). Only ever makes the guard stricter.
+    # skip. Only ever makes the guard stricter.
     noskip=${GUARD_UNWRAP_NOSKIP:-0}
     unset GUARD_UNWRAP_NOSKIP
 
@@ -331,7 +331,7 @@ guard_unwrap() {
     fi
     # shellcheck disable=SC2034 # read by the sourcing hook
     GU_TOKENIZED=1
-    # The data-position skip (HIMMEL-4543) is an exact-shape allowlist, not a
+    # The data-position skip is an exact-shape allowlist, not a
     # kill list: a function, alias or builtin toggle can shadow the name in
     # ways no word scan sees. It holds only for a top-level call whose whole
     # text is one plain command, with no expansion, separator or redirect.
@@ -400,7 +400,7 @@ guard_unwrap() {
             done
             # A stripped xargs runs its command on targets read from stdin,
             # so `rm` alone is not what runs: the second render keeps the
-            # xargs word on (HIMMEL-4577).
+            # xargs word on.
             k=${GU_XA[s]:-$first}
             while [ "$k" -lt "$first" ]; do
                 _gu_render_word "${idx[k]}"
@@ -457,7 +457,7 @@ guard_unwrap() {
     # The xargs-kept child exists only to give the hook the `xargs` word; the
     # stripped render it would re-derive is its parent's other child, already
     # scanned. Unwrapping it again costs a depth unit per nested xargs and
-    # doubles the renders (HIMMEL-4623).
+    # doubles the renders.
     [ "$xkept" != 1 ] || children=()
 
     cwd_env=''

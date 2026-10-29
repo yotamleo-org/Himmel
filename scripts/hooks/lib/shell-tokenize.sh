@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shell-tokenize.sh — the quote-aware, segment-wise shell tokenizer shared by
-# block-edit-live-settings.sh and guard-pr-check-literal.sh (HIMMEL-3546).
+# block-edit-live-settings.sh and guard-pr-check-literal.sh.
 #
 # NOT SOURCED AT RUNTIME. hook-integrity pins each launched scripts/hooks/*.sh
 # file, never a file a hook sources, so a sourced lib would be an unpinned
@@ -118,8 +118,8 @@ st_tokenize() {
                             fi
                         done
                         [ "$j" -lt "$n" ] || return 1
-                        # The shell runs the decoded word (`$'\x2dr'` is -r,
-                        # HIMMEL-4576). ${…@E} is bash 4.4+; an older bash
+                        # The shell runs the decoded word (`$'\x2dr'` is -r).
+                        # ${…@E} is bash 4.4+; an older bash
                         # keeps the raw body, as before (declining here would
                         # switch guard_unwrap off for the whole command, J1946
                         # B1). The eval'd text is constant, never input.
@@ -403,7 +403,7 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 }
 # <<< END shell-tokenize <<<
 
-# --- st_expand: a parameter-expansion model (HIMMEL-5362) --------------------
+# --- st_expand: a parameter-expansion model --------------------
 # Kept OUTSIDE the BEGIN/END block on purpose: neither inlining hook calls it,
 # so their copies stay byte-identical and their behaviour cannot move. Its one
 # caller, block-tail-pipe-on-gates.sh, reaches it through guard-unwrap.sh,

@@ -31,7 +31,7 @@ As your FINAL action, append a one-line progress note to <context> (so the next 
 - **Anything else** (e.g. `__chat__`):
   `Answer the operator's message(s) conversationally.`
 
-## Group sessions are untrusted (HIMMEL-1359)
+## Group sessions are untrusted
 
 A session id matching `^group_-?\d+$` (a group chat) mixes the messages of EVERY
 member of an allow-listed group, so `buildPrompt` does not frame them as operator
@@ -50,7 +50,7 @@ conversationally only, so a missing marker fails safe.
 Tradeoff: the operator's own messages in a group get the same constrained run —
 send action requests from the DM.
 
-## Attachment → vault routing (`<vault-clause>`, HIMMEL-321 / HIMMEL-578)
+## Attachment → vault routing (`<vault-clause>`)
 
 When a document (e.g. a PDF) **or an image** is sent to a chat that has a vault
 configured, `buildPrompt` appends a clause telling the run to FILE the
@@ -60,7 +60,7 @@ vault's `_CLAUDE.md` conventions — using the vault's own filing skill (e.g. a
 confirm in its reply. (Pre-HIMMEL-578 only documents filed; images were read but
 never filed.)
 
-## Per-chat session cwd (HIMMEL-578)
+## Per-chat session cwd
 
 A chat with a configured vault SPAWNS its session with `cwd = <vault>` (not the
 himmel repo), so the vault's own `.claude/hooks` load — e.g. a medical vault's
@@ -101,7 +101,7 @@ a PDF sent to any other chat (other allowlisted groups, or a DM) falls back to
 `defaultVault` — which covers every chat without its own.
 The poller reads `access.json` ONCE at startup — restart the bridge after edits.
 
-## Jira sanction (HIMMEL-424 followup)
+## Jira sanction
 
 The bridge session runs in auto-mode, where the harness classifier VETOES Jira ticket
 writes when the session's stated workflow omits Jira — so without this clause the bridge

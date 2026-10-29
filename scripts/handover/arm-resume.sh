@@ -2132,7 +2132,7 @@ fi
 # `case` (rc 0 on every branch), so it never aborts under `set -euo pipefail`.
 _validate_key() {
     local k
-    k=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')   # himmel-540 -> HIMMEL-540
+    k=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')   # himmel-<n> -> HIMMEL-<n>
     # Fully-anchored canonical shape <KEY>-<NUM> with nothing trailing, so a
     # malformed value (e.g. ABC-123-456 or trailing junk) is rejected rather than
     # truncated-and-accepted. `grep -qE` inside `if` is errexit-safe; the `if` is
