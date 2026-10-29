@@ -50,16 +50,18 @@ def rows(registry):
             elif c[5] == "X" and c[2] == "identifier" and c[0].endswith(SCRIPT_EXT):
                 scripts.append((c[0], c[1]))
     live = live_names(os.path.join(HERE, "..", ".."))
-    paths += [r for r in scripts if r[0] not in live]
+    paths += [(old, new, True) for old, new in scripts if old not in live]
     paths.sort(key=lambda p: len(p[0]), reverse=True)
     return paths, envs
 
 
 def rename_paths(s, paths):
     n = 0
-    for old, new in paths:
-        rx = re.compile(r"(?<![A-Za-z0-9_.-])" + re.escape(old) + r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9_])")
-        s, c = rx.subn(new, s)
+    for old, new, *anchored in paths:
+        # A bare script name is renamed only inside a scripts/ path, never after any other slash.
+        head = r"(?<![A-Za-z0-9_.-])(scripts/(?:[A-Za-z0-9_.-]+/)*)" if anchored else r"(?<![A-Za-z0-9_.-])()"
+        rx = re.compile(head + re.escape(old) + r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9_])")
+        s, c = rx.subn(lambda m, new=new: m.group(1) + new, s)
         n += c
     return s, n
 

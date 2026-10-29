@@ -1181,11 +1181,14 @@ mk HIMMEL-9606 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror an
 mk HIMMEL-9607 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9606"]' "blocked by a ticket Done everywhere" "Edit scripts/lib/lb-9607.sh."
 mk HIMMEL-9608 "In Progress" High '[]' '["v1.0.1"]' '[]' "blocker open in the mirror, Done live" "Edit scripts/lib/lb-9608.sh."
 mk HIMMEL-9609 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9608"]' "blocked by a ticket the mirror lags" "Edit scripts/lib/lb-9609.sh."
+mk HIMMEL-9611 "Done" High '[]' '["v1.0.1"]' '[]' "blocker Done in the mirror, open live, read only for a RESUME row" "Edit scripts/lib/lb-9611.sh."
+mk HIMMEL-9612 "In Progress" High '[]' '["v1.0.1"]' '["HIMMEL-9611"]' "an orphan whose mirror-Done blocker is reopened live" "Edit scripts/lib/lb-9612.sh."
+mk HIMMEL-9613 "In Progress" High '[]' '["v1.0.1"]' '["HIMMEL-9606"]' "an orphan whose blocker is Done everywhere" "Edit scripts/lib/lb-9613.sh."
 cat > "$WORK/jira-lb" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = get ] || exit 2
 case "$2" in
-    HIMMEL-9601) st="In Progress" ;;
+    HIMMEL-9601|HIMMEL-9611) st="In Progress" ;;
     HIMMEL-9603|HIMMEL-9699) exit 1 ;;
     *) st="Done" ;;
 esac
@@ -1201,7 +1204,10 @@ has "live blockers: a blocker missing from the mirror and unreadable live is blo
 lacks "live blockers: an unreadable blocker is never listed" "$lb_out" "LOCAL?	HIMMEL-9604"
 has "live blockers: a blocker Done in the mirror and live is cleared" "$lb_out" "LOCAL?	HIMMEL-9607"
 has "live blockers: a blocker open in the mirror but Done live is cleared" "$lb_out" "LOCAL?	HIMMEL-9609"
+lacks "live blockers: a RESUME row whose mirror-Done blocker is reopened live is not listed" "$lb_out" "RESUME	HIMMEL-9612"
+has "live blockers: a RESUME row whose blocker is Done everywhere is listed" "$lb_out" "RESUME	HIMMEL-9613"
 has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min=90"
+has "live blockers: the header counts the live reads of the run" "$lb_out" "# source live_reads=6"
 case "$lb_out" in "# source mirror_age_min=90"*) pass "live blockers: the age header is the first line, ahead of every warning" ;; *) fail "live blockers: the age header is not first (got: ${lb_out%%$'\n'*})" ;; esac
 # a mirror directory that does not exist is an error, never an empty pool
 nomirror_out="$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; nomirror_rc=$?

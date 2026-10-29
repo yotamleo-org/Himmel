@@ -115,6 +115,17 @@ else
     assert_fail "renamed-names: --apply left the allow list unrenamed or still pending (check rc $check_rc)"
 fi
 
+# A retired script name matches only as a scripts/ path: another project's script sharing the bare name is left alone.
+other_settings="$TMP/settings-other-project.json"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)"]}}' > "$other_settings" # old-term-ok
+other_before="$(cat "$other_settings")"
+python3 -I "$migrator" --apply "$other_settings" > /dev/null 2>&1
+if [ "$(cat "$other_settings")" = "$other_before" ] && [ ! -e "$other_settings.bak-renamed-names" ]; then
+    assert_pass 'renamed-names: --apply leaves another project script sharing a retired bare name unchanged'
+else
+    assert_fail "renamed-names: --apply rewrote another project's script ($(cat "$other_settings"))"
+fi
+
 # The printed commands must actually target these installs, even with spaces.
 if [ "$fail" -eq 0 ]; then
     while IFS= read -r line; do
