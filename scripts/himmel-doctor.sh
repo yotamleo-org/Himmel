@@ -4852,7 +4852,7 @@ $(_c81_rows "plugin:$name" "$f")"
 # plugin table when Claude Code exposes one.
 check_c82_mcp_sources() {
     command -v jq >/dev/null 2>&1 || { emit INFO C82-mcp-sources "jq not on PATH -- MCP source listing skipped"; return 0; }
-    local rows="" key name mkt f n
+    local rows="" enabled="" key name mkt f n
     _c82_keys() { # <label> <json file> <jq path to the server object>
         local out
         [ -r "$2" ] || return 0
@@ -4863,10 +4863,13 @@ check_c82_mcp_sources() {
     rows="$(_c82_keys "user config" "${HOME:-}/.claude.json" .mcpServers)
 $(_c82_keys "project .mcp.json" "$REPO_ROOT/.mcp.json" .mcpServers)"
     if [ -r "$SETTINGS" ]; then
-        for key in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' "$SETTINGS" 2>/dev/null); do
+        enabled="$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' "$SETTINGS" 2>/dev/null)" \
+            || rows="$rows
+unreadable JSON [settings enabledPlugins]"
+        for key in $enabled; do
             name="${key%%@*}"; mkt="${key#*@}"
             f="$(printf '%s\n' "$CLAUDE_DIR_R"/plugins/cache/"$mkt"/"$name"/*/.mcp.json | sort -V | tail -n 1)"
-            [ -f "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"
+            [ -f "$f" ] || { [ "$mkt" = himmel ] && f="$REPO_ROOT/marketplace/plugins/$name/.mcp.json"; }
             rows="$rows
 $(_c82_keys "plugin $name" "$f" '(.mcpServers // .)')"
         done
