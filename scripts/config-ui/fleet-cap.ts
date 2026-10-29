@@ -34,10 +34,12 @@ export function readCap(envFile: string, env: Env): CapResult {
     if (code !== "ENOENT" && code !== "EISDIR") return failed; // to load_policy's [ -f ] only a missing file or a directory is absent
   }
   if (raw !== null) {
-    let v: unknown;
-    try { v = (JSON.parse(raw)?.policy ?? {})[KEY]; } catch { return failed; }
+    let policy;
+    try { policy = JSON.parse(raw)?.policy ?? {}; } catch { return failed; }
+    if (typeof policy !== "object" || Array.isArray(policy)) return failed; // load_policy refuses a non-object .policy
+    const v: unknown = policy[KEY];
     if (typeof v === "object" && v !== null) return failed; // load_policy reads strings, numbers and booleans only
-    const fromConfig = asCap(v);
+    const fromConfig = v === "" ? DEFAULT_CAP : asCap(v); // an empty policy value is present, not a legacy .env fallback
     if (fromConfig !== null) return { status: 200, body: { ...body, cap: fromConfig, source: "config.json" } };
   }
   let fromFile: number | null = null;
