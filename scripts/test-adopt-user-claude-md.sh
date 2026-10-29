@@ -324,6 +324,21 @@ else
 fi
 rm -rf "$home11"
 
+# ── Case 12: prose that merely quotes the marker text inside a line is not a
+#             marker line -- the refresh must not overwrite it ──
+echo "== Case 12: quoted marker text in prose is not a block =="
+home12="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home12/.claude"
+target12="$home12/.claude/CLAUDE.md"
+orig12="$home12/orig.txt"
+printf "Notes: wrap it as '<!-- BEGIN %s -->' ... '<!-- END %s -->'.\nkeep this operator line\n" "$MARKER" "$MARKER" > "$orig12"
+cp "$orig12" "$target12"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target12" >/dev/null 2>&1
+prefix12="$home12/prefix.txt"
+head -c "$(wc -c < "$orig12" | tr -d '[:space:]')" "$target12" > "$prefix12"
+if cmp -s "$orig12" "$prefix12"; then pass "quoting prose kept byte-identical"; else fail "prose quoting the markers was overwritten"; fi
+rm -rf "$home12"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"

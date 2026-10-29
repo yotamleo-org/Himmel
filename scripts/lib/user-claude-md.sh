@@ -96,12 +96,13 @@ wire_user_claude_md() {
   esac
 
   if [ -f "$target" ]; then
-    # Exact BEGIN line, not the bare marker substring — prose that merely
-    # mentions HIMMEL:working-principles must not suppress the install.
+    # A marker is a WHOLE line (trailing blanks aside), not a substring — prose
+    # that merely quotes <!-- BEGIN HIMMEL:working-principles --> must neither
+    # suppress the install nor have its surrounding text overwritten.
     local begin_ln end_ln current
-    begin_ln="$(awk -v m="<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" 'index($0,m){print NR; exit}' "$target")"
+    begin_ln="$(awk -v m="<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" '{l=$0; sub(/[ \t\r]+$/,"",l)} l==m{print NR; exit}' "$target")"
     if [ -n "$begin_ln" ]; then
-      end_ln="$(awk -v b="$begin_ln" -v m="<!-- END ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" 'NR>=b && index($0,m){print NR; exit}' "$target")"
+      end_ln="$(awk -v b="$begin_ln" -v m="<!-- END ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" '{l=$0; sub(/[ \t\r]+$/,"",l)} NR>=b && l==m{print NR; exit}' "$target")"
       if [ -z "$end_ln" ]; then
         echo "  user CLAUDE.md: BEGIN marker with no END marker — leaving $target unchanged" >&2
         return 0
@@ -117,8 +118,11 @@ wire_user_claude_md() {
       fi
       local tmp
       tmp="$(mktemp "${TMPDIR:-/tmp}/ucm.XXXXXX")" || return 1
-      { head -n "$((begin_ln - 1))" "$target"; printf '%s\n' "$payload"; tail -n "+$((end_ln + 1))" "$target"; } > "$tmp"
-      if ! cat "$tmp" > "$target"; then rm -f "$tmp"; return 1; fi
+      # Every piece must have been written before the target is touched.
+      if ! { head -n "$((begin_ln - 1))" "$target" && printf '%s\n' "$payload" && tail -n "+$((end_ln + 1))" "$target"; } > "$tmp" \
+         || ! cat "$tmp" > "$target"; then
+        rm -f "$tmp"; return 1
+      fi
       rm -f "$tmp"
       _ucm_record_block "$target" "$payload" false replace "$current"
       echo "  user CLAUDE.md: refreshed working-principles block in place → $target"
