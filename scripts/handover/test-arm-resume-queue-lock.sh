@@ -27,7 +27,7 @@ QL="$SCRIPT_DIR/queue-lock.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, this
 # suite's real-arm cases (T10/T11/T12/T15/T7c) call the REAL fleet count
 # against THIS machine's own ambient process table and can spuriously
@@ -38,7 +38,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# bank-preflight.sh now RESERVES a fleet slot per declared launch
+# usage-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes — so the FLEET_PS_CMD stub
 # above no longer zeroes the fleet count by itself: this suite's several real

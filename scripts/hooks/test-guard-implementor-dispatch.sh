@@ -50,7 +50,7 @@ cp "$REPO_ROOT/scripts/lanes/profile-managed.cjs" "$FAKE_REPO_NO_CLAUDEX/scripts
 : > "$FAKE_REPO_NO_CLAUDEX/scripts/telegram/spawn-glm.ts"
 
 # Funded-bank fixtures. A fake project root carrying BOTH dispatchers
-# (so claudex AND glm pass lane_runnable) but NO bank-status.ts — proves the
+# (so claudex AND glm pass lane_runnable) but NO usage-status.ts — proves the
 # default-path helper-missing branch reports UNKNOWN and skips the lane rather
 # than routing toward unmeasured capacity.
 FAKE_REPO_NO_BANK="$TMP/fake-repo-no-bank"

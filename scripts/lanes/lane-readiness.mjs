@@ -2,7 +2,7 @@
 // Lane READINESS probe, the third worker of the guard's lane
 // qualification (scripts/hooks/guard-implementor-dispatch.sh):
 //   lane_runnable() proves a lane is INVOCABLE (bun + dispatcher on disk);
-//   lane_funded()  (bank-status.ts) proves its BANK has quota;
+//   lane_funded()  (usage-status.ts) proves its BANK has quota;
 //   this probe proves the lane actually RETURNS WORK.
 //
 // Funding and readiness answer different questions: a lane can be fully funded
@@ -17,7 +17,7 @@
 // many TRAILING consecutive PASS rows for the lane's branches. A FAILED row
 // resets the streak. Lanes without a gate are always ready.
 //
-// For each lane in the registry it prints one line (bank-status.ts parity):
+// For each lane in the registry it prints one line (usage-status.ts parity):
 //   <lane-id> <state>     state in { ready | down }
 //
 //   down   ONLY for a gated lane whose trailing consecutive PASS count in the

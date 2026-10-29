@@ -504,7 +504,7 @@ else
     # top-level-only while the pre-commit files: scope already triggers on
     # the whole tree -- same recursion fix as the .sh surface above, same
     # bench/ exclusion (fixtures/lib are bench-harness test data, not guard
-    # surfaces). scripts/lanes/*.ts (bank-status.ts, codex-bank-probe.ts)
+    # surfaces). scripts/lanes/*.ts (usage-status.ts, codex-usage-probe.ts)
     # were not scanned AT ALL before this -- js_files gets the quota-zero
     # detector (works on .ts too, per the header note); mjs_files ALSO gets
     # pct-unguarded, which needs the lanes .mjs function-block formatting

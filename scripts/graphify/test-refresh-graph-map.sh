@@ -36,7 +36,7 @@ printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
 # Preamble pin: keep every run-path case hermetic w.r.t. the LIVE
-# bank. refresh-graph-map.sh runs bank-preflight.sh for claude/claude-cli, which
+# bank. refresh-graph-map.sh runs usage-preflight.sh for claude/claude-cli, which
 # otherwise refreshes and reads the operator's ambient usage cache — at the 85 %
 # weekly ceiling every run-path case read SKIPPED-BANK and went red. A missing
 # cache gives the fail-open BANK-UNKNOWN; T-bank-skip asserts the SKIP path

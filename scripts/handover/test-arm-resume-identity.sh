@@ -76,7 +76,7 @@ QL="$SCRIPT_DIR/queue-lock.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
 # case here that reaches that far would call the REAL fleet count against
 # THIS machine's own ambient process table and could spuriously refuse
@@ -89,7 +89,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# bank-preflight.sh now RESERVES a fleet slot per declared launch
+# usage-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes -- so the FLEET_PS_CMD
 # stub above (which zeroes the live count) no longer zeroes the fleet count
@@ -859,7 +859,7 @@ rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
 echo
 echo "== Group 6: HIMMEL-2774 fleet reservation sanitization + release-on-every-exit =="
-# The worker name bank-preflight.sh reserves under is arm-resume's raw
+# The worker name usage-preflight.sh reserves under is arm-resume's raw
 # HANDOVER_PATH with every '/' collapsed to '-' (arm-resume.sh ~1126-1127).
 # Every real arm above already exercises the sanitizer implicitly (every
 # HANDOVER_PATH here contains '/'), and G3.1/G3.2/G3.3 already exercise an
@@ -947,7 +947,7 @@ bash "$QL" release "$G6B_HO" "live-session-6b" >/dev/null 2>&1 || true
 rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
 # --- G6.3: A flattened name over NAME_MAX (or a leading
-# '.') is reserved by bank-preflight.sh under a HASHED key, not the name
+# '.') is reserved by usage-preflight.sh under a HASHED key, not the name
 # arm-resume passed in. Pre-fix _arm_fleet_release_pending looked the flattened
 # name up, found nothing, and the real reservation lingered until its TTL
 # (double-counting and refusing a legitimate retry as a duplicate).

@@ -220,7 +220,6 @@ PORTABLE_FILES=(
   scripts/lib/prim.sh
   scripts/lib/canon-path.sh
   scripts/lib/usage-preflight.sh
-  scripts/lib/bank-preflight.sh
   scripts/lib/chokepoint-seam-guard.sh
   scripts/lib/env-alias.sh
   scripts/lib/legacy-names.sh

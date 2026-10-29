@@ -112,11 +112,8 @@ while IFS=$'\t' read -r reg_path reg_vars; do
     done
 done < <(jq -r 'to_entries[] | "\(.key)\t\((.value.seam_env_vars // []) | join(" "))"' "$REGISTRY" | tr -d '\r')
 
-# The lift file seam under its new name and the read-both old one.
-assert_deny "USAGE_LIFT_FILE= on bank-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
-assert_deny "USAGE_LIFT_FILE= on bank-preflight.sh"  "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/bank-preflight.sh")"
+# The lift file seam.
 assert_deny "USAGE_LIFT_FILE= on usage-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
-assert_deny "USAGE_LIFT_FILE= on usage-preflight.sh"  "$(j "USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
 assert_deny "HIMMEL_FLEET_CAP= on usage-preflight.sh" "$(j "HIMMEL_FLEET_CAP=99 bash scripts/lib/usage-preflight.sh")"
 
 # The worker launcher under its new name and the forwarding old one.
@@ -1133,12 +1130,12 @@ assert_deny "3921 r8 held env -u X then a globbed kit path" "$(j "setsid -f \"\$
 assert_deny "3921 r9 lanes .. segment + glob"      "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts/lanes/../lanes/stop-w*.sh")"
 assert_deny "3921 r9 lanes /./ segment + glob"     "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts/lanes/./stop-w*.sh")"
 assert_deny "3921 r9 scripts// double slash"       "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts//lanes/stop-w*.sh")"
-assert_deny "3921 r9 lib .. segment + glob"        "$(j "FLEET_CAP_OK=1 setsid -f bash scripts/lib/../lib/bank-pre*.sh")"
+assert_deny "3921 r9 lib .. segment + glob"        "$(j "FLEET_CAP_OK=1 setsid -f bash scripts/lib/../lib/usage-pre*.sh")"
 assert_deny "3921 r9 env -i quiet-run .. glob"     "$(j "setsid -f env -i bash scripts/x/../quiet-r*.sh")"
 assert_deny "3921 r9 handover .. segment + glob"   "$(j "setsid -f env FOO=1 bash scripts/handover/../handover/chief-kit/g*.sh")"
 assert_deny "3921 r10 absolute path .. segment + glob"  "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash /abs/himmel/scripts/lanes/../lanes/stop-w*.sh")"
 assert_deny "3921 r10 leading dir scripts// + glob"     "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash x/scripts//lanes/stop-w*.sh")"
-assert_deny "3921 r10 absolute path /./ segment + glob" "$(j "FLEET_CAP_OK=1 setsid -f bash /abs/scripts/lib/./bank-pre*.sh")"
+assert_deny "3921 r10 absolute path /./ segment + glob" "$(j "FLEET_CAP_OK=1 setsid -f bash /abs/scripts/lib/./usage-pre*.sh")"
 # 3921 r11: any glob after scripts/ beside a write/clear token denies, no prefix compare.
 assert_deny "3921 r11 quote-split segment before a glob"  "$(j "HIMMEL_CONSOLE_LEG=1 setsid -f bash scripts/handover/con\"sole\"-kit/g*.sh")"
 assert_deny "3921 r11 backslash-split segment before a glob" "$(j "HIMMEL_CONSOLE_LEG=1 setsid -f bash scripts/handover/con\\sole-kit/g*.sh")"
@@ -1485,10 +1482,10 @@ for F in "bash --norc g?.sh" "bash --rcfile /dev/null g?.sh" "bash --init-file x
          "bash --norc ./g?.sh"; do
     assert_deny "4157 cd then long option, slash-less glob: $F" "$(j "cd scripts/$CK; $UL $F")"
 done
-BP_VAR=$(reg_entry "bank-preflight.sh" | cut -f2 | awk '{print $1}')
+BP_VAR=$(reg_entry "usage-preflight.sh" | cut -f2 | awk '{print $1}')
 QR_VAR=$(reg_entry "quiet-run.sh" | cut -f2 | awk '{print $1}')
 assert_deny "4157 J1685: --norc before a stop-worker glob" "$(j "cd scripts/lanes; ${SW_VAR}=0 bash --norc st?p-worker.sh")"
-assert_deny "4157 J1685: --norc before a bank-preflight glob" "$(j "cd scripts/lib; ${BP_VAR}=99 bash --norc bank-pre*.sh")"
+assert_deny "4157 J1685: --norc before a usage-preflight glob" "$(j "cd scripts/lib; ${BP_VAR}=99 bash --norc usage-pre*.sh")"
 assert_deny "4157 J1685: --rcfile X before a quiet-run glob" "$(j "cd scripts; ${QR_VAR}=99 bash --rcfile /dev/null qu?et-run.sh")"
 assert_allow "4157 -c with a glob command string is not a script operand" "$(j "cd scripts/$CK; $UL sh -c 'g?.sh'")"
 assert_allow "4157 --norc on a plain basename" "$(j "export FOO=1; bash --norc go.sh")"

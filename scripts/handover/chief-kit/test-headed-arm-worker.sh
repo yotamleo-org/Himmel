@@ -35,7 +35,7 @@
 #       the konsole child's own process environment either (10b).
 #   12. RED control: a mutant headed-arm renderer with --autocompact removed is
 #       refused on the full non-dry launch path before konsole runs.
-#   13. bank-preflight.sh reporting SKIPPED-FLEET refuses the
+#   13. usage-preflight.sh reporting SKIPPED-FLEET refuses the
 #       launch (rc<>0, headed-arm.sh never invoked) - the launcher-side half
 #       of the fleet-size cap; scripts/lib/test-bank-preflight.sh covers the
 #       preflight's own fleet-counting logic.
@@ -43,10 +43,10 @@
 #       derived from this worker's own DEADLINE (positional $4) - a future
 #       deadline reaches the preflight as (deadline - now); a past/near
 #       deadline floors to 60.
-#   25. on SKIPPED-BANK (reachable only AFTER bank-preflight.sh's
+#   25. on SKIPPED-BANK (reachable only AFTER usage-preflight.sh's
 #       admission already created this worker's reservation), headed-arm-worker.sh
 #       releases it. On SKIPPED-FLEET (never holds a reservation of its own -
-#       see bank-preflight.sh's own refusal sub-paths), a same-name
+#       see usage-preflight.sh's own refusal sub-paths), a same-name
 #       reservation directory (belonging to a DIFFERENT still-pending arm in
 #       the duplicate-name case) is left untouched.
 #   26. when HANDOVER_DIR is unset, the wrapper resolves the
@@ -169,7 +169,7 @@ export HEADED_ARM_UNAME=Linux
 # go.sh, which writes a GO file (merge authority) under whatever
 # handover_root() resolves - so an inherited live root would get a fake GO for
 # PR 26260 written into it. Same shield shape as the fleet-slots pin
-# (bank-preflight.sh / headed-arm-worker.sh read HIMMEL_FLEET_SLOTS, then
+# (usage-preflight.sh / headed-arm-worker.sh read HIMMEL_FLEET_SLOTS, then
 # XDG_RUNTIME_DIR). Cases that need a different root (case 26) set their own.
 export HANDOVER_DIR="$tmp/pinned-handover-root"
 export HIMMEL_FLEET_SLOTS="$tmp/pinned-fleet-slots"
@@ -284,9 +284,9 @@ wait_record() {
 # (non-dry) path, which --dry-run's own report string (case 7) cannot prove
 # on its own.
 # PROCEED_PREFLIGHT / SKIPPED_FLEET_PREFLIGHT: stub
-# scripts/lib/bank-preflight.sh invocations for HEADED_ARM_WORKER_PREFLIGHT.
+# scripts/lib/usage-preflight.sh invocations for HEADED_ARM_WORKER_PREFLIGHT.
 # Without this, every full-launch case below would call the REAL
-# bank-preflight.sh against THIS machine's own ambient process table -
+# usage-preflight.sh against THIS machine's own ambient process table -
 # spuriously refusing on a host that genuinely has >= HIMMEL_FLEET_CAP
 # `-n HIMMEL-*` sessions running (this suite is routinely run from inside
 # one). run_worker defaults to the PROCEED stub so every pre-existing case
@@ -304,7 +304,7 @@ chmod 755 "$SKIPPED_FLEET_PREFLIGHT"
 # discarding it, same rationale as SKIPPED_FLEET_PREFLIGHT above.
 # Also write a `pid` file into the
 # reservation it is standing in for, matching CADENCE_USAGE_CALLER_PID - the
-# real bank-preflight.sh now does the same, and headed-arm-worker.sh's release
+# real usage-preflight.sh now does the same, and headed-arm-worker.sh's release
 # path on this refusal only deletes a reservation it can verify it owns.
 SKIPPED_BANK_PREFLIGHT="$tmp/skipped-bank-preflight.sh"
 # shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
@@ -2501,7 +2501,7 @@ contains "tier gate (k): missing-line refusal lists the four category tags" "$ou
 contains "tier gate (k): missing-line refusal names the operator-ruling reason" "$out" "a standing operator ruling on model choice"
 
 # --- 24. FLEET_RESERVE_TTL is exported, derived from DEADLINE -
-# TTL_RECORD_PREFLIGHT stands in for bank-preflight.sh and records the TTL it
+# TTL_RECORD_PREFLIGHT stands in for usage-preflight.sh and records the TTL it
 # was called with instead of consulting the real fleet/bank state, mirroring
 # how PROCEED_PREFLIGHT/SKIPPED_FLEET_PREFLIGHT stand in above.
 TTL_RECORD_PREFLIGHT="$tmp/ttl-record-preflight.sh"

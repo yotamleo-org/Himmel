@@ -890,7 +890,7 @@ to gate new arms, not reads.
 through `scripts/claude-codex` — the Claude Code harness running against
 GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
 usage budget** (`usage-preflight.sh` parks a claudex worker on
-`scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
+`scripts/lanes/codex-usage-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
 
 **A live lane.** claudex is a live implementation lane in

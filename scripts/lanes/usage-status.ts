@@ -13,9 +13,8 @@
 //            source of truth is `codex app-server`
 //            (JSON-RPC account/rateLimits/read), captured by the BOUNDED
 //            probe scripts/lanes/codex-usage-probe.ts into
-//            ${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-~/.himmel/cache/codex-bank.json}}
-//            (every CODEX_USAGE_* name here wins over its old CODEX_BANK_*
-//            name, which is still read). bank-status
+//            ${CODEX_USAGE_CACHE:-~/.himmel/cache/codex-bank.json}
+//            (the CODEX_USAGE_* names). usage-status
 //            runs the probe at most once per stale/missing read, locked,
 //            time-boxed and backed off: the
 //            probe reaps its own app-server tree, so the bounded run does not
@@ -59,9 +58,8 @@ import {
   type LaneQuotaTargets,
 } from "../observability/quota-sources";
 import { fundedMaxPctForBank } from "./funded-max-pct.mjs";
-import { legacyNamesOn } from "../lib/env-alias.mjs";
 import {
-  CODEX_BANK_PROBE_REMEDY,
+  CODEX_USAGE_PROBE_REMEDY,
   formatMeasured,
   formatUnmeasurable,
   guardState,
@@ -79,14 +77,13 @@ const LANES_PATH = process.env.LANES_REGISTRY || join(SCRIPT_DIR, "lanes.json");
 const LOCAL_LANES_PATH = join(SCRIPT_DIR, "lanes.local.json");
 // codex bank read comes from the probe's TTL'd cache (default
 // TTL 6h). See the header for why bank-status only ever READS this file.
-const CODEX_BANK_TTL_DEFAULT_SECONDS = 6 * 60 * 60;
+const CODEX_USAGE_TTL_DEFAULT_SECONDS = 6 * 60 * 60;
 const nowMs = Date.now();
 const env = process.env;
 const home = env.HOME ?? homedir();
 const claudeCache = defaultClaudeCachePath(env, process.platform);
-const codexBankCachePath = env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
-const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_USAGE_CACHE_TTL_SECONDS)
-  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_CACHE_TTL_SECONDS : undefined) ?? CODEX_BANK_TTL_DEFAULT_SECONDS;
+const codexBankCachePath = env.CODEX_USAGE_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+const codexBankTtlSeconds = positiveEnvNumber(env.CODEX_USAGE_CACHE_TTL_SECONDS) ?? CODEX_USAGE_TTL_DEFAULT_SECONDS;
 
 function positiveEnvNumber(v: string | undefined): number | null {
   const n = Number(v);
@@ -138,10 +135,8 @@ type DisplayResult =
 // ponytail: refresh is triggered by the bank-status read (no daemon, no LLM
 // cadence), so a station nobody reads stays stale until the next read; add an
 // LLM-free cron only if the doctor WARN keeps firing.
-const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BOX_MS)
-  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_REFRESH_BOX_MS : undefined) ?? 30_000;
-const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BACKOFF_MS)
-  ?? positiveEnvNumber(legacyNamesOn(env) ? env.CODEX_BANK_REFRESH_BACKOFF_MS : undefined) ?? 300_000;
+const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BOX_MS) ?? 30_000;
+const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BACKOFF_MS) ?? 300_000;
 const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;
 
 function sleepMs(ms: number): void {
@@ -149,7 +144,7 @@ function sleepMs(ms: number): void {
 }
 
 function refreshCodexCache(cachePath: string): void {
-  if ((env.CODEX_USAGE_CACHE || (legacyNamesOn(env) && env.CODEX_BANK_CACHE)) && !(env.CODEX_USAGE_PROBE_CMD || (legacyNamesOn(env) && env.CODEX_BANK_PROBE_CMD))) return;
+  if (env.CODEX_USAGE_CACHE && !env.CODEX_USAGE_PROBE_CMD) return;
   const lock = `${cachePath}.refresh.lock`;
   const stamp = `${cachePath}.refresh.attempt`;
   const deadline = Date.now() + REFRESH_BOX_MS;
@@ -206,14 +201,14 @@ function readCodexDisplay(cachePath: string): DisplayResult {
 
 function readCodexCacheFile(cachePath: string): DisplayResult {
   if (!existsSync(cachePath)) {
-    return { kind: "unmeasurable", reason: `codex bank cache missing — ${CODEX_BANK_PROBE_REMEDY}` };
+    return { kind: "unmeasurable", reason: `codex bank cache missing — ${CODEX_USAGE_PROBE_REMEDY}` };
   }
   let text: string;
   try {
     text = readFileSync(cachePath, "utf8");
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "I/O error";
-    return { kind: "unmeasurable", reason: `codex bank cache unreadable (${code}) — ${CODEX_BANK_PROBE_REMEDY}` };
+    return { kind: "unmeasurable", reason: `codex bank cache unreadable (${code}) — ${CODEX_USAGE_PROBE_REMEDY}` };
   }
   return readCodexBankCache(text, nowMs, codexBankTtlSeconds);
 }

@@ -743,8 +743,8 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # append-cr-{findings,bugs}.sh (and bug.sh) to node, critic-panel.sh runs
 # ${CRITIC_INVOKE:-.../hermes/invoke.sh} (egress-gate.sh and the egress
 # matrix it evaluates, the alibaba quota probe under scripts/telegram/), and
-# bank-preflight.sh runs the statusline usage-cache producer and the
-# scripts/lanes/bank-status.ts chain. Those are guarded file by file, not by
+# usage-preflight.sh runs the statusline usage-cache producer and the
+# scripts/lanes/usage-status.ts chain. Those are guarded file by file, not by
 # directory, so a branch touching an unrelated lane or telegram file keeps
 # its relative himmel-lane spelling. egress-matrix.json is data, not code,
 # but it is the egress policy invoke.sh enforces, so it is guarded too.
@@ -801,11 +801,11 @@ scripts/observability/session-run-hook.ts scripts/observability/session-run-ledg
 scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh
 scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json
 scripts/statusline/usage-cache-producer.sh
-scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/openrouter-cost.sh
+scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/openrouter-cost.sh
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/console-route.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
@@ -829,13 +829,13 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/hermes/invoke.sh' ':(top)scripts/hermes/egress-gate.sh'
     ':(top)scripts/guardrails/egress-matrix-eval.mjs' ':(top)scripts/guardrails/egress-matrix.json'
     ':(top)scripts/statusline/usage-cache-producer.sh'
-    ':(top)scripts/lanes/bank-status.ts' ':(top)scripts/lanes/usage-status.ts' ':(top)scripts/lanes/bank-status-core.mjs' ':(top)scripts/lanes/funded-max-pct.mjs' ':(top)scripts/lanes/openrouter-cost.sh'
+    ':(top)scripts/lanes/usage-status.ts' ':(top)scripts/lanes/bank-status-core.mjs' ':(top)scripts/lanes/funded-max-pct.mjs' ':(top)scripts/lanes/openrouter-cost.sh'
     ':(top)scripts/lanes/resolve.mjs' ':(top)scripts/lanes/check.mjs' ':(top)scripts/lanes/probe.mjs'
     ':(top)scripts/lanes/set-lane-override.mjs' ':(top)scripts/lanes/profile-managed.cjs'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/console-route.ts' ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'

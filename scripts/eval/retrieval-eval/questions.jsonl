@@ -15,7 +15,7 @@
 {"id":"q15","kind":"what","src":"qmd","q":"difference between claude -p, claude --bg and a headed session","gold":["docs/internals/headless-modes.md"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q16","kind":"what","src":"qmd","q":"which model tier and effort to pick for a delegated subagent","gold":["docs/internals/lane-calibration.md"],"gold1":["CLAUDE.md","docs/internals/worker-spawn-matrix.md"],"reason":[]}
 {"id":"q17","kind":"how","src":"qmd","q":"what to do when a hook denies my shell command shape","gold":["docs/internals/stuck-playbook.md"],"gold1":["docs/handover/chief-sections/refused-shapes.md","docs/handover/worker-sections/shell-and-tests.md"],"reason":[]}
-{"id":"q18","kind":"where","src":"qmd","q":"check the subscription budget before launching an unattended claude run","gold":["scripts/lib/bank-preflight.sh"],"gold1":["CLAUDE.md"],"reason":[]}
+{"id":"q18","kind":"where","src":"qmd","q":"check the subscription budget before launching an unattended claude run","gold":["scripts/lib/usage-preflight.sh"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q19","kind":"what","src":"qmd","q":"which hosts may receive text from a salus session and which are blocked","gold":["scripts/guardrails/egress-matrix.json","docs/internals/egress-matrix.md"],"gold1":["CLAUDE.md"],"reason":[]}
 {"id":"q20","kind":"how","src":"qmd","q":"how to re-embed the qmd index on another embedding model without a mixed-model index","gold":["docs/internals/qmd-embed-model.md","scripts/luna/qmd-embed-model.sh"],"reason":[]}
 {"id":"q21","kind":"where","src":"qmd","q":"running a well scoped ticket end to end without an operator present","gold":["docs/handover/afk-mode.md"],"gold1":["docs/handover/running-a-chief.md"],"reason":[]}

@@ -177,7 +177,7 @@ const SANCTIONED = [
   'bash scripts/handover/chief-kit/go.sh 1090 abc',
   'bash scripts/lanes/worker-burn.sh HIMMEL-1-N1-x',
   'bash scripts/lanes/worker-pr-open.sh /t/title /t/body',
-  'bash scripts/lib/bank-preflight.sh',
+  'bash scripts/lib/usage-preflight.sh',
   'bash scripts/git/restore-to-head.sh scripts/x.sh',
   'git push',
   'bash scripts/quiet-run.sh suite -- bash scripts/cr/test-clear-cr-marker.sh',

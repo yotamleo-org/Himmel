@@ -28,7 +28,7 @@ check_ne() { if [ "$2" != "$3" ]; then PASS=$((PASS+1)); echo "ok - $1";
   else FAIL=$((FAIL+1)); echo "FAIL - $1: expected NOT '$2'"; fi; }
 
 # A fake bank-preflight cache that always verdicts PROCEED, hermetic (no
-# network, no real usage cache). bank-preflight.sh reads primaries_refreshed_at
+# network, no real usage cache). usage-preflight.sh reads primaries_refreshed_at
 # freshly, so re-stamp it per-call via CADENCE_USAGE_SKIP_REFRESH.
 BANK_CACHE="$W/bank-cache.json"
 mk_bank_cache() { printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}\n' "$ACCT" "$(date +%s)" > "$BANK_CACHE"; }
@@ -36,7 +36,7 @@ mk_bank_cache
 export CADENCE_USAGE_CACHE="$BANK_CACHE"
 export CADENCE_USAGE_SKIP_REFRESH=1
 export CADENCE_USAGE_LEDGER="$W/bank-ledger.jsonl"
-# bank-preflight.sh now also counts live WORKER sessions via a real
+# usage-preflight.sh now also counts live WORKER sessions via a real
 # `ps -eo args` by default - without this, every "happy path" case below
 # would call the REAL fleet count against THIS machine's own ambient process
 # table and could spuriously refuse (bank preflight refused dispatch:
@@ -499,7 +499,7 @@ rm -f "$LIVE_DIR"/*.json
 # FAKE_OK writes its artifact only when launched, so "artifact absent" = REFUSED.
 SH18="$W/shadow18"; mkdir -p "$SH18"
 # The shadows come from the shell-startup file and are installed ONLY in
-# claude-headless.sh itself ($0 test): bank-preflight.sh and the other children
+# claude-headless.sh itself ($0 test): usage-preflight.sh and the other children
 # must stay intact, or the launch is refused for the wrong reason and the rows
 # go vacuous. They arm from a DEBUG trap at the first command AFTER the
 # seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier

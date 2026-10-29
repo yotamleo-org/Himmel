@@ -2,7 +2,7 @@
 # scripts/lib/fleet-slots-shield.sh. Sourced by the arm-resume
 # test suites (scripts/handover/test-arm-resume*.sh, test-worker-lifecycle.sh).
 #
-# Every non-dry-run arm-resume.sh calls bank-preflight.sh, which reserves a
+# Every non-dry-run arm-resume.sh calls usage-preflight.sh, which reserves a
 # FLEET_CAP slot in ${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>}
 # — the SAME per-user tmpfs dir the live fleet counts. A suite that does not
 # redirect it makes a test fixture (a mktemp handover path) hold a real slot
@@ -16,7 +16,7 @@
 #
 # Bash 3.2-safe; no twin needed (the slot dir is a POSIX tmpfs construct).
 
-# Same expansion as bank-preflight.sh:390 and arm-resume.sh:1221 — keep in step.
+# Same expansion as usage-preflight.sh:390 and arm-resume.sh:1221 — keep in step.
 fleet_slots_resolve() {
   printf '%s' "${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 }

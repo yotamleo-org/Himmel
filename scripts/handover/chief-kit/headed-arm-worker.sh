@@ -65,8 +65,8 @@
 # Seams: HEADED_ARM_WORKER_TARGET overrides the headed-arm.sh path this wrapper
 # execs (default: ../headed-arm.sh next to this script) so a suite can point
 # it at a fixture without touching PATH. HEADED_ARM_WORKER_PREFLIGHT overrides
-# the scripts/lib/bank-preflight.sh path the fleet-size cap below calls
-# (default: ../../lib/bank-preflight.sh next to this script), same reason.
+# the scripts/lib/usage-preflight.sh path the fleet-size cap below calls
+# (default: ../../lib/usage-preflight.sh next to this script), same reason.
 # HEADED_ARM_UNAME overrides the platform worker_propagate_env's whitespace
 # refusal branches on (default: real `uname -s`) - the same seam name and
 # idiom headed-arm.sh itself defines and its own suite already overrides
@@ -611,7 +611,7 @@ fi
 # checks). The default model stays with each lane's block below; deepseek takes
 # it from the launcher's own export. glm refuses until it has a launcher
 # contract. An unknown lane is a usage error, never a fallback to native.
-# ponytail: bank-preflight.sh has no deepseek row, so deepseek rides its
+# ponytail: usage-preflight.sh has no deepseek row, so deepseek rides its
 # backend-gated "openrouter" gate (the launcher checks balance itself) and the
 # fleet census labels it native; upgrade path = a deepseek row there.
 lane_registry() {
@@ -2446,13 +2446,13 @@ fi
 # signal/deadline wait loop even starts - refusing now is cheaper than
 # refusing after waiting out the deadline. SKIPPED-FLEET refuses the launch
 # outright. SKIPPED-BANK also refuses: we set
-# CADENCE_USAGE_LANE="$LANE" above specifically so bank-preflight.sh checks
+# CADENCE_USAGE_LANE="$LANE" above specifically so usage-preflight.sh checks
 # the bank this lane actually draws on (the codex weekly bank for claudex,
 # the CLAUDE five_hour/seven_day bank for native) - unlike arm-resume.sh,
 # this wrapper has no separate bank-aware scheduling path to fall back on,
 # so ignoring SKIPPED-BANK would let a launch through against an exhausted
 # bank. Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.
-BANK_PREFLIGHT="${HEADED_ARM_WORKER_PREFLIGHT:-$HERE/../../lib/bank-preflight.sh}"
+BANK_PREFLIGHT="${HEADED_ARM_WORKER_PREFLIGHT:-$HERE/../../lib/usage-preflight.sh}"
 if [ -f "$BANK_PREFLIGHT" ]; then
     # TTL from OUR OWN deadline plus a fixed grace period,
     # floored at 60s — a reservation must not outlive the arm attempt it
@@ -2471,7 +2471,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # bank-status READ.
     preflight_token="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"$LOG")"
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
-        # NOT a reservation release here — bank-preflight.sh
+        # NOT a reservation release here — usage-preflight.sh
         # only ever returns SKIPPED-FLEET from its admission block itself
         # (lock failure, at/over-cap, or a DUPLICATE reservation name), and
         # none of those paths ever create a reservation for OUR call. The
@@ -2495,7 +2495,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
         if [ "$(cat "${_arm_fleet_slots:?}/$NAME/pid" 2>/dev/null)" = "$$" ]; then
             rm -rf "${_arm_fleet_slots:?}/$NAME" 2>/dev/null
         fi
-        echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $LANE lane bank exhausted (park and retry later; see bank-preflight.sh for the parked lane's own bank status)" >> "$LOG"
+        echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - $LANE lane bank exhausted (park and retry later; see usage-preflight.sh for the parked lane's own bank status)" >> "$LOG"
         exit 11
     fi
 fi

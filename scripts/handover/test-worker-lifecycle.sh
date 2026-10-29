@@ -36,7 +36,7 @@ assert_file_contains() {
 TMP="$(mktemp -d -t worker-lifecycle.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
 # case here that reaches that far would call the REAL fleet count against
 # THIS machine's own ambient process table and could spuriously refuse
@@ -49,7 +49,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# bank-preflight.sh now RESERVES a fleet slot per declared launch
+# usage-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm) under ${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u) — a
 # real, per-user, machine-shared directory this suite never pinned. Without

@@ -26,9 +26,6 @@
   "scripts/lib/usage-preflight.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
   },
-  "scripts/lib/bank-preflight.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
-  },
   "scripts/handover/arm-resume.sh": {
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },

@@ -87,7 +87,7 @@ CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_
 . "$HERE/../../lib/git-clean.sh"
 # Pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# bank-preflight.sh for the failure mode).
+# usage-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR USER_SLUG JIRA_PROJECT_KEY
 
 ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ"

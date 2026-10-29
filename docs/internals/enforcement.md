@@ -2403,14 +2403,14 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-bank-lift-writes.sh` — operator-only weekly budget override (HIMMEL-4445)
 
 Fires on Bash and on `Edit|Write|MultiEdit|NotebookEdit` (Codex: Bash and the
-`apply_patch` envelope). The weekly budget override `~/.himmel/state/bank-lift.json`
+`apply_patch` envelope). The weekly budget override `~/.himmel/state/usage-lift.json`
 (HIMMEL-4423) relaxes the 7-day subscription usage budget check while it is valid, so raising it is
 the operator's call. The hook refuses every agent write to that path —
 redirects (`>`, `>>`, `>|`, `&>`, `<>`), `tee`, `cp`/`mv`/`install`/`ln`/`rsync`
 as a destination, `dd of=`, `sed -i`, `touch`/`truncate`/`patch`, `-o`/`--output`
 options, editors, downloaders and interpreters handed the path, `find -exec`,
 `xargs`, and inline interpreter code (`python3 -c`, `perl -e`, `node -e`, a
-heredoc script) that names `bank-lift.json`, `bank-lift.sh`, `usage-lift.json` or `usage-lift.sh` —
+heredoc script) that names `usage-lift.json` or `usage-lift.sh` —
 under every spelling of the path: `~`, `$HOME`, `${HOME}`, `/home/<user>`,
 `~user`, relative from `~`, `~/.himmel` or `state/`, `.`/`..` segments, quote
 splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and a
@@ -2418,14 +2418,13 @@ splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and 
 or `~` is refused when its source could put a lift there (a lift-named, glob or
 `$var` source, a `dir/` or `dir/.` contents copy, `-T`, `ln -n`); copying an
 unrelated file in passes. It also refuses `usage-lift.sh set` (and the sourced
-`_usage_lift_cmd set`; the old `bank-lift.sh` and
-`_bank_lift_cmd` names are fenced the same way) under any launcher: `bash`/`sh`/direct/`source`/`.`,
+`_usage_lift_cmd set`) under any launcher: `bash`/`sh`/direct/`source`/`.`,
 `env`/`timeout`/`nohup`/`command`/`exec`/`nice`/`sudo`/`xargs`, `-c` bodies,
 heredocs into a shell, a computed (`$(…)`, `$var`) subcommand or script word.
 Whole-command layer (judge J1874, runs FIRST): a reader can hand the lift
-path to a writer that never names it — `cp x $(jq -rn '"…/bank-lift.json"')`,
+path to a writer that never names it — `cp x $(jq -rn '"…/usage-lift.json"')`,
 `echo > "$(ls <lift>)"`, `ls <lift> | xargs cp x`. So when the command text
-names `bank-lift.json`, `usage-lift.sh` or `bank-lift.sh` ANYWHERE — inside `$( )`, backticks,
+names `usage-lift.json` or `usage-lift.sh` ANYWHERE — inside `$( )`, backticks,
 heredoc bodies and pipelines, after quote removal and `$'…'` decoding — the
 command passes only if EVERY clause at every depth (pipeline stages,
 substitution bodies, `-c` bodies, `&&`/`||`/`;` lists) is a reader under the
@@ -2447,7 +2446,7 @@ delimiter with a space (`<<'END MARK'`, `<<"E F"`, `<<"E"' F'`) is read as
 one word, as bash does. Over-deny is accepted:
 `test -f <lift> && echo yes`, `cat <lift> > /tmp/copy`, `set -e; bash
 …/usage-lift.sh show`, a heredoc commit message naming the lift, and a
-write to any lift-NAMED file (`/tmp/x/bank-lift.json`) all deny; split the
+write to any lift-NAMED file (`/tmp/x/usage-lift.json`) all deny; split the
 command, or put text in a file. Residual (ponytail): a lift name obfuscated
 by a glob or brace inside a substitution does not trigger this layer.
 HIMMEL-4458 closed these gaps:
@@ -2465,17 +2464,17 @@ HIMMEL-4458 closed these gaps:
 - **`cp --parents` / `rsync -R` (`--relative`).** These recreate the source's
   path under the destination, so the created path (destination + source,
   rsync's `/./` marking the start) is judged: a glob-spelled
-  `.himmel/state/bank-l?ft.json` copied with `--parents` into `~` denies.
+  `.himmel/state/usage-l?ft.json` copied with `--parents` into `~` denies.
 - **Split names in inline code.** Interpreter / `sed e` code also matches once
   quotes, `+`, commas, backticks and blanks are dropped, so
   `"bank"+"-"+"lift"+".json"` and `"ba"+"nk-lift.sh"` deny; prose such as
-  `"bank-lift show"` does not (the joined form needs a separator before `sh`).
+  `"usage-lift show"` does not (the joined form needs a separator before `sh`).
 - **Archive extraction.** `tar`/`gtar`/`bsdtar` extracting (`-x`, a bundled or
   old-style `x`, `--extract`, `--get`; not `-O`/`--to-stdout`), `unzip` (not
   `-l`/`-t`/`-v`/`-Z`/`-p`/`-c`) and `cpio -i`/`--extract` deny when the
   destination (`-C`, `-C<dir>`, `--directory[=]`, `-d`, `-d<dir>`, `-D`) is
   HOME, `~/.himmel` or its state dir — a member can be
-  `.himmel/state/bank-lift.json`. With no destination option the effective
+  `.himmel/state/usage-lift.json`. With no destination option the effective
   cwd counts: the hook's cwd, or — with a directory-changing word in the
   command — unknown, which denies (see Unproven cwd). An option's operand is never read as a
   flag: `tar -xf -O -C ~` names the archive `-O` and still denies (tar
@@ -2565,7 +2564,7 @@ HIMMEL-4458 closed these gaps:
 - **Ancestors of HOME.** Members are relative, so a destination that is a
   strict ancestor of HOME (`/`, `/home`, `~/..`; whole path components, so
   `/ho` is not one; compared lexically and physically) reaches the lift with a
-  member such as `home/<user>/.himmel/state/bank-lift.json` and denies: `-C`,
+  member such as `home/<user>/.himmel/state/usage-lift.json` and denies: `-C`,
   `--directory`, `unzip -d`, and the extraction cwd (the hook's cwd). A
   destination inside HOME other than HOME, `~/.himmel` or its state
   dir (`-C "$HOME/projects"`) stays allowed.
@@ -2596,7 +2595,7 @@ most the rest of the current 7-day window. Remaining hook gaps
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).
 Name rule (chief ruling, applied before the rules above on every clause,
-nested ones included): a clause with a word naming `bank-lift.json` or
+nested ones included): a clause with a word naming `usage-lift.json` or
 `usage-lift.sh` (not a longer name such as `test-usage-lift.sh`) passes only
 when it is `bash scripts/lib/usage-lift.sh show|clear` or the direct
 `scripts/lib/usage-lift.sh show|clear` (the repo's own copy, as above), or a
