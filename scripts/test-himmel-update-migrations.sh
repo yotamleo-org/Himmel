@@ -117,13 +117,23 @@ fi
 
 # A retired script name matches only as a scripts/ path: another project's script sharing the bare name is left alone.
 other_settings="$TMP/settings-other-project.json"
-printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)"]}}' > "$other_settings" # old-term-ok
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)", "Bash(/some/other/project/scripts/console.sh:*)"]}}' > "$other_settings" # old-term-ok
 other_before="$(cat "$other_settings")"
 python3 -I "$migrator" --apply "$other_settings" > /dev/null 2>&1
 if [ "$(cat "$other_settings")" = "$other_before" ] && [ ! -e "$other_settings.bak-renamed-names" ]; then
     assert_pass 'renamed-names: --apply leaves another project script sharing a retired bare name unchanged'
 else
     assert_fail "renamed-names: --apply rewrote another project's script ($(cat "$other_settings"))"
+fi
+# The install's own absolute scripts/ path still migrates (negative control for the anchor above).
+own_settings="$TMP/settings-own-root.json"
+own_root="$(cd "$ROOT" && pwd -P)"
+printf '{"permissions": {"allow": ["Bash(%s/scripts/console.sh:*)"]}}\n' "$own_root" > "$own_settings" # old-term-ok
+python3 -I "$migrator" --apply "$own_settings" > /dev/null 2>&1
+if grep -Fq "$own_root/scripts/chief.sh" "$own_settings"; then
+    assert_pass 'renamed-names: --apply still renames a retired script under this install'"'"'s own scripts/ path'
+else
+    assert_fail "renamed-names: --apply left this install's own script unrenamed ($(cat "$own_settings"))"
 fi
 
 # The printed commands must actually target these installs, even with spaces.
