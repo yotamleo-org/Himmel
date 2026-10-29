@@ -122,7 +122,7 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   is proposed again, `EXPIRED [id]` when it is not, and `BUILT [id]` when the class was promoted
   or removed since the proposal.
 
-## Classes (2026-09-02 snapshot — regenerate with `--list`)
+## Classes (2026-10-29 snapshot — regenerate with `--list`)
 
 | id | kind | rung | source | detector | title |
 |---|---|---|---|---|---|
@@ -145,8 +145,21 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
 | `pr-check-anchor-handshake-escalation` | rebuttal | prompt | coderabbit-learning | — | PR_CHECK_ANCHOR_DELEGATED handshake called forgeable => privilege escalation |
 | `cr-avail-artifact-perspective-scoping` | rebuttal | prompt | critic-panel | — | CR-ledger availability rows claimed to need artifact/perspective scoping |
 | `test-setup-unchecked-vacuous-green` | checklist | prompt | cr-app-comments | — | test setup or child-process status unchecked — the suite cannot fail (vacuous green) |
-| `exit-contract-drift` | checklist | prompt | cr-app-comments | — | an exit code gains a second meaning without its documented contract being updated |
+| `exit-contract-drift` | checklist | prompt | cr-app-comments | added-line-regex | an exit code gains a second meaning without its documented contract being updated |
 | `suggestion-verdict-flow` | rebuttal | prompt | cr-app-comments | — | Suggestion findings need a verdict for the marker gate even though they never enter blocking counts — the flow is documented |
+| `hook-no-bypass-row` | checklist | advisory | ledger | hook-no-bypass | new hook that denies without a documented single-run bypass env var |
+| `hook-adhoc-parse` | checklist | advisory | ledger | added-line-regex | hook parses a command with ad-hoc sed/awk/cut instead of the shared tokenizer |
+| `hook-path-no-realpath` | checklist | advisory | ledger | added-line-regex | hook compares a path to PWD/HOME/ROOT without resolving it first |
+| `chief-kit-lock-helper` | checklist | advisory | ledger | added-line-regex | chief-kit script rolls its own lock/flock instead of the shared lock helper |
+| `eval-tokenizer-split` | checklist | advisory | ledger | added-line-regex | eval harness splits a command or transcript line with an ad-hoc split instead of the shared tokenizer |
+| `doc-or-comment-contradicts-code` | checklist | prompt | ledger | — | a header, comment, usage text or doc paragraph says X while the code does Y |
+| `race-lock-toctou` | checklist | prompt | ledger | — | check-then-act on shared state (lock, owner file, cursor, ledger) that is not one atomic step |
+| `fail-open-swallow` | checklist | prompt | ledger | — | a status-bearing command's failure is swallowed (\|\| true, 2>/dev/null) so the script proceeds on a lie |
+| `non-hermetic-test-env-leak` | checklist | prompt | ledger | — | a test reads an env var, HOME or live host state its setup never sets |
+| `vendored-file-local-edit` | fix | prompt | cr-app-comments | — | a vendored upstream file edited in place instead of through the upstream-fix-and-revendor process |
+| `docs-component-local-carveout` | rebuttal | prompt | cr-app-comments | — | component-local operational docs flagged for not living under docs/luna/ |
+
+The table omits `sh-ps1-twin-drift` (a twin-file checklist whose title names a dropped platform, so the dropped-terms docs test rejects the row); `--list` prints it.
 
 ## What the 2026-08-23 measurement said (why these classes)
 

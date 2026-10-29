@@ -1,6 +1,6 @@
 {
   "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; twin-missing = a .sh/.ps1 twin exists but is not in the diff; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). `rung` (required, HIMMEL-4426) is the TOP rung of the correction ladder the class has reached, highest first: design = the defect cannot be written (structure removes it); gate = a hook / pre-commit / CI check blocks it; advisory = a deterministic detector or lint advisory reports it but nothing blocks; prompt = only critic-prompt / reviewer-instruction text holds it; human = judgment with no automation. A class with a `detector` and no gate is advisory; no detector but `prompt: true` is prompt. Promote a class up the ladder when `known-findings.sh --ladder` queues it (real recurrences: agreed, confirmed or fixed). Optional `match` = a case-insensitive JS regex over the ledger finding text; --ladder attributes a finding to a class only when its file hits `globs` AND its text hits `match`, and skips a class with no `match`. Optional `platform: \"windows\"` = never proposed. A `rebuttal` class is never proposed above prompt (retire instead). Keep the gate-vs-advisory rationale in `coverage`. A missing or unknown rung exits 2 in --list, --ladder and --refresh. Hand-edit everything else; keep ids stable (they are cited in PR comments).",
-  "refreshed_at": "2026-10-19",
+  "refreshed_at": "2026-10-29",
   "classes": [
     {
       "id": "errexit-false-positive",
@@ -23,21 +23,22 @@
       "coverage": ".coderabbit.yaml path_instructions cover NON-errexit files only; the errexit-file carve-out is HIMMEL-1684 (open). CodeRabbit learnings (5 rows, ~1.8k uses, last used 2026-09-29) suppress most re-raises in practice: 2 App re-raises since 2026-08-10, one of them legitimate (a `set -e` caller). HIMMEL-3905 added the detector so /pr-check step 2.8 attributes the finding before a critic spends a round; it is per-line, so it cannot see whether the `&&` is in final position or the file sets -e.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 1830,
+        "learnings_uses": 740,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 52,
-          "agreed": 32,
-          "disproved": 14,
-          "deferred": 2,
+          "findings": 59,
+          "agreed": 36,
+          "disproved": 16,
+          "deferred": 3,
           "other": 0,
           "unadjudicated": 4,
           "models": {
-            "codex": 52
+            "codex": 58,
+            "claude": 1
           },
           "disproved_pct": 29
         },
-        "learnings_rows": 5
+        "learnings_rows": 3
       }
     },
     {
@@ -64,16 +65,17 @@
         "learnings_uses": 580,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 54,
-          "agreed": 35,
-          "disproved": 1,
+          "findings": 59,
+          "agreed": 39,
+          "disproved": 2,
           "deferred": 15,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 54
+            "codex": 56,
+            "claude": 3
           },
-          "disproved_pct": 2
+          "disproved_pct": 4
         },
         "learnings_rows": 3
       }
@@ -96,17 +98,19 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 34,
-          "agreed": 24,
+          "findings": 35,
+          "agreed": 25,
           "disproved": 0,
           "deferred": 9,
           "other": 0,
           "unadjudicated": 1,
           "models": {
-            "codex": 34
+            "codex": 35
           },
           "disproved_pct": 0
-        }
+        },
+        "learnings_uses": 0,
+        "learnings_rows": 0
       }
     },
     {
@@ -129,22 +133,22 @@
       "coverage": ".coderabbit.yaml handover-root carve-out covers a test that redirects HANDOVER_DIR but not a test that touches no handover path (HIMMEL-1684 gap 2, open). Still the single most-raised class in the measured window despite being the #1 learning: 8 App raises across 6 PRs, hand-counted over 2026-08-20..09-02 (a subset of the since-08-10 field above, which this refresh therefore raises from 3 to 8 as a measured lower bound), and CodeRabbit WITHDREW every one on rebuttal. The learning is applied 1009 times yet does not suppress the raise — which is why the rebuttal now enumerates the four sub-shapes instead of restating the rule.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 1075,
+        "learnings_uses": 1080,
         "cr_app_finding_comments_since_2026-08-10": 8,
         "ledger": {
-          "findings": 35,
-          "agreed": 13,
+          "findings": 40,
+          "agreed": 15,
           "disproved": 3,
-          "deferred": 17,
+          "deferred": 20,
           "other": 0,
           "unadjudicated": 2,
           "models": {
-            "codex": 34,
+            "codex": 39,
             "console": 1
           },
-          "disproved_pct": 9
+          "disproved_pct": 8
         },
-        "learnings_rows": 8
+        "learnings_rows": 7
       }
     },
     {
@@ -168,23 +172,23 @@
       "coverage": "shell-lint [mktemp] (advisory; it is in neither pre-commit nor CI, so it only catches the call when someone runs it) + .coderabbit.yaml portability rule. The unchecked-mktemp pre-commit gate is a different rule (an unchecked CAPTURE, not a missing template). 276 tracked scripts still carry a bare mktemp, so promoting this to a gate needs a burn-down first (proposed in HIMMEL-3905, not done). 6 App re-raises since 2026-08-10 — every one a real bare call in a NEW test suite, i.e. the rule exists but was not run pre-panel; that is the gap this step closes. Note the learnings store holds two CONTRADICTING entries (220 uses: template required; 75 uses: bare -d works on macOS) — the house rule is the template.",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 314,
+        "learnings_uses": 80,
         "cr_app_finding_comments_since_2026-08-10": 6,
         "ledger": {
-          "findings": 169,
-          "agreed": 90,
+          "findings": 177,
+          "agreed": 96,
           "disproved": 15,
-          "deferred": 36,
+          "deferred": 38,
           "other": 0,
           "unadjudicated": 28,
           "models": {
-            "codex": 167,
+            "codex": 174,
             "coderabbit": 1,
-            "claude": 1
+            "claude": 2
           },
-          "disproved_pct": 11
+          "disproved_pct": 10
         },
-        "learnings_rows": 5
+        "learnings_rows": 4
       }
     },
     {
@@ -209,21 +213,27 @@
       "coverage": "shell-lint GNU_FLAG_PAT + PCRE_CLASS cover sed/date/readlink/grep -P/stat/\\s; bare `timeout N` and `find -maxdepth` were NOT covered (3+ App re-raises each since 2026-08-10) — this detector adds them. 20 App re-raises in the class since 2026-08-10 (largest real-defect class). 2026-09-02 refresh: 3 further portability raises in the window — /usr/bin/cat absent on macOS (CodeRabbit App finding, PR #2107: \"/usr/bin/cat does not exist on macOS; macOS ships cat at /bin/cat only\" — the only /usr/bin/<coreutil> entry this detector asserts, deliberately; the list grows one evidenced finding at a time rather than from an unverified enumeration of the macOS /bin layout), a GNU-only hard-link identity check, and BSD grep \\| alternation (the latter two prose-only, no detector).",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 538,
+        "learnings_uses": 92,
         "cr_app_finding_comments_since_2026-08-10": 20,
         "ledger": {
-          "findings": 168,
-          "agreed": 84,
+          "findings": 210,
+          "agreed": 97,
           "disproved": 13,
-          "deferred": 66,
+          "deferred": 95,
           "other": 0,
           "unadjudicated": 5,
           "models": {
-            "codex": 168
+            "codex": 191,
+            "claude": 13,
+            "coderabbit-outside": 1,
+            "coverage-deferral": 2,
+            "worker-scope": 1,
+            "": 1,
+            "coderabbit": 1
           },
-          "disproved_pct": 8
+          "disproved_pct": 6
         },
-        "learnings_rows": 24
+        "learnings_rows": 18
       }
     },
     {
@@ -248,21 +258,22 @@
       "coverage": "shell-lint BASH32 + .coderabbit.yaml path_instructions; 2 App re-raises since 2026-08-10.",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 3,
+        "learnings_uses": 2,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 15,
+          "findings": 16,
           "agreed": 4,
           "disproved": 3,
-          "deferred": 5,
+          "deferred": 6,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 15
+            "codex": 15,
+            "claude": 1
           },
-          "disproved_pct": 25
+          "disproved_pct": 23
         },
-        "learnings_rows": 4
+        "learnings_rows": 3
       }
     },
     {
@@ -292,23 +303,48 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 16,
         "ledger": {
-          "findings": 8236,
-          "agreed": 4363,
-          "disproved": 952,
-          "deferred": 2358,
+          "findings": 11059,
+          "agreed": 5682,
+          "disproved": 1468,
+          "deferred": 3314,
           "other": 2,
-          "unadjudicated": 561,
+          "unadjudicated": 593,
           "models": {
-            "codex": 8166,
-            "coderabbit": 31,
-            "": 2,
-            "claude": 19,
+            "codex": 10056,
+            "coderabbit": 134,
+            "": 26,
+            "claude": 462,
             "console": 2,
-            "coderabbit-outside": 12,
+            "coderabbit-outside": 249,
             "console-judge": 3,
-            "gpt-6.1-sol": 1
+            "gpt-6.1-sol": 2,
+            "opus-judge": 1,
+            "n3083-leg": 2,
+            "self": 3,
+            "claude-session": 1,
+            "claude-opus-5-5": 8,
+            "native": 3,
+            "n3211-self": 2,
+            "disposition-carry-forward": 13,
+            "self-adjudication": 3,
+            "console-DB": 1,
+            "leg-N3273": 1,
+            "native-n3323": 15,
+            "judge": 15,
+            "leg-scope": 1,
+            "judge-opus": 2,
+            "coverage-deferral": 17,
+            "leg": 3,
+            "opus": 4,
+            "manual": 4,
+            "sweep": 2,
+            "worker": 12,
+            "worker-n3767": 2,
+            "claude-sonnet-5-5": 1,
+            "worker-scope": 8,
+            "self-review": 1
           },
-          "disproved_pct": 12
+          "disproved_pct": 14
         },
         "learnings_rows": 0
       }
@@ -334,33 +370,62 @@
           "marketplace/plugins"
         ]
       },
-      "learning_match": "stale|outdated|no longer",
+      "learning_match": "stale (doc|docs|prose|comment|text|reference|example|wording)|outdated|no longer (match|documented|accurate|true)",
       "canonical": "For every identifier, flag, exit code or path the diff removes or renames, grep docs/, README.md, CLAUDE.md and the command runbooks and update the prose in the same PR (doc-freshness step 2.7 only covers the mapped pairs).",
       "coverage": "doc-freshness advise rows cover a handful of mapped source→doc pairs; 21 App re-raises since 2026-08-10 were stale/contradicting prose — the single largest CodeRabbit class now.",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 260,
+        "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 21,
         "ledger": {
-          "findings": 8796,
-          "agreed": 4610,
-          "disproved": 1009,
-          "deferred": 2607,
+          "findings": 11817,
+          "agreed": 6021,
+          "disproved": 1547,
+          "deferred": 3645,
           "other": 2,
-          "unadjudicated": 568,
+          "unadjudicated": 602,
           "models": {
-            "codex": 8704,
-            "coderabbit": 34,
-            "": 13,
-            "claude": 20,
-            "coderabbit-outside": 18,
+            "codex": 10703,
+            "coderabbit": 146,
+            "": 40,
+            "claude": 488,
+            "coderabbit-outside": 278,
             "console": 2,
             "console-judge": 3,
-            "gpt-6.1-sol": 2
+            "gpt-6.1-sol": 3,
+            "opus-judge": 1,
+            "n3083-leg": 2,
+            "self": 3,
+            "claude-session": 1,
+            "claude-opus-5-5": 9,
+            "native": 3,
+            "n3211-self": 2,
+            "disposition-carry-forward": 13,
+            "self-adjudication": 3,
+            "console-DB": 1,
+            "leg-N3273": 1,
+            "native-n3323": 15,
+            "leg-self": 2,
+            "judge": 16,
+            "leg-scope": 2,
+            "judge-opus": 2,
+            "leg": 4,
+            "ready-check": 1,
+            "coverage-deferral": 18,
+            "opus": 4,
+            "manual": 8,
+            "leg-n3645": 11,
+            "sweep": 2,
+            "worker": 16,
+            "worker-n3767": 2,
+            "claude-sonnet-5-5": 1,
+            "worker-scope": 8,
+            "coverage": 2,
+            "self-review": 1
           },
-          "disproved_pct": 12
+          "disproved_pct": 14
         },
-        "learnings_rows": 20
+        "learnings_rows": 0
       }
     },
     {
@@ -388,16 +453,17 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 5,
-          "agreed": 4,
-          "disproved": 1,
+          "findings": 8,
+          "agreed": 5,
+          "disproved": 3,
           "deferred": 0,
           "other": 0,
           "unadjudicated": 0,
           "models": {
-            "codex": 5
+            "codex": 7,
+            "claude": 1
           },
-          "disproved_pct": 20
+          "disproved_pct": 38
         },
         "learnings_rows": 0
       }
@@ -429,16 +495,16 @@
         "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 1,
         "ledger": {
-          "findings": 5,
-          "agreed": 3,
+          "findings": 6,
+          "agreed": 4,
           "disproved": 2,
           "deferred": 0,
           "other": 0,
           "unadjudicated": 0,
           "models": {
-            "codex": 5
+            "codex": 6
           },
-          "disproved_pct": 40
+          "disproved_pct": 33
         },
         "learnings_rows": 0,
         "sightings": [
@@ -470,21 +536,22 @@
       "coverage": "No structural check; shellcheck does not model locale-dependent bracket expressions. Tree sweep 2026-09-02 (LC_ALL=C, positive-controlled): 0 real occurrences — the 26 apparent file hits are all prose comments and JSON string literals, not matcher bracket expressions, which is why the detector is scoped to a grep/sed/awk/=~ context rather than to any `[...]`. Same family as HIMMEL-2236 (pwsh_unicode awk %c locale). Detector-flavour note: `added-line-regex` patterns are compiled by `ere()` in known-findings.sh — POSIX class names ([:space:], [:alnum:], [:alpha:], [:digit:]) are substituted, then the result is handed to JavaScript's `new RegExp`. That is the ONLY consumer of `detector.pattern`; nothing feeds it to `grep -E`. So `\\x00`/`\\x7F` here are ECMAScript escapes, fully specified rather than implementation-dependent, and the negated class `[^\\x00-\\x7F]` means exactly 'any non-ASCII code unit'.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 98,
+        "learnings_uses": 0,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 31,
-          "agreed": 11,
+          "findings": 36,
+          "agreed": 14,
           "disproved": 5,
-          "deferred": 12,
+          "deferred": 14,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 31
+            "codex": 33,
+            "claude": 3
           },
-          "disproved_pct": 18
+          "disproved_pct": 15
         },
-        "learnings_rows": 2,
+        "learnings_rows": 0,
         "sightings": [
           "HIMMEL-2356 worker / PR #2070 — verified against a real suite marker line: bracket class no match, alternation match.",
           "HIMMEL-2447 (this refresh) — the tree sweep's own first pattern returned a vacuous zero for exactly this reason; caught by a positive control."
@@ -543,20 +610,21 @@
       "coverage": "scripts/hooks/CLAUDE.md prose only. Ledger: scripts/hooks is the largest finding bucket (521 rows); 10 App re-raises on fail-open/closed since 2026-08-10.",
       "prompt": false,
       "evidence": {
-        "learnings_uses": 171,
+        "learnings_uses": 40,
         "cr_app_finding_comments_since_2026-08-10": 10,
         "ledger": {
-          "findings": 49,
-          "agreed": 25,
+          "findings": 56,
+          "agreed": 29,
           "disproved": 6,
-          "deferred": 15,
+          "deferred": 18,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 48,
-            "coderabbit-outside": 1
+            "codex": 52,
+            "coderabbit-outside": 1,
+            "claude": 3
           },
-          "disproved_pct": 13
+          "disproved_pct": 11
         },
         "learnings_rows": 21
       }
@@ -581,21 +649,24 @@
       "coverage": "cr-tune already clusters this bucket (test-fixture); no prompt-side carve-out existed before this entry. Ledger: the test-fixture bucket disproves at ~29% vs ~21% overall.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 60,
+        "learnings_uses": 42,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
-          "findings": 76,
-          "agreed": 34,
-          "disproved": 13,
-          "deferred": 23,
+          "findings": 104,
+          "agreed": 51,
+          "disproved": 18,
+          "deferred": 28,
           "other": 0,
-          "unadjudicated": 6,
+          "unadjudicated": 7,
           "models": {
-            "codex": 76
+            "codex": 89,
+            "claude": 7,
+            "coderabbit-outside": 3,
+            "coderabbit": 5
           },
           "disproved_pct": 19
         },
-        "learnings_rows": 42
+        "learnings_rows": 35
       }
     },
     {
@@ -617,7 +688,7 @@
       "coverage": ".coderabbit.yaml docs/**/*.md instruction covers the parameterised-path half. Ledger: .md findings disprove at ~26% (43/165 adjudicated), .claude/commands/pr-check.md at ~28%.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 201,
+        "learnings_uses": 200,
         "cr_app_finding_comments_since_2026-08-10": 0,
         "ledger": {
           "findings": 1,
@@ -660,16 +731,16 @@
           "note": "hand-counted from .git/cr-critic-scores.jsonl and PR #2078's CodeRabbit App review comment; evidence.ledger is left unset until --refresh mines it"
         },
         "ledger": {
-          "findings": 1,
+          "findings": 2,
           "agreed": 0,
-          "disproved": 0,
+          "disproved": 1,
           "deferred": 1,
           "other": 0,
           "unadjudicated": 0,
           "models": {
-            "codex": 1
+            "codex": 2
           },
-          "disproved_pct": 0
+          "disproved_pct": 50
         }
       }
     },
@@ -700,14 +771,15 @@
           "note": "hand-counted from this branch panel rounds; evidence.ledger left unset until --refresh mines it"
         },
         "ledger": {
-          "findings": 39,
-          "agreed": 16,
-          "disproved": 6,
-          "deferred": 16,
+          "findings": 25,
+          "agreed": 8,
+          "disproved": 4,
+          "deferred": 13,
           "other": 0,
-          "unadjudicated": 1,
+          "unadjudicated": 0,
           "models": {
-            "codex": 39
+            "codex": 23,
+            "coverage-deferral": 2
           },
           "disproved_pct": 16
         }
@@ -732,19 +804,23 @@
       "coverage": "No structural check: shell-lint does not flag an unchecked mktemp assignment and .coderabbit.yaml has no instruction for it. 3 App raises in the measured window (2026-08-20..09-02) — unchecked mktemp/jq in a positive control, unchecked mktemp for TMP_ROOT, and check_hermetic ignoring a child suite's exit status. All three were legitimate. Shapes (d) and (e) folded in from HIMMEL-2648 (2026-09-21, HIMMEL-3339): ledger rows since 2026-09-04 — assert_not_matches reporting PASS for every nonzero grep status (adc611c), cmp absent from the hermetic HBIN list in test-uninstall.sh (01d38c7, a0f25eb; unadjudicated). No CodeRabbit-export row matches either shape and no deterministic detector exists (a single-line ADDED-line regex cannot see a branch's else arm or a tool list's reachability), so they extend this class instead of minting two prompt entries.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 127,
+        "learnings_uses": 4,
         "cr_app_finding_comments_since_2026-08-10": 3,
         "ledger": {
-          "findings": 74,
-          "agreed": 41,
-          "disproved": 12,
-          "deferred": 18,
+          "findings": 100,
+          "agreed": 54,
+          "disproved": 15,
+          "deferred": 27,
           "other": 0,
-          "unadjudicated": 3,
+          "unadjudicated": 4,
           "models": {
-            "codex": 74
+            "codex": 87,
+            "claude": 7,
+            "coderabbit": 3,
+            "coderabbit-outside": 1,
+            "judge": 2
           },
-          "disproved_pct": 17
+          "disproved_pct": 16
         },
         "learnings_rows": 8
       }
@@ -771,21 +847,22 @@
       "coverage": "No structural check; docs-flag-drift covers a removed --flag still documented, not an exit code whose MEANING widened. 2 App raises in the window: rc=21 documented only for a non-clean fence when a certification failure also returns it, and exit 5 gaining a second meaning in coderabbit-review.sh without its documented contract moving.",
       "prompt": true,
       "evidence": {
-        "learnings_uses": 14,
+        "learnings_uses": 8,
         "cr_app_finding_comments_since_2026-08-10": 2,
         "ledger": {
-          "findings": 66,
-          "agreed": 39,
-          "disproved": 6,
-          "deferred": 14,
+          "findings": 96,
+          "agreed": 56,
+          "disproved": 8,
+          "deferred": 24,
           "other": 0,
-          "unadjudicated": 7,
+          "unadjudicated": 8,
           "models": {
-            "codex": 66
+            "codex": 78,
+            "claude": 18
           },
-          "disproved_pct": 10
+          "disproved_pct": 9
         },
-        "learnings_rows": 10
+        "learnings_rows": 4
       }
     },
     {
@@ -844,18 +921,21 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 280,
-          "agreed": 194,
-          "disproved": 27,
-          "deferred": 56,
+          "findings": 320,
+          "agreed": 215,
+          "disproved": 37,
+          "deferred": 65,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 279,
-            "coderabbit": 1
+            "codex": 315,
+            "coderabbit": 1,
+            "claude": 4
           },
-          "disproved_pct": 10
-        }
+          "disproved_pct": 12
+        },
+        "learnings_uses": 44,
+        "learnings_rows": 17
       }
     },
     {
@@ -878,17 +958,20 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 21,
-          "agreed": 10,
+          "findings": 24,
+          "agreed": 12,
           "disproved": 2,
-          "deferred": 6,
+          "deferred": 7,
           "other": 0,
           "unadjudicated": 3,
           "models": {
-            "codex": 21
+            "codex": 23,
+            "worker-scope": 1
           },
-          "disproved_pct": 11
-        }
+          "disproved_pct": 10
+        },
+        "learnings_uses": 0,
+        "learnings_rows": 1
       }
     },
     {
@@ -912,17 +995,19 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 68,
-          "agreed": 35,
-          "disproved": 12,
-          "deferred": 20,
+          "findings": 84,
+          "agreed": 43,
+          "disproved": 13,
+          "deferred": 26,
           "other": 0,
-          "unadjudicated": 1,
+          "unadjudicated": 2,
           "models": {
-            "codex": 68
+            "codex": 84
           },
-          "disproved_pct": 18
-        }
+          "disproved_pct": 16
+        },
+        "learnings_uses": 0,
+        "learnings_rows": 2
       }
     },
     {
@@ -932,32 +1017,37 @@
       "title": "chief-kit script rolls its own lock/flock instead of the shared lock helper",
       "source": "ledger",
       "globs": [
-        "scripts/handover/console-kit/*.sh", "scripts/handover/chief-kit/*.sh"
+        "scripts/handover/console-kit/*.sh",
+        "scripts/handover/chief-kit/*.sh"
       ],
       "detector": {
         "type": "added-line-regex",
         "pattern": "\\bflock\\b|mkdir +\"?\\$[A-Za-z_]*[Ll]ock|\\.lock\"?\\s*(;|\\|\\||&&|$)"
       },
-      "learning_match": "lock|flock|stale lock|race",
-      "match": "lock|flock|stale lock|race",
+      "learning_match": "(?<![a-z])lock|flock|stale lock|\\brace\\b",
+      "match": "(?<![a-z])lock|flock|stale lock|\\brace\\b",
       "canonical": "Take the queue/worker lock through scripts/handover/queue-lock.sh (acquire / release with the owner token), never an inline flock or mkdir-lock: the shared helper owns stale-lock reaping and owner-pid semantics.",
       "coverage": "Detector: added-line-regex (advisory).",
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 80,
-          "agreed": 50,
-          "disproved": 8,
-          "deferred": 21,
+          "findings": 65,
+          "agreed": 38,
+          "disproved": 11,
+          "deferred": 15,
           "other": 0,
           "unadjudicated": 1,
           "models": {
-            "codex": 78,
-            "coderabbit": 1,
-            "console": 1
+            "codex": 60,
+            "coderabbit": 2,
+            "console": 1,
+            "n3083-leg": 1,
+            "coderabbit-outside": 1
           },
-          "disproved_pct": 10
-        }
+          "disproved_pct": 17
+        },
+        "learnings_uses": 17,
+        "learnings_rows": 14
       }
     },
     {
@@ -982,17 +1072,19 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 7,
-          "agreed": 1,
+          "findings": 8,
+          "agreed": 2,
           "disproved": 0,
           "deferred": 6,
           "other": 0,
           "unadjudicated": 0,
           "models": {
-            "codex": 7
+            "codex": 8
           },
           "disproved_pct": 0
-        }
+        },
+        "learnings_uses": 3,
+        "learnings_rows": 4
       }
     },
     {
@@ -1015,25 +1107,253 @@
       "prompt": false,
       "evidence": {
         "ledger": {
-          "findings": 157,
-          "agreed": 71,
+          "findings": 165,
+          "agreed": 74,
           "disproved": 16,
-          "deferred": 60,
+          "deferred": 65,
           "other": 0,
           "unadjudicated": 10,
           "models": {
-            "codex": 154,
-            "claude": 2,
+            "codex": 158,
+            "claude": 6,
             "coderabbit-outside": 1
           },
-          "disproved_pct": 11
-        }
+          "disproved_pct": 10
+        },
+        "learnings_uses": 32,
+        "learnings_rows": 10
+      }
+    },
+    {
+      "id": "doc-or-comment-contradicts-code",
+      "kind": "checklist",
+      "rung": "prompt",
+      "title": "a header, comment, usage text or doc paragraph says X while the code does Y",
+      "source": "ledger",
+      "globs": [
+        "scripts/**",
+        "docs/**",
+        ".claude/commands/**",
+        "marketplace/**",
+        "templates/**"
+      ],
+      "detector": null,
+      "learning_match": null,
+      "match": "contradict|inconsistent with|out of date|no longer (match|reflect|true|accurate)|does not match|mismatch",
+      "canonical": "For every comment, header contract, usage line, error message or doc paragraph the diff touches or sits next to, read the code under it and check the two still agree: the behaviour it states, the exit codes, defaults, ordering, paths and the fail direction. Fix the prose or the code in the same PR. docs-flag-drift only catches a removed `--flag` token still named in a doc; a renamed function, marker or exit code, and a comment above a changed branch, have no detector.",
+      "coverage": "Review layer only (HIMMEL-2709 Task 16, S11): a regex cannot decide a contradiction. Plan classifier (ledger-classify.py) re-measure 2026-10-29, counted differently from the evidence block: 37 agreed findings across 29 branches, the widest class by branch breadth. No CodeRabbit-export row states the rule in this shape, so learning_match stays null.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 305,
+          "agreed": 170,
+          "disproved": 40,
+          "deferred": 68,
+          "other": 0,
+          "unadjudicated": 27,
+          "models": {
+            "codex": 283,
+            "claude": 20,
+            "self": 2
+          },
+          "disproved_pct": 14
+        },
+        "learnings_uses": 0,
+        "learnings_rows": 0
+      }
+    },
+    {
+      "id": "race-lock-toctou",
+      "kind": "checklist",
+      "rung": "prompt",
+      "title": "check-then-act on shared state (lock, owner file, cursor, ledger) that is not one atomic step",
+      "source": "ledger",
+      "globs": [
+        "scripts/**/*.sh",
+        "templates/**/*.sh",
+        "marketplace/**/*.sh",
+        "scripts/**/*.mjs",
+        "scripts/**/*.js"
+      ],
+      "detector": null,
+      "learning_match": "toctou|race window|compare-then-delete|mkdir-CAS|read-modify-write",
+      "match": "\\brace\\b|TOCTOU|(?<![a-z])lock|atomic",
+      "canonical": "Where the diff reads shared state and then acts on what it read (lock dir, owner.json, a cursor or ledger file, a pid), ask whether the check and the act are one atomic operation (mkdir CAS, rename, flock, a single append), whether a release verifies the token it owns, and what a concurrent actor sees between the two. Use the shared lock helper rather than a new ad-hoc one. A documented, bounded window that the code names as an accepted residual is not a finding; an undocumented one is.",
+      "coverage": "Review layer only (HIMMEL-2709 Task 16, S12). Plan classifier (ledger-classify.py) re-measure 2026-10-29, counted differently from the evidence block: 37 agreed findings across 12 branches, above the plan's 10-branch bar (the 2026-09-08 baseline was 26/8). chief-kit-lock-helper covers the chief-kit lock call sites; this class covers the rest of scripts/. Several CodeRabbit learnings record queue-lock.sh windows as accepted residuals.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 526,
+          "agreed": 261,
+          "disproved": 58,
+          "deferred": 147,
+          "other": 0,
+          "unadjudicated": 60,
+          "models": {
+            "codex": 501,
+            "coderabbit": 5,
+            "console": 1,
+            "claude": 9,
+            "n3083-leg": 1,
+            "coderabbit-outside": 4,
+            "n3211-self": 2,
+            "manual": 2,
+            "coverage-deferral": 1
+          },
+          "disproved_pct": 12
+        },
+        "learnings_uses": 25,
+        "learnings_rows": 4
+      }
+    },
+    {
+      "id": "fail-open-swallow",
+      "kind": "checklist",
+      "rung": "prompt",
+      "title": "a status-bearing command's failure is swallowed (|| true, 2>/dev/null) so the script proceeds on a lie",
+      "source": "ledger",
+      "globs": [
+        "scripts/**/*.sh",
+        "templates/**/*.sh",
+        "marketplace/**/*.sh",
+        "scripts/**/*.mjs",
+        "scripts/**/*.js"
+      ],
+      "detector": null,
+      "learning_match": "swallow|\\|\\| true|2>/dev/null",
+      "match": "\\|\\| true|2>/dev/null|swallow|silently",
+      "canonical": "For every `|| true`, `2>/dev/null` or ignored status the diff adds, decide whether the command's result steers what happens next. If it does, check the status and exit non-zero naming what failed, or record why proceeding is safe in a comment on that line. Cleanup, probes whose absence is a normal answer, and workflow nudges documented as fail-open are fine; a swallowed git, gh, curl, jq, node, mkdir, cp, mv or rm whose output is used later is not.",
+      "coverage": "Review layer only (HIMMEL-2709 Task 16, S13): 'status-bearing' is a judgement, not a token, so this is a checklist and not a fix class. check-fail-open-lint.sh scans only himmel's own guard surfaces. A narrow fix variant needs an enumerated command list and an escape marker; file it as its own follow-up. Plan classifier (ledger-classify.py) re-measure 2026-10-29, counted differently from the evidence block: 25 agreed findings across 19 branches.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 624,
+          "agreed": 336,
+          "disproved": 86,
+          "deferred": 161,
+          "other": 0,
+          "unadjudicated": 41,
+          "models": {
+            "codex": 607,
+            "claude": 15,
+            "coderabbit-outside": 1,
+            "coderabbit": 1
+          },
+          "disproved_pct": 15
+        },
+        "learnings_uses": 1,
+        "learnings_rows": 1
+      }
+    },
+    {
+      "id": "non-hermetic-test-env-leak",
+      "kind": "checklist",
+      "rung": "prompt",
+      "title": "a test reads an env var, HOME or live host state its setup never sets",
+      "source": "ledger",
+      "globs": [
+        "scripts/**/test-*.sh",
+        "scripts/**/tests/**/*.sh",
+        "templates/**/test-*.sh",
+        "marketplace/**/test-*.sh"
+      ],
+      "detector": null,
+      "learning_match": "hermeticity|HIMMEL-2642|inherited host environment",
+      "match": "hermetic|inherit(s|ed)? (the )?(host|caller|ambient|operator)|ambient (env|environment)|leaks? (into|from) (the )?(test|env)",
+      "canonical": "For each variable or path the code under test reads (a seam such as a ticket, root or timeout variable, HOME, PATH, a live ledger or config), the suite setup must set or clear it, and the suite must use its own fixtures instead of live host state; otherwise the result depends on the operator's shell. A case that asserts something unrelated to the seam is not a finding.",
+      "coverage": "Review layer only (HIMMEL-2709 Task 16, S14): HIMMEL-2642 named the class and no detector exists. Candidate narrow detector for a later ticket: a test-*.sh reading an env var it never sets in setup (extend HIMMEL-2642). Plan classifier (ledger-classify.py) re-measure 2026-10-29, counted differently from the evidence block: 22 agreed findings across 16 branches.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 44,
+          "agreed": 23,
+          "disproved": 7,
+          "deferred": 5,
+          "other": 0,
+          "unadjudicated": 9,
+          "models": {
+            "codex": 39,
+            "coderabbit": 1,
+            "claude": 4
+          },
+          "disproved_pct": 20
+        },
+        "learnings_uses": 4,
+        "learnings_rows": 2
+      }
+    },
+    {
+      "id": "vendored-file-local-edit",
+      "kind": "fix",
+      "rung": "prompt",
+      "title": "a vendored upstream file edited in place instead of through the upstream-fix-and-revendor process",
+      "source": "cr-app-comments",
+      "globs": [
+        "marketplace/plugins/**"
+      ],
+      "detector": null,
+      "learning_match": "vendored[^.]{0,80}(byte|upstream|revendor|re-vendor)|byte-for-byte",
+      "match": "vendored|upstream|revendor|re-vendor|byte-for-byte",
+      "canonical": "Vendored upstream files must stay byte-for-byte copies of the pinned upstream. A fix goes upstream and is re-vendored, or becomes an approved adaptation recorded as such; do not patch the vendored file in place, and do not raise a finding against vendored code that the upstream owns.",
+      "coverage": "Recorded as a CodeRabbit learning only (26 uses, marketplace/plugins/lean-skills). No detector: the pin and the vendored tree are verified by the vendoring tooling and the upstream-and-vendoring doctrine, not by a diff regex.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 15,
+          "agreed": 3,
+          "disproved": 2,
+          "deferred": 10,
+          "other": 0,
+          "unadjudicated": 0,
+          "models": {
+            "codex": 12,
+            "coderabbit": 1,
+            "claude": 1,
+            "coderabbit-outside": 1
+          },
+          "disproved_pct": 13
+        },
+        "learnings_uses": 26,
+        "learnings_rows": 2
+      }
+    },
+    {
+      "id": "docs-component-local-carveout",
+      "kind": "rebuttal",
+      "rung": "prompt",
+      "title": "component-local operational docs flagged for not living under docs/luna/",
+      "source": "cr-app-comments",
+      "globs": [
+        "scripts/**/*.md",
+        "marketplace/plugins/**/*.md"
+      ],
+      "detector": null,
+      "learning_match": "luna-docs|component-local",
+      "match": "docs/luna|luna-docs|component-local",
+      "canonical": "Under the CLAUDE.md luna-docs convention, component-local operational documentation (install steps, config schema, invariants) that merely reads or reports on luna or vault data stays in the component's own directory, as plugin specs stay in plugins/<plugin>/README.md. Only luna-facing reference or runbook pages that teach how to operate or interpret luna itself belong in docs/luna/, and they link back to the component README. Do not raise a finding asking to move a component README.",
+      "coverage": "Recorded as a CodeRabbit learning only (37 uses, scripts/observability/README.md). No detector: placement is a docs-convention judgement.",
+      "prompt": true,
+      "evidence": {
+        "ledger": {
+          "findings": 0,
+          "agreed": 0,
+          "disproved": 0,
+          "deferred": 0,
+          "other": 0,
+          "unadjudicated": 0,
+          "models": {},
+          "disproved_pct": null
+        },
+        "learnings_uses": 37,
+        "learnings_rows": 1
       }
     }
   ],
   "learnings_export": {
-    "rows": 395,
-    "total_uses": 5174,
-    "unmatched_rows": 244
+    "rows": 305,
+    "total_uses": 3094,
+    "live_rows": 251,
+    "stale_rows": 54,
+    "unmatched_rows": 176
   }
 }
