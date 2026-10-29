@@ -28,9 +28,10 @@ for t in awk sed grep sort comm find cp mv mkdir rmdir date cat rm ls dirname ba
     p="$(command -v "$t" 2>/dev/null || true)"
     case "$p" in /*) ln -s "$p" "$BIN/$t" ;; esac
 done
-REAL_SHA="$(command -v sha256sum)"
+REAL_SHA="$(command -v sha256sum || true)"; REAL_ARGS=""
+if [ -z "$REAL_SHA" ]; then REAL_SHA="$(command -v shasum)"; REAL_ARGS="-a 256"; fi
 # shellcheck disable=SC2016  # the shim body is literal text, expanded when the shim runs
-printf '#!/bin/sh\necho "$*" >> "%s/shasum.log"\n[ "$1" = "-a" ] && shift 2\nexec "%s" "$@"\n' "$SB" "$REAL_SHA" > "$BIN/shasum"
+printf '#!/bin/sh\necho "$*" >> "%s/shasum.log"\n[ "$1" = "-a" ] && shift 2\nexec "%s" %s "$@"\n' "$SB" "$REAL_SHA" "$REAL_ARGS" > "$BIN/shasum"
 chmod +x "$BIN/shasum"
 
 snap() { PATH="$BIN" MEMDIR="$MEM" "$BASH" "$SNAPSHOT" "$@"; }
@@ -143,6 +144,14 @@ w c.md c-other-writer
 out="$(snap restore "$SNAPS/A" --expect "$SNAPS/B" 2>&1)"; rc=$?
 assert_rc "S10 skip exits 0" 0 "$rc"
 ok "S10 other writer's bytes stay" body c.md c-other-writer
+
+# S11: a hasher that fails mid-run must fail take, never write an empty digest.
+BIN2="$SB/bin2"; mkdir -p "$BIN2"; cp -P "$BIN"/* "$BIN2"/; rm -f "$BIN2/shasum"
+printf '#!/bin/sh\nexit 1\n' > "$BIN2/shasum"; chmod +x "$BIN2/shasum"
+fresh
+out="$(PATH="$BIN2" MEMDIR="$MEM" "$BASH" "$SNAPSHOT" take "$SNAPS/A" 2>&1)"; rc=$?
+assert_rc "S11 take with a failing hasher" 2 "$rc"
+ok "S11 manifest holds no empty digest" test -z "$(awk -F'\t' '$1 == ""' "$SNAPS/A/.snapshot-manifest" 2>/dev/null)"
 
 # Hashing went through shasum, never sha256sum; no cp names the memory path.
 ok "P1 sha256sum hidden from the script's PATH" test -z "$(PATH="$BIN"; command -v sha256sum)"

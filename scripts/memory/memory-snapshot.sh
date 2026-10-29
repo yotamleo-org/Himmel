@@ -36,6 +36,10 @@
 # ponytail: a file another writer adds between take and the checkpoint looks
 # like the pass's own addition (R3), so restore moves it to the .removed- dir
 # (never deletes it); a hash alone cannot tell the two apart.
+# ponytail: restore hashes a file and then copies or moves it with no lock in
+# between, so a writer landing inside that few-millisecond window is
+# overwritten (R2) or moved aside (R3, recoverable from the .removed- dir);
+# upgrade path: an flock around the whole restore once a writer holds one too.
 #
 # bash 3.2-safe.
 set -uo pipefail
@@ -89,8 +93,9 @@ take)
     : > "$dir/$MANIFEST"
     store_files "$MEMDIR" | while IFS= read -r n; do
         cp -p "$MEMDIR/$n" "$dir/$n" || exit 2
-        printf '%s\t%s\n' "$(sha256_hex "$dir/$n")" "$n" >> "$dir/$MANIFEST"
-    done || die "copy failed"
+        h="$(sha256_hex "$dir/$n")" && [ -n "$h" ] || exit 2
+        printf '%s\t%s\n' "$h" "$n" >> "$dir/$MANIFEST"
+    done || die "copy or hash failed"
     printf 'snapshot: %s files in %s\n' "$(wc -l < "$dir/$MANIFEST" | tr -d ' ')" "$dir"
     ;;
 verify)

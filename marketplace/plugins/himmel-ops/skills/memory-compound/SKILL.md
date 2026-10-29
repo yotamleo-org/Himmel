@@ -99,7 +99,7 @@ If more than one matches, pick the store whose `MEMORY.md` matches the index
 loaded in this session (same entries). Export it for the steps below:
 
 ```bash
-MEMDIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<project-slug>/memory"
+export MEMDIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<project-slug>/memory"
 ```
 
 Claude Code loads only the first 200 lines or 25 KB of `MEMORY.md`, whichever
