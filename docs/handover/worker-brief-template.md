@@ -276,6 +276,7 @@ template_version: 3
 
 ## Why each part is load-bearing
 
+<!-- mem:6b25f86c9a6f -->
 | Part | What goes wrong without it |
 |---|---|
 | Base sha + ancestor check | A worker cut from the wrong base ships a PR that silently reverts a merge. |

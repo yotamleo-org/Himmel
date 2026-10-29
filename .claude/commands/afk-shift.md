@@ -1,5 +1,5 @@
 ---
-description: Auto-dispatch N tickets from Jira as parallel subagents — emits plan + confirms before fanout.
+description: AFK shift over Jira tickets.
 argument-hint: [--limit N] [--project KEY] [--status STATUS] [--priority ORDER]
 ---
 

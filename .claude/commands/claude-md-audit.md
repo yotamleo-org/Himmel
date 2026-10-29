@@ -1,5 +1,5 @@
 ---
-description: Audit changed CLAUDE.md files against the claude-md-improver rubric before PR — audit-only, applies no edits on its own
+description: Audit changed CLAUDE.md files (claude-md-improver rubric).
 ---
 
 Pre-ship quality gate for CLAUDE.md edits (HIMMEL-218). Run this on a worktree

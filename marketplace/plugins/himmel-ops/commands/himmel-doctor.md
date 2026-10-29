@@ -1,5 +1,5 @@
 ---
-description: Diagnose common himmel-harness health problems, print a severity-grouped report, optionally --fix and file one issue.
+description: Diagnose himmel harness health.
 ---
 
 Run `himmel-doctor` to surface the field problems that bite himmel installs —

@@ -1,5 +1,5 @@
 ---
-description: Classify tickets for the cloud lane, write the cloud brief, print the operator launch line. Never launches.
+description: Pick tickets for the cloud lane.
 argument-hint: HIMMEL-<n> [HIMMEL-<n> ...]
 ---
 

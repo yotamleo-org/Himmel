@@ -301,14 +301,6 @@ while :; do
             ROLE="$2"
             case "$ROLE" in
                 chief) : ;;
-                console)
-                    case "${HIMMEL_LEGACY_NAMES:-}" in
-                        0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
-                            usage
-                            echo "headed-arm.sh: --role console was renamed to --role chief; legacy names are off" >&2
-                            exit 2 ;;
-                    esac
-                    ROLE=chief ;;
                 *)
                     usage
                     echo "headed-arm.sh: --role must be chief, got: $ROLE" >&2

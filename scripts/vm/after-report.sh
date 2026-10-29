@@ -4,11 +4,7 @@
 # this host.
 #
 # Platform guard (linux-only): drives VirtualBox linked clones via
-# VBoxManage and ssh/scp on the Linux station; NOT ported to native
-# PowerShell. A Windows port would need a VBoxManage.exe equivalent for
-# every call here (clonevm, snapshot, showvminfo, controlvm) plus a
-# Windows ssh/scp client, and there is no Windows VM lane to test it
-# against.
+# VBoxManage and ssh/scp on the Linux station.
 #
 # WHY A VM: scripts/ci/run-shell-tests.sh --changed-since origin/main --pr <N>
 # takes ~35-45 min per PR here, and every run serialises on ONE machine-wide

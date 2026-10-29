@@ -137,6 +137,7 @@ Reopen trigger: any entry appearing in `hook-chain-skips.jsonl`.
   exit 77) — and don't let a setup shield "skip if it already exists": prefer
   `mktemp -d` per-run fixtures, and assert the shield engaged, not just that
   the suite passed.
+<!-- mem:ac1866a5f5b5 -->
 - **Build a probe harness, don't re-run the full suite per iteration.** Splice
   a suite's own setup plus 1–2 representative cases into a standalone script
   under `scripts/` (not `/tmp`, which reboots and temp cleaners empty),

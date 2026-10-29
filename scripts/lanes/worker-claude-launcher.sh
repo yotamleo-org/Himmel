@@ -62,7 +62,7 @@
 # Platform: POSIX bash 3.2+ (macOS ships 3.2) - hence the
 # ${PRE[@]+"${PRE[@]}"} empty-array expansion, which 3.2 needs under `set -u`.
 #
-# Platform guard: no .ps1 twin, by design. Its only caller is headed-arm.sh via
+# Platform guard: its only caller is headed-arm.sh via
 # HEADED_ARM_LAUNCHER, and that script is Linux/KDE-only (konsole).
 set -u
 

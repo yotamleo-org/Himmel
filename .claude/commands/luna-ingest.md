@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Skill, WebSearch, WebFetch
-description: Chain-following triage for a github repo URL. Thin wrapper over the obsidian-triage:luna-ingest skill.
+description: Wrapper; use obsidian-triage:luna-ingest.
 argument-hint: <github-url> [--vault <path>] [--dest <category>] [--limit <N>] [--deep] [--research] [--skill-scan] [--dry-run]
 ---
 

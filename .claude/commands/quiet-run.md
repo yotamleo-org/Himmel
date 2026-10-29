@@ -1,5 +1,5 @@
 ---
-description: Run a noisy command quietly — one OK/ERR line + log path
+description: Run a noisy command quietly.
 argument-hint: <label> -- <command...>
 ---
 

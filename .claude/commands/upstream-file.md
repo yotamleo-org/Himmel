@@ -1,5 +1,5 @@
 ---
-description: File verified findings upstream (issue / PR / advisory / documented skip) — dupe-gate first, leak-clean, repo-own gates.
+description: File a verified finding upstream.
 argument-hint: <findings source — a ticket, a report path, or an inline list>
 ---
 

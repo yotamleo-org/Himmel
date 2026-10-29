@@ -1,5 +1,5 @@
 ---
-description: Refresh known-findings.json evidence from the CR ledger + a CodeRabbit learnings export; lists new-class candidates
+description: Refresh CR findings from CodeRabbit learnings.
 ---
 
 Lean-invoke — run after a CodeRabbit learnings export lands in Downloads, or

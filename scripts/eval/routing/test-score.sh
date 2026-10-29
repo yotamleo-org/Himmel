@@ -124,11 +124,13 @@ eq "score: open miss rate 2 of 20" "$(metric "$TMP/base/results.json" open.miss_
 eq "score: sealed accuracy 18 of 20" "$(metric "$TMP/base/results.json" sealed.accuracy)" "0.9"
 eq "score: sealed false-pick rate 2 of 20" "$(metric "$TMP/base/results.json" sealed.false_pick_rate)" "0.1"
 eq "score: the spend is summed" "$(metric "$TMP/base/results.json" cost_usd)" "0.04"
-eq "results: a sealed row carries no request or expected pick" "$(python3 -c 'import json,sys
-print(sorted({k for r in json.load(open(sys.argv[1]))["cases"] if r["split"] == "sealed" for k in r}))' "$TMP/base/results.json")" \
-    "['id', 'outcome', 'pick', 'split']"
+eq "results: no sealed case gets a per-case row" "$(python3 -c 'import json,sys
+print(sorted({r["split"] for r in json.load(open(sys.argv[1]))["cases"]}))' "$TMP/base/results.json")" "['open']"
 has "table: an open row shows its expected pick" "$(cat "$TMP/base/table.md")" "| o01 | open | brew-coffee | brew-coffee | exact |"
-has "table: a sealed row hides its expected pick" "$(cat "$TMP/base/table.md")" "| s19 | sealed | (sealed) | brew-coffee | false |"
+hasnt "table: no sealed case gets a row" "$(cat "$TMP/base/table.md")" "| s19 |"
+has "table: the sealed half is one aggregate line" "$(cat "$TMP/base/table.md")" "sealed: 18 of 20 exact"
+eq "run: a sealed progress line says only that the case is done" "$(grep -F ' s19 ' "$TMP/base.log")" "run.sh: s19 sealed done"
+eq "committed: no results file names a sealed case" "$(grep -lE '\| s[0-9]+ \||"id": "s[0-9]+"' "$HERE"/results/* 2>/dev/null)" ""
 eq "ledger: one routing row with per-case exact and false_pick" "$(python3 -c 'import json,sys
 r=[json.loads(l) for l in open(sys.argv[1])]
 print(len(r), r[0]["eval"], r[0]["model"], r[0]["cases"]["s19"], r[0]["ci_method"])' "$HIMMEL_EVAL_RUNS_LEDGER")" \
@@ -151,6 +153,7 @@ printf '%s\n' '{"subtype": "success", "result": "{\"pick\": \"brew-coffee\"}\n{\
 python3 "$HERE/score.py" score --cases "$FIX/cases" --listing "$TMP/base/listing.json" --outputs "$TMP/two" --only o01 \
     --json "$TMP/two/results.json" --no-ledger >/dev/null
 eq "score: the first of two picks is the one scored" "$(metric "$TMP/two/results.json" accuracy)" "1.0"
+eq "score: part of the sealed half is refused" "$(python3 "$HERE/score.py" score --cases "$FIX/cases" --listing "$TMP/base/listing.json" --outputs "$TMP/base" --only o01,s19 --no-ledger >/dev/null 2>&1; echo $?)" "2"
 eq "ceiling: stops before the call whose cap would cross it" "$(bash "$RUN" --model haiku --out "$TMP/ceil" --max-usd 0.001 --ceiling-usd 0.0025 --no-ledger >/dev/null 2>&1; echo $?)" "3"
 eq "ceiling: two calls made before the stop" "$(find "$TMP/ceil" -name '[os][0-9]*.json' | wc -l | tr -d ' ')" "2"
 : >"$TMP/calls.log"
@@ -159,6 +162,9 @@ eq "preflight: no call after a bank refusal" "$(wc -l <"$TMP/calls.log" | tr -d 
 eq "errored calls: exit 4" "$(STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/err" --split open --no-ledger >/dev/null 2>&1; echo $?)" "4"
 eq "errored calls: every case unscored, none kept" "$(metric "$TMP/err/results.json" unscored)" "20"
 eq "errored calls: their spend is in the cost" "$(metric "$TMP/err/results.json" cost_usd)" "0.02"
+STUB_ERROR=1 bash "$RUN" --model haiku --out "$TMP/errs" --split sealed --no-ledger >"$TMP/errs.log" 2>&1
+eq "errored calls: a sealed unscored case is counted, never named" "$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1])); print(d["metrics"]["unscored"], len(d["unscored"]))' "$TMP/errs/results.json") $(grep -c 'UNSCORED s' "$TMP/errs.log")" "20 0 0"
 eq "no cost: a call with no cost stops the run" "$(STUB_NOCOST=1 bash "$RUN" --model haiku --out "$TMP/nocost" --no-ledger >/dev/null 2>&1; echo $?)" "3"
 eq "no cost: the call is charged at the per-call cap" "$(cat "$TMP/nocost/errored-spend.log" 2>/dev/null)" "0.10"
 mkdir -p "$TMP/held/.lock"

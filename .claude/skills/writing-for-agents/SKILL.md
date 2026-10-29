@@ -1,6 +1,6 @@
 ---
 name: writing-for-agents
-description: Writing documents for agents; cull and tighten steering files (CLAUDE.md, memory index, skills).
+description: Write or tighten CLAUDE.md, memory, skills.
 disable-model-invocation: true
 ---
 

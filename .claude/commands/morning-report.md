@@ -1,5 +1,5 @@
 ---
-description: Generate the dated Morning Report from live git/gh/jira/worktree state at ~zero tokens; --llm enriches it.
+description: Generate today's Morning Report.
 argument-hint: "[--llm] [--llm-model M] [--since SHA] [--since-date YYYY-MM-DD] [--out PATH] [--jira-limit N] [--backlog-limit N] [--dry-run]"
 ---
 

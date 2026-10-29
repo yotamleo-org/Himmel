@@ -1,6 +1,6 @@
 ---
 name: judge-ro
-description: Read-only judge subagent for a chief that dispatches judges as in-process children. Same job as judge (answer one verdict-grade question, return a verdict, never act) but with the tool list pinned to Read, Grep, Glob and Bash, which is what lets the guard-chief-dispatch hook accept it as a read-only lane. Dispatch this instead of the built-in Explore agent; use judge only when the brief needs no dispatch-guard carve-out.
+description: Read-only judge for a chief; use it, not Explore.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

@@ -14,6 +14,7 @@ CLOUD-OK ticket and prints the launch line.
 
 ## What a cloud session has
 
+<!-- mem:2d3168561564 -->
 | Has | Does not have |
 |---|---|
 | The clone's `CLAUDE.md`, `.claude/{skills,agents,commands,rules}`, `.mcp.json` (single-repo session only) | Plugins not in the environment's profile; claude.ai-uploaded plugins (sync as `@synced` only) |

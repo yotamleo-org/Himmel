@@ -1,6 +1,6 @@
 ---
 name: minerva
-description: Use to interrogate an idea and develop a critic-reviewed specification and implementation plan.
+description: Idea to reviewed spec and plan.
 ---
 
 # minerva — grill → brainstorm → critic → spec → critic → plan (HIMMEL-428)

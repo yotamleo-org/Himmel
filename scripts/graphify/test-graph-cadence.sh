@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/graphify/graph-cadence.sh.
 #
-# PLATFORM GUARD: no .ps1 twin, matching graph-cadence.sh's own (see that
-# script's header) -- this suite tests plain POSIX bash under Git Bash the
-# same way test-graph-publish.sh and test-graphmap-cadence.sh's cron half
-# already do; there is no separate PowerShell code path to twin against.
+# PLATFORM GUARD: this suite tests plain POSIX bash (see graph-cadence.sh's
+# header) the same way test-graph-publish.sh and test-graphmap-cadence.sh's
+# cron half already do.
 #
 # Strategy (mirrors test-graph-publish.sh): git operations run for real
 # against a LOCAL bare "origin" + a "primary" clone (never real GitHub/

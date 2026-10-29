@@ -3,7 +3,7 @@
 # idempotent post-update step that bridges doc nodes naming a code file to
 # that file's AST node and adds allowlisted subprocess-exec code-fact edges.
 # Run: bash scripts/graphify/test-harden-graph.sh
-# Platform guard (gitbash-only): pure bash + python3, no .ps1 twin needed.
+# Platform guard: pure bash + python3.
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom (pass/fail echo, always rc 0)
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

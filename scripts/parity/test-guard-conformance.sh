@@ -27,10 +27,8 @@
 #        write-fence is also tested, so a column with a pending/GAP write-fence
 #        cell is honestly NOT tested-green.
 #
-# Platform guard: Git Bash on Windows (gitbash) only. The parser relies on
-# GNU sed/grep POSIX-E regex + [ -f ] over a POSIX path tree; it is NOT ported
-# to native PowerShell. A test harness needs no .ps1 twin (project convention:
-# a documented platform guard suffices for a test fixture).
+# Platform guard: any POSIX bash. The parser relies on
+# GNU sed/grep POSIX-E regex + [ -f ] over a POSIX path tree.
 #
 # Usage:
 #   bash scripts/parity/test-guard-conformance.sh [--doc <path>]

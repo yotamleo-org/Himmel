@@ -53,10 +53,8 @@
 # resolves, below, and propagate-public.sh's snapshot_core/reship for the
 # write side). No inference, no threshold.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + grep over the branch diff; NOT ported to native PowerShell. A
-# test harness needs no .ps1 twin (project convention: a documented platform
-# guard suffices for a test fixture).
+# Platform guard: any POSIX bash 3.2+.
+# Pure git + grep over the branch diff.
 #
 # Usage:
 #   bash scripts/parity/test-ws5-invariants.sh [--base <ref>]

@@ -1,6 +1,6 @@
 ---
 name: context7-mcp
-description: Use when the user names a library, framework or API (React, Prisma, Supabase…) — fetch its current docs via Context7.
+description: Fetch current docs for a named library or API via Context7.
 ---
 
 When the user asks about libraries, frameworks, or needs code examples, use Context7 to fetch current documentation instead of relying on training data.

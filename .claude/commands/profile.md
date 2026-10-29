@@ -1,5 +1,5 @@
 ---
-description: Inspect or toggle the two-tier plugin profile (ALWAYS vs ON-DEMAND) — list, lean, full, enable/disable one.
+description: Toggle always-on vs on-demand plugins.
 argument-hint: [list [--json]|lean|full|enable <spec>|disable <spec>] [--dry-run]
 ---
 

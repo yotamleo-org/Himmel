@@ -11,10 +11,8 @@
 # + distinct exit code on a timed-out wait.
 #
 # Platform guard (linux-only): a bash test harness — no fake VBoxManage
-# needed here since vm-lock.sh itself is pure filesystem locking, but it
-# still needs no .ps1 twin (project convention: a documented guard
-# suffices for a test harness). Bash-only because vm-lock.sh's own
-# constraint is the station, not this file.
+# needed here since vm-lock.sh itself is pure filesystem locking.
+# Bash-only because vm-lock.sh's own constraint is the station, not this file.
 #
 # Usage: bash scripts/vm/test-vm-lock.sh
 set -uo pipefail

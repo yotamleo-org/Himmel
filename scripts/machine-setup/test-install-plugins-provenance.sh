@@ -18,9 +18,8 @@
 # Every case runs under a scratch HOME (the ledger defaults to $HOME/.himmel)
 # with a stub `claude` on PATH; HIMMEL_UNINSTALL_REAL_HOME is never set.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Uses git, jq and mktemp; NOT ported to native PowerShell (a test harness
-# needs no .ps1 twin — a documented platform guard suffices).
+# Platform guard: any POSIX bash 3.2+.
+# Uses git, jq and mktemp.
 set -uo pipefail
 
 unset HIMMEL_RECONCILE_PLUGINS HIMMEL_PROVENANCE_IID HIMMEL_PROVENANCE_DIR CLAUDE_CONFIG_DIR DRY_RUN

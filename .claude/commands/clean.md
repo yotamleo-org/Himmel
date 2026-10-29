@@ -1,5 +1,5 @@
 ---
-description: Prune merged-PR worktrees (no create). Thin alias for /clean_garden --prune-only.
+description: Prune merged-PR worktrees only.
 argument-hint: [--only <path|branch>] [--dry-run] [--verbose]
 ---
 

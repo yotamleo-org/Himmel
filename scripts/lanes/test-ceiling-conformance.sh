@@ -13,7 +13,7 @@
 # binaries (`pgrep -x` bare pids + `ps -o pid=,args=`), since the old
 # GNU-only `pgrep -af` stub masked the macOS bug it was supposed to catch.
 #
-# PLATFORM GUARD: no .ps1 twin, by design -- the SUT is Linux-only (pgrep).
+# PLATFORM GUARD: the SUT is Linux-only (pgrep).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

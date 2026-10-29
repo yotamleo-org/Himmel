@@ -1,5 +1,5 @@
 ---
-description: Start or arm a chief (new) or hand it over (next) from any repo — writes the doc, takes the queue lock.
+description: Any repo; start or hand over a chief.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 

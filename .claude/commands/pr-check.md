@@ -1,5 +1,5 @@
 ---
-description: Run the multi-agent CR review on the current branch and clear the pre-push marker on clean output
+description: Local code review of a himmel branch (not CI).
 ---
 
 Status-check the CR gate: run the cross-model CR matrix (critic panel; the `pr-review-toolkit:*` Claude reviewer agents only when `CR_CLAUDE_AGENTS=1` — HIMMEL-926; a guard or gate diff also gets the blast-radius pass, which gate 4f of `clear-review-marker.sh` checks — HIMMEL-6685). CodeRabbit is NOT part of this matrix: it is the GitHub App and reviews the PR after it exists (HIMMEL-2704) for the current branch and clear the pre-push marker if the review is clean. This is the in-session counterpart to the pre-push hook — the hook writes a marker, this command reviews and clears it. Without a clean run, `gh pr create` is blocked by the PreToolUse hook.

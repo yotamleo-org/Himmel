@@ -1,5 +1,5 @@
 ---
-description: Re-sync a carried FORK onto a newer upstream base — rebase + audit the additive delta; pushing is operator-only.
+description: Rebase a carried fork onto upstream.
 argument-hint: [name] [--dry-run]
 ---
 
