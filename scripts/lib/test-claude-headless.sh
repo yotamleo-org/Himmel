@@ -499,14 +499,15 @@ rm -f "$LIVE_DIR"/*.json
 # FAKE_OK writes its artifact only when launched, so "artifact absent" = REFUSED.
 SH18="$W/shadow18"; mkdir -p "$SH18"
 # The shadows come from the shell-startup file and are installed ONLY in
-# claude-headless.sh itself ($0 test): bank-preflight.sh and the other children
+# claude-headless.sh itself (a ps test: bash 3.2 runs the startup file before it
+# sets $0, so a $0 test never matches there): bank-preflight.sh and the other children
 # must stay intact, or the launch is refused for the wrong reason and the rows
 # go vacuous. They arm from a DEBUG trap at the first command AFTER the
 # seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier
 # breaks the guard itself, which then refuses (exit 96) before the gate is
 # reached. SHADOW_MARK proves the trap fired.
 # shellcheck disable=SC2016  # the startup file body is written literally
-printf '%s\n' '[[ $0 = *claude-headless.sh ]] || return 0' > "$SH18/gate.sh"
+printf '%s\n' 'case $(ps -o args= -p $$) in *claude-headless.sh\ --role*) ;; *) return 0 ;; esac' > "$SH18/gate.sh"
 arm18() { printf '%s\n' "trap '[[ \$BASH_COMMAND == SCRIPT_DIR=* ]] && { trap - DEBUG; $1; : > \"\${SHADOW_MARK:-/dev/null}\"; }' DEBUG"; }
 { cat "$SH18/gate.sh"; arm18 'unset(){ :; }; return(){ :; }'; } > "$SH18/funcs.sh"
 { cat "$SH18/gate.sh"; printf '%s\n' 'shopt -s expand_aliases'; arm18 'alias unset=: return=:'; } > "$SH18/alias.sh"
