@@ -88,8 +88,10 @@ RED_CONTROL_TMPDIR="$FIX"
 # for BOTH the mutant and the correct run — a vacuous "genuinely-not-red"
 # that has nothing to do with the mutation itself.
 MUTANTS="$FIX/mutant-tree/scripts/hooks"
-mkdir -p "$MUTANTS" "$FIX/mutant-tree/scripts/guardrails"
+mkdir -p "$MUTANTS" "$FIX/mutant-tree/scripts/guardrails" "$FIX/mutant-tree/scripts/lib"
 cp "$HOOKS_DIR/../guardrails/lib.sh" "$FIX/mutant-tree/scripts/guardrails/lib.sh"
+# The hook also sources scripts/lib/prim.sh (atomic_write) the same way.
+cp "$HOOKS_DIR/../lib/prim.sh" "$FIX/mutant-tree/scripts/lib/prim.sh"
 
 # _mutate_line SRC DST OLD_LINE NEW_LINE -- byte-exact single-line swap into a
 # scratch copy. Never mutates SRC in place. Fails (rc=1, DST not usable) when
@@ -333,7 +335,7 @@ printf 'A dirtied for control 1\n' > "$MAIN/a.txt"
 # Single-quoted and deliberate (SC2016): the pattern must stay literal so it
 # matches the real script's source text byte-for-byte.
 # shellcheck disable=SC2016
-old1="$(_get_line "$DETECT" 'mv -f "$tmp" "$baseline_file"')"
+old1="$(_get_line "$DETECT" 'atomic_write "$baseline_file"')"
 if [ -z "$old1" ]; then
     bad "RED control 1 (reported-once) setup: exact target line not found in $DETECT — script drifted, control cannot run"
 else

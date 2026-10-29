@@ -4,7 +4,6 @@
 docs/configuration.md	scripts/check-ci.sh	--match-head-commit
 docs/handover/chief-sections/waiter.md	scripts/handover/chief-kit/chief-wait.sh	--token
 docs/handover/chief-template.md	scripts/handover/chief-kit/chief-wait.sh	--token
-docs/handover/console-template.md	scripts/handover/chief-kit/chief-wait.sh	--token
 docs/handover/afk-mode.md	scripts/check-ci.sh	--dangerously-skip-permissions
 docs/handover/afk-mode.md	scripts/check-ci.sh	--match-head-commit
 docs/internals/enforcement.md	scripts/handover/chief-kit/go.sh	--judge

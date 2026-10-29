@@ -4803,6 +4803,44 @@ check_c80_status_drift() {
     fi
 }
 
+# --- C81-hook-layers: one hook script wired from more than one settings layer ---
+# A hook wired from the user settings AND the project settings (or an enabled plugin) runs twice
+# per matching call: two bash startups, two log rows. FAIL names each script, its
+# event and the layers carrying it. A user entry run through guardrail-skip-in-himmel.js and a
+# plugin entry that reads the project's .claude/settings.json skip themselves when the project
+# layer covers the script, so neither counts. The plugin layer reads the newest cached
+# hooks/hooks.json of each enabled plugin, else the repo's marketplace copy.
+# ponytail: the newest cache dir by name stands in for the pinned version, upgrade by reading
+# installed_plugins.json.
+check_c81_hook_layers() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C81-hook-layers "jq not on PATH -- hook layer scan skipped"; return 0; }
+    local rows="" name f c dups
+    _c81_rows() { # <layer> <settings-or-hooks.json>
+        [ -r "$2" ] || return 0
+        jq -r --arg layer "$1" '(.hooks // {}) | to_entries[] | .key as $ev | (.value // [])[]? | (.hooks // [])[]? | (.command // "")
+            | select((contains("guardrail-skip-in-himmel") or contains("CLAUDE_PROJECT_DIR/.claude/settings.json")) | not)
+            | [scan("hooks/[A-Za-z0-9_-]+\\.sh") | ltrimstr("hooks/")] | unique[] | [$layer, $ev, .] | @tsv' "$2" 2>/dev/null
+    }
+    rows="$(_c81_rows user "$SETTINGS"; _c81_rows project "$REPO_ROOT/.claude/settings.json")"
+    if [ -r "$SETTINGS" ]; then
+        for name in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | split("@")[0]' "$SETTINGS" 2>/dev/null); do
+            f=""
+            for c in "$CLAUDE_DIR_R"/plugins/cache/*/"$name"/*/hooks/hooks.json; do [ -f "$c" ] && f="$c"; done
+            [ -n "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/hooks/hooks.json"
+            rows="$rows
+$(_c81_rows "plugin:$name" "$f")"
+        done
+    fi
+    dups="$(printf '%s\n' "$rows" | awk -F'\t' 'NF == 3 { k = $2 "\t" $3; if (!((k SUBSEP $1) in seen)) { seen[k SUBSEP $1] = 1; n[k]++; l[k] = (k in l ? l[k] "+" : "") $1 } }
+        END { for (k in n) if (n[k] > 1) { split(k, p, "\t"); print p[2] " on " p[1] " (" l[k] ")" } }' | sort | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+    if [ -z "$dups" ]; then
+        emit OK C81-hook-layers "no hook script is wired from more than one layer (user settings, project settings, enabled plugins)"
+        return 0
+    fi
+    emit WARN C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups -- accept guardrail-block-global (it goes quiet inside a himmel checkout)" \
+        "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4955,6 +4993,7 @@ run_check C77 check_c77_bridge_stale
 run_check C78 check_c78_shfmt
 run_check C79 check_c79_plugin_cache_drift
 run_check C80 check_c80_status_drift
+run_check C81 check_c81_hook_layers
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
