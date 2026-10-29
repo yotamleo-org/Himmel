@@ -232,14 +232,38 @@ const filteredRecords = records.filter(r => {
   return true;
 });
 
-// Collect all distinct heads sorted by earliest ts, to compute last-N window.
-const headTs = {};
+// The window counts PRs. A row carries its PR in `pr`; a row without one
+// (the hand-written rows) joins the PR its head maps to, then the PR its branch
+// maps to, and only a row neither reaches stays its own head-sized unit.
+const headPr = {}, branchPr = {};
 for (const r of filteredRecords) {
-  if (!r.head) continue;
-  if (!headTs[r.head] || r.ts < headTs[r.head]) headTs[r.head] = r.ts;
+  const n = Number(r.pr);
+  if (!Number.isInteger(n) || n <= 0) continue;
+  if (r.head) headPr[r.head] = n;
+  if (r.branch) branchPr[r.branch] = n;
 }
-const allHeads = Object.entries(headTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
-const windowHeads = new Set(allHeads.slice(-WINDOW_N));
+function unitOf(r) {
+  const n = Number(r.pr);
+  if (Number.isInteger(n) && n > 0) return "pr:" + n;
+  if (!r.head) return null;
+  if (headPr[r.head]) return "pr:" + headPr[r.head];
+  if (r.branch && branchPr[r.branch]) return "pr:" + branchPr[r.branch];
+  return "head:" + r.head;
+}
+const unitTs = {};
+for (const r of filteredRecords) {
+  const u = unitOf(r);
+  if (!u) continue;
+  if (!unitTs[u] || r.ts < unitTs[u]) unitTs[u] = r.ts;
+}
+const allUnits = Object.entries(unitTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
+const windowUnits = new Set(allUnits.slice(-WINDOW_N));
+const anyPr = Object.keys(headPr).length > 0 || Object.keys(branchPr).length > 0 ||
+  filteredRecords.some(r => Number.isInteger(Number(r.pr)) && Number(r.pr) > 0);
+const winPrs = [...windowUnits].filter(u => u.startsWith("pr:")).length;
+const windowNote = anyPr
+  ? "window unit: PR (" + winPrs + " PR(s) + " + (windowUnits.size - winPrs) + " head-only unit(s): rows with no pr that map to none)"
+  : "window unit: head (no row carries a pr field, so each distinct head counts)";
 
 // a finding row always carries an EMPTY verdict; the
 // real verdict arrives only as a later amend record keyed
@@ -265,7 +289,7 @@ const usage = {};
 function emptyUsage() { return { est_prompt:0, est_completion:0, est_total:0, n:0 }; }
 for (const r of filteredRecords) {
   if (!r.model) continue;
-  const inWin = windowHeads.has(r.head);
+  const inWin = windowUnits.has(unitOf(r));
   // Only finding/avail kinds seed the score tables. A model that appears ONLY in
   // usage records (e.g. a paid critic logged for cost) must NOT show as a phantom
   // zero row in the finding/avail tables — usage is tracked in its own map below.
@@ -324,8 +348,9 @@ function row(cells) {
 }
 const sep = cols.map((_,i)=>"-".repeat(W[i])).join("  ");
 
-function tableFor(stats, label) {
+function tableFor(stats, label, note) {
   console.log("\n" + label);
+  if (note) console.log(note);
   console.log(row(cols));
   console.log(sep);
   for (const m of models) {
@@ -346,7 +371,7 @@ function tableFor(stats, label) {
 // usage-only ledger skips straight to the Usage section below.
 if (models.length) {
   tableFor(all, "=== All-time ===");
-  tableFor(win, "=== Last-" + WINDOW_N + "-PRs (window) ===");
+  tableFor(win, "=== Last-" + WINDOW_N + "-PRs (window) ===", windowNote);
 
   // ── Drop advice ──────────────────────────────────────────────────────────
   const drops = [];

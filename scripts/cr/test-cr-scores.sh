@@ -382,5 +382,27 @@ check "score rows are present in the augmented fixture" "$(grep -c '"kind":"scor
 check "cr-scores output is identical with score rows present" "$(CR_LEDGER="$LS" bash "$CS" 2>&1 | sed "s#$LS#LEDGER#")" "$(CR_LEDGER="$L" bash "$CS" 2>&1 | sed "s#$L#LEDGER#")"
 check "cr-scores --by-branch output is identical with score rows present" "$(CR_LEDGER="$LS" bash "$CS" --by-branch 2>&1 | sed "s#$LS#LEDGER#")" "$(CR_LEDGER="$L" bash "$CS" --by-branch 2>&1 | sed "s#$L#LEDGER#")"
 
+# ── --window counts PRs, not heads ─────────────────────────────────────────
+# PR 101 spans two heads (A1, A2), PR 102 one (B1). A window of 2 PRs holds all
+# three findings; counting the last 2 heads would drop the A1 row (total 2).
+LP="$tmp/pr-window.jsonl"
+{
+  echo '{"kind":"finding","ts":"2026-10-01T00:00:00Z","branch":"p1","head":"A1","model":"gamma","finding_id":"g-1","severity":"sug","file":"f","line":1,"verdict":"fixed","pr":101,"thread_id":"T1"}'
+  echo '{"kind":"finding","ts":"2026-10-01T01:00:00Z","branch":"p1","head":"A2","model":"gamma","finding_id":"g-2","severity":"sug","file":"f","line":2,"verdict":"fixed","pr":101,"thread_id":"T2"}'
+  echo '{"kind":"finding","ts":"2026-10-02T00:00:00Z","branch":"p2","head":"B1","model":"gamma","finding_id":"g-3","severity":"sug","file":"f","line":3,"verdict":"fixed","pr":102,"thread_id":"T3"}'
+} > "$LP"
+gamma_win() { printf '%s\n' "$1" | awk '/Last-/{f=1} f && $1=="gamma"{print $2; exit}'; }
+pr_out="$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)"
+check "window of 2 PRs counts all 3 findings across 3 heads" "$(gamma_win "$pr_out")" "3"
+contains "header says the window unit is PR" "$pr_out" "window unit: PR"
+pr1_out="$(CR_LEDGER="$LP" bash "$CS" --window 1 2>&1)"
+check "window of 1 PR counts only the newest PR's finding" "$(gamma_win "$pr1_out")" "1"
+# a hand-written row with no pr joins the PR its head maps to
+echo '{"kind":"finding","ts":"2026-10-01T00:30:00Z","branch":"p1","head":"A2","model":"gamma","finding_id":"g-4","severity":"sug","file":"f","line":4,"verdict":"agreed"}' >> "$LP"
+check "a no-pr row on a known head follows its PR into the window" "$(gamma_win "$(CR_LEDGER="$LP" bash "$CS" --window 2 2>&1)")" "4"
+# a ledger with no pr field anywhere keeps the head window and says so
+head_out="$(CR_LEDGER="$L" bash "$CS" --window 2 2>&1)"
+contains "header says head fallback when no row carries a pr" "$head_out" "window unit: head"
+
 # ── Final ──────────────────────────────────────────────────────────────────
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
