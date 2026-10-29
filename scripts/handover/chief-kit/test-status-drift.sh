@@ -880,6 +880,13 @@ cat >"$tmp/frbin/ksync" <<'EOS'
 #!/usr/bin/env bash
 echo "ksync $* jira=${KBS_JIRA:-}" >> "$FX/ksync.log"
 echo "ksync" >> "$FX/fr.log"
+# the real sync takes --checker/--tsv/--log pairs and nothing else
+a=("$@")
+[ $(( ${#a[@]} % 2 )) -eq 0 ] || exit 64
+for ((i = 0; i < ${#a[@]}; i += 2)); do
+    case "${a[i]}" in --checker | --tsv | --log) ;; *) exit 64 ;; esac
+    [ -n "${a[i + 1]}" ] || exit 64
+done
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync ] && exit 1
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync-hang ] && sleep 30
 exit 0
@@ -927,6 +934,7 @@ contains "3c: the render reads the staged PR snapshot" "$trk" "--prs-file"
 contains "3c: the render reads the mirror it was given" "$trk" "--mirror-dir $FR/mir/HIMMEL"
 check "3c: the drift rows are kept beside the page" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 contains "3c: the known-bugs sync runs after the drift stage with the Jira CLI" "$(cat "$FX/ksync.log")" "--checker HIMMEL-7980 --log $FR/doc/known-bugs-sync.log jira=$tmp/frbin/jira"
+check "3c: and a successful sync leaves no sync warning" "$(grep -c 'known-bugs-sync' "$tmp/frerr")" 0
 fr
 check "3c: a second refresh is generation 2" "$(fst gen)" 2
 check "3c: an unchanged fingerprint leaves the page alone" "$(head -n 1 "$PAGE")" "render 1"
