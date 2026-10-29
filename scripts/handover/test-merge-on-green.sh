@@ -266,9 +266,16 @@ mog_build_fixture() {
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
     # The CR thread recorder at its anchor path is a stub: it logs its argv to
-    # recorder.log and exits STUB_RECORDER_RC (default 0).
-    # shellcheck disable=SC2016 # $* and the STUB var must reach the stub FILE unexpanded
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/recorder.log"\nexit "${STUB_RECORDER_RC:-0}"\n' "$tmp" > "$tmp/scripts/cr/cr-thread-recorder.sh"
+    # recorder.log and the env it was given to recorder.env, sleeps
+    # STUB_RECORDER_SLEEP seconds, and exits STUB_RECORDER_RC (default 0).
+    cat > "$tmp/scripts/cr/cr-thread-recorder.sh" <<'STUB'
+#!/usr/bin/env bash
+d=$(cd "$(dirname "$0")/../.." && pwd)
+printf '%s\n' "$*" >> "$d/recorder.log"
+printf 'GH_CMD=%s LEDGER=%s WAIT=%s SLEEP=%s\n' "${GH_CMD-unset}" "${CR_LEDGER-unset}" "${CR_RECORDER_MAX_WAIT-unset}" "${CR_RECORDER_SLEEP_CMD-unset}" >> "$d/recorder.env"
+[ -z "${STUB_RECORDER_SLEEP:-}" ] || sleep "$STUB_RECORDER_SLEEP"
+exit "${STUB_RECORDER_RC:-0}"
+STUB
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -839,6 +846,7 @@ run_mog() {
     local jiralog="$tmp/jira.log"; : > "$jiralog"
 
     mog_build_fixture "$tmp"
+    [ "${MOG_NO_RECORDER:-0}" != "1" ] || rm -f "$tmp/scripts/cr/cr-thread-recorder.sh"
     # MOG_POISON=<path under scripts/> replaces that helper in the
     # WORKTREE tree with a branch-side mutant that leaves a marker and exits 42
     # (sourced: kills the whole gate; executed: a failing clear). Paired with
@@ -2843,17 +2851,40 @@ fi
 assert_audit_has "11q: audit records the posted after-report" "after-report=posted"
 
 # --- 11r..11t. CR thread recorder after a confirmed merge ---------------------
-# The recorder runs once, with the PR number and repo, after the merge lands.
-STUB_NUM=77 run_mog 0 "11r: a confirmed merge records the PR's CR threads"
+# The recorder runs once, with the PR number and repo, after the merge lands. The
+# fixture is a git repo so the anchor's ledger resolves.
+MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11r: a confirmed merge records the PR's CR threads"
 assert_recorder_has "11r: the recorder gets the PR number and --repo" "77 --repo "
 assert_audit_has "11r: audit records the recorder result" "cr-threads=ok"
+# The caller's gh seam, ledger and wait settings never reach the recorder; the
+# ledger is the anchor's and the recorder never sleeps inside the gate.
+GH_CMD=evil-gh CR_LEDGER=/nonexistent/ledger.jsonl CR_RECORDER_SLEEP_CMD=evil-sleep CR_RECORDER_MAX_WAIT=999 \
+    MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11s: the recorder runs with the gate's own env, not the caller's"
+if grep -qE '^GH_CMD=unset LEDGER=.+/\.git/cr-critic-scores\.jsonl WAIT=0 SLEEP=unset$' "$LAST_TMP/recorder.env" 2>/dev/null; then
+    pass
+else
+    fail "11s: recorder env was not scrubbed (got: $(cat "$LAST_TMP/recorder.env" 2>/dev/null))"
+fi
 # A failing recorder never fails the merge; the audit says so.
-STUB_NUM=77 STUB_RECORDER_RC=3 run_mog 0 "11s: a failing recorder never fails the merge"
-assert_audit_has "11s: audit records the failed recorder" "cr-threads=failed"
-assert_audit_has "11s: the merge is still recorded as MERGED" "MERGED repo="
+MOG_ANCHOR_GIT=1 STUB_NUM=77 STUB_RECORDER_RC=3 run_mog 0 "11t: a failing recorder never fails the merge"
+assert_audit_has "11t: audit records the failed recorder" "cr-threads=failed"
+assert_audit_has "11t: the merge is still recorded as MERGED" "MERGED repo="
+# A hung recorder is cut off at the bound: the merge still exits 0, in time.
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    mog_t0=$SECONDS
+    MOG_ANCHOR_GIT=1 STUB_NUM=77 STUB_RECORDER_SLEEP=40 MOG_CR_THREADS_SECS=2 run_mog 0 "11u: a hung recorder cannot hold the merge"
+    if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11u: the merge waited $((SECONDS - mog_t0))s on a hung recorder"; fi
+    assert_audit_has "11u: a timed-out recorder reads as failed" "cr-threads=failed"
+fi
+# No recorder script at the anchor, or no resolvable ledger: nothing runs.
+MOG_NO_RECORDER=1 MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11v: a missing recorder never fails the merge"
+assert_audit_has "11v: audit records the missing recorder" "cr-threads=no-recorder"
+STUB_NUM=77 run_mog 0 "11w: an anchor with no git ledger runs no recorder"
+assert_audit_has "11w: audit records the missing ledger" "cr-threads=no-ledger"
+assert_recorder_not_called "11w: no ledger, no recorder call"
 # No merge, no recorder.
-run_mog 0 "11t: a dry run records no threads" -- --dry-run
-assert_recorder_not_called "11t: dry-run never calls the recorder"
+run_mog 0 "11x: a dry run records no threads" -- --dry-run
+assert_recorder_not_called "11x: dry-run never calls the recorder"
 
 # 12. A truthy-but-not-1 opt-in also enables (yes/on/true).
 ARMAUTOMERGE=yes run_mog 0 "ARMAUTOMERGE=yes also enables"

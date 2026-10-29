@@ -2363,12 +2363,27 @@ record_after_report_pending_marker() {
 # resolved without one = disproved, open at merge = unaddressed). Best-effort —
 # the exit code never depends on it — and recorded on the MERGED audit line as
 # `cr-threads=<result>`; a failed run is re-run by hand with the same PR number.
+# It runs inside the gate, so it is bounded (60 s, -k 10; MOG_CR_THREADS_SECS can
+# only shorten that) and never sleeps (CR_RECORDER_MAX_WAIT=0): a timeout reads
+# as `failed`, and with no timeout binary it is not run (`no-timeout`). The
+# caller's gh seam, ledger and wait settings are dropped (`env -u`); the ledger
+# is the anchor's, never the caller's cwd repo.
 CR_THREADS_RESULT="not-attempted"
 record_cr_threads() {
-    local pr="$1"
+    local pr="$1" rec_to="" rec_secs="${MOG_CR_THREADS_SECS:-60}" rec_gcd=""
     CR_THREADS_RESULT="not-attempted"
     [ -f "$himmel_repo/scripts/cr/cr-thread-recorder.sh" ] || { CR_THREADS_RESULT="no-recorder"; return 0; }
-    if bash "$himmel_repo/scripts/cr/cr-thread-recorder.sh" "$pr" --repo "$nwo" >/dev/null 2>&1; then
+    case "$rec_secs" in ""|*[!0-9]*|0) rec_secs=60 ;; esac
+    [ "$rec_secs" -le 60 ] || rec_secs=60
+    if command -v timeout >/dev/null 2>&1; then rec_to="timeout -k 10 $rec_secs"
+    elif command -v gtimeout >/dev/null 2>&1; then rec_to="gtimeout -k 10 $rec_secs"
+    else CR_THREADS_RESULT="no-timeout"; return 0; fi
+    rec_gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { CR_THREADS_RESULT="no-ledger"; return 0; }
+    if env -u GH_CMD -u CR_RECORDER_SLEEP_CMD -u CR_RECORDER_GH_TOKENS -u CR_RECORDER_FLOOR \
+            -u CR_RECORDER_LIST_CAP -u CR_RECORDER_REPO -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+            CR_LEDGER="$rec_gcd/cr-critic-scores.jsonl" CR_RECORDER_MAX_WAIT=0 \
+            ${rec_to:+$rec_to} bash "$himmel_repo/scripts/cr/cr-thread-recorder.sh" "$pr" --repo "$nwo" >/dev/null 2>&1; then
         CR_THREADS_RESULT="ok"
     else
         CR_THREADS_RESULT="failed"
