@@ -20,8 +20,10 @@
 # Env: RT_CLAUDE (default claude), RT_PREFLIGHT (default scripts/lib/usage-preflight.sh),
 #      RT_REPO, RT_INVENTORY and RT_CASES (default this repo, inventory.json, cases/) - the test
 #      seams.
-# Exit: 0 done; 2 usage, or an <out> run under another config; 3 stopped (bank refusal, ceiling,
-#       a call with no cost to sum); 4 run, but some calls errored (re-run to retry).
+# Exit: 0 done; 2 usage, an <out> run under another config, unreadable cases or listing, or
+#       score.py refused its input; 3 stopped before a call (bank refusal, ceiling, the spend so
+#       far unreadable) or after one (a call with no cost to sum); 4 run, but some calls errored
+#       (re-run to retry).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
