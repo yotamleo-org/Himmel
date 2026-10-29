@@ -178,7 +178,7 @@ if [ "$rc" -eq 0 ]; then
 else
     bad "T9 real tree has hit(s) -- a test suite extracts a RED-control mutant via git show <sha>:<path>; replace with a committed fixtures/red-control/ snapshot: $out"
 fi
-lacks "T9 the known-safe glm comment is not a false positive" "$out" "test-block-glm-external-writes.sh"
+lacks "T9 the known-safe worker-fence comment is not a false positive" "$out" "test-block-worker-write-fence.sh"
 
 echo
 echo "[test-red-control-extraction-lint] $pass passed, $fails failed"

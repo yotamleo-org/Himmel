@@ -36,8 +36,8 @@ not a trust ruling.
 
 **GLM (removed).** The GLM lane was reachable by three paths, each proven
 separately: `glm-spawn` and `glm-launcher` (Claude Code with the backend
-swapped; the native PreToolUse hooks plus `block-glm-external-writes.sh`, the
-classifier substitute for the write-authority dimension) and GLM-via-hermes
+swapped; the native PreToolUse hooks; its write-authority classifier tail in
+`block-worker-write-fence.sh` is deleted, HIMMEL-7907) and GLM-via-hermes
 (fenced by `parity_guard.py`, since the CC hooks do not load under hermes). Its
 dispatcher, launcher and registry row are deleted (HIMMEL-7909, HIMMEL-7481).
 The two CC GLM columns stay below while the write-fence hook exists (HIMMEL-7907
@@ -76,15 +76,16 @@ git-hook gates):
 ### Write-authority / external-write fence (a cross-lane dimension, not a deny-guard hook)
 
 Write-authority is the load-bearing parity dimension, but
-`block-glm-external-writes.sh` is a lane-specific classifier SUBSTITUTE, not
-one of the six deny-guards above. It is recorded here as its own dimension row
-so every write-fence cell sits in a real row (no home-less cell).
+`block-worker-write-fence.sh` is not one of the six deny-guards above. Its GLM
+push / network / `mcp__*` classifier tail was deleted (HIMMEL-7907); it now
+holds only the pin-dir and anchor-tamper fences. It is recorded here as its own
+dimension row so every write-fence cell sits in a real row (no home-less cell).
 
 | Lane | Write-authority / external-write fence |
 |---|---|
 | main-claude | auto-mode classifier |
-| glm-spawn (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
-| glm-launcher (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+| glm-spawn (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
+| glm-launcher (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 | gemini / copilot / cursor | `deferred` |
@@ -121,17 +122,17 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 | Lane | Rule projection | Guardrail firing | Skills/cmds | Vault/memory | Merge-trust |
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
-| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | gemini / copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
 Notes on the guardrail-firing cells. GLM ran as Claude Code, so on the two removed
 CC GLM lanes the native block-* hooks fired unchanged; the proving pointer is
-`test-block-glm-external-writes.sh`, which covers the lane-specific write-fence
-(push / git-remote-URL / network / `mcp__*` deny, with the Jira-CLI + gh-read
-carveout). codex-direct reaches the native block-* hooks THROUGH the
+`test-block-worker-write-fence.sh`, which covers the pin-dir and anchor-tamper
+fences (the GLM push / network / `mcp__*` deny tail was deleted, HIMMEL-7907).
+codex-direct reaches the native block-* hooks THROUGH the
 `.codex/hooks.json` adapter (the exit-2 to deny translation proved by
 `test-codex-run-hook.sh`); the per-guard codex resolution is enumerated in the
 guard x lane sub-table below. hermes-main's `parity_guard` fences both
@@ -166,13 +167,13 @@ hermes, so the hermes-main column is `tested`-green.
 
 | deny-guard | glm-spawn (removed) | glm-launcher (removed) | codex-direct | hermes-main (gpt-6.1-sol; GLM removed) |
 |---|---|---|---|---|
-| block-edit-on-main | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-read-secrets | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-backend-tier | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-docker-privesc | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-rogue-claude-schedule | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-merged-pr-commit | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-edit-on-main | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-read-secrets | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-backend-tier | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-docker-privesc | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-rogue-claude-schedule | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-merged-pr-commit | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
 
 <!-- END guard-lane-conformance -->
 
@@ -181,9 +182,9 @@ Notes on the cells:
 - **glm-spawn + glm-launcher (removed).** GLM ran as Claude Code, so on these two
   CC GLM lanes the native block-* deny-guard hooks fired unchanged; the single
   lane-specific proving pointer is
-  `tested:scripts/hooks/test-block-glm-external-writes.sh` (covers push /
-  git-remote-URL / network / `mcp__*` deny, with the Jira-CLI + `gh`-read
-  carveout). The native `test-block-<guard>.sh` fixtures fired unchanged for
+  `tested:scripts/hooks/test-block-worker-write-fence.sh` (covers the pin-dir
+  and anchor-tamper fences; the GLM push / network / `mcp__*` deny tail was
+  deleted, HIMMEL-7907). The native `test-block-<guard>.sh` fixtures fired unchanged for
   both lanes because the ruleset was live `~/.claude` (glm-spawn) or the seeded
   `~/.claude-glm` copy (glm-launcher).
 - **codex-direct.** Each deny-guard is proved by the codex proving PAIR --
@@ -233,20 +234,20 @@ at. Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
 | `block-edit-on-main` | `_edit_on_main_reason` refuses a `write_file` / `patch` / `delete_file` into a repo whose checked-out branch is the default branch (main/master), and a terminal `git commit` there. Branch read cheaply from `.git/HEAD` (worktree/submodule `gitdir:` indirection). Honors the `.single-writer` opt-out; a worker's own `type/slug` branch commits freely (carve-out). `check_write_path` still blocks the guard / profile `config.yaml` / `SOUL.md` / Claude's home. | `present` (main-branch edit/commit lock ported) |
 | `block-merged-pr-commit` | `_merged_pr_reason` queries the branch's merged-PR count via `gh` (GH_CMD-overridable) before a terminal `git commit` and refuses on >0. HYGIENE guard: fail-open on gh absent/errored/non-numeric; a fresh no-PR branch is allowed. | `present` (merged-PR-branch detection ported) |
 | `block-docker-privesc` | `TERMINAL_DESTRUCTIVE` covers recursive delete / disk / scheduler / process / registry / force-push / `curl\|sh`; the `DOCKER_PRIVESC` regex adds `docker`/`podman` privesc shapes -- `--privileged`, `--pid host`, `--volumes-from`, root-equivalent `--cap-add`, the docker socket, root `--user`, and secret-bearing host-root bind mounts (`/` `/etc` `/root`). | `present` (container privesc block ported; ro/rw + system-dir nuance not modelled -- over-block is fail-safe) |
-| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
+| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-worker-write-fence.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
 | dispatch coverage (matcher) | hermes `fullmatch`es the `pre_tool_call` matcher against the tool name and that is its ONLY blocking event, so every tool the pattern missed was never judged. The hand-listed pattern left `execute_code`, `delegate_task`, `browser_*`, `skill_manage`, `process_manage`, `cronjob_manage`, `send_message` and the rest of the registry outside every fence above, and carried four dead terms (`delete_file`/`remove_file`/`move_file`/`rename_file` are `skill_manage` action values, not tools). The matcher is now `.*`; `parity_guard.classify_tool` gives every registry tool a class -- `code` tools (`execute_code`, `browser_exec`, `browser_cdp`, `cronjob_manage`, `process_manage`) get the terminal deny-guards run over their command text (literal-text scan; obfuscation is not caught), `skill_manage` an action allow-list plus the write-fence on its (batch) paths, `text_to_speech`/`desktop_project` the write-fence on their path arg, and every other known tool a secret/PHI-path scan of its non-prose args. An unclassified tool is refused fail-closed. No known tool is blanket-denied. The outbound tools (`send_message`, `ha_call_service`, ...) are NOT engine-fenced (operator decision). `test-hook-inventory.sh` statically scans the installed hermes registry and fails when a tool is undelivered or unclassified. | `present` (dispatch coverage proved against the installed registry) |
 
-**GLM-engine write-fence vs `scripts/hooks/block-glm-external-writes.sh`.** The
-hermes runtime does not load that CC hook, so `parity_guard` is the sole
+**GLM-engine write-fence vs the retired GLM tail of `scripts/hooks/block-worker-write-fence.sh`.**
+The hermes runtime does not load that CC hook, so `parity_guard` is the sole
 external-write fence for every engine on the `himmel_agent` profile. Compared
-shape-by-shape against the hook (the behavior spec): `git push` (plain),
+shape-by-shape against the deleted hook tail (the behavior spec): `git push` (plain),
 `git remote set-url` / `config ...url`, the `gh` carve-out (`issue *` + PR/run
 reads only), and the network-CLI set (`curl`/`wget`/`iwr`/`irm`) all match --
 the terminal / file external-write shapes are at PARITY (present). The MCP
 surface is fenced too: `wire_parity_guard.py`'s matcher is `.*` and
 `parity_guard.main()` blanket-denies every `mcp__*` tool except the read-only
 `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`), mirroring
-`block-glm-external-writes.sh`. So an MCP tool call invokes the guard and is
+the retired GLM tail of `block-worker-write-fence.sh`. So an MCP tool call invokes the guard and is
 fenced on the default lane -- `block-backend-tier` is `present` above.
 
 **Beyond the deny-guard set:** the unconditional PHI / data-egress fence fires

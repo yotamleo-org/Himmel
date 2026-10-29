@@ -182,16 +182,6 @@
       "remedy": "GIT_STASH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
-      "name": "GLM_EXTERNAL_WRITES_OK",
-      "hooks": [
-        "scripts/hooks/block-glm-external-writes.sh",
-        "scripts/hooks/block-terminal-write-fence.sh",
-        "scripts/hooks/wire-plugin-hook-bash.mjs"
-      ],
-      "bypasses": "Skips the \"block glm external writes\" guard (scripts/hooks/block-glm-external-writes.sh).",
-      "remedy": "GLM_EXTERNAL_WRITES_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
       "name": "GRAPH_COMMIT_OK",
       "hooks": [
         "scripts/hooks/check-graph-artifact-branch.sh"
@@ -210,10 +200,10 @@
     {
       "name": "HIMMEL_HOOK_INTEGRITY_BYPASS_OK",
       "hooks": [
-        "scripts/hooks/block-glm-external-writes.sh",
+        "scripts/hooks/block-worker-write-fence.sh",
         "scripts/hooks/hook-integrity.js"
       ],
-      "bypasses": "Skips the \"block glm external writes\" guard (scripts/hooks/block-glm-external-writes.sh).",
+      "bypasses": "Skips the \"block worker write fence\" guard (scripts/hooks/block-worker-write-fence.sh).",
       "remedy": "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {

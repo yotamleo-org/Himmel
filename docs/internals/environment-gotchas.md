@@ -683,7 +683,7 @@ elsewhere are all refused. Each honoured hook appends one JSON line — `ts`,
 write. A hook chain runs the launcher once per member, so a tool call that
 overrides several tampered hooks writes one line per hook. A symlink or
 non-regular file in that spot, and any failed or short write, refuse the bypass.
-The two command-text fences in `block-glm-external-writes.sh` (the pin-dir fence
+The two command-text fences in `block-worker-write-fence.sh` (the pin-dir fence
 and the anchor fence) apply the same predicate and write to the same audit file,
 re-stated in bash as `bypass_honoured`, with one difference: they
 append one line per tool call the bypass is consulted for, and a symlink or

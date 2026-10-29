@@ -168,7 +168,6 @@ scripts/eval/test-worktree-latency-curve.sh	errexit	1
 scripts/eval/worktree-latency-curve.sh	errexit	1
 scripts/gen-changelog.sh	errexit	1
 scripts/git/classify-branches.sh	mktemp	1
-scripts/glm/append-outbox.sh	errexit	1
 scripts/graphify/ast-update.sh	errexit	2
 scripts/graphify/check-graph-freshness.sh	errexit	1
 scripts/graphify/detect-duplicate-notes.sh	errexit	1
@@ -389,7 +388,7 @@ scripts/hooks/block-edit-live-settings.sh	prim-canon	3
 scripts/hooks/block-edit-on-main.sh	errexit	1
 scripts/hooks/block-edit-on-main.sh	prim-canon	3
 scripts/hooks/block-git-stash.sh	errexit	1
-scripts/hooks/block-glm-external-writes.sh	errexit	1
+scripts/hooks/block-worker-write-fence.sh	errexit	1
 scripts/hooks/block-pr-check-args.sh	errexit	1
 scripts/hooks/block-rogue-claude-schedule.sh	errexit	1
 scripts/hooks/block-terminal-write-fence.sh	errexit	1
@@ -471,7 +470,6 @@ scripts/hooks/test-block-chokepoint-env-prefix.sh	mktemp	5
 scripts/hooks/test-block-edit-live-settings.sh	gnu-flag	51
 scripts/hooks/test-block-edit-live-settings.sh	regex-class	1
 scripts/hooks/test-block-edit-on-main.sh	mktemp	6
-scripts/hooks/test-block-glm-external-writes.sh	mktemp	3
 scripts/hooks/test-block-himmel-config-writes.sh	gnu-flag	1
 scripts/hooks/test-block-infra-destroy.sh	mktemp	2
 scripts/hooks/test-block-jira-compound-write.sh	bash32	1

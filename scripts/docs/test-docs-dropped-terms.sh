@@ -42,7 +42,6 @@ README.md	  run. Windows is not supported. Details in the
 README.md	himmel is developed on Linux and macOS. **Windows (Git Bash, WSL) is not
 README.md	supported.** Windows support was dropped; nothing about Windows is claimed as
 README.md	| **Dropped** | Windows (Git Bash), WSL | Support was dropped: no CI gate, no guarantee. |
-docs/architecture.md	            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-chief-dispatch<br/>guard-subagent-model · guard-chief-foreground · guard-judge-writes · guard-rm-writes"]
 docs/daily-loop.md	| Touches `*.sh`, `*.bash`, PowerShell files (`*.ps1`, `*.psm1`, `*.psd1`), `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
 docs/daily-loop.md	arch mac darwin wsl posix gitbash git-bash powershell pwsh`.
 docs/evals/README.md	| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-27, n = 113 ruled findings over 27 PRs |
@@ -62,7 +61,6 @@ docs/glossary.md	| Secrets never read | `block-read-secrets` (Bash, PowerShell, 
 docs/glossary.md	| No rogue scheduler job launches `claude` | `block-rogue-claude-schedule` (Bash, PowerShell) | — | `block-rogue-claude-schedule` (Bash) | — | — | — |
 docs/glossary.md	| No `git stash` | `block-git-stash` (Bash, PowerShell) | — | `block-git-stash` (Bash) | — | — | — |
 docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash, PowerShell, Edit) | — | `block-edit-live-settings` (Bash; not `apply_patch`, HIMMEL-5430 open) | — | — | — |
-docs/glossary.md	| Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 docs/guide/installer-journey.html	<span class="d">  [ ] 2. add the vault's absolute path as a line in ~/.config/claude-glm/phi-roots</span>
 docs/guide/installer-journey.html	<span class="d">  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist</span>
 docs/guide/installer-journey.html	      term: function () { return [['d', '── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────'], ['d', '  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)'], ['d', '  [ ] 2. add the vault\'s absolute path as a line in ~/.config/claude-glm/phi-roots'], ['d', '  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist'], ['q', '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)'], ['in', '> no']]; },
@@ -391,35 +389,25 @@ docs/tooling-catalog.md	| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAU
 docs/tooling-catalog.md	2. **The `[1m]` model-name suffix** — the convention the removed GLM lane
 docs/tooling-catalog.md	<a id="spawn-glm"></a>
 docs/tooling-catalog.md	<a id="spawn-glm-scriptstelegramspawn-glmts"></a>
-docs/internals/environment-gotchas.md	The two command-text fences in `block-glm-external-writes.sh` (the pin-dir fence
-docs/internals/lane-parity.md	`block-glm-external-writes.sh` is a lane-specific classifier SUBSTITUTE, not
-docs/internals/lane-parity.md	`test-block-glm-external-writes.sh`, which covers the lane-specific write-fence
-docs/internals/lane-parity.md	| block-edit-on-main | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| block-read-secrets | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| block-backend-tier | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| block-docker-privesc | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| block-rogue-claude-schedule | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| block-merged-pr-commit | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-docs/internals/lane-parity.md	  `tested:scripts/hooks/test-block-glm-external-writes.sh` (covers push /
+docs/internals/lane-parity.md	`block-worker-write-fence.sh` is deleted, HIMMEL-7907) and GLM-via-hermes
+docs/internals/lane-parity.md	`block-worker-write-fence.sh` is not one of the six deny-guards above. Its GLM
+docs/internals/lane-parity.md	fences (the GLM push / network / `mcp__*` deny tail was deleted, HIMMEL-7907).
+docs/internals/lane-parity.md	  and anchor-tamper fences; the GLM push / network / `mcp__*` deny tail was
+docs/internals/lane-parity.md	**GLM-engine write-fence vs the retired GLM tail of `scripts/hooks/block-worker-write-fence.sh`.**
+docs/internals/lane-parity.md	the retired GLM tail of `block-worker-write-fence.sh`. So an MCP tool call invokes the guard and is
+docs/internals/lane-parity.md	| glm-spawn (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
+docs/internals/lane-parity.md	| glm-launcher (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
+docs/internals/lane-parity.md	| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+docs/internals/lane-parity.md	| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 docs/internals/lane-parity.md	  `~/.claude-glm` copy (glm-launcher).
 docs/internals/lane-parity.md	| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
 docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension) | The engine-gated write-fence landed: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
-docs/internals/lane-parity.md	| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
-docs/internals/lane-parity.md	**GLM-engine write-fence vs `scripts/hooks/block-glm-external-writes.sh`.** The
-docs/internals/lane-parity.md	`block-glm-external-writes.sh`. So an MCP tool call invokes the guard and is
 docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
 docs/internals/lane-parity.md	**GLM (removed).** The GLM lane was reachable by three paths, each proven
 docs/internals/lane-parity.md	separately: `glm-spawn` and `glm-launcher` (Claude Code with the backend
-docs/internals/lane-parity.md	swapped; the native PreToolUse hooks plus `block-glm-external-writes.sh`, the
-docs/internals/lane-parity.md	classifier substitute for the write-authority dimension) and GLM-via-hermes
 docs/internals/lane-parity.md	The two CC GLM columns stay below while the write-fence hook exists (HIMMEL-7907
 docs/internals/lane-parity.md	retires it), and `parity_guard.py` still refuses a GLM engine as untrusted.
-docs/internals/lane-parity.md	| glm-spawn (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
-docs/internals/lane-parity.md	| glm-launcher (removed) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
-docs/internals/lane-parity.md	| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-docs/internals/lane-parity.md	| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 docs/internals/lane-parity.md	Notes on the guardrail-firing cells. GLM ran as Claude Code, so on the two removed
 docs/internals/lane-parity.md	CC GLM lanes the native block-* hooks fired unchanged; the proving pointer is

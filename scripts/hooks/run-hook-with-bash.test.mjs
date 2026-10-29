@@ -134,30 +134,29 @@ test('--optional exits zero before Bash resolution when the hook is absent', () 
 // under the marker a deleted hook bricks the worker, which is the correct
 // outcome for tampering.
 test('a missing guard fails closed in a dispatched worker', () => {
-  const missing = join(tmpdir(), 'block-glm-external-writes.sh');
+  const missing = join(tmpdir(), 'block-worker-write-fence.sh');
   const result = spawnSync(
     process.execPath,
-    [LAUNCHER, '--optional', '--fail-closed-when', 'HIMMEL_GLM_WORKER=1', missing],
-    { encoding: 'utf8', env: { HIMMEL_GLM_WORKER: '1' } }
+    [LAUNCHER, '--optional', '--fail-closed-when', 'HIMMEL_WORKER=1', missing],
+    { encoding: 'utf8', env: { HIMMEL_WORKER: '1' } }
   );
   assert.equal(result.status, 2);
   assert.equal(
     result.stderr,
-    'block-glm-external-writes: hook script missing while HIMMEL_GLM_WORKER=1 (stale checkout?) - failing closed\n'
+    'block-worker-write-fence: hook script missing while HIMMEL_WORKER=1 (stale checkout?) - failing closed\n'
   );
 });
 
-// The other half, and the round-6 regression this keying exists to prevent: an
-// INTERACTIVE GLM session (claude-glm, whose documented primary workload runs
-// with cwd in the luna vault) has no himmel scripts/ tree, so the hook is
-// legitimately absent. Keying on the provider instead of worker-ness denied
-// every Bash/PowerShell/MCP call there. The marker is absent, so it must pass —
-// even with the GLM provider env set.
-test('a missing guard still passes in an interactive GLM session', () => {
-  const missing = join(tmpdir(), 'block-glm-external-writes.sh');
+// The other half: an INTERACTIVE session whose cwd is outside a himmel checkout
+// (the luna vault) has no himmel scripts/ tree, so the hook is legitimately
+// absent. Keying on a provider env instead of worker-ness would deny every
+// Bash/PowerShell/MCP call there. The marker is absent, so it must pass — even
+// with a provider URL set.
+test('a missing guard still passes in an interactive session without the worker marker', () => {
+  const missing = join(tmpdir(), 'block-worker-write-fence.sh');
   const result = spawnSync(
     process.execPath,
-    [LAUNCHER, '--optional', '--fail-closed-when', 'HIMMEL_GLM_WORKER=1', missing],
+    [LAUNCHER, '--optional', '--fail-closed-when', 'HIMMEL_WORKER=1', missing],
     { encoding: 'utf8', env: { ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic' } }
   );
   assert.equal(result.status, 0, result.stderr);

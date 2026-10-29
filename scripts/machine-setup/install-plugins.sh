@@ -666,7 +666,7 @@ echo "  All $(grep -c . <<< "$SPECS") enabled plugins present."
 # in settings.json — a plugin can be fully installed while
 # enabledPlugins["<spec>"] is still `false` (a stale manual /plugin toggle, an
 # older template, a machine that predates a template flip — the overlord8
-# himmel-ops@himmel:false state that left block-glm-external-writes.sh inert
+# himmel-ops@himmel:false state that left block-worker-write-fence.sh inert
 # despite being correctly wired via the plugin's own hooks.json). Unlike the
 # lean-floor reconcile below, this step is ALWAYS ON, no HIMMEL_RECONCILE_
 # PLUGINS gate: it only ever flips a template-`true` spec's live value from
