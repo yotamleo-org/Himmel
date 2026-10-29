@@ -286,7 +286,7 @@ check "3884 non-chief ignores env and stays standard" "$resolved3884" "standard 
 # and cannot read its own context fill -- which is the handover trigger its
 # operating contract is built on. headed-arm.sh already does this for the worker
 # path; the printed line was missed.
-for v in CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID; do
+for v in CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
     check "5d launch line unsets $v" \
         "$(printf '%s\n' "$out5b" | grep -c -- "-u $v")" "1"
 done

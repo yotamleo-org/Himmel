@@ -64,12 +64,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The launch line below is PASTED by an operator, and the terminal
 # they paste it into was itself spawned from a claude session -- so
 # CLAUDE_CODE_CHILD_SESSION=1, CLAUDE_PID and CLAUDE_CODE_SESSION_ID are live in
-# that shell. A chief that adopts them writes no transcript and cannot read
+# that shell, and so are the CLAUDE_CODE_MESSAGING_SOCKET and _TOKEN of the
+# spawning session (one /rename then renames every session that inherited
+# them). A chief that adopts them writes no transcript and cannot read
 # its own context fill, which is the signal its handover contract runs on.
 # headed-arm.sh scrubs these on the --arm path; the printed line
 # was missed, so an un-armed chief silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
-CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
+CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"
