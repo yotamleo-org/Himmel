@@ -144,7 +144,7 @@ if "$CODEX" plugin marketplace list 2>/dev/null | awk -v n="$QMD_MARKET" '$1==n{
 fi
 # Under --dry-run the plugin is still present, and it is what makes `mcp get qmd`
 # answer, so the dry run reports the add on its own.
-if [ "$DRY_RUN" != "1" ] && qmd_cfg="$("$CODEX" mcp get qmd 2>/dev/null)" && printf '%s\n' "$qmd_cfg" | grep -qF "$QMD_URL"; then
+if [ "$DRY_RUN" != "1" ] && qmd_cfg="$("$CODEX" mcp get qmd 2>/dev/null)" && grep -qF "$QMD_URL" <<< "$qmd_cfg"; then
   echo "UNCHANGED   : mcp server qmd -> $QMD_URL"
 else
   if [ "$DRY_RUN" = "1" ]; then
