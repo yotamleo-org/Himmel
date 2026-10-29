@@ -1,6 +1,6 @@
 ---
 name: pr-check
-description: Use in an adopted repo before opening a PR — runs himmel's CR review on the branch against origin/base.
+description: Use in an adopted (non-himmel) repo before opening a PR — himmel's local CR review of the branch vs origin/base.
 ---
 
 # pr-check — the CR review from an adopter session (HIMMEL-7790)

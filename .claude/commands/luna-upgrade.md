@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Skill
-description: Content-preserving upgrade of a luna-second-brain vault to the current himmel template. --check just reports.
+description: Typed /luna-upgrade wrapper over obsidian-triage:luna-upgrade — invoke that skill directly.
 argument-hint: [--check] [--vault <path>] [--template-dir <path>]
 ---
 

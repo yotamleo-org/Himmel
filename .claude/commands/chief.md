@@ -1,5 +1,5 @@
 ---
-description: Start a chief (new) or hand it over (next) — writes the doc, takes the queue lock, prints the launch line.
+description: In the himmel checkout: start a chief (new) or hand it over (next) — writes the doc, takes the queue lock.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: qmd
-description: Search indexed local Markdown notes and documentation with QMD.
+description: QMD query-writing guide (lex/vec/hyde, collections, CLI); to search notes, call mcp__qmd__query directly.
 license: MIT
 compatibility: Requires qmd CLI or MCP server. Install via `npm install -g @tobilu/qmd`.
 metadata:

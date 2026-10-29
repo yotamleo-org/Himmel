@@ -1,5 +1,5 @@
 ---
-description: Update this himmel checkout (harness) — pull, marketplace, jira CLI, qmd, hermes, luna template, plus advisories.
+description: Bootstrap copy of himmel-ops:himmel-update for a checkout without the plugin; else use the plugin command.
 ---
 
 Updates an existing himmel install. **`git pull` is the only thing that

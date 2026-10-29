@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Skill
-description: Multi-vault luna upgrade sweep — dry-run first, per-vault confirmed apply, backup/restore, conflict-brainstorm.
+description: Typed /luna-upgrade-all wrapper over obsidian-triage:luna-upgrade-all — invoke that skill directly.
 argument-hint: [--roots <dir[,dir]>] [--registry <path>] [--template-dir <path>] [--porcelain]
 ---
 

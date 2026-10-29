@@ -1,5 +1,5 @@
 ---
-description: Alias of /chief — start a chief (new) or hand it over (next).
+description: Old alias of /chief; same behaviour.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 

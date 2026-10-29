@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Skill
-description: Update BOTH surfaces in one shot — the himmel harness then the luna vault. Pass --check to dry-run both.
+description: Bootstrap copy of himmel-ops:himmel-update-all for a checkout without the plugin; else use the plugin command.
 argument-hint: "[--check] [--vault <path>] [--template-dir <path>]"
 ---
 

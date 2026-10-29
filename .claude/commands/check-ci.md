@@ -1,5 +1,5 @@
 ---
-description: Token-free PR merge-gate watcher — loops gh pr checks --watch, verifies threads resolved, returns one exit code.
+description: Watch a PR's CI until it is mergeable (checks green, threads resolved), or wait on one workflow run; one exit code.
 argument-hint: [pr-number|branch|url] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only] | --run <run-id> [--job <name>] [--max-wait <sec>]
 ---
 
