@@ -86,7 +86,7 @@ Environment overrides:
   HANDOVER_DIR       External handover root (Mode B).
   MORNING_REPORT_TEMPLATE  Section-order template (one id per line: header,
                      decisions, tickets, operator-actions, unlanded,
-                     changelog, ready_mismatch, review_rounds). Default:
+                     changelog, ready_mismatch, review_rounds, afk_sudo). Default:
                      <handover-root>/morning-report.tmpl,
                      else morning-report.default.tmpl next to this script.
                      Operator actions are always appended if not listed.
@@ -462,6 +462,40 @@ sec_review_rounds() {
     }')"
 }
 
+# "## AFK sudo approvals": the last 24 h of the afk-sudo ledger,
+# result counts plus one line per command that ran. AFK_SUDO_LEDGER is a test
+# seam. No ledger (the helper not installed) renders no section at all.
+sec_afk_sudo() {
+    local ledger="${AFK_SUDO_LEDGER:-/var/log/himmel/afk-sudo.jsonl}" out
+    [ -e "$ledger" ] || return 0
+    # shellcheck disable=SC2016  # a python program; its backticks are markdown
+    out="$(python3 -I -c '
+import calendar, json, shlex, sys, time
+from collections import Counter
+since = time.time() - 86400
+rows = []
+for line in open(sys.argv[1]):
+    try:
+        r = json.loads(line)
+        if calendar.timegm(time.strptime(r["ts"], "%Y-%m-%dT%H:%M:%SZ")) >= since:
+            rows.append(r)
+    except (ValueError, KeyError):
+        continue
+if not rows:
+    print("_None — no AFK sudo request in the last 24 h._")
+    sys.exit()
+n = sum(1 for r in rows if r.get("event") == "request")
+# An approve after expiry logs an expire row and an expired code-check: count it once.
+tally = Counter(r.get("result") for r in rows if r.get("result") not in ("pending", "ran")
+                and not (r.get("event") == "code-check" and r.get("result") == "expired"))
+print("**%d requests** in the last 24 h: %s." % (n, ", ".join("%s %d" % kv for kv in sorted(tally.items())) or "no outcome yet"))
+for r in rows:
+    if r.get("event") == "run":
+        print("- %s `%s` %s, exit %s (session %s, ticket %s)" % (r["ts"], r.get("id"), shlex.join(r.get("argv", [])), r.get("exit"), r.get("session"), r.get("ticket")))
+' "$ledger" 2>/dev/null)" || out="_afk-sudo ledger unavailable._"
+    printf '## AFK sudo approvals\n\n%s' "$out"
+}
+
 # Assemble from the template ---------------------------------------------
 # Resolution: $MORNING_REPORT_TEMPLATE > <handover-root>/morning-report.tmpl >
 # the shipped default next to this script. One section id per line; blank
@@ -488,7 +522,7 @@ while IFS= read -r section_id || [ -n "$section_id" ]; do
     section_id=$(printf '%s' "$section_id" | tr -d '\r')
     case "$section_id" in ''|'#'*) continue ;; esac
     case "$section_id" in
-        header|decisions|tickets|unlanded|changelog|ready_mismatch|review_rounds) section=$("sec_$section_id") ;;
+        header|decisions|tickets|unlanded|changelog|ready_mismatch|review_rounds|afk_sudo) section=$("sec_$section_id") ;;
         operator-actions) section=$(sec_actions); actions_placed=1 ;;
         *) echo "WARN morning-report: unknown template section '$section_id' — skipped" >&2; continue ;;
     esac
