@@ -14,9 +14,9 @@
 # (case 8). The suite runs chief.sh from the fixture's copy, so the
 # resolved repo path is a clean /tmp path.
 #
-# Platform guard: POSIX bash 3.2+; exercises chief.sh,
-# which is konsole/Linux-only for --arm (see chief.sh's own header) —
-# same platform scope.
+# Platform guard: POSIX bash 3.2+; exercises chief.sh, whose --arm
+# launches through konsole (Linux/KDE) or the konsole-macos.sh shim on
+# macOS (see chief.sh's own header) — same platform scope.
 set -uo pipefail
 
 # a bus-identified chief's `next` leaves the relay-on-live marker unasked; only 6e sets it
