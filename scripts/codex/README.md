@@ -26,14 +26,23 @@ line endings). It is **idempotent** and **non-destructive**:
    `himmel-ops` is the one that delivers the minerva / stuck-playbook / vm /
    himmel-doctor / himmel-update skills + the himmel-ops hooks to Codex.
 
+3. **qmd goes through the shared daemon.** Removes upstream's `qmd@qmd` plugin
+   and `qmd` marketplace (its stdio `qmd mcp` starts a private runtime per Codex
+   thread) and runs `codex mcp add qmd --url http://localhost:8181/mcp
+   --bearer-token-env-var QMD_HTTP_TOKEN` (`QMD_MCP_URL` overrides the URL). Codex
+   reads a bearer only from an env var, so the environment that launches Codex must
+   `export QMD_HTTP_TOKEN="$(cat ~/.config/qmd/http-token)"`; without it qmd answers
+   401, and the installer prints a WARN naming that line (HIMMEL-8118).
+
 The installer does **not** touch external plugins' `hooks.json`. A few of them
 (warp, hookify, ralph-loop, security-guidance) ship a top-level `description`
 that Codex versions **before `rust-v0.143.0`** reject ("unknown field
 description"); upstream fixed that in codex PR #30229, so the fix is to upgrade
 codex. Installs pinned below it can run the manual sanitizer (see Usage).
 
-For plugin enablement it only ever *adds* — it never removes or disables a
-plugin, and a re-run on a provisioned machine is a no-op.
+For himmel plugin enablement it only ever *adds* — it never removes or disables a
+himmel plugin (the one removal is upstream's `qmd@qmd`, step 3), and a re-run on a
+provisioned machine is a no-op.
 
 ## Usage
 
