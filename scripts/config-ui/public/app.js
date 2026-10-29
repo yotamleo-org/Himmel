@@ -118,7 +118,7 @@ function paint() {
   if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
   if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
-  for (const t of typing) { const i = t.value && document.querySelector(t.sel); if (i) { i.value = t.value; if (t.had) { i.focus(); i.setSelectionRange(t.from, t.to); } } }
+  for (const t of typing) { const i = document.querySelector(t.sel); if (i) { i.value = t.value; if (t.had) { i.focus(); i.setSelectionRange(t.from, t.to); } } }
   $("#nav").innerHTML = "";
   $("#top").innerHTML = renderHeader(feed);
   renderPages(); // the Health dot follows the feed and the health read

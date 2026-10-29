@@ -163,6 +163,29 @@ test("page: a repaint after a review gate control changes puts the focus back on
   expect(focused).toEqual(["required:claude"]);
 });
 
+test("page: a path field the operator emptied stays empty through a repaint", async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__paint = paint;\n");
+  const emptied = { dataset: { path: "handover-root" }, value: "", selectionStart: 0, selectionEnd: 0 }; // the field before the repaint
+  const repainted = { value: "/saved/path", focus() {}, setSelectionRange() {} }; // the same field as the repaint renders it, with the saved path
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, {
+    render: () => "", renderNav: () => "", renderHeader: () => "",
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: (q: string) => (q === 'input[data-path="handover-root"]' ? repainted : el()), querySelectorAll: (q: string) => (q.startsWith("input[data-secret]") ? [emptied] : []), getElementById: el, activeElement: null, addEventListener() {} },
+    location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
+    fetch: () => new Promise(() => {}),
+  });
+  try {
+    new Function(src)();
+    (g.__paint as () => void)();
+  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  expect(repainted.value).toBe("");
+});
+
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {
   const env = { PATH: process.env.PATH, HOME: tmpdir() };
   expect(() => startServer({ port: 0, token: TOKEN, env, reprobeBudgetMs: 120_000 } as never)).toThrow(/idleTimeout/);
