@@ -2,9 +2,8 @@
 # vm-guest-excludes.sh — the ONE definition of what must not cross the host->guest
 # boundary, and the assertion that a guest is clean.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ (no mapfile/assoc arrays). The
-# only consumers are the VM-driving shell scripts and vmsdk.py, all gitbash-only
-# already; no .ps1 twin.
+# Platform guard: POSIX bash 3.2+ (no mapfile/assoc arrays). The
+# only consumers are the VM-driving shell scripts and vmsdk.py.
 #
 # Why: the base builder once rsynced a host checkout into the guest and
 # excluded only .git/hooks; the gitignored-but-present .env (116 live keys) and

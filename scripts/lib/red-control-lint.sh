@@ -54,10 +54,8 @@
 #     (`rc=$?` recorded, compared later, which red_control_run enforces) is the
 #     only reliable one; `$?` is credited as a courtesy to hand-rolled controls.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure shell plus grep/awk -- no .ps1 twin, because the only thing it reads is
-# the repo's shell test suites, which are themselves gitbash-only. This is the
-# T15 marker scripts/parity/test-ws5-invariants.sh looks for.
+# Platform guard: POSIX bash 3.2+. Pure shell plus grep/awk; the
+# only thing it reads is the repo's shell test suites.
 #
 # Usage: bash scripts/lib/red-control-lint.sh [PATH...]
 #   PATH may be a file or a directory; directories are walked for *.sh.

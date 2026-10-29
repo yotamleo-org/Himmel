@@ -9,7 +9,7 @@
 # DEPRECATED_FORWARDER_TEMPLATE points the rows at another copy of the
 # template, so a mutant (an argv-dropping forwarder) can be shown to turn a row red.
 #
-# Platform guard (gitbash-only): pure bash, no .ps1 twin needed.
+# Platform guard: pure bash.
 # shellcheck disable=SC2016  # '$HOME' and backticks are literal argv on purpose
 set -uo pipefail
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a
-# test-fixture helper needs no .ps1 twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+ (macOS, Linux).
 # Sourced by shell-test fixtures: canonicalise a fixture path so a
 # path the test BUILT compares equal to the same path a tool REPORTED.
 #

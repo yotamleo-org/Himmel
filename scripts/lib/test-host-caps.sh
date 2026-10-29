@@ -5,8 +5,7 @@
 # no-op `chmod` for NTFS, a copying `ln` for MSYS, a `stat` that only speaks the
 # BSD dialect for macOS. None of those platforms is run here; the real-host
 # expectation below is keyed on `id -u` ONLY to know what THIS host must report.
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a test
-# fixture needs no .ps1 twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"

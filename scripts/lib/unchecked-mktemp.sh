@@ -3,10 +3,9 @@
 # gate, used by scripts/hooks/check-unchecked-mktemp.sh and its
 # suite so the gate and its tests cannot drift.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 # One awk process, no bash-4 constructs (no mapfile, no associative arrays);
-# no .ps1 twin, because the only consumers are a shell pre-commit hook and a
-# shell suite, both gitbash-only already.
+# the only consumers are a shell pre-commit hook and a shell suite.
 #
 # WHY. `T=$(mktemp -d)` with no guard is the single most-repeated defect class
 # the CR ledger recorded in the 14 days to 2026-09-07: 10 separate `agreed`

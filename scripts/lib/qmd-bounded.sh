@@ -35,8 +35,7 @@
 # PATH is not; block-bare-qmd-query.sh refuses the bare search
 # verbs and names this script as the replacement.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; on Git Bash a native
-# Windows node child is outside MSYS process groups (Windows is alpha).
+# Platform guard: POSIX bash 3.2+.
 
 qmd_timeout_secs() {
   printf '%s\n' "${QMD_TIMEOUT_SECS:-3600}"

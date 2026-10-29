@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # permission-test.sh — effective directory-write control for shell suites
 # Source after creating the fixture and removing write bits.
-# Platform guard (gitbash-only): POSIX shell-test helper; no .ps1 twin.
+# Platform guard: POSIX shell-test helper.
 
 # test_dir_unwritable <directory> <case label>
 # A successful probe means chmod did not build the intended fixture (root or

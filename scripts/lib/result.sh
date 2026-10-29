@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows.
+# Platform guard: POSIX bash 3.2+.
 #
 # result.sh — fail-closed tri-state results for gate and hook scripts.
 # Sourced; sets no shell options. A read that cannot answer must not look like

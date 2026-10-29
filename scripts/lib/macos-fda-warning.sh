@@ -22,9 +22,8 @@
 #
 # Sourced, not executed. bash 3.2-safe; no side effects.
 #
-# Platform guard (gitbash-only): pure POSIX bash 3.2+, works fine under Git
-# Bash on Windows too — it never runs there in practice because every caller
-# gates the call on its own PLATFORM var being "macos" (see above).
+# Platform guard: pure POSIX bash 3.2+; every caller gates the call
+# on its own PLATFORM var being "macos" (see above).
 
 # True (rc=0) if $1 sits inside a folder TCC protects on macOS.
 macos_fda_protected_path() {
