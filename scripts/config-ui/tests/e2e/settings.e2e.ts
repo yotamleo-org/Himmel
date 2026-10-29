@@ -31,6 +31,7 @@ test("J3. the page is Configure: its rail entry and title, then the four tiles i
 
 test("J3. the Check this install strip sits under the tile row", async ({ page }) => {
   await open(page);
+  await expect(page.locator(".chk")).toBeVisible();
   const tiles = await page.locator(".tiles").boundingBox();
   const chk = await page.locator(".chk").boundingBox();
   expect(chk!.y).toBeGreaterThan(tiles!.y);
@@ -40,7 +41,7 @@ test("J3. the Check this install strip sits under the tile row", async ({ page }
 test("J3. every Project scope row shows its command, when it takes effect and a Learn more link to the docs site", async ({ page }) => {
   await open(page, "jira", "scope");
   const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
-  expect(await rows.count()).toBeGreaterThanOrEqual(5);
+  await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
     await expect(r.locator("pre code")).not.toBeEmpty();
     await expect(r).toContainText("takes effect: ");
@@ -94,10 +95,12 @@ test("J4. on a 3840 px screen the panel stays a readable width and every secret 
   await open(page);
   for (const t of ["secrets", "review", "tracker", "scope"]) {
     await page.locator(`button.tile[data-tile="${t}"]`).click();
+    await expect(page.locator(`#tile-${t}`)).toBeVisible();
     const box = await page.locator(`#tile-${t}`).boundingBox();
     expect(box!.width, `${t} panel`).toBeLessThanOrEqual(3840 * 0.45);
   }
   await page.locator('button.tile[data-tile="secrets"]').click();
+  await expect(page.locator("#tile-secrets form[data-setup-form] input")).toHaveCount(3);
   const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
   expect(edges.length).toBeGreaterThan(1);
   expect(new Set(edges).size, `input right edges ${edges}`).toBe(1);

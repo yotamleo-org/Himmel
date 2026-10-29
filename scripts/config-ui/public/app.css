@@ -132,8 +132,8 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .cpanel .srow>*{grid-column:1/-1;min-width:0}.cpanel .srow>.id{grid-column:1;grid-row:1}.cpanel .srow>.st{grid-column:2;grid-row:1}
 .cpanel .srow .det{white-space:normal;overflow:visible}
 .cpanel .st{font:700 11px var(--font-mono)}
-.cpanel .sform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.cpanel .sform input{flex:1 1 180px;width:auto;min-width:0}
-.cpanel .sform .acts{display:flex;gap:6px;justify-content:flex-end;flex:0 0 auto;min-width:8.5rem}
+.cpanel .sform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}.cpanel .sform input{flex:1 1 120px;width:auto;min-width:0}
+.cpanel .sform .acts{display:flex;gap:6px;justify-content:flex-end;flex:0 0 auto;min-width:8.5rem;margin-left:auto}
 .cpanel .slot label{display:inline-flex;align-items:center;gap:6px}
 .cpanel .chips{gap:6px}.cpanel .chips .ro{border:1px solid var(--rule-strong);border-radius:999px;background:var(--surface-2);padding:0 10px;font:11px var(--font-mono)}
 .cpanel .id{font-weight:600}.cpanel .det,.cpanel .ro{color:var(--muted);font-size:var(--fs-xs)}

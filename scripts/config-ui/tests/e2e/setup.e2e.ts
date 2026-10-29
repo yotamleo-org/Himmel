@@ -61,6 +61,7 @@ async function leaks(page: Page, secret: string): Promise<string[]> {
 
 test("J5. the page=setup hand-off lands on Configure with the Secrets tile open, and recommends the terminal", async ({ page }) => {
   await open(page);
+  await expect(page.locator("nav.pages a").filter({ hasText: "Configure" })).toHaveCount(1);
   const rail = await page.locator("nav.pages a").allTextContents();
   expect(rail).toContain("Configure");
   expect(rail).not.toContain("Setup");
