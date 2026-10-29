@@ -1162,3 +1162,4 @@ scripts/handover/chief-kit/test-chain-render.sh	local	behaviour suite, hermetic 
 scripts/test-new-worktree-no-atlassian.sh	local	behaviour suite, new HIMMEL-7851
 scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new HIMMEL-7851
 scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suite, new HIMMEL-8013
+scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
