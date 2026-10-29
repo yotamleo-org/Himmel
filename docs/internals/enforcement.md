@@ -2134,7 +2134,7 @@ live in `test-guard-memory-capture.sh` (S/F/D/W/N cases).
 **Topic-file cap (HIMMEL-8005).** A Write, Edit or MultiEdit that leaves a topic
 file (`*.md` other than `MEMORY.md`; `*.bak` stays exempt) over `MEMORY_TOPIC_MAX`
 (default 8192) bytes **and** bigger than before fires `topic-cap`. Shrinking never
-fires. `MEMORY_TOPIC_MODE` (default `warn`) picks the outcome: `warn` allows the
+fires. `MEMORY_TOPIC_MODE` (default `deny` since HIMMEL-8006) picks the outcome: `warn` allows the
 write with an `additionalContext` advisory (no `permissionDecision`) and
 logs a `warn` row; `deny` exits 2, naming the bypass `MEMORY_CAPTURE_OK=1` in the
 launching shell. Both texts send the session to `himmel-ops:memory-compound` to
@@ -2191,8 +2191,8 @@ What it gates, by target:
   payload doesn't reveal the resulting content, so the guard forces a
   whole-file `Write` it can inspect.
 - **topic files** — the tier-2 landing spot; `Edit` allowed. A write that ends
-  over `MEMORY_TOPIC_MAX` bytes and grows the file gets a warn-only advisory; only
-  `MEMORY_TOPIC_MODE=deny` refuses it. This is what makes capture always work.
+  over `MEMORY_TOPIC_MAX` bytes and grows the file is denied by default;
+  `MEMORY_TOPIC_MODE=warn` allows it with an advisory.
 - **`*.bak`** — exempt (compound writes a ~25KB backup by design).
 
 Adopter story is **unconditional**: no vault/qmd predicate. A machine with no
