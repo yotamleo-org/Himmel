@@ -113,7 +113,7 @@
 #       registry launches with that worktree as its cwd; an unregistered repo
 #       and an explicit WORKER_SESSION_REPO launch as before.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
+# Platform guard: POSIX bash 3.2+, same as headed-arm.sh
 # itself (konsole is Linux/KDE-only).
 set -uo pipefail
 

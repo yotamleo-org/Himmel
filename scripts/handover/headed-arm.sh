@@ -43,7 +43,7 @@
 # Run detached, so it outlives the session that armed it:
 #   setsid nohup bash scripts/handover/headed-arm.sh ... >/dev/null 2>&1 &
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus a terminal emulator -
+# Platform guard: POSIX bash 3.2+ plus a terminal emulator -
 # konsole on Linux/KDE, and on macOS the konsole-macos.sh shim
 # this defaults to there, which translates the SAME konsole argv into the
 # house `open -a <App> <file>.command` launch arm-resume.sh already uses.
