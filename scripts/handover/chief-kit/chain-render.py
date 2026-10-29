@@ -25,7 +25,8 @@ A ticket missing from the mirror stays a step (the tracker shows it unknown).
 2 on an unreadable graph, mirror, bad arguments or a failed write (nothing is written).
 
 The file is written through tempfile.mkstemp in the --out directory and os.replace, never a fixed <out>.tmp, so a path
-planted beside it is not followed; on an OSError the temp file is removed and the exit is 2.
+planted beside it is not followed; the temp file takes the existing output's mode (0644 when there is none); on an
+OSError the temp file is removed and the exit is 2.
 """
 import argparse
 import json
@@ -144,6 +145,11 @@ def main():
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(res, f, indent=1)
             f.write('\n')
+        try:
+            mode = os.stat(a.out).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+        os.chmod(tmp, mode)
         os.replace(tmp, a.out)
     except OSError as e:
         if tmp:

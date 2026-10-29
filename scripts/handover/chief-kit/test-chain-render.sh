@@ -124,6 +124,7 @@ same 'a planted <out>.tmp symlink target is left unchanged' "$(cat "$W/victim")"
 same 'a planted <out>.tmp symlink is left in place' "$([ -L "$W/planted.json.tmp" ] && echo link)" link
 same 'the render through a planted <out>.tmp holds the steps' "$(keys "$W/planted.json")" 'Rename chain:9002[0] 9004[0] 9005[0] 9003[1]'
 same 'the render leaves no temp file of its own' "$(nmatch "$W"/planted.json.*.tmp)" 0
+same 'a fresh render is written 0644, not the 0600 of the temp file' "$(python3 -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$W/planted.json")" 0o644
 
 # --- a failed write exits 2 and leaves no temp file
 mkdir -p "$W/outdir"
