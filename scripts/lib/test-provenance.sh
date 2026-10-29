@@ -265,12 +265,12 @@ unset HIMMEL_PROVENANCE_IID _PROV_OWNS
 
 # a POSIX filename may contain a backslash, and no uname makes it a separator
 rm -rf "$HIMMEL_PROVENANCE_DIR"
-prov_record create file "$w"'/a\b' --post-json '"x"'
+prov_record create file "$w"'/a\b' --post-json '"x"'; check "POSIX backslash filename → rc 0" "$?" "0"
 check "POSIX backslash filename is recorded as given" "$(last | jq -r .path)" "$w"'/a\b'
-mkdir -p "$tmp/mingw"; printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$tmp/mingw/uname"; chmod +x "$tmp/mingw/uname"
+mkdir -p "$tmp/mingw"; printf "#!/bin/sh\n[ \"\$1\" = -s ] || exit 1\necho MINGW64_NT-10.0\n" > "$tmp/mingw/uname"; chmod +x "$tmp/mingw/uname"
 check "a MINGW uname is not reported as win32" "$(PATH="$tmp/mingw:$PATH" _prov_platform)" "mingw64_nt-10.0"
 rm -rf "$HIMMEL_PROVENANCE_DIR"
-( PATH="$tmp/mingw:$PATH"; prov_record create file "$w"'/a\b' --post-json '"x"' )
+( PATH="$tmp/mingw:$PATH"; prov_record create file "$w"'/a\b' --post-json '"x"' ); check "backslash filename under a MINGW uname → rc 0" "$?" "0"
 check "a backslash filename is recorded as given under a MINGW uname" "$(last | jq -r .path)" "$w"'/a\b'
 
 # a hasher that fails must fail the record, never write an empty sha (no pipefail in this shell)
@@ -295,7 +295,7 @@ check "path '/' is recorded as /" "$(last | jq -r .path)" "/"
 # a Windows drive root keeps its slash and is not split into the bare "C:" (the drive's
 # cwd); fixture: a directory literally named "C:" (a real drive root needs Windows)
 rm -rf "$HIMMEL_PROVENANCE_DIR" "$tmp/drv"; mkdir -p "$tmp/drv/C:"
-( cd "$tmp/drv" && prov_record register mcp 'C:/' --unit m --post-json '"x"' )
+( cd "$tmp/drv" && prov_record register mcp 'C:/' --unit m --post-json '"x"' ); check "drive root 'C:/' → rc 0" "$?" "0"
 check "drive root 'C:/' is recorded as the root itself" "$(last | jq -r .path)" "$(cd "$tmp/drv/C:" && pwd -P)/"
 
 # a pre-existing group/world-readable ledger is tightened to 0600 by the next append
