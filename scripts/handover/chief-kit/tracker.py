@@ -1361,6 +1361,8 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
             return 'unknown'
         if bucket(mir[k]) == 'done':
             return 'merged'
+        if bucket(mir[k]) == 'wont':
+            return 'wont'
         if 'held' in mir[k].get('labels', []):
             return 'held'
         return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
