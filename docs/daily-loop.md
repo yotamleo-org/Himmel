@@ -221,7 +221,7 @@ the subject line. They are required only in certain circumstances:
 
 | Change type | Trailer required |
 |---|---|
-| Touches shell scripts, `scripts/**`, or `**/bin/*` | `Platforms tested: <os>` |
+| Touches a file matched by the [sensitive-file list](../scripts/hooks/check-platforms-tested.sh), including `scripts/**` or `**/bin/*` | `Platforms tested: <os>` |
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 

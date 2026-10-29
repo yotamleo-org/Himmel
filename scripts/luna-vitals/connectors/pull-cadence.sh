@@ -301,7 +301,7 @@ EOF
         printf 'exit "$_rc"\n'
     }
 
-    cron_status() {
+cmd_status() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -322,7 +322,7 @@ EOF
         status_log "$BAT_DIR/pull-cadence.log"
     }
 
-    cron_disarm() {
+cmd_disarm() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -352,7 +352,7 @@ EOF
         echo "pull-cadence: cadence disarmed"
     }
 
-    cron_arm() {
+cmd_arm() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -469,9 +469,9 @@ EOF
 
     _cadence_rc=0
     case "$PLATFORM:$SUBCMD" in
-        posix:arm)      cron_arm ;;
-        posix:status)   cron_status || _cadence_rc=$? ;;
-        posix:disarm)   cron_disarm ;;
+        posix:arm)      cmd_arm ;;
+        posix:status)   cmd_status || _cadence_rc=$? ;;
+        posix:disarm)   cmd_disarm ;;
     esac
     exit "$_cadence_rc"
     ;;
