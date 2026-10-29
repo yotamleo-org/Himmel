@@ -133,7 +133,8 @@
 #      the budget. A default run keeps its own non-zero code over this one.
 #   4  INCOMPLETE — chunks are still pending embedding
 #   5  STALE and INCOMPLETE
-#   6  could not READ `qmd status` (qmd reworded its output) — fail-closed,
+#   6  (also: a named index whose config yields no readable collection path)
+#      could not READ `qmd status` (qmd reworded its output) — fail-closed,
 #      deliberately distinct from 0 so an unreadable report is never an
 #      all-clear
 #   7  `qmd status` itself FAILED — qmd is installed but could not answer (a
@@ -237,12 +238,13 @@ QS_CFG_DIR="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}"
 QS_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
 
 named_index_check() {
-    local name="$1" cfg ref="" p n=0 ref_desc
+    local name="$1" cfg ref="" p n=0 seen=0 ref_desc
     cfg="$QS_CFG_DIR/$name.yml"
     if [ -f "$QS_CACHE_DIR/$name.refresh-stamp" ]; then ref="$QS_CACHE_DIR/$name.refresh-stamp"
     elif [ -f "$QS_CACHE_DIR/$name.sqlite" ]; then ref="$QS_CACHE_DIR/$name.sqlite"; fi
     while IFS= read -r p; do
         [ -n "$p" ] && [ -d "$p" ] || continue
+        seen=$(( seen + 1 ))
         if [ -n "$ref" ]; then
             n=$(( n + $(find "$p" -type f -name '*.md' -newer "$ref" 2>/dev/null | wc -l) ))
         else
@@ -251,6 +253,10 @@ named_index_check() {
     done <<EOF
 $(awk '/^[[:space:]]+path:/ { v = $0; sub(/^[[:space:]]+path:[[:space:]]*/, "", v); sub(/[[:space:]]+#.*$/, "", v); gsub(/^["\047]|["\047]$/, "", v); sub(/^~/, ENVIRON["HOME"], v); print v }' "$cfg")
 EOF
+    if [ "$seen" -eq 0 ]; then
+        echo "qmd index [$name] could not be read — no readable collection path in $cfg; treat qmd MISSES against it AS UNPROVEN." >&2
+        return 6
+    fi
     [ "$n" -gt 0 ] || return 0
     if [ -z "$ref" ]; then
         ref_desc="never refreshed"

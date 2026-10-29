@@ -609,6 +609,14 @@ touch_ago 120 "$SAL_CACHE/salus.sqlite"
 out=$(run_guard) && rc=0 || rc=$?
 assert_rc "a fresh salus refresh stamp outranks the sqlite mtime -> rc 0" 0 "$rc"
 
+printf 'collections:\n  salus:\n    path: %s/gone\n' "$FXHOME" >"$SAL_CFG/salus.yml"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "a salus collection path that does not exist -> rc 6, never an all-clear" 6 "$rc"
+assert_contains "the notice says the index could not be read" "could not be read" "$out"
+printf 'models:\n  embed: x\n' >"$SAL_CFG/salus.yml"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "a salus.yml with no collection path -> rc 6" 6 "$rc"
+
 rm -f "$SAL_CFG/salus.yml"
 rm -f "$SAL_CACHE/salus.refresh-stamp"
 out=$(run_guard) && rc=0 || rc=$?
