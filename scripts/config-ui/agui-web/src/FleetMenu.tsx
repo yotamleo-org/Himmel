@@ -48,7 +48,7 @@ export function FleetMenu({ state, token, selected }: { state: FleetState; token
   const all = fleetSections(sessions, null, NO_FILTERS, state.fleet?.processOrphans ?? []);
   const counts = (name: string) => {
     const c = fleetSections(sessions, name, NO_FILTERS, state.fleet?.processOrphans ?? []).counts;
-    return [`${c.running} running`, c.waiting > 0 && `${c.waiting} waiting`, c.attention > 0 && `${c.attention} attention`, c.orphaned > 0 && `${c.orphaned} orphaned`].filter(Boolean).join(" · ");
+    return [`${c.running} running`, c.waiting > 0 && `${c.waiting} waiting for GO`, c.attention > 0 && `${c.attention} attention`, c.orphaned > 0 && `${c.orphaned} orphaned`].filter(Boolean).join(" · ");
   };
   const group = (g: (typeof groups)[number]) => <details key={g.console.name} open={isLive(g.console)}>
     <summary><a className="chief-page" href={consoleHash(token, g.console.name)} aria-current={selected === g.console.name ? "page" : undefined}>{g.console.name}</a></summary>
