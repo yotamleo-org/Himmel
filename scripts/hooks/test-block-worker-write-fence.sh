@@ -85,8 +85,9 @@ assert_rc "glm url alone is not a worker lane (HIMMEL-7907)" 0 "$(run_case "$(j_
 
 # The plugin registration fails closed on the lane-agnostic worker marker.
 HOOKS_JSON="$(cd "$(dirname "$HOOK")/../.." && pwd -P)/marketplace/plugins/himmel-ops/hooks/hooks.json"
+REG_CMDS=$(jq -r '.. | .command? // empty' "$HOOKS_JSON")
 # shellcheck disable=SC2016  # literal unexpanded $CLAUDE_PROJECT_DIR is the registered command text
-if jq -r '.. | .command? // empty' "$HOOKS_JSON" | grep -q -F -e '--fail-closed-when "HIMMEL_WORKER=1" "$CLAUDE_PROJECT_DIR/scripts/hooks/block-worker-write-fence.sh"'; then REG_RC=0; else REG_RC=1; fi
+if grep -q -F -e '--fail-closed-when "HIMMEL_WORKER=1" "$CLAUDE_PROJECT_DIR/scripts/hooks/block-worker-write-fence.sh"' <<< "$REG_CMDS"; then REG_RC=0; else REG_RC=1; fi
 assert_rc "hooks.json registers the fence fail-closed on HIMMEL_WORKER=1 (HIMMEL-7907)" 0 "$REG_RC"
 
 assert_rc "worker config --get url (pinned overmatch)" 2 "$(run_case "$(j_bash 'git config --get remote.origin.url')" "HIMMEL_WORKER=1")"
