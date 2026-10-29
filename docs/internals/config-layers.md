@@ -201,13 +201,12 @@ add a new one to `stationSecrets` first. Then:
    that key ahead of the stored item: settle that layer first.
 3. Delete from `.env` exactly the lines import-env printed as `stored`, and
    nothing else. Until you do, each secret is still in plain text on disk.
-   A line it skipped stays: a config key until it moves to `~/.himmel`, and
-   `HIMMEL_FLEET_CAP`, a guarded variable kept in `.env` (see the fleet cap
-   example below). Do not delete by key class: `HIMMEL_FLEET_CAP` reads as a
-   secret there, and the `DEPRECATED: secret … read from .env` line still
-   names it after the move.
+   A line it skipped stays until it moves to `~/.himmel`: a config key, or
+   `HIMMEL_FLEET_CAP`, which is gate policy and belongs in `config.json`
+   `.policy` (see the gate policy list below). A legacy `.env` cap still
+   applies, with the `DEPRECATED: HIMMEL_FLEET_CAP read from .env` notice.
 4. `bash scripts/himmel-doctor.sh --only C75` shows `OK C75-secrets: no secret
-   comes from .env`. C75 counts only the manifest's secrets, so the
+   comes from .env`. C75 counts only the manifest's secrets, so a
    `HIMMEL_FLEET_CAP` line left in `.env` does not fail it.
 
 ## The .env split: what moves, what stays, and a mismatch
