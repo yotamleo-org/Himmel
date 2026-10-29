@@ -157,7 +157,6 @@ own:
 
 ```text
 env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
-    -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
     CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 \
     claude --model '<model>' --autocompact auto -n <session-name> "load <doc> and continue"
 ```

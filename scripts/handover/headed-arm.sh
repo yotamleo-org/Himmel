@@ -739,7 +739,7 @@ fi
 # claim lock, and konsole itself.
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
-    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
+    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
         "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
@@ -1043,8 +1043,7 @@ headless_fail() { # headless_fail <rc> <message>
 # and the launch call.
 # ponytail: only worker-shaped names (the case list in _hl_worker_var) are
 # overridden. Anything else the daemon spawner had - PATH, CLAUDE_CODE_*,
-# the CLAUDE_PID / CLAUDE_CODE_SESSION_ID / CLAUDE_CODE_MESSAGING_SOCKET /
-# CLAUDE_CODE_MESSAGING_TOKEN a headed launch clears with env -u -
+# the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
 # still reaches the worker from the daemon.
 headless_launch() {
     local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair
@@ -1103,7 +1102,7 @@ headless_launch() {
 
     local lrc=0
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
-    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN $ROLE_ENV_UNSET \
+    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
@@ -1517,13 +1516,13 @@ if [ "$RECORDER" = "1" ]; then
     # launch stdout/stderr (spawn errors before script even starts) into the
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi
