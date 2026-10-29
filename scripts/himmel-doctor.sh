@@ -4758,6 +4758,57 @@ EOF_PLUGINS
     emit OK C79-plugin-cache-drift "$n installed @himmel plugin cache(s) match the checkout at the same version"
 }
 
+# --- C80-status-drift: the saved run of the Jira-against-events drift check ---
+# Reads the focus-drift.txt the chief's focus refresh last wrote (never re-runs the 90 s pass) through
+# drift-summary.mjs and prints its time, so a reader can tell a saved run from a fresh one. Single-user
+# (the default; tracker.teamMode off): any real row is a WARN. Known-checker-bug and transient rows are
+# listed and never counted. Team mode: INFO. A stale file or an unreadable run is a WARN, never a zero.
+# Seams: HIMMEL_DOCTOR_FOCUS_DRIFT (the file; default the newest <handover root>/*/himmel/focus-drift.txt),
+# DRIFT_SUMMARY_KNOWN, HIMMEL_CONFIG_DIR.
+check_c80_status_drift() {
+    command -v jq >/dev/null 2>&1 || return 0
+    local file="${HIMMEL_DOCTOR_FOCUS_DRIFT:-}" root s hm sd real known trans checkers parts rows_word node_bin
+    node_bin="$(resolve_node 2>/dev/null)" || return 0
+    if [ -z "$file" ]; then
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+        if root="$(handover_root 2>/dev/null)" && [ -n "$root" ]; then
+            # shellcheck disable=SC2012  # the paths are <slug>/himmel/focus-drift.txt under the handover root
+            file="$(ls -t "$root"/*/himmel/focus-drift.txt 2>/dev/null | head -n 1)" || file=""
+        fi
+    fi
+    if [ -z "$file" ] || [ ! -f "$file" ]; then
+        emit INFO C80-status-drift "no focus-drift.txt yet"
+        return 0
+    fi
+    s="$("$node_bin" "$SELF_DIR/handover/chief-kit/drift-summary.mjs" --json --drift "$file" 2>/dev/null)" || s=""
+    [ -n "$s" ] || { emit WARN C80-status-drift "drift-summary.mjs could not read $file"; return 0; }
+    hm="$(jq -r '.file.writtenHm' <<< "$s")"; sd="$(jq -r '.sdrift // ""' <<< "$s")"; sd="${sd%%:*}"
+    real="$(jq -r '.counts.real' <<< "$s")"; known="$(jq -r '.counts.known' <<< "$s")"; trans="$(jq -r '.counts.transient' <<< "$s")"
+    checkers="$(jq -r '.checkers | join(", ")' <<< "$s")"
+    local refresh="re-run the focus refresh: bash scripts/handover/chief-kit/focus-refresh.sh --doc <chief doc>"
+    if [ "$(jq -r '.unknown' <<< "$s")" = true ]; then
+        emit WARN C80-status-drift "sdrift=unknown: the check could not read Jira or the PRs" "$refresh"
+        return 0
+    fi
+    if [ "$(jq -r '.stale' <<< "$s")" = true ]; then
+        emit WARN C80-status-drift "file $hm is stale: older than one focus refresh" "$refresh"
+        return 0
+    fi
+    parts=""
+    [ "$known" -eq 0 ] || parts="$known known-bug $checkers"
+    [ "$trans" -eq 0 ] || parts="$parts${parts:+, }$trans transient"
+    rows_word=rows; [ "$real" -ne 1 ] || rows_word=row
+    if [ "$real" -gt 0 ] && [ "$(jq -r '.mode' <<< "$s")" = team ]; then
+        emit INFO C80-status-drift "team mode: $real real $rows_word → Tidy up"
+    elif [ "$real" -gt 0 ]; then
+        emit WARN C80-status-drift "$real real $rows_word, single-user, file $hm (sdrift=$sd${parts:+; }$parts) → #/board?tab=tidy"
+    elif [ -n "$parts" ]; then
+        emit INFO C80-status-drift "0 real rows, file $hm ($parts)"
+    else
+        emit INFO C80-status-drift "0 rows, file $hm (sdrift=$sd)"
+    fi
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -4909,6 +4960,7 @@ run_check C76 check_c76_duplicate_plugin_installs
 run_check C77 check_c77_bridge_stale
 run_check C78 check_c78_shfmt
 run_check C79 check_c79_plugin_cache_drift
+run_check C80 check_c80_status_drift
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

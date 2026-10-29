@@ -753,6 +753,30 @@ _mQ5=$(stat -c %a "$fxQ5/.env" 2>/dev/null || stat -f %Lp "$fxQ5/.env")
 [ "$_mQ5" = 600 ] || fail "caseQ5: the legacy .env must keep mode 600 (got $_mQ5)"
 echo "ok: caseQ5 tracker none drops the legacy .env ticket keys and keeps the rest"
 
+# Q6: tracker.teamMode on|off writes HIMMEL_TRACKER_TEAM_MODE and reads back; unset reads off; anything else is refused.
+fxQ6="$work/fixtureQ6"; build_fixture "$fxQ6"
+_hQ6="$work/home-Q6-$$-$RANDOM"; mkdir -p "$_hQ6"
+run_cfg_q6() {
+  set +e
+  CFG_OUT=$(HOME="$_hQ6" USERPROFILE="$(winpath "$_hQ6")" HIMMELCTL_CACHE_DIR="$(winpath "$_hQ6.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hQ6.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxQ6")" \
+    "$node_bin" "$wizard" config "$@" 2>&1)
+  CFG_RC=$?
+  set -e
+}
+run_cfg_q6 get tracker.teamMode
+[ "$CFG_RC" -eq 0 ] && [ "$CFG_OUT" = off ] || fail "caseQ6: an unset tracker.teamMode reads off (got rc=$CFG_RC: $CFG_OUT)"
+run_cfg_q6 set tracker.teamMode on
+[ "$CFG_RC" -eq 0 ] || fail "caseQ6: set tracker.teamMode on should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^HIMMEL_TRACKER_TEAM_MODE=on$' "$_hQ6/.himmel/himmel.conf" || fail "caseQ6: himmel.conf should carry HIMMEL_TRACKER_TEAM_MODE=on (got: $(cat "$_hQ6/.himmel/himmel.conf" 2>&1))"
+run_cfg_q6 get tracker.teamMode
+[ "$CFG_OUT" = on ] || fail "caseQ6: tracker.teamMode reads back on (got: $CFG_OUT)"
+run_cfg_q6 set tracker.teamMode off
+grep -qE '^HIMMEL_TRACKER_TEAM_MODE=off$' "$_hQ6/.himmel/himmel.conf" || fail "caseQ6: himmel.conf should carry HIMMEL_TRACKER_TEAM_MODE=off"
+run_cfg_q6 set tracker.teamMode maybe
+[ "$CFG_RC" -eq 2 ] || fail "caseQ6: a value other than on/off is refused with rc 2 (got rc=$CFG_RC): $CFG_OUT"
+grep -qE '^HIMMEL_TRACKER_TEAM_MODE=off$' "$_hQ6/.himmel/himmel.conf" || fail "caseQ6: a refused set leaves himmel.conf as it was"
+echo "ok: caseQ6 tracker.teamMode set/get round-trips HIMMEL_TRACKER_TEAM_MODE and refuses other values"
+
 # ── Case R: handover.root / luna.vaultPath — the Setup page's path writers ──
 fxR="$work/fixtureR"; build_fixture "$fxR"
 _hR="$work/home-R-$$-$RANDOM"; mkdir -p "$_hR"

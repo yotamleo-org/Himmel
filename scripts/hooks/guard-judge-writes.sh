@@ -105,6 +105,7 @@ has_word() {
 # through its existing parent. Returns 1 when neither resolves.
 resolve() {
     local p="$1" parent leaf r
+    # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; a missing-leaf fallback below needs the raw readlink exit status
     r=$(readlink -f -- "$p" 2>/dev/null) && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
     case "$p" in */) return 1 ;; esac
     # A symlink readlink could not resolve is dangling past a missing parent:
@@ -114,6 +115,7 @@ resolve() {
     parent="${p%/*}"
     [ -n "$parent" ] || parent="/"
     [ -d "$parent" ] || return 1
+    # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; the guard must fail closed with no sourced dependency
     r=$(readlink -f -- "$parent" 2>/dev/null) && [ -n "$r" ] || return 1
     [ "$r" = "/" ] && r=""
     printf '%s\n' "$r/$leaf"
