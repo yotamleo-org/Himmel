@@ -1339,15 +1339,15 @@ def terminal_phi_egress_reason(cmd_norm: str):
 # The egress half (above) stops PHI from being READ / searched / written on this
 # cloud profile. THIS half stops an UNTRUSTED engine from pushing work OUT — git
 # push, remote-URL rewrite, gh PR-mutations, network CLIs — the exact shapes
-# scripts/hooks/block-glm-external-writes.sh fences on the Claude-Code GLM lane
-# (KEEP IN SYNC). It matters here because hermes does NOT load himmel's Claude
+# the deleted Claude-Code GLM-lane fence refused (block-worker-write-fence.sh no
+# longer carries them, so this list is now the only copy). It matters here because hermes does NOT load himmel's Claude
 # Code PreToolUse hooks, so parity_guard is the SOLE external-write fence for
 # EVERY engine the himmel_agent profile is pointed at (openai/codex OR z.ai/GLM).
 #
 # Engine signal — FAIL-CLOSED. External writes are permitted ONLY when the run
 # is affirmatively a trusted main-tier engine:
 #   * ANTHROPIC_BASE_URL contains api.z.ai      -> UNTRUSTED (the s29 lead; the
-#     signal block-glm-external-writes.sh itself keys on). ALWAYS refused.
+#     signal the deleted GLM-lane fence keyed on). ALWAYS refused.
 #   * HERMES_ENGINE / HERMES_ONESHOT_MODEL / HERMES_ONESHOT_PROVIDER names a
 #     z.ai / glm / zhipu / deepseek model -> UNTRUSTED. ALWAYS refused. The
 #     ONESHOT signals matter because invoke.sh exports the resolved --model /
@@ -1362,8 +1362,8 @@ def terminal_phi_egress_reason(cmd_norm: str):
 # positive "this is codex" signal — it selects providers via its own config.yaml
 # chain, not ANTHROPIC_BASE_URL — so an unknown engine is genuine ambiguity, and
 # sensitive-never-cloud is a LOCKED invariant, so ambiguity refuses. The operator
-# opts a trusted run in with ONE session-sticky env var (parity with the sibling's
-# GLM_EXTERNAL_WRITES_OK bypass, opposite sense). A positive UNTRUSTED signal wins
+# opts a trusted run in with ONE session-sticky env var (parity with the
+# retired GLM fence's bypass, opposite sense). A positive UNTRUSTED signal wins
 # over the opt-in. PHI writes stay refused regardless of this gate (egress half,
 # unconditional). Command-text scanning is best-effort: a write verb displaced from
 # command position (env-prefix "FOO=1 git push", bash -c / sudo / xargs wrappers,
@@ -1380,7 +1380,7 @@ EXT_GIT_URL = re.compile(
     r"(?:remote\s+set-url|config(?:\s+-\S+(?:\s+\S+)?)*(?:\s+(?:set|add|replace-all))?(?:\s+-\S+(?:\s+\S+)?)*\s+\S*(?i:url|insteadof)\s+\S+)"
     r"|" + _CMDPOS + r"git(?:\.exe)?\s+(?:[^;&|]*\s)?(?:-c|--config-env)[=\s]*\S*(?i:insteadof)=")
 EXT_GH_ANY = re.compile(_CMDPOS + r"gh(?:\.exe)?(?:\s|$)")
-# Audited-lane carve-out (block-glm-external-writes.sh policy, 2026-07-03): gh
+# Audited-lane carve-out (the deleted GLM-lane fence's policy, 2026-07-03): gh
 # issue (reads AND writes — cr-deferred followups are audited gh issues) + the
 # read-only pr/run context verbs stay allowed; every other gh use (pr create/
 # merge/edit/review, api, repo, release, gist) is an external write and refuses.
@@ -2075,11 +2075,11 @@ def main() -> None:
     args = payload.get("tool_input") or payload.get("args") or {}
     _CUR_TOOL, _CUR_ARGS = tool, args if isinstance(args, dict) else {}
 
-    # MCP fence (block-backend-tier / block-glm-external-writes parity, HIMMEL-
+    # MCP fence (block-backend-tier / the deleted GLM-lane fence's parity, HIMMEL-
     # 731). himmel's CC PreToolUse hooks do NOT load under hermes, so an MCP tool
     # call would reach the engine UNFENCED — a real external-write surface on the
     # default lane. Blanket-deny every mcp__* tool EXCEPT the read-only qmd
-    # knowledge-base carve-out (mirrors block-glm-external-writes.sh), which is
+    # knowledge-base carve-out (mirrors the deleted GLM-lane fence), which is
     # itself COLLECTION-SCOPED to the "himmel" v1 allow-list (see
     # qmd_scope_reason() above). This fires unconditionally on this cloud
     # profile (both engines); the matcher extension in wire_parity_guard.py is

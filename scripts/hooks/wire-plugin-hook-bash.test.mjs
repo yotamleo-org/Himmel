@@ -75,12 +75,12 @@ function unwire(text) {
     const script = match[1];
     if (script === 'block-lesson-enforcement-writes.sh') {
       commandHook.command = 'bash -c \'h="$CLAUDE_PROJECT_DIR/scripts/hooks/block-lesson-enforcement-writes.sh"; if [ -f "$h" ]; then exec bash "$h"; elif [ "${HIMMEL_LESSON_LOOP:-0}" = "1" ]; then echo "block-lesson-enforcement-writes: hook script missing while HIMMEL_LESSON_LOOP=1 (stale checkout?) - failing closed" >&2; exit 2; fi\'';
-    } else if (script === 'block-glm-external-writes.sh') {
+    } else if (script === 'block-worker-write-fence.sh') {
       // Second fail-closed entry. Spelled
       // out here rather than derived from the wirer, so this stays an
       // INDEPENDENT restatement of the expected output instead of a circular
       // re-run of the generator it is meant to pin.
-      commandHook.command = 'bash -c \'h="$CLAUDE_PROJECT_DIR/scripts/hooks/block-glm-external-writes.sh"; if [ -f "$h" ]; then exec bash "$h"; elif [ "${HIMMEL_GLM_WORKER:-0}" = "1" ]; then echo "block-glm-external-writes: hook script missing while HIMMEL_GLM_WORKER=1 (stale checkout?) - failing closed" >&2; exit 2; fi\'';
+      commandHook.command = 'bash -c \'h="$CLAUDE_PROJECT_DIR/scripts/hooks/block-worker-write-fence.sh"; if [ -f "$h" ]; then exec bash "$h"; elif [ "${HIMMEL_WORKER:-0}" = "1" ]; then echo "block-worker-write-fence: hook script missing while HIMMEL_WORKER=1 (stale checkout?) - failing closed" >&2; exit 2; fi\'';
     } else if (script === 'guard-chief-dispatch.sh' || script === 'guard-chief-foreground.sh') {
       const hookName = script.replace(/\.sh$/, '');
       commandHook.command = `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${script}"; if [ -f "$h" ]; then exec bash "$h"; elif [ "\${HIMMEL_CONSOLE:-0}" = "1" ]; then echo "${hookName}: hook script missing while HIMMEL_CONSOLE=1 (stale checkout?) - failing closed" >&2; exit 2; fi'`;

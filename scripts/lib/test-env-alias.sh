@@ -9,7 +9,7 @@
 # ENV_ALIAS_SCRIPT points the rows at another copy of the helper, so a mutant
 # (alias_env overwriting a set NEW) can be shown to turn a row red.
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe, no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe.
 # shellcheck disable=SC2016  # snippets are meant to expand in the child, not here
 set -euo pipefail
 

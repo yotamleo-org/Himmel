@@ -53,7 +53,7 @@ SHELL:scripts/hooks/block-destructive-commands.sh
 SHELL:scripts/hooks/block-edit-live-settings.sh
 SHELL:scripts/hooks/block-edit-on-main.sh
 SHELL:scripts/hooks/block-git-stash.sh
-SHELL:scripts/hooks/block-glm-external-writes.sh
+SHELL:scripts/hooks/block-worker-write-fence.sh
 SHELL:scripts/hooks/block-jira-compound-write.sh
 SHELL:scripts/hooks/block-merged-pr-commit.sh
 SHELL:scripts/hooks/block-unresolved-cr-merge.sh

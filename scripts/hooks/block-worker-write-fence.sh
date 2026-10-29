@@ -1,157 +1,51 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash/PowerShell/mcp__* — GLM-lane external-write deny.
+# PreToolUse hook for Bash/PowerShell/mcp__* — the dispatched-worker write fence.
 #
-# WHY (operator decision — "harden BEFORE
-# scaling the offload"): GLM workers (scripts/telegram/spawn-glm.ts) and
-# claude-glm sessions run claude against api.z.ai, usually with
-# --permission-mode bypassPermissions. Third-party lanes have NO auto-mode
-# classifier and bypassPermissions removes the prompt layer. The lanes used to
-# also poison the worktree pushurl, but that was never a wall and it mutated
-# the operator's shared git config to boot, so it was removed: this
-# hook plus the parent CR gate are now the whole story. It is the
-# deterministic classifier SUBSTITUTE: on the GLM lane, hard-block
-# push / PR / external-write shapes.
+# Two command-text fences for EVERY dispatched worker, whatever its lane:
+#   - the pin-dir class: a Bash/PowerShell command whose text names the
+#     hook-integrity pin directory is denied, so a worker cannot forge a pin to
+#     match a tampered guard;
+#   - the anchor-tamper class: a command that repoints origin/<default branch>
+#     (the ref the hook-integrity re-pin trusts) is denied.
+# Both are described at their class headers below.
 #
-# Lane detection: ANTHROPIC_BASE_URL contains api.z.ai (set by
-# scripts/telegram/glm-env.ts buildGlmEnv and the scripts/claude-glm
-# launcher family; inherited by hook processes). Non-GLM sessions exit 0 on
-# the first case below — near-zero overhead, before the jq availability check.
-#
-# Blocked on-lane:
-#   - ALL mcp__* tools EXCEPT the qmd KB carve-out (v1 chores are repo-local;
-#     blanket beats a verb list; qmd KB reads are operator-allowed, COLLECTION-
-#     SCOPED to "himmel" only — see below)
-#   - git push; git remote set-url; git config …url (tripwire un-poisoning)
-#   - the gh CLI EXCEPT the carve-out below — pr create/merge/edit/review/
-#     comment/ready, api, repo, release, gist, … stay blocked (parent-session
-#     actions)
-#   - network CLIs: curl/wget/Invoke-WebRequest/Invoke-RestMethod/iwr/irm
-#     (write-flag parsing is fragile post-lowercasing; chores are repo-local;
-#     bun/npm installs remain allowed — dependency fetch, not external write)
-#
-# Allowed on-lane (operator policy 2026-07-03 — audited-action carve-out):
-#   - the Jira CLI (scripts/jira/ path, or bare `jira`): writes are audited in
-#     Jira history + recoverable, so GLM workers may update status/comments and
-#     file followup tickets. Atlassian MCP stays blocked (mcp__* below) — Jira
-#     routing is CLI-first (block-backend-tier enforces that in every session).
-#   - the qmd KB (mcp__plugin_qmd_qmd__* tools): read-only knowledge-base
-#     access, COLLECTION-SCOPED. qmd indexes salus (a PHI medical
-#     vault) alongside himmel/luna/luna-curated with NO built-in isolation, so
-#     a blanket allow would let the GLM lane egress PHI to api.z.ai via the qmd
-#     MCP path even though egress-matrix.json hard-denies salus by file path.
-#     v1 allow-list = {himmel} ONLY (widening it, e.g. adding luna-curated, is
-#     a SEPARATE named operator decision):
-#       - `query`: allowed only when tool_input.collections is a non-empty
-#         array whose every entry is "himmel" — an absent/empty collections
-#         filter falls back to the store's default collections (unknown from
-#         the tool-call JSON, may include salus) and is denied as unscoped.
-#       - `get` / `multi_get`: allowed only when every file/pattern segment is
-#         a fully-qualified `qmd://himmel/...` virtual path. qmd's resolver
-#         falls back to matching a bare/relative filename or a #docid against
-#         EVERY collection in turn, so anything short of the qmd://<collection>
-#         scheme cannot be positively attributed to one collection and is
-#         denied fail-closed.
-#       - `status` (and any other/future qmd tool): has no collection-scoping
-#         input at all, so it is denied fail-closed too.
-#   - gh issue <anything> (full issue surface — reads AND writes; cr-deferred
-#     followups are gh issues, audited in GitHub + recoverable), plus read-only
-#     PR/CI context: `gh pr view|diff|checks|status|list`, `gh run
-#     view|list|watch`. Every other gh use stays blocked (counting arm below).
-#
-# Known limitations (accidental-shape guard, like block-read-secrets):
-#   - any wrapper displacing the command from command position is missed:
-#     env-prefixed `FOO=1 git push`, sudo/xargs/timeout wrappers, `git-push`,
-#     and the `=`-joined global-flag form `git --git-dir=/x push` (missed too)
-#   - in-process network is invisible to a command-text hook — bun/node
-#     fetch, including bun-invoking the telegram bridge send path
-#   - malformed/empty tool JSON -> allow (parity with sibling hooks; Claude
-#     Code emits valid JSON)
-#   - the gh carve-out counts command-position gh occurrences (total vs
-#     allowed) and shares the wrapper gap above — a wrapper-displaced gh is
-#     invisible to BOTH counts, so it is neither blocked nor credited as allowed
-#   Accepted OVER-blocks (fail-closed direction, all test-pinned):
-#   - newlines flatten to ';', so quoted prose whose LINE starts with a
-#     blocked verb ("…\ngit push later") blocks; mid-line prose stays allowed
-#   - an allowed `gh issue …` whose quoted body contains `;`/`|` followed by
-#     another gh token ("--body 'step 1; gh pr merge later'") blocks (the
-#     body token inflates the total count)
-#   - global flags BEFORE a gh subcommand displace it from the allow anchor:
-#     `gh -R o/r issue list` blocks; write flags AFTER the subcommand
-#     (`gh issue list -R o/r`) — allowed
-#   Backstopped by the parent CR gate, which is the load-bearing control;
-#   this hook is the in-session deterministic layer. (The pushurl tripwire
-#   that used to sit alongside them is gone.)
+# Worker detection: HIMMEL_WORKER=1, the lane-agnostic marker a dispatched
+# worker's child env carries (claudexChildEnv in scripts/telegram/spawn-claudex.ts
+# sets it; a future lane inherits this fence by setting the same var, not by
+# editing this file). A headed operator session sets no marker and exits on the
+# first check below — near-zero overhead, before the jq availability check.
 #
 # Exit codes: 0 allow; 2 block (stderr shown to the worker).
-# Bypass: GLM_EXTERNAL_WRITES_OK=1 in the env of the shell that spawns the
-# worker (spawn-glm caller / claude-glm launcher). Session-sticky.
 #
-# BYPASS SCOPE — where the trust boundary actually is. "No on-disk content
-# ever executes" is an ENFORCEMENT-mode
-# property, not a global one. Under GLM_EXTERNAL_WRITES_OK the near-miss denies
-# are skipped, so a MALFORMED helper command reaches the on-disk helper and runs
-# it. That is the designed contract, not a gap: bypass mode IS the no-hook
-# environment scripts/glm/append-outbox.sh exists for, and it is the
-# LOCKSTEP implementation of the same fail-closed schema enforced
-# here — so a malformed payload appends NOTHING in either mode. Only the
-# executor differs: the hook on-lane, the lockstep helper under operator bypass.
-# Hoisting the near-miss deny above the bypass exit would block operator
-# debugging in a mode the operator explicitly opted into, in order to guard
-# against a worker who under bypass can already do strictly more.
-#
-# WHAT THIS HOOK IS AND IS NOT A TRUST ROOT FOR (scoped narrowly). The honest
-# invariant is narrow:
-#   - Under ENFORCEMENT the report verb is executed BY THIS HOOK, never by
-#     on-disk helper content. That part holds.
-#   - This hook's ABSENCE now fails closed IN A DISPATCHED WORKER: it is
-#     registered --fail-closed-when HIMMEL_GLM_WORKER=1, a marker minted only by
-#     buildGlmEnv (the orchestrator path), so DELETING it there no longer
-#     silently exits 0. The marker is WORKER-NESS, not the provider: an
-#     interactive GLM session legitimately has no himmel scripts/ tree, so a
-#     missing hook is NORMAL there and keeps ordinary optional semantics.
+# WHAT THIS HOOK IS AND IS NOT A TRUST ROOT FOR (scoped narrowly):
+#   - This hook's ABSENCE fails closed IN A DISPATCHED WORKER: it is registered
+#     --fail-closed-when HIMMEL_WORKER=1, so DELETING it there no longer
+#     silently exits 0. The marker is WORKER-NESS: a session without it has
+#     ordinary optional semantics, because a missing hook is normal outside a
+#     himmel worktree.
 #   - It is NOT proof against a worker REWRITING project-owned hook code. The
-#     worker's own envelope reaches this file: the plugin registers the hook at
-#     $CLAUDE_PROJECT_DIR/scripts/hooks/, which in a worker is the
-#     worker's worktree, and composeWorkerSettings grants Edit(<worktree>/**)
-#     plus Bash(node *)/Bash(bash *). A worker that replaces this file with
-#     `exit 0` neuters the guard for every later tool call.
+#     plugin registers the hook at $CLAUDE_PROJECT_DIR/scripts/hooks/, which in a
+#     worker is the worker's worktree, and the worker's envelope grants
+#     Edit(<worktree>/**) plus Bash(node *)/Bash(bash *). A worker that replaces
+#     this file with `exit 0` neuters the guard for every later tool call.
 # Closing THAT is an architecture change, not a hook edit — run the guard from
 # a dispatcher-owned path outside worker Edit roots, or hash-verify it at
 # invocation against a dispatcher-recorded digest.
 # Do not restate the broad "nothing worker-reachable can affect this guard"
 # claim anywhere; it was never true of the hook file itself.
 #
-# GENERALIZATION — worker-ness, not lane. record-hook-integrity.sh's
-# pin file lives in an ordinary user-writable directory
-# ($HIMMEL_HOOK_INTEGRITY_DIR, default ~/.claude/himmel/hook-integrity) —
-# outside every worker's Edit(<worktree>) grant, but NOT outside its
-# Bash(node *)/Bash(bash *) reach. `bash -c 'echo ... > .../hook-
-# integrity/$SESSION_ID.json'` forges a pin to match a tampered guard, and
-# nothing in this file used to stop that for a NATIVE (Sonnet/Opus) dispatched
-# worker — only the GLM lane reached this file at all. The new pin-dir
-# write-fence class below is keyed on a general "worker-ness" marker,
-# HIMMEL_WORKER=1, of which the GLM-specific HIMMEL_GLM_WORKER=1 (used only by
-# the --fail-closed-when wiring above) is now one instance: it is set by BOTH
-# buildGlmEnv (scripts/telegram/glm-env.ts) and claudexChildEnv
-# (scripts/telegram/spawn-claudex.ts) — the two lane-specific child-env
-# builders every worker dispatch already funnels through — so a future third
-# lane inherits this fence by setting the same var, not by editing this file.
-# A headed operator session sets neither marker and still hits the near-
-# zero-overhead early exit below, unchanged.
-#
-# Everything ELSE in this file (the outbox-report interceptor, the mcp/push/
-# gh/network classifiers) stays GLM-lane-scoped exactly as it was — this adds
-# ONE new class, gated on worker-ness broadly; it does not widen the rest of
-# the GLM enforcement onto the native lane, which is out of this ticket's scope.
-#
 # HONEST RESIDUAL (kept from record-hook-integrity.sh's own note):
-# this new class is a command-TEXT fence, same shape as every other class in
-# this file — it denies a Bash/PowerShell command whose text contains the pin
-# directory as a (slash/case-normalized) literal substring. It is NOT a
-# filesystem permission boundary: an OS-user-level attacker (chmod the pin
-# file writable first, a second process, a language runtime that builds the
+# record-hook-integrity.sh's pin file lives in an ordinary user-writable
+# directory ($HIMMEL_HOOK_INTEGRITY_DIR, default ~/.claude/himmel/hook-integrity)
+# — outside every worker's Edit(<worktree>) grant, but NOT outside its
+# Bash(node *)/Bash(bash *) reach. `bash -c 'echo ... > .../hook-
+# integrity/$SESSION_ID.json'` forges a pin to match a tampered guard. The
+# fences are command-TEXT fences: they deny a Bash/PowerShell command whose text
+# contains the pin directory as a (slash/case-normalized) literal substring. They
+# are NOT a filesystem permission boundary: an OS-user-level attacker (chmod the
+# pin file writable first, a second process, a language runtime that builds the
 # path from characters/bytes never spelled out as that substring) is OUT OF
-# SCOPE — identical residual to every other command-text hook here. Bypass:
+# SCOPE — the same residual as every other command-text hook here. Bypass:
 # HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1, shared with run-hook-with-bash.js's own
 # mid-session-hook-edit escape hatch (the same legitimate operator situation) and
 # scoped exactly as the launcher scopes it there: honoured, and audited, only
@@ -159,31 +53,9 @@
 # bypass_honoured below); the spawners also strip it from every worker child env.
 set -euo pipefail
 
-case "${ANTHROPIC_BASE_URL:-}" in
-    *api.z.ai*) glm_lane=1 ;;
-    *) glm_lane=0 ;;
-esac
-# glm_lane is the ORIGINAL GLM-specific signal (unchanged everywhere below).
-# worker_lane is glm_lane OR the lane-agnostic HIMMEL_WORKER marker any
-# dispatched worker's child env now carries (see the GENERALIZATION note above).
-# A non-worker (headed operator) session sets neither and exits here — same
-# near-zero overhead as before this change.
-worker_lane=$glm_lane
-[ "${HIMMEL_WORKER:-0}" = "1" ] && worker_lane=1
-[ "$worker_lane" = 1 ] || exit 0
+[ "${HIMMEL_WORKER:-0}" = "1" ] || exit 0
 
-# The bypass is recorded as a FLAG, not an early exit.
-# The report interceptor below is a SERVICE (the hook performs the outbox
-# append); the push/gh/network classifiers are ENFORCEMENT.
-# GLM_EXTERNAL_WRITES_OK disables ENFORCEMENT, never the SERVICE. Exiting here
-# used to disable both, so a bypass session executed the on-disk helper — which
-# only ever writes {text} — and silently downgraded every structured escalation
-# to a text note that `adjudicate list` cannot see. The interceptor therefore
-# runs first, and the bypass exit sits between it and the classifiers.
-glm_bypass=0
-[ "${GLM_EXTERNAL_WRITES_OK:-0}" = "1" ] && glm_bypass=1
-
-# On-lane, a TOP-LEVEL errexit abort must BLOCK (exit 2), never slip through
+# On a worker, a TOP-LEVEL errexit abort must BLOCK (exit 2), never slip through
 # as a non-blocking exit 1 (only exit 2 denies in Claude Code). Scope honesty:
 # the trap cannot see failures inside `if ... grep -q ...` condition contexts
 # (errexit-exempt; a grep crashing on a fixed pattern is the only such shape —
@@ -193,13 +65,9 @@ glm_bypass=0
 trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
 
 if ! command -v jq >/dev/null 2>&1; then
-    # Without jq the tool call cannot be parsed at all, so there is neither a
-    # report to service nor a command to classify. A bypass session keeps its
-    # historical escape hatch (this check used to sit BELOW the bypass exit);
-    # a normal on-lane session still fails closed.
-    [ "$glm_bypass" = 1 ] && exit 0
-    # jq missing fails CLOSED for every worker_lane, native-only included, even
-    # though that denies every Bash/PowerShell/mcp__* call for the lane (not just
+    # Without jq the tool call cannot be parsed at all, so there is no command
+    # to classify. jq missing fails CLOSED for every dispatched worker, even
+    # though that denies every Bash/PowerShell/mcp__* call for the worker (not just
     # pin-dir-relevant ones), which is wider than the single-class scope. Failing
     # open here would REOPEN the exact pin-forging attack this class exists to
     # close: with jq absent the pin-dir class cannot evaluate ANY command, so
@@ -213,27 +81,17 @@ if ! command -v jq >/dev/null 2>&1; then
     # documented scope note in the header still holds for every OTHER case
     # (jq present, tool_is_shell=0): this is deliberately the one exception,
     # confined to total evaluation failure.
-    echo "block-glm-external-writes: jq not on PATH — refusing to evaluate on a dispatched-worker lane; install jq" >&2
+    echo "block-worker-write-fence: jq not on PATH — refusing to evaluate on a dispatched worker; install jq" >&2
     exit 2
 fi
 
 input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 
-# The SHELL tools this hook mediates
-# are Bash AND PowerShell — hooks.json registers the matcher as
-# "Bash|PowerShell|mcp__.*", and both carry their command text in
-# .tool_input.command. Gating the report interceptor and the near-miss deny on
-# Bash ALONE left a PowerShell helper invocation neither hook-executed nor
-# denied: it fell through to the generic classifiers, which do not match
-# append-outbox.sh, and so executed the on-disk helper IN ENFORCEMENT MODE.
-# That contradicts this branch's own charter ("under enforcement the report
-# verb is executed by the hook, never by on-disk content"), so it is fixed
-# rather than deferred. Severity was bounded — the push/gh/network classifiers
-# already covered PowerShell, and the fall-through ran the dispatcher-minted
-# LOCKSTEP helper that fail-closes the same payloads, i.e. it degraded to the
-# sanctioned GLM_EXTERNAL_WRITES_OK posture — but bounded is not correct.
-# One predicate, used by BOTH guards, so they can never drift apart again.
+# The SHELL tools this hook mediates are Bash AND PowerShell — hooks.json
+# registers the matcher as "Bash|PowerShell|mcp__.*", and both carry their
+# command text in .tool_input.command. One predicate, used by BOTH fences, so
+# they can never drift apart.
 tool_is_shell=0
 case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 
@@ -371,10 +229,9 @@ bypass_honoured() {
 }
 
 # ---------------------------------------------------------- pin-dir class
-# Hook-integrity pin-dir write-fence. The ONLY class in this file that runs for
-# any worker_lane (GLM or a native lane carrying HIMMEL_WORKER=1) rather than
-# glm_lane specifically — see the header's GENERALIZATION note for
-# why, and for the command-text-fence residual this accepts.
+# Hook-integrity pin-dir write-fence. Runs for any dispatched worker
+# (HIMMEL_WORKER=1) — see the header for the command-text-fence residual this
+# accepts.
 if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
     pin_cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
     if [ -n "$pin_cmd" ]; then
@@ -639,7 +496,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
                 nul_marker_hit=1
             fi
             if [ "$nul_marker_hit" = 1 ]; then
-                echo "⛔ block-glm-external-writes: refusing a command or cwd that carries or builds the reserved SOH-NUL-SOH byte sequence; no legitimate path holds it." >&2
+                echo "⛔ block-worker-write-fence: refusing a command or cwd that carries or builds the reserved SOH-NUL-SOH byte sequence; no legitimate path holds it." >&2
                 exit 2
             fi
             while IFS= read -r script_path; do
@@ -1015,7 +872,7 @@ PINSCRIPTS
         fi
         if [ "$pin_hit" = 1 ]; then
             {
-                echo "⛔ block-glm-external-writes: refusing a Bash/PowerShell command that"
+                echo "⛔ block-worker-write-fence: refusing a Bash/PowerShell command that"
                 echo "    references the hook-integrity pin directory ($pin_dir_raw)."
                 echo "    A dispatched worker's shell must never touch a pin file there — doing"
                 echo "    so could forge the hook-integrity check."
@@ -1029,11 +886,9 @@ PINSCRIPTS
     fi
 fi
 
-# SHARED line-continuation normalizer, used by
-# BOTH command-text fences below: the anchor-tamper class and the GLM-lane
-# shape matchers. Defined once, at top level, on purpose — the two fences each
-# flatten newlines to ';' with the same `tr`, and a second copy of this joiner
-# is the exact defect this guards against (a fix once covered one
+# SHARED line-continuation normalizer, used by the anchor-tamper class below.
+# Defined once, at top level, on purpose — a second copy of this joiner is the
+# exact defect this guards against (a fix once covered one
 # quoting-normalization site and left its twin open for a whole round).
 #
 # WHAT IT REMOVES: bash DELETES a backslash-newline pair before it parses
@@ -1082,9 +937,7 @@ join_line_continuations() {
 # ----------------------------------------------------- anchor-tamper class
 # Anchor-tamper fence for the hook-integrity monotonic re-pin. Same gate and
 # jq-extraction shape as the pin-dir class immediately above —
-# runs for any worker_lane (GLM or native HIMMEL_WORKER=1), not glm_lane
-# specifically. See that class's header for why "worker-ness, not lane" is
-# the right scope; this class extends the same reasoning to a second surface.
+# runs for any dispatched worker (HIMMEL_WORKER=1), whatever its lane.
 #
 # WHY THIS CLASS EXISTS: record-hook-integrity.sh's
 # pin-mismatch behavior from "deny forever" to a monotonic re-pin — on a
@@ -1100,8 +953,8 @@ join_line_continuations() {
 # to a forged hook, one legitimate-looking re-pin at a time.
 #
 # THREAT MODEL (agent drift, not an external attacker — same posture as every
-# other class in this file): a marker-bearing worker (HIMMEL_WORKER=1, or the
-# GLM lane) runs a Bash/PowerShell command that repoints origin/<default> by
+# other class in this file): a marker-bearing worker (HIMMEL_WORKER=1)
+# runs a Bash/PowerShell command that repoints origin/<default> by
 # one of: (a) a local-path remote fetch/push/pull with a refspec —
 # `git fetch . x:origin/main`, DWIM-expanded by git itself, including via
 # `git -C <dir>`; (b) direct ref-plumbing — `git update-ref`,
@@ -1166,8 +1019,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # flattening, never after, and both anchor_cmd_lc and anchor_cmd_norm
         # derive from the joined text, so it is one place rather than a
         # per-scan patch. Mechanism, parity and the `\r` rule live with the
-        # shared join_line_continuations() above — the GLM-lane matchers use
-        # the same function for the same reason.
+        # shared join_line_continuations() above.
         anchor_cmd_joined=$(printf '%s' "$anchor_cmd" | join_line_continuations)
         anchor_cmd_lc=$(printf '%s' "$anchor_cmd_joined" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;')
 
@@ -1471,7 +1323,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # this branch keeps producing, so the precondition is pinned
         # mechanically, not just in prose: see the rows labelled
         # "class (i) precondition for the destination gate" in
-        # test-block-glm-external-writes.sh.
+        # test-block-worker-write-fence.sh.
         #
         # Scanning is per SEGMENT (split on `;`, `&`, `|`, parens) so the
         # fetch/push/pull shape and the tracking destination must occur in the
@@ -1564,7 +1416,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         if [ "$anchor_kw_hit" = 1 ] || [ "$anchor_refspec_hit" = 1 ] ||
            [ "$anchor_ansi_c_hit" = 1 ]; then
             {
-                echo "⛔ block-glm-external-writes: refusing a Bash/PowerShell command that could"
+                echo "⛔ block-worker-write-fence: refusing a Bash/PowerShell command that could"
                 echo "    repoint origin/<default branch> — a fetch/push/pull carrying an explicit"
                 echo "    refspec that WRITES a remote-tracking ref (refs/remotes/… or the"
                 echo "    <name>/<branch> shorthand), or a ref/remote-metadata rewrite (symbolic-ref,"
@@ -1583,689 +1435,6 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
             exit 2
         fi
     fi
-fi
-
-# Everything below this point is the ORIGINAL GLM-lane enforcement — outbox
-# report interception, then the mcp/push/gh/network classifiers — unchanged
-# and still scoped to glm_lane only (the two classes above add no
-# native-lane behavior past the two classes above).
-[ "$glm_lane" = 1 ] || exit 0
-
-deny() {
-    {
-        echo "⛔ block-glm-external-writes: $1"
-        echo "    This session runs on the GLM lane (ANTHROPIC_BASE_URL=api.z.ai), which has"
-        echo "    no auto-mode classifier — external writes are hard-blocked."
-        echo "    Deliver results as a committed branch diff + your session outbox summary;"
-        echo "    the parent Claude session / operator pushes and opens PRs."
-        echo "    Operator bypass: GLM_EXTERNAL_WRITES_OK=1 in the spawning shell."
-    } >&2
-    exit 2
-}
-
-# The report verb is EXECUTED BY THE HOOK, never by any
-# on-disk content. On the exact report shape this hook decodes the payload,
-# validates it, appends the record to the session outbox ITSELF, and then DENIES
-# the Bash call. Deny-after-append is the semantics, and the success message
-# below tells the worker its report landed so it does not retry.
-#
-# Why not an ALLOW of a session-dir script (the round-2 shape): pathname trust
-# is the wrong shape. The worker holds Bash(node *)/Bash(bash *) and Edit on its
-# own session dir, chmod is advisory on NTFS/Git-Bash, and a computed
-# destination path defeats any command-text classifier — so NO worker-reachable
-# file can be made trustworthy at execution time. The hook is the trust root, so
-# the hook performs the write. Nothing on disk is executed through this path.
-deny_recorded() {
-    {
-        echo "✅ block-glm-external-writes: guard recorded your report; the command is not"
-        echo "    executed — no further action needed."
-        echo "    The hook appended the outbox record itself and then denied the Bash call"
-        echo "    BY DESIGN. Your report IS saved. Do not retry, reword, or find another way."
-    } >&2
-    exit 2
-}
-
-# GLM_SESSION_DIR is minted by spawn-glm.ts in the dispatcher's parent process
-# and inherited by the worker/hook; a per-tool-call env prefix cannot alter it.
-# Validate that seam fail-closed here. append-outbox.sh keeps a self-contained
-# copy of these predicates for the non-GLM-lane case where this hook is absent;
-# on the GLM lane that file is never executed, so the two copies are parity for
-# readers rather than a shared trust boundary — keep them lockstep anyway.
-path_norm() {
-    printf '%s' "$1" | tr '\134' '/'
-}
-
-valid_glm_session_dir() {
-    local sd base parent parent_base
-    sd=$(path_norm "${GLM_SESSION_DIR:-}")
-    sd=${sd%/}
-    [ -n "$sd" ] || return 1
-    case "$sd" in /*|[A-Za-z]:/*) ;; *) return 1 ;; esac
-    case "/$sd/" in */../*|*/./*) return 1 ;; esac
-    base=${sd##*/}
-    parent=${sd%/*}
-    parent_base=${parent##*/}
-    [ "$parent_base" = "glm-sessions" ] || return 1
-    case "$base" in glm-*) ;; *) return 1 ;; esac
-    [ -d "$sd" ] || return 1
-    [ ! -L "$sd" ] || return 1
-    GLM_SESSION_REAL=$(cd "$sd" 2>/dev/null && pwd -P) || return 1
-    [ -n "$GLM_SESSION_REAL" ] || return 1
-    # Node on Windows accepts C:/... paths, not Git Bash's /c/... spelling.
-    # Prefer pwd -W there; Unix bash lacks it, so fall back to the physical
-    # POSIX path (same convention append-outbox.sh uses).
-    GLM_SESSION_NATIVE=$(cd "$sd" 2>/dev/null && pwd -W 2>/dev/null) || GLM_SESSION_NATIVE=""
-    [ -n "$GLM_SESSION_NATIVE" ] || GLM_SESSION_NATIVE="$GLM_SESSION_REAL"
-    return 0
-}
-
-session_metadata_ok=0
-if valid_glm_session_dir; then session_metadata_ok=1; fi
-
-if [ "$tool_is_shell" = 1 ]; then
-    report_cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
-    # shellcheck disable=SC2016  # literal inherited variable spelling is the exact command contract
-    helper_var_cmd_re='^bash "\$GLM_SESSION_DIR/append-outbox\.sh" ([A-Za-z0-9_-]+)$'
-    helper_path_cmd_re='^bash ([A-Za-z0-9_./:+-]+/append-outbox\.sh) ([A-Za-z0-9_-]+)$'
-    report_shape_ok=0
-    report_script=""
-    report_payload=""
-
-    if [[ "$report_cmd" =~ $helper_var_cmd_re ]]; then
-        report_shape_ok=1
-        report_payload=${BASH_REMATCH[1]}
-    elif [[ "$report_cmd" =~ $helper_path_cmd_re ]]; then
-        report_shape_ok=1
-        report_script=${BASH_REMATCH[1]}
-        report_payload=${BASH_REMATCH[2]}
-    fi
-
-    if [ "$report_shape_ok" = 1 ]; then
-        if [ "${#report_payload}" -gt 16384 ]; then
-            deny "the GLM outbox payload exceeds the 16384-character base64url cap."
-        fi
-        if [ "$session_metadata_ok" != 1 ]; then
-            deny "the GLM outbox helper requires a valid dispatcher-minted GLM_SESSION_DIR."
-        fi
-
-        if [ -z "$report_script" ]; then
-            report_script="$GLM_SESSION_REAL/append-outbox.sh"
-        else
-            report_script=$(path_norm "$report_script")
-        fi
-        report_script_base=${report_script##*/}
-        report_script_dir=${report_script%/*}
-        report_script_dir_real=$(cd "$report_script_dir" 2>/dev/null && pwd -P) || \
-            deny "the GLM outbox helper path does not resolve inside the dispatcher-minted GLM_SESSION_DIR."
-
-        # The helper file's existence/mode is deliberately NOT checked: it is
-        # never executed on this lane, so making the decision depend on it would
-        # be trust theater. Only the command SHAPE and the session-dir identity
-        # gate the record.
-        if [ "$report_script_base" != "append-outbox.sh" ] \
-           || [ "$report_script_dir_real" != "$GLM_SESSION_REAL" ]; then
-            deny "the GLM outbox report path must name the dispatcher-minted GLM_SESSION_DIR/append-outbox.sh."
-        fi
-
-        command -v node >/dev/null 2>&1 || \
-            deny "the GLM outbox guard needs node on PATH to record the report."
-
-        report_outbox="$GLM_SESSION_NATIVE/outbox.jsonl"
-        [ ! -L "$GLM_SESSION_REAL/outbox.jsonl" ] || \
-            deny "refusing a symlinked GLM session outbox.jsonl."
-
-        # Fixed program, payload passed as argv DATA — never shell source.
-        # Validation order is fail-closed throughout: a rejected payload appends
-        # nothing and the Bash call is denied with the reason.
-        report_err=$(node -e '
-const fs = require("node:fs");
-const payload = process.argv[1];
-const outbox = process.argv[2];
-let text;
-try {
-  if (payload.length % 4 === 1) throw new Error("invalid base64url length");
-  const decoded = Buffer.from(payload, "base64url");
-  if (decoded.toString("base64url") !== payload) throw new Error("non-canonical base64url");
-  text = new TextDecoder("utf-8", { fatal: true }).decode(decoded);
-} catch {
-  console.error("payload is not canonical base64url UTF-8");
-  process.exit(2);
-}
-let parsed = null;
-let structured = false;
-try {
-  parsed = JSON.parse(text);
-  structured = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
-} catch {
-  structured = false;
-}
-// Consecutive-duplicate suppression. The hook
-// appends and then DENIES, which is indistinguishable from a retryable failure
-// to any framework-level retry; and because a prompt-shaped escalation omits
-// ts, every retry would be stamped afresh and become a DISTINCT pending
-// escalation. Un-denying is not an option (it would re-open executing on-disk
-// content), so idempotency lives here: a sha256 of the RAW decoded payload is
-// persisted alongside each record as _sig — the digest, never the payload
-// itself, so the same comparison costs nothing per record — and an identical
-// payload arriving immediately after the previous one appends NOTHING while
-// still reporting success. A retry storm converges to one row; the same note
-// sent again LATER, after any different record, still lands.
-// ponytail: adjudication-blind BY DESIGN in v1, deferred to HIMMEL-1663
-// The key is payload
-// equality with the LAST row only, carrying no attempt identity, time bound,
-// adjudication state, or lock. So (a) an escalation REFUSED in grants.jsonl and
-// then re-raised VERBATIM is suppressed while the worker is still told
-// "recorded" — the aggregator skips the closed row, leaving nothing pending;
-// and (b) two concurrent invocations can both read the old signature and both
-// append. Deferred deliberately: the (a) window is narrow (it holds only while
-// the identical row remains LAST — any intervening record clears it) and every
-// candidate fix reopens the contract above; (b) costs a duplicate row on a
-// worker that issues Bash calls serially.
-const rawSig = require("node:crypto").createHash("sha256").update(text, "utf8").digest("hex");
-let lastSig = null;
-// Torn-tail boundary. If an earlier append was
-// interrupted the file can end mid-line, and appending straight onto it would
-// CONCATENATE the new JSON into that partial line: JSONL readers skip the combined invalid
-// line, while the worker is still told its report was recorded. Detect the
-// missing terminator and separate the records. A torn tail also fails to parse,
-// so it already yields lastSig=null and can never suppress this append.
-let torn = false;
-try {
-  const prior = fs.readFileSync(outbox, "utf8");
-  torn = prior.length > 0 && !prior.endsWith("\n");
-  const lines = prior.split("\n").filter((l) => l.trim() !== "");
-  if (lines.length > 0) {
-    try { lastSig = JSON.parse(lines[lines.length - 1])._sig ?? null; } catch { lastSig = null; }
-  }
-} catch { lastSig = null; }
-if (lastSig !== null && lastSig === rawSig) {
-  process.exit(0);
-}
-let record;
-if (structured) {
-  const type = parsed.type;
-  if (type !== "note" && type !== "escalation") {
-    console.error("structured payload type must be note or escalation");
-    process.exit(2);
-  }
-  const allowed = type === "escalation"
-    ? ["type", "capability", "arm", "reason", "step", "ts"]
-    : ["type", "text", "ts"];
-  for (const key of Object.keys(parsed)) {
-    if (!allowed.includes(key)) {
-      console.error("unknown key in structured payload: " + key);
-      process.exit(2);
-    }
-  }
-  const required = type === "escalation"
-    ? ["capability", "arm", "reason", "step"]
-    : ["text"];
-  for (const key of required) {
-    if (typeof parsed[key] !== "string") {
-      console.error("field must be a string: " + key);
-      process.exit(2);
-    }
-  }
-  if (parsed.ts !== undefined && typeof parsed.ts !== "string") {
-    console.error("field must be a string: ts");
-    process.exit(2);
-  }
-  record = parsed;
-  if (typeof record.ts !== "string") record.ts = new Date().toISOString();
-} else {
-  record = { type: "note", text };
-}
-record._sig = rawSig;
-try {
-  fs.appendFileSync(outbox, (torn ? "\n" : "") + JSON.stringify(record) + "\n", "utf8");
-} catch (error) {
-  console.error("append failed: " + error.message);
-  process.exit(2);
-}
-' -- "$report_payload" "$report_outbox" 2>&1) || \
-            deny "the GLM outbox report was rejected: ${report_err:-invalid payload}."
-
-        deny_recorded
-    fi
-
-fi
-
-# ---- end of the SERVICE half; everything below is ENFORCEMENT --------------
-# The bypass lands HERE: a bypass session has already had
-# its report intercepted, schema-validated and recorded by the block above with
-# identical semantics, so it can no longer silently lose a structured
-# escalation. What it skips is only the near-miss denies and the
-# push/gh/network classifiers.
-# The consequence, stated plainly: with the near-miss denies
-# skipped, a MALFORMED helper command falls through to ordinary Bash handling
-# and EXECUTES the on-disk helper. Designed, not leaked. The helper is the
-# lockstep implementation of the schema validated above and fail-closes the very
-# same payloads, so the property that survives is the one that matters — a
-# malformed payload appends nothing — with the executor, not the guarantee,
-# differing between the two modes. See the BYPASS SCOPE note in the header.
-# Scope: "no on-disk content executes" is a claim about the HELPER,
-# never about this file. A worker whose envelope includes the worktree can
-# rewrite THIS hook — see the trust-root note in the header.
-[ "$glm_bypass" = 1 ] && exit 0
-
-if [ "$tool_is_shell" = 1 ]; then
-    # Every helper mention outside the exact contract is a fail-closed near-miss,
-    # never ordinary Bash handling: repo/sibling paths, env prefixes, quotes,
-    # substitutions, separators, redirects, extra arguments, and write attempts.
-    case "$report_cmd" in
-        *append-outbox.sh*)
-            deny "malformed GLM outbox helper command; use exactly: bash \"\$GLM_SESSION_DIR/append-outbox.sh\" <base64url>." ;;
-        node\ -e*appendFileSync*outbox.jsonl*)
-            deny "the interpolated node -e outbox append is retired; use the fixed session-dir base64url helper." ;;
-    esac
-fi
-
-# qmd MCP collection fence. v1 allow-list: ONLY the "himmel"
-# collection (non-sensitive, repo-local docs). Widening this list (e.g. adding
-# luna-curated) is a SEPARATE named operator decision — do not add collections
-# here without one. `qmd_himmel_scoped "<value>"` -> 0 iff the value is a
-# fully-qualified qmd://himmel/... virtual path (see header comment above for
-# why bare/relative paths and #docids are rejected instead of allowed).
-qmd_himmel_scoped() {
-    # Whole-STRING prefix match — NOT grep's
-    # per-line match. grep -qE '^...' anchors at the start of EACH LINE, so a
-    # value with an embedded newline where any line starts with
-    # qmd://himmel/ (e.g. "qmd://salus/x\nqmd://himmel/y") passed even though
-    # the value itself starts with salus. Python's re.match (no MULTILINE)
-    # anchors at the actual string start; this replicates that exactly via
-    # parameter expansion (bash 3.2-safe, no grep/sed) — strip leading
-    # whitespace, then a plain glob-prefix case match.
-    _q="$1"
-    _q="${_q#"${_q%%[![:space:]]*}"}"   # strip leading whitespace (\s* in the regex)
-    case "$_q" in qmd://himmel/*) return 0 ;; *) return 1 ;; esac
-}
-
-case "$tool" in
-    mcp__plugin_qmd_qmd__query)
-        # Single authoritative jq validation
-        # — do NOT round-trip collections through shell lines: the earlier
-        # extract + `[ -z ]` + `grep -vxF` form let collections:["himmel",""]
-        # through, because the empty entry collapses out of the newline-joined
-        # jq -r output and command-substitution trailing-newline stripping, so
-        # `qmd_bad` ended up empty and the deny never fired (an empty-string
-        # collection can mean "all collections" to qmd — a PHI-egress path).
-        # This one check subsumes: non-array,
-        # unscoped/empty array, AND any non-"himmel"/blank entry — matches the
-        # Python qmd_scope_reason() query branch exactly.
-        if ! printf '%s' "$input" | jq -e '(.tool_input.collections) | (type=="array") and (length>0) and (all(.=="himmel"))' >/dev/null 2>&1; then
-            deny "qmd query 'collections' must be a non-empty JSON array of only \"himmel\" on the GLM lane — no blank/other entries."
-        fi
-        exit 0
-        ;;
-    mcp__plugin_qmd_qmd__get)
-        qmd_file=$(printf '%s' "$input" | jq -r '.tool_input.file // empty' 2>/dev/null || true)
-        if [ -z "$qmd_file" ] || ! qmd_himmel_scoped "$qmd_file"; then
-            deny "qmd get on the GLM lane requires a fully-qualified qmd://himmel/... path (v1 allow-list) — bare paths and #docids are cross-collection-ambiguous and denied fail-closed."
-        fi
-        exit 0
-        ;;
-    mcp__plugin_qmd_qmd__multi_get)
-        qmd_pattern=$(printf '%s' "$input" | jq -r '.tool_input.pattern // empty' 2>/dev/null || true)
-        if [ -z "$qmd_pattern" ]; then
-            deny "qmd multi_get on the GLM lane requires a qmd://himmel/... pattern."
-        fi
-        # Root-cause fix: the empty-field loss is rooted in a
-        # mismatch — bash word-splitting (the prior
-        # `IFS=',' for qmd_seg in $qmd_pattern` loop) DROPS empty
-        # comma-separated fields, so a trailing comma ("a.md,"), a leading
-        # comma (",a.md"), and adjacent commas ("a,,b") all lost their empty
-        # segment and passed despite containing one. Rather than patch the
-        # split mechanism again, replace it: awk -F',' preserves empty fields
-        # (NF counts them), making this PROVABLY equivalent to the Python
-        # qmd_scope_reason() multi_get branch (`[s.strip() for s in
-        # pattern.split(",")]` + a full-match check on every segment, denying
-        # on any empty/non-"qmd://himmel/" segment). No IFS/set -f/for-loop
-        # left to diverge from Python's split semantics.
-        if ! printf '%s' "$qmd_pattern" | awk -F',' '{
-                if (NF==0) exit 1
-                for (i=1;i<=NF;i++) {
-                    s=$i
-                    gsub(/^[[:space:]]+|[[:space:]]+$/,"",s)
-                    if (s !~ /^qmd:\/\/himmel\//) exit 1
-                }
-            }'; then
-            deny "qmd multi_get on the GLM lane requires a non-empty comma list where EVERY segment is a fully-qualified qmd://himmel/... path — no empty/blank segments."
-        fi
-        exit 0
-        ;;
-    mcp__plugin_qmd_qmd__*)
-        # status (no scoping input) and any other/future qmd tool: scope
-        # cannot be positively determined from the tool-call JSON -> deny
-        # fail-closed.
-        deny "qmd tool '$tool' has no collection-scoping input the GLM lane can verify — denied fail-closed."
-        ;;
-    mcp__*) deny "MCP tool '$tool' is blocked on the GLM lane." ;;
-    Bash|PowerShell) ;;
-    *) exit 0 ;;
-esac
-
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
-[ -z "$cmd" ] && exit 0
-
-# Lower-case + flatten newlines TO ';' — a newline separates commands exactly
-# like ';' does, so flattening to spaces (the sibling hooks' shape) UNDER-blocks:
-# a two-line "gh pr view 1\ngh pr merge 1" would read as one command and the
-# merge would slip through as an "argument". Flattening to ';' keeps command
-# boundaries visible to the (^|[;&|(]) anchor. Cost (accepted, fail-closed): a
-# quoted commit-message LINE that STARTS with a blocked verb ("…\ngit push
-# later") now over-blocks — pinned by test; mid-line prose stays allowed.
-#
-# THE TWIN. This flattening is the same `tr` the
-# anchor class uses, and it had the same continuation gap: `git \<newline>push
-# origin main` measured rc=0 ALLOW here while the plain `git push origin main`
-# bash actually runs measured rc=2, because gp_shape/gu_shape want `git` and
-# the verb in ONE segment and the `;` split them. Every shape matcher below
-# (gp_/gu_/gh_/net_) reads cmd_lc, so all four were reachable this way.
-#
-# It is fixed with the SAME shared join_line_continuations(), placed upstream
-# of the flattening exactly as in the anchor class — not a second joiner. A
-# divergent copy is the defect class to avoid: one fix once
-# normalized quoting for class (ii) and left class (i)'s identical need
-# unserved for a whole round, and this PR's own design note says a fix applied
-# to one member of a twin pair is HALF A FIX.
-#
-# FACT, not a safety argument: the GLM lane is currently dropped, so nothing
-# routes through these arms today. That is why this is a twin fix and not an
-# incident — it is NOT why leaving it would have been acceptable. A fence left
-# rotten while its lane is dormant is simply a fence that fails the day someone
-# re-enables the lane.
-#
-# Direction note: the join also removes a FALSE DENY. `gh \<newline>issue list`
-# used to deny because the split hid the `gh issue` carve-out from gh_allow
-# while gh_shape still counted the `gh`; joined, it reads as the `gh issue list`
-# bash really runs and is allowed by design. Judging what the shell assembles is
-# the point of the join in both directions — pinned by a case.
-cmd_joined=$(printf '%s' "$cmd" | join_line_continuations)
-cmd_lc=$(printf '%s' "$cmd_joined" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;')
-
-# Command-position matcher: start-of-command or right after ; & | ( —
-# deliberately NOT space/quote, so prose inside a commit message ("… git push
-# …") does not false-block. Env-prefixed `FOO=1 git push` is therefore missed:
-# accepted limitation, tripwire-backstopped (see header).
-#
-# Occurrence counter (same command-position wrapper). grep -c counts
-# LINES, and cmd_lc is flattened to one line, so -c undercounts a compound with
-# two command-position matches — count PER-MATCH via grep -oE | wc -l instead.
-# grep exits 1 on zero matches; `|| true` keeps that from tripping errexit
-# inside the assignment's command substitution. $(( )) strips wc's whitespace.
-count_cmd() {
-    local n
-    n=$(printf '%s' "$cmd_lc" | grep -oE "(^|[;&|(])[[:space:]]*($1)" | wc -l) || true
-    printf '%s' "$((n))"
-}
-
-# --- Deny-arm count form + session grant-consult (escalation channel) ---
-# Each command-text deny arm is a total-vs-allowed COUNT (never an inline deny):
-#   git-push / git-url / network — builtin allowed 0 (no carve-out);
-#   gh — builtin allowed = the issue-ops + pr/run-reads carve-out.
-# The subcommand-position shapes below are unchanged from the pre-grant arms
-# (push flag-tolerant; git-url = remote set-url OR config…url OR-ed into ONE
-# count; gh carve-out; network CLIs). A per-session grant in
-# ${GLM_SESSION_DIR}/grants.jsonl can widen ONE arm's allowed count by folding
-# its pattern into a SINGLE alternation (never a sum — F1), TTL- and use-bounded,
-# fail-closed: an unset/absent grants file or any invalid grant line leaves the
-# arm at its builtin allowance and it still denies.
-gp_shape='git([[:space:]]+-[a-z-]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+push([[:space:]]|$)'
-gu_shape='(git([[:space:]]+-[a-z-]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+remote[[:space:]]+set-url|git([[:space:]]+-[a-z-]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+config([[:space:]]+-[a-z-]+)*([[:space:]]+(set|add|replace-all))?([[:space:]]+-[a-z-]+)*[[:space:]]+[^[:space:];&|]*url|git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[=[:space:]]*[^[:space:];&|]*insteadof=)'
-gh_shape='gh([[:space:]]|$)'
-gh_allow='gh[[:space:]]+(issue([[:space:]]|$)|pr[[:space:]]+(view|diff|checks|status|list)([[:space:]]|$)|run[[:space:]]+(view|list|watch)([[:space:]]|$))'
-net_shape='(curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)([[:space:]]|$)'
-
-gp_total=$(count_cmd "$gp_shape"); gp_allowed=0
-# Flat decode: ONE position-free pass over the whole command, no quote
-# state. Drop every dollar-quote opener and decode every backslash escape (bash's ANSI-C set)
-# wherever it sits, so decoys and split segments cannot hide `git` or the key. A NUL escape
-# (\0 \x00 \c@ \c`) truncates a segment in bash, so the pass runs twice: NUL kept as `#`, and
-# NUL dropping everything through the next unescaped quote. Over-approximation only.
-# A fourth, quote-aware stream (words()) exists: bash decodes escapes ONLY inside
-# a dollar-quote body; outside one a backslash quotes the next char (`ns\teadOf` is
-# `nsteadOf`, not a TAB); continuations are already joined upstream. Mixing both hid the key
-# from every flat stream. Added beside the other three, never instead of them: deny-only.
-ansic_decode() {
-    LC_ALL=C awk '
-    function hv(c) { return index("0123456789abcdef", tolower(c)) - 1 }
-    # dec(): decode the escape whose backslash sits at I; advance I past it. NUL=1 on a NUL.
-    function dec(   e, k, v, d, mx) {
-        e = substr(s, I + 1, 1); I += 2; NUL = 0
-        if ((k = index("abeEfnrtv\\\047\"?", e)) > 0)
-            return substr("\007\010\033\033\014\012\015\011\013\\\047\"?", k, 1)
-        if (e ~ /[0-7]/) {
-            v = e + 0; d = 1
-            while (d < 3 && substr(s, I, 1) ~ /[0-7]/) { v = v * 8 + substr(s, I, 1); I++; d++ }
-            v = v % 256
-        } else if (e == "x" || e == "u" || e == "U") {
-            mx = (e == "x") ? 2 : (e == "u") ? 4 : 8; v = 0; d = 0
-            while (d < mx && hv(substr(s, I, 1)) >= 0) { v = v * 16 + hv(substr(s, I, 1)); I++; d++ }
-            if (d == 0) return "\\" e
-        } else if (e == "c") {
-            v = (substr(s, I, 1) ~ /[@`]/) ? 0 : 35; I++
-        } else return "\\" e
-        if (v == 0) NUL = 1
-        return (v > 0 && v < 128) ? sprintf("%c", v) : "#"
-    }
-    # skipq(i): from i, skip through the next unescaped single quote; return the index after.
-    function skipq(i,   c) {
-        while (i <= n) { c = substr(s, i, 1); if (c == "\\") { i += 2; continue } i++; if (c == q) break }
-        return i
-    }
-    function flat(drop,   i, out, c, r) {
-        i = 1; out = ""
-        while (i <= n) {
-            c = substr(s, i, 1)
-            if (c == "$" && substr(s, i + 1, 1) == q) { i += 2; continue }
-            if (c != "\\") { out = out c; i++; continue }
-            I = i; r = dec(); i = I
-            if (NUL && drop) { i = skipq(i); continue }
-            out = out r
-        }
-        return out
-    }
-    # words(): the quote-aware stream. st 0 = bare, 1 = single, 2 = double, 3 = dollar-quote.
-    # words(1) also reads a # comment at word start and a heredoc body as text
-    # that opens no quote, kept verbatim, so a stray apostrophe there cannot desync the rest.
-    # A delimiter it cannot classify ($-expansion, backtick, escape in a double or dollar quote, open
-    # quote) reads no body; no heredoc inside (( )). words(2) resets the quote state at every
-    # newline, the backstop for any region words(1) misreads. Streams five and six sit beside
-    # words(0), never instead of it: a misread region only adds text.
-    function words(rg,   i, out, c, e, r, st, j, d, dq, hs, nh, k, ln, w, uc, ar, hb) {
-        i = 1; out = ""; st = 0; nh = 0; ar = 0; hb = 0
-        while (i <= n) {
-            c = substr(s, i, 1)
-            if (rg == 2 && c == "\n") st = 0
-            if (st == 1) { if (c == q) st = 0; else out = out c; i++; continue }
-            if (st == 3) {
-                if (c == q) { st = 0; i++; continue }
-                if (c != "\\") { out = out c; i++; continue }
-                I = i; r = dec(); i = I
-                if (NUL) { i = skipq(i); st = 0; continue }
-                out = out r; continue
-            }
-            if (c == "\\") {
-                e = substr(s, i + 1, 1)
-                if (e == "\n") { i += 2; continue }
-                if (e == "\r" && substr(s, i + 2, 1) == "\n") { i += 3; continue }
-                out = out e; i += 2; continue
-            }
-            if (st == 2) { if (c == "\"") st = 0; else out = out c; i++; continue }
-            if (rg == 1 && c == "#" && (i == 1 || index(" \t\n;&|()<>", substr(s, i - 1, 1)))) {
-                while (i <= n && substr(s, i, 1) != "\n") { out = out substr(s, i, 1); i++ }
-                continue
-            }
-            if (rg == 1 && c == "(" && substr(s, i + 1, 1) == "(") { ar++; out = out "(("; i += 2; continue }
-            if (rg == 1 && c == ")" && substr(s, i + 1, 1) == ")" && ar) { ar--; out = out "))"; i += 2; continue }
-            if (rg == 1 && !ar && c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" &&
-                (i == 1 || substr(s, i - 1, 1) != "<")) {
-                j = i + 2; hs = 0; d = ""; uc = 0
-                if (substr(s, j, 1) == "-") { hs = 1; j++ }
-                while (substr(s, j, 1) ~ /[ \t]/) j++
-                w = j
-                while (j <= n) {
-                    c = substr(s, j, 1)
-                    if (c ~ /[ \t\n;&|()<>]/) break
-                    e = 0
-                    if (c == "$") { c = substr(s, j + 1, 1); if (c == q || c == "\"") { e = 1; j++ } else { uc = 1; c = "$" } }
-                    if (c == "`") uc = 1
-                    if (c == q || c == "\"") {
-                        dq = c; j++
-                        while (j <= n && substr(s, j, 1) != dq) {
-                            if (substr(s, j, 1) == "\\" && (dq != q || e)) uc = 1
-                            d = d substr(s, j, 1); j++
-                        }
-                        if (j > n) uc = 1
-                        j++; continue
-                    }
-                    if (c == "\\") { if (substr(s, j + 1, 1) != "\n") d = d substr(s, j + 1, 1); j += 2; continue }
-                    d = d c; j++
-                }
-                out = out substr(s, i, j - i); i = j
-                if (uc) hb = 1; else if (j > w) { hd[++nh] = d; hx[nh] = hs }
-                continue
-            }
-            if (rg == 1 && c == "\n" && hb) { nh = 0; hb = 0 }
-            if (rg == 1 && c == "\n" && nh) {
-                out = out c; i++
-                for (k = 1; k <= nh; k++)
-                    while (i <= n) {
-                        ln = ""
-                        while (i <= n && substr(s, i, 1) != "\n") { ln = ln substr(s, i, 1); i++ }
-                        i++
-                        out = out ln "\n"
-                        if (hx[k]) sub(/^\t+/, "", ln)
-                        if (ln == hd[k]) break
-                    }
-                nh = 0; continue
-            }
-            if (c == q) { st = 1; i++; continue }
-            if (c == "\"") { st = 2; i++; continue }
-            if (c == "$" && substr(s, i + 1, 1) == q) { st = 3; i += 2; continue }
-            if (c == "$" && substr(s, i + 1, 1) == "\"") { i++; continue }
-            out = out c; i++
-        }
-        return out
-    }
-    { s = (NR > 1 ? s "\n" : "") $0 }
-    END { q = "\047"; n = length(s); printf "%s\n%s\n%s\n%s\n%s\n%s", s, flat(0), flat(1), words(0), words(1), words(2) }'
-}
-cmd_dq=$(printf '%s' "$cmd_joined" | ansic_decode | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;' | LC_ALL=C tr -d "'\"\\\\")
-# Blunt rule: decoded + dequoted + lowercased text containing `git` AND `insteadof`.
-# Accepted overmatch: `git log --grep insteadof`.
-gu_blunt=0
-case $cmd_dq in
-    *git*) case $cmd_dq in *insteadof*) gu_blunt=1 ;; esac ;;
-esac
-# Never `cmd_lc=$cmd_dq count_cmd`: a prefix assignment exports the decoded
-# text into grep's environment; past ~43 KB that is E2BIG, which `|| true`
-# reads as zero matches (fail-open vs main). Swap in-shell instead.
-_s=$cmd_lc; cmd_lc=$cmd_dq; gu_dq=$(count_cmd "$gu_shape"); cmd_lc=$_s
-gu_total=$(count_cmd "$gu_shape"); [ "$gu_dq" -gt "$gu_total" ] && gu_total=$gu_dq
-gu_total=$(( gu_total + gu_blunt )); gu_allowed=0
-gh_total=$(count_cmd "$gh_shape"); gh_allowed=$(count_cmd "$gh_allow")
-net_total=$(count_cmd "$net_shape"); net_allowed=0
-
-# F9 fast path: every arm satisfied by builtins alone -> allow WITHOUT reading
-# grants.jsonl, so a builtin-allowed command never consults or consumes a grant.
-if [ "$gp_total" -le "$gp_allowed" ] && [ "$gu_total" -le "$gu_allowed" ] \
-   && [ "$gh_total" -le "$gh_allowed" ] && [ "$net_total" -le "$net_allowed" ]; then
-    exit 0
-fi
-
-# Some arm exceeds its builtin allowance -> consult per-session grants (fail-closed).
-# gp_alt/gu_alt/gh_alt/net_alt accumulate valid grant patterns per arm ('|'-joined,
-# no associative arrays); valid_grants accumulates "grant_id <pattern>" lines for
-# the consumption-append pass. A grant is skipped (as if absent) if it is not a
-# well-formed grant line, has an unknown arm, fails the deny-shape anchor / has an
-# unbounded prefix, is expired, or is used up.
-gp_alt=""; gu_alt=""; gh_alt=""; net_alt=""; valid_grants=""
-grants_file="${GLM_SESSION_DIR:-}/grants.jsonl"
-if [ -n "${GLM_SESSION_DIR:-}" ] && [ -f "$grants_file" ]; then
-    # Read the ledger ONCE and parse from the in-memory copy so the per-line loop
-    # never re-opens the file; the consumption append below is a separate, later
-    # pipeline, so there is no read/write overlap on grants.jsonl.
-    grants_data=$(cat "$grants_file")
-    now_iso=$(date -u +%Y-%m-%dT%H:%M:%S)
-    while IFS= read -r gline; do
-        [ -z "$gline" ] && continue
-        gobj=$(printf '%s' "$gline" | jq -c 'select(.type=="grant")' 2>/dev/null) || continue
-        [ -z "$gobj" ] && continue
-        garm=$(printf '%s' "$gobj" | jq -r '.arm // empty' 2>/dev/null) || continue
-        gpat=$(printf '%s' "$gobj" | jq -r '.pattern // empty' 2>/dev/null) || continue
-        gmax=$(printf '%s' "$gobj" | jq -r '.max_uses // empty' 2>/dev/null) || continue
-        gid=$(printf '%s' "$gobj" | jq -r '.grant_id // empty' 2>/dev/null) || continue
-        gexp=$(printf '%s' "$gobj" | jq -r '.expires_at // empty' 2>/dev/null) || continue
-        if [ -z "$garm" ] || [ -z "$gpat" ] || [ -z "$gmax" ] || [ -z "$gid" ] || [ -z "$gexp" ]; then continue; fi
-        case "$garm" in git-push|git-url|gh|network) ;; *) continue ;; esac
-        case "$gmax" in ''|*[!0-9]*) continue ;; esac
-        [ "$gmax" -gt 0 ] || continue
-        [ "${#gexp}" -ge 19 ] || continue
-        if ! [[ "$now_iso" < "${gexp:0:19}" ]]; then continue; fi          # expired
-        if printf '%s' "$gpat" | grep -qE '^\.[*+]'; then continue; fi      # unbounded prefix (F2)
-        # per-arm deny-shape anchor (F8): reject a grant whose pattern is not
-        # anchored on THIS arm's deny shape (a git-push grant must carry a push
-        # token; a git-url grant a url token; gh/network the family verb).
-        case "$garm" in
-            gh)
-                printf '%s' "$gpat" | grep -qE '^gh(\[\[:space:\]\]|[[:space:]])' || continue ;;
-            network)
-                printf '%s' "$gpat" | grep -qE '^\(?(curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)' || continue ;;
-            git-push)
-                printf '%s' "$gpat" | grep -qE '^git' || continue
-                printf '%s' "$gpat" | grep -qE '(\[\[:space:\]\]|[[:space:]]|\|\)|\+)push' || continue ;;
-            git-url)
-                printf '%s' "$gpat" | grep -qE '^git' || continue
-                printf '%s' "$gpat" | grep -qE 'url' || continue ;;
-        esac
-        gused=$(printf '%s\n' "$grants_data" | grep -c "\"type\":\"consumption\",\"grant_id\":\"$gid\"" || true)
-        gused=${gused:-0}
-        [ "$gused" -lt "$gmax" ] || continue                                # exhausted
-        case "$garm" in
-            git-push) gp_alt="${gp_alt:+$gp_alt|}$gpat" ;;
-            git-url)  gu_alt="${gu_alt:+$gu_alt|}$gpat" ;;
-            gh)       gh_alt="${gh_alt:+$gh_alt|}$gpat" ;;
-            network)  net_alt="${net_alt:+$net_alt|}$gpat" ;;
-        esac
-        valid_grants="${valid_grants}${gid} ${gpat}
-"
-    done <<< "$grants_data"
-fi
-
-# Recompute each still-failing arm's allowed as ONE alternation (builtin|grant)
-# — never a sum (F1). Arms with no builtin carve-out omit the builtin term.
-if [ -n "$gp_alt" ]; then gp_allowed=$(count_cmd "$gp_alt"); fi
-if [ -n "$gu_alt" ]; then gu_allowed=$(count_cmd "$gu_alt"); fi
-if [ -n "$gh_alt" ]; then gh_allowed=$(count_cmd "($gh_allow)|($gh_alt)"); fi
-if [ -n "$net_alt" ]; then net_allowed=$(count_cmd "$net_alt"); fi
-
-if [ "$gp_total" -le "$gp_allowed" ] && [ "$gu_total" -le "$gu_allowed" ] \
-   && [ "$gh_total" -le "$gh_allowed" ] && [ "$net_total" -le "$net_allowed" ]; then
-    # Honored: append one consumption line per valid grant whose pattern matched
-    # this command (append-only — existing lines are never rewritten).
-    con_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    printf '%s' "$valid_grants" | while read -r vgid vpat; do
-        [ -z "$vgid" ] && continue
-        if [ "$(count_cmd "$vpat")" -gt 0 ]; then
-            printf '{"type":"consumption","grant_id":"%s","ts":"%s"}\n' "$vgid" "$con_ts" >> "$grants_file"
-        fi
-    done
-    exit 0
-fi
-
-# Still over allowance after grants -> deny the offending arm (message per arm).
-if [ "$gp_total" -gt "$gp_allowed" ]; then
-    deny "git push is blocked on the GLM lane (commit locally; the parent session pushes)."
-fi
-if [ "$gu_total" -gt "$gu_allowed" ]; then
-    deny "rewriting git remote/push URLs is blocked on the GLM lane: a worker repointing a remote is outside its brief, and this hook is the layer that says so (an earlier change removed the pushurl tripwire that used to sit behind it)."
-fi
-if [ "$gh_total" -gt "$gh_allowed" ]; then
-    deny "gh is limited on the GLM lane: issue ops + pr/run reads; PR mutations belong to the parent session."
-fi
-if [ "$net_total" -gt "$net_allowed" ]; then
-    deny "network CLIs are blocked on the GLM lane (chores are repo-local)."
 fi
 
 exit 0

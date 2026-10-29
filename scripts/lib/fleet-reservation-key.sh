@@ -7,7 +7,7 @@
 #
 # Defines functions only — sourcing prints nothing, reserves nothing and
 # touches no slot dir (pinned by scripts/lib/test-fleet-reservation-key.sh).
-# Bash 3.2-safe; no .ps1 twin (the slot dir is a POSIX tmpfs construct).
+# Bash 3.2-safe (the slot dir is a POSIX tmpfs construct).
 #
 #   fleet_hash_key <worker>         bounded deterministic key (POSIX cksum): always
 #                                a valid directory component

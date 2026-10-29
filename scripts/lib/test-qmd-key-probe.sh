@@ -6,8 +6,7 @@
 # daemon (it arms its own 120 s alarm and is killed directly by pid on exit). The 401 body is the real OpenRouter reply to a keyless embeddings call
 # (curl -X POST https://openrouter.ai/api/v1/embeddings, no Authorization,
 # 2026-10-16: HTTP 401). Every server and probe runs under a deadline.
-# Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1
-# twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 LIB_DIR="$(cd "$(dirname "$0")" && pwd)"

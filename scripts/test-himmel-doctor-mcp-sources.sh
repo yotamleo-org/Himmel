@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# test-himmel-doctor-mcp-sources.sh — doctor C82-mcp-sources lists every MCP server with its source layer.
+#   user config (~/.claude.json mcpServers), project .mcp.json, an enabled plugin's .mcp.json,
+#   the himmel lane catalog (scripts/lanes/plugin-profiles.json mcpCatalog) and the runtime
+#   built-in plugins (easel). easel is never listed as unknown; no env or secret value is printed.
+# Every fixture lives under a temp dir; the real HOME and settings are never read.
+# Run: bash scripts/test-himmel-doctor-mcp-sources.sh
+set -u
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DOC="$ROOT/scripts/himmel-doctor.sh"
+
+fails=0
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
+has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 (missing '$2' in: $3)" ;; esac; }
+lacks() { case "$3" in *"$2"*) fail "$1 (found '$2' in: $3)" ;; *) pass "$1" ;; esac; }
+
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/doctor-mcp-sources-test.XXXXXX")" || exit 1
+trap 'rm -rf "$WORK"' EXIT
+
+PROJ="$WORK/root"
+CACHE="$WORK/claude/plugins/cache"
+mkdir -p "$PROJ" "$WORK/home" "$CACHE/fixmkt/fixplug/10.0.0" "$CACHE/fixmkt/fixplug/9.0.0" "$CACHE/othermkt/fixplug/99.0.0"
+ln -s "$ROOT/scripts" "$PROJ/scripts"
+printf '{"mcpServers":{"fixture-user":{"command":"x","env":{"TOKEN":"SECRET-ENV-VALUE-1"}}},"projects":{"%s":{"mcpServers":{"fixture-local":{"command":"x","env":{"TOKEN":"SECRET-ENV-VALUE-3"}}}},"/elsewhere":{"mcpServers":{"fixture-elsewhere":{"command":"x"}}}}}\n' "$PROJ" > "$WORK/home/.claude.json"
+printf '{"mcpServers":{"fixture-proj":{"command":"y","env":{"TOKEN":"SECRET-ENV-VALUE-2"}}}}\n' > "$PROJ/.mcp.json"
+mkdir -p "$CACHE/fixmkt/staleplug/1.0.0" "$CACHE/fixmkt/staleplug/2.0.0"
+printf '{"mcpServers":{"fixture-stale":{"command":"z"}}}\n' > "$CACHE/fixmkt/staleplug/1.0.0/.mcp.json"
+mkdir -p "$CACHE/fixmkt/pinplug/1.0.0" "$CACHE/fixmkt/pinplug/2.0.0"
+printf '{"mcpServers":{"fixture-pinned":{"command":"z"}}}\n' > "$CACHE/fixmkt/pinplug/1.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-unpinned":{"command":"z"}}}\n' > "$CACHE/fixmkt/pinplug/2.0.0/.mcp.json"
+printf '{"version":2,"plugins":{"pinplug@fixmkt":[{"installPath":"%s"}]}}\n' "$CACHE/fixmkt/pinplug/1.0.0" > "$WORK/claude/plugins/installed_plugins.json"
+mkdir -p "$PROJ/marketplace/plugins/fixrepo" "$PROJ/marketplace/plugins/shared"
+printf '{"mcpServers":{"fixture-repo":{"command":"z"}}}\n' > "$PROJ/marketplace/plugins/fixrepo/.mcp.json"
+printf '{"mcpServers":{"fixture-shared":{"command":"z"}}}\n' > "$PROJ/marketplace/plugins/shared/.mcp.json"
+printf '{"enabledPlugins":{"fixplug@fixmkt":true,"fixrepo@himmel":true,"staleplug@fixmkt":true,"pinplug@fixmkt":true,"shared@thirdmkt":true}}\n' > "$WORK/claude/settings.json"
+printf '{"mcpServers":{"fixture-plug":{"command":"z"}}}\n' > "$CACHE/fixmkt/fixplug/10.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-old":{"command":"z"}}}\n' > "$CACHE/fixmkt/fixplug/9.0.0/.mcp.json"
+printf '{"mcpServers":{"fixture-other-mkt":{"command":"z"}}}\n' > "$CACHE/othermkt/fixplug/99.0.0/.mcp.json"
+
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+rc=$?
+
+echo "== C82: every source layer is listed with its server =="
+if [ "$rc" -eq 0 ]; then pass "C82 normal run exits 0"; else fail "C82 normal run exits $rc"; fi
+has "C82 normal run is OK severity" "OK   C82-mcp-sources" "$out"
+has "C82 normal run reports 0 WARN" "0 WARN" "$out"
+has "C82 row present" "C82-mcp-sources" "$out"
+has "C82 user config" "fixture-user [user config]" "$out"
+has "C82 project .mcp.json" "fixture-proj [project .mcp.json]" "$out"
+has "C82 project-scoped server stored in the user config" "fixture-local [local project config]" "$out"
+lacks "C82 another project's server not listed" "fixture-elsewhere" "$out"
+lacks "C82 third env value" "SECRET-ENV-VALUE-3" "$out"
+has "C82 enabled plugin, newest version by version order" "fixture-plug [plugin fixplug]" "$out"
+lacks "C82 older version not listed" "fixture-old" "$out"
+lacks "C82 same-named plugin of another marketplace not listed" "fixture-other-mkt" "$out"
+lacks "C82 newest version without .mcp.json hides an older version's server" "fixture-stale" "$out"
+has "C82 plugin version pinned by installed_plugins.json" "fixture-pinned [plugin pinplug]" "$out"
+lacks "C82 unpinned newer cache version not listed" "fixture-unpinned" "$out"
+has "C82 repo plugin of the himmel marketplace" "fixture-repo [plugin fixrepo]" "$out"
+lacks "C82 repo plugin of the same name from another marketplace not listed" "fixture-shared" "$out"
+has "C82 lane catalog" "himmel-bus [himmel lane catalog]" "$out"
+
+echo "== C82: easel has a named source, never unknown =="
+has "C82 easel runtime source" "easel [runtime: built-in cc-plugin-easel plugin of the Claude Code binary]" "$out"
+lacks "C82 no unknown source" "unknown" "$out"
+
+echo "== C82: no env or secret value is printed =="
+lacks "C82 first env value" "SECRET-ENV-VALUE-1" "$out"
+lacks "C82 second env value" "SECRET-ENV-VALUE-2" "$out"
+
+echo "== C82: a config file that is not valid JSON is a WARN, not a silent gap =="
+printf '{' > "$WORK/home/.claude.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 malformed user config -> WARN" "WARN C82-mcp-sources" "$out"
+has "C82 names the layer" "unreadable JSON [user config]" "$out"
+if [ "$(id -u)" -ne 0 ]; then
+    printf '{"mcpServers":{}}\n' > "$WORK/home/.claude.json"
+    chmod 000 "$WORK/home/.claude.json"
+    out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+    has "C82 unreadable user config -> WARN" "unreadable JSON [user config]" "$out"
+    chmod 600 "$WORK/home/.claude.json"
+    chmod 000 "$WORK/claude/settings.json"
+    out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+    has "C82 unreadable settings -> WARN" "unreadable JSON [settings enabledPlugins]" "$out"
+    chmod 600 "$WORK/claude/settings.json"
+fi
+printf '{"mcpServers":{}}\n' > "$WORK/home/.claude.json"
+printf '{' > "$WORK/claude/settings.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 malformed settings -> WARN" "WARN C82-mcp-sources" "$out"
+has "C82 names the settings layer" "unreadable JSON [settings enabledPlugins]" "$out"
+
+echo "== C82: a dangling symlink config and a malformed plugin index are WARNs =="
+rm -f "$WORK/home/.claude.json"
+ln -s "$WORK/missing-target.json" "$WORK/home/.claude.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 dangling symlink user config -> WARN" "unreadable JSON [user config]" "$out"
+rm -f "$WORK/home/.claude.json"
+printf '{"mcpServers":{}}\n' > "$WORK/home/.claude.json"
+printf '{"enabledPlugins":{"pinplug@fixmkt":true}}\n' > "$WORK/claude/settings.json"
+printf '{' > "$WORK/claude/plugins/installed_plugins.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 malformed plugin index -> WARN" "unreadable JSON [plugin index]" "$out"
+lacks "C82 malformed plugin index does not fall back to the newest cached version" "fixture-unpinned [plugin" "$out"
+
+[ "$fails" -eq 0 ] && echo "all passed" && exit 0
+echo "$fails failed"; exit 1

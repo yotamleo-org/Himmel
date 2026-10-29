@@ -618,7 +618,7 @@ Nine FURTHER guards — `block-docker-privesc.sh` (HIMMEL-441),
 (HIMMEL-936),
 `block-rogue-codex-exec.sh` (HIMMEL-2023), `guard-implementor-dispatch.sh`
 (HIMMEL-920), `guard-chief-dispatch.sh` (HIMMEL-2323),
-`block-glm-external-writes.sh` (HIMMEL-654),
+`block-worker-write-fence.sh` (HIMMEL-654),
 `block-graphify-egress.sh` (HIMMEL-621/622), and
 `block-lesson-enforcement-writes.sh` (HIMMEL-767) — are shipped
 via the **himmel-ops plugin `hooks.json`** rather than `.claude/settings.json`
@@ -637,9 +637,9 @@ design) — except the bounded initial PR lookup on a real merge, which fails
 CLOSED (HIMMEL-3915);
 `guard-implementor-dispatch.sh` is a COST guard and fails OPEN (see its own
 section below); `guard-chief-dispatch.sh` is a WORKFLOW fence and fails
-OPEN (see its own section below); `block-glm-external-writes.sh` fails CLOSED on a detected
-GLM lane (a missing `jq` blocks rather than allows — see its own section
-below); `block-lesson-enforcement-writes.sh` fails CLOSED only once its own
+OPEN (see its own section below); `block-worker-write-fence.sh` fails CLOSED on a dispatched
+worker (`HIMMEL_WORKER=1`; a missing `jq` blocks rather than allows — see its
+own section below); `block-lesson-enforcement-writes.sh` fails CLOSED only once its own
 loop seam (`HIMMEL_LESSON_LOOP=1`) is active (see its own section below);
 `block-graphify-egress.sh` delegates its verdict to the shared corpus ×
 provider × purpose policy rather than duplicating it here — see
@@ -3940,60 +3940,43 @@ unparseable payload.
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-chief-dispatch.sh`. Spec: `scripts/hooks/test-guard-chief-foreground.sh`.
 
-### `block-glm-external-writes.sh` — GLM-lane external-write deny (HIMMEL-654)
+### `block-worker-write-fence.sh` — dispatched-worker write fence (HIMMEL-654)
 
-Fires on `Bash|PowerShell|mcp__.*`. The deterministic classifier substitute for
-third-party offload lanes, which have no auto-mode classifier and usually run
-`--permission-mode bypassPermissions`. The GLM lane it was written for is
-removed (its `spawn-glm.ts` dispatcher, `glm-env.ts` and `claude-glm`
-launcher are deleted, HIMMEL-7909, HIMMEL-7481); the fence stays until
-HIMMEL-7907 retires it. Detects the lane by `ANTHROPIC_BASE_URL` containing
-`api.z.ai` (inherited by hook processes); off-lane sessions exit 0 on the first
-env check — near-zero overhead, before the jq check.
+Fires on `Bash|PowerShell|mcp__.*`. Keyed on `HIMMEL_WORKER=1`, the
+lane-agnostic marker a dispatched worker's child env carries
+(`claudexChildEnv` in `scripts/telegram/spawn-claudex.ts` sets it); a headed
+operator session sets no marker and exits 0 on the first check, before the
+`jq` check. It began as the deterministic classifier substitute for a
+third-party offload lane (push, `gh`, network and `mcp__*` arms keyed on that
+lane's `ANTHROPIC_BASE_URL`). That lane and its arms are removed (HIMMEL-7907,
+HIMMEL-7481) and the file was renamed from its lane-specific name. Two
+command-text fences remain, for EVERY dispatched worker:
 
-On-lane it hard-blocks: `git push`, remote-URL rewrites (`git remote set-url`,
-`git config …url` — a worker repointing a remote is outside its brief), the
-`gh` CLI EXCEPT the issue-ops + pr/run-reads carve-out below (`gh pr
-create/merge/edit/review/comment/ready`, `gh api`, `gh repo`, … stay blocked —
-parent-session actions), network CLIs
-(`curl`/`wget`/`Invoke-WebRequest`/`Invoke-RestMethod`/`iwr`/`irm`), and all
-`mcp__*` tools except the qmd carve-out below (v1 chores are repo-local; a
-blanket deny beats a write-verb list). `git commit`/`add`/`status`/`diff` and
-`bun`/`npm install` stay allowed.
+- **Pin-dir class (HIMMEL-2085):** a Bash/PowerShell command whose text names
+  the hook-integrity pin directory is denied, so a worker cannot forge a pin to
+  match a tampered guard.
+- **Anchor-tamper class (HIMMEL-2528):** a command that repoints
+  `origin/<default branch>`, the ref the hook-integrity re-pin trusts, is
+  denied (see the re-pin section below).
 
-**Allowed on-lane (operator policy 2026-07-03 — audited-action carve-out):** the
-**Jira CLI** (`scripts/jira/` path or a bare `jira`) — writes are audited in
-Jira history and recoverable, so GLM workers may update status/comments and file
-followup tickets; **qmd KB reads** (`mcp__plugin_qmd_qmd__*`, allowed before
-the blanket `mcp__*` deny); and (HIMMEL-675) **`gh issue <anything>`** (full
-issue surface, reads AND writes — cr-deferred followups are gh issues, audited +
-recoverable) plus read-only **PR/CI context** (`gh pr view|diff|checks|status|
-list`, `gh run view|list|watch`). The gh carve-out counts command-position gh
-occurrences vs allowed ones, so a compound smuggling a denied gh past an allowed
-one (`gh pr view 1 && gh pr merge 1`) still denies (total > allowed) — it shares
-the command-position wrapper gap with the other arms. Atlassian MCP stays
-blocked — Jira routing is CLI-first (`block-backend-tier` enforces that in every
-session).
+**Fail-CLOSED:** registered `--fail-closed-when "HIMMEL_WORKER=1"`, so deleting
+the hook inside a worker no longer silently exits 0, and a top-level errexit
+abort on a worker blocks (exit 2). A missing `jq` on a worker blocks. Outside a
+worker the registration keeps ordinary optional semantics. **Bypass:**
+`HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1`, shared with `run-hook-with-bash.js`'s
+mid-session-hook-edit escape hatch and honoured only inside a linked worktree of
+the session's recorded repo. The retired lane's own bypass flag is gone.
 
-**Fail-CLOSED:** missing `jq` on the GLM lane blocks (parity with
-`block-rogue-claude-schedule`). Command-position matching (start, or after
-`; & | (` — not space/quote) keeps commit-message prose mentioning "git push"
-from false-blocking. **Bypass:** `GLM_EXTERNAL_WRITES_OK=1` set in the shell
-that spawns the worker (session-sticky).
-
-Known limitations (accidental-shape guard, backstopped by the parent CR gate —
-the load-bearing control since HIMMEL-1961 retired the pushurl tripwire that
-used to sit beside it): a wrapper that
-displaces the command from command position is missed (env-prefixed
-`FOO=1 git push`, `sudo`/`xargs`/`timeout`, the dashed `git-push`), and
-in-process network is invisible (bun/node `fetch`, including the bun-invoked
-telegram bridge send path).
+These are command-TEXT fences, not a filesystem boundary: an OS-user-level
+attacker, or a runtime that builds the path from characters never spelled out
+as the substring, is out of scope, and a worker that rewrites the project-owned
+hook file itself is not stopped by it (the worktree copy is registered).
 
 **Delivery:** shipped via the **himmel-ops plugin `hooks.json`** (same
 exec-if-exists `$CLAUDE_PROJECT_DIR` pattern as `block-docker-privesc`); live
 only after `/himmel-update` (marketplace re-sync) + a fresh session, AND the
 checkout workers branch from having pulled the merge. Spec:
-`scripts/hooks/test-block-glm-external-writes.sh`.
+`scripts/hooks/test-block-worker-write-fence.sh`.
 
 > **Delivery vs. enablement (HIMMEL-2292).** PR #1992 / HIMMEL-2085 found
 > this hook absent from `.claude/settings.json`, `.codex/hooks.json`, and
@@ -5959,18 +5942,18 @@ degrade: only a change that genuinely reached the trusted branch re-pins;
 worktree drift or a not-yet-merged hook edit does not.
 
 **New worker-lane fence — the anchor-tamper class in
-`block-glm-external-writes.sh`.** Re-pinning off `origin/<default>` makes
+`block-worker-write-fence.sh`.** Re-pinning off `origin/<default>` makes
 `refs/remotes/origin/<default>` **security-relevant** for the first time: the
 re-pin step now trusts whatever that ref currently resolves to as the
-definition of "legitimately committed hook content." `block-glm-external-
-writes.sh` gained a second worker-lane class (immediately after the
+definition of "legitimately committed hook content." `block-worker-write-fence.sh`
+gained a second worker-lane class (immediately after the
 HIMMEL-2085 pin-dir write-fence class, same gate, same "worker-ness not lane"
 scope) denying the command shapes a dispatched worker could use to make that
 ref resolve to attacker-chosen history:
 
 | Trigger | Scope | Verdict | Bypass |
 |---|---|---|---|
-| A `Bash`/`PowerShell` command matching either (i) a keyword/substring hit — `refs/remotes/`, `remotes/origin/`, `symbolic-ref`, `remote set-head`, `remote set-url`, `remote add`, `remote remove`, `remote rm`, `remote rename`, `update-ref`, `insteadOf`, `remote.origin.url` — anywhere in the (lowercased) command text, or (ii) a command-position `git [global-flags] (fetch\|push\|pull)` shape carrying an explicit refspec whose **destination** writes remote-tracking space — `refs/remotes/…`, or an `<a>/<b>` shorthand whose `<a>` is a real remote/tracking namespace in this repo — regardless of which remote is named, and including via `git -C <dir>` | Any `worker_lane` session — GLM (`ANTHROPIC_BASE_URL` = api.z.ai) **or** a native dispatched worker (`HIMMEL_WORKER=1`); a headed operator session never reaches `worker_lane` and is unaffected | Deny, rc=2 | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` set in the **launching** shell (same bypass var as the HIMMEL-2085 pin-dir class — one escape hatch covers both hook-integrity fences; since HIMMEL-3396 it is honoured only inside a linked worktree of the session's recorded repo and audited, so the primary checkout keeps both fences on) |
+| A `Bash`/`PowerShell` command matching either (i) a keyword/substring hit — `refs/remotes/`, `remotes/origin/`, `symbolic-ref`, `remote set-head`, `remote set-url`, `remote add`, `remote remove`, `remote rm`, `remote rename`, `update-ref`, `insteadOf`, `remote.origin.url` — anywhere in the (lowercased) command text, or (ii) a command-position `git [global-flags] (fetch\|push\|pull)` shape carrying an explicit refspec whose **destination** writes remote-tracking space — `refs/remotes/…`, or an `<a>/<b>` shorthand whose `<a>` is a real remote/tracking namespace in this repo — regardless of which remote is named, and including via `git -C <dir>` | A native dispatched worker session (`HIMMEL_WORKER=1`); a headed operator session never reaches `worker_lane` and is unaffected | Deny, rc=2 | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` set in the **launching** shell (same bypass var as the HIMMEL-2085 pin-dir class — one escape hatch covers both hook-integrity fences; since HIMMEL-3396 it is honoured only inside a linked worktree of the session's recorded repo and audited, so the primary checkout keeps both fences on) |
 
 **Class (ii) gates on the destination, not on the remote.** It originally
 matched an enumeration of local-path remote spellings, and that axis was
@@ -6057,10 +6040,9 @@ matching — same non-anchored philosophy as the HIMMEL-2085 pin-dir class's
 own `pin_text_hit`, and a deliberately broader net than the rest of this
 file's command-position arms. Accepted consequence, test-pinned: a commit
 message that merely *mentions* one of these phrases in prose now also
-denies (`scripts/hooks/test-block-glm-external-writes.sh`'s "glm prose remote
-set-url (HIMMEL-2528 accepted overmatch)" case) — the same fail-closed
-direction as every other "Accepted OVER-blocks" row this file's header
-already documents for the pre-existing GLM-lane classifiers.
+denies (`scripts/hooks/test-block-worker-write-fence.sh`'s "class (i)
+accepted overmatch" rows) — the same fail-closed direction as every other
+"Accepted OVER-blocks" row this file's header documents.
 
 **Declared residual — OPEN.** This is cheap coverage, not closure, and it is
 the class that makes `origin/<default>` a trusted input, so the residual is
@@ -6135,7 +6117,7 @@ first was the *entire* defence. Class (i) is therefore not a redundant
 "cheap coverage" layer on this path — class (ii) is uncloseable against it
 alone. The dependency is pinned mechanically, not just in prose: the
 `class (i) precondition for the destination gate` rows in
-`test-block-glm-external-writes.sh` assert both chains deny, and go red under
+`test-block-worker-write-fence.sh` assert both chains deny, and go red under
 a class-(i)-only revert **while every class-(ii) case stays green**.
 
 **ANSI-C (`$'...'`) treatment for class (i).** The residual above is unchanged

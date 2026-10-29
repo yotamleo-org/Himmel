@@ -30,9 +30,7 @@
 # purpose (the point is not to inherit the operator's PATH).
 #
 # Platform guard (linux/macos-only): POSIX bash 3.2+ (no associative arrays, no
-# ${var,,}), like headed-arm-worker.sh - no .ps1 twin; on Windows the observation
-# has no equivalent (os.homedir() reads USERPROFILE - see
-# scripts/himmelctl/test/_hermetic-home.sh).
+# ${var,,}), like headed-arm-worker.sh.
 #
 # Exit: 2 usage/refusal; otherwise the child's own status (exec).
 set -uo pipefail

@@ -568,7 +568,7 @@ _suite_timeout_for() {
       # stale 450 cap derived from a 2026-08-27 idle benchmark (204s). Rule:
       # loaded x2 -- 344 * 2 = 688, rounded up to 700.
       printf '700' ;;
-    scripts/hooks/test-block-glm-external-writes.sh|*/scripts/hooks/test-block-glm-external-writes.sh)
+    scripts/hooks/test-block-worker-write-fence.sh|*/scripts/hooks/test-block-worker-write-fence.sh)
       # Loaded re-benchmark (2026-09-02): no dedicated entry
       # existed -- the generic 600s SUITE_TIMEOUT default was tripped
       # (CAP EXCEEDED after 606s, cap 600s). Worst

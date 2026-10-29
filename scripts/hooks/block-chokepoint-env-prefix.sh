@@ -194,7 +194,7 @@
 # DENY CHANNELS: structured permissionDecision:"deny" JSON on stdout (which
 # overrides the exit code where parsed) PLUS exit 2 + stderr -- the
 # belt-and-braces idiom; see orchestrator-inline-guard.sh and
-# test-block-glm-external-writes.sh.
+# test-block-worker-write-fence.sh.
 #
 # FAIL-OPEN POSTURE: this guard is a belt AROUND chokepoints whose bare
 # invocations are already governed by allow-rules + the classifier. Every

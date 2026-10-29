@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # HIMMEL_HOOK_INTEGRITY_BYPASS_OK is honoured by the two
-# command-text fences of block-glm-external-writes.sh (the pin-dir fence and the
+# command-text fences of block-worker-write-fence.sh (the pin-dir fence and the
 # anchor fence) only where the launcher honours it: session cwd inside
 # CLAUDE_PROJECT_DIR, the session's RECORDED repo
 # lists that directory as a LINKED worktree, the hook script resolves inside it,
@@ -10,12 +10,12 @@
 # hook copy inside the worktree is the one under test (the hook must be inside
 # the worktree for the bypass to be honoured, exactly as the launcher requires).
 #
-# Usage: bash scripts/hooks/test-block-glm-bypass-scope.sh
+# Usage: bash scripts/hooks/test-block-worker-bypass-scope.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed
 set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK_SRC="$HOOKS_DIR/block-glm-external-writes.sh"
+HOOK_SRC="$HOOKS_DIR/block-worker-write-fence.sh"
 
 # A chief worker's shell exports guard overrides; clear them so a case that means
 # "override UNSET" is not flipped. Cases set what they need.
@@ -54,7 +54,7 @@ git_t() { git -c user.email=t@t -c user.name=t "$@"; }
 PRIMARY="$T/primary"
 PINS="$T/pins"
 mkdir -p "$PRIMARY/scripts/hooks" "$PINS"
-cp "$HOOK_SRC" "$PRIMARY/scripts/hooks/block-glm-external-writes.sh"
+cp "$HOOK_SRC" "$PRIMARY/scripts/hooks/block-worker-write-fence.sh"
 git -C "$PRIMARY" init -q
 git -C "$PRIMARY" remote add origin https://example.invalid/anchor.git
 git_t -C "$PRIMARY" add -A
@@ -80,7 +80,7 @@ run() {
   local cwd="$1" hook="$2" project="$3" sid="$4" cmd="$5"; shift 5
   local payload
   payload=$(jq -cn --arg sid "$sid" --arg cmd "$cmd" '{session_id:$sid,tool_name:"Bash",tool_input:{command:$cmd}}')
-  (cd "$cwd" && printf '%s' "$payload" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK \
+  (cd "$cwd" && printf '%s' "$payload" | env -u ANTHROPIC_BASE_URL -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK \
       -u CLAUDE_PID HIMMEL_WORKER=1 HIMMEL_HOOK_INTEGRITY_DIR="$PINS" CLAUDE_PROJECT_DIR="$project" "$@" \
       bash "$hook" >/dev/null 2>&1)
   echo "$?"
@@ -98,14 +98,13 @@ expect_refused() { # <label> <cmd> <cwd> <hook> <project> <sid> [VAR=val ...]
   else bad "$label — expected rc=2 and no audit line, got rc=$rc audit $before->$(audit_count)"; fi
 }
 
-PH="$PRIMARY/scripts/hooks/block-glm-external-writes.sh"
-WH="$WT/scripts/hooks/block-glm-external-writes.sh"
-WH2="$WT2/scripts/hooks/block-glm-external-writes.sh"
+PH="$PRIMARY/scripts/hooks/block-worker-write-fence.sh"
+WH="$WT/scripts/hooks/block-worker-write-fence.sh"
+WH2="$WT2/scripts/hooks/block-worker-write-fence.sh"
 
 # ---- (a) RED at base: the bypass in the PRIMARY checkout no longer disables either fence
 expect_refused "primary checkout: bypass does NOT disable the pin-dir fence" "$PIN_CMD" "$PRIMARY" "$PH" "$PRIMARY" sess-ok
 expect_refused "primary checkout: bypass does NOT disable the anchor fence (remote set-url)" "$ANCHOR_CMD" "$PRIMARY" "$PH" "$PRIMARY" sess-ok
-expect_refused "primary checkout, GLM lane: bypass does NOT disable the pin-dir fence" "$PIN_CMD" "$PRIMARY" "$PH" "$PRIMARY" sess-ok ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic HIMMEL_WORKER=0
 
 # ---- controls: the fences still work without the bypass, and the bypass still works where intended
 expect_rc "control: no bypass, linked worktree — pin-dir fence still fires" 2 "$(run "$WT" "$WH" "$WT" sess-ok "$PIN_CMD")"

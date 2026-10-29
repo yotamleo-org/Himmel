@@ -3,7 +3,7 @@
 # 30-minute bank sample ring, burn projections, wake-up suppression, resets,
 # missing data, and the claudex/codex bank input.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. usage-monitor.sh is a POSIX/Git-Bash
+# PLATFORM GUARD: usage-monitor.sh is a POSIX
 # Bash 3.2 monitor consumed by the Linux chief kit; this suite uses its
 # explicit cache, clock, state, and command seams.
 set -uo pipefail

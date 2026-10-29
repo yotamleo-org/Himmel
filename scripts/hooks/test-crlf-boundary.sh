@@ -599,16 +599,15 @@ check_bounded block-unresolved-cr-merge Bash 0 "gh pr mer""ge 42 --squash --matc
     -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG -u CRITICS_JSON -u CR_PROFILE "$UCM_CFG" "$UCM_OVERLAY" GH_STUB_MODE=clean PATH="$UCM_BIN:$PATH"
 cd "$_UCM_OLDPWD" || true
 
-# ── block-glm-external-writes.sh ─────────────────────────────────────────────
+# ── block-worker-write-fence.sh ──────────────────────────────────────────────
 # Already CRLF-hardened (PR #2005/#2008) — pinned here so the completeness
 # guard has a row and a future edit to its \r handling gets caught same-day.
-GLM_URL="https://api.z.ai/api/anthropic"
-check_bounded block-glm-external-writes Bash 2 "gi""t push origin main" \
-    "a push under the GLM lane blocks" \
-    -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR "ANTHROPIC_BASE_URL=$GLM_URL"
-check_bounded block-glm-external-writes Bash 0 "gi""t status" \
-    "a read under the GLM lane allows" \
-    -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR "ANTHROPIC_BASE_URL=$GLM_URL"
+check_bounded block-worker-write-fence Bash 2 "gi""t config remote.origin.url https://evil.example/x.git" \
+    "an origin repoint on a dispatched worker blocks" \
+    "HIMMEL_WORKER=1"
+check_bounded block-worker-write-fence Bash 0 "gi""t status" \
+    "a read on a dispatched worker allows" \
+    "HIMMEL_WORKER=1"
 
 # ── block-graphify-egress.sh ─────────────────────────────────────────────────
 # The hook resolves its fence relative to its OWN location, so a probe

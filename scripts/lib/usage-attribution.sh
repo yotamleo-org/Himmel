@@ -4,8 +4,8 @@
 # burn (turns x context size) to named sessions so it can be traced back to a
 # worker/chief instead of showing up as an unexplained account drain
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe + jq, no python/node/
-# network; git-bash on Windows carries a working jq, so no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe + jq, no python/node/
+# network.
 #
 # Usage:
 #   usage-attribution.sh <projects-root> [--since <iso>] [--project <slug>] [--top <n>]
