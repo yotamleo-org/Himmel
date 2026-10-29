@@ -7,7 +7,7 @@
 # .claude/settings*.json (a change there only takes effect after PR review,
 # merge, and the operator's next launch) — while ALLOWING the identical edit
 # inside a linked git worktree, where landing a settings change is the
-# legitimate mechanism (HIMMEL-2360).
+# legitimate mechanism.
 #
 # Replaces two now-removed `permissions.deny` rules
 # (`Edit(**/.claude/settings.json)`, `Edit(**/.claude/settings.local.json)`)
@@ -36,8 +36,8 @@
 # hook protects by REPO LAYOUT (primary checkout vs. linked worktree), not by
 # a specific machine path.
 #
-# Known limitation, deliberately not chased (HIMMEL-2360 CR round 4,
-# codex-1): canon() follows symlinks (both `realpath -m` and
+# Known limitation, deliberately not chased:
+# canon() follows symlinks (both `realpath -m` and
 # `pathlib.resolve()` dereference existing symlink components), so if
 # `.claude/settings.json` is ITSELF a symlink to a differently-named/located
 # file, the basename/parent check runs against the SYMLINK'S TARGET, not
@@ -49,7 +49,7 @@
 # "not a complete write fence" scope (below) — Copy-Item/Move-Item/New-Item
 # under PowerShell aren't covered (see the PowerShell arm below).
 #
-# Bash/PowerShell arm (HIMMEL-2360 retask, rewritten HIMMEL-1525 retask 2):
+# Bash/PowerShell arm:
 # the replaced permission rules also covered Bash redirect targets, so a
 # bare `Edit`/`Write`/etc. arm alone would silently reopen
 # `echo x > <primary>/.claude/settings.json`.
@@ -106,7 +106,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# python3 hang armor (HIMMEL-249): the Windows Store python3 stub can wedge
+# python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe) — and a hung PreToolUse
 # hook hangs the whole session. canon()'s python fallbacks go through this.
 # Sourced GUARDED: under set -e an unguarded failed source exits rc=1, and
@@ -585,7 +585,7 @@ canon() {
     # Canonicalise a path. Returns empty on failure; caller MUST decide how
     # to treat empty (edit-tool arm fails closed on it, Bash arm skips the
     # target and keeps scanning). See block-edit-on-main.sh's twin for the
-    # py_armor_capture rationale (HIMMEL-249).
+    # py_armor_capture rationale.
     local p; p=$(normalize_drive_form "$1")
     case "$CANON_MODE" in
         realpath-m)
@@ -626,7 +626,7 @@ check_target() {
         return
     fi
 
-    # Case-FOLDED basename/parent match (HIMMEL-2360 CR round 2): NTFS and
+    # Case-FOLDED basename/parent match: NTFS and
     # APFS/HFS+ are case-insensitive by default, so `.CLAUDE/SETTINGS.JSON`
     # and `.claude/settings.json` name the SAME live file there — a
     # case-sensitive `case` match would let alternate casing walk straight
@@ -650,8 +650,8 @@ check_target() {
     fi
 
     # User-scope live config: $HOME/.claude/settings*.json. Case-FOLDED
-    # (HIMMEL-2360 CR round 4): this compares the FULL parent PATH, not just
-    # its basename, so round 2's basename/parent-basename fold does not
+    # it compares the FULL parent PATH, not just
+    # its basename, so the basename/parent-basename fold does not
     # cover it — `$HOME/.CLAUDE/settings.json` (already past the folded
     # parent_base_lc gate above) still failed THIS case-sensitive equality
     # and fell through to allow on a non-repo, non-worktree cwd.
@@ -717,7 +717,7 @@ check_target() {
 }
 
 # check_claude_dir_target RAW_OPERAND — the Bash arm's operand check
-# (HIMMEL-3700, J1329O I1): like check_target, but an operand that resolves to
+# like check_target, but an operand that resolves to
 # a `.claude` DIRECTORY ITSELF (a symlinked dir used as a dir-destination) is
 # classified exactly as check_target classifies a settings file's parent, so
 # a symlink onto the primary's or $HOME's `.claude/` denies whatever the
@@ -821,7 +821,7 @@ resolve_repo_context() {
         if [ -n "$home_real" ]; then
             home_real="${home_real%/}"
             # Quote-stripped like the command text in mentions_primary_or_home,
-            # or an apostrophe in the root itself never matches (HIMMEL-3468).
+            # or an apostrophe in the root itself never matches.
             home_root_lc=$(printf '%s' "$home_real" | tr '[:upper:]' '[:lower:]' | tr -d "\"'")
         fi
     fi
@@ -833,10 +833,10 @@ resolve_repo_context() {
 # text. A `<sha>..<sha>` git range has a hex digit on BOTH sides of the `..`
 # and never matches; `../.claude`, `worktrees/wt/../../x`, a bare `cd ..` and
 # a `..` glued to a short option (`-t../primary/.claude`) all still match
-# (HIMMEL-3675: the three `*..*` glob checks below treated a benign SHA range
+# (the three `*..*` glob checks below treated a benign SHA range
 # identically to a real climb-out, false-DENYing `impacted-suites.sh --check
 # <base>..<head>` run from a linked worktree; a both-sides-only boundary check
-# then let a glued short option through undetected — HIMMEL-3675 judge NO-GO).
+# then let a glued short option through undetected).
 has_traversal_dots() {
     [[ "$1" =~ (^|[^a-z0-9_])\.\.|\.\.([^a-z0-9_]|$) ]]
 }
@@ -855,11 +855,11 @@ mentions_primary_or_home() {
     c_noquotes=$(printf '%s' "$c" | tr -d "\"'")
     # A linked worktree nested under the primary (`<primary>/.claude/
     # worktrees/<wt>`) contains the primary root in its own absolute path, so
-    # its OWN settings write matched below (HIMMEL-3468 codex-1). Blank out
+    # its OWN settings write matched below. Blank out
     # this worktree's own root first — never when a real traversal `..`
     # (has_traversal_dots) appears anywhere, since `<wt>/../../settings.json`
-    # climbs back into the primary; a `<sha>..<sha>` git range never counts
-    # (HIMMEL-3675). Only the root followed by `/` is removed: a bare string
+    # climbs back into the primary; a `<sha>..<sha>` git range never counts.
+    # Only the root followed by `/` is removed: a bare string
     # prefix would also eat the front of a sibling path (`<dir>/prim` inside
     # `<dir>/primary/...`).
     if [ "$is_primary_cwd" = "0" ] && [ -n "$own_root_lc" ]; then
@@ -874,7 +874,7 @@ mentions_primary_or_home() {
     # Only the primary root's OWN .claude counts as live — matching
     # primary_root_lc as a bare substring anywhere also matched any command
     # that merely mentions the primary checkout's resolved path with no
-    # .claude reference at all, over-denying that command (HIMMEL-3465).
+    # .claude reference at all, over-denying that command.
     # Same /.claude-adjacency treatment as home_root_lc below.
     if [ -n "$primary_root_lc" ]; then
         case "$c_noquotes" in *"$primary_root_lc/.claude"*) return 0 ;; esac
@@ -891,7 +891,7 @@ mentions_primary_or_home() {
     # directory itself as the destination. A `${HOME…}` with an operator
     # (`${HOME:-/x}`, `${HOME%/}`) is $HOME too, and a `$(…)` or backtick
     # substitution right before `/.claude` can print $HOME (`$(printenv
-    # HOME)/.claude`), so it fails closed (HIMMEL-4298); a plain `$X/` or
+    # HOME)/.claude`), so it fails closed; a plain `$X/` or
     # `${X}/` stays a variable-built path (the header ponytail).
     local out
     # shellcheck disable=SC2016 # literal unexpanded $home/${home} text, not expansion
@@ -928,7 +928,7 @@ interp_write_api() {
 # copy_stream, perl unlink/truncate/rename/chmod and `+<`, Deno.*). The body builds its path at run time
 # (`expanduser('~')+'/.cl'+'aude/sett'+'ings.json'`), so no text match on
 # the path can see it; the pair is judged instead, whatever the path, -c/-e
-# body or heredoc alike (HIMMEL-4298). Fail-closed: a script that reads a
+# body or heredoc alike. Fail-closed: a script that reads a
 # home file and writes elsewhere is denied too. Only the API in use counts
 # (a call, an index, an attribute): a python heredoc that edits a doc whose
 # TEXT mentions `homedir` or `$HOME` is not a home read, and the history
@@ -952,7 +952,7 @@ interp_home_write() {
     [[ $t =~ $ri ]] || return 1
     [[ $t =~ $rh ]] || return 1
     interp_write_api "$t" || return 1
-    # HIMMEL-4348: a home API named only inside a string literal is data
+    # A home API named only inside a string literal is data
     # (`write('call Path.home() to get it')`), so the pair is judged again on
     # the text with literal contents blanked; any unsure reading keeps the
     # raw-text deny above.
@@ -972,7 +972,7 @@ interp_dyn_api() {
 # with the string-literal contents of each python/pypy/node/bun/deno body
 # (the word after `-c`, `-e`, `-p`, `--eval` or `--print` right after the
 # interpreter word; `deno eval` hits the dispatch words below) blanked to spaces, so the caller can tell
-# a home API named only as data from one in code (HIMMEL-4348). Returns 1 —
+# a home API named only as data from one in code. Returns 1 —
 # the caller keeps its raw-text deny — whenever the reading is unsure: the
 # tokenizer could not vouch for the command (TOK=0, a heredoc, PowerShell); a
 # dynamic-dispatch or spawn word anywhere (eval, exec, compile, getattr,
@@ -1132,7 +1132,7 @@ python_heredoc_readonly() {
 # is_readonly_allowlisted CMD_LC — the rule 1 exception: a short list of
 # read-only programs, invoked alone (no chaining/redirection metacharacter
 # anywhere, so a trailing `&& rm -rf /` can't ride in on an allowlisted
-# first verb). Since HIMMEL-3546 a Bash command that tokenizes (TOK=1) is
+# first verb). A Bash command that tokenizes (TOK=1) is
 # judged per segment by _tok_readonly_ok instead; this text check now serves
 # PowerShell and a Bash command the tokenizer could not vouch for (TOK=0).
 # ponytail: a bare `;` vetoes the whole command unconditionally, even when
@@ -1154,7 +1154,7 @@ is_readonly_allowlisted() {
     case "$c" in
         *';'*|*'&'*|*'|'*|*'`'*|*'$('*|*'<('*|*'>'*) return 1 ;;
     esac
-    # tee as a word (HIMMEL-5616): `committee`/`steel` in a path are reads.
+    # tee as a word: `committee`/`steel` in a path are reads.
     # Preceded by anything but a name char, `.` or `-`; followed by one too,
     # or `/` (a directory named tee is not the command). PowerShell spells it
     # `Tee-Object` or `tee.exe`, which that rule would pass, so there any
@@ -1201,20 +1201,20 @@ is_readonly_allowlisted() {
 }
 
 # The token-based checks below read the ST_* arrays st_tokenize (inlined
-# above) left for the Bash command (HIMMEL-3546). TOK is 1 when those tokens
+# above) left for the Bash command. TOK is 1 when those tokens
 # can be trusted to be the whole command: it parsed, and it carries no
 # heredoc (a body the tokenizer skips, which `bash <<EOF` would run) and no
 # ANSI-C `$'…'` word (which spells any byte). TOK=0 sends every caller back
 # to the older whole-text scan (PowerShell always) or fails closed.
 TOK=0
-# 1 when only a glob/alias leaf (HIMMEL-3938), not a named settings file, made
+# 1 when only a glob/alias leaf, not a named settings file, made
 # the command a candidate: `ls` is then a read the allowlist may pass.
 _RO_LS=0
 
 # _tok_verb_write KIND REGEX — 0 (a candidate write) unless EVERY segment
 # whose text matches REGEX (the same lowercased verb pattern
 # has_write_verb_or_target_flag matched against the whole text) is accounted
-# for as a non-writing use (HIMMEL-3564): every segment is judged, not the
+# for as a non-writing use: every segment is judged, not the
 # first that matched, and each tar/unzip word is judged by its own first
 # argument, not by a flag anywhere in the text.
 #   tar      every tar/gtar/bsdtar word (any case, any position — `find -exec
@@ -1288,7 +1288,7 @@ _tok_verb_write() {
 
 # _tok_ro_git_seg SEG — 0 when segment SEG is one plain read-only git run, so a
 # `checkout`/`restore` in it is a file name (`git -C <wt> diff … --
-# scripts/x-checkout.sh`, HIMMEL-4367 item 3), not the subcommand. Plain
+# scripts/x-checkout.sh`), not the subcommand. Plain
 # means: `git` is the command word (no assignment, wrapper or `find -exec`
 # before it) and the only `git` word in the segment, `-C DIR` pairs aside its
 # subcommand is diff/show/log/status/blame/grep, and no word carries a live
@@ -1316,7 +1316,7 @@ _tok_ro_git_seg() {
 
 # _tok_ln_write REGEX — 0 (a candidate write) unless every word matching the
 # `ln` REGEX is a plain short-flag cluster of another program (`rg -ln`,
-# `git grep -ln`; HIMMEL-3961): a word of only `-` and [a-z0-9], with no live
+# `git grep -ln`): a word of only `-` and [a-z0-9], with no live
 # `$`, no glob/brace and no redirect. Any other match — `ln`, `/bin/ln`,
 # `l\n`, `{ln,…}`, `a=ln`, `${a}ln`, `xargs ln` — is the verb, and a text
 # match that no word accounts for (a comment) is a write too, as is TOK=0.
@@ -1367,7 +1367,7 @@ _tok_part_write() {
 }
 
 # _unjudged_cmd_word WORD HAS_EXPANSION HAS_GLOB — 0 when a segment's command
-# word cannot be read as a program this hook judges (HIMMEL-4119): a glob or
+# word cannot be read as a program this hook judges: a glob or
 # brace (`/bin/l?`, `/bin/l{n,}`), a live expansion (`$v`), a flag-shaped word
 # (`-ln`, which runs only when an executable of that name is on PATH), or a
 # path to a program other than a known read-only one (`/opt/t/plant`;
@@ -1436,7 +1436,7 @@ _unjudged_cmd_word() {
 # alone turns `sudo -H root /opt/t/plant` from deny to allow).
 _wrapper_opt_arg() {
     local o=$2 i=1 ch
-    # A short-option cluster (`sudo -iu root`, HIMMEL-4149): as getopt reads
+    # A short-option cluster (`sudo -iu root`): as getopt reads
     # it, the first letter that takes an argument takes the rest of the
     # cluster, or the next word when it is the cluster's last letter.
     case "$o" in
@@ -1493,8 +1493,8 @@ _wrapper_opt_arg() {
 
 # _wrapper_npos — after the exec wrapper $wname, wpos is the count of its own
 # operands before the command: timeout DURATION and taskset MASK take one,
-# whatever its shape (`timeout .5`, `timeout inf`, `taskset ff`; HIMMEL-4149,
-# J1680), so the word after it is the command. Reads the caller's wname and
+# whatever its shape (`timeout .5`, `timeout inf`, `taskset ff`),
+# so the word after it is the command. Reads the caller's wname and
 # sets its wpos.
 _wrapper_npos() {
     case "$wname" in timeout|taskset) wpos=1 ;; *) wpos=0 ;; esac
@@ -1566,7 +1566,7 @@ _uj_dest() {
 # the `.claude` dir.
 _uj_tok_dests() {
     local k=$1 sc=$2 sg=${ST_S[$1]} w=$1 hit=1 lw rem
-    # HIMMEL-4192: start at the segment's first word and, outside the SC=1 tail
+    # Start at the segment's first word and, outside the SC=1 tail
     # scan, stop at its last (words of other segments never qualified), so a
     # line of N segments costs O(N), not O(N^2). An earlier SC=1 scan already
     # recorded every word a later one would, and returned 1 or the caller left.
@@ -1801,7 +1801,7 @@ EOF
                     # an ALL=1 scan with no hit has already read every word
                     # a later ALL=1 piece would: rescanning to the end per
                     # piece was quadratic (each `print(` line of a python
-                    # heredoc, HIMMEL-4192)
+                    # heredoc)
                     if [ "$all" = 1 ]; then
                         [ "$ua" = 0 ] || { i=$((i + 1)); continue; }
                         ua=1
@@ -1833,7 +1833,7 @@ _tok_sensitive_name() {
         GLOBIGNORE|EXECIGNORE|FIGNORE|FUNCNEST|OPTIND|OPTERR|TIMEFORMAT|INPUTRC) return 0 ;;
         TERM|TERMINFO|TERMCAP|COLUMNS|LINES|MAIL|MAILPATH|HOSTFILE|auto_resume|histchars) return 0 ;;
         BASH*|LD_*|DYLD_*|MALLOC*|LESS*|*PAGER*|GIT_*|SSH*|GREP*|RIPGREP*|JQ_*) return 0 ;;
-        # HIMMEL-4475: tar and unzip read default options from these.
+        # tar and unzip read default options from these.
         TAR_*|UNZIP*|ZIPINFO*) return 0 ;;
         LC_*|XDG_*|_POSIX*|HIST*|COMP*|PS[0-9]|PROMPT*) return 0 ;;
     esac
@@ -1841,7 +1841,7 @@ _tok_sensitive_name() {
 }
 
 # _tok_readonly_ok — the rule 1 exception, judged per segment from tokens
-# (HIMMEL-3546; replaces is_readonly_allowlisted's bare-`;` veto for Bash).
+# (replaces is_readonly_allowlisted's bare-`;` veto for Bash).
 # Allows only when EVERY segment is either an assignment-only segment or one
 # allowlisted read-only program, joined by `;`, `&&`, `||`, `|` or a newline.
 # Denies on: any substitution, subshell or background `&`; any word
@@ -1894,7 +1894,7 @@ _tok_readonly_ok() {
                 less|git|rg|sed|eval|sort|printf) [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] || return 1 ;;
             esac
             # `git -C DIR` only picks the repo, so the word after DIR is the
-            # subcommand (HIMMEL-4298: `git -C <primary> diff … | grep` was
+            # subcommand (`git -C <primary> diff … | grep` was
             # denied as subcommand `-C`); `-c` can set a config that runs a
             # command, so it stays the subcommand and denies
             if [ -z "$sub" ] && [ "$first:$w" = git:-C ]; then
@@ -1905,9 +1905,9 @@ _tok_readonly_ok() {
                 [ -n "$sub" ] || sub=x$lw
             fi
             # `git grep -O<pager>` / `--open-files-in-pager` runs a program
-            # (HIMMEL-4367: git grep joined the read-only subcommands); git
+            # (git grep is a read-only subcommand); git
             # takes any unique prefix of a long option, so `--op…` counts.
-            # HIMMEL-4475: a -e/-f value and a word after `--` are not
+            # A -e/-f value and a word after `--` are not
             # options (_tok_gg_word).
             if [ "$first:$sub" = git:xgrep ]; then
                 _tok_gg_word "$w" || return 1
@@ -1950,7 +1950,7 @@ _tok_ro_segment() {
     case "$first" in
         cat|head|tail|grep|diff|wc|jq|rg|less|sed|cut|sort|tr|echo|printf) ;;
         ls) [ "$_RO_LS" = 1 ] || return 1 ;;
-        # HIMMEL-4364: `eval` as the command word has had its body judged by
+        # `eval` as the command word has had its body judged by
         # this same hook in a run of its own (the body scan above, which
         # exits on a refusal); with no live `$` or glob in its words (checked
         # per word) eval runs exactly that body, so it writes nothing more.
@@ -1968,7 +1968,7 @@ _tok_ro_segment() {
 # _tok_gg_word WORD — one word after `git grep` (state _GGV: the next word is
 # an option's value; _GGD: `--` was seen; both reset per segment). Fails on
 # the pager option: -O in a short cluster before any -e/-f, or `--op…`.
-# HIMMEL-4475: the value of -e/-f (separate or glued, `-e-Open`) and every
+# The value of -e/-f (separate or glued, `-e-Open`) and every
 # word after `--` is a pattern or path, never an option. Any other option
 # taking a value (-A/-B/-C/-m) is not tracked: a -O as its value still
 # fails, which only over-denies (git refuses a non-number there anyway).
@@ -1996,7 +1996,7 @@ _tok_gg_word() {
     return 0
 }
 
-# _tok_archive_list — in _tok_ro_segment's scope (fk, first): HIMMEL-4475,
+# _tok_archive_list — in _tok_ro_segment's scope (fk, first):
 # the segment only LISTS an archive to stdout: `tar` with one cluster of
 # t/v/z/j/J/f letters holding t and ending in f (`-tf`, `tvzf`), or `unzip
 # -l`, then the archive and member names. Every later word is plain: no
@@ -2097,7 +2097,7 @@ _tok_lit_name() {
     [ "$sure" = 1 ]
 }
 
-# _tok_no_shell_ok — HIMMEL-4475: 0 when no part of the command can hand its
+# _tok_no_shell_ok — 0 when no part of the command can hand its
 # text to a shell that reads it again, so a quoted `$'` (`grep -E 'Passed$'`,
 # a regex anchor before the closing quote) is plain text, never ANSI-C
 # quoting. With TOK=1 the tokenizer has already found no live `$'…'` word.
@@ -2235,7 +2235,7 @@ _tok_exported() {
 mentions_dot_claude_dir_dest() {
     local c
     # A `.claude/worktrees/…` mention is a CONTAINER path, not a destination
-    # (HIMMEL-3499/3555 panel round on #1210): every linked worktree lives at
+    # — every linked worktree lives at
     # <root>/.claude/worktrees/<name>, so `git -C <that-path> checkout …` or
     # `tar -C <that-path>/vendor -x …` names `.claude` only because that is
     # where worktrees live, not because the command targets the `.claude`
@@ -2246,7 +2246,7 @@ mentions_dot_claude_dir_dest() {
     # never touches rule 1 (`settings.json` is a distinct substring).
     #
     # Never stripped when a real traversal `..` (has_traversal_dots) appears
-    # ANYWHERE in the text (HIMMEL-3499, third panel round on #1210):
+    # ANYWHERE in the text:
     # `cp -r x/. …/worktrees/..` (or a deeper `worktrees/wt/../../`) climbs
     # back OUT of the worktrees container into `.claude` itself — the SAME
     # "any traversal `..` voids the strip" rule mentions_primary_or_home()
@@ -2255,21 +2255,21 @@ mentions_dot_claude_dir_dest() {
     # reaches; only refusing to strip at all keeps the mention visible to
     # the live-check `..` rule below). A `<sha>..<sha>` git range (hex on
     # both sides of the `..`) is not a traversal and never voids the strip
-    # (HIMMEL-3675 — this was the false-DENY on `impacted-suites.sh --check
+    # (this was the false-DENY on `impacted-suites.sh --check
     # <base>..<head>` run from a `.claude/worktrees/<name>` worktree).
     if has_traversal_dots "$1"; then
         c="$1"
     else
         c=${1//.claude\/worktrees/CLAUDE_WORKTREES_PATH}
     fi
-    # No LEADING boundary requirement (HIMMEL-3499/3555 panel round on
-    # #1210): a short flag glued directly to its argument (`-C.claude`,
+    # No LEADING boundary requirement:
+    # a short flag glued directly to its argument (`-C.claude`,
     # `-d.claude`, `-t.claude`) puts an alnum character immediately before
     # the dot, which the old `(^|[^a-z0-9_])` leading class rejected — GNU
     # tar/unzip/cp all accept the glued form, so this was a real bypass, not
-    # just a `cp -t.claude` residual (the same regex predates HIMMEL-3499).
+    # just a `cp -t.claude` residual.
     # The trailing boundary is the complement of a path-name character
-    # (HIMMEL-3564): an enumerated class missed `)` and a backtick, so
+    # — an enumerated class missed `)` and a backtick, so
     # `x=$(tar -xf a.tar -C ~/.claude)` never counted as naming `.claude`.
     # It still accepts a quote (`cp -r x/. ".claude"`), and still rejects a
     # longer name (`.claude.json`, `.claude-x`).
@@ -2277,21 +2277,21 @@ mentions_dot_claude_dir_dest() {
     # too — fail-closed, matching the project's stated preference.
     # Matched in-shell, never by a grep fork: this runs once per operand
     # word, and a fork per word of a quote-heavy heredoc blew the 15 s
-    # budget (HIMMEL-4192). A newline is outside the class, so the match is
+    # budget. A newline is outside the class, so the match is
     # the per-line grep's; under C every other byte is too.
     local LC_ALL=C
     [[ $c =~ \.claude([^a-z0-9_.-]|$) ]]
 }
 
 # _dc_can_be_claude COMPONENT — 0 when one path component that carries a glob,
-# brace, bracket or `$` can expand to `.claude` (HIMMEL-4156). A brace group
+# brace, bracket or `$` can expand to `.claude`. A brace group
 # with a comma becomes an extglob alternation, a sequence (`{a..z}`) any text,
 # and a group with neither, or an unclosed one, stays literal text as bash
 # leaves it; groups nest. A `$name`/`${…}` is any text. With _DC_XONLY=1 (a
 # word whose globs are all quoted) only a `$` expands and the glob, brace and
 # bracket characters are literal. A zsh group (`.cl(a|x)ude`, `.c(l)aude`)
 # is an alternation too, zsh's extendedglob `#` is any text, and a `^` or `~`
-# makes the rest any text (HIMMEL-4156, J1680) — each a superset of what zsh
+# makes the rest any text — each a superset of what zsh
 # matches, so the fold can only over-deny. The result is matched against
 # `.claude`, ignoring case. A component without such a character is literal
 # text and is left to the callers' own matching.
@@ -2405,7 +2405,7 @@ _dc_can_be_claude() {
                 if [ "$pd" -gt 0 ]; then
                     # inside a zsh group the operator can widen the whole
                     # group (`.c(^x)aude`, `.c(x~y)laude`), so the group is
-                    # `*` and the scan resumes after its `)` (HIMMEL-4173)
+                    # `*` and the scan resumes after its `)`
                     pd=$((pd - 1)) j=0
                     pat="${pat:0:psa[pd]}*"
                     p0=${psa[pd]}
@@ -2423,7 +2423,7 @@ _dc_can_be_claude() {
                 fi
                 ;;
             '`')
-                # a backtick span is any text (HIMMEL-4171)
+                # a backtick span is any text
                 while [ "$i" -lt "$n" ] && [ "${c:i:1}" != '`' ]; do i=$((i + 1)); done
                 i=$((i + 1))
                 pat="$pat*"
@@ -2451,7 +2451,7 @@ _dc_can_be_claude() {
                         ;;
                     '(')
                         # skip the whole `$(…)` / `$((…))`, nested groups
-                        # included (HIMMEL-4171)
+                        # included
                         j=0
                         while [ "$i" -lt "$n" ]; do
                             case "${c:i:1}" in
@@ -2495,14 +2495,14 @@ _dc_can_be_claude() {
     [ "$nc" = 1 ] || shopt -u nocasematch
     # a bash extglob operator group (`.@(claude|x)`, `.!(x)`) is judged by
     # bash's own reading too, so the component denies if either shell can
-    # expand it to `.claude` (HIMMEL-4156 codex-1)
+    # expand it to `.claude`
     if [ "$r" = 1 ] && [ "${_DC_EXTG:-0}" = 0 ] && [ "$xo" = 0 ]; then
         case "$c" in
             *[@*?+!]'('*) _DC_EXTG=1 _dc_can_be_claude "$c" && r=0 ;;
         esac
     fi
     # a trailing zsh group can be a glob qualifier (`.cl*(N)`, `.cl*(D)`),
-    # not an alternation, so the name is judged without it too (HIMMEL-4189)
+    # not an alternation, so the name is judged without it too
     if [ "$r" = 1 ] && [ "$xo" = 0 ]; then
         case "$c" in
             ?*'('*')')
@@ -2531,14 +2531,14 @@ _dc_split_words() {
 # _dc_name_fold TEXT — _DCF is TEXT with every path component that can expand
 # to `.claude` (_dc_can_be_claude) written as the literal `.claude`, so every
 # rule below judges `~/.c?aude`, `~/.cl*/`, `~/.c[l]aude` and `~/.cl{a,}ude`
-# as it judges `~/.claude` (HIMMEL-4156: they planted a home settings file
+# as it judges `~/.claude` (they planted a home settings file
 # from a nested-worktree cwd, where only a literal home `.claude` is live). A
 # component starts after a `/`, a space, `=`, `:`, a shell operator or a
 # leading short option (`-t.c?aude`), and begins with `.`, `{`, a glob, a
 # `$(…)`/`${…}`/backtick span or (via _dc_unquoted) a quote. A component takes
 # in zsh groups, two deep, `|` included (`.cl(a|x)ude`), and whole `$(…)` and
-# backtick spans (HIMMEL-4171). A bare `*`/`?` run never matches a dot-name
-# unless the command can turn on dotglob/GLOB_DOTS (DC_DOTS, HIMMEL-4165), so
+# backtick spans. A bare `*`/`?` run never matches a dot-name
+# unless the command can turn on dotglob/GLOB_DOTS (DC_DOTS), so
 # `cp src/* d/` is left alone.
 # ponytail: a name built only from a variable or substitution (`~/$X`,
 # `~/$(printf .claude)`) is not folded, it can name anything; a fold-time
@@ -2626,7 +2626,7 @@ _dc_fold_one() {
     [[ $t =~ $pre ]] || return 0
     # ow is the last word of out, kept as out grows: reading it back with
     # `${out##*[…]}` rescanned all of out per name, quadratic in a long
-    # command (HIMMEL-4298, 1500 `$"` tilde words took 20 s)
+    # command (1500 `$"` tilde words took 20 s)
     ow=''
     while [[ $t =~ $re ]]; do
         m=${BASH_REMATCH[0]}
@@ -2672,7 +2672,7 @@ _dc_fold_one() {
             *) [ "${DC_DOTS:-0}" = 1 ] || pw= ;;
         esac
         # a name led by a substitution folds when literal text follows the
-        # span (`$(printf .cl)aude`, HIMMEL-4171); a bare span (`$(pwd)/x`,
+        # span (`$(printf .cl)aude`); a bare span (`$(pwd)/x`,
         # `${a:+$a,}$w`) is a variable-built path (the header ponytail)
         # shellcheck disable=SC1083,SC2016 # literal `$(`/`${`/`{` pattern bytes, not expansion
         case "$c" in
@@ -2842,7 +2842,7 @@ _dc_data_bodies() {
         # a body piped on (`| bash`), or written into a process substitution
         # or a file descriptor other than stdout/stderr (`> >(bash)`, `>&3`,
         # `>&10`, `>&$fd`), is not data; one written to a file is judged
-        # below, where the file's name is looked for again (HIMMEL-4299)
+        # below, where the file's name is looked for again
         case "${line##*<<}" in *'|'*) continue ;; esac
         case "$line" in *'>('*|*/dev/fd/*|*/proc/*/fd*) continue ;; esac
         [[ ! $line =~ $fdre ]] || continue
@@ -2894,7 +2894,7 @@ _dc_data_bodies() {
     u='(^|[;&|({[:space:]])\.[[:space:]]+[^=!<>|&[:space:]]'
     [[ ! $out =~ $u ]] || return 1
     [[ ! $out =~ (^|[^a-z0-9_])(cat|tee|git|gh)[[:space:]]*\([[:space:]]*\) ]] || return 1
-    # HIMMEL-4304: a name spelled through an expansion (`PA${x}TH=`,
+    # A name spelled through an expansion (`PA${x}TH=`,
     # `declare PA$'T'H`, `printf -v`, `read`, `declare -n`) can rebind the
     # receiver unseen, so any `$` or backtick outside the bodies voids the
     # data read; the `$(cat <<` that opens a body inside a message is not one
@@ -2902,7 +2902,7 @@ _dc_data_bodies() {
     u=${u//\$(\/bin\/cat <</}
     u=${u//\$(\/usr\/bin\/cat <</}
     case "$u" in *'$'*|*'`'*) return 1 ;; esac
-    # HIMMEL-4299: a body the command can run is not data — any shell or
+    # A body the command can run is not data — any shell or
     # interpreter word in the command, or the file the body was written to
     # named again (`> /tmp/x.sh` … `/tmp/x.sh`, `chmod +x x.sh; ./x.sh`)
     u='(^|[^-a-z0-9_.])(bash|sh|zsh|dash|ksh|mksh|ash|fish|python[0-9.]*|node|nodejs|perl|ruby|php|deno|bun|lua|tclsh|osascript)([^-a-z0-9_]|$)'
@@ -2944,7 +2944,7 @@ _dc_data_bodies() {
 # backslash-escaped character) written as `*`: it is literal to the shell,
 # but it may sit inside a name (`.c'l'(a)ude`), so it stands for any text and
 # a name it is part of can still fold. A quoted `"$home"`/`"${home}"` is
-# written `$home`, the home parent it is (HIMMEL-4188).
+# written `$home`, the home parent it is.
 _dc_unquoted() {
     # LC_ALL first, on its own: `n` is a byte count only once it is in force
     local LC_ALL=C
@@ -2995,14 +2995,14 @@ _dc_unquoted() {
 
 # _verb_segment TEXT VERB_GREP_PATTERN — the single shell "segment" of TEXT
 # containing a match for VERB_GREP_PATTERN, split on `;`, `&` (covers `&&`
-# too — each `&` is its own split point), `|` and `#` (HIMMEL-3499, third
-# panel round on #1210): a mode-check that scanned the WHOLE command let a
+# too — each `&` is its own split point), `|` and `#`:
+# a mode-check that scanned the WHOLE command let a
 # chained or commented trailing token spoof it via a coincidental
 # ` -t`/` -c`/` -l`/` -v` elsewhere in the text — `tar -xzf a.tgz -C
 # ~/.claude; ls -t` false-ALLOWED because `ls -t`'s `-t` read as tar's own
 # list-mode flag. Falls back to the whole text if no segment matches (should
 # not happen — the caller already matched the same pattern against the
-# whole text), never to an empty result. Since HIMMEL-3564 this and
+# whole text), never to an empty result. This and
 # _tar_verb_mode/_unzip_verb_mode serve PowerShell only: a Bash command goes
 # through _tok_verb_write, which judges EVERY matching segment, not the first.
 _verb_segment() {
@@ -3016,7 +3016,7 @@ _verb_segment() {
 # _verb_segment above) names tar's CREATE (`-c`/`--create`) or LIST
 # (`-t`/`--list`) mode, or an old-style clustered option (`tar cf …`,
 # `tar tvf …`) whose first letter is `c`/`t` — none of those write into a
-# destination directory (HIMMEL-3499/3555: `tar -czf out.tgz .claude` and
+# destination directory (`tar -czf out.tgz .claude` and
 # `tar -tf a.tar .claude/` archive/list `.claude`'s CONTENTS, they do not
 # write into it, and were false-denied).
 #
@@ -3041,7 +3041,7 @@ _tar_verb_mode() {
 
 # _unzip_verb_mode CMD_LC — 0 (a candidate write) unless the unzip segment
 # (see _verb_segment above) names unzip's own LIST (`-l`), TEST (`-t`) or
-# verbose-list (`-v`) mode AS ITS FIRST FLAG (HIMMEL-3499). The
+# verbose-list (`-v`) mode AS ITS FIRST FLAG. The
 # first-flag requirement is deliberate: `unzip -o a.zip -d ~/.claude -x -v`
 # is a genuine extraction (destination `-d`, overwrite `-o`) that merely
 # also passes `-v` — a bare "anywhere in the segment" check read that
@@ -3063,19 +3063,19 @@ _unzip_verb_mode() {
 # create/list-mode check above.
 #
 # The word boundary on both sides is the COMPLEMENT of a word character, not
-# a list of shell metacharacters (HIMMEL-3468): an enumerated class missed
+# a list of shell metacharacters: an enumerated class missed
 # `(`, `\`, `"` and `'` in turn, and whatever it omits next is the next
 # bypass. Any non-word character before the verb now counts, at the cost of
 # over-matching a word that merely ends a token (`-cp`, `x.tee`) — which only
 # denies when a `.claude` destination is named too, i.e. fail-closed.
 #
-# tar/gtar/bsdtar/unzip/checkout/restore (HIMMEL-3499): the same
+# tar/gtar/bsdtar/unzip/checkout/restore: the same
 # blunt verb-name list, widened to the extract and checkout tools that
 # clobber a directory without naming settings.json in the text —
 # `git checkout <ref> -- .claude`, `tar -x -C .claude`, `unzip -d .claude`.
 # This is the SAME shape as the existing cp/mv/install/rsync/ln/dd/tee list
 # (an allowlist of known destructive verb spellings), not the
-# metacharacter-boundary enumeration HIMMEL-3468 ruled against — so it stays
+# metacharacter-boundary enumeration ruled against above — so it stays
 # in scope for the "no more parsing" decision. gtar/bsdtar are the two other
 # common tar spellings; before this they denied only by accident, via a
 # `.tar`-suffixed archive-filename argument matching the bare `tar` word.
@@ -3087,7 +3087,7 @@ _unzip_verb_mode() {
 # (test 136), the same shape as the cd/pushd precedent above.
 #
 # checkout/restore additionally require a `git` word in the SAME segment
-# (see _verb_segment above; HIMMEL-3499): unlike cp/mv/tar/
+# (see _verb_segment above): unlike cp/mv/tar/
 # unzip, these are common English words that show up as ordinary
 # filenames/arguments (`~/.claude/commands/checkout.md`, `grep -rn restore
 # ~/.claude/skills`), and a bare-word match false-denied a plain read of
@@ -3109,7 +3109,7 @@ has_write_verb_or_target_flag() {
         _tok_part_write "$re_vb" && return 0
     fi
 
-    # ln is judged per word on Bash (_tok_ln_write, HIMMEL-3961), so another
+    # ln is judged per word on Bash (_tok_ln_write), so another
     # program's `-ln` flag cluster is not read as the link verb.
     local re_ln='(^|[^a-z0-9_])ln([^a-z0-9_]|$)'
     out=$(printf '%s' "$c" | grep -E "$re_ln") || true
@@ -3118,8 +3118,8 @@ has_write_verb_or_target_flag() {
         _tok_ln_write "$re_ln" && return 0
     fi
 
-    # A Bash command is judged per segment from its tokens (_tok_verb_write,
-    # HIMMEL-3564): a Bash command the tokenizer could not vouch for (TOK=0)
+    # A Bash command is judged per segment from its tokens (_tok_verb_write);
+    # a Bash command the tokenizer could not vouch for (TOK=0)
     # is a candidate write, never sent back to the text scan it replaces.
     # PowerShell keeps the _verb_segment text scan.
     local re_tar='(^|[^a-z0-9_])(g?tar|bsdtar)([^a-z0-9_]|$)'
@@ -3152,7 +3152,7 @@ has_write_verb_or_target_flag() {
         [ -n "$out" ] && return 0
     fi
 
-    # A command word no verb list can read (HIMMEL-4119), in a segment that
+    # A command word no verb list can read, in a segment that
     # names a .claude directory, is a write: fail closed.
     if [ "$tool_name" = Bash ]; then
         _tok_unjudged_verb "$c" "$n" && return 0
@@ -3163,7 +3163,7 @@ has_write_verb_or_target_flag() {
 
 # lex_resolve BASE OP — join OP onto BASE (OP itself, if already absolute)
 # and collapse `.`/`..` components as plain text, the way a shell would
-# resolve the path, with NO filesystem access (HIMMEL-3686 item 1): a
+# resolve the path, with NO filesystem access: a
 # relative destination operand is judged by where it lexically lands, not
 # by whether it merely contains `..`, so `../other` (stays under
 # `worktrees/`) and `../..` (climbs out of it) resolve to different places.
@@ -3175,7 +3175,7 @@ lex_resolve() {
         *) joined="$base/$op" ;;
     esac
     local IFS=/
-    # HIMMEL-3686 round-5 codex-3: unquoted word-splitting on $joined also
+    # Unquoted word-splitting on $joined also
     # triggers pathname expansion on any segment containing a glob char,
     # against the HOOK PROCESS's own cwd (unrelated to the path being
     # resolved) — `set -f` keeps this loop the filesystem-blind textual
@@ -3203,15 +3203,15 @@ lex_resolve() {
 }
 
 # has_unquoted_brace_group TEXT — a single, non-nested `{…,…}` brace pair in
-# the (already quote/escape-stripped, HIMMEL-3468) command text (HIMMEL-3686
-# item 2): `.{,.}/.{,.}/settings.json` hides an arbitrary `../` climb from
+# the (already quote/escape-stripped) command text:
+# `.{,.}/.{,.}/settings.json` hides an arbitrary `../` climb from
 # every OTHER check in this file, none of which expand braces. Never
 # expanded here either — a match just denies outright, the same fail-closed
 # shape as an unresolvable canon().
 has_unquoted_brace_group() {
     [[ "$1" =~ \{[^{}]*,[^{}]*\} ]]
 }
-# has_brace_climb_word WORD — HIMMEL-3700 (judge r1, I3 sibling): ONE word that
+# has_brace_climb_word WORD — ONE word that
 # is a path (has a `/`), holds a `{…,…}` group, and could expand to a `..`
 # component — a literal `..`, a `.` inside a group alternative, or a `.` beside
 # a group with an EMPTY alternative (`.{x,}.` -> `..`). Judged per word, never
@@ -3244,7 +3244,7 @@ has_brace_climb_word() {
 #
 # tar/unzip naming a `.claude` destination (`tar -C .claude`, `tar --directory
 # .claude`, `unzip -d .claude`) no longer need THIS function to be caught at
-# all (HIMMEL-3499): has_write_verb_or_target_flag() now matches the bare
+# all: has_write_verb_or_target_flag() now matches the bare
 # `tar`/`unzip` word regardless of which directory flag it uses, so rule 2
 # (mentions_dot_claude_dir_dest + has_write_verb_or_target_flag) denies them
 # directly. tar's `-C` spelling happens to ALSO match this function's own
@@ -3296,7 +3296,7 @@ _exp_home() {
 
 # _settings_leaf_candidates LEAF GLOB — sets _SLC to the settings leaf names
 # (settings.json, settings.local.json) LEAF could spell when it is not
-# literally one of them (HIMMEL-3938), empty when it cannot. Two shapes:
+# literally one of them, empty when it cannot. Two shapes:
 #   alias  a Windows spelling of the same file, taken through a symlinked
 #          .claude: a trailing dot or space (`settings.json.`), an NTFS
 #          stream suffix (`settings.json::$DATA`, everything from the first
@@ -3331,7 +3331,7 @@ _settings_leaf_candidates() {
     fi
     if [ "$glob" = 1 ]; then
         pat=$leaf
-        # HIMMEL-4394: an extglob group with its operator (`@(…)`, `+(…)`,
+        # An extglob group with its operator (`@(…)`, `+(…)`,
         # `!(…)`, `?(…)`, `*(…)`) is read as `*`, a superset of what it
         # matches (`!(x)` included); a stray `(` or `)` (a group the
         # fallback split cut) is `*` too. The fold runs from a group's
@@ -3354,7 +3354,7 @@ _settings_leaf_candidates() {
         done
         pat=${pat//\}/*}
         # A leaf of `*` only (`.claude/*`) is the directory glob the older
-        # checks already judge (HIMMEL-3938: it false-denied
+        # checks already judge (it false-denied
         # `unzip -l a.zip .claude/*`, test 145). Any other wildcard leaf
         # (`????????.????`) can spell a settings name and is matched below.
         # J1909 B1: a pattern that is all stars only because extglob groups
@@ -3387,7 +3387,7 @@ cwd=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev/nul
 
 # nested_wt_primary — set only when $cwd is itself inside a linked
 # worktree's own container path (<primary>/.claude/worktrees/<name>/…);
-# then it is that <primary> root, used below (HIMMEL-3686 item 1/2) to spot
+# then it is that <primary> root, used below to spot
 # a relative destination that climbs back OUT of worktrees/ into the
 # primary's own .claude — text-only, no filesystem access.
 nested_wt_primary=""
@@ -3444,7 +3444,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             fi
             ;;
     esac
-    # _cd_bases — HIMMEL-4394: CD_B lists the directories a cd/pushd in the
+    # _cd_bases — CD_B lists the directories a cd/pushd in the
     # command can move a later relative word to (the PreToolUse cwd itself
     # aside), so `cd ~/.claude && echo x > sett*.json` judges its glob leaf
     # where it lands. Each cd joins its target onto every base so far (kept
@@ -3548,7 +3548,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 TOK=1
             fi
         fi
-        # HIMMEL-4394: an extglob group (`@(…)`, `+(…)`, `!(…)`, `?(…)`,
+        # An extglob group (`@(…)`, `+(…)`, `!(…)`, `?(…)`,
         # `*(…)`) is one glob word to bash, but the tokenizer ends the word at
         # the `(` and opens a subshell. A segment cut by `(` whose last word
         # ends in one of those operators is such a group (with a space between
@@ -3567,7 +3567,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 widx=$((widx + 1))
             done
         fi
-        # HIMMEL-4353: the body of a `bash/sh/zsh/dash -c` or an `eval` is ONE
+        # The body of a `bash/sh/zsh/dash -c` or an `eval` is ONE
         # quoted word to the tokenizer, so its words never carry their own
         # glob flag (ST_G) and the glob/brace leaf and `.claude` fold checks
         # below never see `~/.claude/sett*s.json` inside it. The shell reads
@@ -3656,7 +3656,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # unquoted `\_` a word break. Returns 1 (ENVS_BODY unset) for
             # anything it does not fully model — an unknown escape, `\c`, a
             # `$` that is not `${NAME}`, a word-leading `#`, an unterminated
-            # quote — so the caller stays fail-closed (HIMMEL-4521).
+            # quote — so the caller stays fail-closed.
             # ponytail: a text decoder cannot close the shell/option-parsing
             # class (env option spellings, operands spliced after the text,
             # separator-led words), each judge round finds another; upgrade
@@ -3739,7 +3739,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                         ioa=0
                     elif [ "$iwr" = 1 ] && case "$il" in -* | [0-9]*) true ;; *) false ;; esac; then
                         ! _wrapper_opt_arg "$iwn" "$il" || ioa=1
-                        # HIMMEL-4394: `env -S TEXT` splits TEXT into the
+                        # `env -S TEXT` splits TEXT into the
                         # command it runs, so TEXT (glued, or the next word)
                         # is a body. A short cluster is read up to its first
                         # letter that takes an argument (-u, -C); every
@@ -3786,7 +3786,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                             # shell read of TEXT does not, so such TEXT is
                             # decoded and the decoded words are the body;
                             # what the decoder does not fully model (or a
-                            # nested env) is refused fail-closed (HIMMEL-4521)
+                            # nested env) is refused fail-closed
                             # env re-parses the split words as its own argv, so
                             # a first word that is an option or NAME=VALUE is
                             # env's, not the command, whether or not the text
@@ -3877,7 +3877,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 _lsb_body "$ibw"
                 ii=$((ii + 1))
             done
-            # HIMMEL-4394: a herestring is a shell's script when the shell
+            # A herestring is a shell's script when the shell
             # reads stdin (`bash -s <<<'…'`), and its text is code when an
             # eval runs a substitution's output (`eval "$(cat <<<'…')"`).
             # Whichever word reads it, a command holding a shell, eval, source
@@ -3893,8 +3893,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     fi
     # The shell drops quotes and escapes inside a word (`c\p`, `c""p` and
     # `settings.js\on` all name what they spell without them), so every
-    # match below runs on the text with those characters removed
-    # (HIMMEL-3468). Removing characters never removes a chaining or
+    # match below runs on the text with those characters removed.
+    # Removing characters never removes a chaining or
     # redirection metacharacter, so the read-only allowlist only gets
     # stricter. PowerShell's escape is the backtick, and there `\` is a path
     # separator: fold it to `/` to match the forward-slash roots (codex-3).
@@ -3938,8 +3938,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # cmd_n keeps its case for the `-C` flag test; everything else matches
     # the lowercased text.
     cmd_lc=$(printf '%s' "$cmd_n" | tr '[:upper:]' '[:lower:]')
-    # A glob/brace spelling of a `.claude` component counts as `.claude`
-    # (HIMMEL-4156), in each lowercased word and in the text. A quoted glob
+    # A glob/brace spelling of a `.claude` component counts as `.claude`,
+    # in each lowercased word and in the text. A quoted glob
     # never expands, so when the tokenizer vouches only a word carrying an
     # unquoted glob or a live `$` folds, and the text folds only if one did.
     # A zsh group or extendedglob operator in such a component (`~/.cl(a|x)ude`)
@@ -3947,7 +3947,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # not what zsh runs: when one can be `.claude`, the text layer judges the
     # folded text (J1680). The tokenizer splits a `$(…)` span into its own
     # words, so a component led by one with name text after it
-    # (`~/$(printf .cl)aude`) is judged the same way (HIMMEL-4171).
+    # (`~/$(printf .cl)aude`) is judged the same way.
     # Only unquoted text counts: a quoted `(` is literal in both shells, so a
     # quoted regex (`grep -E 'cp .*(a|b)'`) is not a group. A group leading
     # the name (`~/(.c|x)laude`) counts under a `/` parent only, as in the
@@ -3955,8 +3955,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # shellcheck disable=SC2016 # literal backtick in a regex bracket, not expansion
     dc_zre='(^|[/[:space:]=:<>|;&(`])([.{*?[][^/[:space:];&|<>()`]*[(#^~`]|\$\(([^()]|\([^()]*\))*\)[^/[:space:];&|<>()`$])|/[@+!]?\([^/[:space:];&<>()`]*[|)#^~]'
     DC_ZFLIP=0 dc_zf=''
-    # A bare `*`/`?` name matches a dot-name only under dotglob/GLOB_DOTS
-    # (HIMMEL-4165). zsh ignores `_` and case in an option name
+    # A bare `*`/`?` name matches a dot-name only under dotglob/GLOB_DOTS.
+    # zsh ignores `_` and case in an option name
     # (`GLOB_DOTS`), bash's GLOBIGNORE turns dotglob on, and any option
     # setter counts, so a name built from a variable (`setopt glob$x`)
     # fails closed.
@@ -4020,7 +4020,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     fi
     # cmd_lc has its quotes stripped, so a quoted `(` or `)` inside a span
     # (`~/.cl$(printf a; : '(')ude`) unbalances it there; the quote-aware
-    # fold is judged too (HIMMEL-4171 codex-1)
+    # fold is judged too
     [ "$DC_ZFLIP" = 0 ] || cmd_lc=$cmd_lc$'\n'$dc_zf
 
     mentions_settings=0
@@ -4030,8 +4030,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
 
     # ANSI-C quoting (`$'\x2e\x2e'`, `settings$'\x2e'json`) spells any byte,
     # so the text above cannot say what it names. Not decoded: a `$'` beside
-    # any `settings` or `claude` substring is treated as a live mention
-    # (HIMMEL-3468). Judged on the raw text — the fold removed the quote —
+    # any `settings` or `claude` substring is treated as a live mention.
+    # Judged on the raw text — the fold removed the quote —
     # with line continuations joined first, since bash joins `$\<NL>'` into
     # `$'` before it reads words.
     # ponytail: a word whose `settings`/`claude` letters are themselves
@@ -4044,7 +4044,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         *"\$'"*)
             case "$cmd_lc" in
                 *settings*|*claude*)
-                    # HIMMEL-4475: a `$'` inside quotes (`grep -E 'Passed$'`)
+                    # A `$'` inside quotes (`grep -E 'Passed$'`)
                     # is text when TOK=1 found no live ANSI-C word and no
                     # segment can hand the text to a shell that reads it
                     # again (_tok_no_shell_ok). The tokens come from the
@@ -4075,8 +4075,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         dir_dest=1
     fi
 
-    # HIMMEL-3686 items 1 and 3, out-of-scope follow-ups from #1313/
-    # HIMMEL-3675 (J1313O): neither needs mentions_settings/dir_dest, so
+    # Two checks, a symlinked destination and a hidden `..` climb:
+    # neither needs mentions_settings/dir_dest, so
     # both are judged BEFORE the early exit below that they would otherwise
     # never reach. One pass over the command's words, gated on a write verb
     # being present at all.
@@ -4085,7 +4085,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # word — splitting cmd_n on whitespace (already quote-stripped) breaks
     # it into two words that name neither the real symlink nor the real
     # climb target (codex-1 panel finding on this ticket). When the
-    # tokenizer vouched for this command (TOK=1, Bash only — HIMMEL-3546),
+    # tokenizer vouched for this command (TOK=1, Bash only),
     # ST_W still holds cmd's own words, quotes/escapes removed but internal
     # spaces intact; use those instead. PowerShell and any Bash command the
     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
@@ -4149,7 +4149,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             _coo_fork_check "$w"
             return
         fi
-        # HIMMEL-178 round-2 codex-2: a destination that does not exist YET
+        # A destination that does not exist YET
         # can still be reached through a pre-existing symlinked PARENT
         # directory that escapes into the primary's .claude/. canon()'s
         # realpath -m / Python resolve(strict=False) already resolve a
@@ -4183,7 +4183,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             _coo_fork_check "$w"
         fi
     }
-    # HIMMEL-3700 (J1329O I2, I4): a word can carry its path glued to an
+    # A word can carry its path glued to an
     # option — dd's `of=<path>`, `--target-directory=<dir>`, or a short-option
     # cluster ending in t whose argument follows without a space (`-t<dir>`,
     # `-rt<dir>`) — so the operand is judged as spelled AND with that prefix
@@ -4207,8 +4207,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     }
     dirdest_climb=0
     symlink_dest=0
-    # The operand scan runs for a write verb (every word) and, since
-    # HIMMEL-3700 (I2), for any other writer's redirect target: `echo x > s`
+    # The operand scan runs for a write verb (every word) and,
+    # for any other writer's redirect target: `echo x > s`
     # writes through a symlink `s` exactly as `cp y s` does. A command the
     # tokenizer could not model has no redirect targets to pick out, so a `>`
     # anywhere in it scans every word (the same fallback a write verb gets).
@@ -4232,7 +4232,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                 widx=$((widx + 1))
             done
         else
-            # CodeRabbit (HIMMEL-3686): unquoted `for w in $cmd_n` is subject
+            # Unquoted `for w in $cmd_n` is subject
             # to pathname expansion against the HOOK PROCESS's own real cwd —
             # unrelated to the command's cwd — so a glob-containing operand
             # could reach _check_write_operand as an unrelated expanded path
@@ -4254,7 +4254,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             fi
         fi
     fi
-    # HIMMEL-4119: an unjudged command word (`$L`, `-ln`, `/bin/l?`) that is not
+    # An unjudged command word (`$L`, `-ln`, `/bin/l?`) that is not
     # a write verb by its text alone still has its destination operands
     # climb- and symlink-checked, as a write verb's would be.
     if [ "$write_verb" = 0 ]; then
@@ -4263,7 +4263,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         done
     fi
 
-    # HIMMEL-3938: three ways a live settings.json landed past the text and
+    # Three ways a live settings.json landed past the text and
     # operand checks above, one mechanism — every word is judged for the
     # settings files it could NAME and the directories it could land them in,
     # each resolved through _check_one_operand (so symlinks, $HOME and the
@@ -4285,7 +4285,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # cp/rsync from a settings-bearing tree into a live parent. Read-only
     # allowlisted commands and `ls` are exempt below, as for a named settings.
     # A glob in the `.claude` component itself (`.cla*/settings.json`) is
-    # folded to `.claude` before this runs (_dc_name_fold, HIMMEL-4156).
+    # folded to `.claude` before this runs (_dc_name_fold).
     # ponytail: a glob in another DIRECTORY component, a source
     # tree with the settings file deeper than `<src>/.claude/`, and a case-
     # insensitive `DLINK/` spelling (needs a case-insensitive filesystem to
@@ -4452,7 +4452,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         rd=0
         if [ "$TOK" = 1 ] && [ -z "${ST_RO[widx]}" ] && [ "${SEGRD[ST_S[widx]]-0}" = 1 ]; then rd=1; fi
         _check_variant "${OPW[widx]}" "${OPG[widx]}" "$rd"
-        # HIMMEL-4394: the fallback split leaves operators glued to a word
+        # The fallback split leaves operators glued to a word
         # (`…/sett?ngs.json;;` in a `case` arm, `x>~/…`), so each piece
         # between them is judged too; `|` only outside an extglob group
         if [ "$TOK" = 0 ]; then
@@ -4468,10 +4468,10 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     done
     [ "$write_verb" = 0 ] || _check_tree_copy
 
-    # HIMMEL-3686 item 2: a brace group in the text is refused outright
+    # A brace group in the text is refused outright
     # whenever it could hide a climb that matters — the text already names
     # a live settings file (any writer: `sed -i`, `perl -pi` and others the
-    # verb list does not know, HIMMEL-3700 I3), or, under a write verb, a
+    # verb list does not know), or, under a write verb, a
     # primary .claude dir-dest, or $cwd is itself a nested worktree a hidden
     # `../` could climb out of.
     brace_dir_dest=0
@@ -4479,7 +4479,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         && { [ "$mentions_settings" = "1" ] \
             || { [ "$write_verb" = 1 ] && { [ "$dir_dest" = "1" ] || [ -n "$nested_wt_primary" ]; }; }; }; then
         brace_dir_dest=1
-        # HIMMEL-4364: under a write verb (no settings file named), a word the
+        # Under a write verb (no settings file named), a word the
         # tokenizer vouches for counts only if its brace can move a directory:
         # a climb word, or a group before the word's last `/`. A group in the
         # leaf alone keeps the literal directory, and its leaf names are
@@ -4500,14 +4500,13 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     fi
     # A writer that is not a recognised verb (sed -i, perl -pi, ...) from a
     # nested worktree: one word that is a path with a brace group that could
-    # spell a `..` climb denies whatever its leaf spells (HIMMEL-3700, judge
-    # r1). The whole-text search above cannot see a leaf like `sett{ings,x}.json`.
+    # spell a `..` climb denies whatever its leaf spells.
+    # The whole-text search above cannot see a leaf like `sett{ings,x}.json`.
     if [ "$brace_dir_dest" = 0 ] && [ "$write_verb" = 0 ] && [ -n "$nested_wt_primary" ] \
         && has_unquoted_brace_group "$cmd_n"; then
         if [ "$TOK" = 1 ]; then
             # a word with no unquoted `{` (ST_G=0) never brace-expands: a
             # quoted jq program (`'{c:.critic, f:(.a // "")}'`) is no climb
-            # (HIMMEL-4298)
             widx=0
             while [ "$widx" -lt "$ST_N" ]; do
                 if [ "${ST_G[widx]}" = 1 ] && has_brace_climb_word "${ST_W[widx]}"; then brace_dir_dest=1; break; fi
@@ -4549,7 +4548,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         # cwd; a cd/pushd/popd (or a `-C <dir>`) in the same command moves the
         # real target (`cd ../../.. && echo x > .claude/settings.json` lands
         # on the primary), so the exemption no longer applies. Blunt on
-        # purpose: a harmless cd is denied too (HIMMEL-3468, accepted false
+        # purpose: a harmless cd is denied too (accepted false
         # deny).
         live=1
     else
@@ -4557,9 +4556,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             # A real traversal `..` climbs out of the worktree the exemption
             # covers — from `<primary>/.claude/worktrees/<wt>`,
             # `../../settings.json` IS the primary's file — whatever the verb.
-            # The worktree's own copy never needs `..` to name it
-            # (HIMMEL-3468). A `<sha>..<sha>` git range never counts
-            # (HIMMEL-3675).
+            # The worktree's own copy never needs `..` to name it.
+            # A `<sha>..<sha>` git range never counts.
             live=1
         fi
         if [ "$live" = "0" ] && mentions_primary_or_home "$cmd_lc"; then
