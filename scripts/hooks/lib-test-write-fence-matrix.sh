@@ -401,7 +401,7 @@ _matrix_run_slice() {
 MATRIX_SLICE_K="$1"; MATRIX_SLICE_N="$2"
 # ok_first: a one-off assertion's ok line, emitted by slice 1 only.
 ok_first() { if [ "$MATRIX_SLICE_K" = 1 ]; then ok "$1"; fi; return 0; }
-echo "== HIMMEL-2592 GENERATED GRAMMAR MATRIX (the real interpreter is the oracle) — slice $MATRIX_SLICE_K/$MATRIX_SLICE_N =="
+echo "== GENERATED GRAMMAR MATRIX (the real interpreter is the oracle) — slice $MATRIX_SLICE_K/$MATRIX_SLICE_N =="
 if [ "$MATRIX_SLICE_K" = 1 ]; then  # one-off guard: slice 1 only (see the file header)
 # The self-test snapshots through _matrix_cell_exec, which needs GNU stat; on a
 # host without it the cell loop below SKIPs too, so skip here the same way.
@@ -481,7 +481,7 @@ MATRIX_CELLS=$(printf '%s\n' "$MATRIX_CELLS" | awk -v n="$MATRIX_SLICE_N" -v k="
 # only runs when MATRIX_STAT_READY=1.
 _matrix_stat_probe
 if [ "$MATRIX_STAT_READY" != 1 ]; then
-    echo "  SKIP HIMMEL-2592 generated-grammar-matrix CELL EXECUTION — host stat can't give GNU -c '%i|%y' (inode + SUB-SECOND mtime): $MATRIX_STAT_DIAG -- running anyway would silently compare empty inode/mtime fields and could derive the wrong verdict for a same-second metadata-only write (the exact defect class integer-second mtime caused once already)."
+    echo "  SKIP generated-grammar-matrix CELL EXECUTION — host stat can't give GNU -c '%i|%y' (inode + SUB-SECOND mtime): $MATRIX_STAT_DIAG -- running anyway would silently compare empty inode/mtime fields and could derive the wrong verdict for a same-second metadata-only write (the exact defect class integer-second mtime caused once already)."
 else
 M_A=0; M_B=0; M_C=0; M_AV=0; M_BV=0; M_COVER=0; M_CALLOW=0
 M_CDIR="$FIX/matrixcell"

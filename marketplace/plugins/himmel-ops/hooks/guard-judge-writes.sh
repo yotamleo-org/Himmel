@@ -52,8 +52,9 @@
 # shell-separator words, not a shell parser — eval, a wrapper script that does
 # the write itself, curl to an API, or a write verb this vocabulary does not
 # list still pass, and Bash file writes (a redirect, rm/mv/tee/sed -i, an
-# interpreter -c) are not screened at all: the structural fix is HIMMEL-4607
-# (judge-lane sandbox or permission profile). Over-matching (a read whose text
+# interpreter -c) are not screened at all: the structural fix is a
+# judge-lane sandbox or permission profile.
+# ponytail: structural fix HIMMEL-4607. Over-matching (a read whose text
 # merely carries a verb word, e.g. `gh pr view 12 --comments` is fine but
 # `git log --grep push` denies) is the safe direction.
 #

@@ -46,8 +46,8 @@
 # its own review rounds. The chief is not a worker, so it runs this itself.
 # ponytail: same-uid ceiling - the record mac key is readable by the same uid
 # and the worker marker is an environment variable; the upgrade path
-# is a separate-uid verdict store. This does not cover HIMMEL-5109 (a NO-GO on a
-# test- or comment-only descendant): that needs review-round.sh itself.
+# is a separate-uid verdict store. This does not cover a NO-GO on a
+# test- or comment-only descendant: that needs review-round.sh itself.
 #
 # Exit: 0 granted / 1 bad input / 3 worker or relay caller, or the verdict scope is
 # unresolved / 4 no qualifying signed record / 5 lock or state error / 12 not
