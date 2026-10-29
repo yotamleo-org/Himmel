@@ -64,6 +64,7 @@ env > "$HOME/child-env.txt"
 MOCK
 CLAUDE_JOB_DIR=/nonexistent/jobs/launcher CLAUDE_CODE_MESSAGING_SOCKET=/nonexistent/launcher.sock \
   CLAUDE_CODE_MESSAGING_TOKEN=launcher-token run_launcher "claudex launch drops the launching session's identity"
+grep -qxF 'ENABLE_TOOL_SEARCH=false' "$FAKEHOME/child-env.txt" || { echo "FAIL: child env capture missing or unreadable"; FAILS=$((FAILS + 1)); }
 for _v in CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
   ! grep -q "^${_v}=" "$FAKEHOME/child-env.txt" || { echo "FAIL: child env still carries $_v"; FAILS=$((FAILS + 1)); }
 done
