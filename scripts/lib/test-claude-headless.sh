@@ -530,12 +530,6 @@ check "18 control: no shadow, proxy vars stripped, launch happens" "launched" "$
 # from the gate, not from the shadows breaking the launch path.
 check "18 control: function shadows installed, no proxy: launch happens" "launched" "$(shadow_launch cf "$SH18/funcs.sh" noproxy)"
 check "18 control: alias shadows installed, no proxy: launch happens" "launched" "$(shadow_launch ca "$SH18/alias.sh" noproxy)"
-# Diagnostics: what the startup file sees inside the SUT under this bash.
-# shellcheck disable=SC2016  # the probe body is written literally
-printf '%s\n' 'echo "[$0] [$(ps -o args= -p $$ | cut -c1-90)]" >> "$PROBE_OUT"' > "$SH18/probe-env.sh"
-rm -f "$W/probe-sut"
-( BASH_ENV="$SH18/probe-env.sh" PROBE_OUT="$W/probe-sut" run_sut "$FAKE_OK" "$W/art18-probe" >/dev/null 2>&1 )
-echo "diag - startup file in the SUT saw: $(head -n 3 "$W/probe-sut" 2>/dev/null | tr '\n' ' ')"
 rm -f "$LIVE_DIR"/*.json
 
 # --- 19: the loopback-mock seam gate keeps EXACT names only. With
