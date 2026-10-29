@@ -95,7 +95,7 @@
   },
   {
    "arm": "trim",
-   "what": "after the trim (this PR's head)",
+   "what": "after the trim (93bf3c0c7)",
    "listing": {
     "tokens": 3257,
     "sha": "8457dfe744741cf8"
@@ -122,6 +122,25 @@
      "false_pick": 0.0,
      "cost_per_run": 0.269
     }
+   }
+  },
+  {
+   "arm": "shipped",
+   "what": "trim with the vendored qmd line restored (this PR's head)",
+   "listing": {
+    "tokens": 3261,
+    "sha": "30a353284c055902"
+   },
+   "models": {
+    "haiku": {
+     "reps": 10,
+     "open": 0.956,
+     "sealed": 0.838,
+     "false_pick": 0.021,
+     "cost_per_run": 0.01
+    },
+    "sonnet": null,
+    "opus": null
    }
   }
  ],
