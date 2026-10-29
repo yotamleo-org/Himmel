@@ -86,6 +86,8 @@ chmod +x "$FAKE"
 # operator's real salus index must never leak into these verdicts.
 FXHOME="$TMP_ROOT/home"
 mkdir -p "$FXHOME"
+# An operator shell that exports these would redirect the guard's salus lookup away from FXHOME.
+unset XDG_CONFIG_HOME XDG_CACHE_HOME QMD_CONFIG_DIR
 run_guard() {
     HOME="$FXHOME" QMD_FIXTURE="$FIXTURE" QMD_REFRESH_STAMP="$STAMP_FILE" bash "$SCRIPT" --qmd-bin "$FAKE" "$@" 2>&1
 }

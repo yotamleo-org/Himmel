@@ -179,8 +179,11 @@
 # under cron. NOT covered: every graphmap/qmd/upstream-watch .bat twin (the pipeline .bat twins are tracked separately).
 # Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
+# v23: the qmd-reindex runner also refreshes the salus named index
+# (a second `qmd-reindex.sh --index salus` fire when salus.yml exists). An armed
+# v22 qmd runner never refreshes it. Re-arm with `qmd-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=22
+CADENCE_RUNNER_FORMAT_VERSION=23
 
 # Marker line stamped into each generated runner
 # (.bat: `rem <marker> N`; .sh: `# <marker> N`).
