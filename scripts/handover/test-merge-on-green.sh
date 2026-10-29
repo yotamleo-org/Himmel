@@ -272,7 +272,7 @@ mog_build_fixture() {
 #!/usr/bin/env bash
 d=$(cd "$(dirname "$0")/../.." && pwd)
 printf '%s\n' "$*" >> "$d/recorder.log"
-printf 'GH_CMD=%s LEDGER=%s WAIT=%s SLEEP=%s\n' "${GH_CMD-unset}" "${CR_LEDGER-unset}" "${CR_RECORDER_MAX_WAIT-unset}" "${CR_RECORDER_SLEEP_CMD-unset}" >> "$d/recorder.env"
+printf 'GH_CMD=%s LEDGER=%s WAIT=%s SLEEP=%s TOKENS=%s FLOOR=%s CAP=%s REPO=%s\n' "${GH_CMD-unset}" "${CR_LEDGER-unset}" "${CR_RECORDER_MAX_WAIT-unset}" "${CR_RECORDER_SLEEP_CMD-unset}" "${CR_RECORDER_GH_TOKENS-unset}" "${CR_RECORDER_FLOOR-unset}" "${CR_RECORDER_LIST_CAP-unset}" "${CR_RECORDER_REPO-unset}" >> "$d/recorder.env"
 [ -z "${STUB_RECORDER_SLEEP:-}" ] || sleep "$STUB_RECORDER_SLEEP"
 exit "${STUB_RECORDER_RC:-0}"
 STUB
@@ -913,7 +913,7 @@ run_mog() {
     # The confirmation poll's `sleep 2` never runs for real here —
     # a test that sleeps is a test that can hang.
     # shellcheck disable=SC2086,SC2016 # the unset flag pair splits into two words, or none; the bash -c body expands in the child
-    GH_LOG="$ghlog" CLEAR_LOG="$clearlog" MERGE_ON_GREEN_LOG="$audit" JIRA_LOG="$jiralog" PATH="$tmp/bin:$PATH" \
+    GH_LOG="$ghlog" CLEAR_LOG="$clearlog" MERGE_ON_GREEN_LOG="$audit" JIRA_LOG="$jiralog" PATH="$tmp/bin:${MOG_PATH_BASE:-$PATH}" \
           MERGE_ON_GREEN_SLEEP_CMD=: \
           MERGE_BLOCK_ALERT_DIR="$tmp/alerts" MERGE_BLOCK_ALERT_CMD="$tmp/bin/alert-sender" \
           TELEGRAM_ACCESS_PATH="$tmp/access.json" STUB_ALERT_FAIL="${STUB_ALERT_FAIL:-}" \
@@ -2859,8 +2859,9 @@ assert_audit_has "11r: audit records the recorder result" "cr-threads=ok"
 # The caller's gh seam, ledger and wait settings never reach the recorder; the
 # ledger is the anchor's and the recorder never sleeps inside the gate.
 GH_CMD=evil-gh CR_LEDGER=/nonexistent/ledger.jsonl CR_RECORDER_SLEEP_CMD=evil-sleep CR_RECORDER_MAX_WAIT=999 \
+    CR_RECORDER_GH_TOKENS=evil-token CR_RECORDER_FLOOR=1 CR_RECORDER_LIST_CAP=1 CR_RECORDER_REPO=evil/repo \
     MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11s: the recorder runs with the gate's own env, not the caller's"
-if grep -qE '^GH_CMD=unset LEDGER=.+/\.git/cr-critic-scores\.jsonl WAIT=0 SLEEP=unset$' "$LAST_TMP/recorder.env" 2>/dev/null; then
+if grep -qE '^GH_CMD=unset LEDGER=.+/\.git/cr-critic-scores\.jsonl WAIT=0 SLEEP=unset TOKENS=unset FLOOR=unset CAP=unset REPO=unset$' "$LAST_TMP/recorder.env" 2>/dev/null; then
     pass
 else
     fail "11s: recorder env was not scrubbed (got: $(cat "$LAST_TMP/recorder.env" 2>/dev/null))"
@@ -2875,6 +2876,26 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     MOG_ANCHOR_GIT=1 STUB_NUM=77 STUB_RECORDER_SLEEP=40 MOG_CR_THREADS_SECS=2 run_mog 0 "11u: a hung recorder cannot hold the merge"
     if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11u: the merge waited $((SECONDS - mog_t0))s on a hung recorder"; fi
     assert_audit_has "11u: a timed-out recorder reads as failed" "cr-threads=failed"
+else
+    echo "SKIP 11u: this host has neither timeout nor gtimeout, so the hung-recorder bound cannot be exercised"
+fi
+# With no timeout binary the recorder is not run at all. The base PATH is a
+# symlink farm of the real PATH minus timeout and gtimeout.
+mog_nt_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-nt.XXXXXX") || mog_nt_farm=""
+if [ -z "$mog_nt_farm" ] || [ ! -d "$mog_nt_farm" ]; then
+    fail "11y: setup: no scratch dir for the no-timeout PATH"
+else
+    mog_nt_dirs=(); IFS=: read -r -a mog_nt_path <<< "$PATH"
+    for mog_nt_d in "${mog_nt_path[@]}"; do
+        case "$mog_nt_d" in /*) [ -d "$mog_nt_d" ] && mog_nt_dirs=("$mog_nt_d" "${mog_nt_dirs[@]}") ;; esac
+    done
+    # Reverse order so the earliest PATH entry wins a name clash.
+    for mog_nt_d in "${mog_nt_dirs[@]}"; do ln -sf "$mog_nt_d"/* "$mog_nt_farm"/ 2>/dev/null || true; done
+    rm -f "$mog_nt_farm/timeout" "$mog_nt_farm/gtimeout"
+    MOG_PATH_BASE="$mog_nt_farm" MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11y: no timeout binary never fails the merge"
+    assert_audit_has "11y: audit records the missing timeout" "cr-threads=no-timeout"
+    assert_recorder_not_called "11y: no timeout binary, no recorder call"
+    rm -rf "$mog_nt_farm"
 fi
 # No recorder script at the anchor, or no resolvable ledger: nothing runs.
 MOG_NO_RECORDER=1 MOG_ANCHOR_GIT=1 STUB_NUM=77 run_mog 0 "11v: a missing recorder never fails the merge"
