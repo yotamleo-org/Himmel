@@ -186,6 +186,14 @@ test("the Review tile has the reviewers with CodeRabbit folded in, the lanes and
   expect(p).toContain("critics.local.json");
 });
 
+test("the Review tile still shows CodeRabbit while the review gate is loading or failed to read", () => {
+  for (const rg of [undefined, { error: "the read failed" }]) {
+    const p = panel(cfg("review", { state: { ...cfgState, reviewGate: rg } }));
+    expect(p).toContain("CodeRabbit");
+    expect(p).not.toContain('data-act="review-gate-save"');
+  }
+});
+
 test("the Tracker tile has the JIRA connection rows and commit rules in two columns, under one dry-run box", () => {
   const p = panel(cfg("tracker", { state: { ...cfgState, plans: { "setup|tracker": { stage: "plan", command: "c1", output: "o1", effect: "e", typed: "", consent: { kind: "plain" } }, "setup|ticket-id-required": { stage: "plan", command: "c2", output: "o2", effect: "e", typed: "", consent: { kind: "plain" } } } } }));
   expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);

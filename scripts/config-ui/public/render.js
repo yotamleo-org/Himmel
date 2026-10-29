@@ -214,8 +214,8 @@ const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge"
 // extra: html drawn under the reviewers (the Configure page folds CodeRabbit's install state in there).
 export function renderReviewGate(rg, extra = "") {
   const head = `<h2 id="h-review-gate">Review gate</h2><p class="sub">Who reviews a pull request before it merges, in what order, and what happens when one of them cannot.</p>`;
-  if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div></section>`;
-  if (!rg.data) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="nodata">${esc(rg.error)}</div></section>`;
+  if (!rg || (!rg.data && !rg.error)) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="empty">loading…</div>${extra}</section>`;
+  if (!rg.data) return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="nodata">${esc(rg.error)}</div>${extra}</section>`;
   const d = rg.data, draft = rg.draft || reviewGateDraft(d);
   const by = Object.fromEntries(d.reviewers.map((r) => [r.slug, r]));
   const rows = draft.map((x) => {

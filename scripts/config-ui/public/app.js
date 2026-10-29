@@ -113,11 +113,11 @@ function paint() {
   const focusT = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.tile") ? document.activeElement.dataset.tile : null;
   // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
   // It is held in this one synchronous call and put straight back; it is never kept in page state.
-  const typing = [...document.querySelectorAll("input[data-secret],input[data-path],input[data-account]")].map((i) => ({ sel: ["secret", "path", "account"].map((a) => (i.dataset[a] !== undefined ? `input[data-${a}="${i.dataset[a]}"]` : "")).find(Boolean), value: i.value, had: i === document.activeElement }));
+  const typing = [...document.querySelectorAll("input[data-secret],input[data-path],input[data-account]")].map((i) => ({ sel: ["secret", "path", "account"].map((a) => (i.dataset[a] !== undefined ? `input[data-${a}="${i.dataset[a]}"]` : "")).find(Boolean), value: i.value, had: i === document.activeElement, from: i.selectionStart, to: i.selectionEnd }));
   if (unmountPage) { unmountPage(); unmountPage = null; }
   $("#main").innerHTML = currentPage.render(feed);
   if (currentPage.afterPaint) unmountPage = currentPage.afterPaint();
-  for (const t of typing) { const i = t.value && document.querySelector(t.sel); if (i) { i.value = t.value; if (t.had) i.focus(); } }
+  for (const t of typing) { const i = t.value && document.querySelector(t.sel); if (i) { i.value = t.value; if (t.had) { i.focus(); i.setSelectionRange(t.from, t.to); } } }
   $("#nav").innerHTML = "";
   $("#top").innerHTML = renderHeader(feed);
   renderPages(); // the Health dot follows the feed and the health read
