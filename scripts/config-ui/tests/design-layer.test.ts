@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { renderHealth } from "../public/health.js";
+import { renderToolHealth } from "../public/tool-health.js";
 
 // The approved mockups take every colour from tokens.css and set text in the UI font, monospace only for
 // data. These pin that the served pages (public/) do the same: a colour literal outside tokens.css, or a var() that no
@@ -78,4 +80,12 @@ test("app.css carries the mockups' shared components", () => {
   for (const sel of [".ph", ".box", ".pill", ".strip", ".data"]) expect(css, sel).toMatch(new RegExp(`(^|[\\s,}])\\${sel}[\\s{,.:]`));
   expect(css).toMatch(/(^|[\s,}])\.box[,{][^}]*border-radius:10px/);
   expect(css).toMatch(/(^|[\s,}])\.pill[,{][^}]*border-radius:999px/);
+});
+
+// The pages moved onto the layer draw with it, not with a page-local look.
+test("Health and Tool health render the page header and boxed sections", () => {
+  const health = renderHealth(null, null);
+  for (const cls of ['class="ph"', 'class="box"', "strip v-"]) expect(health, `health ${cls}`).toContain(cls);
+  const tools = renderToolHealth(null);
+  for (const cls of ['class="ph"', 'class="box"', 'class="fields"']) expect(tools, `tool health ${cls}`).toContain(cls);
 });
