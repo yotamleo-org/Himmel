@@ -34,7 +34,7 @@
 #   IS24 the same PR under SUITE_TIER_MODE=pr is impacted, its suite selected
 #   IS25 a selector-integrity path is full under every tier mode
 #
-# Platform guard: bash-only, no .ps1 twin; git + tar, Linux CI is the caller.
+# Platform guard: bash-only; git + tar, Linux CI is the caller.
 #
 # Usage: bash scripts/ci/test-impacted-selection.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.

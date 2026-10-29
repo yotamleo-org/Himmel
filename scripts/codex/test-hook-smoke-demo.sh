@@ -186,6 +186,7 @@ export CLAUDE_CODE_OAUTH_TOKEN="fixture-oauth"
 run() {  # run <stub-mode> [args...] -> OUT / RC
     _mode="$1"; shift
     set +e
+    case "$_mode" in claude-*) set -- --claude-only "$@" ;; esac
     OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE="$_mode" bash "$SMOKE" --from "$FIX" "$@" 2>&1)"
     RC=$?
     set -e
@@ -271,24 +272,25 @@ if grep -q 'DEMO-PROJECT.md' "$SMOKE" && ! sed -n '/^PROMPT=/,/DONE.$/p' "$SMOKE
 then pass "prompt reads the runner-authored DEMO-PROJECT.md, not a tracked file"
 else fail "prompt points the agent at branch-controlled content"; fi
 
+# The archived replay probe must not be dispatched even when pwsh is installed.
+run clean --codex-only --timeout 20
+assert_rc 2 "archived Codex replay cannot provide a positive control" "archived-replay: $OUT"
+if grep -qE '^codex-replay +SKIP.*removed' <<<"$OUT"; then
+    pass "archived Codex replay is explicitly unavailable"
+else
+    fail "archived probe was dispatched: $OUT"
+fi
+
 # --- 4: all-clean run --------------------------------------------------------
-run clean --timeout 20
+run clean --claude-only --timeout 20
 assert_rc 0 "clean run exits 0" "clean-run: $OUT"
-for worker in codex-exec codex-replay claude-print claude-replay; do
+for worker in claude-print claude-replay; do
     if grep -qE "^$worker +PASS" <<<"$OUT"; then pass "$worker PASS"; else fail "$worker not PASS: $OUT"; fi
 done
-# The clean probe fixture carries a FAILING PLUGIN hook; it must not be counted.
-if grep -qE '^codex-replay +PASS +1 +0' <<<"$OUT"; then
-    pass "plugin-hook FAIL rows excluded from the project count"
-else
-    fail "plugin FAIL leaked into codex-replay: $OUT"
-fi
-# Both replay workers execute REAL guardrails. The fixture hook exits 9 and the
-# pwsh stub reports a project FAIL unless they were handed the inert
-# environment, so the two PASS rows above are also the INERT_ENV proof - drop
-# the env prefix from either worker and this run turns red.
-if grep -qE '^(codex|claude)-replay +PASS' <<<"$OUT" ; then
-    pass "INERT_ENV reaches the replayed hooks in both harnesses"
+# The fixture hook exits 9 unless handed the inert environment, so the
+# claude-replay PASS row is also the INERT_ENV proof.
+if grep -qE '^claude-replay +PASS' <<<"$OUT" ; then
+    pass "INERT_ENV reaches the replayed Claude hooks"
 else
     fail "a replay worker ran without the inert environment: $OUT"
 fi
@@ -303,41 +305,51 @@ fi
 
 # --- 5: codex hook banner fails the run --------------------------------------
 run codex-banner --timeout 20
-assert_rc 1 "codex hook banner exits 1" "codex-banner"
+assert_rc 2 "codex hook banner cannot pass without replay" "codex-banner"
 if grep -qE '^codex-exec +FAIL' <<<"$OUT"
 then pass "codex-exec FAIL row on a hook banner"; else fail "no codex-exec FAIL row: $OUT"; fi
 
 # --- 6: codex nonzero exit fails the run -------------------------------------
 run codex-rc --timeout 20
-assert_rc 1 "codex nonzero exit exits 1" "codex-rc"
+assert_rc 2 "codex nonzero exit cannot pass without replay" "codex-rc"
+if grep -qE '^codex-exec +FAIL' <<<"$OUT"
+then pass "codex nonzero exit still reports FAIL"; else fail "nonzero codex exit lost: $OUT"; fi
 
 # --- 7: missing DONE fails the run -------------------------------------------
 run codex-nodone --timeout 20
-assert_rc 1 "missing DONE exits 1" "codex-nodone"
+assert_rc 2 "missing DONE cannot pass without replay" "codex-nodone"
 if grep -q 'no DONE in reply' <<<"$OUT"
 then pass "missing DONE is named in the NOTE column"; else fail "no 'no DONE' note: $OUT"; fi
 
 run codex-notdone --timeout 20
-assert_rc 1 "a 'NOT DONE' reply exits 1" "codex-notdone"
+assert_rc 2 "a 'NOT DONE' reply cannot pass without replay" "codex-notdone"
+if grep -qE '^codex-exec +FAIL.*no DONE in reply' <<<"$OUT"
+then pass "NOT DONE is not accepted"; else fail "NOT DONE accepted: $OUT"; fi
 
 run codex-undone --timeout 20
-assert_rc 1 "an 'UNDONE' reply exits 1" "codex-undone"
+assert_rc 2 "an 'UNDONE' reply cannot pass without replay" "codex-undone"
+if grep -qE '^codex-exec +FAIL.*no DONE in reply' <<<"$OUT"
+then pass "UNDONE is not accepted"; else fail "UNDONE accepted: $OUT"; fi
 
 # --- 7b: tool-call proof ------------------------------------------------------
 # A turn with no tool calls fires no PreToolUse hooks, so "no banner" would be
 # true of a run that tested nothing. DONE alone must not pass.
 run codex-notools --timeout 20
-assert_rc 1 "a bare DONE with no tool-call proof exits 1" "codex-notools"
+assert_rc 2 "a bare DONE cannot pass without replay" "codex-notools"
 if grep -q 'no shell-call proof' <<<"$OUT"
 then pass "missing HEAD sha is named in the NOTE column"; else fail "no shell-proof note: $OUT"; fi
 if grep -q 'no file-read proof' <<<"$OUT"
 then pass "missing token is named in the NOTE column"; else fail "no file-read-proof note: $OUT"; fi
 
 run codex-nosha --timeout 20
-assert_rc 1 "a reply missing the HEAD sha exits 1" "codex-nosha"
+assert_rc 2 "a reply missing the HEAD sha cannot pass without replay" "codex-nosha"
+if grep -qE '^codex-exec +FAIL.*no shell-call proof' <<<"$OUT"
+then pass "missing HEAD sha still fails"; else fail "missing HEAD sha accepted: $OUT"; fi
 
 run codex-notoken --timeout 20
-assert_rc 1 "a reply missing the read token exits 1" "codex-notoken"
+assert_rc 2 "a reply missing the read token cannot pass without replay" "codex-notoken"
+if grep -qE '^codex-exec +FAIL.*no file-read proof' <<<"$OUT"
+then pass "missing read token still fails"; else fail "missing read token accepted: $OUT"; fi
 
 run claude-notools --timeout 20
 assert_rc 1 "a bare DONE from claude with no tool-call proof exits 1" "claude-notools"
@@ -346,7 +358,7 @@ assert_rc 1 "a bare DONE from claude with no tool-call proof exits 1" "claude-no
 # The rollout is the durable record of hook banners in non-interactive exec; not
 # finding it means the scan silently covered stdout only.
 run codex-norollout --timeout 20
-assert_rc 1 "a codex worker with no matching rollout exits 1" "codex-norollout"
+assert_rc 2 "a codex worker with no matching rollout cannot pass without replay" "codex-norollout"
 if grep -q 'no session rollout matched' <<<"$OUT"
 then pass "the missing rollout is named in the NOTE column"; else fail "rollout miss not named: $OUT"; fi
 
@@ -354,9 +366,14 @@ then pass "the missing rollout is named in the NOTE column"; else fail "rollout 
 # than hardcoding ~/.codex, or every clean run on such an install fails.
 set +e
 OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean CODEX_HOME="$TMP/alt-codex-home" \
-    bash "$SMOKE" --from "$FIX" --timeout 20 2>&1)"; RC=$?
+    bash "$SMOKE" --from "$FIX" --codex-only --timeout 20 2>&1)"; RC=$?
 set -e
-assert_rc 0 "the rollout scan follows CODEX_HOME" "codex-home: $OUT"
+assert_rc 2 "relocated CODEX_HOME still needs replay" "codex-home: $OUT"
+if grep -qE '^codex-exec +PASS' <<<"$OUT"; then
+    pass "the rollout scan follows CODEX_HOME"
+else
+    fail "relocated rollout was not found: $OUT"
+fi
 
 # --- 7d: branch-controlled instruction files never reach the agent -----------
 # AGENTS.md / CLAUDE.md are auto-loaded by both harnesses; under --from they are
@@ -367,10 +384,10 @@ for f in AGENTS.md CLAUDE.md CLAUDE.local.md nested/CLAUDE.md .claude/rules/hous
 done
 git -C "$FIX" -c user.email=t@t -c user.name=t add -A
 git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "hostile instruction files"
-run clean --timeout 20
+run clean --claude-only --timeout 20
 assert_rc 0 "clean run still passes with instruction files present" "instr-clean: $OUT"
 set +e
-OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean bash "$SMOKE" --from "$FIX" --timeout 20 --keep 2>&1)"; RC=$?
+OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean bash "$SMOKE" --from "$FIX" --claude-only --timeout 20 --keep 2>&1)"; RC=$?
 set -e
 KEPT="$(printf '%s\n' "$OUT" | sed -n 's/^hook-smoke-demo: demo kept at \(.*\)$/\1/p' | head -1)"
 LEFTOVER=""
@@ -407,34 +424,17 @@ assert_rc 1 "DONE echoed in the log but not in .result exits 1" "claude-nodone"
 if grep -qE '^claude-print +FAIL.*no DONE in reply' <<<"$OUT"
 then pass "claude DONE is read from .result, not the log"; else fail "log-wide DONE grep passed: $OUT"; fi
 
-# --- 9: probe findings fail the run ------------------------------------------
-run probe-lintfail --timeout 20
-assert_rc 1 "probe lint FAIL on a project hook exits 1" "probe-lintfail"
-
-run probe-replayfail --timeout 20
-assert_rc 1 "probe replay TIMEOUT on a project hook exits 1" "probe-replayfail"
-if grep -q 'TIMEOUT' <<<"$OUT"
-then pass "replay TIMEOUT surfaced in the NOTE column"; else fail "TIMEOUT not surfaced: $OUT"; fi
-
-run probe-empty --timeout 20
-assert_rc 1 "probe enumerating zero project hooks exits 1" "probe-empty"
-
-run probe-noreplay --timeout 20
-assert_rc 1 "project hooks enumerated but never replayed exits 1" "probe-noreplay"
-if grep -q '0/2 project hooks replayed' <<<"$OUT"
-then pass "unreplayed-hook count surfaced in the NOTE column"; else fail "no replayed-count note: $OUT"; fi
-
 # --- 10: claude-replay hook exit codes ---------------------------------------
 # The canned payload is a read-only `git rev-parse`; against the live hook set
 # every hook returns 0. A 2 means a guardrail blocked something benign - the
 # same break the agent workers fail on - so only 0 passes here.
 set +e
-OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=2 bash "$SMOKE" --from "$FIX" --timeout 20 2>&1)"; RC=$?
+OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=2 bash "$SMOKE" --from "$FIX" --claude-only --timeout 20 2>&1)"; RC=$?
 set -e
 assert_rc 1 "a hook blocking (rc=2) the benign payload exits 1" "hook-rc2: $OUT"
 
 set +e
-OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=7 bash "$SMOKE" --from "$FIX" --timeout 20 2>&1)"; RC=$?
+OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=7 bash "$SMOKE" --from "$FIX" --claude-only --timeout 20 2>&1)"; RC=$?
 set -e
 assert_rc 1 "a hook exiting 7 (crash) exits 1" "hook-rc7"
 
@@ -451,7 +451,7 @@ if [ -z "$_TIMEOUT_BIN" ]; then
 else
     set +e
     OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_SLEEP=6 HOOK_SMOKE_REPLAY_TIMEOUT=2 \
-        bash "$SMOKE" --from "$FIX" --timeout 20 2>&1)"; RC=$?
+        bash "$SMOKE" --from "$FIX" --claude-only --timeout 20 2>&1)"; RC=$?
     set -e
     assert_rc 1 "a hanging hook is bounded and exits 1" "hook-hang"
     if grep -qE '^claude-replay +FAIL.*rc=124' <<<"$OUT"
@@ -471,39 +471,8 @@ EMPTY="$TMP/empty-bin"; mkdir -p "$EMPTY"
 printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$(command -v jq)" > "$EMPTY/jq"
 chmod +x "$EMPTY/jq"
 
-# "pwsh absent" must hold for real, not just for our own $BIN stub dir: several
-# hosted CI images (confirmed: GitHub-hosted ubuntu-latest ships a REAL pwsh,
-# symlinked at /usr/bin/pwsh -> /opt/microsoft/powershell/7/pwsh by the apt/
-# tarball installer) ship a real pwsh reachable through an ordinary fallback
-# PATH, so simply leaving $BIN out of PATH does not make `command -v pwsh`
-# fail there the way it does on a pwsh-less dev box. Left unmasked,
-# hook-smoke-demo.sh's own `command -v pwsh` gate finds that real binary and
-# runs the REAL probe-codex-hooks.ps1 path against $DEMO — a clone of the
-# minimal $FIX fixture, which carries no scripts/ tree at all — so pwsh fails
-# to find that file and the worker reports "probe enumerated no project hooks"
-# instead of the SKIP these cases assert.
-#
-# An earlier version of this fix built the masked PATH by symlinking every
-# OTHER entry out of /usr/bin, /bin and /mingw64/bin. Two problems, found on
-# measurement rather than shipped on assumption:
-#   (1) COST: on Git Bash/MSYS without `MSYS=winsymlinks:nativestrict` (the
-#       default), `ln -s` reports success but silently falls back to a plain
-#       COPY, not a link (the exact failure mode
-#       scripts/himmelctl/test/test-himmelctl-path-shim.sh's caseG2 already
-#       documents via its own `ln -s ... && [ -L ... ]` check). Mirroring the
-#       full contents of three directories - /mingw64/bin alone typically
-#       carries git's DLL closure plus curl/openssl/perl/python, well past
-#       100MB - as real file copies would multiply this already-~8s suite's
-#       cost by an unacceptable, host-dependent amount for zero benefit.
-#   (2) COVERAGE: pwsh's real location is OS-specific and not exhausted by
-#       those three directories - confirmed via actions/runner-images'
-#       Install-PowershellCore.ps1: on windows-latest, the official MSI
-#       installs to "$env:ProgramFiles\PowerShell\7\pwsh.exe" and adds THAT
-#       to PATH, a directory this suite's constructed PATH never lists in the
-#       first place (see below). Masking-by-directory-scan is whack-a-mole
-#       against wherever any given runner image happens to install pwsh.
-#
-# The fix that is cheap AND structurally correct rather than merely guarded:
+# Construct an explicit tool PATH so neither agent can resolve accidentally
+# from the host. Wrapper scripts avoid copying entire tool directories.
 # build a PATH containing ONLY a whitelist of thin wrapper SCRIPTS (the exact
 # pattern $EMPTY/jq above already uses) for the specific external tools this
 # codex-only, agent-and-pwsh-absent run path actually calls, each resolved
@@ -650,7 +619,7 @@ if grep -q 'without its positive control' <<<"$OUT"
 then pass "the missing positive control is named"; else fail "positive control not named: $OUT"; fi
 
 # --- 12: cleanup --------------------------------------------------------------
-run clean --timeout 20
+run clean --claude-only --timeout 20
 DEMO_PATH="$(printf '%s\n' "$OUT" | sed -n 's/^hook-smoke-demo: cloning .* -> \(.*\)$/\1/p' | head -1)"
 if [ -n "$DEMO_PATH" ]; then pass "demo path announced"; else fail "no demo path in output: $OUT"; fi
 if [ -n "$DEMO_PATH" ] && [ ! -d "$DEMO_PATH" ]; then
@@ -659,7 +628,7 @@ else
     fail "demo dir survived a default run: $DEMO_PATH"
 fi
 
-run clean --timeout 20 --keep
+run clean --claude-only --timeout 20 --keep
 KEPT="$(printf '%s\n' "$OUT" | sed -n 's/^hook-smoke-demo: demo kept at \(.*\)$/\1/p' | head -1)"
 if [ -n "$KEPT" ] && [ -d "$KEPT" ]; then
     pass "--keep keeps the demo dir"

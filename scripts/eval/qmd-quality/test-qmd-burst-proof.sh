@@ -7,7 +7,7 @@
 # B = the daemon's Busy refusal at once, BD<secs> = Busy after that delay,
 # D<secs> = a result after that delay,
 # H = never answers (sleeps past the curl cap).
-# Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1 twin.
+# Platform guard: POSIX bash 3.2+; hermetic test fixtures.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

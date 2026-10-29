@@ -108,8 +108,7 @@
 # A basename shared by many files (lib.sh) over-approximates on purpose; the
 # safe direction for a gate is a suite too many, never one too few.
 #
-# Platform guard: POSIX bash 3.2+ (no mapfile / associative arrays); runs
-# under Git Bash on Windows. No .ps1 twin — it is a git + grep pipeline.
+# Platform guard: POSIX bash 3.2+ (no mapfile / associative arrays); git + grep.
 set -uo pipefail
 # A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac

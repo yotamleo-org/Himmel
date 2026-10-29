@@ -15,12 +15,7 @@
 # script needs -- nothing is installed on the host, and `command -v gh` is
 # genuinely false inside a fixture even on a station where gh is installed.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, and Git Bash on Windows runs
-# it unchanged -- the stubs are /bin/sh scripts and the only host tools used are
-# coreutils. There is no .ps1 twin because there is no ensure-tools.ps1: the
-# Windows preflight lives in scripts/setup.ps1 and does not share this code
-# path. This paragraph is the T15 marker scripts/parity/test-ws5-invariants.sh
-# looks for.
+# Platform guard: POSIX bash 3.2+; /bin/sh stubs and coreutils host tools.
 #
 # Usage: bash scripts/setup/test-ensure-tools.sh
 set -u

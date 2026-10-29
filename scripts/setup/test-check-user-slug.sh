@@ -7,13 +7,8 @@
 # unresolved slug leaves the install running (rc=3, never rc=1), says what that
 # costs, and is still visible after "Setup complete." scrolls past.
 #
-# PLATFORM GUARD (WS5 T15) — no .ps1 twin, deliberately: this is the suite for
-# a bash-only script (scripts/setup/check-user-slug.sh, which documents its own
-# guard for the same reason — setup.ps1 has no USER_SLUG step to mirror). It
-# runs under Git Bash on Windows like every other scripts/setup/test-*.sh, and
-# its fixtures are POSIX shell plus git. A PowerShell twin would have nothing
-# to exercise. If setup.ps1 ever grows a USER_SLUG step, its twin suite belongs
-# with THAT change.
+# PLATFORM GUARD: POSIX bash 3.2+, testing scripts/setup/check-user-slug.sh;
+# fixtures use POSIX shell plus git.
 set -uo pipefail
 
 here="$(cd -- "$(dirname -- "$0")" && pwd)"

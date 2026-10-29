@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # API launcher fixtures, dummy secrets and a stub claude only.
-# Platform guard: bash + node on local files; Linux verified, no .ps1 twin.
+# Platform guard: bash + node on local files; Linux verified.
 set -uo pipefail
 if [ "$(uname -s)" = Darwin ]; then
   echo "SKIP - macOS lacks flock and /proc, which bulk-call.sh needs; tracked by HIMMEL-7252"

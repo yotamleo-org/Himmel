@@ -21,7 +21,7 @@
 #   S1-S5  shard-has-work.sh: empty / [RUN ] / --list failure / no footer fail
 #          closed to true, and a >64 KiB listing is not misread under pipefail
 #
-# Platform guard: bash-only, no .ps1 twin; git + tar, Linux CI is the caller.
+# Platform guard: bash-only; git + tar, Linux CI is the caller.
 #
 # Usage: bash scripts/ci/test-pr-plan.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.

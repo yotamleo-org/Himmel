@@ -13,8 +13,8 @@
 # himmel_agent profile auto-loads a repo AGENTS.md atop SOUL.md exactly like any
 # other profile.
 #
-# Platform: gitbash-only (POSIX grep over a source tree). A test harness needs
-# no .ps1 twin. SKIPs (exit 0) when the hermes-agent source is not installed --
+# Platform: POSIX grep over a source tree.
+# SKIPs (exit 0) when the hermes-agent source is not installed --
 # absence on a CI machine does not change a verdict recorded at build time; the
 # FAIL signal is a present-but-changed source (the regression we lock against).
 set -euo pipefail

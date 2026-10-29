@@ -13,10 +13,8 @@
 #   codex-exec     `codex exec` with a trivial read-only prompt -> exit 0, DONE
 #                  in the reply, and no hook-failure banner in stdout/stderr or
 #                  the session rollout.
-#   codex-replay   scripts/codex/probe-codex-hooks.ps1 -Replay against the demo
-#                  dir -> 0 FAIL among PROJECT hooks. This is the positive
-#                  control for the codex side: it actually EXECUTES every hook,
-#                  so it distinguishes "clean" from "never fired".
+#   codex-replay   unavailable: the replay probe was removed with Windows.
+#                  A Codex run cannot pass without this positive control.
 #   claude-print   the claude CLI in print mode, same prompt -> same three
 #                  assertions.
 #   claude-replay  every .claude/settings.json PreToolUse hook that routes
@@ -362,56 +360,8 @@ elif [ "$RUN_CODEX" = "1" ]; then
 fi
 
 # ========================================================== codex-replay =====
-if [ "$RUN_CODEX" = "1" ] && command -v pwsh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    echo "hook-smoke-demo: codex-replay worker"
-    RP_LOG="$DEMO/.smoke-codex-replay.log"
-    RP_JSON="$DEMO/.smoke-codex-replay.json"
-    RP_START=$(date +%s)
-    # pwsh needs Windows paths; $DEMO is the Git-Bash POSIX form.
-    RP_DEMO_WIN="$DEMO"; RP_JSON_WIN="$RP_JSON"
-    if command -v cygpath >/dev/null 2>&1; then
-        RP_DEMO_WIN="$(cygpath -w "$DEMO")"
-        RP_JSON_WIN="$(cygpath -w "$RP_JSON")"
-    fi
-    # -NoFail: the probe exits 1 on ANY FAIL row including PLUGIN hooks we do
-    # not own (superpowers et al). The -Json dump below is the assertion, and it
-    # is parsed rather than the two printed tables - both tables carry a
-    # `project` column value, so a line grep would double-count them.
-    # INERT_ENV matters MORE here than in the agent legs: -Replay executes the
-    # Stop/SessionStart hooks too (jira-nudge-on-end, end-session-wiki,
-    # auto-arm), and those are exactly the ones with outward side effects. The
-    # probe copies the current process environment into each hook child, so the
-    # prefix reaches them.
-    env "${INERT_ENV[@]}" pwsh -NoProfile -File "$RP_DEMO_WIN\\scripts\\codex\\probe-codex-hooks.ps1" \
-        -Project "$RP_DEMO_WIN" -Replay -NoFail -Json "$RP_JSON_WIN" > "$RP_LOG" 2>&1
-    RP_SECS=$(( $(date +%s) - RP_START ))
-    RP_HOOKS=$(jq -r '[.rows[]? | select(.source == "project")] | length' "$RP_JSON" 2>/dev/null || true)
-    RP_RAN=$(jq -r '[.replayResults[]? | select(.source == "project")] | length' "$RP_JSON" 2>/dev/null || true)
-    # A project hook fails the replay if the static lint flagged it FAIL:* or if
-    # executing it for real returned anything but `ok` (rc=N / TIMEOUT).
-    RP_FAIL=$(jq -r '
-        ([.rows[]? | select(.source == "project") | .findings[]? | select(startswith("FAIL:"))] | length)
-      + ([.replayResults[]? | select(.source == "project") | select(.result != "ok")] | length)' \
-        "$RP_JSON" 2>/dev/null || true)
-    RP_NOTE=$(jq -r '[.replayResults[]? | select(.source == "project") | select(.result != "ok") | .result] | unique | join(",")' "$RP_JSON" 2>/dev/null || true)
-    case "$RP_FAIL" in ''|*[!0-9]*) RP_FAIL=0 ;; esac
-    case "$RP_HOOKS" in ''|*[!0-9]*) RP_HOOKS=0 ;; esac
-    case "$RP_RAN" in ''|*[!0-9]*) RP_RAN=0 ;; esac
-    if [ "$RP_HOOKS" -eq 0 ]; then
-        row codex-replay FAIL 0 1 "$RP_SECS" "probe enumerated no project hooks"
-    elif [ "$RP_RAN" -lt "$RP_HOOKS" ]; then
-        # Every enumerated project hook must have an EXECUTION result. A short
-        # replayResults list means hooks were listed but never run, and an
-        # unexecuted hook contributes zero failures - the vacuous pass this worker
-        # exists to rule out.
-        row codex-replay FAIL "$RP_HOOKS" $((RP_HOOKS - RP_RAN)) "$RP_SECS" "only $RP_RAN/$RP_HOOKS project hooks replayed"
-    elif [ "$RP_FAIL" -eq 0 ]; then
-        row codex-replay PASS "$RP_HOOKS" 0 "$RP_SECS" ""
-    else
-        row codex-replay FAIL "$RP_HOOKS" "$RP_FAIL" "$RP_SECS" "${RP_NOTE:-lint FAIL}"
-    fi
-elif [ "$RUN_CODEX" = "1" ]; then
-    row codex-replay SKIP - 0 0 "pwsh or jq missing"
+if [ "$RUN_CODEX" = "1" ]; then
+    row codex-replay SKIP - 0 0 "replay probe removed with Windows; positive control unavailable"
 fi
 
 # ========================================================= claude-print ======

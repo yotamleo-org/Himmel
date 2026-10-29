@@ -8,7 +8,7 @@
 # Prints JSONL: the LATEST record per ticket (or of --ticket), or with --all
 # every stored version in append order. Schema: docs/internals/usage-records.md.
 #
-# Platform guard (gitbash-only): bash 3.2-safe + jq; no .ps1 twin needed.
+# Platform guard: bash 3.2-safe + jq.
 set -euo pipefail
 
 STORE="${HIMMEL_USAGE_STORE:-${HOME}/.himmel/state/usage}"

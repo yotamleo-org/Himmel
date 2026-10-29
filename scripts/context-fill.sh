@@ -34,9 +34,8 @@
 # fabricated or stale number - the verdict, snapshot age, and (when known) the
 # transcript lag go to stderr.
 #
-# bash 3.2-safe (no mapfile, no associative arrays); ASCII only. No .ps1 twin:
-# himmel's scripts/ shell runs under Git Bash on Windows, and the only consumer
-# is an agent's Bash tool.
+# bash 3.2-safe (no mapfile, no associative arrays); ASCII only.
+# The only consumer is an agent's Bash tool.
 #
 # Parsing is deliberately regex-based rather than a JSON parser: the writer is a
 # single writeFileSync of JSON.stringify over a flat object, so the shape is
