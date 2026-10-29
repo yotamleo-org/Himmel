@@ -114,6 +114,8 @@ HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph2.json" --mirror "
 same 'a Done ticket with resolution "", null or no key, a Done/Fixed one and a Won'"'"'t Do one are no steps; the Won'"'"'t Do one holds no successor' "$(keys "$W/out2.json")" 'Closed chain:9016[0]'
 
 # --- the output is written through a fresh temp file, never a planted <out>.tmp
+# nmatch <glob>...: how many of the globbed paths exist (an unmatched glob stays literal and does not)
+nmatch() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
 printf 'precious\n' > "$W/victim"
 ln -s "$W/victim" "$W/planted.json.tmp"
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/planted.json" >/dev/null 2>&1; rc=$?
@@ -121,13 +123,13 @@ same 'a planted <out>.tmp symlink does not stop the render' "$rc" 0
 same 'a planted <out>.tmp symlink target is left unchanged' "$(cat "$W/victim")" precious
 same 'a planted <out>.tmp symlink is left in place' "$([ -L "$W/planted.json.tmp" ] && echo link)" link
 same 'the render through a planted <out>.tmp holds the steps' "$(keys "$W/planted.json")" 'Rename chain:9002[0] 9004[0] 9005[0] 9003[1]'
-same 'the render leaves no temp file of its own' "$(find "$W" -maxdepth 1 -name 'planted.json.*.tmp' | wc -l | tr -d ' ')" 0
+same 'the render leaves no temp file of its own' "$(nmatch "$W"/planted.json.*.tmp)" 0
 
 # --- a failed write exits 2 and leaves no temp file
 mkdir -p "$W/outdir"
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/outdir" >/dev/null 2>&1; rc=$?
 same 'an --out that cannot be replaced exits 2' "$rc" 2
-same 'a failed replace removes its temp file' "$(find "$W" -maxdepth 1 -name 'outdir.*.tmp' | wc -l | tr -d ' ')" 0
+same 'a failed replace removes its temp file' "$(nmatch "$W"/outdir.*.tmp)" 0
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/no-such-dir/out.json" >/dev/null 2>&1; rc=$?
 same 'an --out in a missing directory exits 2' "$rc" 2
 if [ "$(id -u)" -ne 0 ]; then
@@ -135,7 +137,7 @@ if [ "$(id -u)" -ne 0 ]; then
     chmod 555 "$W/ro"
     HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/ro/out.json" >/dev/null 2>&1; rc=$?
     same 'an unwritable --out directory exits 2' "$rc" 2
-    same 'an unwritable --out directory is left empty' "$(find "$W/ro" -mindepth 1 | wc -l | tr -d ' ')" 0
+    same 'an unwritable --out directory is left empty' "$(nmatch "$W"/ro/*)" 0
     chmod 755 "$W/ro"
 fi
 
