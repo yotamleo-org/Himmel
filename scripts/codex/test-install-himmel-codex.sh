@@ -247,7 +247,9 @@ S="$TMP/M4"; mk_state "$S"   # dry-run on the station shape
 printf 'himmel\nqmd\n' > "$S/marketplaces.txt"; printf 'qmd@qmd\tinstalled, enabled\n' > "$S/plugins.txt"
 out="$(run "$S" --dry-run --plugins=himmel-ops)"
 assert_log_lacks "$S/calls.log" "qmd" "M4 --dry-run mutates no qmd state"
-if grepq "$out" 'WOULD.*qmd'; then pass "M4 --dry-run reports the qmd changes"; else fail "M4 --dry-run did not report qmd changes"; fi
+if grepq "$out" 'WOULD REMOVE: plugin qmd@qmd'; then pass "M4 --dry-run reports the plugin removal"; else fail "M4 --dry-run did not report the plugin removal"; fi
+if grepq "$out" "WOULD REMOVE: marketplace 'qmd'"; then pass "M4 --dry-run reports the marketplace removal"; else fail "M4 --dry-run did not report the marketplace removal"; fi
+if grepq "$out" 'WOULD ADD   : mcp server qmd'; then pass "M4 --dry-run reports the qmd entry add"; else fail "M4 --dry-run did not report the qmd entry add"; fi
 S="$TMP/M5"; mk_state "$S"   # QMD_MCP_URL override, the variable the qmd launch scripts read
 printf 'himmel\n' > "$S/marketplaces.txt"
 QMD_MCP_URL="http://localhost:9999/mcp" run "$S" --plugins=himmel-ops >/dev/null
