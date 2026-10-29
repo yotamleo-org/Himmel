@@ -9,6 +9,10 @@ Also inventory, in the same pass:
   loads cleanly. If a `.bak` diverges from everything mined (entries today's
   index and topic files no longer carry), diff it and recover the missing
   durable items through the same pipeline before deleting it.
+- **Stale snapshots** — `ls -1 ~/.himmel/state/memory-snapshots/`. Directories
+  from `memory-snapshot.sh take` are kept until the change they back is
+  accepted; list the ones whose change has been, and remove them with the
+  operator's OK.
 - **Orphaned sibling stores** — `ls -d ~/.claude/projects/*/memory/`. Stores
   under project slugs whose root was renamed or deprecated (a renamed vault
   dir, a deprecated state repo) never load in any session; their durable
