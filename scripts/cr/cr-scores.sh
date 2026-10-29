@@ -5,6 +5,10 @@
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # and prints a per-model table plus drop advice.
 #
+# --window N counts PRs: rows that carry a pr (the CodeRabbit rows that
+# cr-thread-recorder.sh writes, one per review thread) group by it, every other
+# row by the PR its head or branch maps to, else by its head.
+#
 # --by-branch: per-PR review SPEND. Every other table here is
 # per-model and cumulative, so "what did this PR cost the scarce reviewer?" was
 # unanswerable — the fix-then-re-review loop has no budget, no termination
@@ -77,7 +81,7 @@ for (const l of fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean)) {
   try { records.push(JSON.parse(l)); } catch (_) { /* skip malformed */ }
 }
 // calls[branch][model] = {ok, unavailable, est_total}; heads[branch] = Set
-const calls = {}, heads = {}, findings = {};
+const calls = Object.create(null), heads = Object.create(null), findings = Object.create(null);
 for (const r of records) {
   const b = r.branch;
   if (!b) continue;                       // pre-branch records: not attributable
@@ -100,7 +104,7 @@ for (const r of records) {
 // branch (the head of the row with the max ts for that branch, across any
 // record kind) with no EFFECTIVE verdict. Mirrors clear-review-marker.sh gate 4b:
 // amend supersede records are applied before a finding verdict is judged.
-const lastRow = {};
+const lastRow = Object.create(null);
 for (const r of records) {
   const b = r.branch;
   if (!b || !r.head) continue;
@@ -134,7 +138,7 @@ for (const r of records) {
   const k2 = [b, r.finding_id, r.artifact || "diff", r.perspective || "off"].join(SEP);
   unadjByKey.set(k2, { b, verdict: typeof eff.verdict === "string" ? eff.verdict.trim() : eff.verdict });
 }
-const unadjudicated = {};
+const unadjudicated = Object.create(null);
 for (const v of unadjByKey.values()) {
   if (v.verdict === undefined || v.verdict === null || v.verdict === "") {
     unadjudicated[v.b] = (unadjudicated[v.b] || 0) + 1;
@@ -232,14 +236,44 @@ const filteredRecords = records.filter(r => {
   return true;
 });
 
-// Collect all distinct heads sorted by earliest ts, to compute last-N window.
-const headTs = {};
-for (const r of filteredRecords) {
-  if (!r.head) continue;
-  if (!headTs[r.head] || r.ts < headTs[r.head]) headTs[r.head] = r.ts;
+// The window counts PRs. A row carries its PR in `pr`; a row without one
+// (the hand-written rows) joins the PR its head maps to, then the PR its branch
+// maps to, and only a row neither reaches stays its own head-sized unit. The maps
+// are built from every row, not the filtered ones (the recorder writes artifact
+// diff / perspective off, so a filter would hide the PR a row belongs to), and a
+// head or branch seen under two PRs (a reused branch) maps to neither.
+const headPrs = Object.create(null), branchPrs = Object.create(null);
+for (const r of records) {
+  const n = Number(r.pr);
+  if (!Number.isInteger(n) || n <= 0) continue;
+  if (r.head) (headPrs[r.head] = headPrs[r.head] || new Set()).add(n);
+  if (r.branch) (branchPrs[r.branch] = branchPrs[r.branch] || new Set()).add(n);
 }
-const allHeads = Object.entries(headTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
-const windowHeads = new Set(allHeads.slice(-WINDOW_N));
+const headPr = Object.create(null), branchPr = Object.create(null);
+for (const [k, s] of Object.entries(headPrs)) if (s.size === 1) headPr[k] = [...s][0];
+for (const [k, s] of Object.entries(branchPrs)) if (s.size === 1) branchPr[k] = [...s][0];
+function unitOf(r) {
+  const n = Number(r.pr);
+  if (Number.isInteger(n) && n > 0) return "pr:" + n;
+  if (!r.head) return null;
+  if (headPr[r.head]) return "pr:" + headPr[r.head];
+  if (r.branch && branchPr[r.branch]) return "pr:" + branchPr[r.branch];
+  return "head:" + r.head;
+}
+const unitTs = {};
+for (const r of filteredRecords) {
+  const u = unitOf(r);
+  if (!u) continue;
+  if (!unitTs[u] || r.ts < unitTs[u]) unitTs[u] = r.ts;
+}
+const allUnits = Object.entries(unitTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
+const windowUnits = new Set(allUnits.slice(-WINDOW_N));
+const anyPr = Object.keys(headPrs).length > 0 || Object.keys(branchPrs).length > 0 ||
+  filteredRecords.some(r => Number.isInteger(Number(r.pr)) && Number(r.pr) > 0);
+const winPrs = [...windowUnits].filter(u => u.startsWith("pr:")).length;
+const windowNote = anyPr
+  ? "window unit: PR (" + winPrs + " PR(s) + " + (windowUnits.size - winPrs) + " head-only unit(s): rows with no pr that map to none)"
+  : "window unit: head (no row carries a pr field, so each distinct head counts)";
 
 // a finding row always carries an EMPTY verdict; the
 // real verdict arrives only as a later amend record keyed
@@ -265,7 +299,7 @@ const usage = {};
 function emptyUsage() { return { est_prompt:0, est_completion:0, est_total:0, n:0 }; }
 for (const r of filteredRecords) {
   if (!r.model) continue;
-  const inWin = windowHeads.has(r.head);
+  const inWin = windowUnits.has(unitOf(r));
   // Only finding/avail kinds seed the score tables. A model that appears ONLY in
   // usage records (e.g. a paid critic logged for cost) must NOT show as a phantom
   // zero row in the finding/avail tables — usage is tracked in its own map below.
@@ -324,8 +358,9 @@ function row(cells) {
 }
 const sep = cols.map((_,i)=>"-".repeat(W[i])).join("  ");
 
-function tableFor(stats, label) {
+function tableFor(stats, label, note) {
   console.log("\n" + label);
+  if (note) console.log(note);
   console.log(row(cols));
   console.log(sep);
   for (const m of models) {
@@ -346,7 +381,7 @@ function tableFor(stats, label) {
 // usage-only ledger skips straight to the Usage section below.
 if (models.length) {
   tableFor(all, "=== All-time ===");
-  tableFor(win, "=== Last-" + WINDOW_N + "-PRs (window) ===");
+  tableFor(win, "=== Last-" + WINDOW_N + "-PRs (window) ===", windowNote);
 
   // ── Drop advice ──────────────────────────────────────────────────────────
   const drops = [];

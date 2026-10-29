@@ -213,6 +213,7 @@ scripts/cr/test-cr-guarded-closure.sh	pr	catch:2878
 scripts/cr/test-cr-pending-audit.sh	pr	trust-path
 scripts/cr/test-cr-round-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-cr-scores.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-cr-thread-recorder.sh	pr	trust-path
 scripts/cr/test-cr-tune.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-first-pass-claude.sh	local	new since the audit, behaviour suite
 scripts/cr/test-critic-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window

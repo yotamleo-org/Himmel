@@ -2358,6 +2358,39 @@ record_after_report_pending_marker() {
     return 0
 }
 
+# CR THREAD RECORDER — after a CONFIRMED merge every CodeRabbit thread on the PR
+# gets its CR-ledger row (cr-thread-recorder.sh: resolved after a fix = fixed,
+# resolved without one = disproved, open at merge = unaddressed). Best-effort —
+# the exit code never depends on it — and recorded on the MERGED audit line as
+# `cr-threads=<result>`; a failed run is re-run by hand with the same PR number.
+# It runs inside the gate, so it is bounded (60 s, -k 10; MOG_CR_THREADS_SECS can
+# only shorten that) and never sleeps (CR_RECORDER_MAX_WAIT=0): a timeout reads
+# as `failed`, and with no timeout binary it is not run (`no-timeout`). The
+# caller's gh seam, ledger and wait settings are dropped (`env -u`); the ledger
+# is the anchor's, never the caller's cwd repo.
+CR_THREADS_RESULT="not-attempted"
+record_cr_threads() {
+    local pr="$1" rec_to="" rec_secs="${MOG_CR_THREADS_SECS:-60}" rec_gcd=""
+    CR_THREADS_RESULT="not-attempted"
+    [ -f "$himmel_repo/scripts/cr/cr-thread-recorder.sh" ] || { CR_THREADS_RESULT="no-recorder"; return 0; }
+    case "$rec_secs" in ""|*[!0-9]*|0) rec_secs=60 ;; esac
+    [ "$rec_secs" -le 60 ] || rec_secs=60
+    if command -v timeout >/dev/null 2>&1; then rec_to="timeout -k 10 $rec_secs"
+    elif command -v gtimeout >/dev/null 2>&1; then rec_to="gtimeout -k 10 $rec_secs"
+    else CR_THREADS_RESULT="no-timeout"; return 0; fi
+    rec_gcd=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$himmel_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || { CR_THREADS_RESULT="no-ledger"; return 0; }
+    if env -u GH_CMD -u CR_RECORDER_SLEEP_CMD -u CR_RECORDER_GH_TOKENS -u CR_RECORDER_FLOOR \
+            -u CR_RECORDER_LIST_CAP -u CR_RECORDER_REPO -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+            CR_LEDGER="$rec_gcd/cr-critic-scores.jsonl" CR_RECORDER_MAX_WAIT=0 \
+            ${rec_to:+$rec_to} bash "$himmel_repo/scripts/cr/cr-thread-recorder.sh" "$pr" --repo "$nwo" >/dev/null 2>&1; then
+        CR_THREADS_RESULT="ok"
+    else
+        CR_THREADS_RESULT="failed"
+    fi
+    return 0
+}
+
 # Best-effort Jira auto-transition on merge — structural fix for
 # backlog drift (a ticket left open after its work landed), rather than
 # relying on the periodic reconciler to catch it later. Never fails the
@@ -2760,7 +2793,8 @@ if [ "$merge_rc" -ne 0 ]; then
         prune_merged_worktree "$head_branch" "$sha"
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
+        record_cr_threads "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0
@@ -2835,7 +2869,8 @@ if [ "$merge_rc" -eq 0 ]; then
         prune_merged_worktree "$head_branch" "$sha"
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
+        record_cr_threads "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0

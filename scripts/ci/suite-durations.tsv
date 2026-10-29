@@ -233,6 +233,7 @@ scripts/cr/test-cr-guarded-closure.sh	5
 scripts/cr/test-cr-pending-audit.sh	2
 scripts/cr/test-cr-round-metrics.sh	3
 scripts/cr/test-cr-scores.sh	1
+scripts/cr/test-cr-thread-recorder.sh	1
 scripts/cr/test-cr-tune.sh	1
 scripts/cr/test-critic-first-pass.sh	32
 scripts/cr/test-critic-panel-fallback.sh	18
