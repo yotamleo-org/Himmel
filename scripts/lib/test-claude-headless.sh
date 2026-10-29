@@ -499,14 +499,15 @@ rm -f "$LIVE_DIR"/*.json
 # FAKE_OK writes its artifact only when launched, so "artifact absent" = REFUSED.
 SH18="$W/shadow18"; mkdir -p "$SH18"
 # The shadows come from the shell-startup file and are installed ONLY in
-# claude-headless.sh itself ($0 test): bank-preflight.sh and the other children
+# claude-headless.sh itself (a ps test: bash 3.2 runs the startup file before it
+# sets $0, so a $0 test never matches there): bank-preflight.sh and the other children
 # must stay intact, or the launch is refused for the wrong reason and the rows
 # go vacuous. They arm from a DEBUG trap at the first command AFTER the
 # seam guard (SCRIPT_DIR=...): a `return` shadow installed earlier
 # breaks the guard itself, which then refuses (exit 96) before the gate is
 # reached. SHADOW_MARK proves the trap fired.
 # shellcheck disable=SC2016  # the startup file body is written literally
-printf '%s\n' '[[ $0 = *claude-headless.sh ]] || return 0' > "$SH18/gate.sh"
+printf '%s\n' 'case $(ps -o args= -p $$) in *claude-headless.sh\ --role*) ;; *) return 0 ;; esac' > "$SH18/gate.sh"
 arm18() { printf '%s\n' "trap '[[ \$BASH_COMMAND == SCRIPT_DIR=* ]] && { trap - DEBUG; $1; : > \"\${SHADOW_MARK:-/dev/null}\"; }' DEBUG"; }
 { cat "$SH18/gate.sh"; arm18 'unset(){ :; }; return(){ :; }'; } > "$SH18/funcs.sh"
 { cat "$SH18/gate.sh"; printf '%s\n' 'shopt -s expand_aliases'; arm18 'alias unset=: return=:'; } > "$SH18/alias.sh"
@@ -529,17 +530,12 @@ check "18 control: no shadow, proxy vars stripped, launch happens" "launched" "$
 # from the gate, not from the shadows breaking the launch path.
 check "18 control: function shadows installed, no proxy: launch happens" "launched" "$(shadow_launch cf "$SH18/funcs.sh" noproxy)"
 check "18 control: alias shadows installed, no proxy: launch happens" "launched" "$(shadow_launch ca "$SH18/alias.sh" noproxy)"
-# Diagnostics: which BASH_COMMAND values a DEBUG trap sees under this bash.
-# shellcheck disable=SC2016  # the probe bodies are written literally
-{ printf '%s\n' 'SCRIPT_DIR="$(cd . && pwd)"' ':' > "$SH18/probe.sh"
-  printf '%s\n' 'trap '"'"'echo "[$BASH_COMMAND]" >> "$PROBE_OUT"'"'"' DEBUG' > "$SH18/probe-env.sh"; }
-BASH_ENV="$SH18/probe-env.sh" PROBE_OUT="$W/probe-cmds" bash "$SH18/probe.sh" >/dev/null 2>&1
-echo "diag - bash=$(command -v bash) $(bash -c 'echo $BASH_VERSION') probe-commands: $(tr '\n' ' ' < "$W/probe-cmds" 2>/dev/null)"
-{ cat "$SH18/gate.sh"; cat "$SH18/probe-env.sh"; } > "$SH18/probe-sut-env.sh"
-rm -f "$W/probe-sut-cmds"
-( BASH_ENV="$SH18/probe-sut-env.sh" PROBE_OUT="$W/probe-sut-cmds" run_sut "$FAKE_OK" "$W/art18-probe" >/dev/null 2>&1 )
-echo "diag - SUT trap saw $(wc -l < "$W/probe-sut-cmds" 2>/dev/null) commands, first: $(head -n 14 "$W/probe-sut-cmds" 2>/dev/null | cut -c1-70 | tr '\n' ' ')"
-echo "diag - SUT SCRIPT_DIR lines: $(grep -c 'SCRIPT_DIR=' "$W/probe-sut-cmds" 2>/dev/null)"
+# Diagnostics: what the startup file sees inside the SUT under this bash.
+# shellcheck disable=SC2016  # the probe body is written literally
+printf '%s\n' 'echo "[$0] [$(ps -o args= -p $$ | cut -c1-90)]" >> "$PROBE_OUT"' > "$SH18/probe-env.sh"
+rm -f "$W/probe-sut"
+( BASH_ENV="$SH18/probe-env.sh" PROBE_OUT="$W/probe-sut" run_sut "$FAKE_OK" "$W/art18-probe" >/dev/null 2>&1 )
+echo "diag - startup file in the SUT saw: $(head -n 3 "$W/probe-sut" 2>/dev/null | tr '\n' ' ')"
 rm -f "$LIVE_DIR"/*.json
 
 # --- 19: the loopback-mock seam gate keeps EXACT names only. With
