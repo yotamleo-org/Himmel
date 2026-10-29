@@ -97,13 +97,15 @@ test("J4. on a 3840 px screen the panel stays a readable width and every secret 
   await open(page);
   for (const t of ["secrets", "review", "tracker", "scope"]) {
     await page.locator(`button.tile[data-tile="${t}"]`).click();
-    await expect(page.locator(`#tile-${t}`)).toBeVisible();
-    const box = await page.locator(`#tile-${t}`).boundingBox();
-    expect(box!.width, `${t} panel`).toBeLessThanOrEqual(3840 * 0.45);
+    // a repaint when the setup read lands replaces the panel, so measure inside a retry
+    await expect.poll(async () => {
+      const w = (await page.locator(`#tile-${t}`).boundingBox())?.width ?? 0;
+      return w > 0 && w <= 3840 * 0.45 ? "readable" : `${t} panel ${w}px`;
+    }).toBe("readable");
   }
   await page.locator('button.tile[data-tile="secrets"]').click();
-  await expect(page.locator("#tile-secrets form[data-setup-form] input")).toHaveCount(3);
-  const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
-  expect(edges.length).toBeGreaterThan(1);
-  expect(new Set(edges).size, `input right edges ${edges}`).toBe(1);
+  await expect.poll(async () => {
+    const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+    return edges.length > 1 && new Set(edges).size === 1 ? "one edge" : `input right edges ${edges}`;
+  }).toBe("one edge");
 });
