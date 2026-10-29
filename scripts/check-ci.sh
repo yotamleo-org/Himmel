@@ -185,10 +185,6 @@
 # verdict line keeps the real status readable in any captured output.
 set -uo pipefail
 
-# shellcheck source=scripts/lib/env-alias.sh
-. "$(cd "$(dirname "$0")" && pwd)/lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 
 usage() {
     cat >&2 <<'EOF'

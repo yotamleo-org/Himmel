@@ -45,20 +45,12 @@ test("bank: absent without a ledger, ok with the newest row that carries bank nu
   expect(b.row).toMatchObject({ verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false, ts: "2026-10-05T02:00:00Z" });
 });
 
-test("bank: CADENCE_BANK_LEDGER overrides the default path", async () => {
+test("bank: CADENCE_USAGE_LEDGER overrides the default path", async () => {
   const own = boot();
   const alt = join(own.dir, "alt.jsonl");
   writeFileSync(alt, bankRow({ seven_day: "42.0" }) + "\n");
-  const s = boot({ CADENCE_BANK_LEDGER: alt });
+  const s = boot({ CADENCE_USAGE_LEDGER: alt });
   expect((await body(s.port)).bank.row.seven_day).toBe("42.0");
-});
-
-test("bank: CADENCE_USAGE_LEDGER wins over the old CADENCE_BANK_LEDGER", async () => {
-  const own = boot();
-  const alt = join(own.dir, "alt-usage.jsonl");
-  writeFileSync(alt, bankRow({ seven_day: "43.0" }) + "\n");
-  const s = boot({ CADENCE_USAGE_LEDGER: alt, CADENCE_BANK_LEDGER: join(own.dir, "absent.jsonl") });
-  expect((await body(s.port)).bank.row.seven_day).toBe("43.0");
 });
 
 test("bank: only the last 64 KiB is read (a 44k-line ledger; numbers only beyond the tail read as absent)", async () => {

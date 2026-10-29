@@ -18,7 +18,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 GOSH="$HERE/go.sh"
 DISP="$HERE/cr-disposition.sh"
 LA="$HERE/../../cr/ledger-append.sh"
-unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME CONSOLE_SESSION_NAME 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/cr-disp-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 scratch="/tmp/claude-$(id -u)"
@@ -123,7 +123,7 @@ contains "3: says the key does not exist" "$out" "HIMMEL-999999 does not exist"
 nogo     "3: missing key"
 
 # --- 4. a chief follow-up with three attests passes ---------------------
-rc=0; CHIEF_SESSION_NAME=chief-x CONSOLE_SESSION_NAME=console-x bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
+rc=0; CHIEF_SESSION_NAME=chief-x bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
   --source chief --attest no-weakened-guard --attest ci-green --attest no-data-loss >/dev/null 2>&1 || rc=$?
 check "4: record follow-up with repeated --attest -> exit 0" "$rc" "0"
 contains "4: the source names CHIEF_SESSION_NAME over its old name" "$(cat "$LEDGER")" "console:chief-x"

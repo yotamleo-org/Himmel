@@ -23,8 +23,8 @@ REG="${RENAME_ALIASES_FILE:-$HERE/rename-aliases.tsv}"
 # old-to-new for a marker, keep for do-not-rename. A prefix ends in '_'.
 SEED='console|chief|prose|fail|V5|never
 leg|worker|prose|fail|V4a|never
-supervisor session|chief|prose|warn|D|never
-worker session|worker|prose|warn|D|never
+supervisor session|chief|prose|fail|D|never
+worker session|worker|prose|fail|D|never
 ticket sequence|dependency chain|prose|fail|R2|never
 batch of workers|parallel wave|prose|fail|R2|never
 wave|parallel wave|prose|fail|R2|never
@@ -164,18 +164,17 @@ done <<EOF
 $V1B_ROWS
 EOF
 
-# --- slice V3: the old command and doc stay as stubs that point at the new file ---
+# --- slice V3: the old command and doc are removed, the new file stays ---
 ROOT="$HERE/../.."
-stub() {
-  local old="$1" new="$2" link
-  link="($(basename "$new"))"
+gone_stub() {
+  local old="$1" new="$2"
   check "$new exists" "yes" "$([ -f "$ROOT/$new" ] && echo yes || echo no)"
-  check "$old points at $new" "yes" "$(grep -qF -- "$link" "$ROOT/$old" 2>/dev/null && echo yes || echo no)"
+  check "$old is gone" "no" "$([ -e "$ROOT/$old" ] && echo yes || echo no)"
 }
-stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
-stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
+gone_stub .claude/commands/overnight-shift.md .claude/commands/afk-shift.md
+gone_stub docs/handover/overnight-mode.md docs/handover/afk-mode.md
 
-# --- slice V1c: the five usage scripts; bank-preflight.sh and the .ts ones still forward, the other bank-* shell forwarders are removed ---
+# --- slice V1c: the usage scripts; every bank-* forwarder is removed ---
 V1C_ROWS='bank-attribution.sh|usage-attribution.sh|identifier|old-to-new|V1|X
 bank-monitor.sh|usage-monitor.sh|identifier|old-to-new|V1|X
 bank-preflight.sh|usage-preflight.sh|identifier|old-to-new|V1|X
@@ -189,46 +188,21 @@ while IFS= read -r want; do
 done <<EOF
 $V1C_ROWS
 EOF
-# The shipped forwarder runs beside a stub of its target: argv, stdout and the
-# exit code pass through, stderr is the one deprecation line.
 # shellcheck source=fixture-tempdir.sh
 # shellcheck disable=SC1091
 . "$HERE/fixture-tempdir.sh"
 FT=$(fixture_mktemp_dir) || exit 1
 trap 'rm -rf "$FT"' EXIT
-forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
-  local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
-  d="$FT/$old"
-  mkdir -p "$d"
-  check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
-  cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
-  [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
-  printf '%s\n' "$src" > "$d/$new"
-  out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
-  rc=$?
-  err="$(cat "$d/err")"
-  check "$old forwards argv and stdout to $new" "NEW:a b|c" "$out"
-  check "$old keeps the exit code of $new" 7 "$rc"
-  check "$old prints one deprecation line" "$old is deprecated: use '$new' instead" "$err"
-  [ "$runner" = bash ] || return 0
-  out="$(bash -c '. "$1"; echo "rc=$?"' _ "$d/$old" 2> "$d/err")"
-  check "$old refuses to be sourced and runs nothing" "rc=2" "$out"
-  check "$old names the run spelling when sourced" "$old is deprecated: run '$new', do not source it" "$(cat "$d/err")"
-  # shellcheck disable=SC2016 # $0 is expanded by the inner bash, not here
-  out="$(bash -c '. "$0"; echo "rc=$?"' "$d/$old" 2> "$d/err")"
-  check "$old refuses to be sourced as \$0 and runs nothing" "rc=2" "$out"
-}
-# shellcheck disable=SC2016 # the stub body is expanded by the stub, not here
-SH_STUB='printf "NEW:%s|%s" "$1" "$2"; exit 7'
-TS_STUB='process.stdout.write("NEW:" + process.argv.slice(2).join("|")); process.exit(7);'
-forwards bash scripts/lib bank-preflight.sh usage-preflight.sh "$SH_STUB"
-# The other V1 bank-* shell forwarders are removed; their registry rows stay.
-for gone in lift attribution monitor; do
-  check "scripts/lib/usage-$gone.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/usage-$gone.sh" ] && echo yes || echo no)"
-  check "scripts/lib/bank-$gone.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/bank-$gone.sh" ] && echo yes || echo no)"
+# Every V1 old path is removed; their registry rows stay and the new file is the only one.
+for pair in scripts/lib/bank-preflight.sh:scripts/lib/usage-preflight.sh \
+            scripts/lib/bank-lift.sh:scripts/lib/usage-lift.sh \
+            scripts/lib/bank-attribution.sh:scripts/lib/usage-attribution.sh \
+            scripts/lib/bank-monitor.sh:scripts/lib/usage-monitor.sh \
+            scripts/lanes/bank-status.ts:scripts/lanes/usage-status.ts \
+            scripts/lanes/codex-bank-probe.ts:scripts/lanes/codex-usage-probe.ts; do
+  check "${pair#*:} exists" "yes" "$([ -f "$ROOT/${pair#*:}" ] && echo yes || echo no)"
+  check "${pair%%:*} is gone" "no" "$([ -e "$ROOT/${pair%%:*}" ] && echo yes || echo no)"
 done
-forwards bun scripts/lanes bank-status.ts usage-status.ts "$TS_STUB"
-forwards bun scripts/lanes codex-bank-probe.ts codex-usage-probe.ts "$TS_STUB"
 
 # --- slice V2a: the review marker clearer, its old path a forwarder ---
 V2A_ROWS='CLEAR_CR_MARKER_BUDGET_WAIT|CLEAR_REVIEW_MARKER_BUDGET_WAIT|env|value|V2|X
@@ -241,27 +215,10 @@ while IFS= read -r want; do
 done <<EOF
 $V2A_ROWS
 EOF
-# The clearer forwarder hands off to the anchor and runs the seam guard before
-# it forwards, so the fixture carries both beside it in the scripts/ layout.
-d="$FT/v2a"
-mkdir -p "$d/cr" "$d/lib"
 check "scripts/cr/clear-review-marker.sh exists" "yes" "$([ -f "$ROOT/scripts/cr/clear-review-marker.sh" ] && echo yes || echo no)"
-if cp "$ROOT/scripts/cr/clear-cr-marker.sh" "$ROOT/scripts/cr/anchor-handoff.sh" "$d/cr/" 2>/dev/null &&
-   cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/lib/"; then
-  printf '%s\n' "$SH_STUB" > "$d/cr/clear-review-marker.sh"
-  out="$(cd "$d" && env -u HIMMEL_REPO bash "$d/cr/clear-cr-marker.sh" 'a b' c 2> "$d/err")"
-  rc=$?
-  check "clear-cr-marker.sh forwards argv and stdout to clear-review-marker.sh" "NEW:a b|c" "$out"
-  check "clear-cr-marker.sh keeps the exit code of clear-review-marker.sh" 7 "$rc"
-  check "clear-cr-marker.sh prints one deprecation line" \
-    "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead" "$(cat "$d/err")"
-  check "clear-cr-marker.sh hands off to the anchor before it forwards" yes \
-    "$(awk '/anchor-handoff\.sh/ { h = NR } /^exec / { e = NR } END { print (h && e && h < e) ? "yes" : "no" }' "$d/cr/clear-cr-marker.sh")"
-else
-  check "scripts/cr/clear-cr-marker.sh exists" "yes" "no"
-fi
+check "scripts/cr/clear-cr-marker.sh is gone" "no" "$([ -e "$ROOT/scripts/cr/clear-cr-marker.sh" ] && echo yes || echo no)"
 
-# --- slice V2b: the CodeRabbit and review libs, each old path a sourcing alias ---
+# --- slice V2b: the CodeRabbit and review libs, each old path removed ---
 V2B_ROWS='cr-available.sh|coderabbit-available.sh|identifier|old-to-new|V2|X
 cr-body-findings.sh|coderabbit-body-findings.sh|identifier|old-to-new|V2|X
 cr-ledger-evidence.sh|review-ledger-evidence.sh|identifier|old-to-new|V2|X
@@ -287,19 +244,8 @@ while IFS= read -r want; do
   got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
   check "V2b row '$old'" "$tabbed" "$got"
   new="$(printf '%s' "$want" | cut -d'|' -f2)"
-  # The hooks and the frozen red-control fixtures still source the old path,
-  # so it loads the new file and stays silent.
-  d="$FT/v2b-$old"
-  mkdir -p "$d" "$FT/v2b-cwd"
   check "scripts/lib/$new exists" "yes" "$([ -f "$ROOT/scripts/lib/$new" ] && echo yes || echo no)"
-  cp "$ROOT/scripts/lib/$old" "$d/$old" 2>/dev/null || { check "scripts/lib/$old exists" "yes" "no"; continue; }
-  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
-  printf 'v2b_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/$new"
-  out="$(cd "$FT/v2b-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v2b_probe x' _ "$d/$old" 2> "$d/err")"
-  check "$old sources $new from another cwd and keeps its status" "rc=5|NEW:x" "$out"
-  check "$old prints nothing when sourced" "" "$(cat "$d/err")"
-  out="$(cd "$d" && bash -c '. ./"$1"; v2b_probe y' _ "$old" 2>/dev/null)"
-  check "$old sources $new from a relative path" "NEW:y" "$out"
+  check "scripts/lib/$old is gone" "no" "$([ -e "$ROOT/scripts/lib/$old" ] && echo yes || echo no)"
 done <<EOF
 $V2B_ROWS
 EOF
@@ -370,7 +316,14 @@ for gone in scripts/handover/chief/console.sh \
   scripts/lib/cr-default-base.sh scripts/lib/cr-high-risk-diff.sh scripts/lib/cr-trigger-ledger.sh; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
-forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
+# Removal release X: the forwarders with no live caller are deleted; their registry rows stay.
+for gone in scripts/handover/chief-kit/close-wrapped-legs.sh scripts/handover/chief-kit/console-budget.sh \
+  scripts/handover/chief-kit/leg-budget.sh scripts/handover/leg-resume-brief.sh \
+  scripts/lib/initiative-legs.sh scripts/eval/console-load-inventory.py scripts/telegram/console-route.ts \
+  scripts/handover/chief-kit/close-wrapped-leg.sh docs/handover/console-template.md \
+  docs/handover/leg-brief-template.md docs/handover/leg-preface.md; do
+  check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
+done
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do

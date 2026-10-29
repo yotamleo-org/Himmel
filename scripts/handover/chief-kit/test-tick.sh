@@ -195,7 +195,7 @@ cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-
 # ledger row or a launch refusal.
 cat > "$W/repo/scripts/lib/usage-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
-[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-${CADENCE_BANK_LEDGER:-unset}}" "${CADENCE_USAGE_LAUNCH:-${CADENCE_BANK_LAUNCH:-unset}}" > "$STUB_PF_SEEN"
+[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-unset}" "${CADENCE_USAGE_LAUNCH:-unset}" > "$STUB_PF_SEEN"
 printf '%s\n' "${STUB_FLEET_LINE-bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8}" >&2
 printf '%s\n' "${STUB_PF_VERDICT:-PROCEED}"
 STUB
@@ -240,7 +240,6 @@ export TICK_STATE_DIR="$W/state"
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
-unset HIMMEL_LEG_FAILURES_LEDGER # old name, read both ways
 export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
@@ -2374,11 +2373,15 @@ contains 'verbose labels metered balance' \
   "$(STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT" --verbose)" 'OpenRouter: 7.50:key-limit_remaining'
 
 contains 'OpenRouter tick bank is the lane verdict, not subscription usage' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' usage=openrouter:SKIPPED-BANK '
+  "$(CADENCE_USAGE_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' usage=openrouter:SKIPPED-BANK '
+case "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" in # old-term-ok
+  *' usage=openrouter:'*) fail 'the retired CADENCE_BANK_LANE selected the OpenRouter lane' ;; # old-term-ok
+  *) pass 'the retired CADENCE_BANK_LANE selects no lane' ;; # old-term-ok
+esac
 contains 'OpenRouter worker marker selects lane verdict' \
-  "$(CADENCE_BANK_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' usage=openrouter:BANK-UNKNOWN '
+  "$(CADENCE_USAGE_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' usage=openrouter:BANK-UNKNOWN '
 contains 'OpenRouter funded verdict surfaces without changing raw balance' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' usage=openrouter:PROCEED '
+  "$(CADENCE_USAGE_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' usage=openrouter:PROCEED '
 
 # --- spare=<pct>@<h>h ---------------------------------------------
 # tick reads usage-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
@@ -2482,10 +2485,10 @@ rmdir "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 mkdir -p "$W/fl-old-dir"
-same 'fails= reads HIMMEL_WORKER_SESSION_FAILURES_LEDGER before the old name' "$(HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old-dir" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
+same 'fails= reads only HIMMEL_WORKER_SESSION_FAILURES_LEDGER: the retired name beside it changes nothing' "$(HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old-dir" fails_of "$d4670")" '1/1@error/Edit*1' # old-term-ok
 rmdir "$W/fl-old-dir"
 cp "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$W/fl-old.jsonl"
-same 'fails= still reads the old name alone' "$(unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER; HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old.jsonl" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
+same 'fails= ignores the retired HIMMEL_LEG_FAILURES_LEDGER when the new name is unset' "$(unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER; HOME="$W/nohome" HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old.jsonl" fails_of "$d4670")" '' # old-term-ok
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= remains visible when OpenRouter is skipped' "$f4670" ' fails=1/1@error/Edit*1'
 contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'

@@ -243,7 +243,7 @@
 # execs (default: claude, PATH-resolved - unchanged for every existing
 # caller). HEADED_ARM_LAUNCHER_ENV is a space-separated list of extra
 # NAME=VALUE tokens (same "no spaces inside a value" contract as
-# codex-bank-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
+# codex-usage-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
 # ahead of the launcher, for a lane that needs its own opt-in/effort env
 # (e.g. the claudex lane's CLAUDEX_LANE_OK=1). HEADED_ARM_RECORDER=1 wraps
 # the launcher in `script -q -f "$LOG" -c ...` instead of execing it
@@ -330,15 +330,6 @@ fi
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
-# CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT. When the two
-# disagree, standard wins, so a stale name never widens the 1m gate.
-[ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
-# shellcheck source=../lib/env-alias.sh
-. "$(cd "$(dirname "$0")" && pwd)/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
-alias_env HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES
-alias_env WORKER_SESSION_PROFILE_SETTINGS LEG_PROFILE_SETTINGS
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
@@ -377,7 +368,7 @@ _ab_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
 fi
-unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
+unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
 if ! _context_json="$(node "$_context_profiles" "$_context_profile" --context)" \
     || ! _profile_mode="$(printf '%s' "$_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
     || ! _profile_autocompact="$(printf '%s' "$_context_json" | jq -er '.autocompact | select(type == "number" and . >= 200000 and . <= 1000000 and floor == .)')"; then
@@ -999,7 +990,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_worker_var() {
     case "$1" in
-        HIMMEL_*|LEG_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }

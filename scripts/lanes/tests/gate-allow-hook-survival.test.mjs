@@ -3,7 +3,7 @@
 // explicit MODEL of Claude Code's own permission-list matcher (see its header
 // comment), not of scripts/hooks/guard-pr-check-literal.sh,
 // which is the ACTUAL structural fence that stops a rider/compound command
-// from riding the ledger-append.sh / clear-cr-marker.sh gateAllow `:*`
+// from riding the ledger-append.sh / clear-review-marker.sh gateAllow `:*`
 // wildcard tail (the model itself says as much — it deliberately excludes
 // `:*` rules from its rider assertions, since the model "lets a `:*` tail
 // absorb anything"). Two prior gate/hook PRs this shift shipped a rule backed
@@ -51,9 +51,9 @@ const RIDER_COMMANDS = [
   'bash scripts/cr/ledger-append.sh finding --branch x `echo evil`',
   'bash scripts/cr/ledger-append.sh finding --branch x && echo evil',
   'bash scripts/cr/ledger-append.sh finding --branch x || echo evil',
-  'bash scripts/cr/clear-cr-marker.sh fix/x | sh',
-  'bash scripts/cr/clear-cr-marker.sh fix/x && echo evil',
-  'bash scripts/cr/clear-cr-marker.sh fix/x\necho evil',
+  'bash scripts/cr/clear-review-marker.sh fix/x | sh',
+  'bash scripts/cr/clear-review-marker.sh fix/x && echo evil',
+  'bash scripts/cr/clear-review-marker.sh fix/x\necho evil',
   // cr-scores.sh's new gateAllow `:*` grant reuses this same
   // hook-target safety, so it needs the same real-binary proof.
   'bash scripts/cr/cr-scores.sh --by-branch fix/x; echo evil',
@@ -85,7 +85,7 @@ for (const command of RIDER_COMMANDS) {
 // HEAD (e.g. GitHub Actions' checkout) for a reason unrelated to riders.
 const CLEAN_COMMANDS = [
   'bash scripts/cr/ledger-append.sh amend --head abc123 --id x --set severity=crit --reason y',
-  'bash scripts/cr/clear-cr-marker.sh --dry-run',
+  'bash scripts/cr/clear-review-marker.sh --dry-run',
   'bash scripts/cr/cr-scores.sh --by-branch fix/x',
 ];
 

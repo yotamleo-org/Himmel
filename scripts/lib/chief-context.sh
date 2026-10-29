@@ -120,8 +120,8 @@ chief_context_autocompact() {
 #
 # Only for the no-explicit-value path. It exempts chiefs from
 # the standard default: chiefs default to 1m, with
-# CHIEF_CONTEXT=standard (old name CONSOLE_CONTEXT) opting down; each caller
-# passes the env value it read both ways. Non-chief arms remain standard
+# CHIEF_CONTEXT=standard opting down; each caller
+# passes the env value it read. Non-chief arms remain standard
 # and ignore the environment. A valid env choice is explicit provenance.
 # shellcheck disable=SC2034  # output-contract globals, read by sourcing callers (arm-resume.sh, headed-arm.sh, chief.sh)
 chief_context_default() {
@@ -215,35 +215,22 @@ chief_context_worker_env_unset_names() {
         HIMMEL_RELEASE_MANAGER \
         HIMMEL_RM_DOC \
         HIMMEL_RM_RELEASE \
-        HIMMEL_LEG_CONTEXT_MODE \
         HIMMEL_WORKER_SESSION_CONTEXT_MODE \
-        HIMMEL_LEG_AUTOCOMPACT \
         HIMMEL_WORKER_SESSION_AUTOCOMPACT \
         CLAUDE_CODE_EFFORT_LEVEL \
         CLAUDEX_LANE_OK \
-        LEG_LANE \
         WORKER_SESSION_LANE \
-        CADENCE_BANK_LANE \
         CADENCE_USAGE_LANE \
         OPENROUTER_MODEL \
         CODEX_MODEL \
-        LEG_PROFILE_SETTINGS \
         WORKER_SESSION_PROFILE_SETTINGS \
-        LEG_PROFILE_PREFACE \
         WORKER_SESSION_PROFILE_PREFACE \
-        LEG_PROFILE_MCP_CONFIG \
         WORKER_SESSION_PROFILE_MCP_CONFIG \
-        LEG_PROFILE_NO_SETTING_SOURCES \
         WORKER_SESSION_PROFILE_NO_SETTING_SOURCES \
-        LEG_SESSION_ID \
         WORKER_SESSION_ID \
-        HIMMEL_LEG_PROFILE \
         HIMMEL_WORKER_SESSION_PROFILE \
-        LEG_CLAUDE_BIN \
         WORKER_SESSION_CLAUDE_BIN \
-        HIMMEL_LEAN_LEG \
         HIMMEL_LEAN_WORKER_SESSION \
-        LEG_EFFORT \
         WORKER_SESSION_EFFORT \
         HEADED_ARM_UNAME \
         HEADED_ARM_REQUIRED_AUTOCOMPACT \
@@ -258,23 +245,17 @@ chief_context_worker_env_unset_names() {
 # session is or which guards it runs under. arm-resume.sh clears exactly these
 # in its `at` job body (F2): `at` snapshots the submitter's env, so
 # an arm made from inside a consult would otherwise hand the resumed session
-# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES (old name LEG_PROFILE_NO_SETTING_SOURCES)
-# and friends. Each worker-session name sits beside its old name in both lists. The rest of the list stays live
+# WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
+# and friends. The rest of the list stays live
 # there on purpose: HIMMEL_CONSOLE_LEG turns worker-only guard hooks ON and
 # HANDOVER_DIR names the root, so clearing them would widen, not narrow.
 chief_context_launch_seam_env_names() {
     printf '%s\n' \
-        LEG_PROFILE_SETTINGS \
         WORKER_SESSION_PROFILE_SETTINGS \
-        LEG_PROFILE_PREFACE \
         WORKER_SESSION_PROFILE_PREFACE \
-        LEG_PROFILE_MCP_CONFIG \
         WORKER_SESSION_PROFILE_MCP_CONFIG \
-        LEG_PROFILE_NO_SETTING_SOURCES \
         WORKER_SESSION_PROFILE_NO_SETTING_SOURCES \
-        LEG_SESSION_ID \
         WORKER_SESSION_ID \
-        LEG_CLAUDE_BIN \
         WORKER_SESSION_CLAUDE_BIN \
         HEADED_ARM_LAUNCHER \
         HEADED_ARM_LAUNCHER_ENV

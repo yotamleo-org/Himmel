@@ -157,8 +157,8 @@ printf '#!/usr/bin/env bash\necho "TICK workers=none tails=none"\n' > "$W/bin/ti
 chmod +x "$W/bin"/*
 export PATH="$W/bin:$PATH"
 printf '%s\n' '{"five_hour":{"utilization":30},"seven_day":{"utilization":28}}' > "$W/bank.json"
-export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_BANK_CACHE="$W/bank.json" CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_LEDGER=/dev/null
+export TICK_BANK_CACHE_FILE="$W/bank.json" CADENCE_USAGE_CACHE="$W/bank.json" CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_LEDGER=/dev/null
 export TICK_STATE_DIR="$W/state" TICK_LAUNCH_DIR="$W/launch" TICK_TMPDIR="$W"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/routes.jsonl" SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=dra
 export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"

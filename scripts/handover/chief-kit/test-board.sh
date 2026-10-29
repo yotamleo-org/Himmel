@@ -40,7 +40,7 @@ mkdir -p "$B" "$W/bin" "$W/repo"
 unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
 # worker_description reads the tracker and forge seams: pin both off so no worker row reaches Jira or GitHub.
 export TRACKER=none FORGE=none
-export HIMMEL_LEG_FAILURES_LEDGER="$W/leg-failures.jsonl" # old name, read both ways
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl" HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 # the usage lift row reads the lift's `show` output through this stub,
 # never the operator's lift file or account. USAGE_LIFT_STUB_OUT is a fixture file
@@ -856,13 +856,13 @@ mrun >/dev/null; rc=$?
 same 'failures panel: no lock start, rc 0' "$rc" "0"
 contains 'failures panel: no lock start reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
 mkdir -p "$W/fl-dir"
-QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_LEG_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$? # old name, read both ways
+QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
 same 'failures panel: unreadable ledger, rc 0' "$rc" "0"
 contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
 rm -f "$M/board.html"
 QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
 same 'failures panel: worker-session unreadable ledger, rc 0' "$rc" "0"
-contains 'failures panel: HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over the old name' "$(cat "$M/board.html")" 'leg failures unavailable'
+contains 'failures panel: HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path' "$(cat "$M/board.html")" 'leg failures unavailable'
 for i in $(seq 1 12); do frow 2026-10-07T03:10:00Z "N$i" "c/k$(printf '%02d' "$i")" 1 false; done > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
 same 'failures panel: the live page shows the top 5 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "5"
@@ -977,23 +977,6 @@ printf 'garbage\n' > "$BL"
 contains 'bank lift: unparseable show output reads unavailable' "$(bl_html "$BL")" 'data-bank-lift="?">weekly budget override: unavailable</p>'
 html="$(BOARD_USAGE_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
 contains 'bank lift: a failing show reads unavailable, never fatal' "$html" 'data-bank-lift="?"'
-# The old bank-lift: prefix and the old BOARD_BANK_LIFT seam still read.
-printf '{"window":"seven_day","until":1791000000,"standing":true}\nbank-lift: VALID\n' > "$BL"
-contains 'usage lift: the old bank-lift: prefix still reads VALID' "$(TZ=UTC bl_html "$BL")" \
-    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · standing</p>'
-printf 'bank-lift: none\nbank-lift: INVALID: missing\n' > "$BL"
-contains 'usage lift: the old bank-lift: none still reads no lift' "$(bl_html "$BL")" 'data-bank-lift="none">weekly budget override: no lift set</p>'
-html="$( (unset BOARD_USAGE_LIFT; export BOARD_BANK_LIFT="$W/bin/usage-lift-stub"; mrun >/dev/null; cat "$M/board.html") )"
-contains 'usage lift: BOARD_BANK_LIFT alone still names the script' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
-html="$(BOARD_BANK_LIFT="$W/no-such-lift" mrun >/dev/null; cat "$M/board.html")"
-contains 'usage lift: BOARD_USAGE_LIFT wins over BOARD_BANK_LIFT' "$html" 'data-bank-lift="none">weekly budget override: no lift set</p>'
-# Both lift files read: the board shows the stricter of the two, as the validator does.
-printf '{"window":"seven_day","until":1791000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1790000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
-contains 'usage lift: with both files the earlier until and no standing show' "$(TZ=UTC bl_html "$BL")" \
-    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-09-21 14:13 · window</p>'
-printf '{"window":"seven_day","until":1700000000,"standing":true}\nusage-lift: also read /x/bank-lift.json\n{"window":"seven_day","until":1791000000,"standing":false}\nusage-lift: VALID\n' > "$BL"
-contains 'usage lift: a standing policy'"'"'s old until never shows beside a window lift' "$(TZ=UTC bl_html "$BL")" \
-    '<p class="sub" data-bank-lift="valid">weekly budget override: VALID until 2026-10-03 04:00 · window</p>'
 
 # --- cloud sessions panel: each cloud-sessions.tsv row with the state
 # cloud-liveness.mjs derives, the same derivation as tick.sh's cloud= field. Real

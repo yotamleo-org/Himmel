@@ -51,9 +51,6 @@ REPO_ROOT="$STATION_ROOT"
 # shellcheck source=lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/handover-path.sh"
-# shellcheck source=lib/env-alias.sh
-# shellcheck disable=SC1091
-. "$SELF_DIR/lib/env-alias.sh"
 # The station/--root checkout may predate this lib (a worker testing its own
 # branch, an older primary): fall back to the lib beside this script.
 # shellcheck source=lib/claude-version.sh
@@ -4149,11 +4146,8 @@ check_c57_dotenv_allowlists() {
 # WARN here means the refresh did not run or failed (codex missing, logged out,
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
-    # old names, read only while HIMMEL_LEGACY_NAMES is on
-    alias_env CODEX_USAGE_CACHE CODEX_BANK_CACHE
     local cache="${CODEX_USAGE_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
     local ttl=21600 cmd="bun $REPO_ROOT/scripts/lanes/codex-usage-probe.ts"
-    legacy_names_on && ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}"
     local at captured now age
     # the new name counts only when it is a positive number, as bank-status reads it.
     case "${CODEX_USAGE_CACHE_TTL_SECONDS:-}" in

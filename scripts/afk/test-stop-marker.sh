@@ -133,13 +133,6 @@ case "$rc" in
     *) fail "expected rc=3, got $rc" "$out" ;;
 esac
 
-# Test 10: the old name still places the marker ---------------------
-echo "TEST: OVERNIGHT_STOP_DIR alone still sets the marker dir"
-old_dir="$TMP_ROOT/old-name"
-rc=0; out=$(env -u AFK_STOP_DIR OVERNIGHT_STOP_DIR="$old_dir" bash "$SCRIPT" set 2>&1) || rc=$?
-assert_rc "old-name set rc=0" "0" "$rc"
-if [ -f "$old_dir/.overnight-stop" ]; then pass "old name places the marker"; else fail "old name ignored" "$out"; fi
-
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

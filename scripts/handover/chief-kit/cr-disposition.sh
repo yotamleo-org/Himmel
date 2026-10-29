@@ -54,10 +54,6 @@ case "$SHA" in *[!0123456789abcdef]*) usage; exit 2 ;; esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_SESSION_NAME CONSOLE_SESSION_NAME
 GH="${GH_CMD:-gh}"
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091

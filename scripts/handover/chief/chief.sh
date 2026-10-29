@@ -84,15 +84,6 @@ CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh"
 . "$HERE/../../lib/chief-context.sh"
-# shellcheck source=../../lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
-alias_env CHIEF_MODEL CONSOLE_MODEL
-alias_env CHIEF_WORK_DIR CONSOLE_WORK_DIR
-for _chief_seam in ARM_FOREGROUND BUCKET BUS_CLI BUS_PROFILES_MJS CONTEXT DOC \
-    FILL_PERCENT HEADED_ARM MODEL TEMPLATE_DIR WORK_DIR; do
-    alias_env "CHIEF_$_chief_seam" "CONSOLE_$_chief_seam"
-done
 # shellcheck source=../../lib/claude-version.sh
 . "$HERE/../../lib/claude-version.sh"
 # shellcheck source=../../lib/git-clean.sh
@@ -100,7 +91,7 @@ done
 . "$HERE/../../lib/git-clean.sh"
 # Pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# bank-preflight.sh for the failure mode).
+# usage-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR USER_SLUG JIRA_PROJECT_KEY
 
 ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ"

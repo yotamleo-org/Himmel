@@ -23,7 +23,7 @@
 #          The keep child cannot run gh or git push: a replayed brief may ask it to post.
 #   --ceiling  stop before the next call once the class's summed cost-eq reaches it.
 # Before each task's calls bank-preflight must print PROCEED, else the sweep stops (exit 3).
-# Env: FVK_CLAUDE (default claude), FVK_PREFLIGHT (default scripts/lib/bank-preflight.sh),
+# Env: FVK_CLAUDE (default claude), FVK_PREFLIGHT (default scripts/lib/usage-preflight.sh),
 #      FVK_SCRATCH (default a fresh tmpdir) - the test seams.
 # Exit: 0 done; 2 usage; 3 stopped (bank refusal, ceiling or an unsummable spend, a historic
 #       run that cannot be summarized, or no vm-lock for a vm call).
@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 FVK="$HERE/fvk.py"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
 CLAUDE_BIN="${FVK_CLAUDE:-claude}"
-PREFLIGHT="${FVK_PREFLIGHT:-$REPO_DEFAULT/scripts/lib/bank-preflight.sh}"
+PREFLIGHT="${FVK_PREFLIGHT:-$REPO_DEFAULT/scripts/lib/usage-preflight.sh}"
 cls=""; out=""; only=""; arms="keep,fold"; reps=2; ceiling=""; max_usd=10; tmo=1800; repo="$REPO_DEFAULT"; fixtures="$HERE/fixtures"
 
 die() { echo "run.sh: $1" >&2; exit 2; }

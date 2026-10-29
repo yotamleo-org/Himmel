@@ -285,27 +285,15 @@ echo "Test 19: merge,public carries both workers"
 out=$(printf '{}' | HIMMEL_INITIATIVE=merge,public bash "$hook")
 assert_has "merge,public in canonical order" "Active steps: merge,public" "$out"
 
-# ---------- 20. overnight profile: selector reads the overnight var ----------
-echo "Test 20: HIMMEL_OVERNIGHT=1 + HIMMEL_INITIATIVE_OVERNIGHT=all → 6-worker set"
-out=$(printf '{}' | HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
-assert_has "overnight six-worker CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
-assert_has "old names: header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
-
-# ---------- 20b. afk names: HIMMEL_AFK selects, a set falsy name never widens --
-echo "Test 20b: HIMMEL_AFK=1 selects the afk profile over the day profile"
+# ---------- 20. afk names: HIMMEL_AFK selects, a set falsy name never widens --
+echo "Test 20: HIMMEL_AFK=1 selects the afk profile over the day profile"
 out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_AFK=all bash "$hook")
 assert_has "afk six-worker CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
 assert_has "afk header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
-out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
-assert_has "old value var read under the afk selector" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
-echo "Test 20c: HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 stays on the day profile"
-out=$(printf '{}' | HIMMEL_AFK=0 HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
+echo "Test 20c: a set falsy HIMMEL_AFK stays on the day profile"
+out=$(printf '{}' | HIMMEL_AFK=0 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_AFK=all bash "$hook")
 assert_has "conflict reads the day profile" "Active steps: prcheck" "$out"
 assert_lacks "conflict does not widen to the afk profile" "HIMMEL_INITIATIVE_AFK is active" "$out"
-echo "Test 20d: HIMMEL_INITIATIVE_AFK wins over HIMMEL_INITIATIVE_OVERNIGHT"
-out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK=prcheck HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
-assert_has "new value var wins" "Active steps: prcheck" "$out"
-assert_lacks "old value var does not widen" "Active steps: execute" "$out"
 
 # ---------- 21. plan token reserved → carried, but the runbook gives no step --
 echo "Test 21: plan,prcheck → plan is echoed for typo visibility"
@@ -424,8 +412,8 @@ for val in 1 all prcheck,pr plan,execute,prcheck,pr,ticket,public,handover; do
     out=$(printf '{}' | HIMMEL_REPO="$repo_root" HIMMEL_INITIATIVE="$val" bash "$hook")
     budget_check "$val" "$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]')" "$out"
 done
-out=$(printf '{}' | HIMMEL_REPO="$repo_root" HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
-budget_check "overnight all" "$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]')" "$out"
+out=$(printf '{}' | HIMMEL_REPO="$repo_root" HIMMEL_AFK=1 HIMMEL_INITIATIVE_AFK=all bash "$hook")
+budget_check "afk all" "$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]')" "$out"
 
 # ---------- 28. Pointer does NOT re-inline the runbook bodies ----------------
 # Guards the regression that would silently undo this change: someone pastes a

@@ -101,7 +101,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_HEADROOM_PROXY 2>/dev/null || true
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs"
 # a real arm runs the REAL bank-preflight; keep its usage-cache
 # refresh off the live /tmp/claude/statusline-usage-cache.json.
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Runner-file seam (fold of Goomal's fix/arm-resume-macos-cron): every REAL
 # (non-dry-run) arm below now writes a generated runner file under
 # ${ARM_RUNNER_DIR:-$HOME/.claude/handover/arm-runners} -- point it at a

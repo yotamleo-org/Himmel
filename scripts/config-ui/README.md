@@ -61,8 +61,7 @@ probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE
 default `/tmp/claude/statusline-usage-cache.json`, stale after
 `$CADENCE_USAGE_MAX_AGE`, default 600 s) and the Codex usage cache
 (`$CODEX_USAGE_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
-`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_USAGE_*` and
-`CODEX_BANK_*` names are still read. Per usage source and window it returns
+`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). Per usage source and window it returns
 `{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
 possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
 does not report (Codex 5h is often null), is `unknown (why)`, never 0 %; a

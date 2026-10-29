@@ -18,7 +18,7 @@ ARM="$SCRIPT_DIR/arm-resume.sh"
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
 # case here that reaches that far would call the REAL fleet count against
 # THIS machine's own ambient process table and could spuriously refuse
@@ -31,8 +31,8 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# bank-preflight.sh now RESERVES a fleet slot per declared launch
-# (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
+# usage-preflight.sh now RESERVES a fleet slot per declared launch
+# (CADENCE_USAGE_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes -- so the FLEET_PS_CMD
 # stub above (which zeroes the live count) no longer zeroes the fleet count
 # by itself. This suite performs far more than HIMMEL_FLEET_CAP real arms,
@@ -75,7 +75,7 @@ export WORKER_BRIDGE_ROOT="$TMP/bridge"
 # the public wave-2k CI (the private repo runs no Actions by design).
 export ARM_TEMP_CWD_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Shipped-work shield: the preflight derives a ticket
 # ID from the handover (fixtures here name one) and probes LIVE Jira —
 # the day that ticket went Done, every fixture arm refused rc=11 (21/36 FAIL).

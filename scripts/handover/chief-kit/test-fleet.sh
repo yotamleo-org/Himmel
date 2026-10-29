@@ -3,7 +3,7 @@
 # UI (`--serve` page + `--json` / `--out` snapshot). Every external source is a
 # fixture or a stub: the chief doc, worker docs and launch logs are files under a
 # temp handover root; /proc is a fixture tree (FLEET_PROC); queue-lock.sh,
-# bank-preflight.sh, gh and `claude agents --json` are stubs (FLEET_QUEUE_LOCK /
+# usage-preflight.sh, gh and `claude agents --json` are stubs (FLEET_QUEUE_LOCK /
 # FLEET_BANK / FLEET_GH / FLEET_AGENTS). The
 # suite reads no live queue, process table or GitHub state. Worker identity is the REAL
 # scripts/lib/worker-identity.sh.

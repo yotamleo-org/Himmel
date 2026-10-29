@@ -36,14 +36,6 @@
 # ~50x slower than the host, so the fix is a host-side push
 # (scripts/luna/ship-index.sh), never a local rebuild.
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env HIMMEL_LEAN_WORKER_SESSION HIMMEL_LEAN_LEG
-fi
-unset _ea_dir
 
 # a worker launched by headed-arm-worker.sh --profile
 # carries HIMMEL_LEAN_WORKER_SESSION=1. SessionStart output is not paid once - it sits in

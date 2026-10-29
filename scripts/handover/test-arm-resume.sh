@@ -241,16 +241,16 @@ export ARM_RUNNER_DIR="$TMP/arm-runners"
 # a non-dry-run arm runs the REAL bank-preflight, whose producer
 # refresh writes the usage cache; keep both cache knobs off the live
 # /tmp/claude/statusline-usage-cache.json (checked again before the summary).
-export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # the real producer only writes the cache when a live OAuth fetch
 # succeeds, so "the scratch cache file exists" was host- and network-dependent.
 # A stub producer records the cache path each refresh was handed instead: the
 # end-of-run row asserts a real refresh ran AND none was aimed at the live cache.
 BANK_PRODUCER_LOG="$TMP/bank-producer.log"
 : > "$BANK_PRODUCER_LOG"
-export CADENCE_BANK_PRODUCER="$TMP/bank-producer-stub.sh"
+export CADENCE_USAGE_PRODUCER="$TMP/bank-producer-stub.sh"
 # shellcheck disable=SC2016 # $CLAUDE_USAGE_CACHE must expand in the stub, not here
-printf '#!/bin/bash\nprintf "%%s\\n" "$CLAUDE_USAGE_CACHE" >> "%s"\n' "$BANK_PRODUCER_LOG" > "$CADENCE_BANK_PRODUCER"
+printf '#!/bin/bash\nprintf "%%s\\n" "$CLAUDE_USAGE_CACHE" >> "%s"\n' "$BANK_PRODUCER_LOG" > "$CADENCE_USAGE_PRODUCER"
 # Default: no other HIMMEL-* scheduled task, so the operator's real crontab
 # entries (same-minute fixtures -> rc=6) cannot decide a case. Cases testing the
 # collision path set the seam inline, which overrides this.
@@ -4907,7 +4907,7 @@ if _sec_selected "2545" "HIMMEL-2545"; then
 # not leave either backend's shared scheduler populated.
 : > "$TMP/sched-stub-t17.tasks"
 rm -f "$TMP/sched-stub-t17.atdir"/job-*
-_2545_UNSET='unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID'
+_2545_UNSET='unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN'
 _2545_EXPORT='export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1'
 
 # (a) the default POSIX backend (`at` on Linux).
@@ -4997,7 +4997,7 @@ fi
 # stub is a leak into the operator's own crontab/at, not a test failure to
 # shrug off.
 # a non-dry-run arm runs the REAL bank-preflight, whose producer
-# refresh writes the usage cache at $CADENCE_BANK_CACHE. The suite points that
+# refresh writes the usage cache at $CADENCE_USAGE_CACHE. The suite points that
 # at $TMP and swaps in a stub producer that logs the cache path each refresh
 # was handed (the scratch file only appears if a live OAuth fetch
 # succeeds, so it proved nothing on hosts where it fails). A non-empty log

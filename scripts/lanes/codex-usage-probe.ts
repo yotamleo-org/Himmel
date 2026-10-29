@@ -27,7 +27,6 @@
 // the direct child.
 import { spawn, type ChildProcess } from "node:child_process";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -35,12 +34,12 @@ import { encodeJsonRpcLine, normalizeRateLimits, takeJsonRpcMessage } from "./co
 
 const env = process.env;
 const home = env.HOME ?? homedir();
-const cachePath = env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(home, ".himmel", "cache", "codex-bank.json");
-const timeoutMs = positiveInt(env.CODEX_USAGE_PROBE_TIMEOUT_MS) ?? positiveInt(legacyNamesOn(env) ? env.CODEX_BANK_PROBE_TIMEOUT_MS : undefined) ?? 20_000;
-// Test/ops hook (CODEX_USAGE_PROBE_CMD, old CODEX_BANK_PROBE_CMD still read): a space-split command (e.g. `node <stub path>`) replacing
+const cachePath = env.CODEX_USAGE_CACHE || join(home, ".himmel", "cache", "codex-bank.json");
+const timeoutMs = positiveInt(env.CODEX_USAGE_PROBE_TIMEOUT_MS) ?? 20_000;
+// Test/ops hook (CODEX_USAGE_PROBE_CMD): a space-split command (e.g. `node <stub path>`) replacing
 // `codex`; the codex args are still appended. No spaces inside the command
 // itself. Default is the real `codex` on PATH.
-const [cmd, ...cmdPrefix] = (env.CODEX_USAGE_PROBE_CMD || (legacyNamesOn(env) ? env.CODEX_BANK_PROBE_CMD : undefined) || "codex").split(" ");
+const [cmd, ...cmdPrefix] = (env.CODEX_USAGE_PROBE_CMD || "codex").split(" ");
 const args = [...cmdPrefix, "app-server"];
 
 function positiveInt(v: string | undefined): number | null {

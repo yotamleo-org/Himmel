@@ -221,7 +221,7 @@ check "5 dry-run writes nothing" "$before5" "$after5"
 check "5 dry-run prints would-doc" "$(printf '%s\n' "$out5" | grep -c '^would-doc: ')" "1"
 
 # --- 5b: chiefs default to 1m/auto, not standard.
-out5b="$(unset CHIEF_CONTEXT CONSOLE_CONTEXT; chief new --bucket dryrepo5b --dry-run)"
+out5b="$(unset CHIEF_CONTEXT; chief new --bucket dryrepo5b --dry-run)"
 check "5b default launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--autocompact auto')" "1"
 check "5b default launch line carries no --autocompact 200000" \
@@ -252,7 +252,7 @@ check "5c CHIEF_CONTEXT=1m launch line carries no --autocompact 200000" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact 200000')" "0"
 
 # Catch chief default regressions and ignored CLI overrides.
-out3884="$(unset CHIEF_CONTEXT CONSOLE_CONTEXT; chief next --bucket demorepo --doc "$docA" --dry-run)"
+out3884="$(unset CHIEF_CONTEXT; chief next --bucket demorepo --doc "$docA" --dry-run)"
 check "3884 next defaults to --autocompact auto" \
     "$(printf '%s\n' "$out3884" | grep -c -- '--autocompact auto')" "1"
 check "3884 next records 1m default auto" \
@@ -872,7 +872,7 @@ tmp27="$tmp/c27"
 mkdir -p "$tmp27/real-elsewhere"
 ln -s "$tmp27/real-elsewhere" "$tmp27/himmel-chief-$(id -u)"
 rc27=0
-out27="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out27="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp27" \
     bash "$C" new --bucket wdlinktest --dry-run ) 2>&1 )" || rc27=$?
 check "27 symlinked default work dir: refuses with a distinct exit code" "$rc27" "3"
@@ -892,7 +892,7 @@ else
     mkdir -p "$tmp28/himmel-chief-$(id -u)"
     if sudo -n chown nobody:nobody "$tmp28/himmel-chief-$(id -u)" >/dev/null 2>&1; then
         rc28=0
-        out28="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+        out28="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
             HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp28" \
             bash "$C" new --bucket wdotheruid --dry-run ) 2>&1 )" || rc28=$?
         check "28 default work dir owned by another uid: refuses with a distinct exit code" "$rc28" "3"
@@ -948,7 +948,7 @@ exec "$real_mkdir30" "\$@"
 STUB_EOF
 chmod +x "$tmp30/bin/mkdir"
 rc30=0
-out30="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out30="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO TMPDIR="$tmp30" \
     PATH="$tmp30/bin:$PATH" \
     bash "$C" new --bucket wdtoctou --dry-run ) 2>&1 )" || rc30=$?
@@ -973,7 +973,7 @@ if [ "$HOST_MODES_STICK" = 1 ]; then
 tmp31="$tmp/c31"
 mkdir -p "$tmp31/xdg" "$tmp31/tmp"
 chmod 0777 "$tmp31/xdg"
-out31="$( ( cd "$fixture_repo" && env -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out31="$( ( cd "$fixture_repo" && env -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     XDG_RUNTIME_DIR="$tmp31/xdg" TMPDIR="$tmp31/tmp" \
     bash "$C" new --bucket wdgwtest --dry-run --arm ) 2>&1 )"
@@ -1018,7 +1018,7 @@ if [ "$HOST_MODES_STICK" = 1 ]; then
 tmp33="$tmp/c33"
 mkdir -p "$tmp33/insecure-tmp"
 chmod 0777 "$tmp33/insecure-tmp"
-out33="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out33="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp33/insecure-tmp" \
     bash "$C" new --bucket wdparent33 --dry-run ) 2>&1 )"; rc33=$?
@@ -1053,7 +1053,7 @@ fi
 exec "$real_stat34" "\$@"
 STUB_EOF
 chmod +x "$tmp34/bin/stat"
-out34="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out34="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp34/attacker-owned" \
     PATH="$tmp34/bin:$PATH" \
@@ -1068,7 +1068,7 @@ tmp35="$tmp/c35"
 mkdir -p "$tmp35/self-owned"
 chmod 1777 "$tmp35/self-owned"
 rc35=0
-( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp35/self-owned" \
     bash "$C" new --bucket wdparent35 --dry-run ) >/dev/null 2>&1 || rc35=$?
@@ -1115,7 +1115,7 @@ fi
 exec "$real_stat37" "\$@"
 STUB_EOF
 chmod +x "$tmp37/bin/stat"
-out37="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+out37="$( ( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp37/attacker-0755" \
     PATH="$tmp37/bin:$PATH" \
@@ -1130,7 +1130,7 @@ tmp38="$tmp/c38"
 mkdir -p "$tmp38/self-0755"
 chmod 0755 "$tmp38/self-0755"
 rc38=0
-( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR -u CONSOLE_WORK_DIR \
+( cd "$fixture_repo" && env -u XDG_RUNTIME_DIR -u CHIEF_WORK_DIR \
     HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     TMPDIR="$tmp38/self-0755" \
     bash "$C" new --bucket wdparent38 --dry-run ) >/dev/null 2>&1 || rc38=$?
@@ -1664,17 +1664,17 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 # $6), not just the printed --dry-run line. CHIEF_MODEL is unset in every
 # subshell so an ambient value cannot mask the built-in default. Fable stays
 # reachable through an explicit --model / CHIEF_MODEL.
-out61a="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+out61a="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
 check "61 dry-run --arm launch line defaults to bare claude-opus-5-5 (native 1M, HIMMEL-5501)" \
     "$(printf '%s\n' "$out61a" | grep -cF -- '--model claude-opus-5-5 ')" "1"
 check "61 dry-run --arm launch line carries no [1m] suffix on a native-1M model" \
     "$(printf '%s\n' "$out61a" | grep -cF -- 'claude-opus-5-5\[1m\]')" "0"
-out61c="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+out61c="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-opus-4-6 ) )"
 check "61 a 4.6-family model keeps the [1m] suffix (HIMMEL-5501)" \
     "$(printf '%s\n' "$out61c" | grep -cF -- '--model claude-opus-4-6\[1m\] ')" "1"
-out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model gpt-5.6-sol ) )"
 check "61 a non-Anthropic model never gets [1m] (HIMMEL-5501)" \
     "$(printf '%s\n' "$out61d" | grep -cF -- '--model gpt-5.6-sol ')" "1"
@@ -1701,14 +1701,16 @@ check "61f dry-run below the floor only warns (rc=0)" "$rc61g" "0"
 check "61f dry-run warning names the fix" "$(printf '%s\n' "$out61g" | grep -c 'claude update')" "1"
 check "61 dry-run --arm launch line carries no fable model" \
     "$(printf '%s\n' "$out61a" | grep -c 'claude-fable-5-1')" "0"
-out61b="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+out61b="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-fable-5-1 ) )"
 check "61 explicit --model claude-fable-5-1 still launches Fable" \
     "$(printf '%s\n' "$out61b" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
-out61o="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && CONSOLE_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
-check "61 the old name CONSOLE_MODEL still sets the model" \
-    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "1"
+out61o="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+    CHIEF_WORK_DIR="$tmp/work" CONSOLE_MODEL=claude-fable-5-1 bash "$C" new --bucket modeldefault --dry-run --arm ) )" # old-term-ok
+check "61 the retired model env name is ignored: no fable model" \
+    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-fable-5-1 ')" "0"
+check "61 the retired model env name is ignored: the default launch line is still printed" \
+    "$(printf '%s\n' "$out61o" | grep -c '^would-launch: .* claude --settings [^ ]* --model claude-opus-5-5 ')" "1"
 out61c="$( ( cd "$fixture_repo" && CHIEF_MODEL=claude-fable-5-1 HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
 check "61 CHIEF_MODEL=claude-fable-5-1 still launches Fable" \
@@ -1721,7 +1723,7 @@ cat > "$tmp/stub-arm-model-61.sh" <<STUB
 printf '%s\n' "\$6" >> "$record61"
 STUB
 chmod +x "$tmp/stub-arm-model-61.sh"
-out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_HEADED_ARM="$tmp/stub-arm-model-61.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket modeldefault --arm --deadline-min 0 ) )"
 token61d="$(token_of "$out61d")"
@@ -1878,12 +1880,9 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
 # happens not to print".
 {
     printf 'WORKER_SESSION_PROFILE_SETTINGS=%s\n' "\${WORKER_SESSION_PROFILE_SETTINGS+set}"
-    printf 'LEG_PROFILE_SETTINGS=%s\n' "\${LEG_PROFILE_SETTINGS+set}" # old name, read both ways
     printf 'HIMMEL_WORKER_SESSION_PROFILE=%s\n' "\${HIMMEL_WORKER_SESSION_PROFILE+set}"
-    printf 'HIMMEL_LEG_PROFILE=%s\n' "\${HIMMEL_LEG_PROFILE+set}" # old name, read both ways
     printf 'HIMMEL_CONSOLE_LEG=%s\n' "\${HIMMEL_CONSOLE_LEG+set}"
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
-    printf 'LEG_LANE=%s\n' "\${LEG_LANE+set}" # old name, read both ways
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
 } > "$tmp/child-env-66.txt"
@@ -1902,19 +1901,19 @@ KONSOLE_STUB
 chmod +x "$tmp/konsole-66"
 
 out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
-    HIMMEL_WORKER_SESSION_PROFILE=worker-impl HIMMEL_LEG_PROFILE=worker-impl \
-    WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json \
-    WORKER_SESSION_PROFILE_PREFACE=/leaked-66/preface.md LEG_PROFILE_PREFACE=/leaked-66/preface.md \
-    WORKER_SESSION_PROFILE_MCP_CONFIG=/leaked-66/mcp.json LEG_PROFILE_MCP_CONFIG=/leaked-66/mcp.json \
-    WORKER_SESSION_CLAUDE_BIN=/leaked-66/claude LEG_CLAUDE_BIN=/leaked-66/claude \
+    HIMMEL_WORKER_SESSION_PROFILE=worker-impl \
+    WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json \
+    WORKER_SESSION_PROFILE_PREFACE=/leaked-66/preface.md \
+    WORKER_SESSION_PROFILE_MCP_CONFIG=/leaked-66/mcp.json \
+    WORKER_SESSION_CLAUDE_BIN=/leaked-66/claude \
     HIMMEL_LEAN_WORKER_SESSION=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=leaked-chief-66 \
     WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
-    WORKER_SESSION_LANE=openrouter LEG_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
+    WORKER_SESSION_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
     HIMMEL_CONSOLE_RELAY=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
-    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json LEG_PROFILE_SETTINGS=/leaked-66/settings.json" \
+    HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json " \
     HEADED_ARM_UNAME=Darwin \
     CHIEF_CONTEXT=1m \
     KONSOLE_CMD="$tmp/konsole-66" \
@@ -1930,7 +1929,6 @@ check "66 no leaked worker-profile value reaches the armed chief's argv/env" \
     "$(printf '%s\n' "$out66b" | grep -c 'leaked-66')" "0"
 check "66 armed child's OWN environment still lacks WORKER_SESSION_PROFILE_SETTINGS (not just unprinted)" \
     "$(grep -c '^WORKER_SESSION_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
-check "66 armed child's OWN environment still lacks the old name LEG_PROFILE_SETTINGS (read both ways)" "$(grep -c '^LEG_PROFILE_SETTINGS=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HIMMEL_CONSOLE_LEG (not just unprinted)" \
     "$(grep -c '^HIMMEL_CONSOLE_LEG=set$' "$tmp/child-env-66.txt")" "0"
 check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMPACT (not just unprinted)" \
@@ -1947,40 +1945,14 @@ propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/chief-k
 strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; chief_context_worker_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every worker_propagate_env name in headed-arm-worker.sh is in the strip list" "$missing67" ""
-# worker_propagate_env also sets each name's worker-session twin, so every twin
-# must be stripped too, and a launch-seam name's twin must be seam as well.
-twins67="$(sed -n '/^worker_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/chief-kit/headed-arm-worker.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
-check "67 headed-arm-worker.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
-want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
-HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT
-HIMMEL_LEG_CONTEXT_MODE HIMMEL_WORKER_SESSION_CONTEXT_MODE
-HIMMEL_LEG_PROFILE HIMMEL_WORKER_SESSION_PROFILE
-LEG_CLAUDE_BIN WORKER_SESSION_CLAUDE_BIN
-LEG_LANE WORKER_SESSION_LANE
-LEG_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_MCP_CONFIG
-LEG_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_PROFILE_NO_SETTING_SOURCES
-LEG_PROFILE_PREFACE WORKER_SESSION_PROFILE_PREFACE
-LEG_PROFILE_SETTINGS WORKER_SESSION_PROFILE_SETTINGS
-LEG_SESSION_ID WORKER_SESSION_ID
-'
-check "67 the twin table maps every required worker name to its worker-session twin" "$(comm -13 <(printf '%s\n' "$twins67" | sort -u) <(printf '%s' "$want67" | sort -u))" ""
-missing67t="$(comm -23 <(printf '%s\n' "$twins67" | awk '{print $2}' | sort -u) <(printf '%s\n' "$strip_list67"))"
-check "67 every worker-session twin in headed-arm-worker.sh is in the strip list" "$missing67t" ""
 seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; chief_context_launch_seam_env_names ) | sort -u)"
-seam_missing67=""
-while read -r old67 new67; do
-    grep -qx "$old67" <<< "$seam67" || continue
-    grep -qx "$new67" <<< "$seam67" || seam_missing67="$seam_missing67 $new67"
-done <<< "$twins67"
-check "67 every launch-seam name's worker-session twin is launch seam too" "$seam_missing67" ""
+check "67 every launch-seam name is in the strip list" "$(comm -23 <(printf '%s\n' "$seam67") <(printf '%s\n' "$strip_list67"))" ""
 check "67 armed child's own environment strips WORKER_SESSION_LANE" \
     "$(grep -c '^WORKER_SESSION_LANE=set$' "$tmp/child-env-66.txt")" "0"
-check "67 armed child's own environment strips the old name LEG_LANE (read both ways)" "$(grep -c '^LEG_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \
     "$(grep -c '^OPENROUTER_MODEL=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips HIMMEL_WORKER_SESSION_PROFILE" \
     "$(grep -c '^HIMMEL_WORKER_SESSION_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
-check "67 armed child's own environment strips the old name HIMMEL_LEG_PROFILE (read both ways)" "$(grep -c '^HIMMEL_LEG_PROFILE=set$' "$tmp/child-env-66.txt")" "0"
 
 # --- 68: --project <dir> -- a chief for a repo that is NOT this himmel
 # checkout (the himmel-ops plugin's /chief, run from e.g. ~/Websites). The

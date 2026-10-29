@@ -520,13 +520,11 @@ tr '\n' ' ' < "$HANDOVER_DOCS/worker-preface.md" | grep -Eq 'ONE +turn.*text-onl
     && pass "worker-preface.md tells a worker to batch tool calls into ONE turn and skip text-only turns" \
     || fail "worker-preface.md lacks the batch-tool-calls / no text-only turn rule"
 
-# The renamed templates keep a symlink at the old path, so a launcher, chief or
-# brief that names the old path reads the same bytes until the removal release.
-for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do
+# The renamed templates are regular files and the old paths are gone.
+for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do # old-term-ok
     old="${pair%%:*}"; new="${pair##*:}"
     [ -f "$HANDOVER_DOCS/$new" ] && [ ! -L "$HANDOVER_DOCS/$new" ] && pass "$new is a regular file" || fail "$new is missing or not a regular file"
-    [ "$(readlink "$HANDOVER_DOCS/$old" 2>/dev/null)" = "$new" ] && pass "$old is a symlink to $new" || fail "$old is not a symlink to $new"
-    cmp -s "$HANDOVER_DOCS/$old" "$HANDOVER_DOCS/$new" && pass "$old reads byte-identical to $new" || fail "$old does not read the same bytes as $new"
+    [ ! -e "$HANDOVER_DOCS/$old" ] && [ ! -L "$HANDOVER_DOCS/$old" ] && pass "$old is gone" || fail "$old still exists" # old-term-ok
 done
 # A worker launched through the launcher's default preface path (the plain
 # worker branch, last of the role defaults) gets the worker preface.
