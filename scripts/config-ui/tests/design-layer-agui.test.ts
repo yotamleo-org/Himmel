@@ -24,6 +24,28 @@ test("the AG-UI stylesheet uses only the shared colours and defined custom prope
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("every agent name colour meets normal-text contrast in both shared themes", () => {
+  const tokens = readFileSync(join(PUBLIC, "tokens.css"), "utf8");
+  const palette = [...css().matchAll(/--ag[0-5]:var\(--([\w-]+)\)/g)];
+  expect(palette).toHaveLength(6);
+  const luminance = (theme: string, token: string) => {
+    const hex = tokens.match(new RegExp(`--${theme}-${token}:#([0-9a-fA-F]{6})\\b`))?.[1];
+    expect(hex, `${theme}-${token}`).toBeDefined();
+    const rgb = hex!.match(/../g)!.map((channel) => {
+      const c = parseInt(channel, 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  };
+  for (const theme of ["l", "d"]) {
+    const bg = luminance(theme, "bg");
+    for (const [agent, token] of palette) {
+      const fg = luminance(theme, token);
+      expect((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05), `${theme} ${agent}`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+
 test("Fleet prose uses the UI font at token sizes, with monospace kept for session data and tables", () => {
   expect(rule("body")).toMatch(/font:var\(--fs-[a-z0-9]+\)\/[^;]+var\(--(?:font-ui|sans)\)/);
   for (const selector of [".fleet-sec>summary", ".fleet-chief h2", ".fleet-menu", ".fleet-search", ".fleet-chip-btn", ".fleet-clear", ".fleet-more-btn"]) {

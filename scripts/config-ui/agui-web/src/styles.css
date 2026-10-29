@@ -5,7 +5,7 @@
    beside its work; failures alone are red (errors, failed suites) or amber (denials, BLOCKED reports).
    Motion is limited to bars growing and the text caret. */
 :root{--tint:18%;
-  --ag0:var(--accent); --ag1:var(--road); --ag2:var(--alpha); --ag3:var(--note); --ag4:var(--camp); --ag5:var(--rule-strong);
+  --ag0:var(--accent); --ag1:var(--road); --ag2:var(--alpha); --ag3:var(--note); --ag4:var(--camp); --ag5:var(--muted);
 }
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--tint:14%}}
 :root[data-theme="light"]{--tint:14%}
