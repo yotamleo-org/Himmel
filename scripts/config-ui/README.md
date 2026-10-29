@@ -342,7 +342,7 @@ hour. Sessions live in memory, so a restart logs you out. After five failed logi
 gets 429 with `Retry-After`, even one with the right password. The limit is global because every client
 reaches the loopback server from the same address. `POST /api/logout` ends the session. `/api/*` accepts
 either the session or the launch token. The token stays for automation and for the printed URL, but in
-service mode only a session may save a secret on the Setup page. Tests: `tests/login.test.ts`,
+service mode only a session may save a secret on the Configure page. Tests: `tests/login.test.ts`,
 `tests/setup-account.test.ts`, both against a stub `secret-tool` (`tests/keyring-stub.ts`), never the real keyring.
 
 ![The AG-UI page streaming a /pr-check round: a worker and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)
@@ -429,16 +429,19 @@ imports, so its suite runs in CI without an install.
   direct landing on Kanban shows the plain-words empty state, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
-- Settings e2e (`settings.e2e.ts`, journey J3, same opt-in suite): the page and
-  rail entry read Settings with the seven groups in order, every row shows its
-  command, when it takes effect and a Learn more link to the docs site, Commit
-  rules offer no switch, a switch previews its dry-run first, and Roadmap and
-  Kanban follow the tracker source.
+- Configure e2e (`settings.e2e.ts`, journey J3, same opt-in suite): Configure is
+  the one rail entry (it replaced Settings and Setup; `#/setup` and the install
+  hand-off's `page=setup` land on it with the Secrets tile open) with four tiles
+  in order, one open at a time, and the Check this install strip under them (hidden while a tile is open).
+  Every Project scope row shows its command, when it takes effect and a Learn
+  more link to the docs site, the Tracker tile points commit rules at
+  `~/.himmel/himmel.conf`, a switch previews its dry-run first, and Roadmap and
+  Kanban follow the tracker source. Triage and the inventory render on Health.
 - Fleet cap and reviewer settings (`fleet-cap.ts`, `review-gate.ts`; `GET` and `POST
   /api/fleet-cap`, `/api/review-gate`): the cap goes to the station `.env`, a reviewer's
   model and effort to the `critics.local.json` overlay only. Tests:
   `tests/fleet-cap-reviewers.test.ts` (route, write, lock and overlay rows).
-- Setup e2e (`setup.e2e.ts`, same opt-in suite): the page is `public/setup.js`,
+- Setup e2e (`setup.e2e.ts`, same opt-in suite): the Configure page is `renderConfigure` in `public/setup.js`,
   its state and secret writes are `setup.ts` (`GET /api/setup`, `POST
   /api/setup/secret`). A runtime-computed canary token is saved and removed
   through the page against the temp-HOME store, and a scan of the markup, fields,
@@ -469,7 +472,7 @@ node scripts/himmelctl/bin.js ui --port 0
 ```
 
 Open the printed URL, `http://127.0.0.1:<port>/#t=<64 hex>` (the token rides
-the fragment). The first report can take a couple of minutes.
+the fragment). The printed URL opens Configure; click Health in the rail first, because items 1-7 are about Inventory, which lives there. The first report can take a couple of minutes.
 
 - [ ] 1. Controls and Inventory render as bundles in table order (Search & graph … Install & toolchain).
 - [ ] 2. A bundle with no fail or warn row is collapsed; one with a fail or warn row opens by default.
@@ -479,5 +482,5 @@ the fragment). The first report can take a couple of minutes.
 - [ ] 6. Tab to a header; Enter or Space toggles it; focus stays on that header after the repaint.
 - [ ] 7. Unsorted is absent with 0 unmapped rows; when one exists it is always open and last.
 - [ ] Header: above the page, one line shows `himmel <version> · <describe>`, the 12-char commit, the served checkout and the feed time; a feed without `himmel` reads `version unknown (feed has no himmel identity)`.
-- [ ] Page links: the rail lists the pages (Config, Health and Fleet, with the Fleet dot in a status colour), the current one is highlighted, and the address bar reads `#/config` (the token never stays in the URL).
+- [ ] Page links: click Configure in the rail first. The rail lists the pages (Configure, Health and Fleet, with the Fleet dot in a status colour), the current one is highlighted, and the address bar reads `#/config` (the token never stays in the URL).
 - [ ] Safety: click a toggle: only a dry-run plan appears; confirm stays disabled until you type the target; cancel clears it.
