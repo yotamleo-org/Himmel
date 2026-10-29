@@ -26,11 +26,16 @@ const configFileOf = (env: Env): string => join(env.HIMMEL_POLICY_FOLLOWS_HOME =
 export function readCap(envFile: string, env: Env): CapResult {
   const configFile = configFileOf(env);
   const body = { default: DEFAULT_CAP, configFile, envFile, edit: HAND_EDIT };
+  // load_policy fails closed on a config.json it cannot read or parse, and the preflight keeps 4
+  const failed: CapResult = { status: 200, body: { ...body, cap: DEFAULT_CAP, source: "default" } };
   let raw: string | null = null;
-  try { raw = readFileSync(configFile, "utf8"); } catch { /* no config.json: legacy .env, then the default */ }
+  try { raw = readFileSync(configFile, "utf8"); } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "EISDIR") return failed; // to load_policy's [ -f ] only a missing file or a directory is absent
+  }
   if (raw !== null) {
     let fromConfig: number | null;
-    try { fromConfig = asCap((JSON.parse(raw)?.policy ?? {})[KEY]); } catch { return { status: 200, body: { ...body, cap: DEFAULT_CAP, source: "default" } }; } // load_policy fails closed, the preflight keeps 4
+    try { fromConfig = asCap((JSON.parse(raw)?.policy ?? {})[KEY]); } catch { return failed; }
     if (fromConfig !== null) return { status: 200, body: { ...body, cap: fromConfig, source: "config.json" } };
   }
   let fromFile: number | null = null;

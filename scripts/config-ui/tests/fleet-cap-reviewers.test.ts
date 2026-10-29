@@ -2,7 +2,7 @@
 // and effort are written to the critics.local.json overlay only; the committed critics.json is never opened for write.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -81,6 +81,13 @@ test("a legacy .env cap still shows when config.json does not set it", async () 
 test("an unreadable config.json shows the 4 the preflight falls back to, not the .env value", async () => {
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   writeFileSync(configFile, "{not json\n");
+  expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "default" });
+});
+
+test("a config.json that exists but cannot be opened shows 4, not the .env value", async () => {
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
+  writeFileSync(configFile, '{"policy":{"HIMMEL_FLEET_CAP":7}}\n');
+  chmodSync(configFile, 0o000);
   expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "default" });
 });
 
