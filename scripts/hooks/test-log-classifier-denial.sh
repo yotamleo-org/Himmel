@@ -372,6 +372,50 @@ else
     pass "input_head/reason_tag reader pin skipped (not a git checkout)"
 fi
 
+# --- 14b. the classifier denies WebFetch and Agent calls too. The
+# hook logs a row for each with the tool name and a short target summary (url;
+# subagent_type + description), never the prompt body. ---
+LOG16="$WORKDIR/c16.jsonl"
+PROMPT_MARK="PROMPT-BODY-MARKER-$(rep z 40)"
+run_hook "$(jq -n -c --arg p "$PROMPT_MARK" '{session_id:"s16",cwd:"/tmp/repo",hook_event_name:"PermissionDenied",tool_name:"WebFetch",tool_input:{url:"https://example.test/page",prompt:$p},reason:"[Data Exfiltration]"}')" "$LOG16" >/dev/null
+run_hook "$(jq -n -c --arg p "$PROMPT_MARK" '{session_id:"s16",cwd:"/tmp/repo",hook_event_name:"PermissionDenied",tool_name:"Agent",tool_input:{description:"audit the hooks",subagent_type:"Explore",prompt:$p},reason:"[Unsafe Delegation]"}')" "$LOG16" >/dev/null
+if [ "$(wc -l <"$LOG16" 2>/dev/null | tr -d '[:space:]')" = "2" ]; then pass "WebFetch and Agent denials each write one row"; else fail "WebFetch and Agent denials each write one row"; fi
+row_wf=$(sed -n '1p' "$LOG16"); row_ag=$(sed -n '2p' "$LOG16")
+wf_tool=$(printf '%s' "$row_wf" | jq -r .tool); wf_head=$(printf '%s' "$row_wf" | jq -r .input_head)
+ag_tool=$(printf '%s' "$row_ag" | jq -r .tool); ag_head=$(printf '%s' "$row_ag" | jq -r .input_head)
+if [ "$wf_tool" = "WebFetch" ] && [[ "$wf_head" == *'https://example.test/page'* ]]; then pass "WebFetch row names the tool and the url"; else fail "WebFetch row names the tool and the url"; fi
+if [ "$ag_tool" = "Agent" ] && [[ "$ag_head" == *Explore* ]] && [[ "$ag_head" == *'audit the hooks'* ]]; then pass "Agent row names the tool, subagent_type and description"; else fail "Agent row names the tool, subagent_type and description"; fi
+printf '%s\n' "$PROMPT_MARK" >"$WORKDIR/c16-control.txt"
+ctl_hits=$(grep -cF "PROMPT-BODY-MARKER" "$WORKDIR/c16-control.txt" 2>/dev/null)
+leak_hits=$(grep -cF "PROMPT-BODY-MARKER" "$LOG16" 2>/dev/null)
+if [ "$ctl_hits" != "1" ]; then fail "prompt-body matcher fires on a positive control (got ${ctl_hits:-none})"
+elif [ "$leak_hits" = "0" ]; then pass "WebFetch/Agent rows never carry the prompt body"
+else fail "WebFetch/Agent rows never carry the prompt body (got ${leak_hits:-grep error})"; fi
+# A tool_input that is not an object must still land a row, not vanish in jq.
+LOG16B="$WORKDIR/c16b.jsonl"
+run_hook '{"session_id":"s16b","cwd":"/tmp/repo","tool_name":"Agent","tool_input":"not-an-object","reason":"[X]"}' "$LOG16B" >/dev/null
+if [ "$(wc -l <"$LOG16B" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then pass "a non-object Agent tool_input still writes one row"; else fail "a non-object Agent tool_input still writes one row"; fi
+# Likewise a non-string url or description must not drop the row.
+LOG16C="$WORKDIR/c16c.jsonl"
+run_hook '{"session_id":"s16c","cwd":"/tmp/repo","tool_name":"WebFetch","tool_input":{"url":{"a":"b"}},"reason":"[X]"}' "$LOG16C" >/dev/null
+run_hook '{"session_id":"s16c","cwd":"/tmp/repo","tool_name":"Agent","tool_input":{"subagent_type":"Explore","description":["x"]},"reason":"[X]"}' "$LOG16C" >/dev/null
+if [ "$(wc -l <"$LOG16C" 2>/dev/null | tr -d '[:space:]')" = "2" ]; then pass "a non-string WebFetch url or Agent description still writes a row"; else fail "a non-string WebFetch url or Agent description still writes a row"; fi
+
+# The wiring: the PermissionDenied entry that runs this hook must select every
+# tool the classifier can deny, not just the file/shell set.
+SETTINGS="$REPO_ROOT/.claude/settings.json"
+if [ -f "$SETTINGS" ]; then
+    matcher=$(jq -r '[.hooks.PermissionDenied[]? | select(any(.hooks[]?; (.command // "") | contains("log-classifier-denial.sh"))) | (.matcher // "")] | first // "NOENTRY"' "$SETTINGS" 2>/dev/null) || matcher="JQFAIL"
+    for t in Bash Edit Write MultiEdit NotebookEdit WebFetch Agent; do
+        if [ "$matcher" = "JQFAIL" ]; then fail "PermissionDenied wiring selects $t (settings.json did not parse)"
+        elif [ "$matcher" = "NOENTRY" ]; then fail "PermissionDenied wiring selects $t (no log-classifier-denial entry)"
+        elif [ -z "$matcher" ] || [ "$matcher" = "*" ] || [[ "$t" =~ ^($matcher)$ ]]; then pass "PermissionDenied wiring selects $t"
+        else fail "PermissionDenied wiring selects $t (matcher: $matcher)"; fi
+    done
+else
+    pass "PermissionDenied wiring check skipped (no settings.json)"
+fi
+
 # --- 15. this file holds no token-shaped literal: the PostToolUse detector
 # (detect-token-in-output.sh) scans a Read/Grep of it as text and would page the
 # operator for a leak that never happened. The detector is the oracle; a token
