@@ -101,6 +101,7 @@ STATE="$STATE"
 FAKE
 cat >>"$FAKE_QMD" <<'FAKE'
 printf '%s\n' "$*" >> "$STATE/calls"
+[ "${1:-}" != "--index" ] || shift 2
 case "${1:-}" in
     update)
         if [ -e "$STATE/fail-update" ]; then
@@ -945,5 +946,41 @@ if command -v node >/dev/null 2>&1; then
 else
     pass "provider-key check skipped: node not installed"
 fi
+
+# ============================================================================
+# A named index (--index salus)
+# ============================================================================
+
+echo "TEST: --index salus runs the same steps against the named index"
+reset_state
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index salus 2>&1) || rc=$?
+assert_rc "--index salus rc 0" 0 "$rc"
+assert_contains "update names the salus index" "--index salus update" "$(calls)"
+assert_contains "embed names the salus index" "--index salus embed" "$(calls)"
+assert_contains "cleanup names the salus index" "--index salus cleanup" "$(calls)"
+assert_contains "the log shows --index salus" "--index salus" "$out"
+assert_contains "the refresh stamp lands next to salus.sqlite" "salus.refresh-stamp" "$(ls "$HOME/.cache/qmd" 2>/dev/null)"
+assert_not_contains "the default index stamp is left alone" "refresh-stamp" "$(find "$HOME/.cache/qmd" -maxdepth 1 -name '*refresh-stamp' ! -name 'salus.*' 2>/dev/null)"
+rm -rf "$HOME/.cache/qmd"
+
+echo "TEST: the default run never passes --index"
+reset_state
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_not_contains "no --index on a default run" "--index" "$(calls)"
+rm -rf "$HOME/.cache/qmd"
+
+echo "TEST: --dry-run --index salus prints the salus commands and runs nothing"
+reset_state
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index salus --dry-run 2>&1) || rc=$?
+assert_rc "dry-run rc 0" 0 "$rc"
+assert_contains "dry-run names --index salus" "--index salus update" "$out"
+assert_eq_empty() { if [ -z "$2" ]; then pass "$1"; else fail "$1" "unexpected calls: $2"; fi; }
+assert_eq_empty "dry-run invokes nothing" "$(cat "$STATE/calls")"
+
+echo "TEST: --index rejects a missing or path-shaped name"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index 2>&1) || rc=$?
+assert_rc "--index with no operand rc 1" 1 "$rc"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index ../evil 2>&1) || rc=$?
+assert_rc "--index ../evil rc 1" 1 "$rc"
 
 summary

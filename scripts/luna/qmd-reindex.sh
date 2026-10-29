@@ -76,7 +76,9 @@
 # default to every collection and take `-c <name>` only to NARROW, so the bare
 # calls below are the "everything qmd knows about" scope by construction. That is
 # deliberately not a hardcoded list — a collection added later is picked up with
-# no edit here. (Local carries 4 today: himmel, luna, salus, luna-curated.)
+# no edit here. That is the DEFAULT index (index.yml); salus is no longer a
+# collection in it. It has its own named index (salus.yml, salus.sqlite, local
+# models), refreshed by running this script again with `--index salus`.
 #
 # CONCURRENCY: no lock. The scheduled task is registered with
 # MultipleInstancesPolicy=IgnoreNew, so the cadence cannot overlap ITSELF; an
@@ -100,6 +102,9 @@
 #                    canonical invocation there is `bun <.../dist/cli/qmd.js>`,
 #                    two tokens, and neither is a `qmd` executable. Requires
 #                    --qmd-bin.
+#   --index NAME     Refresh the named qmd index (`qmd --index NAME`) instead of the
+#                    default: its own NAME.sqlite, NAME.yml and NAME.refresh-stamp.
+#                    The embed-model precheck is skipped (it reads index.yml).
 #   --dry-run        Print the two commands that would run, execute neither.
 #
 # On verified success (see the completeness assert below) this
@@ -139,6 +144,9 @@ QMD_BIN=""
 QMD_JS=""
 DRY_RUN=0
 NO_CLEANUP=0
+# A named qmd index (`qmd --index NAME`), e.g. salus. Empty = the default index.
+INDEX_NAME=""
+IDX_DESC=""
 # A durable timestamp written ONLY on the verified-success path
 # below, next to the index data qmd-staleness.sh already reads.
 QMD_INDEX_PATH="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
@@ -167,7 +175,7 @@ QMD_SENTINEL_VERIFIED_AGAINST='qmd 2.6.3'
 
 usage() {
     cat <<'EOF'
-Usage: qmd-reindex.sh [--qmd-bin PATH] [--qmd-js PATH] [--dry-run]
+Usage: qmd-reindex.sh [--qmd-bin PATH] [--qmd-js PATH] [--index NAME] [--dry-run]
 
 Refresh the qmd index across ALL configured collections: `qmd update`
 (re-index changed files) then `qmd embed` (generate missing vectors),
@@ -182,6 +190,8 @@ Flags:
                     to --qmd-bin, making the invocation `<bin> <js> update`.
                     This is how a bun-served qmd is pinned (`bun .../qmd.js`).
                     Requires --qmd-bin.
+  --index <NAME>    Refresh the named index (qmd --index NAME), e.g. salus, instead
+                    of the default one.
   --no-cleanup      Incremental run: skip the final `qmd cleanup` (the 2-hourly
                     cadence; the nightly full run keeps it).
   --dry-run         Print what would run; execute nothing.
@@ -200,6 +210,7 @@ EOF
 # certainty) cannot split it. Group-bounded by qmd_bounded, from
 # qmd-bin.sh; an embed cut short resumes on the next fire.
 run_qmd() {
+    if [ -n "$INDEX_NAME" ]; then set -- --index "$INDEX_NAME" "$@"; fi
     if [ -n "$QMD_JS" ]; then
         qmd_bounded "$(qmd_timeout_secs)" "$QMD_BIN" "$QMD_JS" "$@"
     else
@@ -350,6 +361,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             shift ;;
+        --index)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "ERR qmd-reindex: --index requires an index name operand" >&2
+                usage >&2
+                exit 1
+            fi
+            INDEX_NAME="$2"; shift 2 ;;
+        --index=*) INDEX_NAME="${1#--index=}"; shift ;;
         --no-cleanup) NO_CLEANUP=1; shift ;;
         --dry-run)   DRY_RUN=1; shift ;;
         -h|--help)   usage; exit 0 ;;
@@ -360,6 +379,21 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+# A named index lives in its own files (qmd's own layout): NAME.sqlite in the
+# cache dir, NAME.yml in the config dir. The refresh stamp is per index, so a
+# salus refresh never certifies the default index (or the reverse).
+case "$INDEX_NAME" in
+    '') ;;
+    -*|*[!A-Za-z0-9._-]*)
+        echo "ERR qmd-reindex: --index takes a plain index name ([A-Za-z0-9._-], no leading '-'), got '$INDEX_NAME'" >&2
+        exit 1 ;;
+    *)
+        IDX_DESC=" --index $INDEX_NAME"
+        QMD_INDEX_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$INDEX_NAME.sqlite"
+        export INDEX_PATH="$QMD_INDEX_PATH"
+        QMD_REFRESH_STAMP="$(dirname "$QMD_INDEX_PATH")/$INDEX_NAME.refresh-stamp" ;;
+esac
 
 # --qmd-js is meaningless without an executable to pass it to: on its own it
 # would be silently ignored while the caller believes they pinned the bun-served
@@ -458,15 +492,15 @@ write_refresh_stamp() {
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) update"
-    echo "DRY qmd-reindex: would run: $(qmd_bin_desc) embed"
-    echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc) embed   (completeness assert; more sessions while each embeds chunks, up to the session bounds)"
-    [ "$NO_CLEANUP" -eq 1 ] || echo "DRY qmd-reindex: would run: $(qmd_bin_desc) cleanup"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC update"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC embed"
+    echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc)$IDX_DESC embed   (completeness assert; more sessions while each embeds chunks, up to the session bounds)"
+    [ "$NO_CLEANUP" -eq 1 ] || echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC cleanup"
     echo "qmd-reindex: dry-run complete (no changes made)"
     exit 0
 fi
 
-echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc))"
+echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc)$IDX_DESC)"
 
 # Invalidate any stamp from an earlier run BEFORE mutating the index:
 # 'qmd update' below can re-index files even if this run later fails
@@ -479,8 +513,12 @@ rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
 # An embed pass with a configured model other than the index's would fail on a
 # dimension change, or on the same dimension silently mix two vector spaces.
 # Refuse BEFORE touching the index; an unreadable index only WARNs.
+# Skipped for a named index: qmd-embed-model.sh reads index.yml, the DEFAULT
+# index's config, and would judge salus's local vectors against that remote model.
 model_rc=0
-bash "$(dirname "${BASH_SOURCE[0]}")/qmd-embed-model.sh" check --index "$QMD_INDEX_PATH" >&2 || model_rc=$?
+if [ -z "$INDEX_NAME" ]; then
+    bash "$(dirname "${BASH_SOURCE[0]}")/qmd-embed-model.sh" check --index "$QMD_INDEX_PATH" >&2 || model_rc=$?
+fi
 case "$model_rc" in
     0) ;;
     3) echo "ERR qmd-reindex: MODEL MISMATCH — index NOT refreshed; see docs/internals/qmd-embed-model.md." >&2
@@ -492,7 +530,7 @@ esac
 # A bare `qmd embed` embeds every ACTIVE document in the database with the
 # configured model. When that model is remote, every collection the config or
 # the database holds must pass the egress matrix, or nothing runs.
-QMD_CFG_FILE="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+QMD_CFG_FILE="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/${INDEX_NAME:-index}.yml"
 remote_model=0
 case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote_model=1 ;; esac
 if [ "$remote_model" -eq 0 ] && grep -Eqs '^[^#]*(openai:|\\)' "$QMD_CFG_FILE"; then remote_model=1; fi
@@ -569,7 +607,7 @@ fail_incomplete() {
         echo "    Vectors are lagging the lex index, which is the silently-stale state this"
         echo "    runner exists to prevent. Re-run this script, or embed by hand without the"
         echo "    session cap (--timeout, default 30 min):"
-        echo "        $(qmd_bin_desc) embed --timeout 0"
+        echo "        $(qmd_bin_desc)$IDX_DESC embed --timeout 0"
         echo "    Last session output was:"
         printf '%s\n' "$SESSION_OUT" | sed 's/^/        /'
     } >&2
@@ -669,7 +707,7 @@ else
         echo "        did-work : $QMD_SENTINEL_DID_WORK   (regex)"
         echo "    Most likely cause: a qmd release reworded 'qmd embed' output. Verify by hand"
         echo "    (${QMD_SENTINEL_VERIFIED_AGAINST} is the version these were checked against):"
-        echo "        $(qmd_bin_desc) embed"
+        echo "        $(qmd_bin_desc)$IDX_DESC embed"
         echo "    then update the sentinels at the top of this script."
         echo "    Verifier output was:"
         printf '%s\n' "$VERIFY_OUT" | sed 's/^/        /'
