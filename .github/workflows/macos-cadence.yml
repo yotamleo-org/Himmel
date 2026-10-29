@@ -49,8 +49,9 @@ permissions:
 # queue 31-103 min behind a full run on its branch; now the two run side by
 # side. Schedule, PR and full-dispatch runs have no suites input, so they share
 # the 'full' group as before. cancel-in-progress is false so a dispatch never
-# kills a running scheduled run (and with it a breakage record); a repeat of the
-# same mode just waits.
+# kills a running scheduled run (and with it a breakage record). GitHub keeps one
+# running and one pending run per group, so a newer same-mode run replaces an
+# earlier one still pending.
 concurrency:
   group: macos-cadence-${{ github.ref }}-${{ inputs.suites != '' && 'suites' || 'full' }}
   cancel-in-progress: false
