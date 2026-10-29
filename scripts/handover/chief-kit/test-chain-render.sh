@@ -124,7 +124,15 @@ same 'a planted <out>.tmp symlink target is left unchanged' "$(cat "$W/victim")"
 same 'a planted <out>.tmp symlink is left in place' "$([ -L "$W/planted.json.tmp" ] && echo link)" link
 same 'the render through a planted <out>.tmp holds the steps' "$(keys "$W/planted.json")" 'Rename chain:9002[0] 9004[0] 9005[0] 9003[1]'
 same 'the render leaves no temp file of its own' "$(nmatch "$W"/planted.json.*.tmp)" 0
-same 'a fresh render is written 0644, not the 0600 of the temp file' "$(python3 -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$W/planted.json")" 0o644
+# mode_of <file>: the file's permission bits as an octal string
+mode_of() { python3 -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$1"; }
+(umask 022; HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/mode022.json" >/dev/null 2>&1)
+same 'a fresh render under umask 022 is written 0644, not the 0600 of the temp file' "$(mode_of "$W/mode022.json")" 0o644
+(umask 077; HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/mode077.json" >/dev/null 2>&1)
+same 'a fresh render under umask 077 stays 0600' "$(mode_of "$W/mode077.json")" 0o600
+chmod 640 "$W/mode022.json"
+HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/mode022.json" >/dev/null 2>&1
+same 're-rendering over an existing output keeps its mode' "$(mode_of "$W/mode022.json")" 0o640
 
 # --- a failed write exits 2 and leaves no temp file
 mkdir -p "$W/outdir"
