@@ -341,7 +341,7 @@ NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/han
 M7="$WORK/jira-mirror7/HIMMEL"; mkdir -p "$M7"
 M_SAVE="$M"; M="$M7"
 mk HIMMEL-140 "To Do" Medium '[]' '["v1.0.1"]' '[]' "tier4 early version" "Edit scripts/lib/q1.sh only."
-mk HIMMEL-141 "To Do" Highest '[]' '["v1.0.2"]' '[]' "tier4 later version" "Edit scripts/lib/q2.sh only."
+mk HIMMEL-141 "To Do" Highest '[]' '["v1.0.2"]' '[]' "tier5 later version" "Edit scripts/lib/q2.sh only."
 mk HIMMEL-130 "To Do" Medium '["security"]' '["v1.0.1"]' '[]' "tier3 security label" "Edit scripts/lib/q3.sh only."
 mk HIMMEL-131 "To Do" High '[]' '["v1.0.1"]' '[]' "tier3 high bug" "Edit scripts/lib/q4.sh only."
 retype "$M7/HIMMEL-131.md" Bug
@@ -373,7 +373,7 @@ o7c="$(run7 --priority-pool-only |grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7c" = "HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "without --doc the pool is the labels, tiers 2-3 and the rest of the earliest version" || fail "no-doc pool is '$o7c'"
 M8="$WORK/jira-mirror8/HIMMEL"; mkdir -p "$M8"
 M_SAVE="$M"; M="$M8"
-mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier4" "Edit scripts/lib/w1.sh only."
+mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
 M="$M_SAVE"
 e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"; e8_rc=$?
 [ "$e8_rc" = 0 ] && pass "an empty pool exits 0" || fail "empty pool rc=$e8_rc"
@@ -393,7 +393,7 @@ mk HIMMEL-401 "In Progress" Low '[]' '[]' '[]' "resume keyed first on the line" 
 mk HIMMEL-402 "To Do" Low '[]' '[]' '[]' "todo keyed second on the line" "Edit scripts/lib/s2.sh only."
 mk HIMMEL-403 "In Progress" Low '["operator-directed"]' '[]' '[]' "resume tier 2" "Edit scripts/lib/s3.sh only."
 mk HIMMEL-404 "To Do" Low '["operator-directed"]' '[]' '[]' "todo tier 2" "Edit scripts/lib/s4.sh only."
-mk HIMMEL-405 "In Progress" Low '[]' '[]' '[]' "resume tier 4 is not pool" "Edit scripts/lib/s5.sh only."
+mk HIMMEL-405 "In Progress" Low '[]' '[]' '[]' "resume tier 5 is not pool" "Edit scripts/lib/s5.sh only."
 mk HIMMEL-406 "In Progress" Low '[]' '[]' '[]' "resume keyed cloud with a space" "Edit scripts/lib/s6.sh only."
 mk HIMMEL-407 "To Do" Low '[]' '[]' '[]' "todo keyed cloud with a space" "Edit scripts/lib/s7.sh only."
 mk HIMMEL-408 "To Do" Low '[]' '[]' '[]' "keyed on a bold priority line" "Edit scripts/lib/s8.sh only."
@@ -414,7 +414,7 @@ printf '# chief\n\n## Live state\n\npriority: 401 402 406 407(CLOUD) | 410 413(N
 rows11() { grep -v '^#' | cut -f1,2 | tr '\t' ':' | paste -sd, -; }
 o11="$(run11 --doc "$D11" --workers-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
 [ "$o11" = "RESUME:HIMMEL-401,RESUME:HIMMEL-406,LOCAL:HIMMEL-402,LOCAL:HIMMEL-413,LOCAL:HIMMEL-411,RESUME:HIMMEL-403,LOCAL:HIMMEL-404" ] && pass "pool-only: tier 1-3 RESUME rows lead their tier's To Do rows" || fail "pool-only with RESUME is '$o11'"
-lacks "pool-only: a tier-4 In Progress ticket is not a pool row" "$o11" "HIMMEL-405"
+lacks "pool-only: a tier-5 In Progress ticket is not a pool row" "$o11" "HIMMEL-405"
 lacks "pool-only: a worker-less pool key with a live worker is not a RESUME row" "$o11" "HIMMEL-410"
 lacks "pool-only: a 'NNN (CLOUD)' To Do ticket is excluded" "$o11" "HIMMEL-407"
 printf '# chief\n\n## Live state\n\n**priority:** 408 | 407 (CLOUD) 406 (CLOUD)\n\n## Later\n\npriority: 409\n' > "$D11"
@@ -467,7 +467,7 @@ lacks "pool-only: a residual-depth In Progress ticket is not a RESUME row" "$f13
 has "pool-only: an ordinary worker-less pool ticket is still a RESUME row" "$f13" "RESUME	HIMMEL-423"
 
 # --- pool depth: --top is the free-slot count; a pool short of it says LOW, and
-# an empty pool names the next-tier candidates (tier 4, rank order unchanged)
+# an empty pool names the next-tier candidates (tier 5, rank order unchanged)
 # on NEXT-TIER rows a dispatcher reading ticket rows never picks up.
 has "a pool shorter than the free slots prints pool=<n>/<slots>,LOW" "$(run7 --doc "$CDOC" --priority-pool-only --top 8)" "pool=7/8,LOW"
 p10="$(run7 --doc "$CDOC" --priority-pool-only --top 4)"
@@ -494,7 +494,7 @@ run30() { NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPA
 o30="$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --top 7 --dispositions)"
 r30="$(printf '%s\n' "$o30" | grep -v '^#' | grep -v '^POOL-EMPTY' | cut -f1,2 | tr '\t' ':' | paste -sd, -)"
 [ "$r30" = "LOCAL:HIMMEL-803,LOCAL:HIMMEL-801" ] && pass "(8134) an unlabelled current-version To Do ticket is a pool row after the labelled one, with an empty priority line" || fail "(8134) pool is '$r30'"
-lacks "(8134) the current-version ticket is not dropped as tier 4" "$o30" "tier 4"
+lacks "(8134) the current-version ticket is not dropped as outside the priority pool" "$(printf '%s\n' "$o30" | grep '^# disposition HIMMEL-801 ')" "outside the priority pool"
 lacks "(8134) a later-version ticket is not offered while the current version has work" "$r30" "HIMMEL-802"
 lacks "(8134) a versionless ticket is not offered while the current version has work" "$r30" "HIMMEL-804"
 lacks "(8134) a current-version ticket blocked by an open ticket is not offered" "$r30" "HIMMEL-805"

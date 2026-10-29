@@ -710,7 +710,7 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
         case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
     fi
     # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
-    # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
+    # backlog (later versions included); its rows already in the pool are printed once, under their own heading
     if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
         heartbeat sampling
         back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
