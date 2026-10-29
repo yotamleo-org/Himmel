@@ -5,6 +5,10 @@
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # and prints a per-model table plus drop advice.
 #
+# --window N counts PRs: rows that carry a pr (the CodeRabbit rows that
+# cr-thread-recorder.sh writes, one per review thread) group by it, every other
+# row by the PR its head or branch maps to, else by its head.
+#
 # --by-branch: per-PR review SPEND. Every other table here is
 # per-model and cumulative, so "what did this PR cost the scarce reviewer?" was
 # unanswerable — the fix-then-re-review loop has no budget, no termination
