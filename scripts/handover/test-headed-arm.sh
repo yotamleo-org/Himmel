@@ -1652,6 +1652,9 @@ contains "resolved launcher: the launcher path reaches the recorded argv" "$rec3
 not_contains "resolved launcher: not force-wrapped in bash (execs via its own shebang)" "$rec36b" "bash /some/repo/scripts/claude-codex"
 contains "resolved launcher: still carries --model gpt-6-astra, bare (HIMMEL-5501)" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
+contains "resolved launcher (recorder branch): clears CLAUDE_JOB_DIR" "$rec36b" "-u CLAUDE_JOB_DIR"
+contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec36b" "-u CLAUDE_CODE_MESSAGING_SOCKET"
+contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_TOKEN" "$rec36b" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 # `script -c` interprets $LAUNCH_CMD (bash %q
 # quoting) with the shell named by ITS OWN $SHELL, not necessarily bash -
 # force it via an explicit SHELL=<bash> token ahead of `script` in the
@@ -2277,6 +2280,9 @@ out43=$(HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_A
 check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the chief --settings (HIMMEL-4052)" "$out43" "--settings"
+contains "43 dry-run launch line: clears CLAUDE_JOB_DIR" "$out43" "-u CLAUDE_JOB_DIR"
+contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_SOCKET" "$out43" "-u CLAUDE_CODE_MESSAGING_SOCKET"
+contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_TOKEN" "$out43" "-u CLAUDE_CODE_MESSAGING_TOKEN"
 
 # --- 43b: a chief arm launches with only the chief profile's
 # MCP servers: --mcp-config <file> + --strict-mcp-config, so a user-level server
