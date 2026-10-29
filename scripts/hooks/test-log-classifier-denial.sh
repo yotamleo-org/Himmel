@@ -381,8 +381,10 @@ run_hook "$(jq -n -c --arg p "$PROMPT_MARK" '{session_id:"s16",cwd:"/tmp/repo",h
 run_hook "$(jq -n -c --arg p "$PROMPT_MARK" '{session_id:"s16",cwd:"/tmp/repo",hook_event_name:"PermissionDenied",tool_name:"Agent",tool_input:{description:"audit the hooks",subagent_type:"Explore",prompt:$p},reason:"[Unsafe Delegation]"}')" "$LOG16" >/dev/null
 if [ "$(wc -l <"$LOG16" 2>/dev/null | tr -d '[:space:]')" = "2" ]; then pass "WebFetch and Agent denials each write one row"; else fail "WebFetch and Agent denials each write one row"; fi
 row_wf=$(sed -n '1p' "$LOG16"); row_ag=$(sed -n '2p' "$LOG16")
-if [ "$(printf '%s' "$row_wf" | jq -r .tool)" = "WebFetch" ] && printf '%s' "$row_wf" | jq -r .input_head | grep -qF 'https://example.test/page'; then pass "WebFetch row names the tool and the url"; else fail "WebFetch row names the tool and the url"; fi
-if [ "$(printf '%s' "$row_ag" | jq -r .tool)" = "Agent" ] && printf '%s' "$row_ag" | jq -r .input_head | grep -qF 'Explore' && printf '%s' "$row_ag" | jq -r .input_head | grep -qF 'audit the hooks'; then pass "Agent row names the tool, subagent_type and description"; else fail "Agent row names the tool, subagent_type and description"; fi
+wf_tool=$(printf '%s' "$row_wf" | jq -r .tool); wf_head=$(printf '%s' "$row_wf" | jq -r .input_head)
+ag_tool=$(printf '%s' "$row_ag" | jq -r .tool); ag_head=$(printf '%s' "$row_ag" | jq -r .input_head)
+if [ "$wf_tool" = "WebFetch" ] && [[ "$wf_head" == *'https://example.test/page'* ]]; then pass "WebFetch row names the tool and the url"; else fail "WebFetch row names the tool and the url"; fi
+if [ "$ag_tool" = "Agent" ] && [[ "$ag_head" == *Explore* ]] && [[ "$ag_head" == *'audit the hooks'* ]]; then pass "Agent row names the tool, subagent_type and description"; else fail "Agent row names the tool, subagent_type and description"; fi
 if grep -qF "PROMPT-BODY-MARKER" "$LOG16" 2>/dev/null; then fail "WebFetch/Agent rows never carry the prompt body"; else pass "WebFetch/Agent rows never carry the prompt body"; fi
 
 # The wiring: the PermissionDenied entry that runs this hook must select every
@@ -392,7 +394,7 @@ if [ -f "$SETTINGS" ]; then
     matcher=$(jq -r '[.hooks.PermissionDenied[]? | select(any(.hooks[]?; (.command // "") | contains("log-classifier-denial.sh"))) | (.matcher // "")] | first // "NOENTRY"' "$SETTINGS" 2>/dev/null)
     for t in Bash Edit Write MultiEdit NotebookEdit WebFetch Agent; do
         if [ "$matcher" = "NOENTRY" ]; then fail "PermissionDenied wiring selects $t (no log-classifier-denial entry)"
-        elif [ -z "$matcher" ] || [ "$matcher" = "*" ] || printf '%s' "$t" | grep -Eqx "($matcher)"; then pass "PermissionDenied wiring selects $t"
+        elif [ -z "$matcher" ] || [ "$matcher" = "*" ] || [[ "$t" =~ ^($matcher)$ ]]; then pass "PermissionDenied wiring selects $t"
         else fail "PermissionDenied wiring selects $t (matcher: $matcher)"; fi
     done
 else
