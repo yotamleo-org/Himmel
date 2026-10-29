@@ -89,7 +89,7 @@
 #      to every file it touches is the same at that ancestor and at the head
 #      (the head only merges main forward): the file is the same blob, or its
 #      patch from the merge-base with origin/main has the same `git patch-id
-#      --stable` at both (main edited another hunk). The old path of every rename
+#      --verbatim` (whitespace counts) at both (main edited another hunk). The old path of every rename
 #      is held to the same test; an unreadable merge-base, diff or patch id
 #      counts as changed. The PASS line names the ancestor sha and run id.
 #      The PASS line carries the dispatch run ids. macos-cadence.yml also passes on a
@@ -1019,14 +1019,14 @@ EOF
         wf_note="PER-SUITE: $wf_name dispatch run $id, red or green overall, named $# suite(s) and every one passed: ${pass#, }"
     }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
-    # wf_own_patch_id <merge-base> <commit> <file>: prints the stable patch id of the file's change
+    # wf_own_patch_id <merge-base> <commit> <file>: prints the whitespace-exact patch id of the file's change
     # from the merge-base to the commit (nothing when the file did not change). rc 1 when the diff
     # or the id cannot be read, so the caller fails closed.
     wf_own_patch_id() {
         local d p
         d=$(git --literal-pathspecs diff --no-color --no-ext-diff --no-renames --binary "$1" "$2" -- "$3" 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable diff fails the comparison closed
         [ -n "$d" ] || return 0
-        p=$(printf '%s\n' "$d" | git patch-id --stable 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable id fails the comparison closed
+        p=$(printf '%s\n' "$d" | git patch-id --verbatim 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable id fails the comparison closed
         p=${p%% *}
         [ -n "$p" ] || return 1
         printf '%s' "$p"
