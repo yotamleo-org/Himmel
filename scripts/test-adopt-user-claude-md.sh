@@ -242,6 +242,59 @@ if [ "$(jq -r '[.op,.manifest_row,.marker,(.file_created|tostring)]|join(" ")' <
   pass "row: insert / user-claude-md / marker id / file_created=true"; else fail "row shape wrong: $row7"; fi
 rm -rf "$home7"
 
+# ── Case 8: an older himmel block between the markers is refreshed in place
+#            (u1), and a second run changes nothing (u2) ──
+echo "== Case 8: older block between the markers is refreshed in place =="
+home8="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home8/.claude"
+target8="$home8/.claude/CLAUDE.md"
+head8="$home8/head.txt"; tail8="$home8/tail.txt"; want8="$home8/want.txt"
+printf '# my own notes\nbefore the block\n\n' > "$head8"
+printf '\nafter the block\nlast line\n' > "$tail8"
+{ cat "$head8"
+  printf '<!-- BEGIN %s -->\nan older principle line\n<!-- END %s -->\n' "$MARKER" "$MARKER"
+  cat "$tail8"; } > "$target8"
+sed -n "/<!-- BEGIN $MARKER -->/,/<!-- END $MARKER -->/p" "$TEMPLATE" > "$home8/block.txt"
+{ cat "$head8"; cat "$home8/block.txt"; cat "$tail8"; } > "$want8"
+
+out8="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target8" 2>&1)"
+if cmp -s "$want8" "$target8"; then
+  pass "u1: block replaced by the template's, text outside the markers byte-identical"
+else
+  fail "u1: target is not head + template block + tail"
+fi
+if grepq "$out8" -F "refreshed"; then pass "refresh status line printed"; else fail "no refresh status line, got: $out8"; fi
+
+before8="$home8/before.txt"; cp "$target8" "$before8"
+out8b="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target8" 2>&1)"
+if cmp -s "$before8" "$target8" && cmp -s "$want8" "$target8"; then pass "u2: second run changes nothing"; else fail "u2: second run CHANGED the file or the first never refreshed it"; fi
+if grepq "$out8b" -F "already present"; then pass "second run prints the skip line"; else fail "no skip line on second run, got: $out8b"; fi
+rm -rf "$home8"
+
+# ── Case 9: heuristic-only target (u3) stays unchanged; the one advisory
+#            names the template path ──
+echo "== Case 9: heuristic-only target, advisory names the template =="
+home9="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home9/.claude"
+target9="$home9/.claude/CLAUDE.md"
+printf '# My principles\n\n1. Simplicity first — do the minimum.\n' > "$target9"
+before9="$home9/before.txt"; cp "$target9" "$before9"
+out9="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target9" 2>&1)"
+if cmp -s "$before9" "$target9"; then pass "u3: heuristic-only target unchanged"; else fail "u3: heuristic-only target CHANGED"; fi
+if grepq "$out9" -F "$TEMPLATE"; then pass "u3: advisory names the template path"; else fail "u3: advisory does not name the template, got: $out9"; fi
+rm -rf "$home9"
+
+# ── Case 10: BEGIN without END (u4) is left unchanged ──
+echo "== Case 10: BEGIN marker with no END marker =="
+home10="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home10/.claude"
+target10="$home10/.claude/CLAUDE.md"
+printf 'intro\n<!-- BEGIN %s -->\nan older principle line\ntrailing operator text\n' "$MARKER" > "$target10"
+before10="$home10/before.txt"; cp "$target10" "$before10"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target10" >/dev/null 2>&1
+if cmp -s "$before10" "$target10"; then pass "u4: BEGIN-without-END target unchanged"; else fail "u4: BEGIN-without-END target CHANGED"; fi
+rm -rf "$home10"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"

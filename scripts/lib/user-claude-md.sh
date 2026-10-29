@@ -19,9 +19,13 @@
 # never duplicated into this file.
 #
 # Idempotent / never destructive:
-#   - target exists AND already has the marker  -> skip, unchanged.
+#   - target holds the BEGIN and END marker lines -> the text between them is
+#     replaced with the template's block (a no-op when already equal), so a
+#     new template line reaches an existing user; text outside is untouched.
+#   - target holds a BEGIN marker but no END -> unchanged.
 #   - target exists, no marker, but looks like it already states the
-#     principles by hand (heuristic phrase match) -> skip, unchanged.
+#     principles by hand (heuristic phrase match) -> skip, unchanged, with one
+#     advisory naming the template path.
 #   - target exists, no marker, no heuristic match -> APPEND (blank line +
 #     payload), never truncate/overwrite.
 #   - target absent -> create it with just the payload.
@@ -53,12 +57,14 @@ _HIMMEL_USER_CLAUDE_MD_HEURISTIC="simplicity first"
 # other recorders: the block is in place whether or not the row lands, and a
 # standalone source (this file's own test) without provenance.sh records nothing.
 _ucm_record_block() {
-  local target="$1" payload="$2" created="$3" row=user-claude-md
+  local target="$1" payload="$2" created="$3" op="${4:-insert}" old="${5:-}" row=user-claude-md
+  local -a pre=()
   command -v prov_record >/dev/null 2>&1 || return 0
   case "${target##*/}" in AGENTS.md) row=user-agents-md ;; esac
-  prov_record insert block "$target" --unit himmel-working-principles --scope user --class code \
+  [ "$op" = replace ] && pre=(--pre-text "$old")
+  prov_record "$op" block "$target" --unit himmel-working-principles --scope user --class code \
     --row "$row" --writer adopt.sh --field "marker=\"${_HIMMEL_USER_CLAUDE_MD_MARKER}\"" \
-    --field "file_created=$created" --post-text "$payload" \
+    --field "file_created=$created" ${pre[@]+"${pre[@]}"} --post-text "$payload" \
     || echo "  warning: provenance record failed for $target (uninstall falls back to the template check)" >&2
   return 0
 }
@@ -92,12 +98,34 @@ wire_user_claude_md() {
   if [ -f "$target" ]; then
     # Exact BEGIN line, not the bare marker substring — prose that merely
     # mentions HIMMEL:working-principles must not suppress the install.
-    if grep -qF "<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" "$target"; then
-      echo "  user CLAUDE.md: working-principles block already present — skipping ($target)"
+    local begin_ln end_ln current
+    begin_ln="$(grep -nF -m1 "<!-- BEGIN ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" "$target" | cut -d: -f1)"
+    if [ -n "$begin_ln" ]; then
+      end_ln="$(awk -v b="$begin_ln" -v m="<!-- END ${_HIMMEL_USER_CLAUDE_MD_MARKER} -->" 'NR>=b && index($0,m){print NR; exit}' "$target")"
+      if [ -z "$end_ln" ]; then
+        echo "  user CLAUDE.md: BEGIN marker with no END marker — leaving $target unchanged" >&2
+        return 0
+      fi
+      current="$(sed -n "${begin_ln},${end_ln}p" "$target")"
+      if [ "$current" = "$payload" ]; then
+        echo "  user CLAUDE.md: working-principles block already present — skipping ($target)"
+        return 0
+      fi
+      if [ "${DRY_RUN:-0}" = "1" ]; then
+        echo "DRY: refresh working-principles block → $target"
+        return 0
+      fi
+      local tmp
+      tmp="$(mktemp "${TMPDIR:-/tmp}/ucm.XXXXXX")" || return 1
+      { head -n "$((begin_ln - 1))" "$target"; printf '%s\n' "$payload"; tail -n "+$((end_ln + 1))" "$target"; } > "$tmp"
+      if ! cat "$tmp" > "$target"; then rm -f "$tmp"; return 1; fi
+      rm -f "$tmp"
+      _ucm_record_block "$target" "$payload" false replace "$current"
+      echo "  user CLAUDE.md: refreshed working-principles block in place → $target"
       return 0
     fi
     if grep -qi "$_HIMMEL_USER_CLAUDE_MD_HEURISTIC" "$target"; then
-      echo "  user CLAUDE.md: no marker, but looks like working principles are already stated by hand (heuristic match on '$_HIMMEL_USER_CLAUDE_MD_HEURISTIC') — skipping, not appending ($target)"
+      echo "  user CLAUDE.md: no marker, but looks like working principles are already stated by hand (heuristic match on '$_HIMMEL_USER_CLAUDE_MD_HEURISTIC') — skipping, not appending; the current block is in $template ($target)"
       return 0
     fi
     if [ "${DRY_RUN:-0}" = "1" ]; then
