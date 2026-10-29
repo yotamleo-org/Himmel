@@ -85,10 +85,13 @@
 #      also failed on main, in whatever job (a re-shard moved them); an
 #      unreadable log or a job showing no failed suite keeps the FAIL. A head
 #      with no dispatch run of its own passes the same way on a failed dispatch
-#      run of the PR branch at an ANCESTOR of the head, when every file the PR
-#      changes is the same blob at that ancestor and at the head (the head only
-#      merges main forward), including the old path of every rename; the PASS
-#      line names the ancestor sha and run id.
+#      run of the PR branch at an ANCESTOR of the head, when the PR's own change
+#      to every file it touches is the same at that ancestor and at the head
+#      (the head only merges main forward): the file is the same blob, or its
+#      patch from the merge-base with origin/main has the same `git patch-id
+#      --stable` at both (main edited another hunk). The old path of every rename
+#      is held to the same test; an unreadable merge-base, diff or patch id
+#      counts as changed. The PASS line names the ancestor sha and run id.
 #      The PASS line carries the dispatch run ids. macos-cadence.yml also passes on a
 #      dispatch run at the head that names its suites (run-name `macos-cadence
 #      suites: <paths>`, the workflow's `suites` input) when the run's log shows
@@ -1016,11 +1019,41 @@ EOF
         wf_note="PER-SUITE: $wf_name dispatch run $id, red or green overall, named $# suite(s) and every one passed: ${pass#, }"
     }
     wf_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
+    # wf_own_patch_id <merge-base> <commit> <file>: prints the stable patch id of the file's change
+    # from the merge-base to the commit (nothing when the file did not change). rc 1 when the diff
+    # or the id cannot be read, so the caller fails closed.
+    wf_own_patch_id() {
+        local d p
+        d=$(git --literal-pathspecs diff --no-color --no-ext-diff --no-renames --binary "$1" "$2" -- "$3" 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable diff fails the comparison closed
+        [ -n "$d" ] || return 0
+        p=$(printf '%s\n' "$d" | git patch-id --stable 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable id fails the comparison closed
+        p=${p%% *}
+        [ -n "$p" ] || return 1
+        printf '%s' "$p"
+    }
+    # wf_own_patch_same <ancestor> <file>: rc 0 when the PR's own patch to the file (its merge-base
+    # with origin/main to the commit) is the same at the ancestor and at the head, so the file only
+    # moved because main moved forward. Any unreadable step is rc 1.
+    wf_own_patch_same() {
+        local a_mb a_id h_id
+        if [ -z "$wf_main_ref" ]; then
+            git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null || return 1  # swallow-ok: an unfetchable main fails the comparison closed
+            wf_main_ref=refs/remotes/origin/main
+            wf_head_mb=$(git merge-base "$wf_main_ref" "$SHA" 2>/dev/null) || wf_head_mb=""  # swallow-ok: an empty merge-base fails the comparison closed below
+        fi
+        [ -n "$wf_head_mb" ] || return 1
+        a_mb=$(git merge-base "$wf_main_ref" "$1" 2>/dev/null) || return 1  # swallow-ok: rc checked, no merge-base fails the comparison closed
+        a_id=$(wf_own_patch_id "$a_mb" "$1" "$2") || return 1
+        h_id=$(wf_own_patch_id "$wf_head_mb" "$SHA" "$2") || return 1
+        [ "$a_id" = "$h_id" ]
+    }
+    wf_main_ref=""; wf_head_mb=""
     # wf_ancestor_preexisting <workflow file>: rc 0 with wf_note, wf_anc_id and wf_anc_sha set when a
-    # failed dispatch run of the PR branch at an ANCESTOR of the head passes wf_preexisting and every
-    # file the PR changes is the same blob at that ancestor and at the head, so the head only merges
-    # main forward. That run's check runs sit on the ancestor commit, not the head. Otherwise rc 1 and
-    # wf_why says why (empty when the branch has no such run).
+    # failed dispatch run of the PR branch at an ANCESTOR of the head passes wf_preexisting and the
+    # PR's own change to every file it touches is the same at that ancestor and at the head: the file
+    # is the same blob, or its patch from the merge-base with origin/main has the same patch id (the
+    # head only merges main forward). That run's check runs sit on the ancestor commit, not the head.
+    # Otherwise rc 1 and wf_why says why (empty when the branch has no such run).
     wf_ancestor_preexisting() {
         local rows id anc f a_ent h_ent changed prev_files
         wf_why=""
@@ -1048,7 +1081,7 @@ EOF
                     changed="$f (unreadable)"
                     break
                 fi
-                if [ "$a_ent" != "$h_ent" ]; then
+                if [ "$a_ent" != "$h_ent" ] && ! wf_own_patch_same "$anc" "$f"; then
                     changed="$f"
                     break
                 fi
@@ -1062,7 +1095,7 @@ EOF
             fi
             if wf_preexisting "$1" "$id"; then
                 wf_anc_id="$id"; wf_anc_sha="$anc"
-                wf_note="$wf_note — run is at ancestor $anc, and every file the PR changes is identical there and at the head"
+                wf_note="$wf_note — run is at ancestor $anc, and the PR's own change to every file it touches is identical there and at the head"
                 return 0
             fi
             wf_why="${wf_why:-dispatch run $id at $anc is not pre-existing}"
