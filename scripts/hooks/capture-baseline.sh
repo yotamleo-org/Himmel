@@ -22,13 +22,19 @@ FIXTURE="${TESTDATA_DIR}/fixture.jsonl"
 BASELINE="${TESTDATA_DIR}/session-note.baseline.md"
 GOLDEN="${TESTDATA_DIR}/session-note.golden.md"
 
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+if ! { [ -r "${SCRIPT_DIR}/../lib/prim.sh" ] && . "${SCRIPT_DIR}/../lib/prim.sh"; } 2>/dev/null; then
+    echo "capture-baseline: cannot source lib/prim.sh" >&2; exit 1
+fi
+
 FAILED=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
 # ---------- Build stub directory -------------------------------------------
 
-STUBS="$(mktemp -d)"
+STUBS="$(tmpdir)" || { echo "capture-baseline: tmpdir failed" >&2; exit 1; }
 SB=""
 SB2=""
 # shellcheck disable=SC2317,SC2329  # invoked via trap EXIT
@@ -76,7 +82,7 @@ chmod +x "${STUBS}/git"
 
 # ---------- Build sandbox ---------------------------------------------------
 
-SB="$(mktemp -d)"
+SB="$(tmpdir)" || { fail "tmpdir failed"; exit 1; }
 mkdir -p "${SB}/vault" "${SB}/proj/.claude"
 
 # Use a FIXED cwd (/tmp/himmel-test) so the worktree field is deterministic
@@ -116,7 +122,7 @@ pass "golden saved to: $GOLDEN"
 
 # ---------- Run hook (second time — determinism check) ----------------------
 
-SB2="$(mktemp -d)"
+SB2="$(tmpdir)" || { fail "tmpdir failed"; exit 1; }
 mkdir -p "${SB2}/vault" "${SB2}/proj/.claude"
 
 printf '%s' "$PAYLOAD" | \

@@ -84,5 +84,6 @@ awk '
     skip==1 { if ($0 ~ /^## /) { skip=0 } else { next } }
     /^## Summary$/ { print; print ""; print "_Crystallized by stub: session synthesized._"; print ""; skip=1; next }
     { print }
+# prim-ok: a stub that stands in for claude in tests and must not source scripts/lib
 ' "$NOTE" > "$tmp" && mv -f "$tmp" "$NOTE"
 exit 0

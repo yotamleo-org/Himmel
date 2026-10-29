@@ -513,7 +513,7 @@ test("reply CLI appends one line to the chat's outbox under a scratch BRIDGE_ROO
   expect(meta.chat_id).toBe(1);
 });
 
-test("reply CLI: the old --console is the same flag as --chief, with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option", async () => {
+test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; only --chief names the chief", async () => {
   const reply = async (flag: string, env: Record<string, string> = {}) => {
     const r = root();
     const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", flag, NAME, "1", "answer"], {
@@ -524,17 +524,13 @@ test("reply CLI: the old --console is the same flag as --chief, with one depreca
     const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
     return { code, err, line: existsSync(outbox) ? readFileSync(outbox, "utf8").trim() : null };
   };
-  const fresh = await reply("--chief");
-  const old = await reply("--console");
+  const fresh = await reply("--chief", { HIMMEL_LEGACY_NAMES: "1" });
+  const old = await reply("--console", { HIMMEL_LEGACY_NAMES: "1" });
   expect(fresh.code).toBe(0);
   expect(JSON.parse(fresh.line!)).toEqual({ text: "answer", console: NAME });
-  expect(old.code).toBe(0);
-  expect(old.line).toBe(fresh.line);
-  expect(old.err.split("\n").filter((l) => l === "--console is deprecated: use --chief")).toHaveLength(1);
-  const off = await reply("--console", { HIMMEL_LEGACY_NAMES: "0" });
-  expect(off.code).toBe(1);
-  expect(off.line).toBeNull();
-  expect(off.err).toContain("usage: bun chief-route.ts reply");
+  expect(old.code).toBe(1);
+  expect(old.line).toBeNull();
+  expect(old.err).toContain("usage: bun chief-route.ts reply");
 });
 
 // Every malformed reserved fleet shape is a terminal refusal.

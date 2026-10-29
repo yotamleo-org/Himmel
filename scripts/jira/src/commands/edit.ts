@@ -1,4 +1,4 @@
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 import { request, severityField } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
@@ -328,8 +328,7 @@ export function registerEdit(program: Command): void {
       '--chief-override <reason>',
       'Chief session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .addOption(new Option('--console-override <reason>').hideHelp())
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; consoleOverride?: string; residualOf?: string }) => {
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; residualOf?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both — it

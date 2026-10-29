@@ -242,6 +242,194 @@ if [ "$(jq -r '[.op,.manifest_row,.marker,(.file_created|tostring)]|join(" ")' <
   pass "row: insert / user-claude-md / marker id / file_created=true"; else fail "row shape wrong: $row7"; fi
 rm -rf "$home7"
 
+# ── Case 8: an older himmel block between the markers is refreshed in place
+#            (u1), and a second run changes nothing (u2) ──
+echo "== Case 8: older block between the markers is refreshed in place =="
+home8="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home8/.claude"
+target8="$home8/.claude/CLAUDE.md"
+head8="$home8/head.txt"; tail8="$home8/tail.txt"; want8="$home8/want.txt"
+printf '# my own notes\nbefore the block\n\n' > "$head8"
+printf '\nafter the block\nlast line\n' > "$tail8"
+{ cat "$head8"
+  printf '<!-- BEGIN %s -->\nan older principle line\n<!-- END %s -->\n' "$MARKER" "$MARKER"
+  cat "$tail8"; } > "$target8"
+sed -n "/<!-- BEGIN $MARKER -->/,/<!-- END $MARKER -->/p" "$TEMPLATE" > "$home8/block.txt"
+{ cat "$head8"; cat "$home8/block.txt"; cat "$tail8"; } > "$want8"
+
+out8="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target8" 2>&1)"
+if cmp -s "$want8" "$target8"; then
+  pass "u1: block replaced by the template's, text outside the markers byte-identical"
+else
+  fail "u1: target is not head + template block + tail"
+fi
+if grepq "$out8" -F "refreshed"; then pass "refresh status line printed"; else fail "no refresh status line, got: $out8"; fi
+
+before8="$home8/before.txt"; cp "$target8" "$before8"
+out8b="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target8" 2>&1)"
+if cmp -s "$before8" "$target8" && cmp -s "$want8" "$target8"; then pass "u2: second run changes nothing"; else fail "u2: second run CHANGED the file or the first never refreshed it"; fi
+if grepq "$out8b" -F "already present"; then pass "second run prints the skip line"; else fail "no skip line on second run, got: $out8b"; fi
+rm -rf "$home8"
+
+# ── Case 9: heuristic-only target (u3) stays unchanged; the one advisory
+#            names the template path ──
+echo "== Case 9: heuristic-only target, advisory names the template =="
+home9="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home9/.claude"
+target9="$home9/.claude/CLAUDE.md"
+printf '# My principles\n\n1. Simplicity first — do the minimum.\n' > "$target9"
+before9="$home9/before.txt"; cp "$target9" "$before9"
+out9="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target9" 2>&1)"
+if cmp -s "$before9" "$target9"; then pass "u3: heuristic-only target unchanged"; else fail "u3: heuristic-only target CHANGED"; fi
+if grepq "$out9" -F "$TEMPLATE"; then pass "u3: advisory names the template path"; else fail "u3: advisory does not name the template, got: $out9"; fi
+rm -rf "$home9"
+
+# ── Case 10: BEGIN without END (u4) is left unchanged ──
+echo "== Case 10: BEGIN marker with no END marker =="
+home10="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home10/.claude"
+target10="$home10/.claude/CLAUDE.md"
+printf 'intro\n<!-- BEGIN %s -->\nan older principle line\ntrailing operator text\n' "$MARKER" > "$target10"
+before10="$home10/before.txt"; cp "$target10" "$before10"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target10" >/dev/null 2>&1
+rc10=$?
+if [ "$rc10" -eq 0 ] && cmp -s "$before10" "$target10"; then pass "u4: BEGIN-without-END target unchanged"; else fail "u4: BEGIN-without-END target CHANGED or rc $rc10"; fi
+rm -rf "$home10"
+
+# ── Case 11: the callers (adopt.sh, himmel-update.sh) run under
+#             `set -euo pipefail`, so the append path of a marker-less target
+#             must survive errexit ──
+echo "== Case 11: marker-less target under set -euo pipefail =="
+home11="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home11/.claude"
+target11="$home11/.claude/CLAUDE.md"
+printf '# my own notes\nsome unrelated content\n' > "$target11"
+# shellcheck source=lib/user-claude-md.sh
+# shellcheck disable=SC1091
+( set -euo pipefail; . "$LIB"; wire_user_claude_md "$TEMPLATE" "$target11" ) >/dev/null 2>&1
+rc11=$?
+if [ "$rc11" -eq 0 ] && grep -q -- "<!-- BEGIN $MARKER -->" "$target11"; then
+  pass "append path survives errexit (rc 0, block appended)"
+else
+  fail "append path died under errexit (rc $rc11)"
+fi
+sed -i.bak 's/^Use judgement on trivial tasks\.$/Use an older line./' "$target11" && rm -f "$target11.bak"
+grep -q "Use an older line" "$target11" || fail "case 11 setup: the older line was not seeded (template wording changed?)"
+# shellcheck source=lib/user-claude-md.sh
+# shellcheck disable=SC1091
+( set -euo pipefail; . "$LIB"; wire_user_claude_md "$TEMPLATE" "$target11" ) >/dev/null 2>&1
+rc11=$?
+if [ "$rc11" -eq 0 ] && ! grep -q "Use an older line" "$target11"; then
+  pass "refresh path survives errexit (rc 0, older line replaced)"
+else
+  fail "refresh path died or did not refresh under errexit (rc $rc11)"
+fi
+rm -rf "$home11"
+
+# ── Case 12: prose that merely quotes the marker text inside a line is not a
+#             marker line -- the refresh must not overwrite it ──
+echo "== Case 12: quoted marker text in prose is not a block =="
+home12="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home12/.claude"
+target12="$home12/.claude/CLAUDE.md"
+orig12="$home12/orig.txt"
+printf "Notes: wrap it as '<!-- BEGIN %s -->' ... '<!-- END %s -->'.\nkeep this operator line\n" "$MARKER" "$MARKER" > "$orig12"
+cp "$orig12" "$target12"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target12" >/dev/null 2>&1
+prefix12="$home12/prefix.txt"
+head -c "$(wc -c < "$orig12" | tr -d '[:space:]')" "$target12" > "$prefix12"
+if cmp -s "$orig12" "$prefix12"; then pass "quoting prose kept byte-identical"; else fail "prose quoting the markers was overwritten"; fi
+if grep -qx "<!-- BEGIN $MARKER -->" "$target12" && grep -qx "<!-- END $MARKER -->" "$target12"; then pass "the block was still appended after the quoting prose"; else fail "quoting prose suppressed the install"; fi
+rm -rf "$home12"
+
+# ── Case 13: a read-only target is the operator's choice -- the refresh
+#             refuses, loudly, and leaves it exactly as it was ──
+echo "== Case 13: read-only target is refused and left unchanged =="
+home13="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home13/.claude"
+target13="$home13/.claude/CLAUDE.md"
+printf 'head\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$target13"
+before13="$home13/before.txt"; cp "$target13" "$before13"
+chmod 444 "$target13"
+if [ -w "$target13" ]; then
+  pass "running as a user that ignores file modes: unwritable-target row not applicable"
+else
+  out13="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target13" 2>&1)"
+  rc13=$?
+  chmod 644 "$target13"
+  if [ "$rc13" -ne 0 ] && cmp -s "$before13" "$target13"; then pass "unwritable target: non-zero rc, target unchanged"; else fail "unwritable target: rc $rc13 or target changed"; fi
+  if grepq "$out13" -F "$target13"; then pass "the refusal names the target"; else fail "no message naming the target, got: $out13"; fi
+fi
+chmod 644 "$target13"
+rm -rf "$home13"
+
+# ── Cases 14-16: the block is only refreshed when the SAME grammar the uninstall
+#                 side uses (unwire-user-claude-md.sh) can tell it from text; any
+#                 doubt leaves the file byte-identical and prints one advisory ──
+refuse_row() { # <label> <printf-format> <args...>: the target must stay byte-identical
+  local label="$1" fmt="$2" h t o out rc; shift 2
+  h="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+  mkdir -p "$h/.claude"; t="$h/.claude/CLAUDE.md"; o="$h/orig.txt"
+  # shellcheck disable=SC2059
+  printf "$fmt" "$@" > "$o"
+  cp "$o" "$t"
+  out="$(DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$t" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ] && cmp -s "$o" "$t"; then pass "$label: unchanged"; else fail "$label: rc $rc or the target changed"; fi
+  if grepq "$out" -F "$t"; then pass "$label: advisory names the target"; else fail "$label: no advisory, got: $out"; fi
+  rm -rf "$h"
+}
+echo "== Case 14: duplicate BEGIN marker is refused =="
+refuse_row "duplicate BEGIN" 'top\n<!-- BEGIN %s -->\nmy own text\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\nbottom\n' "$MARKER" "$MARKER" "$MARKER"
+echo "== Case 15: both markers quoted inside a fence that never closes =="
+refuse_row "unclosed fence quote" 'intro\n```\n<!-- BEGIN %s -->\nquoted\n<!-- END %s -->\n' "$MARKER" "$MARKER"
+echo "== Case 16: CRLF marker lines are refused =="
+refuse_row "CRLF markers" 'top\r\n<!-- BEGIN %s -->\r\nold\r\n<!-- END %s -->\r\nbottom\r\n' "$MARKER" "$MARKER"
+
+# ── Case 17: a closed fence quoting both markers BEFORE the real block: the quote
+#             is text, only the real block is refreshed ──
+echo "== Case 17: closed fenced quote before the real block =="
+home17="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home17/.claude"
+target17="$home17/.claude/CLAUDE.md"
+# shellcheck disable=SC2016 # the backticks are literal fence characters
+printf 'how to wire it:\n```\n<!-- BEGIN %s -->\nquoted\n<!-- END %s -->\n```\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\nbottom\n' "$MARKER" "$MARKER" "$MARKER" "$MARKER" > "$target17"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target17" >/dev/null 2>&1
+if grep -q '^quoted$' "$target17" && ! grep -q '^old$' "$target17" && [ "$(tail -n 1 "$target17")" = bottom ]; then
+  pass "fenced quote kept, real block refreshed, text below kept"
+else
+  fail "fenced-quote target not handled as expected"
+fi
+rm -rf "$home17"
+
+# ── Case 18: the refresh keeps the target's mode and a symlink to it ──
+echo "== Case 18: mode and symlink survive the refresh =="
+home18="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home18/.claude" "$home18/dotfiles"
+real18="$home18/dotfiles/CLAUDE.md"
+link18="$home18/.claude/CLAUDE.md"
+printf 'head\n<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$real18"
+chmod 640 "$real18"
+ln -s "$real18" "$link18"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$link18" >/dev/null 2>&1
+if [ -L "$link18" ] && ! grep -q '^old$' "$real18"; then pass "symlink kept, the file it points at is refreshed"; else fail "symlink replaced or file not refreshed"; fi
+if [ -n "$(find "$real18" -prune -perm 640)" ]; then pass "mode 640 preserved"; else fail "mode changed"; fi
+rm -rf "$home18"
+
+# ── Case 19: a target that is only the block (BEGIN on line 1) is refreshed ──
+echo "== Case 19: block starts on line 1 =="
+home19="$(mktemp -d "${TMPDIR:-/tmp}/h8010.XXXXXX")" || exit 1
+mkdir -p "$home19/.claude"
+target19="$home19/.claude/CLAUDE.md"
+printf '<!-- BEGIN %s -->\nold\n<!-- END %s -->\ntail\n' "$MARKER" "$MARKER" > "$target19"
+DRY_RUN=0 wire_user_claude_md "$TEMPLATE" "$target19" >/dev/null 2>&1
+rc19=$?
+if [ "$rc19" -eq 0 ] && ! grep -q '^old$' "$target19" && [ "$(head -n 1 "$target19")" = "<!-- BEGIN $MARKER -->" ] && [ "$(tail -n 1 "$target19")" = tail ]; then
+  pass "line-1 block refreshed, text below kept"
+else
+  fail "line-1 block not refreshed (rc $rc19)"
+fi
+rm -rf "$home19"
+
 # Final tally
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"

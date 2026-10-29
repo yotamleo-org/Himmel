@@ -53,6 +53,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../guardrails/lib.sh" 2>/dev/null || exit 0
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+{ [ -r "$SCRIPT_DIR/../lib/prim.sh" ] && . "$SCRIPT_DIR/../lib/prim.sh"; } 2>/dev/null || exit 0
 
 primary="$(primary_checkout_root "$CLAUDE_PROJECT_DIR" 2>/dev/null)" || exit 0
 [ -n "$primary" ] || exit 0
@@ -68,19 +71,10 @@ rc=$?
 out_dir="${HIMMEL_PRIMARY_BASELINE_DIR:-$HOME/.claude/himmel/primary-baseline}"
 mkdir -p "$out_dir" 2>/dev/null || exit 0
 
-# codex-9: the temp file must be created INSIDE out_dir (not
-# ${TMPDIR:-/tmp}) — `mv` is only atomic WITHIN one filesystem, and
-# ${TMPDIR:-/tmp} vs $out_dir (under $HOME by default) can be, and often are,
-# different filesystems, in which case `mv` silently falls back to
-# copy+unlink and a concurrent reader could see a partial file — exactly the
-# guarantee this comment claims.
-tmp="$(mktemp "$out_dir/.primary-baseline.XXXXXX" 2>/dev/null)" || exit 0
-trap 'rm -f "$tmp"' EXIT
-printf '%s' "$status_out" > "$tmp" 2>/dev/null || exit 0
-
-# Write via temp file + mv so a reader (detect-dirty-primary.sh, possibly
-# running concurrently in another PostToolUse invocation) never sees a
-# partial file.
+# atomic_write stages its temp file beside the destination (inside out_dir, not
+# ${TMPDIR:-/tmp}), so the rename stays on one filesystem and a reader
+# (detect-dirty-primary.sh, possibly running concurrently in another
+# PostToolUse invocation) never sees a partial file.
 dest="$out_dir/$session_id.primary-baseline"
-mv -f "$tmp" "$dest" 2>/dev/null || exit 0
+printf '%s' "$status_out" | atomic_write "$dest" 2>/dev/null || exit 0
 exit 0

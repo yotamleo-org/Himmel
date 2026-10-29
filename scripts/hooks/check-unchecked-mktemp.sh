@@ -187,6 +187,7 @@ blob_spec() {
     if [ "$MODE" = range ]; then printf 'HEAD:%s' "$1"; else printf ':%s' "$1"; fi
 }
 
+# prim-ok: this pre-commit gate's fail-closed path stays self-contained (its mutation control copies only the predicate lib beside a mutant), so it must not depend on sourcing prim.sh
 scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/check-unchecked-mktemp.XXXXXX")" || {
     echo "FAIL: check-unchecked-mktemp: mktemp -d failed" >&2
     exit 1
@@ -434,6 +435,7 @@ while IFS= read -r -d '' sh_path && IFS= read -r -d '' src_path; do
         # gets its own remedy text.
         case "$text" in
             local\ * | export\ * | declare\ * | typeset\ * | readonly\ *)
+                # prim-ok: remedy text printed to the operator, not a mktemp call
                 echo "   Remedy: split the declaration from the assignment -- \`local VAR; VAR=\$(mktemp -d) || exit 1\` -- a same-line \`||\` on a local/export/declare/typeset/readonly line sees the declaration builtin's OWN exit status (always 0), never mktemp's." >&2
                 ;;
             *)

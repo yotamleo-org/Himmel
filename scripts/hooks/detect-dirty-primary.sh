@@ -81,6 +81,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../guardrails/lib.sh" 2>/dev/null || exit 0
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+{ [ -r "$SCRIPT_DIR/../lib/prim.sh" ] && . "$SCRIPT_DIR/../lib/prim.sh"; } 2>/dev/null || exit 0
 
 primary="$(primary_checkout_root "$CLAUDE_PROJECT_DIR" 2>/dev/null)" || exit 0
 [ -n "$primary" ] || exit 0
@@ -128,23 +131,11 @@ new_lines="$(LC_ALL=C comm -13 \
 # (below) is unaffected — new_lines is still computed from the OLD baseline,
 # so a run that finds nothing new still reports nothing.
 #
-# Temp file + mv so a concurrent reader never sees a partial file.
-#
-# The temp file must be created INSIDE
-# out_dir, not ${TMPDIR:-/tmp} — identical to the fix in this file's
-# sibling record-primary-baseline.sh. `mv` is only atomic WITHIN one
-# filesystem, and ${TMPDIR:-/tmp} vs $out_dir (under $HOME by default) can be,
-# and often are, different filesystems (tmpfs vs btrfs on this station), in
-# which case `mv` silently falls back to copy+unlink and a concurrent reader
-# could see a partial file — exactly the guarantee the comment above claims.
+# atomic_write stages its temp file beside the destination (inside out_dir, not
+# ${TMPDIR:-/tmp}), so the rename stays on one filesystem and a concurrent
+# reader never sees a partial file.
 if [ "$current_out" != "$baseline_out" ]; then
-    tmp="$(mktemp "$out_dir/.primary-baseline.XXXXXX" 2>/dev/null)"
-    if [ -n "$tmp" ]; then
-        trap 'rm -f "$tmp"' EXIT
-        if printf '%s' "$current_out" > "$tmp" 2>/dev/null; then
-            mv -f "$tmp" "$baseline_file" 2>/dev/null || true
-        fi
-    fi
+    printf '%s' "$current_out" | atomic_write "$baseline_file" 2>/dev/null || true
 fi
 
 [ -n "$new_lines" ] || exit 0
