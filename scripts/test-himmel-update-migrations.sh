@@ -118,7 +118,7 @@ fi
 # A retired script name matches only as a scripts/ path: another project's script sharing the bare name is left alone.
 other_settings="$TMP/settings-other-project.json"
 own_root="$(cd "$ROOT" && pwd -P)"
-printf '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)", "Bash(/some/other/project/scripts/console.sh:*)", "Bash(/backup%s/scripts/console.sh:*)"]}}\n' "$own_root" > "$other_settings" # old-term-ok
+printf '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "/some/other/project/console.sh"}]}]}, "permissions": {"allow": ["Bash(/some/other/project/console.sh:*)", "Bash(/some/other/project/scripts/console.sh:*)", "Bash(/backup%s/scripts/console.sh:*)", "Bash(/backup+%s/scripts/console.sh:*)", "Bash(%s/scripts/../../other/scripts/console.sh:*)"]}}\n' "$own_root" "$own_root" "$own_root" > "$other_settings" # old-term-ok
 other_before="$(cat "$other_settings")"
 other_rc=0
 python3 -I "$migrator" --apply "$other_settings" > /dev/null 2>&1 || other_rc=$?
@@ -131,9 +131,11 @@ fi
 own_settings="$TMP/settings-own-root.json"
 # shellcheck disable=SC2016 # the literal $HIMMEL_REPO belongs in the settings file
 printf '{"permissions": {"allow": ["Bash(%s/scripts/console.sh:*)", "Bash($HIMMEL_REPO/scripts/console.sh:*)"]}}\n' "$own_root" > "$own_settings" # old-term-ok
-python3 -I "$migrator" --apply "$own_settings" > /dev/null 2>&1
+own_rc=0
+python3 -I "$migrator" --apply "$own_settings" > /dev/null 2>&1 || own_rc=$?
 # shellcheck disable=SC2016 # matching the literal $HIMMEL_REPO
-if grep -Fq "$own_root/scripts/chief.sh" "$own_settings" && grep -Fq '$HIMMEL_REPO/scripts/chief.sh' "$own_settings"; then
+if [ "$own_rc" = 0 ] && grep -Fq "Bash($own_root/scripts/console.sh:*)" "$own_settings" && grep -Fq "Bash($own_root/scripts/chief.sh:*)" "$own_settings" \
+    && grep -Fq 'Bash($HIMMEL_REPO/scripts/console.sh:*)' "$own_settings" && grep -Fq 'Bash($HIMMEL_REPO/scripts/chief.sh:*)' "$own_settings"; then # old-term-ok
     assert_pass 'renamed-names: --apply still renames a retired script under this install'"'"'s own scripts/ path'
 else
     assert_fail "renamed-names: --apply left this install's own script unrenamed ($(cat "$own_settings"))"

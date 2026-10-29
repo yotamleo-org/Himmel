@@ -62,7 +62,7 @@ def rename_paths(s, paths):
         # A bare script name is renamed only inside this checkout's scripts/ path: relative, under its root, or under $HIMMEL_REPO.
         if anchored:
             prefix = "(?:" + re.escape(anchored[0] + "/") + r"|\$HIMMEL_REPO/|\$\{HIMMEL_REPO\}/|\./)?"
-            head = r"(?<![A-Za-z0-9_./-])(" + prefix + r"scripts/(?:[A-Za-z0-9_.-]+/)*)"
+            head = r"(?<![A-Za-z0-9_./+-])(" + prefix + r"scripts/(?:(?!\.\./)[A-Za-z0-9_.-]+/)*)"
         else:
             head = r"(?<![A-Za-z0-9_.-])()"
         rx = re.compile(head + re.escape(old) + r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9_])")
