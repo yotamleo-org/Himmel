@@ -39,8 +39,12 @@ printf '{"mcpServers":{"fixture-old":{"command":"z"}}}\n' > "$CACHE/fixmkt/fixpl
 printf '{"mcpServers":{"fixture-other-mkt":{"command":"z"}}}\n' > "$CACHE/othermkt/fixplug/99.0.0/.mcp.json"
 
 out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+rc=$?
 
 echo "== C82: every source layer is listed with its server =="
+if [ "$rc" -eq 0 ]; then pass "C82 normal run exits 0"; else fail "C82 normal run exits $rc"; fi
+has "C82 normal run is OK severity" "OK   C82-mcp-sources" "$out"
+has "C82 normal run reports 0 WARN" "0 WARN" "$out"
 has "C82 row present" "C82-mcp-sources" "$out"
 has "C82 user config" "fixture-user [user config]" "$out"
 has "C82 project .mcp.json" "fixture-proj [project .mcp.json]" "$out"
@@ -86,6 +90,19 @@ printf '{' > "$WORK/claude/settings.json"
 out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
 has "C82 malformed settings -> WARN" "WARN C82-mcp-sources" "$out"
 has "C82 names the settings layer" "unreadable JSON [settings enabledPlugins]" "$out"
+
+echo "== C82: a dangling symlink config and a malformed plugin index are WARNs =="
+rm -f "$WORK/home/.claude.json"
+ln -s "$WORK/missing-target.json" "$WORK/home/.claude.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 dangling symlink user config -> WARN" "unreadable JSON [user config]" "$out"
+rm -f "$WORK/home/.claude.json"
+printf '{"mcpServers":{}}\n' > "$WORK/home/.claude.json"
+printf '{"enabledPlugins":{"pinplug@fixmkt":true}}\n' > "$WORK/claude/settings.json"
+printf '{' > "$WORK/claude/plugins/installed_plugins.json"
+out="$(HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$PROJ" --only C82 --no-color 2>&1)"
+has "C82 malformed plugin index -> WARN" "unreadable JSON [plugin index]" "$out"
+lacks "C82 malformed plugin index does not fall back to the newest cached version" "fixture-unpinned [plugin" "$out"
 
 [ "$fails" -eq 0 ] && echo "all passed" && exit 0
 echo "$fails failed"; exit 1

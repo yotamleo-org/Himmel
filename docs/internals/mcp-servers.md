@@ -74,7 +74,7 @@ Claude, and automatic charts for MCP results that are metrics over time".
 source layer: user config (`~/.claude.json` `mcpServers`), the local project config
 (`~/.claude.json` `projects.<this repo>.mcpServers`), project `.mcp.json`, an
 enabled plugin's `.mcp.json` (the version `installed_plugins.json` pins), the himmel lane catalog (`scripts/lanes/plugin-profiles.json`
-`mcpCatalog`) and runtime built-ins such as easel. It reads key names only, never a value.
+`mcpCatalog`) and runtime built-ins such as easel. For each server entry it reads the name only, never its command, arguments or env values (it also reads the `enabledPlugins` flags and plugin install paths to find the enabled plugins' manifests).
 
 ## Tasks and elicitation (protocol 2026-07-28)
 

@@ -4855,7 +4855,7 @@ check_c82_mcp_sources() {
     local rows="" enabled="" key name mkt f n pin
     _c82_keys() { # <label> <json file> <jq path to the server object>
         local out
-        [ -e "$2" ] || return 0
+        [ -e "$2" ] || [ -L "$2" ] || return 0
         out="$(jq -r --arg l "$1" "($3 // {}) | keys[] | . + \" [\" + \$l + \"]\"" "$2" 2>/dev/null)" \
             || { printf 'unreadable JSON [%s]\n' "$1"; return 0; }
         [ -z "$out" ] || printf '%s\n' "$out"
@@ -4863,13 +4863,18 @@ check_c82_mcp_sources() {
     rows="$(_c82_keys "user config" "${HOME:-}/.claude.json" .mcpServers)
 $(C82_PROJ="$REPO_ROOT" _c82_keys "local project config" "${HOME:-}/.claude.json" '.projects[env.C82_PROJ].mcpServers')
 $(_c82_keys "project .mcp.json" "$REPO_ROOT/.mcp.json" .mcpServers)"
-    if [ -e "$SETTINGS" ]; then
+    if [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; then
         enabled="$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' "$SETTINGS" 2>/dev/null)" \
             || rows="$rows
 unreadable JSON [settings enabledPlugins]"
         for key in $enabled; do
             name="${key%%@*}"; mkt="${key#*@}"
-            pin="$(jq -r --arg k "$key" '.plugins[$k][0].installPath // empty' "$CLAUDE_DIR_R/plugins/installed_plugins.json" 2>/dev/null)"
+            pin=""
+            if [ -e "$CLAUDE_DIR_R/plugins/installed_plugins.json" ] || [ -L "$CLAUDE_DIR_R/plugins/installed_plugins.json" ]; then
+                pin="$(jq -r --arg k "$key" '.plugins[$k][0].installPath // empty' "$CLAUDE_DIR_R/plugins/installed_plugins.json" 2>/dev/null)" \
+                    || { [[ "$rows" == *"[plugin index]"* ]] || rows="$rows
+unreadable JSON [plugin index]"; continue; }
+            fi
             if [ -n "$pin" ]; then
                 f="$pin/.mcp.json"
             else
