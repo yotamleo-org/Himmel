@@ -642,17 +642,20 @@ pathlib.Path(sys.argv[2]).write_text(source.replace(arm, '        --render-worke
 PY
 check "action-zero silent-alias mutant was built" 0 "$?"
 action_zero_rejects() {
-  local script="$1" probe_rc
+  local script="$1"
   bash "$HERE/clean-sandbox.sh" --scratch "$FT/action-zero/sandbox" -- \
     env HIMMEL_LEGACY_NAMES=1 bash "$script" --doc "$az_doc" --root "$FT/action-zero/root" \
     --repo "$ROOT" --lock-only --render-legs >"$FT/action-zero/out" 2>&1
-  probe_rc=$?
-  [ "$probe_rc" -eq 2 ]
+  az_probe_rc=$?
+  [ "$az_probe_rc" -eq 2 ]
 }
 action_zero_rejects "$ROOT/scripts/handover/chief-kit/action-zero.sh"
 check "action-zero rejects --render-legs with valid doc/root" 0 "$?"
 action_zero_rejects "$FT/action-zero/mutant.sh"
 check "the full-argv action-zero probe detects silent alias re-acceptance" 1 "$?"
+check "the silent-alias mutant succeeds rather than failing to start" 0 "${az_probe_rc:-not-recorded}"
+case "$(<"$FT/action-zero/out")" in *"== LOCK (this document)"*free*) reached=yes ;; *) reached=no ;; esac
+check "the silent-alias mutant reaches the real lock reader" yes "$reached"
 out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/action-zero/sandbox" -- \
   env HIMMEL_LEGACY_NAMES=1 bash "$ROOT/scripts/handover/chief-kit/action-zero.sh" \
   --doc "$az_doc" --root "$FT/action-zero/root" --repo "$ROOT" --lock-only --render-workers 2>&1)"
