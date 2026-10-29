@@ -376,32 +376,15 @@ docs/tooling-catalog.md	| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAU
 docs/tooling-catalog.md	2. **The `[1m]` model-name suffix** — the convention the removed GLM lane
 docs/tooling-catalog.md	<a id="spawn-glm"></a>
 docs/tooling-catalog.md	<a id="spawn-glm-scriptstelegramspawn-glmts"></a>
-docs/internals/lane-parity.md	`block-worker-write-fence.sh` is deleted, HIMMEL-7907) and GLM-via-hermes
 docs/internals/lane-parity.md	`block-worker-write-fence.sh` is not one of the six deny-guards above. Its GLM
-docs/internals/lane-parity.md	fences (the GLM push / network / `mcp__*` deny tail was deleted, HIMMEL-7907).
-docs/internals/lane-parity.md	  and anchor-tamper fences; the GLM push / network / `mcp__*` deny tail was
 docs/internals/lane-parity.md	**GLM-engine write-fence vs the retired GLM tail of `scripts/hooks/block-worker-write-fence.sh`.**
 docs/internals/lane-parity.md	the retired GLM tail of `block-worker-write-fence.sh`. So an MCP tool call invokes the guard and is
-docs/internals/lane-parity.md	| glm-spawn (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
-docs/internals/lane-parity.md	| glm-launcher (removed) | `tested:scripts/hooks/test-block-worker-write-fence.sh` |
-docs/internals/lane-parity.md	| glm-spawn (removed) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-docs/internals/lane-parity.md	| glm-launcher (removed) | `asserted-only` (launcher and seed check deleted, HIMMEL-7909) | `tested:scripts/hooks/test-block-worker-write-fence.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-docs/internals/lane-parity.md	  `~/.claude-glm` copy (glm-launcher).
 docs/internals/lane-parity.md	| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
 docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension) | The engine-gated write-fence landed: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
 docs/internals/lane-parity.md	> dormancy status for impl lanes (claudex is live; hermes-oneshot and codex-exec are dormant; the GLM lane was removed, HIMMEL-7481) lives in `scripts/lanes/lanes.json` /
 docs/internals/lane-parity.md	**GLM (removed).** The GLM lane was reachable by three paths, each proven
-docs/internals/lane-parity.md	separately: `glm-spawn` and `glm-launcher` (Claude Code with the backend
-docs/internals/lane-parity.md	The two CC GLM columns stay below while the write-fence hook exists (HIMMEL-7907
-docs/internals/lane-parity.md	retires it), and `parity_guard.py` still refuses a GLM engine as untrusted.
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
-docs/internals/lane-parity.md	Notes on the guardrail-firing cells. GLM ran as Claude Code, so on the two removed
-docs/internals/lane-parity.md	CC GLM lanes the native block-* hooks fired unchanged; the proving pointer is
-docs/internals/lane-parity.md	| deny-guard | glm-spawn (removed) | glm-launcher (removed) | codex-direct | hermes-main (gpt-6.1-sol; GLM removed) |
-docs/internals/lane-parity.md	- **glm-spawn + glm-launcher (removed).** GLM ran as Claude Code, so on these two
-docs/internals/lane-parity.md	  CC GLM lanes the native block-* deny-guard hooks fired unchanged; the single
-docs/internals/lane-parity.md	  both lanes because the ruleset was live `~/.claude` (glm-spawn) or the seeded
 docs/internals/lane-parity.md	- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed).** himmel's CC
 docs/internals/lane-parity.md	engines (gpt-6.1-sol + GLM, removed as a lane but still fenced) the `himmel_agent` profile is pointed
 docs/configuration.md	dormant lane's opt-in). The GLM lane was removed, registry row included
