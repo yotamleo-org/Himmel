@@ -153,9 +153,18 @@ check "21: an unparseable outside-diff list exits 3" "$rc" "3"
 # ── CodeRabbit's real comment format: a bold severity header line, then the bold title ──
 REAL_BODY="$(printf '_⚠️ Potential issue_ | _🟡 Minor_\n\n**<picture><img alt="Minor" src="x"/></picture> Minor** · **Stability & Availability** · **Quick win**\n\n**Select the finding title, not the header.**\n\nbecause reasons.')"
 mkpr 22 feat/x22 MERGED 4000 "$FAR" "$(thread T22 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 50 coderabbitai 'unused' "$REAL_BODY")"
-bash "$SUT" 22 >/dev/null 2>&1
+bash "$SUT" 22 >/dev/null 2>&1; rc=$?
+check "22: recorder exits 0" "$rc" "0"
 check "22: the stored text is the finding title, not the severity header" \
   "$(grep '"thread_id":"22:T22"' "$LEDGER" | jq -r '.text')" "Select the finding title, not the header."
+# shellcheck disable=SC2016  # literal backticks in the comment body
+STAR_BODY="$(printf '_⚠️ Potential issue_ | _🟡 Minor_\n\n**<picture><img alt="Minor" src="x"/></picture> Minor** · **Stability & Availability** · **Quick win**\n\n**Handle `*.sh` files**\n\n**Proposed fix:**\n\nbecause reasons.')"
+mkpr 23 feat/x23 MERGED 4000 "$FAR" "$(thread T23 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 50 coderabbitai 'unused' "$STAR_BODY")"
+bash "$SUT" 23 >/dev/null 2>&1; rc=$?
+check "23: recorder exits 0" "$rc" "0"
+# shellcheck disable=SC2016  # literal backticks in the expected title
+check "23: a title with an asterisk inside is kept whole" \
+  "$(grep '"thread_id":"23:T23"' "$LEDGER" | jq -r '.text')" 'Handle `*.sh` files'
 
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
 mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; mkdir "$tmp/ro/ledger.jsonl.lock"

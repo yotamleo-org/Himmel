@@ -232,7 +232,7 @@ const overlap = (a, b) => { a = words(a); b = words(b); if (!a.size || !b.size) 
   let n = 0; for (const w of a) if (b.has(w)) n++; return n / Math.min(a.size, b.size); };
 const sevOf = b => { const m = String(b).slice(0, 300).match(/Critical|Major|Minor|Trivial/);
   return !m ? "imp" : m[0] === "Critical" ? "crit" : m[0] === "Major" ? "imp" : "sug"; };
-const titleOf = b => { const m = String(b).match(/^\*\*([^*\n]+)\*\*[ \t]*$/m) || String(b).match(/\*\*([^*\n][^\n]*?)\*\*/);
+const titleOf = b => { const m = String(b).match(/^\*\*((?:[^*\n]|\*(?!\*))+)\*\*[ \t]*$/m) || String(b).match(/\*\*([^*\n][^\n]*?)\*\*/);
   if (m) return m[1]; return (String(b).split("\n").find(l => l.trim() && !l.trim().startsWith("_")) || "").replace(/[*`]/g, ""); };
 const rows = []; let matched = 0, dup = 0, inline = 0, out = 0;
 for (const t of pr.threads) {
