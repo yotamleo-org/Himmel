@@ -1141,3 +1141,4 @@ scripts/eval/steering-cull/test-steering-cull.sh	13
 scripts/handover/chief-kit/test-chain-render.sh	1
 scripts/test-new-worktree-no-atlassian.sh	1
 scripts/setup/test-dedupe-plugin-installs.sh	0
+scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	1
