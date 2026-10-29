@@ -20,6 +20,8 @@ has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3')" ;; esac; }
 lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-briefs-test.XXXXXX")" || exit 1
+# Physical path: gen-briefs.py resolves a relative --repo through getcwd, which names /private/var/... on macOS, not the logical TMPDIR.
+WORK="$(cd "$WORK" && pwd -P)" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
