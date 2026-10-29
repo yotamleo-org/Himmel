@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared head-tagged PR snapshots. CLI: <owner/repo> <ttl> <pr>...
-# Platform guard (gitbash-only): bash 3.2+. Output: gh-shaped JSON array, or
+# Platform guard: bash 3.2+. Output: gh-shaped JSON array, or
 # nonzero with no stdout. REST head reads validate even TTL hits; misses use
 # one aliased GraphQL query. Continuation pages never become silent truncation.
 set -uo pipefail

@@ -26,16 +26,13 @@ const EXPECTED_HOOKS = Object.freeze([
   // script, so a worker holding Edit(<worktree>/**) + Bash(node *)/Bash(bash *)
   // could DELETE this file — one command — and silently disable the guard for
   // every later tool call.
-  // The marker is WORKER-NESS, not the provider. HIMMEL_GLM_WORKER=1 is minted
-  // by buildGlmEnv (scripts/telegram/glm-env.ts), which only the orchestrator
-  // path reaches, and it asserts the session runs in a himmel worktree where
-  // this hook is guaranteed present. Its absence is the NORMAL state for an
-  // interactive GLM session. Keying this on ANTHROPIC_BASE_URL
-  // BRICKS the interactive launcher: its documented primary workload runs with
-  // cwd in the luna vault, where the hook legitimately does not exist, so every
-  // Bash/PowerShell/MCP call exited 2 before running — and the wrapper refuses
-  // before the hook that reads GLM_EXTERNAL_WRITES_OK can bypass it.
-  { event: 'PreToolUse', script: 'block-glm-external-writes.sh', failClosedWhen: 'HIMMEL_GLM_WORKER=1' },
+  // The marker is WORKER-NESS, not the provider. HIMMEL_WORKER=1 is minted by
+  // the dispatchers' child env (claudexChildEnv in scripts/telegram/spawn-claudex.ts),
+  // and it asserts the session runs in a himmel worktree where this hook is
+  // guaranteed present. Its absence is the NORMAL state for an interactive
+  // session whose cwd is outside a himmel checkout (the luna vault), where the
+  // hook legitimately does not exist; keying on a provider env would brick it.
+  { event: 'PreToolUse', script: 'block-worker-write-fence.sh', failClosedWhen: 'HIMMEL_WORKER=1' },
   { event: 'PreToolUse', script: 'block-graphify-egress.sh' },
   { event: 'PreToolUse', script: 'block-rogue-codex-exec.sh' },
   { event: 'PreToolUse', script: 'block-lesson-enforcement-writes.sh', failClosedWhen: 'HIMMEL_LESSON_LOOP=1' },

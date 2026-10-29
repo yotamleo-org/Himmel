@@ -67,6 +67,10 @@ sweeps s4 2
 call s4 mcp__qmd__query
 sweeps s4 5
 if [ "$nudges" = 0 ]; then pass "qmd MCP call gives no nudge"; else fail "qmd mcp control (nudges=$nudges)"; fi
+sweeps s4p 2
+call s4p mcp__plugin_qmd_qmd__query
+sweeps s4p 5
+if [ "$nudges" = 0 ]; then pass "plugin-named qmd MCP call gives no nudge"; else fail "plugin qmd mcp control (nudges=$nudges)"; fi
 sweeps s5 2
 call s5 Bash 'bash scripts/lib/qmd-bounded.sh query -c himmel "retrieval"'
 sweeps s5 5

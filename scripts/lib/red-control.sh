@@ -42,11 +42,9 @@
 # only. This library never repoints a path a destructive trap consumes -- it
 # creates exactly one file (the stderr capture) and never removes a directory.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure shell -- command substitution, `env`, string compare; no .ps1 twin,
-# because the only consumers are shell test suites which are themselves
-# gitbash-only. This is the T15 marker scripts/parity/test-ws5-invariants.sh
-# looks for.
+# Platform guard: POSIX bash 3.2+.
+# Pure shell -- command substitution, `env`, string compare; the only
+# consumers are shell test suites.
 #
 # Sourced, never executed. Sets no `set -e`/`set -u` of its own and exits
 # nothing: every function RETURNS, so a control failure cannot abort a suite

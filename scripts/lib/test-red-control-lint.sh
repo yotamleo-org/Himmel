@@ -51,12 +51,8 @@
 # evidence there is the test, not the echo. T22 closes the last member of the
 # incomplete-scan family: an invalid scan root.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure shell over a mktemp scratch dir; NOT ported to native PowerShell -- a
-# test harness needs no .ps1 twin (project convention: a documented platform
-# guard suffices for a test fixture), and the lint under test is itself
-# gitbash-only for the same reason. This is the T15 marker
-# scripts/parity/test-ws5-invariants.sh looks for.
+# Platform guard: POSIX bash 3.2+.
+# Pure shell over a mktemp scratch dir.
 #
 # Usage: bash scripts/lib/test-red-control-lint.sh
 set -uo pipefail

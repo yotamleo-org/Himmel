@@ -19,8 +19,7 @@
 # queue-lock.sh's own root/slug resolution this replicates.
 #
 # Defines functions only; sourcing prints nothing and touches no file.
-# Bash 3.2-safe; no .ps1 twin (reads /proc, a POSIX-only construct — the
-# Windows launcher has no equivalent process table to resolve this from).
+# Bash 3.2-safe (reads /proc).
 
 # fleet_doc_for_pid <pid> — prints the worker's handover doc path on stdout
 # (rc 0) when <pid>'s /proc cmdline carries one. worker-claude-launcher.sh

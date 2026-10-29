@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash 3.2+. Offline snapshot/cache contract.
+# Platform guard: bash 3.2+. Offline snapshot/cache contract.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W=$(mktemp -d "${TMPDIR:-/tmp}/pr-snapshot-test.XXXXXX") || exit 1

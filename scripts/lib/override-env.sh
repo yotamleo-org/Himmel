@@ -3,8 +3,7 @@
 # variables, and the scrub that unsets them inside a test process.
 #
 # SOURCED, never executed. bash 3.2-safe (no mapfile, no associative arrays).
-# Platform guard (gitbash-only): pure bash builtins + grep/sed/sort; sourced by
-# suites that already run under Git Bash on Windows. No .ps1 twin needed.
+# Platform guard: pure bash builtins + grep/sed/sort.
 #
 # WHY: a chief-spawned worker's shell exports guard overrides (INLINE_IMPL_OK,
 # IMPL_GUARD_OK, HIMMEL_CONSOLE_LEG by chief-kit/headed-arm-worker.sh;

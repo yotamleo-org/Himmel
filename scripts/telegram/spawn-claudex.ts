@@ -789,14 +789,10 @@ export function claudexChildEnv(base: Record<string, string | undefined>, effort
   if (model) env.CODEX_MODEL = model;
   // Always set: an ambient CODEX_CONTEXT_WINDOW must not silently buy a pricier tier.
   env.CODEX_CONTEXT_WINDOW = CODEX_CONTEXT_TIER_WINDOW[contextTier ?? "272k"];
-  // this lane had NO worker-ness marker at all — buildGlmEnv's
-  // HIMMEL_GLM_WORKER only ever reached the GLM lane, so a native (Sonnet/
-  // Opus-via-codex-proxy) dispatched worker carried no positive signal a hook
-  // could gate on, leaving block-glm-external-writes.sh's pin-dir write-fence
-  // (and any future worker-scoped guard keyed the same way) unable to see
-  // this lane at all. HIMMEL_WORKER is the general marker every dispatched
-  // worker lane's child-env builder sets — see glm-env.ts's buildGlmEnv for
-  // the GLM twin.
+  // HIMMEL_WORKER is the lane-agnostic worker-ness marker: the positive signal
+  // block-worker-write-fence.sh's pin-dir write-fence (and any future
+  // worker-scoped guard keyed the same way) gates on, and what its plugin
+  // registration fails closed on.
   env.HIMMEL_WORKER = "1";
   delete env.TELEGRAM_OWN_POLLER;
   // the operator's hook-integrity bypass is not a worker's lever —
