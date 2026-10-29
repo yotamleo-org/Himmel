@@ -54,7 +54,7 @@
 # real `## Current direction` block.
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
-# konsole (Linux/KDE, via headed-arm.sh).
+# konsole via headed-arm.sh (Linux/KDE), or the konsole-macos.sh shim on macOS.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
