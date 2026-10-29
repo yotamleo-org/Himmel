@@ -385,7 +385,12 @@ wf_tool=$(printf '%s' "$row_wf" | jq -r .tool); wf_head=$(printf '%s' "$row_wf" 
 ag_tool=$(printf '%s' "$row_ag" | jq -r .tool); ag_head=$(printf '%s' "$row_ag" | jq -r .input_head)
 if [ "$wf_tool" = "WebFetch" ] && [[ "$wf_head" == *'https://example.test/page'* ]]; then pass "WebFetch row names the tool and the url"; else fail "WebFetch row names the tool and the url"; fi
 if [ "$ag_tool" = "Agent" ] && [[ "$ag_head" == *Explore* ]] && [[ "$ag_head" == *'audit the hooks'* ]]; then pass "Agent row names the tool, subagent_type and description"; else fail "Agent row names the tool, subagent_type and description"; fi
-if grep -qF "PROMPT-BODY-MARKER" "$LOG16" 2>/dev/null; then fail "WebFetch/Agent rows never carry the prompt body"; else pass "WebFetch/Agent rows never carry the prompt body"; fi
+printf '%s\n' "$PROMPT_MARK" >"$WORKDIR/c16-control.txt"
+ctl_hits=$(grep -cF "PROMPT-BODY-MARKER" "$WORKDIR/c16-control.txt" 2>/dev/null)
+leak_hits=$(grep -cF "PROMPT-BODY-MARKER" "$LOG16" 2>/dev/null)
+if [ "$ctl_hits" != "1" ]; then fail "prompt-body matcher fires on a positive control (got ${ctl_hits:-none})"
+elif [ "$leak_hits" = "0" ]; then pass "WebFetch/Agent rows never carry the prompt body"
+else fail "WebFetch/Agent rows never carry the prompt body (got ${leak_hits:-grep error})"; fi
 # A tool_input that is not an object must still land a row, not vanish in jq.
 LOG16B="$WORKDIR/c16b.jsonl"
 run_hook '{"session_id":"s16b","cwd":"/tmp/repo","tool_name":"Agent","tool_input":"not-an-object","reason":"[X]"}' "$LOG16B" >/dev/null
