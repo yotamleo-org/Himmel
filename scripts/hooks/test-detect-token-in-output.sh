@@ -96,6 +96,8 @@ if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out"; then pass "token in tool_input detected
 # 7. Near miss (35 chars after the prefix): silent.
 run_hook "$(j_post Bash s5 "x=$TOK_SHORT")"
 if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "35-char near miss is silent"; else fail "near miss fired"; fi
+run_hook "$(j_post Bash s5 "x=${TOK_PAT%?}")"
+if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "81-char github_pat_ near miss is silent"; else fail "pat near miss fired"; fi
 
 # 8. Garbage / empty stdin: fail open.
 run_hook 'not json'
@@ -118,6 +120,10 @@ if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT" && no_
     && no_value "$TMP/sent.log" "$TOK_PAT"; then
     pass "token in the name position is not echoed"
 else fail "token as variable name echoed"; fi
+
+# 9c. A github_pat_ run longer than its 82 body chars still alerts, value withheld.
+run_hook "$(j_post Bash s15 "x=${TOK_PAT}Zq9")"
+if grep -q 'github_pat_…' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT"; then pass "github_pat_ run longer than 82 still alerts"; else fail "long github_pat_ run: $(cut -c1-200 "$TMP/out")"; fi
 
 # 10. Sender failure: no sentinel left, so a later call may retry the DM.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/send.sh"

@@ -38,7 +38,9 @@
 # `read`, a builtin, so the clean path forks nothing (rc 1 at EOF is expected).
 IFS= read -r -d '' input 2>/dev/null || :
 
-tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
+# github_pat_ is matched as an open run and cut to its 82 body chars in bash: the
+# macOS regex engine behind bash 3.2 never matched the `{82}` interval form.
+tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]+)'
 [[ $input =~ $tok_re ]] || exit 0
 
 # A test fixture is never a credential, and we call a value one only when two
@@ -82,12 +84,17 @@ is_real_token() {
 tokens=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
-    t="${BASH_REMATCH[1]}"
-    case " ${tokens[*]-} " in
-        *" $t "*) ;;
-        *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
-    esac
-    rest="${rest#*"$t"}"
+    m="${BASH_REMATCH[1]}"
+    t="$m"
+    case "$t" in github_pat_*) t="${t:0:93}" ;; esac
+    # A github_pat_ run shorter than 82 body chars (93 in all) is not a token.
+    if [ "${t:0:11}" != "github_pat_" ] || [ "${#t}" -eq 93 ]; then
+        case " ${tokens[*]-} " in
+            *" $t "*) ;;
+            *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
+        esac
+    fi
+    rest="${rest#*"$m"}"
 done
 [ "${#tokens[@]}" -gt 0 ] || exit 0
 
