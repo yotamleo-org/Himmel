@@ -947,6 +947,7 @@ scripts/macos/test-macos-lane.sh	5
 scripts/mcp/test-build-mcp-profiles.sh	0
 scripts/measurements/test-prose-audit.sh	2
 scripts/memory/test-audit-memory-capture.sh	0
+scripts/memory/test-memory-snapshot.sh	1
 scripts/observability/test-dashboard-lint.sh	0
 scripts/observability/test-exit-codes.sh	0
 scripts/observability/test-install-grafana.sh	1

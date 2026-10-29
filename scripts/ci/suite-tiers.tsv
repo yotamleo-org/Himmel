@@ -960,6 +960,7 @@ scripts/macos/test-macos-lane.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/mcp/test-build-mcp-profiles.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/measurements/test-prose-audit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/memory/test-audit-memory-capture.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/memory/test-memory-snapshot.sh	local	behaviour suite, new (HIMMEL-7379)
 scripts/observability/test-dashboard-lint.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-exit-codes.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-install-grafana.sh	local	behaviour suite, 0 catches in the 400-PR audit window
