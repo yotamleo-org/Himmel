@@ -747,6 +747,7 @@ A repo with no code review at all says so explicitly:
 { "review": "no_code_review" }
 ```
 
+<!-- mem:9d6b22f2b7eb -->
 **himmel's own review posture (operator decision 2026-07-28;
 CodeRabbit half superseded 2026-09-07).**
 The knobs above are general; this is the setting this repo actually runs.

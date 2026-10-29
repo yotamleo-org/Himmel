@@ -418,6 +418,7 @@ a subscription lands.
 **Tier:** ON-DEMAND (`codex@openai-codex` — installed, disabled by default; `plugin-profile.sh enable codex`). The codex worker lanes need the plugin INSTALLED for its cached companion script, never enabled.
 **What:** The OpenAI codex companion plugin — the codex CLI runtime, the `codex:codex-rescue` / `codex:setup` skills, and the `codex-companion.mjs` script under `$HOME/.claude/plugins/cache/openai-codex/codex/<version>/` (the version segment drifts on plugin update — glob-resolve it, never hardcode).
 
+<!-- mem:9c89869c803e -->
 **Tiered vendor posture (operator ruling 2026-08-28):** large established
 vendors — the codex plugin, the claude CLI, hermes (see the hermes pin revert
 precedent, #1929) — deliberately track upstream LATEST, with our last

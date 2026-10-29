@@ -681,6 +681,7 @@ strip, which this gate keeps unchanged.
 
 ## VM round trip — station-only, never CI
 
+<!-- mem:8dbf61035c55 -->
 `VBOXMANAGE_PATH=/usr/bin/VBoxManage bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 runs a seeded install/uninstall round trip on a real VirtualBox clone. The
 details are in `docs/setup/vms.md`. The script is deliberately not named

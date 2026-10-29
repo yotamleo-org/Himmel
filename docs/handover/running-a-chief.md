@@ -134,6 +134,7 @@ then writes `<root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md` from
 [`chief-template.md`](chief-template.md). A second `new` on the same day
 writes `…B-chief.md`; it never overwrites.
 
+<!-- mem:5987b4cf9ea9 -->
 **Keep the `-chief` suffix in a scoped name:** `--name roadmap-chief`, not
 `--name roadmap`. The suffix is load-bearing. `chief-compact-reinject.sh`
 re-injects the live state after a compaction only for a session whose

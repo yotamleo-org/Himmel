@@ -1019,6 +1019,7 @@ Live smoke (OVERLORD8, 2026-08-22) measured 4.2 s wall, rc 0, empty stderr.
 
 ### `auto-approve-safe-bash.sh` — pre-Bash auto-approve gateway (HIMMEL-203)
 
+<!-- mem:6a7dd385a645 -->
 Fires on Bash. Returns a `permissionDecision:"allow"` for read-only /
 inspection commands so they run without a prompt — INCLUDING ones wrapped
 in loops/pipes with `$var` expansion, which Claude Code's native matcher
@@ -3062,6 +3063,7 @@ Fails OPEN on anything this
 hook cannot evaluate (missing `jq`, unparseable JSON, non-Bash tool) — a
 workflow nudge, not a security fence. Bypass: `QUIET_RUN_BYPASS=1`
 (launching shell, session-sticky). Spec: `scripts/hooks/test-require-quiet-run.sh`.
+<!-- mem:24954dff2210 -->
 Two wait shapes that never end are also refused (HIMMEL-4970): `until ! pgrep
 -f <pat>` / `while pgrep -f <pat>` whose `<pat>` occurs in the same command
 (the harness runs every Bash call as `<shell> -c "... eval '<command>'"`, so
@@ -3462,6 +3464,7 @@ What gates every PR, machine or not: the checks-green watch, the
 `CHANGES_REQUESTED` blocker, the paginated unresolved-thread gate, and
 `cr_body_gate`'s outside-diff-range body findings whenever the App did post.
 
+<!-- mem:fb54b3f23230 -->
 **Zero-review-object shapes at a head.** A clean walkthrough with nothing
 actionable mints no review object, and neither does a rate-limited or
 skipped run, or a `success :: Review completed` status over a PR that never
@@ -3593,6 +3596,7 @@ the opens"; that was the second drift, so the rule became a gate.
    HIMMEL-1125 with `git config --local himmel.coderabbit true`; unarmed, it
    is silent. A `failure` / `error` status is a NOTE too — what the App found
    reaches the gate as threads and body findings, not as a status colour.
+   <!-- mem:8d778d568d0f -->
 3. **One trigger per head, from CI, never from a session.** `auto_review` is
    off in `.coderabbit.yaml`, so the review runs on an explicit `@coderabbitai
    review` comment that `scripts/hooks/trigger-cr-on-pr-create.sh` and
@@ -3873,6 +3877,7 @@ Spec: `scripts/hooks/test-guard-implementor-dispatch.sh`.
 
 ### `guard-chief-dispatch.sh` — chief/worker dispatch fence (HIMMEL-2323)
 
+<!-- mem:c8ba25c12e69 -->
 Fires on `Agent`. Structural enforcement of standing operator ruling 20:
 PR/ticket-shaped work dispatched FROM A CHIEF must go to an armed
 DETACHED session with a mission doc (`bash scripts/handover/arm-resume.sh`),
@@ -4063,6 +4068,7 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on. One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
+<!-- mem:d6fed4174c67 -->
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling
 is `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when numeric (it outranks the flag), else
 `HIMMEL_WORKER_SESSION_AUTOCOMPACT` (the launcher's resolved `--autocompact`; unset = the
