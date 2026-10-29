@@ -176,7 +176,7 @@ _outside() {
               cr_body_outside_findings "${REPO%%/*}" "${REPO##*/}" "$num" "$h" ) ); rc=$?
     case "$rc" in
       0) [ -z "$rows" ] || printf '%s\n' "$rows" | awk -F'\t' -v h="$h" 'BEGIN{OFS="\t"}{print h,$0}' >> "$out" ;;
-      2) echo "cr-thread-recorder: PR #$num: outside-diff list at ${h:0:12} is unparseable (format drift) — skipped" >&2 ;;
+      2) echo "cr-thread-recorder: PR #$num: outside-diff list at ${h:0:12} is unparseable (format drift) — its findings are missing" >&2; bad=1 ;;
       *) bad=1 ;;
     esac
   done
@@ -209,7 +209,7 @@ for num in $PRS; do
     echo "cr-thread-recorder: PR #$num is not merged — skipped"; n_skip=$((n_skip + 1)); continue
   fi
   if ! _outside "$num" "$(jq -r '.headOid' "$pj")" "$ot"; then
-    echo "cr-thread-recorder: PR #$num: could not read the review bodies; outside-diff findings may be missing — re-run to retry" >&2
+    echo "cr-thread-recorder: PR #$num: outside-diff findings may be missing (a read failed or a review body no longer parses)" >&2
     rc_all=3
   fi
   # shellcheck disable=SC2016  # JS program, not shell

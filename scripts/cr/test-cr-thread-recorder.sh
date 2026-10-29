@@ -143,10 +143,16 @@ mkpr 20 feat/x20 MERGED 4000 "$FAR" "$(thread T9 false 2026-10-20T08:30:00Z H1 9
 bash "$SUT" 20 >/dev/null 2>&1
 check "20: a lookalike bot login gets no row" "$(count_rows 20)" "0"
 
+# ── an outside-diff list that no longer parses is a partial run, not a clean one ──
+mkpr 21 feat/x21 MERGED 4000 "$FAR" "$T_OPEN"
+jq -n '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"HEADX",submitted_at:"2026-10-20T09:50:00Z",
+  body:"> **⚠️ Outside diff range comments (2)**\n\nnothing parseable here\n"}]' > "$FIX/reviews-21.json"
+bash "$SUT" 21 >/dev/null 2>&1; rc=$?
+check "21: an unparseable outside-diff list exits 3" "$rc" "3"
+
 # ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
-mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; chmod 555 "$tmp/ro"
+mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; mkdir "$tmp/ro/ledger.jsonl.lock"
 out="$(CR_LEDGER="$tmp/ro/ledger.jsonl" bash "$SUT" 12 2>&1)"; rc=$?
-chmod 755 "$tmp/ro"
 check "bad ledger path: the run exits 3" "$rc" "3"
 check "bad ledger path: the PR is not counted as read" "$(grep -c '^cr-thread-recorder: 1 PR(s) read' <<< "$out" | tr -d ' ')" "0"
 
