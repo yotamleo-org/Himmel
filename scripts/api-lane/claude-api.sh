@@ -179,9 +179,10 @@ EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
 # the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
 # id, messaging token ...), which make the child identify as that session; drop every one of them.
+# CLAUDE_JOB_DIR goes too: claude adopts the name in that job's state.json, so the call would show up as the launcher.
 SESSION_UNSET=()
 for v in $(compgen -e); do
-  case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
+  case "$v" in CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_*) SESSION_UNSET+=(-u "$v") ;; esac
 done
 
 # Release the fleet-slot reservation at call end, only when its pid file names this shell.
