@@ -367,6 +367,7 @@ scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
 scripts/handover/chief-kit/test-chain-plan.sh	local	behaviour suite, hermetic planner, no gate role
 scripts/handover/chief-kit/test-chain-push-check.sh	local	behaviour suite, offline trial merges and advisory PR-open integration, no gate role
+scripts/handover/chief-kit/test-chain-state.sh	local	new, behaviour suite for chain-state.mjs (board v4 chains), no gate role, HIMMEL-6827
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
