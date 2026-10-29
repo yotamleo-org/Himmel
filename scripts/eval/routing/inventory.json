@@ -1,0 +1,6 @@
+{
+  "_comment": "HIMMEL-8088: what listing.mjs renders. Owned: the repo's .claude skills, commands and agents, the skills, commands and agents of the plugins below, and the tool descriptions of the MCP servers below. external.json adds the entries a session also sees but himmel does not own (bundled skills, built-in agents, upstream MCP tools, vendored plugin commands), frozen so a run is reproducible. Plugins: the base profile (scripts/lanes/plugin-profiles.json) plus obsidian-triage, which the luna sessions load.",
+  "plugins": ["handover", "himmel-ops", "qmd", "lean-skills", "i-have-adhd", "obsidian-triage"],
+  "mcp": {"himmel-bus": "marketplace/plugins/himmel-bus/server/index.mjs"},
+  "external": "external.json"
+}

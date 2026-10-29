@@ -1,0 +1,6 @@
+{
+  "_comment": "Listing size at the 2026-10-29 baseline, chars/4 estimates. rendered: listing.mjs --json, the listing every baseline call saw (sha 0955aade5bc0e90b), by kind and the part himmel owns. station_skill_cost: skill-cost.mjs --json on the baseline station, the uncapped scan of every installed skill and command incl. stale plugin-cache versions; not what one session sees. mcp: the rendered MCP lines carry tool descriptions only; the tool-schema cost a session pays per MCP server is HIMMEL-7249, still To Do, so it is not measured here.",
+  "rendered": {"entries": 155, "skill": 4026, "agent": 543, "mcp": 143, "owned": 3960, "total": 4711},
+  "station_skill_cost": {"entries": 1349, "estimated_tokens": 86930, "plugin_skills": 85389, "project_commands": 1377, "project_skills": 130, "user_commands": 35},
+  "mcp_schema_tokens": null
+}
