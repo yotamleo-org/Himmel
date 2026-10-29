@@ -18,9 +18,9 @@
 # Deliberately does NOT call `set` itself: sourced into callers running
 # under their own shell options.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure `$(( ))` integer arithmetic and `echo`; no .ps1 twin needed -- the
-# only consumers are shell test suites which are themselves gitbash-only.
+# Platform guard: any POSIX bash 3.2+.
+# Pure `$(( ))` integer arithmetic and `echo`; the
+# only consumers are shell test suites.
 t12_verdict() {
     local add="$1" del="$2" net
     net=$((add - del))

@@ -31,9 +31,8 @@
 # Success: exactly one line, `PR <number> <url> <head-sha>`.
 # Failure: the forge/gh error verbatim on stderr, non-zero exit.
 #
-# Platform guard: no .ps1 twin, by design. POSIX bash plus git and gh/bb (all
-# already required by scripts/lib/forge.sh) — it runs under git bash on
-# Windows unchanged.
+# Platform guard: POSIX bash plus git and gh/bb (all already required by
+# scripts/lib/forge.sh).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

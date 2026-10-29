@@ -24,10 +24,8 @@
 #   8. The install summary names each on-demand spec with its `neededBy` text
 #      plus the enable recipe, and names the onDemandConnectors entries.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Uses git, jq, and mktemp to validate the two-tier install logic; NOT ported
-# to native PowerShell. A test harness needs no .ps1 twin (project convention:
-# a documented platform guard suffices for a test fixture).
+# Platform guard: any POSIX bash 3.2+.
+# Uses git, jq, and mktemp to validate the two-tier install logic.
 set -uo pipefail
 
 # Pin OFF regardless of the ambient environment: some stations export

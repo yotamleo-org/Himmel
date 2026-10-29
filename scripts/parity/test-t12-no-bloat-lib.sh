@@ -24,10 +24,9 @@
 # terminator-anchored `add=/del=/net=` substring (the trailing space or `--`
 # after each numeric value stops e.g. `net=1` from matching inside `net=10`).
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: any POSIX bash 3.2+.
 # Pure git-free shell (command substitution, `$(( ))`, `case` glob matching);
-# no .ps1 twin needed -- the only consumer is this shell test suite, which is
-# itself gitbash-only.
+# the only consumer is this shell test suite.
 #
 # Usage: bash scripts/parity/test-t12-no-bloat-lib.sh
 # Exit 0 if all cases pass, 1 otherwise.

@@ -24,8 +24,7 @@
 #           gap this exists to close, so callers must refuse on rc != 0.
 # Env: HIMMEL_PROFILE_SETTINGS_DIR (default $HOME/.himmel/launch-profiles),
 #      HIMMEL_PROFILE_REPO (resolve cwd; default this checkout).
-# Platform: POSIX bash 3.2+, node. No .ps1 twin: Windows launchers resolve the
-# profile through plugin-profiles.mjs directly.
+# Platform: POSIX bash 3.2+, node.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROFILE="${1:-}"

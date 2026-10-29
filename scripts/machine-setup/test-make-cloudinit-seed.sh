@@ -14,8 +14,7 @@
 # (--user/--pubkey are passed explicitly so no .env lookup fires); the
 # PyYAML-based parse assertion and the real ISO-write permissions row run
 # only when PyYAML / pycdlib happen to be importable, else print a SKIP line.
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows; a test
-# fixture needs no .ps1 twin (WS5 T15 convention).
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
