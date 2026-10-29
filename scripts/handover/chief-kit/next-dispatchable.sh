@@ -86,10 +86,14 @@
 # for EVERY open ticket of that version (To Do or in work), listed ones too (`listed LOCAL`,
 # `listed RESUME`), so no ticket is silent. --resume-only prints neither.
 #
-# Blockers: one the mirror shows open may be Done (the mirror lags). Its live status is read
-# once, bounded, and a Done blocker no longer drops the ticket; a live one is named
-# `blocker KEY (<status>, live)`. The live read runs with the real classifier, or when
-# NEXT_DISPATCH_JIRA_CMD is set; an unreadable key leaves the blocker open. A classifier
+# Blockers: the mirror lags in both directions, so every hard blocker of a candidate is read
+# live once, bounded. A blocker the mirror shows open but live Done no longer drops the ticket;
+# one live open is named `blocker KEY (<status>, live)`, or `blocker KEY (reopened live)` when
+# the mirror says Done. The live read runs with the real classifier, or when
+# NEXT_DISPATCH_JIRA_CMD is set; a read that fails or times out (a blocker with no mirror file
+# too) drops the ticket as `blocker-unknown KEY`, never clears it. With the live read off the
+# mirror is the only word. The output opens with `# source mirror_age_min=<n>` (minutes since
+# the mirror's newest file changed). A classifier
 # BLOCKED is never lifted: the drop carries its reason, and a ticket naming a directory with a
 # held file in it is BLOCKED naming that file's holder. While any open PR's files are unreadable
 # no To Do row is listed: a false free is worse than a short list.
@@ -108,7 +112,7 @@
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
 #
-# Exit: 0 printed (possibly nothing); 2 usage.
+# Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
 # PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -353,9 +357,17 @@ issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
 except OSError as e:
-    print('# next-dispatchable: mirror unreadable (%s)' % e, file=sys.stderr); sys.exit(0)
+    print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # an error, never an empty pool
+try:
+    mirror_age_min = int((time.time() - max([os.path.getmtime(os.path.join(mirror, n)) for n in names] or [os.path.getmtime(mirror)])) // 60)
+except OSError:
+    mirror_age_min = -1  # swallow-ok: a file that vanished between the listing and the stat leaves the age unknown, shown as -1
+print('# source mirror_age_min=%d' % mirror_age_min)  # first on stdout, ahead of every warning
 for n in names:
-    txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
+    try:
+        txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
+    except OSError as e:
+        print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # a listed file that cannot be read is the same error
     m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
     if not m:
         continue
@@ -567,10 +579,10 @@ try:
 except OSError:
     pass
 
-# A blocker the mirror still shows open may be Done: the mirror lags. Its live status is read once, bounded (20 s a key,
+# The mirror lags both ways, so a candidate's blockers are all read live once, bounded (20 s a key,
 # 8 in parallel, every key read: no cap), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
 # jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
-# leaves the blocker open as the mirror shows it.
+# is UNREADABLE (the candidate drops as blocker-unknown).
 DONE_STATES = ('Done', 'Closed')
 # Done = the Jira statusCategory is Done (catches 'wont do', 'wont fix', ...); the status names stay as a fallback
 def done_key(k):
@@ -606,18 +618,33 @@ def live_fetch(keys):
         for k, st in zip(fresh, pool.map(live_read, fresh)):
             live_cache[k] = st
 
+UNREADABLE = '\0unreadable'
+
 def blocker_state(b):
-    # None when the blocker is resolved, else its status (live when read)
+    # None when the blocker is resolved, UNREADABLE when its live read failed, else its status (live when read).
+    # A key never read live (live read off) is the mirror's word.
     st = issues.get(b, {}).get('status')
-    live = live_cache.get(b)
-    if live is not None:
-        return None if live in LIVE_DONE else '%s, live' % live
+    if b in live_cache:
+        live = live_cache[b]
+        if live is None:
+            return UNREADABLE
+        if live in LIVE_DONE:
+            return None
+        return 'reopened live' if done_key(b) else '%s, live' % live
     if done_key(b):
         return None
     return st or 'not in mirror'
 
-live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
-            for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
+def reaches_blocker_check(i):
+    # the same gates the candidate loop applies before it looks at blockers, without its side effects
+    return (i['status'] == 'To Do' and i['key'] not in briefs and i['type'] not in ('Epic', 'Sub-task') and i['key'] not in done_pending
+            and not (i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I))
+            and not (platform_re.search(i['title']) and 'windows-removal' not in i['labels']))
+
+# every hard blocker of a candidate is read live, whatever the mirror says; an in-work ticket's mirror-open blockers too (RESUME rows)
+live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
+           + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
+              for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
 skipped_platform = []
 cands = []
 for i in issues.values():
@@ -638,7 +665,9 @@ for i in issues.values():
         continue
     open_b = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
     if open_b:
-        drop(i, 'blocker ' + ', '.join('%s (%s)' % bs for bs in open_b))
+        known = ['%s (%s)' % bs for bs in open_b if bs[1] != UNREADABLE]
+        unknown = [b for b, st in open_b if st == UNREADABLE]
+        drop(i, '; '.join(([('blocker ' + ', '.join(known))] if known else []) + ([('blocker-unknown ' + ', '.join(unknown))] if unknown else [])))
         continue
     if i['key'] in prio_cloud:
         drop(i, 'cloud-only on the priority line')
