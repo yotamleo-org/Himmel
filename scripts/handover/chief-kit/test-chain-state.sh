@@ -104,6 +104,21 @@ check "E29: the completing PR merging before the hold clears reads out of order"
 check "E29: with the hold record that stood open" "$(tk HIMMEL-7379 '.check.links[0] | .on + " " + .kind + " " + .status + " " + .added')" \
     "HIMMEL-8005 file-collision open 2026-10-28T20:56:00Z"
 
+reset
+issue HIMMEL-8004 "To Do" type=Epic
+issue HIMMEL-7379 "In Progress" parent=HIMMEL-8004
+issue HIMMEL-7381 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-7379"]'
+issue HIMMEL-7382 "In Progress" parent=HIMMEL-8004
+ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7379","pr":"103","contract":"yes","result":"miss","stage":"transition"}'
+ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"104","contract":"yes","result":"deferred","stage":"lock"}'
+cs
+check "E29: a completing merge whose Jira transition failed does not read done" "$(tk HIMMEL-7379 .state)" "in flight"
+check "E29: nor one whose transition was deferred" "$(tk HIMMEL-7382 .state)" "in flight"
+check "E29: and its dependent still waits on it" "$(tk HIMMEL-7381 .state)" "waits on step 1"
+issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
+cs
+check "E29: closed by hand afterwards, the check reads that merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
+
 # --- E30: a chain changes ----------------------------------------------------
 reset
 issue HIMMEL-8009 "To Do" labels='["chain-mem"]'

@@ -10,7 +10,7 @@
 //   chain-log.jsonl in the state dir (L4, append-only): `hold` rows (kind, on, who, reason, until)
 //     and `release` rows, written by ticket-hold.sh; every row naming a chain or one of its
 //     tickets is listed in that chain's change log.
-//   status-events.jsonl beside it: merge rows (contract=yes completes a ticket, L5; the others
+//   status-events.jsonl beside it: merge rows (contract=yes that moved Jira completes a ticket, L5; the others
 //     are partial PR ticks), hold-release rows, and hold rows that have no chain-log row.
 // --version keeps only tickets in that fixVersion; an open blocker outside it is a real block.
 //
@@ -66,7 +66,7 @@ function readMirror(dir) {
     for (const n of names) {
         const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(readFileSync(join(dir, n), 'utf8'));
         if (!m) continue;
-        const fm = {};
+        const fm = Object.create(null);
         for (const line of m[1].split('\n')) {
             const kv = /^ *(\w+): (.*)$/.exec(line);
             if (kv) { try { fm[kv[1]] = JSON.parse(kv[2]); } catch { fm[kv[1]] = kv[2]; } }
@@ -111,10 +111,11 @@ for (const r of events) {
     mergesOf.get(r.key).push(r);
 }
 
-// completing(key): the merge that completes the ticket (L5), or null.
+// completing(key): the merge that completes the ticket (L5), or null. A contract
+// merge that did not move Jira (ts_done_pending's rule) completes only once Jira goes Done.
 function completing(key) {
     const rows = mergesOf.get(key) || [];
-    const yes = rows.filter(r => r.contract === 'yes');
+    const yes = rows.filter(r => r.contract === 'yes' && (r.result === 'moved' || r.result === 'noop'));
     if (yes.length) return yes[yes.length - 1];
     const iss = issues.get(key);
     if (!iss || !iss.done) return null;
