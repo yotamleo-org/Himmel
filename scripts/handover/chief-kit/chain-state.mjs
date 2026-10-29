@@ -165,7 +165,7 @@ function completeAt(key, at = now) {
     }
     const m = completing(key);
     // Audit identity and current clearing time are separate: an older merge cannot clear a new Done epoch.
-    if (iss?.known && iss.done) return Math.max(m ? ms(m.ts) : iss.resolved ?? 0, iss.epoch ?? 0);
+    if (iss?.known && iss.done) return Math.max(m ? ms(m.ts) : 0, iss.resolved ?? 0, iss.epoch ?? 0);
     return null;
 }
 const isDone = key => completeAt(key) !== null && completeAt(key) <= now;

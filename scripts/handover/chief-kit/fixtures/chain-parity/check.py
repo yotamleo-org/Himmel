@@ -33,8 +33,8 @@ def keys(numbers):
 def invoke(root, registry=True, mirror=None):
     common = ['--mirror', str(mirror or root / 'mirror'), '--state', str(root / 'state'),
               '--now', NOW, '--version', 'v1.1.3']
-    if registry:
-        common += ['--registry', str(root / 'registry.json')]
+    if registry is not False:
+        common += ['--registry', str(root / 'registry.json') if registry is True else registry]
     if READER == 'state':
         cmd = ['node', str(KIT / 'chain-state.mjs'), '--json'] + common
     else:
@@ -150,6 +150,10 @@ with tempfile.TemporaryDirectory(prefix='chain-parity-') as temp:
                       ('bad schema', dict(valid, schema='other/1')), ('bad shape', [])]:
         (root / 'registry.json').write_text(json.dumps(bad))
         check(name + ' exits 2', invoke(root)[0].returncode, 2)
+    (root / 'out.json').write_text('precious\n')
+    check('empty registry path exits 2', invoke(root, registry='')[0].returncode, 2)
+    if READER == 'render':
+        check('empty registry path writes nothing', (root / 'out.json').read_text(), 'precious\n')
     (root / 'registry.json').write_text('{broken')
     check('invalid JSON exits 2', invoke(root)[0].returncode, 2)
     (root / 'registry.json').unlink()

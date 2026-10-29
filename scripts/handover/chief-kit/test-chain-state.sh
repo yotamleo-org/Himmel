@@ -94,7 +94,7 @@ check "E29: a partial PR merged before the hold clears, then the completing PR a
 check "E29: the two partial PRs are ticks with their numbers" "$(tk HIMMEL-7379 '.ticks | map(.pr) | join(" ")')" "101 102"
 check "E29: and their times" "$(tk HIMMEL-7379 '.ticks[0].ts')" "2026-11-01T16:40:00Z"
 check "E29: the check reads the completing merge" "$(tk HIMMEL-7379 '.check.merge | .pr + " " + .ts')" "103 2026-11-02T18:40:00Z"
-check "E29: and gives the time the hold cleared" "$(tk HIMMEL-7379 '.check.links[0].at')" "2026-11-02T15:10:00Z"
+check "E29: hold clearing respects the current resolution time" "$(tk HIMMEL-7379 '.check.links[0].at')" "2026-11-02T15:20:00Z"
 check "E29: a ticket completed before the chain existed is not checked" "$(tk HIMMEL-7125 .check.result)" "not-checked"
 check "E29: a ticket closed by hand is read at its last PR merged before Jira went Done" "$(tk HIMMEL-7380 .check.merge.pr)" "302"
 

@@ -171,7 +171,7 @@ def main():
         print('chain-render: mirror missing: %s is not a directory' % a.mirror, file=sys.stderr)
         return 2
     try:
-        if a.registry:
+        if a.registry is not None:
             cmd = ['node', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chain-state.mjs'),
                    '--json', '--registry', a.registry, '--mirror', a.mirror]
             for flag, value in [('--state', a.state), ('--version', a.version), ('--now', a.now)]:
