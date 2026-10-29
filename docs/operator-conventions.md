@@ -114,8 +114,8 @@ All canonically documented: these are the structural gates. Linked, not restated
   <!-- mem:5405db5217e6 -->
   - **Install the CodeRabbit CLI with the vendor's installer**,
     `curl -fsSL https://cli.coderabbit.ai/install.sh | sh`, never the npm
-    package. It puts `coderabbit` and `cr` in `~/.local/bin`; any install
-    step, doctor check or VM provision checks for `~/.local/bin/coderabbit`.
+    package. It puts `coderabbit` and `cr` in `~/.local/bin`, so any install
+    step, doctor check or VM provision must check for `~/.local/bin/coderabbit`.
     (The `@coderabbitai/bitbucket` npm library under `scripts/bitbucket` is
     a different package.)
   - **Tests pin OUR seams, never other products.** A suite case asserts our
@@ -199,7 +199,7 @@ Habits for anything that leaves this repo toward an upstream/external project:
 - **Adapt upstream PRs first.** For any fix targeting a dependency we vendor or fork, FIRST scan the upstream repo's open PRs (`gh pr list --repo <upstream>`) for an existing PR that solves it, and adapt/cherry-pick that instead of authoring fresh. Community PRs are often already reviewed/verified on the exact platform, and staying close to the upstream original keeps the fork rebaseable, since adapted commits drop cleanly when upstream merges. Note the upstream PR# in the commit/ticket so a drop-on-upstream-merge sweep can find it.
 - **Timebox + soak before filing anything upstream.** Filing an issue or PR to an external repo is GATED on real usage first proving: (a) we correctly understand the problem, (b) our own workaround is genuinely insufficient, (c) we observed improvement + actual usage justifying the ask. Never file on sight: a drafted upstream issue gets concrete soak criteria plus a revisit timebox tied to that tool's own adoption gate ([`docs/tool-adoption/rubric.md`](tool-adoption/rubric.md)); if the pain doesn't recur within the window, close won't-file. Dogfood-first applied outbound; a soaked issue carrying usage evidence is a stronger issue anyway.
 <!-- mem:645f0031401f -->
-- **Open the companion PR with the issue when the fix is unambiguous.** An issue filed alone gets its fix taken by someone else's PR within hours, and the credit for closing the bug goes with it. Keep issue-only for defects tangled in design, and for a contested ask: there the companion PR becomes a liability. If another PR already exists, stand down at once and never compete; the issue keeps the discovery credit. A scanner false-positive is filed against the scanner, never dodged by rewriting the scanned code, which reads as evasion to a maintainer.
+- **Open the companion PR with the issue when the fix is unambiguous**, after the soak gate above. An issue filed alone gets its fix taken by someone else's PR within hours, and the credit for closing the bug goes with it. Keep issue-only for defects tangled in design, and for a contested ask: there the companion PR becomes a liability. If another PR already exists, stand down at once and never compete; the issue keeps the discovery credit. A scanner false-positive is filed against the scanner, never dodged by rewriting the scanned code, which reads as evasion to a maintainer.
 <!-- mem:b48605ba9194 -->
 - **No PR where outside contributors are never merged.** Before drafting one, check who authored the merged PRs that touched the target path: GitHub's PR search does not match changed-file paths, so list the commits on the path (`git log -- <path>` in a clone) and look up each one's PR and its author's association to the repo. If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. `anthropics/*` repos are issues-only.
 

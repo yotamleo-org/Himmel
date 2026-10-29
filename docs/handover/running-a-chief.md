@@ -15,8 +15,8 @@ at once. You talk to the chief; the chief runs the workers.
 - It hands itself over to a fresh chief before its context fills, so a shift
   outlives any one session.
 <!-- mem:7a7399f97076 -->
-- It ends every milestone report with a "Blocked on you" list: each line is a
-  clickable PR URL or absolute file path plus the one action wanted, or
+- Tell the chief to end every milestone report with a "Blocked on you" list:
+  one clickable PR URL or absolute path per line plus the one action wanted, or
   "Nothing blocked on you". "Held for your review" with no link is not enough.
 
 The chief writes no code itself. Today the chief always runs from the himmel
@@ -96,7 +96,8 @@ For the sources, authors and licences behind the team's tools, see
 - **Planning session.** A session that scopes an epic, writes its plan and runs
   its evals hands the whole epic to the chief and then closes. The chief
   reports in the normal flow: gate results as comments on the epic, operator
-  calls through its "Blocked on you" list, never back to the planning session.
+  calls in the "Blocked on you" list you tell it to keep, never back to the
+  planning session.
   Before closing it, check that the plan is in the epic body, the eval
   artifacts are in the state repo (not a session scratchpad), the release
   versions are set, and the chief has been told it is the single writer.
@@ -554,9 +555,9 @@ the script's domain is a PR that has not yet merged.
 
 <!-- mem:220565770e67 -->
 GitHub's own `gh pr view <n> --json mergeStateStatus` is the authority on
-whether a PR can merge; never infer it from the check runs. Taking the latest
-run of each check is right for reporting a check's state, and it is exactly
-what made a gate's verdict diverge from GitHub's once.
+whether a PR can merge; never infer it from the check runs. The latest run of
+each check is right for reporting that check's state, never for deciding
+mergeability.
 
 `scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
 is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
