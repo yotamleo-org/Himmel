@@ -249,15 +249,10 @@ docs/internals/harness-compat.md	| `end-session-wiki.sh` | NA by choice | self-g
 docs/internals/harness-compat.md	  stderr is forwarded, the chain always exits 0. It also resolves Git Bash
 docs/internals/harness-compat.md	  itself, which a bare `bash` spawned by hermes on Windows would not (the
 docs/internals/harness-compat.md	  `System32\bash.exe` WSL-stub trap).
-docs/internals/harness-compat.md	superpowers ON both (its Codex SessionStart is rc=1 under pwsh — upstream
-docs/internals/harness-compat.md	`commandWindows`/`&` fix wanted, harmless); himmel-ops ON both (Codex side inert
 docs/internals/harness-compat.md	  a pwsh→cmd→bash chain for a guaranteed `exit 0`. Now removed, and
 docs/internals/harness-compat.md	  `bash -c "exit 0"` startup smoke test before the adapter — pwsh → cmd →
-docs/internals/harness-compat.md	  Windows. `/himmel-update` calls the `.sh` installer, so wiring the lint only
-docs/internals/harness-compat.md	  into the Windows twin meant it never fired on the update path.
 docs/internals/harness-compat.md	`pwsh → cmd.exe → Git Bash → adapter` stack **per hook entry**, so the nine
-docs/internals/harness-compat.md	diagnostic batches peaked at 119–120 Git Bash processes). A `run-hook.cmd`
-docs/internals/harness-compat.md	| PowerShell | 7 / ~21 | 2 / ~9 | 6-chain + `.*` auto-arm |
+docs/internals/harness-compat.md	diagnostic batches peaked at 119–120 Git Bash processes). A `.codex/run-hook.sh`
 docs/internals/harness-compat.md	over-declaration is both noise AND a hook killed mid-flight: on Windows the
 docs/internals/known-findings.md	   | `STALE row=N uses=U reason=<r> …` | delete the CodeRabbit learning. Reasons, first hit wins: `windows`, `glm`, `private-repo-propagation`, `file-gone` (the row's file is absent from `git ls-files`; rows from another repository, or with no repository, are skipped), `closed-deferral HIMMEL-n (<status>)` (it defers to a ticket now Done/Closed) |
 docs/internals/known-findings.md	  shell/PowerShell twin drift (5). Those became the `fix` / `checklist` detectors; the
@@ -376,7 +371,6 @@ docs/tool-adoption/lane-adoption-playbook.md	needed. The GLM onboarding (the GLM
 docs/tool-adoption/lane-adoption-playbook.md	  (`docs/tooling-catalog.md` `claude-codex` section). The removed GLM lane
 docs/tool-adoption/lane-adoption-playbook.md	  (`glm-5.2[1m]` + 1000000, or `glm-5.2` + 200000).
 docs/tool-adoption/lane-adoption-playbook.md	ruling (2026-08-07): **glm gated at 10 consecutive passes** (the lane has since been removed; down since the
-docs/tooling-catalog.md	> shellcheck/pwsh (the image owns them).
 docs/tooling-catalog.md	leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
 docs/tooling-catalog.md	dropped Windows support, HIMMEL-5729, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
 docs/tooling-catalog.md	<a id="claude-glm"></a>

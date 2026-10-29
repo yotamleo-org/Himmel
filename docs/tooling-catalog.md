@@ -166,7 +166,7 @@ Installed via `extraKnownMarketplaces` in `settings.json`.
 > actions. Left floating on purpose: `setup-node` `'22'` (an LTS line, not an
 > exact version, with no drift row able to track a major line), `npm i -g npm@^11`
 > (a deliberate floor), `apt-get install at` and the runner-image
-> shellcheck/pwsh (the image owns them).
+> shellcheck (the image owns it).
 
 > **Boundary ownership:** which optimizer owns which token boundary (rtk vs
 > MCP-output vs cache vs routing) is governed by
