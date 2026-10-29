@@ -144,7 +144,9 @@ with tempfile.TemporaryDirectory(prefix='chain-parity-') as temp:
         check(name + ' exits 2', result.returncode, 2)
         if READER == 'render':
             check(name + ' writes nothing', (root / 'out.json').read_text(), 'precious\n')
-    for name, bad in [('duplicate id', dict(valid, chains=valid['chains'] * 2)),
+    for name, bad in [('goal equals three-word id', dict(valid, chains=[dict(valid['chains'][0],
+                          id='every-memory-change', goal='every memory change')])),
+                      ('duplicate id', dict(valid, chains=valid['chains'] * 2)),
                       ('bad schema', dict(valid, schema='other/1')), ('bad shape', [])]:
         (root / 'registry.json').write_text(json.dumps(bad))
         check(name + ' exits 2', invoke(root)[0].returncode, 2)
