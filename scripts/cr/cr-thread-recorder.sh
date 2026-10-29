@@ -39,6 +39,8 @@
 # duplicate can survive; upgrade path = a finding id the panel stamps on its rows.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/prim.sh
+. "$HERE/../lib/prim.sh" || exit 2
 # shellcheck source=scripts/lib/coderabbit-body-findings.sh
 . "$HERE/../lib/coderabbit-body-findings.sh" || exit 2
 
@@ -206,7 +208,8 @@ for num in $PRS; do
     rc_all=3
   fi
   # shellcheck disable=SC2016  # JS program, not shell
-  PRFILE="$pj" OUTFILE="$ot" LEDGER="$LEDGER" node -e '
+  # The ledger read and the append share one lock, so two recorder runs cannot both miss a row and both add it.
+  with_lock "$LEDGER.lock" env PRFILE="$pj" OUTFILE="$ot" LEDGER="$LEDGER" node -e '
 const fs = require("fs"), crypto = require("crypto"), e = process.env;
 const pr = JSON.parse(fs.readFileSync(e.PRFILE, "utf8"));
 const outside = fs.existsSync(e.OUTFILE) ? fs.readFileSync(e.OUTFILE, "utf8").split("\n").filter(Boolean).map(l => {
@@ -263,7 +266,9 @@ for (const o of outside) {
 }
 if (rows.length) fs.appendFileSync(e.LEDGER, rows.map(r => JSON.stringify(r)).join("\n") + "\n");
 console.log("+" + rows.length + " row(s) (" + inline + " thread(s), " + out + " outside, " + matched + " matched a hand-written row, " + dup + " already recorded)");
-' | sed "s/^/cr-thread-recorder: PR #$num: /"
+' | sed "s/^/cr-thread-recorder: PR #$num: /" || {
+    echo "cr-thread-recorder: PR #$num: could not read or append the ledger — re-run to retry" >&2
+    n_fail=$((n_fail + 1)); rc_all=3; continue; }
   n_pr=$((n_pr + 1))
 done
 echo "cr-thread-recorder: $n_pr PR(s) read, $n_skip skipped, $n_fail unreadable; coderabbit ledger rows before=$before after=$(_cr_rows)"

@@ -39,6 +39,7 @@ echo "slept $1" >> "$SLEEPS"
 SLP
 chmod +x "$tmp/fakesleep"
 SLEEPS="$tmp/sleeps"; : > "$SLEEPS"
+unset GH_TOKEN GITHUB_TOKEN CR_RECORDER_GH_TOKENS CR_RECORDER_FLOOR CR_RECORDER_MAX_WAIT CR_RECORDER_LIST_CAP
 export GH_CMD="$tmp/gh" FIX SHIM_LOG SLEEPS CR_LEDGER="$LEDGER" CR_RECORDER_REPO="o/r" \
   CR_RECORDER_SLEEP_CMD="$tmp/fakesleep"
 
@@ -136,5 +137,12 @@ mkpr 19 feat/x19 MERGED 4000 "$FAR" "$T_OPEN"
 bash "$SUT" 18 19 >/dev/null 2>&1
 check "18-19: the run slept for the reset" "$(grep -c '^slept' "$SLEEPS" | tr -d ' ')" "1"
 check "19: recorded after the wait" "$(count_rows 19)" "1"
+
+# ── a ledger that cannot be read or appended fails the run, not a silent exit 0 ──
+mkdir "$tmp/ro"; : > "$tmp/ro/ledger.jsonl"; chmod 555 "$tmp/ro"
+out="$(CR_LEDGER="$tmp/ro/ledger.jsonl" bash "$SUT" 12 2>&1)"; rc=$?
+chmod 755 "$tmp/ro"
+check "bad ledger path: the run exits 3" "$rc" "3"
+check "bad ledger path: the PR is not counted as read" "$(grep -c '^cr-thread-recorder: 1 PR(s) read' <<< "$out" | tr -d ' ')" "0"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
