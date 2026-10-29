@@ -311,23 +311,20 @@ test('CLI: routes four tickets, writes one brief, one launch line, one JSONL rec
   assert.match(readFileSync(brief, 'utf8'), /cloud-pilot: HIMMEL-9001 \(console AD\)/);
 });
 
-test('CLI: the old --console is the same flag as --chief, with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option', () => {
-  const route = (flag, extra = {}) => {
+test('CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; only --chief names the chief', () => {
+  const route = (flag) => {
     const { bucket, jira, gh } = setup();
     const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, flag, 'AD', 'HIMMEL-9001'], {
-      encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, ...extra },
+      encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, HIMMEL_LEGACY_NAMES: '1' },
     });
     return { r, brief: join(bucket, 'cloud-brief-HIMMEL-9001.md') };
   };
   const fresh = route('--chief');
+  assert.equal(fresh.r.status, 0, fresh.r.stderr);
   const old = route('--console');
-  assert.equal(old.r.status, 0, old.r.stderr);
-  assert.equal(readFileSync(old.brief, 'utf8').replaceAll(old.brief, ''), readFileSync(fresh.brief, 'utf8').replaceAll(fresh.brief, ''));
-  assert.equal(old.r.stderr.split('\n').filter((l) => l === '--console is deprecated: use --chief').length, 1);
-  const off = route('--console', { HIMMEL_LEGACY_NAMES: '0' });
-  assert.equal(off.r.status, 2);
-  assert.match(off.r.stderr, /usage: cloud-route\.mjs/);
-  assert.ok(!existsSync(off.brief));
+  assert.equal(old.r.status, 2);
+  assert.match(old.r.stderr, /usage: cloud-route\.mjs/);
+  assert.ok(!existsSync(old.brief));
 });
 
 test('CLI: a CLOUD-OK ticket holds its files, so a second ticket on them is BLOCKED', () => {

@@ -36,7 +36,6 @@ import { execFileSync } from 'node:child_process';
 import { gitClean } from './git-clean.mjs';
 import { dirname, join, resolve, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { legacyFlag } from '../lib/env-alias.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -365,7 +364,7 @@ function main(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--bucket') opt.bucket = argv[++i];
-    else if (a === '--chief' || (a === '--console' && legacyFlag('--console', '--chief'))) opt.console = argv[++i];
+    else if (a === '--chief') opt.console = argv[++i];
     else if (a === '--held') opt.held = argv[++i];
     else if (a === '--spec') opt.spec = argv[++i];
     else if (a === '--classify-only') opt.classifyOnly = true;
