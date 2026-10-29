@@ -24,8 +24,8 @@
 #                 the resulting content).
 #   topic file -> tier-2 landing spot; a write that leaves it over
 #                 MEMORY_TOPIC_MAX (8192) bytes AND bigger than before gets a
-#                 topic-cap advisory (MEMORY_TOPIC_MODE=warn, default) or a deny
-#                 (=deny). Shrinking never fires. A write the guard cannot size
+#                 deny (MEMORY_TOPIC_MODE=deny, default) or a topic-cap advisory
+#                 (=warn). Shrinking never fires. A write the guard cannot size
 #                 is ALLOWED in both modes (topic-cap-undecidable warn row).
 #   *.bak      -> exempt (compound writes a ~25KB backup by design).
 #
@@ -59,7 +59,7 @@ LINE_MAX="${MEMORY_LINE_MAX:-200}"
 LINE_CEIL="${MEMORY_LINE_CEIL:-60}"
 GROWTH_MAX="${MEMORY_GROWTH_MAX:-400}"
 TOPIC_MAX="${MEMORY_TOPIC_MAX:-8192}"
-TOPIC_MODE="${MEMORY_TOPIC_MODE:-warn}"
+TOPIC_MODE="${MEMORY_TOPIC_MODE:-deny}"
 
 payload="$(cat)"
 tool="$(printf '%s' "$payload" | jq -r '.tool_name // ""')"
