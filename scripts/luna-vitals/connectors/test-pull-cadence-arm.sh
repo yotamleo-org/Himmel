@@ -98,6 +98,7 @@ registry_has_task() {
 echo "== test: a dropped platform never reaches the scheduler =="
 state_win=$(new_scratch_posix)
 out=$(PULLCADENCE_PLATFORM=windows PULLCADENCE_SCHTASKS="$state_win/crontab" \
+  PULLCADENCE_CRONTAB="$state_win/crontab" \
   PULLCADENCE_BAT_DIR="$state_win/runner" PULLCADENCE_HIMMEL_ROOT="$state_win" \
   HIMMEL_OBSERVABILITY_CONFIG="$state_win/observability.json" \
   bash "$CADENCE" status 2>&1); rc=$?
