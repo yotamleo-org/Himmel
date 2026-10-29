@@ -20,7 +20,7 @@ _csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "tick.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "tick.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/tick.sh || exit 96

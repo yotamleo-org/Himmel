@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Argv-spawn detection for the headless commit gate (HIMMEL-4124):
+# Argv-spawn detection for the headless commit gate:
 # scripts/hooks/check-no-headless-gemini.sh. Sourced, never run. The gate passes
 # its own program literal and opt-in marker, so the spawn pattern and the
 # multi-line join stay in one place.
@@ -25,7 +25,7 @@ headless_spawn_pattern() {
 # the program literal. A <marker> anywhere from the line above the window through
 # that program line covers the call.
 #
-# HIMMEL-3980: a leading `#` is a comment ONLY in known `#`-comment languages
+# A leading `#` is a comment ONLY in known `#`-comment languages
 # (allowlist). Anywhere else — JS/TS and the files that host them (.vue, .svelte,
 # .astro, .html, .mdx) — it is a private-field sigil (`#worker = spawnSync(`) and
 # must stay code, so an unknown type fails toward catching the call. An
@@ -43,7 +43,7 @@ headless_spawn_join() {
             t = s; c = gsub(/[)\]}]/, "&", t)
             return o - c
         }
-        # Pass 0 (HIMMEL-3980): a pure-comment line (`//`, `#`, or a one-line `/* … */`
+        # Pass 0: a pure-comment line (`//`, `#`, or a one-line `/* … */`
         # block comment) is not code, so it neither opens/closes depth nor joins the
         # window — otherwise it can sit between the open paren and the program literal
         # and hide the call. Code AFTER a closing `*/` on the same line is kept (C0[]
@@ -71,7 +71,7 @@ headless_spawn_join() {
             }
             skip0[NR] = (cmt && s ~ /^[[:space:]]*$/)
             C0[NR] = s
-            # Pass 1 (HIMMEL-4123): the same line with ALL comment text cut — one-line
+            # Pass 1: the same line with ALL comment text cut — one-line
             # `/* … */` blocks, `//` and (allowlisted types) `#` to end of line, each
             # at a word start — so a comment holding an unbalanced bracket cannot shift
             # the depth or split the spawn from its program, and blank lines do not use
