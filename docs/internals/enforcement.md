@@ -2504,7 +2504,7 @@ HIMMEL-4458 closed these gaps:
   `.himmel/state/usage-l?ft.json` copied with `--parents` into `~` denies.
 - **Split names in inline code.** Interpreter / `sed e` code also matches once
   quotes, `+`, commas, backticks and blanks are dropped, so
-  `"bank"+"-"+"lift"+".json"` and `"ba"+"nk-lift.sh"` deny; prose such as
+  `"usage"+"-"+"lift"+".json"` and `"usa"+"ge-lift.sh"` deny; prose such as
   `"usage-lift show"` does not (the joined form needs a separator before `sh`).
 - **Archive extraction.** `tar`/`gtar`/`bsdtar` extracting (`-x`, a bundled or
   old-style `x`, `--extract`, `--get`; not `-O`/`--to-stdout`), `unzip` (not

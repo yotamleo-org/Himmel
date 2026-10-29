@@ -70,7 +70,7 @@ python3 "$SR" --ledger "$FX" --days -1 >"$TMP/days.out" 2>&1; drc=$?
 check "a non-positive --days is a usage error (exit 2)" '[ "$drc" = 2 ]'
 
 HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$FX" python3 "$SR" --now 2026-10-09T00:00:00Z >"$TMP/wenv.out" 2>&1; wrc=$?
-check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over the old name" '[ "$wrc" = 0 ] && cmp -s "$TMP/wenv.out" "$TMP/all.out"'
+check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path" '[ "$wrc" = 0 ] && cmp -s "$TMP/wenv.out" "$TMP/all.out"'
 
 echo "test-session-retro: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

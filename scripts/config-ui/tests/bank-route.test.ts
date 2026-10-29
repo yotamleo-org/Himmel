@@ -56,7 +56,7 @@ test("CODEX_USAGE_CACHE_TTL_SECONDS and CADENCE_USAGE_MAX_AGE set the staleness 
   expect((await get(s.port)).codex.weekly).toMatchObject({ used_pct: 12, state: "stale", age_s: 7200 });
 });
 
-test("CADENCE_USAGE_CACHE and CADENCE_USAGE_MAX_AGE win over the old CADENCE_USAGE_* names", async () => {
+test("CADENCE_USAGE_CACHE and CADENCE_USAGE_MAX_AGE set the Claude staleness bound", async () => {
   const s = boot({ claude: claudeCache("2026-10-13T11:58:00Z") }, true);
   expect((await get(s.port)).claude.five_hour).toMatchObject({ used_pct: 9, state: "stale", age_s: 120 });
 });
