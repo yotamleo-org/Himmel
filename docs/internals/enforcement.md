@@ -2170,8 +2170,9 @@ status-only? does a theme already cover it?) is left to the model + the
 
 What it gates, by target:
 - **`MEMORY.md`** — (1) any `- ` pointer line >200 **characters** → deny; (2)
-  more than ~60 pointer lines → deny (the structural ceiling on `n`, the
-  O(facts) backstop); (3) net growth >400B in one write → deny (raises evasion
+  a write that ends over ~60 pointer lines **and adds pointer lines** → deny (the
+  structural ceiling on `n`, the O(facts) backstop; a same-count or shrinking
+  write passes, so a bloated index can be shrunk); (3) net growth >400B in one write → deny (raises evasion
   friction, does not close it); and it logs a **line-count-delta tripwire** on
   every allowed write. The char rule pins `LC_ALL=C` and then counts characters
   explicitly — it drops UTF-8 continuation bytes (`\200-\277`) before measuring
@@ -2189,8 +2190,9 @@ What it gates, by target:
   cannot drift between `Write` and `Edit`. `NotebookEdit` is still denied — its
   payload doesn't reveal the resulting content, so the guard forces a
   whole-file `Write` it can inspect.
-- **topic files** — the tier-2 landing spot; **unrestricted** (no body cap,
-  `Edit` allowed). This is what makes capture always work.
+- **topic files** — the tier-2 landing spot; `Edit` allowed. A write that ends
+  over `MEMORY_TOPIC_MAX` bytes and grows the file gets a warn-only advisory; only
+  `MEMORY_TOPIC_MODE=deny` refuses it. This is what makes capture always work.
 - **`*.bak`** — exempt (compound writes a ~25KB backup by design).
 
 Adopter story is **unconditional**: no vault/qmd predicate. A machine with no

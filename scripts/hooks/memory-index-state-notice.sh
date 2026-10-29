@@ -70,7 +70,7 @@ if [ -z "${MEMDIR:-}" ]; then
     gcd="$(git -C "${CLAUDE_PROJECT_DIR:-$PWD}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || exit 0
     [ -n "$gcd" ] || exit 0
     slug="$(printf '%s' "$(dirname "$gcd")" | sed 's/[^A-Za-z0-9]/-/g')"
-    MEMDIR="${HOME:-}/.claude/projects/$slug/memory"
+    MEMDIR="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/projects/$slug/memory"
 fi
 idx="$MEMDIR/MEMORY.md"
 [ -f "$idx" ] && [ -r "$idx" ] || exit 0

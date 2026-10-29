@@ -677,6 +677,11 @@ printf -- '- a\n- b\n' > "$N2/MEMORY.md"
 out="$(MEMORY_LOAD_LINES=1 MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
 assert_contains "N7 a configured load threshold is reported as the notice threshold" "notice threshold of 1 lines"
 case "$out" in *"loads only the first 1 "*) echo "FAIL N7 a configured threshold is presented as the harness limit"; FAILED=1 ;; *) echo "PASS N7 a configured threshold is not presented as the harness limit" ;; esac
+N8_SLUG="$(printf '%s' "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" | sed 's/[^A-Za-z0-9]/-/g')"
+N8_CFG="$SB/n8cfg"; rm -rf "$N8_CFG"; mkdir -p "$N8_CFG/projects/$N8_SLUG/memory" "$SB/n8home"
+{ i=0; while [ "$i" -lt 201 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; } > "$N8_CFG/projects/$N8_SLUG/memory/MEMORY.md"
+out="$(env -u MEMDIR HOME="$SB/n8home" CLAUDE_CONFIG_DIR="$N8_CFG" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N8 the default store follows CLAUDE_CONFIG_DIR when MEMDIR is unset" "load-limit"
 
 # --- pin: guard, notice, Bash re-check and audit share the defaults
 BASHCHK="$(cd "$(dirname "$0")" && pwd)/memory-bash-line-check.sh"
