@@ -1,0 +1,7 @@
+# Rows the drift check explains away: the checker ticket's bug, not a himmel drift. Synced with the checker ticket's
+# Jira links by known-bugs-sync.sh (the newer edit wins). Columns, tab separated: checker ticket, drift class
+# (or `unset` for a pair that came in from Jira), ticket key the row names, edit time (UTC).
+HIMMEL-7980	DERIVE-MISMATCH	HIMMEL-7848	2026-10-28T22:31:00Z
+HIMMEL-7980	UNOWNED	HIMMEL-7848	2026-10-28T22:31:00Z
+HIMMEL-7980	WORKER-COMMENT	HIMMEL-7848	2026-10-28T22:31:00Z
+HIMMEL-7980	UNOWNED	HIMMEL-7588	2026-10-28T22:31:00Z

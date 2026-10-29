@@ -876,8 +876,23 @@ esac
 echo "UNOWNED HIMMEL-1 x | writer=- | fix=y"
 echo "sdrift=1:0a1b2c3d"
 EOS
-chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift"
-export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift"
+cat >"$tmp/frbin/ksync" <<'EOS'
+#!/usr/bin/env bash
+echo "ksync $* jira=${KBS_JIRA:-}" >> "$FX/ksync.log"
+echo "ksync" >> "$FX/fr.log"
+# the real sync takes --checker/--tsv/--log pairs and nothing else
+a=("$@")
+[ $(( ${#a[@]} % 2 )) -eq 0 ] || exit 64
+for ((i = 0; i < ${#a[@]}; i += 2)); do
+    case "${a[i]}" in --checker | --tsv | --log) ;; *) exit 64 ;; esac
+    [ -n "${a[i + 1]}" ] || exit 64
+done
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync ] && exit 1
+[ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync-hang ] && sleep 30
+exit 0
+EOS
+chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync"
+export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
 fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
     reset "To Do"
@@ -905,7 +920,7 @@ fr_reset
 fr
 check "3c: a full refresh prints ok" "$(frout)" "focus=ok"
 check "3c: and exits 0" "$(frrc)" 0
-check "3c: the steps run in order: mirror, versions, sweep, render, drift" "$(frseq)" "jira,jira,sweep,tracker,drift"
+check "3c: the steps run in order: mirror, versions, sweep, render, drift, known-bugs sync" "$(frseq)" "jira,jira,sweep,tracker,drift,ksync"
 check "3c: the page is written" "$(head -n 1 "$PAGE")" "render 1"
 check "3c: the state records status ok" "$(fst status)" ok
 check "3c: the state records generation 1" "$(fst gen)" 1
@@ -918,6 +933,8 @@ contains "3c: the render reads the worker records" "$trk" "--workers-dir $TICKET
 contains "3c: the render reads the staged PR snapshot" "$trk" "--prs-file"
 contains "3c: the render reads the mirror it was given" "$trk" "--mirror-dir $FR/mir/HIMMEL"
 check "3c: the drift rows are kept beside the page" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+contains "3c: the known-bugs sync runs after the drift stage with the Jira CLI" "$(cat "$FX/ksync.log")" "--checker HIMMEL-7980 --log $FR/doc/known-bugs-sync.log jira=$tmp/frbin/jira"
+check "3c: and a successful sync leaves no sync warning" "$(grep -c 'known-bugs-sync' "$tmp/frerr")" 0
 fr
 check "3c: a second refresh is generation 2" "$(fst gen)" 2
 check "3c: an unchanged fingerprint leaves the page alone" "$(head -n 1 "$PAGE")" "render 1"
@@ -933,6 +950,25 @@ fr
 check "3c: a page of another version under an unchanged .vfp is restored" "$(head -n 1 "$PAGE")" "render 5"
 contains "3c: the sweep keeps its snapshot in the stage" "$(grep '^sweep ' "$FX/fr.log" | tail -n 1)" "--snapshot-out $FR/doc/.focus-stage."
 contains "3c: the drift pass reads that snapshot" "$(grep '^drift ' "$FX/fr.log" | tail -n 1)" "--snapshot $FR/doc/.focus-stage."
+echo ksync > "$FX/fr.fail"
+fr
+check "3c: a failed known-bugs sync does not fail the refresh" "$(frout)" "focus=ok"
+contains "3c: and warns on stderr" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
+fr_reset; rm -f "$FX/fr.fail"
+FOCUS_REFRESH_BUDGET=08 fr
+check "3c: a zero-led budget is read as decimal, not octal" "$(frout)" "focus=ok"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    fr_reset; echo ksync-hang > "$FX/fr.fail"; : > "$FX/fr.log"
+    FOCUS_REFRESH_BUDGET=12 fr
+    check "3c: a hung known-bugs sync cannot turn a published refresh into a timeout" "$(frout)" "focus=ok"
+    check "3c: and the state records status ok" "$(fst status)" ok
+    check "3c: and the drift rows were published" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+    check "3c: and the hung sync was started" "$(grep -c '^ksync' "$FX/fr.log")" 1
+    contains "3c: and its cut-off is reported as a failed sync" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
+    rm -f "$FX/fr.fail"
+else
+    echo "skip - 3c: hung known-bugs sync (no timeout binary)"
+fi
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.
 fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]
@@ -999,7 +1035,7 @@ done
 fr_reset
 mkdir -p "$FR/m2"
 fr --mirror-fresh "$FR/m2"
-check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift"
+check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift,ksync"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
 for stage in mirror versions sweep:rc1 render drift:rc1; do
@@ -1046,7 +1082,7 @@ fr
 check "3c: a drift pass with no sdrift line is FAILED:drift:no-sdrift" "$(frout)" "focus=FAILED:drift:no-sdrift"
 fr_reset; echo 2 > "$FX/sweep.moved"
 fr
-check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift"
+check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift,ksync"
 check "3c: and the refresh is ok" "$(frout)" "focus=ok"
 fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
 fr
