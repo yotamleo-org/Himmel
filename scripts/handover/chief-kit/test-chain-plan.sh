@@ -167,6 +167,8 @@ cat > "$W/bin/jira" <<'STUB'
 f="$GC_FIX/$1-$2.txt"
 [ -f "$f" ] || exit 1
 cat "$f"  # read-sink-ok: stub reads its own fixture dir only
+[ -f "$GC_FIX/rc-$1-$2" ] && exit "$(cat "$GC_FIX/rc-$1-$2")"  # read-sink-ok: stub reads its own fixture dir only
+exit 0
 STUB
 cat > "$W/bin/push" <<'STUB'
 #!/usr/bin/env bash
@@ -189,7 +191,7 @@ gcreset() {
     printf 'HIMMEL-5\tTask\tDone\tthe blocker\n' > "$W/gc/get-HIMMEL-5.txt"
     printf 'HIMMEL-9\tTask\tTo Do\tthe blocked\n' > "$W/gc/get-HIMMEL-9.txt"
     printf 'HEADS 11=%s 12=%s\nCHECKED 12 clean\nPEERS checked=1 skipped=0 conflicting=0\n' "$H11" "$H12" > "$W/gc/push-out"
-    echo 0 > "$W/gc/push-rc"; : > "$W/gc/push-calls"
+    echo 0 > "$W/gc/push-rc"; : > "$W/gc/push-calls"; rm -f "$W/gc/rc-get-HIMMEL-5"
 }
 gc() { PATH="$W/bin:$PATH" GC_FIX="$W/gc" CHAIN_PLAN_JIRA_CMD="$W/bin/jira" CHAIN_PLAN_PUSH_CHECK="$W/bin/push" bash "$SUT" --go-check "$@" 2>&1; }
 gcreset
@@ -236,6 +238,12 @@ same "--go-check live Jira links unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset; rm -f "$W/gc/get-HIMMEL-5.txt"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check a predecessor whose status is unreadable: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; echo 1 > "$W/gc/rc-get-HIMMEL-5"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a status read that prints Done and then fails: REFUSE" "$rc:${out%% *}" '1:REFUSE'
+gcreset; printf '1\tBlocks\tinward=HIMMEL-5\toutward=HIMMEL-2\tHIMMEL-5 now blocks HIMMEL-2\n' > "$W/gc/links-HIMMEL-2.txt"
+out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
+same "--go-check a Blocks row in an unknown format: REFUSE" "$rc:${out%% *}" '1:REFUSE'
 gcreset; echo 3 > "$W/gc/push-rc"
 out="$(gc 11 --graph "$W/gc/graph.json")"; rc=$?
 same "--go-check the push check exits 3 (unknown): REFUSE" "$rc:${out%% *}" '1:REFUSE'

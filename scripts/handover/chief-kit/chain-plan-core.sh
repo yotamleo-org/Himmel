@@ -78,15 +78,19 @@ go_check() {
   row="$(jq -r --arg id "#$pr" '.nodes[] | select(.id == $id) | [.head // "", .key // ""] | @tsv' "$graph")"
   [ -n "$row" ] || refuse "the graph lists no node #$pr."
   IFS=$'\t' read -r head key <<< "$row"
-  live="$(gh pr view "$pr" --json headRefOid 2>/dev/null | jq -r '.headRefOid // ""' 2>/dev/null)"  # swallow-ok: an unread head is empty, which REFUSEs on the next line
+  out="$(gh pr view "$pr" --json headRefOid 2>/dev/null)" || out=""  # swallow-ok: an unread head is empty, which REFUSEs below
+  live="$(jq -r '.headRefOid // ""' <<< "$out" 2>/dev/null)" || live=""  # swallow-ok: an unparsable head is empty, which REFUSEs on the next line
   [ -n "$live" ] || refuse "cannot read PR $pr's live head: unknown."
   [ "$live" = "$head" ] || refuse "the graph has PR $pr at $head, but its head is now $live: rebuild the graph."
   [ -n "$key" ] || refuse "node #$pr carries no ticket key: its hard predecessors cannot be read."
   links="$(jira links "$key" 2>/dev/null)" || refuse "cannot read $key's Jira links: unknown, never cleared."  # swallow-ok: an unread link list REFUSEs
-  preds="$(printf '%s\n' "$links" | awk -F'\t' -v k="$key" '$2 == "Blocks" && match($NF, /HIMMEL-[0-9]+ blocks HIMMEL-[0-9]+/) {
-      split(substr($NF, RSTART, RLENGTH), w, " "); if (w[3] == k && w[1] != k) print w[1] }' | sort -u)"
+  preds="$(awk -F'\t' -v k="$key" '$2 != "Blocks" {next}
+      !match($NF, /[A-Z][A-Z0-9]*-[0-9]+ blocks [A-Z][A-Z0-9]*-[0-9]+/) {exit 1}
+      {split(substr($NF, RSTART, RLENGTH), w, " "); if (w[3] == k && w[1] != k) print w[1]}' <<< "$links")" \
+    || refuse "a Blocks row of $key's Jira links has no '<key> blocks <key>' text: its hard predecessors are unknown, never cleared."
   for p in $preds; do
-    st="$(jira get "$p" 2>/dev/null | awk -F'\t' 'NR == 1 {print $3}')"  # swallow-ok: an unread status is empty, which REFUSEs on the next line
+    out="$(jira get "$p" 2>/dev/null)" || refuse "cannot read the status of $p (it blocks $key): unknown, never cleared."  # swallow-ok: an unread status REFUSEs
+    st="$(awk -F'\t' 'NR == 1 {print $3}' <<< "$out")"
     [ -n "$st" ] || refuse "cannot read the status of $p (it blocks $key): unknown, never cleared."
     [[ "$st" =~ $DONE_RE ]] || refuse "$key has an unmerged hard predecessor: $p is $st."
   done
