@@ -136,7 +136,7 @@ st() {
     ST_OUT="$(MEMORY_CAPTURE_LOG="$SB/none.jsonl" MEMDIR="$d" LUNA_VAULT_PATH="${ST_VAULT-$VAULT}" MEMORY_AUDIT_SKIP_QMD=1 bash "$AUDIT" "$@" 2>&1)"; ST_RC=$?
 }
 ms() { rm -rf "$SB/s-$1"; mkdir -p "$SB/s-$1"; printf '%s' "$SB/s-$1"; }
-fill() { head -c "$1" /dev/zero | tr '\0' a; }
+fill() { printf '%*s' "$1" '' | tr ' ' a; }
 
 # A0: a clean fixture is GREEN under --structure.
 D="$(ms a0)"; printf -- '- [a](a.md) — h\n' > "$D/MEMORY.md"; printf 'body\n' > "$D/a.md"
