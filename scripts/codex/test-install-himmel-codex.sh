@@ -86,6 +86,7 @@ if [ "${1:-}" = "mcp" ] && [ "${2:-}" = "get" ]; then
     while IFS="$(printf '\t')" read -r name url flag; do
       [ "$name" = "$n" ] || continue
       if [ "$url" = "-" ]; then printf '%s\n  enabled: true\n  transport: stdio\n  command: qmd\n  args: mcp\n' "$n"
+      elif [ "${flag:-}" = "disabled" ]; then printf '%s\n  enabled: false\n  transport: streamable_http\n  url: %s\n  bearer_token_env_var: QMD_HTTP_TOKEN\n' "$n" "$url"
       elif [ "${flag:-}" = "nobearer" ]; then printf '%s\n  enabled: true\n  transport: streamable_http\n  url: %s\n  bearer_token_env_var: -\n' "$n" "$url"
       else printf '%s\n  enabled: true\n  transport: streamable_http\n  url: %s\n  bearer_token_env_var: QMD_HTTP_TOKEN\n' "$n" "$url"; fi
       exit 0
@@ -268,6 +269,16 @@ printf 'qmd\t%s\tnobearer\n' "$QMD_URL" > "$S/mcp.txt"
 QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
 assert_log_has "$S/calls.log" "mcp remove qmd" "M8 removes a qmd entry that has the URL but no bearer"
 assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8 re-adds it with the env-var bearer"
+S="$TMP/M8b"; mk_state "$S"   # a longer URL that merely starts with the daemon URL is a different endpoint
+printf 'himmel\n' > "$S/marketplaces.txt"
+printf 'qmd\t%s-old\n' "$QMD_URL" > "$S/mcp.txt"
+QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
+assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8b replaces a qmd entry whose URL only starts with the daemon URL"
+S="$TMP/M8c"; mk_state "$S"   # right URL and bearer but disabled: not converged
+printf 'himmel\n' > "$S/marketplaces.txt"
+printf 'qmd\t%s\tdisabled\n' "$QMD_URL" > "$S/mcp.txt"
+QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
+assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8c replaces a disabled qmd entry"
 S="$TMP/M9"; mk_state "$S"   # token path with a space stays one word in the printed export line
 printf 'himmel\n' > "$S/marketplaces.txt"
 out="$(env -u QMD_HTTP_TOKEN -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE XDG_CONFIG_HOME="/x/my cfg" CODEX_BIN="$STUB" CODEX_STUB_STATE="$S" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" --plugins=himmel-ops)"
