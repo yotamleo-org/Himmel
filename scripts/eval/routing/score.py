@@ -248,6 +248,11 @@ def main(argv=None):
         print("score.py: --only names unknown cases: %s" % ",".join(unknown), file=sys.stderr)
         return 2
     ran = [c for c in cases if not only or c["id"] in only]
+    sealed_ran = sum(c["split"] == "sealed" for c in ran)
+    if 0 < sealed_ran < sum(c["split"] == "sealed" for c in cases):
+        print("score.py: --only names part of the sealed half; its aggregate would show those cases' outcomes, "
+              "so score all of the sealed half or none of it", file=sys.stderr)
+        return 2
     res = score(ran, names, a.outputs)
     print(report(a.model, res))
     rows = public_rows(ran, res)

@@ -1,6 +1,6 @@
 ---
 name: release-manager
-description: "Rule version intake; status."
+description: "Rule version intake, reversion, discharge; status, burn-down, READY."
 ---
 
 # release-manager — every placement into a release is a reasoned ruling (HIMMEL-6796)

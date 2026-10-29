@@ -1,5 +1,5 @@
 ---
-description: Report a wrong himmel refusal.
+description: Report a wrong himmel refusal or review point.
 ---
 
 Report the last refusal (a hook or classifier denial) or review point (a critic or CodeRabbit finding) you

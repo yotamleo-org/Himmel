@@ -17,7 +17,8 @@ Means over reps. Sealed is aggregate only. Tokens are chars/4 over the whole lis
 | trim | 3257 | sonnet | 3 | 1.00 | 0.89 | 0.00 | $0.135 |
 | trim | 3257 | opus | 3 | 1.00 | 0.93 | 0.00 | $0.269 |
 | shipped | 3261 | haiku | 10 | 0.96 | 0.84 | 0.02 | $0.010 |
+| final | 3282 | haiku | 5 | 0.96 | 0.84 | 0.03 | $0.010 |
 
-`shipped` is this PR's head: the trim with the vendored qmd skill line restored to its upstream text. Only haiku was re-scored on it; sonnet and opus were scored on the 3257-token trim listing and not re-run.
+`shipped` is the trim with the vendored qmd skill line restored to its upstream text. `final` is this PR's head: `shipped` with three description lines (himmel-report, release-manager, vm) restored after review. Only haiku was re-scored on those two; sonnet and opus were scored on the 3257-token trim listing and not re-run.
 
 Seeded-broken control (`--seed-broken pr-check,check-ci`, climb listing, haiku, 1 rep): open 0.96, sealed 0.75.

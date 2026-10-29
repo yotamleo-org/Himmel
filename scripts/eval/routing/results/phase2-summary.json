@@ -126,7 +126,7 @@
   },
   {
    "arm": "shipped",
-   "what": "trim with the vendored qmd line restored (this PR's head)",
+   "what": "trim with the vendored qmd line restored (42384895)",
    "listing": {
     "tokens": 3261,
     "sha": "30a353284c055902"
@@ -137,6 +137,25 @@
      "open": 0.956,
      "sealed": 0.838,
      "false_pick": 0.021,
+     "cost_per_run": 0.01
+    },
+    "sonnet": null,
+    "opus": null
+   }
+  },
+  {
+   "arm": "final",
+   "what": "shipped plus 3 description lines restored after review (this PR's head)",
+   "listing": {
+    "tokens": 3282,
+    "sha": "433523b73ca28054"
+   },
+   "models": {
+    "haiku": {
+     "reps": 5,
+     "open": 0.965,
+     "sealed": 0.842,
+     "false_pick": 0.03,
      "cost_per_run": 0.01
     },
     "sonnet": null,
@@ -155,5 +174,5 @@
    "cost_per_run": 0.014
   }
  },
- "note": "sealed numbers are means over reps, aggregate only; per-case sealed rows are never written"
+ "note": "sealed numbers are means over reps, aggregate only; per-case sealed rows are omitted from the results files (the eval-runs ledger outside the repo keeps them)"
 }

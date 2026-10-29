@@ -1,6 +1,6 @@
 ---
 name: vm
-description: Start/stop test VMs; run the VM e2e.
+description: Start/stop/snapshot test VMs; run the VM e2e; arm claude on one.
 ---
 
 # vm — VM lifecycle + e2e runbook (HIMMEL-491/493)
