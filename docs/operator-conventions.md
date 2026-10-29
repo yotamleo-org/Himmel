@@ -201,7 +201,7 @@ Habits for anything that leaves this repo toward an upstream/external project:
 <!-- mem:645f0031401f -->
 - **Open the companion PR with the issue when the fix is unambiguous**, after the soak gate above. An issue filed alone gets its fix taken by someone else's PR within hours, and the credit for closing the bug goes with it. Keep issue-only for defects tangled in design, and for a contested ask: there the companion PR becomes a liability. If another PR already exists, stand down at once and never compete; the issue keeps the discovery credit. A scanner false-positive is filed against the scanner, never dodged by rewriting the scanned code, which reads as evasion to a maintainer.
 <!-- mem:b48605ba9194 -->
-- **No PR where outside contributors are never merged.** Before drafting one, check who authored the merged PRs that touched the target path: GitHub's PR search does not match changed-file paths, so list the commits on the path (`git log -- <path>` in a clone) and look up each one's PR and its author's association to the repo. If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. `anthropics/*` repos are issues-only.
+- **No PR where outside contributors are never merged.** Before drafting one, check who authored the merged PRs that touched the target path: GitHub's PR search does not match changed-file paths, so list the commits on the path (`git log -- <path>` in a clone) and look up each one's PR and its author's association to the repo. If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. On `anthropics/*` repos we file issues, never PRs, by operator choice.
 
 ## Autonomy & arming
 
@@ -259,7 +259,8 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   half-applied edit, which passes a casual look. Test the artifact against the
   brief, never the worker's own report: the brief's named done-criteria,
   `git diff --stat <base sha>` (its commits plus staged and unstaged changes)
-  showing only in-scope files, and the parent running the
+  and `git status --short --untracked-files=all` showing only in-scope files,
+  and the parent running the
   named test cases. The default is do not adopt; recovered work re-enters as
   an ordinary diff that is gated again. A handover's "never started" means no
   commits, not no work: check `git status --porcelain` in that worktree.
