@@ -137,15 +137,15 @@ def finish():
     sys.exit(0)
 
 
-a = argparse.ArgumentParser(description='Report conflicts against open PRs sharing a file.')
-a.add_argument('--repo-dir', default='.')
-a.add_argument('--repo')
-a.add_argument('--base', default='origin/main')
-a.add_argument('--pr', type=int)
-a.add_argument('--peer', type=int)
-a = a.parse_args()
+parser = argparse.ArgumentParser(description='Report conflicts against open PRs sharing a file.')
+parser.add_argument('--repo-dir', default='.')
+parser.add_argument('--repo')
+parser.add_argument('--base', default='origin/main')
+parser.add_argument('--pr', type=int)
+parser.add_argument('--peer', type=int)
+a = parser.parse_args()
 if (a.pr is None) != (a.peer is None) or any(n is not None and n <= 0 for n in (a.pr, a.peer)):
-    sys.exit('chain-push-check: --pr and --peer take positive PR numbers and go together')
+    parser.error('--pr and --peer take positive PR numbers and go together')  # exit 2, never the conflict status 1
 if os.environ.get('CHAIN_PUSH_FLAG_RC') == '1' and a.pr is None:
     sys.exit(0)
 env = os.environ.copy()

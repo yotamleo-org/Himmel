@@ -236,6 +236,13 @@ class PushCheck(unittest.TestCase):
         self.assertIn('HEADS 20=%s 12=%s' % (self.local, self.clean), p.stdout)
         self.assertIn('CHECKED 12 clean', p.stdout)
 
+    def test_malformed_pr_peer_request_is_a_usage_error_not_a_conflict(self):
+        for args in (('--pr', '20'), ('--peer', '12'), ('--pr', '0', '--peer', '12')):
+            with self.subTest(args=args):
+                p = self.check(args=args)
+                self.assertEqual(p.returncode, 2, p.stderr)
+                self.assertEqual(p.stdout, '')
+
     def test_pr_peer_mode_runs_with_the_flag_off(self):
         self.responses([self.pr(20, self.local, 'local'), self.pr(12, self.conflict, 'conflict')])
         p = self.check(None, args=('--pr', '20', '--peer', '12'))
