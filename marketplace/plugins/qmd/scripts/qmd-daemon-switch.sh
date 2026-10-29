@@ -30,6 +30,7 @@ case "${1:-}" in
     have_lock=0
     lock_i=0
     while [ "$lock_i" -lt 65 ]; do
+      # prim-ok: the plugin installs without scripts/lib; a bounded (65 tries) mkdir lock whose holder pid is read to clear a dead one, which with_lock cannot do
       if mkdir "$launch_lock" 2>/dev/null; then have_lock=1; break; fi
       holder="$(cat "$launch_lock/pid" 2>/dev/null)"
       case "$holder" in
@@ -38,6 +39,7 @@ case "${1:-}" in
           # Clearing is serialized by a second mkdir lock and the holder is
           # re-read inside it, as ensure's swap_lock_reclaim does: two waiters
           # that both saw a dead holder must not delete a fresh lock.
+          # prim-ok: the plugin installs without scripts/lib; the second mkdir lock that serializes the dead-holder clear above
           if ! kill -0 "$holder" 2>/dev/null && mkdir "$launch_lock.reclaim" 2>/dev/null; then
             [ "$(cat "$launch_lock/pid" 2>/dev/null)" != "$holder" ] || rm -rf "$launch_lock"
             rmdir "$launch_lock.reclaim" 2>/dev/null

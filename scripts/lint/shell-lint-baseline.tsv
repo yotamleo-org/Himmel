@@ -1,7 +1,6 @@
 .github/scripts/apt-install.sh	gnu-flag	1
 .github/scripts/apt-install.sh	mktemp	1
 marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh	mktemp	4
-marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh	prim-atomic	3
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	mktemp	2
 marketplace/plugins/himmel-guard/hooks/block-destructive-commands.sh	errexit	1
 marketplace/plugins/himmel-guard/test-himmel-guard.sh	mktemp	1
@@ -72,9 +71,6 @@ marketplace/plugins/obsidian-triage/tests/test-vault-lint-drift.sh	errexit	1
 marketplace/plugins/obsidian-triage/tests/test-whisper-pin.sh	errexit	1
 marketplace/plugins/obsidian-triage/tests/test-x-media-enrich.sh	bash32	1
 marketplace/plugins/obsidian-triage/tests/test-x-media-enrich.sh	mktemp	1
-marketplace/plugins/obsidian-triage/tools/ensure-deps.sh	prim-lock	1
-marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh	prim-lock	4
-marketplace/plugins/qmd/scripts/qmd-daemon-switch.sh	prim-lock	2
 marketplace/plugins/telegram-himmel/tests/test-telegram-poller-gate.sh	errexit	1
 marketplace/plugins/telegram-himmel/tests/test-telegram-poller-gate.sh	mktemp	2
 packaging/aur/test-pkgbuild.sh	bash32	2
@@ -228,8 +224,6 @@ scripts/handover/arm-resume.sh	quote-break	1
 scripts/handover/auto-commit.sh	errexit	1
 scripts/handover/auto-commit.sh	mktemp	1
 scripts/handover/cap-reset-time.sh	errexit	1
-scripts/handover/chief-kit/chief-wait.sh	prim-atomic	2	renamed from console-wait.sh
-scripts/handover/chief-kit/chief-wait.sh	prim-lock	1	renamed from console-wait.sh
 scripts/handover/chief-kit/launch-cloud.sh	errexit	1
 scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-digest-step.sh with its 10 findings; the old path is a forwarder, so git sees no rename
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1

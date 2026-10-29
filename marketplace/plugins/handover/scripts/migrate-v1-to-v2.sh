@@ -93,6 +93,7 @@ ensure_template_version() {
       local tmp
       tmp="$(mktemp)"
       sed 's/^template_version: 1$/template_version: 2/' "$file" > "$tmp"
+      # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; a one-off migration of a user's own file
       mv "$tmp" "$file"
     fi
     return 0
@@ -104,6 +105,7 @@ ensure_template_version() {
       tmp="$(mktemp)"
       printf -- '---\ntemplate_version: 2\n---\n' > "$tmp"
       cat "$file" >> "$tmp"
+      # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; a one-off migration of a user's own file
       mv "$tmp" "$file"
     fi
   fi
@@ -158,6 +160,7 @@ PY
       local tmp
       tmp="$(mktemp)"
       awk -v k="$jira" '/^\*\*Jira:\*\*/ {print "**Jira:** " k; next} {print}' "$file" > "$tmp"
+      # prim-ok: the plugin installs without scripts/lib, so prim.sh is absent; a one-off migration of a user's own file
       mv "$tmp" "$file"
     fi
   fi

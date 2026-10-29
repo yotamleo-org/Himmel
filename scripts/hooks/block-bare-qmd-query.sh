@@ -1505,10 +1505,12 @@ qmd_nested() {
 QREADERS=' grep egrep fgrep cat head tail wc ls '
 readers_only() {
     local t=$1 seg w
-    # An fd dup or an &> redirect is no command boundary.
-    t=${t//'>&'/'> '}
-    t=${t//'&>'/' >'}
-    t=${t//[|;&()\{\}\`]/$'\n'}
+    # An fd dup or an &> redirect is no command boundary. sed and tr split in
+    # one linear pass: bash 3.2 runs a global ${t//…} that matches in time
+    # quadratic in the length of t (82 s on a 10 KB command).
+    # shellcheck disable=SC2016,SC2020 # a literal backtick in the tr set; one \n per set member
+    t=$(printf '%s' "$t" | LC_ALL=C sed -e 's/>&/> /g' -e 's/&>/ >/g' |
+        LC_ALL=C tr '|;&(){}`' '\n\n\n\n\n\n\n\n') || return 1
     while IFS= read -r seg; do
         read -r w _ <<<"$seg" || true
         [ -n "$w" ] || continue
@@ -1587,7 +1589,7 @@ _dyn_body() {
 # way (declare -n, mapfile into an array) are unread; a heredoc makes
 # qmd_words decline and skips this reading entirely.
 dyn_check() {
-    local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp lastd tail nm r
+    local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp sa sb lastd tail nm r
     local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd
     n=${#t}
     if [ "$dp" -gt 4 ]; then deny=1; return 0; fi
@@ -1656,11 +1658,13 @@ dyn_check() {
         nx=${t:j:1}
         # Every substitution in the word is a command of its own.
         for sp in $subs; do
-            inner=${t:${sp%%:*}:${sp#*:}-${sp%%:*}}
+            # split first: bash 3.2 cannot parse a ${..%%..} inside a ${t:..} offset
+            sa=${sp%%:*} sb=${sp#*:}
+            inner=${t:sa:sb-sa}
             # `$(( … ))` is arithmetic: its words are no program.
             r=0
             # shellcheck disable=SC2016 # a literal $(
-            if [ "${t:${sp%%:*}-2:2}" = '$(' ] && [ "${inner:0:1}" = '(' ]; then r=1; fi
+            if [ "${t:sa-2:2}" = '$(' ] && [ "${inner:0:1}" = '(' ]; then r=1; fi
             dyn_check "$inner" $((dp + 1)) "$r"
             if [ "$deny" = 1 ]; then return 0; fi
         done
