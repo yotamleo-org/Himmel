@@ -1176,8 +1176,8 @@ if [ -z "$fn2267" ]; then
 else
   check_timeout_2267() {  # $1=suite path as passed to _suite_timeout_for; $2=expected timeout; $3=SUITE_TIER_MODE (default all)
     local got
-    # shellcheck disable=SC2034 # SUITE_TIMEOUT/SUITE_TIMEOUT_EXPLICIT/SUITE_TIER_MODE are read by the eval-defined _suite_timeout_for, invisible to static analysis
-    got=$(eval "$fn2267"; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE="${3:-all}"; GUARD_CORPUS_TIER="${4:-}"; _suite_timeout_for "$1")
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for, invisible to static analysis
+    got=$(eval "$fn2267"; uname() { printf 'Linux\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE="${3:-all}"; GUARD_CORPUS_TIER="${4:-}"; _suite_timeout_for "$1")
     if [ "$got" = "$2" ]; then
       pass "2267: _suite_timeout_for '$1' (tier ${3:-all}) -> ${2}s"
     else
