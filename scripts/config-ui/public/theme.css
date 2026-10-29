@@ -10,12 +10,12 @@
 }
 
 /* The shell: a sticky left rail (brand, the page links) beside one scrolling column. */
-.shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:0;min-height:100vh}
-.rail{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding:20px 16px;border-right:1px solid var(--line);height:100vh;display:flex;flex-direction:column;gap:18px;font:13px/1.5 var(--mono)}
+.shell{display:grid;grid-template-columns:158px minmax(0,1fr);gap:0;min-height:100vh}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding:var(--s4) var(--s3);border-right:1px solid var(--line);height:100vh;display:flex;flex-direction:column;gap:var(--s3);font:12.5px/1.5 var(--mono)}
 .rail .brand{font:650 var(--fs-md)/1.2 var(--sans);letter-spacing:-.01em}
 .rail .brand small{display:block;margin-top:2px;color:var(--dim);font:500 var(--fs-xs)/1.4 var(--mono);letter-spacing:0}
 .pages{display:flex;flex-direction:column;gap:2px}
-.pages a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:3px;color:var(--dim);text-decoration:none;font-weight:600}
+.pages a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border-radius:3px;color:var(--dim);text-decoration:none;font-weight:600}
 .pages a[aria-current="page"]{color:var(--fg);background:var(--panel);box-shadow:inset 2px 0 0 var(--accent)}
 .pages a[target="_blank"]::after{content:"\2197";font-weight:400}
 .pages a:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
