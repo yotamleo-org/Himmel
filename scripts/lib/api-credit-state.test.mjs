@@ -56,10 +56,10 @@ test('API dispatch is OFF even when no native evidence exists', () => {
   writeFileSync(join(f.dir, 'ps'), '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   const r = spawnSync('bash', [BANK], { encoding: 'utf8', env: {
     ...f.env, HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(f.dir, 'slots'),
-    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_BANK_LANE: 'api',
-    CADENCE_BANK_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_BANK_LAUNCH: '1',
-    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(f.dir, 'no-native-cache'),
+    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_USAGE_LANE: 'api',
+    CADENCE_USAGE_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_USAGE_LAUNCH: '1',
+    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(f.dir, 'no-native-cache'),
   } });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), 'SKIPPED-BANK');
@@ -70,10 +70,10 @@ function bankApi(f, extra = {}) {
   writeFileSync(join(f.dir, 'ps'), '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   return spawnSync('bash', [BANK], { encoding: 'utf8', env: {
     ...f.env, HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(f.dir, 'slots'),
-    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_BANK_LANE: 'api',
-    CADENCE_BANK_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_BANK_LAUNCH: '1',
-    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(f.dir, 'no-native-cache'), ...extra,
+    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_USAGE_LANE: 'api',
+    CADENCE_USAGE_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_USAGE_LAUNCH: '1',
+    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(f.dir, 'no-native-cache'), ...extra,
   } });
 }
 
@@ -81,7 +81,7 @@ function bankApi(f, extra = {}) {
 test('opted-in API launch with a funded account proceeds while the native bank is exhausted', () => {
   const f = fixture();
   writeFileSync(join(f.dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
-  const r = bankApi(f, { HIMMEL_API_LANE: 'on', CADENCE_BANK_CACHE: join(f.dir, 'native-cache.json') });
+  const r = bankApi(f, { HIMMEL_API_LANE: 'on', CADENCE_USAGE_CACHE: join(f.dir, 'native-cache.json') });
   assert.equal(r.stdout.trim(), 'PROCEED', r.stderr);
 });
 
@@ -90,7 +90,7 @@ test('opted-in API launch with an empty account refuses although native is funde
   f.snapshot.accounts.A.remaining_usd = '0';
   f.save();
   writeFileSync(join(f.dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 1 }, seven_day: { utilization: 1 } }));
-  const r = bankApi(f, { HIMMEL_API_LANE: 'on', CADENCE_BANK_CACHE: join(f.dir, 'native-cache.json') });
+  const r = bankApi(f, { HIMMEL_API_LANE: 'on', CADENCE_USAGE_CACHE: join(f.dir, 'native-cache.json') });
   assert.equal(r.stdout.trim(), 'SKIPPED-BANK', r.stderr);
 });
 
@@ -332,9 +332,9 @@ test('bank read prints API row and does not use native producer', () => {
   writeFileSync(join(f.dir, 'ps'), '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   const r = spawnSync('bash', [BANK], { encoding: 'utf8', env: {
     ...f.env, HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(f.dir, 'slots'),
-    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_BANK_LANE: 'api',
-    CADENCE_BANK_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_PRODUCER: join(f.dir, 'must-not-run'),
+    FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_USAGE_LANE: 'api',
+    CADENCE_USAGE_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_PRODUCER: join(f.dir, 'must-not-run'),
   } });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), 'PROCEED');
@@ -386,7 +386,7 @@ test('an API launch does not move the subscription FLEET count and has its own c
   const f = fixture();
   const launch = (job) => bankApi(f, {
     HIMMEL_API_LANE: 'on', HIMMEL_FLEET_CAP: '1', HIMMEL_API_MAX_CONCURRENT: '2',
-    CADENCE_USAGE_WORKER: `claude-api:${job}`, CADENCE_BANK_CALLER_PID: String(process.pid),
+    CADENCE_USAGE_WORKER: `claude-api:${job}`, CADENCE_USAGE_CALLER_PID: String(process.pid),
   });
   const one = launch('j1');
   assert.equal(one.stdout.trim(), 'PROCEED', one.stderr);

@@ -16,7 +16,7 @@
 # billed-opt-in: --billed
 # The unit suite (test-probe.sh) uses scripted clients and makes no model call.
 # A run is attended and operator-triggered, not an unattended site: the host-side bank
-# preflight (scripts/lib/bank-preflight.sh) is not run, the guest has no checkout to carry it.
+# preflight (scripts/lib/usage-preflight.sh) is not run, the guest has no checkout to carry it.
 #
 # launch-profile-ok-file: the probe measures what a plain claude session of each launch mode gets, so a worker profile would change the measured condition
 # Credentials come from the environment of the call and are never written to disk:

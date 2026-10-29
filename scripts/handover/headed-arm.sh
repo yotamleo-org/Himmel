@@ -22,6 +22,12 @@
 # environ still carried the ARMING session's stale id until cleared, which
 # is exactly the surface people inspect (/proc/<claude pid>/environ) and
 # actively misled that inspection.
+# CLAUDE_CODE_MESSAGING_SOCKET and _TOKEN are the messaging identity of the
+# launcher, and CLAUDE_JOB_DIR is the job directory of a background launcher:
+# claude watches that directory's state.json and adopts the name written
+# there, so a worker launched from a background session would answer to the
+# launcher's name. All three are cleared so every worker registers under its
+# own -n name.
 #
 # Usage:
 #   headed-arm.sh <session-name> <handover-doc> <signal-file> <deadline-epoch> \
@@ -237,7 +243,7 @@
 # execs (default: claude, PATH-resolved - unchanged for every existing
 # caller). HEADED_ARM_LAUNCHER_ENV is a space-separated list of extra
 # NAME=VALUE tokens (same "no spaces inside a value" contract as
-# codex-bank-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
+# codex-usage-probe.ts's CODEX_USAGE_PROBE_CMD) added to the `env` command
 # ahead of the launcher, for a lane that needs its own opt-in/effort env
 # (e.g. the claudex lane's CLAUDEX_LANE_OK=1). HEADED_ARM_RECORDER=1 wraps
 # the launcher in `script -q -f "$LOG" -c ...` instead of execing it
@@ -324,15 +330,6 @@ fi
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/chief-context.sh"
-# CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT. When the two
-# disagree, standard wins, so a stale name never widens the 1m gate.
-[ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
-# shellcheck source=../lib/env-alias.sh
-. "$(cd "$(dirname "$0")" && pwd)/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
-alias_env HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES
-alias_env WORKER_SESSION_PROFILE_SETTINGS LEG_PROFILE_SETTINGS
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
@@ -371,7 +368,7 @@ _ab_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
 fi
-unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
+unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
 if ! _context_json="$(node "$_context_profiles" "$_context_profile" --context)" \
     || ! _profile_mode="$(printf '%s' "$_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
     || ! _profile_autocompact="$(printf '%s' "$_context_json" | jq -er '.autocompact | select(type == "number" and . >= 200000 and . <= 1000000 and floor == .)')"; then
@@ -748,7 +745,7 @@ fi
 # claim lock, and konsole itself.
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
-    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
+    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
         "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
     printf 'headed-arm: name=%s doc=%s signal=%s deadline=%s log=%s role=%s\n' \
         "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "${ROLE:-unsplit}"
@@ -993,7 +990,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_worker_var() {
     case "$1" in
-        HIMMEL_*|LEG_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }
@@ -1052,8 +1049,9 @@ headless_fail() { # headless_fail <rc> <message>
 # and the launch call.
 # ponytail: only worker-shaped names (the case list in _hl_worker_var) are
 # overridden. Anything else the daemon spawner had - PATH, CLAUDE_CODE_*,
-# the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
-# still reaches the worker from the daemon.
+# the CLAUDE_PID / CLAUDE_CODE_SESSION_ID / CLAUDE_CODE_MESSAGING_SOCKET /
+# CLAUDE_CODE_MESSAGING_TOKEN / CLAUDE_JOB_DIR a headed launch clears with
+# env -u - still reaches the worker from the daemon.
 headless_launch() {
     local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
@@ -1111,7 +1109,7 @@ headless_launch() {
 
     local lrc=0
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
-    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
+    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
@@ -1525,13 +1523,13 @@ if [ "$RECORDER" = "1" ]; then
     # launch stdout/stderr (spawn errors before script even starts) into the
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi

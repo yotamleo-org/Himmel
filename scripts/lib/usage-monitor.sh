@@ -13,13 +13,11 @@
 #   while :; do bash scripts/lib/usage-monitor.sh; sleep 300; done
 #
 # Test seams:
-#   USAGE_MONITOR_CACHE_FILE  usage JSON (default /tmp/claude/statusline-usage-cache.json);
-#                    the old BANK_CACHE_FILE is read while HIMMEL_LEGACY_NAMES is on
+#   USAGE_MONITOR_CACHE_FILE  usage JSON (default /tmp/claude/statusline-usage-cache.json)
 #   BANK_NOW_EPOCH   epoch seconds (default date +%s)
 #   BANK_NOW_HM      display clock (default date +%H:%M)
 #   USAGE_MONITOR_STATE_FILE  emission state; its .samples sibling is the sample ring
-#                    (old BANK_STATE_FILE read while HIMMEL_LEGACY_NAMES is on)
-#   USAGE_MONITOR_SAMPLES_FILE  the sample ring itself (old BANK_SAMPLES_FILE read while HIMMEL_LEGACY_NAMES is on)
+#   USAGE_MONITOR_SAMPLES_FILE  the sample ring itself
 #   REPO             checkout containing scripts/lanes/usage-status.ts
 #
 # the BANK line also carries seven_day_reset_in=<h>h and
@@ -38,14 +36,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/env-alias.sh"
 # shellcheck source=scripts/lib/prim.sh
 . "$HERE/prim.sh" || { echo "usage-monitor.sh: cannot load scripts/lib/prim.sh" >&2; exit 1; }
-alias_env USAGE_MONITOR_CACHE_FILE BANK_CACHE_FILE
-alias_env USAGE_MONITOR_STATE_FILE BANK_STATE_FILE
-alias_env USAGE_MONITOR_SAMPLES_FILE BANK_SAMPLES_FILE
 USAGE_MONITOR_CACHE_FILE="${USAGE_MONITOR_CACHE_FILE:-/tmp/claude/statusline-usage-cache.json}"
 USAGE_MONITOR_STATE_FILE="${USAGE_MONITOR_STATE_FILE:-}"
 spare_only=0

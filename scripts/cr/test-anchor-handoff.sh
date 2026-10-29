@@ -9,7 +9,7 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-WRITERS="write-verdicts clear-cr-marker panel-first-pass docs-audit-panel doc-freshness-advisory known-findings ledger-append review-round orphan-check impacted-suites cr-scores"
+WRITERS="write-verdicts clear-review-marker panel-first-pass docs-audit-panel doc-freshness-advisory known-findings ledger-append review-round orphan-check impacted-suites cr-scores"
 # shellcheck disable=SC2016  # the literal line each writer carries, not an expansion
 SOURCE_DOT='. "$_ah_d/anchor-handoff.sh" || exit 2'
 # shellcheck disable=SC2016  # the literal line each writer carries, not an expansion
@@ -58,10 +58,8 @@ set -uo pipefail'
 anchor="$tmp/anchor"; wt="$tmp/wt"; bare="$tmp/bare"
 make_tree "$anchor" anchor
 make_tree "$wt" branch
-# The deprecated clear-cr-marker.sh forwarder, beside the writer it forwards to.
 for _t in "$anchor" "$wt"; do
     mkdir -p "$_t/scripts/lib"
-    cp "$DIR/clear-cr-marker.sh" "$_t/scripts/cr/clear-cr-marker.sh"
     cp "$DIR/../lib/chokepoint-seam-guard.sh" "$_t/scripts/lib/chokepoint-seam-guard.sh"
     env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$_t" add -A
 done
@@ -77,8 +75,6 @@ run() {  # <cwd> <HIMMEL_REPO or -> <entry path>
 
 # 1. Relative entry from an edited worktree runs the anchor's copy.
 check "$(run "$wt" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1 relative entry hands off"
-# 1b. The deprecated forwarder's relative entry hands off too, then runs the anchor's writer.
-check "$(run "$wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T1b legacy relative entry hands off"
 # 2. `./` is relative too — decided on the path as invoked.
 check "$(run "$wt" "$anchor" ./scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T2 ./ entry hands off"
 # 3. Absolute entry runs the local copy (the deliberate open door).
@@ -338,7 +334,7 @@ for entry in $(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' --
 done
 # Pin the entry set: a bare count let a new entry script slip in
 # or an old one drop out unnoticed. Adding an entry script means adding it here.
-t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/clear-review-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/chief-kit/chief-wait.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/grant-round.sh scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
+t25_want="scripts/cr/clear-review-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/chief-kit/chief-wait.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/grant-round.sh scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
 t25_got=$(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' -- scripts/cr scripts/handover ':!*test-*' | sort | tr '\n' ' ' | sed 's/ $//')
 check "$t25_got" "$t25_want" "T25 hand-off entry set matches the pinned list ($t25_n found)"
 

@@ -29,14 +29,6 @@
 # CACHE_HEALTH_SWEEP_CMD, CACHE_HEALTH_TELEGRAM_CMD, BRIDGE_ROOT, plus
 # cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS).
 set -uo pipefail
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env CACHE_HEALTH_CHIEF CACHE_HEALTH_CONSOLE
-fi
-unset _ea_dir
 
 TASK_NAME="HIMMEL-CacheHealth"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

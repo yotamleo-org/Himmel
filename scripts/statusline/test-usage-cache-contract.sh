@@ -16,7 +16,7 @@
 #   3. scripts/handover/resume-slot.sh      --cache <c> --max-age 0
 #      shape guard (~line 154): at least one of five_hour/seven_day must
 #      be a JSON object, else "schema mismatch" die.
-#   4. scripts/lib/usage-preflight.sh        via CADENCE_BANK_CACHE=<c>
+#   4. scripts/lib/usage-preflight.sh        via CADENCE_USAGE_CACHE=<c>
 #      reads numeric .five_hour/.seven_day.utilization plus the Branch-B
 #      primaries_refreshed_at provenance stamp.
 #
@@ -223,7 +223,7 @@ run_test "(4a) producer(Branch B) -> bank-preflight: PROCEED below threshold" '
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";
   produce_cache_oauth "$W" 10 20;
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_BANK_CACHE="$W/cache.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "PROCEED" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -233,7 +233,7 @@ run_test "(4b) producer(Branch B) -> bank-preflight: SKIPPED-BANK above threshol
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";
   produce_cache_oauth "$W" 95 20;
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_BANK_CACHE="$W/cache.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "SKIPPED-BANK" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -249,7 +249,7 @@ run_test "(4c) HIMMEL-1866: partial fetch cannot make stale seven_day fresh" '
   chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
   printf "%s" "{\"model\":{\"display_name\":\"Claude\"}}" | bash "$PRODUCER";
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_BANK_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_MAX_AGE=60 CADENCE_BANK_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_MAX_AGE=60 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "BANK-STALE" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -301,7 +301,7 @@ run_test "(7d) HIMMEL-1712: usage-preflight.sh treats an account-mismatched cach
   export HOME="$W/home-b"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-account-B\"}}" > "$HOME/.claude.json";
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_BANK_CACHE="$W/cache.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "BANK-UNKNOWN" ] || exit 1;
   grep -q "account" "$W/pf.err" || exit 1;
 '

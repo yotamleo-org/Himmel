@@ -390,7 +390,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-rogue-codex-exec` | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |
-| `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-cr-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | warn-only (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
+| `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-review-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | warn-only (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
 | `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1` |
 | `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
 | `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
@@ -594,12 +594,12 @@ sites are changed here.
 | GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
 | Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
 | Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
-| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` (old names `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` still read); freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
+| Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK`; freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
 | Bank preflight | `HIMMEL_FLEET_CAP` (default 4; also set from the config UI, Settings, "Fleet cap": a whole number from 1 to 50, written to the station `.env`; a value exported in the launching shell wins until that shell restarts) |
 | Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
 | Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
 | Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
-| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK` (and their old `_OVERNIGHT` names), `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK`, `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | Upstream watcher | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | Alibaba quota probe | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK`, `ALIBABA_QUOTA_PROM_URL`, `ALIBABA_QUOTA_GRANTS` |
 | Alibaba monitoring-key setup | `ALIBABA_QUOTA_AK`, `ALIBABA_QUOTA_SK` (in-process lookup, not blanket export) |
@@ -673,7 +673,7 @@ title.
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `CR_PROFILE` | unset (see Effect) | `himmel.conf` | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-cr-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
+| `CR_PROFILE` | unset (see Effect) | `himmel.conf` | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-review-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
 | `CR_CLAUDE_AGENTS` | OFF | `himmel.conf` | Claude reviewers inside `/pr-check`: `1` = the opt-in Claude-agent fan-out; `blast-radius` = the blast-radius pass on any diff; `blast-radius-off` = skip the pass on guard/gate diffs. A guard/gate diff gets the pass by default, and the review marker does not clear until a `ledger-append.sh blast` row records it, or an `--status off --reason` row records why it was skipped (`scripts/cr/clear-review-marker.sh` gate 4f) |
 | `CR_REQUIRE_CROSS_MODEL` | OFF | `config.json` `.policy` | opt-in cross-model floor: require ≥1 non-Claude critic `avail … ok` at the SHA before the review-owed marker clears — makes the claude-only floor above insufficient. Read with `load_policy` by `scripts/cr/clear-review-marker.sh` (gate 3b); a live-env value is ignored |
 | `CRITIC_TIMEOUT_SECS` / `CRITIC_PARALLEL` / `CRITIC_PANEL_TIERS` / `CR_TRIVIALITY_OVERRIDE` / `CR_USAGE_LOG` | 240s / sequential / `free` / heuristic / off | env | panel cost/scope tuning (`scripts/cr/critic-panel.sh`, `.claude/commands/pr-check.md`) |
@@ -779,7 +779,7 @@ default subset:
   reserved/inert, 7 renderable.
 - Two profiles: **interactive** (default; var `HIMMEL_INITIATIVE`) where the
   master switch `1/true/on/yes/all` = `prcheck,pr,ticket,handover`; and
-  **afk** (`HIMMEL_AFK` truthy; var `HIMMEL_INITIATIVE_AFK`; the old `_OVERNIGHT` names still read)
+  **afk** (`HIMMEL_AFK` truthy; var `HIMMEL_INITIATIVE_AFK`)
   where `all` = `execute,prcheck,pr,ticket,merge,handover`.
 - Either var also accepts a comma-subset of the **full** vocabulary — so
   `HIMMEL_INITIATIVE=merge` or `=public` is legal and reaches auto-ship steps outside
@@ -805,9 +805,9 @@ default subset:
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
 | `HIMMEL_INITIATIVE` | OFF | `himmel.conf` | interactive-profile auto-ship step set (above) |
-| `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` (old: `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT`) | OFF | `himmel.conf` | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` wins over `HIMMEL_OVERNIGHT=1` |
-| `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` (old: `OVERNIGHT_*`) | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/afk/build-plan.sh`) |
-| `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/afk/stop-marker.sh`) |
+| `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` | OFF | `himmel.conf` | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` keeps the interactive profile |
+| `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/afk/build-plan.sh`) |
+| `AFK_STOP_DIR` | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/afk/stop-marker.sh`) |
 
 **Arming & scheduling** (`scripts/handover/arm-resume.sh` — schedules a
 `claude` relaunch via `at`/`crontab`):
@@ -852,7 +852,7 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `LANES_REGISTRY` | unset | env | full registry-path override (test/CI; skips the local overlay) |
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
 | `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-codex`, `~/.claude-openrouter`, `~/.claude-deepseek`) auto-reseeding from `~/.claude` |
-| `CLAUDEX_USAGE_WARN_PCT` / `CLAUDEX_USAGE_REFUSE_PCT` / `CLAUDEX_USAGE_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override (the old `CLAUDEX_BANK_*` names are still read; with both set the narrower percentage counts); the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; every other usage source keeps 99) |
+| `CLAUDEX_USAGE_WARN_PCT` / `CLAUDEX_USAGE_REFUSE_PCT` / `CLAUDEX_USAGE_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; every other usage source keeps 99) |
 | `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |
 | `CODEX_EXTERNAL_WRITES_OK` | unset | shell | bypass the codex-lane external-write fence (`scripts/hooks/block-terminal-write-fence.sh`) |

@@ -195,7 +195,7 @@ cp "$HERE/../../lanes/lib/claude-sessions.sh" "$W/repo/scripts/lanes/lib/claude-
 # ledger row or a launch refusal.
 cat > "$W/repo/scripts/lib/usage-preflight.sh" <<'STUB'
 #!/usr/bin/env bash
-[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-${CADENCE_BANK_LEDGER:-unset}}" "${CADENCE_USAGE_LAUNCH:-${CADENCE_BANK_LAUNCH:-unset}}" > "$STUB_PF_SEEN"
+[ -z "${STUB_PF_SEEN:-}" ] || printf 'ledger=%s launch=%s\n' "${CADENCE_USAGE_LEDGER:-unset}" "${CADENCE_USAGE_LAUNCH:-unset}" > "$STUB_PF_SEEN"
 printf '%s\n' "${STUB_FLEET_LINE-bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/8}" >&2
 printf '%s\n' "${STUB_PF_VERDICT:-PROCEED}"
 STUB
@@ -240,7 +240,6 @@ export TICK_STATE_DIR="$W/state"
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
-unset HIMMEL_LEG_FAILURES_LEDGER # old name, read both ways
 export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl"
 export HIMMEL_EVAL_RUNS_LEDGER="$W/eval-runs.jsonl"
 export HIMMEL_FAILURE_ROUTES_LOG="$W/failure-routes.log.jsonl"
@@ -2374,11 +2373,15 @@ contains 'verbose labels metered balance' \
   "$(STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT" --verbose)" 'OpenRouter: 7.50:key-limit_remaining'
 
 contains 'OpenRouter tick bank is the lane verdict, not subscription usage' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' usage=openrouter:SKIPPED-BANK '
+  "$(CADENCE_USAGE_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" ' usage=openrouter:SKIPPED-BANK '
+case "$(CADENCE_BANK_LANE=openrouter STUB_PF_VERDICT=SKIPPED-BANK bash "$SUT")" in # old-term-ok
+  *' usage=openrouter:'*) fail 'the retired CADENCE_BANK_LANE selected the OpenRouter lane' ;; # old-term-ok
+  *) pass 'the retired CADENCE_BANK_LANE selects no lane' ;; # old-term-ok
+esac
 contains 'OpenRouter worker marker selects lane verdict' \
-  "$(CADENCE_BANK_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' usage=openrouter:BANK-UNKNOWN '
+  "$(CADENCE_USAGE_LANE='' WORKER_SESSION_LANE=openrouter STUB_PF_VERDICT=BANK-UNKNOWN bash "$SUT")" ' usage=openrouter:BANK-UNKNOWN '
 contains 'OpenRouter funded verdict surfaces without changing raw balance' \
-  "$(CADENCE_BANK_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' usage=openrouter:PROCEED '
+  "$(CADENCE_USAGE_LANE=openrouter STUB_FLEET_LINE='bank-preflight: FLEET native=0 claudex=0 openrouter=1 reserved=0 total=1/8' bash "$SUT")" ' usage=openrouter:PROCEED '
 
 # --- spare=<pct>@<h>h ---------------------------------------------
 # tick reads usage-monitor.sh --spare; this stub prints STUB_SPARE verbatim (the
@@ -2482,10 +2485,10 @@ rmdir "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 frow 2026-10-07T03:05:00Z N7 error/Edit 1 > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 : > "$HIMMEL_FAILURE_ROUTES_LOG"
 mkdir -p "$W/fl-old-dir"
-same 'fails= reads HIMMEL_WORKER_SESSION_FAILURES_LEDGER before the old name' "$(HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old-dir" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
+same 'fails= reads only HIMMEL_WORKER_SESSION_FAILURES_LEDGER: the retired name beside it changes nothing' "$(HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old-dir" fails_of "$d4670")" '1/1@error/Edit*1' # old-term-ok
 rmdir "$W/fl-old-dir"
 cp "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER" "$W/fl-old.jsonl"
-same 'fails= still reads the old name alone' "$(unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER; HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old.jsonl" fails_of "$d4670")" '1/1@error/Edit*1' # old name, read both ways
+same 'fails= ignores the retired HIMMEL_LEG_FAILURES_LEDGER when the new name is unset' "$(unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER; HOME="$W/nohome" HIMMEL_LEG_FAILURES_LEDGER="$W/fl-old.jsonl" fails_of "$d4670")" '' # old-term-ok
 f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= remains visible when OpenRouter is skipped' "$f4670" ' fails=1/1@error/Edit*1'
 contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
@@ -3011,9 +3014,13 @@ printf '%s\n' \
     '# disposition HIMMEL-7 listed LOCAL' \
     '# disposition HIMMEL-8 below --top 7' \
     '# disposition HIMMEL-9 blocker HIMMEL-901 (not in mirror)' \
-    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' > "$W/pool.rows"
+    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' \
+    '# disposition HIMMEL-11 blocker HIMMEL-902 (reopened live)' \
+    '# disposition HIMMEL-12 blocker-unknown HIMMEL-903' > "$W/pool.rows"
 pd_out="$(bash "$SUT" --pool-dispositions --doc "$pd_doc" < "$W/pool.rows" 2>/dev/null)"
-contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 10/1/6/4'
+contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 12/1/8/4'
+not_contains 'a reopened-live blocker is not left unresolved' "$pd_out" '# pool-unresolved blocker HIMMEL-11 '
+not_contains 'a blocker-unknown row is not left unresolved' "$pd_out" '# pool-unresolved blocker-unknown HIMMEL-12 '
 contains 'malformed chief decisions remain named and unresolved' "$pd_out" '# pool-unresolved invalid HIMMEL-7 '
 contains 'a non-Live-state decision never dispositions a key' "$pd_out" '# pool-unresolved below HIMMEL-8 '
 contains 'an unread blocker is not a named live blocker' "$pd_out" '# pool-unresolved blocker HIMMEL-9 '
@@ -3021,6 +3028,15 @@ contains 'a listed candidate is not a live file holder' "$pd_out" '# pool-unreso
 contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '# pool-unresolved invalid HIMMEL-999 '
 same 'standalone pool mode resolves handover-relative document paths' "$(bash "$SUT" --pool-dispositions --doc pool-chief.md < "$W/pool.rows" 2>/dev/null)" "$pd_out"
 same 'standalone pool mode resolves extensionless document names' "$(bash "$SUT" --pool-dispositions --doc pool-chief < "$W/pool.rows" 2>/dev/null)" "$pd_out"
+
+# the retired --legs / --legs-from flags are unknown options of the script's own parser
+for old_flag in --legs --legs-from; do
+    old_rc=0
+    old_out="$(bash "$SUT" "$old_flag" x 2>&1)" || old_rc=$?
+    [ "$old_rc" = 2 ] && pass "$old_flag exits 2" || fail "$old_flag exited $old_rc"
+    contains "$old_flag prints the script's usage" "$old_out" 'usage: tick.sh'
+    not_contains "$old_flag is not a missing function" "$old_out" 'command not found'
+done
 
 PD="$W/pd-mirror/HIMMEL"; mkdir -p "$PD"
 for n in 901 902 904; do sed 's/fixVersions: \[\]/fixVersions: ["v1.1.3"]/' "$OW/HIMMEL-$n.md" > "$PD/HIMMEL-$n.md"; done

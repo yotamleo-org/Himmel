@@ -1,53 +1,76 @@
-// Journey J3: Config becomes Settings with the frame-10 groups, and Roadmap and Kanban follow the tracker source.
+// Journey J3: the Configure page (it replaced Settings and Setup) with its four group tiles, and Roadmap and Kanban follow the tracker source.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
-const GROUPS = ["Plugins", "Review by a second model", "Auto-ship steps", "Scheduled jobs", "Commit rules", "Session switches", "Your install answers"];
+const TILES = ["Secrets", "Review", "Tracker", "Project scope"];
+// the Settings groups that sit under the Project scope tile
+const SCOPE_GROUPS = ["Auto-ship steps", "Plugins", "Scheduled jobs", "Your install answers"];
+// the setup read can take longer than a poll's default 5 s (the CodeRabbit probe alone allows 5 s)
+const SETUP_WAIT = { timeout: 20_000 };
 
-async function open(page: Page, tracker: TrackerKind = "jira") {
+async function open(page: Page, tracker: TrackerKind = "jira", tile?: string) {
   h = await boot({}, { tracker });
   await page.goto(h.url);
-  await page.locator("#settings").waitFor();
+  await page.locator("#h-configure").waitFor();
+  if (tile) await page.locator(`button.tile[data-tile="${tile}"]`).click();
 }
 
-test("J3. the page is Settings: its rail entry and title, then the seven groups in order", async ({ page }) => {
+test("J3. the page is Configure: its rail entry and title, then the four tiles in order, one open at a time", async ({ page }) => {
   await open(page);
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Settings");
-  await expect(page.locator("#h-settings")).toHaveText("Settings");
-  await expect(page.locator("#settings h3")).toHaveText(GROUPS);
+  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
+  await expect(page.locator("#h-configure")).toHaveText("Configure");
+  await expect(page.locator(".tiles .tile .tname")).toHaveText(TILES);
+  await page.locator('button.tile[data-tile="review"]').click();
+  await expect(page.locator('button.tile[aria-expanded="true"]')).toHaveCount(1);
+  await expect(page.locator('button.tile[data-tile="review"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('button.tile[data-tile="review"]')).toBeFocused(); // the repaint keeps a keyboard user on the tile
+  await page.locator('button.tile[data-tile="review"]').click();
+  await expect(page.locator('button.tile[aria-expanded="true"]')).toHaveCount(0);
 });
 
-test("J3. every row shows its command, when it takes effect and a Learn more link to the docs site", async ({ page }) => {
+test("J3. the Check this install strip sits under the tile row", async ({ page }) => {
   await open(page);
-  const rows = page.locator("#settings .setrow");
-  expect(await rows.count()).toBeGreaterThanOrEqual(10);
+  // a repaint when the setup read lands replaces both nodes, so read the two boxes together and retry
+  await expect.poll(async () => {
+    const tiles = await page.locator(".tiles").boundingBox();
+    const chk = await page.locator(".chk").boundingBox();
+    return tiles && chk ? chk.y - tiles.y : -1;
+  }, SETUP_WAIT).toBeGreaterThan(0);
+  await expect(page.locator(".chk")).toContainText("Check this install");
+});
+
+test("J3. every Project scope row shows its command, when it takes effect and a Learn more link to the docs site", async ({ page }) => {
+  await open(page, "jira", "scope");
+  const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
+  await expect.poll(() => rows.count(), SETUP_WAIT).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
     await expect(r.locator("pre code")).not.toBeEmpty();
     await expect(r).toContainText("takes effect: ");
     await expect(r.locator("a.learn")).toHaveAttribute("href", /^https:\/\/yotamleo-org\.github\.io\/Himmel\/[a-z/-]+$/);
     await expect(r.locator("a.learn")).toHaveAttribute("target", "_blank");
   }
+  await expect(page.locator("#tile-scope .setgroup h3").filter({ hasText: /^(Plugins|Auto-ship steps|Scheduled jobs|Your install answers)$/ })).toHaveText(SCOPE_GROUPS);
 });
 
-test("J3. Commit rules point at ~/.himmel/himmel.conf, not the shell profile, and offer no switch", async ({ page }) => {
-  await open(page);
-  const g = page.locator("#settings .setgroup", { has: page.locator("#sg-commit-rules") });
-  await expect(g).toContainText("~/.himmel/himmel.conf");
-  await expect(g).not.toContainText(/shell profile/i);
-  await expect(g.locator("button")).toHaveCount(0);
+test("J3. the Tracker tile points commit rules at ~/.himmel/himmel.conf, not the shell profile", async ({ page }) => {
+  await open(page, "jira", "tracker");
+  const t = page.locator("#tile-tracker");
+  await expect(t).toContainText("~/.himmel/himmel.conf");
+  await expect(t).not.toContainText(/shell profile/i);
+  await expect(t.locator(".cols .col")).toHaveCount(2); // the shared dry-run box appears only once a change is previewed
 });
 
-test("J3. a switch in Settings still previews its dry-run first and runs nothing on cancel", async ({ page }) => {
-  await open(page);
-  await page.locator('#settings button[data-act="plan"][data-target="pipeline"]').click();
-  const plan = page.locator("#settings .plan");
+test("J3. a switch on Configure still previews its dry-run first and runs nothing on cancel", async ({ page }) => {
+  await open(page, "jira", "scope");
+  await page.locator('#tile-scope button[data-act="plan"][data-target="pipeline"]').click();
+  const plan = page.locator("#tile-scope .plan");
   await expect(plan).toContainText("dry-run · nothing has changed");
   await expect(plan.locator('button[data-act="run"]')).toBeDisabled();
   await plan.locator('button[data-act="close"]').click();
-  await expect(page.locator("#settings .plan")).toHaveCount(0);
+  await expect(page.locator("#tile-scope .plan")).toHaveCount(0);
   expect(h.argv().every((l) => l.endsWith("--dry-run")), h.argv().join("\n")).toBe(true);
 });
 
@@ -59,3 +82,32 @@ for (const [tracker, shown] of [["none", false], ["local", false], ["jira", true
     expect((await rail.allTextContents()).includes("Kanban")).toBe(shown);
   });
 }
+
+test("J3. at 390 px no tile makes the page scroll sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await open(page);
+  for (const t of ["secrets", "review", "tracker", "scope"]) {
+    await page.locator(`button.tile[data-tile="${t}"]`).click();
+    await expect(page.locator(`#tile-${t}`)).toBeVisible();
+    const w = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(w.scroll, `${t}: page ${w.scroll}px in a ${w.client}px window`).toBeLessThanOrEqual(w.client);
+  }
+});
+
+test("J4. on a 3840 px screen the panel stays a readable width and every secret input ends on one edge", async ({ page }) => {
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await open(page);
+  for (const t of ["secrets", "review", "tracker", "scope"]) {
+    await page.locator(`button.tile[data-tile="${t}"]`).click();
+    // a repaint when the setup read lands replaces the panel, so measure inside a retry
+    await expect.poll(async () => {
+      const w = (await page.locator(`#tile-${t}`).boundingBox())?.width ?? 0;
+      return w > 0 && w <= 3840 * 0.45 ? "readable" : `${t} panel ${w}px`;
+    }, SETUP_WAIT).toBe("readable");
+  }
+  await page.locator('button.tile[data-tile="secrets"]').click();
+  await expect.poll(async () => {
+    const edges = await page.locator("#tile-secrets form[data-setup-form] input").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+    return edges.length > 1 && new Set(edges).size === 1 ? "one edge" : `input right edges ${edges}`;
+  }, SETUP_WAIT).toBe("one edge");
+});

@@ -159,8 +159,6 @@ _prov_canon_partial() {
 # short names), the basename left as given so a link is recorded as the link.
 _prov_abs_path() {
     local p="$1" dir base
-    # a backslash is a separator on Windows only; on POSIX it is a legal filename character
-    case "$p" in *[\\]*) if [ "$(_prov_platform)" = win32 ]; then p=${p//\\//}; fi ;; esac
     case "$p" in /*|[A-Za-z]:/*) ;; *) p="$PWD/$p" ;; esac
     while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do
         case "$p" in [A-Za-z]:/) break ;; esac   # a drive root keeps its slash
@@ -223,7 +221,6 @@ _prov_platform() {
     case "$(uname -s 2>/dev/null)" in
         Linux) printf 'linux' ;;
         Darwin) printf 'darwin' ;;
-        MINGW*|MSYS*|CYGWIN*) printf 'win32' ;;
         *) uname -s | tr '[:upper:]' '[:lower:]' ;;
     esac
 }

@@ -33,6 +33,10 @@ GEN="$SCRIPT_DIR/../agents-md/generate.mjs"
 # shellcheck source=scripts/guardrails/lib.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/guardrails/lib.sh"
+# shellcheck disable=SC1091
+if ! { [ -r "$SCRIPT_DIR/../lib/prim.sh" ] && . "$SCRIPT_DIR/../lib/prim.sh"; } 2>/dev/null; then
+    echo "→ debrand-coverage: cannot source lib/prim.sh — fail-closed" >&2; exit 2
+fi
 rc=0
 # shellcheck disable=SC2119  # deliberately called with no args to use its DIR default (.)
 is_himmel_dev_repo || rc=$?
@@ -78,7 +82,7 @@ if [ "$refuse" -eq 1 ]; then
     exit 2
 fi
 
-tmpd="$(mktemp -d)"
+tmpd="$(tmpdir)" || { echo "→ debrand-coverage: tmpdir failed — fail-closed" >&2; exit 2; }
 trap 'rm -rf "$tmpd"' EXIT
 
 # Validate the STAGED content, not the working tree — the commit is what ships.

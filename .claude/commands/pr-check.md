@@ -41,6 +41,6 @@ Rules every fence obeys (full contract, the enumerated refused shapes and their 
 
 4.8. **Unresolved-thread gate** (HIMMEL-949) — blocking, skipped only when no PR exists yet. 4.9. **Round-4 cap disposition** (HIMMEL-2780) — only when step 3.0 printed round 4 or later. Reference: `48-step4.8-threads.md`.
 
-5. **Clear.** Only if step 4.9 did not already clear the marker and `N == 0` AND step 4.8 reported `threads_rc = 0` AND step 3.6 reported `impacted_rc = 0`: clear the marker through the chokepoint `clear-cr-marker.sh '<branch>'`, never a bare `rm`. Then promote agreed findings to fixed. 6. Otherwise the marker stays held: report the blockers. 6.5. Append the critic-score footer. Reference: `50-step5-decision.md`.
+5. **Clear.** Only if step 4.9 did not already clear the marker and `N == 0` AND step 4.8 reported `threads_rc = 0` AND step 3.6 reported `impacted_rc = 0`: clear the marker through the chokepoint `clear-review-marker.sh '<branch>'`, never a bare `rm`. Then promote agreed findings to fixed. 6. Otherwise the marker stays held: report the blockers. 6.5. Append the critic-score footer. Reference: `50-step5-decision.md`.
 
 7. **Auto-file deferred nits** (HIMMEL-30) — runs whenever the review surfaced low-severity findings worth tracking, independently of the clear decision. Reference: `70-step7-nits.md`.

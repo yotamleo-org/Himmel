@@ -14,24 +14,9 @@ export function assertIntakeGate(gate: string): void {
   if (!valid) throw new Error(`--gate must be one of ${INTAKE_GATES} (got "${gate}")`);
 }
 
-const warnedLegacy = new Set<string>();
-
-/**
- * The value of --chief-override, from either spelling. The old --console-override
- * keeps working with one stderr line per process, unless HIMMEL_LEGACY_NAMES is
- * 0, false, no or off; then it is an unknown option.
- */
-export function chiefOverrideOf<T>(o: { chiefOverride?: T; consoleOverride?: T }): T | undefined {
-  if (o.consoleOverride === undefined) return o.chiefOverride;
-  if (/^(0|false|no|off)$/i.test(process.env['HIMMEL_LEGACY_NAMES'] ?? '')) {
-    process.stderr.write('--console-override was renamed to --chief-override; legacy names are off\n');
-    throw new Error("error: unknown option '--console-override'");
-  }
-  if (!warnedLegacy.has('--console-override')) {
-    warnedLegacy.add('--console-override');
-    process.stderr.write('--console-override is deprecated: use --chief-override\n');
-  }
-  return o.chiefOverride ?? o.consoleOverride;
+/** The value of --chief-override; the old --console-override is an unknown option. */
+export function chiefOverrideOf<T>(o: { chiefOverride?: T }): T | undefined {
+  return o.chiefOverride;
 }
 
 /**

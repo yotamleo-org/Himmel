@@ -78,12 +78,6 @@
 # is Linux/macOS-shaped, and WORKER_SESSION_BURN_PROJECTS_DIR overrides that.
 set -u
 
-# shellcheck source=scripts/lib/env-alias.sh
-. "$(dirname "$0")/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE
-alias_env WORKER_SESSION_BURN_RAW LEG_BURN_RAW
-alias_env WORKER_SESSION_BURN_PROJECTS_DIR LEG_BURN_PROJECTS_DIR
 
 usage() {
     echo "usage: worker-burn.sh [--raw] [--profile <name>] <transcript.jsonl|session-name>" >&2

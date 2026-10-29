@@ -24,8 +24,6 @@ _LCR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_LCR_HERE/burn-weights.sh"
 # shellcheck source=scripts/lib/worker-identity.sh
 . "$_LCR_HERE/../../lib/worker-identity.sh"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$_LCR_HERE/../../lib/env-alias.sh"
 
 # _lcr_doc_root <doc | stem> - the deepest known handover root holding the doc,
 # resolved the way queue-lock.sh keys a lock (HANDOVER_DIR + registry). Prints
@@ -54,7 +52,6 @@ EOF
 # HANDOVER_DIR unset) never writes into that repo's handovers/ stub
 # handovers/ stub. No doc, or one no known root holds: handover_root.
 worker_cost_ledger_path() {
-    alias_env WORKER_SESSION_COST_LEDGER LEG_COST_LEDGER   # old name, read only while HIMMEL_LEGACY_NAMES is on
     if [ -n "${WORKER_SESSION_COST_LEDGER:-}" ]; then printf '%s\n' "${WORKER_SESSION_COST_LEDGER}"; return 0; fi
     # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
@@ -79,7 +76,6 @@ _lcr_front() {
 worker_cost_row() {
     local transcript="$1" ref="$2" stem raw calls comp out cr cc inp cost model
     local label ticket pr="" class="" profile="" burn
-    alias_env WORKER_SESSION_BURN_BIN LEG_BURN_BIN   # old name, read only while HIMMEL_LEGACY_NAMES is on
     burn="${WORKER_SESSION_BURN_BIN:-$_LCR_HERE/../worker-burn.sh}"
     raw=$(bash "$burn" --raw "$transcript") || { echo "worker-burn failed on $transcript" >&2; return 1; }
     _lcr_field() { printf '%s' "$raw" | sed -nE "s/.* $1=([0-9]+).*/\\1/p"; }

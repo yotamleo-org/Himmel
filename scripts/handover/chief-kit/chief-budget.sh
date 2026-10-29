@@ -33,10 +33,6 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
   fi
   printf '%s\n' "$v"
 }
-# shellcheck source=../../lib/env-alias.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/env-alias.sh"
-alias_env CHIEF_TURN_BUDGET CONSOLE_TURN_BUDGET
-alias_env CHIEF_CACHE_READ_BUDGET_M CONSOLE_CACHE_READ_BUDGET_M
 TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 150)"
 CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 30)"
 FILL_PCT="$(num_env CHIEF_FILL_HANDOVER_PCT 45)"

@@ -18,7 +18,7 @@ the alias in brackets. Keep repo identifiers in code spans (`/chief`,
 `HIMMEL_CONSOLE_LEG`, `headed-arm-worker.sh`, `go.sh`). Repo identifiers are being
 renamed to the plain names (HIMMEL-5689). That migration is a known breaking
 change: the old names stop working when their rename PR lands, with no alias
-(the four slices that merged before that ruling keep aliases until HIMMEL-6647 removes them).
+(the four slices that merged before that ruling kept aliases; HIMMEL-6647 removed them).
 They are listed in [Renamed identifiers](migration/renamed-identifiers.md), a
 temporary side doc that is removed once the rename is done; the plan is in
 [Identifier renames](#identifier-renames).
@@ -59,8 +59,8 @@ the plain name, and say the old name once, the first time, in brackets.
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
 | **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
-| **usage** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables were renamed by HIMMEL-5689 slice V1; the old names still work until HIMMEL-6647. |
-| **weekly limit override** | bank lift | Renamed by slice V1; the old names still work until HIMMEL-6647. |
+| **usage** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables were renamed by HIMMEL-5689 slice V1; HIMMEL-6647 removed the old names. |
+| **weekly limit override** | bank lift | Renamed by slice V1; HIMMEL-6647 removed the old names. |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
 | **variant sweep** | class sweep | Replaces the 10-17 interim name "sibling sweep". Named for CodeQL's "variant analysis". The `SWEEP` ledger keyword is unchanged. |
@@ -71,7 +71,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | **warn-only** | advisory | |
 | **worker system prompt** | preface | There are five prefaces (worker, worker claudex, worker openrouter, judge, consult). |
 | **usage-cap auto-relaunch** | watchdog | Only where the README, getting-started and why-himmel mean the auto-arm hooks. A wall-clock killer is a "run timeout". |
-| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` were renamed by slice V3 to `/afk-shift` and `afk-mode.md`; the old ones are aliases until HIMMEL-6647. |
+| **AFK (unattended) mode** | overnight mode | `/overnight-shift` and `overnight-mode.md` were renamed by slice V3 to `/afk-shift` and `afk-mode.md`; HIMMEL-6647 removed the old ones. |
 | **soft block (speed bump)** | speed bump | Stops only the accidental form. |
 | **revision** | RETASK | The `RETASK` block keyword stays: code parses it. |
 | **token** | nonce | "Nonce" stays an alias here; ids keep it. |
@@ -87,9 +87,9 @@ listed under [Do not rename](#do-not-rename).
 
 Rename plan: HIMMEL-5689. Names ruled 2026-10-20 (operator): chief, worker, dependency chain, parallel wave.
 The rest follow the HIMMEL-5689 plan. Slices V3, V1, V2 and V5 merged before the ruling below, with
-aliases: their new names work and their old names still work through a forwarder at the old path, a
+aliases: their old names worked through a forwarder at the old path, a
 command alias or a read-both env name. V4a-1 did the same for the worker env names and hooks.
-HIMMEL-6647 removes those leftovers first. Every other row is a plan until its slice merges: until then
+HIMMEL-6647 removed those leftovers. Every other row is a plan until its slice merges: until then
 only the old name exists. **This migration is a known breaking change** (operator ruling 2026-10-24): from
 the ruling on, an old name does not keep working after its rename PR merges, so there is no read-both env
 alias, no wrapper at the old path, no redirect stub and no alias-pin test. Every old name, its new name and

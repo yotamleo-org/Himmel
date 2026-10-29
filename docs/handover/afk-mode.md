@@ -483,8 +483,8 @@ gate does this, and only this:
    head SHA, which gate blocked it and why (its refusal reason), and the exact
    command to resume once the blocking condition clears. For a cross-model
    floor exhaustion, that is **`/pr-check` on the branch, not a bare
-   `clear-cr-marker.sh` recheck**. The exhausted critic's `avail` row is
-   already on the ledger, so re-running only `clear-cr-marker.sh` reads that
+   `clear-review-marker.sh` recheck**. The exhausted critic's `avail` row is
+   already on the ledger, so re-running only `clear-review-marker.sh` reads that
    same stale row and refuses again; `/pr-check` re-invokes the panel and
    records a FRESH row (`ok` once the subscription usage budget has actually reset, or a new
    `unavailable` if it has not) before the marker is re-checked. Enabling

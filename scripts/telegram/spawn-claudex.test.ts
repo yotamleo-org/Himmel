@@ -1143,32 +1143,31 @@ function bankCacheText(usedPct: number, extra: Record<string, unknown> = {}) {
   });
 }
 
-test("codexBankCachePath defaults under ~/.himmel/cache, CODEX_BANK_CACHE overrides", () => {
+test("codexBankCachePath defaults under ~/.himmel/cache, CODEX_USAGE_CACHE overrides", () => {
   expect(codexBankCachePath("/home/t", {})).toBe(join("/home/t", ".himmel", "cache", "codex-bank.json"));
-  expect(codexBankCachePath("/home/t", { CODEX_BANK_CACHE: "/tmp/c.json" })).toBe("/tmp/c.json");
+  expect(codexBankCachePath("/home/t", { CODEX_USAGE_CACHE: "/tmp/c.json" })).toBe("/tmp/c.json");
 });
 
-test("codexBankCachePath: CODEX_USAGE_CACHE wins over the old CODEX_BANK_CACHE", () => {
-  expect(codexBankCachePath("/home/t", { CODEX_USAGE_CACHE: "/tmp/u.json", CODEX_BANK_CACHE: "/tmp/c.json" })).toBe("/tmp/u.json");
+test("codexBankCachePath: the retired CODEX_BANK_CACHE is ignored", () => { // old-term-ok
+  expect(codexBankCachePath("/home/t", { CODEX_BANK_CACHE: "/tmp/c.json" })).toBe(join("/home/t", ".himmel", "cache", "codex-bank.json")); // old-term-ok
+  expect(codexBankCachePath("/home/t", { CODEX_USAGE_CACHE: "/tmp/u.json", CODEX_BANK_CACHE: "/tmp/c.json" })).toBe("/tmp/u.json"); // old-term-ok
 });
 
-test("codexBankOverride: CLAUDEX_USAGE_OK or the old CLAUDEX_BANK_OK, and either set to anything but 1 refuses", () => {
+test("codexBankOverride: CLAUDEX_USAGE_OK=1 only; anything else refuses, the retired CLAUDEX_BANK_OK is ignored", () => { // old-term-ok
   expect(codexBankOverride({})).toBe(false);
   expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1" })).toBe(true);
-  expect(codexBankOverride({ CLAUDEX_BANK_OK: "1" })).toBe(true);
-  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1", CLAUDEX_BANK_OK: "1" })).toBe(true);
-  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "0", CLAUDEX_BANK_OK: "1" })).toBe(false);
-  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "1", CLAUDEX_BANK_OK: "0" })).toBe(false);
-  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "", CLAUDEX_BANK_OK: "1" })).toBe(true);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "0" })).toBe(false);
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "" })).toBe(false);
+  expect(codexBankOverride({ CLAUDEX_BANK_OK: "1" })).toBe(false); // old-term-ok
+  expect(codexBankOverride({ CLAUDEX_USAGE_OK: "0", CLAUDEX_BANK_OK: "1" })).toBe(false); // old-term-ok
 });
 
-test("codexBankWarnPct: default 80; CLAUDEX_USAGE_WARN_PCT beside the old name, the narrower wins", () => {
+test("codexBankWarnPct: default 80; CLAUDEX_USAGE_WARN_PCT sets it, the retired CLAUDEX_BANK_WARN_PCT is ignored", () => { // old-term-ok
   expect(codexBankWarnPct({})).toBe(80);
-  expect(codexBankWarnPct({ CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
   expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "70" })).toBe(70);
-  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "95", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
-  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "60", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(60);
-  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "abc", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(70);
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "abc" })).toBe(80);
+  expect(codexBankWarnPct({ CLAUDEX_BANK_WARN_PCT: "70" })).toBe(80); // old-term-ok
+  expect(codexBankWarnPct({ CLAUDEX_USAGE_WARN_PCT: "95", CLAUDEX_BANK_WARN_PCT: "70" })).toBe(95); // old-term-ok
 });
 
 test("fetchCodexWeeklyUsedPercent: a fresh cache yields the weekly used%", () => {

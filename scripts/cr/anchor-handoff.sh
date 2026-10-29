@@ -278,7 +278,7 @@ case "$_ah_self" in
             # to a nonexistent scripts/handover/anchor-handoff.sh for the two
             # handover entries, so `[ -f "$_ah_dep_local" ]` was false and the
             # compare silently never ran for them - proven by probe: a
-            # tampered helper was refused via clear-cr-marker.sh (depth 2) but
+            # tampered helper was refused via clear-review-marker.sh (depth 2) but
             # handed off unchecked via go.sh (depth 3). Resolve this file's
             # own path from BASH_SOURCE[0] instead, which always points at
             # THIS file however it was sourced.

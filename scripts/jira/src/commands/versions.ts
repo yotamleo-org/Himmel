@@ -1,4 +1,4 @@
-import { Option, type Command } from 'commander';
+import type { Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { appendAdmission } from './admissions-ledger.js';
@@ -287,7 +287,7 @@ export async function setFixVersion(
 export async function addFixVersionGated(
   key: string,
   name: string,
-  o: { gate?: string; chiefOverride?: string; consoleOverride?: string },
+  o: { gate?: string; chiefOverride?: string },
 ): Promise<string> {
   if (o.gate !== undefined) assertIntakeGate(o.gate);
   const override = chiefOverrideOf(o);
@@ -428,8 +428,7 @@ export function registerVersions(program: Command): void {
       '--chief-override <reason>',
       'With --add, console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .addOption(new Option('--console-override <reason>').hideHelp())
-    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string; consoleOverride?: string }) => {
+    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string }) => {
       if ((options.add === undefined) === (options.remove === undefined)) {
         throw new Error('fix-version needs exactly one of --add <name> or --remove <name>');
       }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/fleet-reservation-key.sh. Sourced by
-# scripts/lib/bank-preflight.sh (which RESERVES a fleet slot) and
+# scripts/lib/usage-preflight.sh (which RESERVES a fleet slot) and
 # scripts/handover/arm-resume.sh (which RELEASES it on exit): the ONE place a
 # worker name becomes the on-disk key of its reservation directory, so the
 # reserver and the releaser cannot disagree about where the reservation lives.

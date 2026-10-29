@@ -33,8 +33,7 @@
 #     under ${TMPDIR:-/tmp}/himmel-chief-* or himmel-console-*, or its basename matches
 #     *-legN*-RESUME.md.
 #   Bash — the command text contains HIMMEL_CONSOLE_RELAY, HIMMEL_CONSOLE_LEG,
-#     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME or its old
-#     name CONSOLE_SESSION_NAME (an
+#     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME (an
 #     env-prefix override, `unset`, or `env -u` of an identity/marker
 #     variable); or contains "inbox-send" AND "--token"; or contains a
 #     write-shaped verb (">", or the command WORD "tee", "cp", "cpio", "mv",
@@ -119,9 +118,12 @@ deny() {
 # below run. Called at most once, and only after readlink -f has failed.
 readlink_resolves_missing_leaf() {
     local d d_resolved got
+    # prim-ok: capability probe of readlink -f itself; this fail-closed fence must not depend on sourcing prim.sh
     d="$(mktemp -d "${TMPDIR:-/tmp}/relay-probe.XXXXXX" 2>/dev/null)" || return 1
     [ -n "$d" ] || return 1
+    # prim-ok: capability probe of readlink -f itself; this fail-closed fence must not depend on sourcing prim.sh
     d_resolved="$(readlink -f -- "$d" 2>/dev/null)" || d_resolved=""
+    # prim-ok: capability probe of readlink -f itself; this fail-closed fence must not depend on sourcing prim.sh
     got="$(readlink -f -- "$d/probe-leaf" 2>/dev/null)" || got=""
     rmdir -- "$d" 2>/dev/null
     [ -n "$d_resolved" ] && [ "$got" = "$d_resolved/probe-leaf" ]
@@ -154,6 +156,7 @@ resolve_missing_leaf() {
     esac
     { [ -d "$parent" ] && [ -x "$parent" ]; } || return 1
     { [ ! -e "$p" ] && [ ! -L "$p" ]; } || return 1
+    # prim-ok: BSD fallback resolver inside this fail-closed fence; canon_path would change its deny decisions
     parent_resolved="$(readlink -f -- "$parent" 2>/dev/null)" || return 1
     { [ -n "$parent_resolved" ] && [ -d "$parent_resolved" ] && [ -x "$parent_resolved" ]; } || return 1
     name_max="$(getconf NAME_MAX "$parent_resolved" 2>/dev/null)" || return 1
@@ -218,6 +221,7 @@ case "$tool" in
 
         root="$(handover_root 2>/dev/null)" || deny "handover-root-unresolved" "handover_root failed"
         [ -n "$root" ] || deny "handover-root-unresolved" "handover_root returned empty"
+        # prim-ok: this fail-closed fence denies on an unresolvable path, and canon_path would change that decision
         root_resolved="$(readlink -f -- "$root" 2>/dev/null)" || deny "handover-root-unresolved" "handover_root does not resolve: $root"
         [ -n "$root_resolved" ] || deny "handover-root-unresolved" "handover_root does not resolve: $root"
 
@@ -233,6 +237,7 @@ case "$tool" in
         # probe says this readlink is the BSD kind does the fallback run — on
         # GNU it never runs, so GNU enforcement is identical by construction.
         path_resolved=""
+        # prim-ok: this fail-closed fence denies on an unresolvable path, and canon_path would change that decision
         if path_resolved="$(readlink -f -- "$path" 2>/dev/null)" && [ -n "$path_resolved" ]; then
             :
         elif readlink_resolves_missing_leaf; then
@@ -284,7 +289,7 @@ case "$tool" in
             || deny "unparseable-payload" "cannot read command"
         [ -n "$cmd" ] || exit 0
 
-        for needle in HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG SESSION_NAME_CMDLINE_FILE CLAUDE_PID CHIEF_SESSION_NAME CONSOLE_SESSION_NAME; do
+        for needle in HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG SESSION_NAME_CMDLINE_FILE CLAUDE_PID CHIEF_SESSION_NAME; do
             case "$cmd" in
                 *"$needle"*) deny "env-override" "$needle" ;;
             esac

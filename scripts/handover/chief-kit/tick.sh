@@ -37,15 +37,6 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../../lib/env-alias.sh"
-alias_env WORKERS LEGS
-alias_env WORKERS_FROM LEGS_FROM
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CADENCE_USAGE_LANE CADENCE_BANK_LANE
-alias_env HIMMEL_WORKER_SESSION_FAILURES_LEDGER HIMMEL_LEG_FAILURES_LEDGER
-alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
-alias_env WORKER_SESSION_LANE LEG_LANE
 
 usage() {
     cat <<'USAGE'
@@ -423,7 +414,7 @@ for key, reason in rows.items():
     owned = bool(re.match(r"(?:in-flight )?owned by (?!a live worker$).+", reason))
     inflight += int(owned)
     holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+)(?:$|\s)", reason))
-    blocker = reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?!Done,|Closed,)[^()]+, live\)", reason))
+    blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
     elif owned or holder or blocker or key in decisions:
@@ -458,14 +449,13 @@ while [ "$#" -gt 0 ]; do
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
         --pool-dispositions) pool_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
-            case "$1" in --legs) legacy_flag --legs --workers || { usage >&2; exit 2; } ;; --legs-from) legacy_flag --legs-from --workers-from || { usage >&2; exit 2; } ;; esac
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
-                --workers|--legs) WORKERS="$2" ;;
-                --workers-from|--legs-from) WORKERS_FROM="$2" ;;
+                --workers) WORKERS="$2" ;;
+                --workers-from) WORKERS_FROM="$2" ;;
                 --handover-dir) HANDOVER_DIR="$2" ;;
                 --repo) REPO="$2" ;;
                 --ready-dir) ready_dir="$2" ;;
@@ -2597,9 +2587,9 @@ fi
 # (a second count here would be the drift this field exists to end). Run as a
 # plain read: CADENCE_USAGE_LAUNCH stays empty so it can never refuse anything,
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
-# ponytail: bank-preflight still takes its fleet admission lock and prunes
-# expired/consumed reservations while it counts, exactly as any bank read does.
-fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
+# ponytail: usage-preflight still takes its fleet admission lock and prunes
+# expired/consumed reservations while it counts, exactly as any usage read does.
+fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
 if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; then

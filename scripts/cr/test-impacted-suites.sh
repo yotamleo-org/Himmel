@@ -753,7 +753,7 @@ if [ "$rc" -eq 2 ]; then pass "--selector-miss without --red-file -> rc2"; else 
 
 # --- 30. The word "source" in a full-line COMMENT is prose, not a
 # source edge. A comment naming the changed helper must not join the closure
-# (bank-preflight.sh:1084 "# Same source and spelling as tick.sh's ..." pulled
+# (usage-preflight.sh:1084 "# Same source and spelling as tick.sh's ..." pulled
 # ~136 suites in for a tracker.py change); a real source line, however it is
 # indented or chained, still must. ------------------------------------------
 mkf scripts/lib/cm-lib.sh

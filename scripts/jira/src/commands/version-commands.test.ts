@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -208,19 +208,15 @@ describe('fix-version --add into a frozen version (HIMMEL-7153)', () => {
     expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', kind: 'override', reason: 'operator ruled' })]);
   });
 
-  it('the old --console-override is the same flag with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option', async () => {
+  it('the old --console-override is an unknown option even with HIMMEL_LEGACY_NAMES=1', async () => {
     process.env.HIMMEL_CONSOLE = '1';
     const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const savedLegacy = process.env.HIMMEL_LEGACY_NAMES;
     try {
-      await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled']);
-      expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', kind: 'override', reason: 'operator ruled' })]);
-      await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'again']);
-      expect(err.mock.calls.filter((c) => c[0] === '--console-override is deprecated: use --chief-override\n')).toHaveLength(1);
-      process.env.HIMMEL_LEGACY_NAMES = '0';
-      const before = rows().length;
-      await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'off'])).rejects.toThrow(/unknown option '--console-override'/);
-      expect(rows()).toHaveLength(before);
+      process.env.HIMMEL_LEGACY_NAMES = '1';
+      await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled'])).rejects.toThrow(/unknown option '--console-override'/);
+      expect(existsSync(ledger)).toBe(false);
+      expect(puts()).toHaveLength(0);
     } finally {
       err.mockRestore();
       if (savedLegacy === undefined) delete process.env.HIMMEL_LEGACY_NAMES;

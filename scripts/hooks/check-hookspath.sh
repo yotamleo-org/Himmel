@@ -159,6 +159,7 @@ fi
 # same probe-then-fallback pattern as block-edit-on-main.sh: prefer GNU
 # realpath -m, fall back to python pathlib for cross-platform support.
 CANON_MODE=""
+# prim-ok: capability probe of the tool itself, and this fail-closed check must not depend on sourcing prim.sh (canon_path semantics differ on a missing path)
 probe=$(realpath -m /nonexistent-canon-probe 2>/dev/null || true)
 if [ "$probe" = "/nonexistent-canon-probe" ]; then
     CANON_MODE="realpath-m"
@@ -175,6 +176,7 @@ fi
 # the actual diagnostic, not a silent "canonicalisation returned empty".
 canon() {
     case "$CANON_MODE" in
+        # prim-ok: the probed realpath -m arm of this check's own mode dispatch; canon_path would change its allow/deny decisions
         realpath-m) realpath -m "$1" ;;
         python3)    python3 -c 'import sys,pathlib;print(pathlib.Path(sys.argv[1]).resolve(strict=False).as_posix())' "$1" ;;
         python)     python  -c 'import sys,pathlib;print(pathlib.Path(sys.argv[1]).resolve(strict=False).as_posix())' "$1" ;;

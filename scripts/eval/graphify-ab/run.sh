@@ -129,7 +129,7 @@ for rep in $(seq 1 "$REPS"); do
       fi
       tag="$t.$arm.r$rep"
       [ -f "$OUT/raw/$tag.json" ] && continue
-      if [ "$arm" = A ]; then sys_text="$ARM_A_TEXT"; deny=""; else sys_text="$ARM_B_TEXT"; deny='Bash(graphify:*),Bash(bash scripts/graphify/leg-graph.sh:*),Bash(bash scripts/graphify/worker-graph.sh:*)'; fi
+      if [ "$arm" = A ]; then sys_text="$ARM_A_TEXT"; deny=""; else sys_text="$ARM_B_TEXT"; deny='Bash(graphify:*),Bash(bash scripts/graphify/worker-graph.sh:*)'; fi
       prompt="$(task_prompt "$t")"
       start="$(date +%s)"
       # graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped

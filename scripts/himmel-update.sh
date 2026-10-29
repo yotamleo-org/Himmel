@@ -3671,9 +3671,9 @@ backfill_user_claude_md() {
     # shellcheck source=scripts/lib/user-claude-md.sh
     # shellcheck disable=SC1091
     . "$lib"
-    wire_user_claude_md "$template" "$HOME/.claude/CLAUDE.md" >/dev/null 2>&1 || true
-    wire_user_claude_md "$template" "$HOME/.codex/AGENTS.md" >/dev/null 2>&1 || true
-    echo "    checked ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md (idempotent, append-only)."
+    wire_user_claude_md "$template" "$HOME/.claude/CLAUDE.md" || true
+    wire_user_claude_md "$template" "$HOME/.codex/AGENTS.md" || true
+    echo "    checked ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md (idempotent: appends the himmel block when absent, refreshes it in place when present)."
     return 0
 }
 

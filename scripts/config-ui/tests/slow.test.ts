@@ -120,8 +120,8 @@ test("page: a slower, older feed load never repaints over a newer one", async ()
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
-    // nor is the vm form's or the review gate's or the fleet cap's read (Config's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
-    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/sources" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
+    // nor is the vm form's or the review gate's or the fleet cap's or the setup read (Configure's onVisit) or the tracker sources' read: none may take the feed's fetch slot.
+    fetch: (url: string) => url === "/api/agui/fleet" || url === "/api/vm" || url === "/api/review-gate" || url === "/api/fleet-cap" || url === "/api/setup" || url === "/api/sources" ? Promise.resolve({ status: 401, ok: false, json: async () => ({ error: "stub" }) }) : new Promise((res) => {
       const ok = (b: string) => res({ status: 200, ok: true, json: async () => ({ id: b }) });
       if (first) { first = false; ok("initial"); } else waiting.push(ok);
     }),
@@ -157,9 +157,68 @@ test("page: a repaint after a review gate control changes puts the focus back on
   });
   try {
     new Function(src)();
+    focused.length = 0;
     (g.__paint as () => void)();
   } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
   expect(focused).toEqual(["required:claude"]);
+});
+
+// before: the path field as the page holds it; after: the same field as the repaint renders it from the fresh read
+for (const [name, before, after, want] of [
+  ["a path field the operator emptied stays empty through a repaint", { value: "", defaultValue: "/saved/path" }, "/saved/path", ""],
+  ["a path field the operator left untouched takes the path a fresh read brings", { value: "", defaultValue: "" }, "/set/elsewhere", "/set/elsewhere"],
+] as [string, { value: string; defaultValue: string }, string, string][]) test(`page: ${name}`, async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__paint = paint;\n");
+  const emptied = { dataset: { path: "handover-root" }, ...before, selectionStart: 0, selectionEnd: 0 };
+  const repainted = { value: after, focus() {}, setSelectionRange() {} };
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__paint"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, {
+    render: () => "", renderNav: () => "", renderHeader: () => "",
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: (q: string) => (q === 'input[data-path="handover-root"]' ? repainted : el()), querySelectorAll: (q: string) => (q.startsWith("input[data-secret]") ? [emptied] : []), getElementById: el, activeElement: null, addEventListener() {} },
+    location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
+    fetch: () => new Promise(() => {}),
+  });
+  try {
+    new Function(src)();
+    (g.__paint as () => void)();
+  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  expect(repainted.value).toBe(want);
+});
+
+test("page: a failed setup refresh keeps the last good setup and says so, instead of replacing the forms with an error", async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__loadSetup = loadSetup;\nglobalThis.__setup = () => setup;\n");
+  const toastEl = { textContent: "", hidden: true };
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  let failing = false;
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderNav", "renderHeader", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "__loadSetup", "__setup"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  Object.assign(g, {
+    render: () => "", renderNav: () => "", renderHeader: () => "",
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: (q: string) => (q === "#toast" ? toastEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
+    location: { hash: "", pathname: "/", search: "" }, history: { replaceState() {} },
+    fetch: (url: string) => (url === "/api/setup"
+      ? Promise.resolve(failing ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, json: async () => ({ secrets: [] }) })
+      : new Promise(() => {})),
+  });
+  let kept: unknown;
+  try {
+    new Function(src)();
+    await sleep(20);
+    await (g.__loadSetup as () => Promise<void>)();
+    failing = true;
+    await (g.__loadSetup as () => Promise<void>)();
+    kept = (g.__setup as () => unknown)();
+  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+  expect(kept).toEqual({ secrets: [] });
+  expect(toastEl.textContent).toContain("setup failed (500)");
 });
 
 test("the server refuses to start when a route budget would outlast idleTimeout", () => {

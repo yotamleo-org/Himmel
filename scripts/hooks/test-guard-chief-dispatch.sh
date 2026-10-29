@@ -339,9 +339,9 @@ RC16=$(run_hook override-disable "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_
 assert_rc "CHIEF_DISPATCH_DISABLE=1 overrides an otherwise-denied payload" 0 "$RC16"
 
 CHIEF_LOG="$TMP/chief-overrides.jsonl"
-RC17=$(run_hook override-chief-log "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_LOG" CONSOLE_DISPATCH_LOG="$OK_LOG.unused")
+RC17=$(run_hook override-chief-log "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_LOG" )
 assert_rc "override with CHIEF_DISPATCH_LOG set allows" 0 "$RC17"
-assert_contains "CHIEF_DISPATCH_LOG wins over CONSOLE_DISPATCH_LOG for the audit log" '"override":"CHIEF_DISPATCH_OK"' "$(cat "$CHIEF_LOG" 2>/dev/null || true)"
+assert_contains "CHIEF_DISPATCH_LOG wins over for the audit log" '"override":"CHIEF_DISPATCH_OK"' "$(cat "$CHIEF_LOG" 2>/dev/null || true)"
 
 CHIEF_OK_LOG="$TMP/chief-ok-overrides.jsonl"
 RC18=$(run_hook override-chief-ok "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$CHIEF_OK_LOG")
@@ -351,11 +351,11 @@ assert_contains "override audit log records CHIEF_DISPATCH_OK" '"override":"CHIE
 RC19=$(run_hook override-chief-disable "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_DISABLE=1 CHIEF_DISPATCH_LOG="$TMP/chief-disable.jsonl")
 assert_rc "CHIEF_DISPATCH_DISABLE=1 overrides an otherwise-denied payload" 0 "$RC19"
 
-RC20=$(run_hook override-chief-ok-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_OK=0 CONSOLE_DISPATCH_OK=1 CHIEF_DISPATCH_LOG="$TMP/chief-falsy.jsonl")
-assert_rc "CHIEF_DISPATCH_OK=0 with CONSOLE_DISPATCH_OK=1 stays denied" 2 "$RC20"
+RC20=$(run_hook override-chief-ok-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_OK=0 CHIEF_DISPATCH_LOG="$TMP/chief-falsy.jsonl")
+assert_rc "CHIEF_DISPATCH_OK=0 with stays denied" 2 "$RC20"
 
-RC21=$(run_hook override-chief-disable-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_DISABLE=0 CONSOLE_DISPATCH_DISABLE=1 CHIEF_DISPATCH_LOG="$TMP/chief-disable-falsy.jsonl")
-assert_rc "CHIEF_DISPATCH_DISABLE=0 with CONSOLE_DISPATCH_DISABLE=1 stays denied" 2 "$RC21"
+RC21=$(run_hook override-chief-disable-falsy "$DENIED_JSON" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_DISABLE=0 CHIEF_DISPATCH_LOG="$TMP/chief-disable-falsy.jsonl")
+assert_rc "CHIEF_DISPATCH_DISABLE=0 with stays denied" 2 "$RC21"
 
 echo "=== Transcript head bound ==="
 
@@ -367,8 +367,8 @@ RC18=$(run_hook bound-default "$LATE_JSON" -u HIMMEL_SESSION_ROLE)
 assert_rc "default bound reaches a line-2 chief launch turn: refuses" 2 "$RC18"
 RC19=$(run_hook bound-chief "$LATE_JSON" -u HIMMEL_SESSION_ROLE CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1)
 assert_rc "CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1 stops before the launch turn: allows" 0 "$RC19"
-RC20=$(run_hook bound-old "$LATE_JSON" -u HIMMEL_SESSION_ROLE CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1)
-assert_rc "old name CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1 still bounds the read: allows" 0 "$RC20"
+RC20=$(run_hook bound-old "$LATE_JSON" -u HIMMEL_SESSION_ROLE CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1) # old-term-ok
+assert_rc "retired CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1 is ignored: still refuses" 2 "$RC20" # old-term-ok
 
 echo ""
 echo "$((pass + fail)) checks, $pass passed, $fail failed"

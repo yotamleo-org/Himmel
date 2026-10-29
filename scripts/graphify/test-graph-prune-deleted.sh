@@ -24,7 +24,7 @@ HERMETIC_HOME="$WS/home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
-export CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_CACHE="$WS/no-bank-cache.json"
+export CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$WS/no-bank-cache.json"
 unset CLAUDE_USAGE_CACHE CLAUDE_ACCOUNT_CONFIG
 export GIT_AUTHOR_NAME="himmel test" GIT_AUTHOR_EMAIL="test@himmel.invalid"
 export GIT_COMMITTER_NAME="himmel test" GIT_COMMITTER_EMAIL="test@himmel.invalid"

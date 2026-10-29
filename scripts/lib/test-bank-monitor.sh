@@ -29,8 +29,8 @@ chmod +x "$W/bin/bun"
 printf '%s\n' 'claudex funded measured 5h used=10% free=90%; weekly used=20% free=80%' > "$W/codex-row"
 
 export PATH="$W/bin:$PATH"
-export BANK_CACHE_FILE="$W/cache.json"
-export BANK_STATE_FILE="$W/state"
+export USAGE_MONITOR_CACHE_FILE="$W/cache.json"
+export USAGE_MONITOR_STATE_FILE="$W/state"
 export BANK_STUB_ROW_FILE="$W/codex-row"
 export REPO="$W/repo"
 
@@ -49,8 +49,8 @@ ACCT="$(current_account_hash)"
 sample_revision=0
 sample() {
     sample_revision=$((sample_revision + 1))
-    printf '{"five_hour":{"utilization":%s},"seven_day":{"utilization":%s},"account":"%s"}\n' "$1" "$2" "$ACCT" > "$BANK_CACHE_FILE"
-    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$BANK_CACHE_FILE"
+    printf '{"five_hour":{"utilization":%s},"seven_day":{"utilization":%s},"account":"%s"}\n' "$1" "$2" "$ACCT" > "$USAGE_MONITOR_CACHE_FILE"
+    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$USAGE_MONITOR_CACHE_FILE"
 }
 run_at() {
     BANK_NOW_EPOCH="$1" BANK_NOW_HM="$2" bash "$SUT"
@@ -82,10 +82,10 @@ out="$(run_at 3400 12:40)"; rc=$?
 check 'a usage reset discards the old rate and emits the state change' \
   'BANK 12:40 rate five_hour=+0.0/h seven_day=+0.0/h ttc=?h state=headroom five_hour_ttc=?h seven_day_ttc=?h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
 
-before_samples="$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
-rm -f "$BANK_CACHE_FILE"
+before_samples="$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
+rm -f "$USAGE_MONITOR_CACHE_FILE"
 out="$(run_at 3700 12:45)"; rc=$?
-after_samples="$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
+after_samples="$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
 check 'missing cache is silent' '' "$out"
 check 'missing cache is non-fatal' 0 "$rc"
 check 'missing cache does not corrupt the sample ring' "$before_samples" "$after_samples"
@@ -96,36 +96,36 @@ out="$(run_at 4000 12:50)"; rc=$?
 case "$out" in *'state=WEEKLY-CEILING'*'codex=5h40/wk90'*) pass 'claudex weekly ceiling participates in state' ;; *) fail "claudex weekly ceiling participates in state (out='$out')" ;; esac
 
 printf '%s\n' 'claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z' > "$W/codex-row"
-export BANK_STATE_FILE="$W/weekly-only-state"
+export USAGE_MONITOR_STATE_FILE="$W/weekly-only-state"
 sample 10 20
 out="$(run_at 1000 12:00)"
 case "$out" in *'codex=5hnone/wk6'*) pass 'a weekly-only codex row reads as no 5h limit' ;; *) fail "weekly-only codex row (out='$out')" ;; esac
 
 # Unchanged cache polls must preserve the measured rate, even past ring expiry.
 printf '%s\n' 'claudex funded measured 5h used=10% free=90%; weekly used=20% free=80%' > "$W/codex-row"
-export BANK_STATE_FILE="$W/stale-state"
+export USAGE_MONITOR_STATE_FILE="$W/stale-state"
 sample 10 20
 run_at 1000 12:00 >/dev/null
 sample 20 25
 run_at 2800 12:30 >/dev/null
-before_samples="$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
-before_series="$(cat "$BANK_STATE_FILE.samples")"
+before_samples="$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
+before_series="$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 out="$(run_at 3100 12:35)"
-check 'unchanged cache leaves sample contents untouched' "$before_series" "$(cat "$BANK_STATE_FILE.samples")"
+check 'unchanged cache leaves sample contents untouched' "$before_series" "$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 check 'unchanged cache emits stale with the last measured projections' \
   'BANK 12:35 rate five_hour=+20.0/h seven_day=+10.0/h ttc=4.0h state=stale five_hour_ttc=4.0h seven_day_ttc=7.5h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
-check 'unchanged cache does not append a sample' "$before_samples" "$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
+check 'unchanged cache does not append a sample' "$before_samples" "$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
 out="$(run_at 7000 13:40)"
 check 'repeated stale polls are silent' '' "$out"
-check 'stale polls do not age out the last measured series' "$before_samples" "$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
+check 'stale polls do not age out the last measured series' "$before_samples" "$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
 sample 22 26
 out="$(run_at 7300 13:45)"
 check 'refreshed cache resumes sampling and clears stale' \
   'BANK 13:45 rate five_hour=+0.0/h seven_day=+0.0/h ttc=?h state=headroom five_hour_ttc=?h seven_day_ttc=?h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
-check 'resumed sampling ages out old measurements' 1 "$(wc -l < "$BANK_STATE_FILE.samples" | tr -d '[:space:]')"
+check 'resumed sampling ages out old measurements' 1 "$(wc -l < "$USAGE_MONITOR_STATE_FILE.samples" | tr -d '[:space:]')"
 
 # Only the resetting window loses history; the other keeps its full baseline.
-export BANK_STATE_FILE="$W/five-reset-state"
+export USAGE_MONITOR_STATE_FILE="$W/five-reset-state"
 sample 60 20
 run_at 1000 12:00 >/dev/null
 sample 65 25
@@ -141,7 +141,7 @@ out="$(run_at 3400 12:40)"
 check 'five-hour rate restarts at its reset baseline' \
   'BANK 12:40 rate five_hour=+60.0/h seven_day=+30.0/h ttc=1.5h state=stale five_hour_ttc=1.5h seven_day_ttc=2.2h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
 
-export BANK_STATE_FILE="$W/seven-reset-state"
+export USAGE_MONITOR_STATE_FILE="$W/seven-reset-state"
 sample 10 85
 run_at 1000 12:00 >/dev/null
 sample 15 90
@@ -152,23 +152,23 @@ check 'weekly reset retains five-hour rate and projection' \
   'BANK 12:30 rate five_hour=+20.0/h seven_day=+0.0/h ttc=4.0h state=headroom five_hour_ttc=4.0h seven_day_ttc=?h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
 
 # oauth_checked_at may stay fixed while the stdin producer refreshes rates.
-export BANK_STATE_FILE="$W/oauth-state"
+export USAGE_MONITOR_STATE_FILE="$W/oauth-state"
 sample 10 20
-printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"oauth_checked_at":1000,"account":"%s"}\n' "$ACCT" > "$BANK_CACHE_FILE"
-touch -t 202001010001.00 "$BANK_CACHE_FILE"
+printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"oauth_checked_at":1000,"account":"%s"}\n' "$ACCT" > "$USAGE_MONITOR_CACHE_FILE"
+touch -t 202001010001.00 "$USAGE_MONITOR_CACHE_FILE"
 run_at 1000 12:00 >/dev/null
 out="$(run_at 1300 12:05)"
 case "$out" in *'state=stale'*) pass 'unchanged OAuth cache is stale' ;; *) fail "unchanged OAuth cache is stale (out='$out')" ;; esac
-touch -t 202001010002.00 "$BANK_CACHE_FILE"
+touch -t 202001010002.00 "$USAGE_MONITOR_CACHE_FILE"
 out="$(run_at 1600 12:10)"
 case "$out" in *'state=headroom'*) pass 'mtime refresh with unchanged OAuth stamp resumes sampling' ;; *) fail "mtime refresh with unchanged OAuth stamp resumes sampling (out='$out')" ;; esac
-printf '{"five_hour":{"utilization":20},"seven_day":{"utilization":25},"oauth_checked_at":1900,"account":"%s"}\n' "$ACCT" > "$BANK_CACHE_FILE"
-touch -t 202001010002.00 "$BANK_CACHE_FILE"
+printf '{"five_hour":{"utilization":20},"seven_day":{"utilization":25},"oauth_checked_at":1900,"account":"%s"}\n' "$ACCT" > "$USAGE_MONITOR_CACHE_FILE"
+touch -t 202001010002.00 "$USAGE_MONITOR_CACHE_FILE"
 out="$(run_at 1900 12:15)"
 check 'OAuth refresh within the same mtime second resumes sampling' \
   'BANK 12:15 rate five_hour=+40.0/h seven_day=+20.0/h ttc=2.0h state=headroom five_hour_ttc=2.0h seven_day_ttc=3.8h codex=5h10/wk20 seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
 
-export BANK_STATE_FILE="$W/mismatch-state"
+export USAGE_MONITOR_STATE_FILE="$W/mismatch-state"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-monitor-DIFFERENT"}}' > "$HOME/.claude.json"
 sample 60 20
 out="$(run_at 1000 12:00)"; rc=$?
@@ -181,12 +181,12 @@ check 'HIMMEL-1712: an account-mismatched cache exits 0' 0 "$rc"
 printf '%s\n' 'claudex funded measured 5h used=10% free=90%; weekly used=20% free=80%' > "$W/codex-row"
 sample_reset() { # <five> <seven> <resets_at json>
     sample_revision=$((sample_revision + 1))
-    printf '{"five_hour":{"utilization":%s},"seven_day":{"utilization":%s,"resets_at":%s},"account":"%s"}\n' "$1" "$2" "$3" "$ACCT" > "$BANK_CACHE_FILE"
-    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$BANK_CACHE_FILE"
+    printf '{"five_hour":{"utilization":%s},"seven_day":{"utilization":%s,"resets_at":%s},"account":"%s"}\n' "$1" "$2" "$3" "$ACCT" > "$USAGE_MONITOR_CACHE_FILE"
+    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$USAGE_MONITOR_CACHE_FILE"
 }
 tail_fields() { printf '%s\n' "$1" | sed 's/.* seven_day_reset_in=/seven_day_reset_in=/'; }
 seed_series() { # <state name> <resets_at json>
-    export BANK_STATE_FILE="$W/$1"
+    export USAGE_MONITOR_STATE_FILE="$W/$1"
     sample 10 20
     run_at 1000 12:00 >/dev/null
     sample_reset 20 25 "$2"
@@ -217,7 +217,7 @@ seed_series spare-garbage '"not-a-date"'
 out="$(run_at 2800 12:30)"
 check 'an unparseable resets_at reads ?' 'seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$(tail_fields "$out")"
 
-export BANK_STATE_FILE="$W/spare-norate"
+export USAGE_MONITOR_STATE_FILE="$W/spare-norate"
 sample_reset 20 25 '"1970-01-01T02:46:40Z"'
 out="$(run_at 2800 12:30)"
 check 'an unknown rate (first sample) reads ?' 'seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$(tail_fields "$out")"
@@ -225,33 +225,33 @@ check 'an unknown rate (first sample) reads ?' 'seven_day_reset_in=? unspent_at_
 # --spare is READ-ONLY: it prints just the two fields and never touches the
 # sample ring or the emission state, so a later normal run is unaffected.
 seed_series spare-mode '"1970-01-01T02:46:40Z"'
-rm -f "$BANK_STATE_FILE"
-ring_before="$(cat "$BANK_STATE_FILE.samples")"
+rm -f "$USAGE_MONITOR_STATE_FILE"
+ring_before="$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 out="$(BANK_NOW_EPOCH=2800 BANK_NOW_HM=12:30 bash "$SUT" --spare)"
 check '--spare prints only the three fields' 'seven_day_reset_in=2.0h unspent_at_reset=55.0 five_hour_reset_in=?' "$out"
-check '--spare writes no emission state' 'no' "$([ -e "$BANK_STATE_FILE" ] && echo yes || echo no)"
-check '--spare leaves the sample ring byte-identical' "$ring_before" "$(cat "$BANK_STATE_FILE.samples")"
+check '--spare writes no emission state' 'no' "$([ -e "$USAGE_MONITOR_STATE_FILE" ] && echo yes || echo no)"
+check '--spare leaves the sample ring byte-identical' "$ring_before" "$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 out="$(run_at 2800 12:30)"
 case "$out" in BANK*) pass 'a normal run after --spare still emits the state line' ;; *) fail "a normal run after --spare still emits the state line (out='$out')" ;; esac
 
-export BANK_STATE_FILE="$W/spare-nofile"
+export USAGE_MONITOR_STATE_FILE="$W/spare-nofile"
 sample_reset 20 25 '"1970-01-01T02:46:40Z"'
 out="$(BANK_NOW_EPOCH=2800 BANK_NOW_HM=12:30 bash "$SUT" --spare)"
 check '--spare with no ring reads ?' 'seven_day_reset_in=? unspent_at_reset=? five_hour_reset_in=?' "$out"
-check '--spare with no ring creates no ring' 'no' "$([ -e "$BANK_STATE_FILE.samples" ] && echo yes || echo no)"
+check '--spare with no ring creates no ring' 'no' "$([ -e "$USAGE_MONITOR_STATE_FILE.samples" ] && echo yes || echo no)"
 
 # Alternating --spare and normal runs over 20 -> 21 -> 90 -> 91: --spare must
 # never make the next normal run read state=stale and swallow WEEKLY-CEILING.
-export BANK_STATE_FILE="$W/spare-alt"
+export USAGE_MONITOR_STATE_FILE="$W/spare-alt"
 sample_reset 10 20 'null'
 run_at 1000 12:00 >/dev/null
 sample_reset 10 21 'null'
 BANK_NOW_EPOCH=1300 BANK_NOW_HM=12:05 bash "$SUT" --spare >/dev/null
 run_at 1300 12:05 >/dev/null
 sample_reset 10 90 'null'
-ring_before="$(cat "$BANK_STATE_FILE.samples")"
+ring_before="$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 BANK_NOW_EPOCH=1600 BANK_NOW_HM=12:10 bash "$SUT" --spare >/dev/null
-check 'alternating series: ring byte-identical after --spare at 90' "$ring_before" "$(cat "$BANK_STATE_FILE.samples")"
+check 'alternating series: ring byte-identical after --spare at 90' "$ring_before" "$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 out="$(run_at 1600 12:10)"
 case "$out" in *'state=WEEKLY-CEILING'*) pass 'alternating series: normal run after --spare still emits WEEKLY-CEILING at 90' ;; *) fail "alternating series: normal run after --spare still emits WEEKLY-CEILING at 90 (out='$out')" ;; esac
 sample_reset 10 91 'null'
@@ -263,12 +263,12 @@ check 'alternating series: WEEKLY-CEILING at 91 is unchanged and silent' '' "$ou
 # 10000 = 1970-01-01T02:46:40Z, so 2.0h out.
 sample_five() { # <five resets_at json>
     sample_revision=$((sample_revision + 1))
-    printf '{"five_hour":{"utilization":20,"resets_at":%s},"seven_day":{"utilization":25,"resets_at":null},"account":"%s"}\n' "$1" "$ACCT" > "$BANK_CACHE_FILE"
-    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$BANK_CACHE_FILE"
+    printf '{"five_hour":{"utilization":20,"resets_at":%s},"seven_day":{"utilization":25,"resets_at":null},"account":"%s"}\n' "$1" "$ACCT" > "$USAGE_MONITOR_CACHE_FILE"
+    touch -t "202001010000.$(printf '%02d' "$sample_revision")" "$USAGE_MONITOR_CACHE_FILE"
 }
 five_tail() { printf '%s\n' "$1" | sed 's/.* five_hour_reset_in=/five_hour_reset_in=/'; }
 five_series() { # <state name> <resets_at json>
-    export BANK_STATE_FILE="$W/$1"
+    export USAGE_MONITOR_STATE_FILE="$W/$1"
     sample 10 20
     run_at 1000 12:00 >/dev/null
     sample_five "$2"
@@ -284,24 +284,24 @@ check 'five_hour_reset_in: a past reset reads ?, never negative' 'five_hour_rese
 five_series five-garbage '"not-a-date"'
 check 'five_hour_reset_in: an unparseable resets_at reads ?' 'five_hour_reset_in=?' "$(five_tail "$(run_at 2800 12:30)")"
 five_series five-spare '"1970-01-01T02:46:40Z"'
-ring_before="$(cat "$BANK_STATE_FILE.samples")"
-rm -f "$BANK_STATE_FILE"
+ring_before="$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
+rm -f "$USAGE_MONITOR_STATE_FILE"
 out="$(BANK_NOW_EPOCH=2800 BANK_NOW_HM=12:30 bash "$SUT" --spare)"
 check 'five_hour_reset_in: --spare carries the field' 'five_hour_reset_in=2.0h' "$(five_tail "$out")"
-check 'five_hour_reset_in: --spare stays read-only (no state)' 'no' "$([ -e "$BANK_STATE_FILE" ] && echo yes || echo no)"
-check 'five_hour_reset_in: --spare leaves the ring byte-identical' "$ring_before" "$(cat "$BANK_STATE_FILE.samples")"
+check 'five_hour_reset_in: --spare stays read-only (no state)' 'no' "$([ -e "$USAGE_MONITOR_STATE_FILE" ] && echo yes || echo no)"
+check 'five_hour_reset_in: --spare leaves the ring byte-identical' "$ring_before" "$(cat "$USAGE_MONITOR_STATE_FILE.samples")"
 
-# the USAGE_MONITOR_* names win over BANK_CACHE_FILE, BANK_STATE_FILE and BANK_SAMPLES_FILE
-export BANK_STATE_FILE="$W/alias-old-state"
+# the USAGE_MONITOR_* names decide the cache, state and samples files; the retired state-file variable is ignored
+export BANK_STATE_FILE="$W/alias-old-state" # old-term-ok
 sample 10 20
-mv "$BANK_CACHE_FILE" "$W/alias-cache.json"
+mv "$USAGE_MONITOR_CACHE_FILE" "$W/alias-cache.json"
 out="$(USAGE_MONITOR_CACHE_FILE="$W/alias-cache.json" USAGE_MONITOR_STATE_FILE="$W/alias-new-state" \
     USAGE_MONITOR_SAMPLES_FILE="$W/alias-new-samples" run_at 1000 12:00)"
 case "$out" in 'BANK 12:00 '*) pass 'USAGE_MONITOR_CACHE_FILE is the cache read' ;; *) fail "USAGE_MONITOR_CACHE_FILE is the cache read (out='$out')" ;; esac
 check 'USAGE_MONITOR_STATE_FILE is the state written' 'yes' "$([ -s "$W/alias-new-state" ] && echo yes || echo no)"
 check 'USAGE_MONITOR_SAMPLES_FILE is the ring written' 'yes' "$([ -s "$W/alias-new-samples" ] && echo yes || echo no)"
-check 'the old BANK_STATE_FILE is not written when the new name is set' 'no' \
-    "$([ -e "$W/alias-old-state" ] || [ -e "$W/alias-old-state.samples" ] && echo yes || echo no)"
+check 'the retired state-file variable is never written' 'no' \
+    "$([ -e "$W/alias-old-state" ] || [ -e "$W/alias-old-state.samples" ] && echo yes || echo no)" # old-term-ok
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-bank-monitor.sh'
