@@ -124,11 +124,13 @@ eq "score: open miss rate 2 of 20" "$(metric "$TMP/base/results.json" open.miss_
 eq "score: sealed accuracy 18 of 20" "$(metric "$TMP/base/results.json" sealed.accuracy)" "0.9"
 eq "score: sealed false-pick rate 2 of 20" "$(metric "$TMP/base/results.json" sealed.false_pick_rate)" "0.1"
 eq "score: the spend is summed" "$(metric "$TMP/base/results.json" cost_usd)" "0.04"
-eq "results: a sealed row carries no request or expected pick" "$(python3 -c 'import json,sys
-print(sorted({k for r in json.load(open(sys.argv[1]))["cases"] if r["split"] == "sealed" for k in r}))' "$TMP/base/results.json")" \
-    "['id', 'outcome', 'pick', 'split']"
+eq "results: no sealed case gets a per-case row" "$(python3 -c 'import json,sys
+print(sorted({r["split"] for r in json.load(open(sys.argv[1]))["cases"]}))' "$TMP/base/results.json")" "['open']"
 has "table: an open row shows its expected pick" "$(cat "$TMP/base/table.md")" "| o01 | open | brew-coffee | brew-coffee | exact |"
-has "table: a sealed row hides its expected pick" "$(cat "$TMP/base/table.md")" "| s19 | sealed | (sealed) | brew-coffee | false |"
+hasnt "table: no sealed case gets a row" "$(cat "$TMP/base/table.md")" "| s19 |"
+has "table: the sealed half is one aggregate line" "$(cat "$TMP/base/table.md")" "sealed: 18 of 20 exact"
+hasnt "run: the progress log never shows a sealed pick" "$(grep -F ' s19 ' "$TMP/base.log")" "->"
+eq "committed: no results file names a sealed case" "$(grep -lE '\| s[0-9]+ \||"id": "s[0-9]+"' "$HERE"/results/* 2>/dev/null)" ""
 eq "ledger: one routing row with per-case exact and false_pick" "$(python3 -c 'import json,sys
 r=[json.loads(l) for l in open(sys.argv[1])]
 print(len(r), r[0]["eval"], r[0]["model"], r[0]["cases"]["s19"], r[0]["ci_method"])' "$HIMMEL_EVAL_RUNS_LEDGER")" \

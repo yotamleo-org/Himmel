@@ -23,8 +23,8 @@ accuracy = exact / scored, and near_rate, miss_rate and false_pick_rate likewise
 
 Split (eval_feedback.py, HIMMEL-7519). Every metric is also reported per half as
 open.<metric> and sealed.<metric>. Tuning reads the open half only; the sealed half only
-decides keep or revert. The results JSON and table show a sealed case by id, pick and
-outcome only, never its request or expected pick.
+decides keep or revert. The results JSON and table carry per-case rows for the open half only
+and the sealed half as aggregate metrics: a sealed pick or outcome hints at what it expects.
 
 Exit: 0 scored / lint clean; 1 lint problems; 2 refused input. Stdlib only; no model call.
 """
@@ -166,24 +166,25 @@ def case_set_hash(cases_dir):
 
 
 def public_rows(cases, res):
-    """Per-case rows for the results file: a sealed case shows id, pick and outcome only."""
+    """Per-case rows for the results file: open cases only; a sealed pick or outcome would tell the
+    tuner what the sealed half expects."""
     out = []
     for c in cases:
+        if c["split"] != "open":
+            continue
         r = res["rows"].get(c["id"])
-        row = {"id": c["id"], "split": c["split"], "pick": r["pick"] if r else None,
-               "outcome": r["outcome"] if r else "unscored"}
-        if c["split"] == "open":
-            row.update(request=c["request"], expect=c["expect"])
-        out.append(row)
+        out.append({"id": c["id"], "split": c["split"], "pick": r["pick"] if r else None,
+                    "outcome": r["outcome"] if r else "unscored", "request": c["request"], "expect": c["expect"]})
     return out
 
 
-def table(model, rows):
+def table(model, rows, metrics):
     out = ["| id | split | expect | pick | outcome |", "|---|---|---|---|---|"]
     for r in rows:
-        out.append("| %s | %s | %s | %s | %s |" % (r["id"], r["split"], r.get("expect", "(sealed)"),
-                                                  r["pick"] or "-", r["outcome"]))
-    return "routing %s, per case\n\n%s\n" % (model or "?", "\n".join(out))
+        out.append("| %s | %s | %s | %s | %s |" % (r["id"], r["split"], r["expect"], r["pick"] or "-", r["outcome"]))
+    n = metrics["sealed.n"]
+    sealed = "sealed: %d of %d exact (aggregate only)" % (round((metrics["sealed.accuracy"] or 0) * n), n)
+    return "routing %s, per open case\n\n%s\n\n%s\n" % (model or "?", "\n".join(out), sealed)
 
 
 def report(model, res):
@@ -259,7 +260,7 @@ def main(argv=None):
             fh.write("\n")
     if a.table:
         with open(a.table, "w", encoding="utf-8") as fh:
-            fh.write(table(a.model, rows))
+            fh.write(table(a.model, rows, res["metrics"]))
     if not a.no_ledger:
         config = {"case_set": case_set_hash(a.cases), "listing_sha": listing.get("sha"),
                   "cases": sorted(c["id"] for c in ran)}

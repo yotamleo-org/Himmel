@@ -251,9 +251,11 @@ himmel-bus MCP tools, and the frozen entries of `external.json` that himmel
 does not own. `run.sh` gives each case to `claude -p` with that listing as the
 system prompt, no tools and an empty cwd, and keeps the JSON envelope.
 `score.py` scores the first pick as exact, near, miss or false, and writes
-`results.json`, a per-case `table.md` and one `routing` ledger row with
+`results.json`, a `table.md` and one `routing` ledger row with
 per-case `exact` and `false_pick`. Every metric also comes as `open.*` and
-`sealed.*`; tuning reads the open half only. Spend is capped at $0.10 a call
+`sealed.*`; tuning reads the open half only. The results files and the run log
+carry per-case rows for the open half only and the sealed half as aggregate
+numbers, since a sealed pick or outcome hints at what the case expects. Spend is capped at $0.10 a call
 (`--max-usd`) and $5 a run (`--ceiling-usd`). `--seed-broken A,B` gives B the
 description of A in the rendered listing only, the eval's broken control;
 `test-score.sh` proves that control drops sealed accuracy by 25 points on a

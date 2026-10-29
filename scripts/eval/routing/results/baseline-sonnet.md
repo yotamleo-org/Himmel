@@ -1,4 +1,4 @@
-routing sonnet, per case
+routing sonnet, per open case
 
 | id | split | expect | pick | outcome |
 |---|---|---|---|---|
@@ -25,27 +25,5 @@ routing sonnet, per case
 | o21 | open | claude-md-audit | claude-md-audit | exact |
 | o22 | open | morning-report | morning-report | exact |
 | o23 | open | none | none | exact |
-| s01 | sealed | (sealed) | lean-skills:systematic-debugging | exact |
-| s02 | sealed | (sealed) | himmel-ops:pr-check | exact |
-| s03 | sealed | (sealed) | obsidian-second-brain:x-read | near |
-| s04 | sealed | (sealed) | luna-upgrade | near |
-| s05 | sealed | (sealed) | telegram-clip | near |
-| s06 | sealed | (sealed) | obsidian-triage:contra | exact |
-| s07 | sealed | (sealed) | obsidian-triage:luna-ingest | exact |
-| s08 | sealed | (sealed) | himmel-ops:chief | exact |
-| s09 | sealed | (sealed) | himmel-ops:release-manager | exact |
-| s10 | sealed | (sealed) | himmel-ops:effort-assess | exact |
-| s11 | sealed | (sealed) | himmel-ops:ticket-standard | exact |
-| s12 | sealed | (sealed) | himmel-ops:stuck-playbook | exact |
-| s13 | sealed | (sealed) | himmel-ops:fanout | exact |
-| s14 | sealed | (sealed) | lean-skills:brainstorming | near |
-| s15 | sealed | (sealed) | lean-skills:context7-mcp | exact |
-| s16 | sealed | (sealed) | none | exact |
-| s17 | sealed | (sealed) | test-audit | exact |
-| s18 | sealed | (sealed) | unslop | exact |
-| s19 | sealed | (sealed) | comment-sicko | near |
-| s20 | sealed | (sealed) | judge-ro | near |
-| s21 | sealed | (sealed) | clean | exact |
-| s22 | sealed | (sealed) | retitle | exact |
-| s23 | sealed | (sealed) | none | exact |
-| s24 | sealed | (sealed) | claude-code-guide | exact |
+
+sealed: 18 of 24 exact (aggregate only)
