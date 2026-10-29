@@ -128,7 +128,7 @@ while [ "$#" -gt 0 ]; do
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
         --top) top="${2:-}"; shift 2 || exit 2 ;;
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
-        --workers-from|--legs-from) [ "$1" = --workers-from ] || legacy_flag --legs-from --workers-from || exit 2; workers_from="${2:-}"; shift 2 || exit 2 ;;
+        --workers-from) workers_from="${2:-}"; shift 2 || exit 2 ;;
         --held) held="${2:-}"; shift 2 || exit 2 ;;
         --no-classify) classify=0; shift ;;
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
@@ -641,10 +641,11 @@ def reaches_blocker_check(i):
             and not (i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I))
             and not (platform_re.search(i['title']) and 'windows-removal' not in i['labels']))
 
-# every hard blocker of a candidate is read live, whatever the mirror says; an in-work ticket's mirror-open blockers too (RESUME rows)
+# every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
 live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
            + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
-              for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
+              for b in i['blocked_by']])
+print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 cands = []
 for i in issues.values():

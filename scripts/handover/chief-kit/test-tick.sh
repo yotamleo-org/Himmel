@@ -3014,9 +3014,13 @@ printf '%s\n' \
     '# disposition HIMMEL-7 listed LOCAL' \
     '# disposition HIMMEL-8 below --top 7' \
     '# disposition HIMMEL-9 blocker HIMMEL-901 (not in mirror)' \
-    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' > "$W/pool.rows"
+    '# disposition HIMMEL-10 collision scripts/b.sh held by listed HIMMEL-7' \
+    '# disposition HIMMEL-11 blocker HIMMEL-902 (reopened live)' \
+    '# disposition HIMMEL-12 blocker-unknown HIMMEL-903' > "$W/pool.rows"
 pd_out="$(bash "$SUT" --pool-dispositions --doc "$pd_doc" < "$W/pool.rows" 2>/dev/null)"
-contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 10/1/6/4'
+contains 'pool counts in-flight as dispositioned, not a disjoint fifth bucket' "$pd_out" '# pool-counts 12/1/8/4'
+not_contains 'a reopened-live blocker is not left unresolved' "$pd_out" '# pool-unresolved blocker HIMMEL-11 '
+not_contains 'a blocker-unknown row is not left unresolved' "$pd_out" '# pool-unresolved blocker-unknown HIMMEL-12 '
 contains 'malformed chief decisions remain named and unresolved' "$pd_out" '# pool-unresolved invalid HIMMEL-7 '
 contains 'a non-Live-state decision never dispositions a key' "$pd_out" '# pool-unresolved below HIMMEL-8 '
 contains 'an unread blocker is not a named live blocker' "$pd_out" '# pool-unresolved blocker HIMMEL-9 '
@@ -3024,6 +3028,15 @@ contains 'a listed candidate is not a live file holder' "$pd_out" '# pool-unreso
 contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '# pool-unresolved invalid HIMMEL-999 '
 same 'standalone pool mode resolves handover-relative document paths' "$(bash "$SUT" --pool-dispositions --doc pool-chief.md < "$W/pool.rows" 2>/dev/null)" "$pd_out"
 same 'standalone pool mode resolves extensionless document names' "$(bash "$SUT" --pool-dispositions --doc pool-chief < "$W/pool.rows" 2>/dev/null)" "$pd_out"
+
+# the retired --legs / --legs-from flags are unknown options of the script's own parser
+for old_flag in --legs --legs-from; do
+    old_rc=0
+    old_out="$(bash "$SUT" "$old_flag" x 2>&1)" || old_rc=$?
+    [ "$old_rc" = 2 ] && pass "$old_flag exits 2" || fail "$old_flag exited $old_rc"
+    contains "$old_flag prints the script's usage" "$old_out" 'usage: tick.sh'
+    not_contains "$old_flag is not a missing function" "$old_out" 'command not found'
+done
 
 PD="$W/pd-mirror/HIMMEL"; mkdir -p "$PD"
 for n in 901 902 904; do sed 's/fixVersions: \[\]/fixVersions: ["v1.1.3"]/' "$OW/HIMMEL-$n.md" > "$PD/HIMMEL-$n.md"; done
