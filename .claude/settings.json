@@ -61,7 +61,6 @@
       "Bash(bash scripts/handover/arm-resume.sh:*)",
       "Bash(bash scripts/handover/resolve-active-item.sh:*)",
       "Bash(bash scripts/handover/headed-arm.sh:*)",
-      "Bash(bash scripts/handover/chief/console.sh:*)",
       "Bash(bash scripts/handover/chief/chief.sh:*)",
       "Bash(bash scripts/handover/chief-kit/go.sh:*)",
       "Bash(bash scripts/handover/chief-kit/write-verdict.sh:*)",

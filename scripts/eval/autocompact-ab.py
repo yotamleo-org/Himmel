@@ -7,7 +7,7 @@
 #                     [--projects <dir>] [--all] [--json]
 #
 # Legs come from fleet manifests (legs[].doc, optional legs[].arm) and/or --doc.
-# One row per TICKET-N<k> (scripts/lib/leg-identity.sh): a RESUME successor,
+# One row per TICKET-N<k> (scripts/lib/worker-identity.sh): a RESUME successor,
 # listed or found beside its parent, folds into the parent's row, and the leg is
 # wrapped when the LAST doc in the chain ends in WRAPPED. Only wrapped legs are
 # reported unless --all, and --all rows are marked open and never averaged. The
@@ -154,7 +154,7 @@ _IDENTITY_CACHE = {}
 
 
 def identity(doc):
-    """(label, base, session names) from scripts/lib/leg-identity.sh, the one
+    """(label, base, session names) from scripts/lib/worker-identity.sh, the one
     derivation of a leg's identity; never a local regex. Warns on stderr when
     the call fails or the doc name is not a leg doc (the stem is its own leg)."""
     if doc in _IDENTITY_CACHE:

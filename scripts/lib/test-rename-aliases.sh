@@ -344,10 +344,11 @@ done
 # Removal release X: the forwarders with no live caller are deleted; their registry rows stay.
 for gone in scripts/handover/chief-kit/close-wrapped-legs.sh scripts/handover/chief-kit/console-budget.sh \
   scripts/handover/chief-kit/leg-budget.sh scripts/handover/leg-resume-brief.sh \
-  scripts/lib/initiative-legs.sh scripts/eval/console-load-inventory.py scripts/telegram/console-route.ts; do
+  scripts/lib/initiative-legs.sh scripts/eval/console-load-inventory.py scripts/telegram/console-route.ts \
+  scripts/handover/chief-kit/close-wrapped-leg.sh docs/handover/console-template.md \
+  docs/handover/leg-brief-template.md docs/handover/leg-preface.md; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
-forwards bash scripts/handover/chief-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do
