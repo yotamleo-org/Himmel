@@ -492,7 +492,7 @@ else echo "SKIP W1/W2 (node not on PATH)"; fi
 
 # ---------------------------------------------------------------------------
 # A write that does not add pointer lines passes over the ceiling;
-# topic files over MEMORY_TOPIC_MAX that grow get a warn-only advisory; every
+# topic files over MEMORY_TOPIC_MAX that grow are denied (warn mode: an advisory); every
 # capture-log row names its session. All rows use a scratch log + scratch store.
 M2="$SB/.claude/projects/p2/memory"; mkdir -p "$M2"
 fill() { head -c "$1" /dev/zero | tr '\0' 'a'; }   # $1 bytes of 'a' # read-sink-ok: reads /dev/zero, $1 is a byte count
@@ -523,18 +523,19 @@ log_row() { # $1=session $2=old $3=new: a row with exactly these fields
 tc() {
     : > "$MEMORY_CAPTURE_LOG"
     hook_rc; rc=$?
-    assert_rc "$1 (warn mode allows)" 0 "$rc"
     if [ "$2" = 1 ]; then
+        assert_rc "$1 (default deny mode)" 2 "$rc"
+        grep -q 'MEMORY_CAPTURE_OK=1' "$SB/err"; assert_rc "$1 deny text names the bypass" 0 "$?"
+        grep -q 'sub-file linked from its hub' "$SB/err"; assert_rc "$1 deny text names the hub procedure" 0 "$?"
+        : > "$MEMORY_CAPTURE_LOG"
+        out="$(MEMORY_TOPIC_MODE=warn bash "$HOOK" < "$SB/p.json" 2>"$SB/err")"; assert_rc "$1 (warn mode allows)" 0 "$?"
         case "$out" in *additionalContext*"sub-file linked from its hub"*) echo "PASS $1 warn advisory names the hub procedure" ;; *) echo "FAIL $1 warn advisory missing (out: $out)"; FAILED=1 ;; esac
         log_has '"event":"warn","rule":"topic-cap"'; assert_rc "$1 logs a topic-cap warn row" 0 "$?"
         case "$out" in *permissionDecision*) echo "FAIL $1 warn carries a permissionDecision (out: $out)"; FAILED=1 ;; *) echo "PASS $1 warn carries no permissionDecision" ;; esac
-        : > "$MEMORY_CAPTURE_LOG"
-        MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 (deny mode)" 2 "$?"
-        grep -q 'MEMORY_CAPTURE_OK=1' "$SB/err"; assert_rc "$1 deny text names the bypass" 0 "$?"
-        grep -q 'sub-file linked from its hub' "$SB/err"; assert_rc "$1 deny text names the hub procedure" 0 "$?"
     else
-        if [ -z "$out" ] && ! log_has topic-cap; then echo "PASS $1 clean (warn)"; else echo "FAIL $1 fired in warn mode (out: $out)"; FAILED=1; fi
-        MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 clean (deny mode)" 0 "$?"
+        assert_rc "$1 clean (default deny mode)" 0 "$rc"
+        if [ -z "$out" ] && ! log_has topic-cap; then echo "PASS $1 clean (default deny)"; else echo "FAIL $1 fired in default deny mode (out: $out)"; FAILED=1; fi
+        MEMORY_TOPIC_MODE=warn bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 clean (warn mode)" 0 "$?"
     fi
 }
 
@@ -554,7 +555,7 @@ idx_n 62
 wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'
 hook_rc; assert_rc "b2: 62 to 63 stays denied" 2 "$?"
 
-# --- topic-cap rows (default warn, MEMORY_TOPIC_MODE=deny)
+# --- topic-cap rows (default deny, MEMORY_TOPIC_MODE=warn)
 rm -rf "$M2"; mkdir -p "$M2"
 fill 7168 > "$M2/t.md"; wp Write "$M2/t.md" "$(fill 9216)"; tc "c: Write 7 KB to 9 KB" 1
 { printf 'HEAD'; fill 7996; } > "$M2/t.md"
@@ -581,9 +582,9 @@ fi
 chmod 644 "$M2/unread.md"
 mkdir -p "$SB/cc/projects/x/memory"
 wp Write "$SB/cc/projects/x/memory/t.md" "$(fill 9216)"
-: > "$MEMORY_CAPTURE_LOG"; CLAUDE_CONFIG_DIR="$SB/cc" bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, 9 KB Write warns (rc 0)" 0 "$?"
+: > "$MEMORY_CAPTURE_LOG"; CLAUDE_CONFIG_DIR="$SB/cc" bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, 9 KB Write denies by default" 2 "$?"
 log_has '"rule":"topic-cap"'; assert_rc "i: CLAUDE_CONFIG_DIR store fires topic-cap" 0 "$?"
-CLAUDE_CONFIG_DIR="$SB/cc" MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, deny mode" 2 "$?"
+CLAUDE_CONFIG_DIR="$SB/cc" MEMORY_TOPIC_MODE=warn bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, warn mode allows" 0 "$?"
 # clean rows
 fill 20480 > "$M2/big.md"; wp Write "$M2/big.md" "$(fill 19456)"; tc "d: 20 KB shrinking to 19 KB is clean" 0
 wp Write "$M2/MEMORY.md.bak" "$(fill 30720)"; tc "d: 30 KB MEMORY.md.bak is clean" 0
@@ -628,7 +629,7 @@ wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- six' sess-w; hook_rc
 jq -e 'select(.event=="write" and .session_id=="sess-w")' "$MEMORY_CAPTURE_LOG" >/dev/null; assert_rc "log: an allowed MEMORY.md write row names the session" 0 "$?"
 rm -f "$M2/t.md"; : > "$MEMORY_CAPTURE_LOG"
 wp Write "$M2/t.md" "$(fill 9216)" sess-t; hook_rc
-log_row sess-t 0 9216; assert_rc "log: topic-cap warn row names the session and old/new bytes" 0 "$?"
+log_row sess-t 0 9216; assert_rc "log: topic-cap deny row names the session and old/new bytes" 0 "$?"
 : > "$MEMORY_CAPTURE_LOG"
 wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- seven'; hook_rc; rc=$?
 assert_rc "log: a payload with no session_id does not crash" 0 "$rc"
