@@ -286,7 +286,7 @@ if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
 # Keep the known-checker-bugs file and the checker ticket's Jira links in step. Best effort: a failed sync never fails the refresh.
-ksync_left=$((BUDGET - SECONDS - 5)) # leave the run's own cut-off out of reach, so a slow sync never turns a published refresh into FAILED:timeout
+ksync_left=$((10#$BUDGET - SECONDS - 5)) # leave the run's own cut-off out of reach, so a slow sync never turns a published refresh into FAILED:timeout
 [ "$ksync_left" -le 60 ] || ksync_left=60
 if [ "$ksync_left" -ge 5 ]; then
     KBS_JIRA="${FR_JIRA:-}" bounded "$ksync_left" "${KSYNC[@]}" --checker HIMMEL-7980 --log "$DIR/known-bugs-sync.log" >/dev/null 2>&1 \

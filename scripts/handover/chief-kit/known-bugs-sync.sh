@@ -93,7 +93,7 @@ if [ -f "$TSV" ]; then
         if [ "$checker" != "$CHECKER" ] || [ -z "$key" ]; then emit "$line"; continue; fi
         file_keys="$file_keys$key"$'\n'
         if in_jira "$key"; then emit "$line"; continue; fi
-        if ! [[ "$key" =~ ^[A-Z]+-[0-9]+$ ]]; then log "$key is not a ticket key: the row stays and is not linked"; emit "$line"; continue; fi
+        if ! [[ "$key" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then log "$key is not a ticket key: the row stays and is not linked"; emit "$line"; continue; fi
         ev=$(event_of "$key")
         kind="${ev%%$'\t'*}" jat="${ev#*$'\t'}"
         fe=$(epoch "$edited") || fe=0

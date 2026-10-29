@@ -946,12 +946,21 @@ echo ksync > "$FX/fr.fail"
 fr
 check "3c: a failed known-bugs sync does not fail the refresh" "$(frout)" "focus=ok"
 contains "3c: and warns on stderr" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
-fr_reset; echo ksync-hang > "$FX/fr.fail"
-FOCUS_REFRESH_BUDGET=12 fr
-check "3c: a hung known-bugs sync cannot turn a published refresh into a timeout" "$(frout)" "focus=ok"
-check "3c: and the state records status ok" "$(fst status)" ok
-check "3c: and the drift rows were published" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
-rm -f "$FX/fr.fail"
+fr_reset; rm -f "$FX/fr.fail"
+FOCUS_REFRESH_BUDGET=08 fr
+check "3c: a zero-led budget is read as decimal, not octal" "$(frout)" "focus=ok"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    fr_reset; echo ksync-hang > "$FX/fr.fail"; : > "$FX/fr.log"
+    FOCUS_REFRESH_BUDGET=12 fr
+    check "3c: a hung known-bugs sync cannot turn a published refresh into a timeout" "$(frout)" "focus=ok"
+    check "3c: and the state records status ok" "$(fst status)" ok
+    check "3c: and the drift rows were published" "$(sed -n 1p "$FR/doc/focus-drift.txt")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+    check "3c: and the hung sync was started" "$(grep -c '^ksync' "$FX/fr.log")" 1
+    contains "3c: and its cut-off is reported as a failed sync" "$(cat "$tmp/frerr")" "known-bugs-sync failed"
+    rm -f "$FX/fr.fail"
+else
+    echo "skip - 3c: hung known-bugs sync (no timeout binary)"
+fi
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.
 fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]

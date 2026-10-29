@@ -221,9 +221,14 @@ eq 'and both file rows stay' "$(grep -c HIMMEL-7848 "$KNOWN")" 2
 # a key that is not a ticket key is never handed to the Jira CLI
 reset_sync
 printf 'HIMMEL-7980\tUNOWNED\t--bogus\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+before_known="$(cat "$KNOWN")"
+if run_sync > /dev/null; then pass 'a sync over a malformed key still exits 0'; else fail 'a sync over a malformed key exits non-zero'; fi
+lacks 'a malformed key is not linked' "$(cat "$JF/calls")" '--bogus'
+eq 'and the file is left exactly as it was' "$(cat "$KNOWN")" "$before_known"
+reset_sync
+printf 'HIMMEL-7980\tUNOWNED\tAPP2-123\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
 run_sync > /dev/null
-lacks 'a malformed key is not linked' "$(cat "$JF/calls")" 'link HIMMEL-7980'
-eq 'and its row stays in the file' "$(grep -c -e '--bogus' "$KNOWN")" 1
+has 'a project key with a digit is linked' "$(cat "$JF/calls")" 'link HIMMEL-7980 APP2-123'
 
 # the newest link event wins whatever order the history comes in
 reset_sync
