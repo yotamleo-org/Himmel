@@ -500,6 +500,33 @@ hold not-a-key --reason r --owner o; rc=$?
 check "3a: a non-key is a usage error" "$rc" 2
 check "3a: usage errors call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
 
+CLOG="$TICKET_STATUS_STATE_DIR/chain-log.jsonl"
+reset "To Do"
+hold "$K" --reason enforcement.md --owner chief --kind file-collision --on HIMMEL-8009; rc=$?
+check "3a: a hold with a kind and the ticket it waits on exits 0" "$rc" 0
+contains "3a: the HOLD comment names the kind" "$(cat "$FX/comment-body.last")" "kind: file-collision"
+contains "3a: and what it waits on" "$(cat "$FX/comment-body.last")" "on: HIMMEL-8009"
+check "3a: the event row carries the kind and the key" "$(rowq 'select(.event == "hold") | .kind + " " + .on')" "file-collision HIMMEL-8009"
+check "3a: and one chain-log row" "$(jq -r '[.change, .key, .kind, .on, .who, .reason] | join(" ")' "$CLOG")" \
+    "hold $K file-collision HIMMEL-8009 chief enforcement.md"
+hold "$K" --release --owner chief
+check "3a: a release appends one chain-log row" "$(jq -r 'select(.change == "release") | .key + " " + .who' "$CLOG")" "$K chief"
+
+reset "To Do"
+hold "$K" --reason r --owner o
+check "3a: a hold without --kind or --on writes the event row as before" "$(rowq 'select(.event == "hold") | has("kind") or has("on")')" false
+check "3a: and no chain-log row" "$([ -e "$CLOG" ] && echo row || echo none)" none
+reset "To Do"
+hold "$K" --reason r --owner o --kind soon; rc=$?
+check "3a: an unknown kind is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --kind date; rc=$?
+check "3a: a date hold without --until is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --on not-a-key; rc=$?
+check "3a: --on a non-key is a usage error" "$rc" 2
+hold "$K" --release --on HIMMEL-1; rc=$?
+check "3a: a release takes no --on" "$rc" 2
+check "3a: and these call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
+
 reset "To Do"; owned "$K"; printf 'held\n' > "$FX/labels.$K"
 fn "$K" --event live
 check "3a: derive ignores a hold: a held ticket still moves" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
