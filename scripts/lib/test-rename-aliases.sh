@@ -587,7 +587,7 @@ reject_old_flag() {
 reject_old_flag scripts/eval/cache-health-cadence.sh --console 64 run --console
 reject_old_flag scripts/eval/lane-quality/pilot-4869/pilot.sh --console 1 init --console
 reject_old_flag scripts/handover/chief-kit/action-zero.sh --render-legs 2 --render-legs
-reject_old_flag scripts/handover/chief-kit/board.mjs --legs 2 --legs unused
+reject_old_flag scripts/handover/chief-kit/board.mjs --legs 2 --doc "$FT/missing" --legs unused
 reject_old_flag scripts/handover/chief-kit/close-wrapped-worker.sh --console 2 --console
 reject_old_flag scripts/handover/chief-kit/headed-arm-worker.sh --console 2 --console
 reject_old_flag scripts/handover/chief-kit/worker-digest-step.sh --console 2 --console unused
