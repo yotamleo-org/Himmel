@@ -32,7 +32,7 @@
 # (hard cap = budget + grace, default 60), JIRA_PROJECT_KEY (default HIMMEL); the
 # rest is read by the lib.
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 # shellcheck disable=SC2034  # TS_SNAPSHOT_DIR and TS_EVENT are read by the sourced lib
 set -u
 

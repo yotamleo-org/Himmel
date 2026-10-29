@@ -53,8 +53,8 @@
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
 # real `## Current direction` block.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; --arm launches through
-# konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin.
+# Platform guard: POSIX bash 3.2+; --arm launches through
+# konsole via headed-arm.sh (Linux/KDE), or the konsole-macos.sh shim on macOS.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -4,7 +4,7 @@
 # the kill is a logging stub (HOOK_REAPER_KILL), so no live process is read or
 # signalled.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the reaper reads procps or macOS
+# PLATFORM GUARD: the reaper reads procps or macOS
 # `ps`; this Bash 3.2 suite exercises that platform-specific script.
 set -uo pipefail
 

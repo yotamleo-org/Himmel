@@ -43,12 +43,12 @@
 # Run detached, so it outlives the session that armed it:
 #   setsid nohup bash scripts/handover/headed-arm.sh ... >/dev/null 2>&1 &
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ plus a terminal emulator -
+# Platform guard: POSIX bash 3.2+ plus a terminal emulator -
 # konsole on Linux/KDE, and on macOS the konsole-macos.sh shim
 # this defaults to there, which translates the SAME konsole argv into the
 # house `open -a <App> <file>.command` launch arm-resume.sh already uses.
 # macOS has no /proc, so the confirmation reads each pid's argv via ps -
-# see session_confirmed() below. No .ps1 twin. This marker sits ABOVE the
+# see session_confirmed() below. This marker sits ABOVE the
 # exit-code table below, rather than after it: that table gains an entry
 # almost every change and would otherwise keep pushing this marker toward
 # (and eventually past) the first 60 lines of the file, the window

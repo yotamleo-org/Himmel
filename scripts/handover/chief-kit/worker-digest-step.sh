@@ -43,8 +43,7 @@
 # (5), CLAUDE_SESSIONS_PROC (/proc). Ledgers follow worker_ledger.py's own env
 # (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
-# Platform guard: Linux bash 3.2+ (chief kit; /proc, GNU date and timeout;
-# no .ps1 twin).
+# Platform guard: Linux bash 3.2+ (chief kit; /proc, GNU date and timeout).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

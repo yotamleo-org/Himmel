@@ -28,7 +28,7 @@
 # INCOMPLETE, never complete.
 #
 # Exit: 0 complete; 1 incomplete (or no workers); 2 usage.
-# PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only, as its siblings).
+# PLATFORM GUARD: the chief kit is Linux-only, as its siblings.
 # bash 3.2-safe; needs jq.
 set -uo pipefail
 

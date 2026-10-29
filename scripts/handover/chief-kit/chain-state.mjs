@@ -28,7 +28,7 @@
 // ponytail: no `add`/`remove` writer exists yet; such rows are listed in the change log, and
 // membership is the mirror's today.
 //
-// PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only). Node ESM, no dependencies.
+// PLATFORM GUARD: the chief kit is Linux-only. Node ESM, no dependencies.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Offline git fixtures catch missed conflicts, false upgrades and flag-off I/O.
-# Platform guard: no .ps1 twin, by design; the chief kit runs under bash.
+# Platform guard: the chief kit runs under bash.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 exec python3 -I - "$HERE/chain-push-check.sh" <<'PY'

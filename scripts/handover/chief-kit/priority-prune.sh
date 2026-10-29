@@ -19,7 +19,7 @@
 # bullet (chief.sh next accepts it for a line pruned to none).
 #
 # Exit: 0 printed; 1 no doc, mirror or Live state priority: line; 2 usage.
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
+# PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 
 doc=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print

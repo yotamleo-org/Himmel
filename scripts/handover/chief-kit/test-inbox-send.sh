@@ -3,7 +3,7 @@
 # writes, --doc mirroring into "## Chief Rulings", traversal/whitespace
 # refusal, and --pending listing. bash 3.2-safe.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — this tests
+# PLATFORM GUARD: Linux-only. This tests
 # inbox-send.sh, itself Linux-only (see its header).
 # Run: bash scripts/handover/chief-kit/test-inbox-send.sh
 set -u

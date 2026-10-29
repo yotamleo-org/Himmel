@@ -8,7 +8,7 @@
 #   2. no preface tells a worker to put approval / GO / merge-authorising text or a
 #      token into a doc bullet;
 #   3. the `SUCCESSION accepted:` bullet grammar tick.sh parses is unchanged.
-# Docs-only reads. PLATFORM GUARD: no .ps1 twin — Bash 3.2, grep/sed only.
+# Docs-only reads. PLATFORM GUARD: Bash 3.2, grep/sed only.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -59,8 +59,8 @@
 # seam differs from the claude daemon's env, so merge-on-green.sh and go.sh
 # refuse there. Use a headed worker for anything that ships.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
-# itself (konsole is Linux/KDE-only) - no .ps1 twin.
+# Platform guard: POSIX bash 3.2+, same as headed-arm.sh
+# itself (konsole is Linux/KDE-only).
 #
 # Seams: HEADED_ARM_WORKER_TARGET overrides the headed-arm.sh path this wrapper
 # execs (default: ../headed-arm.sh next to this script) so a suite can point

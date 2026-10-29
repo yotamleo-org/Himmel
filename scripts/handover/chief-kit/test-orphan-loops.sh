@@ -6,7 +6,7 @@
 # the session census is a fake /proc root (CLAUDE_SESSIONS_PROC) + a pgrep stub:
 # no live process is read, signalled or started.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
+# PLATFORM GUARD: the chief kit is Linux-only
 # (procps `ps`, /proc); this Bash 3.2 suite exercises that platform-specific
 # script.
 set -uo pipefail

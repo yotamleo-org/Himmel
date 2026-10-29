@@ -569,6 +569,55 @@ for want_rc in 5 0; do
     assert_contains "rc $want_rc writes a qmd-reindex flow-run row" "qmd-reindex" "$rows"
 done
 
+# Test C6e: the runner also refreshes the salus named index -----
+#
+# The salus index lives apart from the default one (qmd --index salus,
+# ~/.config/qmd/salus.yml), and nothing refreshed it. The runner now fires the
+# reindex a second time with --index salus, but only when salus.yml exists at
+# FIRE time. Behavioural: fire the generated runner with a stub in place of
+# qmd-reindex.sh, once with a fixture HOME that carries salus.yml and once
+# without, and read what the stub was called with.
+echo "TEST: generated cron runner refreshes the salus index when salus.yml exists"
+sal_dir="$TMP_ROOT/salus-probe"
+mkdir -p "$sal_dir/home-salus/.config/qmd" "$sal_dir/home-plain"
+printf 'collections:\n  salus:\n    path: %s\n' "$sal_dir/notes" > "$sal_dir/home-salus/.config/qmd/salus.yml"
+cat > "$sal_dir/reindex-stub.sh" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_CALLS"
+case " $* " in
+    *" --index salus "*) exit "${STUB_SALUS_RC:-0}" ;;
+    *) exit "${STUB_MAIN_RC:-0}" ;;
+esac
+STUB
+sal_text=$(cat "$CRON_DIR/qmd-reindex.sh")
+sal_bash_stub="$TMP_ROOT/bin/bash"
+sal_reindex="$HIMMEL_ROOT_EXP/scripts/luna/qmd-reindex.sh"
+sal_text=${sal_text//"$sal_bash_stub"/$REAL_BASH}
+sal_text=${sal_text//"$sal_reindex"/$sal_dir/reindex-stub.sh}
+printf '%s\n' "$sal_text" | sed "s@^log=.*@log=$sal_dir/run.log@" > "$sal_dir/run.sh"
+# fire_salus <home> <main-rc> <salus-rc>: runs the runner; the stub logs its calls
+fire_salus() {
+    : > "$sal_dir/calls"
+    rm -rf "$sal_dir/run.log.lock"
+    env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$1" STUB_CALLS="$sal_dir/calls" \
+        STUB_MAIN_RC="$2" STUB_SALUS_RC="$3" sh "$sal_dir/run.sh" >/dev/null 2>&1
+}
+got_rc=0; fire_salus "$sal_dir/home-salus" 0 0 || got_rc=$?
+calls_out=$(cat "$sal_dir/calls")
+assert_rc "salus.yml present: runner exits 0" 0 "$got_rc"
+assert_contains "salus.yml present: the salus index is refreshed" "--index salus" "$calls_out"
+assert_contains "salus.yml present: the default index is still refreshed" "--qmd-bin" "$(grep -v -- '--index salus' <<<"$calls_out" || true)"
+got_rc=0; fire_salus "$sal_dir/home-plain" 0 0 || got_rc=$?
+calls_out=$(cat "$sal_dir/calls")
+assert_rc "no salus.yml: runner exits 0" 0 "$got_rc"
+assert_not_contains "no salus.yml: no --index salus fire" "--index salus" "$calls_out"
+assert_contains "no salus.yml: the default index is refreshed" "--qmd-bin" "$calls_out"
+got_rc=0; fire_salus "$sal_dir/home-salus" 0 6 || got_rc=$?
+assert_rc "a failed salus refresh fails the runner" 6 "$got_rc"
+got_rc=0; fire_salus "$sal_dir/home-salus" 5 0 || got_rc=$?
+assert_rc "a failed default refresh keeps its rc and still tries salus" 5 "$got_rc"
+assert_contains "the default failing does not skip salus" "--index salus" "$(cat "$sal_dir/calls")"
+
 # Test C6c: the self-overlap lock actually SERIALIZES ------------
 #
 # Behavioural, like C6b, and for the same reason: the textual assertions above

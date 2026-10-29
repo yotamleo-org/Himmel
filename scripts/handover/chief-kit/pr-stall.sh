@@ -46,7 +46,7 @@
 # tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
 # chief-wait.sh wakes once per new conflict or no-ci token.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
+# PLATFORM GUARD: the chief kit is Linux-only
 # (GNU date). needs gh and jq.
 set -uo pipefail
 

@@ -244,7 +244,7 @@
 # is visible only as a stale heartbeat, upgrade: a bridge-side
 # stale-heartbeat alert.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
+# PLATFORM GUARD: the chief kit is Linux-only.
 # bash 3.2-safe.
 set -u
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac

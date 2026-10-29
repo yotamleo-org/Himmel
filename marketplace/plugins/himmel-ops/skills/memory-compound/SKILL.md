@@ -1,13 +1,15 @@
 ---
 name: memory-compound
-description: Use when auto-memory is over its size budget.
+description: Use when memory nears the first 200 lines or 25 KB, whichever comes first — compound it into qmd notes
 ---
 
 # memory-compound — distil auto-memory into searchable substrate (HIMMEL-569)
 
-Lean-invoke skill. Run it when `MEMORY.md` approaches its load budget (~24.4KB)
-— the session-load size-limit warning (e.g. "MEMORY.md is NN KB (limit 24.4KB)")
-is the natural cue. It encodes the HIMMEL-564 compaction as ONE pass. Do **not**
+Lean-invoke skill. Run it when `MEMORY.md` approaches its load limit (the
+first 200 lines or 25 KB, whichever comes first — Claude Code loads no more of
+the index) or when `audit-memory-capture.sh --structure` reports an over-cap
+topic file. The session-load size-limit warning and the SessionStart
+index-state notice are the natural cues. It encodes the HIMMEL-564 compaction as ONE pass. Do **not**
 wire this as an
 always-on hook — the classification (durable vs disposable), dedupe, and
 placement are judgement-heavy, which is exactly why HIMMEL-177 puts it at the
@@ -41,8 +43,11 @@ These are non-negotiable. The pass is zero-loss **only** if you keep this order.
    spot-check that the moved content is findable. Delete a topic file **only**
    after its content is confirmed searchable in the vault. No gate pass → no
    deletion.
-4. **Back up `MEMORY.md` first.** Copy it aside before the first edit so the
-   index is recoverable if the pass is interrupted.
+4. **Snapshot first.** Before the first write, `memory-snapshot.sh take` copies
+   the whole store (index and every topic file) and a checkpoint follows each
+   step (step 5 of the runbook), so an interrupted or wrong pass rolls back
+   without clobbering another writer's edits. If the script is not found, stop:
+   never run a pass without a verified snapshot.
 5. **Status is disposable, not durable.** PR numbers, "merged", ticket state,
    dates → drop them (already recoverable from Jira, git history, and the
    `sessions/` captures). Only the reusable gotcha / decision compounds.
@@ -66,27 +71,44 @@ These are non-negotiable. The pass is zero-loss **only** if you keep this order.
 
 ## Resolve the memory dir (step 0)
 
-The auto-memory lives at `~/.claude/projects/<project-slug>/memory/`. The
-`MEMORY.md` already injected into THIS session is the authoritative target —
-do not guess a different store. Locate the directory:
+Resolve the himmel checkout first (the scripts below are called by absolute
+path, so this works from any cwd), the same way the minerva skill does:
 
 ```bash
-ls -1 ~/.claude/projects/*/memory/MEMORY.md
+R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/memory/memory-snapshot.sh" ] || R="$(git rev-parse --show-toplevel)"
+HIMMEL="$R"
+[ -f "$HIMMEL/scripts/memory/memory-snapshot.sh" ] || echo "memory-snapshot.sh not found under $HIMMEL — stop: set HIMMEL_REPO to a himmel checkout"
+```
+
+If that line prints, stop: a pass never runs without a verified snapshot.
+
+The auto-memory lives at `~/.claude/projects/<project-slug>/memory/`, where
+`<project-slug>` is the primary checkout's path with every character outside
+`[A-Za-z0-9]` turned into `-`. The `MEMORY.md` already injected into THIS
+session is the authoritative target — do not guess a different store. Three
+documented knobs relocate it: `autoMemoryDirectory` (settings),
+`CLAUDE_CODE_PROJECT_DIR_NAME` and `CLAUDE_CONFIG_DIR`. The scripts below
+follow only the last one; for a relocated store export `MEMDIR` yourself.
+Locate the directory:
+
+```bash
+ls -1 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/projects/*/memory/MEMORY.md
 ```
 
 If more than one matches, pick the store whose `MEMORY.md` matches the index
 loaded in this session (same entries). Export it for the steps below:
 
 ```bash
-MEMDIR="$HOME/.claude/projects/<project-slug>/memory"
+export MEMDIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<project-slug>/memory"
 ```
 
-Confirm the budget before doing work — if it is comfortably under ~24.4KB there
-may be nothing to compound:
+Claude Code loads only the first 200 lines or 25 KB of `MEMORY.md`, whichever
+comes first; himmel's routing rules add at most 60 pointer lines of at most 200
+characters, and topic files of at most 8192 bytes. Check where the store stands
+before doing work — a clean audit means there may be nothing to compound:
 
 ```bash
-wc -c "$MEMDIR/MEMORY.md"
-ls -1 "$MEMDIR"/*.md | wc -l
+"$HIMMEL/scripts/memory/audit-memory-capture.sh" --structure
 ```
 
 Also inventory stale `*.bak` backups, orphaned sibling stores and remote
@@ -97,15 +119,26 @@ silent skip; skip cleanly when the station registry is absent).
 ## Runbook
 
 ### 1. Inventory
-Read `$MEMDIR/MEMORY.md` and list the topic files (`$MEMDIR/*.md`, excluding
+Run the audit and read its findings:
+
+```bash
+"$HIMMEL/scripts/memory/audit-memory-capture.sh" --structure
+```
+
+It lists over-cap topic files, unreachable files, dead `[title](file.md)` links
+and dead `[[wikilinks]]`, and the load-limit and staleness warnings. Then read
+`$MEMDIR/MEMORY.md` and list the topic files (`$MEMDIR/*.md`, excluding
 `MEMORY.md`). Each topic file is one fact with frontmatter (`type:` =
 `user|feedback|project|reference`). Group the files by theme — environment
 traps, harness gotchas, operator conventions, project status, … — so each
 reader gets a coherent batch.
 
 ### 2. Mine (READ-ONLY fan-out)
-Dispatch one **read-only** reader subagent per theme group. Each reads its
-topic files and returns, per file, a structured verdict:
+Dispatch one **read-only** reader subagent per theme group. Its brief lists the
+**explicit file paths** it reads (never "the memory dir" or a glob), because a
+reader told to find the files drifts to the wrong store. A section is a unit; a
+unit over about 2 KB splits at paragraph or bullet boundaries. Each reader
+reads its topic files and returns, per file, a structured verdict:
 
 - **durable gotcha / decision** — the reusable learning, distilled to 1–3
   lines, plus the theme it belongs to, any `[[wikilinks]]` it already
@@ -133,12 +166,24 @@ directive / invocation) to decide where recall happens. **Read
 landing anything** — it carries the routing table, the luna-path rules and
 the shape triage.
 
+**Hub split (a topic file over 8192 bytes).** A keyword match reads the whole
+topic file, so an over-cap file becomes a hub plus sub-files:
+
+- Each sub-file is at most about 5 KB (never over 8192 bytes), lives flat in the
+  memory dir (no subdirectories), carries its own frontmatter, and is linked
+  from the hub as `[title](file.md)`.
+- Do a **pure move first**: sections go to sub-files verbatim, and the audit
+  shows no lost line (`audit-memory-capture.sh --lost-lines <snapshot-dir>`).
+  Only then strip status chrome (PR numbers, dates, "merged") in a second step.
+- A section is a unit and moves whole; one over about 2 KB splits at paragraph
+  or bullet boundaries.
+
 ### 4. qmd gate — THE GATE
-Re-index the vault and confirm findability **before** any deletion. Run from the
-himmel repo root (the `source` path is repo-root-relative):
+Re-index the vault and confirm findability **before** any deletion. The
+`source` path is absolute, from the checkout resolved in step 0:
 
 ```bash
-source scripts/lib/qmd-bin.sh
+source "$HIMMEL/scripts/lib/qmd-bin.sh"
 qmd_cmd update
 qmd_cmd embed
 ```
@@ -150,23 +195,42 @@ qmd MCP `query` tool, or `qmd_cmd query`. A learning that does not surface is
 **not** compounded — fix the note (or its frontmatter) and re-index before
 proceeding. No findability → no deletion.
 
-Query `-c luna-curated` first, full `luna` only on a miss. **The flag is
+Query `-c luna` for vault notes and `-c himmel` for graduated docs. **The flag is
 `-c` / `--collection` (singular) — `--collections` is NOT a qmd flag and is
 silently ignored**, so a gate run with it searches everything and "confirms" a
 false pass. qmd indexes the PRIMARY checkouts, not worktrees: content landed
 on a branch is findable only after the merges, so steps 5–6 of a fully-branched
 pass run as a post-merge follow-up. **Read [references/qmd-gate.md](references/qmd-gate.md)**
-for the dilution numbers and the split gate.
+for the collection scoping and the split gate.
 
 ### 5. Slim `MEMORY.md`
-Back it up first (a single `.bak`, removed in step 6 once the next session loads
-cleanly — it is a transient safety copy, not a kept history). **Abort the slim if
-the backup did not write** — same land-before-trim discipline: never edit the
-index without a recoverable copy:
+Snapshot the whole store first, before the first write of the pass. Snapshot
+directories are `<date>-<key>` under `~/.himmel/state/memory-snapshots/` and are
+kept until the change they back is accepted (for HIMMEL-8004, the epic close).
+**Abort the slim if the snapshot did not write or does not verify** — same
+land-before-trim discipline: never edit the index without a recoverable copy:
 
 ```bash
-cp "$MEMDIR/MEMORY.md" "$MEMDIR/MEMORY.md.bak" || { echo "backup failed — aborting slim"; exit 1; }
+SNAPS="$HOME/.himmel/state/memory-snapshots"
+BEFORE="$SNAPS/$(date +%F)-<key>"
+"$HIMMEL/scripts/memory/memory-snapshot.sh" take "$BEFORE" || { echo "snapshot failed — aborting slim"; exit 1; }
+"$HIMMEL/scripts/memory/memory-snapshot.sh" verify "$BEFORE" || { echo "snapshot differs from the live store — aborting slim"; exit 1; }
 ```
+
+After each step that wrote to the store, take a checkpoint
+(`memory-snapshot.sh take "$BEFORE-cp<N>"`). To roll back, pass
+the **latest** checkpoint, which is what lets restore tell the pass's own edits
+from another writer's:
+
+```bash
+"$HIMMEL/scripts/memory/memory-snapshot.sh" restore "$BEFORE" --expect "$BEFORE-cp<N>"
+```
+
+A file the pass added moves to `<before>.removed-<UTC ts>/` (never deleted);
+a file someone else changed since the checkpoint is a **conflict**, printed and
+left untouched, and the exit code is 1 — merge those by hand. Only a restore done
+through the Write tool needs a relaunch with `MEMORY_CAPTURE_OK=1` (see the
+guard note below).
 
 Then, in the index — matching the shipped post-migration format (`- [Title](topic.md) — <keyword hooks>` for facts; a bare `- <directive>` line for directives):
 - **Drop** pure-status entries outright.
@@ -183,15 +247,17 @@ Then, in the index — matching the shipped post-migration format (`- [Title](to
   line *is* the store, which `context-architecture.md` forbids.
 - **Fact-shaped, graduated to an adopter himmel doc** (its topic file is deleted
   in step 6) → `- <keyword hooks> → docs/internals/<doc>.md`. Use a **bare
-  repo-relative path, NOT `[…](topic.md)` link form** — the step-6 dangling-link
-  scanner greps `](…md)`, so a bare path is (correctly) ignored, and there is no
-  local topic file for it to point at.
+  repo-relative path, NOT `[…](topic.md)` link form** — the step-6 audit counts
+  `[title](file.md)` links, so a bare path is (correctly) ignored, and there is
+  no local topic file for it to point at.
 - **Directive-shaped** entry → a resident bare `- <directive> …` line ≤200 chars
   (no topic-file link; it must fire unprompted — see the shape triage in step 3).
 - **Compound is NOT exempt from `guard-memory-capture.sh`** (HIMMEL-1088) and
   must **not** be launched with its bypass (`MEMORY_CAPTURE_OK=1`) set — that
-  would reduce it to prose-governed, the layer this design rejects. `*.bak` is
-  exempt by scope. If a legitimate multi-host fold exceeds the 400B growth cap
+  would reduce it to prose-governed, the layer this design rejects. The snapshot
+  script writes through the shell, not the Write tool, so its restore needs no
+  bypass; only a hand restore through the Write tool does, and that is a
+  separate session launched for the purpose. If a legitimate multi-host fold exceeds the 400B growth cap
   in one write, use the narrow waiver (growth cap relaxed only when *every* line
   passes the 200-char rule), never a blanket bypass.
 
@@ -205,7 +271,7 @@ for durability + reach.
 
 **Graduate, do NOT delete a fact you can only recall by symptom (spike
 HIMMEL-1086).** The 2026-07-17 spike measured symptom-shaped qmd recall at
-**4/10** even inside the scoped `luna-curated` collection, while reading the
+**4/10** even inside a scoped collection, while reading the
 theme topic file the routing line names is **3/3 deterministic**. So the topic
 file is the primary (tier-2) recall path, and folding a fact to luna is a
 tier-3 durability/propagation copy — **not** a reason to delete its topic file.
@@ -226,32 +292,35 @@ above, delete it:
 rm "$MEMDIR/<compounded-topic>.md"
 ```
 
-**Post-slim gate — no dangling links.** Same discipline as the step-4 qmd gate:
-a check, not a hope. After the deletions, every `[Title](file.md)` link in
-`MEMORY.md` must point at a file that still exists — a link to a just-deleted
-topic file is exactly the drift this guard catches (HIMMEL-641). Scan the index
-for any `](…md)` whose target is now missing:
+**Post-slim gate — no dangling links, nothing lost.** Same discipline as the
+step-4 qmd gate: a check, not a hope. After the deletions, every
+`[Title](file.md)` link in the store must point at a file that still exists, and
+every topic file must be reachable from `MEMORY.md` — a link to a just-deleted
+topic file is exactly the drift this guard catches (HIMMEL-641). Run the audit
+and the lost-line check against the pre-pass snapshot:
 
 ```bash
-grep -oE '\]\(([^)]+\.md)\)' "$MEMDIR/MEMORY.md" | sed -E 's/^\]\(//; s/\)$//' | while read -r link; do
-  [ -e "$MEMDIR/$link" ] || echo "DANGLING: $link"
-done
+"$HIMMEL/scripts/memory/audit-memory-capture.sh" --structure
+"$HIMMEL/scripts/memory/audit-memory-capture.sh" --lost-lines "$BEFORE"
 ```
 
-Any `DANGLING:` line means a topic file was deleted (fully graduated) but its
-index entry still links it — rewrite that entry to point at where the fact now
-lives: `- <hook> → docs/internals/<doc>.md` for an adopter-graduated fact (a bare
-repo-relative path, **not** in `[…](…)` link form, so this scanner ignores it),
-or fold it into a resident directive line (drop the dead `[…](file.md)` link),
-then re-run the scan. No clean scan → the pass is not done.
+A `DEAD LINK:` or `DEAD WIKILINK:` line means a topic file was deleted (fully
+graduated) but an entry still links it — rewrite that entry to point at where
+the fact now lives: `- <hook> → docs/internals/<doc>.md` for an adopter-graduated
+fact (a bare repo-relative path, **not** in `[…](…)` link form, so the audit
+ignores it), or fold it into a resident directive line (drop the dead
+`[…](file.md)` link), then re-run. Every line `--lost-lines` prints is a line
+that left the store: it must be status you dropped on purpose or content now
+findable elsewhere (step 4). No clean `--structure` and no unexplained lost line
+→ the pass is not done.
 
 Leave any file you could not confidently compound (ambiguous, still-active
 project state) in place — partial progress is fine and safe. Adopter-generic
 items whose docs PR has not merged yet also stay (topic file or collapsed
 pointer line) until the post-merge `himmel`-collection re-index finds them
-(step 4 caveat). Keep
-`MEMORY.md.bak` until the operator confirms the next session loads cleanly under
-budget, then it can be removed.
+(step 4 caveat). Keep the
+snapshot directories until the operator accepts the change they back, then they
+can be removed.
 
 ## Lesson provenance carry (HIMMEL-767)
 

@@ -6,7 +6,7 @@
 # output read back by the REAL tick.sh) is pinned in test-tick.sh, where the tick
 # stubs already live.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (tick.sh
+# PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 # reads pgrep, atq and the konsole launch logs); this suite exercises a kit script.
 set -uo pipefail
 

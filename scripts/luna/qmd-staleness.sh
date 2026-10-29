@@ -104,7 +104,14 @@
 # Usage:
 #   bash scripts/luna/qmd-staleness.sh [--max-age-hours N] [--quiet]
 #       [--require-collections a,b] [--qmd-bin <path>] [--qmd-js <path>]
+#       [--index NAME]
 #
+#   --index NAME       check the NAMED index NAME (e.g. salus) instead of the
+#                      default one: file-based, no qmd call. STALE (rc 3) when
+#                      the index's last refresh is older than the budget AND a
+#                      note in its collection paths is newer than that refresh.
+#                      A default run does this for salus on its own when
+#                      ~/.config/qmd/salus.yml exists. Counts only, never names.
 #   --max-age-hours N  staleness budget in hours        (default: 36)
 #   --quiet            suppress the all-clear line; the STALE/INCOMPLETE
 #                      notice and every error still print
@@ -120,10 +127,14 @@
 #   2  qmd executable not found or not usable — NOT a claim about the index.
 #      This is the "adopter never installed qmd" case, and it is the ONLY
 #      not-an-index-verdict code a caller may treat as silence.
-#   3  STALE — last update is older than the budget
+#   3  STALE — last update is older than the budget; or, for a named index
+#      (--index NAME, and salus on every default run when salus.yml exists),
+#      notes are newer than its last refresh while that refresh is older than
+#      the budget. A default run keeps its own non-zero code over this one.
 #   4  INCOMPLETE — chunks are still pending embedding
 #   5  STALE and INCOMPLETE
-#   6  could not READ `qmd status` (qmd reworded its output) — fail-closed,
+#   6  (also: a named index whose config yields no readable collection path)
+#      could not READ `qmd status` (qmd reworded its output) — fail-closed,
 #      deliberately distinct from 0 so an unreadable report is never an
 #      all-clear
 #   7  `qmd status` itself FAILED — qmd is installed but could not answer (a
@@ -138,6 +149,7 @@ set -euo pipefail
 
 MAX_AGE_HOURS=36
 QUIET=0
+INDEX_NAME=""
 QMD_BIN=""
 QMD_JS=""
 REQUIRE_COLLECTIONS=""
@@ -179,6 +191,10 @@ while [ $# -gt 0 ]; do
             [ $# -ge 2 ] || { echo "ERR qmd-staleness: --require-collections needs a value." >&2; exit 1; }
             [ -n "$2" ] || { echo "ERR qmd-staleness: --require-collections needs a non-empty list." >&2; exit 1; }
             REQUIRE_COLLECTIONS="$2"; shift 2 ;;
+        --index)
+            [ $# -ge 2 ] || { echo "ERR qmd-staleness: --index needs a value." >&2; exit 1; }
+            [ -n "$2" ] || { echo "ERR qmd-staleness: --index needs a non-empty name." >&2; exit 1; }
+            INDEX_NAME="$2"; shift 2 ;;
         --quiet) QUIET=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "ERR qmd-staleness: unknown argument '$1'." >&2; usage >&2; exit 1 ;;
@@ -208,6 +224,93 @@ if [ -n "$REQUIRE_COLLECTIONS" ]; then
             } >&2
             exit 1 ;;
     esac
+fi
+
+# --- named index -------------------------------------------------------------
+# salus is a separate qmd index (salus.yml / salus.sqlite, local models), so the
+# default index's `qmd status` says nothing about it, and its Updated: proxy
+# cannot see a note qmd never indexed. So the named check is FILE-based: the
+# collection paths come from NAME.yml, the reference time is the refresh stamp
+# qmd-reindex.sh --index NAME writes (else the sqlite mtime), and the verdict is
+# "refresh older than the budget AND notes newer than it". Counts and mtimes
+# only: salus is PHI, so no note name or content is ever read or printed.
+QS_CFG_DIR="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}"
+QS_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
+
+named_index_check() {
+    local name="$1" cfg ref="" p n=0 seen=0 ref_desc
+    cfg="$QS_CFG_DIR/$name.yml"
+    if [ -f "$QS_CACHE_DIR/$name.refresh-stamp" ]; then ref="$QS_CACHE_DIR/$name.refresh-stamp"
+    elif [ -f "$QS_CACHE_DIR/$name.sqlite" ]; then ref="$QS_CACHE_DIR/$name.sqlite"; fi
+    while IFS= read -r p; do
+        [ -n "$p" ] && [ -d "$p" ] || continue
+        seen=$(( seen + 1 ))
+        if [ -n "$ref" ]; then
+            n=$(( n + $(find "$p" -type f -name '*.md' -newer "$ref" 2>/dev/null | wc -l) ))
+        else
+            n=$(( n + $(find "$p" -type f -name '*.md' 2>/dev/null | wc -l) ))
+        fi
+    done <<EOF
+$(awk '/^[[:space:]]+path:/ { v = $0; sub(/^[[:space:]]+path:[[:space:]]*/, "", v); sub(/[[:space:]]+#.*$/, "", v); gsub(/^["\047]|["\047]$/, "", v); sub(/^~/, ENVIRON["HOME"], v); print v }' "$cfg")
+EOF
+    if [ "$seen" -eq 0 ]; then
+        echo "qmd index [$name] could not be read — no readable collection path in $cfg; treat qmd MISSES against it AS UNPROVEN." >&2
+        return 6
+    fi
+    [ "$n" -gt 0 ] || return 0
+    if [ -z "$ref" ]; then
+        ref_desc="never refreshed"
+    elif [ -z "$(find "$ref" -mmin "+$(( 10#$MAX_AGE_HOURS * 60 ))" 2>/dev/null)" ]; then
+        return 0
+    else
+        ref_desc="last refreshed over ${MAX_AGE_HOURS}h ago"
+    fi
+    {
+        echo "=============================================================================="
+        echo "  qmd index [$name] may be STALE — $n note(s) newer than its last refresh ($ref_desc)"
+        echo
+        echo "  $name is a separate index (--index $name); the default index refresh does"
+        echo "  not cover it. Treat qmd MISSES against it AS UNPROVEN."
+        echo
+        echo "  Refresh it: bash scripts/luna/qmd-reindex.sh --index $name"
+        echo "=============================================================================="
+    } >&2
+    return 3
+}
+
+if [ -n "$INDEX_NAME" ]; then
+    case "$INDEX_NAME" in
+        -*|*[!A-Za-z0-9._-]*)
+            echo "ERR qmd-staleness: --index takes a plain index name ([A-Za-z0-9._-], no leading '-'), got '$INDEX_NAME'." >&2
+            exit 1 ;;
+    esac
+    if [ ! -f "$QS_CFG_DIR/$INDEX_NAME.yml" ]; then
+        echo "ERR qmd-staleness: no config for index '$INDEX_NAME' at $QS_CFG_DIR/$INDEX_NAME.yml." >&2
+        exit 1
+    fi
+    named_rc=0; named_index_check "$INDEX_NAME" || named_rc=$?
+    if [ "$named_rc" -eq 0 ] && [ "$QUIET" -ne 1 ]; then
+        echo "OK qmd-staleness: index [$INDEX_NAME] has no notes newer than its refresh (or was refreshed within ${MAX_AGE_HOURS}h)."
+    fi
+    exit "$named_rc"
+fi
+
+# A default run also checks salus when it has its own index config, and folds
+# that verdict into the exit code AFTER the default verdict: the default rc wins
+# when it is non-zero (its banner already printed), else the salus rc.
+if [ -f "$QS_CFG_DIR/salus.yml" ]; then
+    SALUS_RC=0; SALUS_OUT=$(named_index_check salus 2>&1) || SALUS_RC=$?
+    # shellcheck disable=SC2329,SC2317  # runs via the EXIT trap below
+    salus_report() {
+        local rc=$?
+        trap - EXIT
+        if [ "$SALUS_RC" -ne 0 ]; then
+            printf '%s\n' "$SALUS_OUT" >&2
+            [ "$rc" -ne 0 ] || rc="$SALUS_RC"
+        fi
+        exit "$rc"
+    }
+    trap salus_report EXIT
 fi
 
 # Resolve qmd through the SHARED resolver, never a bare `command -v qmd`:
