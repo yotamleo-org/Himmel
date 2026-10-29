@@ -28,6 +28,7 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 const { parseDotEnv, scopeConfigPathToCtx } = require('./probes.js');
 const lunaConfig = require('./luna-config.js');
+const { projectLayerWiresTrio } = require('./hook-owner.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // own launcher uses to pick a real, usable Git Bash on Windows (never bare
 // 'bash', which can silently resolve to the WSL launcher or a 0-byte
@@ -155,6 +156,10 @@ function buildEntry(item, ctx, diagnosticState) {
       // 'pretooluse-hooks' (the other authored wire target). prefix mirrors
       // adopt.sh's own convention: $CLAUDE_PROJECT_DIR for project scope, the
       // himmel clone's abs path for user scope.
+      if (ctx.scope === 'user' && projectLayerWiresTrio(ctx.repoRoot)) {
+        // The checkout's project layer already runs the trio; a user-level copy would run each twice per call.
+        return { cmd: 'bash', args: ['-c', 'echo "himmelctl: wiring-pretooluse skipped at user scope — the project layer (.claude/settings.json in $1) already wires the trio"', 'himmel-skip', ctx.repoRoot] };
+      }
       const prefix = ctx.scope === 'user' ? ctx.repoRoot : '$CLAUDE_PROJECT_DIR';
       return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'wire-pretooluse-hooks.sh'), settings, prefix] };
     }

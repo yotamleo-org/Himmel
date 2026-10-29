@@ -97,6 +97,7 @@ const { resolveBash: resolveHookBash } = require('../../hooks/run-hook-with-bash
 // scopeConfigPathToCtx (retask stage1-build-6d2e), which stands in for that
 // missing seam rather than reading the ambient environment unscoped.
 const lunaConfig = require('./luna-config.js');
+const { projectLayerWiresTrio } = require('./hook-owner.js');
 // C, status item S6: the pinned persistence artifact
 // names/helpers (SYSTEMD_UNIT_NAME,
 // lingerEnabled(), systemdUnitInstalled()) are owned by bridge-persistence.js
@@ -963,6 +964,15 @@ function collectHookCommands(hooksArray) {
 }
 
 function probeSettingsHooks(item, ctx) {
+  const r = probeSettingsHooksFile(item, ctx);
+  // The checkout's project layer owns the trio, so the user-level install is skipped (hook-owner.js).
+  if (r.actual !== 'present' && ctx.scope === 'user' && projectLayerWiresTrio(ctx.repoRoot)) {
+    return { actual: 'present', detail: `${path.join(ctx.repoRoot, '.claude', 'settings.json')} (project layer owns the trio; the user-level copy is skipped)` };
+  }
+  return r;
+}
+
+function probeSettingsHooksFile(item, ctx) {
   const filePath = resolveConfigFile(item.probe.file, ctx);
   let data;
   try {

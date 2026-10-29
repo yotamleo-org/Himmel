@@ -343,6 +343,19 @@ worktree workflow.
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
 | AFK (unattended) mode (`scripts/afk/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
+## Hook owner
+
+A guard hook wired from two settings layers (user settings, project settings, an enabled plugin) runs twice per matching call: two bash startups, and two rows from a hook that logs. Each hook has one owner:
+
+| Where the session runs | Owner | How the other layer stays quiet |
+|---|---|---|
+| Inside a himmel checkout | The project layer (`.claude/settings.json`) | `himmelctl install` skips the user-level `wiring-pretooluse` wire while the checkout's project settings carry `auto-approve-safe-bash`, `block-edit-on-main` and `block-read-secrets`; its probe reads that as present. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
+| An adopted repo with no project entry | The user layer | The install wires the hooks there as before. `guardrail-block-global` installs the form that skips itself wherever a project layer covers the script. |
+
+`inject-initiative` (SessionStart) is wired by `scripts/setup.sh` and `adopt --scope user`, not by `himmelctl install`, so it is not skipped for you: on a station that wired it at the user layer, remove that entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
+
+`bash scripts/himmel-doctor.sh --only C81` FAILs and names any script wired from more than one layer. A user entry run through `guardrail-skip-in-himmel.js` and a plugin entry that reads the project settings do not count.
+
 ## Lifecycle
 
 | You want to… | Run |
