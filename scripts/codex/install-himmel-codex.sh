@@ -144,7 +144,7 @@ if "$CODEX" plugin marketplace list 2>/dev/null | awk -v n="$QMD_MARKET" '$1==n{
 fi
 # Under --dry-run the plugin is still present, and it is what makes `mcp get qmd`
 # answer, so the dry run reports the add on its own.
-if [ "$DRY_RUN" != "1" ] && qmd_cfg="$("$CODEX" mcp get qmd 2>/dev/null)" && grep -qF "$QMD_URL" <<< "$qmd_cfg"; then
+if [ "$DRY_RUN" != "1" ] && qmd_cfg="$("$CODEX" mcp get qmd 2>/dev/null)" && grep -qF "url: $QMD_URL" <<< "$qmd_cfg" && grep -qF "bearer_token_env_var: $QMD_TOKEN_ENV" <<< "$qmd_cfg"; then
   echo "UNCHANGED   : mcp server qmd -> $QMD_URL"
 else
   if [ "$DRY_RUN" = "1" ]; then
@@ -162,7 +162,7 @@ fi
 if [ -z "${QMD_HTTP_TOKEN:-}" ]; then
   QMD_TOKEN_FILE="${QMD_HTTP_AUTH_FILE:-${QMD_HTTP_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd/http-token}}"   # same resolution as qmd-auth-headers.sh
   echo "WARN        : $QMD_TOKEN_ENV is not set in this environment; Codex's qmd server needs it at launch or qmd answers 401."
-  echo "              Add to the environment that launches Codex: export $QMD_TOKEN_ENV=\"\$(cat $QMD_TOKEN_FILE)\""
+  echo "              Add to the environment that launches Codex: export $QMD_TOKEN_ENV=\"\$(cat $(printf '%q' "$QMD_TOKEN_FILE"))\""
 fi
 
 # (No phase for third-party plugin hooks.json: codex < rust-v0.143.0 rejects a

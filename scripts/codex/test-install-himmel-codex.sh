@@ -83,9 +83,10 @@ if [ "${1:-}" = "mcp" ] && [ "${2:-}" = "get" ]; then
     printf 'qmd\n  enabled: true\n  transport: stdio\n  command: qmd\n  args: mcp\n  cwd: -\n  env: -\n  remove: codex mcp remove qmd\n'; exit 0
   fi
   if [ -f "$S/mcp.txt" ]; then
-    while IFS="$(printf '\t')" read -r name url; do
+    while IFS="$(printf '\t')" read -r name url flag; do
       [ "$name" = "$n" ] || continue
       if [ "$url" = "-" ]; then printf '%s\n  enabled: true\n  transport: stdio\n  command: qmd\n  args: mcp\n' "$n"
+      elif [ "${flag:-}" = "nobearer" ]; then printf '%s\n  enabled: true\n  transport: streamable_http\n  url: %s\n  bearer_token_env_var: -\n' "$n" "$url"
       else printf '%s\n  enabled: true\n  transport: streamable_http\n  url: %s\n  bearer_token_env_var: QMD_HTTP_TOKEN\n' "$n" "$url"; fi
       exit 0
     done < "$S/mcp.txt"
@@ -218,6 +219,7 @@ rm -rf "$TMP/codex-home/plugins"
 
 echo "== scenario M: Codex searches through the shared qmd daemon, not upstream's stdio qmd (HIMMEL-8118) =="
 QMD_URL="http://localhost:8181/mcp"
+unset QMD_MCP_URL   # the rows assume the default daemon URL, whatever the host exports
 # station shape (real ~/.codex/config.toml): upstream qmd marketplace + enabled qmd@qmd plugin
 S="$TMP/M1"; mk_state "$S"
 printf 'himmel\nqmd\n' > "$S/marketplaces.txt"
@@ -260,6 +262,17 @@ printf 'himmel\n' > "$S/marketplaces.txt"
 out="$(QMD_HTTP_TOKEN=s3cr3t-canary CODEX_BIN="$STUB" CODEX_STUB_STATE="$S" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" --plugins=himmel-ops)"
 if grepq "$out" '^WARN'; then fail "M7 WARNs although QMD_HTTP_TOKEN is set"; else pass "M7 no WARN when QMD_HTTP_TOKEN is set"; fi
 if grepq "$out" -F 's3cr3t-canary' || grep -qF 's3cr3t-canary' "$S/calls.log"; then fail "M7 token value leaked"; else pass "M7 token value never printed or passed to codex"; fi
+S="$TMP/M8"; mk_state "$S"   # right URL but no bearer env var: not converged, must be replaced
+printf 'himmel\n' > "$S/marketplaces.txt"
+printf 'qmd\t%s\tnobearer\n' "$QMD_URL" > "$S/mcp.txt"
+QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
+assert_log_has "$S/calls.log" "mcp remove qmd" "M8 removes a qmd entry that has the URL but no bearer"
+assert_log_has "$S/calls.log" "mcp add qmd --url $QMD_URL --bearer-token-env-var QMD_HTTP_TOKEN" "M8 re-adds it with the env-var bearer"
+S="$TMP/M9"; mk_state "$S"   # token path with a space stays one word in the printed export line
+printf 'himmel\n' > "$S/marketplaces.txt"
+out="$(env -u QMD_HTTP_TOKEN -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE XDG_CONFIG_HOME="/x/my cfg" CODEX_BIN="$STUB" CODEX_STUB_STATE="$S" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" --plugins=himmel-ops)"
+# shellcheck disable=SC2016  # the literal $(cat ...) is the expected WARN text
+if grepq "$out" -F 'export QMD_HTTP_TOKEN="$(cat /x/my\ cfg/qmd/http-token)"'; then pass "M9 export line shell-quotes the token path"; else fail "M9 export line leaves the token path unquoted"; fi
 
 echo ""
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED" >&2; exit 1; fi
