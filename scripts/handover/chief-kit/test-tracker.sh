@@ -1244,13 +1244,12 @@ cat > "$W/vp-chains8.json" <<'EOF'
 EOF
 TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
     --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains8.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$W/vp-v8.html" >/dev/null 2>&1
-v8="$(cat "$W/vp-v8.html" 2>/dev/null)"
 li8() { grep -F "$1" "$W/vp-v8.html" 2>/dev/null | grep -F '<li' ; }
 contains 'a Closed chain step is wont (HIMMEL-7744)' "$(li8 'HIMMEL-406')" 'class="st-wont"'
 not_contains 'a Closed chain step is never next (HIMMEL-7744)' "$(li8 'HIMMEL-406')" 'st-next'
 contains 'a Done chain step resolved Wont Do is wont (HIMMEL-7744)' "$(li8 'HIMMEL-433')" 'class="st-wont"'
 not_contains 'a Done chain step resolved Wont Do is never next (HIMMEL-7744)' "$(li8 'HIMMEL-433')" 'st-next'
-contains 'an open chain step beside them is still shown (HIMMEL-7744)' "$v8" 'rowlive open pr'
+contains 'an open chain step beside them is still shown, as work (HIMMEL-7744)' "$(li8 'HIMMEL-432')" 'class="st-work"'
 printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed1234beef","open":true},"650":{"head":"dead650beef","ci":"green","open":true}}}\n' > "$W/wk7/HIMMEL-432.json"
 v7render >/dev/null
 not_contains 'a worker-record PR the open-PR snapshot does not list is not shown on a chain row (HIMMEL-7621)' "$(li 'rowlive open pr')" '#650'
