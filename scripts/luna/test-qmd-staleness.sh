@@ -82,8 +82,15 @@ chmod +x "$FAKE"
 
 # Run the guard against a fixture. Captures stdout+stderr together: the notice
 # is deliberately on stderr and the all-clear on stdout, and callers see both.
+# HOME is a scratch dir: the guard also looks for ~/.config/qmd/salus.yml, and an
+# operator's real salus index must never leak into these verdicts.
+FXHOME="$TMP_ROOT/home"
+mkdir -p "$FXHOME"
+export HOME="$FXHOME"
+# An operator shell that exports these would redirect the guard's salus lookup away from FXHOME.
+unset XDG_CONFIG_HOME XDG_CACHE_HOME QMD_CONFIG_DIR
 run_guard() {
-    QMD_FIXTURE="$FIXTURE" QMD_REFRESH_STAMP="$STAMP_FILE" bash "$SCRIPT" --qmd-bin "$FAKE" "$@" 2>&1
+    HOME="$FXHOME" QMD_FIXTURE="$FIXTURE" QMD_REFRESH_STAMP="$STAMP_FILE" bash "$SCRIPT" --qmd-bin "$FAKE" "$@" 2>&1
 }
 
 set_fixture() { printf '%s\n' "$1" >"$FIXTURE"; }
@@ -560,5 +567,62 @@ rm -f "$CFG_DIR/index.yml"
 set_fixture "$HOST_FRESH"
 out=$(unset QMD_EMBED_MODEL; QMD_CONFIG_DIR="$CFG_DIR" run_guard) && rc=0 || rc=$?
 assert_contains "no config falls back to the default model" "embed-model=hf:ggml-org/embeddinggemma-300M-GGUF" "$out"
+
+echo "== the salus named index is flagged when notes outrun its refresh (HIMMEL-8120) =="
+# Layout copied from the live host (~/.config/qmd/salus.yml, ~/.cache/qmd/salus.sqlite),
+# fixture notes only: the advisory reports counts, never note names or content.
+SAL_CFG="$FXHOME/.config/qmd"
+SAL_CACHE="$FXHOME/.cache/qmd"
+SAL_NOTES="$FXHOME/salus-notes"
+mkdir -p "$SAL_CFG" "$SAL_CACHE" "$SAL_NOTES"
+printf 'collections:\n  salus:\n    path: %s\n    pattern: "**/*.md"\nmodels:\n  embed: hf:Qwen/Qwen3-Embedding-0.6B-GGUF\n' "$SAL_NOTES" >"$SAL_CFG/salus.yml"
+# touch_ago <hours> <file>: set mtime <hours> in the past (GNU, then BSD).
+touch_ago() {
+    local ep=$(( $(date +%s) - $1 * 3600 ))
+    touch -d "@$ep" "$2" 2>/dev/null || touch -t "$(date -r "$ep" +%Y%m%d%H%M.%S)" "$2"
+}
+set_fixture "$HOST_FRESH"
+
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "default index fresh and no salus index yet, no notes -> rc 0" 0 "$rc"
+
+: >"$SAL_CACHE/salus.sqlite"; touch_ago 120 "$SAL_CACHE/salus.sqlite"
+: >"$SAL_NOTES/secret-patient-note.md"; touch_ago 48 "$SAL_NOTES/secret-patient-note.md"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "salus index older than a salus note -> rc 3" 3 "$rc"
+assert_contains "the advisory names the salus index" "salus" "$out"
+assert_contains "the advisory counts the newer notes" "1 note(s) newer" "$out"
+assert_contains "the advisory names the salus refresh command" "qmd-reindex.sh --index salus" "$out"
+assert_not_contains "the advisory never prints a note name" "secret-patient-note" "$out"
+
+out=$(run_guard --index salus) && rc=0 || rc=$?
+assert_rc "--index salus alone reports the same verdict -> rc 3" 3 "$rc"
+
+touch_ago 200 "$SAL_NOTES/secret-patient-note.md"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "salus note older than the index (quiet corpus) -> rc 0" 0 "$rc"
+
+touch "$SAL_NOTES/secret-patient-note.md"
+touch_ago 1 "$SAL_CACHE/salus.sqlite"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "salus index refreshed within the budget -> rc 0" 0 "$rc"
+
+touch_ago 120 "$SAL_CACHE/salus.sqlite"
+: >"$SAL_CACHE/salus.refresh-stamp"; touch_ago 1 "$SAL_CACHE/salus.refresh-stamp"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "a fresh salus refresh stamp outranks the sqlite mtime -> rc 0" 0 "$rc"
+
+printf 'collections:\n  salus:\n    path: %s/gone\n' "$FXHOME" >"$SAL_CFG/salus.yml"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "a salus collection path that does not exist -> rc 6, never an all-clear" 6 "$rc"
+assert_contains "the notice says the index could not be read" "could not be read" "$out"
+printf 'models:\n  embed: x\n' >"$SAL_CFG/salus.yml"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "a salus.yml with no collection path -> rc 6" 6 "$rc"
+
+rm -f "$SAL_CFG/salus.yml"
+rm -f "$SAL_CACHE/salus.refresh-stamp"
+out=$(run_guard) && rc=0 || rc=$?
+assert_rc "no salus.yml -> the salus check is off, rc 0" 0 "$rc"
 
 summary
