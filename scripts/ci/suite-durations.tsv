@@ -1147,3 +1147,4 @@ scripts/handover/chief-kit/test-drift-summary.sh	1
 scripts/test-doctor-status-drift.sh	1
 scripts/ci/test-macos-cadence-concurrency.sh	1
 scripts/lib/test-afk-sudo.sh	2
+scripts/eval/routing/test-score.sh	9
