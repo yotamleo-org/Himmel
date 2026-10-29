@@ -227,6 +227,13 @@ test("the Review tile still shows CodeRabbit while the review gate is loading or
   }
 });
 
+test("the Review tile says matches our pick only while no reviewer is switched off", () => {
+  const rec = { mode: "hard", required: true, enabled: true };
+  const gate = (dropped: string[]) => ({ ...cfgState, reviewGate: { data: { ...reviewGate.data, reviewers: [{ ...reviewGate.data.reviewers[0], recommended: rec }], dropped } } });
+  expect(cfg(null, { state: gate([]) })).toContain("matches our pick");
+  expect(cfg(null, { state: gate(["coderabbit"]) })).not.toContain("matches our pick");
+});
+
 test("the Tracker tile has the JIRA connection rows and commit rules in two columns, under one dry-run box", () => {
   const p = panel(cfg("tracker", { state: { ...cfgState, plans: { "setup|tracker": { stage: "plan", command: "c1", output: "o1", effect: "e", typed: "", consent: { kind: "plain" } }, "setup|ticket-id-required": { stage: "plan", command: "c2", output: "o2", effect: "e", typed: "", consent: { kind: "plain" } } } } }));
   expect([...p.matchAll(/data-setup-form data-name="([A-Z_]+)"/g)].map((m) => m[1])).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]);

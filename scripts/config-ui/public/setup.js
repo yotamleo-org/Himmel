@@ -164,7 +164,7 @@ function tileChip(id, { state, setup }) {
   const d = id === "review" && state.reviewGate && state.reviewGate.data;
   if (!d) return "";
   const rec = d.reviewers.filter((r) => r.recommended);
-  const same = rec.length > 0 && rec.every((r) => r.recommended.mode === r.mode && r.recommended.required === r.required && r.recommended.enabled);
+  const same = rec.length > 0 && !(d.dropped || []).length && rec.every((r) => r.recommended.mode === r.mode && r.recommended.required === r.required && r.recommended.enabled);
   return same ? `<span class="m ok">matches our pick</span>` : "";
 }
 

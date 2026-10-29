@@ -482,5 +482,5 @@ the fragment). The printed URL opens Configure; click Health in the rail first, 
 - [ ] 6. Tab to a header; Enter or Space toggles it; focus stays on that header after the repaint.
 - [ ] 7. Unsorted is absent with 0 unmapped rows; when one exists it is always open and last.
 - [ ] Header: above the page, one line shows `himmel <version> · <describe>`, the 12-char commit, the served checkout and the feed time; a feed without `himmel` reads `version unknown (feed has no himmel identity)`.
-- [ ] Page links: the rail lists the pages (Configure, Health and Fleet, with the Fleet dot in a status colour), the current one is highlighted, and the address bar reads `#/config` (the token never stays in the URL).
+- [ ] Page links: click Configure in the rail first. The rail lists the pages (Configure, Health and Fleet, with the Fleet dot in a status colour), the current one is highlighted, and the address bar reads `#/config` (the token never stays in the URL).
 - [ ] Safety: click a toggle: only a dry-run plan appears; confirm stays disabled until you type the target; cancel clears it.
