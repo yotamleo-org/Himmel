@@ -187,6 +187,14 @@ function buildEntry(item, ctx, diagnosticState) {
       const resolverPath = path.join(scriptsDir, 'lib', 'qmd-bin.sh');
       const himmelPath = ctx.repoRoot;
       const lunaPath = ctx.vaultPath || '';
+      // qmd-himmel-collection is register-only (the core path adopt.sh's
+      // wire_qmd_core takes): it never installs qmd, never touches the luna or
+      // skills collections, and needs no vault. qmd_register_collection skips
+      // an already-registered himmel, so on luna/all, where qmd-index above
+      // registers it too, it is registered once.
+      if (item.id === 'qmd-himmel-collection') {
+        return { cmd: 'bash', args: ['-c', '. "$1" && has_qmd && qmd_register_collection "$2" himmel', 'himmel-qmd', resolverPath, himmelPath] };
+      }
       // a no-vault adopter has ctx.vaultPath
       // === '' (bin.js's vaultPath stays '' when vault.mode='none', and
       // expandHome('') === '' — so ctx.vaultPath is legitimately EMPTY). The

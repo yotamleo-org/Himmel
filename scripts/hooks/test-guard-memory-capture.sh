@@ -490,4 +490,210 @@ if command -v node >/dev/null 2>&1; then
     assert_contains "W3 the lifecycle chain runner forwards a member's stderr" "stderr-marker-from-member"
 else echo "SKIP W1/W2 (node not on PATH)"; fi
 
+# ---------------------------------------------------------------------------
+# A write that does not add pointer lines passes over the ceiling;
+# topic files over MEMORY_TOPIC_MAX that grow get a warn-only advisory; every
+# capture-log row names its session. All rows use a scratch log + scratch store.
+M2="$SB/.claude/projects/p2/memory"; mkdir -p "$M2"
+fill() { head -c "$1" /dev/zero | tr '\0' 'a'; }   # $1 bytes of 'a' # read-sink-ok: reads /dev/zero, $1 is a byte count
+# $1=tool $2=file $3=content $4=session_id -> $SB/p.json
+wp() {
+    jq -nc --arg t "$1" --arg f "$2" --arg c "$3" --arg s "${4-}" \
+      '{tool_name:$t,session_id:$s,tool_input:{file_path:$f,content:$c}}' > "$SB/p.json"
+}
+# $1=tool(Edit|MultiEdit) $2=file $3=old $4=new $5=session_id -> $SB/p.json
+ep() {
+    if [ "$1" = Edit ]; then
+        jq -nc --arg f "$2" --arg o "$3" --arg n "$4" --arg s "${5-}" \
+          '{tool_name:"Edit",session_id:$s,tool_input:{file_path:$f,old_string:$o,new_string:$n}}' > "$SB/p.json"
+    else
+        jq -nc --arg f "$2" --arg o "$3" --arg n "$4" --arg s "${5-}" \
+          '{tool_name:"MultiEdit",session_id:$s,tool_input:{file_path:$f,edits:[{old_string:$o,new_string:($n[0:150])},{old_string:"TAIL",new_string:("TAIL" + $n[150:])}]}}' > "$SB/p.json"
+    fi
+}
+hook_rc() { # runs the fixture payload; sets $out (stdout) and returns the hook rc
+    out="$(bash "$HOOK" < "$SB/p.json" 2>"$SB/err")"
+}
+log_has() { grep -q "$1" "$MEMORY_CAPTURE_LOG"; }
+one_undecidable() { [ "$(grep -c '"rule":"topic-cap-undecidable"' "$MEMORY_CAPTURE_LOG")" = 1 ]; }
+log_row() { # $1=session $2=old $3=new: a row with exactly these fields
+    jq -e --arg s "$1" --argjson o "$2" --argjson n "$3" 'select(.session_id==$s and .old==$o and .new==$n)' "$MEMORY_CAPTURE_LOG" >/dev/null
+}
+# $1=name $2=1 (must fire) | 0 (must stay clean): both modes
+tc() {
+    : > "$MEMORY_CAPTURE_LOG"
+    hook_rc; rc=$?
+    assert_rc "$1 (warn mode allows)" 0 "$rc"
+    if [ "$2" = 1 ]; then
+        case "$out" in *additionalContext*"sub-file linked from its hub"*) echo "PASS $1 warn advisory names the hub procedure" ;; *) echo "FAIL $1 warn advisory missing (out: $out)"; FAILED=1 ;; esac
+        log_has '"event":"warn","rule":"topic-cap"'; assert_rc "$1 logs a topic-cap warn row" 0 "$?"
+        case "$out" in *permissionDecision*) echo "FAIL $1 warn carries a permissionDecision (out: $out)"; FAILED=1 ;; *) echo "PASS $1 warn carries no permissionDecision" ;; esac
+        : > "$MEMORY_CAPTURE_LOG"
+        MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 (deny mode)" 2 "$?"
+        grep -q 'MEMORY_CAPTURE_OK=1' "$SB/err"; assert_rc "$1 deny text names the bypass" 0 "$?"
+        grep -q 'sub-file linked from its hub' "$SB/err"; assert_rc "$1 deny text names the hub procedure" 0 "$?"
+    else
+        if [ -z "$out" ] && ! log_has topic-cap; then echo "PASS $1 clean (warn)"; else echo "FAIL $1 fired in warn mode (out: $out)"; FAILED=1; fi
+        MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>"$SB/err"; assert_rc "$1 clean (deny mode)" 0 "$?"
+    fi
+}
+
+# --- index: a write that does not add pointer lines passes over the ceiling
+idx_n() { local n="$1" i=1; : > "$M2/MEMORY.md"; while [ "$i" -le "$n" ]; do printf -- '- l%s\n' "$i" >> "$M2/MEMORY.md"; i=$((i + 1)); done; }
+idx_n 62
+wp Write "$M2/MEMORY.md" "$(head -n 61 "$M2/MEMORY.md")"
+hook_rc; assert_rc "a: Write 62 to 61 pointer lines passes" 0 "$?"
+ep Edit "$M2/MEMORY.md" $'- l61\n- l62\n' $'- l61\n'
+hook_rc; assert_rc "a2: Edit 62 to 61 pointer lines passes" 0 "$?"
+ep Edit "$M2/MEMORY.md" $'- l5\n' $'- m5\n'
+hook_rc; assert_rc "a3: Edit 62 to 62 (one line replaced) passes" 0 "$?"
+idx_n 60
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'
+hook_rc; assert_rc "b: 60 to 61 stays denied" 2 "$?"
+idx_n 62
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'
+hook_rc; assert_rc "b2: 62 to 63 stays denied" 2 "$?"
+
+# --- topic-cap rows (default warn, MEMORY_TOPIC_MODE=deny)
+rm -rf "$M2"; mkdir -p "$M2"
+fill 7168 > "$M2/t.md"; wp Write "$M2/t.md" "$(fill 9216)"; tc "c: Write 7 KB to 9 KB" 1
+{ printf 'HEAD'; fill 7996; } > "$M2/t.md"
+ep Edit "$M2/t.md" HEAD "HEAD$(fill 300)"; tc "c2: Edit 8000 to 8300 bytes" 1
+{ printf 'HEAD'; fill 7992; printf 'TAIL'; } > "$M2/t.md"
+ep MultiEdit "$M2/t.md" HEAD "HEAD$(fill 296)"; tc "c3: MultiEdit 8000 to 8300 bytes" 1
+rm -f "$M2/t.md"
+wp Write "$M2/t.md" "$(fill 8191)"$'\n'; tc "e: Write ending in a newline, 8192 bytes is clean" 0
+wp Write "$M2/t.md" "$(fill 8192)"$'\n'; tc "e: Write ending in a newline, 8193 bytes fires" 1
+wp Write "$M2/new.md" "$(fill 9216)"; tc "f: new 9 KB file fires" 1
+wp Write "$M2/new.md" "$(fill 8192)"; tc "f: new 8192-byte file is clean" 0
+mkdir -p "$SB/real-mem" "$SB/.claude/projects/lp"; ln -sfn "$SB/real-mem" "$SB/.claude/projects/lp/memory"
+wp Write "$SB/.claude/projects/lp/memory/t.md" "$(fill 9216)"; tc "g: memory dir behind a symlink still fires" 1
+fill 20480 > "$M2/unread.md"; chmod 000 "$M2/unread.md"
+if [ -r "$M2/unread.md" ]; then echo "SKIP h/j2 (this uid can read a mode-000 file)"
+else
+    wp Write "$M2/unread.md" "$(fill 19456)"; tc "h: unreadable 20 KB old file, 19 KB Write fires" 1
+    ep Edit "$M2/unread.md" HEAD x
+    for mode in warn deny; do
+        : > "$MEMORY_CAPTURE_LOG"; MEMORY_TOPIC_MODE=$mode bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "j2: unreadable topic Edit fails open ($mode)" 0 "$?"
+        one_undecidable; assert_rc "j2: one topic-cap-undecidable row ($mode)" 0 "$?"
+    done
+fi
+chmod 644 "$M2/unread.md"
+mkdir -p "$SB/cc/projects/x/memory"
+wp Write "$SB/cc/projects/x/memory/t.md" "$(fill 9216)"
+: > "$MEMORY_CAPTURE_LOG"; CLAUDE_CONFIG_DIR="$SB/cc" bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, 9 KB Write warns (rc 0)" 0 "$?"
+log_has '"rule":"topic-cap"'; assert_rc "i: CLAUDE_CONFIG_DIR store fires topic-cap" 0 "$?"
+CLAUDE_CONFIG_DIR="$SB/cc" MEMORY_TOPIC_MODE=deny bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "i: CLAUDE_CONFIG_DIR store, deny mode" 2 "$?"
+# clean rows
+fill 20480 > "$M2/big.md"; wp Write "$M2/big.md" "$(fill 19456)"; tc "d: 20 KB shrinking to 19 KB is clean" 0
+wp Write "$M2/MEMORY.md.bak" "$(fill 30720)"; tc "d: 30 KB MEMORY.md.bak is clean" 0
+{ printf -- '- p1\n- p2\n'; i=0; while [ "$i" -lt 300 ]; do printf 'prose line %0100d\n' "$i"; i=$((i + 1)); done; } > "$M2/MEMORY.md"
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"; tc "d: a 30 KB MEMORY.md itself is not a topic-cap target" 0
+wp Write "$SB/outside.md" "$(fill 9216)"; tc "d: a path outside the memory dir is clean" 0
+wp Write "$M2/notes.txt" "$(fill 9216)"; tc "d: a non-.md file in the memory dir is clean" 0
+# a traversal out of the store is out of scope: no advisory, no decision
+wp Write "$M2/../../skills/x/SKILL.md" "$(fill 9216)"; tc "k: memory/../../skills/x/SKILL.md over 8 KB is clean" 0
+case "$out" in *allow*) echo "FAIL k: a traversal path is auto-approved (out: $out)"; FAILED=1 ;; *) echo "PASS k: a traversal path is not auto-approved" ;; esac
+wp Write "$M2/./../outside.md" "$(fill 9216)"; tc "k2: memory/./../outside.md over 8 KB is clean" 0
+# a traversal that stays inside the store is still gated
+wp Write "$M2/../memory/via.md" "$(fill 9216)"; tc "k3: memory/../memory/via.md over 8 KB fires" 1
+idx_n 62
+wp Write "$M2/../memory/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'
+hook_rc; assert_rc "k4: 62 to 63 through memory/../memory/MEMORY.md stays denied" 2 "$?"
+
+# --- fail-open on topic files, fail-closed on MEMORY.md (stub node = crashing simulator)
+mkdir -p "$SB/badnode"; printf '#!/bin/sh\nexit 1\n' > "$SB/badnode/node"; chmod +x "$SB/badnode/node"
+printf 'HEAD\n' > "$M2/t.md"; ep Edit "$M2/t.md" HEAD x
+for mode in warn deny; do
+    : > "$MEMORY_CAPTURE_LOG"; PATH="$SB/badnode:$PATH" MEMORY_TOPIC_MODE=$mode bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "j: crashing simulator on a topic Edit fails open ($mode)" 0 "$?"
+    one_undecidable; assert_rc "j: one topic-cap-undecidable row ($mode)" 0 "$?"
+done
+printf -- '- l1\n' > "$M2/MEMORY.md"; ep Edit "$M2/MEMORY.md" l1 l2
+: > "$MEMORY_CAPTURE_LOG"; PATH="$SB/badnode:$PATH" bash "$HOOK" < "$SB/p.json" >/dev/null 2>&1; assert_rc "j3: crashing simulator on MEMORY.md still denies" 2 "$?"
+log_has '"rule":"undecidable-payload"'; assert_rc "j3: logs undecidable-payload" 0 "$?"
+
+# --- invalid UTF-8 in a topic file: sized without a crash, error leans toward firing
+{ printf 'HEAD'; head -c 3000 /dev/zero | tr '\0' '\377'; fill 5000; } > "$M2/t.md"
+ep Edit "$M2/t.md" HEAD "HEAD$(fill 300)"; tc "u: invalid-UTF-8 topic Edit is sized and fires" 1
+
+# --- capture-log rows name their session and carry old/new on deny and warn rows
+idx_n 60; : > "$MEMORY_CAPTURE_LOG"
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra' sess-b; hook_rc
+log_row sess-b 60 61; assert_rc "log: b deny row names the session and old/new" 0 "$?"
+idx_n 62; : > "$MEMORY_CAPTURE_LOG"
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra' sess-b2; hook_rc
+log_row sess-b2 62 63; assert_rc "log: b2 deny row names the session and old/new" 0 "$?"
+idx_n 5; : > "$MEMORY_CAPTURE_LOG"
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- six' sess-w; hook_rc
+jq -e 'select(.event=="write" and .session_id=="sess-w")' "$MEMORY_CAPTURE_LOG" >/dev/null; assert_rc "log: an allowed MEMORY.md write row names the session" 0 "$?"
+rm -f "$M2/t.md"; : > "$MEMORY_CAPTURE_LOG"
+wp Write "$M2/t.md" "$(fill 9216)" sess-t; hook_rc
+log_row sess-t 0 9216; assert_rc "log: topic-cap warn row names the session and old/new bytes" 0 "$?"
+: > "$MEMORY_CAPTURE_LOG"
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- seven'; hook_rc; rc=$?
+assert_rc "log: a payload with no session_id does not crash" 0 "$rc"
+log_has '"session_id":""'; assert_rc "log: a missing session_id logs an empty string" 0 "$?"
+
+# --- advisory/remedy wording
+: > "$MEMORY_CAPTURE_LOG"; idx_n 60
+wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- extra'; hook_rc
+grep -q 'sub-file linked from the nearest hub' "$SB/err"; assert_rc "remedy offers a sub-file linked from the nearest hub" 0 "$?"
+if grep -q 'new theme' "$SB/err"; then echo "FAIL remedy still offers a new theme note"; FAILED=1; else echo "PASS remedy no longer offers a new theme note"; fi
+
+# --- notice rows (own store so earlier fixtures do not leak)
+N2="$SB/.claude/projects/p3/memory"; rm -rf "$N2"; mkdir -p "$N2"
+printf -- '- a\n- b\n' > "$N2/MEMORY.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_silent "N1 a clean fixture prints nothing"
+fill 8193 > "$N2/big.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N2 one 8193-byte topic file prints topic-cap" "topic-cap"
+assert_contains "N2 names the file" "big.md"
+fill 8192 > "$N2/big.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_silent "N2 an 8192-byte topic file is clean"
+rm -f "$N2/big.md"
+{ i=0; while [ "$i" -lt 201 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; } > "$N2/MEMORY.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N3 a 201-line index prints load-limit" "load-limit"
+{ printf -- '- a\n'; fill 25000; printf '\n'; } > "$N2/MEMORY.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N3 an index past the byte budget prints load-limit" "load-limit"
+mk_index 61
+out="$(MEMDIR="$MEM" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+case "$out" in *"cut at"*) echo "FAIL N4 notice still claims the 60-line ceiling truncates the index"; FAILED=1 ;; *) echo "PASS N4 notice no longer claims the 60-line ceiling truncates the index" ;; esac
+assert_contains "N4 notice calls the ceiling himmel's routing rule" "routing rule"
+{ printf -- '- a\n'; } > "$N2/MEMORY.md"; fill 8193 > "$N2/big.md"
+rm -rf "$SB/n5link"; ln -s "$N2" "$SB/n5link"
+out="$(MEMDIR="$SB/n5link" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N5 a symlinked memory dir still reports topic-cap" "topic-cap"
+case "$out" in *"Do NOT append"*) echo "FAIL N5b a topic-only notice tells the agent not to append index lines"; FAILED=1 ;; *) echo "PASS N5b a topic-only notice leaves the index instruction out" ;; esac
+rm -f "$N2/big.md" "$SB/n5link"
+{ i=0; while [ "$i" -lt 200 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; printf 'prose last'; } > "$N2/MEMORY.md"
+out="$(MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N6 a 201st line without a trailing newline prints load-limit" "load-limit"
+assert_contains "N6b an index violation still carries the index instruction" "Do NOT append"
+printf -- '- a\n- b\n' > "$N2/MEMORY.md"
+out="$(MEMORY_LOAD_LINES=1 MEMDIR="$N2" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N7 a configured load threshold is reported as the notice threshold" "notice threshold of 1 lines"
+case "$out" in *"loads only the first 1 "*) echo "FAIL N7 a configured threshold is presented as the harness limit"; FAILED=1 ;; *) echo "PASS N7 a configured threshold is not presented as the harness limit" ;; esac
+N8_SLUG="$(printf '%s' "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" | sed 's/[^A-Za-z0-9]/-/g')"
+N8_CFG="$SB/n8cfg"; rm -rf "$N8_CFG"; mkdir -p "$N8_CFG/projects/$N8_SLUG/memory" "$SB/n8home"
+{ i=0; while [ "$i" -lt 201 ]; do printf 'prose %s\n' "$i"; i=$((i + 1)); done; } > "$N8_CFG/projects/$N8_SLUG/memory/MEMORY.md"
+out="$(env -u MEMDIR HOME="$SB/n8home" CLAUDE_CONFIG_DIR="$N8_CFG" bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
+assert_contains "N8 the default store follows CLAUDE_CONFIG_DIR when MEMDIR is unset" "load-limit"
+
+# --- pin: guard, notice, Bash re-check and audit share the defaults
+BASHCHK="$(cd "$(dirname "$0")" && pwd)/memory-bash-line-check.sh"
+AUDIT="$(cd "$(dirname "$0")/.." && pwd)/memory/audit-memory-capture.sh"
+for kv in MEMORY_LINE_CEIL=60 MEMORY_LINE_MAX=200 MEMORY_TOPIC_MAX=8192; do
+    knob="${kv%%=*}"; want="\${$knob:-${kv#*=}}"
+    for f in "$HOOK" "$STATE_HOOK"; do
+        if grep -qF "$want" "$f"; then echo "PASS pin $knob default ${kv#*=} in $(basename "$f")"; else echo "FAIL pin $knob default ${kv#*=} missing in $(basename "$f")"; FAILED=1; fi
+    done
+done
+grep -qF "\${MEMORY_TOPIC_MAX:-8192}" "$BASHCHK"; assert_rc "pin MEMORY_TOPIC_MAX default 8192 in the Bash re-check" 0 "$?"
+for f in "$STATE_HOOK" "$AUDIT"; do grep -qF "\${MEMORY_BUDGET_BYTES:-24400}" "$f"; assert_rc "pin MEMORY_BUDGET_BYTES default 24400 in $(basename "$f")" 0 "$?"; done
+grep -qF "\${MEMORY_LOAD_LINES:-200}" "$STATE_HOOK"; assert_rc "pin MEMORY_LOAD_LINES default 200 in the notice" 0 "$?"
+
 exit "$FAILED"

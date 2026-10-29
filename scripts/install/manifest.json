@@ -98,6 +98,17 @@
       "provenance": { "kinds": ["collection"] }
     },
     {
+      "id": "qmd-himmel-collection",
+      "kind": "vault",
+      "scopes": ["project", "user"],
+      "profiles": ["core", "luna", "all"],
+      "deps": [],
+      "probe": { "type": "qmd-index", "collections": ["himmel"] },
+      "install": { "type": "qmd" },
+      "removable": "full-offboard-only",
+      "provenance": { "kinds": ["collection"] }
+    },
+    {
       "id": "qmd-daemon",
       "kind": "lane",
       "scopes": ["project", "user"],

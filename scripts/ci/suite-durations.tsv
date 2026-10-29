@@ -383,6 +383,7 @@ scripts/handover/chief-kit/test-brief-lint.sh	3
 scripts/handover/chief-kit/test-chain-graph.sh	3
 scripts/handover/chief-kit/test-chain-plan.sh	1
 scripts/handover/chief-kit/test-chain-push-check.sh	4
+scripts/handover/chief-kit/test-chain-state.sh	1
 scripts/handover/chief-kit/test-ci-guardrail.sh	3
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	20
 scripts/handover/chief-kit/test-compacted-check.sh	0
@@ -1141,3 +1142,4 @@ scripts/eval/steering-cull/test-steering-cull.sh	13
 scripts/handover/chief-kit/test-chain-render.sh	1
 scripts/test-new-worktree-no-atlassian.sh	1
 scripts/setup/test-dedupe-plugin-installs.sh	0
+scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	1

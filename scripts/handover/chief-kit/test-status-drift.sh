@@ -73,6 +73,9 @@ case "$1" in
         [ -e "$FX/versions.fail" ] && { echo "boom" >&2; exit 1; }
         cat "$FX/versions.tsv" 2>/dev/null
         exit 0 ;;
+    comments)
+        cat "$FX/comments.$2" 2>/dev/null
+        exit 0 ;;
     comment)
         file=""; edit=""
         for a in "$@"; do
@@ -99,6 +102,11 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr view")
+        case "$3" in http*)
+            [ -e "$FX/xpr.fail" ] && { echo "HTTP 502" >&2; exit 1; }
+            [ "$4 $5 $6 $7" = '--json state,title --jq .state + "\t" + .title' ] || { echo "gh stub: unexpected pr view args: $*" >&2; exit 2; }
+            printf '%s\t%s\n' "$(cat "$FX/xpr.state")" "$(cat "$FX/xpr.title")"; exit 0 ;;
+        esac
         if [ "$5" = headRefOid ]; then
             if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
         elif [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
@@ -492,6 +500,38 @@ hold not-a-key --reason r --owner o; rc=$?
 check "3a: a non-key is a usage error" "$rc" 2
 check "3a: usage errors call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
 
+CLOG="$TICKET_STATUS_STATE_DIR/chain-log.jsonl"
+reset "To Do"
+hold "$K" --reason enforcement.md --owner chief --kind file-collision --on HIMMEL-8009; rc=$?
+check "3a: a hold with a kind and the ticket it waits on exits 0" "$rc" 0
+contains "3a: the HOLD comment names the kind" "$(cat "$FX/comment-body.last")" "kind: file-collision"
+contains "3a: and what it waits on" "$(cat "$FX/comment-body.last")" "on: HIMMEL-8009"
+check "3a: the event row carries the kind and the key" "$(rowq 'select(.event == "hold") | .kind + " " + .on')" "file-collision HIMMEL-8009"
+check "3a: and one chain-log row" "$(jq -r '[.change, .key, .kind, .on, .who, .reason] | join(" ")' "$CLOG")" \
+    "hold $K file-collision HIMMEL-8009 chief enforcement.md"
+hold "$K" --release --owner chief
+check "3a: a release appends one chain-log row" "$(jq -r 'select(.change == "release") | .key + " " + .who' "$CLOG")" "$K chief"
+reset "To Do"
+hold "$K" --reason r --owner o --kind date --until 2026-11-07
+check "3a: a date hold's event row carries its date" "$(rowq 'select(.event == "hold") | .kind + " " + .until')" "date 2026-11-07"
+
+reset "To Do"
+hold "$K" --reason r --owner o
+check "3a: a hold without --kind or --on writes the event row as before" "$(rowq 'select(.event == "hold") | has("kind") or has("on")')" false
+check "3a: and no chain-log row" "$([ -e "$CLOG" ] && echo row || echo none)" none
+reset "To Do"
+hold "$K" --reason r --owner o --kind soon; rc=$?
+check "3a: an unknown kind is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --kind date; rc=$?
+check "3a: a date hold without --until is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --on not-a-key; rc=$?
+check "3a: --on a non-key is a usage error" "$rc" 2
+hold "$K" --reason r --owner o --on himmel-1; rc=$?
+check "3a: --on a lowercase key is a usage error" "$rc" 2
+hold "$K" --release --on HIMMEL-1; rc=$?
+check "3a: a release takes no --on" "$rc" 2
+check "3a: and these call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
+
 reset "To Do"; owned "$K"; printf 'held\n' > "$FX/labels.$K"
 fn "$K" --event live
 check "3a: derive ignores a hold: a held ticket still moves" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
@@ -501,7 +541,7 @@ drift() { bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
 drows() { grep -E "^$1 " "$tmp/dout"; }
 dcount() { drows "$1" | wc -l | tr -d ' '; }
 dlast() { tail -n 1 "$tmp/dout"; }
-nwrites() { grep -cE '^(transition|comment|edit)' "$STUB_LOG" || true; }
+nwrites() { grep -cE '^(transition|comment|edit) ' "$STUB_LOG" || true; }
 wipe_docs() { rm -rf "$tmp/docs"; mkdir -p "$tmp/docs"; }
 logrow() { # <event> <key> <result> <pr> [contract] - a row appended to the outcome log
     mkdir -p "$TICKET_STATUS_STATE_DIR"
@@ -621,6 +661,61 @@ check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
 reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fail
 drift
 check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
+
+# a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
+# another repo is owned by that PR (the open-PR list only sees this repo)
+XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
+xpr() { # <state> [title key, default the ticket] - the comment cites $XPR; gh reports its state and title
+    printf 'PR %s is open and parked\n' "$XPR" > "$FX/comments.$K"; printf '%s\n' "$1" > "$FX/xpr.state"
+    printf '[%s] feat: the work\n' "${2:-$K}" > "$FX/xpr.title"
+}
+reset "In Progress"; jl "$K" "In Progress"; printf 'standing\n' > "$FX/labels.$K"
+drift
+check "3b: a standing ticket with no PR and no owner is not UNOWNED" "$(dcount UNOWNED)" 0
+check "3b: and a standing ticket is not drift at all" "$(dlast | cut -d: -f1)" "sdrift=0"
+reset "In Progress"; jl "$K" "In Progress"; printf 'other\n' > "$FX/labels.$K"
+drift
+contains "3b: a ticket with another label is still UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+drift
+check "3b: an open cross-repo PR means not UNOWNED" "$(dcount UNOWNED)" 0
+check "3b: an open cross-repo PR means not DERIVE-MISMATCH" "$(dcount DERIVE-MISMATCH)" 0
+check "3b: an open cross-repo PR means not WORKER-COMMENT" "$(dcount WORKER-COMMENT)" 0
+check "3b: the cross-repo PR is read by its URL, once" "$(grep -c "^gh pr view $XPR --json state" "$STUB_LOG")" 1
+check "3b: and the cross-repo read writes no Jira field" "$(nwrites)" 0
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr CLOSED
+drift
+contains "3b: a closed cross-repo PR does not exempt: UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+contains "3b: a closed cross-repo PR does not exempt: DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: a closed cross-repo PR does not exempt: WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr MERGED
+drift
+contains "3b: a merged cross-repo PR does not exempt" "$(drows UNOWNED)" "UNOWNED $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; touch "$FX/xpr.fail"
+drift
+contains "3b: a failed cross-repo read keeps the rows (never a silent green)" "$(drows UNOWNED)" "UNOWNED $K"
+check "3b: and the failed read still ends in a counted sdrift" "$(dlast | grep -cE '^sdrift=[1-9][0-9]*:[0-9a-f]{8}$')" 1
+# an open PR a comment merely cites is not the ticket's PR: only a title naming the ticket binds it
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
+drift
+contains "3b: an open cross-repo PR titled for another ticket keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+contains "3b: an open cross-repo PR titled for another ticket keeps DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
+contains "3b: an open cross-repo PR titled for another ticket keeps WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
+reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; printf 'feat: no ticket key\n' > "$FX/xpr.title"
+drift
+contains "3b: an open cross-repo PR whose title names no ticket keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+# a URL spelled in another case or under the old slug is just another PR: the title decides, not the slug
+XPR_KEEP=$XPR
+for XPR in https://github.com/YotamLeo-Org/Himmel/pull/13 https://github.com/yotamleo/himmel/pull/13; do
+    reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN HIMMEL-1
+    drift
+    contains "3b: $XPR to another ticket's open PR keeps UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+    reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+    drift
+    check "3b: $XPR to this ticket's open PR is not UNOWNED" "$(dcount UNOWNED)" 0
+done
+XPR=$XPR_KEEP
 
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
 drift
