@@ -1191,6 +1191,7 @@ esac
 printf '%s\tTask\t%s\tt\n' "$2" "$st"
 EOF
 chmod +x "$WORK/jira-lb"
+touch -d '90 minutes ago' "$M"/*.md   # a controlled mirror age for the header row below
 lb_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-lb" run --no-classify --why)"; lb_rc=$?
 [ "$lb_rc" = 0 ] && pass "live blockers: the run exits 0" || fail "live blockers: the run exited $lb_rc"
 has "live blockers: a blocker Done in the mirror but open live drops the candidate" "$lb_out" "# drop HIMMEL-9602 blocker HIMMEL-9601 (reopened live)"
@@ -1199,10 +1200,10 @@ has "live blockers: a blocker missing from the mirror and unreadable live is blo
 lacks "live blockers: an unreadable blocker is never listed" "$lb_out" "LOCAL?	HIMMEL-9604"
 has "live blockers: a blocker Done in the mirror and live is cleared" "$lb_out" "LOCAL?	HIMMEL-9607"
 has "live blockers: a blocker open in the mirror but Done live is cleared" "$lb_out" "LOCAL?	HIMMEL-9609"
-has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min="
+has "live blockers: the header shows the mirror's age" "$lb_out" "# source mirror_age_min=90"
 # a mirror directory that does not exist is an error, never an empty pool
 nomirror_out="$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify 2>&1)"; nomirror_rc=$?
-[ "$nomirror_rc" != 0 ] && pass "missing mirror: the dispatcher exits non-zero" || fail "missing mirror: the dispatcher exited 0"
+[ "$nomirror_rc" = 3 ] && pass "missing mirror: the dispatcher exits 3" || fail "missing mirror: the dispatcher exited $nomirror_rc"
 has "missing mirror: the error says so" "$nomirror_out" "mirror missing"
 M="$WORK/jira-mirror/HIMMEL"
 
