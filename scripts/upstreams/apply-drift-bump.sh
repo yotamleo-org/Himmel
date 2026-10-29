@@ -42,7 +42,7 @@
 #
 # Split pins: an entry may add `companion_pins`, a list of
 # {file, template} rows for literals that live elsewhere than `version_pin`
-# (cli-proxy-api: the Linux twin's VERSION= and ASSET_SHA256=). Each template
+# (cli-proxy-api: ASSET_SHA256= beside the VERSION= pin). Each template
 # holds ONE placeholder, {version} or {sha256}; a {sha256} row needs --sha256
 # <64-hex> (this script is offline and cannot derive a checksum). Every pin
 # moves or none does; a companion not sitting at the old version aborts rc=4.
@@ -128,7 +128,7 @@ fi
 # The whole transaction (validate -> edit both files -> re-verify -> restore on
 # any failure) lives in python: it is the only interpreter here that can re-parse
 # the JSON to PROVE the edit landed as intended, and reading/writing with
-# newline='' keeps CRLF/LF exactly as found (this repo is worked on from Windows).
+# newline='' keeps CRLF/LF exactly as found.
 python3 - "$REGISTRY" "$REPO_ROOT" "$NAME" "$NEW_VER" "$DRY_RUN" "$NEW_SHA" "$PUBLISHED" <<'PY'
 import datetime, json, os, re, sys
 
@@ -322,7 +322,7 @@ for c in companions:
     found = re.findall(pat, pair[1])
     if len(found) != 1:
         die(4, "companion pin %r matches %d time(s) in %s at %s — expected "
-               "exactly 1; the Linux and .ps1 pins have drifted apart, fix them "
+               "exactly 1; the pins have drifted apart, fix them "
                "by hand first" % (ctpl, len(found), crel, old_ver))
     c_new = ctpl.replace("{version}", new_ver).replace("{sha256}", new_sha or "")
     pair[1] = re.sub(pat, lambda _m: c_new, pair[1])

@@ -53,7 +53,7 @@ Run this from the **code repo** whose sessions you want captured. Be idempotent 
    bash "$REPO/scripts/lib/wire-luna-vault.sh" "$HOME/.claude/settings.json" "<expanded-path>"
    ```
 
-   A `settings.json` `env` block is applied at **session start**, so say plainly that the value takes effect for **new** sessions — the current session keeps whatever vault it started with. (For a one-off in the current shell, `export LUNA_VAULT_PATH=<path>` before launching `claude`.)
+   A `settings.json` `env` block is applied at **session start**, so say plainly that the value takes effect for **new** sessions — the current session keeps whatever vault it started with. (For a one-off in the current shell, `export LUNA_VAULT_PATH="<expanded-path>"` before launching `claude`.)
 
    **Legacy `.env` cleanup — tell the operator, don't go read the file.** An earlier version of this step wrote `LUNA_VAULT_PATH=` into the repo-root `.env`. That line is inert for the capture hook, but it is NOT inert everywhere: `/himmel-update`'s luna-template step still bridges the key from `.env`, and a bridged value only loses to a value already live in the environment. So a **standalone** `himmelctl update` from a plain shell (no Claude session, nothing exporting the new value) would upgrade the OLD vault. Advise removing or updating that stale line. Do not grep for it yourself — the `block-read-secrets` guard hard-blocks any Bash command whose text contains a `.env` path.
 
