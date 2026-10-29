@@ -265,6 +265,10 @@ mog_build_fixture() {
     cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
+    # The CR thread recorder at its anchor path is a stub: it logs its argv to
+    # recorder.log and exits STUB_RECORDER_RC (default 0).
+    # shellcheck disable=SC2016 # $* and the STUB var must reach the stub FILE unexpanded
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/recorder.log"\nexit "${STUB_RECORDER_RC:-0}"\n' "$tmp" > "$tmp/scripts/cr/cr-thread-recorder.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -944,6 +948,12 @@ assert_err_has() {
 }
 assert_funnel_has() {
     if grep -qF -- "$2" "$LAST_TMP/funnel.log" 2>/dev/null; then pass; else fail "$1 (funnel log: $(cat "$LAST_TMP/funnel.log" 2>/dev/null))"; fi
+}
+assert_recorder_has() {
+    if grep -qF -- "$2" "$LAST_TMP/recorder.log" 2>/dev/null; then pass; else fail "$1 (recorder log: $(cat "$LAST_TMP/recorder.log" 2>/dev/null))"; fi
+}
+assert_recorder_not_called() {
+    if [ -s "$LAST_TMP/recorder.log" ]; then fail "$1 (recorder was called: $(cat "$LAST_TMP/recorder.log"))"; else pass; fi
 }
 assert_funnel_not_called() {
     if [ -s "$LAST_TMP/funnel.log" ]; then fail "$1 (funnel was called: $(cat "$LAST_TMP/funnel.log"))"; else pass; fi
@@ -2831,6 +2841,19 @@ else
     pass
 fi
 assert_audit_has "11q: audit records the posted after-report" "after-report=posted"
+
+# --- 11r..11t. CR thread recorder after a confirmed merge ---------------------
+# The recorder runs once, with the PR number and repo, after the merge lands.
+STUB_NUM=77 run_mog 0 "11r: a confirmed merge records the PR's CR threads"
+assert_recorder_has "11r: the recorder gets the PR number and --repo" "77 --repo "
+assert_audit_has "11r: audit records the recorder result" "cr-threads=ok"
+# A failing recorder never fails the merge; the audit says so.
+STUB_NUM=77 STUB_RECORDER_RC=3 run_mog 0 "11s: a failing recorder never fails the merge"
+assert_audit_has "11s: audit records the failed recorder" "cr-threads=failed"
+assert_audit_has "11s: the merge is still recorded as MERGED" "MERGED repo="
+# No merge, no recorder.
+run_mog 0 "11t: a dry run records no threads" -- --dry-run
+assert_recorder_not_called "11t: dry-run never calls the recorder"
 
 # 12. A truthy-but-not-1 opt-in also enables (yes/on/true).
 ARMAUTOMERGE=yes run_mog 0 "ARMAUTOMERGE=yes also enables"
