@@ -368,7 +368,10 @@ function main(argv) {
     else if (a === '--held') opt.held = argv[++i];
     else if (a === '--spec') opt.spec = argv[++i];
     else if (a === '--classify-only') opt.classifyOnly = true;
-    else keys.push(a);
+    else if (a.startsWith('-')) {
+      process.stderr.write(`unknown option: ${a}\n`);
+      return 2;
+    } else keys.push(a);
   }
   if (!keys.length || (!opt.classifyOnly && (!opt.bucket || !opt.console))) {
     process.stderr.write('usage: cloud-route.mjs [--classify-only] --bucket <dir> --chief <id> [--held <file>] [--spec <json>] HIMMEL-<n>...\n');

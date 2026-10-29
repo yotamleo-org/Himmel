@@ -323,8 +323,16 @@ test('CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; only --
   assert.equal(fresh.r.status, 0, fresh.r.stderr);
   const old = route('--console');
   assert.equal(old.r.status, 2);
-  assert.match(old.r.stderr, /usage: cloud-route\.mjs/);
+  assert.match(old.r.stderr, /unknown option: --console/);
   assert.ok(!existsSync(old.brief));
+  // with --chief present the old flag must not fall through as a ticket key and route the earlier ticket first
+  const { bucket, jira, gh } = setup();
+  const both = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', '--console', 'AD'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, HIMMEL_LEGACY_NAMES: '1' },
+  });
+  assert.equal(both.status, 2);
+  assert.match(both.stderr, /unknown option: --console/);
+  assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
 });
 
 test('CLI: a CLOUD-OK ticket holds its files, so a second ticket on them is BLOCKED', () => {
