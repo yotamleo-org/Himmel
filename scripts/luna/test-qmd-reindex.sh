@@ -982,5 +982,7 @@ rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index 2>&1) || rc=$?
 assert_rc "--index with no operand rc 1" 1 "$rc"
 rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index ../evil 2>&1) || rc=$?
 assert_rc "--index ../evil rc 1" 1 "$rc"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --index= 2>&1) || rc=$?
+assert_rc "--index= with an empty name rc 1, never the default index" 1 "$rc"
 
 summary

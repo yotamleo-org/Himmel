@@ -86,6 +86,7 @@ chmod +x "$FAKE"
 # operator's real salus index must never leak into these verdicts.
 FXHOME="$TMP_ROOT/home"
 mkdir -p "$FXHOME"
+export HOME="$FXHOME"
 # An operator shell that exports these would redirect the guard's salus lookup away from FXHOME.
 unset XDG_CONFIG_HOME XDG_CACHE_HOME QMD_CONFIG_DIR
 run_guard() {
@@ -601,7 +602,7 @@ touch_ago 200 "$SAL_NOTES/secret-patient-note.md"
 out=$(run_guard) && rc=0 || rc=$?
 assert_rc "salus note older than the index (quiet corpus) -> rc 0" 0 "$rc"
 
-touch_ago 48 "$SAL_NOTES/secret-patient-note.md"
+touch "$SAL_NOTES/secret-patient-note.md"
 touch_ago 1 "$SAL_CACHE/salus.sqlite"
 out=$(run_guard) && rc=0 || rc=$?
 assert_rc "salus index refreshed within the budget -> rc 0" 0 "$rc"

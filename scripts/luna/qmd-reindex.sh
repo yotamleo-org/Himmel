@@ -368,7 +368,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             INDEX_NAME="$2"; shift 2 ;;
-        --index=*) INDEX_NAME="${1#--index=}"; shift ;;
+        --index=*)
+            INDEX_NAME="${1#--index=}"
+            if [ -z "$INDEX_NAME" ]; then
+                echo "ERR qmd-reindex: --index requires an index name operand" >&2
+                usage >&2
+                exit 1
+            fi
+            shift ;;
         --no-cleanup) NO_CLEANUP=1; shift ;;
         --dry-run)   DRY_RUN=1; shift ;;
         -h|--help)   usage; exit 0 ;;
