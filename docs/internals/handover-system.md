@@ -228,6 +228,7 @@ Consumed by `scripts/handover/auto-commit.sh`,
 chain's `merge` auto-ship step can actually reach `merge-on-green.sh`; omitted (both
 vars absent) by default.
 
+<!-- mem:242a7f8d6a74 -->
 **The live-worker guard is scoped to the bridge root, not the caller**
 (#1551).
 Before arming, `arm-resume.sh` census-checks for live lane workers and

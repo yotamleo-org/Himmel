@@ -5,7 +5,7 @@
 # ledger-write failure) is named and fails the audit; non-token bullets are
 # ignored. bash 3.2-safe.
 #
-# PLATFORM GUARD: no .ps1 twin — audits inbox-send.sh's Linux-only ledger.
+# PLATFORM GUARD: audits inbox-send.sh's Linux-only ledger.
 # Run: bash scripts/handover/chief-kit/test-inbox-audit.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"

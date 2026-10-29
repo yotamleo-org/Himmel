@@ -11,7 +11,7 @@
 #             read is unknown; lock-gone counting; the overrun cursor; no second
 #             wake for an unchanged signature; the sweep writes no record
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

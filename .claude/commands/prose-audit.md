@@ -1,5 +1,5 @@
 ---
-description: Find mechanical prose in commands and skills that should be a script call, ranked by candidate size.
+description: Find prose to turn into script calls.
 argument-hint: [--flagged-only] [--json]
 ---
 

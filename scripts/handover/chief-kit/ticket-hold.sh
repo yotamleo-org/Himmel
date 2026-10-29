@@ -25,7 +25,7 @@
 # ponytail: the Jira calls run unbounded, upgrade path = the re-exec under a
 # timeout that worker-jira-status.sh uses.
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
 
 usage() {

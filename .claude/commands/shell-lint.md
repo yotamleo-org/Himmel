@@ -1,5 +1,5 @@
 ---
-description: Advisory shell lint (shellcheck + BOM + errexit-leak) on staged shell BEFORE the commit attempt, not after it.
+description: Lint staged shell before committing.
 ---
 
 Pre-emptive shell lint (HIMMEL-478, C4 of the autonomy-resilience epic). Run it

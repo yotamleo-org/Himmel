@@ -10,7 +10,7 @@
 # else the vault's .gitleaks.toml (vault-status.sh --path), else the vault
 # template's (templates/luna-second-brain/.gitleaks.toml), else gitleaks' defaults.
 # On a FINDING reword the prose (break the key=value shape) and re-run.
-# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
+# bash 3.2-safe (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cfg=""

@@ -1,6 +1,6 @@
 ---
 name: stuck-playbook
-description: Use when stuck on a himmel guardrail — a DENIED Bash/Jira write, a permission prompt, or a failed attestation gate.
+description: Use when a himmel guardrail blocks you.
 ---
 
 # stuck-playbook — guardrail-recovery escape-hatches (HIMMEL-211)

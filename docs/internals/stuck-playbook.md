@@ -759,6 +759,7 @@ have not controlled for.
 
 ---
 
+<!-- mem:dbb73699c771 -->
 ## Symptom: `worker-burn.sh` is denied `[Session Transcript Tampering]`
 
 `bash scripts/lanes/worker-burn.sh <session>` only READS the session's

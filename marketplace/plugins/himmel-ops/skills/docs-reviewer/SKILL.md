@@ -1,6 +1,6 @@
 ---
 name: docs-reviewer
-description: Review a docs PR's changed lines against the operator's own remarks, name the code a finding implies, learn new remarks.
+description: Review a docs PR vs operator remarks.
 ---
 
 # docs-reviewer — the operator's remarks as the bar

@@ -4,7 +4,7 @@
 # detached rm-run for the chief doc's `release:` release, never while the lease is held and never
 # twice inside TICK_RMRUN_MIN_SECS. The state read and the rm-run are stubbed; nothing touches Jira.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
+# PLATFORM GUARD: The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 

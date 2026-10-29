@@ -1,5 +1,5 @@
 ---
-description: Embedding-indexed lookup over installed skills/commands/agents — eliminates wrong-namespace mistakes.
+description: Find the right skill or agent.
 argument-hint: <intent text> [--namespace <plugin>] [--limit N]
 ---
 

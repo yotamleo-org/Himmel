@@ -418,6 +418,7 @@ a subscription lands.
 **Tier:** ON-DEMAND (`codex@openai-codex` — installed, disabled by default; `plugin-profile.sh enable codex`). The codex worker lanes need the plugin INSTALLED for its cached companion script, never enabled.
 **What:** The OpenAI codex companion plugin — the codex CLI runtime, the `codex:codex-rescue` / `codex:setup` skills, and the `codex-companion.mjs` script under `$HOME/.claude/plugins/cache/openai-codex/codex/<version>/` (the version segment drifts on plugin update — glob-resolve it, never hardcode).
 
+<!-- mem:9c89869c803e -->
 **Tiered vendor posture (operator ruling 2026-08-28):** large established
 vendors — the codex plugin, the claude CLI, hermes (see the hermes pin revert
 precedent, #1929) — deliberately track upstream LATEST, with our last
@@ -578,7 +579,14 @@ FAIL. Tests: `scripts/test-himmel-doctor.sh`, `scripts/lib/test-{resolve,run}-no
 
 ## Memory-capture audit (`scripts/memory/audit-memory-capture.sh`)
 
-Decoupled, standalone detector for the auto-memory capture discipline (Task 5) — it deliberately does NOT ride the memory-compound cadence (compound now runs weeks-to-months apart, so a detector riding it would grow its own latency in proportion to the design working). Reads the deny/write log appended by `scripts/hooks/guard-memory-capture.sh` (`MEMORY_CAPTURE_LOG`, default `$MEMDIR/.capture-log.jsonl`). Checks: **orphaned denies** — a fact the hook denied and the model never re-landed in the substrate (windowed to a trailing epoch window via `MEMORY_AUDIT_WINDOW_DAYS` so a reworded/re-landed fact stops ringing once its deny ages out; WARNs rather than silently reporting clean when denies exist but the substrate is unresolvable — LUNA_VAULT_PATH → `<home>/Documents/luna` fallback, P2-13/P2-14); **orphan topic files** — a topic file whose basename is not referenced by any `MEMORY.md` routing line (Rev2: topic files ARE the design, so the old ">2 topic files = drift" check is inverted); **line-count tripwire** (net pointer-line growth in-window); **index budget + over-length-line discipline**; and a best-effort **qmd `luna-curated` collection-freshness** check (skips cleanly when qmd is absent or `MEMORY_AUDIT_SKIP_QMD=1`). Exit 0 clean / 1 findings; bash 3.2-safe, no `date -d`. Tests: `scripts/memory/test-audit-memory-capture.sh`.
+Decoupled, standalone detector for the auto-memory capture discipline (Task 5) — it deliberately does NOT ride the memory-compound cadence (compound now runs weeks-to-months apart, so a detector riding it would grow its own latency in proportion to the design working). Reads the deny/write log appended by `scripts/hooks/guard-memory-capture.sh` (`MEMORY_CAPTURE_LOG`, default `$MEMDIR/.capture-log.jsonl`). Checks: **orphaned denies** — a fact the hook denied and the model never re-landed in the substrate (windowed to a trailing epoch window via `MEMORY_AUDIT_WINDOW_DAYS` so a reworded/re-landed fact stops ringing once its deny ages out; WARNs rather than silently reporting clean when denies exist but the substrate is unresolvable — LUNA_VAULT_PATH → `<home>/Documents/luna` fallback, P2-13/P2-14); **unreachable topic files** — a topic file not reachable from `MEMORY.md` by links through any store file, so a hub's sub-files count as reachable (Rev2: topic files ARE the design, so the old ">2 topic files = drift" check is inverted); **line-count tripwire** (net pointer-line growth in-window); **index budget + over-length-line discipline**; and a best-effort **qmd `luna` collection-freshness** check (skips cleanly when qmd is absent or `MEMORY_AUDIT_SKIP_QMD=1`). Exit 0 clean / 1 findings / 2 cannot run (a missing memory dir included); bash 3.2-safe, no `date -d`. Tests: `scripts/memory/test-audit-memory-capture.sh`.
+
+Two modes serve the memory-compound pass (the store is `$MEMDIR`, else the per-project dir derived by `scripts/lib/memory-slug.sh`, the one shared slug rule):
+
+- `--structure` runs the structure checks instead of the capture ones: over-cap topic files (8192 B), files unreachable from `MEMORY.md`, dead `[title](file.md)` links and dead `[[wikilinks]]` (counted per occurrence, links and wikilinks inside code spans and fences ignored; the counts match the P0 baseline link script), the load limit (first 200 lines or 25 KB, 60 pointer lines), a stale-file WARN, and a one-line summary. It exits 2 when dead wikilinks exist and the vault is unresolvable.
+- `--lost-lines <snapshot-dir>` prints every non-blank, non-frontmatter line of the snapshot that no current file holds (a line that only moved prints nothing), count on stderr; exit 1 if any, 2 when the snapshot dir is missing.
+
+`scripts/memory/memory-snapshot.sh` backs a compaction pass with a rollback that never clobbers another writer: `take <dir>` copies every top-level store file (not `.capture-log.jsonl`) with a sha256 manifest; `verify <dir>` prints one line per changed, added or deleted file (exit 1 if any); `restore <before-dir> --expect <checkpoint-dir>` restores the files the pass changed, moves the files it added to `<before-dir>.removed-<UTC ts>/` (never deletes), leaves any file another writer touched since the checkpoint as a printed conflict (exit 1), and lists files added since the checkpoint. Hashing goes through `scripts/lib/sha256-bin.sh`. Tests: `scripts/memory/test-memory-snapshot.sh`.
 
 ---
 
@@ -994,6 +1002,7 @@ Two OTHER levers existed for verifying the CLIProxyAPI path on its own
 evidence (as distinct from the operator-ruling override above) — one is now
 APPLIED, one remains UNTESTED, not refuted:
 
+<!-- mem:d6fed4174c67 -->
 1. **`CLAUDE_CODE_MAX_CONTEXT_TOKENS`** — an official, documented,
    name-independent Claude Code env var for declaring an unrecognized model's
    context window. Distinct from `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (which only

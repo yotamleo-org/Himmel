@@ -19,7 +19,7 @@
 # ponytail: a parked session whose last row sank past the tail window reads as
 # not parked, bump TICK_PARKED_TAIL_BYTES, or index the ledger by session.
 #
-# READ-ONLY. Bash 3.2-compatible. PLATFORM GUARD: no .ps1 twin, by design —
+# READ-ONLY. Bash 3.2-compatible. PLATFORM GUARD:
 # Linux-only chief kit (GNU date -d).
 set -uo pipefail
 

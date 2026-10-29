@@ -28,6 +28,7 @@ Read on demand: `worker-preface.md` names this file when a required CI job goes 
   merges you merge forward per the merge-forward rule below (never rebase, never force-push). If you suspect it is general but the data
   does not settle it, report `MAIN-RED? <job> <case> inconclusive` with what you
   saw.
+<!-- mem:a7a890f22a5a -->
 - **Merge-forward.** A worker never merges,
   or merges forward past, a red its own change introduced. Merge-forward cures
   ONLY a red inherited from a broken base — one already red when you were cut

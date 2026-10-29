@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-versionless-done.sh — versionless-done.sh counts, lists and backfills
 # Done tickets with no fixVersion, against a stubbed jira CLI.
-# No live Jira call. PLATFORM GUARD: no .ps1 twin, by design (Linux-only kit).
+# No live Jira call. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

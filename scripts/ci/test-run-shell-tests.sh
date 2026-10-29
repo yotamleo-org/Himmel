@@ -1176,8 +1176,8 @@ if [ -z "$fn2267" ]; then
 else
   check_timeout_2267() {  # $1=suite path as passed to _suite_timeout_for; $2=expected timeout; $3=SUITE_TIER_MODE (default all)
     local got
-    # shellcheck disable=SC2034 # SUITE_TIMEOUT/SUITE_TIMEOUT_EXPLICIT/SUITE_TIER_MODE are read by the eval-defined _suite_timeout_for, invisible to static analysis
-    got=$(eval "$fn2267"; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE="${3:-all}"; GUARD_CORPUS_TIER="${4:-}"; _suite_timeout_for "$1")
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for, invisible to static analysis
+    got=$(eval "$fn2267"; uname() { printf 'Linux\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE="${3:-all}"; GUARD_CORPUS_TIER="${4:-}"; _suite_timeout_for "$1")
     if [ "$got" = "$2" ]; then
       pass "2267: _suite_timeout_for '$1' (tier ${3:-all}) -> ${2}s"
     else
@@ -1285,29 +1285,63 @@ else
   # 4021 job 121981449917), a 4.7x loaded-runner factor; 1500s is the 603s x 2.5.
   check_os_timeout_2267 Linux "scripts/ci/test-run-shell-tests.sh" "1500"
   check_os_timeout_2267 Linux "/repo/scripts/ci/test-run-shell-tests.sh" "1500"
-  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "2000"
-  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "2000"
-  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "600"
-  # macOS runs 40457809286 and 40514166576 killed it at 603s with all 995 rows
-  # reached; the Linux ledger is 151s, so only the Darwin arm moves.
+  # A suite in no Darwin outlier row gets the Linux cap times the
+  # Darwin multiplier (2), so the per-suite Darwin rows no longer pile up.
+  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "3000"
+  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "3000"
+  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "1200"
+  # macOS run 40664974972 killed it at 1803s against its own 1800s Darwin row, so
+  # it stays an outlier row (x2 of that cap); Linux keeps the default.
   check_os_timeout_2267 Linux "scripts/hooks/test-block-edit-live-settings.sh" "600"
-  check_os_timeout_2267 Darwin "scripts/hooks/test-block-edit-live-settings.sh" "1800"
-  check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-edit-live-settings.sh" "1800"
-  # macOS run 40633905316 killed it at 603s on both attempts; Linux is about 150s.
+  check_os_timeout_2267 Darwin "scripts/hooks/test-block-edit-live-settings.sh" "3600"
+  check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-edit-live-settings.sh" "3600"
+  # The macOS suites dispatch at the 2x cap killed it at 1203s of 1200s, so it is
+  # an outlier row too; Linux keeps the default.
+  check_os_timeout_2267 Linux "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "3600"
+  check_os_timeout_2267 Darwin "/repo/scripts/hooks/test-block-write-into-main-checkout-evaldata.sh" "3600"
   check_os_timeout_2267 Linux "scripts/test-adopt-sequences.sh" "600"
-  check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1800"
-  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1800"
-  # The half split out of test-adopt.sh (481s on Linux CI, 80% of the 600s default); macOS runs 40664974972 and
-  # 40786835131 killed it at 1203s against the 1200s Linux cap, so only the Darwin arm moves.
+  check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1200"
+  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1200"
   check_os_timeout_2267 Linux "scripts/test-adopt-features.sh" "1200"
   check_os_timeout_2267 Linux "/repo/scripts/test-adopt-features.sh" "1200"
-  check_os_timeout_2267 Darwin "scripts/test-adopt-features.sh" "3600"
-  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-features.sh" "3600"
-  # A suite in no Darwin arm keeps its table value on macOS.
-  check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
-  check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/test-adopt-features.sh" "2400"
+  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-features.sh" "2400"
+  check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "2400"
+  check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "1200"
+  # Every non-outlier suite on Darwin is exactly 2x its Linux cap.
+  for p2267 in scripts/test-adopt.sh scripts/test-adopt-features.sh scripts/test-himmel-doctor.sh \
+               scripts/hooks/test-block-bare-qmd-query.sh scripts/hooks/test-block-primary-git-writes.sh \
+               scripts/hooks/test-block-unresolved-cr-merge.sh scripts/hooks/test-block-destructive-commands-d.sh; do
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
+    lin2267=$(eval "$fn2267"; uname() { printf 'Linux\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$p2267")
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
+    dar2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$p2267")
+    if [ "$dar2267" = "$((lin2267 * 2))" ]; then
+      pass "2267: Darwin cap ${dar2267}s for '$p2267' is 2x its Linux cap ${lin2267}s"
+    else
+      fail "2267: Darwin cap '${dar2267}' for '$p2267' is not 2x its Linux cap '${lin2267}'"
+    fi
+  done
+  # Run 40664974972 killed these at the cap with the seconds used below (the
+  # figures are copied from its log); the Darwin cap now clears each.
+  for k2267 in "scripts/test-himmel-doctor.sh 604" "scripts/test-adopt-features.sh 1203" \
+               "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh 603" \
+               "scripts/hooks/test-block-unresolved-cr-merge.sh 604" "scripts/hooks/test-block-primary-git-writes.sh 603" \
+               "scripts/hooks/test-block-edit-live-settings.sh 1803" "scripts/hooks/test-block-destructive-commands-d.sh 1204" \
+               "scripts/hooks/test-block-bare-qmd-query.sh 604"; do
+    s2267=${k2267% *}; d2267=${k2267#* }
+    # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
+    cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")
+    if [ "$cap2267" -gt "$d2267" ] 2>/dev/null; then
+      pass "2267: Darwin cap ${cap2267}s for '$s2267' clears its 40664974972 kill at ${d2267}s"
+    else
+      fail "2267: Darwin cap '${cap2267}' for '$s2267' does not clear its 40664974972 kill at ${d2267}s"
+    fi
+  done
   # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
-  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 911"; do
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 911" \
+               "scripts/hooks/test-block-write-into-main-checkout-evaldata.sh 1203"; do
     s2267=${m2267% *}; d2267=${m2267#* }
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")

@@ -1,5 +1,5 @@
 ---
-description: One-shot operator refresh of the luna and/or himmel graphify graphs — one refresh-graph-map.sh run per corpus.
+description: Rebuild the luna or himmel graphify graph.
 argument-hint: [luna|himmel|both] [--vault <path>] [--dry-run]
 ---
 

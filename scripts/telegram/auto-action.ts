@@ -6,7 +6,6 @@
 // The privileged resolution + scheduler invocation live in auto-action.sh (it needs the
 // real himmel shell env: .env, handover-path.sh, py-armor).
 import { join } from "node:path";
-import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { appendLine } from "./bus";
 import type { Route } from "./router";
 
@@ -80,18 +79,10 @@ export function parseEnabledOps(raw: string | undefined, knownOps: Set<string>):
     return new Set([...knownOps].filter((op) => !EXPLICIT_ONLY_OPS.has(op)));
   const out = new Set<string>();
   for (const tok of v.split(",")) {
-    const t = canonicalOp(tok.trim());
+    const t = tok.trim();
     if (knownOps.has(t)) out.add(t);   // explicit naming enables ANY known op, incl. explicit-only
   }
   return out;
-}
-
-// Old op names, still read as the renamed op until legacy names are off.
-export const OP_ALIASES: Record<string, string> = {
-  "launch-leg": "launch-worker", "launch-bypass-leg": "launch-bypass-worker", "relaunch-console": "relaunch-chief",
-};
-export function canonicalOp(op: string): string {
-  return Object.hasOwn(OP_ALIASES, op) && legacyNamesOn() ? OP_ALIASES[op] : op;
 }
 
 // Whole-value aliases. Both parse to a deliberate outcome and carry no op-name
@@ -110,7 +101,7 @@ export function describeEnabledOps(raw: string | undefined, knownOps: Set<string
   const ops = parseEnabledOps(raw, knownOps);
   const v = (raw ?? "").trim().toLowerCase();
   if (OFF_ALIASES.has(v) || ON_ALIASES.has(v)) return { ops };
-  const unknown = v.split(",").map((t) => t.trim()).filter((t) => t && !knownOps.has(canonicalOp(t)));
+  const unknown = v.split(",").map((t) => t.trim()).filter((t) => t && !knownOps.has(t));
   // A PARTIALLY valid list warns too: `arm-resume,mergepublic` enables /arm, so the
   // "auto-actions enabled:" line looks healthy while /mergepub stays inert with no
   // explanation — the same puzzle in a quieter costume.

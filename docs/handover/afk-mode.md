@@ -217,6 +217,7 @@ else
 fi
 ```
 
+<!-- mem:a8b40056813a -->
 A chief deciding whether to arm a successor for a worker should ask the worker
 for this number instead of an estimate. It measures context-window FILL, not
 the `<total_tokens>` spend budget, which is a different, much larger
@@ -327,6 +328,7 @@ still one root, so a root that is itself long (`scripts/hooks`) leaves a halt
 unread for that run's length; see the delivery limitation in
 [`retask-channel.md`](../internals/retask-channel.md).
 
+<!-- mem:e619868c197a -->
 **When you do need the full tree, never hand-roll a retry loop.** An rc=2
 refusal used to send workers into their own invisible wait, and a queued worker is
 then indistinguishable from a **parked** one: both present as a worker that has

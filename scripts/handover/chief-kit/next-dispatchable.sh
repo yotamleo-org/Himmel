@@ -23,13 +23,15 @@
 # tickets after the listed ones; groups split by `|`; a token that is not a key,
 # like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
 # operator-directed; 3 a Bug of High or above, or a security / data-integrity /
-# data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
-# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no worker, no open PR)
+# data-loss label; 4 the rest of the earliest unreleased version (so with an empty or
+# stale `priority:` line every unblocked To Do ticket of that version is still in the
+# pool); 5 later or versionless work, by the rank above. --priority-pool-only prints
+# tiers 1-4 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no worker, no open PR)
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); an empty
-# pool prints `POOL-EMPTY` and then the tier-4 To Do rows as `NEXT-TIER` rows (rank
+# pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, collision-checked against held files), never dispatched from here.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
@@ -113,7 +115,7 @@
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
+# PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
@@ -524,17 +526,18 @@ def proof_refuse(i):
     return True
 
 def tier_of(i):
-    # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
-    # Tiers 2-3 hold only the earliest unreleased version: later or versionless work waits in tier 4.
+    # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest of the
+    # earliest unreleased version, 5 later or versionless work. Tiers 1-4 are the pool: the stale `priority:`
+    # line and the labels never decide whether a current-version ticket is dispatchable.
     if i['key'] in prio_order or i['labels'] & TIER1_LABELS:
         return 1
     if first_ver is not None and first_ver not in i['ver']:
-        return 4
+        return 5
     if 'operator-directed' in i['labels']:
         return 2
     if (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1) or i['labels'] & TIER3_LABELS:
         return 3
-    return 4
+    return 4 if first_ver is not None else 5  # no version list: nothing is known to be current
 
 def ranked(i):
     return (tier_of(i), prio_order.get(i['key'], 10**6)) + rank(i)
@@ -679,9 +682,9 @@ for i in issues.values():
     cands.append(i)
 cands.sort(key=ranked)
 pool_only = os.environ.get('ND_POOL_ONLY') == '1'
-next_tier = [i for i in cands if tier_of(i) > 3]
+next_tier = [i for i in cands if tier_of(i) > 4]
 if pool_only:
-    cands = [i for i in cands if tier_of(i) <= 3]
+    cands = [i for i in cands if tier_of(i) <= 4]
 
 # held files: live workers, open PRs, --held
 held = []
@@ -802,7 +805,7 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
 resume = []
 for i in issues.values():
-    if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
+    if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
         continue
     wrapped = i['status'] == 'To Do' and i['key'] in briefs
     if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
@@ -904,8 +907,8 @@ def drop_summary():
         if r is None:
             if i['key'] in briefs:
                 r = 'resume-brief (a wrapped worker resumes it: RESUME row)'
-            elif pool_only and tier_of(i) > 3:
-                r = 'tier 4 (outside the priority pool)'
+            elif pool_only and tier_of(i) > 4:
+                r = 'tier 5 (outside the priority pool)'
             else:
                 r = 'below --top %d' % top
         rows.append((i['key'], r))
@@ -1027,7 +1030,7 @@ def emit_free(rows):
 
 if pool_only:
     # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
-    for t in (1, 2, 3):
+    for t in (1, 2, 3, 4):
         emit_resume([i for i in resume if tier_of(i) == t])
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])

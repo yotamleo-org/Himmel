@@ -9,7 +9,7 @@
 # control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
 # idle cases).
 #
-# Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
+# Linux-only: this suite uses GNU
 # timeout and touch -d, so run-shell-tests.sh skips it off-Linux.
 #
 # Second half of the chief-wait suite: the (vmrun) cases onward. The first

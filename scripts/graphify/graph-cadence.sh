@@ -3,19 +3,10 @@
 # graph-cadence.sh — the recurring refresh+publish worker for himmel's own
 # graphify graph.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight. This is plain
-# POSIX bash, and stays that way on purpose -- graphmap-cadence.sh (the ONLY
-# arm point for this worker) already owns the one place platform actually
-# diverges: on Windows it wraps this script in a hidden wscript/.bat shim
-# whose Exec Command is Git Bash's own bash.exe (same pattern its AST/
-# semantic siblings use, see that file's emit_bat); on POSIX it's a bare
-# cron entry. graph-cadence.sh itself is invoked identically either way --
-# `bash graph-cadence.sh --corpus-root <path>` -- and every script it shells
-# (ast-update.sh, graph-publish.sh, merge-on-green.sh) is the SAME bash
-# already required on Windows via GitBash for every other cadence in this
-# repo; there is no native-PowerShell worker here to twin against. A `.ps1`
-# rewrite would duplicate this logic in a second language for a platform
-# that already runs the bash original correctly.
+# PLATFORM GUARD: plain POSIX bash, armed as a bare cron entry by
+# graphmap-cadence.sh (the ONLY arm point for this worker). It is invoked as
+# `bash graph-cadence.sh --corpus-root <path>`, and every script it shells
+# (ast-update.sh, graph-publish.sh, merge-on-green.sh) is bash too.
 #
 # WHY: graphify-out/graph.json is heavily used (139/143 sessions on the day
 # this was written) but nothing refreshed or published it on a schedule, so

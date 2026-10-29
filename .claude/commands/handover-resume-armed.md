@@ -1,5 +1,5 @@
 ---
-description: Fast-resume from the last armed session — surface its transcript and stop-point, no manual JSONL archaeology.
+description: Resume from the last armed session's stop point.
 argument-hint: (no args)
 ---
 

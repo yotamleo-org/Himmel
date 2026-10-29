@@ -1,5 +1,5 @@
 ---
-description: Classify the open Jira backlog against merged commits and propose batched closes. Read-only until the operator approves.
+description: Close Jira tickets done by merged commits.
 ---
 
 Lean-invoke wrapper over `scripts/jira/reconcile-backlog.mjs` (HIMMEL-374) — the

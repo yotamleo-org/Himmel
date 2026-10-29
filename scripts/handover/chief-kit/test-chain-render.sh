@@ -3,7 +3,7 @@
 # The graph is a fixture file in chain-graph.py --json shape and the Jira mirror is a temp dir, so the suite
 # never touches the network, Jira or GitHub. Both states of the chain_render flag run here.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only; this suite exercises a kit script.
+# PLATFORM GUARD: The chief kit is Linux-only; this suite exercises a kit script.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

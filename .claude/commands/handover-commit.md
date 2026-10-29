@@ -1,5 +1,5 @@
 ---
-description: Auto-commit *.md changes in the handover root (Mode B / external HANDOVER_DIR only). MVP.
+description: Commit *.md changes in an external handover root.
 argument-hint: <message> [--push] [--dry-run]
 ---
 

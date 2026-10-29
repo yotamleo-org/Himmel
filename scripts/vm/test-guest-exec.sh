@@ -3,7 +3,7 @@
 # A stub `uv` first on PATH stands in for vmsdk.py, so no VM, network or ssh is
 # touched; what is pinned is the argument contract and the refusals before vmsdk.
 #
-# Platform guard (linux-only): a bash test harness, no .ps1 twin.
+# Platform guard (linux-only): a bash test harness.
 #
 # Usage: bash scripts/vm/test-guest-exec.sh
 set -uo pipefail

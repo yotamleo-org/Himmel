@@ -90,7 +90,7 @@
 # WRAP_SUBTREE_HOME overrides the home whose .claude/plugins anchors the refresh cwd (test seam; default $HOME).
 # WRAP_SUBTREE_START_WINDOW: seconds after the session start within which a
 # direct child counts as session-started (non-negative integer; default 10).
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps ps).
+# PLATFORM GUARD: Linux-only (procps ps).
 set -uo pipefail
 
 usage='usage: wrap-subtree-check.sh [--queue-doc <handover-path>] [<claude-pid>]'

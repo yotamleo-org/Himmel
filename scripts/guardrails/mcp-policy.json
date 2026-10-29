@@ -185,6 +185,10 @@
         "tokensave_module_api": "read", "tokensave_callers": "read", "tokensave_callers_for": "read"
       }
     },
+    "easel": {
+      "verdict": "allow", "egress": "local", "note": "built-in cc-plugin-easel plugin of the Claude Code binary, registered at runtime through $.tool.register (HIMMEL-8061); draws a chart in the transcript, no state change",
+      "tools": { "chart": "read" }
+    },
     "himmelprobe": {
       "verdict": "allow", "egress": "local", "note": "himmel's own MCP-load probe server",
       "tools": { "himmelprobe_marker": "read" }

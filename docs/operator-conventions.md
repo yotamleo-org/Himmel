@@ -68,12 +68,17 @@ All canonically documented: these are the structural gates. Linked, not restated
     the same round (a confident false Critical, a real bug filed as a
     Suggestion by the same critic). Two critics naming the SAME line at
     different severities is where the real defect usually is.
+  <!-- mem:cd1f593f52d8 -->
+  <!-- mem:ac2888b6f488 -->
+  <!-- mem:674c5ff91c0e -->
   - **Four non-convergence signatures, not just "keep going N rounds":**
     (1) severity DECREASING = the expected adversarial-onion case, cap at
     ~2-3 rounds and defer the tail; (2) severity FLAT or RISING = a
     systematic design gap being walked one instance at a time, so close the
     CLASS by enumeration (name every precondition, check each one) in a
-    single round instead of patching the next instance; (3) successive
+    single round instead of patching the next instance, then state the
+    remaining boundary in the code itself ("a regex, not a parser"), which
+    turns the last residual into a clean deferral; (3) successive
     rounds only TIGHTEN A BOUND on the same race = the bound is not the fix,
     document the residual with its bound in the PR body and stop; (4) rounds
     keep finding REAL, DISTINCT defects each pinnable by its own test = the
@@ -89,6 +94,7 @@ All canonically documented: these are the structural gates. Linked, not restated
     own text ("N were rejected") is trivially satisfiable and says nothing
     about the severity of what it wraps. A dropped citation is unverified,
     never disproved.
+  <!-- mem:256b3ccac3ec -->
   - **A second panel run at the SAME head reports 0/0/0 because the ledger
     dedups on `(head, finding_id)`**. That is a suppressed report, not a
     retraction, and it burns a paid model call for nothing. Run the panel
@@ -99,6 +105,21 @@ All canonically documented: these are the structural gates. Linked, not restated
     review` there. An absent review blocks nothing on any PR,
     so the ordinary merge gate (CI green + zero unresolved threads + the
     panel) is the whole gate for them too.
+  <!-- mem:68d37e5ff263 -->
+  - **CodeRabbit replies are not the review.** A "Review failed" reply
+    followed by "Review finished" to one `@coderabbitai review` is a race on
+    CodeRabbit's side at its rate limit, not a hook double-trigger: the
+    walkthrough is the completed review. The command's ack is not a review
+    either; the review object lands one to four minutes later. CodeRabbit
+    does not review a PR that already merged, so a late finding goes in a
+    follow-up PR.
+  <!-- mem:5405db5217e6 -->
+  - **Install the CodeRabbit CLI with the vendor's installer**,
+    `curl -fsSL https://cli.coderabbit.ai/install.sh | sh`, never the npm
+    package. It puts `coderabbit` and `cr` in `~/.local/bin`, so any install
+    step, doctor check or VM provision must check for `~/.local/bin/coderabbit`.
+    (The `@coderabbitai/bitbucket` npm library under `scripts/bitbucket` is
+    a different package.)
   - **Tests pin OUR seams, never other products.** A suite case asserts our
     integration and our wrapper's observable contract, never a permanent
     case re-proving a third-party library's, runtime's, or API's own
@@ -144,6 +165,7 @@ Standing engineering requirements for anything himmel ships, not per-task:
   return codes and different wording. Any parse of a human-readable label
   needs `LC_ALL=C` on the command producing it, because locale changes the literal
   string being matched.
+<!-- mem:243e3a2a1e18 -->
 - **Before trusting a before/after measurement, trace the caller chain and
   confirm the code path under test actually ran.** A flag chosen for safety
   (disabling an expensive pass) can silently disable the very pass being
@@ -152,6 +174,7 @@ Standing engineering requirements for anything himmel ships, not per-task:
   that SHOULD move, and confirm it moves; a prediction that comes true is
   not corroboration if it also comes true on the baseline, so evaluate against
   BOTH pins.
+<!-- mem:bb735db7aff9 -->
 - **A fix delivered through a projection (a snapshot writer, a build/generate
   step) needs a SECOND control on the delivery path**, not just a control on
   the rule: "the rule is right" and "the shipped thing is fixed" are
@@ -160,6 +183,7 @@ Standing engineering requirements for anything himmel ships, not per-task:
   regenerating from scratch. A fixture's SIZE is part of the control too: a
   bug that only manifests above some input size is invisible to a suite
   whose fixtures never grow past it.
+<!-- mem:5b0ac32cd394 -->
 - **After merging upstream into a fork, attribute failures against BOTH a
   pre-merge baseline AND a pristine-upstream control**, never raw counts:
   merge-caused = merged − (baseline ∪ upstream). Most "new" failures after a
@@ -178,6 +202,10 @@ Habits for anything that leaves this repo toward an upstream/external project:
 
 - **Adapt upstream PRs first.** For any fix targeting a dependency we vendor or fork, FIRST scan the upstream repo's open PRs (`gh pr list --repo <upstream>`) for an existing PR that solves it, and adapt/cherry-pick that instead of authoring fresh. Community PRs are often already reviewed/verified on the exact platform, and staying close to the upstream original keeps the fork rebaseable, since adapted commits drop cleanly when upstream merges. Note the upstream PR# in the commit/ticket so a drop-on-upstream-merge sweep can find it.
 - **Timebox + soak before filing anything upstream.** Filing an issue or PR to an external repo is GATED on real usage first proving: (a) we correctly understand the problem, (b) our own workaround is genuinely insufficient, (c) we observed improvement + actual usage justifying the ask. Never file on sight: a drafted upstream issue gets concrete soak criteria plus a revisit timebox tied to that tool's own adoption gate ([`docs/tool-adoption/rubric.md`](tool-adoption/rubric.md)); if the pain doesn't recur within the window, close won't-file. Dogfood-first applied outbound; a soaked issue carrying usage evidence is a stronger issue anyway.
+<!-- mem:645f0031401f -->
+- **Open the companion PR with the issue when the fix is unambiguous**, after the soak gate above. An issue filed alone gets its fix taken by someone else's PR within hours, and the credit for closing the bug goes with it. Keep issue-only for defects tangled in design, and for a contested ask: there the companion PR becomes a liability. If another PR already exists, stand down at once and never compete; the issue keeps the discovery credit. A scanner false-positive is filed against the scanner, never dodged by rewriting the scanned code, which reads as evasion to a maintainer.
+<!-- mem:b48605ba9194 -->
+- **No PR where outside contributors are never merged.** Before drafting one, check who authored the merged PRs that touched the target path: GitHub's PR search does not match changed-file paths, so list the commits on the path (`git log -- <path>` in a clone) and look up each one's PR and its author's association to the repo. If no outside author has been merged there, file or extend an issue and stop; a record of closed-unmerged outside PRs is that signal, not a reason to try. On `anthropics/*` repos we file issues, never PRs, by operator choice.
 
 ## Autonomy & arming
 
@@ -185,6 +213,10 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
 
 - **Implementor tier floor: the smallest lane never ships behavioral code.** Even a transcription-grade, fully-specified plan can come back subtly wrong from the cheapest model tier (a dead or misplaced assertion that review must then catch, costing more than the tier delta saved). Reserve the smallest tier for verbatim single-block patch application and bulk mechanical non-code work; the next tier up is the real floor for anything that creates or edits code with behavioral intent.
 - **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs an operator decision that can't be pre-teed. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
+<!-- mem:1998696d9846 -->
+- **Operator-blocked is not leg-complete.** When the current wave waits on operator actions, park those (ledger, artifact, handover) and pull the next queue item at once: design passes, the next wave's dispatches and premise checks need no operator. End a leg only when the queue is empty or context or capacity forces a handover.
+<!-- mem:4f4e3e74570c -->
+- **Act when a step's conditions are met.** A verified GO, a ruled recommendation or an unblocked next item means proceed without asking. Escalate only for a denial that needs the operator's hands (a `!` command, a bypass launch), a destructive or irreversible act, or a choice with no safe default. When a classifier blocks one path, take the safe split (drop the part that needs a bypass) instead of asking.
 - **Metered-lane structure (the numbers churn; these don't).** For any paid/quota'd delegation lane: (a) preflight remaining quota before a long/expensive brief: a capped worker dies mid-run, though its uncommitted working tree SURVIVES, so recover the tree rather than restarting the task; (b) per-machine budgets for the same lane differ (exhausted on one box ≠ exhausted on another), so route accordingly; (c) some providers have time-of-day peak windows in the PROVIDER's timezone, not yours; (d) route every dispatch through the repo's sanctioned dispatch script, never raw shell execs, because a raw dispatch bypasses ACL preflight, model pins, ledger logging, quota preflight, and the hook surface.
 
 ## Multi-agent coordination
@@ -195,6 +227,7 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   token in the next checkpoint); treat your own no-reply state as
   **non-consent** and escalate the silence rather than acting on an
   assumption of approval.
+<!-- mem:5b2fb7fe62b5 -->
 - **A chief must not idle between notifications** (a judge ends its turn after its verdict; only the chief sweeps).
   Actively sweep for blockage (expected branches pushed? PRs opened or
   updated? reviews landed at head?) and act as an ENABLER: nudge a parked
@@ -213,13 +246,28 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   "provider down" from "our credential went stale"? A green-looking status
   line that only checks a credential FILE EXISTS is not proof the credential
   still works.
+<!-- mem:14b6fc2cbdf3 -->
 - **A parked worker and a QUEUED worker look identical from the outside**.
   Check the lock/queue state before nudging a quiet lane; nudging a healthy,
   queued worker creates a second-writer race on its branch. Structurally,
   brief workers to COMMIT before their long verification runs, not after, so
-  a park lands on a durable commit instead of a dirty worktree. Nudging has
+  a park lands on a durable commit instead of a dirty worktree: a slow
+  pre-commit gate eats a large share of a short worker budget, and a timed-out
+  worker leaves correct work unstaged. Check its worktree for uncommitted work
+  before you re-dispatch. Nudging has
   a ceiling of two attempts; after that, take over (stop the worker first,
   so the takeover stays single-writer, then land its diff yourself).
+<!-- mem:f75f3464ad23 -->
+- **Recovered work in a dead worker's tree is presumed half-baked.** A worker
+  killed mid-edit leaves a tree that looks finished but may hold a
+  half-applied edit, which passes a casual look. Test the artifact against the
+  brief, never the worker's own report: the brief's named done-criteria,
+  `git diff --stat <base sha>` (its commits plus staged and unstaged changes)
+  and `git status --short --untracked-files=all` showing only in-scope files,
+  and the parent running the
+  named test cases. The default is do not adopt; recovered work re-enters as
+  an ordinary diff that is gated again. A handover's "never started" means no
+  commits, not no work: check `git status --porcelain` in that worktree.
 - **A hook or permission PR gets an independent adversarial review before
   GO.** A worker's self-review, even one that tested its own guard adversarially
   with its impacted suites green, is not enough evidence for a guard change.
@@ -230,6 +278,7 @@ Canonical arming mechanics live in [`docs/internals/handover-system.md`](interna
   row per finding. When the rounds keep turning up new bypasses of the new
   coverage (text scanning is whack-a-mole), stop the rounds, ticket the
   residuals, and point at the structural fix instead of a round 4.
+<!-- mem:9b38cba32dc5 -->
 - **Never tell a child to route around its own session's guards.** A review
   or test brief that says "build the payload another way if the hook refuses
   it" invites escalation: one reviewer went from placeholder substitution to

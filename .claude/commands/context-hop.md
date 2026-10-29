@@ -1,5 +1,5 @@
 ---
-description: Mid-session jump to a fresh claude session when the context window nears the soft budget.
+description: Hop to a fresh session near context limit.
 argument-hint: [--message "what to pick up"] [--delay <minutes>] [--print] [--dry-run] [--force]
 ---
 

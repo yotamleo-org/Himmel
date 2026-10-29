@@ -9,7 +9,7 @@
 # drifted from it). A chief is exempt by design (1m/auto is
 # the chief's own context tier, not a leak).
 #
-# PLATFORM GUARD: no .ps1 twin, by design -- Linux-only, reads real argv the
+# PLATFORM GUARD: Linux-only, reads real argv the
 # same way tick.sh does. Bash 3.2-compatible; no associative arrays or
 # mapfile.
 #

@@ -13,8 +13,7 @@
 # against a temp handover root and a throwaway fixture repo (same shape as
 # test-chief.sh).
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; no .ps1 twin, same scope as
-# chief.sh.
+# Platform guard: POSIX bash 3.2+; same scope as chief.sh.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

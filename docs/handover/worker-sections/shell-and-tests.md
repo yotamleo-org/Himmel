@@ -86,6 +86,9 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   work" and the merged worktree is never pruned.
 - Never use bare `git stash` / `git stash pop`: the stash stack is shared with
   every other worktree and another session may pop yours.
+<!-- mem:8051051e1d11 -->
+<!-- mem:8ade46407d9b -->
+<!-- mem:e4f5bf722bd8 -->
 - A background task "stopped because the system is running low on memory" is
   not proof of memory pressure. Before believing it, read
   `/proc/pressure/memory` and the `memory.events` under `/sys/fs/cgroup` for

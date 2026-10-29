@@ -11,7 +11,7 @@
 # bare pids + `ps -o pid=,args=`), since the old GNU-only `pgrep -af` stub
 # masked the macOS bug it was supposed to catch.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only
+# PLATFORM GUARD: The chief kit is Linux-only
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite
 # exercises that platform-specific script.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here

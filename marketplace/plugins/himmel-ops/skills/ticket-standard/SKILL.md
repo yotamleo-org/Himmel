@@ -1,6 +1,6 @@
 ---
 name: ticket-standard
-description: Check a ticket draft for Plan, DoD and named Proof before filing; a refused draft is parked in an intake queue.
+description: Check a ticket draft before filing.
 ---
 
 # ticket-standard — no plan, no done-condition, no proof: no ticket (HIMMEL-5702)

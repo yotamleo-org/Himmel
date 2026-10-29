@@ -1,5 +1,5 @@
 ---
-description: Alias of /himmel-ops:chief — start a supervisor session (new) or hand it over (next).
+description: Alias of /himmel-ops:chief.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 

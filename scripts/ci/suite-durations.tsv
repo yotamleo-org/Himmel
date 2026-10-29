@@ -233,6 +233,7 @@ scripts/cr/test-cr-guarded-closure.sh	5
 scripts/cr/test-cr-pending-audit.sh	2
 scripts/cr/test-cr-round-metrics.sh	3
 scripts/cr/test-cr-scores.sh	1
+scripts/cr/test-cr-thread-recorder.sh	1
 scripts/cr/test-cr-tune.sh	1
 scripts/cr/test-critic-first-pass.sh	32
 scripts/cr/test-critic-panel-fallback.sh	18
@@ -946,6 +947,7 @@ scripts/macos/test-macos-lane.sh	5
 scripts/mcp/test-build-mcp-profiles.sh	0
 scripts/measurements/test-prose-audit.sh	2
 scripts/memory/test-audit-memory-capture.sh	0
+scripts/memory/test-memory-snapshot.sh	1
 scripts/observability/test-dashboard-lint.sh	0
 scripts/observability/test-exit-codes.sh	0
 scripts/observability/test-install-grafana.sh	1
@@ -1181,3 +1183,4 @@ scripts/luna/test-luna-index-hygiene.sh	1
 scripts/test-check-ci.sh	134
 scripts/test-worktree-orphans.sh	22
 scripts/eval/routing/test-score.sh	9
+scripts/test-himmel-doctor-mcp-sources.sh	1

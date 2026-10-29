@@ -14,6 +14,10 @@ at once. You talk to the chief; the chief runs the workers.
   exact commit, no open review threads, the required commit trailers.
 - It hands itself over to a fresh chief before its context fills, so a shift
   outlives any one session.
+<!-- mem:7a7399f97076 -->
+- Tell the chief to end every milestone report with a "Blocked on you" list:
+  one clickable PR URL or absolute path per line plus the one action wanted, or
+  "Nothing blocked on you". "Held for your review" with no link is not enough.
 
 The chief writes no code itself. Today the chief always runs from the himmel
 clone, whichever repo its workers change.
@@ -88,6 +92,15 @@ For the sources, authors and licences behind the team's tools, see
 - **Side session.** If you work in a side session of your own, hand the
   chief a ticket and a brief; never pass it a ruling by way of a relay. A
   ruling reaches the chief from you directly, or not at all.
+<!-- mem:ace94451564b -->
+- **Planning session.** A session that scopes an epic, writes its plan and runs
+  its evals hands the whole epic to the chief and then closes. The chief
+  reports in the normal flow: gate results as comments on the epic, operator
+  calls in the "Blocked on you" list you tell it to keep, never back to the
+  planning session.
+  Before closing it, check that the plan is in the epic body, the eval
+  artifacts are in the state repo (not a session scratchpad), the release
+  versions are set, and the chief has been told it is the single writer.
 
 ## Chief vs. `/afk-shift`
 
@@ -121,6 +134,7 @@ then writes `<root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md` from
 [`chief-template.md`](chief-template.md). A second `new` on the same day
 writes `…B-chief.md`; it never overwrites.
 
+<!-- mem:5987b4cf9ea9 -->
 **Keep the `-chief` suffix in a scoped name:** `--name roadmap-chief`, not
 `--name roadmap`. The suffix is load-bearing. `chief-compact-reinject.sh`
 re-injects the live state after a compaction only for a session whose
@@ -182,6 +196,13 @@ is. Workers and non-chief arms keep their standard default.
 
 A chief wants a real TTY. A session launched without one exits at the first
 idle cross-session message.
+
+<!-- mem:8d69de351916 -->
+A chief armed with `arm-resume.sh` to survive a reboot is itself launched by
+`at`: its stdin is the deleted at spool file (`ls -l /proc/<pid>/fd/0` shows
+it). Its first job is to hand off to a headed chief via
+`scripts/handover/headed-arm.sh`, before it launches any worker; otherwise the
+first worker `LIVE` or `READY` message is the idle message that ends it.
 
 ## ACTION ZERO
 
@@ -256,8 +277,9 @@ explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
-Three pre-launch checks that each cost a chief a dead worker when skipped:
+Four pre-launch checks that each cost a chief a dead worker when skipped:
 
+<!-- mem:c263127c8979 -->
 - **An old backlog bug may already be fixed.** Before dispatching a worker on a
   bug filed weeks ago, check that it still reproduces on current main: read
   the code the ticket names and look for a regression test that covers it.
@@ -268,7 +290,12 @@ Three pre-launch checks that each cost a chief a dead worker when skipped:
   if its brief carries `> **Tier:** opus — <category>: <reason>`. With an ASCII
   hyphen in place of the em-dash, `headed-arm-worker.sh` refuses: no launch log,
   nothing in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
-  `refusing` in its output.
+  `refusing` in its output. Never probe with a real launch under `timeout`
+  instead: the launch reserves a fleet slot under the session name for the
+  deadline plus 60 s, and a killed probe does not release it, so the real
+  launch then refuses with "fleet-size cap reached" in its log (a duplicate
+  reservation underneath) even when the fleet is far under cap. If a name is stranded,
+  relaunch under a fresh session name.
 - **Design-profile workers need a one-time interactive OAuth login.** The `design`
   profile enables `builder-visual@himmel`, whose `.mcp.json` registers the hosted
   `agent-native-dispatch` MCP server (`https://dispatch.agent-native.com/mcp`,
@@ -279,6 +306,14 @@ Three pre-launch checks that each cost a chief a dead worker when skipped:
   refuses the call from a salus session or when the payload names salus. `context7` needs no login. Do not arm a
   design-profile worker unattended (`--arm`, at-jobs, overnight) until a fresh
   session has been checked to keep the token.
+<!-- mem:c5cd55be07ae -->
+- **No live session may own the target worktree.** Disjoint file sets do not
+  prove it is safe: a session still running there may be mid-commit on the
+  same fix. Check `ListAgents` and `pgrep -af 'claude .*-n <name>'` against
+  the ticket before fanout. A quiet worktree does not prove the session is
+  dead: one running tests or awaiting a reply writes nothing. A killed session's uncommitted
+  files survive, but only in its own worktree, so re-dispatch into that
+  worktree rather than a fresh one.
 
 Pass **`--profile worker-impl`** on a native-lane worker: it narrows
 the worker's plugin set, appends the standing rules from
@@ -493,6 +528,12 @@ other delta is refused with nothing written.
 green at that exact head, zero unresolved review threads, attestation trailers
 in the first commit) → `GO` → the worker merges and reports `MERGED #<n> → <sha>`.
 
+<!-- mem:d21a0c8458ad -->
+A worker's `READY`, or a predecessor's note that a PR is clean, is not
+evidence: the chief is the reviewer of record, so it runs the checks before
+every GO. A successor that takes over a PR mid-`READY` re-verifies it instead
+of trusting the predecessor's GO.
+
 The Jira close is the worker's call from the brief, not a default:
 `merge-on-green.sh` transitions the ticket only on `--jira-transition`,
 and the brief's Ship contract carries `completes-ticket: yes|no`:
@@ -513,9 +554,16 @@ PR that is already `MERGED`, GitHub reports `mergeStateStatus: UNKNOWN`
 permanently, so check 1 always fails there; that is expected, not a bug, and
 the script's domain is a PR that has not yet merged.
 
+<!-- mem:220565770e67 -->
+GitHub's own `gh pr view <n> --json mergeStateStatus` is the authority on
+whether a PR can merge; never infer it from the check runs. The latest run of
+each check is right for reporting that check's state, never for deciding
+mergeability.
+
 `scripts/handover/chief-kit/ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>] <pr> <sha>`
 is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
 
+<!-- mem:7aba121571b0 -->
 The automated review ledger is keyed by head sha, so **every push needs its own review
 round**, even a one-line fix after a judge's NO-GO. A ruling of "no new
 `/pr-check` panel" leaves check 4 with no row to find, and the marker-clear
@@ -645,6 +693,16 @@ drains it at its next tool round whether you are live or gone (S1), so you wrap
 without waiting for the quote-backs; workers that did not quote back are named
 on the successor's informational `WAKE succession partial`.
 
+<!-- mem:8d14bb881ebb -->
+A session's "safe to exit" is not evidence either. Before you exit a detached
+session, commit and push its work, `TaskStop` any monitor it left running, and
+confirm it has no live descendants
+(`bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>` prints
+`CLOSABLE:`) and no orphaned shell, which that check cannot see once it is
+reparented (`bash scripts/handover/chief-kit/orphan-loops.sh --list` shows no
+`owner=orphan` row; it counts only wrappers older than 30 minutes); an exit
+with a worker still running orphans its uncommitted work.
+
 **Wrap only with no subagent still running**. An in-process
 subagent, a judge subagent above all, dies with its parent session and its verdict
 with it. Wrap with `chief.sh wrap <your doc> <release-token> '<line>'`: it
@@ -669,6 +727,13 @@ outlive the child.
 
 The HANDOFF is the successor's only required read. Written properly, the succession
 does not need the predecessor's transcript at all.
+
+<!-- mem:606678f8c0a1 -->
+Its list of running things is a snapshot, though. Before you pass on a "close
+these windows" or "still open" line, or any other claim about live sessions or
+workers, run `ListAgents` or `pgrep -af 'claude .*-n <prefix>'`; check a
+monitor or a suite by its own task id or pid. Name only what is actually live;
+by the time a successor reads the doc, the operator has usually closed them.
 
 ## Switching the Claude account
 
