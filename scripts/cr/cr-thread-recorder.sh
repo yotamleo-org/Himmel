@@ -266,7 +266,7 @@ console.log("+" + rows.length + " row(s) (" + inline + " thread(s), " + out + " 
 ' || return 1
   [ -s "$bf" ] || return 0
   CR_LEDGER="$LEDGER" bash "$HERE/ledger-append.sh" finding --batch-file "$bf" 2>"$bf.err" >/dev/null || {
-    tail -n 5 "$bf.err" >&2; return 1; }
+    cat "$bf.err" >&2; return 1; }
 }
 
 before=$(_cr_rows); n_pr=0; n_skip=0; n_fail=0; rc_all=0
