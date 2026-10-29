@@ -1,6 +1,6 @@
 ---
 name: memory-compound
-description: Use when the per-project auto-memory nears its ~24.4KB budget — compound durable gotchas into qmd-searchable notes.
+description: Use when auto-memory is over its size budget.
 ---
 
 # memory-compound — distil auto-memory into searchable substrate (HIMMEL-569)

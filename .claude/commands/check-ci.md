@@ -1,5 +1,5 @@
 ---
-description: Watch a PR's CI until it is mergeable (checks green, threads resolved), or wait on one workflow run; one exit code.
+description: Watch PR CI until mergeable, or a workflow run.
 argument-hint: [pr-number|branch|url] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only] | --run <run-id> [--job <name>] [--max-wait <sec>]
 ---
 

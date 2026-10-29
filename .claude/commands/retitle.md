@@ -1,5 +1,5 @@
 ---
-description: Infer a himmel-canonical session name from the current branch and print a ready-to-paste /rename line.
+description: Suggest a /rename name.
 argument-hint: [TICKET-ID ...]
 ---
 

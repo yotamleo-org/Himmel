@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Skill
-description: Bootstrap copy of himmel-ops:himmel-update-all for a checkout without the plugin; else use the plugin command.
+description: Use himmel-ops:himmel-update-all.
 argument-hint: "[--check] [--vault <path>] [--template-dir <path>]"
 ---
 

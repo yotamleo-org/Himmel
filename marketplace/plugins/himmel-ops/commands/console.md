@@ -1,5 +1,5 @@
 ---
-description: Old alias of /himmel-ops:chief; same behaviour.
+description: Alias of /himmel-ops:chief.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 

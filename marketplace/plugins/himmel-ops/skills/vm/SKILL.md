@@ -1,6 +1,6 @@
 ---
 name: vm
-description: Use to start/stop/snapshot/provision the himmel test VMs, run the VM e2e, or arm a claude session on them. Or /vm.
+description: Start/stop test VMs; run the VM e2e.
 ---
 
 # vm — VM lifecycle + e2e runbook (HIMMEL-491/493)

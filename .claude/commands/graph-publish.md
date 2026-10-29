@@ -1,5 +1,5 @@
 ---
-description: Publish a freshly-refreshed graphify graph — commit and open/refresh a PR against tracked graphify-out/ artifacts.
+description: Commit a graphify graph via PR.
 argument-hint: [--dry-run] [--base <branch>] [--no-fetch]
 ---
 

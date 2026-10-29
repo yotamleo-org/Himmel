@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Write, Skill
-description: Typed /telegram-clip wrapper over obsidian-triage:telegram-clip — invoke that skill directly.
+description: Wrapper; use obsidian-triage:telegram-clip.
 argument-hint: <message text or URL> [--vault <path>] [--dry-run]
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Print the per-critic agreed/availability scorecard and surface drop advice
+description: Per-critic CR scorecard.
 ---
 
 Run `bash scripts/cr/cr-scores.sh` (add `--window N` to narrow to the last N PRs; default 20).

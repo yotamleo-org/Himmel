@@ -1,5 +1,5 @@
 ---
-description: Configure which Obsidian vault the end-session-wiki hook captures sessions into — by name, path, or LUNA_VAULT_PATH.
+description: Pick the vault the end-session-wiki hook writes to.
 argument-hint: (none — interactive)
 ---
 

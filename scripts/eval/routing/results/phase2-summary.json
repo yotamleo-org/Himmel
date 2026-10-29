@@ -1,0 +1,140 @@
+{
+ "arms": [
+  {
+   "arm": "baseline",
+   "what": "phase-1 committed baseline (PR 4222)",
+   "listing": {
+    "tokens": 4711,
+    "sha": "phase-1"
+   },
+   "models": {
+    "haiku": {
+     "reps": 1,
+     "open": 0.87,
+     "sealed": 0.75,
+     "false_pick": 0.043,
+     "cost_per_run": 0.012
+    },
+    "sonnet": {
+     "reps": 1,
+     "open": 0.957,
+     "sealed": 0.75,
+     "false_pick": 0.0,
+     "cost_per_run": 0.203
+    },
+    "opus": {
+     "reps": 1,
+     "open": 0.957,
+     "sealed": 0.875,
+     "false_pick": 0.0,
+     "cost_per_run": 0.387
+    }
+   }
+  },
+  {
+   "arm": "before",
+   "what": "re-measured before the climb (HEAD f52528f06)",
+   "listing": {
+    "tokens": 4688,
+    "sha": "759a224783f3ec93"
+   },
+   "models": {
+    "haiku": {
+     "reps": 2,
+     "open": 0.957,
+     "sealed": 0.729,
+     "false_pick": 0.0,
+     "cost_per_run": 0.012
+    },
+    "sonnet": {
+     "reps": 1,
+     "open": 0.913,
+     "sealed": 0.833,
+     "false_pick": 0.0,
+     "cost_per_run": 0.201
+    },
+    "opus": {
+     "reps": 1,
+     "open": 0.957,
+     "sealed": 0.875,
+     "false_pick": 0.0,
+     "cost_per_run": 0.396
+    }
+   }
+  },
+  {
+   "arm": "climb",
+   "what": "after the climb (900236d5f)",
+   "listing": {
+    "tokens": 4668,
+    "sha": "15e74335c9d3ca43"
+   },
+   "models": {
+    "haiku": {
+     "reps": 8,
+     "open": 0.989,
+     "sealed": 0.833,
+     "false_pick": 0.003,
+     "cost_per_run": 0.01
+    },
+    "sonnet": {
+     "reps": 3,
+     "open": 1.0,
+     "sealed": 0.875,
+     "false_pick": 0.0,
+     "cost_per_run": 0.135
+    },
+    "opus": {
+     "reps": 3,
+     "open": 1.0,
+     "sealed": 0.917,
+     "false_pick": 0.0,
+     "cost_per_run": 0.289
+    }
+   }
+  },
+  {
+   "arm": "trim",
+   "what": "after the trim (this PR's head)",
+   "listing": {
+    "tokens": 3257,
+    "sha": "8457dfe744741cf8"
+   },
+   "models": {
+    "haiku": {
+     "reps": 5,
+     "open": 0.983,
+     "sealed": 0.858,
+     "false_pick": 0.009,
+     "cost_per_run": 0.009
+    },
+    "sonnet": {
+     "reps": 3,
+     "open": 1.0,
+     "sealed": 0.889,
+     "false_pick": 0.0,
+     "cost_per_run": 0.135
+    },
+    "opus": {
+     "reps": 3,
+     "open": 1.0,
+     "sealed": 0.931,
+     "false_pick": 0.0,
+     "cost_per_run": 0.269
+    }
+   }
+  }
+ ],
+ "control": {
+  "seed_broken": "pr-check,check-ci",
+  "listing": "climb",
+  "haiku": {
+   "reps": 1,
+   "open": 0.957,
+   "sealed": 0.75,
+   "false_pick": 0.0,
+   "cost_per_run": 0.014
+  }
+ },
+ "note": "sealed numbers are means over reps, aggregate only; per-case sealed rows are never written"
+}

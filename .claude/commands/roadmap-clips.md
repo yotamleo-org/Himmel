@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Write, Skill
-description: Typed /roadmap-clips wrapper over obsidian-triage:roadmap-clips — invoke that skill directly.
+description: Wrapper; use obsidian-triage:roadmap-clips.
 argument-hint: "[--vault <path>] [--dry-run]"
 ---
 

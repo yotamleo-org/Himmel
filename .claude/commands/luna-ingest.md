@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Skill, WebSearch, WebFetch
-description: Typed /luna-ingest wrapper over obsidian-triage:luna-ingest — invoke that skill directly.
+description: Wrapper; use obsidian-triage:luna-ingest.
 argument-hint: <github-url> [--vault <path>] [--dest <category>] [--limit <N>] [--deep] [--research] [--skill-scan] [--dry-run]
 ---
 

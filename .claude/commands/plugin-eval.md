@@ -1,5 +1,5 @@
 ---
-description: On-demand, usage-preflighted `claude plugin eval` run for one suite of one plugin
+description: Run `claude plugin eval` on one suite.
 argument-hint: <plugin> <suite>
 ---
 

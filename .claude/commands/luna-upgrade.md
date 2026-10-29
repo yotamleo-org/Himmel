@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, Skill
-description: Typed /luna-upgrade wrapper over obsidian-triage:luna-upgrade — invoke that skill directly.
+description: Wrapper; use obsidian-triage:luna-upgrade.
 argument-hint: [--check] [--vault <path>] [--template-dir <path>]
 ---
 

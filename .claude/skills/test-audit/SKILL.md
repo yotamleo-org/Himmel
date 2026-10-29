@@ -1,6 +1,6 @@
 ---
 name: test-audit
-description: "Invoke when writing, changing, reviewing or sweeping tests: authoring gate plus audit for low-value or coupled tests."
+description: "Use when writing or reviewing tests."
 ---
 
 > **Vendored and adapted, pinned to a commit (HIMMEL-3580).** Source:

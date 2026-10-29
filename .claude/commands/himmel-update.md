@@ -1,5 +1,5 @@
 ---
-description: Bootstrap copy of himmel-ops:himmel-update for a checkout without the plugin; else use the plugin command.
+description: Use himmel-ops:himmel-update.
 ---
 
 Updates an existing himmel install. **`git pull` is the only thing that

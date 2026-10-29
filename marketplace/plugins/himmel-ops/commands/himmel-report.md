@@ -1,5 +1,5 @@
 ---
-description: Report a wrong refusal or review point: a redacted issue draft (sent only on your yes) plus a local lesson.
+description: Report a wrong himmel refusal.
 ---
 
 Report the last refusal (a hook or classifier denial) or review point (a critic or CodeRabbit finding) you

@@ -270,6 +270,10 @@ Baseline (2026-10-29, listing of 155 entries, about 4,700 tokens;
 | sonnet | 0.85 | 0.96 | 0.75 | 0.15 | 0.00 | $0.20 |
 | opus | 0.91 | 0.96 | 0.88 | 0.09 | 0.00 | $0.39 |
 
+Phase 2 (HIMMEL-8088) hill-climbed the descriptions, then trimmed the listing to
+3,257 tokens. Sealed accuracy after the trim is haiku 0.86, sonnet 0.89 and opus
+0.93, means over 3 to 5 reps. `routing/results/phase2-summary.md` has every arm.
+
 **ponytail:** the listing renders every description uncapped, as an operator
 session sees it; upgrade: a `--profile` flag that applies a launch profile's
 name-only overrides and lists MCP tools by name until ToolSearch.

@@ -1,6 +1,6 @@
 ---
 name: comment-sicko
-description: Finds comments and workaround code that should be deleted in a diff or in named files. It targets narration, banners, commented-out code, stale TODOs, and suppressions or hacks it flags MUST KILL. Use it before review or merge when a change needs a comment or workaround sweep. It returns a list of deletions with file, line and reason, plus any edits it made. Do not use it for general code review or for logic bugs.
+description: Finds comments and hacks to delete.
 model: sonnet
 tools: Read, Edit, Bash
 ---

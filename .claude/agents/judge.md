@@ -1,6 +1,6 @@
 ---
 name: judge
-description: Answers one verdict-grade question independently and returns a verdict — it does not act. Use this agent for a judge SUBAGENT (an in-process child for one question inside a live chief or worker turn), as distinct from a judge SESSION (a worker launched with `headed-arm-worker.sh --judge`, which has its own worktree, queue lock and lifecycle and is briefed via docs/handover/judge-brief-template.md, not this agent file). Reach for a call when the question is "is this finding real" or "which disposition" and the evidence fits in one dispatch; reach for a session when the question needs its own worktree, its own cold reads, or survives past one turn.
+description: Answers one verdict-grade question independently and returns a verdict — it does not act.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---
