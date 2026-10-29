@@ -5,7 +5,8 @@
 # Per peer one line: CHECKED <pr> <verdict>, CONFLICT <pr> <files>, SKIPPED <pr> <reason> or
 # TIMEOUT <pr> <what>; then PEERS checked=<n> skipped=<n> conflicting=<n>. A timeout counts as skipped.
 # Exit 0: nothing skipped or conflicting; 1: a conflict (FINDING edge-upgraded); 3: some peer was
-# skipped and none conflicts (unknown); 2: no peer could be checked or the peer list was unreadable.
+# skipped and none conflicts (unknown); 2: no peer could be checked, the peer list was unreadable,
+# or the request was malformed (a usage error, never the conflict status 1).
 # --pr/--peer reads both PRs' current heads, prints HEADS <n>=<sha> <m>=<sha>, reports that one
 # pair, and runs even with the chain_push_check flag off (an explicit call wants a real answer).
 # Every gh and git subprocess is bounded by CHAIN_PUSH_CHECK_TIMEOUT seconds (default 60).
