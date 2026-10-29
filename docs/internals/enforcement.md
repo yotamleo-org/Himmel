@@ -2135,7 +2135,7 @@ live in `test-guard-memory-capture.sh` (S/F/D/W/N cases).
 file (`*.md` other than `MEMORY.md`; `*.bak` stays exempt) over `MEMORY_TOPIC_MAX`
 (default 8192) bytes **and** bigger than before fires `topic-cap`. Shrinking never
 fires. `MEMORY_TOPIC_MODE` (default `warn`) picks the outcome: `warn` allows the
-write with an advisory (`permissionDecision` allow plus `additionalContext`) and
+write with an `additionalContext` advisory (no `permissionDecision`) and
 logs a `warn` row; `deny` exits 2, naming the bypass `MEMORY_CAPTURE_OK=1` in the
 launching shell. Both texts send the session to `himmel-ops:memory-compound` to
 split the theme into a hub plus sub-files of about 5 KB, or, mid-task, to add the

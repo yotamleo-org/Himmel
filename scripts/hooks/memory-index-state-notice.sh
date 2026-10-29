@@ -97,7 +97,7 @@ over_ceil=0; [ "$n" -gt "$LINE_CEIL" ] && over_ceil=1
 
 # The harness loads only the first 200 lines / 25 KB of the index: a different
 # (and harder) limit than himmel's 60-line routing ceiling.
-idx_lines="$(awk 'END{print NR+0}' "$idx" 2>/dev/null)"; idx_bytes="$(wc -c 2>/dev/null < "$idx" | tr -d ' ')"  # swallow-ok: a non-numeric count resets to 0 on the next line; the notice fails open
+idx_lines="$(head -c 262144 "$idx" 2>/dev/null | awk 'END{print NR+0}')"; idx_bytes="$(head -c 262144 "$idx" 2>/dev/null | wc -c | tr -d ' ')"  # swallow-ok: a non-numeric count resets to 0 on the next line; the notice fails open
 case "$idx_lines$idx_bytes" in ''|*[!0-9]*) idx_lines=0; idx_bytes=0 ;; esac
 over_load=0; { [ "$idx_lines" -gt "$LOAD_LINES" ] || [ "$idx_bytes" -gt "$BUDGET" ]; } 2>/dev/null && over_load=1
 
