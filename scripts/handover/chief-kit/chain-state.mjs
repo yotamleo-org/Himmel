@@ -11,7 +11,7 @@
 //     and `release` rows, written by ticket-hold.sh; every row naming a chain or one of its
 //     tickets is listed in that chain's change log.
 //   status-events.jsonl beside it: merge rows (contract=yes completes a ticket, L5; the others
-//     are partial PR ticks), hold-release rows, and holds set without --kind/--on.
+//     are partial PR ticks), hold-release rows, and hold rows that have no chain-log row.
 // --version keeps only tickets in that fixVersion; an open blocker outside it is a real block.
 //
 // Per chain: steps (L1: a topological layer over the chain's links, so tickets that can run
@@ -143,10 +143,12 @@ for (const r of chainLog) {
     holds.push({ key: r.key, on: r.on || null, kind: r.kind || 'hold', source: 'chain-log', added: ms(r.ts),
         reason: r.reason || null, owner: r.who || null, until: r.until || null });
 }
-// a hold set with --kind or --on has its chain-log row; one set without them has only its event row
+// a hold set with --kind or --on has its chain-log row; the event row stands in for one set
+// without them, or one whose chain-log row was not written (written within a minute of the event)
+const logged = (key, at) => chainLog.some(c => c.change === 'hold' && c.key === key && Math.abs(ms(c.ts) - at) <= 60000);
 for (const r of events) {
-    if (r.event !== 'hold' || r.result !== 'moved' || r.kind || r.on) continue;
-    holds.push({ key: r.key, on: null, kind: 'hold', source: 'status-events', added: ms(r.ts), reason: null, owner: null, until: null });
+    if (r.event !== 'hold' || r.result !== 'moved' || logged(r.key, ms(r.ts))) continue;
+    holds.push({ key: r.key, on: r.on || null, kind: r.kind || 'hold', source: 'status-events', added: ms(r.ts), reason: null, owner: null, until: null });
 }
 for (const h of holds) {
     const rel = releases.filter(r => r.key === h.key && r.at >= h.added).map(r => r.at);
