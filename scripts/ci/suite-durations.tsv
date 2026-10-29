@@ -1046,7 +1046,7 @@ scripts/test-e2e-provenance-settings.sh	8
 scripts/test-e2e-symmetry-isolation.sh	8
 scripts/test-e2e-symmetry.sh	6
 scripts/test-handover-link.sh	0
-scripts/test-himmel-doctor.sh	530
+scripts/test-himmel-doctor.sh	510
 scripts/test-himmel-update-axis-b.sh	11
 scripts/test-himmel-update-chain.sh	3
 scripts/test-himmel-update-check.sh	17
