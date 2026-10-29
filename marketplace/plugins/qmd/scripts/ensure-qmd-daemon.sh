@@ -396,7 +396,7 @@ swap_lock_reclaim() {
   return 0
 }
 mkdir -p "$qmd_state_dir" 2>/dev/null
-# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file, and a contended start exits instead of waiting
+# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended ensure or off start exits at once, a swap start retries it for up to 8 x 0.25 s
 if ! mkdir "$swap_lock" 2>/dev/null; then
   swap_pid="$(cat "$swap_lock/pid" 2>/dev/null)"
   if swap_lock_stale "$swap_lock"; then
