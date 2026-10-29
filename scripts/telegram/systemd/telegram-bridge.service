@@ -1,5 +1,5 @@
 # telegram-bridge.service — systemd USER unit for the Telegram bun bridge
-# (HIMMEL-2176 Task 9, A12). Linux persistence for the bridge.
+# Linux persistence for the bridge.
 #
 # Installed to ~/.config/systemd/user/telegram-bridge.service by
 # scripts/himmelctl/lib/bridge-persistence.js's installSystemdUnit() — that
@@ -7,15 +7,15 @@
 # operator's himmel checkout path. Do not edit an installed copy by hand;
 # re-run the installer instead.
 #
-# SHAPE (changed in HIMMEL-2551 — was Type=oneshot + RemainAfterExit=yes):
+# SHAPE (changed from Type=oneshot + RemainAfterExit=yes):
 # ExecStart runs `restart-bridge.sh run`, which takes the launcher lock, does
 # the instance-scoped stale sweep, and then EXECs the bun supervisor in the
 # FOREGROUND — so the supervisor itself is the unit's MAINPID and Type=simple
 # is the honest model. The old oneshot shape was correct only while ExecStart
 # *detached* (nohup) and exited: it made systemd blind to the supervisor's
 # lifetime, which is exactly why the bridge sat there reporting
-# `active (exited)` through both of the silent process deaths HIMMEL-2551 was
-# filed for. With the supervisor as MAINPID, Restart=on-failure also covers
+# `active (exited)` through both of the silent process deaths that were
+# reported. With the supervisor as MAINPID, Restart=on-failure also covers
 # signal-termination (systemd counts a signal death as a failure), so the unit
 # self-heals from an out-of-band SIGKILL — defence in depth that still earns
 # its place after the kill bug itself is fixed.

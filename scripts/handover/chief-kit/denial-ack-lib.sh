@@ -23,11 +23,13 @@
 # ponytail: 1 s timestamp granularity (a page landing in the same second as an
 #   ack reads as acked), and a page is only recorded for a rise a RUNNING
 #   chief-wait saw; upgrade path: a page sequence number in both records if a
-#   same-second miss is ever observed, HIMMEL-3724.
+#   same-second miss is ever observed.
+# ponytail: tracked as HIMMEL-3724.
 # ponytail: a worker keyed `<dir>#<sid8>` (a non-worktree cwd) can be paged and
 #   acked but never matched to a launch, because a launch has no session id
 #   yet; upgrade path: key launches by the resume_cwd's dir label if such workers
-#   appear, HIMMEL-3724.
+#   appear.
+# ponytail: tracked as HIMMEL-3724.
 
 # shellcheck source=../../lib/prim.sh
 . "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../../lib/prim.sh" || return 1
