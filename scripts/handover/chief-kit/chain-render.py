@@ -16,40 +16,48 @@ are listed by wave, then ticket number, which is the order tracker.py prints the
 `[{name, steps: [{key, wave}]}]` shape of tracker.py --chains-file; a step carries no hand state, because the
 tracker derives it from the Jira mirror on every render.
 
-A ticket that is Done in the mirror (tracker.py's bucket 'done') is not a step and does not hold its successors, so a
-Done ticket is never rendered as next. The tickets of a hard cycle share one wave after every step that is not stuck,
+A ticket that is Done in the mirror (tracker.py's buckets 'done' and 'wont', which share SHIPPED with this file) is not a
+step and does not hold its successors, so a closed ticket is never rendered as next. The tickets of a hard cycle share one wave after every step that is not stuck,
 and whatever waits on them comes after; they are never dropped.
 A ticket missing from the mirror stays a step (the tracker shows it unknown).
 
 --mirror defaults to $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL. Exit 0 rendered or flag off;
-2 on an unreadable graph, mirror or bad arguments (nothing is written).
+2 on an unreadable graph, mirror, bad arguments or a failed write (nothing is written).
+
+The file is written through tempfile.mkstemp in the --out directory and os.replace, never a fixed <out>.tmp, so a path
+planted beside it is not followed; on an OSError the temp file is removed and the exit is 2.
 """
 import argparse
 import json
 import os
 import re
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
 from flags import himmel_flag, FlagError  # noqa: E402
 
 KEY_RE = re.compile(r'HIMMEL-(\d+)$')
 HARD = ('H1', 'H2')
-# tracker.py SHIPPED: a closed ticket with another resolution is not shipped, so it is not Done here
-SHIPPED = ('done', 'fixed')
+# tracker.py SHIPPED, the same set: a null, missing or empty resolution reads '' there and here
+SHIPPED = ('', 'done', 'fixed')
 
 
 def is_done(mirror, key):
+    """'done' (shipped), 'wont' (closed with another resolution) or None (open, or not in the mirror)."""
     try:
         txt = open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read()
     except FileNotFoundError:
-        return False  # not in the mirror: a step, the tracker shows it unknown
+        return None  # not in the mirror: a step, the tracker shows it unknown
     fm = txt.split('---', 2)[1] if txt.count('---') >= 2 else ''
     f = dict(l.split(':', 1) for l in fm.splitlines() if ':' in l and not l.startswith(' '))
     if f.get('statusCategory', '').strip().strip('"') != 'Done':
-        return False
-    res = f.get('resolution', 'null').strip().strip('"')
-    return res.lower() in SHIPPED
+        return None
+    try:
+        res = json.loads(f.get('resolution', 'null'))
+    except ValueError:
+        res = None
+    return 'done' if (res if isinstance(res, str) else '').strip().lower() in SHIPPED else 'wont'
 
 
 def waves(keys, edges):
@@ -130,11 +138,21 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         print('chain-render: cannot read the graph %s or the mirror %s (%s)' % (a.graph, a.mirror, e), file=sys.stderr)
         return 2
-    tmp = a.out + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(res, f, indent=1)
-        f.write('\n')
-    os.replace(tmp, a.out)
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(a.out)), prefix=os.path.basename(a.out) + '.', suffix='.tmp')
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(res, f, indent=1)
+            f.write('\n')
+        os.replace(tmp, a.out)
+    except OSError as e:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        print('chain-render: cannot write %s (%s)' % (a.out, e), file=sys.stderr)
+        return 2
     print('chain-render: wrote %d chain(s), %d step(s) to %s' % (len(res), sum(len(c['steps']) for c in res), a.out))
     return 0
 
