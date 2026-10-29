@@ -9,7 +9,8 @@
 #        ticket-hold.sh <KEY> --release [--owner <who>]
 #   --until is advisory: nothing releases a hold on that date (the Chains tab reads a date
 #   hold as date-gated until then); --kind date needs it.
-#   --kind and --on (the ticket it waits on) go into the HOLD comment and the event row.
+#   --kind and --on (the ticket it waits on) go into the HOLD comment and the event row;
+#   with --kind, so does --until.
 #
 # Hold = `jira edit --add-labels held`, the label read back, then one HOLD
 # comment naming the reason, owner and date. Release = `--remove-labels held`,
@@ -78,7 +79,7 @@ else
     EVENT=hold FLAG=--add-labels
 fi
 
-row() { status_event event="$EVENT" key="$KEY" ${KIND:+kind="$KIND"} ${ON:+on="$ON"} "$@"; }
+row() { status_event event="$EVENT" key="$KEY" ${KIND:+kind="$KIND"} ${ON:+on="$ON"} ${KIND:+${UNTIL:+until="$UNTIL"}} "$@"; }
 
 # chain_log <k=v>... - one row in chain-log.jsonl, beside status-events.jsonl.
 chain_log() {

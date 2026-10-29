@@ -148,7 +148,7 @@ for (const r of chainLog) {
 const logged = (key, at) => chainLog.some(c => c.change === 'hold' && c.key === key && Math.abs(ms(c.ts) - at) <= 60000);
 for (const r of events) {
     if (r.event !== 'hold' || r.result !== 'moved' || logged(r.key, ms(r.ts))) continue;
-    holds.push({ key: r.key, on: r.on || null, kind: r.kind || 'hold', source: 'status-events', added: ms(r.ts), reason: null, owner: null, until: null });
+    holds.push({ key: r.key, on: r.on || null, kind: r.kind || 'hold', source: 'status-events', added: ms(r.ts), reason: null, owner: null, until: r.until || null });
 }
 for (const h of holds) {
     const rel = releases.filter(r => r.key === h.key && r.at >= h.added).map(r => r.at);

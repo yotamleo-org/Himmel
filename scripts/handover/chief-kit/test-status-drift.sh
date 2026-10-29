@@ -511,6 +511,9 @@ check "3a: and one chain-log row" "$(jq -r '[.change, .key, .kind, .on, .who, .r
     "hold $K file-collision HIMMEL-8009 chief enforcement.md"
 hold "$K" --release --owner chief
 check "3a: a release appends one chain-log row" "$(jq -r 'select(.change == "release") | .key + " " + .who' "$CLOG")" "$K chief"
+reset "To Do"
+hold "$K" --reason r --owner o --kind date --until 2026-11-07
+check "3a: a date hold's event row carries its date" "$(rowq 'select(.event == "hold") | .kind + " " + .until')" "date 2026-11-07"
 
 reset "To Do"
 hold "$K" --reason r --owner o

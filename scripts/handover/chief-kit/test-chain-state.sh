@@ -187,6 +187,11 @@ issue HIMMEL-1 "To Do" labels='["chain-x"]'
 ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"operator","result":"moved"}'
 cs
 check "kinds: a typed hold whose chain-log row is missing still waits, from its event row" "$(tk HIMMEL-1 .state)" "waits on you"
+reset
+issue HIMMEL-1 "To Do" labels='["chain-x"]'
+ev '{"ts":"2026-11-01T00:00:00Z","event":"hold","key":"HIMMEL-1","kind":"date","until":"2026-11-07","result":"moved"}'
+NOW=2026-11-08T00:00:00Z cs
+check "kinds: and a date hold read from its event row clears past its date" "$(tk HIMMEL-1 .state)" "can launch"
 
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
