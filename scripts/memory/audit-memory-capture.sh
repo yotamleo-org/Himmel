@@ -117,12 +117,13 @@ if [ "$MODE" = lost ]; then
         store_files "$d" | while IFS= read -r n; do
             awk 'FNR==1 { fm = ($0 == "---") ? 1 : 0; if (fm) next }
                  fm == 1 { if ($0 == "---") fm = 2; next }
-                 $0 !~ /^[[:space:]]*$/ { print }' "$d/$n"
+                 $0 !~ /^[[:space:]]*$/ { print }' "$d/$n" || exit 1
         done
     }
-    body_lines "$SNAP" | sort > "$TMP/snap"
-    body_lines "$MEMDIR" | sort > "$TMP/cur"
-    comm -23 "$TMP/snap" "$TMP/cur" > "$TMP/lost"
+    lost_fail() { printf 'memory-capture audit: --lost-lines could not read a store; refusing to report nothing lost\n' >&2; exit 2; }
+    body_lines "$SNAP" | sort > "$TMP/snap" || lost_fail
+    body_lines "$MEMDIR" | sort > "$TMP/cur" || lost_fail
+    comm -23 "$TMP/snap" "$TMP/cur" > "$TMP/lost" || lost_fail
     n_lost="$(awk 'END{print NR+0}' "$TMP/lost")"
     cat "$TMP/lost"
     printf 'memory-capture audit: %s lost line(s)\n' "$n_lost" >&2

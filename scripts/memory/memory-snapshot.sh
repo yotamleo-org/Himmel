@@ -90,12 +90,12 @@ take)
         [ -z "$(find "$dir" -mindepth 1 -maxdepth 1 | head -1)" ] || die "snapshot dir is not empty: $dir"
     fi
     mkdir -p "$dir" || die "cannot create $dir"
-    : > "$dir/$MANIFEST"
+    : > "$dir/$MANIFEST" || die "cannot write $dir/$MANIFEST"
     store_files "$MEMDIR" | while IFS= read -r n; do
         cp -p "$MEMDIR/$n" "$dir/$n" || exit 2
         h="$(sha256_hex "$dir/$n")" && [ -n "$h" ] || exit 2
-        printf '%s\t%s\n' "$h" "$n" >> "$dir/$MANIFEST"
-    done || die "copy or hash failed"
+        printf '%s\t%s\n' "$h" "$n" >> "$dir/$MANIFEST" || exit 2
+    done || die "copy, hash or manifest write failed"
     printf 'snapshot: %s files in %s\n' "$(wc -l < "$dir/$MANIFEST" | tr -d ' ')" "$dir"
     ;;
 verify)
@@ -146,6 +146,9 @@ restore)
         hl="$(hash_in "$MEMDIR" "$n")"
         if [ -n "$hb" ] && [ "$hb" = "$hc" ]; then                          # R1
             skipped=$((skipped+1))
+        elif [ -z "$hl" ] && [ -f "$MEMDIR/$n" ]; then                     # present but unhashable
+            printf 'conflict: %s (cannot hash the live file; left untouched)\n' "$n"
+            conflicts=$((conflicts+1))
         elif [ -n "$hb" ] && [ "$hl" = "$hc" ]; then                        # R2
             cp -p "$before/$n" "$MEMDIR/$n" || die "cannot restore $n"
             printf 'restored: %s\n' "$n"; restored=$((restored+1))

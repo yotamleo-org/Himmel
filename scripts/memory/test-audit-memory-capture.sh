@@ -266,5 +266,10 @@ mk; printf 'the old whole line\n' > "$SN/a.md"; printf 'the old whole line edite
 ll "$LV" "$SN"
 assert_rc "L4 a partial edit prints the whole old line" 0 "$([ "$LL_OUT" = "the old whole line" ] && echo 0 || echo 1)"
 ll "$LV" "$SB/no-such-snap"; assert_rc "L5 missing snapshot dir exits 2" 2 "$LL_RC"
+# L6: a reader that fails must not read as "nothing lost".
+FB="$SB/failbin"; mkdir -p "$FB"; printf '#!/bin/sh\nexit 1\n' > "$FB/awk"; chmod +x "$FB/awk"
+mk; printf 'x\n' > "$SN/a.md"; printf 'y\n' > "$LV/a.md"
+LL_OUT="$(PATH="$FB:$PATH" MEMDIR="$LV" LUNA_VAULT_PATH="$VAULT" MEMORY_AUDIT_SKIP_QMD=1 bash "$AUDIT" --lost-lines "$SN" 2>/dev/null)"; LL_RC=$?
+assert_rc "L6 a failing reader exits 2" 2 "$LL_RC"
 
 exit "$FAILED"

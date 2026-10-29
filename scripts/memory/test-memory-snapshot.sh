@@ -153,6 +153,18 @@ out="$(PATH="$BIN2" MEMDIR="$MEM" "$BASH" "$SNAPSHOT" take "$SNAPS/A" 2>&1)"; rc
 assert_rc "S11 take with a failing hasher" 2 "$rc"
 ok "S11 manifest holds no empty digest" test -z "$(awk -F'\t' '$1 == ""' "$SNAPS/A/.snapshot-manifest" 2>/dev/null)"
 
+# S12: a live file whose hash fails is a conflict, never read as absent.
+BIN3="$SB/bin3"; mkdir -p "$BIN3"; cp -P "$BIN"/* "$BIN3"/; rm -f "$BIN3/shasum"
+# shellcheck disable=SC2016  # the shim body is literal text, expanded when the shim runs
+printf '#!/bin/sh\ncase "$*" in *"%s/mem/"*) exit 1 ;; esac\n[ "$1" = "-a" ] && shift 2\nexec "%s" %s "$@"\n' "$SB" "$REAL_SHA" "$REAL_ARGS" > "$BIN3/shasum"
+chmod +x "$BIN3/shasum"
+fresh; pass
+w b.md other-writer
+out="$(PATH="$BIN3" MEMDIR="$MEM" "$BASH" "$SNAPSHOT" restore "$SNAPS/A" --expect "$SNAPS/B" 2>&1)"; rc=$?
+assert_rc "S12 unhashable live file exits 1" 1 "$rc"
+ok "S12 the live bytes stay" body b.md other-writer
+ok "S12 conflict names the file" has "$out" "b.md"
+
 # Hashing went through shasum, never sha256sum; no cp names the memory path.
 ok "P1 sha256sum hidden from the script's PATH" test -z "$(PATH="$BIN"; command -v sha256sum)"
 ok "P1 the shasum shim was used" test -s "$SB/shasum.log"
