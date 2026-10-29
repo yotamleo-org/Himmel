@@ -495,7 +495,7 @@ else echo "SKIP W1/W2 (node not on PATH)"; fi
 # topic files over MEMORY_TOPIC_MAX that grow get a warn-only advisory; every
 # capture-log row names its session. All rows use a scratch log + scratch store.
 M2="$SB/.claude/projects/p2/memory"; mkdir -p "$M2"
-fill() { head -c "$1" /dev/zero | tr '\0' 'a'; }   # $1 bytes of 'a'
+fill() { head -c "$1" /dev/zero | tr '\0' 'a'; }   # $1 bytes of 'a' # read-sink-ok: reads /dev/zero, $1 is a byte count
 # $1=tool $2=file $3=content $4=session_id -> $SB/p.json
 wp() {
     jq -nc --arg t "$1" --arg f "$2" --arg c "$3" --arg s "${4-}" \
