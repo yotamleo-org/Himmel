@@ -193,9 +193,12 @@ payload() { # payload <tool_name> <command>
 # own timeout-bin.sh, which it now also refuses to run without).
 cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
   local _d
-  for _d in cr-signal cr-body-findings cr-available cr-ledger-evidence coderabbit-signal coderabbit-body-findings coderabbit-available review-ledger-evidence review-merge-gate nwo timeout-bin critics-config resolve-node; do
+  for _d in coderabbit-signal coderabbit-body-findings coderabbit-available review-ledger-evidence review-merge-gate nwo timeout-bin critics-config resolve-node; do
     cp "$SCRIPT_DIR/../lib/$_d.sh" "$1/"
   done
+  # The frozen red-control hooks source the old library path: a one-line shim to the real library. # old-term-ok
+  # shellcheck disable=SC2016 # the shim body is expanded when sourced, not here
+  printf '%s\n' '. "${BASH_SOURCE[0]%/*}/review-merge-gate.sh"' > "$1/cr-merge-gate.sh" # old-term-ok
   mkdir -p "$1/../cr"
   cp "$SCRIPT_DIR/../cr/critics.json" "$1/../cr/"
 }
@@ -785,7 +788,6 @@ printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.
 # running past 8s, proving the hang is real.
 RED_NOTB_ROOT="$TMP/no-timeout-red"
 mkdir -p "$RED_NOTB_ROOT/scripts/hooks" "$RED_NOTB_ROOT/scripts/lib"
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$RED_NOTB_ROOT/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$RED_NOTB_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$RED_NOTB_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$RED_NOTB_ROOT/scripts/lib/handover-path.sh"
@@ -887,7 +889,6 @@ EOF
 NOGOMAC_ROOT="$TMP/no-go-mac-hook"
 mkdir -p "$NOGOMAC_ROOT/scripts/hooks" "$NOGOMAC_ROOT/scripts/lib"
 cp "$HOOK" "$NOGOMAC_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$NOGOMAC_ROOT/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$NOGOMAC_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$NOGOMAC_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$NOGOMAC_ROOT/scripts/lib/handover-path.sh"
@@ -916,7 +917,6 @@ fi
 # go_resolve_root, rc=0).
 RESOLVE_ROOT_ANCHOR="$TMP/resolve-root-anchor"
 mkdir -p "$RESOLVE_ROOT_ANCHOR/scripts/hooks" "$RESOLVE_ROOT_ANCHOR/scripts/lib"
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$RESOLVE_ROOT_ANCHOR/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$RESOLVE_ROOT_ANCHOR/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$RESOLVE_ROOT_ANCHOR/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$RESOLVE_ROOT_ANCHOR/scripts/lib/handover-path.sh"
@@ -985,7 +985,6 @@ PRE_FIX_ROOT="$TMP/pre-fix-hook"
 mkdir -p "$PRE_FIX_ROOT/scripts/hooks" "$PRE_FIX_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-fix.sh" \
     "$PRE_FIX_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" 2>/dev/null
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$PRE_FIX_ROOT/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$PRE_FIX_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$PRE_FIX_ROOT/scripts/lib/ci-green-gate.sh"
 # The mutant wrapper always exits 0 itself (it prints the gated hook's rc as
@@ -1043,7 +1042,6 @@ PRE_PIN_ROOT="$TMP/pre-pin-hook"
 mkdir -p "$PRE_PIN_ROOT/scripts/hooks" "$PRE_PIN_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-pin.sh" \
     "$PRE_PIN_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" 2>/dev/null
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$PRE_PIN_ROOT/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$PRE_PIN_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$PRE_PIN_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/go-gate.sh" "$PRE_PIN_ROOT/scripts/lib/go-gate.sh"
@@ -1109,7 +1107,6 @@ else
     mkdir -p "$PRE_RC127_ROOT/scripts/hooks" "$PRE_RC127_ROOT/scripts/lib"
     cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-rc127-fix.sh" \
         "$PRE_RC127_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" 2>/dev/null
-    cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$PRE_RC127_ROOT/scripts/lib/cr-merge-gate.sh"
     cp_crgate_deps "$PRE_RC127_ROOT/scripts/lib"
     cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$PRE_RC127_ROOT/scripts/lib/ci-green-gate.sh"
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$PRE_RC127_ROOT/scripts/lib/handover-path.sh"
@@ -1144,7 +1141,6 @@ RUNEOF
     POST_RC127_ROOT="$TMP/post-rc127-hook"
     mkdir -p "$POST_RC127_ROOT/scripts/hooks" "$POST_RC127_ROOT/scripts/lib"
     cp "$HOOK" "$POST_RC127_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
-    cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$POST_RC127_ROOT/scripts/lib/cr-merge-gate.sh"
     cp_crgate_deps "$POST_RC127_ROOT/scripts/lib"
     cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$POST_RC127_ROOT/scripts/lib/ci-green-gate.sh"
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$POST_RC127_ROOT/scripts/lib/handover-path.sh"
@@ -1183,7 +1179,6 @@ printf '#!/usr/bin/env bash\nif this is not valid bash (((\n' > "$BROKEN_GOGATE"
 BROKEN_GOGATE_ROOT="$TMP/broken-gogate-hook"
 mkdir -p "$BROKEN_GOGATE_ROOT/scripts/hooks" "$BROKEN_GOGATE_ROOT/scripts/lib"
 cp "$HOOK" "$BROKEN_GOGATE_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
-cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$BROKEN_GOGATE_ROOT/scripts/lib/cr-merge-gate.sh"
 cp_crgate_deps "$BROKEN_GOGATE_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$BROKEN_GOGATE_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$BROKEN_GOGATE_ROOT/scripts/lib/handover-path.sh"
@@ -1252,7 +1247,6 @@ rc4_extract_hook() {
     mkdir -p "$1/scripts/hooks" "$1/scripts/lib"
     cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-rc4-fix.sh" \
         "$1/scripts/hooks/block-unresolved-cr-merge.sh" 2>/dev/null
-    cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$1/scripts/lib/cr-merge-gate.sh"
     cp_crgate_deps "$1/scripts/lib"
     cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$1/scripts/lib/ci-green-gate.sh"
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$1/scripts/lib/handover-path.sh"
@@ -1302,7 +1296,6 @@ RUNEOF
     POST_RC4A_ROOT="$TMP/post-rc4a-hook"
     mkdir -p "$POST_RC4A_ROOT/scripts/hooks" "$POST_RC4A_ROOT/scripts/lib"
     cp "$HOOK" "$POST_RC4A_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
-    cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$POST_RC4A_ROOT/scripts/lib/cr-merge-gate.sh"
     cp_crgate_deps "$POST_RC4A_ROOT/scripts/lib"
     cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$POST_RC4A_ROOT/scripts/lib/ci-green-gate.sh"
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$POST_RC4A_ROOT/scripts/lib/handover-path.sh"
@@ -1357,7 +1350,6 @@ RUNEOF
     POST_RC4B_ROOT="$TMP/post-rc4b-hook"
     mkdir -p "$POST_RC4B_ROOT/scripts/hooks" "$POST_RC4B_ROOT/scripts/lib"
     cp "$HOOK" "$POST_RC4B_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
-    cp "$SCRIPT_DIR/../lib/cr-merge-gate.sh" "$POST_RC4B_ROOT/scripts/lib/cr-merge-gate.sh"
     cp_crgate_deps "$POST_RC4B_ROOT/scripts/lib"
     cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$POST_RC4B_ROOT/scripts/lib/ci-green-gate.sh"
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$POST_RC4B_ROOT/scripts/lib/handover-path.sh"

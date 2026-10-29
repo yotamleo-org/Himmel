@@ -1,7 +1,7 @@
 {"id":"v1-old","query":"how does the console arm a leg","collections":["himmel"],"expect":["himmel/docs/handover/running-a-chief.md"]}
 {"id":"v1-new","query":"how does the chief arm a worker","collections":["himmel"],"expect":["himmel/docs/handover/running-a-chief.md"]}
-{"id":"v2-old","query":"how does a leg report a blocker to the console","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
-{"id":"v2-new","query":"how does a worker report a blocker to the chief","collections":["himmel"],"expect":["himmel/docs/handover/leg-preface.md"]}
+{"id":"v2-old","query":"how does a leg report a blocker to the console","collections":["himmel"],"expect":["himmel/docs/handover/worker-preface.md"]}
+{"id":"v2-new","query":"how does a worker report a blocker to the chief","collections":["himmel"],"expect":["himmel/docs/handover/worker-preface.md"]}
 {"id":"v3-old","query":"where is the bank lift file guarded","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md","himmel/docs/glossary.md"]}
 {"id":"v3-new","query":"where is the usage lift file guarded","collections":["himmel"],"expect":["himmel/docs/internals/enforcement.md","himmel/docs/glossary.md"]}
 {"id":"v4-old","query":"what may merge in overnight mode","collections":["himmel"],"expect":["himmel/docs/handover/afk-mode.md"]}

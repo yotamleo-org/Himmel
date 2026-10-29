@@ -8,8 +8,7 @@ Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
      true (spec 3.1: a series, never a regression verdict);
   3. the digest itself at <state-dir>/<session>.json, LAST, as the commit marker.
 
-  Path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else the old $HIMMEL_LEG_FAILURES_LEDGER,
-  else ~/.himmel/leg-failures.jsonl.
+  Path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else ~/.himmel/leg-failures.jsonl.
 
 WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
   v, ts, host, source, kind "leg-failure"       registry envelope
@@ -64,7 +63,6 @@ import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/worker-digest/worker_ledger.py"
 LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
-LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"  # old name, read both ways
 EVAL_ID = "leg-trajectory"
 METRICS = ("tool_calls", "subagents", "turns", "fail_denied", "fail_suite", "fail_blocked", "fail_error",
            "run_errors", "interrupts", "red_before_green", "denial_recovery", "identical_denied_retries",
@@ -86,7 +84,7 @@ DIGEST_ERRORS = ("timeout", "crash", "no-journal", "bad-json", "too-big")
 
 
 def ledger_path(path=None):
-    return (path or os.environ.get(LEDGER_ENV) or os.environ.get(LEDGER_ENV_OLD)
+    return (path or os.environ.get(LEDGER_ENV)
             or os.path.expanduser("~/.himmel/leg-failures.jsonl"))
 
 
@@ -285,7 +283,7 @@ def launch_lane(digest, who):
                       and (not worker or re.search(r"\b" + re.escape(worker) + r"\b", line))]
             text = titles[0] if titles else ""
             hit = re.search(r"\bWORKER_SESSION_LANE[=:]\s*(native|claudex|codex|openrouter|cloud)\b", text)
-            hit = hit or re.search(r"\b(?:LEG_LANE[=:]\s*|lane:\s*)(native|claudex|codex|openrouter|cloud)\b", text)  # old name
+            hit = hit or re.search(r"\blane:\s*(native|claudex|codex|openrouter|cloud)\b", text)
             hit = hit or re.search(r"\b(native|claudex|codex|openrouter|cloud)\s+lane\b", text)
             hit = hit or re.search(r",\s*(native|claudex|codex|openrouter|cloud)\)", text)
             if hit:

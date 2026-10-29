@@ -16,24 +16,13 @@
 #
 # State file: ${USAGE_LIFT_FILE:-$HOME/.himmel/state/usage-lift.json}
 #   {"window":"seven_day","until":<epoch>,"account":"<hash>","set_by":..,"set_at":..}
-# The old names stay read: BANK_LIFT_FILE (while HIMMEL_LEGACY_NAMES is on) names the file when USAGE_LIFT_FILE is
-# unset, and with neither set the old bank-lift.json beside it is read too. When
-# both files exist each must be valid and the stricter one wins; `set` retires
-# the old file and `clear` removes both.
 
 _UL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=usage-cache-identity.sh
 # shellcheck disable=SC1091
 . "$_UL_DIR/usage-cache-identity.sh"
-# shellcheck source=env-alias.sh
-# shellcheck disable=SC1091
-. "$_UL_DIR/env-alias.sh"
 
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-_usage_lift_env_file() { alias_env USAGE_LIFT_FILE BANK_LIFT_FILE; printf '%s' "${USAGE_LIFT_FILE:-}"; }
-usage_lift_file() { local f; f="$(_usage_lift_env_file)"; printf '%s' "${f:-${HOME:-/tmp}/.himmel/state/usage-lift.json}"; }
-# The old default path, read only when no file env names the lift; empty otherwise.
-_usage_lift_old_file() { [ -n "$(_usage_lift_env_file)" ] || printf '%s' "${HOME:-/tmp}/.himmel/state/bank-lift.json"; }
+usage_lift_file() { printf '%s' "${USAGE_LIFT_FILE:-${HOME:-/tmp}/.himmel/state/usage-lift.json}"; }
 
 # Epoch seconds from a resets_at that is an epoch already or an ISO-8601 string.
 _usage_lift_epoch() {
@@ -57,7 +46,7 @@ _usage_lift_epoch() {
   return 1
 }
 
-_usage_lift_default_cache() { alias_env CADENCE_USAGE_CACHE CADENCE_BANK_CACHE; printf '%s' "${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"; }
+_usage_lift_default_cache() { printf '%s' "${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"; }
 
 # _usage_lift_trusted <file>: owned by the current uid and not group/world-writable.
 _usage_lift_trusted() {
@@ -108,37 +97,27 @@ _usage_lift_valid_one() {
   [ "$rs_epoch" -gt "$now" ] || { USAGE_LIFT_REASON=expired; return 1; }
   # One second covers fractional API jitter, never a different weekly window.
   if [ "$standing" != true ] && [ "$until" -gt "$((rs_epoch+1))" ]; then USAGE_LIFT_REASON=window; return 1; fi
+  # shellcheck disable=SC2034  # output-contract global, read by sourcing callers (usage-preflight.sh)
   USAGE_LIFT_STANDING="$standing"
   USAGE_LIFT_REASON=""
   return 0
 }
 
-# usage_lift_valid [cache]: 0 only when every lift file present is owner/mode-trusted,
+# usage_lift_valid [cache]: 0 only when the lift file is owner/mode-trusted,
 # well-formed, unexpired, bound to the current account (which must also be the
 # cache's account), and its `until` is bounded by the current reset (+1s).
-# Standing policies renew against the current future reset, not their old until;
-# with two files the lift is standing only when both are.
+# Standing policies renew against the current future reset, not their old until.
 # USAGE_LIFT_REASON explains failure; USAGE_LIFT_STANDING is true only on success.
 usage_lift_valid() {
-  local cache="${1:-}" f any=false standing=true
+  local cache="${1:-}" f
   [ -n "$cache" ] || cache="$(_usage_lift_default_cache)"
-  for f in "$(usage_lift_file)" "$(_usage_lift_old_file)"; do
-    [ -n "$f" ] && [ -f "$f" ] || continue
-    any=true
-    _usage_lift_valid_one "$f" "$cache" || return 1
-    [ "$USAGE_LIFT_STANDING" = true ] || standing=false
-  done
-  if [ "$any" = false ]; then USAGE_LIFT_REASON=missing; USAGE_LIFT_STANDING=false; return 1; fi
-  # shellcheck disable=SC2034 # read by bank-preflight and doctor after success
-  USAGE_LIFT_STANDING="$standing"
-  USAGE_LIFT_REASON=""
-  return 0
+  f="$(usage_lift_file)"
+  _usage_lift_valid_one "$f" "$cache"
 }
 
 _usage_lift_cmd() {
-  local cmd="${1:-}" f old cache resets until acct tmp standing=false
+  local cmd="${1:-}" f cache resets until acct tmp standing=false
   f="$(usage_lift_file)"
-  old="$(_usage_lift_old_file)"
   case "$cmd" in
     set)
       shift
@@ -159,20 +138,14 @@ _usage_lift_cmd() {
         '{window:"seven_day",until:$u,standing:$s,account:$a,set_by:$by,set_at:$at}' > "$tmp" ); then rm -f "$tmp"; return 1; fi
       # prim-ok: hooks source this file for usage_lift_valid, and the hook-closure walkers cannot resolve prim.sh's own dynamic source lines, so it must not load prim.sh
       if ! mv "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
-      if [ -n "$old" ] && ! rm -f "$old"; then echo "usage-lift: set, but could not remove the old $old" >&2; return 1; fi
       echo "usage-lift: set until $until ($resets)"
       ;;
     show)
-      if [ -f "$f" ]; then cat "$f"; echo; fi # read-sink-ok: show prints the operator's own lift file, as bank-lift.sh did
-      if [ -n "$old" ] && [ -f "$old" ]; then
-        [ ! -f "$f" ] || echo "usage-lift: also read $old"
-        cat "$old"; echo
-      fi
-      [ -f "$f" ] || { [ -n "$old" ] && [ -f "$old" ]; } || echo "usage-lift: none"
+      if [ -f "$f" ]; then cat "$f"; echo; else echo "usage-lift: none"; fi # read-sink-ok: show prints the operator's own lift file
       if usage_lift_valid "${2:-}"; then echo "usage-lift: VALID"; else echo "usage-lift: INVALID: $USAGE_LIFT_REASON"; fi
       ;;
     clear)
-      rm -f "$f" ${old:+"$old"} && echo "usage-lift: cleared"
+      rm -f "$f" && echo "usage-lift: cleared"
       ;;
     *)
       echo "usage: usage-lift.sh set [--standing] [cache] | show [cache] | clear" >&2

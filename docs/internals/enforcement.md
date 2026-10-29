@@ -1157,7 +1157,7 @@ before the literal text — e.g. `grep -E 'x|gh pr create' file` — CAN still b
 false-blocked, since the regex has no notion of quoting. The
 marker (`<git-common-dir>/cr-pending/<branch>`) is written by
 `check-cr-before-push.sh` on push and cleared through
-`scripts/cr/clear-cr-marker.sh` when `/pr-check` runs clean. For an existing PR,
+`scripts/cr/clear-review-marker.sh` when `/pr-check` runs clean. For an existing PR,
 that sanctioned script accepts only `check-ci.sh` exit 0. CodeRabbit's own signal is
 not part of that verdict (HIMMEL-3360): a stale, absent, skipped or
 rate-limited App review prints a NOTE, and the gate is CI green + zero
@@ -1207,7 +1207,7 @@ or a runbook fence runs), and the worktree-isolation guard refuses outright
 any command that references it (HIMMEL-2035, HIMMEL-2226).
 
 The ledger (`ledger-append.sh`), the marker write (`check-cr-before-push.sh`),
-the clear (`clear-cr-marker.sh`) and the pending audit (`cr-pending-audit.sh`)
+the clear (`clear-review-marker.sh`) and the pending audit (`cr-pending-audit.sh`)
 all already resolve their paths from `git rev-parse --git-common-dir` of the
 process cwd, so they land in the reviewed repo with no flag. **No `--repo` flag
 was added to any of them** — it would be a second resolution source for a datum
@@ -1280,7 +1280,7 @@ never a failure. No `coderabbit=unarmed` token is emitted anywhere. The critic
 panel carries the gate. `scripts/cr/test-pr-check-pair.sh` check (iii) pins the
 predicate and its call site.
 
-**Host scope: GitHub only.** `clear-cr-marker.sh`'s post-PR gate requires `gh`
+**Host scope: GitHub only.** `clear-review-marker.sh`'s post-PR gate requires `gh`
 and treats an unreadable PR state as fail-closed, so on a Bitbucket/GitLab/
 self-hosted origin gates 1–4 pass and the marker can **never** clear — worse
 than no gate. The installer warns (never refuses) on a non-`github.com` origin
@@ -1352,7 +1352,7 @@ onto another finding, head or branch does not verify.
 **Who checks.** Each gate reader runs its amend rows through
 `scripts/cr/ledger-amend-auth.js` before merging them:
 
-- `clear-cr-marker.sh`;
+- `clear-review-marker.sh`;
 - `review-round.sh` (ledger query, promote, and the defer/cap analysis);
 - the chief's `cr-disposition.sh`;
 - the merge-gate lib `scripts/lib/review-ledger-evidence.sh`.
@@ -1446,10 +1446,10 @@ Spec: `scripts/hooks/test-block-jira-compound-write.sh` (100 checks).
 ### `block-tail-pipe-on-gates.sh` — exit-code-swallowing pipeline deny (HIMMEL-1696)
 
 Fires on Bash. Denies a pipeline whose FIRST stage INVOKES an exit-code-critical
-himmel gate (`clear-cr-marker.sh`, `run-shell-tests.sh`, `check-ci.sh`,
+himmel gate (`clear-review-marker.sh`, `run-shell-tests.sh`, `check-ci.sh`,
 `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage
 is `tail`/`head` — where `$?` is tail's status, not the gate's. A gate
-orchestrator recorded `CLEAR_RC=0` when `clear-cr-marker.sh` had exited 16, so
+orchestrator recorded `CLEAR_RC=0` when `clear-review-marker.sh` had exited 16, so
 it believed the CR gate had cleared when it had not. Invocation is decided at
 COMMAND POSITION (leading `VAR=` assignments and a bounded launcher set are
 stepped over), so `grep -n x scripts/check-ci.sh | tail` — a READ of the gate
@@ -2440,14 +2440,14 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-bank-lift-writes.sh` — operator-only weekly budget override (HIMMEL-4445)
 
 Fires on Bash and on `Edit|Write|MultiEdit|NotebookEdit` (Codex: Bash and the
-`apply_patch` envelope). The weekly budget override `~/.himmel/state/bank-lift.json`
+`apply_patch` envelope). The weekly budget override `~/.himmel/state/usage-lift.json`
 (HIMMEL-4423) relaxes the 7-day subscription usage budget check while it is valid, so raising it is
 the operator's call. The hook refuses every agent write to that path —
 redirects (`>`, `>>`, `>|`, `&>`, `<>`), `tee`, `cp`/`mv`/`install`/`ln`/`rsync`
 as a destination, `dd of=`, `sed -i`, `touch`/`truncate`/`patch`, `-o`/`--output`
 options, editors, downloaders and interpreters handed the path, `find -exec`,
 `xargs`, and inline interpreter code (`python3 -c`, `perl -e`, `node -e`, a
-heredoc script) that names `bank-lift.json`, `$BANK_LIFT_FILE`, `usage-lift.sh` or `bank-lift.sh` —
+heredoc script) that names `usage-lift.json` or `usage-lift.sh` —
 under every spelling of the path: `~`, `$HOME`, `${HOME}`, `/home/<user>`,
 `~user`, relative from `~`, `~/.himmel` or `state/`, `.`/`..` segments, quote
 splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and a
@@ -2455,14 +2455,13 @@ splits, backslashes, `$'…'`, globs, braces, case, symlinks (dangling too) and 
 or `~` is refused when its source could put a lift there (a lift-named, glob or
 `$var` source, a `dir/` or `dir/.` contents copy, `-T`, `ln -n`); copying an
 unrelated file in passes. It also refuses `usage-lift.sh set` (and the sourced
-`_usage_lift_cmd set`; the old `bank-lift.sh` and
-`_bank_lift_cmd` names are fenced the same way) under any launcher: `bash`/`sh`/direct/`source`/`.`,
+`_usage_lift_cmd set`) under any launcher: `bash`/`sh`/direct/`source`/`.`,
 `env`/`timeout`/`nohup`/`command`/`exec`/`nice`/`sudo`/`xargs`, `-c` bodies,
 heredocs into a shell, a computed (`$(…)`, `$var`) subcommand or script word.
 Whole-command layer (judge J1874, runs FIRST): a reader can hand the lift
-path to a writer that never names it — `cp x $(jq -rn '"…/bank-lift.json"')`,
+path to a writer that never names it — `cp x $(jq -rn '"…/usage-lift.json"')`,
 `echo > "$(ls <lift>)"`, `ls <lift> | xargs cp x`. So when the command text
-names `bank-lift.json`, `usage-lift.sh` or `bank-lift.sh` ANYWHERE — inside `$( )`, backticks,
+names `usage-lift.json` or `usage-lift.sh` ANYWHERE — inside `$( )`, backticks,
 heredoc bodies and pipelines, after quote removal and `$'…'` decoding — the
 command passes only if EVERY clause at every depth (pipeline stages,
 substitution bodies, `-c` bodies, `&&`/`||`/`;` lists) is a reader under the
@@ -2484,7 +2483,7 @@ delimiter with a space (`<<'END MARK'`, `<<"E F"`, `<<"E"' F'`) is read as
 one word, as bash does. Over-deny is accepted:
 `test -f <lift> && echo yes`, `cat <lift> > /tmp/copy`, `set -e; bash
 …/usage-lift.sh show`, a heredoc commit message naming the lift, and a
-write to any lift-NAMED file (`/tmp/x/bank-lift.json`) all deny; split the
+write to any lift-NAMED file (`/tmp/x/usage-lift.json`) all deny; split the
 command, or put text in a file. Residual (ponytail): a lift name obfuscated
 by a glob or brace inside a substitution does not trigger this layer.
 HIMMEL-4458 closed these gaps:
@@ -2502,17 +2501,17 @@ HIMMEL-4458 closed these gaps:
 - **`cp --parents` / `rsync -R` (`--relative`).** These recreate the source's
   path under the destination, so the created path (destination + source,
   rsync's `/./` marking the start) is judged: a glob-spelled
-  `.himmel/state/bank-l?ft.json` copied with `--parents` into `~` denies.
+  `.himmel/state/usage-l?ft.json` copied with `--parents` into `~` denies.
 - **Split names in inline code.** Interpreter / `sed e` code also matches once
   quotes, `+`, commas, backticks and blanks are dropped, so
-  `"bank"+"-"+"lift"+".json"` and `"ba"+"nk-lift.sh"` deny; prose such as
-  `"bank-lift show"` does not (the joined form needs a separator before `sh`).
+  `"usage"+"-"+"lift"+".json"` and `"usa"+"ge-lift.sh"` deny; prose such as
+  `"usage-lift show"` does not (the joined form needs a separator before `sh`).
 - **Archive extraction.** `tar`/`gtar`/`bsdtar` extracting (`-x`, a bundled or
   old-style `x`, `--extract`, `--get`; not `-O`/`--to-stdout`), `unzip` (not
   `-l`/`-t`/`-v`/`-Z`/`-p`/`-c`) and `cpio -i`/`--extract` deny when the
   destination (`-C`, `-C<dir>`, `--directory[=]`, `-d`, `-d<dir>`, `-D`) is
   HOME, `~/.himmel` or its state dir — a member can be
-  `.himmel/state/bank-lift.json`. With no destination option the effective
+  `.himmel/state/usage-lift.json`. With no destination option the effective
   cwd counts: the hook's cwd, or — with a directory-changing word in the
   command — unknown, which denies (see Unproven cwd). An option's operand is never read as a
   flag: `tar -xf -O -C ~` names the archive `-O` and still denies (tar
@@ -2602,7 +2601,7 @@ HIMMEL-4458 closed these gaps:
 - **Ancestors of HOME.** Members are relative, so a destination that is a
   strict ancestor of HOME (`/`, `/home`, `~/..`; whole path components, so
   `/ho` is not one; compared lexically and physically) reaches the lift with a
-  member such as `home/<user>/.himmel/state/bank-lift.json` and denies: `-C`,
+  member such as `home/<user>/.himmel/state/usage-lift.json` and denies: `-C`,
   `--directory`, `unzip -d`, and the extraction cwd (the hook's cwd). A
   destination inside HOME other than HOME, `~/.himmel` or its state
   dir (`-C "$HOME/projects"`) stays allowed.
@@ -2633,7 +2632,7 @@ most the rest of the current 7-day window. Remaining hook gaps
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).
 Name rule (chief ruling, applied before the rules above on every clause,
-nested ones included): a clause with a word naming `bank-lift.json` or
+nested ones included): a clause with a word naming `usage-lift.json` or
 `usage-lift.sh` (not a longer name such as `test-usage-lift.sh`) passes only
 when it is `bash scripts/lib/usage-lift.sh show|clear` or the direct
 `scripts/lib/usage-lift.sh show|clear` (the repo's own copy, as above), or a
@@ -2686,7 +2685,7 @@ own copy only when three conditions hold:
   gate script loses only that script's relative spelling, not all of them. The
   hand-off reads `HIMMEL_REPO` from the environment, as the hook does.
 
-`review-round.sh` (every verb), `panel-first-pass.sh` and `clear-cr-marker.sh`
+`review-round.sh` (every verb), `panel-first-pass.sh` and `clear-review-marker.sh`
 also refuse a branch other than the one checked out in cwd, and a detached
 HEAD: they write shared per-branch state, and a relative run is auto-allowed
 from any worker's worktree.
@@ -3913,10 +3912,9 @@ matches `*-chief.md`.
 
 **Audited bypass:** `CHIEF_DISPATCH_OK=1` (deliberate carve-out) or
 `CHIEF_DISPATCH_DISABLE=1` (kill switch), set in the LAUNCHING shell and
-session-sticky; the old names `CONSOLE_DISPATCH_OK` / `CONSOLE_DISPATCH_DISABLE`
-are still read. Every use warns and appends a JSONL audit row to
-`~/.claude/chief-dispatch-guard/overrides.jsonl` (`CHIEF_DISPATCH_LOG`, old
-name `CHIEF_DISPATCH_LOG`, is the test seam).
+session-sticky. Every use warns and appends a JSONL audit row to
+`~/.claude/chief-dispatch-guard/overrides.jsonl` (`CHIEF_DISPATCH_LOG` is the
+test seam).
 
 **Delivery:** shipped via the **himmel-ops plugin `hooks.json`** (matcher
 `Agent`, second entry alongside `guard-implementor-dispatch.sh`); live only
@@ -3937,7 +3935,7 @@ A textual match (interpreter + name, or a path in command position), so a grep t
 names a script is allowed. A workflow nudge: fails open on missing `jq` or an
 unparseable payload.
 
-**Bypass:** `CHIEF_FG_OK=1` (old name `CONSOLE_FG_OK`) in the LAUNCHING shell, session-sticky.
+**Bypass:** `CHIEF_FG_OK=1` in the LAUNCHING shell, session-sticky.
 
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-chief-dispatch.sh`. Spec: `scripts/hooks/test-guard-chief-foreground.sh`.
@@ -4078,7 +4076,7 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 `transcript_path`, and the window from the same claude-hud snapshot.
 
 **Off by default (HIMMEL-4710).** With no `HIMMEL_WORKER_SESSION_CONTEXT_MODE`
-or old `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
+(or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
 fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on. One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
@@ -4094,7 +4092,7 @@ observed from 157k of 200k (HIMMEL-4089), so 75 % leaves 7k tokens for the
 checkpoint; 85 % would let a compaction fire first, and HIMMEL-4569's 65 %
 stopped every opus worker at 13 %. No window in the snapshot → 75 % of the fill.
 
-**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name `HIMMEL_LEG_CONTEXT_MODE`),** set by the chief at launch
+**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE`,** set by the chief at launch
 (`headed-arm-worker.sh --context-guard`, which validates it and propagates it only
 when set) and read only from the hook process's env, so a worker cannot flip it
 in-session.
@@ -4940,7 +4938,7 @@ dispatch the next queued item, verify a READY PR, or run `/chief next --arm`.
 Every subprocess shares ONE 8 s budget (`HIMMEL_STOP_GUARD_TIMEOUT`, under the
 wired 10 s Stop timeout), and the JSON is printed only as the last statement.
 It does not inspect the held Jira/dispatch queue. Test seams:
-`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT` (old `HIMMEL_STOP_GUARD_BANK_PREFLIGHT` still read), `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
+`HIMMEL_STOP_GUARD_USAGE_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-chief-idle-guard.sh`.
 
 ### `chief-precompact-snapshot.sh` — snapshot a chief's Live state at compaction (HIMMEL-2973)
@@ -5695,7 +5693,7 @@ boundary an agent runs under.
 **Protection source (HIMMEL-3808).** The widened public-origin gate is satisfied by classic branch protection, by an effective ruleset, or by both, per `HIMMEL_PROTECTION_SOURCE` in `merge-on-green.sh`: `classic`, `ruleset`, `either` (default) or `both` (both must pass). Like `HIMMEL_PUBLIC_ORIGIN_NWO` it is a fixed literal in the script, never an env seam (`ruleset`/`either` are widening choices; an ambient variable must not steer a merge gate) — an adopter chooses by editing the line, and an unknown value refuses (exit 12, `unknown-protection-source=<value>`). Classic = `enforce_admins` on AND a non-empty required-status-checks list (unchanged). Ruleset = `rules/branches/<base>` carries at least one required status check AND every contributing ruleset (`rulesets/<id>`) is `enforcement: active` with an EMPTY `bypass_actors` — any bypass actor (admin `RepositoryRole`, `pull_request` or `always` mode) refuses, since it can merge past the required checks; an API error, null/non-array field or zero checks refuses too. `either` reads classic first and never touches the ruleset endpoints when classic passes. Both call sites (guard 2b and the fresh pre-merge re-read) share one function, and each success writes `PROTECTION-OK[-PREMERGE] source=classic|ruleset|classic+ruleset detail=…` to the audit log. With the live yotamleo-org/Himmel ruleset (`protect-main`, admin bypass `pull_request`) the ruleset path refuses and classic protection carries the merge; relaxing that bypass is an operator call.
 `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is the policy refusal: no GO, a GO path naming another PR or head, or a solo-mode refusal when `himmel.mergeMode` is set); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 (HIMMEL-2887).
 The Jira auto-transition is opt-in per merge (HIMMEL-3143): without `--jira-transition` `merge-on-green.sh` merges, then only records `jira-transition=skip=partial key=<KEY> status-unchanged` on the `MERGED` audit line and posts the PR body's `Remaining:` line as a Jira comment — the ticket status is never changed (HIMMEL-6094) — so the caller decides (a worker reads its brief's `completes-ticket: yes|no` line, `docs/handover/worker-preface.md` § Shipping — HIMMEL-3271); with the flag it comments and transitions the ticket named by the PR title's `[PROJ-N]` tag (never an Epic — a Story is transitioned like a Task, HIMMEL-5540; any unreadable step degrades to a `skip=…` result, never a failed merge). It used to fire on every merge and closed a ticket whose sibling work was still owed, which no "no other open PR" heuristic can detect, so it stays opt-in rather than heuristic. A PR carrying two ticket tags transitions only the first.
-It also exits 17 (`policy-refused phase=console-go`) when `HIMMEL_CONSOLE_LEG` is set — exported by `console-kit/headed-arm-leg.sh` into every console-spawned leg — and `go_gate` (`scripts/lib/go-gate.sh`, shared with `block-unresolved-cr-merge.sh`'s Console-GO gate and with `go.sh`; see there) finds `<handover_root>/.locks/go/<pr>.<certified head sha>` missing or not carrying `head=<that sha>` (a broken/truncated `go-gate.sh` refuses too: `phase=console-go-lib-missing` / `console-go-symbol-missing`); the gate runs before the marker clear and before `--dry-run`, so a refused leg mutates nothing and a dry run reports the refusal, and the merge itself pins `--match-head-commit` to that same certified sha; a console leg's merge must also pass `--go <that GO file>` (same directory and basename as the file `go_gate` verified, so another PR's or head's file or a missing path exits 17 with `phase=console-go-flag`) and prints a `GO evidence:` line, so the merge command shows the review it relies on (HIMMEL-7165); only the console writes it, via `console-kit/go.sh` (which refuses under the marker), and `scripts/chokepoints.json` registers the marker so a per-call `HIMMEL_CONSOLE_LEG=` prefix is denied (HIMMEL-2919). A `--judge` leg (HIMMEL-3133) is the same `HIMMEL_CONSOLE_LEG=1` process, so it is blocked from writing its own `GO` by this exact same gate — Guard E needs no judge marker for that; "the judge is a leg" (design §3.2). HIMMEL-4564 later added a separate `HIMMEL_CONSOLE_JUDGE=1` marker for a different job, the write fence below.
+It also exits 17 (`policy-refused phase=console-go`) when `HIMMEL_CONSOLE_LEG` is set — exported by `chief-kit/headed-arm-worker.sh` into every chief-spawned worker — and `go_gate` (`scripts/lib/go-gate.sh`, shared with `block-unresolved-cr-merge.sh`'s Console-GO gate and with `go.sh`; see there) finds `<handover_root>/.locks/go/<pr>.<certified head sha>` missing or not carrying `head=<that sha>` (a broken/truncated `go-gate.sh` refuses too: `phase=console-go-lib-missing` / `console-go-symbol-missing`); the gate runs before the marker clear and before `--dry-run`, so a refused leg mutates nothing and a dry run reports the refusal, and the merge itself pins `--match-head-commit` to that same certified sha; a console leg's merge must also pass `--go <that GO file>` (same directory and basename as the file `go_gate` verified, so another PR's or head's file or a missing path exits 17 with `phase=console-go-flag`) and prints a `GO evidence:` line, so the merge command shows the review it relies on (HIMMEL-7165); only the console writes it, via `console-kit/go.sh` (which refuses under the marker), and `scripts/chokepoints.json` registers the marker so a per-call `HIMMEL_CONSOLE_LEG=` prefix is denied (HIMMEL-2919). A `--judge` leg (HIMMEL-3133) is the same `HIMMEL_CONSOLE_LEG=1` process, so it is blocked from writing its own `GO` by this exact same gate — Guard E needs no judge marker for that; "the judge is a leg" (design §3.2). HIMMEL-4564 later added a separate `HIMMEL_CONSOLE_JUDGE=1` marker for a different job, the write fence below.
 
 **Plugin-bump recheck (HIMMEL-5188, HIMMEL-5203, HIMMEL-5208, HIMMEL-7310).** Plugin versions change only in a release cut, the PR that changes the root `VERSION` file; any other PR leaves every `plugin.json` version as it is at its merge-base, so two PRs editing one plugin from the same base never collide and never need a merge of main. `merge-on-green.sh` exits 23 when a PR touching `marketplace/plugins/` fails that rule against the live base: a non-release PR changed a plugin version, or a release cut leaves a plugin it touches at or below the version the base already ships, which would put two contents under one version. It runs `scripts/check-plugin-drift.sh --bump-required` from a freshly fetched base-tip copy (with `scripts/lib/vm-mode.sh`); a checker blob that cannot be read OR is empty refuses (an empty script exits 0), and a checker that exits 0 without one of its fixed success lines (`no plugin version changed outside a release cut` / `release cut: every changed plugin version is above the base` / `no plugin files changed`, whole line) refuses too, so a newline-only or unrelated-output stub is no verdict. `scripts/check-plugin-drift.sh` is in `ci-trust-paths.txt` because the gate executes it (`vm-mode.sh` is covered by `^scripts/lib/`). Residual window: a sibling PR merging between the recheck and `gh pr merge` is not seen; closing it needs a server-side merge queue or required up-to-date branch, like the HIMMEL-1105 retarget window.
 

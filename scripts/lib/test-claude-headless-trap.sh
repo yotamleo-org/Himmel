@@ -91,9 +91,9 @@ spawn_sleeper() {
 BANK_CACHE="$W/bank-cache.json"
 mk_bank_cache() { printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}\n' "$ACCT" "$(date +%s)" > "$BANK_CACHE"; }
 mk_bank_cache
-export CADENCE_BANK_CACHE="$BANK_CACHE"
-export CADENCE_BANK_SKIP_REFRESH=1
-export CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
+export CADENCE_USAGE_CACHE="$BANK_CACHE"
+export CADENCE_USAGE_SKIP_REFRESH=1
+export CADENCE_USAGE_LEDGER="$W/bank-ledger.jsonl"
 # isolate from THIS machine's own ambient fleet - see the
 # identical note in test-claude-headless.sh.
 FLEET_PS_STUB="$W/no-fleet-ps.sh"

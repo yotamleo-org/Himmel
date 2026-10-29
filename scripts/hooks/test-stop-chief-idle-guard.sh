@@ -177,7 +177,7 @@ STUB="$TMP/bank-preflight-stub.sh"
     printf 'exit 7\n'
 } > "$STUB"
 chmod +x "$STUB"
-out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
+out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
 if is_block "$out"; then bad "(d-ii) usage-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) usage-preflight.sh exit!=0 -> allow"; fi
 out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
 if is_block "$out"; then bad "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> expected allow, got: $out"; else ok "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> allow"; fi
@@ -242,7 +242,7 @@ write_hb 0 "$$" waiting
 # --- (e) RED control: the PRE-FIX hook still blocks with a worker held -------
 if [ -n "$PREFIX_HOOK" ]; then
     out="$(run_guard_hook "$PREFIX_HOOK" "$CHIEF_PAYLOAD" \
-        HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
+        HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
         HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
     rc=$?
     if [ "$rc" -ne 0 ]; then
@@ -347,7 +347,7 @@ check_waiter() {
     esac
     if [ -n "$PRE4567_HOOK" ] && [ "$expect" = block ]; then
         out="$(run_guard_hook "$PRE4567_HOOK" "$CHIEF_PAYLOAD" \
-            HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
+            HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
             HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
         rc=$?
         if [ "$rc" -ne 0 ]; then bad "$label RED: pre-fix hook exited $rc (a crash proves nothing)"

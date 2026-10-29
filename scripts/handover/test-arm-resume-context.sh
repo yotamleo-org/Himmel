@@ -348,15 +348,15 @@ assert_contains "e3: guard line resolves 1m" 'context=1m (' "$out"
 assert_contains_either "e3: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 
 # ---------------------------------------------------------------------------
-# (e3b) CHIEF_CONTEXT=1m and the old name CONSOLE_CONTEXT=standard disagree:
-#       standard wins, so the 1m gate stays closed.
+# (e3b) the retired console-context variable (standard) is ignored beside CHIEF_CONTEXT=1m:
+#       the 1m gate opens.
 # ---------------------------------------------------------------------------
 HO_E3B=$(make_handover "arm-context-chief.md")
-out=$(CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_arm --time "$(future_time)" --handover "$HO_E3B" --dry-run 2>&1)
+out=$(CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_arm --time "$(future_time)" --handover "$HO_E3B" --dry-run 2>&1) # old-term-ok
 rc=$?
-assert_rc "e3b: chief handover, CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard, exits 0" 0 "$rc"
-assert_contains "e3b: guard line resolves standard" 'context=standard (' "$out"
-assert_contains_either "e3b: relaunch command carries --autocompact 200000" '--autocompact 200000' '--autocompact "200000"' "$out"
+assert_rc "e3b: chief handover, CHIEF_CONTEXT=1m beside the retired name exits 0" 0 "$rc"
+assert_contains "e3b: guard line resolves 1m" 'context=1m (' "$out"
+assert_contains_either "e3b: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 
 # ---------------------------------------------------------------------------
 # (f) --context standard strips an operator-typed [1m] suffix from --model.

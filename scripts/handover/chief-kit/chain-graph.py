@@ -8,6 +8,8 @@ USAGE
     chain-graph.py --prs 3972,3971,3969 [--base origin/main] [--json]
     chain-graph.py --open                     every open PR
     chain-graph.py --keys HIMMEL-7539,HIMMEL-7504   the open PR of each key (a key with no PR is a PR-less node)
+    chain-graph.py --pair 3971@<premerge sha> 3972   one pair, both heads pinned; a merged 3971 is read against the
+                                                     main it merged into (merge-forward-check.sh --chain-s2)
         [--head PR=SHA] [--repo-dir DIR] [--repo OWNER/NAME] [--trust-file FILE] [--cache-dir DIR] [--all]
 
 Edge kinds (design HIMMEL-7701 section 2): H1 hard-start, H2 hard-merge, S1 soft-text, S2 soft-coupled,
@@ -31,6 +33,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 
 RANK = {'independent': 0, 'S1': 1, 'S2': 2, 'H2': 3, 'H1': 4}
 KEY_RE = re.compile(r'HIMMEL-\d+')
@@ -78,7 +81,18 @@ def key_of(title, branch=''):
 
 def load_nodes(a):
     nodes = []
-    if a.prs:
+    if a.pair:
+        # both heads pinned (files from git): the predecessor at its premerge head, the successor at its current one.
+        # A merged predecessor is read against the main it merged into (its merge commit's first parent): the main
+        # after the merge already holds its changes, and read against that the pair is no longer the pair it was.
+        pred, at = a.pair[0].split('@')
+        fields = 'number,title,headRefOid,headRefName,baseRefName'
+        p = json.loads(gh(['pr', 'view', pred, '--repo', a.repo, '--json', fields + ',state,mergeCommit']))
+        s = json.loads(gh(['pr', 'view', a.pair[1], '--repo', a.repo, '--json', fields]))
+        nodes = [node(p) | {'head': at, 'pinned': True}, node(s) | {'pinned': True}]
+        if a.base is None and p.get('state') == 'MERGED' and (p.get('mergeCommit') or {}).get('oid'):
+            a.base = p['mergeCommit']['oid'] + '^1'
+    elif a.prs:
         for n in [x for x in a.prs.split(',') if x]:
             d = json.loads(gh(['pr', 'view', n, '--repo', a.repo, '--json', 'number,title,headRefOid,headRefName,baseRefName']))
             nodes.append(node(d))
@@ -320,6 +334,7 @@ def git_pair(a, x, y, trust, declared):
 
 def build(a):
     nodes = load_nodes(a)
+    a.base = a.base or 'origin/main'
     trust = trust_patterns(a)
     base_sha = git(a.repo_dir, ['rev-parse', a.base + '^{commit}']).stdout.strip()
     for n in nodes:
@@ -362,7 +377,8 @@ def build(a):
     summary = {k: 0 for k in ('H1', 'H2', 'S1', 'S2', 'independent')}
     for e in edges:
         summary[e['kind']] += 1
-    return {'base': a.base, 'base_sha': base_sha, 'jira_links': 'unreadable' if jira_unreadable else 'ok',
+    return {'generated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'base': a.base, 'base_sha': base_sha, 'jira_links': 'unreadable' if jira_unreadable else 'ok',
             'nodes': [{k: n[k] for k in ('id', 'pr', 'key', 'head', 'title', 'trust_files', 'gates')} |
                       {'files': len(n['files'])} for n in nodes],
             'edges': edges, 'summary': summary}
@@ -405,7 +421,10 @@ def main():
     src.add_argument('--prs')
     src.add_argument('--open', action='store_true')
     src.add_argument('--keys')
-    ap.add_argument('--base', default='origin/main')
+    src.add_argument('--pair', nargs=2, metavar=('PRED@SHA', 'PR'),
+                     help="the predecessor at its premerge head and the PR at its current head; a merged predecessor's "
+                          "default base is its merge commit's first parent")
+    ap.add_argument('--base', help='default origin/main')
     ap.add_argument('--repo', default='yotamleo-org/Himmel')  # env-literal-ok: default for the one himmel origin, overridable
     ap.add_argument('--repo-dir', default='.')
     ap.add_argument('--head', action='append', metavar='PR=SHA',
@@ -415,6 +434,8 @@ def main():
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--all', action='store_true', help='print independent pairs too')
     a = ap.parse_args()
+    if a.pair and not (re.fullmatch(r'\d+@[0-9a-f]{40}', a.pair[0]) and re.fullmatch(r'\d+', a.pair[1])):
+        ap.error('--pair wants <pred-pr>@<40-hex premerge sha> <pr>')
     try:
         g = build(a)
     except (ReadError, OSError, ValueError) as e:

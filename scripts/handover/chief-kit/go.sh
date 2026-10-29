@@ -116,10 +116,6 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/go.sh || exit 96
 
-# shellcheck source=scripts/lib/env-alias.sh
-. "$_csg_dir/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CHIEF_SESSION_NAME CONSOLE_SESSION_NAME
 
 # The reads below (PR view, repo name) ride the read-only token via gh-read.sh
 # and a missing or refused read token falls back to the main one, so

@@ -17,7 +17,7 @@ still one flag away, per session.
 
 ## Generate (per machine)
 
-```powershell
+```bash
 node scripts/mcp/build-mcp-profiles.mjs          # writes local.<name>.json
 node scripts/mcp/build-mcp-profiles.mjs --list   # show profile → servers
 ```
@@ -26,7 +26,7 @@ The generator reads your live `~/.claude.json`, then the on-demand registry
 `~/.config/himmel/mcp-on-demand.json` (override `HIMMEL_MCP_ONDEMAND_FILE`, same
 `{"mcpServers":{...}}` shape), for the real (absolute-path, secret-bearing)
 server specs and writes `local.<name>.json` here. **Those are
-gitignored** — they carry `C:\Users\…` paths, which must never hit git. Only the
+gitignored** — they carry absolute home-directory paths, which must never hit git. Only the
 generator + `profiles.json` manifest + this README are committed.
 
 Secrets are NOT written into the profile (HIMMEL-5002). An env var named
@@ -58,7 +58,7 @@ registry file).
 
 ## Launch a lean session
 
-```powershell
+```bash
 claude --strict-mcp-config --mcp-config .claude/mcp-profiles/local.minimal.json
 ```
 
@@ -89,7 +89,7 @@ Profiles make *opt-in* lean launches. To also shrink the fleet a bare `claude`
 (no flags) spawns, trim the always-on config. This changes **every** future
 session, so it is left for you to review + apply — not done automatically:
 
-```powershell
+```bash
 # 1. Drop rarely-needed always-on stdio servers from ~/.claude.json mcpServers.
 #    Re-add recipe is just the reverse — keep this block to restore:
 #      headroom     -> until HIMMEL-622 adopts it

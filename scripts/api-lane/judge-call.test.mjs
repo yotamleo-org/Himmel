@@ -71,9 +71,9 @@ function fixture() {
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: p.stub,
     STUB_LOG: p.log, STUB_ENV: p.env, STUB_OUT: result(go()),
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: p.ps, FLEET_PROC: dir,
-    CADENCE_BANK_LEDGER: join(dir, 'bank-ledger'), CADENCE_BANK_SKIP_REFRESH: '1',
-    CADENCE_BANK_CACHE: join(dir, 'native-cache.json') };
-  writeFileSync(env.CADENCE_BANK_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
+    CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+  writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--qid', `q${pr}`, '--pr', String(pr), '--head', HEAD, '--question-file', p.q,
     '--model', 'claude-opus-5-5', '--max-budget-usd', '0.10'];
   const run = (over = args, extra = {}) => {

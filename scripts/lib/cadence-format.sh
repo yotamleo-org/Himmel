@@ -118,7 +118,7 @@
 # with `pipeline-cadence.sh arm --force`. The other cadences are unaffected but
 # stamp v14 too, so one version answers "is this runner current".
 # v15: the three pipeline CLAUDE workers gate before they spend.
-# Every one of them now runs scripts/lib/bank-preflight.sh first (with
+# Every one of them now runs scripts/lib/usage-preflight.sh first (with
 # CADENCE_USAGE_WORKER set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
 # spend instead of logging leg:"unknown") and passes an explicit
 # --permission-mode; the synthesize worker additionally runs the free

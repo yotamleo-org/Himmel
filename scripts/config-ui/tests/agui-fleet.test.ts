@@ -519,29 +519,20 @@ test("cloud: no routed cloud ticket, no GitHub read", async () => {
   expect(existsSync(s.gh.calls)).toBe(false);
 });
 
-test("the codex bank row reads CODEX_USAGE_CACHE over the old CODEX_BANK_CACHE", async () => {
+test("the codex bank row reads CODEX_USAGE_CACHE", async () => {
   const now = Date.now();
   const bankDir = mkdtempSync(join(tmpdir(), "agui-usage-")), bank = join(bankDir, "codex-usage.json");
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
-  const s = boot({ CODEX_USAGE_CACHE: bank, CODEX_BANK_CACHE: join(bankDir, "absent.json") });
+  const s = boot({ CODEX_USAGE_CACHE: bank });
   writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 47, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
   expect((await (await fleet(s.port)).json()).banks.codex).toMatchObject({ weeklyPct: 47 });
-});
-
-test("a non-positive CODEX_USAGE_CACHE_TTL_SECONDS falls back to the old name's TTL, as quota-sources does", async () => {
-  const now = Date.now();
-  const bankDir = mkdtempSync(join(tmpdir(), "agui-usage-ttl-")), bank = join(bankDir, "codex-usage.json");
-  cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
-  const s = boot({ CODEX_USAGE_CACHE: bank, CODEX_USAGE_CACHE_TTL_SECONDS: "-1", CODEX_BANK_CACHE_TTL_SECONDS: "60" });
-  writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now - 120_000).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 47, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
-  expect((await (await fleet(s.port)).json()).banks.codex).toBeNull();
 });
 
 test("HIMMEL-4817: a claudex worker renders lane, backend model, codex-bank cost row and eval row", async () => {
   const now = Date.now();
   const bankDir = mkdtempSync(join(tmpdir(), "agui-bank-")), bank = join(bankDir, "codex-bank.json");
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
-  const s = boot({ CODEX_BANK_CACHE: bank });
+  const s = boot({ CODEX_USAGE_CACHE: bank });
   writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 46, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
   writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `WORKER_SESSION_LANE=claudex\0HIMMEL_SESSION_MODEL=gpt-6.1-sol\0HIMMEL_CODEX_BANK_START=40@${now - 3600_000}\0`);
   const b = await (await fleet(s.port)).json();

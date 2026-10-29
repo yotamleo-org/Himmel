@@ -7,7 +7,7 @@
 # a filesystem question, so it must never cost a model call. This script answers
 # it; the generated runner branches on the token and skips the claude launch.
 #
-# CONTRACT (deliberately the bank-preflight.sh shape — the cadence already has
+# CONTRACT (deliberately the usage-preflight.sh shape — the cadence already has
 # one verdict-token helper and a second dialect would be a trap):
 #   * Prints exactly ONE token to stdout: NEW or NONE.
 #   * Diagnostics to stderr.

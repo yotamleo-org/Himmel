@@ -8,7 +8,7 @@
 # A spelling matches as a whole path run: not preceded by a name character or
 # a dot (a slash is fine, so an absolute path matches), and not followed by a
 # name character or by a dot and a name character (so console-kit-x and
-# scripts/console.sh stay). A line already naming a pair's new spelling is
+# scripts/console.sh stay). A line already naming a pair's new spelling is # old-term-ok
 # left as is for that pair (a guard that keeps both spellings for old-layout
 # trees).
 #

@@ -21,14 +21,6 @@
 # PILOT_DEEPSEEK_BIN, PILOT_PREFLIGHT, PILOT_TRANSCRIPTS (colon-separated
 # projects roots).
 set -u
-# Old names, read only while HIMMEL_LEGACY_NAMES is on.
-case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
-# shellcheck source=scripts/lib/env-alias.sh
-# shellcheck disable=SC1091
-if { [ -r "$_ea_dir/../../../lib/env-alias.sh" ] && . "$_ea_dir/../../../lib/env-alias.sh"; } 2>/dev/null; then
-    alias_env PILOT_CHIEF PILOT_CONSOLE
-fi
-unset _ea_dir
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LQ="$(cd "$HERE/.." && pwd)"
 COHORT="$HERE/cohort.tsv"
@@ -101,7 +93,7 @@ cmd_init() {
   a="$(awk -v b="$b" -v f="$floor" 'BEGIN { x = b - f - 0.50; if (x < 0) x = 0; if (x > 3) x = 3; printf "%.2f", x }')"
   mkdir -p "$ROOT"/{rows,results,packets,judged,private} "$DOCS"
   # Sourced later, so every value is shell-quoted.
-  printf 'PILOT_B0=%q\nPILOT_F=%q\nPILOT_A=%q\nPILOT_CONSOLE=%q\nPILOT_AT=%q\n' \
+  printf 'PILOT_B0=%q\nPILOT_F=%q\nPILOT_A=%q\nPILOT_CHIEF=%q\nPILOT_AT=%q\n' \
     "$b" "$floor" "$a" "$chief" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$ROOT/pilot.env"
   echo "pilot: B=$b F=$floor A=$a (DeepSeek spend cap for the whole pilot)"
 }
@@ -225,7 +217,7 @@ cmd_prepare() {
   doc="$DOCS/$row/HIMMEL-4869-pilot-$row.md"; run="$ROOT/run/$row"; tx="$ROOT/tx/$row"; conf="$ROOT/conf/$row"
   mkdir -p "$DOCS/$row" "$run" "$tx" "$conf" || die "cannot create the $row dirs"
   ensure_export
-  write_brief "$row" "$wt" "$task" "$nonce" "$PILOT_CONSOLE" >"$doc"
+  write_brief "$row" "$wt" "$task" "$nonce" "$PILOT_CHIEF" >"$doc"
   printf 'LANE=%q\nMODEL=%q\nEFFORT=%q\nTASK=%q\nWT=%q\nFIX=%q\nDOC=%q\nSNAP0=%q\nT0=%q\nREPO=%q\nRUN=%q\nTX=%q\nROWCONF=%q\nEXPORT=%q\nGITOBJ=%q\nGITDIR=%q\n' \
     "$lane" "$model" "$effort" "$task" "$wt" "$fix" "$doc" "$snap" "$(date +%s)" "$REPO" "$run" "$tx" "$conf" \
     "$ROOT/repo" "$ROOT/gitobj/$row" "$gitdir" >"$ROOT/rows/$row.env"
@@ -244,7 +236,7 @@ cmd_prepare() {
   # The row's whole launch, sandbox prefix included, lives in one wrapper, so
   # the chief's line carries nothing that could be dropped from it.
   printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile chief-relay --chief %q %q %q %q 1 %q %q\n' \
-    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CONSOLE" \
+    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CHIEF" \
     "HIMMEL-4869-pilot-$row" "$doc" "$ROOT/rows/$row.signal" "$run/$row.log" "$model" >"$ROOT/rows/$row.launch"
   chmod +x "$ROOT/rows/$row.launch"
   # The chief runs this line, so every value is shell-quoted.

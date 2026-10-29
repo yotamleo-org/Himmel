@@ -48,7 +48,7 @@ echo 'echo env' >"$ORIGIN/scripts/cr/pr-check-env.sh"
 echo ': dotenv' >"$ORIGIN/scripts/lib/load-dotenv.sh"
 echo ': other lib' >"$ORIGIN/scripts/lib/other.sh"
 # every gate-allowed scripts/cr entry, and the hand-off each sources.
-for t in anchor-handoff.sh clear-cr-marker.sh clear-review-marker.sh \
+for t in anchor-handoff.sh clear-review-marker.sh \
     cr-scores.sh doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh \
     known-findings.sh ledger-append.sh orphan-check.sh panel-first-pass.sh \
     review-round.sh write-verdicts.sh; do
@@ -588,7 +588,7 @@ for v in \
     "env --split-string='bash scripts/handover/merge-on-green.sh\\c'" \
     "env -S 'bash scripts/handover/merge-on-green.sh\\t'" \
     "env -S 'bash scripts/handover/merge-on-green.sh#'" \
-    "env -S 'bash scripts/cr/clear-cr-marker.sh\\c'" \
+    "env -S 'bash scripts/cr/clear-review-marker.sh\\c'" \
     "env -S 'bash scripts/handover/chief-kit/go.sh\\c'" \
     "env -S 'ARMAUTOMERGE=1 bash"$'\n'"scripts/handover/merge-on-green.sh\\c'" \
     "env -S 'true;bash scripts/handover/merge-on-green.sh\\c'" \
@@ -616,7 +616,7 @@ for v in \
     "env -S 'bash scripts/handover/merge-\${Z}on-green.sh'" \
     "env -S 'bash scripts/cr/clear-\${Z}cr-marker.sh\\c'" \
     "env -S 'bash scripts/hand\${Z}over/merge-on-green.sh'" \
-    "env -S 'bash scripts/c\${Z}r/clear-cr-marker.sh\\c'" \
+    "env -S 'bash scripts/c\${Z}r/clear-review-marker.sh\\c'" \
     "env >|/dev/null -S 'bash scripts/handover/merge-on-green.sh\\c'" \
     "env {fd}>&1 -S 'bash scripts/handover/merge-on-green.sh\\c'"; do
     run "1813: [$v] clean root -> deny" 2 "$(payload "$v" "$WT")" "$HR"
@@ -647,7 +647,7 @@ run "1813/3917: cat of a here-string naming a target -> deny (any <<< beside a t
 run "1813: unresolvable env -S with no target mention -> no-op" 0 \
     "$(payload "env -S 'bash scripts/other/x.sh\\c'" "$WT")" "$HR"
 run "1813: \${VAR} split of a target name outside env -S -> no-op" 0 \
-    "$(payload "echo scripts/c\${Z}r/clear-cr-marker.sh" "$WT")" "$HR"
+    "$(payload "echo scripts/c\${Z}r/clear-review-marker.sh" "$WT")" "$HR"
 run "1813: \${VAR} in an env -S string naming no target -> no-op" 0 \
     "$(payload "env -S 'echo \${HOME}/x'" "$WT")" "$HR"
 run "1813: \\c in a non-env mention of the target -> no-op" 0 \
@@ -669,10 +669,10 @@ bash -c "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 sh -c "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 eval "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 eval env -S 'bash scripts/handover/merge-on-green.sh\c'
-bash -c "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
-sh -c "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
-eval "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
-eval env -S 'bash scripts/cr/clear-cr-marker.sh\c'
+bash -c "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
+sh -c "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
+eval "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
+eval env -S 'bash scripts/cr/clear-review-marker.sh\c'
 bash -c "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
 sh -c "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
 eval "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
@@ -722,7 +722,7 @@ echo eval "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
 echo eval "env -S 'bash scripts/cr/pr-check-context.sh\c'" | bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | bash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | sh
-printf '%s\n' "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" | zsh
+printf '%s\n' "env -S 'bash scripts/cr/clear-review-marker.sh\c'" | zsh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | dash
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | /bin/sh
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ksh
@@ -817,19 +817,19 @@ while IFS= read -r v; do
 done <<'BACKSTOP'
 tee /tmp/f <<< "env -S 'bash scripts/handover/merge-on-green.sh\c'"; bash /tmp/f
 cat <<< "env -S 'bash scripts/handover/merge-on-green.sh\c'" > /tmp/f && sh /tmp/f
-tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; source /tmp/f
-tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; . /tmp/f
+tee /tmp/f <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"; source /tmp/f
+tee /tmp/f <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"; . /tmp/f
 tee /tmp/f <<< "env -S 'bash scripts/handover/chief-kit/go.sh\c'"; eval "$(cat /tmp/f)"
-cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" > /tmp/f; exec bash /tmp/f
-cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" >> /tmp/f; /bin/bash /tmp/f
-cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" > /tmp/f; env bash /tmp/f
-tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; (bash /tmp/f)
-tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; if true; then bash /tmp/f; fi
+cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'" > /tmp/f; exec bash /tmp/f
+cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'" >> /tmp/f; /bin/bash /tmp/f
+cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'" > /tmp/f; env bash /tmp/f
+tee /tmp/f <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"; (bash /tmp/f)
+tee /tmp/f <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"; if true; then bash /tmp/f; fi
 tee /tmp/f <<< 'bash scripts/cr/write-verdicts.sh'; bash /tmp/f
-cat() { bash "$@"; }; cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
-tee() { sh "$@"; }; tee /tmp/f <<< 'scripts/cr/clear-cr-marker.sh'
-function cat { bash "$@"; }; cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
-alias cat=bash; cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
+cat() { bash "$@"; }; cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
+tee() { sh "$@"; }; tee /tmp/f <<< 'scripts/cr/clear-review-marker.sh'
+function cat { bash "$@"; }; cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
+alias cat=bash; cat <<< "env -S 'bash scripts/cr/clear-review-marker.sh\c'"
 tee /tmp/f <<< 'bash scripts/cr/write-verdicts.sh'; </dev/null bash /tmp/f
 tee /tmp/f <<< 'bash scripts/cr/write-verdicts.sh'; 2>/dev/null sh /tmp/f
 tee /tmp/f <<< 'bash scripts/cr/write-verdicts.sh'; X=1 bash /tmp/f
@@ -853,7 +853,7 @@ run "3913: [tee ...<<< then newline then bash] clean root -> deny" 2 \
     "$(payload "tee /tmp/f <<< \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""$'\n'"bash /tmp/f" "$WT")" "$HR"
 need_in_err "3913: newline form deny points at the move-into-a-file route" "can write text to a file"
 run "3913: [cat <<< > f then newline then . f] clean root -> deny" 2 \
-    "$(payload "cat <<< \"env -S 'bash scripts/cr/clear-cr-marker.sh\\c'\" > /tmp/f"$'\n'". /tmp/f" "$WT")" "$HR"
+    "$(payload "cat <<< \"env -S 'bash scripts/cr/clear-review-marker.sh\\c'\" > /tmp/f"$'\n'". /tmp/f" "$WT")" "$HR"
 # A variable-named write target is invisible to the backstop, but the parser still
 # refuses an absolute path outside the root, so the run half denies (rc only).
 run "3913: [variable write target then run of an outside scripts/cr path] clean root -> deny" 2 \
@@ -1626,15 +1626,15 @@ run "HIMMEL-4367 control [python3 -c glob target beside a heredoc] -> deny" 2 "$
 # data, and a pattern reader (grep -f -) stays judged.
 NL=$'\n'
 for v in \
-    "cat > /tmp/x.sh <<EOF${NL}bash scripts/c?/clear-cr-marker.sh b${NL}EOF" \
-    "tee /tmp/x.sh <<EOF${NL}bash scripts/c[r]/clear-cr-marker.sh b${NL}EOF" \
-    "cat <<EOF > /tmp/x.sh${NL}bash scripts/{cr,x}/clear-cr-marker.sh b${NL}EOF" \
-    "python3 - <<EOF${NL}import os; os.system('bash scripts/c?/clear-cr-marker.sh b')${NL}EOF" \
-    "node - <<EOF${NL}require('child_process').execSync('bash scripts/c?/clear-cr-marker.sh b')${NL}EOF" \
-    "cat <<'EOF' | bash${NL}bash scripts/c?/clear-cr-marker.sh b${NL}EOF" \
-    "bash scripts/c?/clear-cr-marker.sh b" \
-    "echo {url}; bash scripts/c?/clear-cr-marker.sh b" \
-    "cat <<EOF${NL}a*b${NL}EOF${NL}bash scripts/c?/clear-cr-marker.sh b"; do
+    "cat > /tmp/x.sh <<EOF${NL}bash scripts/c?/clear-review-marker.sh b${NL}EOF" \
+    "tee /tmp/x.sh <<EOF${NL}bash scripts/c[r]/clear-review-marker.sh b${NL}EOF" \
+    "cat <<EOF > /tmp/x.sh${NL}bash scripts/{cr,x}/clear-review-marker.sh b${NL}EOF" \
+    "python3 - <<EOF${NL}import os; os.system('bash scripts/c?/clear-review-marker.sh b')${NL}EOF" \
+    "node - <<EOF${NL}require('child_process').execSync('bash scripts/c?/clear-review-marker.sh b')${NL}EOF" \
+    "cat <<'EOF' | bash${NL}bash scripts/c?/clear-review-marker.sh b${NL}EOF" \
+    "bash scripts/c?/clear-review-marker.sh b" \
+    "echo {url}; bash scripts/c?/clear-review-marker.sh b" \
+    "cat <<EOF${NL}a*b${NL}EOF${NL}bash scripts/c?/clear-review-marker.sh b"; do
     run "HIMMEL-4367 probe control [${v%%"$NL"*}] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 for v in \
@@ -1654,9 +1654,9 @@ g -C "$WT" checkout -q -- scripts/cr/pr-check-context.sh
 JIRA_CLI=$PRIMARY/scripts/jira/dist/index.js
 for v in \
     'gh pr comment 1 --body "ran: bash scripts/handover/chief-kit/go.sh 12 abc"' \
-    'gh pr create --title "x" --body "a; bash scripts/cr/clear-cr-marker.sh | b"' \
+    'gh pr create --title "x" --body "a; bash scripts/cr/clear-review-marker.sh | b"' \
     "gh issue comment 5 --body 'then bash scripts/cr/write-verdicts.sh sweep'" \
-    "node $JIRA_CLI comment HIMMEL-1 \"see bash scripts/cr/clear-cr-marker.sh; then go.sh\""; do
+    "node $JIRA_CLI comment HIMMEL-1 \"see bash scripts/cr/clear-review-marker.sh; then go.sh\""; do
     run "HIMMEL-4574 mention [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
 # j2064 NO-GO: printf -v can write BASH_CMDS (rebinding cat/grep to bash) or a
@@ -1710,10 +1710,10 @@ for v in \
     'grep -nE "avail --branch|--status ok" /x/.claude/commands/pr-check.md | head -12' \
     'cat scripts/cr/write-verdicts.sh | wc -l' \
     'grep -n x scripts/cr/*.sh 2>/dev/null | cut -c1-80' \
-    'sed -n 60,96p scripts/cr/write-verdicts.sh; sed -n 1,9p scripts/cr/clear-cr-marker.sh' \
+    'sed -n 60,96p scripts/cr/write-verdicts.sh; sed -n 1,9p scripts/cr/clear-review-marker.sh' \
     'git grep -n "bash scripts/cr/write-verdicts.sh" -- docs | head' \
     'git log --oneline -3 -- scripts/handover/chief-kit/go.sh' \
-    'git show HEAD:scripts/cr/clear-cr-marker.sh | head -5'; do
+    'git show HEAD:scripts/cr/clear-review-marker.sh | head -5'; do
     run "HIMMEL-4574 readers [$v] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
 # ... and a runner after or among the readers, a reader's output written to a
@@ -2578,25 +2578,25 @@ g -C "$WT" reset -q --hard "$ORIG_MAIN"
 # denied.
 # shellcheck disable=SC2016 # literal payloads, never expanded here
 for v in \
-    'git mv scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
-    'git mv -f scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
-    'git mv -k scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
-    'git mv -v scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
-    'git mv -- scripts/cr/clear-cr-marker.sh scripts/cr/x.sh' \
-    'git mv scripts/cr/clear-cr-marker.sh docs/'; do
+    'git mv scripts/cr/clear-review-marker.sh scripts/cr/x.sh' \
+    'git mv -f scripts/cr/clear-review-marker.sh scripts/cr/x.sh' \
+    'git mv -k scripts/cr/clear-review-marker.sh scripts/cr/x.sh' \
+    'git mv -v scripts/cr/clear-review-marker.sh scripts/cr/x.sh' \
+    'git mv -- scripts/cr/clear-review-marker.sh scripts/cr/x.sh' \
+    'git mv scripts/cr/clear-review-marker.sh docs/'; do
     run "HIMMEL-6927 git mv [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 # shellcheck disable=SC2016 # literal attack payloads, never expanded here
 for v in \
-    'git bisect run scripts/cr/clear-cr-marker.sh' \
-    "git -c alias.x='!bash scripts/cr/clear-cr-marker.sh' x" \
-    'git rebase -x scripts/cr/clear-cr-marker.sh main' \
-    'git rebase --exec scripts/cr/clear-cr-marker.sh main' \
-    'git submodule foreach scripts/cr/clear-cr-marker.sh' \
-    'git filter-branch --tree-filter scripts/cr/clear-cr-marker.sh' \
-    'git mv x y && bash scripts/cr/clear-cr-marker.sh' \
-    'git mv --exec-path=scripts/cr/clear-cr-marker.sh x y' \
-    'git -c core.hooksPath=scripts/cr/clear-cr-marker.sh mv x y'; do
+    'git bisect run scripts/cr/clear-review-marker.sh' \
+    "git -c alias.x='!bash scripts/cr/clear-review-marker.sh' x" \
+    'git rebase -x scripts/cr/clear-review-marker.sh main' \
+    'git rebase --exec scripts/cr/clear-review-marker.sh main' \
+    'git submodule foreach scripts/cr/clear-review-marker.sh' \
+    'git filter-branch --tree-filter scripts/cr/clear-review-marker.sh' \
+    'git mv x y && bash scripts/cr/clear-review-marker.sh' \
+    'git mv --exec-path=scripts/cr/clear-review-marker.sh x y' \
+    'git -c core.hooksPath=scripts/cr/clear-review-marker.sh mv x y'; do
     run "HIMMEL-6927 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 
@@ -2604,38 +2604,38 @@ done
 # that only name one as a path, execute nothing.
 # shellcheck disable=SC2016 # literal payloads, never expanded here
 for v in \
-    'git log --follow scripts/cr/clear-cr-marker.sh' \
-    'git log --oneline scripts/cr/clear-cr-marker.sh' \
-    'git diff --stat scripts/cr/clear-cr-marker.sh' \
-    'git diff --name-only scripts/cr/clear-cr-marker.sh' \
-    'git show --stat HEAD scripts/cr/clear-cr-marker.sh' \
-    'git rm scripts/cr/clear-cr-marker.sh' \
-    'git rm -f scripts/cr/clear-cr-marker.sh' \
-    'git restore scripts/cr/clear-cr-marker.sh' \
-    'git reset scripts/cr/clear-cr-marker.sh' \
-    'git reset -q HEAD scripts/cr/clear-cr-marker.sh' \
-    'git ls-files scripts/cr/clear-cr-marker.sh' \
-    'git blame scripts/cr/clear-cr-marker.sh' \
-    'git cat-file -p HEAD:scripts/cr/clear-cr-marker.sh' \
-    'git tag -a v1 -m scripts/cr/clear-cr-marker.sh' \
-    'git notes add -m scripts/cr/clear-cr-marker.sh' \
-    'git blame --porcelain scripts/cr/clear-cr-marker.sh' \
-    'git ls-files --stage scripts/cr/clear-cr-marker.sh' \
-    'git ls-files --cached scripts/cr/clear-cr-marker.sh' \
-    'git tag --list scripts/cr/clear-cr-marker.sh' \
-    'git rm --force scripts/cr/clear-cr-marker.sh'; do
+    'git log --follow scripts/cr/clear-review-marker.sh' \
+    'git log --oneline scripts/cr/clear-review-marker.sh' \
+    'git diff --stat scripts/cr/clear-review-marker.sh' \
+    'git diff --name-only scripts/cr/clear-review-marker.sh' \
+    'git show --stat HEAD scripts/cr/clear-review-marker.sh' \
+    'git rm scripts/cr/clear-review-marker.sh' \
+    'git rm -f scripts/cr/clear-review-marker.sh' \
+    'git restore scripts/cr/clear-review-marker.sh' \
+    'git reset scripts/cr/clear-review-marker.sh' \
+    'git reset -q HEAD scripts/cr/clear-review-marker.sh' \
+    'git ls-files scripts/cr/clear-review-marker.sh' \
+    'git blame scripts/cr/clear-review-marker.sh' \
+    'git cat-file -p HEAD:scripts/cr/clear-review-marker.sh' \
+    'git tag -a v1 -m scripts/cr/clear-review-marker.sh' \
+    'git notes add -m scripts/cr/clear-review-marker.sh' \
+    'git blame --porcelain scripts/cr/clear-review-marker.sh' \
+    'git ls-files --stage scripts/cr/clear-review-marker.sh' \
+    'git ls-files --cached scripts/cr/clear-review-marker.sh' \
+    'git tag --list scripts/cr/clear-review-marker.sh' \
+    'git rm --force scripts/cr/clear-review-marker.sh'; do
     run "HIMMEL-6927 slice2 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 # shellcheck disable=SC2016 # literal attack payloads, never expanded here
 for v in \
-    'git bisect run scripts/cr/clear-cr-marker.sh' \
-    'git rebase -x scripts/cr/clear-cr-marker.sh main' \
-    'git rebase --exec scripts/cr/clear-cr-marker.sh main' \
-    'git log --exec-path=scripts/cr/clear-cr-marker.sh' \
-    'git diff --output=scripts/cr/clear-cr-marker.sh' \
-    'git fetch --upload-pack scripts/cr/clear-cr-marker.sh origin' \
-    'git blame --contents scripts/cr/clear-cr-marker.sh x' \
-    'git log --follow scripts/cr/clear-cr-marker.sh && bash scripts/cr/clear-cr-marker.sh'; do
+    'git bisect run scripts/cr/clear-review-marker.sh' \
+    'git rebase -x scripts/cr/clear-review-marker.sh main' \
+    'git rebase --exec scripts/cr/clear-review-marker.sh main' \
+    'git log --exec-path=scripts/cr/clear-review-marker.sh' \
+    'git diff --output=scripts/cr/clear-review-marker.sh' \
+    'git fetch --upload-pack scripts/cr/clear-review-marker.sh origin' \
+    'git blame --contents scripts/cr/clear-review-marker.sh x' \
+    'git log --follow scripts/cr/clear-review-marker.sh && bash scripts/cr/clear-review-marker.sh'; do
     run "HIMMEL-6927 slice2 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 

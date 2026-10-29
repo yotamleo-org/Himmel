@@ -80,7 +80,10 @@
 #      `gh workflow run` command. A dispatch run that FAILED at the head still
 #      passes, as a PRE-EXISTING line, when every one of its failed jobs also
 #      failed in the default branch's latest completed scheduled/push run of the
-#      same workflow; a job red only on the PR still FAILs and is named. A head
+#      same workflow; a job red only on the PR still FAILs and is named, unless
+#      the run logs show it failed only suites (`[FAIL] <suite> (` lines) that
+#      also failed on main, in whatever job (a re-shard moved them); an
+#      unreadable log or a job showing no failed suite keeps the FAIL. A head
 #      with no dispatch run of its own passes the same way on a failed dispatch
 #      run of the PR branch at an ANCESTOR of the head, when every file the PR
 #      changes is the same blob at that ancestor and at the head (the head only
@@ -438,7 +441,7 @@ else
     if . "$RC_SCRIPT_DIR/../../lib/load-dotenv.sh" 2>/dev/null; then
         # pin to this script's OWN checkout, never the caller's
         # CWD repo (load_dotenv with no --root resolves via the process CWD's
-        # git repo — see bank-preflight.sh for the failure mode).
+        # git repo — see usage-preflight.sh for the failure mode).
         load_dotenv --root "$(_load_dotenv_primary_for "$RC_SCRIPT_DIR/../../..")" TICKET_ID_PATTERN JIRA_PROJECT_KEY || true
     fi
     TICKET_PATTERN="${TICKET_ID_PATTERN:-}"
@@ -838,11 +841,55 @@ else
         body=$("$GH" run view "$1" --repo "$nwo" --json jobs 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as not pre-existing
         printf '%s' "$body" | jq -r ".jobs[]? | select($sel) | .name" 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
     }
+    # wf_failed_suites <run id>: the run log's failed suites as `<job><TAB><suite>` lines, sorted, from the
+    # runner's own `[FAIL] <suite> (` / `[CAP EXCEEDED] <suite> (` line (the text right after the log's
+    # tab-separated timestamp field, so a failed suite's indented forwarded output cannot echo one; a suite
+    # whose retry passed prints neither). rc 1 when the log cannot be read.
+    wf_failed_suites() {
+        local log
+        log=$("$GH" run view "$1" --repo "$nwo" --log 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller keeps the job-name FAIL
+        printf '%s\n' "$log" | awk -F'\t' 'NF >= 3 && $3 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z / {
+            t = substr($3, index($3, " ") + 1)
+            if (index(t, "[FAIL] ") == 1) t = substr(t, 8)
+            else if (index(t, "[CAP EXCEEDED] ") == 1) t = substr(t, 16)
+            else next
+            split(t, a, " ")
+            if (a[1] != "") print $1 "\t" a[1]
+        }' | sort -u
+    }
+    # wf_suite_rescue <pr run id> <main run id> <jobs the job-name check refused, one per line>: rc 0 and
+    # wf_rescued set (the failed suites, comma-separated) when every one of those jobs shows failed suites
+    # in the PR run's log and every such suite also failed somewhere in main's run: the same test red on
+    # main in another shard, so a re-shard cannot make it look new. rc 1 otherwise; wf_why names a suite red
+    # only on the PR, and stays as the caller set it when a log is unreadable or a job shows no failed suite.
+    wf_suite_rescue() {
+        local pr_s main_s j s_new s_all="" bad=""
+        pr_s=$(wf_failed_suites "$1") || return 1
+        main_s=$(wf_failed_suites "$2") || return 1
+        [ -n "$pr_s" ] && [ -n "$main_s" ] || return 1
+        while IFS= read -r j; do
+            [ -n "$j" ] || continue
+            s_new=$(printf '%s\n' "$pr_s" | awk -F'\t' -v j="$j" '$1 == j { print $2 }')
+            [ -n "$s_new" ] || return 1
+            s_all="$s_all
+$s_new"
+        done <<EOF
+$3
+EOF
+        s_all=$(printf '%s\n' "$s_all" | sed '/^$/d' | sort -u)
+        bad=$(printf '%s\n' "$s_all" | grep -vxFf <(printf '%s\n' "$main_s" | cut -f2) || true)  # swallow-ok: every suite red on main is grep rc 1 and an empty set is the answer
+        if [ -n "$bad" ]; then
+            wf_why="run $1 failed suite(s) not red on main run $2: $(printf '%s' "$bad" | paste -sd, - | sed 's/,/, /g')"
+            return 1
+        fi
+        wf_rescued=$(printf '%s' "$s_all" | paste -sd, - | sed 's/,/, /g')
+    }
     # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when every failed
     # job of that run also failed in the default branch's latest completed scheduled/push run
-    # of the same workflow. Otherwise rc 1 and wf_why says why (empty when main is not red).
+    # of the same workflow, or (a job moved to another shard) when each refused job fails only suites that
+    # also failed on main. Otherwise rc 1 and wf_why says why (empty when main is not red).
     wf_preexisting() {
-        local main_runs main_row main_id main_event pr_jobs main_jobs new rc
+        local main_runs main_row main_id main_event pr_jobs main_jobs new rc wf_rescued=""
         wf_why=""
         main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
         main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
@@ -857,9 +904,10 @@ else
         fi
         if [ -n "$new" ]; then
             wf_why="run $2 failed on suites not red on main run $main_id: $(printf '%s' "$new" | paste -sd, - | sed 's/,/, /g')"
-            return 1
+            wf_suite_rescue "$2" "$main_id" "$new" || return 1
+            wf_why=""
         fi
-        wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')"
+        wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')${wf_rescued:+ — job(s) moved shard, failed suite(s) red on main: $wf_rescued}"
     }
     # wf_wiring_only <workflow path>: rc 0 when the PR's diff of that file is the macos-cadence `suites`
     # wiring and nothing else. Every added line, trimmed, must be blank, a whole-line comment, or one of the
@@ -929,8 +977,10 @@ LINES
     # wiring only, and the run's log carries the runner's own `[PASS] <suite> (` for every named suite: the
     # text right after the log's tab-separated timestamp field, so a failed suite's indented forwarded output
     # cannot echo one. rc 1: no such run (the caller falls through to the whole-run rules). rc 2: such a run
-    # exists but is not proven; wf_why says why and the verdict is final, because the job-level PRE-EXISTING
-    # comparison says nothing about which named suite failed, and a run that proves too little stays refused.
+    # exists but is not proven; wf_why says why and the verdict is final for that suites run, because the
+    # job-level PRE-EXISTING comparison says nothing about which named suite failed, and a run that proves
+    # too little stays refused. It never blocks judging a separate full (non-suites) failed dispatch run at
+    # the head: the caller judges that run on its own, and with no such run the refusal stands.
     wf_suites_proof() {
         local wf_name="$1" row id title names s f log changed_suites pass="" bad="" uncovered=""
         wf_why=""
@@ -1048,15 +1098,16 @@ EOF
                 wf_ids="$wf_ids ${wf_base}=$wf_ok_id"
                 continue
             fi
-            wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure")][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
+            wf_fail_id=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h and .status == "completed" and .conclusion == "failure" and ((.displayTitle // "") | startswith("macos-cadence suites:") | not))][0].databaseId // empty' 2>/dev/null)  # swallow-ok: unparsable runs read as no failed run, so the check fails closed
             wf_head_runs=$(printf '%s' "$wf_runs" | jq -r --arg h "$SHA" '[.[] | select(.headSha == $h)] | length' 2>/dev/null) || wf_head_runs=1  # swallow-ok: an unreadable list counts the head as having a run, so the ancestor fallback is refused
             wf_why=""; wf_sp_rc=0
             wf_suites_proof "$wf_base" "$wf_runs" || wf_sp_rc=$?
+            wf_sp_why="$wf_why"
             if [ "$wf_sp_rc" -eq 0 ]; then
                 wf_ids="$wf_ids ${wf_base}=$wf_sp_id"
                 wf_notes="$wf_notes
        $wf_note"
-            elif [ "$wf_sp_rc" -eq 1 ] && [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
+            elif [ -n "$wf_fail_id" ] && wf_preexisting "$wf_base" "$wf_fail_id"; then
                 wf_ids="$wf_ids ${wf_base}=$wf_fail_id"
                 wf_notes="$wf_notes
        $wf_note"
@@ -1065,6 +1116,7 @@ EOF
                 wf_notes="$wf_notes
        $wf_note"
             else
+                wf_why="${wf_why:-$wf_sp_why}"
                 wf_err="$wf_err; $wf has no completed successful workflow_dispatch run at $SHA${wf_why:+ ($wf_why)} — run: gh workflow run $wf_base --ref ${wf_branch:-<branch>} --repo $nwo"
             fi
         done <<EOF

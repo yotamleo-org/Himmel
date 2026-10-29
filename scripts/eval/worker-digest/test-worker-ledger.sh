@@ -21,7 +21,7 @@ trap 'rm -rf "$TMP"' EXIT
 # Never the live ledgers, whatever a case forgets to pass.
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-eval.jsonl"
 unset HIMMEL_WORKER_SESSION_FAILURES_LEDGER
-export HIMMEL_LEG_FAILURES_LEDGER="$TMP/never-fail.jsonl" # old name, read both ways
+export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/never-fail.jsonl"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
@@ -184,14 +184,11 @@ check "the live journal has no marker and no rows in either ledger" '[ ! -e "$TM
 lbf --live-minutes 0 >"$TMP/l2.out" 2>&1
 check "control: with the skip disabled (--live-minutes 0) the same journal is digested" 'grep -q "live=0" "$TMP/l2.out" && [ -f "$TMP/l-state/$L1.json" ] && grep -q "$L1" "$TMP/l-eval.jsonl"'
 
-echo "W. the worker-session ledger name wins over the old one; the lane reads either name"
+echo "W. the worker-session ledger name sets the path; the lane reads the worker-session name"
 lpath() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger; print(worker_ledger.ledger_path())' "$HERE"; }
-check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER wins over HIMMEL_LEG_FAILURES_LEDGER" '[ "$(HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/new.jsonl" lpath)" = "$TMP/new.jsonl" ]'
-check "control: the old name alone is still read" '[ "$(lpath)" = "$TMP/never-fail.jsonl" ]'
+check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path" '[ "$(HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$TMP/new.jsonl" lpath)" = "$TMP/new.jsonl" ]'
 printf '# HIMMEL-1-N9 worker (WORKER_SESSION_LANE=claudex)\n' >"$TMP/wlane.md"
 check "a doc title naming WORKER_SESSION_LANE gives the lane" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger; print(worker_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/wlane.md")" = claudex ]'
-printf '# HIMMEL-1-N9 worker (LEG_LANE=native, WORKER_SESSION_LANE=claudex)\n' >"$TMP/blane.md"
-check "a doc title naming both lane names gives the WORKER_SESSION_LANE one" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger; print(worker_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/blane.md")" = claudex ]'
 
 echo "11. the recorder stamps the launch profile on tool_health (HIMMEL-7048)"
 LP=4670c1a5-0000-4000-8000-0000000000f1; LQ=4670c1a5-0000-4000-8000-0000000000f2; LR=4670c1a5-0000-4000-8000-0000000000f3

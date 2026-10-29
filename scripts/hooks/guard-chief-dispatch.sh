@@ -78,12 +78,11 @@
 #      or no user turn found in the bound, allows.
 # Test seam: the payload's own transcript_path field IS the seam (point it at
 # a fixture in a test); CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES tunes the
-# bound. Each CHIEF_* name here still reads its old CONSOLE_* name.
+# bound.
 #
 # Escape hatches (set in the shell that LAUNCHED Claude Code; session-sticky):
 #   CHIEF_DISPATCH_OK=1       deliberate one-session carve-out
 #   CHIEF_DISPATCH_DISABLE=1  emergency kill switch
-# Each still reads its old name (CONSOLE_DISPATCH_OK, CONSOLE_DISPATCH_DISABLE).
 # Both are LOUD — warned on stderr and appended to CHIEF_DISPATCH_LOG
 # (default ~/.claude/chief-dispatch-guard/overrides.jsonl), best-effort,
 # mirroring guard-implementor-dispatch.sh's log_override().
@@ -123,22 +122,14 @@ log_override() {
     warn "$override=1 — allowing by explicit session override; audit log: $log"
 }
 
-# Each escape hatch reads its old CONSOLE_* name too; a set falsy value of
-# either name keeps the guard on. An unloadable helper lifts nothing.
-alias_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
-# shellcheck source=../lib/env-alias.sh
-if { [ -r "$alias_lib" ] && . "$alias_lib"; } 2>/dev/null; then
-    # old names, read only while HIMMEL_LEGACY_NAMES is on
-    alias_env CHIEF_DISPATCH_LOG CONSOLE_DISPATCH_LOG
-    alias_env CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES
-    for pair in "CHIEF_DISPATCH_OK CONSOLE_DISPATCH_OK" "CHIEF_DISPATCH_DISABLE CONSOLE_DISPATCH_DISABLE"; do
-        new="${pair% *}" old="${pair#* }"
-        if env_alias_permit "$new" "$old"; then
-            if [ -n "${!new:-}" ]; then log_override "$new"; else log_override "$old"; fi
-            exit 0
-        fi
-    done
-fi
+# Each escape hatch lifts the guard when set to a non-falsy value; a set falsy
+# value (0, false, no, off) keeps the guard on.
+for hatch in CHIEF_DISPATCH_OK CHIEF_DISPATCH_DISABLE; do
+    case "${!hatch:-}" in
+        ''|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff]) ;;
+        *) log_override "$hatch"; exit 0 ;;
+    esac
+done
 
 command -v jq >/dev/null 2>&1 || { warn "jq not on PATH — allowing (fail-open)"; exit 0; }
 [ -n "$input" ] || exit 0
@@ -288,7 +279,7 @@ Do this instead:
 Genuinely read-only work has two structural options, neither spoofable by prompt text (a
 prompt-text read-only claim is NOT a carve-out here — three CR rounds proved it leaks):
   * dispatch with subagent_type: Explore (or judge-ro for a judge call), or
-  * relaunch with CHIEF_DISPATCH_OK=1 (old name CONSOLE_DISPATCH_OK) in the launching shell
+  * relaunch with CHIEF_DISPATCH_OK=1 in the launching shell
     (audited; a per-call prefix does not reach this hook)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \

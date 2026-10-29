@@ -50,10 +50,6 @@ fi
 DOC="$1"
 TEXT="$2"
 
-# shellcheck source=scripts/lib/env-alias.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 
 if [ ! -f "$DOC" ] || [ ! -r "$DOC" ] || [ ! -w "$DOC" ]; then
     echo "append-results: cannot read/write doc '$DOC'" >&2

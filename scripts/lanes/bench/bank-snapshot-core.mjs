@@ -3,10 +3,10 @@
 // Pure parsing/threshold helpers for bank-snapshot.sh, plus the CLI that
 // script shells out to. Reuses scripts/lanes/bank-status-core.mjs's
 // parseBankStatusOutput (the same per-lane `<id> <funded|spent|unknown>
-// <detail>` grammar `bun scripts/lanes/bank-status.ts` already emits)
+// <detail>` grammar `bun scripts/lanes/usage-status.ts` already emits)
 // instead of re-parsing raw bank-status output a second, divergent way.
 //
-// Two thresholds here are DELIBERATELY DIFFERENT from bank-status.ts's own
+// Two thresholds here are DELIBERATELY DIFFERENT from usage-status.ts's own
 // funded/spent verdict (LANE_FUNDED_MAX_PCT, default 90 codex / 99 others): this bench refuses
 // at codex weekly >= 80% or Claude seven_day >= 70% (spec §7.2) — below
 // the lane's own 90% refuse point, so a 2-3h, 20-dispatch batch cannot

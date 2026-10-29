@@ -109,7 +109,7 @@ hook_event() {
 # Strip ambient profile/initiative vars so a launching shell that has them ON
 # (overnight/initiative sessions, dogfooded gates) can't flip a hook live and turn
 # a gated-OFF assertion into a false red. Gate vars are then set explicitly per case.
-ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_INITIATIVE -u HIMMEL_WHERE_ARE_WE -u HIMMEL_JIRA_NUDGE"
+ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_INITIATIVE -u HIMMEL_WHERE_ARE_WE -u HIMMEL_JIRA_NUDGE"
 
 # telegram-session-end is in the end set (the operator-reaching
 # relay a Codex session previously ended without). It is the one member NOT on

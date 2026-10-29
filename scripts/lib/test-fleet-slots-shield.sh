@@ -30,7 +30,7 @@ DEFAULT_PATH="$FAKE_XDG/himmel-fleet-$(id -u)"
 TMP_SUITE="$W/suite-tmp"
 mkdir -p "$TMP_SUITE"
 
-# T1: the resolver mirrors bank-preflight.sh:390 / arm-resume.sh:1221.
+# T1: the resolver mirrors usage-preflight.sh:390 / arm-resume.sh:1221.
 out=$(env -u HIMMEL_FLEET_SLOTS XDG_RUNTIME_DIR="$FAKE_XDG" bash -c ". '$LIB'; fleet_slots_resolve")
 check "T1a default resolves to XDG/himmel-fleet-uid" "$DEFAULT_PATH" "$out"
 out=$(HIMMEL_FLEET_SLOTS="$W/x" XDG_RUNTIME_DIR="$FAKE_XDG" bash -c ". '$LIB'; fleet_slots_resolve")

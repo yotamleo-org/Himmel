@@ -325,7 +325,7 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   // and that is the call that orphans a GPU-bound bun child for hours.
   'block-bare-qmd-query.sh',
   // Fails CLOSED; a starved run let an agent write the
-  // operator-only bank lift (or run `bank-lift.sh set`) unchecked.
+  // operator-only bank lift (or run `usage-lift.sh set`) unchecked.
   'block-bank-lift-writes.sh',
   // Fails CLOSED; a starved run let an agent write
   // ~/.himmel/config.json and grant itself the graphify salus opt-in unchecked.

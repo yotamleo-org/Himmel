@@ -59,13 +59,7 @@ wired_cmd() {
 # (CLAUDE_PROJECT_DIR UNSET — run-hook.sh must re-derive + export it). Extra args
 # are env overrides (e.g. HIMMEL_INITIATIVE=all). Feeds an empty SessionStart
 # payload on stdin. Prints the command's stdout.
-#
-# Hermeticity: also strip the overnight-profile vars so an ambient
-# HIMMEL_OVERNIGHT in the launching shell can't flip inject-initiative's
-# resolve_workers onto HIMMEL_INITIATIVE_OVERNIGHT and turn the gate-ON case into a
-# false red (the .env load is non-clobbering, so this guards only process-env
-# leakage).
-HOOK_ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT"
+HOOK_ENV_CLEAN="-u CLAUDE_PROJECT_DIR"
 run_codex_hook() {
   local hook="$1"; shift
   local cmd; cmd="$(wired_cmd "$hook")"
