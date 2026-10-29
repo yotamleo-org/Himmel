@@ -349,8 +349,8 @@ Example: the fleet size cap. The rule "a chief never runs more workers than
 the cap" stays in the chief template and its enforcing script. The number
 itself is a tunable knob, so it belongs in configuration, not prose. Raising
 it loosens a safety limit, so its home is the policy section of
-`config.json`, not `himmel.conf`; until it joins that list it stays a
-guarded process-env variable (`HIMMEL_FLEET_CAP`). Which workers are live right
+`config.json`, not `himmel.conf`: `.policy.HIMMEL_FLEET_CAP`, which the
+preflight reads while ignoring the process env. Which workers are live right
 now is state, so it stays in the fleet manifest.
 
 ## Feature flags
