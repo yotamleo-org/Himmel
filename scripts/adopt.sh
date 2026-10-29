@@ -182,7 +182,6 @@ PORTABLE_FILES=(
   scripts/lib/forge-github.sh
   scripts/lib/forge-bitbucket.sh
   scripts/lib/coderabbit-trigger-ledger.sh
-  scripts/lib/cr-available.sh
   scripts/lib/coderabbit-available.sh
   scripts/lib/branch-shipped.sh
   scripts/lib/worktree-inuse.sh

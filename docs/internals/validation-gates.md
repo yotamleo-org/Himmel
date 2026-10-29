@@ -147,7 +147,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    ⇒ Claude-only fail-open. Observed live 2026-07-17: the sole registered
    critic (paid codex) returned rc=1 for a whole run once its weekly usage was
    exhausted — with no free row registered, that is 0/1 panel critics.
-   **This does NOT by itself block the automated review gate.** `clear-cr-marker.sh` counts
+   **This does NOT by itself block the automated review gate.** `clear-review-marker.sh` counts
    ANY ledger `avail … status=ok` as a responder (`:176`), so the interactive
    lane's own Claude floor review can still certify the HEAD while every panel
    critic is down. What a single-critic roster costs is the panel's own

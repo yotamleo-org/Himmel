@@ -1157,7 +1157,7 @@ before the literal text — e.g. `grep -E 'x|gh pr create' file` — CAN still b
 false-blocked, since the regex has no notion of quoting. The
 marker (`<git-common-dir>/cr-pending/<branch>`) is written by
 `check-cr-before-push.sh` on push and cleared through
-`scripts/cr/clear-cr-marker.sh` when `/pr-check` runs clean. For an existing PR,
+`scripts/cr/clear-review-marker.sh` when `/pr-check` runs clean. For an existing PR,
 that sanctioned script accepts only `check-ci.sh` exit 0. CodeRabbit's own signal is
 not part of that verdict (HIMMEL-3360): a stale, absent, skipped or
 rate-limited App review prints a NOTE, and the gate is CI green + zero
@@ -1207,7 +1207,7 @@ or a runbook fence runs), and the worktree-isolation guard refuses outright
 any command that references it (HIMMEL-2035, HIMMEL-2226).
 
 The ledger (`ledger-append.sh`), the marker write (`check-cr-before-push.sh`),
-the clear (`clear-cr-marker.sh`) and the pending audit (`cr-pending-audit.sh`)
+the clear (`clear-review-marker.sh`) and the pending audit (`cr-pending-audit.sh`)
 all already resolve their paths from `git rev-parse --git-common-dir` of the
 process cwd, so they land in the reviewed repo with no flag. **No `--repo` flag
 was added to any of them** — it would be a second resolution source for a datum
@@ -1280,7 +1280,7 @@ never a failure. No `coderabbit=unarmed` token is emitted anywhere. The critic
 panel carries the gate. `scripts/cr/test-pr-check-pair.sh` check (iii) pins the
 predicate and its call site.
 
-**Host scope: GitHub only.** `clear-cr-marker.sh`'s post-PR gate requires `gh`
+**Host scope: GitHub only.** `clear-review-marker.sh`'s post-PR gate requires `gh`
 and treats an unreadable PR state as fail-closed, so on a Bitbucket/GitLab/
 self-hosted origin gates 1–4 pass and the marker can **never** clear — worse
 than no gate. The installer warns (never refuses) on a non-`github.com` origin
@@ -1352,7 +1352,7 @@ onto another finding, head or branch does not verify.
 **Who checks.** Each gate reader runs its amend rows through
 `scripts/cr/ledger-amend-auth.js` before merging them:
 
-- `clear-cr-marker.sh`;
+- `clear-review-marker.sh`;
 - `review-round.sh` (ledger query, promote, and the defer/cap analysis);
 - the chief's `cr-disposition.sh`;
 - the merge-gate lib `scripts/lib/review-ledger-evidence.sh`.
@@ -1446,10 +1446,10 @@ Spec: `scripts/hooks/test-block-jira-compound-write.sh` (100 checks).
 ### `block-tail-pipe-on-gates.sh` — exit-code-swallowing pipeline deny (HIMMEL-1696)
 
 Fires on Bash. Denies a pipeline whose FIRST stage INVOKES an exit-code-critical
-himmel gate (`clear-cr-marker.sh`, `run-shell-tests.sh`, `check-ci.sh`,
+himmel gate (`clear-review-marker.sh`, `run-shell-tests.sh`, `check-ci.sh`,
 `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage
 is `tail`/`head` — where `$?` is tail's status, not the gate's. A gate
-orchestrator recorded `CLEAR_RC=0` when `clear-cr-marker.sh` had exited 16, so
+orchestrator recorded `CLEAR_RC=0` when `clear-review-marker.sh` had exited 16, so
 it believed the CR gate had cleared when it had not. Invocation is decided at
 COMMAND POSITION (leading `VAR=` assignments and a bounded launcher set are
 stepped over), so `grep -n x scripts/check-ci.sh | tail` — a READ of the gate
@@ -2649,7 +2649,7 @@ own copy only when three conditions hold:
   gate script loses only that script's relative spelling, not all of them. The
   hand-off reads `HIMMEL_REPO` from the environment, as the hook does.
 
-`review-round.sh` (every verb), `panel-first-pass.sh` and `clear-cr-marker.sh`
+`review-round.sh` (every verb), `panel-first-pass.sh` and `clear-review-marker.sh`
 also refuse a branch other than the one checked out in cwd, and a detached
 HEAD: they write shared per-branch state, and a relative run is auto-allowed
 from any worker's worktree.

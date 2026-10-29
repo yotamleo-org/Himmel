@@ -52,7 +52,7 @@ above only when it is stricter (next section).
 
 The process environment is **not** in the policy list. A gate-policy key can
 only change by editing a file the operator owns, so
-`CR_FLOOR_FALLBACK=claude-only bash scripts/cr/clear-cr-marker.sh` does not
+`CR_FLOOR_FALLBACK=claude-only bash scripts/cr/clear-review-marker.sh` does not
 loosen the review gate; `load_policy` drops the value and prints
 `ignoring process-env CR_FLOOR_FALLBACK`. A policy key written into
 `himmel.conf` or `himmel.conf.local` is ignored too, because no hook guards
@@ -68,7 +68,7 @@ still wins, as the list above says.
 
 The policy directory is `<account home>/.himmel`, where the home comes from
 the account's passwd entry (`getent passwd`, or `dscl` on macOS), never from
-`$HOME`. So `HOME=/tmp/x bash scripts/cr/clear-cr-marker.sh` still reads the
+`$HOME`. So `HOME=/tmp/x bash scripts/cr/clear-review-marker.sh` still reads the
 operator's own policy file, not one planted under `/tmp/x`. Behaviour keys in
 `himmel.conf` still follow `$HOME` (or `HIMMEL_CONFIG_DIR`).
 `HIMMEL_LUNA_CONFIG_PATH`, which `himmelctl` honours for its own fields, is
@@ -136,7 +136,7 @@ never the project file. Outside a git repo there is no project file.
 |---|---|---|
 | `himmel.conf` missing | fall through to `.env`, then the default | n/a |
 | `config.json` missing | n/a | notice; legacy `.env` or the safe default |
-| `config.json` not valid JSON | notice; legacy `.env` | `load_policy` returns non-zero; `clear-cr-marker.sh` refuses (exit 14) |
+| `config.json` not valid JSON | notice; legacy `.env` | `load_policy` returns non-zero; `clear-review-marker.sh` refuses (exit 14) |
 | `.env` present but unreadable | key stays unset | `load_policy` returns non-zero; the gate refuses |
 | the account's passwd entry cannot be read | n/a | `load_policy` returns non-zero; the gate refuses |
 

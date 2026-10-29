@@ -2,9 +2,6 @@
   "scripts/cr/clear-review-marker.sh": {
     "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
-  "scripts/cr/clear-cr-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
-  },
   "scripts/cr/claude-floor-review.sh": {
     "seam_env_vars": ["HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },

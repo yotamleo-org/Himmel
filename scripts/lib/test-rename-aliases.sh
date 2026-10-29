@@ -240,27 +240,10 @@ while IFS= read -r want; do
 done <<EOF
 $V2A_ROWS
 EOF
-# The clearer forwarder hands off to the anchor and runs the seam guard before
-# it forwards, so the fixture carries both beside it in the scripts/ layout.
-d="$FT/v2a"
-mkdir -p "$d/cr" "$d/lib"
 check "scripts/cr/clear-review-marker.sh exists" "yes" "$([ -f "$ROOT/scripts/cr/clear-review-marker.sh" ] && echo yes || echo no)"
-if cp "$ROOT/scripts/cr/clear-cr-marker.sh" "$ROOT/scripts/cr/anchor-handoff.sh" "$d/cr/" 2>/dev/null &&
-   cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/lib/"; then
-  printf '%s\n' "$SH_STUB" > "$d/cr/clear-review-marker.sh"
-  out="$(cd "$d" && env -u HIMMEL_REPO bash "$d/cr/clear-cr-marker.sh" 'a b' c 2> "$d/err")"
-  rc=$?
-  check "clear-cr-marker.sh forwards argv and stdout to clear-review-marker.sh" "NEW:a b|c" "$out"
-  check "clear-cr-marker.sh keeps the exit code of clear-review-marker.sh" 7 "$rc"
-  check "clear-cr-marker.sh prints one deprecation line" \
-    "clear-cr-marker.sh is deprecated: use 'clear-review-marker.sh' instead" "$(cat "$d/err")"
-  check "clear-cr-marker.sh hands off to the anchor before it forwards" yes \
-    "$(awk '/anchor-handoff\.sh/ { h = NR } /^exec / { e = NR } END { print (h && e && h < e) ? "yes" : "no" }' "$d/cr/clear-cr-marker.sh")"
-else
-  check "scripts/cr/clear-cr-marker.sh exists" "yes" "no"
-fi
+check "scripts/cr/clear-cr-marker.sh is gone" "no" "$([ -e "$ROOT/scripts/cr/clear-cr-marker.sh" ] && echo yes || echo no)"
 
-# --- slice V2b: the CodeRabbit and review libs, each old path a sourcing alias ---
+# --- slice V2b: the CodeRabbit and review libs, each old path removed ---
 V2B_ROWS='cr-available.sh|coderabbit-available.sh|identifier|old-to-new|V2|X
 cr-body-findings.sh|coderabbit-body-findings.sh|identifier|old-to-new|V2|X
 cr-ledger-evidence.sh|review-ledger-evidence.sh|identifier|old-to-new|V2|X
@@ -286,19 +269,8 @@ while IFS= read -r want; do
   got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
   check "V2b row '$old'" "$tabbed" "$got"
   new="$(printf '%s' "$want" | cut -d'|' -f2)"
-  # The hooks and the frozen red-control fixtures still source the old path,
-  # so it loads the new file and stays silent.
-  d="$FT/v2b-$old"
-  mkdir -p "$d" "$FT/v2b-cwd"
   check "scripts/lib/$new exists" "yes" "$([ -f "$ROOT/scripts/lib/$new" ] && echo yes || echo no)"
-  cp "$ROOT/scripts/lib/$old" "$d/$old" 2>/dev/null || { check "scripts/lib/$old exists" "yes" "no"; continue; }
-  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
-  printf 'v2b_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/$new"
-  out="$(cd "$FT/v2b-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v2b_probe x' _ "$d/$old" 2> "$d/err")"
-  check "$old sources $new from another cwd and keeps its status" "rc=5|NEW:x" "$out"
-  check "$old prints nothing when sourced" "" "$(cat "$d/err")"
-  out="$(cd "$d" && bash -c '. ./"$1"; v2b_probe y' _ "$old" 2>/dev/null)"
-  check "$old sources $new from a relative path" "NEW:y" "$out"
+  check "scripts/lib/$old is gone" "no" "$([ -e "$ROOT/scripts/lib/$old" ] && echo yes || echo no)"
 done <<EOF
 $V2B_ROWS
 EOF

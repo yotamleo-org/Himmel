@@ -1267,8 +1267,8 @@ else
     echo "FAIL 4572 the probe refusal names its trigger -- got: $ERR"
     FAILED=$((FAILED + 1))
 fi
-assert_allow "3955 grep -n of a chokepoint file"     "$(j "grep -n deferred scripts/cr/clear-cr-marker.sh")"
-assert_allow "3955 grep -i beside a chokepoint word" "$(j "grep -i deferred scripts/cr/clear-cr-marker.sh")"
+assert_allow "3955 grep -n of a chokepoint file"     "$(j "grep -n deferred scripts/cr/clear-review-marker.sh")"
+assert_allow "3955 grep -i beside a chokepoint word" "$(j "grep -i deferred scripts/cr/clear-review-marker.sh")"
 assert_allow "3955 diff -u beside a chokepoint word" "$(j "diff -u $MERGE_ON_GREEN /tmp/x.sh")"
 assert_deny "3955 no relief (glob/quote), main verdict: --long-option VAR=x argument, no chokepoint named" "$(j "bash scripts/cr/ledger-append.sh amend --set ${MOG_VAR}=1 --reason \"scripts/hooks/x?\"")"
 # 3955 controls: env position still denies, including beside a plain program word.

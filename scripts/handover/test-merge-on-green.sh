@@ -270,7 +270,6 @@ mog_build_fixture() {
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
     # below would pass while testing nothing.
     cp "$SCRIPT_DIR/../lib/coderabbit-available.sh" "$tmp/scripts/lib/coderabbit-available.sh"
-    cp "$SCRIPT_DIR/../lib/cr-available.sh" "$tmp/scripts/lib/cr-available.sh"
     # The chief-GO gate resolves the GO file under handover_root.
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$tmp/scripts/lib/handover-path.sh"
     # The GO file check itself now lives in the shared predicate

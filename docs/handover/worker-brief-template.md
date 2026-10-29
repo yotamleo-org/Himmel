@@ -221,7 +221,7 @@ template_version: 3
 >    agreed or fixed, write its sweep record**: `SWEEP [<id>@<head>] class=…
 >    :: sites=<path>[:<line>], …` (or `single-site search=git grep …`) to a
 >    file, then `bash scripts/cr/write-verdicts.sh sweep --branch <branch>
->    --from-file <file>`; `clear-cr-marker.sh` refuses with exit 14 until
+>    --from-file <file>`; `clear-review-marker.sh` refuses with exit 14 until
 >    every agreed or fixed finding has one. **A PR that changes `.github/workflows/`
 >    needs a green `workflow_dispatch` run at its head before READY**
 >    (`gh workflow run <wf> --ref <branch>`; `ready-check.sh` item 10 FAILs

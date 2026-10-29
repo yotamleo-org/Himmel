@@ -43,7 +43,6 @@ const GATE_RULES = [
   'Bash(bash scripts/handover/queue-lock.sh:*)',
   'Bash(bash scripts/handover/chief-kit/inbox-send.sh:*)',
   'Bash(bash scripts/cr/write-verdicts.sh:*)',
-  'Bash(bash scripts/cr/clear-cr-marker.sh:*)',
   'Bash(bash scripts/cr/clear-review-marker.sh:*)',
   'Bash(bash scripts/cr/panel-first-pass.sh:*)',
   // Operator ruling 2026-09-21: workers may send review diffs to Codex; these are
@@ -1488,13 +1487,13 @@ for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKI
 const ANCHOR = '/home/u/himmel';
 const ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/handover/merge-on-green.sh:*)';
 
-// clear-cr-marker.sh's own denial (guard-pr-check-literal.sh)
+// clear-review-marker.sh's own denial (guard-pr-check-literal.sh)
 // teaches a worker the identical absolute-anchor spelling once the relative
 // entry can't self-verify, and plugin-profiles.json's gateAllow comment
 // confirms that spelling matched no existing rule — so a worker running it fell
 // to the classifier and was denied [Out-of-Place Publication]. Mirror the
 // merge literal exactly: same anchor, same mechanism.
-const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.sh:*)';
+const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-review-marker.sh:*)';
 
 // N651 (worker-pr-open.sh) and N649 (panel-first-pass.sh) each fell
 // to the classifier the same way merge-on-green/clear-cr-marker used to —

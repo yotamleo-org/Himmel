@@ -1549,7 +1549,7 @@ contains "adopter preface: quiet-run names the anchor's absolute path (HIMMEL-77
 contains "adopter preface: check-ci names the anchor's absolute path (HIMMEL-7795)" \
   "$prefacecontent17b" "$anchor7795/scripts/check-ci.sh"
 contains "adopter preface: already-anchored <anchor>/scripts form is untouched (HIMMEL-7795)" \
-  "$prefacecontent17b" "bash <anchor>/scripts/cr/clear-cr-marker.sh"
+  "$prefacecontent17b" "bash <anchor>/scripts/cr/clear-review-marker.sh"
 d17h="$tmp/c17h"; mk_launch_stubs "$d17h" "HIMMEL-9999-himmelcwd"
 rc=0
 HIMMEL_REPO="$anchor7795" \

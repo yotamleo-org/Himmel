@@ -19,7 +19,7 @@ happens to fail-close:
   self-review** backstop is the floor: fail-OPEN on lane ABSENCE, fail-CLOSED on
   an attempted-but-failed lane, distinct from `SKIP_CR`. **Opt-in raise
   (`CR_REQUIRE_CROSS_MODEL=1`, HIMMEL-1237):** a setup that wants cross-model
-  coverage *required* makes the Claude-alone floor insufficient — `clear-cr-marker.sh`
+  coverage *required* makes the Claude-alone floor insufficient — `clear-review-marker.sh`
   gate 3b then also requires ≥1 **non-Claude** `avail … ok` at the SHA — unless
   `CR_FLOOR_FALLBACK=claude-only` and a provenance-valid claude-floor row is
   present (HIMMEL-3107). That escape is NOT a gate-3b pass (HIMMEL-3108): a
@@ -30,7 +30,7 @@ happens to fail-close:
   words — so `clear-cr-marker.log` distinguishes the two per clear. Default off
   keeps the adopter-portable Claude-alone floor and an untagged `CLEARED` line.
 - **this Codex subset** → **"a panel critic responded"**. Step 5 clears only when
-  the panel returned ≥1 responder and `clear-cr-marker.sh` sees `avail … ok` at
+  the panel returned ≥1 responder and `clear-review-marker.sh` sees `avail … ok` at
   the reviewed SHA. There is **no Claude self-review backstop here** (the codex
   harness has no adjudication step), so a fully-unavailable panel (`0/N`) RETAINS
   the marker and points the operator at `SKIP_CR=1` — this path fails CLOSED
@@ -545,7 +545,7 @@ marker may be cleared only from evidence persisted by
    recoverable; an injected one is not.
 
    **Amend EVERY cross-model finding the producers wrote — Critical, Important
-   AND Suggestion — not only the blocking candidates.** `clear-cr-marker.sh`
+   AND Suggestion — not only the blocking candidates.** `clear-review-marker.sh`
    gate 4b refuses with `reason=unadjudicated-findings` on ANY finding carrying
    an empty verdict, with no carve-out for `sug`. The producers self-write all
    three severities, so a Suggestion row left unamended keeps its empty verdict
@@ -598,7 +598,7 @@ marker may be cleared only from evidence persisted by
 
 Check the exit status of **every** append. If any append or parse fails, retain
 the marker, report the failure, and stop before invoking
-`clear-cr-marker.sh`. An unrecorded finding must never read as no finding. The
+`clear-review-marker.sh`. An unrecorded finding must never read as no finding. The
 ledger deduplicates availability on `(head, model)` and findings on
 `(head, finding_id)`, so re-running on the same HEAD is safe.
 
@@ -618,12 +618,12 @@ ledger deduplicates availability on `(head, model)` and findings on
   those lines, then require each count to match the corresponding number of
   normalized panel `crit` / `imp` bullets recorded in step 4. If either line is
   missing, malformed, duplicated, or mismatched, **retain** the marker, report
-  the count-parse failure, and stop before invoking `clear-cr-marker.sh`.
+  the count-parse failure, and stop before invoking `clear-review-marker.sh`.
   - If `C = 0` AND `I = 0`, invoke the sanctioned chokepoint and inspect its
     exit status:
 
         clear_rc=0
-        bash "<himmel_dir>/scripts/cr/clear-cr-marker.sh" '<branch>' || clear_rc=$?
+        bash "<himmel_dir>/scripts/cr/clear-review-marker.sh" '<branch>' || clear_rc=$?
 
     Report the result without deleting the marker directly:
     - `0` → `CR clean — marker cleared (M/N critics responded)` using

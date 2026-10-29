@@ -56,8 +56,6 @@ deny() { assert_rc "$1" 2 "$(j_bash "$2")"; }
 allow() { assert_rc "$1" 0 "$(j_bash "$2")"; }
 
 # --- DENY: the shapes that lose the gate's exit code -----------------------
-deny "clear-cr-marker piped to tail" \
-     'bash scripts/cr/clear-cr-marker.sh x | tail -20'
 deny "clear-review-marker piped to tail" \
      'bash scripts/cr/clear-review-marker.sh x | tail -20'
 deny "a scripts/*/test-*.sh suite piped to head with 2>&1" \
@@ -74,18 +72,18 @@ deny "gate | grep | tail (intermediate stage)" \
      'bash scripts/check-ci.sh | grep -E "^ok" | tail -5'
 # An absolute-path invocation is the same command.
 deny "absolute-path gate piped to tail" \
-     'bash /c/Users/x/himmel/scripts/cr/clear-cr-marker.sh y | tail -20'
+     'bash /c/Users/x/himmel/scripts/cr/clear-review-marker.sh y | tail -20'
 # The gate reached after a cd chain still denies (&& is a statement separator,
 # so the gate is the first stage of the SECOND statement's pipeline).
 deny "cd && gate | tail" \
-     'cd /c/repo && bash scripts/cr/clear-cr-marker.sh x | tail -20'
+     'cd /c/repo && bash scripts/cr/clear-review-marker.sh x | tail -20'
 # bash's `|&` puts the `&` at the head of the next stage once split on `|`.
 deny "gate |& tail" 'bash scripts/check-ci.sh |& tail -20'
 # Panel r1 codex-1: the gate path commonly arrives INSIDE quotes; blanking whole
 # quoted spans would hide the invocation this hook exists to catch.
 # shellcheck disable=SC2016  # the $VAR is payload text, not an expansion
 deny "quoted gate path" 'bash "$CLAUDE_PROJECT_DIR/scripts/check-ci.sh" | tail -20'
-deny "single-quoted gate path" "bash '/c/repo/scripts/cr/clear-cr-marker.sh' | head -5"
+deny "single-quoted gate path" "bash '/c/repo/scripts/cr/clear-review-marker.sh' | head -5"
 # Panel r1 codex-2: a pipeline split across physical lines is still one pipeline.
 res=$(run_hook "$(j_bash 'bash scripts/check-ci.sh |
     tail -20')")
@@ -131,7 +129,7 @@ fi
 
 # --- ALLOW: the correct shape, and everything unregistered ------------------
 allow "redirect-then-tail (the prescribed shape)" \
-      'bash scripts/cr/clear-cr-marker.sh x > /tmp/o 2>&1; echo "RC=$?"; tail /tmp/o'
+      'bash scripts/cr/clear-review-marker.sh x > /tmp/o 2>&1; echo "RC=$?"; tail /tmp/o'
 allow "git log | tail" 'git log | tail'
 allow "unregistered script piped to tail" 'bash scripts/lib/forge.sh | tail -20'
 allow "bare tail -f" 'tail -f somefile'
@@ -148,7 +146,7 @@ allow "gate with a quoted pipe in an argument" \
 # Panel r1 codex-3: MENTIONING a gate path is not INVOKING it. These read the
 # gate script; their exit code is grep's/printf's, and nothing is lost.
 allow "grep of a gate script piped to tail" \
-      'grep -n CLEAR_RC scripts/cr/clear-cr-marker.sh | tail -5'
+      'grep -n CLEAR_RC scripts/cr/clear-review-marker.sh | tail -5'
 allow "printf of a gate path piped to tail" 'printf scripts/check-ci.sh | tail'
 allow "cat of a gate script piped to head" 'cat scripts/handover/pr-merge.sh | head -40'
 # A lookalike suffix is not the registered path.
@@ -159,7 +157,7 @@ deny "env-assigned gate piped to tail" 'FOO=1 bash scripts/check-ci.sh | tail -5
 allow "gate pipeline inside a trailing comment" \
       'true # e.g. bash scripts/check-ci.sh | tail -20'
 allow "gate pipeline in a whole-line comment" \
-      '# never do: bash scripts/cr/clear-cr-marker.sh x | tail'
+      '# never do: bash scripts/cr/clear-review-marker.sh x | tail'
 # ...but a `#` inside quotes is not a comment, so the real pipeline still denies.
 deny "quoted hash does not start a comment" \
      'bash scripts/check-ci.sh --title "a#b" | tail -20'
@@ -175,7 +173,7 @@ deny "gate inside an if condition" \
 deny "negated gate" '! bash scripts/check-ci.sh | tail -5'
 deny "gate in a subshell" '( bash scripts/check-ci.sh | tail -5 )'
 deny "gate in a while condition" \
-     'while bash scripts/cr/clear-cr-marker.sh x | tail -1; do :; done'
+     'while bash scripts/cr/clear-review-marker.sh x | tail -1; do :; done'
 # Panel r3 codex-2: a trailing comment must not hide the `|` that continues the
 # pipeline onto the next line.
 res=$(run_hook "$(j_bash 'bash scripts/check-ci.sh | # trim it
@@ -414,14 +412,14 @@ deny "gate inside a command substitution" \
      'echo $(bash scripts/check-ci.sh | tail -5)'
 # shellcheck disable=SC2016
 deny "gate captured into a variable" \
-     'CLEAR_RC=$(bash scripts/cr/clear-cr-marker.sh x | tail -1)'
+     'CLEAR_RC=$(bash scripts/cr/clear-review-marker.sh x | tail -1)'
 # shellcheck disable=SC2016
 deny "gate inside backticks" 'echo `bash scripts/check-ci.sh | tail -5`'
 # Panel r5 codex-1: substitution happens inside DOUBLE quotes, and the quoted
 # spelling is the idiomatic, careful one — exactly the shape that must not slip.
 # shellcheck disable=SC2016
 deny "gate inside a double-quoted command substitution" \
-     'CLEAR_RC="$(bash scripts/cr/clear-cr-marker.sh x | tail -1)"'
+     'CLEAR_RC="$(bash scripts/cr/clear-review-marker.sh x | tail -1)"'
 # shellcheck disable=SC2016
 deny "gate inside double-quoted backticks" \
      'RC="`bash scripts/check-ci.sh | tail -1`"'
@@ -483,7 +481,7 @@ deny "env -i before the gate" 'env -i bash scripts/check-ci.sh | tail -20'
 # ...but a flag with NO launcher in front of it is not that shape, so a plain
 # command that merely NAMES a gate path still passes.
 allow "flags without a launcher do not hide behind the rule" \
-      'grep -n -e CLEAR_RC scripts/cr/clear-cr-marker.sh | tail -5'
+      'grep -n -e CLEAR_RC scripts/cr/clear-review-marker.sh | tail -5'
 # Panel r11 codex-1: bash RUNS a command substitution nested inside arithmetic.
 # shellcheck disable=SC2016
 deny "gate inside a substitution nested in arithmetic" \
@@ -923,10 +921,10 @@ deny ">'out>' <gate> | tail (gate-direct folded quoted-target ending in >, J1314
 
 # --- BYPASS: the documented same-line marker --------------------------------
 allow "same-line tail-pipe-ok marker" \
-      'bash scripts/cr/clear-cr-marker.sh x | tail -20  # tail-pipe-ok: rc irrelevant, output only'
+      'bash scripts/cr/clear-review-marker.sh x | tail -20  # tail-pipe-ok: rc irrelevant, output only'
 # The marker is SAME-LINE: a marker on a different line does not exempt.
 res=$(run_hook "$(j_bash '# tail-pipe-ok: on the wrong line
-bash scripts/cr/clear-cr-marker.sh x | tail -20')")
+bash scripts/cr/clear-review-marker.sh x | tail -20')")
 if [ "${res%%|*}" = "2" ]; then
     pass "marker on a different line does not exempt"
 else
@@ -941,9 +939,9 @@ else
 fi
 
 # --- The deny reason must be actionable ------------------------------------
-res=$(run_hook "$(j_bash 'bash scripts/cr/clear-cr-marker.sh x | tail -20')")
+res=$(run_hook "$(j_bash 'bash scripts/cr/clear-review-marker.sh x | tail -20')")
 msg=${res#*|}
-for needle in 'RC=$?' 'PIPESTATUS[0]' 'tail-pipe-ok:' 'clear-cr-marker.sh'; do
+for needle in 'RC=$?' 'PIPESTATUS[0]' 'tail-pipe-ok:' 'clear-review-marker.sh'; do
     if grep -qF -- "$needle" <<< "$msg"; then
         pass "deny reason names $needle"
     else

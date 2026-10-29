@@ -112,7 +112,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 
 - **Never run `worker-burn.sh`**: `worker-pr-open.sh` inserts the PR's
   `worker-burn:` line. **Clear the review-owed marker** with
-  `bash <anchor>/scripts/cr/clear-cr-marker.sh` (`<anchor>` the primary checkout). [prose]
+  `bash <anchor>/scripts/cr/clear-review-marker.sh` (`<anchor>` the primary checkout). [prose]
 - Conventional commit carrying the ticket ID. [enforced: conventional-commit-msg]
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
