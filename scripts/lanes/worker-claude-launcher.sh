@@ -66,19 +66,11 @@
 # HEADED_ARM_LAUNCHER, and that script is Linux/KDE-only (konsole).
 set -u
 
-# shellcheck source=../lib/env-alias.sh
-. "${BASH_SOURCE[0]%/*}/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env WORKER_SESSION_CLAUDE_BIN LEG_CLAUDE_BIN
-alias_env WORKER_SESSION_PROFILE_SETTINGS LEG_PROFILE_SETTINGS
-alias_env WORKER_SESSION_PROFILE_PREFACE LEG_PROFILE_PREFACE
-alias_env WORKER_SESSION_PROFILE_MCP_CONFIG LEG_PROFILE_MCP_CONFIG
-alias_env WORKER_SESSION_ID LEG_SESSION_ID
 CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-claude}"
 WORKER_SESSION_PROFILE_SETTINGS="${WORKER_SESSION_PROFILE_SETTINGS:-}"
 WORKER_SESSION_PROFILE_PREFACE="${WORKER_SESSION_PROFILE_PREFACE:-}"
 WORKER_SESSION_PROFILE_MCP_CONFIG="${WORKER_SESSION_PROFILE_MCP_CONFIG:-}"
-WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}"
+WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}"
 
 # Under a consult the caller's PATH must not pick the binary: a
 # foreign `claude` first on PATH could ignore `--setting-sources ""`. Resolve it
@@ -90,7 +82,7 @@ WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_S
 # seam: headed-arm-worker.sh scrubs it (var + token) and refuses its
 # HEADED_ARM_WORKER_CLAUDE_BIN source before a consult launches, so no consult
 # reaches here with it set. The ponytail for the pinned dirs is in consult-env.sh.
-if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-}" ]; then
+if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-}" ]; then
     # shellcheck source=consult-env.sh
     if ! . "${BASH_SOURCE[0]%/*}/consult-env.sh"; then
         echo "worker-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (a consult) but consult-env.sh did not load" >&2
@@ -146,7 +138,7 @@ fi
 # worker doc's front matter, so the digest step finds the session by id.
 _session_id="${WORKER_SESSION_ID:-}"
 [ -z "$_session_id" ] || PRE+=(--session-id "$_session_id")
-if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ]; then
+if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")
     # The consult is confined only if the FINAL argv carries
     # `--setting-sources ""` and nothing after it names the flag again (the

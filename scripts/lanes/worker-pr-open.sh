@@ -37,11 +37,6 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/env-alias.sh
-. "$HERE/../lib/env-alias.sh"
-# old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE
-alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_create / forge_pr_set_body
 # / forge_detect / forge_repo_nwo route to the github or bitbucket backend per
 # the repo's origin — never call gh/bb directly from here.

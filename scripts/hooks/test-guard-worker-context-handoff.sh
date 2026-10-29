@@ -22,8 +22,8 @@ scrub_override_env
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_NAME HANDOVER_DIR CLAUDE_CONFIG_DIR \
     CONTEXT_FILL_TRANSCRIPT CLAUDE_CODE_SESSION_ID CLAUDE_PID \
     HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT CLAUDE_CODE_AUTO_COMPACT_WINDOW \
-    HIMMEL_WORKER_SESSION_CONTEXT_SHARE HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT \
     HIMMEL_WORKER_SESSION_CONTEXT_SHARE WORKER_SESSION_CONTEXT_HANDOFF_OK HIMMEL_WORKER
+unset HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_CONTEXT_SHARE HIMMEL_LEG_AUTOCOMPACT # old-term-ok
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
@@ -180,8 +180,10 @@ case "$new_mode_text" in
     *"mode compact"*) ok "the mode names its value in the deny text" ;;
     *) bad "new mode not used - got: $new_mode_text" ;;
 esac
+check_new "the retired HIMMEL_LEG_CONTEXT_MODE=handoff alone turns the guard on for nothing -> allow" allow "$LS" HIMMEL_LEG_CONTEXT_MODE=handoff # old-term-ok
 fill 50
 check "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 at launch, 50 % -> block" block "$LS" HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50
+check "the retired HIMMEL_LEG_CONTEXT_SHARE=50 is ignored: the 75 default, 50 % -> allow" allow "$LS" HIMMEL_LEG_CONTEXT_SHARE=50 # old-term-ok
 fill 90
 echo "== HIMMEL_WORKER=1 changes nothing =="
 check "HIMMEL_WORKER=1 on a worker past the threshold -> block" block "$LS" HIMMEL_WORKER=1
@@ -531,6 +533,7 @@ fill 22 1000000; check "CLAUDE_CODE_AUTO_COMPACT_WINDOW 300000 wins, 22 % -> all
 fill 74 200000; check "ceiling above the window clamps to it, 74 % -> allow" allow "$LS" HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000
 fill 75 200000; check "ceiling above the window clamps to it, 75 % -> block" block "$LS" HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000
 fill 50 1000000; check "junk ceiling -> the window (fail-open), 50 % -> allow" allow "$LS" HIMMEL_WORKER_SESSION_AUTOCOMPACT=junk
+fill 29 1000000; check "the retired HIMMEL_LEG_AUTOCOMPACT=400000 is ignored: the 200000 pin, 29 % -> block" block "$LS" HIMMEL_LEG_AUTOCOMPACT=400000 # old-term-ok
 printf '{"used_percentage":90,"remaining_percentage":10,"saved_at":%s000}' "$(date +%s)" \
     > "$CFG/plugins/claude-hud/context-cache/$(sha "$TR").json"
 check "no window in the snapshot -> 75 % of the fill, 90 % -> block" block "$LS"
