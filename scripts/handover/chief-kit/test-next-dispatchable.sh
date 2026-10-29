@@ -1120,5 +1120,34 @@ note_legacy="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a note is ignored in the older-brief fallback too" "$note_legacy" "LOCAL?	HIMMEL-9202"
 has "Writes note: the older-brief fallback still holds its own file" "$note_legacy" "# drop HIMMEL-9201 collision docs/nd-note-own.md held by live worker N920"
 
+# a Done-category status the name list does not know ('wont do') is done: its blocked ticket is dispatchable
+DC_DIR="$WORK/jira-mirror-done-cat"; M="$DC_DIR/HIMMEL"; mkdir -p "$M"
+printf 'v1.0.1\tfalse\t\n' > "$DC_DIR/HIMMEL.versions.tsv"
+printf -- '---\nkey: "HIMMEL-9301"\ntype: "Task"\nstatus: "wont do"\nstatusCategory: "Done"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9301: closed as wont do\n\n## Description\n\nEdit scripts/lib/wontdo.sh.\n' > "$M/HIMMEL-9301.md"
+mk HIMMEL-9302 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9301"]' "blocked only by a wont do ticket" "Edit scripts/lib/after-wontdo.sh."
+dc_out="$(run --no-classify)"; dc_rc=$?
+[ "$dc_rc" = 0 ] && pass "Done category: the dispatcher exits 0" || fail "Done category: the dispatcher exited $dc_rc"
+has "Done category: a blocker in a Done-category status (wont do) is resolved" "$dc_out" "LOCAL?	HIMMEL-9302"
+# a Done-category mirror row whose live Jira status was reopened still blocks; a live wont do still counts as done
+printf -- '---\nkey: "HIMMEL-9303"\ntype: "Task"\nstatus: "wont do"\nstatusCategory: "Done"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9303: stale wont do\n\n## Description\n\nEdit scripts/lib/stale.sh.\n' > "$M/HIMMEL-9303.md"
+mk HIMMEL-9304 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9303"]' "blocked by a reopened ticket" "Edit scripts/lib/after-reopen.sh."
+# shellcheck disable=SC2016  # the $ names are literal text of the fake Jira CLI, expanded when it runs
+printf '#!/usr/bin/env bash\n[ "$1" = get ] || exit 2\nprintf "%%s\\tTask\\t%%s\\tt\\n" "$2" "$LIVE_STATUS"\n' > "$WORK/jira-live"; chmod +x "$WORK/jira-live"
+reopen_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" run --no-classify)"; reopen_rc=$?
+[ "$reopen_rc" = 0 ] && pass "Done category: reopened live run exits 0" || fail "Done category: reopened live run exited $reopen_rc"
+lacks "Done category: a mirror wont do blocker reopened live still blocks" "$reopen_out" "HIMMEL-9304"
+closed_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="wont do" run --no-classify)"; closed_rc=$?
+[ "$closed_rc" = 0 ] && pass "Done category: live wont do run exits 0" || fail "Done category: live wont do run exited $closed_rc"
+has "Done category: a mirror wont do blocker still wont do live is resolved" "$closed_out" "LOCAL?	HIMMEL-9304"
+archived_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="Archived" run --no-classify)"; archived_rc=$?
+[ "$archived_rc" = 0 ] && pass "Done category: live Archived run exits 0" || fail "Done category: live Archived run exited $archived_rc"
+lacks "Done category: an unlisted live status (Archived) holds the dependent" "$archived_out" "HIMMEL-9304"
+# the disposition list drops a Done-category ticket from the open set and keeps an open one
+dispo_out="$(run --no-classify --priority-pool-only --dispositions)"; dispo_rc=$?
+[ "$dispo_rc" = 0 ] && pass "Done category: --dispositions exits 0" || fail "Done category: --dispositions exited $dispo_rc"
+lacks "Done category: --dispositions does not list a wont do ticket" "$dispo_out" "HIMMEL-9301"
+has "Done category: --dispositions lists an open ticket" "$dispo_out" "# disposition HIMMEL-9302 "
+M="$WORK/jira-mirror/HIMMEL"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -371,7 +371,7 @@ for n in names:
     key = unq(fm_val(fm, 'key'))
     t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
     issues[key] = {
-        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')),
+        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
         'prio': unq(fm_val(fm, 'priority')), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
         'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
         'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
@@ -580,6 +580,13 @@ except OSError:
 # jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
 # leaves the blocker open as the mirror shows it.
 DONE_STATES = ('Done', 'Closed')
+# Done = the Jira statusCategory is Done (catches 'wont do', 'wont fix', ...); the status names stay as a fallback
+def done_key(k):
+    i = issues.get(k)
+    return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
+# ponytail: custom Done statuses hold until listed here, upgrade path: jira get returns statusCategory
+# a live read carries only the status name, so its Done-category names are listed here
+LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
 live_cache = {}
@@ -610,14 +617,14 @@ def live_fetch(keys):
 def blocker_state(b):
     # None when the blocker is resolved, else its status (live when read)
     st = issues.get(b, {}).get('status')
-    if st in DONE_STATES:
-        return None
     live = live_cache.get(b)
     if live is not None:
-        return None if live in DONE_STATES else '%s, live' % live
+        return None if live in LIVE_DONE else '%s, live' % live
+    if done_key(b):
+        return None
     return st or 'not in mirror'
 
-live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review') and i['type'] not in ('Epic', 'Sub-task')
+live_fetch([b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
             for b in i['blocked_by'] if issues.get(b, {}).get('status') not in DONE_STATES])
 skipped_platform = []
 cands = []
@@ -890,7 +897,7 @@ def drop_summary():
     if os.environ.get('ND_DISPO') == '1':
         # one line for every open ticket of the version, listed or not: nothing is silent
         dropped = dict(rows)
-        for i in sorted((i for i in issues.values() if i['status'] not in DONE_STATES and first_ver in i['ver']), key=lambda i: int(i['key'].split('-')[1])):
+        for i in sorted((i for i in issues.values() if not done_key(i['key']) and first_ver in i['ver']),key=lambda i: int(i['key'].split('-')[1])):
             k = i['key']
             if k in lane_of:
                 d = 'listed ' + lane_of[k]
