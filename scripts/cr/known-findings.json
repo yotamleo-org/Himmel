@@ -1178,7 +1178,7 @@
       "detector": null,
       "learning_match": "toctou|race window|compare-then-delete|mkdir-CAS|read-modify-write",
       "match": "\\brace\\b|TOCTOU|(?<![a-z])lock|atomic",
-      "canonical": "Where the diff reads shared state and then acts on what it read (lock dir, owner.json, a cursor or ledger file, a pid), ask whether the check and the act are one atomic operation (mkdir CAS or flock; rename and a single append only publish atomically, they do not make a preceding read and decision atomic, so a read-then-update needs a lock or compare-and-swap across both), whether a release verifies the token it owns, and what a concurrent actor sees between the two. Use the shared lock helper rather than a new ad-hoc one. A documented, bounded window that the code names as an accepted residual is not a finding; an undocumented one is.",
+      "canonical": "Where the diff reads shared state and then acts on what it read (lock dir, owner.json, a cursor or ledger file, a pid), ask whether the check and the act are one atomic operation (mkdir CAS or flock; rename and a single small O_APPEND write only publish atomically, they do not make a preceding read and decision atomic, so a read-then-update needs a lock or compare-and-swap across both), whether a release verifies the token it owns, and what a concurrent actor sees between the two. Use the shared lock helper rather than a new ad-hoc one. A documented, bounded window that the code names as an accepted residual is not a finding; an undocumented one is.",
       "coverage": "Review layer only (HIMMEL-2709 Task 16, S12). Plan classifier (ledger-classify.py) re-measure 2026-10-29, counted differently from the evidence block: 37 agreed findings across 12 branches, above the plan's 10-branch bar (the 2026-09-08 baseline was 26/8). chief-kit-lock-helper covers the chief-kit lock call sites; this class covers the rest of scripts/. Several CodeRabbit learnings record queue-lock.sh windows as accepted residuals.",
       "prompt": true,
       "evidence": {
@@ -1294,7 +1294,7 @@
       "detector": null,
       "learning_match": "vendored[^.]{0,80}(byte|upstream|revendor|re-vendor)|byte-for-byte",
       "match": "vendored|upstream|revendor|re-vendor|byte-for-byte",
-      "canonical": "Vendored upstream files must stay byte-for-byte copies of the pinned upstream. A fix goes upstream and is re-vendored, or becomes an approved adaptation recorded as such; do not patch the vendored file in place, and do not raise a finding against vendored code that the upstream owns.",
+      "canonical": "Vendored upstream files must stay byte-for-byte copies of the pinned upstream. A fix goes upstream and is re-vendored, or becomes an approved adaptation recorded as such; do not patch the vendored file in place. A real defect in vendored code is still a finding: raise it, route the fix upstream (an upstream issue plus the pin), and never suppress it because the code is vendored.",
       "coverage": "Recorded as a CodeRabbit learning only (26 uses, marketplace/plugins/lean-skills). No detector: the pin and the vendored tree are verified by the vendoring tooling and the upstream-and-vendoring doctrine, not by a diff regex.",
       "prompt": true,
       "evidence": {
