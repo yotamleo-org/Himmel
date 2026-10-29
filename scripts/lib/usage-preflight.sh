@@ -103,23 +103,24 @@ fh=""; sd=""; age=""; usable=0
 # structurally, ahead of any bank fetch. Printed on EVERY call regardless of
 # outcome, so the chief tick always shows FLEET n/CAP.
 #
-# CAP resolves from the environment first; falling back to the primary
-# checkout's .env (HIMMEL_FLEET_CAP), default 4 — a PROVISIONAL cap well
-# under the 9-11 that burned a week's usage bucket in under 48h,
-# not a derived sustainable figure (no per-session burn
-# rate has been measured; see docs/internals/lane-calibration.md).
-FLEET_CAP="${HIMMEL_FLEET_CAP:-}"
-if [ -z "$FLEET_CAP" ]; then
-  # shellcheck source=scripts/lib/load-dotenv.sh
-  # shellcheck disable=SC1091
-  . "$REPO/scripts/lib/load-dotenv.sh"
-  # pin to bank-preflight's OWN checkout, never the caller's CWD
-  # repo (load_dotenv with no --root resolves via the process CWD's git repo,
-  # which a launcher run from an unrelated bucket -- e.g. the luna vault --
-  # silently swaps in, finding no HIMMEL_FLEET_CAP there and falling back to
-  # the provisional default of 4).
-  load_dotenv --root "$(_load_dotenv_primary_for "$REPO")" HIMMEL_FLEET_CAP
+# CAP is gate policy (HIMMEL_FLEET_CAP): load_policy reads it from
+# ~/.himmel/config.json .policy, then the primary checkout's legacy .env, and
+# ignores the process env, so a wrapper cannot raise it. Default 4 — a
+# PROVISIONAL cap well under the 9-11 that burned a week's usage bucket in
+# under 48h, not a derived sustainable figure (no per-session burn
+# rate has been measured; see docs/internals/lane-calibration.md). A failed
+# read keeps the default, the conservative side.
+# shellcheck source=scripts/lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$REPO/scripts/lib/load-dotenv.sh"
+# pin the legacy .env to bank-preflight's OWN checkout, never the caller's CWD
+# repo (with no --root it resolves via the process CWD's git repo, which a
+# launcher run from an unrelated bucket -- e.g. the luna vault -- silently
+# swaps in, finding no HIMMEL_FLEET_CAP there).
+if load_policy --root "$(_load_dotenv_primary_for "$REPO")" HIMMEL_FLEET_CAP; then
   FLEET_CAP="${HIMMEL_FLEET_CAP:-4}"
+else
+  FLEET_CAP=4
 fi
 is_int "$FLEET_CAP" || FLEET_CAP=4
 

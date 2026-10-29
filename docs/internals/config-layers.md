@@ -19,7 +19,7 @@ setting, but never looser.
 | Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
-| Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` |
+| Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT`, `HIMMEL_FLEET_CAP` |
 | Adopter config | `~/.himmel/config.json`, other fields | `himmelctl install`; `jira.sectorField` by the operator | no | luna cadence, bridge, PHI declarations, the Jira Sector field id (`jira.sectorField`) |
 | Install profile | `~/.claude/himmel/install-profile.json` | `himmelctl install` | no | the wizard's answers, replayed by `--from-profile` |
 | Handover registry | `~/.claude/handover/registry.json` | `/handover` | no | handover repos, buckets, branch prefixes |
@@ -243,7 +243,29 @@ key the operator has moved; the shell, the Jira CLI
 and the config UI all resolve it that way.
 
 Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
-`CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` (read only from `config.json`).
+`CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT` and
+`HIMMEL_FLEET_CAP` (read only from `config.json`, then the legacy `.env`).
+
+`HIMMEL_FLEET_CAP` became gate policy in HIMMEL-3111. `usage-preflight.sh`
+reads it through `load_policy`, so **an exported `HIMMEL_FLEET_CAP` no longer
+counts**: a launching shell, a wrapper or a per-call prefix cannot raise the
+cap, and `load_policy` prints `ignoring process-env HIMMEL_FLEET_CAP` when one
+differs. Set it in `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP` (a whole
+number); a legacy `.env` line still applies, with the `DEPRECATED` notice, until
+`scripts/setup/migrate-env.sh` moves it. Unset, or a value that cannot be read,
+means 4. The project file cannot set it (it has no strict side). The config UI
+shows the cap read-only and names the file to edit; no tool writes it.
+
+Three keys an operator may have in `.env` are never read from it:
+
+- `HIMMEL_STATUSLINE_ECON` is read from the process environment only, by
+  `scripts/statusline/hud-custom-lines.sh`; `scripts/lib/wire-statusline.sh` sets it as a prefix on the
+  status line's `customLineCommand` in the settings.
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is Claude Code's own variable; the lane
+  launchers export their own value, and the worker context guard reads the
+  process environment.
+- `CODERABBIT_CLI_DISABLE` is dead: its reader went with the CodeRabbit CLI
+  review leg (HIMMEL-2704). Deleting the line is the operator's call.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
 class has not been decided yet: other account emails, chat IDs, cookie-file

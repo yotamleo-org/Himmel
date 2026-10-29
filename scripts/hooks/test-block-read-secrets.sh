@@ -1523,6 +1523,13 @@ assert_rc "7956 nonreader input redirect still denies" 2 "$(run_case "$(j_bash '
 assert_rc "7956 nonreader then reader still denies" 2 "$(run_case "$(j_bash 'rtk proxy grep version *.md; cat .env')")"
 rm -rf "$mirror_dir"
 
+# The configuration keys live in ~/.himmel/himmel.conf, which an agent may read; .env, which keeps the secrets, stays refused.
+assert_rc "3111 Read ~/.himmel/himmel.conf"      0 "$(run_case "$(j_read '/home/user/.himmel/himmel.conf')")"
+assert_rc "3111 Bash cat ~/.himmel/himmel.conf"  0 "$(run_case "$(j_bash 'cat ~/.himmel/himmel.conf')")"
+assert_rc "3111 Grep path=~/.himmel/himmel.conf" 0 "$(run_case "$(j_grep '/home/user/.himmel/himmel.conf')")"
+assert_rc "3111 Read .env beside it still denies" 2 "$(run_case "$(j_read '/home/user/.himmel/.env')")"
+assert_rc "3111 Bash cat .env still denies"      2 "$(run_case "$(j_bash 'cat ~/.himmel/himmel.conf .env')")"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

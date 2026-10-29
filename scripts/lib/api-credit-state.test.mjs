@@ -384,8 +384,11 @@ test('twenty parallel reserves all succeed under the cap and the next one over i
 // an API call is not a subscription session; it takes its own slots.
 test('an API launch does not move the subscription FLEET count and has its own cap', () => {
   const f = fixture();
+  // the fleet cap is gate policy: read from this HOME's config.json, never the env
+  mkdirSync(join(f.dir, '.himmel'));
+  writeFileSync(join(f.dir, '.himmel', 'config.json'), JSON.stringify({ policy: { HIMMEL_FLEET_CAP: 1 } }));
   const launch = (job) => bankApi(f, {
-    HIMMEL_API_LANE: 'on', HIMMEL_FLEET_CAP: '1', HIMMEL_API_MAX_CONCURRENT: '2',
+    HIMMEL_API_LANE: 'on', HIMMEL_POLICY_FOLLOWS_HOME: '1', HIMMEL_API_MAX_CONCURRENT: '2',
     CADENCE_USAGE_WORKER: `claude-api:${job}`, CADENCE_USAGE_CALLER_PID: String(process.pid),
   });
   const one = launch('j1');

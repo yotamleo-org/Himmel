@@ -53,12 +53,15 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # a deterministic empty fleet instead of the real ambient process table
 # (these cases test the BANK threshold, not the
 # fleet cap, and must not depend on how many legs happen to be running on
-# the station at test time).
+# the station at test time). The cap is gate policy, read from
+# $HOME/.himmel/config.json under HIMMEL_POLICY_FOLLOWS_HOME=1, never the env,
+# so the stub pins it to 4 there.
 mk_empty_fleet_stub() {
   local dir="$1"
-  mkdir -p "$dir/proc"
+  mkdir -p "$dir/proc" "$HOME/.himmel"
   printf '%s\n' '#!/usr/bin/env bash' 'true' > "$dir/ps"
   chmod +x "$dir/ps"
+  printf '{"policy":{"HIMMEL_FLEET_CAP":4}}\n' > "$HOME/.himmel/config.json"
 }
 
 STATUSLINE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -223,7 +226,7 @@ run_test "(4a) producer(Branch B) -> bank-preflight: PROCEED below threshold" '
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";
   produce_cache_oauth "$W" 10 20;
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "PROCEED" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -233,7 +236,7 @@ run_test "(4b) producer(Branch B) -> bank-preflight: SKIPPED-BANK above threshol
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";
   produce_cache_oauth "$W" 95 20;
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "SKIPPED-BANK" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -249,7 +252,7 @@ run_test "(4c) HIMMEL-1866: partial fetch cannot make stale seven_day fresh" '
   chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
   printf "%s" "{\"model\":{\"display_name\":\"Claude\"}}" | bash "$PRODUCER";
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_USAGE_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_MAX_AGE=60 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_MAX_AGE=60 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "BANK-STALE" ] || exit 1;
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
@@ -301,7 +304,7 @@ run_test "(7d) HIMMEL-1712: usage-preflight.sh treats an account-mismatched cach
   export HOME="$W/home-b"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-account-B\"}}" > "$HOME/.claude.json";
   mk_empty_fleet_stub "$W";
-  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_FLEET_CAP=4 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
+  v=$(CADENCE_USAGE_CACHE="$W/cache.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/l.jsonl" FLEET_PS_CMD="$W/ps" FLEET_PROC="$W/proc" HIMMEL_FLEET_SLOTS="$W/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 bash "$PREFLIGHT" </dev/null 2>"$W/pf.err");
   [ "$v" = "BANK-UNKNOWN" ] || exit 1;
   grep -q "account" "$W/pf.err" || exit 1;
 '
