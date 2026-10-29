@@ -45,10 +45,14 @@ on:
 permissions:
   contents: read
 
-# One cadence run per ref. cancel-in-progress is false so a dispatch never kills
-# a running scheduled run (and with it a breakage record); a repeat just waits.
+# One cadence run per ref AND mode. A `suites` dispatch used to
+# queue 31-103 min behind a full run on its branch; now the two run side by
+# side. Schedule, PR and full-dispatch runs have no suites input, so they share
+# the 'full' group as before. cancel-in-progress is false so a dispatch never
+# kills a running scheduled run (and with it a breakage record); a repeat of the
+# same mode just waits.
 concurrency:
-  group: macos-cadence-${{ github.ref }}
+  group: macos-cadence-${{ github.ref }}-${{ inputs.suites != '' && 'suites' || 'full' }}
   cancel-in-progress: false
 
 jobs:
