@@ -84,17 +84,21 @@ is_real_token() {
 tokens=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
-    m="${BASH_REMATCH[1]}"
-    t="$m"
-    case "$t" in github_pat_*) t="${t:0:93}" ;; esac
-    # A github_pat_ run shorter than 82 body chars (93 in all) is not a token.
-    if [ "${t:0:11}" != "github_pat_" ] || [ "${#t}" -eq 93 ]; then
+    t="${BASH_REMATCH[1]}"
+    skip="$t"
+    case "$t" in github_pat_*)
+        t="${t:0:93}"
+        # A run shorter than 82 body chars (93 in all) is no token: step past
+        # its prefix only, so a token inside that run is still scanned.
+        if [ "${#t}" -eq 93 ]; then skip="$t"; else skip="github_pat_"; t="" ; fi ;;
+    esac
+    if [ -n "$t" ]; then
         case " ${tokens[*]-} " in
             *" $t "*) ;;
             *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
         esac
     fi
-    rest="${rest#*"$m"}"
+    rest="${rest#*"$skip"}"
 done
 [ "${#tokens[@]}" -gt 0 ] || exit 0
 

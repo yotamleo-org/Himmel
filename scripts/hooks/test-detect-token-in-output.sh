@@ -125,6 +125,10 @@ else fail "token as variable name echoed"; fi
 run_hook "$(j_post Bash s15 "x=${TOK_PAT}Zq9")"
 if grep -q 'github_pat_…' "$TMP/out" && no_value "$TMP/out" "$TOK_PAT"; then pass "github_pat_ run longer than 82 still alerts"; else fail "long github_pat_ run: $(cut -c1-200 "$TMP/out")"; fi
 
+# 9d. A token inside a rejected (too short) github_pat_ run is still found.
+run_hook "$(j_post Bash s16 "x=github""_pat_${TOK_GHP}")"
+if grep -q 'ghp_…' "$TMP/out" && no_value "$TMP/out" "$TOK_GHP"; then pass "ghp_ token behind a short github_pat_ prefix still alerts"; else fail "embedded ghp_ hidden: $(cut -c1-200 "$TMP/out")"; fi
+
 # 10. Sender failure: no sentinel left, so a later call may retry the DM.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/send.sh"
 run_hook "$(j_post Bash s6 "T=$TOK_GHP")"
