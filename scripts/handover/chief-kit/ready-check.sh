@@ -1024,7 +1024,7 @@ EOF
     # or the id cannot be read, so the caller fails closed.
     wf_own_patch_id() {
         local d p
-        d=$(git --literal-pathspecs diff --no-color --no-ext-diff --no-renames --binary "$1" "$2" -- "$3" 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable diff fails the comparison closed
+        d=$(git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --no-renames --binary "$1" "$2" -- "$3" 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable diff fails the comparison closed
         [ -n "$d" ] || return 0
         p=$(printf '%s\n' "$d" | git patch-id --verbatim 2>/dev/null) || return 1  # swallow-ok: rc checked, an unreadable id fails the comparison closed
         p=${p%% *}

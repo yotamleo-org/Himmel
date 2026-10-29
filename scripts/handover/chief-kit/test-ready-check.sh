@@ -1898,6 +1898,8 @@ HP_HEAD=$(anc_merge "$B_WF2" "$B_PBOTH" "$B_MAIN2" "$HP_PR1" "$HP_M1")
 HP_HEAD_EDIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PEDIT" "$B_MAIN2")
 B_PWS=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line  3 pr/' -e '28s/.*/line 28 main/')")
 HP_HEAD_WS=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PWS" "$B_MAIN2")
+B_PDIGIT=$(anc_blob "$(printf '%s\n' "$P0" | sed -e '3s/.*/line 5 pr/' -e '28s/.*/line 28 main/')")
+HP_HEAD_DIGIT=$(anc_commit "$HP_HEAD" "$B_WF2" "$B_PDIGIT" "$B_MAIN2")
 HP_ORPHAN=$(anc_commit - "$B_WF" "$B_P0" "$B_MAIN2")
 ANC_ORIGIN="$tmp/anc-origin.git"
 git init -q --bare "$ANC_ORIGIN"
@@ -1918,6 +1920,14 @@ anc_run "$HP_HEAD_WS"
 check "the PR's own hunk changed only in whitespace after the dispatch: exit 1" "$rc" "1"
 contains "the PR's own hunk changed only in whitespace after the dispatch: check 10 fails" "$out" "[FAIL] 10."
 notcontains "the PR's own hunk changed only in whitespace after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+git -C "$REPO" config diff.lossy.textconv "sed s/[0-9]//g"
+printf '%s diff=lossy\n' "$ANC_PRFILE" > "$REPO/.gitattributes"
+anc_run "$HP_HEAD_DIGIT"
+rm -f "$REPO/.gitattributes"
+git -C "$REPO" config --unset diff.lossy.textconv
+check "a textconv driver hides the PR's own edit after the dispatch: exit 1" "$rc" "1"
+contains "a textconv driver hides the PR's own edit after the dispatch: check 10 fails" "$out" "[FAIL] 10."
+notcontains "a textconv driver hides the PR's own edit after the dispatch: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 anc_main "$HP_ORPHAN"
 anc_run "$HP_HEAD"
 check "no merge-base with origin/main: exit 1" "$rc" "1"
