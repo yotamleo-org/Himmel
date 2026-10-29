@@ -14,6 +14,7 @@ import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, 
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
+import { makeAfkSudoGate, helperInstalled, spawnHelper } from "./afk-sudo-route";
 import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./chief-heartbeat-watch";
 // resolve the bridge's own plugin profile per dispatch (lever-b)
 // instead of a hardcoded `undefined` (no --settings
@@ -432,7 +433,9 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 // gate as the chat-scope check (defense-in-depth, CR S1). Wired only in main(); absent
 // in unit tests that don't exercise /arm.
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
-export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire };
+// afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
+export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean };
+const afkSudoConsumed = (auto: AutoGate | undefined, msg: DeliveredMsg): boolean => auto?.afkSudo?.(msg) === true;
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -595,6 +598,9 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // non-operator the tag is not parsed at all: the text stays verbatim and
   // routes as ordinary prose, which is the conservative direction (a
   // `model:`-prefixed message from a member is answered, just not re-modelled).
+  // An afk-sudo approve/deny line is consumed before anything else can queue it,
+  // so its TOTP code never reaches an inbox or a run.
+  if (afkSudoConsumed(auto, msg)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;
@@ -2382,7 +2388,8 @@ export async function main(): Promise<void> {
   // authorize = operator-identity (global allowFrom) AND chat-allowlisted (makeAllow):
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
-  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire };
+  const afkSudo = makeAfkSudoGate({ access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat, text) => replyViaOutbox(root, chat, text), log: logRedacted });
+  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo };
   // Operator -> chief routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.

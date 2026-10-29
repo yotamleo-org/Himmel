@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# afk-sudo-request — what an AFK session runs for one allowlisted privileged
+# command.
+#
+#   afk-sudo-request --session S --ticket T -- ARGV...
+#
+# Asks the root helper (sudo -n, the one NOPASSWD rule install.sh writes) to
+# open a request, sends the helper's request text to the operator's Telegram DM,
+# then waits for the operator's `approve <id> <code>` or `deny <id>`, which the
+# bridge hands to the helper. Nothing runs here: the helper runs the command.
+#
+# Exit: the command's own exit status once it ran; 3 denied (or a failed code
+# check); 4 expired; 5 refused (disabled, off the allowlist, busy, locked,
+# rate-limited, helper not installed); 2 usage.
+set -uo pipefail
+
+HELPER=/usr/local/libexec/himmel/afk-sudo
+
+usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV..." >&2; exit 2; }
+
+session="" ticket=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --session) [ $# -ge 2 ] || usage; session=$2; shift 2 ;;
+        --ticket) [ $# -ge 2 ] || usage; ticket=$2; shift 2 ;;
+        --) shift; break ;;
+        *) usage ;;
+    esac
+done
+[ -n "$session" ] && [ -n "$ticket" ] && [ $# -gt 0 ] || usage
+
+field() { printf '%s\n' "$2" | sed -n "s/^result=[^ ]* .*\\b$1=\\([^ ]*\\).*/\\1/p" | head -1; }
+
+if ! out=$(sudo -n "$HELPER" request --session "$session" --ticket "$ticket" --cwd "$PWD" -- "$@" 2>&1); then
+    printf 'afk-sudo-request: refused: %s\n' "${out:-helper not installed}" >&2
+    exit 5
+fi
+id=$(field id "$out")
+operator=$(field operator "$out")
+expires=$(field expires "$out")
+text=$(printf '%s\n' "$out" | sed -n 's/^text=//p')
+
+# The bridge's own bot (the one the operator replies to), read the way
+# session-status.ts reads it; the repo .env / keyring token is a different bot.
+# The URL carrying the token goes to curl on stdin, never argv.
+bridge_env=${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}
+token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$bridge_env" 2>/dev/null | tr -d '"'"'"' \r' | grep -m1 .)
+if [ -z "$token" ] || ! printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
+        | curl -sS -m 10 -o /dev/null -K - \
+            --data-urlencode "chat_id=${operator}" \
+            --data-urlencode "text=${text}"; then
+    echo "afk-sudo-request: the Telegram notice failed; request $id stays pending until it expires" >&2
+fi
+
+echo "afk-sudo-request: waiting for the operator on request $id"
+deadline=$((expires + 130))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+    st=$(sudo -n "$HELPER" status "$id" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p')
+    case "$st" in
+        pending | running) sleep 3 ;;
+        ran:*) echo "afk-sudo-request: request $id ran, exit ${st#ran:}"; exit "${st#ran:}" ;;
+        denied* | burned) echo "afk-sudo-request: request $id denied ($st)" >&2; exit 3 ;;
+        expired) echo "afk-sudo-request: request $id expired" >&2; exit 4 ;;
+        *) echo "afk-sudo-request: request $id status '$st'" >&2; exit 5 ;;
+    esac
+done
+echo "afk-sudo-request: request $id expired" >&2
+exit 4
