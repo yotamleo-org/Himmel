@@ -37,7 +37,9 @@ Config `mode` is `"allowlist"` (default; any other or absent value reads as this
 | Which argv | one a class names (`not-in-class` otherwise) | any |
 | Runs as | the class's `run_as` (default root); `--as` is ignored | `operator_user`, or root with `--as root`; any other user is `bad-user` |
 
-The never-remote floor applies in both modes and is checked before class matching.
+The never-remote floor applies in both modes, at request and again at exec. At request in
+`allowlist` mode an argv no class names is refused as `not-in-class` before the floor runs (it
+never reaches the operator either way); an argv a class names goes through the floor.
 
 ## The frozen record
 

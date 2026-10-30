@@ -451,6 +451,8 @@ if [ "$1" = run-status ] && [ ! -e "$FAKE_R/polled.$2" ]; then
         deny) run_helper "$now" deny "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
         expire) now=$((now + 1000)) ;;
     esac
+    # FAKE_LOSE=1: the stored result vanishes after the command ran.
+    [ -z "${FAKE_LOSE:-}" ] || rm -f "$FAKE_R/var/lib/himmel/afk-sudo/results/$2.json"
 fi
 run_helper "$now" "$@"
 FAKESUDO2
@@ -474,6 +476,11 @@ assert_contains "afk-run exits 0 for a command that exits 0" "0" "$ARRC"
 assert_contains "afk-run prints the captured stdout" "relayed" "$(cat "$tmp/ar.out")"
 assert_contains "afk-run prints the captured stderr" "errrelayed" "$(cat "$tmp/ar.err")"
 assert_contains "the last stderr line names the status" "status=ran:0" "$ARLAST"
+new_root arlost; cfg "$ALL" true
+FAKE_LOSE=1 ar 3 "${AR[@]}" -- sh -c 'echo lostout'
+assert_contains "afk-run says so when the stored output cannot be read" "output could not be read" "$(cat "$tmp/ar.err")"
+assert_absent "a lost result does not leak the helper's reply into stdout" "result=" "$(cat "$tmp/ar.out")"
+assert_contains "a lost output keeps the command's own status" "status=ran:0" "$ARLAST"
 new_root ardeny; cfg "$ALL" true
 FAKE_ACTION=deny ar 3 "${AR[@]}" -- true
 assert_contains "a denied run exits 3" "3" "$ARRC"

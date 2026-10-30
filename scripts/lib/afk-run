@@ -45,16 +45,27 @@ end_with() {  # end_with <code> <status> [id]
     exit "$1"
 }
 
-finish_ran() {  # finish_ran <id> <exit>
-    local id=$1 n=$2 errf
-    sudo -n "$HELPER" run-result "$id" --stream stdout 2>/dev/null
-    errf=$(mktemp "${TMPDIR:-/tmp}/afk-run.XXXXXX") || errf=/dev/null
+# fetch <id> <stream> <fd>: relay one stored stream to <fd>; 1 when it could not be read (the
+# helper's own error reply goes to a temp file and is dropped, never relayed as command output).
+fetch() {
+    local f
+    f=$(mktemp "${TMPDIR:-/tmp}/afk-run.XXXXXX") || return 1
     # shellcheck disable=SC2024 # the caller's own temp file, not a root-opened path
-    sudo -n "$HELPER" run-result "$id" --stream stderr > "$errf" 2>/dev/null
-    cat "$errf" >&2
+    if ! sudo -n "$HELPER" run-result "$1" --stream "$2" > "$f" 2>/dev/null; then
+        rm -f "$f"
+        return 1
+    fi
+    cat "$f" >&"$3"
     # The status line must start a line of its own.
-    [ ! -s "$errf" ] || [ -z "$(tail -c 1 "$errf")" ] || echo >&2
-    [ "$errf" = /dev/null ] || rm -f "$errf"
+    [ "$3" != 2 ] || [ ! -s "$f" ] || [ -z "$(tail -c 1 "$f")" ] || echo >&2
+    rm -f "$f"
+}
+
+finish_ran() {  # finish_ran <id> <exit>
+    local id=$1 n=$2 lost=""
+    fetch "$id" stdout 1 || lost=stdout
+    fetch "$id" stderr 2 || lost="${lost:+$lost and }stderr"
+    [ -z "$lost" ] || echo "afk-run: the command ran, but its $lost output could not be read" >&2
     [[ $n =~ ^-?[0-9]+$ ]] || n=1
     local status="ran:$n"
     [ "$n" -ge 0 ] || n=$((128 - n))

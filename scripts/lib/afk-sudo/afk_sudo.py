@@ -18,7 +18,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
 The run kind (`run-request`) is mode-switched by the station config: `"mode": "allowlist"`
 (the default, also any other or absent value) runs only an argv a class names, as the class's
 run_as; `"mode": "all"` runs any argv as `operator_user` (or root with `--as root`). Either way
-the never-remote floor (never_remote.py) refuses first, and the request is frozen into a
+the never-remote floor (never_remote.py) refuses a request before the operator sees it, and it is frozen into a
 root-owned record whose hash the executor re-checks, with the argv0, file and cwd identities,
 after the code is accepted.
 
