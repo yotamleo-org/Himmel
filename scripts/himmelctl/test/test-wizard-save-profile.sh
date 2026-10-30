@@ -806,6 +806,10 @@ fs.renameSync = function (oldPath, newPath) {
       && path.resolve(path.dirname(oldPath)) === path.resolve(dir)) {
     started = true;
     const before = fs.readFileSync(newPath, 'utf8');
+    // the window only counts while the rewrite itself owns the lock
+    let owner = '';
+    try { owner = fs.readFileSync(`${path.resolve(newPath)}.lock`, 'utf8'); } catch (_e) { /* no lock */ }
+    if (owner !== String(process.pid)) { fs.writeFileSync(process.env.NOT_OWNER_FILE, owner); return realRenameSync.call(fs, oldPath, newPath); }
     cp.spawn(process.execPath, [process.env.SECOND_WRITER_JS], { stdio: 'ignore', env: Object.assign({}, process.env, { NODE_OPTIONS: '' }) }).unref();
     const sleeper = new Int32Array(new SharedArrayBuffer(4));
     const deadline = Date.now() + 3000;
@@ -821,6 +825,7 @@ out12=$(
     HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-12.json")" \
     HIMMELCTL_CACHE_DIR="$(winpath "$cache12")" HIMMELCTL_BIN_DIR="$(winpath "$work/bin-12")" \
     HOLD_REWRITE_DIR="$(winpath "$cache12")" SECOND_WRITER_JS="$(winpath "$second12")" \
+    NOT_OWNER_FILE="$(winpath "$work/not-owner12")" \
     SECOND_WRITER_BIN="$(winpath "$wizard")" SECOND_WRITER_DONE="$(winpath "$done12")" \
     NODE_OPTIONS="--require=$(winpath "$hold12")" \
     "$node_bin" "$wizard" ensure --no-network --items wiring-pretooluse </dev/null 2>&1
@@ -828,11 +833,74 @@ out12=$(
 rc12=$?
 set -e
 [ "$rc12" -eq 0 ] || fail "case12: the ensure that rewrites the profile should exit 0 (got rc=$rc12): $out12"
+[ ! -f "$work/not-owner12" ] || fail "case12: the rewrite did not hold the profile lock at its rename (lock said: '$(cat "$work/not-owner12")')"
 # the second writer is its own process: give it up to 15s to finish
 for _i in $(seq 1 150); do [ -f "$done12" ] && break; sleep 0.1; done
 [ -f "$done12" ] || fail "case12: the second profile writer never finished (ensure said: $out12)"
 grepq "$(cat "$saved12")" -F -- 'second-writer' \
   || fail "case12: a profile save that landed during the retired-cadence rewrite was overwritten (saved profile: $(cat "$saved12"))"
 echo "ok: case12 a profile save that lands inside the retired-cadence rewrite is kept"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# case13: two waiters that both find the SAME dead lock owner must not both
+# take the lock. Waiter B reads the dead owner, then (held by a patched
+# readFileSync) waits until waiter A has taken the stale lock over and is
+# inside its critical section; only then does B go on to take over. B must
+# find A's fresh lock under its rename and leave it alone: B enters only after
+# A has left. The lib under test is LOCK_LIB, so the same driver can be pointed
+# at another copy of it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+dir13="$work/case13"; mkdir -p "$dir13"
+lib13="${LOCK_LIB_OVERRIDE:-$(dirname "$wizard")/lib/profile-lock.js}"
+profile13="$dir13/install-profile.json"
+dead13="$("$node_bin" -e 'process.stdout.write(String(process.pid))')"
+printf '%s' "$dead13" > "$profile13.lock"
+
+cat > "$dir13/waiter-b.js" <<'JS'
+const fs = require('fs');
+const lib = require(process.env.LOCK_LIB);
+const lock = `${require('path').resolve(process.env.PROFILE)}.lock`;
+const realRead = fs.readFileSync;
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+let paused = false;
+fs.readFileSync = function (p, ...rest) {
+  const out = realRead.call(fs, p, ...rest);
+  if (!paused && p === lock) {
+    paused = true;
+    fs.writeFileSync(process.env.B_READ, '1');
+    const deadline = Date.now() + 10000;
+    while (!fs.existsSync(process.env.A_HOLD) && Date.now() < deadline) Atomics.wait(sleeper, 0, 0, 20);
+  }
+  return out;
+};
+lib.withProfileLock(process.env.PROFILE, () => { fs.writeFileSync(process.env.B_IN, String(Date.now())); });
+JS
+cat > "$dir13/waiter-a.js" <<'JS'
+const fs = require('fs');
+const lib = require(process.env.LOCK_LIB);
+lib.withProfileLock(process.env.PROFILE, () => {
+  fs.writeFileSync(process.env.A_HOLD, '1');
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+  fs.writeFileSync(process.env.A_OUT, String(Date.now()));
+});
+JS
+
+env13=(LOCK_LIB="$(winpath "$lib13")" PROFILE="$(winpath "$profile13")"
+  B_READ="$(winpath "$dir13/b-read")" A_HOLD="$(winpath "$dir13/a-hold")"
+  A_OUT="$(winpath "$dir13/a-out")" B_IN="$(winpath "$dir13/b-in")")
+env "${env13[@]}" "$node_bin" "$(winpath "$dir13/waiter-b.js")" &
+pid_b13=$!
+for _i in $(seq 1 100); do [ -f "$dir13/b-read" ] && break; sleep 0.1; done
+[ -f "$dir13/b-read" ] || fail "case13: waiter B never read the stale lock"
+env "${env13[@]}" "$node_bin" "$(winpath "$dir13/waiter-a.js")" &
+pid_a13=$!
+wait "$pid_a13" || fail "case13: waiter A failed to take the stale lock over"
+wait "$pid_b13" || fail "case13: waiter B failed"
+[ -f "$dir13/a-out" ] && [ -f "$dir13/b-in" ] || fail "case13: a waiter never ran its critical section"
+[ "$(cat "$dir13/b-in")" -ge "$(cat "$dir13/a-out")" ] \
+  || fail "case13: waiter B took the lock while waiter A still held it (B in at $(cat "$dir13/b-in"), A out at $(cat "$dir13/a-out"))"
+[ ! -e "$profile13.lock" ] || fail "case13: the lock file was left behind"
+echo "ok: case13 two waiters that find the same dead owner do not both take the lock"
 
 echo "PASS"

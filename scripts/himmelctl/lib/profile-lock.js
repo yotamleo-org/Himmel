@@ -6,6 +6,7 @@
 // edit. The lock is a file beside the profile, created exclusively and holding
 // the owner's pid.
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -19,33 +20,56 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function ownerGone(lock) {
-  let pid;
+// The owner text of a lock that is stale (owner gone), else null.
+function staleOwner(lock) {
+  let text;
   try {
-    pid = parseInt(fs.readFileSync(lock, 'utf8'), 10);
+    text = fs.readFileSync(lock, 'utf8');
   } catch (_e) {
-    return false; // released, or not written yet — try again
+    return null; // released, or not written yet — try again
   }
+  const pid = parseInt(text, 10);
   if (Number.isInteger(pid) && pid > 0) {
     try {
       process.kill(pid, 0);
-      return false; // a live owner keeps the lock however long it holds it
+      return null; // a live owner keeps the lock however long it holds it
     } catch (e) {
-      if (e.code === 'ESRCH') return true;
+      if (e.code === 'ESRCH') return text;
     }
   }
   try {
-    return Date.now() - fs.statSync(lock).mtimeMs > STALE_MS;
+    return Date.now() - fs.statSync(lock).mtimeMs > STALE_MS ? text : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// Take a stale lock over by renaming it to a tombstone only this waiter owns.
+// Only the waiter whose rename succeeds may retry the create; a peer that lost
+// the rename sees ENOENT and goes back to waiting. The renamed file is read
+// again: if it is no longer the owner `stale` read, a fresh owner slipped in
+// between the read and the rename, so its lock is linked back untouched.
+// ponytail: between that rename and the link a third waiter can create the
+// lock, leaving two owners; needs a crashed owner and three simultaneous
+// waiters, upgrade path is a kernel lock (flock) instead of a lock file.
+function takeOver(lock, stale) {
+  const tomb = `${lock}.stale.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  try {
+    fs.renameSync(lock, tomb);
   } catch (_e) {
     return false;
   }
+  let moved = null;
+  try { moved = fs.readFileSync(tomb, 'utf8'); } catch (_e) { /* unreadable: treated as a fresh owner */ }
+  if (moved !== stale) {
+    try { fs.linkSync(tomb, lock); } catch (_e) { /* recreated meanwhile: see the ponytail above */ }
+  }
+  try { fs.unlinkSync(tomb); } catch (_e) { /* already gone */ }
+  return moved === stale;
 }
 
 // Run fn() holding the lock for `profilePath`. Throws if the lock is not free
 // within WAIT_MS, so a save fails loud rather than racing an unlocked write.
-// ponytail: two waiters that both find a dead owner can each remove the lock
-// and one then removes the other's fresh one; that needs a crashed owner AND
-// two simultaneous waiters, upgrade path is an atomic rename-based takeover.
 function withProfileLock(profilePath, fn) {
   const lock = `${path.resolve(profilePath)}.lock`;
   const deadline = Date.now() + WAIT_MS;
@@ -56,12 +80,8 @@ function withProfileLock(profilePath, fn) {
       break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      if (ownerGone(lock)) {
-        try {
-          fs.unlinkSync(lock);
-          continue;
-        } catch (_e) { /* a peer took it over, or it cannot be removed: wait like any other holder */ }
-      }
+      const stale = staleOwner(lock);
+      if (stale !== null && takeOver(lock, stale)) continue;
       if (Date.now() > deadline) throw new Error(`the profile lock ${lock} is held by another himmelctl`);
       sleep(POLL_MS);
     }
@@ -71,7 +91,10 @@ function withProfileLock(profilePath, fn) {
     fs.closeSync(fd);
     return fn();
   } finally {
-    try { fs.unlinkSync(lock); } catch (_e) { /* already gone */ }
+    // only our own lock: a peer that took ours over as stale owns the file now
+    try {
+      if (fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.unlinkSync(lock);
+    } catch (_e) { /* already gone */ }
   }
 }
 
