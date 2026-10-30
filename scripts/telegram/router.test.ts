@@ -146,18 +146,19 @@ test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () =
   expect(classify("/fleet@anybot").kind).toBe("chat");
   expect(classify("/go@anybot N1").kind).toBe("chat");
   expect(classify("/halt@anybot")).toEqual({ kind: "fleet", verb: "halt" });
-  expect(classify("/WORKERS")).toEqual({ kind: "fleet", verb: "legs" });
+  expect(classify("/WORKERS")).toEqual({ kind: "fleet", verb: "workers" });
+  expect(classify("/legs")).toEqual({ kind: "fleet", verb: "workers" });
   expect(classify("/HALT")).toEqual({ kind: "fleet", verb: "halt" });
   expect(classify("/halt@mybot", "mybot")).toEqual({ kind: "fleet", verb: "halt" });
-  expect(classify("/Go N1490")).toEqual({ kind: "fleet", verb: "go?", leg: "N1490" });
-  expect(classify("/GO@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "go?", leg: "N1490" });
-  expect(classify("/Push@mybot Worker_A", "mybot")).toEqual({ kind: "fleet", verb: "push", leg: "Worker_A" });
-  expect(classify("/halt@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "halt", leg: "N1490" });
+  expect(classify("/Go N1490")).toEqual({ kind: "fleet", verb: "go?", worker: "N1490" });
+  expect(classify("/GO@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "go?", worker: "N1490" });
+  expect(classify("/Push@mybot Worker_A", "mybot")).toEqual({ kind: "fleet", verb: "push", worker: "Worker_A" });
+  expect(classify("/halt@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "halt", worker: "N1490" });
 });
 
 test("HIMMEL-5150: malformed or other-bot fleet shapes keep their refusal/chat split", () => {
   for (const t of ["/Go", "/go@mybot", "/fleet@mybot now", "/Go ../x", "/push@mybot a b"]) expect(classify(t, "mybot").kind).toBe("fleet-malformed");
-  for (const t of ["/fleet@otherbot", "/go@otherbot N1", "/lockdown@otherbot", "/gopher", "/legsx", "/fleet@", "/fleet@bad-bot"]) expect(classify(t, "mybot").kind).toBe("chat");
+  for (const t of ["/fleet@otherbot", "/go@otherbot N1", "/lockdown@otherbot", "/gopher", "/workersx", "/legsx", "/fleet@", "/fleet@bad-bot"]) expect(classify(t, "mybot").kind).toBe("chat");
 });
 
 test("HIMMEL-5150: /lockdown is case-insensitive and accepts /lockdown@<bot>", () => {
