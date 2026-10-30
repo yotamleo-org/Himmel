@@ -17,9 +17,6 @@
 # or empty stdin), so a hook bug never locks an operator's own session out of
 # ScheduleWakeup.
 #
-# The old path guard-leg-wakeup.sh sources this file, so settings that still
-# name it run this hook.
-#
 # Bypass: unset HIMMEL_CONSOLE_LEG in the launching shell (session-sticky; a
 # per-call prefix does not reach this hook process).
 #
