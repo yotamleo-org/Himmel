@@ -69,7 +69,7 @@ STDIN='{"session_id":"s1","transcript_path":"/x/t.jsonl","cwd":"/y","hook_event_
 # fire <stdin> [extra env assignments...] -- runs the hook in a scrubbed env.
 fire() {
     local in="$1"; shift
-    printf '%s' "$in" | env -u HIMMEL_CONSOLE_DOC -u HIMMEL_CONSOLE_WORKDIR -u HANDOVER_DIR \
+    printf '%s' "$in" | env -u HIMMEL_CONSOLE_DOC -u HIMMEL_CONSOLE_WORKDIR -u HANDOVER_DIR -u HIMMEL_LEGACY_NAMES \
         HOME="$HOME_FIX" HANDOVER_DIR="$ROOT" "$@" bash "$HOOK" 2>&1
 }
 
@@ -123,8 +123,10 @@ OLDDOC="$ROOT/yotamleo/himmel/old-chief.md"
 printf '# Old Chief\n\n## Live state\n\nlegs: `N1:nA:lA:111`, `N2:nB:lB:222`\nqueue: 12\n\n## Results\n' > "$OLDDOC"
 fire "$STDIN" HIMMEL_CONSOLE_DOC="$OLDDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-old" >/dev/null
 eq "old-spelling line read as workers= by default" "$(field "$TMP/work-old/precompact-1.snap" workers)" "N1:nA:lA:111, N2:nB:lB:222"
-fire "$STDIN" HIMMEL_CONSOLE_DOC="$OLDDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-old-off" HIMMEL_LEGACY_NAMES=0 >/dev/null
-eq "old-spelling line ignored with HIMMEL_LEGACY_NAMES=0" "$(field "$TMP/work-old-off/precompact-1.snap" workers)" ""
+fire "$STDIN" HIMMEL_CONSOLE_DOC="$OLDDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-old-off" HIMMEL_LEGACY_NAMES=0 >/dev/null; rc=$?
+eq "legacy names off: exits 0" "$rc" 0
+eq "legacy names off: a snapshot is still written" "$([ -f "$TMP/work-old-off/precompact-1.snap" ] && echo yes || echo no)" "yes"
+eq "legacy names off: workers= is present and empty" "$(grep -c '^workers=$' "$TMP/work-old-off/precompact-1.snap" 2>/dev/null)" "1"
 BOTHDOC="$ROOT/yotamleo/himmel/both-chief.md"
 # shellcheck disable=SC2016  # backtick spans are literal fixture text
 printf '# Both\n\n## Live state\n\nlegs: `N9:old`\nworkers: `N1:nA:lA:111`\nqueue: 12\n\n## Results\n' > "$BOTHDOC"
