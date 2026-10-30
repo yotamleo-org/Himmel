@@ -739,7 +739,9 @@ check_both "97g fromP: cd scratch && echo x > primary/out.txt (absolute primary 
 # 97h-i (controls): the cd target must lie in NO git repo once symlinks are
 # resolved: a link inside scratch pointing at the primary, and a worktree
 # target (row 55's shape, with a redirect), keep the payload-cwd re-check.
-ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk-to-primary"
+if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk-to-primary" && [ -d "$FIX/scratch8200/lnk-to-primary" ]; }; then
+    bad "97h setup: the lnk-to-primary symlink was not created"
+fi
 check_both "97h fromP: cd scratch/lnk-to-primary && echo x > out.txt (symlink into the primary) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/lnk-to-primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 check_both "97i fromP: cd wt && echo x > out.txt (worktree target) denies" block \
