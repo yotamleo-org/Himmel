@@ -353,14 +353,14 @@ housekeeping_file="$inbox.wait.housekeeping"
 housekeeping_secs="${HOUSEKEEPING_DIGEST_SECS:-900}"
 case "$housekeeping_secs" in ''|*[!0-9]*|??????????*) housekeeping_secs=900 ;; esac
 housekeeping_secs=$((10#$housekeeping_secs))
-housekeeping_add() { # <kind> <detail>; success means an unbatched wake was printed
-    if [ "$housekeeping_secs" -eq 0 ]; then
-        printf 'WAKE %s %s\n' "$1" "$2"
-        return 0
+housekeeping_add() { # <kind> <detail>; success means an immediate wake was printed
+    if [ "$housekeeping_secs" -ne 0 ] &&
+       { [ -f "$housekeeping_file.since" ] || date +%s > "$housekeeping_file.since"; } &&
+       printf '%s %s\n' "$1" "$2" >> "$housekeeping_file"; then
+        return 1
     fi
-    [ -e "$housekeeping_file.since" ] || date +%s > "$housekeeping_file.since"
-    printf '%s %s\n' "$1" "$2" >> "$housekeeping_file"
-    return 1
+    printf 'WAKE %s %s\n' "$1" "$2"
+    return 0
 }
 housekeeping_flush() {
     local since kinds
@@ -1402,6 +1402,10 @@ while :; do
                 exit_reason='wake-tracker-stale'; exit 0
             fi
             if board_stale_wake "$(field board "$tick_line")"; then
+                if [ "$housekeeping_secs" -eq 0 ]; then
+                    printf 'WAKE board-stale board=%s\n%s\n' "$(field board "$tick_line")" "$tick_line"
+                    exit_reason='wake-board-stale'; exit 0
+                fi
                 if housekeeping_add board-stale "board=$(field board "$tick_line")"; then
                     printf '%s\n' "$tick_line"
                     exit_reason='wake-board-stale'; exit 0
@@ -1439,7 +1443,9 @@ while :; do
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""
                 elif [ "$housekeeping_secs" -gt 0 ] && tick_housekeeping "$real_changed" "$saved" "$key"; then
-                    housekeeping_add tick "changed=$real_changed usage=${key##*|usage=} $tick_line"
+                    if housekeeping_add tick "changed=$real_changed usage=${key##*|usage=} $tick_line"; then
+                        exit_reason='wake-tick'; exit 0
+                    fi
                     saved="$key"; save_key "$key"; pending=""
                 else
                     page_denials "$saved" "$key"

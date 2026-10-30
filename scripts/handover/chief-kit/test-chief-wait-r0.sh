@@ -13,8 +13,8 @@
 #   (r0d) a RETASK token in the bullet never reaches worker-event, the WAKE line or
 #         the out file
 #   (r0e) without --workers-from the waiter never calls worker-event
-#   (r0f) two workers: N2 changed a sample before the relay absorbs N1's wrap, and
-#         N2's change still wakes
+#   (r0f) two workers: N2's BLOCKED wakes before the relay sees N1's wrap;
+#         a re-arm absorbs the wrap and the next Telegram wake delivers its digest
 #   (r0g) two workers: N1's wrap and N2's change in one sample, then the manifest
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
@@ -96,6 +96,7 @@ export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_WORKER_EVENT="$STUB/worker-event.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
+export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
@@ -192,7 +193,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 reset_stub
 fleet r0c
 printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
-start "$I" "$WORK/r0c.out" --doc "$D" --workers-from "$M"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/r0c.out" --doc "$D" --workers-from "$M"
 wait_hb "$I" || fail "(r0c) no baseline heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED"
@@ -232,7 +233,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # --- (r0e) without --workers-from worker-event never runs --------------------------
 reset_stub
 fleet r0e
-start "$I" "$WORK/r0e.out" --doc "$D" --workers "$L"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/r0e.out" --doc "$D" --workers "$L"
 wait_hb "$I" || fail "(r0e) no baseline heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED"
@@ -248,7 +249,7 @@ fleet2() {
     printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
 }
 
-# --- (r0f) another worker's change a sample before the absorbed wrap still wakes -
+# --- (r0f) BLOCKED wakes first; the re-arm still absorbs the pending wrap ------
 reset_stub
 fleet2 r0f
 tick_line "N1:LIVE,N2:LIVE"
@@ -259,7 +260,21 @@ tick_seq "$(tick_text "N1:LIVE,N2:BLOCKED")" "$(tick_text "N1:WRAPPED,N2:BLOCKED
 wait_exit "$WPID"
 check "(r0f) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0f) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
-contains "(r0f) the absorbed N1 wrap is in the digest" "$(cat "$WORK/r0f.out")" "absorbed since last wake: wraps=1 (N1)"
+contains "(r0f) BLOCKED wakes before the wrap sample" "$(cat "$WORK/r0f.out")" "tails=N1:LIVE,N2:BLOCKED"
+check "(r0f) the relay has not seen the wrap yet" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+start "$I" "$WORK/r0f2.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0f) no re-arm heartbeat"
+n=0
+while [ "$n" -lt 100 ] && [ ! -s "$I.wait.digest" ]; do sleep 0.1; n=$((n + 1)); done
+check "(r0f) the re-arm absorbs the wrap once" "1" "$(cat "$STUB/le.calls" 2>/dev/null)"
+contains "(r0f) the pending wrap is recorded" "$(cat "$I.wait.digest" 2>/dev/null)" "N1 wrap-merged"
+printf -- '- 03:45 [telegram from=1 chat=2] flush\n' >> "$I"
+wait_exit "$WPID"
+check "(r0f) the next Telegram wake exits (rc 0)" "0" "$rc"
+check "(r0f) the wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0f2.out")"
+contains "(r0f) the absorbed N1 wrap is delivered after re-arm" "$(cat "$WORK/r0f2.out")" "absorbed since last wake: wraps=1 (N1)"
+check "(r0f) the delivered digest is cleared" "" "$(cat "$I.wait.digest" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0g) a change beside the wrap survives the manifest move it makes -------

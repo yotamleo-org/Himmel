@@ -133,6 +133,28 @@ EOF
     I="$(new_inbox unbatched)"
     timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/unbatched.out" 2> "$WORK/unbatched.err"; digest_rc=$?
     check '(8197) zero disables batching and preserves the original wake line' '0:WAKE board-stale board=STALE:2h' "$digest_rc:$(head -n1 "$WORK/unbatched.out")"
+
+    local digest_case digest_kind
+    export HOUSEKEEPING_DIGEST_SECS=30
+    for digest_case in tick board-stale status-sweep deadline; do
+        rm -f "$STUB/samples" "$STUB/swept"
+        export WAIT_SWEEP_CMD="$STUB/off.sh"
+        sed 's/capacity=UNDERFILLED:7/capacity=ok/;s/tails=N1:LIVE/tails=N1:ACK/' "$STUB/tick.line" > "$STUB/digest.line"
+        I="$(new_inbox "write-$digest_case")"
+        digest_kind="$digest_case"
+        case "$digest_case" in
+            board-stale) sed 's/board=ok/board=STALE:2h/' "$STUB/digest.line" > "$STUB/digest.new"; mv "$STUB/digest.new" "$STUB/digest.line" ;;
+            status-sweep) export WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" ;;
+            deadline) digest_kind=tick ;;
+        esac
+        if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"
+        else mkdir "$I.wait.housekeeping"; fi
+        timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/write-$digest_case.out" 2> "$WORK/write-$digest_case.err"; digest_rc=$?
+        check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
+        case "$digest_case" in tick|deadline)
+            check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")" ;;
+        esac
+    done
     [ "$fails" -eq 0 ]
 )
 if ! housekeeping_cases; then fails=$((fails + 1)); fi
