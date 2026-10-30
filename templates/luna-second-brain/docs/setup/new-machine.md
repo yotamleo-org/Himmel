@@ -6,10 +6,9 @@ Per-platform notes for setting up luna-brain on a fresh machine.
 
 `scripts/setup.sh` verifies the foundational tools at step `[1/6]`:
 
-- `bash` — Linux/macOS/Git Bash native. On macOS the system default is
+- `bash` — Linux/macOS native. On macOS the system default is
   bash 3.2; if you ever need bash 4+ idioms, `brew install bash`.
-- `git` — any modern version. On Windows install Git for Windows
-  (includes Git Bash + native Windows git).
+- `git` — any modern version.
 - `python3` — 3.10+. Used to install `pre-commit` via `uv` or `pipx`.
 
 Required (unless `pipx` is already on PATH):
@@ -49,18 +48,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 bash scripts/setup.sh
 ```
 
-### Windows (Git Bash)
-
-Install [Git for Windows](https://git-scm.com) — bundles Git Bash.
-
-Install Python from python.org (3.10+).
-
-Then from inside Git Bash:
-
-```bash
-bash scripts/setup.sh
-```
-
 ## 3. Operator-tunable knobs
 
 Both default to sensible fallbacks — most operators never need to set
@@ -86,7 +73,7 @@ capturing into `00-Inbox/`.
 
 ## 5. Vault git + optional autosync
 
-`setup.{sh,ps1}` makes the vault a git repo on first run: a download with no
+`setup.sh` makes the vault a git repo on first run: a download with no
 `.git` is `git init`-ed on `main` and the scaffold is committed; a local vault
 with no remote gets a gitignored `.single-writer` marker so commits land on
 `main` by design (the worktree-isolation guardrail honors it). A clone that
@@ -129,7 +116,7 @@ Pushing needs a remote and credentials:
 
 - **HTTPS** — git needs a credential helper. If you have `gh` but no helper
   configured, run `gh auth setup-git` once; it makes git use `gh`'s token for
-  `github.com`. (`setup.{sh,ps1}` does **not** run this for you.)
+  `github.com`. (`setup.sh` does **not** run this for you.)
 - **SSH** — add the remote with an SSH URL (`git@github.com:you/vault.git`);
   no helper needed once your key is on the host. If a remote is already HTTPS
   and you'd rather push over SSH, git's

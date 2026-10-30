@@ -19,7 +19,8 @@ content — only the bones, hooks, and plugin pointers.
 ## Quickstart
 
 Requires `bash`, `git`, `python3` (verified by `scripts/setup.sh` step
-`[1/6]`). See `docs/setup/new-machine.md` for per-platform install notes.
+`[1/6]`). See `docs/setup/new-machine.md` for Linux/macOS install notes.
+Windows is not supported.
 
 This template lives inside himmel, so the install is "copy the folder out,
 make it its own repo, run setup." Your vault **must** be its own git repo:
@@ -33,7 +34,7 @@ cp -r himmel/templates/luna-second-brain my-vault   # name it whatever you like
 cd my-vault
 git init                                            # your vault is its own repo
 
-# Linux / macOS / Git Bash
+# Linux / macOS
 bash scripts/setup.sh
 ```
 
@@ -80,7 +81,7 @@ credentials).
 default under `.obsidian/plugins/` (each with its upstream `LICENSE`). A
 sixth, **GitHub Sync**, ships vendored under `optional/plugins/` but is
 **opt-in, not installed by default** — it is mutually exclusive with
-`scripts/vault-autosync.{sh,ps1}` (the sweeper), which is the default sync
+`scripts/vault-autosync.sh` (the sweeper), which is the default sync
 path; see `.obsidian/PLUGINS-SETUP.md` for how to switch. Three further
 plugins the source vault also used — Templater, Excalidraw, and Thino — are
 **not bundled** (incompatible licenses) and are optional; install them
@@ -118,7 +119,7 @@ See `_CLAUDE.md` for the full folder map and per-folder conventions.
 
 ## Setup details
 
-Per-platform install notes (Linux / macOS / Windows Git Bash) live in
+Per-platform install notes (Linux / macOS) live in
 `docs/setup/new-machine.md`.
 
 The two operator-tunable knobs:

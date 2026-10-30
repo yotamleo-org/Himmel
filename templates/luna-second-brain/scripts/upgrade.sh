@@ -143,7 +143,7 @@ pick_template_root() {
         tdir="$root/$rel"
         [ -f "$tdir/marketplace/.claude-plugin/marketplace.json" ] || continue
         # Identity key dedupes case-spelling variants of ONE physical dir
-        # (case-insensitive FS on Windows/macOS) so a single clone never looks
+        # (case-insensitive FS on macOS) so a single clone never looks
         # like "multiple checkouts". device:inode via GNU then BSD stat;
         # lowercased-path fallback when stat is unavailable.
         key="$(stat -c '%d:%i' "$tdir" 2>/dev/null || stat -f '%d:%i' "$tdir" 2>/dev/null)"
@@ -211,13 +211,10 @@ if [ ! -f "$MARKETPLACE_JSON" ]; then
     exit 2
 fi
 
-# Resolve a WORKING python. On Windows `python3` is often the Microsoft Store
-# stub: it is on PATH (so `command -v python3` succeeds) but non-functional —
-# it prints "Python was not found", exits nonzero, and emits NO stdout. So probe
-# actual stdout (`print(1)` -> `1`), not exit status, and pick the first that
-# really runs. Order keeps python3 canonical on Linux/macOS.
+# Resolve a working Python on Linux/macOS. Probe actual stdout, not just
+# command availability, and prefer python3 over python.
 _resolve_python() {
-    for c in python3 python py; do
+    for c in python3 python; do
         if command -v "$c" >/dev/null 2>&1 \
            && [ "$("$c" -c 'print(1)' 2>/dev/null)" = "1" ]; then
             printf '%s\n' "$c"; return 0
@@ -226,7 +223,7 @@ _resolve_python() {
     return 1
 }
 PYTHON="$(_resolve_python || true)"
-[ -n "$PYTHON" ] || { echo "upgrade: required tool not on PATH: a working python (tried python3/python/py)" >&2; exit 2; }
+[ -n "$PYTHON" ] || { echo "upgrade: required tool not on PATH: a working python (tried python3/python)" >&2; exit 2; }
 
 for _t in git sha256sum; do
     command -v "$_t" >/dev/null 2>&1 || { echo "upgrade: required tool not on PATH: $_t" >&2; exit 2; }
@@ -624,8 +621,7 @@ classify() {
 }
 
 # Atomic write: copy src over dst via temp + rename (handles self-overwrite of
-# this running script: POSIX keeps the open inode; Windows rename-over may fail,
-# which we treat as non-fatal).
+# this running script: POSIX keeps the open inode).
 write_file() {
     local src="$1" dst="$2"
     mkdir -p "$(dirname "$dst")"
@@ -646,9 +642,9 @@ sha_of() { if [ -f "$1" ]; then sha256sum "$1" | cut -d' ' -f1; else echo MISSIN
 # re-indenting — so a byte compare (sha) reads a semantically identical file as
 # different forever, and a withheld "local edit" then blocks the stamp. Equal
 # means: identical bytes, OR identical apart from ONE trailing newline, OR
-# identical apart from CRLF-vs-LF line endings (an operator's
-# editor, or a Windows checkout, re-saves a template-owned file with different
-# line endings with no content change), OR (a *.json <rel>, working jq)
+# identical apart from CRLF-vs-LF line endings (an operator's editor re-saves
+# a template-owned file with different line endings but no content change),
+# OR (a *.json <rel>, working jq)
 # identical after `jq -S .` normalisation. Two or more extra newlines, or a
 # REAL content difference under normalised line endings, are still a
 # difference. Without a working jq the JSON rule is skipped with a one-time
