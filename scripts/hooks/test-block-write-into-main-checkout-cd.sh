@@ -845,5 +845,21 @@ check_both "100d fromP: cd scratch/{1..1} && echo x > out.txt (brace expands to 
 check_both "100e fromP: cd scratch/{1..1} && touch out.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/{1..1} && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
+# 101a: the shell strips quotes before the kernel resolves the path, so a quoted `..` component
+# (`lnk/".."/out.txt`, `lnk/'..'/out.txt`, `"lnk/.."/out.txt`) names the same parent as the bare
+# spelling. The `..` test runs on the unquoted word; a quoted plain filename stays allowed.
+check_both "101a fromP: cd scratch && echo x > lnk/\\\"..\\\"/out.txt (double-quoted ..) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/\\\"..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101b fromP: cd scratch && echo x > lnk/'..'/out.txt (single-quoted ..) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/'..'/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101c fromP: cd scratch && echo x > \"lnk/..\"/out.txt (whole-word quoted) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"lnk8200/..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101d fromP: cd scratch && touch lnk/\"..\"/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch lnk8200/\\\"..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101e fromP: cd scratch && tee lnk/'..'/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200/'..'/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101f fromP: cd scratch && echo x > \"out.txt\" (quoted plain filename) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

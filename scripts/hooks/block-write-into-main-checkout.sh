@@ -2941,10 +2941,15 @@ _bwimc_cd_guard() {
     # becomes several words, a glob can match a symlink into the primary that the directory
     # prefix check never resolves), so it keeps the payload-cwd re-check.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
+        # the `..` test reads the unquoted word, as the later resolver does (`lnk/".."/x` names the same parent)
+        _bwimc_unqv "$1"
         case "$1" in
-            *'~'*|*'{'*|*'*'*|*'?'*|*'['*|..|../*|*/../*|*/..) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+            *'~'*|*'{'*|*'*'*|*'?'*|*'['*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+            *) case "$_BWIMC_UNQ" in
+                ..|../*|*/../*|*/..) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+            esac ;;
         esac
-        # second layer for a symlink-free prefix: guard_canon_path (scripts/guardrails/lib.sh) collapses a typed `lnk/..` logically, not physically, so a `..` candidate is sent to the payload-cwd re-check above (rows 100a-100c); no shape was found where only this line decides (row 99f)
+        # second layer for a symlink-free prefix: the kernel resolves a `..` after a symlink physically but the check below collapses it logically, so a `..` candidate is sent to the payload-cwd re-check above (rows 100a-100c, 101a-101e); no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
         _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
