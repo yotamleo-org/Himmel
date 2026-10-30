@@ -34,12 +34,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/load-dotenv.sh
 . "$HERE/../lib/load-dotenv.sh"
 
-envfile="" vault="" profile="" dry=0
+envfile="" vault="" profile="" profile_set=0 dry=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --env|--vault|--profile)
             [ "$#" -ge 2 ] || { echo "migrate-env-config: $1 needs a value" >&2; exit 2; }
-            case "$1" in --env) envfile="$2" ;; --vault) vault="$2" ;; *) profile="$2" ;; esac
+            case "$1" in --env) envfile="$2" ;; --vault) vault="$2" ;; *) profile="$2"; profile_set=1 ;; esac
             shift 2 ;;
         --dry-run) dry=1; shift ;;
         --ahead-of-setup) shift ;;
@@ -47,6 +47,8 @@ while [ "$#" -gt 0 ]; do
         *) echo "migrate-env-config: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
+
+case "$vault" in ''|/*) ;; *) vault="$PWD/${vault#./}" ;; esac
 
 confdir=$(_himmel_config_dir)
 conf="$confdir/himmel.conf"
@@ -60,7 +62,7 @@ link_vault() {
     mkdir -p "$vault/.himmel" "$confdir" 2>/dev/null || die_create "$vault/.himmel"
     [ -e "$tracked" ] || { : > "$tracked"; } 2>/dev/null || die_create "$tracked"
     if [ -L "$conf" ]; then
-        if [ "$(readlink "$conf")" != "$tracked" ]; then
+        if ! [ "$conf" -ef "$tracked" ]; then
             echo "migrate-env-config: $conf links somewhere other than $tracked; not changing it." >&2
             exit 1
         fi
@@ -75,7 +77,7 @@ link_vault() {
 
 # The profile step: <vault>/.himmel/profiles/<name>.conf beside the vault
 # link, made with the vault dir when absent. Needs --vault or an existing link.
-if [ -n "$profile" ]; then
+if [ "$profile_set" -eq 1 ]; then
     case "$profile" in ''|.*|*[!A-Za-z0-9._-]*)
         echo "migrate-env-config: --profile needs a plain name (letters, digits, . _ -), not a path." >&2
         exit 2 ;;
