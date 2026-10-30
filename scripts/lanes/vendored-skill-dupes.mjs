@@ -3,7 +3,8 @@
 // .
 //
 // WHY: lean-skills@himmel vendors 12 of superpowers' 15 skill directories and
-// grilling from mattpocock/skills, so a session lists 14 skills instead of 26.
+// grilling from mattpocock/skills, plus the himmel-authored context7-mcp, so a
+// session lists 14 skills instead of 26.
 // That is only a win while the UPSTREAM plugins stay disabled. An adopter who
 // enables superpowers@claude-plugins-official alongside it gets BOTH copies of
 // brainstorming, writing-plans, systematic-debugging and nine more — a
