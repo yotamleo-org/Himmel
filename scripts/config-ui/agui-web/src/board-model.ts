@@ -37,7 +37,7 @@ export type Board = {
 };
 
 // The one reader of board.mjs's old wire keys, which it emits until its writer flips. The browser has no
-// HIMMEL_LEGACY_NAMES switch, so the fallback is always on. The removal of the legacy names deletes the marked lines.
+// HIMMEL_LEGACY_NAMES switch, so the fallback is always on. The removal of the legacy names deletes this whole function.
 export function normalizeBoard(raw: any): Board {
   const { legs: oldWorkers, ...rest } = raw; // legacy wire fallback
   const workerOf = ({ leg: oldName, ...r }: any) => ({ ...r, worker: r.worker ?? oldName }); // legacy wire fallback
