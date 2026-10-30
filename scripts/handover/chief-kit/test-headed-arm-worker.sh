@@ -4776,7 +4776,7 @@ peer45="$bus45/state/himmel/bus/peers/HIMMEL-45-in.json"
 check "45b opted-in: peer file written 0600" "$(stat -c %a "$peer45" 2>/dev/null || stat -f %Lp "$peer45" 2>/dev/null || echo none)" "600"
 check "45c opted-in: peer is a worker of the chief, no secret field" \
   "$(jq -c '[.n, .role, .console, (keys | join(","))]' "$peer45" 2>/dev/null)" \
-  '["HIMMEL-45-in","leg","HIMMEL-chief-45","console,launched,n,role"]'
+  '["HIMMEL-45-in","worker","HIMMEL-chief-45","console,launched,n,role"]'
 check "45d opted-in: the only HIMMEL_BUS_* the launched env carries is HIMMEL_BUS_NAME=<name>" \
   "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-in"
 check "45e opted-in: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
@@ -4793,9 +4793,24 @@ check "45k opted-out: the ambient HIMMEL_BUS_NAME does not reach the target" "$(
 rc=0; run45 null HIMMEL-45-null || rc=$?
 check "45k1 null-mcpServers launch: exit 0" "$rc" "0"
 check "45k2 null-mcpServers: the worker is registered under its chief" \
-  "$(jq -r '.role + " " + .console' "$bus45/state/himmel/bus/peers/HIMMEL-45-null.json" 2>/dev/null || echo none)" "leg HIMMEL-chief-45"
+  "$(jq -r '.role + " " + .console' "$bus45/state/himmel/bus/peers/HIMMEL-45-null.json" 2>/dev/null || echo none)" "worker HIMMEL-chief-45"
 check "45k3 null-mcpServers: the launched env carries HIMMEL_BUS_NAME=<name>" "$(bus45_toks)" "HIMMEL_BUS_NAME=HIMMEL-45-null"
 check "45k4 null-mcpServers: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen")" "1"
+# the worker role is the canonical name, so it registers with the legacy-names switch off.
+rc=0; HIMMEL_LEGACY_NAMES=0 run45 in HIMMEL-45-nolegacy || rc=$?
+check "45k5 legacy names off: a worker registers as role worker" \
+  "$(jq -r '.role' "$bus45/state/himmel/bus/peers/HIMMEL-45-nolegacy.json" 2>/dev/null || echo none)" "worker"
+# only a judge or consult takes --pair: a worker launched with a pair named records none,
+# a judge launched with it records the pair.
+rc=0; WORKER_SESSION_BUS_PAIR=HIMMEL-45-in run45 in HIMMEL-45-nopair || rc=$?
+check "45k6 a worker launched with a pair named records no pair" \
+  "$(jq -r '.pair // "none"' "$bus45/state/himmel/bus/peers/HIMMEL-45-nopair.json" 2>/dev/null || echo missing)" "none"
+rc=0
+XDG_STATE_HOME="$bus45/state" HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" WORKER_SESSION_BUS_PAIR=HIMMEL-45-in \
+  bash "$SCRIPT" --judge --chief HIMMEL-chief-45 HIMMEL-45-judge "$doc_tier_judge" "$bus45/signal" "$PAST" "$bus45/log" claude-opus-5-5 >/dev/null 2>&1 || rc=$?
+check "45k7 a judge launched with a pair named records the pair and its role" \
+  "$(jq -r '.role + " " + (.pair // "none")' "$bus45/state/himmel/bus/peers/HIMMEL-45-judge.json" 2>/dev/null || echo missing)" "judge HIMMEL-45-in"
 # a re-arm of a name that was registered but never bound (the first
 # launch was refused later, or died before the bind) adopts the entry and binds.
 rc=0; run45 in HIMMEL-45-in || rc=$?

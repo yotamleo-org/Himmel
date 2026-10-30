@@ -327,6 +327,28 @@ unchanged in every respect, including its argv, so the worker system prompt rule
 pasted into the brief. Detail:
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
+**Profile and context defaults.**
+- A worker whose Writes are all under `docs/` or `*.md` gets `worker-docs` by
+  default: every Writes token must be a docs path, a `*.md` file or a connector
+  word, unless the Writes name `scripts/config-ui/` (`worker-e2e`). An unknown
+  path such as `src/main.py`, `Makefile` or `LICENSE` keeps
+  `worker-impl`. `worker-eval` is only an explicit `"profile"` key in the workers
+  JSON.
+- On the native lane, a standard-context launch of a model in the Sonnet 5.0
+  to 5.9 range (`headed-arm-worker.sh` matches the id by prefix, so the plain,
+  unnumbered id counts too) takes the profile's `sonnetAutocompact` as its ceiling
+  (`worker-impl` and `worker-eval`: `450000`) and the profile's
+  `sonnetContextGuard` as its default context guard (`worker-impl`: hand-off,
+  `worker-eval`: compaction). An explicit `--context-guard` (including `none`)
+  wins over that default. A profile with `contextMode` `1m` (`design`) runs at
+  `1m`. `WORKER_SESSION_CONTEXT=1m` alone is refused: it needs the brief's
+  reasoned Context line as well
+  ([`lane-calibration.md`](../internals/lane-calibration.md)).
+- On a launch that takes a Sonnet ceiling (native lane, a model in the Sonnet
+  5.0 to 5.9 range, `worker-impl` or `worker-eval`), `ab_arm` is refused by the
+  wrapper and up front by `gen-briefs`, so run the arm on a profile without
+  one, for example `worker-docs`. The wrapper also refuses it on a 1m context.
+
 **Repo map (off by default).** Set `WORKER_SESSION_REPO_MAP=1` in the launching shell and
 a profiled worker's system prompt starts with a repo map: the files of
 the worker's repo ranked by PageRank over its primary checkout's
