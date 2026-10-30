@@ -171,7 +171,7 @@ def count_matches(re):
 # of any other kind, or a cr-comment marker count (CodeRabbit writes one per
 # finding, in any badge shape) that differs from the known badge count.
 def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
-def fu_end_re: "(?m)^(?:>[ ]?)*<summary>[^\n]*comments? [(][0-9]+[)]";
+def fu_end_re: "(?m)^(?:>[ ]?)*<summary>[^<\n]*(?:Nitpick|Additional|Outside (?:diff range|the diff)) comments? [(][0-9]+[)]</summary>";
 def fu_badge_re: "<summary><sub><picture>";
 def fu_od_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Outside diff\"";
 def fu_nit_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Nitpick\"";

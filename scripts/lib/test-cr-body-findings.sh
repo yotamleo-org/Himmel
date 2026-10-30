@@ -338,6 +338,10 @@ mk_json_from_str "$RESP_DIR/fu-legacy-bare-prior.json" "$UID_OK" "oldsha1" "$DRI
 # a header variant (a count after it) with a Nitpick and an unknown badge
 sed 's/^## Follow-up Comments[ ]*$/## Follow-up Comments (2)/' "$TMP/fu-unk-beside-known.txt" > "$TMP/fu-hdr-variant.txt"
 mk_fu_pair fu-hdr-variant "$TMP/fu-hdr-variant.txt"
+# a finding whose title reads like a legacy section header must not end the section before it
+sed '/<summary><sub><picture>/s/<\/summary>/ comments (1)<\/summary>/' "$TMP/fu-ob-unknown.txt" > "$TMP/fu-ob-unknown-title.txt"
+mk_fu_body "$TMP/fu-title-like-legacy.txt" "$NB" "$TMP/fu-ob-unknown-title.txt"
+mk_fu_pair fu-title-like-legacy "$TMP/fu-title-like-legacy.txt"
 # alt="Nitpick" quoted in a title, behind an unknown badge
 sed 's/alt="Nitpick"/alt="Potential issue"/;/<summary><sub><picture>/s/<\/picture><\/sub>/<\/picture><\/sub> alt="Nitpick"/' "$NIT_FOLLOWUP" > "$TMP/fu-nit-in-title.txt"
 mk_fu_pair fu-nit-in-title "$TMP/fu-nit-in-title.txt"
@@ -415,7 +419,9 @@ t  followup-legacy-unparse-plus-nit-blocks  fu-legacy-unparse-nit      2
 t  followup-legacy-unparse-plus-nit-prior   fu-legacy-unparse-nit-prior 0 "$FU_PRIOR1"
 t  legacy-unparse-prior-without-header-as-before fu-legacy-bare-prior  0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=0 substantive=0"
 t  followup-header-variant-nit-unk-blocks   fu-hdr-variant             2
-t  followup-nit-alt-in-title-blocks         fu-nit-in-title            2
+t  followup-title-like-legacy-header-blocks fu-title-like-legacy       2
+t  followup-title-like-legacy-prior-drift   fu-title-like-legacy-prior 0 "$FU_PRIOR1"
+t  followup-nit-alt-in-title-blocks        fu-nit-in-title            2
 t  followup-nit-alt-in-title-prior-drift    fu-nit-in-title-prior      0 "$FU_PRIOR1"
 to od-infra-error-rc1         error             1 ""
 # cr_body_findings itself: the header variant "Outside the diff (N)" is now
