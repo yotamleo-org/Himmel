@@ -32,6 +32,7 @@ instead of root and a run keeps the caller's uid. Outside the seam a non-root ru
 """
 import argparse
 import base64
+import errno
 import hashlib
 import hmac
 import json
@@ -156,9 +157,21 @@ def setpriv_path():
     return None
 
 
+def open_regular(path):
+    """Open a regular file for reading. A link into /proc, /sys or /dev, a FIFO and any other
+    non-regular file are refused: root reading one could hang or flood the helper."""
+    if os.path.realpath(path).startswith(PSEUDO):
+        raise OSError(errno.EINVAL, "pseudo-file", path)
+    f = os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY), "rb")
+    if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+        f.close()
+        raise OSError(errno.EINVAL, "not a regular file", path)
+    return f
+
+
 def sha256_file(path):
     h, n = hashlib.sha256(), 0
-    with open(path, "rb") as f:
+    with open_regular(path) as f:
         for chunk in iter(lambda: f.read(1 << 16), b""):
             h.update(chunk)
             n += len(chunk)
@@ -177,10 +190,8 @@ def collect_files(argv, cwd, op_uid):
             continue
         seen.add(p)
         try:
-            st = os.stat(p)
-            if not stat.S_ISREG(st.st_mode):
-                continue
-            with open(p, "rb") as f:
+            with open_regular(p) as f:
+                st = os.fstat(f.fileno())
                 head = f.read(READ_CAP + 1)
                 h, n = hashlib.sha256(head), len(head)
                 for chunk in iter(lambda: f.read(1 << 16), b""):

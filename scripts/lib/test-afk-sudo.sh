@@ -462,7 +462,7 @@ ar() {
     local off=$1; shift
     PATH="$FAKE2:$PATH" FAKE_R="$R" FAKE_LIB="$LIB" FAKE_HELPER="$HELPER" FAKE_OP="$OP" FAKE_NOW=$((T0 + off)) \
         AFK_RUN_POLL_S=1 AFK_RUN_BUSY_EVERY_S=1 AFK_RUN_WAIT_S=2 \
-        bash "$REPO_ROOT/scripts/lib/afk-run" "$@" > "$tmp/ar.out" 2> "$tmp/ar.err" < /dev/null
+        bash "$REPO_ROOT/scripts/lib/afk-run" "$@" > "${AR_OUT:-$tmp/ar.out}" 2> "$tmp/ar.err" < /dev/null
     ARRC=$?
     ARLAST=$(tail -n 1 "$tmp/ar.err")
 }
@@ -481,6 +481,9 @@ FAKE_LOSE=1 ar 3 "${AR[@]}" -- sh -c 'echo lostout'
 assert_contains "afk-run says so when the stored output cannot be read" "output could not be read" "$(cat "$tmp/ar.err")"
 assert_absent "a lost result does not leak the helper's reply into stdout" "result=" "$(cat "$tmp/ar.out")"
 assert_contains "a lost output keeps the command's own status" "status=ran:0" "$ARLAST"
+new_root arfull; cfg "$ALL" true
+AR_OUT=/dev/full ar 3 "${AR[@]}" -- sh -c 'echo fullout'
+assert_contains "afk-run says so when it cannot relay the stored stdout" "stdout output could not be read or relayed" "$(cat "$tmp/ar.err")"
 new_root ardeny; cfg "$ALL" true
 FAKE_ACTION=deny ar 3 "${AR[@]}" -- true
 assert_contains "a denied run exits 3" "3" "$ARRC"
@@ -502,6 +505,18 @@ FAKE_ACTION=none ar 4 "${AR[@]}" -- true
 assert_contains "a busy helper exits 76" "76" "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
+
+echo "== slice 1a: root opens only a regular file outside /proc /sys /dev, links followed =="
+mkfifo "$tmp/fifo.p"; printf x > "$tmp/reg.p"; ln -s /proc/self/stat "$tmp/lnk.p"; ln -s "$tmp/reg.p" "$tmp/okl.p"
+# shellcheck disable=SC2016 # python source, not shell
+OPENR='import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s
+for p in sys.argv[2:]:
+    try:
+        s.open_regular(p).close(); print("opened")
+    except OSError:
+        print("refused")'
+OPENED=$(timeout 10 python3 -I -c "$OPENR" "$LIB" "$tmp/reg.p" "$tmp/okl.p" "$tmp/lnk.p" "$tmp/fifo.p" | tr '\n' ' ')
+assert_contains "a regular file and a link to one open, a link into /proc and a FIFO are refused" "opened opened refused refused " "$OPENED"
 
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"
