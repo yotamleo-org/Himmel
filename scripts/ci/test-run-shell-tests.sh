@@ -2810,7 +2810,7 @@ while IFS= read -r _l; do
   _l="${_l#"[SKIP] $sb22w/stubs/"}"
   _p="${_l%% — capability: *}"
   _tool="${_l#* — capability: }"; _tool="${_tool%% not on PATH*}"
-  cut -f1 "$fix22w" | grep -qxF "$_p" || continue
+  awk -F'\t' -v k="$_p" '$1 == k { f = 1 } END { exit !f }' "$fix22w" || continue
   grep -qxF "$_p" <<< "$_skips22w" && continue
   ( PATH="$_path22w"; command -v "$_tool" >/dev/null 2>&1 ) && continue
   ncap22w=$((ncap22w + 1))
