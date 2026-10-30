@@ -853,54 +853,88 @@ echo "ok: case12 a profile save that lands inside the retired-cadence rewrite is
 
 dir13="$work/case13"; mkdir -p "$dir13"
 lib13="${LOCK_LIB_OVERRIDE:-$(dirname "$wizard")/lib/profile-lock.js}"
-profile13="$dir13/install-profile.json"
-dead13="$("$node_bin" -e 'process.stdout.write(String(process.pid))')"
-printf '%s' "$dead13" > "$profile13.lock"
 
+# waiter-b.js: reads the stale lock, then waits until A holds it before it goes
+# on. With PAUSE_TOMB_UNTIL set it also waits, after renaming the lock to a
+# tombstone, until that file exists before it reads the tombstone.
 cat > "$dir13/waiter-b.js" <<'JS'
 const fs = require('fs');
 const lib = require(process.env.LOCK_LIB);
 const lock = `${require('path').resolve(process.env.PROFILE)}.lock`;
 const realRead = fs.readFileSync;
 const sleeper = new Int32Array(new SharedArrayBuffer(4));
-let paused = false;
+const waitFor = (file) => {
+  const deadline = Date.now() + 10000;
+  while (!fs.existsSync(file) && Date.now() < deadline) Atomics.wait(sleeper, 0, 0, 20);
+};
+let lockPaused = false;
+let tombPaused = false;
 fs.readFileSync = function (p, ...rest) {
   const out = realRead.call(fs, p, ...rest);
-  if (!paused && p === lock) {
-    paused = true;
+  if (!lockPaused && p === lock) {
+    lockPaused = true;
     fs.writeFileSync(process.env.B_READ, '1');
-    const deadline = Date.now() + 10000;
-    while (!fs.existsSync(process.env.A_HOLD) && Date.now() < deadline) Atomics.wait(sleeper, 0, 0, 20);
+    waitFor(process.env.A_HOLD);
+  } else if (!tombPaused && process.env.PAUSE_TOMB_UNTIL && String(p).startsWith(`${lock}.stale.`)) {
+    tombPaused = true;
+    waitFor(process.env.PAUSE_TOMB_UNTIL);
   }
   return out;
 };
 lib.withProfileLock(process.env.PROFILE, () => { fs.writeFileSync(process.env.B_IN, String(Date.now())); });
 JS
+# waiter-a.js: takes the lock, holds it 1.5s, then (A_LINGER_MS) stays alive.
 cat > "$dir13/waiter-a.js" <<'JS'
 const fs = require('fs');
 const lib = require(process.env.LOCK_LIB);
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
 lib.withProfileLock(process.env.PROFILE, () => {
   fs.writeFileSync(process.env.A_HOLD, '1');
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+  Atomics.wait(sleeper, 0, 0, 1500);
   fs.writeFileSync(process.env.A_OUT, String(Date.now()));
 });
+if (process.env.A_LINGER_MS) Atomics.wait(sleeper, 0, 0, Number(process.env.A_LINGER_MS));
 JS
 
-env13=(LOCK_LIB="$(winpath "$lib13")" PROFILE="$(winpath "$profile13")"
-  B_READ="$(winpath "$dir13/b-read")" A_HOLD="$(winpath "$dir13/a-hold")"
-  A_OUT="$(winpath "$dir13/a-out")" B_IN="$(winpath "$dir13/b-in")")
-env "${env13[@]}" "$node_bin" "$(winpath "$dir13/waiter-b.js")" &
-pid_b13=$!
-for _i in $(seq 1 100); do [ -f "$dir13/b-read" ] && break; sleep 0.1; done
-[ -f "$dir13/b-read" ] || fail "case13: waiter B never read the stale lock"
-env "${env13[@]}" "$node_bin" "$(winpath "$dir13/waiter-a.js")" &
-pid_a13=$!
-wait "$pid_a13" || fail "case13: waiter A failed to take the stale lock over"
-wait "$pid_b13" || fail "case13: waiter B failed"
-[ -f "$dir13/a-out" ] && [ -f "$dir13/b-in" ] || fail "case13: a waiter never ran its critical section"
-[ "$(cat "$dir13/b-in")" -ge "$(cat "$dir13/a-out")" ] \
-  || fail "case13: waiter B took the lock while waiter A still held it (B in at $(cat "$dir13/b-in"), A out at $(cat "$dir13/a-out"))"
-[ ! -e "$profile13.lock" ] || fail "case13: the lock file was left behind"
+# race_two_waiters <case> [VAR=value...] — B reads a dead owner's lock, A takes
+# it over, B goes on; the files a-out / b-in under $work/<case> hold the times.
+race_two_waiters() {
+  local name="$1" dir="$work/$1"; shift
+  mkdir -p "$dir"
+  printf '%s' "$("$node_bin" -e 'process.stdout.write(String(process.pid))')" > "$dir/install-profile.json.lock"
+  local envs=(LOCK_LIB="$(winpath "$lib13")" PROFILE="$(winpath "$dir/install-profile.json")"
+    B_READ="$(winpath "$dir/b-read")" A_HOLD="$(winpath "$dir/a-hold")"
+    A_OUT="$(winpath "$dir/a-out")" B_IN="$(winpath "$dir/b-in")" "$@")
+  env "${envs[@]}" "$node_bin" "$(winpath "$dir13/waiter-b.js")" &
+  local pid_b=$!
+  for _i in $(seq 1 100); do [ -f "$dir/b-read" ] && break; sleep 0.1; done
+  [ -f "$dir/b-read" ] || fail "$name: waiter B never read the stale lock"
+  env "${envs[@]}" "$node_bin" "$(winpath "$dir13/waiter-a.js")" &
+  local pid_a=$!
+  wait "$pid_a" || fail "$name: waiter A failed to take the stale lock over"
+  wait "$pid_b" || fail "$name: waiter B failed"
+  [ -f "$dir/a-out" ] && [ -f "$dir/b-in" ] || fail "$name: a waiter never ran its critical section"
+  [ ! -e "$dir/install-profile.json.lock" ] || fail "$name: the lock file was left behind"
+}
+
+race_two_waiters case13
+b13="$(cat "$work/case13/b-in")"; a13="$(cat "$work/case13/a-out")"
+[ "$b13" -ge "$a13" ] || fail "case13: waiter B took the lock while waiter A still held it (B in at $b13, A out at $a13)"
 echo "ok: case13 two waiters that find the same dead owner do not both take the lock"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# case14: a waiter that renamed a FRESH owner's lock to its tombstone must not
+# leave that lock behind once the owner is done. B renames A's live lock and is
+# held until A has finished its critical section; A stays alive afterwards (the
+# config UI save is a long-lived process). B links the lock back, so A has to
+# release the restored file: B then gets the lock at once instead of waiting
+# for A's process to exit (3s here).
+# ═══════════════════════════════════════════════════════════════════════════
+
+race_two_waiters case14 PAUSE_TOMB_UNTIL="$(winpath "$work/case14/a-out")" A_LINGER_MS=3000
+b14="$(cat "$work/case14/b-in")"; a14="$(cat "$work/case14/a-out")"
+[ $((b14 - a14)) -lt 2000 ] \
+  || fail "case14: waiter B waited $((b14 - a14))ms for a lock its owner had already released (the restored lock stayed behind)"
+echo "ok: case14 a lock restored after a waiter's rename is released by its owner"
 
 echo "PASS"

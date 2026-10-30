@@ -68,6 +68,40 @@ function takeOver(lock, stale) {
   return moved === stale;
 }
 
+function ownerOf(file) {
+  try { return fs.readFileSync(file, 'utf8'); } catch (_e) { return null; }
+}
+
+// Release our own lock. A waiter that found it stale may have renamed it to a
+// tombstone before we got here; it links the lock back once it has seen it is
+// ours, so we wait for that and release the restored file too, else a live
+// process would keep a lock it already left.
+function release(lock) {
+  const own = String(process.pid);
+  const drop = () => {
+    if (ownerOf(lock) !== own) return false;
+    try { fs.unlinkSync(lock); } catch (_e) { /* already gone */ }
+    return true;
+  };
+  const prefix = `${path.basename(lock)}.stale.`;
+  const inFlight = () => {
+    try {
+      const dir = path.dirname(lock);
+      return fs.readdirSync(dir).some((n) => n.startsWith(prefix) && ownerOf(path.join(dir, n)) === own);
+    } catch (_e) {
+      return false;
+    }
+  };
+  const deadline = Date.now() + WAIT_MS;
+  while (!drop()) {
+    // the tombstone goes only after the link-back, so one more look after it
+    // is gone sees the restored lock
+    if (!inFlight()) { drop(); return; }
+    if (Date.now() > deadline) return;
+    sleep(5);
+  }
+}
+
 // Run fn() holding the lock for `profilePath`. Throws if the lock is not free
 // within WAIT_MS, so a save fails loud rather than racing an unlocked write.
 function withProfileLock(profilePath, fn) {
@@ -91,10 +125,7 @@ function withProfileLock(profilePath, fn) {
     fs.closeSync(fd);
     return fn();
   } finally {
-    // only our own lock: a peer that took ours over as stale owns the file now
-    try {
-      if (fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.unlinkSync(lock);
-    } catch (_e) { /* already gone */ }
+    release(lock);
   }
 }
 
