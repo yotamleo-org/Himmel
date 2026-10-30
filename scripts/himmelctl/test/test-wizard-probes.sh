@@ -2585,6 +2585,26 @@ echo "$outWRabsent" | jq -e '.actual == "absent"' >/dev/null \
 echo "$outWRabsent" | jq -e '.detail | contains("whisper-cli") and (contains("whisper-cli.exe") | not)' >/dev/null \
   || fail "cmd:whisper_ready: absent detail on a simulated POSIX platform should name the POSIX default binary name 'whisper-cli' (not .exe): (got: $outWRabsent)"
 echo "ok: cmd:whisper_ready — no binary reads absent, POSIX default binary name has no .exe"
+echo "$outWRabsent" | jq -e '.detail | contains("not on PATH either") and contains("pacman -S whisper-cpp") and contains("brew install whisper-cpp")' >/dev/null \
+  || fail "cmd:whisper_ready: absent detail should say it is not on PATH and carry an install hint (got: $outWRabsent)"
+echo "ok: cmd:whisper_ready — absent detail carries the whisper-cpp install hint"
+
+# whisper-cli on PATH (no WHISPER_CLI, an EMPTY WHISPER_DIR) is the default
+# binary, found before the WHISPER_DIR fallback.
+wr_pathbin="$work/wr-pathbin"; mkdir -p "$wr_pathbin"
+printf 'stub-binary' > "$wr_pathbin/whisper-cli"; chmod +x "$wr_pathbin/whisper-cli"
+wr_pathdir="$work/wr-pathdir"; mkdir -p "$wr_pathdir"
+printf 'stub-model' > "$wr_pathdir/ggml-small.bin"
+outWRpath=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_pathbin")', WHISPER_DIR: '$(winpath "$wr_pathdir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRpath" | jq -e '.actual == "present" and (.detail | contains("wr-pathbin/whisper-cli"))' >/dev/null \
+  || fail "cmd:whisper_ready: a whisper-cli on PATH should be the resolved binary and read present: (got: $outWRpath)"
+echo "ok: cmd:whisper_ready — a whisper-cli on PATH resolves before the WHISPER_DIR fallback"
 
 wr_degraded="$work/wr-degraded-dir"; mkdir -p "$wr_degraded"
 printf 'stub-binary' > "$wr_degraded/whisper-cli"; chmod +x "$wr_degraded/whisper-cli"

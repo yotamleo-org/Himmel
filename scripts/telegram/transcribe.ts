@@ -9,11 +9,11 @@ import { homedir } from "node:os";
 //
 // Binary/model resolution: env override first, else the default install dir
 // (~/.himmel/whisper — setup steps in scripts/telegram/README.md), ffmpeg from PATH.
-// WHISPER_CLI default is Windows-only (whisper-cli.exe); set WHISPER_CLI env var
-// on macOS/Linux (e.g. /usr/local/bin/whisper-cli). Env vars are read at poller
-// start — restart the bridge after any change.
+// WHISPER_CLI defaults to `whisper-cli` found on PATH (pacman/brew whisper-cpp),
+// then WHISPER_DIR/whisper-cli. Env vars are read at poller start — restart the
+// bridge after any change.
 const WHISPER_DIR = process.env.WHISPER_DIR ?? join(homedir(), ".himmel", "whisper");
-const WHISPER_CLI = process.env.WHISPER_CLI ?? join(WHISPER_DIR, "whisper-cli.exe");
+const WHISPER_CLI = process.env.WHISPER_CLI ?? Bun.which("whisper-cli") ?? join(WHISPER_DIR, "whisper-cli");
 // small (multilingual) over base: operator voice notes may be non-English
 // (hard requirement on the ticket) and base's non-English WER is poor.
 const WHISPER_MODEL = process.env.WHISPER_MODEL ?? join(WHISPER_DIR, "ggml-small.bin");
