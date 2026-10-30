@@ -2486,9 +2486,7 @@ function probeTelegramGetMe(item, ctx) {
 // transcribe a single voice note. Pure fs, no spawn: mirrors
 // scripts/telegram/transcribe.ts:15-25's own resolution (WHISPER_DIR
 // override else ~/.himmel/whisper; WHISPER_CLI/WHISPER_MODEL override else
-// <dir>/<default>), with ONE deliberate deviation — transcribe.ts's own
-// default binary name is `whisper-cli.exe`, but a
-// READINESS probe needs a sane POSIX default, so it checks `whisper-cli`.
+// `whisper-cli` on PATH, then <dir>/whisper-cli; model <dir>/<default>).
 // Two-step degrade, not a single yes/no: a binary
 // present but the model missing is a DIFFERENT, more specific problem
 // (whisper-cli then fails per-invocation, not at bridge startup) —
@@ -2526,6 +2524,19 @@ function isUsableFile(p, { execCheck } = {}) {
   return { ok: true };
 }
 
+// First executable `tool` on env's PATH, skipping a non-executable entry the
+// way Bun.which in transcribe.ts does (helpers.js's which() takes any existing
+// file). Same PATH-key rule as helpers.js: the first key present wins.
+function whichExecutable(tool, env) {
+  const rawPath = ('PATH' in env) ? env.PATH : (('Path' in env) ? env.Path : '');
+  for (const dir of String(rawPath || '').split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, tool);
+    if (isUsableFile(candidate, { execCheck: true }).ok) return candidate;
+  }
+  return null;
+}
+
 // C, Part B: bridge.whisper.{cli,model} used to be
 // read by nothing — the wizard writes them, but this probe only ever
 // consulted WHISPER_CLI/WHISPER_MODEL/the hardcoded default. Precedence
@@ -2561,14 +2572,15 @@ function probeWhisperReady(item, ctx) {
   const whisperConfig = (config && config.bridge && config.bridge.whisper) || {};
   const configuredCli = nonEmpty(whisperConfig.cli) ? whisperConfig.cli : null;
   const configuredModel = nonEmpty(whisperConfig.model) ? path.join(dir, whisperConfig.model) : null;
-  const cli = env.WHISPER_CLI || configuredCli || path.join(dir, defaultBin);
+  const pinnedCli = env.WHISPER_CLI || configuredCli;
+  const cli = pinnedCli || whichExecutable(defaultBin, env) || path.join(dir, defaultBin);
   const model = env.WHISPER_MODEL || configuredModel || path.join(dir, 'ggml-small.bin');
   const cliCheck = isUsableFile(cli, { execCheck: true });
   if (!cliCheck.ok) {
     return {
       actual: 'absent',
       detail: cliCheck.reason === 'not found'
-        ? `whisper binary not found at ${cli}`
+        ? `whisper binary not found at ${cli}${pinnedCli ? '' : ' (not on PATH either)'} — install whisper-cpp (pacman -S whisper-cpp / brew install whisper-cpp)`
         : `whisper binary at ${cli} is unusable (${cliCheck.reason})`,
     };
   }

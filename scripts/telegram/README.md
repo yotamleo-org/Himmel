@@ -732,9 +732,10 @@ For long notes (>90s of audio), medium on CPU can approach the 120s
 `TRANSCRIBE_TIMEOUT_MS` — raise it (user env) or evaluate `large-v3-turbo`
 (faster + better multilingual than medium).
 
-**Platform note:** the built-in `WHISPER_CLI` default is a Windows-era
-`whisper-cli.exe` path that does not exist here, so always set `WHISPER_CLI` to the
-binary path (e.g. `/usr/local/bin/whisper-cli`).
+**Platform note:** the built-in `WHISPER_CLI` default is `whisper-cli` found on
+`PATH` (`pacman -S whisper-cpp` / `brew install whisper-cpp`), then
+`WHISPER_DIR/whisper-cli`. Set `WHISPER_CLI` only to pin a different binary
+(e.g. `/usr/local/bin/whisper-cli`).
 
 **Claude model pin:** every bounded run spawns
 `claude --model <m> …` with an explicit model — it never inherits the
