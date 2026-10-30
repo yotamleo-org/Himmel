@@ -137,8 +137,8 @@ test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag o
     ["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL],
     ["comment", "HIMMEL-1", "[worker-sync] N1466b BLOCKED: classifier permission hold"],
   ]);
-  // resume: the flag goes, every other label stays (--labels is a full replace)
-  expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--labels", "product"]]);
+  // resume: only the sync flag goes (--remove-labels), every other label stays
+  expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--remove-labels", "worker-blocked,leg-blocked"]]);
   // READY was already noted on the ticket: nothing to write
   expect(of(7)).toEqual([]);
   // the planner never moves a status
@@ -156,8 +156,8 @@ test("worker -> Jira sync: a ticket flagged and noted under the pre-rename names
   const tk = (labels: string[], noted: string, marker: string) => ({ k: 1, labels, noted, worker: { label: "N1", marker, reason: "hold" } }) as any;
   // stuck: the old label and the old comment line already say it
   expect(legSync([tk(["product", "leg-blocked"], "[leg-sync] N1 BLOCKED: hold", "BLOCKED")])).toEqual([]);
-  // resume: the old label is cleared, and only it (the new name is what writers emit)
-  expect(legSync([tk(["product", "leg-blocked"], "", "LIVE")]).map((o) => o.argv)).toEqual([["edit", "HIMMEL-1", "--labels", "product"]]);
+  // resume: the old label is cleared too
+  expect(legSync([tk(["product", "leg-blocked"], "", "LIVE")]).map((o) => o.argv)).toEqual([["edit", "HIMMEL-1", "--remove-labels", "worker-blocked,leg-blocked"]]);
   // READY was noted under the old prefix: no second comment
   expect(legSync([tk([], "[leg-sync] N1 READY: hold", "READY")])).toEqual([]);
   // the new names are what gets written
@@ -165,6 +165,15 @@ test("worker -> Jira sync: a ticket flagged and noted under the pre-rename names
     ["edit", "HIMMEL-1", "--add-labels", "worker-blocked"],
     ["comment", "HIMMEL-1", "[worker-sync] N1 BLOCKED: hold"],
   ]);
+});
+
+test("worker -> Jira sync: a ticket whose only labels are sync labels is cleared with --remove-labels, never an empty --labels", () => {
+  const tk = (labels: string[]) => ({ k: 1, labels, noted: "", worker: { label: "N1", marker: "LIVE", reason: "" } }) as any;
+  for (const labels of [["worker-blocked"], ["leg-blocked"], ["worker-blocked", "leg-blocked"]]) {
+    const argv = legSync([tk(labels)]).map((o) => o.argv);
+    expect(argv).toEqual([["edit", "HIMMEL-1", "--remove-labels", "worker-blocked,leg-blocked"]]);
+    expect(argv[0]).not.toContain("--labels");
+  }
 });
 
 test("librarian: stale In Progress, drift, unthemed, released-but-open and duplicate titles, as proposals", () => {

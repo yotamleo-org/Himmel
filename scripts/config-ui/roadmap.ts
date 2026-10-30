@@ -255,7 +255,8 @@ export function readRoadmap(o: Opts): Roadmap {
 }
 
 // The Jira CLI argv that mirrors each worker's marker onto its ticket. Planned only: the chief kit is the one writer,
-// workers never write Jira, and this page never does. `--labels` is a full replace in the jira CLI; a status is never moved.
+// workers never write Jira, and this page never does. The flag is dropped with `--remove-labels` (a `--labels` full replace
+// cannot leave a ticket with no label); a status is never moved.
 export function legSync(tickets: Ticket[]): SyncOp[] {
   const ops: SyncOp[] = [];
   for (const t of tickets) {
@@ -269,7 +270,7 @@ export function legSync(tickets: Ticket[]): SyncOp[] {
       if (!has) ops.push({ k: t.k, marker, argv: ["edit", key, "--add-labels", SYNC_LABEL], why: `worker ${label} is ${marker}: flag the ticket` });
       if (!noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `record why worker ${label} is ${marker}` });
     } else if (CLEARING.has(marker)) {
-      if (has) ops.push({ k: t.k, marker, argv: ["edit", key, "--labels", t.labels.filter((l) => l !== SYNC_LABEL && l !== OLD_SYNC_LABEL).join(",")], why: `worker ${label} is ${marker}: clear the flag` });
+      if (has) ops.push({ k: t.k, marker, argv: ["edit", key, "--remove-labels", `${SYNC_LABEL},${OLD_SYNC_LABEL}`], why: `worker ${label} is ${marker}: clear the flag` });
       if (NOTED.has(marker) && !noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `note once that worker ${label} is ${marker}` });
     }
   }
