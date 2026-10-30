@@ -17,6 +17,11 @@ FAILED=0
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
+# 0. Every audited file exists: a rename must not turn the greps below vacuous.
+for f in $FILES; do
+    if [ ! -f "$f" ]; then fail "W0 audited file missing: $f"; fi
+done
+
 # 1. The audit grep: nothing but arm-resume.sh's true comment.
 # shellcheck disable=SC2086
 hits=$(grep -n -i -E '\.exe\b|win32|powershell|pwsh|\.ps1\b|cygwin|msys|mingw' $FILES_ARGS | grep -v -F 'scripts/handover/arm-resume.sh:' || true)
@@ -32,7 +37,7 @@ fi
 # keeps one historical schtasks comment; handover-path.sh keeps one line that
 # still reaps the legacy `cygpath-avail` cache file name).
 # shellcheck disable=SC2086
-more=$(grep -n -i -E 'schtasks|tasklist|USERPROFILE|cygpath' $FILES_ARGS | grep -v -F 'scripts/handover/arm-resume.sh:' | grep -v -F 'legacy cache file, still reaped' || true)
+more=$(grep -n -i -E 'schtasks|tasklist|USERPROFILE|cygpath' $FILES_ARGS | grep -v -F -e 'same reason claude/cygpath are resolved' -e 'A hand-run repro created a real schtasks entry' -e 'legacy cache file, still reaped' || true)
 if [ -z "$more" ]; then
     pass "W2 no schtasks, tasklist, USERPROFILE or cygpath remains"
 else

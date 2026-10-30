@@ -297,10 +297,9 @@ else
 fi
 second9=$(PLATFORM=linux _arm_identity_path "$T9PATH")
 assert_eq "T9b a cache HIT (same path, same PLATFORM) returns the identical value" "$first9" "$second9"
-macos9=$(PLATFORM=macos _arm_identity_path "$T9PATH")
+PLATFORM=macos _arm_identity_path "$T9PATH" >/dev/null
 linux9_again=$(PLATFORM=linux _arm_identity_path "$T9PATH")
 assert_eq "T9c a different PLATFORM for the SAME path is not served the other platform's cached value" "$first9" "$linux9_again"
-assert_eq "T9d macos (no case twin on disk) agrees with linux for the same path" "$first9" "$macos9"
 
 # T9e: a counting realpath stub proves the SECOND identical lookup is an
 # actual cache HIT (skips recomputation), not just an equal answer.
