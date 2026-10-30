@@ -2834,7 +2834,10 @@ _bwimc_ecwd_track() {
                             # any other checkout keeps the re-check. The trust ends at the
                             # first later clause whose command word is not in the closed set
                             # above, and a candidate is checked against both $r and $cs.
+                            # a `{` in the raw cd word is expanded by the shell (`{1..1}` becomes `1`), so the
+                            # directory the hook found is not the one the shell enters: never sure (row 100d)
                             [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
+                                && case "$craw" in *'{'*) false ;; *) true ;; esac \
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
                                 && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
@@ -2939,9 +2942,9 @@ _bwimc_cd_guard() {
     # prefix check never resolves), so it keeps the payload-cwd re-check.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
         case "$1" in
-            *'~'*|*'{'*|*'*'*|*'?'*|*'['*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+            *'~'*|*'{'*|*'*'*|*'?'*|*'['*|..|../*|*/../*|*/..) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
         esac
-        # second layer: _bwimc_check_target already resolves symlinks physically, so no shape was found where only this line decides (row 99f)
+        # second layer for a symlink-free prefix: guard_canon_path (scripts/guardrails/lib.sh) collapses a typed `lnk/..` logically, not physically, so a `..` candidate is sent to the payload-cwd re-check above (rows 100a-100c); no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
         _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"

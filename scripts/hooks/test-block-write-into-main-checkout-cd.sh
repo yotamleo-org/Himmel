@@ -820,5 +820,30 @@ check_both "99i fromP: cd scratch && echo x > vict?m (? glob) denies" block \
 check_both "99j fromP: cd scratch && echo x > vic[t]im (bracket glob) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic[t]im\",\"cwd\":\"$FIX/primary\"}}"
 
+# 100a: a `..` after a symlink component is resolved by the kernel at write time, so
+# `lnk/../out.txt` lands in the parent of the link target (the primary), not in the scratch
+# folder the typed path names. A candidate holding a `..` component keeps the payload-cwd re-check.
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8200" && [ -d "$FIX/scratch8200/lnk8200" ]; }; then
+    bad "100a setup: the scratch8200/lnk8200 symlink was not created"
+fi
+check_both "100a fromP: cd scratch && echo x > lnk/../out.txt (.. after a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100b fromP: cd scratch && touch lnk/../out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100c fromP: cd scratch && tee lnk/../out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 100d: a brace in the cd word is expanded by the shell, so `{1..1}` becomes `1`, a symlink into
+# the primary, while the hook sees a literal directory of that name and finds it in no repo.
+# A cd word holding `{` is never sure.
+mkdir -p "$FIX/scratch8200/{1..1}"
+if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/1" && [ -d "$FIX/scratch8200/1" ]; }; then
+    bad "100d setup: the scratch8200/1 symlink was not created"
+fi
+check_both "100d fromP: cd scratch/{1..1} && echo x > out.txt (brace expands to a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/{1..1} && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100e fromP: cd scratch/{1..1} && touch out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/{1..1} && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
