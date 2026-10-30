@@ -78,7 +78,11 @@ export of that source's findings, including the repository field; a header-only
 export is an authoritative empty inventory. Both observed CSV shapes are
 supported: CodeRabbit's `repository,file,start_line,cwe,category,severity,state`
 and Arnica's `Severity,Status,Asset,File,Type` (GitHub blob URLs with `#L` lines).
-Only open rows for the chosen repository are included. These files are untrusted
+Only open rows for the chosen repository are included. Repository fields accept
+`owner/name`, `github://owner/name#branch`, `https://github.com/owner/name`,
+and the observed short repository name. An export containing rows but none for
+the chosen repository, or any unknown repository shape, skips with a warning and
+retains the baseline; it cannot prove closure. These files are untrusted
 data: CSV quoting and multiline fields are parsed without executing content;
 descriptions, recommendations and secret payloads are ignored. A deleted,
 malformed or inaccessible source **retains its last baseline**, never reports all

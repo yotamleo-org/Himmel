@@ -341,7 +341,7 @@ const roleOf = (name: string, doc: string): FleetRow["role"] =>
 // runner basenames in scripts/lib/cadence-format.sh (CADENCE_RUNNER_BASENAMES) start with one of them. A cadence run is
 // usually unnamed but carries its --settings cadence-settings.json fragment in its argv (pipeline-cadence.sh).
 // ponytail: a name pattern plus one argv fragment, a cadence launched another way shows as another session; the upgrade is a launch-env marker the runners set.
-export const CADENCE_IDS = ["pipeline", "qmd", "graphmap", "drift-fix", "upstream-watch", "doctor", "pull-cadence", "vault-stall", "luna-fb"];
+export const CADENCE_IDS = ["pipeline", "qmd", "graphmap", "drift-fix", "upstream-watch", "security-audit", "doctor", "pull-cadence", "vault-stall", "luna-fb"];
 const CADENCE_NAME = new RegExp("^(" + CADENCE_IDS.join("|") + ")(?:-cadence|-[a-z]+)?$");
 export function cadenceOf(name: string, argv: string[]): string | null {
   const id = CADENCE_NAME.exec(name)?.[1];

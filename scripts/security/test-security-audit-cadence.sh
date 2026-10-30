@@ -13,6 +13,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.request
+import urllib.response
 
 SCRIPT = Path(sys.argv.pop())
 
@@ -82,6 +84,53 @@ class Audit(unittest.TestCase):
         (self.exports / 'coderabbit.csv').write_text('severity,file,state,cwe\n')
         self.assertIn('SKIP coderabbit', self.run_once())
         self.assertIn('New: 0; Closed: 0', self.report())
+
+    # Wrong-repo rows cannot prove closure, even when all those rows are closed.
+    def test_nonmatching_export_retains_baseline(self):
+        for target, state in [('other/project', 'open'), ('other/project', 'closed'),
+                              ('https://unknown.example/example/project', 'open')]:
+            with self.subTest(target=target, state=state):
+                self.export()
+                self.run_once()
+                baseline = (self.root / 'state' / 'state.json').read_bytes()
+                self.export(rows=[(target, 'src/a.py', '9', 'CWE-79', 'high', state)])
+                self.assertIn('SKIP coderabbit', self.run_once())
+                self.assertIn('New: 0; Closed: 0', self.report())
+                self.assertEqual((self.root / 'state' / 'state.json').read_bytes(), baseline)
+
+    # A recognized GitHub repository URL must not silently discard its findings.
+    def test_https_repository_export(self):
+        self.export(rows=[('https://github.com/example/project', 'src/a.py', '9',
+                           'CWE-79', 'high', 'open')])
+        self.assertIn('OK coderabbit: 1 open rows', self.run_once())
+        self.assertIn('New: 1; Closed: 0', self.report())
+
+    # Failed delivery must leave the snapshot unchanged so a retry still alerts.
+    def test_failed_send_retains_baseline(self):
+        self.export(rows=[])
+        self.run_once()
+        baseline = (self.root / 'state' / 'state.json').read_bytes()
+        self.export()
+        self.executable('notify', '#!/bin/sh\nexit 1\n')
+        proc = subprocess.run(['bash', str(SCRIPT), 'run', '--repo', 'example/project'],
+                              env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertEqual((self.root / 'state' / 'state.json').read_bytes(), baseline)
+        self.executable('notify', '#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/notified"\n')
+        self.run_once()
+        self.assertIn('New: 1; Closed: 0', self.report())
+        self.assertTrue((self.root / 'notified').exists())
+
+    # Reusing one state directory for another repository is a local config error.
+    def test_other_repository_state_refused(self):
+        self.export()
+        self.run_once()
+        baseline = (self.root / 'state' / 'state.json').read_bytes()
+        proc = subprocess.run(['bash', str(SCRIPT), 'run', '--repo', 'other/project'],
+                              env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn('state belongs to a different repository', proc.stderr)
+        self.assertEqual((self.root / 'state' / 'state.json').read_bytes(), baseline)
 
     # Repository override must not inherit a different checkout's Snyk inventory.
     def test_snyk_report_repository_binding(self):
@@ -229,35 +278,73 @@ esac
         self.assertIn('SKIP github-code', out)
         self.assertIn('New: 0; Closed: 0', self.report())
 
-    # Run the embedded production engine; replace only HTTP and keyring IO.
-    def test_coderabbit_api_pagination(self):
+    # Real urllib dispatch, including redirect policy; replace transport/keyring IO only.
+    def run_api(self, pages, redirect=False):
         self.env['SECURITY_AUDIT_CODERABBIT'] = 'on'
         self.env['SECURITY_AUDIT_CODERABBIT_REPO_ID'] = '42'
         calls = []
-        pages = [
-            {'data': [{'repository_id': '42', 'state': 'open', 'file_path': 'src/a.py',
-                       'start_line': 9, 'cwe': 'CWE-79', 'severity': 'high'}], 'next_cursor': 'next'},
-            {'data': [], 'next_cursor': None},
-        ]
-        def http_open(opener, request, **kwargs):
+        def http_open(handler, request):
             calls.append(request)
-            return io.BytesIO(json.dumps(pages.pop(0)).encode())
+            payload = {} if redirect else pages.pop(0)
+            response = urllib.response.addinfourl(io.BytesIO(json.dumps(payload).encode()),
+                        {'location': 'https://untrusted.example/collect'} if redirect else {},
+                        request.full_url, 302 if redirect else 200)
+            response.msg = 'Found' if redirect else 'OK'
+            return response
         def read_key(argv, **kwargs):
             self.assertEqual(argv[-3:], ['get', '--no-dotenv', 'CODERABBIT_API_KEY'])
             self.assertNotIn('fixture-key', ' '.join(argv))
             return 'CODERABBIT_API_KEY=fixture-key\n'
         code = SCRIPT.read_text().split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        scope = {}
         with patch.dict(os.environ, self.env, clear=True), \
              patch.object(sys, 'argv', ['audit', 'example/project', str(SCRIPT.parent), '']), \
              patch('subprocess.check_output', side_effect=read_key), \
-             patch('urllib.request.OpenerDirector.open', new=http_open), \
+             patch('urllib.request.HTTPSHandler.https_open', new=http_open), \
              patch('sys.stdout', new=io.StringIO()):
-            exec(compile(code, str(SCRIPT), 'exec'), {})
+            try:
+                exec(compile(code, str(SCRIPT), 'exec'), scope)
+            finally:
+                if 'lock' in scope:
+                    scope['lock'].close()
+        return calls
+
+    # Run the embedded production engine through both cursor pages.
+    def test_coderabbit_api_pagination(self):
+        calls = self.run_api([
+            {'data': [{'repository_id': '42', 'state': 'open', 'file_path': 'src/a.py',
+                       'start_line': 9, 'cwe': 'CWE-79', 'severity': 'high'}], 'next_cursor': 'next'},
+            {'data': [], 'next_cursor': None},
+        ])
         self.assertEqual(len(calls), 2)
         self.assertIn('repo_id=42', calls[0].full_url)
         self.assertIn('cursor=next', calls[1].full_url)
         self.assertIn('New: 1; Closed: 0', self.report())
         self.assertNotIn('fixture-key', (self.root / 'state' / 'state.json').read_text())
+
+    # A provider row from another repository is unavailable, not a clean snapshot.
+    def test_coderabbit_wrong_repository_retains_baseline(self):
+        self.export()
+        self.run_once()
+        baseline = (self.root / 'state' / 'state.json').read_bytes()
+        (self.exports / 'coderabbit.csv').unlink()
+        self.run_api([{'data': [{'repository_id': '99', 'state': 'open', 'file_path': 'src/other.py',
+                                 'start_line': 3, 'cwe': 'CWE-89', 'severity': 'high'}], 'next_cursor': None}])
+        self.assertIn('SKIP coderabbit', self.report())
+        self.assertIn('New: 0; Closed: 0', self.report())
+        self.assertEqual((self.root / 'state' / 'state.json').read_bytes(), baseline)
+
+    # Real redirect dispatch must refuse before any credential-bearing second request.
+    def test_coderabbit_redirect_refused(self):
+        self.export()
+        self.run_once()
+        baseline = (self.root / 'state' / 'state.json').read_bytes()
+        (self.exports / 'coderabbit.csv').unlink()
+        calls = self.run_api([], redirect=True)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].host, 'api.coderabbit.ai')
+        self.assertIn('SKIP coderabbit', self.report())
+        self.assertEqual((self.root / 'state' / 'state.json').read_bytes(), baseline)
 
     # A path containing shell syntax must stay a path in the generated cron command.
     def test_schedule_quotes_runner_path(self):

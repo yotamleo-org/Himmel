@@ -47,6 +47,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -156,7 +157,10 @@ def github(kind):
     return result
 
 def matches_repo(value):
-    value = text(value).lower().removeprefix('github://').split('#', 1)[0]
+    value = text(value).lower().split('#', 1)[0]
+    value = value.removeprefix('github://').removeprefix('https://github.com/').rstrip('/')
+    if not re.fullmatch(r'[a-z0-9_.-]+(?:/[a-z0-9_.-]+)?', value):
+        raise Skip('unknown repository shape')
     return value in (repo, repo.split('/')[1])
 
 export_dir = Path(os.environ.get('SECURITY_AUDIT_EXPORT_DIR', str(Path.home() / '.himmel/security-exports')))
@@ -168,20 +172,24 @@ def exported(name):
         if not {'severity', 'file'} <= fields or not ({'state', 'status'} & fields) or not ({'category', 'type', 'cwe'} & fields) or not ({'repository', 'asset'} & fields):
             raise Skip('unknown export headers')
         result = []
+        had_rows, matched = False, False
         for raw in reader:
+            had_rows = True
             item = {k.lower(): v for k, v in raw.items() if k is not None}
             state = (item.get('state') or item.get('status') or '').lower()
             if state not in ('open', 'closed', 'fixed', 'resolved', 'dismissed', 'ignored', 'suppressed'):
                 raise Skip('missing or unknown finding state')
-            if state != 'open':
-                continue
             target = item.get('repository') or item.get('asset')
             if not target:
                 raise Skip('missing repository')
             if not matches_repo(target):
                 continue
-            result.append(row(item['file'], item.get('start_line'),
-                              item.get('cwe') or item.get('category') or item.get('type'), item['severity']))
+            matched = True
+            if state == 'open':
+                result.append(row(item['file'], item.get('start_line'),
+                                  item.get('cwe') or item.get('category') or item.get('type'), item['severity']))
+        if had_rows and not matched:
+            raise Skip('no rows for selected repository')
         return result
 
 def coderabbit():
@@ -204,12 +212,16 @@ def coderabbit():
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
     opener = urllib.request.build_opener(NoRedirect)
-    while True:
+    for _page in range(1000):
         query = urllib.parse.urlencode({'repo_id': repo_id, 'state': 'open', 'limit': 1000, 'cursor': cursor})
         request = urllib.request.Request('https://api.coderabbit.ai/v1/security/scans/code?' + query,
                                          headers={'x-coderabbitai-api-key': key})
-        with opener.open(request, timeout=30) as response:
-            data = json.load(response)
+        try:
+            with opener.open(request, timeout=30) as response:
+                data = json.load(response)
+        except urllib.error.HTTPError as error:
+            error.close()
+            raise Skip('HTTP request refused') from None
         if not isinstance(data['data'], list) or 'next_cursor' not in data:
             raise Skip('incomplete page')
         for item in data['data']:
@@ -222,9 +234,10 @@ def coderabbit():
         cursor = data['next_cursor']
         if cursor is None:
             return result
-        if not isinstance(cursor, str) or not cursor or cursor in seen or len(seen) >= 1000:
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
             raise Skip('invalid pagination')
         seen.add(cursor)
+    raise Skip('pagination limit')
 
 for name, kind in [('github-code', 'code-scanning'), ('github-dependabot', 'dependabot'), ('github-secret', 'secret-scanning')]:
     collect(name, lambda kind=kind: github(kind))
