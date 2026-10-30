@@ -62,8 +62,10 @@ broker's pending payload, not next to the record.
   that is no file, is not hashed. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
   passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
   an element whose path the kernel cannot walk are refused, never skipped. Before reading or
-  hashing, `open_regular` opens the file, resolves `/proc/self/fd/N` and checks that opened
-  object's path against `/proc`, `/sys` and `/dev`, then requires a regular file with `fstat`.
+  hashing, `open_regular` rejects a path already resolving into `/proc`, `/sys` or `/dev`
+  without opening it (a device can have side effects on open). It then opens the file, resolves
+  `/proc/self/fd/N` and checks that opened object's path against the same prefixes, then
+  requires a regular file with `fstat`.
   It closes and refuses the descriptor if its target cannot be resolved or either check fails:
   swapping the caller's path during the open cannot bypass the pseudo-file refusal.
   "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a

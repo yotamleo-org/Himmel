@@ -87,10 +87,21 @@ for mode in ("race", "unresolved"):
     except OSError as e:
         closed = "closed" if e.errno == errno.EBADF else "error"
     print(f"{mode}={result}:{closed}")
+# Never actually open a device: reaching os.open is already a failure.
+with patch.object(s.os, "open", side_effect=AssertionError("pseudo path opened")):
+    try:
+        s.open_regular("/dev/zero").close()
+        result = "opened"
+    except OSError:
+        result = "refused"
+    except AssertionError:
+        result = "opened"
+print(f"prefilter={result}")
 OPENRACE
     OPENED=$(timeout 10 python3 -I "$tmp/open-regular-race.py" "$LIB" "$tmp/race.p")
     assert_contains "RED HIMMEL-8277: a path swapped into /proc during open is refused and closed even after the name is restored" "race=refused:closed" "$OPENED"
     assert_contains "RED HIMMEL-8277: an opened object whose descriptor cannot be resolved is refused and closed" "unresolved=refused:closed" "$OPENED"
+    assert_contains "a known pseudo path is refused without opening it" "prefilter=refused" "$OPENED"
 }
 
 # Run only the ticket's file-opening rows locally; the default still runs all rows in CI.
