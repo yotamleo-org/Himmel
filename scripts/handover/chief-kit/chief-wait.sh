@@ -134,9 +134,10 @@
 # line without the field is skipped.
 # pool-stale= (`n:KEY,...`, `?` for an unreadable blocker, never in the action key) wakes
 # once per newly stale disposition key (`WAKE pool-stale <KEYS>`): the marker `<inbox>.wait.stale`
-# holds the keys last seen, shrinks to the current set on every sample (a key that leaves and
-# rejoins wakes again) and has no re-wake window. A `?`-only value keeps the marker (an
-# unreadable blocker is not an all-clear); a gone or 0 field clears it.
+# holds the keys last seen, shrinks to the current set on a full read and has no re-wake
+# window. A `?`-only value, a partial read (`1:KEY,?`, which only adds to the marker) and an
+# absent or skip field keep it (a failed read is not an all-clear); an explicit 0 clears it,
+# so a key that leaves and rejoins wakes again.
 # procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
 # chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
 # to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default

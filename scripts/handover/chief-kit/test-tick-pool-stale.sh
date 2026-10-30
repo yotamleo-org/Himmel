@@ -77,6 +77,9 @@ d="$(doc quiet \
 check 'open or closed-unmerged targets, a still-open co-blocker and a ref-less target stay quiet' '0' "$(field pool-stale "$d")"
 check 'one batched gh read serves all PR targets' '1' "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
 
+d="$(doc prlist 'pool-disposition: HIMMEL-117 question waits on PR 5001 and 5002, HIMMEL-901')"
+check 'every PR of a blocker list counts: a merged first PR and a still-open second stay quiet' '0' "$(field pool-stale "$d")"
+
 d="$(doc unreadkey 'pool-disposition: HIMMEL-105 question waits on HIMMEL-999')"
 check 'a key target missing from the mirror prints ?, never stale' '?' "$(field pool-stale "$d")"
 d="$(doc unreadpr 'pool-disposition: HIMMEL-109 question waits on PR 7777')"

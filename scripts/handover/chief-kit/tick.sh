@@ -475,7 +475,7 @@ for line in open(doc).read().splitlines():
         m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question) (\S.*)", line.split(":", 1)[1].strip())
         if m:
             refs = {k for k in re.findall(r"\b[A-Z]+-\d+\b", m[2]) if k != m[1]}
-            prs = set(re.findall(r"\bPR\s*#?(\d+)", m[2]))
+            prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
             latest[m[1]] = (refs, prs)
 lines = [(k, refs, prs) for k, (refs, prs) in latest.items() if refs or prs]
 
