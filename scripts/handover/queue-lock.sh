@@ -145,10 +145,11 @@
 #   release:   0  released
 #              1  usage error (incl. a lone session token in the
 #                 handover-path slot: `release <token>`) / environment
-#                 failure / rm failed to clear an existing lock dir (e.g.
-#                 an open handle on Windows)
-#              2  session token missing or does not match the current
-#                 holder -- refused (QUEUE_LOCK_FORCE_RELEASE=1 overrides)
+#                 failure / rm failed to clear an existing lock dir
+#              2  session token missing, mismatched or unverifiable holder,
+#                 changed ownership, or a held takeover/release claim --
+#                 refused. QUEUE_LOCK_FORCE_RELEASE=1 bypasses token checks,
+#                 not a held claim.
 #              3  no lock for this queue in ANY known handover root --
 #                 nothing was released (this was a silent
 #                 rc=0 before, which callers read as "released cleanly").
@@ -1808,7 +1809,7 @@ queue_lock_acquire() {
             # swallow-ok: an unreadable brand is release-unverified, so expiry refuses rather than deleting an unknown claim
             claim_owner=$(cat "$claim/owner" 2>/dev/null) || claim_owner="release-unverified"
             case "$claim_owner" in
-                release-*)
+                ''|release-*)
                     echo "WARN queue-lock: a release holds the takeover claim '$claim' -- it cannot be TTL-reclaimed while its delete may still be running. If it crashed, stop all contenders before manual recovery: rm -rf '$claim'" >&2
                     return 2
                     ;;
@@ -2201,11 +2202,11 @@ queue_lock_release() {
         local f_session f_host
         f_session=$(_ql_json_field "$lockdir/owner.json" session)
         f_host=$(_ql_json_field "$lockdir/owner.json" host)
+        _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \
             "$(_ql_now_iso)" "${f_session:-unknown}" "${f_host:-unknown}" "$lockdir" "$$" "$(_ql_hostname)" \
             >> "$(dirname "$lockdir")/takeovers.log" 2>/dev/null || true
         echo "WARN queue-lock: FORCED release of session=${f_session:-unknown} host=${f_host:-unknown} (QUEUE_LOCK_FORCE_RELEASE=1) -- logged to $(dirname "$lockdir")/takeovers.log" >&2
-        _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         # No _ql_emit_close_evidence here -- see its header comment: the
         # forcing session is a cleaner, not the holder wrapping up.
         return 0

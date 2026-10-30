@@ -215,6 +215,30 @@ SH
     rmdir "$lk.claim" 2>/dev/null
     bash "$LIB" release "$doc" holder8274q >/dev/null 2>&1
 
+    # Forced cleanup must use the same claim fence, and must not announce
+    # a completed release when that fence refuses it.
+    doc="$HANDOVER_DIR/release-t8274-force.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8274-force.lock"
+    bash "$LIB" acquire "$doc" holder8274force >/dev/null 2>&1
+    mkdir "$lk.claim"
+    printf '%s' release-pid0-r8274force > "$lk.claim/owner"
+    out="$(QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$doc" 2>&1)"; a_rc=$?
+    if [ "$a_rc" -eq 2 ] && [ -d "$lk.claim" ] \
+        && grep -q '"session":"holder8274force"' "$lk/owner.json" 2>/dev/null \
+        && [ "$(cat "$lk.claim/owner")" = release-pid0-r8274force ]; then
+        pass "T8274force: forced release refuses a held claim with lock and claim intact"
+    else
+        fail "T8274force: release=$a_rc lock=$([ -d "$lk" ] && echo held || echo GONE) claim=$([ -d "$lk.claim" ] && echo held || echo GONE) out=$out"
+    fi
+    if ! grepq "$out" 'WARN queue-lock: FORCED release' \
+        && ! grep -q 'FORCED RELEASE.*release-t8274-force.lock' "$(dirname "$lk")/takeovers.log" 2>/dev/null; then
+        pass "T8274audit: a refused forced release emits no completed-release audit"
+    else
+        fail "T8274audit: refused release announced completion: $out"
+    fi
+    rm -rf "$lk.claim"
+    bash "$LIB" release "$doc" holder8274force >/dev/null 2>&1
+
     # A failed takeover brand must not strand its own empty claim now that
     # missing claim brands fail closed rather than expiring.
     if [ "$(id -u)" -ne 0 ]; then
@@ -261,6 +285,15 @@ SH
         else
             fail "T8274u: unreadable release claim takeover=$b_rc out=$out"
         fi
+    fi
+    : > "$lk.claim/owner"
+    _t_touch_at "$(( $(date -u +%s) - 300 ))" "$lk.claim"
+    out="$(QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" taker8274empty 2>&1)"; b_rc=$?
+    if [ "$b_rc" -eq 2 ] && [ -d "$lk.claim" ] \
+        && grep -q '"session":"holder8274c"' "$lk/owner.json" 2>/dev/null; then
+        pass "T8274empty: an empty claim brand refuses expiry and preserves the holder"
+    else
+        fail "T8274empty: takeover=$b_rc claim=$([ -d "$lk.claim" ] && echo held || echo GONE) out=$out"
     fi
     rm -rf "$lk.claim"
     QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" recovered8274c >/dev/null 2>&1; b_rc=$?
