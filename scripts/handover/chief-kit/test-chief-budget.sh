@@ -43,21 +43,22 @@ run "$tmp/under.jsonl"
 check    "1: under budget rc 0" "$rc" 0
 check    "1: one line, OK" "$out" "budget turns=10 cache_read=10.0M verdict=OK"
 
-# --- 2. turns at the budget ----------------------------------------------------
-mk "$tmp/turns.jsonl" 150 1000
+# --- 2. turns at the model-derived budget --------------------------------------
+mk "$tmp/turns.jsonl" 110 1000
 run "$tmp/turns.jsonl"
-check    "2: 150 turns rc 3" "$rc" 3
-contains "2: turns" "$out" "turns=150"
+check    "2: 110 turns rc 3" "$rc" 3
+contains "2: turns" "$out" "turns=110"
 contains "2: verdict" "$out" "verdict=HANDOVER"
-mk "$tmp/t149.jsonl" 149 1000
-run "$tmp/t149.jsonl"
-check    "2: 149 turns still OK (rc 0)" "$rc" 0
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "2: CHIEF_TURN_BUDGET overrides (rc 3)" "$rc" 3
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+mk "$tmp/t109.jsonl" 109 1000
+run "$tmp/t109.jsonl"
+check    "2: 109 turns still OK (rc 0)" "$rc" 0
+contains "2: one turn under the budget verdict" "$out" "verdict=OK"
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t109.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "2: CHIEF_TURN_BUDGET lowers the threshold (rc 3)" "$rc" 3
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t109.jsonl" CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
 check    "2: the retired name CONSOLE_TURN_BUDGET is ignored (rc 0)" "$rc" 0 # old-term-ok
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t149.jsonl" CHIEF_TURN_BUDGET=200 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
-check    "2: CHIEF_TURN_BUDGET alone decides beside the retired name (rc 0)" "$rc" 0
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/turns.jsonl" CHIEF_TURN_BUDGET=200 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+check    "2: CHIEF_TURN_BUDGET raises the threshold beside the retired name (rc 0)" "$rc" 0
 
 # --- 3. cache-read at the budget -----------------------------------------------
 mk "$tmp/cr.jsonl" 30 1000000
