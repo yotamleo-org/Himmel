@@ -52,7 +52,7 @@ function resolveFromKeyring(): void {
     // exit 1 = nothing served; stdout of a partial hit is still usable
     out = (e as { stdout?: string }).stdout ?? '';
   }
-  for (const line of out.split('\n')) {
+  for (const line of String(out ?? '').split('\n')) {
     const i = line.indexOf('=');
     if (i < 1) continue;
     const k = line.slice(0, i);
