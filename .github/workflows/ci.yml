@@ -1642,7 +1642,7 @@ jobs:
       # "The bun test cwd is per-suite"). No `bun install` needed: scripts/telegram
       # has no package.json of its own and the suites run against the repo tree.
       # This is the largest bun test surface in the repo (971 tests) and had no
-      # CI step at all until HIMMEL-2620. It runs on both matrix entries because
+      # CI step at all until HIMMEL-2620. It runs on every matrix entry because
       # three of its cases are platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
       # HIMMEL-3215: the luna source-identity suites (source-identity +
