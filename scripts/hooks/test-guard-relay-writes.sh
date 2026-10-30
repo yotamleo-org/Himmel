@@ -40,11 +40,11 @@ TMP="$FIXTURE_BASE/himmel-relay-guard-fixture.$$"
 mkdir "$TMP" || { echo "FATAL: mkdir $TMP failed" >&2; exit 1; }
 # Real chief rundirs under the hook's own ${TMPDIR:-/tmp}, both spellings plus a control, so a
 # Write there resolves and only the rundir rule can deny it.
-TMPRUN_CONSOLE="${TMPDIR:-/tmp}/himmel-console-relaytest.$$"
+TMPRUN_OLDNAME="${TMPDIR:-/tmp}/himmel-console-relaytest.$$"
 TMPRUN_CHIEF="${TMPDIR:-/tmp}/himmel-chief-relaytest.$$"
 TMPRUN_OTHER="${TMPDIR:-/tmp}/himmel-other-relaytest.$$"
-mkdir -p "$TMPRUN_CONSOLE" "$TMPRUN_CHIEF" "$TMPRUN_OTHER" || { echo "FATAL: mkdir rundir fixtures failed" >&2; exit 1; }
-trap 'chmod 700 "$TMP/locked" 2>/dev/null; rm -rf "$TMP" "$TMPRUN_CONSOLE" "$TMPRUN_CHIEF" "$TMPRUN_OTHER"' EXIT
+mkdir -p "$TMPRUN_OLDNAME" "$TMPRUN_CHIEF" "$TMPRUN_OTHER" || { echo "FATAL: mkdir rundir fixtures failed" >&2; exit 1; }
+trap 'chmod 700 "$TMP/locked" 2>/dev/null; rm -rf "$TMP" "$TMPRUN_OLDNAME" "$TMPRUN_CHIEF" "$TMPRUN_OTHER"' EXIT
 
 ROOT="$TMP/root"
 mkdir -p "$ROOT/inbox" "$ROOT/yotamleo/himmel"
@@ -119,7 +119,7 @@ INBOX_X="$ROOT/inbox/X.md"
 WORKER_SESSION_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-a-legN9-2026-09-12-RESUME.md"
 RUNDIR_LOG="/run/user/1000/himmel-console/s/inbox-sent.log"
 # Rundir state files whose name does not say inbox, so only the rundir rules can deny them.
-RUNDIR_STATE_CONSOLE="/run/user/1000/himmel-console/s/state.json"
+RUNDIR_STATE_OLDNAME="/run/user/1000/himmel-console/s/state.json"
 RUNDIR_STATE_CHIEF="/run/user/1000/himmel-chief/s/state.json"
 RUNDIR_STATE_OTHER="/run/user/1000/himmel-other/s/state.json"
 OWN_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-relay-2026-09-12-RESUME.md"
@@ -137,7 +137,7 @@ ln -s "$INBOX_X" "$SYMLINK_INTO_INBOX"
 ROWS_NAME=(row1 row2 row3 row4 row5 row6 row7 row8 row9 row10a row10b row10c row10d row11 row12 row13 row14 row15 row16 row17 row18 row19 row20
     read-tee read-cp read-mv read-rm read-rsync read-dd read-truncate read-sed read-install read-chmod read-chown read-address read-legdoc-form
     write-dd write-abs-rm write-sudo-rm write-rmdir write-cpio write-ddrescue write-xargs-rm write-paren-cp write-semi-mv write-sed-i write-tee write-install write-rsync write-chown write-chmod write-truncate write-newline-rm chief-session-name
-    tmp-console-rundir-write tmp-chief-rundir-write console-rundir-redirect chief-rundir-redirect chief-session-unset
+    tmp-oldname-rundir-write tmp-chief-rundir-write oldname-rundir-redirect chief-rundir-redirect chief-session-unset
     tmp-other-rundir-write other-rundir-redirect)
 ROWS_JSON=(
     "$(write_payload Write "$INBOX_X")"
@@ -200,9 +200,9 @@ ROWS_JSON=(
     "$(bash_payload "cat $ROOT/inbox/X.md
 rm $ROOT/inbox/Y.md")"
     "$(bash_payload "CHIEF_SESSION_NAME=j bash x.sh")"
-    "$(write_payload Write "$TMPRUN_CONSOLE/state.json")"
+    "$(write_payload Write "$TMPRUN_OLDNAME/state.json")"
     "$(write_payload Write "$TMPRUN_CHIEF/state.json")"
-    "$(bash_payload "echo x >> $RUNDIR_STATE_CONSOLE")"
+    "$(bash_payload "echo x >> $RUNDIR_STATE_OLDNAME")"
     "$(bash_payload "echo x >> $RUNDIR_STATE_CHIEF")"
     "$(bash_payload "unset CLAUDE_PID CHIEF_SESSION_NAME; bash inbox-send.sh S x")"
     "$(write_payload Write "$TMPRUN_OTHER/state.json")"
