@@ -83,6 +83,15 @@ test("workers: absent with no manifest, ok with one (real fleet-manifest.sh and 
   expect(l.workers).toEqual([{ doc, status: "LIVE", description: "Show the worker descriptions" }]);
 });
 
+test("brief: the worker name arrives as ?worker= or the old ?leg=, and a missing name is refused", async () => {
+  const { port } = boot();
+  const brief = async (q: string) => (await fetch(`http://127.0.0.1:${port}/api/agui/brief${q}`, { headers: { "X-Himmel-Token": TOKEN } })).status;
+  expect(await brief("")).toBe(400);
+  expect(await brief("?worker=..%2F..%2Fetc%2Fpasswd")).toBe(400);
+  expect(await brief("?worker=HIMMEL-0-N1-none")).toBe(404);
+  expect(await brief("?leg=HIMMEL-0-N1-none")).toBe(404);
+});
+
 test("workers: a HANDOVER_DIR that is not a directory is absent, not an error page", async () => {
   const s = boot({ HANDOVER_DIR: "/nonexistent/health-route-root" });
   expect((await body(s.port)).workers.state).toBe("absent");
