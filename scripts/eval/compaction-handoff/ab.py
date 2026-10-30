@@ -55,6 +55,8 @@ HANDOFF_SHARE = 0.75
 FIRE_MIN = 0.75
 MAX_HANDOFFS = 3
 SUMMARY_TOKENS = 5000
+USD_PER_EQ = 3e-6   # sonnet input $3 per Mtok: prices a stopped segment, which has no result event to read a cost from
+MIN_SEGMENT_USD = 1.0   # a hand-off segment is not launched with less of the run's cap than this
 HANDOFF_PROMPT = ("Your context is nearly full and this session ends here. Write HANDOFF.md in the current directory so a fresh "
                   "session can finish the task without this conversation: the task as you were given it, every ruling and token "
                   "verbatim, what is done, what is left, and anything half-finished. Then stop.")
@@ -248,20 +250,35 @@ def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, tim
         segs.append(path)
         return run_segment(argv, ws, path, timeout, stop)
 
+    def left():   # what the run's cap has not yet spent, so every segment shares one max_usd
+        return round(max_usd - summarize_streams(segs, ceiling)["cost_eq"] * USD_PER_EQ, 2)
+
     stopped, timed, w = seg(build_cmd(brief, model, effort, ceiling, max_usd, session=sid), stop_at)
     wall += w
     timed_out |= timed
+    handoff_md = os.path.join(ws, "HANDOFF.md")
     while stopped and handoffs < MAX_HANDOFFS and not timed_out:
+        if left() < MIN_SEGMENT_USD:
+            reason = "budget"
+            break
         handoffs += 1
-        _, timed, w = seg(build_cmd(HANDOFF_PROMPT, model, effort, ceiling, max_usd, resume=sid))
+        if os.path.exists(handoff_md):   # a stale file from an earlier hand-off must not pass for this one
+            os.remove(handoff_md)
+        _, timed, w = seg(build_cmd(HANDOFF_PROMPT, model, effort, ceiling, left(), resume=sid))
         wall += w
         timed_out |= timed
-        if not os.path.exists(os.path.join(ws, "HANDOFF.md")):
+        if not summarize_streams(segs[-1:], ceiling)["result_ok"] and not timed_out:
+            reason = "handoff-error"
+            break
+        if not os.path.exists(handoff_md):
             reason = "handoff-missing"
             break
-        shutil.copy(os.path.join(ws, "HANDOFF.md"), os.path.join(rd, "handoff-%d.md" % handoffs))
+        shutil.copy(handoff_md, os.path.join(rd, "handoff-%d.md" % handoffs))
+        if left() < MIN_SEGMENT_USD:
+            reason = "budget"
+            break
         sid = str(uuid.uuid4())
-        stopped, timed, w = seg(build_cmd(SUCCESSOR_PROMPT, model, effort, ceiling, max_usd, session=sid), stop_at)
+        stopped, timed, w = seg(build_cmd(SUCCESSOR_PROMPT, model, effort, ceiling, left(), session=sid), stop_at)
         wall += w
         timed_out |= timed
     s = summarize_streams(segs, ceiling)
@@ -283,7 +300,7 @@ def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, tim
         reason = reason or ("timeout" if timed_out else "error")
     elif arm == "b" and (handoffs < 1 or stopped):
         reason = reason or ("no-handoff" if handoffs < 1 else "handoff-loop")
-    elif arm != "b" and s["compactions"] < 1 and s["context_drops"] < 1:
+    elif arm != "b" and s["compactions"] < 1:
         reason = reason or "no-compaction"
     elif arm != "b" and s["compaction_pre"] and max(s["compaction_pre"]) < FIRE_MIN * ceiling:
         reason = reason or "off-trigger"
@@ -368,7 +385,7 @@ def cmd_sweep(a):
 # ------------------------------------------------------------------ judge
 def judge_prompt(rd):
     brief = open(os.path.join(rd, "brief.txt")).read()
-    diff = open(os.path.join(rd, "final.diff"), errors="replace").read()[:60000]
+    diff = open(os.path.join(rd, "final.diff"), errors="replace").read()   # final.diff is already capped at 200000 chars
     s = json.load(open(os.path.join(rd, "summary.json")))
     reply = "\n".join(l for l in (s.get("reply") or "").splitlines() if not re.search(r"hand-?off", l, re.I))[:600]
     return ("Rate the work. A worker was given the brief below and changed a workspace. Its rulings are part of the brief.\n\n"
@@ -395,8 +412,11 @@ def cmd_judge(a):
             run_segment(argv, scratch, stream, 900)
             j = summarize_streams([stream], 200000)
             m = re.findall(r"SCORE:\s*(\d+)", j["reply"])
+            if not m:   # no score: leave the run unjudged so the next `judge` retries it
+                print("ab.py: judge gave no SCORE for %s - not cached" % rd, file=sys.stderr)
+                continue
             with open(os.path.join(rd, "judge.json"), "w") as fh:
-                json.dump({"score": int(m[-1]) if m else None, "cost_eq": j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
+                json.dump({"score": int(m[-1]), "cost_eq": j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
     return 0
@@ -437,8 +457,9 @@ def recommend(rows):
     if not rows:
         return None
     best_c = max(r["check"] or 0 for r in rows)
-    best_j = max(r["judge"] or 0 for r in rows)
-    level = [r for r in rows if (r["check"] or 0) >= best_c - 0.05 and (r["judge"] or 0) >= best_j - 1]
+    band = [r for r in rows if (r["check"] or 0) >= best_c - 0.05]
+    best_j = max(r["judge"] or 0 for r in band)
+    level = [r for r in band if (r["judge"] or 0) >= best_j - 1]
     return min(level, key=lambda r: r["cost_eq"] or 0)
 
 

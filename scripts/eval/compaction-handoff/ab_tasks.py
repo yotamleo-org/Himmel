@@ -231,6 +231,15 @@ def impl_check(ws, seed, scale):
         res.append(("mod-%03d" % nn, ok))
     notes = (read(ws, "NOTES.md") or "").split("\n")
     res.append(("notes-token", notes[0].strip() == "token: " + token("impl", seed)))
+    ref = tempfile.mkdtemp(prefix="ab-impl-ref-")
+    try:
+        impl_gen(ref, seed, scale)
+        n = nsize("impl", scale)
+        same = read(ws, "config/consts.json") == read(ref, "config/consts.json") and all(
+            read(ws, "specs/spec_%03d.txt" % nn) == read(ref, "specs/spec_%03d.txt" % nn) for nn in range(1, n + 1))
+        res.append(("specs-config-untouched", same))
+    finally:
+        shutil.rmtree(ref, ignore_errors=True)
     return pack(res)
 
 

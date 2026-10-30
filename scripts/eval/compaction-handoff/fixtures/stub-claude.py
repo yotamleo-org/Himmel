@@ -6,6 +6,10 @@
 #   AB_STUB_HANG=1  sleep once the context passes 337500, so the driver must stop it
 #   AB_STUB_SKIP_SOLVE=1  leave the workspace unsolved
 #   AB_STUB_PRE  pre_tokens to report on a compaction (default: the context that crossed the line)
+#   AB_STUB_NOBOUNDARY=1  drop the context without a compact_boundary event
+#   AB_STUB_RESUME_FAIL=1 / AB_STUB_NOWRITE=1  the --resume segment errors / writes no HANDOFF.md
+#   AB_STUB_STALE=1  the first segment leaves a HANDOFF.md behind
+#   AB_STUB_NOSCORE=1  the judge replies without a SCORE line
 # A compaction fires when the next context would pass 85 % of --autocompact; the
 # context then restarts at 20000. --resume writes HANDOFF.md; a prompt starting
 # "Load HANDOFF.md" is the successor; "Rate the work" is the judge.
@@ -51,9 +55,13 @@ def solve():
 
 if "Rate the work" in prompt:
     msg(1, 5000)
-    result("The work is mostly right.\nSCORE: 8")
+    result("The work is mostly right." if os.environ.get("AB_STUB_NOSCORE") == "1" else "The work is mostly right.\nSCORE: 8")
 elif "--resume" in a:
-    open("HANDOFF.md", "w").write("# hand-off\nrulings and token go here\n")
+    if os.environ.get("AB_STUB_RESUME_FAIL") == "1":
+        emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "failed"})
+        sys.exit(1)
+    if os.environ.get("AB_STUB_NOWRITE") != "1":
+        open("HANDOFF.md", "w").write("# hand-off\nrulings and token go here\n")
     msg(1, step)
     result("hand-off written")
 elif prompt.startswith("Load HANDOFF.md"):
@@ -65,10 +73,13 @@ elif prompt.startswith("Load HANDOFF.md"):
     result()
 else:
     ctx = 0
+    if os.environ.get("AB_STUB_STALE") == "1":
+        open("HANDOFF.md", "w").write("# stale\n")
     for i in range(1, n + 1):
         if ctx + step > ceil * 0.85:
-            emit({"type": "system", "subtype": "compact_boundary",
-                  "compact_metadata": {"trigger": "auto", "pre_tokens": int(os.environ.get("AB_STUB_PRE", ctx + step))}})
+            if os.environ.get("AB_STUB_NOBOUNDARY") != "1":
+                emit({"type": "system", "subtype": "compact_boundary",
+                      "compact_metadata": {"trigger": "auto", "pre_tokens": int(os.environ.get("AB_STUB_PRE", ctx + step))}})
             ctx = 20000
         else:
             ctx += step

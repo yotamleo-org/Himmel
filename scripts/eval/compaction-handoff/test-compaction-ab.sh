@@ -45,6 +45,8 @@ for t in docs impl audit; do
     r1="$(python3 "$TASKS" check "$t" "$TMP/g1-$t" --scale 0.05 2>&1)"
     eq "$t: the solved workspace passes every check" "$(echo "$r1" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["passed"] == d["total"] and d["total"] > 0)' 2>&1)" "True"
 done
+printf 'tampered\n' >"$TMP/g1-impl/specs/spec_001.txt"
+eq "impl: editing a spec fails the check even when every module is right" "$(python3 "$TASKS" check impl "$TMP/g1-impl" --scale 0.05 2>&1 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["failed"])')" "['specs-config-untouched']"
 python3 "$TASKS" gen docs "$TMP/full-docs" >/dev/null 2>&1
 if [ "$(du -sk "$TMP/full-docs" | cut -f1)" -ge 1200 ]; then pass "docs: a full-scale workspace is at least 1.2 MB, enough to pass a 200k window"; else fail "docs: full-scale workspace under 1.2 MB"; fi
 
@@ -105,6 +107,35 @@ eq "run: and is not an error" "$(jget "$S" error)" "false"
 O="$TMP/ot"; AB_STUB_PRE=100000 AB_STUB_MSGS=8 AB_STUB_STEP=60000 run docs a "$O" >/dev/null
 eq "run a: a compaction at 100k of 200k is off-trigger" "$(jget "$O/docs/a/1/summary.json" valid)/$(jget "$O/docs/a/1/summary.json" invalid_reason)" "false/off-trigger"
 
+# a context drop with no compact_boundary is not a compaction
+O="$TMP/od"; AB_STUB_NOBOUNDARY=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 run docs a "$O" >/dev/null
+eq "run a: a context drop without a compact_boundary is invalid" "$(jget "$O/docs/a/1/summary.json" valid)/$(jget "$O/docs/a/1/summary.json" invalid_reason)" "false/no-compaction"
+
+# arm b: every segment draws on one shared cap, and each segment must itself finish
+hb() { AB_STUB_HANG=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 timeout 60 python3 "$AB" run --task docs --arm b --rep 1 --scale 0.05 "$@" >/dev/null 2>&1; }   # gnu-ok: local-tier suite, hang guard
+: >"$AB_STUB_LOG"
+hb --out "$TMP/obc"
+caps="$(python3 -c 'import json,sys
+print(" ".join(d["args"][d["args"].index("--max-budget-usd")+1] for d in map(json.loads, open(sys.argv[1]))))' "$AB_STUB_LOG")"
+cap1="$(echo "$caps" | cut -d' ' -f1)"; cap2="$(echo "$caps" | cut -d' ' -f2)"; cap3="$(echo "$caps" | cut -d' ' -f3)"
+eq "run b: the first segment gets the whole cap" "$cap1" "20"
+eq "run b: the hand-off writer gets the cap left, not a fresh one" "$([ "$cap2" != 20 ] && echo less)" "less"
+eq "run b: and so does the successor" "$([ "$cap3" != 20 ] && echo less)" "less"
+hb --out "$TMP/obd" --max-usd 0.5
+eq "run b: a spent cap stops the hand-off" "$(jget "$TMP/obd/docs/b/1/summary.json" valid)/$(jget "$TMP/obd/docs/b/1/summary.json" invalid_reason)" "false/budget"
+AB_STUB_RESUME_FAIL=1 hb --out "$TMP/obe"
+eq "run b: a hand-off segment that errors is invalid" "$(jget "$TMP/obe/docs/b/1/summary.json" valid)/$(jget "$TMP/obe/docs/b/1/summary.json" invalid_reason)" "false/handoff-error"
+AB_STUB_STALE=1 AB_STUB_NOWRITE=1 hb --out "$TMP/obf"
+eq "run b: a stale HANDOFF.md does not stand in for a written one" "$(jget "$TMP/obf/docs/b/1/summary.json" valid)/$(jget "$TMP/obf/docs/b/1/summary.json" invalid_reason)" "false/handoff-missing"
+: >"$AB_STUB_LOG"
+
+# the recommendation is defined when the best check and the best judge score belong to different arms
+eq "score: recommend survives a best check and a best judge on different arms" "$(python3 -I -c '
+import importlib.util, sys
+sp = importlib.util.spec_from_file_location("ab", sys.argv[1]); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+rows = [{"arm": "a", "check": 1.0, "judge": 5, "cost_eq": 3}, {"arm": "b", "check": 0.5, "judge": 9, "cost_eq": 1}]
+print(m.recommend(rows)["arm"])' "$AB" 2>&1)" "a"
+
 # --- the billed opt-in ---
 eq "run: refuses without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK python3 "$AB" run --task docs --arm a --rep 1 --out "$TMP/ox" --scale 0.05 >/dev/null 2>&1; echo $?)" "2"
 
@@ -153,6 +184,10 @@ for l in open(sys.argv[1]):
 hasnt "judge: the prompt does not name the arm or the ceiling" "$jp" "autocompact"
 hasnt "judge: nor the hand-off" "$jp" "HANDOFF"
 has "judge: it asks for a SCORE" "$jp" "SCORE:"
+AB_STUB_NOSCORE=1 python3 "$AB" judge --out "$O3" >/dev/null 2>&1
+eq "judge: a reply with no SCORE is not cached" "$(find "$O3" -name judge.json | wc -l | tr -d ' ')" "0"
+python3 "$AB" judge --out "$O3" >/dev/null 2>&1
+eq "judge: and the next judge pass retries it" "$(jget "$O3/docs/a/1/judge.json" score)" "8"
 
 # --- score: the table and a recommendation per profile ---
 python3 "$AB" score --out "$O" >"$TMP/score.out" 2>&1
