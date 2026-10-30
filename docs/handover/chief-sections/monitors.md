@@ -39,10 +39,12 @@ nothing. Absent when no worker holds.
 
 `workers=<label>:IDLE-HELD` means a held lock with no session transcript activity
 for `TICK_IDLE_MIN` minutes (default 45), without an armed task/Monitor or an
-unfinished foreground Bash suite. Missing/unreadable activity evidence leaves
+unfinished foreground Bash/Agent call. Missing/unreadable activity evidence leaves
 `FRESH`/`STALE` unchanged. Unlike the sweep's heartbeat-only `IDLE-HELD?`, a long
-foreground suite stays `FRESH`. Check the worker for a prompt or tool lockout;
-this is **not** a free/reclaimable lock. The existing `workers` wake key alerts
+foreground suite stays `FRESH`. A pending Bash permission prompt also stays
+`FRESH`: the transcript cannot distinguish it from running foreground work.
+Check an idle worker for a tool lockout between calls; this is **not** a
+free/reclaimable lock. The existing `workers` wake key alerts
 once on transition (after its normal debounce), not as the idle age grows.
 
 `focus=<state>` and `sdrift=<n>:<sig8>` are conditional too: both come from the

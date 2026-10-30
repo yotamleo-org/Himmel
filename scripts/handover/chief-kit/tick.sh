@@ -168,7 +168,7 @@ changes. Env seam: TICK_KILL_BIN.
 
 workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held),
 IDLE-HELD (held, but its readable session transcript has no activity for TICK_IDLE_MIN
-minutes, default 45, and no armed task/Monitor or unfinished foreground Bash;
+minutes, default 45, and no armed task/Monitor or unfinished foreground Bash/Agent;
 missing activity evidence never changes the lock state). This is not a reclaim
 signal: ownership checks still treat it as held. The stable workers= label wakes
 chief-wait once on transition, not on growing age. The sweep's IDLE-HELD? uses
@@ -925,10 +925,10 @@ leg_cachettl() {
     running="$(jq -R -r '
         fromjson? // null
         | if type != "object" then "X" else
-          ( (select(.type == "assistant") | .message.content? | arrays | .[]
-              | select(.type == "tool_use" and (.name == "Bash" or .name == "PowerShell"))
+          ( (select(.type == "assistant") | .message.content? | arrays | .[] | objects
+              | select(.type == "tool_use" and (.name == "Bash" or .name == "Agent"))
               | .id | strings | "S foreground:" + .),
-            (select(.type == "user") | .message.content? | arrays | .[]
+            (select(.type == "user") | .message.content? | arrays | .[] | objects
               | select(.type == "tool_result") | .tool_use_id | strings | "E foreground:" + .),
             (.toolUseResult? | objects | (.backgroundTaskId // .taskId) | strings | "S background:" + .),
             (.toolUseResult? | objects | .task_id | strings | "E background:" + .),
@@ -945,12 +945,12 @@ leg_cachettl() {
         $1 == "S" { s[$2] = 1 }
         $1 == "E" { e[$2] = 1 }
         END {
-            if (bad) exit 1
             n = 0; f = 0
             for (k in s) if (!(k in e)) {
                 if (k ~ /^foreground:/) f++; else n++
             }
-            print n " " f
+            # Unknown rows suppress idleness, not the existing cache advisory.
+            print n " " (bad ? 1 : f)
         }
     ')" || return 1
     leg_foreground_running="${running#* }"

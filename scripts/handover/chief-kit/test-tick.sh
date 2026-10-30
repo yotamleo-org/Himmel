@@ -299,6 +299,12 @@ idle_held_cases() (
     printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
     idle3="$(bash "$SUT")"
     contains 'growing inactivity keeps the same IDLE-HELD state' "$idle3" 'workers=N61:IDLE-HELD'
+    printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"agent-1","name":"Agent","input":{"prompt":"run independent work"}}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an unfinished foreground Agent keeps its held lock FRESH' "$out" 'workers=N61:FRESH'
+    printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"agent-1","content":"done"}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a completed Agent no longer hides an idle held worker' "$out" 'workers=N61:IDLE-HELD'
     printf '{"type":"user","timestamp":"%s","toolUseResult":{"taskId":"monitor-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
     out="$(bash "$SUT")"
     contains 'an armed Monitor keeps a held worker FRESH' "$out" 'workers=N61:FRESH'
@@ -317,6 +323,11 @@ idle_held_cases() (
     } >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
     out="$(bash "$SUT")"
     contains 'malformed middle activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
+    contains 'malformed middle rows preserve the existing cachettl advisory' "$out" ' cachettl=N61'
+    printf '{"type":"custom-title","customTitle":"HIMMEL-111-legN61"}\n{"type":"assistant","timestamp":"%s","message":{"content":["text",null,7,{"type":"text","text":"done"}]}}\n{"type":"user","timestamp":"%s","message":{"content":["text",null,7]}}\n' "$stamp" "$stamp" > "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'non-object content elements do not hide an idle held worker' "$out" 'workers=N61:IDLE-HELD'
+    contains 'non-object content elements preserve the existing cachettl advisory' "$out" ' cachettl=N61'
     rm -f "$TICK_PROJECTS_DIR/p/idle.jsonl"
     out="$(bash "$SUT")"
     contains 'missing session activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
