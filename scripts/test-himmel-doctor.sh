@@ -7141,7 +7141,7 @@ c74_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c74.XXXXXX")" || { echo "mktem
 mkdir -p "$c74_t/home/.himmel" "$c74_t/claude"
 c74_pol="$c74_t/home/.himmel/config.json"
 c74_conf="$c74_t/home/.himmel/himmel.conf"
-c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --no-color --only C74 2>&1; }
+c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --root "$REPO_ROOT" --no-color --only C74 2>&1; }
 c74_reset() { rm -f "$c74_t/env" "$c74_conf" "$c74_conf.local" "$c74_pol"; }
 echo "== C74-config-split: a config-class key still in .env -> WARN naming the key, never the value =="
 c74_reset
@@ -7160,11 +7160,15 @@ c74_reset
 printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'INFO C74-himmel-conf' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no himmel.conf, nothing to migrate -> INFO only"; else fail "C74 absent conf -> $(printf '%s' "$out" | head -4)"; fi
-echo "== C74-config-split: JIRA_BASE_URL in .env is never listed as moved (HIMMEL-8165) =="
+echo "== C74-config-split: JIRA_BASE_URL in .env warns until migrated (HIMMEL-8244) =="
 c74_reset
 printf 'JIRA_BASE_URL=https://planted.example\n' > "$c74_t/env"
 out="$(c74_run)"
-if grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'JIRA_BASE_URL'; then pass "C74 JIRA_BASE_URL in .env -> not listed, OK"; else fail "C74 JIRA_BASE_URL -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'JIRA_BASE_URL' && ! grepq "$out" -F 'planted.example'; then pass "C74 JIRA_BASE_URL in .env -> WARN naming key only"; else fail "C74 JIRA_BASE_URL -> $(printf '%s' "$out" | head -4)"; fi
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c74_conf"
+printf 'JIRA_API_TOKEN=dummy-token\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'JIRA_BASE_URL' && ! grepq "$out" -F 'planted.example'; then pass "C74 migrated JIRA_BASE_URL removed from .env -> OK, no URL warning or value"; else fail "C74 migrated JIRA_BASE_URL -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C74-config-split: himmel.conf with a line that is not KEY=value -> WARN =="
 c74_reset
 printf 'HANDOVER_DIR=/x\nthis line is not a setting\n' > "$c74_conf"
@@ -7235,7 +7239,7 @@ STUB
 chmod +x "$c75_t/bin/secret-tool" "$c75_t/bin/busctl"
 c75_run() { env -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" \
     HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" C75_STORE="$c75_t/store" C75_LOG="$c75_t/log" DBUS_SESSION_BUS_ADDRESS="unix:path=$c75_t/bus" \
-    HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --no-color --only C75 2>&1; }
+    HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --root "$REPO_ROOT" --no-color --only C75 2>&1; }
 c75_reset() { rm -f "$c75_t/env" "$c75_t/log"; : > "$c75_t/store"; }
 # The resolver reports no keyring backend on Darwin, so only the off case runs there.
 if [ "$(uname -s)" = Darwin ]; then
@@ -7261,6 +7265,12 @@ if grepq "$out" -F 'WARN C75-config-keys' && grepq "$out" -F 'JIRA_BASE_URL' && 
 printf 'JIRA_BASE_URL=https://planted.example\n' > "$c75_t/env"
 out="$(c75_run)"
 if grepq "$out" -F 'OK   C75-config-keys' && ! grepq "$out" -F 'planted.example'; then pass "C75 JIRA_BASE_URL in .env -> OK"; else fail "C75 config key present -> $(printf '%s' "$out" | head -5)"; fi
+mkdir -p "$c75_t/home/.himmel"
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c75_t/home/.himmel/himmel.conf"
+rm -f "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys' && ! grepq "$out" -F 'planted.example'; then pass "C75 JIRA_BASE_URL in himmel.conf without .env -> OK"; else fail "C75 URL in config -> $(printf '%s' "$out" | head -5)"; fi
+rm -f "$c75_t/home/.himmel/himmel.conf"
 echo "== C75-config-keys: the Telegram pair names both chat ids; himmel.conf and a profile layer resolve them =="
 c75_reset
 printf 'TELEGRAM_BOT_TOKEN=planted-bot\n' > "$c75_t/env"

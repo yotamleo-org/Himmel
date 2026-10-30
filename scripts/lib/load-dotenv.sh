@@ -421,11 +421,10 @@ _himmel_key_class() {
 }
 
 # Config keys no himmel.conf layer serves and import-env never moves: their
-# readers take the process env or the checkout .env only. JIRA_BASE_URL is a
-# credential destination, so a planted config must not redirect the token.
+# readers take the process env or the checkout .env only.
 _himmel_env_only_key() {
     case "$1" in
-        JIRA_BASE_URL|FIRECRAWL_BASE_URL|WHISPER_MODEL) return 0 ;;
+        FIRECRAWL_BASE_URL|WHISPER_MODEL) return 0 ;;
     esac
     return 1
 }

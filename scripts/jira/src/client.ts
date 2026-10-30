@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // The .env is found from this file's own install path, never the cwd: a run
@@ -32,7 +32,7 @@ const DOTENV_KEYS = new Set([
   'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
 ]);
 
-const CONFIG_KEYS = new Set(['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
+const CONFIG_KEYS = new Set(['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
 
 // The credentials a station secrets move takes out of .env: when
 // neither the environment nor .env supplies one, the one resolver is asked.
@@ -60,9 +60,26 @@ function resolveFromKeyring(root: string): void {
   }
 }
 
+// Match the shell loader's station profile selection; project config cannot
+// choose the Jira destination. A plain (unlinked) himmel.conf has no profiles.
+function profileFilePath(confDir: string): string | undefined {
+  const env = { HIMMEL_PROFILE: process.env.HIMMEL_PROFILE };
+  readEnvFile(join(confDir, 'himmel.conf.local'), new Set(['HIMMEL_PROFILE']), env);
+  const name = env.HIMMEL_PROFILE;
+  if (!name || name.startsWith('.') || !/^[A-Za-z0-9._-]+$/.test(name)) return;
+  try {
+    const target = resolve(confDir, readlinkSync(join(confDir, 'himmel.conf')));
+    return join(dirname(target), 'profiles', `${name}.conf`);
+  } catch {
+    return; // Not a link: there is no station profile directory.
+  }
+}
+
 export function loadEnvFile(envPath: string): void {
   const confDir = join(process.env.HOME || homedir(), '.himmel');
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
+  const profile = profileFilePath(confDir);
+  if (profile) readEnvFile(profile, new Set(['JIRA_BASE_URL']));
   readEnvFile(join(confDir, 'himmel.conf'), CONFIG_KEYS);
   let projectRoot: string | undefined;
   try {
@@ -99,7 +116,7 @@ function stripInlineComment(value: string): string {
   return value;
 }
 
-function readEnvFile(envPath: string, keys: ReadonlySet<string>): void {
+function readEnvFile(envPath: string, keys: ReadonlySet<string>, env: NodeJS.ProcessEnv = process.env): void {
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();
@@ -108,7 +125,7 @@ function readEnvFile(envPath: string, keys: ReadonlySet<string>): void {
     if (!keys.has(key.trim())) continue;
     // An exported-but-empty value is not usable (baseUrl() rejects it), so it
     // must not shadow the file: `||=`, not `??=`.
-    process.env[key.trim()] ||= stripInlineComment(rest.join('=')).trim();
+    env[key.trim()] ||= stripInlineComment(rest.join('=')).trim();
   }
 }
 
@@ -154,7 +171,7 @@ export const baseUrl = (): string => {
   const url = process.env.JIRA_BASE_URL;
   if (!url) {
     throw new Error(
-      'JIRA_BASE_URL is not set. Add it to your .env (or shell environment) ' +
+      'JIRA_BASE_URL is not set. Add it to ~/.himmel/himmel.conf (or shell environment; .env is a one-release fallback) ' +
         'and re-run. See .env.example + docs/setup/new-machine.md.',
     );
   }

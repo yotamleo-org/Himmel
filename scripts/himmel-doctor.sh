@@ -3457,8 +3457,8 @@ check_c75_keyring() {
         emit OK C75-secrets "no secret comes from .env ($kr from the keyring, $other from the environment, $unset_n unset)"
     fi
     # A served credential whose paired setting resolves nowhere is a consumer that
-    # fails at its first call. An env-only setting is read from the
-    # environment or .env only; the chat ids also from himmel.conf (any layer).
+    # fails at its first call. Jira's URL and the chat ids also resolve from
+    # himmel.conf (including .local and the active station profile).
     # Optional defaulted keys (WHISPER_MODEL, FIRECRAWL_BASE_URL) are not paired.
     local pair secret setting miss="" confdir
     confdir="$(_himmel_config_dir)"
@@ -3479,7 +3479,7 @@ check_c75_keyring() {
     done
     if [ -n "$miss" ]; then
         emit WARN C75-config-keys "a credential is served but its setting resolves nowhere: $miss" \
-            "add each to the checkout .env (JIRA_BASE_URL) or ~/.himmel/himmel.conf (the chat ids); the secrets move leaves them in place"
+            "add each to ~/.himmel/himmel.conf (or .local / the active station profile); the checkout .env remains a legacy fallback"
     else
         emit OK C75-config-keys "every served credential has its paired setting"
     fi
