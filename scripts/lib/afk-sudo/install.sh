@@ -5,13 +5,17 @@
 #   sudo bash scripts/lib/afk-sudo/install.sh --user <login>
 #   sudo bash scripts/lib/afk-sudo/install.sh --uninstall
 #
-# Installs root-owned copies of afk_sudo.py (as /usr/local/libexec/himmel/afk-sudo)
-# and approval_broker.py, one sudoers rule letting <login> run exactly that
+# Installs root-owned copies of afk_sudo.py (as /usr/local/libexec/himmel/afk-sudo),
+# approval_broker.py and never_remote.py (the run-kind floor, which a config cannot
+# remove), one sudoers rule letting <login> run exactly that
 # installed copy (checked with visudo -cf before it is moved into place), the
 # ledger /var/log/himmel/afk-sudo.jsonl, the state dir, and on first install the
 # TOTP seed, printed ONCE as an otpauth URI for the authenticator app.
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
-# allowlist; enabling it is a separate `sudoedit` by the operator.
+# allowlist, mode allowlist and the run kind off (the run kind is also compiled
+# off until a release flips it); enabling it is a separate `sudoedit` by the operator.
+# A session talks to the installed helper through scripts/lib/afk-run (run kind) or
+# scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the
 # seed, the state and the ledger.
 set -uo pipefail
@@ -73,7 +77,7 @@ src=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || die "cannot resolve the sou
 
 case "${1:-}" in
     --uninstall)
-        rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" || die "uninstall failed"
+        rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py" || die "uninstall failed"
         echo "removed the helper and the sudoers rule; kept $CONFIG, $SEED, the state and $LEDGER"
         exit 0 ;;
     --user) [ $# -eq 2 ] || usage; user=$2 ;;
@@ -85,6 +89,7 @@ case "$user" in *[!A-Za-z0-9._-]*) echo "install.sh: unexpected characters in us
 install -d -o root -g root -m 0755 "$LIBEXEC" /etc/himmel /var/log/himmel /var/lib/himmel || die "cannot create the directories"
 install -d -o root -g root -m 0700 /etc/himmel/afk-sudo /var/lib/himmel/afk-sudo || die "cannot create the private directories"
 install -o root -g root -m 0644 "$src/approval_broker.py" "$LIBEXEC/approval_broker.py" || die "cannot install approval_broker.py"
+install -o root -g root -m 0644 "$src/never_remote.py" "$LIBEXEC/never_remote.py" || die "cannot install never_remote.py"
 install -o root -g root -m 0755 "$src/afk_sudo.py" "$LIBEXEC/afk-sudo" || die "cannot install the helper"
 [ -e "$LEDGER" ] || install -o root -g root -m 0644 /dev/null "$LEDGER" || die "cannot create the ledger"
 
@@ -92,7 +97,7 @@ tmp=$(mktemp "${TMPDIR:-/tmp}/afk-sudo.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$tmp"' EXIT
 
 if [ ! -e "$CONFIG" ]; then
-    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
+    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
     install -o root -g root -m 0644 "$tmp" "$CONFIG" || die "cannot install the config"
 fi
 
