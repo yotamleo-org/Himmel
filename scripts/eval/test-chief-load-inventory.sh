@@ -31,7 +31,7 @@ P="$TMP/proj"; mkdir -p "$P"
 {
     echo '{"type":"custom-title","customTitle":"HIMMEL-1-N1-worker-2026-10-14"}'
     echo '{"type":"assistant","message":{"id":"z1","usage":{"input_tokens":9},"content":[{"type":"text","text":"x"}]}}'
-} > "$P/leg.jsonl"
+} > "$P/worker.jsonl"
 
 python3 "$CLI" --projects "$P" >"$TMP/out" 2>"$TMP/err"; rc=$?
 check "exits 0" '[ "$rc" = 0 ]'

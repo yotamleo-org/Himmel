@@ -931,10 +931,10 @@ test('old leg-* profile ids resolve exactly like their worker-* names', () => {
   assert.throws(() => resolveProfile(REG, 'worker-bogus'), /unknown profile "worker-bogus"/);
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const run = (name) => spawnSync(process.execPath, [cli, name, '--mcp-servers'], { encoding: 'utf8' });
-  const worker = run('worker-vm'), leg = run('leg-vm');
+  const worker = run('worker-vm'), old = run('leg-vm');
   assert.equal(worker.status, 0, worker.stderr);
-  assert.equal(leg.status, 0, leg.stderr);
-  assert.equal(worker.stdout, leg.stdout);
+  assert.equal(old.status, 0, old.stderr);
+  assert.equal(worker.stdout, old.stdout);
 });
 
 test('CLI: --list includes bare', () => {
