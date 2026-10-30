@@ -421,6 +421,51 @@ mkdir "$R/d" "$R/e1" "$R/e2"; printf 'job\n' > "$R/job"; ln -s "$R/e1/out" "$R/d
 out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
 ln -sfn "$R/e2/out" "$R/d/out"
 assert_contains "a dangling link that is retargeted reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+# long_tree: under $R, L leads to a directory whose resolved path passes PATH_MAX, through two links whose
+# targets each fit (L, then L/x). In it: safe, elsewhere, last -> safe, script.sh and sh -> /etc/shadow.
+long_tree() {
+    python3 -I -c '
+import os, sys
+r, n = sys.argv[1], "a" * 200
+k = os.pathconf("/", "PC_PATH_MAX") // 2 // (len(n) + 1) + 1
+os.chdir(r)
+for _ in range(2 * k):
+    os.mkdir(n)
+    os.chdir(n)
+os.mkdir("safe")
+os.mkdir("elsewhere")
+os.symlink("safe", "last")
+os.symlink("/etc/shadow", "sh")
+with open("script.sh", "w") as f:
+    f.write("touch ran-long\n")
+half = "/".join([n] * k)
+os.symlink(half, os.path.join(r, "L"))
+os.symlink(half, os.path.join(r, half, "x"))
+' "$R"
+}
+# bt <element>: the target key the helper records for an element in cwd $R, or BadFile when it refuses to bind it.
+bt() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as a
+try:
+    print(a.target_key(a.bind_target(sys.argv[3], sys.argv[2])))
+except a.BadFile:
+    print("BadFile")' "$LIB" "$R" "$@"; }
+new_root tgtlong; cfg "$ALL" true
+long_tree
+assert_eq "an absent name behind a path that passes PATH_MAX is refused, not keyed as the string realpath returned" "BadFile" "$(bt L/x/last/out)"
+new_root tgtlongfile; cfg "$ALL" true
+long_tree
+assert_eq "a script behind a path that passes PATH_MAX is refused, not left unhashed" "BadFile" "$(bt L/x/script.sh)"
+new_root tgtlongfloor; cfg "$ALL" true
+long_tree
+assert_contains "a floor target behind a path that passes PATH_MAX fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/sh)"
+new_root tgtglued; cfg "$ALL" true
+mkdir "$R/safe" "$R/elsewhere"; printf 'job\n' > "$R/job"; ln -s "$R/safe" "$R/d"
+out=$(rr 0 --cwd "$R" -- dd if=job of="$R/d/out"); id=$(rid "$out")
+ln -sfn "$R/elsewhere" "$R/d"
+assert_contains "pin, documented: a glued of=path element is keyed by its lexical string, so a link above it moved after the request is not seen" "result=ran" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtlongtext; cfg "$ALL" true
+prog=$(python3 -I -c 'print("x" * 4000 + "/" + "y" * 85)')
+assert_contains "control: a word with a component over 255 characters (a python -c program) is filed, not refused" "result=pending" "$(rr 0 --cwd "$R" -- python3 -c "$prog")"
 
 echo "== slice 1a (judge KS-j4307-1): a partial config never falls back to root's home =="
 new_root opghost; me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real

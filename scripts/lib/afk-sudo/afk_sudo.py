@@ -187,9 +187,12 @@ def bind_target(a, cwd):
     """What an argv element names, as the kernel resolves it (links first, then ..): ("file", path),
     ("dir", path), ("none", path) when nothing is there yet (path is where it would land, so a
     link moved above it or a dangling link retargeted changes it), or None for an element that
-    is no path (empty, NUL, over 4096 characters, /dev/null). A pseudo-file (under /proc, /sys,
-    /dev; only /dev/null is let through), a FIFO or other non-regular file, and an entry that
-    cannot be examined raise BadFile: a run that is not bound by hash must not go ahead."""
+    is no path (empty, NUL, over 4096 characters, /dev/null). A word with a component over
+    NAME_MAX is ("none", path) too: no such name exists, a `python -c` program is one. A pseudo-file
+    (under /proc, /sys, /dev; only /dev/null is let through), a FIFO or other non-regular file, an
+    entry that cannot be examined, and a resolved path that passes PATH_MAX (realpath leaves a
+    link it cannot lstat as a plain name, so that path is not where the kernel lands) raise
+    BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
         return None
     joined = a if a.startswith("/") else os.path.join(cwd, a)
@@ -197,6 +200,10 @@ def bind_target(a, cwd):
     if real == "/dev/null":
         return None
     if lex.startswith(PSEUDO) or real.startswith(PSEUDO):
+        raise BadFile(a)
+    if nr.long_name(a):
+        return "none", real
+    if len(real) >= nr.PATH_MAX:
         raise BadFile(a)
     try:
         mode = os.stat(real).st_mode

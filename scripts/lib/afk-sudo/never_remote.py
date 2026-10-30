@@ -7,7 +7,8 @@ may only ADD patterns (`never_remote_extra`).
 One word set per request: every argv element and its whitespace-split words, the words
 of each file argument and stdin, each also in its trimmed, `key=value`, path-normalised,
 realpath'd and basename forms (links resolve before `..`, as the kernel opens a path).
-A word that derives more than MAX_FORMS forms is refused as `oversize`. Every rule is a membership test on that set, so
+A word that derives more than MAX_FORMS forms, or whose realpath passes PATH_MAX (realpath cannot follow a link past it),
+is refused as `oversize`. Every rule is a membership test on that set, so
 there is no shell syntax or word order to model and no shape list to keep closing.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
@@ -23,6 +24,14 @@ import re
 TRIM = "\"'`;&|(){}<>,"
 HOME_FORMS = ("~", "$HOME", "${HOME}")
 MAX_FORMS = 64
+NAME_MAX = 255
+PATH_MAX = os.pathconf("/", "PC_PATH_MAX")
+
+
+def long_name(w):
+    """True when a `/`-separated component is longer than NAME_MAX: the kernel answers ENAMETOOLONG for it,
+    so no such name exists and the word is text, not a path (a `python -c` program is one)."""
+    return any(len(os.fsencode(c)) > NAME_MAX for c in w.split("/"))
 
 DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdisk", "parted", "luksFormat", "luksErase")
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",
@@ -37,7 +46,8 @@ GUARD_FLAGS = ("--dangerously-skip-permissions", "bypassPermissions")
 
 
 def _path_forms(w, cwd, home):
-    """The absolute forms of a path-like word: ~ and $HOME expanded, joined to cwd, normalised, realpath'd if it exists."""
+    """The absolute forms of a path-like word: ~ and $HOME expanded, joined to cwd, normalised, realpath'd if it exists.
+    None when the realpath passes PATH_MAX: it is not where the kernel lands, so the caller fails closed."""
     p = w
     for pre in HOME_FORMS:
         if p == pre or p.startswith(pre + "/"):
@@ -49,10 +59,14 @@ def _path_forms(w, cwd, home):
     # A bare word (`rm`) only names a path under cwd if that path exists; else cwd `/` makes `/rm`.
     if "/" not in w and not w.startswith(HOME_FORMS) and not os.path.lexists(n):
         return set()
+    if long_name(p):
+        return {n}
     try:
-        return {n, os.path.realpath(p)}  # realpath of the joined path: `link/..` is the link target's parent
+        r = os.path.realpath(p)  # realpath of the joined path: `link/..` is the link target's parent
     except ValueError:  # a NUL in the word (a binary file's text): it names no path, the lexical form is all there is
         return {n}
+    # realpath leaves a link it cannot lstat (its path passed PATH_MAX) as a plain name, so r may not be where the kernel lands
+    return None if len(r) >= PATH_MAX else {n, r}
 
 
 def _forms(w, pathy, cwd, home):
@@ -72,7 +86,10 @@ def _forms(w, pathy, cwd, home):
             if v[0] in "+:" and len(v) > 1:  # a refspec: +main forces main, :main deletes it
                 todo.append((v[1:], False))
             if len(v) <= 4096 and (pathy or "/" in v or v.startswith(HOME_FORMS)):
-                for f in _path_forms(v, cwd, home):
+                forms = _path_forms(v, cwd, home)
+                if forms is None:
+                    return None
+                for f in forms:
                     out.add(f)
                     if os.path.basename(f):
                         out.add(os.path.basename(f))

@@ -48,7 +48,8 @@ created lazily): argv, `run_as` and its uid/gid, the absolute path of argv[0] an
 sha256 of its realpath, every argv element that resolves to a regular file (the resolved
 path, sha256, size, whether its body was kept), what every argv element resolved to (`targets`:
 one `file:<path>`, `dir:<path>` or `none:<path>` entry per element, `none:` holding the path a
-name that does not exist yet would land on; an empty entry is an element that is no path: empty,
+name that does not exist yet would land on, or the text of a word with a component over 255
+characters, which can name nothing (a `python -c` program is one); an empty entry is an element that is no path: empty,
 over 4096 characters, holding a NUL, or `/dev/null`), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
@@ -60,14 +61,20 @@ broker's pending payload, not next to the record.
 - An argv element is read as the kernel opens it: joined to the cwd, links resolved before
   `..` (`realpath`). One that resolves to a regular file is hashed. A directory, or a name
   that is no file, is not hashed. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
-  passes), a FIFO, socket or device, and an existing file that cannot be opened and hashed
-  are refused at request (`result=bad-file`, exit 5, no ledger row), never skipped. At exec
+  passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
+  an element whose resolved path passes PATH_MAX (`realpath` cannot follow a link past it, so
+  the string it returns is not where the kernel lands) are refused at request
+  (`result=bad-file`, exit 5, no ledger row), never skipped; the floor reads such an
+  element as `oversize`. At exec
   every element, argv[0] included, must resolve to the same target as at request, so a
   link relinked to another file, a directory or nothing, two links swapped between their
   files, a directory link retargeted, and a name that now names a file all report `changed`.
   A name that did not exist is held by the path it would land on, so a link above it that is
   retargeted, and an absent name that becomes a dangling link or a dangling link that is
   retargeted, report `changed` too: the command would write somewhere the operator never saw.
+  A glued element such as `dd of=/path` is not read as a path: it is keyed by its lexical
+  string, so a link above `/path` moved after the request is not seen. The slice 1b notice
+  must show such an element as written, never as bound.
 - A directory element is bound by the path it resolves to, not by its contents: a directory
   changed in place compares equal. The slice 1b notice must not present a directory argument
   as bound.
@@ -110,7 +117,8 @@ The code is spent whatever happens next: a refusal after the code still consumed
 it. Five rules, each a membership test on one word set built from every argv element,
 the whitespace-split words of each element, the file copies and the stdin (each word also
 in its trimmed, `key=value`, normalised, realpath and basename forms; links resolve before
-`..`). A word that derives more than 64 forms is refused as `rule=oversize`:
+`..`). A word that derives more than 64 forms, or whose realpath passes PATH_MAX, is
+refused as `rule=oversize`:
 
 | rule | refuses |
 |---|---|
