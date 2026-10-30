@@ -53,10 +53,12 @@ conf="$confdir/himmel.conf"
 
 # link_vault — keep the tracked file in <vault>/.himmel/himmel.conf and link
 # ~/.himmel/himmel.conf to it. Safe to repeat on a correct link.
+die_create() { echo "migrate-env-config: could not create $1; nothing more was written." >&2; exit 1; }
+
 link_vault() {
     tracked="$vault/.himmel/himmel.conf"
-    mkdir -p "$vault/.himmel" "$confdir"
-    [ -e "$tracked" ] || : > "$tracked"
+    mkdir -p "$vault/.himmel" "$confdir" 2>/dev/null || die_create "$vault/.himmel"
+    [ -e "$tracked" ] || { : > "$tracked"; } 2>/dev/null || die_create "$tracked"
     if [ -L "$conf" ]; then
         if [ "$(readlink "$conf")" != "$tracked" ]; then
             echo "migrate-env-config: $conf links somewhere other than $tracked; not changing it." >&2
@@ -66,7 +68,7 @@ link_vault() {
         echo "migrate-env-config: $conf already exists as a plain file; not replacing it with a link to $tracked." >&2
         exit 1
     else
-        ln -s "$tracked" "$conf"
+        ln -s "$tracked" "$conf" 2>/dev/null || die_create "$conf"
         echo "linked $conf -> $tracked"
     fi
 }
@@ -90,9 +92,9 @@ if [ -n "$profile" ]; then
         echo "would create $vault/.himmel/profiles/$profile.conf"
     else
         link_vault
-        mkdir -p "$vault/.himmel/profiles"
+        mkdir -p "$vault/.himmel/profiles" 2>/dev/null || die_create "$vault/.himmel/profiles"
         if [ ! -e "$vault/.himmel/profiles/$profile.conf" ]; then
-            : > "$vault/.himmel/profiles/$profile.conf"
+            { : > "$vault/.himmel/profiles/$profile.conf"; } 2>/dev/null || die_create "$vault/.himmel/profiles/$profile.conf"
             echo "created $vault/.himmel/profiles/$profile.conf"
         fi
     fi

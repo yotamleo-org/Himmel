@@ -266,6 +266,10 @@ assert_eq_fp "(p) the profile step with no vault and no link exits 2" "2" "$rc"
 bash "$MIGRATE" --vault "$TMP/v2" --profile ../x >/dev/null 2>&1; rc=$?
 assert_eq_fp "(p) the profile step refuses a path-shaped name" "2" "$rc"
 assert_eq_fp "(p) a refused name creates no vault dir" "" "$([ -e "$TMP/v2" ] && echo exists)"
+: > "$TMP/blocker"
+out=$(bash "$MIGRATE" --vault "$TMP/blocker/v" --profile lab 2>&1); rc=$?
+assert_eq_fp "(p) a vault dir that cannot be created exits 1" "1" "$rc"
+assert_eq_fp "(p) a failed profile step does not report created" "" "$(printf '%s' "$out" | grep '^created ')"
 
 # A policy key requested through load_dotenv (advisory readers) comes from
 # config.json, and the process env still wins there (only load_policy ignores it).
