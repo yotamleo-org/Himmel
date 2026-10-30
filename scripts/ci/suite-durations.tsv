@@ -1099,6 +1099,7 @@ scripts/upstreams/test-update-marketplaces.sh	1
 scripts/upstreams/test-upstream-watch-cadence.sh	2
 scripts/upstreams/test-upstream-watch.sh	15
 scripts/usage/test-usage.sh	13
+scripts/vm/test-adopted-features-stage.sh	8
 scripts/vm/test-after-report.sh	28
 scripts/vm/test-assert-provenance.sh	23
 scripts/vm/test-ci-runner.sh	11

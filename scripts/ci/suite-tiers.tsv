@@ -1125,6 +1125,7 @@ scripts/upstreams/test-update-marketplaces.sh	local	behaviour suite, 0 catches i
 scripts/upstreams/test-upstream-watch-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-upstream-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/usage/test-usage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new (HIMMEL-6866)
 scripts/vm/test-after-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
