@@ -5,7 +5,7 @@ on:
   # non-conventional commit, a secret, a shellcheck warning, or a failing shell
   # suite blocks merge. Every job here is ubuntu only: Windows support is
   # dropped (HIMMEL-5729) and there is no dispatch input that widens a matrix
-  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a paid runner. macOS is not in
+  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
   # this file at all (HIMMEL-3902): it runs on its own twice-weekly workflow,
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
   # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
@@ -1669,7 +1669,7 @@ jobs:
       - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
-      # POSIX-shaped and a red non-gating Windows matrix entry would file a spurious issue.
+      # POSIX-shaped, so a Windows run would be red and file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
@@ -2227,16 +2227,16 @@ jobs:
   #    `bash scripts/ci/shell-extended-nightly-issue.sh` died with rc=127 on
   #    the 2026-09-18 nightly, so the alert never fired. A plain checkout
   #    rather than a sparse `scripts/ci` one: the script sources nothing today,
-  #    but this job only runs unwatched, so a future `source` of a sibling lib
+  #    but the report steps only run unwatched, on the nightly, so a future `source` of a sibling lib
   #    would re-break it silently.
   #
   # 5. issues:write (beyond the workflow-level contents:read) is needed only
   #    by the shell-extended-nightly-issue.sh steps below — scoped to this
   #    job alone.
   #    HIMMEL-3132: SUITE_TIER_DEFAULT `extended` suites only run under
-  #    SUITE_TIER_MODE=all (the schedule run, set above at
+  #    SUITE_TIER_MODE=all (every non-PR run, set above at
   #    shell-unit-shard), so a red extended suite only ever reddens THIS
-  #    job on that run — a run nobody watches interactively. Without these
+  #    job on a non-PR run — a run nobody watches interactively. Without these
   #    steps that failure is silent even though the job itself goes red.
   shell-unit:
     needs: [shell-unit-shard, plan]
@@ -2365,7 +2365,7 @@ jobs:
             shard-red-suites.txt
           if-no-files-found: ignore
           retention-days: 90
-      # Scoped to the schedule run: that is the only run where
+      # Scoped to non-PR runs: those are the only runs where
       # SUITE_TIER_MODE=all actually exercises the extended tier (see
       # shell-unit-shard above), so only there does a red here plausibly mean
       # an extended suite broke rather than double-reporting a per-PR fast-
