@@ -68,7 +68,8 @@
 # Deliberately over-denied (the safe direction): when the model hands the call
 # to the word walker, a verb word anywhere after a bus-able word in one segment
 # (`bus send ... --summary "rebind done" $x`), a glob or expansion under `himmel/`
-# (`himmel/*`), and any word that can expand to `bus` (`*`, `b?s`, `$x`) once
+# (`himmel/*`; the luna vault's `handovers/<owner>/himmel/` bucket is not the state
+# dir, so a glob there passes), and any word that can expand to `bus` (`*`, `b?s`, `$x`) once
 # the cwd or the command names the himmel state dir. The bypass flag covers all.
 # The verb side uses the same normaliser as the `bus` side: a word is verbish
 # when, with ANSI-C escapes and expansions turned into `*`, it glob-matches
@@ -127,6 +128,10 @@ ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
 # A component right under himmel/ that carries a glob or expansion character
 # (`himmel/b?s`, `himmel/b[u]s`, `himmel/$x`) may spell the bus root.
 GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
+# The luna vault keeps its handover notes in a bucket dir named himmel
+# (handovers/<owner>/himmel/): not the state dir, so a glob there is a read of
+# notes. The glob rule sees that dir under another name; ROOT_RE still sees it.
+LUNABUCKET_RE='handovers/[^/[:space:]]+/himmel/'
 
 # state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
 # so they must not count as a word that could expand to `bus`.
@@ -463,7 +468,9 @@ case "$tool" in
         cmd_qn=$(norm "$cmd_q")
         [[ "$cmd_qn" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
         # A glob or expansion in the component right under himmel/ can spell bus.
-        [[ "$cmd_qn" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
+        cmd_gl=$cmd_qn
+        while [[ "$cmd_gl" =~ $LUNABUCKET_RE ]]; do cmd_gl=${cmd_gl/"${BASH_REMATCH[0]}"/handovers/bucket/}; done
+        [[ "$cmd_gl" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
         # In-command cd: the command names the state dir and a word that can be bus.
         state_named=0
         [[ "$cmd_n" =~ $STATECMD_RE ]] && state_named=1
