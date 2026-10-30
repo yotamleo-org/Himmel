@@ -10,6 +10,8 @@ usage() {
     exit 2
 }
 error() { printf 'model-check-report: %s\n' "$*" >&2; exit 2; }
+# Bind both gh lookups and the git source read to this checkout, not caller scratch.
+cd "$REPO" || error 'cannot enter repository'
 # prim-ok: canon_path handles directories, not existing file leaves or Java symlinks.
 existing_file() { realpath -e "$1"; }
 # shellcheck source=../../lib/prim.sh

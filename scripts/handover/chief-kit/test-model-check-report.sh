@@ -72,5 +72,59 @@ raise SystemExit(bool(fails))
 PY
 rc=$?
 [ "$rc" -eq 0 ] || fails=$((fails + 1))
+# Without repository binding, an absolute invocation from scratch cannot read the intended PR.
+# Only the external boundaries are doubled; the real wrapper, git source read and formatter run.
+python3 -I - "$SUT" "$WORK" <<'PY'
+import json, os, pathlib, subprocess, sys
+sut, work = map(pathlib.Path, sys.argv[1:])
+repo = sut.parents[3]
+head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+bin_dir = work / 'bin'
+bin_dir.mkdir()
+def executable(name, text):
+    p = bin_dir / name
+    p.write_text('#!/bin/bash\n' + text)
+    p.chmod(0o700)
+# No external jar/compiler executes: these doubles isolate orchestration from optional runtimes.
+executable('sha256sum', 'printf "%s  fixture\\n" 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88\n')
+executable('gh', '''[ "$PWD" = "$EXPECTED_REPO" ] || exit 77
+printf '%s\\n' "$PWD" >> "$GH_CALLS"
+case " $* " in
+  *' --jq '*) printf '%s\\n' "$EXPECTED_HEAD" ;;
+  *) printf '%s\\n' "$PR_METADATA" ;;
+esac
+''')
+executable('statechart', '''while [ "$#" -gt 0 ]; do
+  if [ "$1" = --out ]; then out="$2"; break; fi
+  shift
+done
+mkdir -p "$out" || exit 2
+printf '# Model\\n\\n## Rules that hold\\nSafe\\n' > "$out/report.md"
+printf 'stateDiagram-v2\\n' > "$out/chart.mmd"
+''')
+(work / 'Model.tla').write_text('---- MODULE Model ----\n====\n')
+(work / 'Model.cfg').write_text('SPECIFICATION Spec\n')
+(work / 'view.mjs').write_text('export const title = "fixture";\n')
+(work / 'bucket').mkdir()
+env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
+           JAVA='/usr/bin/true', TLA2TOOLS=str(work / 'tla2tools.jar'),
+           STATECHART=str(bin_dir / 'statechart'), HANDOVER_DIR=str(work / 'bucket'), USER_SLUG='fixture',
+           EXPECTED_REPO=str(repo), EXPECTED_HEAD=head, GH_CALLS=str(work / 'gh-calls'),
+           PR_METADATA=json.dumps({'headRefOid': head, 'files': [{'path': 'scripts/handover/queue-lock.sh'}]}))
+r = subprocess.run(['bash', str(sut), '4313', 'queue-lock', str(work / 'Model.tla'), str(work / 'view.mjs')],
+                   cwd=work, env=env, capture_output=True, text=True)
+if r.returncode != 0:
+    print(f'FAIL: absolute invocation from scratch binds PR and source to its own repo (exit {r.returncode}: {r.stderr.strip()})')
+    raise SystemExit(1)
+calls = (work / 'gh-calls').read_text().splitlines()
+reports = list((work / 'bucket').rglob('report.md'))
+assert calls == [str(repo), str(repo)], calls
+report = next(p for p in reports if p.parent.name.startswith('pr-4313-'))
+assert f'Head: {head}' in report.read_text()
+assert (report.parent / 'inputs/source.sh').read_bytes() == subprocess.check_output(['git', '-C', str(repo), 'show', f'{head}:scripts/handover/queue-lock.sh'])
+print('PASS: absolute invocation from scratch binds both PR reads and source to its own repo')
+PY
+rc=$?
+[ "$rc" -eq 0 ] || fails=$((fails + 1))
 printf '%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
