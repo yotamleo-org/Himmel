@@ -13,6 +13,10 @@ emit() { printf '%s' "$1" | bash "$SCRIPT"; }
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"superpowers:brainstorming"}}')
 case "$out" in *spec-critic*|*minerva*) ;; *) echo "FAIL: brainstorming not injected (got '$out')"; fail=1;; esac
 
+# brainstorming → a small change finishes on its own; only a project runs the critic
+out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"lean-skills:brainstorming"}}')
+case "$out" in *"a small change"*"finishes without minerva"*) ;; *) echo "FAIL: brainstorming injection does not let a small change finish without minerva (got '$out')"; fail=1;; esac
+
 # grilling (mattpocock) → routed into minerva Stage 1a
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"mattpocock-skills:grilling"}}')
 case "$out" in *minerva*) ;; *) echo "FAIL: grilling not routed to minerva (got '$out')"; fail=1;; esac

@@ -73,7 +73,7 @@ under their upstream **Apache-2.0** license:
 verbatim from two MIT-licensed upstreams, each under its own carried-forward
 license file:
 
-- 11 of 14 `skills/` directories from [`obra/superpowers`](https://github.com/obra/superpowers)
+- 12 of 15 `skills/` directories from [`obra/superpowers`](https://github.com/obra/superpowers)
   @ 6.3.0 — `LICENSE.superpowers` (MIT, © 2025 Jesse Vincent).
 - `skills/grilling` from [`mattpocock/skills`](https://github.com/mattpocock/skills)
   @ 1.3.1 — `LICENSE.mattpocock-skills` (MIT, © 2026 Matt Pocock).

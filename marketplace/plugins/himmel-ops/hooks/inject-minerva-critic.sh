@@ -68,7 +68,7 @@ case "$skill" in
     inject "minerva (HIMMEL-2039): grilling is minerva Stage 1a, not a separate skill: run the design-tree frontier rounds from himmel-ops:minerva, then CONTINUE that pipeline (brainstorm, spec-critic, plan, plan-critic) instead of stopping at a shared understanding."
     ;;
   *brainstorming*)
-    inject "minerva (HIMMEL-428): after this brainstorming writes the spec, do NOT auto-handoff to writing-plans — run the minerva SPEC-CRITIC loop first (himmel-ops:minerva, Stage 2 charter), then proceed."
+    inject "minerva (HIMMEL-428): a brainstorm sized a small change, or outside a himmel-managed repo, finishes without minerva. For a project, or when minerva is already running: after this brainstorming writes the spec, do NOT auto-handoff to writing-plans — run the minerva SPEC-CRITIC loop first (himmel-ops:minerva, Stage 2 charter), then proceed."
     ;;
   *writing-plans*)
     inject "minerva (HIMMEL-428): after this plan is written, run the minerva PLAN-CRITIC loop (himmel-ops:minerva, Stage 4 charter) before implementation."

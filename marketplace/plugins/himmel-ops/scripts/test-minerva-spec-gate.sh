@@ -67,4 +67,12 @@ expect_refuse "H1 ends the alternatives section" "alternatives" "$td/h1-end.md"
 mkspec_raw "$td/mixed-case.md" "## alternatives CONSIDERED" "## Definition Of Done  "
 bash "$gate" "$td/mixed-case.md" >/dev/null 2>&1 && ok "case and trailing space tolerated" || bad "case/trailing-space heading should pass"
 
+# brainstorming (superpowers 7.x) names the same section "Approaches"
+mkspec_raw "$td/approaches.md" "## Approaches" "## Definition of done"
+bash "$gate" "$td/approaches.md" >/dev/null 2>&1 && ok "## Approaches counts as the alternatives section" || bad "## Approaches should pass as the alternatives section"
+{ echo "# Spec"; echo; echo "Estimate record: $td/est.json"; echo
+  echo "## Approaches"; echo
+  echo "## Definition of done"; echo "- ok"; } >"$td/empty-approaches.md"
+expect_refuse "empty ## Approaches" "alternatives" "$td/empty-approaches.md"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

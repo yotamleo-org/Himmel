@@ -22,7 +22,7 @@ below.
 
 | Source | Skills vendored | Count |
 |--------|-----------------|-------|
-| [`obra/superpowers`](https://github.com/obra/superpowers) @ 7.0.1 | `brainstorming`, `writing-plans`, `systematic-debugging`, `verification-before-completion` (the 4 himmel invokes) plus `executing-plans`, `finishing-a-development-branch`, `requesting-code-review`, `subagent-driven-development`, `test-driven-development`, `using-git-worktrees`, `writing-skills` (the 7 they hand off to), plus `receiving-code-review` (cited by the worker preface's review-finding step, HIMMEL-7756) | 12 of 14 |
+| [`obra/superpowers`](https://github.com/obra/superpowers) @ 7.0.1 | `brainstorming`, `writing-plans`, `systematic-debugging`, `verification-before-completion` (the 4 himmel invokes) plus `executing-plans`, `finishing-a-development-branch`, `requesting-code-review`, `subagent-driven-development`, `test-driven-development`, `using-git-worktrees`, `writing-skills` (the 7 they hand off to), plus `receiving-code-review` (cited by the worker preface's review-finding step, HIMMEL-7756) | 12 of 15 |
 | [`mattpocock/skills`](https://github.com/mattpocock/skills) @ 1.3.1 | `grilling` | 1 of 11 |
 | himmel-authored, no upstream | `context7-mcp` (moved here from `~/.claude/skills` — always-on before per-skill toggling existed, so a plugin profile can scope it) | — |
 
@@ -31,7 +31,7 @@ plugins. Full per-source detail (including the upstream license each skill
 inherits) lives in [`VENDORED.md`](VENDORED.md) — read that file before
 touching anything under `skills/`.
 
-## Why 12 of superpowers' 14, not the 4 himmel actually invokes
+## Why 12 of superpowers' 15, not the 4 himmel actually invokes
 
 Vendoring only the 4 invoked skills would leave dangling
 `superpowers:<name>` cross-references: `brainstorming` hands off to
@@ -42,18 +42,20 @@ the **reference closure** of the 4 himmel invokes — every skill one of those 4
 can hand off to, transitively. The twelfth, `receiving-code-review`, is not
 reached through that chain; the worker preface cites it for review findings.
 Vendoring fewer breaks the handoff chain
-mid-flow; vendoring more (all 14) would re-import the cost this ticket exists
+mid-flow; vendoring more (all 15) would re-import the cost this ticket exists
 to cut.
 
-**Deliberately NOT vendored (2 of 14):**
+**Deliberately NOT vendored (3 of 15):**
 
 - `using-superpowers` — its SessionStart injection is the majority of the
   ~700 tok/session this change reclaims. It exists to bootstrap discovery of
-  the other 13 skills at the start of every conversation; lean-skills doesn't
+  the other 14 skills at the start of every conversation; lean-skills doesn't
   need a bootstrap injection because its skills are discovered the normal
   Claude Code way (skill-name matching against the request).
 - `dispatching-parallel-agents` — nothing vendored here references it; it
   is not in the reference closure of the 4 invoked skills.
+- `diagnosing-superpowers` (new in v7) — transcript analysis for filing
+  issues on superpowers itself; nothing vendored references it.
 
 ### Not vendored: plannotator-effective-html
 
