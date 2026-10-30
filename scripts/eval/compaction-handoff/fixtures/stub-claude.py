@@ -5,6 +5,7 @@
 #   AB_STUB_MSGS, AB_STUB_STEP  assistant messages per run, context growth per message
 #   AB_STUB_HANG=1  sleep once the context passes 337500, so the driver must stop it
 #   AB_STUB_SKIP_SOLVE=1  leave the workspace unsolved
+#   AB_STUB_PRE  pre_tokens to report on a compaction (default: the context that crossed the line)
 # A compaction fires when the next context would pass 85 % of --autocompact; the
 # context then restarts at 20000. --resume writes HANDOFF.md; a prompt starting
 # "Load HANDOFF.md" is the successor; "Rate the work" is the judge.
@@ -67,7 +68,7 @@ else:
     for i in range(1, n + 1):
         if ctx + step > ceil * 0.85:
             emit({"type": "system", "subtype": "compact_boundary",
-                  "compact_metadata": {"trigger": "auto", "pre_tokens": ctx}})
+                  "compact_metadata": {"trigger": "auto", "pre_tokens": int(os.environ.get("AB_STUB_PRE", ctx + step))}})
             ctx = 20000
         else:
             ctx += step

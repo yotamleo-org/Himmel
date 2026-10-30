@@ -50,6 +50,9 @@ REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 W_IN, W_CC, W_CR, W_OUT = 1.0, 1.25, 0.1, 5.0
 CEIL = {"a": 200000, "b": 450000, "c": 450000}
 HANDOFF_SHARE = 0.75
+# --autocompact N fires below N: measured on a real arm a run, three autocompacts at 170369, 167937 and 164367
+# tokens for N=200000 (0.82-0.85 of N). A compaction counts as the real trigger from 0.75 of N upward.
+FIRE_MIN = 0.75
 MAX_HANDOFFS = 3
 SUMMARY_TOKENS = 5000
 HANDOFF_PROMPT = ("Your context is nearly full and this session ends here. Write HANDOFF.md in the current directory so a fresh "
@@ -282,6 +285,8 @@ def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, tim
         reason = reason or ("no-handoff" if handoffs < 1 else "handoff-loop")
     elif arm != "b" and s["compactions"] < 1 and s["context_drops"] < 1:
         reason = reason or "no-compaction"
+    elif arm != "b" and s["compaction_pre"] and max(s["compaction_pre"]) < FIRE_MIN * ceiling:
+        reason = reason or "off-trigger"
     s["valid"] = reason is None
     s["invalid_reason"] = reason
     shutil.rmtree(ws, ignore_errors=True)

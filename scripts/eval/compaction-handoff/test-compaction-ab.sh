@@ -101,6 +101,10 @@ S="$O/docs/a/1/summary.json"
 eq "run: an unsolved task scores below full" "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["check"]; print(d["passed"] < d["total"])' "$S")" "True"
 eq "run: and is not an error" "$(jget "$S" error)" "false"
 
+# a compaction that starts well below the setting is not the real trigger
+O="$TMP/ot"; AB_STUB_PRE=100000 AB_STUB_MSGS=8 AB_STUB_STEP=60000 run docs a "$O" >/dev/null
+eq "run a: a compaction at 100k of 200k is off-trigger" "$(jget "$O/docs/a/1/summary.json" valid)/$(jget "$O/docs/a/1/summary.json" invalid_reason)" "false/off-trigger"
+
 # --- the billed opt-in ---
 eq "run: refuses without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK python3 "$AB" run --task docs --arm a --rep 1 --out "$TMP/ox" --scale 0.05 >/dev/null 2>&1; echo $?)" "2"
 
