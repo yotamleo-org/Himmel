@@ -36,10 +36,6 @@
 #      into loadRegistry()): base lanes.json + a local override -> the
 #      overridden lane is force-on/off in the RESOLVED set, every other lane
 #      unaffected, and the base lanes.json fixture file is byte-unchanged.
-#   K. Windows robustness: a native BACKSLASH HIMMELCTL_REPO_ROOT
-#      (cygpath -w) still resolves the initiative set write to the INTENDED
-#      fixture .env, not a misresolved sibling. Git-Bash/MSYS/Cygwin only —
-#      self-skips on posix (no backslash separator).
 #   Q. commit.tracker / commit.ticketIdRequired — the Setup page's commit-rules
 #      path: jira|local|none and on|off, written to ~/.himmel/himmel.conf by the
 #      wizard's own writer; none drops the ticket-id keys; the pattern is never
