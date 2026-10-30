@@ -96,6 +96,6 @@ test("the Health row status pills have one width and centred text", async () => 
   const rule = /(?:^|\n)\.hrow \.st,\.alert \.st\{([^}]*)\}/.exec(css);
   expect(rule).not.toBeNull();
   expect(rule![1]).toContain("flex:none");
-  expect(rule![1]).toContain("min-width:");
+  expect(rule![1]).toContain("min-width:4.6em");
   expect(rule![1]).toContain("text-align:center");
 });

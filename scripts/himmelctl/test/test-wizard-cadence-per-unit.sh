@@ -400,10 +400,10 @@ cmp -s "$profileH" "$realH" \
   || fail "case h: a symlinked saved profile must not be rewritten (got: $(cat "$realH"))"
 grepq "$outHl" -F -- 'is a symlink' \
   || fail "case h: the symlink refusal should be said (got: $outHl)"
-rm "$saved"; cp "$profileH" "$saved"
+rm "$saved"; cp "$profileH" "$saved"; chmod 644 "$saved"
 # a real ensure drops the retired cadence from the saved profile: the first run announces, the second is quiet
 set +e
-outH1=$(run_h ensure --no-network --items wiring-pretooluse); rcH1=$?
+outH1=$(umask 077; run_h ensure --no-network --items wiring-pretooluse); rcH1=$?
 outH2=$(run_h ensure --no-network --items wiring-pretooluse); rcH2=$?
 set -e
 [ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both ensure runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
@@ -413,8 +413,10 @@ grepq "$outH2" -F -- "dropping retired cadence" \
   && fail "case h: the second run must be silent about the retired cadence (got: $outH2)"
 grepq "$(cat "$saved")" -F -- 'codex-sweep' \
   && fail "case h: the saved profile must no longer name codex-sweep (got: $(cat "$saved"))"
-grepq "$(cat "$saved")" -F -- '"doctor": "off"' \
-  || fail "case h: the kept cadence rows must survive the rewrite (got: $(cat "$saved"))"
+jq -e '.cadences.doctor == "off"' "$saved" >/dev/null \
+  || fail "case h: the kept cadence rows must survive the rewrite under .cadences (got: $(cat "$saved"))"
+[ -n "$(find "$saved" -perm 644)" ] \
+  || fail "case h: the rewrite must keep the profile's 0644 mode under umask 077 (got: $(ls -l "$saved"))"
 echo "ok: case h — a retired cadence is announced once and leaves the saved profile on a real ensure; status, a dry run and a symlinked profile are left alone"
 
 echo "PASS"
