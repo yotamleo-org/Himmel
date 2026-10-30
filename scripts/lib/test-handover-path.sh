@@ -276,7 +276,7 @@ fi
 # mechanism is live, not just that recomputation happens to agree with
 # itself), that a repeated call with the SAME path but a DIFFERENT $PLATFORM
 # does not trip the cache (T9c; the proof that the platform differs in the
-# answer needs a case twin on disk, which T11a/T11b build: a naive path-only
+# answer needs a case twin on disk, which T11a/T11b/T11e build: a naive path-only
 # cache key served a stale cross-platform value), and — T9e — that a second call
 # with the identical (path, PLATFORM) genuinely SKIPS recomputation rather
 # than merely landing on the same answer by coincidence: a counting `realpath`
@@ -465,6 +465,12 @@ if [ "$T11_DIR/Foo11.md" -ef "$T11_DIR/foo11.md" ]; then
         "$(PLATFORM=macos _arm_identity_path "$T11_DIR/foo11.md")" "$(PLATFORM=macos _arm_identity_path "$T11_DIR/Foo11.md")"
     assert_eq "T11b linux keeps the case (byte-identical to realpath)" \
         "$(_arm_realpath "$T11_DIR/Foo11.md")" "$(PLATFORM=linux _arm_identity_path "$T11_DIR/Foo11.md")"
+    # Linux first, then macos on the same path: a path-only cache key would
+    # serve macos the cached linux value (T11a/T11b above run the other way).
+    rm -f "${_ARM_CACHE_DIR:?}/identity" 2>/dev/null || true
+    PLATFORM=linux _arm_identity_path "$T11_DIR/Foo11.md" >/dev/null
+    assert_eq "T11e macos is not served the cached linux value for the same path" \
+        "$(PLATFORM=macos _arm_identity_path "$T11_DIR/foo11.md")" "$(PLATFORM=macos _arm_identity_path "$T11_DIR/Foo11.md")"
 else
     echo "SKIP T11a/b: this host cannot hard-link"
 fi

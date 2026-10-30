@@ -50,7 +50,7 @@ fi
 # 1. The audit grep: nothing but arm-resume.sh's true comment.
 # shellcheck disable=SC2086
 scan "$AUDIT_RE" $FILES_ARGS
-hits=$(printf '%s\n' "$SCAN_OUT" | grep -v -F 'claude.exe ... OVERNITE MODE' | grep . || true)
+hits=$(printf '%s\n' "$SCAN_OUT" | grep -v -E '^scripts/handover/arm-resume\.sh:[0-9]+:# .claude\.exe \.\.\. OVERNITE MODE. session mid-chain\. It was found still armed$' | grep . || true)
 if [ -z "$hits" ]; then
     pass "W1 the audit grep returns no Windows line (arm-resume.sh's claude.exe comment aside)"
 else
@@ -63,7 +63,7 @@ fi
 # line that still reaps the legacy `cygpath-avail` cache file name).
 # shellcheck disable=SC2086
 scan "$TOOLS_RE" $FILES_ARGS
-more=$(printf '%s\n' "$SCAN_OUT" | grep -v -F -e 'A hand-run repro created a real schtasks entry' -e 'legacy cache file, still reaped' | grep . || true)
+more=$(printf '%s\n' "$SCAN_OUT" | grep -v -E -e '^scripts/handover/arm-resume\.sh:[0-9]+:# A hand-run repro created a real schtasks entry pointing at a$' -e '^scripts/lib/handover-path\.sh:[0-9]+:[[:space:]]+identity\|cygpath-avail\) ;;[[:space:]]+# cygpath-avail: legacy cache file, still reaped$' | grep . || true)
 if [ -z "$more" ]; then
     pass "W2 no schtasks, tasklist, USERPROFILE or cygpath remains"
 else
