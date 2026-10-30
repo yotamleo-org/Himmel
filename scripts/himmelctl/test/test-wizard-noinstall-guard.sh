@@ -12,11 +12,12 @@
 #      from the allow-set makes case A's checker fail.
 #   C. bin.js calls fs.writeFileSync exactly six times: the profile-cache
 #      write (writeCache()), the named install-profile save
-#      (offerSaveProfile()), the PATH-launcher shim tmp write
-#      (writeMarkedLauncher()), and the two PHI guard-input writes
-#      (mergePhiRoot(), the .salus marker), and the retired-cadence profile
-#      rewrite (dropRetiredFromProfileFile()) — no other file the wizard
-#      itself writes.
+#      (offerSaveProfile()), the vm.mode resolver probe (vmProofRoute()),
+#      the two PHI guard-input writes (mergePhiRoot(), the .salus marker),
+#      and the retired-cadence profile rewrite
+#      (dropRetiredFromProfileFile()) — no other file the wizard itself
+#      writes. The PATH-launcher shim write lives in lib/launcher.js and is
+#      pinned there.
 #   D. bin.js requires ONLY node builtins (fs/os/path/readline/child_process)
 #      — zero npm deps, and no new lib smuggled in to reimplement
 #      plugin-install/hook-wire/settings-merge logic.
@@ -180,12 +181,14 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 
 # ── Case C: the only DIRECT file writes are the documented ones ────────────
 # The profile cache (writeCache -> cachePath()); the named install-profile
-# save (offerSaveProfile -> tmpDest);, the PATH-launcher
-# shim's atomic tmp write (writeMarkedLauncher); and, the
-# two PHI guard-INPUT writes. No other file write — keeps the wizard from
-# reimplementing plugin-install/hook-wire/settings-merge logic inline. Every
-# site is pinned below so a SIXTH, undocumented write still trips the guard
-# (count + site match).
+# save (offerSaveProfile -> tmpDest); the vm.mode resolver probe
+# (vmProofRoute); the two PHI guard-INPUT writes; and the retired-cadence
+# profile rewrite (dropRetiredFromProfileFile). The PATH-launcher shim's
+# atomic tmp write (writeMarkedLauncher) lives in lib/launcher.js. No other
+# file write — keeps the wizard from reimplementing
+# plugin-install/hook-wire/settings-merge logic inline. Every site is pinned
+# below so a SEVENTH, undocumented write still trips the guard (count + site
+# match).
 #
 # Why the two writes belong in this allow-set rather than being a
 # reason to fail: they are not install/wiring logic reimplemented inline, they
