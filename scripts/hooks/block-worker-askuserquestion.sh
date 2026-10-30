@@ -23,8 +23,7 @@
 # Bypass: unset HIMMEL_CONSOLE_LEG in the launching shell (session-sticky; a
 # per-call prefix does not reach this hook process).
 #
-# Platform guard (gitbash-only): plain env var + jq, no git/path work; runs
-# unchanged under Git Bash on Windows or POSIX bash 3.2+. No .ps1 twin needed.
+# Platform guard: plain env var + jq, no git/path work; any POSIX bash 3.2+.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr plus a
 # structured hookSpecificOutput.permissionDecision on stdout — same

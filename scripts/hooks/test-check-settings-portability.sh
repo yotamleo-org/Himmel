@@ -9,9 +9,8 @@
 # repo's own tracked settings files, which is the regression this ticket
 # exists to prevent coming back.
 #
-# Platform guard (gitbash-only): test fixture for the gate above; runs
-# wherever the gate runs (Git Bash / POSIX bash), no .ps1 twin (project
-# convention).
+# Platform guard: test fixture for the gate above; runs wherever the gate runs
+# (any POSIX bash).
 #
 # Exit codes:
 #   0 — all cases passed

@@ -16,7 +16,7 @@
 # halt mark. Anything unusual falls through to the worker, which is the judge.
 #
 # Fail OPEN, always exit 0: delivery must never block a tool call. Linux-only
-# (the identity walk reads /proc); no .ps1 twin by design.
+# (the identity walk reads /proc).
 set -uo pipefail
 
 name="${HIMMEL_BUS_NAME:-}"

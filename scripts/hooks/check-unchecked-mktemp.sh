@@ -10,9 +10,8 @@
 # `2>/dev/null || true`, which silently turns a genuine git error into a
 # false "clean". Single-run bypass: UNCHECKED_MKTEMP_OK=1.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + the shared predicate; no .ps1 twin needed -- the only consumers
-# are a shell pre-commit hook and a shell suite, both gitbash-only already.
+# Platform guard: any POSIX bash 3.2+. Pure git + the shared predicate; the only
+# consumers are a shell pre-commit hook and a shell suite.
 #
 # The CR ledger's single most-repeated defect class in the 14 days to
 # 2026-09-07: `T=$(mktemp -d)` with the status unchecked, 10 separate `agreed`

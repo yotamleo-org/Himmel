@@ -51,8 +51,8 @@
 # ponytail: `tick.sh` does not persist its output today, so the `--- tick` tail is
 # only populated when something writes <workdir>/last-tick.txt; nothing does yet.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, no .ps1 twin (the checker and
-# the launch-path exports are the only consumers, all bash).
+# Platform guard: POSIX bash 3.2+ (the checker and the launch-path exports are
+# the only consumers, all bash).
 set -o pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

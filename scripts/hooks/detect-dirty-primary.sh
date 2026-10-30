@@ -10,10 +10,8 @@
 # block-write-into-main-checkout.sh, is the PREVENTION half (a destination-
 # write fence).
 #
-# Platform guard: POSIX bash 3.2+, incl. Git Bash on Windows. No .ps1 twin —
-# same project convention as record-primary-baseline.sh (see
-# scripts/parity/test-ws5-invariants.sh T15): nothing here touches a
-# Windows-only API.
+# Platform guard: any POSIX bash 3.2+, same as record-primary-baseline.sh:
+# nothing here touches a platform-specific API.
 #
 # DELIBERATELY UNGATED by any worker marker. An earlier draft gated this on
 # HIMMEL_WORKER=1; that was withdrawn. HIMMEL_WORKER is exported only by the

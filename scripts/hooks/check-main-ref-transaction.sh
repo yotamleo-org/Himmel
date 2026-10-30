@@ -52,21 +52,8 @@
 # warning to stderr instead. If refs/remotes/origin/main DOES resolve and the
 # new oid is not its ancestor, that IS this bug's class: refuse.
 #
-# PLATFORM GUARD (no .ps1 twin -- this note is that decision, not a
-# placeholder for one): this script is plain POSIX shell with no
-# Linux/macOS-only constructs, so it runs correctly under Git Bash on
-# Windows the same as anywhere else -- there is nothing here a PowerShell
-# rewrite would do differently, which is why no `.ps1` twin exists. What is
-# NOT yet true on Windows: (1) install-main-ref-transaction.sh (this
-# script's own installer) is never called from `setup-hooks.ps1`, so a
-# Windows station currently ships this file with no guard actually wired up
-# to run it at all -- a real, open gap, not a
-# hypothetical one; (2) the git behaviour this script depends on -- that
-# `reference-transaction` delivers its full ref-line stream on stdin the
-# same way across platforms, including through Git Bash's own process
-# model -- is UNVERIFIED on Windows. If a `.ps1`
-# twin is ever written, it needs to independently confirm both of those
-# before this note can shrink to "resolved".
+# PLATFORM GUARD: plain POSIX shell with no Linux/macOS-only constructs, so it
+# runs correctly under any POSIX bash.
 #
 # .single-writer opt-out: honoured exactly like block-edit-on-main.sh /
 # main_checkout_verdict (scripts/guardrails/lib.sh) -- a repo-root

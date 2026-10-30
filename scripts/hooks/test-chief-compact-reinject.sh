@@ -5,7 +5,7 @@
 # NOTHING — that negative case is the one that matters most, since this hook
 # fires on every compaction fleet-wide.
 #
-# PLATFORM GUARD: no .ps1 twin — bash 3.2-safe, and Linux-only for the
+# PLATFORM GUARD: bash 3.2-safe, and Linux-only for the
 # session-resolution cases (session-name.sh has no /proc on other
 # platforms; the HIMMEL_CONSOLE_DOC path it exercises is platform-neutral).
 set -uo pipefail

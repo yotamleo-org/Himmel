@@ -5,8 +5,8 @@
 # scripts/guardrails/himmel-adapters.json AND realpath in the handover registry).
 # Every other write aimed at that primary, and the same shape aimed at an
 # unregistered repo, a non-adapter repo, or himmel's own primary, stays refused.
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+ (same as the
-# guard; no .ps1 twin). A sibling of test-block-write-into-main-checkout.sh,
+# Platform guard: any POSIX bash 3.2+ (same as the guard). A sibling of
+# test-block-write-into-main-checkout.sh,
 # split out so the parent suite stays under the CI per-suite cap; the harness
 # below is a trimmed copy of the -wrappers sibling's (same fixtures, same FIXTURE RULE).
 #

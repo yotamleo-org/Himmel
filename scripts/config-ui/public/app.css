@@ -2,8 +2,11 @@
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:var(--fs-sm)/1.55 var(--font-ui);margin:0}
 code,pre,kbd,.bhead,.row-head,.kv,.hrow .id,.hrow .ro{font-family:var(--font-mono)}
-.top{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:var(--s2) var(--s5);border-bottom:1px solid var(--line);font:var(--fs-xs)/1.5 var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
-.top .ver{font-weight:600;color:var(--fg)}
+.top{margin-top:2px;font:500 11px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere;letter-spacing:0}
+.top .ver{display:block}
+.top details{margin-top:var(--s1)}
+.top summary{cursor:pointer}
+.top details>span{display:block;margin-top:var(--s1)}
 .top .k{color:var(--dim)}
 .top .unk{color:var(--warn)}
 .nav{display:flex;flex-direction:column;gap:2px}
@@ -70,7 +73,6 @@ h2{font:600 var(--fs-md)/1.3 var(--font-ui);margin:0 0 var(--s1)}
 .toast{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--panel);border:1px solid var(--line);padding:8px 12px;font-size:12px}
 @media (max-width:760px){
   .nav{flex-direction:row;flex-wrap:wrap}
-  .top{padding-inline:16px}
   .railfoot{display:none}
   main{padding-inline:16px}
   .row-head{grid-template-columns:74px minmax(0,1fr) auto;grid-template-areas:"st id slot" "kind det det"}
@@ -104,6 +106,23 @@ h2{font:600 var(--fs-md)/1.3 var(--font-ui);margin:0 0 var(--s1)}
 .fields{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s3);align-items:end;margin:0 0 var(--s3)}
 .fields label{display:grid;gap:2px;font:700 11px var(--font-ui);color:var(--muted)}
 .fields select{background:var(--bg);color:var(--ink);border:1px solid var(--rule-strong);border-radius:4px;font:12px var(--font-mono);padding:4px 8px}
+/* Health's shared feed sections keep UI text proportional and data monospace. */
+.box .row-head{font:var(--fs-sm)/1.5 var(--font-ui);padding:var(--s2) 0;grid-template-columns:74px 62px minmax(100px,200px) minmax(0,1fr) auto}
+.box .bhead{font:var(--fs-sm)/1.5 var(--font-ui);padding:var(--s2) 0;grid-template-columns:16px 74px minmax(0,1fr) minmax(0,1fr) auto}
+.box .st{justify-self:start}
+.box .id,.box .kind{font-family:var(--font-mono);font-size:var(--fs-xs)}
+.box .bundle{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:0 var(--s2);margin-top:var(--s2);min-width:0}
+.box .bundle .bhead{margin-top:0}
+.box .bundle .row:last-child{border-bottom:0}
+@media (max-width:1000px){
+  .box .row-head{grid-template-columns:74px minmax(0,1fr);grid-template-areas:"st id" "kind det" "slot slot"}
+  .box .row-head .st{grid-area:st}.box .row-head .id{grid-area:id}.box .row-head .kind{grid-area:kind}.box .row-head .det{grid-area:det}.box .row-head .slot{grid-area:slot;justify-self:start;white-space:normal}
+  .box .slot .btn{white-space:normal}
+  .box .body{padding-left:0}
+  .box .bhead{grid-template-columns:16px 74px minmax(0,1fr) auto;gap:var(--s2)}
+  .box .bhead .bc{grid-column:3/-1;grid-row:2}
+  .box .bhead .bn{grid-column:4;grid-row:1}
+}
 /* Health page. */
 .vhead .word{font:650 var(--fs-lg)/1.1 var(--font-ui)}
 .vhead .inputs{color:var(--dim);flex:1 1 240px;font-size:var(--fs-xs)}

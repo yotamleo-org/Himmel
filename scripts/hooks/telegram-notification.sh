@@ -17,8 +17,6 @@
 #
 # Wiring: himmel-ops plugin hooks.json Notification (exec-if-exists) — see
 # marketplace/plugins/CLAUDE.md; .claude/settings.json is NOT touched.
-#
-# No .ps1 twin — same rationale as telegram-session-end.sh / jira-nudge-on-end.sh.
 
 set +e
 set -u 2>/dev/null || true

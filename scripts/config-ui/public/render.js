@@ -69,7 +69,7 @@ function rowHtml(r, where, state) {
   const d = r.declared || {};
   const i = r.installed || {};
   let h = `<div class="row"><div class="row-head" tabindex="0" role="button" aria-expanded="${open}" data-act="toggle" data-k="${esc(k)}">
-    <span class="st ${esc(r.health)}">${ST[r.health] || esc(r.health)}</span><span class="kind">[${esc(kindOf(r))}]</span>
+    <span class="st pill ${esc(r.health)}">${ST[r.health] || esc(r.health)}</span><span class="kind">[${esc(kindOf(r))}]</span>
     <span class="id" title="${esc(r.id)}">${esc(r.id)}</span><span class="det">${esc(i.detail)}</span>
     <span class="slot">${slot(r, where)}</span></div>`;
   const plan = state.plans && state.plans[k];
@@ -115,7 +115,7 @@ export function isOpen(region, bundleId, baseRows, state, q) {
 function bundleHead(where, b, open, r, shown) {
   const counts = ORDER.filter((h) => r[h] > 0).map((h) => `${r[h]} ${h}`).join(" · ");
   return `<div class="bhead" role="button" tabindex="0" aria-expanded="${open}" data-act="bundle" data-b="${esc(`${where}|${b.id}`)}" data-rank="${r.rank}">
-    <span class="chev">${open ? "▾" : "▸"}</span><span class="st ${r.headline}">${ST[r.headline].split(" ")[0]}</span>
+    <span class="chev">${open ? "▾" : "▸"}</span><span class="st pill ${r.headline}">${ST[r.headline]}</span>
     <span class="bt">${esc(b.title)}</span><span class="bc">${counts}</span><span class="bn">${shown === r.total ? r.total : `${shown} of ${r.total}`}</span></div>`;
 }
 
@@ -148,8 +148,9 @@ export function renderHeader(feed) {
   if (!h) return `<span class="ver unk">version unknown (feed has no himmel identity)</span>${t}`;
   const c = String(h.commit ?? "");
   return `<span class="ver">himmel ${esc(h.version)} · ${esc(h.describe)}</span>
+    <details><summary>Build details</summary>
     <span title="${esc(c)}"><span class="k">commit</span> ${esc(c.slice(0, 12))}</span>
-    ${h.checkout ? `<span><span class="k">serving</span> ${esc(h.checkout)}</span>` : ""}${t}`;
+    ${h.checkout ? `<span><span class="k">serving</span> ${esc(h.checkout)}</span>` : ""}${t}</details>`;
 }
 
 // the status while the report runs. j is the feed's 202 body ({ elapsedMs, progress }); progress
@@ -367,7 +368,7 @@ export function renderInventory(feed, state) {
   const kinds = [...new Set(rows.map(kindOf))];
   const chips = ["fail", "warn", "ok", "off", "info"].map((h) => `<button class="chip" data-f="health" data-v="${h}" aria-pressed="${filt.health === h}">${h}</button>`)
     .concat(kinds.map((k) => `<button class="chip" data-f="kind" data-v="${esc(k)}" aria-pressed="${filt.kind === k}">${esc(k)}</button>`)).join("");
-  return `<section id="inventory" aria-labelledby="h-inv">
+  return `<section id="inventory" aria-labelledby="h-inv" class="box">
   <h2 id="h-inv">Inventory</h2>
   <p class="sub">Every item, check, flag and secret, grouped by feature.</p>
   <div class="filters"><input id="q" placeholder="filter by id" value="${esc(filt.q || "")}" aria-label="Filter by id">${prob}${chips}</div>
@@ -379,10 +380,10 @@ export function renderTriage(feed, state) {
   const { rows, triage } = sets(feed);
   const nf = triage.filter((r) => r.health === "fail").length;
   const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
-  return `<section id="triage" aria-labelledby="h-triage">
+  return `<section id="triage" aria-labelledby="h-triage" class="box">
   <h2 id="h-triage">Triage</h2>
   <p class="sub">Only rows that are failing or drifting. Opt-in items you left off are not listed.</p>
-  <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
+  <div class="summary"><span class="st pill fail">${nf} fail</span><span class="st pill warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
   ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
 </section>`;
 }

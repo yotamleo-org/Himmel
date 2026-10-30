@@ -101,8 +101,7 @@
 # in the launching shell (session-sticky; a per-call prefix does not reach this
 # hook process).
 #
-# Platform guard (gitbash-only): env vars, jq, git, stat -c/-f, sed; bash
-# 3.2-safe, runs unchanged under Git Bash. No .ps1 twin needed.
+# Platform guard: env vars, jq, git, stat -c/-f, sed; bash 3.2-safe.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr plus, for
 # PreToolUse, a structured hookSpecificOutput.permissionDecision on stdout —

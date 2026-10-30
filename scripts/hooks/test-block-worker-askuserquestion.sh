@@ -7,8 +7,7 @@
 # operator out). The old path block-leg-askuserquestion.sh forwards here and
 # denies the same; HIMMEL_WORKER=1 alone is not the worker marker.
 #
-# bash 3.2-safe. Platform guard (gitbash-only): plain env var + jq checks, no
-# git/path work; runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# bash 3.2-safe. Platform guard: plain env var + jq checks, no git/path work.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

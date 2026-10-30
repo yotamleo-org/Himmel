@@ -9,20 +9,8 @@
 # (for the escape hatch) the literal contents of the override log -- never
 # merely that some internal function returned 0.
 #
-# PLATFORM GUARD (no .ps1 twin -- this note is that decision, not a
-# placeholder for one): this suite is plain POSIX shell exercising two
-# scripts that are themselves plain POSIX shell (see their own headers),
-# so it runs under Git Bash on Windows the same way it runs on Linux/macOS
-# -- there is no PowerShell-specific behaviour here to give a `.ps1` twin
-# anything different to assert. What this suite does NOT prove on Windows:
-# it has never actually been RUN there (this session has no Windows
-# station to run it on), so any Git-Bash-specific process behaviour --
-# most concretely, whether `reference-transaction` delivers its full
-# stdin ref-line stream identically under Git Bash's process model, the
-# open question -- is unverified by this suite
-# today, not merely untested by it. A future Windows run (or `.ps1` twin)
-# is what closes that gap; until then, a green run of this suite is
-# evidence for Linux/macOS only.
+# PLATFORM GUARD: plain POSIX shell exercising two scripts that are themselves
+# plain POSIX shell (see their own headers); runs under any POSIX bash.
 set -uo pipefail
 
 # HERMETICITY:

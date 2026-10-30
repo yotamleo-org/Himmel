@@ -38,8 +38,7 @@
 #      excluded from the scan, so a comment mentioning a check can never
 #      create a false duplicate call or satisfy a commented-out one.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + grep/sed/comm text processing; no .ps1 twin needed.
+# Platform guard: any POSIX bash 3.2+. Pure git + grep/sed/comm text processing.
 #
 # Fail-closed. A silently-shadowed check is exactly the invisible failure
 # this gate exists to catch, so an infrastructure error here (an unreadable
