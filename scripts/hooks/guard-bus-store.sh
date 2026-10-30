@@ -135,7 +135,7 @@ GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
 # that could expand to ..), and a command with .. anywhere, or a state dir under
 # handovers/, gets no carve-out: the glob rule does not fold .., so
 # handovers/../himmel/ is the state dir.
-LUNABUCKET_RE='handovers/[A-Za-z0-9_@-][A-Za-z0-9_.@-]*/himmel/'
+LUNABUCKET_RE='(^|[^A-Za-z0-9_.@-])handovers/[A-Za-z0-9_@-][A-Za-z0-9_.@-]*/himmel/'
 
 # state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
 # so they must not count as a word that could expand to `bus`.
@@ -473,8 +473,8 @@ case "$tool" in
         [[ "$cmd_qn" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
         # A glob or expansion in the component right under himmel/ can spell bus.
         cmd_gl=$cmd_qn
-        if [[ "$cmd_qn" != *..* && "$xdg_state" != */handovers/* ]]; then
-            while [[ "$cmd_gl" =~ $LUNABUCKET_RE ]]; do cmd_gl=${cmd_gl/"${BASH_REMATCH[0]}"/handovers/bucket/}; done
+        if [[ "$cmd_qn" != *..* && "$xdg_state" != *handovers/* ]]; then
+            while [[ "$cmd_gl" =~ $LUNABUCKET_RE ]]; do cmd_gl=${cmd_gl/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}handovers/bucket/"}; done
         fi
         [[ "$cmd_gl" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"
         # In-command cd: the command names the state dir and a word that can be bus.
