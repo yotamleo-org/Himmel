@@ -236,6 +236,8 @@ rr() { local off="$1"; shift; hr "$off" run-request --session S1 --ticket HIMMEL
 approve_r() { AFK_SUDO_RUN=1 approve "$@"; }
 # cfg_class_user <user>: make the one class run as <user> (the default is root).
 cfg_class_user() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); c["classes"]["systemctl-restart"]["run_as"] = sys.argv[2]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json" "$1"; }
+# cfg_drop_operator: remove operator_user from the sandbox config (a partial config).
+cfg_drop_operator() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); del c["operator_user"]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json"; }
 if grep -q '^RUN_KIND_SHIPPED = False$' "$HELPER"; then pass "the helper compiles RUN_KIND_SHIPPED as False"; else fail "RUN_KIND_SHIPPED is not the compiled False"; fi
 new_root notshipped; cfg "$ALL" true
 out=$(h 0 run-request --session S1 --ticket T --blocked-by classifier -- true </dev/null)
@@ -362,6 +364,60 @@ out=$(rr 0 --cwd "$R" -- sh later.sh); id=$(rid "$out")
 printf 'echo hi\n' > "$R/later.sh"
 assert_contains "an argument that named no file at request and names one at exec reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 
+echo "== slice 1a (judge KS-j4307-1): what is hashed is what runs, and every element keeps its target =="
+new_root argv0lnk; cfg "$ALL" true
+mkdir -p "$R/real/sub"
+printf '#!/bin/sh\ntouch "%s/ran-real"\n' "$R" > "$R/real/x"; printf '#!/bin/sh\ntouch "%s/ran-lexical"\n' "$R" > "$R/x"
+chmod 0755 "$R/real/x" "$R/x"; ln -s "$R/real/sub" "$R/lnk"
+out=$(rr 0 --cwd "$R" -- "$R/lnk/../x"); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+ran=""
+if [ -e "$R/ran-real" ]; then ran="real"; fi
+if [ -e "$R/ran-lexical" ]; then ran="$ran lexical"; fi
+assert_eq "argv[0] link/../x runs the file the kernel opens (the one hashed), not the lexical path" "real" "$ran"
+new_root tgtctl; cfg "$ALL" true
+printf 'one\n' > "$R/one.txt"; ln -s "$R/one.txt" "$R/a"
+out=$(rr 0 --cwd "$R" -- cat a); id=$(rid "$out")
+assert_contains "control: a link left alone still runs" "result=ran" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtdir; cfg "$ALL" true
+printf 'one\n' > "$R/one.txt"; mkdir "$R/evil"; ln -s "$R/one.txt" "$R/a"
+out=$(rr 0 --cwd "$R" -- cat a); id=$(rid "$out")
+ln -sfn "$R/evil" "$R/a"
+assert_contains "a link to a file that now resolves to a directory reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtnone; cfg "$ALL" true
+printf 'one\n' > "$R/one.txt"; ln -s "$R/one.txt" "$R/a"
+out=$(rr 0 --cwd "$R" -- cat a); id=$(rid "$out")
+ln -sfn "$R/nothing" "$R/a"
+assert_contains "a link to a file that now resolves to nothing reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtswap; cfg "$ALL" true
+printf 'one\n' > "$R/one.txt"; printf 'two\n' > "$R/two.txt"; ln -s "$R/one.txt" "$R/a"; ln -s "$R/two.txt" "$R/b"
+out=$(rr 0 --cwd "$R" -- cat a b); id=$(rid "$out")
+ln -sfn "$R/two.txt" "$R/a"; ln -sfn "$R/one.txt" "$R/b"
+assert_contains "two links swapped between their files report changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtdirs; cfg "$ALL" true
+mkdir "$R/d1" "$R/d2"; ln -s "$R/d1" "$R/d"
+out=$(rr 0 --cwd "$R" -- ls d); id=$(rid "$out")
+ln -sfn "$R/d2" "$R/d"
+assert_contains "a link to a directory retargeted to another directory reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+
+echo "== slice 1a (judge KS-j4307-1): a partial config never falls back to root's home =="
+new_root opghost; me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real
+assert_contains "operator_user that does not resolve: a root run is bad-user at request" "result=bad-user" "$(rr 0 --as root -- true)"
+new_root opmissing; cfg "$ALL" true; cfg_drop_operator
+assert_contains "operator_user missing: a root run is bad-user at request" "result=bad-user" "$(rr 0 --as root -- true)"
+new_root opmissingcls; cfg '' true; cfg_drop_operator
+assert_contains "operator_user missing, allowlist: a class that runs as root is bad-user at request" "result=bad-user" "$(rr 0 -- systemctl restart himmel-test.service)"
+new_root opgone; cfg "$ALL" true
+out=$(rr 0 --as root -- true); id=$(rid "$out")
+cfg_drop_operator
+assert_contains "operator_user removed after the request: the exec re-check is bad-user, not a root run" "result=bad-user" "$(approve_r 3 "$id" "$(code 3)")"
+
+echo "== slice 1a (judge KS-j4307-1): a binary file argument is not an error =="
+new_root elfarg; cfg "$ALL" true
+printf '/usr/bin/x\0\177ELF\0/\0' > "$R/elf.bin"
+out=$(rr 0 --cwd "$R" -- cat "$R/elf.bin")
+assert_contains "a small binary file (a word with / and NUL) given as an absolute path is filed" "result=pending" "$out"
+
 echo "== slice 1a: the executor re-checks what can move after the request =="
 new_root exshipped; cfg "$ALL" true
 out=$(rr 0 -- true); id=$(rid "$out")
@@ -378,6 +434,10 @@ new_root exuser; cfg "$ALL" true
 out=$(rr 0 -- true); id=$(rid "$out")
 me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real
 assert_contains "exec time: an operator_user changed after the request is bad-user" "result=bad-user" "$(approve_r 3 "$id" "$(code 3)")"
+new_root exuser2; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+me_real=$me; me=nobody; cfg "$ALL" true; me=$me_real
+assert_contains "exec time: a run_as that is no longer the operator (another real user now is) is bad-user" "result=bad-user" "$(approve_r 3 "$id" "$(code 3)")"
 new_root thirduser; cfg '' true
 cfg_class_user nobody
 assert_contains "allowlist: a class that names a third user is bad-user at request" "result=bad-user" "$(rr 0 -- systemctl restart himmel-test.service)"

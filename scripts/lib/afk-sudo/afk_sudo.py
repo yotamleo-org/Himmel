@@ -138,14 +138,15 @@ def user_pw(name):
 
 
 def find_cmd(argv0, cwd):
-    """The absolute path argv[0] resolves to (a path as given, else the fixed PATH), else None."""
+    """The absolute path argv[0] resolves to (a path as given, else the fixed PATH), else None.
+    Not normalised: `link/../x` is what the kernel opens, and that is what is hashed and exec'd."""
     if "/" in argv0:
         cands = [argv0 if argv0.startswith("/") else os.path.join(cwd, argv0)]
     else:
         cands = [os.path.join(d, argv0) for d in FIXED_PATH.split(":")]
     for c in cands:
         if os.path.isfile(c) and os.access(c, os.X_OK):
-            return os.path.normpath(c)
+            return c
     return None
 
 
@@ -183,8 +184,8 @@ class BadFile(Exception):
 
 
 def bind_target(a, cwd):
-    """The regular file an argv element names, as the kernel resolves it (links first, then ..),
-    or None when it names no file or a directory. A pseudo-file (under /proc, /sys, /dev; only
+    """What an argv element names, as the kernel resolves it (links first, then ..): ("file", path),
+    ("dir", path), or None when it names nothing. A pseudo-file (under /proc, /sys, /dev; only
     /dev/null is let through), a FIFO or other non-regular file, and an entry that cannot be
     examined raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
@@ -202,21 +203,30 @@ def bind_target(a, cwd):
             return None
         raise BadFile(a) from e
     if stat.S_ISDIR(mode):
-        return None
+        return "dir", real
     if not stat.S_ISREG(mode):
         raise BadFile(a)
-    return real
+    return "file", real
+
+
+def target_key(t):
+    """The comparable form of a bind_target result: "file:/p", "dir:/p" or "" for nothing."""
+    return f"{t[0]}:{t[1]}" if t else ""
 
 
 def collect_files(argv, cwd, op_uid):
     """Every argv element naming a regular file: hashed, and read when it is small and the
     operator could read it themselves (a root-only file is hashed, never read or shown).
-    The recorded path is the resolved one. Raises BadFile for an element that cannot be bound."""
-    seen, out = set(), []
+    The recorded path is the resolved one. Returns (files, targets): targets holds one
+    target_key per argv element, taken in the same pass, so the executor can require each
+    element to resolve to the same thing again. Raises BadFile for an element that cannot be bound."""
+    seen, out, targets = set(), [], []
     for a in argv:
-        p = bind_target(a, cwd)
-        if p is None or p in seen:
+        t = bind_target(a, cwd)
+        targets.append(target_key(t))
+        if t is None or t[0] != "file" or t[1] in seen:
             continue
+        p = t[1]
         seen.add(p)
         try:
             with open_regular(p) as f:
@@ -230,7 +240,7 @@ def collect_files(argv, cwd, op_uid):
             raise BadFile(a) from e
         body = head if n <= READ_CAP and (st.st_mode & 0o004 or st.st_uid == op_uid) else None
         out.append(({"path": p, "sha256": h.hexdigest(), "bytes": n, "shown": body is not None}, body))
-    return out
+    return out, targets
 
 
 def rec_hash(rec):
@@ -272,7 +282,8 @@ def make_builder(spec):
     def build(rid, created, expires):
         rec = {"v": 1, "id": rid, "kind": "run", "run_as": spec["run_as"], "uid": spec["uid"], "gid": spec["gid"],
                "argv": spec["argv"], "argv0_path": spec["argv0_path"], "argv0_sha256": spec["argv0_sha256"],
-               "files": [e for e, _ in spec["files"]], "cwd": spec["cwd"], "cwd_dev_ino": spec["cwd_dev_ino"],
+               "files": [e for e, _ in spec["files"]], "targets": spec["targets"],
+               "cwd": spec["cwd"], "cwd_dev_ino": spec["cwd_dev_ino"],
                "env": {"names": sorted(run_env(spec["pw"]))},
                "stdin": {"bytes": len(spec["stdin"]), "sha256": hashlib.sha256(spec["stdin"]).hexdigest(),
                          "copy": os.path.join(FILES, rid, "stdin") if spec["stdin"] else None},
@@ -386,10 +397,10 @@ def execute_run(payload, config):
             st = os.stat(rec["cwd"])
             if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
                 return {"result": "changed"}
-            frozen = {f["path"] for f in rec["files"]}  # an element that names a file now, but did not at request
-            for a in rec["argv"]:
-                p = bind_target(a, rec["cwd"])
-                if p is not None and p not in frozen:
+            if len(rec["targets"]) != len(rec["argv"]):
+                return {"result": "changed"}
+            for a, want in zip(rec["argv"], rec["targets"]):  # each element names what it named at request
+                if target_key(bind_target(a, rec["cwd"])) != want:
                     return {"result": "changed"}
         except (OSError, BadFile):
             return {"result": "changed"}
@@ -401,8 +412,8 @@ def execute_run(payload, config):
         if rec["stdin"]["copy"]:
             texts.append(read_copy(rid, "stdin"))
         run_pw = user_pw(rec["run_as"])
-        op_pw = user_pw(config.get("operator_user")) or run_pw
-        if run_pw is None or run_pw.pw_uid != rec["uid"]:
+        op_pw = user_pw(config.get("operator_user"))  # never root's home: no operator, no run
+        if run_pw is None or op_pw is None or run_pw.pw_uid != rec["uid"]:
             return {"result": "bad-user"}
         extra = config.get("never_remote_extra")
         rule = nr.check(rec["argv"], texts, rec["cwd"], op_pw.pw_dir, extra if isinstance(extra, list) else [])
@@ -478,8 +489,11 @@ def run_request(broker, config, args):
     if run_block(config).get("enabled") is not True:
         print("result=run-disabled")
         return 5
-    mode = mode_of(config)
     op_pw = user_pw(config.get("operator_user"))
+    if op_pw is None:  # a partial config must not point the floor at root's home
+        print("result=bad-user")
+        return 5
+    mode = mode_of(config)
     meta = {"session": clean(args.session), "ticket": clean(args.ticket), "kind": "run", "mode": mode,
             "blocked_by": args.blocked_by, "why": clean(args.why), "argv": cut_argv(cmd)}
     if mode == "all":
@@ -512,12 +526,12 @@ def run_request(broker, config, args):
         print("result=no-such-command")
         return 5
     try:
-        files, unbound = collect_files(argv, cwd, (op_pw or run_pw).pw_uid), False
+        (files, targets), unbound = collect_files(argv, cwd, op_pw.pw_uid), False
     except BadFile:
-        files, unbound = [], True  # the floor still reads the argv, so a wipe of /dev/x stays never-remote
+        files, targets, unbound = [], [], True  # the floor still reads the argv, so a wipe of /dev/x stays never-remote
     texts = [b.decode("utf-8", "replace") for _, b in files if b is not None] + [stdin.decode("utf-8", "replace")]
     extra = config.get("never_remote_extra")
-    rule = nr.check(argv, texts, cwd, (op_pw or run_pw).pw_dir, extra if isinstance(extra, list) else [])
+    rule = nr.check(argv, texts, cwd, op_pw.pw_dir, extra if isinstance(extra, list) else [])
     if rule:
         refuse_row(meta, "never-remote", rule=rule)
         print(f"result=never-remote rule={rule}")
@@ -530,7 +544,7 @@ def run_request(broker, config, args):
         return 5
     st = os.stat(cwd)
     spec = {"argv": argv, "argv0_path": argv0_path, "argv0_sha256": sha256_file(os.path.realpath(argv0_path))[0],
-            "files": files, "stdin": stdin, "cwd": cwd, "cwd_dev_ino": [st.st_dev, st.st_ino], "run_as": run_pw.pw_name,
+            "files": files, "targets": targets, "stdin": stdin, "cwd": cwd, "cwd_dev_ino": [st.st_dev, st.st_ino], "run_as": run_pw.pw_name,
             "uid": run_pw.pw_uid, "gid": run_pw.pw_gid, "pw": run_pw, "session": meta["session"],
             "ticket": meta["ticket"], "blocked_by": args.blocked_by, "why": meta["why"], "mode": mode}
     window = cfg_int(run_block(config), "ttl_s", 900, 30, 3600)

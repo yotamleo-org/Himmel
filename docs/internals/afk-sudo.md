@@ -46,18 +46,23 @@ never reaches the operator either way); an argv a class names goes through the f
 A `run-request` writes a root-owned record `STATE/records/<id>.json` (0600, dirs 0700,
 created lazily): argv, `run_as` and its uid/gid, the absolute path of argv[0] and the
 sha256 of its realpath, every argv element that resolves to a regular file (the resolved
-path, sha256, size, whether its body was kept), cwd and its device/inode, the env names, the stdin
+path, sha256, size, whether its body was kept), what every argv element resolved to (`targets`:
+one `file:<path>`, `dir:<path>` or empty entry per element), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
 broker's pending payload, not next to the record.
 
-- argv[0] resolves in the fixed PATH `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
+- argv[0] resolves in the fixed PATH `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`, or as
+  given when it holds a `/`. The path is kept as written, not normalised: `link/../x` is
+  hashed and exec'd as the kernel opens it (links resolved before `..`), never as `x`.
 - An argv element is read as the kernel opens it: joined to the cwd, links resolved before
   `..` (`realpath`). One that resolves to a regular file is hashed. A directory, or a name
-  that is no file, is not bound. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
+  that is no file, is not hashed. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
   passes), a FIFO, socket or device, and an existing file that cannot be opened and hashed
   are refused at request (`result=bad-file`, exit 5, no ledger row), never skipped. At exec
-  an element that names a file now but did not at request reports `changed`.
+  every element, argv[0] included, must resolve to the same target as at request, so a
+  link relinked to another file, a directory or nothing, two links swapped between their
+  files, a directory link retargeted, and a name that now names a file all report `changed`.
 - The run is of the file in place, not of the copy, and a file a command loads itself (a
   script it sources, an interpreter's imports, a config it reads) is not bound. The instant
   between the exec-time check and the exec is an accepted residual (HIMMEL-8250).
@@ -74,10 +79,13 @@ broker's pending payload, not next to the record.
 ## What runs after the code is accepted
 
 The executor re-checks, in this order, and writes a ledger row on the first mismatch:
-record hash (`hash-mismatch`); argv[0] sha256, each file sha256, the cwd identity and the
-argv elements that now name a file (`changed`, also when one is gone or no longer a regular
-file); `run-not-shipped`; `run-disabled`; the floor again with the current config
-(`never-remote`); the mode and user rules (`bad-user`, `not-in-class`). A non-root run
+record hash (`hash-mismatch`); argv[0] sha256, each file sha256, the cwd identity and that
+every argv element resolves to the same file, directory or nothing as at request
+(`changed`, also when one is gone or no longer a regular file); `run-not-shipped`;
+`run-disabled`; that the run-as user and `operator_user` both resolve (`bad-user`; a missing
+or unknown `operator_user` never falls back to root's home); the floor again with the
+current config (`never-remote`); that the run-as user is still root or the operator
+(`bad-user`); the class match in `allowlist` mode (`not-in-class`). A non-root run
 goes through `setpriv --reuid --regid --init-groups --no-new-privs --inh-caps=-all`
 (`no-setpriv` at request time and again at exec when it is missing); a root run executes
 directly. `--no-new-privs` also means a setuid or setgid tool (`crontab`, `sudo`) fails
@@ -127,7 +135,8 @@ every run visible afterwards.
 `why` (cleaned, 200 chars), `mode`, `argv` (elements over 120 characters cut to 100),
 `argv0_sha256`, `frozen` (files, stdin size and hash, cwd), `stdout_bytes`,
 `stderr_bytes`, `stdout_sha256`, `duration_ms`. A refusal at request writes a row for
-`never-remote`, `not-in-class` and `busy` only. The other request refusals (`run-not-shipped`,
+`never-remote` and `not-in-class` (the helper) and for `locked`, `busy` and `rate-limited` (the
+broker) only. The other request refusals (`run-not-shipped`,
 `run-disabled`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
 `stdin-too-large`) answer on stdout and write none. After the code, the executor's result
 (`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
@@ -148,6 +157,23 @@ time). All writes keep the maximum step.
 false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
 `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install and never rewrites an existing config.
+
+## Turning it off
+
+Narrowest first. Each is a root edit of `/etc/himmel/afk-sudo.json` (`sudoedit`), read
+again by the helper on every call, so it takes effect on the next verb:
+
+1. `"mode": "allowlist"`: only the argv a class names runs. A pending free-form request
+   answers `not-in-class` when it is approved.
+2. `"run": {"enabled": false}`: no run request is filed, and a pending one answers
+   `run-disabled` when it is approved. The sudo-class kind is unaffected.
+3. `"enabled": false`: every verb except `mode` answers `result=disabled`, `approve` and
+   `deny` included, so a pending request can no longer be approved and runs out its expiry.
+4. `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`: removes the helper, the floor
+   module and the sudoers rule. The config, the seed, the state and the ledger stay.
+
+A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
+The narrowing-only `/afk-lockdown` Telegram verb is slice S4, not built.
 
 ## Verbs
 

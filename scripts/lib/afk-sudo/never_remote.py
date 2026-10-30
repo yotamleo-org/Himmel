@@ -49,7 +49,10 @@ def _path_forms(w, cwd, home):
     # A bare word (`rm`) only names a path under cwd if that path exists; else cwd `/` makes `/rm`.
     if "/" not in w and not w.startswith(HOME_FORMS) and not os.path.lexists(n):
         return set()
-    return {n, os.path.realpath(p)}  # realpath of the joined path: `link/..` is the link target's parent
+    try:
+        return {n, os.path.realpath(p)}  # realpath of the joined path: `link/..` is the link target's parent
+    except ValueError:  # a NUL in the word (a binary file's text): it names no path, the lexical form is all there is
+        return {n}
 
 
 def _forms(w, pathy, cwd, home):
