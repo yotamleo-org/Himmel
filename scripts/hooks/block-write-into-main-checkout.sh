@@ -800,6 +800,21 @@ _bwimc_nonblank() {
     local LC_ALL=C
     [[ $1 == *[![:space:]]* ]]
 }
+# _bwimc_count_stubs TEXT — sets _BWIMC_CNT to the number of \001 stubs in TEXT.
+# `${TEXT//[!$'\001']/}` matches every character but a stub, and on bash 3.2
+# that costs time quadratic in the length of TEXT (40 s for 8200 characters), so
+# a text without a stub skips it and a long one is counted in 128-character windows.
+_bwimc_count_stubs() {
+    _BWIMC_CNT=0
+    case "$1" in *$'\001'*) ;; *) return 0 ;; esac
+    local _cs_t="$1" _cs_n=${#1} _cs_i=0 _cs_w
+    while [ "$_cs_i" -lt "$_cs_n" ]; do
+        _cs_w="${_cs_t:$_cs_i:128}"
+        _cs_w="${_cs_w//[!$'\001']/}"
+        _BWIMC_CNT=$((_BWIMC_CNT+${#_cs_w}))
+        _cs_i=$((_cs_i+128))
+    done
+}
 _bwimc_split_emit() {
     # A UTF-8 glob stops at the first non-space character; the gsub it
     # replaces re-decoded the whole clause per space.
@@ -4990,7 +5005,7 @@ _bwimc_subst_split() {
 _bwimc_redir_scan_text() {
 local _bwimc_rclause _bwimc_rclause_sp _bwimc_rtoks _bwimc_t _bwimc_rn _bwimc_teecmd \
     _bwimc_pfx _bwimc_pflag _bwimc_ri _bwimc_teecollect _bwimc_tee_dd _bwimc_rt \
-    _bwimc_rt2 _bwimc_skel _bwimc_sbodies _bwimc_sbi _bwimc_stubs _bwimc_sn \
+    _bwimc_rt2 _bwimc_skel _bwimc_sbodies _bwimc_sbi _bwimc_sn \
     _bwimc_sb_ecwd _bwimc_sb_unres _bwimc_sb_pushn \
     _bwimc_pre_ecwd _bwimc_pre_unres _bwimc_pre_pushn _bwimc_rclause_piped
 _bwimc_skel="$1"; _bwimc_sbodies=(); _bwimc_sbi=0
@@ -5145,8 +5160,8 @@ while IFS= read -r _bwimc_rclause; do
         fi
     done
     # The bodies of THIS clause's stubs, in order, each as a command of its own.
-    _bwimc_stubs="${_bwimc_rclause//[!$'\001']/}"
-    _bwimc_sn=${#_bwimc_stubs}
+    _bwimc_count_stubs "$_bwimc_rclause"
+    _bwimc_sn=$_BWIMC_CNT
     while [ "$_bwimc_sn" -gt 0 ] && [ "$_bwimc_sbi" -lt "${#_bwimc_sbodies[@]}" ]; do
         _bwimc_sb_ecwd="$_bwimc_ecwd"; _bwimc_sb_unres="$_bwimc_ecwd_unres"; _bwimc_sb_pushn="$_bwimc_ecwd_pushn"
         _bwimc_ecwd="$_bwimc_pre_ecwd"; _bwimc_ecwd_unres="$_bwimc_pre_unres"; _bwimc_ecwd_pushn="$_bwimc_pre_pushn"
@@ -6886,7 +6901,7 @@ _bwimc_verb_clauses() {
         bodies+=("${_BWIMC_BODIES[$k]}")
     done
     while IFS= read -r line; do
-        n="${line//[!$'\001']/}"; n=${#n}
+        _bwimc_count_stubs "$line"; n=$_BWIMC_CNT
         while [ "$n" -gt 0 ] && [ "$bi" -lt "${#bodies[@]}" ]; do
             printf '%s\n' "$_BWIMC_SUBOPEN"
             _bwimc_verb_clauses "${bodies[$bi]}"
