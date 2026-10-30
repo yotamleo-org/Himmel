@@ -7,7 +7,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 BASH_BIN="$(command -v bash)"
 WS="$(mktemp -d "${TMPDIR:-/tmp}/guardrail-posix.XXXXXX")" || exit 1
 trap 'rm -rf "$WS"' EXIT
-mkdir -p "$WS/home" "$WS/handover" "$WS/phi"
+mkdir -p "$WS/home" "$WS/handover" "$WS/phi" || exit 1
 failures=0
 checks=0
 
@@ -32,7 +32,7 @@ check_graphify 2 '/c/ does not alias C:/' C:/fake/himmel /c/fake/himmel/doc.md
 check_graphify 2 '/c/ does not alias luna C:/' C:/fake/luna /c/fake/luna/journal.md LUNA_VAULT_PATH claude-cli
 check_graphify 2 'C:/ does not alias /c/' /c/fake/himmel C:/fake/himmel/doc.md
 check_graphify 0 'bare /c remains a POSIX root' /c /c
-check_graphify 0 '/c/.. traversal resolves into the POSIX corpus' "$REPO_ROOT" "/c/..$REPO_ROOT/README.md"
+check_graphify 0 '/c/.. traversal resolves into the POSIX corpus' /fake/himmel /c/../fake/himmel/README.md
 
 # No privileged /c directory is needed: the fence normalizes lexically before
 # looking up the real repo, so /c/../<repo> must still protect its hooks.
