@@ -11,7 +11,7 @@ name: PR Title Lint
 #      title fixed via `gh pr edit --title` never re-ran the check. Adding
 #      `edited` to ci.yml's own trigger would also re-run (and, through its
 #      shared ci-pr-<N> concurrency group, cancel) the whole required CI
-#      matrix on every `gh pr edit` of the BODY too (leg-pr-open.sh does this
+#      matrix on every `gh pr edit` of the BODY too (worker-pr-open.sh does this
 #      right after opening a PR) - hence a dedicated workflow with its own
 #      trigger and concurrency group instead of a job inside ci.yml.
 on:
@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   pr-title-lint:
-    # The owner's own PRs skip (SKIPPED reports success): leg-pr-open.sh lints
+    # The owner's own PRs skip (SKIPPED reports success): worker-pr-open.sh lints
     # the title at open and merge-on-green.sh re-lints the live title right
     # before the squash, so a body edit starts no runner. Every other author
     # keeps the full check on every event.
