@@ -152,7 +152,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   const running = rows.filter((r) => !finished(r) && !orphanOf(r) && mine(r)).sort(siblingOrder);
   const groups: FleetSections["running"] = running.filter((r) => r.role === "console")
     .sort((a, b) => newest(recency(a), recency(b)) || byName(a, b))
-    .map((c) => ({ console: c, showConsole: shown(c), rows: running.filter((r) => r.role !== "console" && chiefOf(r, rows) === c.name && shown(r)) }))
+    .map((c) => ({ console: c, showConsole: shown(c), rows: running.filter((r) => r.role !== "console" && !r.cadence && chiefOf(r, rows) === c.name && shown(r)) }))
     .filter((g) => g.showConsole || g.rows.length > 0);
   const cadences = running.filter((r) => r.cadence && r.role !== "console" && shown(r));
   const rest = running.filter((r) => r.role !== "console" && !r.cadence && !liveConsole(chiefOf(r, rows)) && shown(r));

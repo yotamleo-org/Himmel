@@ -153,6 +153,13 @@ test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Oth
   expect(s.running.flatMap((g) => g.rows).map((r) => r.name)).not.toContain("luna-fb");
   expect(s.running[1].rows.map((r) => r.name)).toEqual(["scratch-session"]);
   expect(fleetSections(rows).cadences).toEqual([]);
+  // a cadence launched from a live chief is still shown once, in Cadences, not also under that chief
+  const KB = "HIMMEL-nextleg-2026-10-30KB-roadmap-chief";
+  const underChief: any[] = [row(KB, "console", KB, { state: "running", ...at(9) }), row("qmd-cadence", "interactive", KB, { cadence: "qmd", state: "running", ...at(6) })];
+  const u = fleetSections(underChief);
+  expect(u.cadences.map((r) => r.name)).toEqual(["qmd-cadence"]);
+  expect(u.running.flatMap((g) => g.rows)).toEqual([]);
+  expect(u.counts.live).toBe(2);
 });
 
 test("filters: lane, state and text narrow every section; the counts say how many are shown", () => {
