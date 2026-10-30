@@ -129,7 +129,7 @@
 #   1 — READY-CHECK FAIL (one or more checks failed)
 #   2 — usage, or cannot evaluate (gh/jq missing, repo/PR unreadable)
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as go.sh. No mapfile.
+# Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
 
 usage() {

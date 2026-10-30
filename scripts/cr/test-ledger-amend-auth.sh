@@ -9,7 +9,7 @@
 #   5. no GO key: nothing to verify against, every row is honoured.
 #   6. ledger-append.sh writes amends the reader verifies.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

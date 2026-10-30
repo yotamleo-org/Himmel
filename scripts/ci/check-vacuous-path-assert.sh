@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
 #
 # Pre-commit gate: flag an emptiness assertion whose shell-test-suite line
 # follows an AMBIENT hermetic-PATH scrub in the same file, hence vacuous by

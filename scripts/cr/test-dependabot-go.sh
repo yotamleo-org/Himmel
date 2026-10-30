@@ -9,7 +9,7 @@
 #   3. a missing, NO-GO, other-head or other-PR verdict is refused.
 #   4. the allowlist is the one ready-check.sh uses.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
