@@ -60,7 +60,9 @@ for text in \
     'case "$host" in CYGWIN*) exit 0 ;; esac' \
     'MSYS_NO_PATHCONV=1 run' \
     "if (process.platform === 'win32') run();" \
-    'pwsh'' -Command run'; do
+    'pwsh'' -Command run' \
+    'case "$host" in CYGWIN_NT-*) exit 0 ;; esac' \
+    'MSYS2_ARG_CONV_EXCL=* run'; do
     mkdiff scripts/new-code.sh "$text"
     run
     expect 1 "dropped shape refused: $text"
