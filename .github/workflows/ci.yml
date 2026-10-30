@@ -2035,7 +2035,7 @@ jobs:
       # SKIPs without ffmpeg, so this step pins the noble 6.1 build and then
       # sets HIMMEL_REQUIRE_FFMPEG=1, turning that SKIP into a FAIL here. A
       # runner image that drops the 6.1 package fails this step loudly; re-pin
-      # deliberately. Linux only: the nightly windows job keeps the SKIP.
+      # deliberately. Linux only: no Windows nightly job remains to keep the SKIP.
       - name: Record runner image (apt cache key)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
