@@ -3059,6 +3059,41 @@ _unzip_verb_mode() {
     return 0
 }
 
+# _gh_write_text TEXT — 0 when the lowercased TEXT holds a `gh` word followed
+# by a subcommand that writes files into a directory or path operand: `release
+# download` and `run download` (-D/--dir, -O/--output), `attestation download`
+# (the cwd), `gist clone` and `repo clone` (a directory operand). The words
+# between `gh` and the subcommand (`-R o/r`) are not parsed.
+_gh_write_text() {
+    local re='(^|[^a-z0-9_])gh([^a-z0-9_].*)?[^a-z0-9_-]((release|run|attestation)[[:space:]]+([^;&|]*[[:space:]])?download|(gist|repo)[[:space:]]+([^;&|]*[[:space:]])?clone)([^a-z0-9_-]|$)'
+    [[ $1 =~ $re ]]
+}
+
+# _tok_gh_write — 0 (a candidate write) when some Bash segment runs the gh
+# write subcommands _gh_write_text names, or runs `gh` with a word the shell
+# expands (`gh release $v …`): the subcommand cannot be read, so it fails
+# closed. TOK=0 is a candidate write too.
+_tok_gh_write() {
+    local k=0 sg s
+    local -a segtxt segx
+    [ "$TOK" = 1 ] || return 0
+    while [ "$k" -lt "$ST_N" ]; do
+        sg=${ST_S[k]}
+        segtxt[sg]="${segtxt[sg]:-} ${ST_LW[k]}"
+        if [ "${ST_X[k]}" != 0 ]; then segx[sg]=1; fi
+        k=$((k + 1))
+    done
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        if [[ ${segtxt[s]:-} =~ (^|[^a-z0-9_])gh([^a-z0-9_]|$) ]]; then
+            [ "${segx[s]:-0}" = 0 ] || return 0
+            _gh_write_text "${segtxt[s]}" && return 0
+        fi
+        s=$((s + 1))
+    done
+    return 1
+}
+
 # has_write_verb_or_target_flag CMD_LC CMD_N — a copy/move/link/extract/
 # checkout-shaped verb, or a `-t`/`--target-directory` flag (rule 2's verb
 # list). CMD_N is the case-preserved text, needed only for tar's own
@@ -3127,6 +3162,16 @@ has_write_verb_or_target_flag() {
     local re_tar='(^|[^a-z0-9_])(g?tar|bsdtar)([^a-z0-9_]|$)'
     local re_unzip='(^|[^a-z0-9_])unzip([^a-z0-9_]|$)'
     local re_co='(^|[^a-z0-9_])(checkout|restore)([^a-z0-9_]|$)'
+    local re_gh='(^|[^a-z0-9_])gh([^a-z0-9_]|$)'
+    if [[ $c =~ $re_gh ]]; then
+        if [ "$tool_name" = Bash ]; then
+            if _tok_gh_write; then GH_WRITE=1; return 0; fi
+        elif _gh_write_text "$c"; then
+            GH_WRITE=1
+            return 0
+        fi
+    fi
+
     out=$(printf '%s' "$c" | grep -E "$re_tar") || true
     if [ -n "$out" ]; then
         if [ "$tool_name" = Bash ]; then
@@ -4073,6 +4118,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
 
     write_verb=0
     UJ_DEST=()
+    GH_WRITE=0
     has_write_verb_or_target_flag "$cmd_lc" "$cmd_n" && write_verb=1
 
     dir_dest=0
@@ -4259,6 +4305,12 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             fi
         fi
     fi
+    # A gh download or clone with no directory operand writes into the cwd, so
+    # the cwd is judged as a destination.
+    # ponytail: judged even when an explicit scratch directory is named, so a
+    # shell sitting in the live .claude denies that download too; upgrade path:
+    # read the -D/-O operand and judge the cwd only without one.
+    if [ "$GH_WRITE" = 1 ]; then _check_one_operand .; fi
     # An unjudged command word (`$L`, `-ln`, `/bin/l?`) that is not
     # a write verb by its text alone still has its destination operands
     # climb- and symlink-checked, as a write verb's would be.
