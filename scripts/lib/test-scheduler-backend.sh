@@ -17,7 +17,7 @@ fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 # On Linux/macOS the coreutils SHARE /usr/bin with the real at/crontab/systemctl,
 # so the real dir leaks them (the VM e2e caught this); use a symlink farm to
 # keep them absent.
-CLEAN_ROOT="$(mktemp -d)" || exit 1
+CLEAN_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sched-backend.XXXXXX")" || exit 1
 CLEAN_BIN="$CLEAN_ROOT/clean-bin"; mkdir -p "$CLEAN_BIN"
 for t in bash sh sed grep tr head sort uname; do
     p="$(command -v "$t" 2>/dev/null)" && ln -sf "$p" "$CLEAN_BIN/$t"
