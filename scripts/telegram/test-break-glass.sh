@@ -292,8 +292,9 @@ wait_for "$TMP/launcher2.rec"
 git init -q -b main "$TMP/foreign"; git -C "$TMP/foreign" commit -q --allow-empty -m f
 git -C "$TMP/foreign" worktree add -q "$TMP/fwt" -b feat/foreign
 mkleg N3 "$TMP/fwt"
-jq --arg d "$BUCKET/HIMMEL-1-N3-x-2026-10-09.md" '.workers += [{"doc":$d,"label":"N3"}]' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
-rm -f "$RECORD"; bg launch-worker N3 bypass >/dev/null; assert_rc "L22 a linked worktree of another repo is refused" 23 "$?"
+jq --arg d "$BUCKET/HIMMEL-1-N3-x-2026-10-09.md" '.workers += [{"doc":$d,"label":"N3"}]' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET" || { echo "FAIL L22 setup: could not add N3 to the fleet"; exit 1; }
+rm -f "$RECORD"; bg launch-worker N3 - >/dev/null; rc=$?; assert_rc "L22 a linked worktree of another repo is refused" 23 "$rc"
+assert_contains "L22b and it is the worktree check that refuses" "is not a linked worktree of" "$(cat "$TMP/err")"
 jq 'del(.workers[] | select(.label == "N3"))' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
 out=$(BREAK_GLASS_WORKER_CMD="$TMP/bin/no-such-launcher" bg launch-worker N7 bypass); rc=$?
 assert_rc "L23 a launcher command that is not there is not reported as launched" 23 "$rc"
@@ -304,6 +305,7 @@ jq '{schema, legs: .workers}' "$FLEET" > "$OLDF"
 rm -f "$RECORD"; BREAK_GLASS_FLEET="$OLDF" bg launch-worker N7 - >/dev/null; rc=$?
 assert_rc "L25 an old manifest keyed by the pre-rename array still launches" 0 "$rc"
 wait_for "$RECORD"
+assert_contains "L25b and the old-array worker was actually started" "--fleet $OLDF --chief HIMMEL-nextleg-2026-10-09ZW-roadmap-console HIMMEL-1-N7-x-2026-10-09" "$(cat "$RECORD" 2>/dev/null)"
 BREAK_GLASS_FLEET="$OLDF" HIMMEL_LEGACY_NAMES=0 bg launch-worker N7 - >/dev/null
 assert_rc "L26 with legacy names off the old array is not read" 23 "$?"
 unset BREAK_GLASS_WORKER_CMD
