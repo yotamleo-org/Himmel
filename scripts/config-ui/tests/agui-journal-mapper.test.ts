@@ -310,7 +310,7 @@ describe("a session with no agent-name record is named from its branch, cwd or f
     const rec = user({ gitBranch: "fix/x", cwd: "/w/r" });
     expect(mainName([nameRec("HIMMEL-1-roadmap-chief"), rec])).toMatchObject({ name: "HIMMEL-1-roadmap-chief", role: "console" });
     const evs = mapJournal([rec, nameRec("HIMMEL-1-N2-worker"), user({ gitBranch: "fix/y" }, "later", "u2")].join("\n") + "\n").events as any[];
-    expect(evs.filter((e) => e.agent?.id === "main").at(-1).agent).toMatchObject({ name: "HIMMEL-1-N2-worker", role: "leg" });
+    expect(evs.filter((e) => e.agent?.id === "main").at(-1).agent).toMatchObject({ name: "HIMMEL-1-N2-worker", role: "worker" });
   });
 
   test("the name is stable: later records do not rename, and a second pass agrees", () => {

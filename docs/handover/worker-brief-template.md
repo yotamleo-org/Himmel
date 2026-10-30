@@ -6,8 +6,9 @@ The document a chief writes to dispatch one worker (see
 `HIMMEL-3269-N191-scorecard-discovery-2026-09-20-RESUME.md`), and hand its path
 to `chief-kit/headed-arm-worker.sh` as the worker's handover doc with the session
 name `<TICKET>-N<k>-<slug>` — the doc name minus `-<date>-RESUME.md`. The worker's
-**label** is `N<k>`: it is what a chief writes in its `## Live state`
-`legs:` line and what `tick.sh` prints. One derivation owns the mapping between
+**label** is `N<k>`: it is what a chief writes on its `## Live state`
+worker line (its field name: [`chief-sections/live-state.md`](chief-sections/live-state.md))
+and what `tick.sh` prints. One derivation owns the mapping between
 the three, [`scripts/lib/worker-identity.sh`](../../scripts/lib/worker-identity.sh);
 it also accepts the legacy `<TICKET>-<slug>-worker[N]<k>-<date>-RESUME.md` spelling
 older buckets carry. Never rename a live doc to conform — a worker

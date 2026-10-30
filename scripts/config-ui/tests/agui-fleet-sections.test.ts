@@ -21,18 +21,18 @@ const rows: any[] = [
   row(BU, "console", BU, { state: "running", predecessor: BT, ...at(50) }),
   row(BT, "console", BT, { state: "wrapped", live: false, lock: "released", predecessor: BS }),
   row(BS, "console", BS, { state: "unknown", live: false, pid: null, run: null }),
-  row("idle-old", "leg", BU, { ...at(10) }),
-  row("idle-new", "leg", BU, { ...at(40) }),
-  row("waiting", "leg", BU, { state: "waiting for GO", ...at(5) }),
-  row("running-old", "leg", BU, { state: "running", lane: "claudex", ...at(20) }),
-  row("running-new", "leg", BU, { state: "running", ...at(30), ...fill(93) }),
-  row("blocked", "leg", BU, { state: "idle", marker: "BLOCKED", ...at(1) }),
+  row("idle-old", "worker", BU, { ...at(10) }),
+  row("idle-new", "worker", BU, { ...at(40) }),
+  row("waiting", "worker", BU, { state: "waiting for GO", ...at(5) }),
+  row("running-old", "worker", BU, { state: "running", lane: "claudex", ...at(20) }),
+  row("running-new", "worker", BU, { state: "running", ...at(30), ...fill(93) }),
+  row("blocked", "worker", BU, { state: "idle", marker: "BLOCKED", ...at(1) }),
   row("cloud-HIMMEL-1", "cloud", BU, cloud("done", { state: "idle", pr: 11 })),
   row("cloud-HIMMEL-2", "cloud", BT, cloud("done", { state: "idle" })),
   row("cloud-HIMMEL-3", "cloud", BU, cloud("unknown", { state: "unknown" })),
   row("cloud-HIMMEL-4", "cloud", BU, cloud("working", { state: "running" })),
-  row("wrapped-worker", "leg", BU, { state: "wrapped", live: false, marker: "WRAPPED", runtime: { startedAt: 0, endedAt: 100, elapsedMs: 100 } }),
-  row("orphan-worker", "leg", "gone-chief", { state: "running", ...at(3) }),
+  row("wrapped-worker", "worker", BU, { state: "wrapped", live: false, marker: "WRAPPED", runtime: { startedAt: 0, endedAt: 100, elapsedMs: 100 } }),
+  row("orphan-worker", "worker", "gone-chief", { state: "running", ...at(3) }),
   row("scratch-session", "interactive", null, { state: "idle", ...at(4) }),
 ];
 
@@ -75,7 +75,7 @@ test("attention owners: a cloud question is operator-owned; context and an unshe
   const sessions = [
     row(BU, "console", BU),
     row("cloud-question", "cloud", BU, cloud("blocked", { ...fill(90), pr: 12 })),
-    row("context-90", "leg", BU, fill(90)),
+    row("context-90", "worker", BU, fill(90)),
     row("cloud-done", "cloud", BU, cloud("done", { pr: 13 })),
   ];
   const s = fleetSections(sessions);
@@ -93,7 +93,7 @@ test("attention owners: a cloud question is operator-owned; context and an unshe
 });
 
 test("a cloud session with a live shepherd is shepherded, not awaiting one; its shepherd sorts under it", () => {
-  const withShepherd = [...rows, row("HIMMEL-1-N1-shepherd-2026-10-08", "leg", BU, { parent: "cloud-HIMMEL-1", ticket: "HIMMEL-1", state: "running", ...at(2) })];
+  const withShepherd = [...rows, row("HIMMEL-1-N1-shepherd-2026-10-08", "worker", BU, { parent: "cloud-HIMMEL-1", ticket: "HIMMEL-1", state: "running", ...at(2) })];
   const s = fleetSections(withShepherd);
   expect(s.attention.chief.map((a) => a.row.name)).not.toContain("cloud-HIMMEL-1");
   expect(cloudPhase(withShepherd.find((r) => r.name === "cloud-HIMMEL-1"), withShepherd)).toBe("shepherded");
@@ -133,7 +133,7 @@ test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live suc
   const inherited: any[] = [
     row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
     row(KB, "console", KB, { state: "running", predecessor: KA, ...at(9) }),
-    row("N4102", "leg", KA, { state: "running", ...at(8) }),
+    row("N4102", "worker", KA, { state: "running", ...at(8) }),
   ];
   const s = fleetSections(inherited);
   expect(s.running.map((g) => [g.console?.name ?? null, g.rows.map((r) => r.name)])).toEqual([[KB, ["N4102"]]]);
@@ -151,7 +151,7 @@ test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live suc
     row(K1, "console", K1, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
     row(K2, "console", K2, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
     row(K3, "console", K3, { state: "running", predecessor: K2, ...at(9) }),
-    row("N4103", "leg", KA, { state: "running", ...at(8) }),
+    row("N4103", "worker", KA, { state: "running", ...at(8) }),
   ];
   expect(chiefOf(forked[4], forked)).toBe(K3);
 });
@@ -193,11 +193,11 @@ test("filters: lane, state and text narrow every section; the counts say how man
 test("worker chains: the live hop carries its finished hops, which leave the Finished list", () => {
   const chain = [
     row(BU, "console", BU, { state: "running" }),
-    row("HIMMEL-4904-N1494-api-lane-core-2026-10-08", "leg", BU, { state: "wrapped", live: false, runtime: { startedAt: 0, endedAt: 10, elapsedMs: 10 } }),
-    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08", "leg", BU, { state: "wrapped", live: false, runtime: { startedAt: 11, endedAt: 20, elapsedMs: 9 } }),
-    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME", "leg", BU, { state: "running" }),
-    row("HIMMEL-4910-N1495-dotenv-allowlist-2026-10-08", "leg", BU, { state: "wrapped", live: false, runtime: { startedAt: 0, endedAt: 30, elapsedMs: 30 } }),
-    row("HIMMEL-4910-N1495b-dotenv-allowlist-2026-10-08", "leg", BU, { state: "wrapped", live: false, runtime: { startedAt: 31, endedAt: 40, elapsedMs: 9 } }),
+    row("HIMMEL-4904-N1494-api-lane-core-2026-10-08", "worker", BU, { state: "wrapped", live: false, runtime: { startedAt: 0, endedAt: 10, elapsedMs: 10 } }),
+    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08", "worker", BU, { state: "wrapped", live: false, runtime: { startedAt: 11, endedAt: 20, elapsedMs: 9 } }),
+    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME", "worker", BU, { state: "running" }),
+    row("HIMMEL-4910-N1495-dotenv-allowlist-2026-10-08", "worker", BU, { state: "wrapped", live: false, runtime: { startedAt: 0, endedAt: 30, elapsedMs: 30 } }),
+    row("HIMMEL-4910-N1495b-dotenv-allowlist-2026-10-08", "worker", BU, { state: "wrapped", live: false, runtime: { startedAt: 31, endedAt: 40, elapsedMs: 9 } }),
   ];
   const s = fleetSections(chain);
   const live = "HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME";
@@ -212,8 +212,8 @@ test("worker chains: the live hop carries its finished hops, which leave the Fin
 test("filters apply to every section alike: a hidden live hop leaves its finished hops in Finished; process orphans follow lane and text", () => {
   const chain = [
     row(BU, "console", BU, { state: "running" }),
-    row("HIMMEL-4904-N1494-api-lane-core-2026-10-08", "leg", BU, { state: "wrapped", live: false }),
-    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME", "leg", BU, { state: "running", lane: "claudex" }),
+    row("HIMMEL-4904-N1494-api-lane-core-2026-10-08", "worker", BU, { state: "wrapped", live: false }),
+    row("HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME", "worker", BU, { state: "running", lane: "claudex" }),
   ];
   const s = fleetSections(chain, null, { lanes: [], states: [], text: "N1494-api" });
   expect(s.running).toEqual([]);
@@ -255,7 +255,7 @@ test("a lane chip counts the live sessions it shows, never the finished ones fol
 });
 
 test("sibling order: running, waiting, idle, unknown; newest first; then name", () => {
-  const order = [row("u", "leg", BU, { state: "unknown" }), row("b", "leg", BU), row("a", "leg", BU), row("w", "leg", BU, { state: "waiting for GO" })];
+  const order = [row("u", "worker", BU, { state: "unknown" }), row("b", "worker", BU), row("a", "worker", BU), row("w", "worker", BU, { state: "waiting for GO" })];
   expect(order.sort(siblingOrder as any).map((r) => r.name)).toEqual(["w", "a", "b", "u"]);
 });
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "HIMMEL-5317 graphify leg A/B task set. Ground truth is NOT stored here: truth.py computes it from the pinned base sha with the rule named in each task's `truth` field, so the answer is fixed before any run and the rubric is an exact set match.",
+  "_comment": "HIMMEL-5317 graphify worker A/B task set. Ground truth is NOT stored here: truth.py computes it from the pinned base sha with the rule named in each task's `truth` field, so the answer is fixed before any run and the rubric is an exact set match.",
   "base_sha": "ad9442348e96498bf5716249b2bf100627841b72",
   "answer_format": "Finish your reply with exactly one line: ANSWER: [\"item1\", \"item2\", ...] -- a JSON array of strings, each a bare basename or repo-relative path as the question asks, no other text on that line.",
   "tasks": [

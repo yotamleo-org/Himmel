@@ -28,7 +28,7 @@ function boot() {
 const a = process.argv.slice(2);
 const at = (f) => a[a.indexOf(f) + 1];
 writeFileSync(at("--json"), JSON.stringify({ schema: "himmel.board/1", console: { name: "seen:" + at("--doc").split("/").pop() },
-  legs: [{ leg: "${WORKER}", timeline: [{ text: "RETASK ${NONCE} lock ${LOCK}" }] }] }));
+  workers: [{ worker: "${WORKER}", timeline: [{ text: "RETASK ${NONCE} lock ${LOCK}" }] }] }));
 `);
   const s = startServer({ port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });

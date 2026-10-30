@@ -35,6 +35,7 @@ import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBa
 import { busRootOf, registerConfigRoot, resolveJournal } from "./sse.ts";
 import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
+import { legacyNamesOn } from "../../lib/env-alias.mjs";
 
 export const RECENT_MS = 60 * 60 * 1000;
 const SCRIPT_TIMEOUT_MS = 30_000;
@@ -52,7 +53,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R
 
 export type FleetState = "running" | "idle" | "waiting" | "waiting for GO" | "wrapped" | "unknown";
 export type FleetRow = {
-  run: string | null; pid: number | null; name: string; role: "console" | "leg" | "judge" | "consult" | "interactive" | "cloud"; model: string | null;
+  run: string | null; pid: number | null; name: string; role: "console" | "worker" | "judge" | "consult" | "interactive" | "cloud"; model: string | null;
   ticket: string | null; pr: number | null; state: FleetState;
   activity: { tool: string; summary: string; at: number } | null; lastEventAt: number | null;
   subagents: { total: number; running: number }; failures: number;
@@ -96,7 +97,7 @@ export function graphOf(role: FleetRow["role"], doc: string): { parent: string |
   if (role === "console") return { parent: null, predecessor: plain(/successor to `?([^\s`]+?)(?:\.md)?`?[\s(]/.exec(doc)?.[1]) };
   let parent = plain(/your console is\W*`([^`]+)`/i.exec(doc)?.[1]);
   if (role === "judge" || role === "consult") parent ??= plain(/dispatched by\s*(?:>\s*)?`([^`]+)`/.exec(doc)?.[1]);
-  if (role === "leg" || role === "judge" || role === "consult") {
+  if (role === "worker" || role === "judge" || role === "consult") {
     // canonical `accepted: <new> replaces <old>`, or the relay wording `accepted — relay from <old>, new chief <new>`
     for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted(?:: `?([^\s`]+)`? replaces| — relay from \S+, new console `?([^\s`,]+))/gm)) parent = plain(m[1] ?? m[2]) ?? parent;
   }
@@ -334,7 +335,7 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
 const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release token is:\s*\n\s*```[^\n]*\n\s*[^\s`]+\s*\n\s*```/i];
 
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
-  /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
+  /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "worker" : "interactive";
 
 // Scheduled sessions. The ids are scripts/himmelctl/lib/cadence-registry.json's, plus luna-fb (the luna capture loop); the
 // runner basenames in scripts/lib/cadence-format.sh (CADENCE_RUNNER_BASENAMES) start with one of them. A cadence run is
@@ -440,8 +441,9 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     if (!console) continue;
     try {
       const m = JSON.parse(await readFile(file, "utf8"));
-      if (m.schema !== 1 || !Array.isArray(m.legs)) continue;
-      for (const l of m.legs) if (typeof l.doc === "string") {
+      const list = m.workers ?? (legacyNamesOn(opts.env) ? m.legs : undefined); // legacy wire fallback
+      if (m.schema !== 1 || !Array.isArray(list)) continue;
+      for (const l of list) if (typeof l.doc === "string") {
         const at = Date.parse(l.added);
         edges.set(l.doc, { console, at: Number.isFinite(at) ? at : undefined });
       }
@@ -488,7 +490,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     const t0 = view?.t0;
     const ticket = /^([A-Z][A-Z0-9]+-\d+)\b/.exec(name)?.[1] ?? null;
     // A wrapped worker's window is closed: its codex price must not grow with later account usage (priced only while live).
-    const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
+    const ids = { session: run ?? `pid ${c.pid}`, worker: name, ticket, model: backendModel };
     const graph = graphOf(role, doc);
     // a chief is live only while its lock is held and wrapped only by its own wrap line once the lock is free (an
     // unreadable lock is neither); every other role's state is the last bullet's marker
@@ -500,7 +502,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.console ?? null;
     return {
       run, pid: Number(c.pid), name, role, model: c.model || null,
-      ticket, pr: role === "leg" ? prOf(doc) : null,
+      ticket, pr: role === "worker" ? prOf(doc) : null,
       state: role === "console" && !live && !wrapped ? "unknown" : stateOf(status, rec.status),
       activity: tools[0] && t0 !== undefined ? { tool: tools[0].name, summary: opts.redact(summarize(tools[0].args)).slice(0, 120), at: t0 + tools[0].start } : null,
       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
@@ -511,7 +513,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
       cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && !wrapped ? codex : null }) : null,
-      eval: role === "leg" || role === "judge" ? evalRowOf({ ...ids, lane, rounds, view, doc }) : null,
+      eval: role === "worker" || role === "judge" ? evalRowOf({ ...ids, lane, rounds, view, doc }) : null,
       runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, wrapped, opts.now, docAt),
     };
   }));
@@ -553,7 +555,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   const cloud = await cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
   // A local worker on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the chief.
   for (const r of rows) {
-    const c = r?.role === "leg" && cloud.find((x) => x.ticket === r.ticket);
+    const c = r?.role === "worker" && cloud.find((x) => x.ticket === r.ticket);
     if (r && c && r.console === c.console) r.parent = c.name;
   }
   // Drop the folds of sessions that left the fleet, so the cache does not grow with every session ever seen.

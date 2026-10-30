@@ -14,7 +14,7 @@ type Base = { timestamp?: number; metadata?: Record<string, unknown> };
 // Extra fields (the schemas are loose). `agent` rides every START event and names who acted:
 // the session's own agent (id "main") or a subagent (its journal agentId). `failure` classifies what went
 // wrong: a guardrail or permission refusal, a failing suite, a BLOCKED report, or any other error.
-export type AgentRole = "console" | "leg" | "judge" | "critic" | "subagent" | "agent";
+export type AgentRole = "console" | "worker" | "judge" | "critic" | "subagent" | "agent";
 export type AgentInfo = {
   id: string; name: string; role: AgentRole;
   model?: string; kind?: string; // kind: a subagent's subagent_type

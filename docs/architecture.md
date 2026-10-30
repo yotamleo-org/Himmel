@@ -15,8 +15,8 @@ runs a shift, and each **worker** owns one ticket, one worktree and one pull
 request. Many identifiers still carry the older names until their rename slice
 lands (HIMMEL-5689). The chief's command, script and directories are already
 `/chief`, `chief.sh` and `chief-kit/`, but its markers say `console`
-(`HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-worker.sh`,
-`HIMMEL_CONSOLE_LEG`). A box shows the new word first and the identifier as it
+(`HIMMEL_CONSOLE_*`), and a worker's is still `HIMMEL_CONSOLE_LEG` (exported by
+`headed-arm-worker.sh`). A box shows the new word first and the identifier as it
 is today.
 
 These are the structural views. Four **behavioural** chains already have

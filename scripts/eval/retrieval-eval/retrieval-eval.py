@@ -723,7 +723,7 @@ def role_of(title, path, side):
     if "/subagents/" in path or side:
         return "subagent"
     if re.search(r"-n\d+\b|himmel-\d+", t):
-        return "leg"
+        return "worker"
     return "interactive"
 
 

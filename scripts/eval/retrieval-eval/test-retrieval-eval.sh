@@ -374,7 +374,7 @@ cat > "$P/s1.jsonl" <<'EOF'
 EOF
 py "$EV" census --projects "$W/projects" --days 0 --out "$W/census.json" > "$W/census.txt" 2>&1
 eq "census exits 0" "0" "$?"
-cz() { py -c 'import json,sys; d=json.load(open(sys.argv[1]))["roles"]["leg"]; print(d[sys.argv[2]])' "$W/census.json" "$1"; }
+cz() { py -c 'import json,sys; d=json.load(open(sys.argv[1]))["roles"]["worker"]; print(d[sys.argv[2]])' "$W/census.json" "$1"; }
 eq "census: one qmd call" "1" "$(cz qmd_calls)"
 eq "census: one qmd failure" "1" "$(cz qmd_failed)"
 eq "census: grep fallback after the failed qmd call" "1" "$(cz fallback_after_miss)"
@@ -389,7 +389,7 @@ cat > "$P2/s2.jsonl" <<'EOF'
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","content":"[]"}]}}
 EOF
 py "$EV" census --projects "$W/projects2" --days 7 --out "$W/census2.json" > /dev/null 2>&1
-eq "census: a call older than the window is not counted" "0" "$(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"]["qmd_calls"])' "$W/census2.json")"
+eq "census: a call older than the window is not counted" "0" "$(py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["worker"]["qmd_calls"])' "$W/census2.json")"
 
 # 13. census used/failed heuristics: a full path decides used, the is_error flag decides failed,
 # and qmd get / multi_get (either tool prefix) are counted.
@@ -420,7 +420,7 @@ cat > "$P3/s3.jsonl" <<'EOF'
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"l","content":"{\"results\": []}"}]}}
 EOF
 py "$EV" census --projects "$W/projects3" --days 0 --out "$W/census3.json" > /dev/null 2>&1
-c3() { py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["leg"][sys.argv[2]])' "$W/census3.json" "$1"; }
+c3() { py -c 'import json,sys; print(json.load(open(sys.argv[1]))["roles"]["worker"][sys.argv[2]])' "$W/census3.json" "$1"; }
 eq "census: qmd get and multi_get (either prefix) are counted" "6" "$(c3 qmd_calls)"
 eq "census: only an empty results envelope (any spacing) fails; a body with error: and is_error false does not" "2 0" "$(c3 qmd_failed) $(c3 graphify_failed)"
 eq "census: a README.md in another directory is not used; get is used by its input path, a glob multi_get by its result headers" "2" "$(c3 qmd_used)"

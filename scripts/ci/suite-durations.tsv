@@ -289,6 +289,7 @@ scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	3
 scripts/docs/test-team-page.sh	1
 scripts/docs/test-troubleshooting-page.sh	0
+scripts/eval/compaction-handoff/test-compaction-ab.sh	3
 scripts/eval/cr-ledger/test-cr-ledger.sh	2
 scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	8
 scripts/eval/friction/test-friction.sh	3
