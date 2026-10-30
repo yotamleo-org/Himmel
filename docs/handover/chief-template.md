@@ -8,7 +8,7 @@
 > `{{STATE_DIR}}`); you ship from and always run in
 > **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a
 > worker into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
-> tokens per turn, or 150 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
+> tokens per turn, or 110 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
 
 ## ACTION ZERO — before anything else
 

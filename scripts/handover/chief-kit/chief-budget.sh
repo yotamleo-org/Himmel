@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # chief-budget.sh - the chief's handover budget. Prints one line
 #   budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER
-# HANDOVER when turns >= CHIEF_TURN_BUDGET (default 150), cumulative
+# HANDOVER when turns >= CHIEF_TURN_BUDGET (default 110), cumulative
 # cache-read >= CHIEF_CACHE_READ_BUDGET_M million tokens (default 30; the old
 # names CHIEF_TURN_BUDGET and CHIEF_CACHE_READ_BUDGET_M still read), or the
 # context fill >= CHIEF_FILL_HANDOVER_PCT percent (default 45): past any, every
@@ -33,7 +33,8 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
   fi
   printf '%s\n' "$v"
 }
-TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 150)"
+# round(sqrt(2H/138)) = 110; handover-cost.py MEAN n=506 net H=827862 input-equivalent tokens.
+TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 110)"
 CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 30)"
 FILL_PCT="$(num_env CHIEF_FILL_HANDOVER_PCT 45)"
 if [ "$FILL_PCT" -gt 100 ]; then  # a fill above 100 % can never be reached, so the fill wake would never fire
