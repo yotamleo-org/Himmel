@@ -1262,7 +1262,13 @@ jobs:
               fi
             done
           fi
-          bash "$gate/scripts/lint/check-platform-dropped.sh" --range "$BASE_SHA"
+          # The recorded base can predate main's tip; a diff from it would count main's
+          # later lines as this PR's. The merge commit's first parent is the current tip.
+          if ! git rev-parse -q --verify HEAD^2 > /dev/null; then
+            echo "platform-dropped lint: checkout is not a merge commit, cannot tell the PR's own lines" >&2
+            exit 2
+          fi
+          bash "$gate/scripts/lint/check-platform-dropped.sh" --range HEAD^1
       # The whole-tree pre-commit gates with no other CI copy, in ONE step (not a
       # job per hook): a session without hooks, or a --no-verify commit, never ran
       # them. Each runs from its BASE copy so a PR cannot weaken the gate that
