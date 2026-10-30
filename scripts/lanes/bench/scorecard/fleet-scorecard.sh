@@ -40,7 +40,7 @@
 # request or prompt seen in both the worker doc and the chief doc counts once); protocol
 # misses (LIVE shape, READY shape, unmarked or coined bullets, a relay with no SUCCESSION
 # quote-back, a merge with no WRAPPED); delivery (a chief entry in the doc = inbox, a bus
-# record = bus, else message); stalls (BLOCKED / HALTED / PARKED-BANK bullets, chief-doc idle
+# record = bus, else message); stalls (BLOCKED / HALTED / parked bullets, chief-doc idle
 # ticks, prompt parks); guard denials; cost-eq per merged PR from its worker-burn line.
 # A source that is absent prints `n/a (<reason>)`, never 0. Per lane: totals and medians.
 #
@@ -85,7 +85,9 @@ import escapes  # noqa: E402  (it puts eval/lib, cr-ledger and judge-accuracy on
 import cr_ledger_eval  # noqa: E402
 import judge_accuracy  # noqa: E402
 
-MARKERS = {"LIVE", "FINDING", "RESOLVED", "READY", "BLOCKED", "HALTED", "WRAPPED", "PARKED-BANK", "RESUMED", "SUCCESSION"}
+sys.path.insert(0, os.path.normpath(os.path.join(HERE, "..", "..", "..", "lib")))
+import status_marker  # noqa: E402
+
 COINED = {"SHIPPED", "MERGED"}
 BULLET = re.compile(r"^- (\d{1,2}):(\d{2}) (.*)$")
 CHIEF = re.compile(r"^\[[^\]]+\] from=\S+ (.*)$")
@@ -224,7 +226,7 @@ def parse_doc(wk, tz):
             prev = max(prev, dt)
         rest = b.group(3)
         c = CHIEF.match(rest)
-        word = rest.split()[0].rstrip(":—") if rest.split() and not c else ""
+        word = (status_marker.parse(line) or rest.split()[0].rstrip(":—")) if rest.split() and not c else ""
         if rest.startswith(("bus-adopt:", "bus #", "SUCCESSION accepted:")):
             word = "SUCCESSION" if rest.startswith("SUCCESSION") else "script"
         bullets.append({"dt": dt, "word": word, "text": c.group(1) if c else rest, "chief": bool(c),
@@ -429,7 +431,8 @@ def score(wk, ctx):
     bad_ready = sum(1 for b in worker if b["word"] == "READY" and not READY_OK.match(b["text"]))
     if bad_ready:
         miss.append("ready-shape %d" % bad_ready)
-    unmarked = sum(1 for b in worker if b["word"] not in MARKERS | COINED | {"script"})
+    unmarked = sum(1 for b in worker if not status_marker.parse("- " + b["word"])
+                   and b["word"] not in COINED | {"script", "SUCCESSION"})
     coined = sum(1 for b in worker if b["word"] in COINED)
     if unmarked:
         miss.append("unmarked %d" % unmarked)
@@ -442,7 +445,7 @@ def score(wk, ctx):
     f["protocol"] = "miss: " + ", ".join(miss) if miss else "ok"
     via = [w for w, hit in (("inbox", chief_entries), ("bus", [b for b in worker if b["bus"]])) if hit]
     f["delivery"] = "+".join(via) or "message"
-    blocked = sum(1 for b in worker if b["word"] in ("BLOCKED", "HALTED", "PARKED-BANK"))
+    blocked = sum(1 for b in worker if b["word"] in ("BLOCKED", "HALTED") or status_marker.is_parked(b["word"]))
     prompt = events([b["hm"] for b in worker if PROMPT.search(b["text"])],
                     [clock(ln) for ln in chief_lines if PROMPT.search(ln)])
     stalls = ["blocked %d" % blocked] if blocked else []
