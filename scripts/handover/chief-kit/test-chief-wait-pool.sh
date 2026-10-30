@@ -289,6 +289,20 @@ timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.
 check "(8134) the current-version rows are listed before the later-version pool row" "HIMMEL-10,HIMMEL-11,HIMMEL-20" "$(grep '^LOCAL' "$WORK/lp2.out" | cut -f2 | paste -sd, -)"
 check "(8134) the later-version pool row has its own heading after the current one" "yes" "$([ "$(grep -n '^# dispatchable in v1.0.1' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" -lt "$(grep -n '^# dispatchable in other versions' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" ] && echo yes)"
 
+# --- (6604) a RESUME-HELD line is not a pool key: the pool signature ignores it ----------------
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"  # the sections above re-point it at the real dispatcher
+rm -f "$STUB/dispositions"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+I="$(new_inbox rh)"
+arm "$I" "$WORK/rh1.out" 6
+check "(6604) the streak's first sample wakes with the pool (rc 0)" "0" "$rc"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nRESUME-HELD HIMMEL-9005 by N4200\n' > "$STUB/pool.rows"
+c0="$(calls)"
+arm "$I" "$WORK/rh2.out" 5
+check "(6604) the pool was re-probed with the RESUME-HELD line in it" "yes" "$([ "$(calls)" -gt "$c0" ] && echo yes)"
+check "(6604) a RESUME-HELD line does not change the pool signature: no re-wake (rc 124)" "124" "$rc"
+rm -f "$STUB/pool.rows"
+
 # --- (6604) pool-stale= wakes once per newly stale disposition key ----------------------------
 stale_line() { # <pool-stale value>
     sed "s/capacity=UNDERFILLED:7/capacity=ok pool-stale=$1/" "$STUB/tick.line.orig" > "$STUB/tick.line"
@@ -317,6 +331,37 @@ check "(6604) pool-stale=0 clears the marker" "no" "$([ -e "$I.wait.stale" ] && 
 stale_line '1:HIMMEL-7120'
 arm "$I" "$WORK/st6.out" 15
 check "(6604) a key that left and rejoined wakes again" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st6.out")"
+
+# a tick that omits the field (a timeout or a failed gh read) or says skip keeps the marker
+I="$(new_inbox st2)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/sm1.out" 15
+check "(6604) the first stale key wakes (rc 0)" "0" "$rc"
+sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line.orig" > "$STUB/tick.line"  # no pool-stale field at all
+arm "$I" "$WORK/sm2.out" 4
+check "(6604) a tick without the field never wakes (rc 124)" "124" "$rc"
+check "(6604) a tick without the field keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line 'skip'
+arm "$I" "$WORK/sm3.out" 4
+check "(6604) pool-stale=skip keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/sm4.out" 4
+check "(6604) the key reported before the gap does not re-wake after it (rc 124)" "124" "$rc"
+
+# a partial read (a key plus ?) merges into the marker and never shrinks it
+I="$(new_inbox st3)"
+stale_line '1:HIMMEL-7120,?'
+arm "$I" "$WORK/sp1.out" 15
+check "(6604) a partial read wakes for its readable key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/sp1.out")"
+stale_line '1:HIMMEL-6866,?'
+arm "$I" "$WORK/sp2.out" 15
+check "(6604) a later partial read wakes only for the key it adds" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/sp2.out")"
+stale_line '1:HIMMEL-7120,?'
+arm "$I" "$WORK/sp3.out" 4
+check "(6604) a partial read never shrinks the marker: the first key stays quiet (rc 124)" "124" "$rc"
+stale_line '2:HIMMEL-7120,HIMMEL-6866'
+arm "$I" "$WORK/sp4.out" 4
+check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
 printf '\n%d failure(s)\n' "$fails"
