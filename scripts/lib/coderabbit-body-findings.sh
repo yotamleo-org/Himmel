@@ -164,20 +164,37 @@ def count_matches(re):
 # The "## Follow-up Comments" layout has no (N) header: each finding is a
 # <details> whose <summary> opens with a badge image, an "Outside diff" badge
 # for an outside-diff finding and a "Nitpick" badge for a nitpick. One such badge
-# = one finding. The known badges are Outside diff and Nitpick; a Follow-up
-# header with no known badge, or with a badge of any other kind, is drift.
+# = one finding. The known badges are Outside diff and Nitpick; the alt match
+# stops at the closing picture tag, so title text quoting a badge never counts.
+# The section runs from its header to the first legacy "... comments (N)"
+# summary or the end of the body. Drift = a header with no known badge, a badge
+# of any other kind, or a cr-comment marker count (CodeRabbit writes one per
+# finding, in any badge shape) that differs from the known badge count.
 def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
+def fu_end_re: "(?m)^(?:>[ ]?)*<summary>[^\n]*comments? [(][0-9]+[)]";
 def fu_badge_re: "<summary><sub><picture>";
-def fu_od_re: "<summary><sub><picture>[^\n]*alt=\"Outside diff\"";
-def fu_nit_re: "<summary><sub><picture>[^\n]*alt=\"Nitpick\"";
+def fu_od_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Outside diff\"";
+def fu_nit_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Nitpick\"";
+def fu_sec:
+  if test(fu_hdr_re) then
+    ( first(match(fu_hdr_re)) as $h | .[$h.offset:] ) as $s
+    | ( [ $s | match(fu_end_re) ] | .[0].offset ) as $e
+    | if $e == null then $s else $s[:$e] end
+  else "" end;
 def fu_known_n: count_matches(fu_od_re) + count_matches(fu_nit_re);
 def fu_drift:
-  test(fu_hdr_re) and ( fu_known_n == 0 or count_matches(fu_badge_re) != fu_known_n );
+  test(fu_hdr_re) and ( fu_sec | fu_known_n as $k
+    | $k == 0 or count_matches(fu_badge_re) != $k or count_matches(marker_re) != $k );
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
-def nitpick_n: sum_matches(nitpick_re) + count_matches(fu_nit_re);
-# A prior review whose Follow-up section is malformed counts as one finding, so
-# its head stays in the prior-head gate and the per-head reader returns rc 2.
-def prior_n: outside_n as $n | if $n == 0 and fu_drift then 1 else $n end;
+def nitpick_n: sum_matches(nitpick_re) + ( if test(fu_hdr_re) then (fu_sec | count_matches(fu_nit_re)) else 0 end );
+# A prior review whose Follow-up section is malformed, or that carries a
+# Follow-up header beside Outside-diff text with no parseable count, counts as
+# one finding, so its head stays in the prior-head gate and the per-head reader
+# returns rc 2. A prior body without the header reads as before.
+def prior_n:
+  outside_n as $n
+  | if $n == 0 and ( fu_drift or ( test(fu_hdr_re) and test(loose_outside_re) and (test(outside_re)|not) ) )
+    then 1 else $n end;
 def has_content: test("\\S");
 # CodeRabbit now writes counts as "comments: N" and
 # "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
@@ -432,7 +449,7 @@ cr_body_outside_findings() {
     drift=$(printf '%s' "$result" | jq -r '.drift' 2>/dev/null || true)
     case "$hdr$n" in ''|*[!0-9]*) return 1 ;; esac
     if [ "$drift" = "true" ]; then
-        echo "cr-body-findings: a Follow-up Comments section has no parseable Outside-diff finding (or an unknown badge) for PR #$num at head $head (format drift)" >&2
+        echo "cr-body-findings: a Follow-up Comments section has no parseable finding, an unknown badge, or a finding marker count that differs from its badges, for PR #$num at head $head (format drift)" >&2
         return 2
     fi
     if [ "$hdr" -ne "$n" ]; then
