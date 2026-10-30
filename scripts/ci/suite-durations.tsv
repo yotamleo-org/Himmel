@@ -37,6 +37,7 @@
 #     | sed -nE 's/.*\[(PASS|FAIL)\] ([^ ]+) \(([0-9]+)s\).*/\2\t\3/p' \
 #     | sort -u
 # then replace the rows below and update the source line above.
+marketplace/plugins/pstack/test-vendor.sh	1
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	0
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	0
 marketplace/plugins/himmel-bus/tests/test-cli.sh	21

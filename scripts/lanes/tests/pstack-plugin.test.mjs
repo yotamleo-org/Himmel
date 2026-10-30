@@ -3,9 +3,11 @@
 // pinned upstream commit, enabled for interactive sessions only and absent from
 // every lean worker/lane profile, so removing it is a single disable.
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync, readdirSync, lstatSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { resolveProfile } from '../plugin-profiles.mjs';
 
@@ -14,9 +16,10 @@ const REG = JSON.parse(readFileSync(join(ROOT, 'scripts', 'lanes', 'plugin-profi
 const MP = JSON.parse(readFileSync(join(ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
 const PLUGIN = join(ROOT, 'marketplace', 'plugins', 'pstack');
 const ID = 'pstack@himmel';
-const PIN = '99743e9c151c8537cbbf1f98bb38f34ef3368453';
+const PIN = '4dd1d05818d19792e7cd6e818f1667f95f7e1dbe';
 const SKILLS = ['correct', 'blast-radius', 'create-verification-skill', 'maintain-verification-skill',
-  'benchmark-checklist', 'principle-explain-the-number', 'in-your-own-words'];
+  'benchmark-checklist', 'principle-explain-the-number', 'in-your-own-words',
+  'statechart', 'create-formal-verification-skill', 'maintain-formal-verification-skill'];
 
 test('pstack@himmel is in the catalog, so every profile that does not enable it denies it', () => {
   assert.ok(REG.catalog.includes(ID), `${ID} missing from catalog`);
@@ -50,7 +53,7 @@ test('marketplace entry is a local plugin whose files name the pinned upstream c
   assert.ok(!JSON.stringify(e).includes('pstack-claude'), 'never sourced from the michael-denyer fork');
 });
 
-test('the plugin carries exactly the seven chosen skills, each opt-in and headed with source, sha and deviations', () => {
+test('the plugin carries exactly the ten chosen skills, each opt-in and headed with source, sha and deviations', () => {
   const have = readdirSync(join(PLUGIN, 'skills')).sort();
   assert.deepEqual(have, [...SKILLS].sort());
   for (const s of SKILLS) {
@@ -102,6 +105,56 @@ test('both deviations are recorded in VENDORED.md and the blast-radius header', 
   assert.ok(!br.includes('Deviations: none'), 'blast-radius header must record deviations');
 });
 
-test('plugin.json is bumped to 0.1.2', () => {
+test('every vendored file matches the byte-verified pinned inventory', () => {
+  const manifest = JSON.parse(readFileSync(join(PLUGIN, 'vendor-hashes.json'), 'utf8'));
+  assert.equal(manifest.pin, PIN);
+  const files = ['LICENSE'];
+  for (const folder of ['skills', 'docs']) {
+    for (const name of readdirSync(join(PLUGIN, folder), { recursive: true })) {
+      const path = join(folder, name);
+      const stat = lstatSync(join(PLUGIN, path));
+      assert.ok(!stat.isSymbolicLink(), `${path}: symlink not in pinned inventory`);
+      if (stat.isFile()) files.push(path);
+    }
+  }
+  assert.deepEqual(files.sort(), Object.keys(manifest.files).sort());
+  for (const [path, hashes] of Object.entries(manifest.files)) {
+    assert.match(hashes.upstream, /^[a-f0-9]{64}$/);
+    if (process.platform !== 'win32')
+      assert.equal(Boolean(lstatSync(join(PLUGIN, path)).mode & 0o111), hashes.executable,
+        `${path}: executable mode drift`);
+    assert.equal(createHash('sha256').update(readFileSync(join(PLUGIN, path))).digest('hex'),
+      hashes.vendored, `${path}: drift from cursor/plugins@${PIN}`);
+  }
+});
+
+test('the principle matches the new upstream pin after reversing recorded deviations', () => {
+  const text = readFileSync(join(PLUGIN, 'skills/principle-explain-the-number/SKILL.md'), 'utf8')
+    .replace(/^<!-- Vendored from[^\n]*-->\n\n/m, '')
+    .replace('Prove It Works (not shipped here)', '[Prove It Works](../principle-prove-it-works/SKILL.md)');
+  assert.equal(createHash('sha256').update(text).digest('hex'),
+    '3c84fbf9a7d9842abcfcd134010782b32092ac3d3fb4aaf9ed5732dca83aa58c',
+    'vendored file drifted from cursor/plugins@4dd1d058');
+});
+
+for (const [name, env, message] of [
+  ['TLC absent', { TLA2TOOLS: '', JAVA: '' }, /Set TLA2TOOLS to an absolute path/],
+  ['Java absent', { TLA2TOOLS: join(PLUGIN, 'skills/statechart/scripts/test/grid/Grid.cfg'), JAVA: '' }, /Set JAVA to an absolute path/],
+  ['wrong jar', { TLA2TOOLS: join(PLUGIN, 'skills/statechart/scripts/test/grid/Grid.cfg'), JAVA: process.execPath }, /tla2tools.jar SHA-256 mismatch/],
+]) {
+  test(`statechart stops without installing when ${name}`, () => {
+    const run = pathToFileURL(join(PLUGIN, 'skills/statechart/scripts/run.ts')).href;
+    const grid = join(PLUGIN, 'skills/statechart/scripts/test/grid/Grid');
+    const code = `import { check } from ${JSON.stringify(run)};\ntry { await check(${JSON.stringify(grid + '.tla')}, ${JSON.stringify(grid + '.cfg')}); } catch (e) { console.error(e.message); process.exit(2); }`;
+    const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', code], {
+      encoding: 'utf8', timeout: 10000, env: { ...process.env, PATH: '', ...env },
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, message);
+  });
+}
+
+test('plugin.json keeps the release-managed version 0.1.2', () => {
   assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.2');
 });
