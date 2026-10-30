@@ -353,13 +353,14 @@ housekeeping_file="$inbox.wait.housekeeping"
 housekeeping_secs="${HOUSEKEEPING_DIGEST_SECS:-900}"
 case "$housekeeping_secs" in ''|*[!0-9]*|??????????*) housekeeping_secs=900 ;; esac
 housekeeping_secs=$((10#$housekeeping_secs))
-housekeeping_add() { # <kind> <detail>; success means an immediate wake was printed
+housekeeping_add() { # <kind> <detail> [payload]; success means an immediate wake was printed
     if [ "$housekeeping_secs" -ne 0 ] &&
        { [ -f "$housekeeping_file.since" ] || date +%s > "$housekeeping_file.since"; } &&
-       printf '%s %s\n' "$1" "$2" >> "$housekeeping_file"; then
+       printf '%s %s%s\n' "$1" "$2" "${3:+ $3}" >> "$housekeeping_file"; then
         return 1
     fi
     printf 'WAKE %s %s\n' "$1" "$2"
+    [ -z "${3:-}" ] || printf '%s\n' "$3"
     return 0
 }
 housekeeping_flush() {
@@ -1009,10 +1010,11 @@ sweep_wake() {
     out="$(TICKET_STATUS_SWEEP_BUDGET=50 TICKET_STATUS_SWEEP_GRACE=5 timeout -k 2 "$sweep_timeout" bash "$sweep_cmd" 2>/dev/null 9>&-)" || out=""  # gnu-ok: Linux-only kit; swallow-ok: a cut-off or failed sweep logs its own miss row and wakes nothing here
     out="$(printf '%s\n' "$out" | tail -n 1)"
     moved="$(printf '%s\n' "$out" | sed -n 's/.* moved=\([0-9][0-9]*\).*/\1/p')"
-    case "$out" in
-        *"wake=1"*) printf 'WAKE status-sweep %s\n' "$out"; return 0 ;;
-    esac
-    if [ "${moved:-0}" -gt 0 ]; then printf 'WAKE status-sweep %s\n' "$out"; return 0; fi
+    case "$out" in *"wake=1"*) moved=1 ;; esac
+    if [ "${moved:-0}" -gt 0 ]; then
+        if [ "$housekeeping_secs" -eq 0 ]; then printf 'WAKE status-sweep %s\n' "$out"; return 0; fi
+        if housekeeping_add status-sweep "$out"; then return 0; fi
+    fi
     fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state wakes nothing
     fstat="${fstat#focus=}"
     case "$fstat" in
@@ -1415,14 +1417,12 @@ while :; do
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
             if sweep_out="$(sweep_wake)"; then
-                sweep_out="${sweep_out#WAKE }"
+                printf '%s\n' "$sweep_out"
                 case "$sweep_out" in
-                    status-sweep\ *)
-                        if housekeeping_add status-sweep "${sweep_out#status-sweep }"; then
-                            exit_reason='wake-status-sweep'; exit 0
-                        fi ;;
-                    *) printf 'WAKE %s\n' "$sweep_out"; exit_reason='wake-focus'; exit 0 ;;
+                    WAKE\ status-sweep\ *) exit_reason='wake-status-sweep' ;;
+                    *) exit_reason='wake-focus' ;;
                 esac
+                exit 0
             fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
@@ -1444,7 +1444,7 @@ while :; do
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""
                 elif [ "$housekeeping_secs" -gt 0 ] && tick_housekeeping "$real_changed" "$saved" "$key"; then
-                    if housekeeping_add tick "changed=$real_changed usage=${key##*|usage=} $tick_line"; then
+                    if housekeeping_add tick "changed=$real_changed usage=${key##*|usage=}" "$tick_line"; then
                         exit_reason='wake-tick'; exit 0
                     fi
                     saved="$key"; save_key "$key"; pending=""

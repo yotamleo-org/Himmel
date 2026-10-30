@@ -152,9 +152,27 @@ EOF
         timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/write-$digest_case.out" 2> "$WORK/write-$digest_case.err"; digest_rc=$?
         check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
         case "$digest_case" in tick|deadline)
-            check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")" ;;
+            check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")"
+            check "(8197) $digest_case fallback keeps the tick header and payload on separate lines" 'WAKE tick changed=tails usage=PROCEED:1' "$(head -n 1 "$WORK/write-$digest_case.out"):$(grep -c '^TICK .*tails=N1:LIVE' "$WORK/write-$digest_case.out")" ;;
         esac
     done
+
+    cat > "$STUB/digest-focus.sh" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in *" --status "*) cat "$STUB/focus.state" ;; esac
+EOF
+    export WAIT_FOCUS_CMD="$STUB/digest-focus.sh" WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" WAIT_SWEEP_SEC=60
+    local focus_state
+    for focus_state in FAILED:example DIRTY:10m; do
+        rm -f "$STUB/samples" "$STUB/swept"
+        printf 'focus=%s\n' "$focus_state" > "$STUB/focus.state"
+        I="$(new_inbox "focus-$focus_state")"
+        printf '%s\n' "$(( $(date +%s) - 61 ))" > "$I.wait.sweep"
+        timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/focus-$focus_state.out" 2> "$WORK/focus-$focus_state.err"; digest_rc=$?
+        check "(8197) $focus_state wakes immediately when a status sweep is buffered" "0:WAKE focus $focus_state" "$digest_rc:$(head -n 1 "$WORK/focus-$focus_state.out")"
+        check "(8197) $focus_state leaves the simultaneous status sweep queued" 1 "$(grep -c '^status-sweep status-sweep moved=1 wake=1' "$I.wait.housekeeping")"
+    done
+    export WAIT_FOCUS_CMD="$STUB/off.sh" WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_SWEEP_SEC=1
 
     I="$(new_inbox readfailure)"
     printf 'tick changed=tails usage=PROCEED retained-payload\n' > "$I.wait.housekeeping"
