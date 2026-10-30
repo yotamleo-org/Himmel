@@ -2669,12 +2669,12 @@ case "${MCP_NAMES_JSON:-}" in
             echo "$(date +%F_%T) headed-arm-worker: $NAME names no chief - not registered on the bus" >> "$LOG"
         elif [ "$HEADLESS" -ne 1 ]; then
             BUS_CLI="${HEADED_ARM_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-            BUS_ROLE=leg
+            BUS_ROLE=worker
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
             [ "$CONSULT" -eq 1 ] && BUS_ROLE=consult
             BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --console "$BUS_CHIEF")
             # WORKER_SESSION_BUS_PAIR: the worker a judge or consult was launched for (spec 3c).
-            [ "$BUS_ROLE" != leg ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
+            [ "$BUS_ROLE" != worker ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
             if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
                 worker_propagate_env HIMMEL_BUS_NAME "$NAME"
                 # The CLI that registered is the CLI that binds.

@@ -327,6 +327,20 @@ unchanged in every respect, including its argv, so the worker system prompt rule
 pasted into the brief. Detail:
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
+**Profile and context defaults.**
+- A worker whose Writes are all under `docs/` or `*.md` gets `worker-docs` by
+  default: every Writes token must be a docs path, a `*.md` file or a connector
+  word. An unknown path such as `src/main.py`, `Makefile` or `LICENSE` keeps
+  `worker-impl`. `worker-eval` is only an explicit `"profile"` key in the workers
+  JSON.
+- A Sonnet 5.5 worker on the native lane runs at `450000`: `worker-impl` with the
+  hand-off guard, `worker-eval` with the compaction guard. Every other lane, model
+  or profile stays at `200000` with no guard. `WORKER_SESSION_CONTEXT=1m` or an
+  explicit `--context-guard` (including `none`) overrides the profile default.
+- An `ab_arm` brief key needs `"profile": "worker-docs"` for a native Sonnet 5.5
+  launch; `gen-briefs` and the wrapper both refuse it on `worker-impl` and
+  `worker-eval`.
+
 **Repo map (off by default).** Set `WORKER_SESSION_REPO_MAP=1` in the launching shell and
 a profiled worker's system prompt starts with a repo map: the files of
 the worker's repo ranked by PageRank over its primary checkout's
