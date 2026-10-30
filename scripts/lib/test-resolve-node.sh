@@ -36,7 +36,7 @@ make_fake_node() {
 }
 
 echo "== resolve_node: PATH wins over a former nvm-windows install (HIMMEL-8171) =="
-tmp="$(mktemp -d)" || exit 1
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/resolve-node-test.XXXXXX")" || exit 1
 make_fake_node "$tmp/c/nvm4w/nodejs"
 make_fake_node "$tmp/chosen-on-path"
 out="$(PATH="$tmp/chosen-on-path:$UTILS_DIR" NVM_SYMLINK="$tmp/c/nvm4w/nodejs" RESOLVE_NODE_NVM4W_DIR="$tmp/c/nvm4w/nodejs" RESOLVE_NODE_PROBE_DIRS="" RESOLVE_NODE_NVM_ROOT="$tmp/none" FNM_DIR="$tmp/none" resolve_node)"; rc=$?
