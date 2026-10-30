@@ -891,5 +891,30 @@ check_both "102k fromP: cd scratch && echo x > 'out.txt' (whole-word single-quot
 check_both "102l fromP: cd scratch && touch \"sub/out.txt\" (quoted subfolder path) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch \\\"sub8200/out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
 
+# 103: a command substitution in the operand is a stub that _bwimc_check_target reduces to its
+# static prefix (`lnk$(true)/out.txt` becomes `./`) before it calls the guard. That derived word is
+# plain, but it is not the word the shell sees, so it never takes the plain skip: it gets the
+# payload-cwd re-check on its prefix, as on main.
+mkdir -p "$FIX/scratch8200/sub8200"
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/sub8200/lnk8200" && [ -d "$FIX/scratch8200/sub8200/lnk8200" ]; }; then
+    bad "103 setup: the scratch8200/sub8200/lnk8200 symlink was not created"
+fi
+check_both "103a fromP: cd scratch && echo x > lnk\$(true)/out.txt (substitution after a symlink name) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\$(true)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103b fromP: cd scratch && echo x > vic\$(true)tim denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic\$(true)tim\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103c fromP: cd scratch && tee lnk\$(true)/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200\$(true)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103d fromP: cd scratch && echo x > lnk\`true\`/out.txt (backtick form) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\`true\`/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103e fromP: cd scratch && echo x > \"lnk\$(true)/out.txt\" (quoted) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"lnk8200\$(true)/out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103f fromP: cd scratch && echo x > sub/lnk\$(true)/x (symlink below a subfolder) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > sub8200/lnk8200\$(true)/x\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103g fromP: cd scratch && echo x > lnk/out.txt (plain symlink name into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103h fromP: cd scratch && echo x > f\$(date) denies, as on main (accepted over-deny)" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > f\$(date)\",\"cwd\":\"$FIX/primary\"}}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

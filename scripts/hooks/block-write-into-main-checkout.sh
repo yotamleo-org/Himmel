@@ -216,8 +216,9 @@
 #     _bwimc_plain_word (only letters, digits and . _ - / + , @ :, optionally in one
 #     whole-word quote pair, no `..` component) is checked against the cd target and its
 #     symlink-resolved form; every other word keeps the payload-cwd re-check and so gets
-#     main's verdict (a harmless mid-word quote, backslash, brace or glob write in the
-#     scratch folder is refused too). A candidate holding `$` is not checked at all,
+#     main's verdict (a harmless mid-word quote, backslash, brace, glob or `f$(date)`
+#     write in the scratch folder is refused too). A word derived from a command-substitution
+#     stub is never proven plain, however it reads. A candidate holding `$` is not checked at all,
 #     as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
@@ -2304,6 +2305,7 @@ _bwimc_check_target() {
                         *) pfx="./" ;;
                     esac
                     pfx=$(_bwimc_unsent "$pfx")
+                    _bwimc_cdg_derived=1  # the stub prefix is not the word the shell sees: no plain skip
                     _bwimc_cd_guard "$pfx"
                     case "$pfx" in
                         /*|[A-Za-z]:/*|[A-Za-z]:\\*) abs="$pfx" ;;
@@ -2313,6 +2315,7 @@ _bwimc_check_target() {
                     return 0
                     ;;
             esac
+            _bwimc_cdg_derived=1  # a pwd-stub rewrite (`$(pwd)/x` becomes `./x`) is derived too
             _bwimc_cd_guard "$raw" "$mode"
             ;;
     esac
@@ -2918,6 +2921,9 @@ _bwimc_ecwd_track() {
 # _bwimc_expand_token already gives it; revisit if a literal `~` directory
 # ever appears inside a checkout.
 _bwimc_cd_guard() {
+    # read-and-clear, so a deny or an early return cannot leave the flag set for the next caller
+    local _bwimc_dv="${_bwimc_cdg_derived:-0}"
+    _bwimc_cdg_derived=0
     # after an in-command HOME assignment a ~ / $HOME write
     # target resolves against a HOME this hook cannot see — fail closed.
     # A cp SOURCE passes here too, as behind a cd: its basename names the
@@ -2938,9 +2944,14 @@ _bwimc_cd_guard() {
     # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a candidate proven
     # plain by _bwimc_plain_word (a fixed allowlist of ordinary path characters), which is also
     # resolved against the symlink-resolved cd target, where the write physically lands. Every
-    # other word keeps the payload-cwd re-check, so it gets main's verdict by construction.
+    # other word keeps the payload-cwd re-check, so it gets main's verdict by construction. A
+    # word that _bwimc_check_target derived from a command-substitution stub (its static
+    # prefix, or a pwd stub rewritten to `.`) is not the word the shell sees, so it is never
+    # plain (_bwimc_cdg_derived, set by that caller and cleared on entry here).
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
-        _bwimc_plain_word "$1" || { [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"; }
+        if [ "$_bwimc_dv" = 1 ] || ! _bwimc_plain_word "$1"; then
+            [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+        fi
         # second layer for a symlink-free prefix: the kernel resolves a `..` after a symlink physically but the check below collapses it logically, so a `..` word is never plain and takes the re-check above; no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
@@ -2955,6 +2966,8 @@ _bwimc_cd_guard() {
 # widen them), optionally wrapped in exactly ONE whole-word pair of quotes whose inner text may
 # also hold a space, but never at its edge or beside a `/`; no component equal to `..`; not empty.
 # Anything else (a mid-word quote, a backslash, ~, a brace, a glob character, $) is not plain.
+# The word must be the raw operand token: a word derived from it (the stub prefix in
+# _bwimc_check_target) is excluded by the caller through _bwimc_cdg_derived.
 _bwimc_plain_word() {
     local w="$1"
     case "$w" in
