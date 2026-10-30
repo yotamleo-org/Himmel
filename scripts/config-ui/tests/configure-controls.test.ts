@@ -106,8 +106,8 @@ test("healthy CodeRabbit setup is collapsed, unknown or absent installation is e
 
 test("review provider copy distinguishes API credit from the session subscription limits", () => {
   const html = R.renderReviewGate({ data: { reviewers: ["claude-api", "claude-subscription"].map((provider) => ({ slug: provider, provider, mode: "hard", required: true })), env: [], overlay: "local" } });
-  expect(html).toContain("runs on your Anthropic API key and bills API credit, separate from your plan");
-  expect(html).toContain("runs claude -p on your Claude plan and uses the same 5-hour and weekly limits as your own sessions");
+  expect(html).toContain('<div class="ro">runs on your Anthropic API key and bills API credit, separate from your plan</div>');
+  expect(html).toContain('<div class="ro">runs through the Claude CLI on your Claude plan and uses the same 5-hour and weekly limits as your own sessions</div>');
 });
 
 test("timeout and tier rows name real config, operator-policy and launching-shell homes", () => {

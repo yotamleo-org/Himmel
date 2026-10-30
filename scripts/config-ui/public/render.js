@@ -214,7 +214,7 @@ export const reviewGateDraft = (d) => [
 ];
 const PROVIDER_SAYS = {
   "claude-api": "runs on your Anthropic API key and bills API credit, separate from your plan",
-  "claude-subscription": "runs claude -p on your Claude plan and uses the same 5-hour and weekly limits as your own sessions",
+  "claude-subscription": "runs through the Claude CLI on your Claude plan and uses the same 5-hour and weekly limits as your own sessions",
 };
 const ENV_HOME = {
   CR_PROFILE: "Set in ~/.himmel/himmel.conf (machine), ~/.himmel/himmel.conf.local (local override), or .himmel/himmel.conf in your project. This selects the /pr-check panel, not the reviewer definitions in critics.json.",
@@ -241,11 +241,11 @@ export function renderReviewGate(rg, extra = "") {
       ? `<label>effort <select data-rg="effort" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} effort">${["", ...(d.efforts || [])].map((e) => `<option value="${esc(e)}"${(x.effort ?? "") === e ? " selected" : ""}>${e || "default"}</option>`).join("")}</select></label>`
       : "";
     return `<div class="setrow"><div class="sethead"><span class="id">${r ? `${r.order}. ` : ""}${esc(x.slug)}</span>
-      <span class="det">${r && r.provider ? `${esc(r.provider)}${PROVIDER_SAYS[r.provider] ? `: ${esc(PROVIDER_SAYS[r.provider])}` : ""} · ` : ""}${x.enabled ? esc(MODE_SAYS[x.mode]) : "turned off on this machine"}</span>
+      <span class="det">${r && r.provider ? `${esc(r.provider)} · ` : ""}${x.enabled ? esc(MODE_SAYS[x.mode]) : "turned off on this machine"}</span>
       <span class="slot">${model}${effort}<label>mode <select data-rg="mode" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} mode">${modes}</select></label>
       <label><input type="checkbox" data-rg="required" data-slug="${esc(x.slug)}"${x.required ? " checked" : ""}> required</label>
       <label><input type="checkbox" data-rg="enabled" data-slug="${esc(x.slug)}"${x.enabled ? " checked" : ""}> on</label></span></div>
-      <div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
+      ${r && PROVIDER_SAYS[r.provider] ? `<div class="ro">${esc(PROVIDER_SAYS[r.provider])}</div>` : ""}<div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
   }).join("");
   const env = d.env.map((e) => `<div class="setrow"><div class="sethead"><span class="id">${esc(e.name)}</span><span class="det">${esc(e.means)}</span></div>
     <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · ${esc(ENV_HOME[e.name])}</div></div>`).join("");
