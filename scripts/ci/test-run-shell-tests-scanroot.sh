@@ -27,8 +27,7 @@
 #   26n  a runner outside any work tree + a scan root inside one -> rc 6 (fail-closed)
 #   26o  the scripts default is applied before the guard
 #
-# Platform guard: bash-only, like every suite in this family, and no .ps1
-# twin — it runs under Git Bash on Windows as well as Linux.
+# Platform guard: bash-only, like every suite in this family; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-run-shell-tests-scanroot.sh
 #

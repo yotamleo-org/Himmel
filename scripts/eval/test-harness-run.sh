@@ -6,7 +6,7 @@
 # spinning for hours). Every process here is started by this suite and lives
 # under its own temp dir; nothing else is read or signalled.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the runner is Linux-only
+# PLATFORM GUARD: the runner is Linux-only
 # (PR_SET_CHILD_SUBREAPER, /proc), like the judge harnesses it wraps.
 set -uo pipefail
 

@@ -35,8 +35,7 @@ so the startup path ships INSIDE the plugin and works from ANY session in ANY
 repo where the plugin is enabled — not just himmel checkouts. The ensure
 script is idempotent (alive-probe short-circuits), bounds the daemon start
 with `timeout(1)` so a hung start cannot stall SessionStart, and fails loudly
-on a foreign listener holding port 8181. A manual PowerShell twin for
-operators lives in the himmel repo at `scripts/qmd/ensure-qmd-daemon.ps1`.
+on a foreign listener holding port 8181.
 
 The plugin **name stays `qmd`** and the server **name stays `qmd`**, so the
 skill reference (`qmd:qmd`) and the MCP tool prefix
@@ -185,8 +184,7 @@ While the flag file `~/.himmel/state/qmd-daemon.off` exists (override the path
 with `QMD_DAEMON_OFF_FLAG`), or `QMD_DAEMON_DISABLED=1` is set in one shell,
 `ensure-qmd-daemon.sh` prints one INFO line and exits 0 without probing or
 launching. `himmel-doctor.sh` check `C40-qmd-vec` reads INFO "qmd off by
-operator" in that state. The PowerShell twin (`scripts/qmd/ensure-qmd-daemon.ps1`)
-does not carry the opt-out (Windows development is parked).
+operator" in that state.
 
 ## Upstream watch
 

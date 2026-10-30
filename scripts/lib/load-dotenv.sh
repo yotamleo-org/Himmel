@@ -393,7 +393,8 @@ _load_dotenv_extract() {
 # Keys this layer serves. Anything else is a secret and stays in .env.
 _himmel_key_class() {
     case "$1" in
-        CR_REQUIRE_CROSS_MODEL|CR_FLOOR_FALLBACK|ARMAUTOMERGE|ENV_MIGRATION_CONSENT)
+        CR_REQUIRE_CROSS_MODEL|CR_FLOOR_FALLBACK|ARMAUTOMERGE|ENV_MIGRATION_CONSENT|\
+        HIMMEL_FLEET_CAP)
             printf 'policy' ;;
         HANDOVER_DIR|USER_SLUG|LUNA_VAULT_PATH|HIMMEL_DOC_FRESHNESS|\
         HIMMEL_INITIATIVE|HIMMEL_INITIATIVE_AFK|HIMMEL_AFK|\

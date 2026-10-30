@@ -2,8 +2,7 @@
 # Smoke test for scripts/plugin-eval-preflight.sh. Non-billing:
 # never invokes the real `claude plugin eval`, only ever a PATH-stub `claude`.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + coreutils; no .ps1 twin needed.
+# Platform guard: POSIX bash 3.2+ and coreutils.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

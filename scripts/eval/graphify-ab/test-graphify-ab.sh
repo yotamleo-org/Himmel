@@ -3,8 +3,7 @@
 # ingest/report maths and the preflight stop of the graphify A/B harness. No model
 # call: run.sh is driven by a stub claude and a stub bank-preflight.
 #
-# Platform guard: Linux/macOS bash; no .ps1 twin (the eval is operator-run on a
-# station, like scripts/eval/harness-run.py).
+# Platform guard: Linux/macOS bash; operator-run, like scripts/eval/harness-run.py.
 set -uo pipefail
 export HIMMEL_BILLED_OK=1   # stubbed claude/codex only; the guarded script refuses a bare run
 

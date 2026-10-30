@@ -14,7 +14,7 @@
 # output" and "the census itself failed" the same way (no match), since a
 # scan too broken to trust must not manufacture a false "alive".
 #
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only (matches
+# PLATFORM GUARD: Linux-only (matches
 # claude-sessions.sh's /proc dependency). bash 3.2-safe.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

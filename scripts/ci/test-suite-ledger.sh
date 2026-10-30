@@ -15,7 +15,7 @@
 #   L6  run-shell-tests: one row per suite, rc of a failing suite recorded
 #   L7  suite-runs-summary.sh: per-suite red counts inside --days, old rows out
 #
-# Platform guard: bash-only, no .ps1 twin; runs under Git Bash and Linux.
+# Platform guard: bash-only; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-suite-ledger.sh
 #

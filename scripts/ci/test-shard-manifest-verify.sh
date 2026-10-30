@@ -43,7 +43,7 @@
 #   MV38  pr, impacted: the list capability-skips a pr-tier suite the shard ran -> rc 0;
 #         a shard that did not run it -> rc 1; a local-tier suite or not pr mode -> rc 1
 #
-# Platform guard: bash-only, no .ps1 twin; the aggregator runs on Linux.
+# Platform guard: bash-only; the aggregator runs on Linux.
 #
 # Usage: bash scripts/ci/test-shard-manifest-verify.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.

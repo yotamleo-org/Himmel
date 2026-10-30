@@ -3,8 +3,7 @@
 # retrieval eval. No real qmd or graphify call: both are stub commands, and
 # grep runs over a scratch git repo.
 #
-# Platform guard: Linux/macOS bash; no .ps1 twin (the eval is operator-run on a
-# station).
+# Platform guard: Linux/macOS bash; the eval is operator-run on a station.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

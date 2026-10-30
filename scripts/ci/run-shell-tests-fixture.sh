@@ -27,11 +27,8 @@
 # reaches for. The name is not test-*.sh, so the runner never discovers it as
 # a suite.
 #
-# Platform guard: no .ps1 twin, and none is wanted. This is not an entry point
-# — it is sourced by the suites in its own directory, which are themselves
-# bash-only and already run under Git Bash on Windows as well as Linux (see
-# the Git-Bash measurements cited in run-shell-tests.sh's timeout table).
-# Everything here is portable bash: mktemp, printf, grep, chmod, trap.
+# Platform guard: this library is sourced by the bash-only suites in its own
+# directory. Everything here is portable bash: mktemp, printf, grep, chmod, trap.
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this family's

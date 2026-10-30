@@ -36,7 +36,7 @@ const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${
 type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: Row[]; processOrphans?: ProcessOrphan[] | null };
 
 const POLL_MS = 5000;
-const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
+const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", waiting: "waiting", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 // The markers worth a word beside the state; LIVE, READY and WRAPPED are what the state already says.
 const LOUD = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
@@ -190,6 +190,10 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
+        <details className="bd-legend">
+          <summary>Session state legend</summary>
+          <p><span className="state running">running</span>: busy · <span className="state waiting">waiting</span>: background shell · <span className="state waiting">waiting for GO</span>: ready for the chief · <span className="state idle">idle</span>: at the prompt · wrapped: finished · unknown: state unavailable</p>
+        </details>
         {s.attention.operator.length > 0 && <Section id="attention" title="Needs you" count={s.attention.operator.length} initial={true} className="fleet-attention bd-need">
           <Attention label="Needs you" items={s.attention.operator} needs={[]} token={token} now={now} />
         </Section>}

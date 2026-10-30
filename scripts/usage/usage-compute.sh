@@ -20,7 +20,7 @@
 # only -- never message text -- and no compute timestamp, so a rerun on the
 # same inputs is byte-identical and an unchanged record is not re-appended.
 #
-# Platform guard (gitbash-only): pure bash 3.2-safe + jq; no .ps1 twin needed.
+# Platform guard: pure bash 3.2-safe + jq.
 set -euo pipefail
 
 die() { echo "usage-compute: $*" >&2; exit 1; }

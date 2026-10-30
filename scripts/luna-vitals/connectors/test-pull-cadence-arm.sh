@@ -5,14 +5,8 @@
 # the connector-pull path itself (bun/Bun.spawn, no args) — this covers ONLY
 # the scheduler management this ticket adds.
 #
-# Platform guard: this file itself runs fine under Git Bash on Windows or any
-# POSIX bash 3.2+ (plain bash, no .ps1 twin needed — same posture as its
-# sibling suites). Its Windows/schtasks ASSERTIONS self-skip everywhere,
-# including under real Git Bash, because the schtasks half needs a real
-# cygpath to convert paths, which is faked nowhere in this suite (schtasks
-# itself would be faked via PULLCADENCE_SCHTASKS, but cygpath is not) — same
-# SKIP posture as scripts/upstreams/test-upstream-watch-cadence.sh's own
-# Windows half.
+# Platform guard: POSIX bash 3.2+ on Linux/macOS. Scheduler access is stubbed;
+# a dropped platform is refused before any scheduler command runs.
 #
 # HIMMEL_OBSERVABILITY_CONFIG is pinned to a per-test scratch file on EVERY
 # invocation — never omit it, or a hand run registers a real task into
@@ -101,7 +95,19 @@ registry_has_task() {
   [ -f "$reg" ] && jq -e '.expected_tasks // [] | index("HIMMEL-LunaVitalsPull")' "$reg" >/dev/null 2>&1
 }
 
-echo "SKIP: Windows/schtasks suite (Windows-only — needs a real cygpath, not faked here)"
+echo "== test: a dropped platform never reaches the scheduler =="
+state_win=$(new_scratch_posix)
+out=$(PULLCADENCE_PLATFORM=windows PULLCADENCE_SCHTASKS="$state_win/crontab" \
+  PULLCADENCE_CRONTAB="$state_win/crontab" \
+  PULLCADENCE_BAT_DIR="$state_win/runner" PULLCADENCE_HIMMEL_ROOT="$state_win" \
+  HIMMEL_OBSERVABILITY_CONFIG="$state_win/observability.json" \
+  bash "$CADENCE" status 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && [[ "$out" == *"unsupported platform"* ]] && [ ! -e "$state_win/calls" ]; then
+  pass "dropped platform: refused before scheduler access"
+else
+  fail "dropped platform: rc=$rc; output: $out; scheduler calls must be absent"
+fi
+rm -rf "$state_win"
 
 echo "== test: dry-run arm makes no changes =="
 state=$(new_scratch_posix); root=$(make_root); mv "$root" "$state/root"

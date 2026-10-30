@@ -25,7 +25,7 @@
 # (test-check-user-slug.sh), the same reason step 0.4's check-jira-key.sh is
 # its own file.
 #
-# PLATFORM GUARD (WS5 T15) — no .ps1 twin, deliberately. This is a step of
+# PLATFORM GUARD: POSIX bash 3.2+. This is a step of
 # scripts/setup.sh; it uses POSIX shell plus git, and both `--dotenv-root`
 # sources (load-dotenv.sh, user-slug.sh) are bash-only libs.
 #

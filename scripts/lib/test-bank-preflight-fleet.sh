@@ -29,8 +29,11 @@ NOW="$(date +%s)"
 
 # hermetic identity so the cache fixture below matches the
 # current session -- this suite is about the reservation race, not identity.
-export HOME="$W/home"; mkdir -p "$HOME"
+export HOME="$W/home"; mkdir -p "$HOME/.himmel"
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-fleet-test"}}' > "$HOME/.claude.json"
+# The fleet cap is gate policy, read from this HOME's config.json, never the env.
+export HIMMEL_POLICY_FOLLOWS_HOME=1
+printf '{"policy":{"HIMMEL_FLEET_CAP":4}}\n' > "$HOME/.himmel/config.json"
 # shellcheck source=usage-cache-identity.sh
 # shellcheck disable=SC1091
 . "$REPO/scripts/lib/usage-cache-identity.sh"

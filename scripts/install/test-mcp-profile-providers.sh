@@ -6,19 +6,8 @@
 # change removed its installer provisioning (manifest.json, install-engine.js,
 # manifest-lint.mjs).
 #
-# PLATFORM GUARD (no .ps1 twin -- this note is that decision, not a
-# placeholder for one): this suite is plain POSIX shell driving `jq` and
-# `node`, and the two things it reads -- profiles.json and manifest.json --
-# are plain JSON with no platform-specific shape, so there is no
-# PowerShell-specific behaviour here for a `.ps1` twin to assert
-# differently. It is already Git-Bash-aware where it has to be: every path
-# handed to node goes through the `winpath()` helper below, which converts
-# MSYS/Cygwin paths with `cygpath -m` on Windows and passes them through
-# unchanged elsewhere. What this suite does NOT prove on Windows: it has
-# never actually been RUN there (this session has no Windows station), so
-# `cygpath` availability and Git Bash's own quoting of the node argv are
-# unverified rather than merely untested. A future Windows run is what
-# closes that gap.
+# PLATFORM GUARD: POSIX shell driving `jq` and `node`; profiles.json and
+# manifest.json are plain JSON with no platform-specific shape.
 #
 # tokensave used to be a universal MCP-profile member (every profile in
 # .claude/mcp-profiles/profiles.json listed it, including `minimal` on its

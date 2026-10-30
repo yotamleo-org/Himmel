@@ -12,8 +12,7 @@
 # real script's detection — not the fixture or the harness — is what makes
 # the positive-detection case go red.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+,
-# same as the script under test — no .ps1 twin (project convention).
+# Platform guard: POSIX bash 3.2+, same as the script under test.
 # shellcheck disable=SC2015  # A && B && pass || fail is intentional ternary-like
 # shorthand throughout this file (pass()/fail() always return 0), as in
 # scripts/test-context-fill.sh.

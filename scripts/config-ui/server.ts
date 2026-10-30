@@ -622,7 +622,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
       // the review gate: reviewers, order, mode and required, read through the one resolver; a write edits the critics.local.json overlay only.
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
-      // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell and the station .env; a write replaces that one .env line.
+      // the fleet cap: HIMMEL_FLEET_CAP read as gate policy (config.json .policy, then the station .env); a write is refused.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
       if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });

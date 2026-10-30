@@ -500,16 +500,6 @@ assert_has "R1 names the hook that is still wired" "still wired" "$out"
 assert_not_has "R1 never claims completion" "Uninstall complete." "$out"
 
 # ── H1 — himmelctl passes --purge-state and --dry-run to the executor ──────
-# The stub is an extensionless bash script; on Windows himmelctl runs
-# uninstall.ps1 instead, so this case cannot execute there. Covered on Windows
-# by scripts/himmelctl/test/test-wizard-uninstall.sh (caseB) and the nightly.
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-        echo "SKIP H1 himmelctl -> uninstall.sh plumbing (Windows Git Bash: himmelctl execs uninstall.ps1; covered by test-wizard-uninstall.sh caseB)"
-        H1_SKIP=1 ;;
-    *) H1_SKIP=0 ;;
-esac
-if [ "$H1_SKIP" -eq 0 ]; then
 fixture h1
 HREPO="$FX/hrepo"
 mkdir -p "$HREPO/scripts"
@@ -534,7 +524,6 @@ h1_args=$(cat "$FX/uninstall-args.log")
 assert_has "H1 dry-run runs the executor's own --dry-run" "--dry-run" "$h1_args"
 assert_has "H1 dry-run carries --purge-state" "--purge-state" "$h1_args"
 assert_not_has "H1 dry-run never passes --yes" "--yes" "$h1_args"
-fi
 
 # ── L2 — the loader checks each required row's structural contract ─────────
 # Kind/step each valid on their own is not enough: a cache row of path '-' and

@@ -18,8 +18,7 @@
 # mode: worktree recovery is `cp` back; staged recovery uses the saved mode
 # and blob ID with `git update-index --cacheinfo`.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure git + POSIX shell; no .ps1 twin needed.
+# Platform guard: pure git + POSIX shell, bash 3.2+.
 set -uo pipefail
 
 usage() {

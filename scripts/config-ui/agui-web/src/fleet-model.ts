@@ -1,7 +1,7 @@
 // Fleet grouping and fragment routing stay dependency-free, like the stream reducer.
 export type Row = {
   run: string | null; pid: number | null; name: string; role: string; model: string | null; ticket: string | null; pr: number | null;
-  state: "running" | "idle" | "waiting for GO" | "wrapped" | "unknown"; activity: { tool: string; summary: string; at: number } | null;
+  state: "running" | "idle" | "waiting" | "waiting for GO" | "wrapped" | "unknown"; activity: { tool: string; summary: string; at: number } | null;
   lastEventAt: number | null; subagents: { total: number; running: number }; failures: number;
   parent: string | null; predecessor: string | null; agents: { name: string; role: string; state: string }[];
   usage: {
@@ -53,7 +53,7 @@ export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
 // Orphans = live sessions no live chief watches, plus the stale shell-tool wrappers tick also reports; Running = the
 // rest of the live sessions, grouped under their live chief (siblings by state, then newest activity); Finished =
 // everything that ended, plus a cloud session whose chief has, with a worker's or a chief's chain folded into one entry.
-const RANK: Record<Row["state"], number> = { running: 0, "waiting for GO": 1, idle: 2, unknown: 3, wrapped: 4 };
+const RANK: Record<Row["state"], number> = { running: 0, "waiting for GO": 1, waiting: 2, idle: 3, unknown: 4, wrapped: 5 };
 const recency = (r: Row) => r.activity?.at ?? r.lastEventAt ?? r.runtime?.startedAt ?? null;
 const byName = (a: Row, b: Row) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 // Newest first, an untimed row after every timed one.
@@ -123,7 +123,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   };
   const text = filters.text.trim().toLowerCase();
   const states = (r: Row) => finished(r) ? ["finished"]
-    : [r.state === "running" ? "running" : r.state === "waiting for GO" ? "waiting" : "idle", ...(why(r) ? ["attention"] : []), ...(orphanOf(r) ? ["orphaned"] : [])];
+    : [r.state === "running" ? "running" : r.state === "waiting" || r.state === "waiting for GO" ? "waiting" : "idle", ...(why(r) ? ["attention"] : []), ...(orphanOf(r) ? ["orphaned"] : [])];
   const shown = (r: Row) => mine(r)
     && (!filters.lanes.length || filters.lanes.includes(laneOf(r)))
     && (!filters.states.length || states(r).some((s) => filters.states.includes(s)))

@@ -114,6 +114,13 @@ printf '{"version":1}\n' > "$HOME/.himmel/config.json"
 out=$(run 'export CR_FLOOR_FALLBACK=claude-only; load_policy --root "$PWD" CR_FLOOR_FALLBACK; printf "[%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "$?"')
 assert_has "(a2) env-only policy value is not honoured" "[|rc=0]" "$out"
 
+# (a3) The fleet cap is gate policy: a config.json value beats an env override.
+reset
+printf '{"policy":{"HIMMEL_FLEET_CAP":3}}\n' > "$HOME/.himmel/config.json"
+out=$(run 'export HIMMEL_FLEET_CAP=50; load_policy --root "$PWD" HIMMEL_FLEET_CAP; printf "[%s|rc=%s]" "${HIMMEL_FLEET_CAP-}" "$?"')
+assert_has "(a3) config.json fleet cap beats env override" "[3|rc=0]" "$out"
+assert_has "(a3) fleet cap env override is reported as ignored" "ignoring process-env HIMMEL_FLEET_CAP" "$out"
+
 # (b) A legacy .env-only config key still applies, with a deprecation notice.
 reset
 printf 'HANDOVER_DIR=/legacy/handovers\n' > "$REPO/.env"
@@ -128,6 +135,15 @@ printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$REPO/.env"
 out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[%s]" "${CR_REQUIRE_CROSS_MODEL-}"')
 assert_has "(b2) legacy .env policy key still applies" "[1]" "$out"
 assert_has "(b2) legacy .env policy key prints a deprecation notice" "DEPRECATED" "$out"
+
+# (b2a) A legacy .env fleet cap still applies, and its notice names it a policy
+# key to move, not a secret.
+reset
+printf '{"version":1}\n' > "$HOME/.himmel/config.json"
+printf 'HIMMEL_FLEET_CAP=6\n' > "$REPO/.env"
+out=$(run 'unset HIMMEL_FLEET_CAP; load_policy --root "$PWD" HIMMEL_FLEET_CAP; printf "[%s]" "${HIMMEL_FLEET_CAP-}"')
+assert_has "(b2a) legacy .env fleet cap still applies" "[6]" "$out"
+assert_has "(b2a) legacy .env fleet cap gets the policy-key notice" "DEPRECATED: HIMMEL_FLEET_CAP read from .env" "$out"
 
 # (b3) A secret key read from .env still loads, with exactly one deprecation
 # notice where a keyring CLI exists to move it to (a stub secret-tool here; the
