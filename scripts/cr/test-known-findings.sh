@@ -33,6 +33,7 @@ cp "$FIX/new-hook.sh" "$repo/scripts/hooks/new-hook.sh"
 
 out="$(cd "$repo" && bash "$SCRIPT" --diff "$base...HEAD" 2>&1)"; rc=$?
 check "diff: exit 0 (advisory)" "$rc" "0"
+not_contains "diff: lone .sh change needs no retired platform twin" "$out" "[sh-ps1-twin-drift]"
 contains "diff: mktemp-no-template fires"      "$out" "[mktemp-no-template]"
 contains "diff: mktemp cites file:line"        "$out" "scripts/foo.sh:4"
 not_contains "diff: templated mktemp excluded" "$out" "scripts/foo.sh:5"
@@ -89,7 +90,7 @@ contains "diff: mktemp with a redirect cites line 34" "$out" "scripts/foo.sh:34"
 jout="$(cd "$repo" && bash "$SCRIPT" --diff "$base...HEAD" --json 2>&1)"
 printf '%s' "$jout" > "$tmp/out.json"
 jids="$(node -e 'const j=require(process.argv[1]);console.log(j.hits.map(h=>h.id).sort().join(","));console.log("files="+j.files)' "$tmp/out.json" 2>&1)"
-contains "json: ids include mktemp + twin" "$jids" "mktemp-no-template"
+contains "json: ids include mktemp" "$jids" "mktemp-no-template"
 contains "json: files count present"      "$jids" "files=3"
 
 # Change 2: a test file changes alongside a hook edit that states its direction → no coverage gap, no hook flag.

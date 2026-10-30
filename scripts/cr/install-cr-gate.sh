@@ -25,23 +25,6 @@ is_himmel_hook() {
     sed -n '2p' "$1" 2>/dev/null | grep -Fxq "$OWNER_MARKER"
 }
 
-is_windows() {
-    case "$(uname -s 2>/dev/null || echo)" in
-        *MINGW*|*MSYS*|*CYGWIN*|*NT*) return 0 ;; *) return 1 ;;
-    esac
-}
-
-# to_native_path PATH — mirrors scripts/setup-hooks.sh's resolve_node/
-# resolve_bash: an MSYS `/c/...` path baked into the hook could be invoked
-# through a different bash on a later push, so normalize to the native
-# `C:/...` form git itself uses.
-to_native_path() {
-    if is_windows && command -v cygpath >/dev/null 2>&1; then
-        cygpath -m "$1" 2>/dev/null && return 0
-    fi
-    printf '%s\n' "$1"
-}
-
 usage() {
     cat <<'USAGE'
 Usage: install-cr-gate.sh --target <path> [--remove] [--status] [--force] [--impl-family <family>] [-h|--help]
@@ -149,13 +132,8 @@ target_toplevel=$(git -C "$TARGET" rev-parse --path-format=absolute --show-tople
 # gate through it into a location this repo does not own. cd+pwd -P is the
 # portable canonicalizer already used elsewhere in this repo
 # (scripts/lib/shared-branch-lock.sh) — readlink -f is GNU-only and macOS
-# ships none. `pwd -P` emits MSYS-style paths (`/tmp/...`) on Windows Git
-# Bash while git's own --path-format=absolute emits native ones
-# (`C:/Users/...`) for the SAME directory — comparing one resolved and one
-# raw would silently break on format alone, not just on an actual symlink.
-# Route through to_native_path (already defined above) so every value this
-# feeds into the case statement below shares one format.
-_real_dir() { local _d; _d=$(cd "$1" 2>/dev/null && pwd -P) && to_native_path "$_d" || printf '%s' "$1"; }
+# ships none.
+_real_dir() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
 target_common_dir_real=$(_real_dir "$target_common_dir")
 target_toplevel_real=$(_real_dir "$target_toplevel")
 git_hooks_dir_real=$(_real_dir "$git_hooks_dir")
@@ -323,7 +301,7 @@ do_install() {
     himmel_root=$(git -C "$SCRIPT_DIR" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p;1q')
     [ -f "$himmel_root/scripts/hooks/check-cr-before-push.sh" ] || himmel_root=$(dirname "$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
     [ -f "$himmel_root/scripts/hooks/check-cr-before-push.sh" ] || { echo "install-cr-gate: cannot locate himmel's primary checkout" >&2; exit 2; }
-    baked_gate=$(to_native_path "$himmel_root/scripts/hooks/check-cr-before-push.sh")
+    baked_gate="$himmel_root/scripts/hooks/check-cr-before-push.sh"
 
     # REFUSE a gate path holding a newline or other control character
     # The `gate=` line is %q-quoted and safe, but the

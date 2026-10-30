@@ -346,11 +346,6 @@ if (MODE === "diff") {
     if (d.type === "added-line-regex") {
       const re = ere(d.pattern), ex = d.exclude ? ere(d.exclude) : null;
       for (const f of scoped) for (const a of files[f].added) if (re.test(a.text) && !(ex && ex.test(a.text))) where.push(`${f}:${a.n}`);
-    } else if (d.type === "twin-missing") {
-      for (const f of scoped) {
-        const twin = /\.sh$/.test(f) ? f.replace(/\.sh$/, ".ps1") : /\.ps1$/.test(f) ? f.replace(/\.ps1$/, ".sh") : null;
-        if (twin && !files[twin] && fs.existsSync(path.join(ROOT, twin))) where.push(`${f} (twin ${baseName(twin)} unchanged)`);
-      }
     } else if (d.type === "no-test-change") {
       // A changed test counts for a source only when it is its EXACT pair —
       // test-<stem>.<ext> / test_<stem>.<ext> / <stem>.test.<ext> / <stem>_test.<ext>
