@@ -177,13 +177,15 @@ _r5098 "227f control: second heredoc, literal body"    allow "cat <<'A' >/dev/nu
 # past 8 KiB the crude fallback cannot name a command held in a variable
 _r5098 "228e control: padded variable argument"        allow ": ${_PAD}; ls \"\$HOME\""
 _r5098 "228f control: padded assignment from date"     allow ": ${_PAD}; x=\$(date); echo \"\$x\""
-# the stub count of a clause is taken in 128-character windows: a substitution
-# whose stub sits at the first character of the second or third window (index
-# 128 and 257 of the clause) must still be counted, or its body goes unscanned
-# and the write inside it passes; "echo " plus the pad puts the stub there
-_r5098 "228fa substitution stub at the start of the second window reaches its body" block "echo ${_PAD:0:120}\$(touch @P@/pwned)"
-_r5098 "228fb substitution stub at the start of the third window reaches its body"  block "echo ${_PAD:0:249}\$(touch @P@/pwned)"
-_r5098 "228fc control: stub at the start of the second window over a benign body"   allow "echo ${_PAD:0:120}\$(date)"
+# the stub count of a clause is taken in 128-character windows (0-127, 128-255,
+# 256-383): a substitution whose stub sits at index 128 (first character of the
+# second window) or 257 (second character of the third) must still be counted,
+# or its body goes unscanned and the write inside it passes. Those two indexes
+# are the ones a stride of 129 skips; the pads differ by 129 for that reason.
+# "echo " plus the pad puts the stub there.
+_r5098 "228fa substitution stub at index 128 reaches its body" block "echo ${_PAD:0:120}\$(touch @P@/pwned)"
+_r5098 "228fb substitution stub at index 257 reaches its body" block "echo ${_PAD:0:249}\$(touch @P@/pwned)"
+_r5098 "228fc control: stub at index 128 over a benign body"   allow "echo ${_PAD:0:120}\$(date)"
 _r5098 "228l control: padded quoted heredoc of prose"   allow "cat > @W@/n.md <<'EOF'${NL}\`foo\` is done! \`bar\` too.${NL}\$x\$y \"\$(cat f)\"${NL}${_PAD}${NL}EOF"
 _r5098 "228n control: padded closing backtick ends its word" allow ": ${_PAD}; echo \`date\`/x"
 _r5098 "228m control: padded <<- body with tab-led end" allow "cat > @W@/n.md <<-'EOF'${NL}\$x run${NL}${_PAD}${NL}	EOF"
