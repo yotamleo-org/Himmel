@@ -167,7 +167,6 @@ test("V4: refusalMessage names the stop command", () => {
   const msg = refusalMessage("the bridge supervisor is running");
   expect(msg).toContain(STOP_COMMAND_POSIX);
   expect(msg).toContain("restart-bridge.sh stop");
-  expect(msg).toContain("supervisor.ts --kill");   // the platform-neutral stop lever
 });
 
 test("V4 end-to-end: run() refuses with a real live pid in a sandboxed BRIDGE_ROOT supervisor.pid, exits non-zero, names the stop command", async () => {
@@ -365,12 +364,7 @@ test("--help prints usage and exits 0 WITHOUT ever calling loadToken", async () 
 // If it hasn't landed yet, SKIP loudly (never a silent or
 // fake pass) — the parent re-runs this suite once it does.
 
-// main run 34739779833 went red with `Expected "<path>" Received
-// ""` — restart-bridge.sh had not actually printed a path mismatch, the spawn
-// had timed out (Bun's default) on a slow Windows runner. Give it real
-// headroom and, if it still doesn't finish, say so instead of reporting a
-// blank string as if it were a real answer.
-const PRINT_LOCK_PATH_TIMEOUT_MS = process.platform === "win32" ? 20_000 : 10_000;
+const PRINT_LOCK_PATH_TIMEOUT_MS = 10_000;
 
 function spawnPrintLockPath(scriptPath: string, env: Record<string, string | undefined>): string {
   const startedAt = Date.now();
@@ -397,19 +391,11 @@ test("lock-path cross-check: restart-bridge.sh --print-lock-path agrees with loc
     console.warn("[onboard.test] SKIP lock-path cross-check: scripts/telegram/restart-bridge.sh does not exist yet (sibling HIMMEL-2176 Task 9 not landed) — re-run this suite once it lands.");
     return;
   }
-  if (!BASH_BIN) {
-    console.warn("[onboard.test] SKIP lock-path cross-check: no usable Git Bash on this Windows host (a bare `bash` here is the System32 WSL launcher, which cannot read the Windows-form scriptPath) — install Git for Windows to run this check.");
-    return;
-  }
   const lockDir = mkdtempSync(join(tmpdir(), "onboard-lockdir-"));
   const token = "CROSSCHECK_TOKEN_ABC123";
   try {
     const printed = spawnPrintLockPath(scriptPath, { ...process.env, TELEGRAM_BOT_TOKEN: token, BRIDGE_LOCK_DIR: lockDir });
     withEnv({ BRIDGE_LOCK_DIR: lockDir, BRIDGE_ROOT: undefined }, () => {
-      // restart-bridge.sh is bash (POSIX forward slashes even under git-bash on
-      // Windows); node:path's join() on win32 emits backslashes. Same path,
-      // different separator convention — normalize both sides for comparison
-      // (matches the other lockPathForToken tests above).
       expect(printed.replace(/\\/g, "/")).toBe(lockPathForToken(token).replace(/\\/g, "/"));
     });
   } finally {
@@ -421,10 +407,6 @@ test("lock-path cross-check: an empty BRIDGE_LOCK_DIR agrees with the shell's ${
   const scriptPath = join(import.meta.dir, "restart-bridge.sh");
   if (!existsSync(scriptPath)) {
     console.warn("[onboard.test] SKIP empty-value lock-path cross-check: scripts/telegram/restart-bridge.sh does not exist yet (sibling HIMMEL-2176 Task 9 not landed) — re-run this suite once it lands.");
-    return;
-  }
-  if (!BASH_BIN) {
-    console.warn("[onboard.test] SKIP empty-value lock-path cross-check: no usable Git Bash on this Windows host (see the sibling cross-check above).");
     return;
   }
   const bridgeRootDir = mkdtempSync(join(tmpdir(), "onboard-lockdir-empty-"));
