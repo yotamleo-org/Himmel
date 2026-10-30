@@ -7160,6 +7160,11 @@ c74_reset
 printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'INFO C74-himmel-conf' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no himmel.conf, nothing to migrate -> INFO only"; else fail "C74 absent conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: JIRA_BASE_URL in .env is never listed as moved (HIMMEL-8165) =="
+c74_reset
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'JIRA_BASE_URL'; then pass "C74 JIRA_BASE_URL in .env -> not listed, OK"; else fail "C74 JIRA_BASE_URL -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C74-config-split: himmel.conf with a line that is not KEY=value -> WARN =="
 c74_reset
 printf 'HANDOVER_DIR=/x\nthis line is not a setting\n' > "$c74_conf"
@@ -7248,6 +7253,37 @@ c75_reset
 printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
 out="$(c75_run)"
 if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'OK   C75-secrets' && grepq "$out" -F '1 from the keyring' && ! grepq "$out" -F 'planted'; then pass "C75 keyring-served station -> two OK rows"; else fail "C75 keyring -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-config-keys: a served credential whose paired setting resolves nowhere -> WARN naming the setting =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+out="$(c75_run)"
+if grepq "$out" -F 'WARN C75-config-keys' && grepq "$out" -F 'JIRA_BASE_URL' && ! grepq "$out" -F 'planted'; then pass "C75 token without JIRA_BASE_URL -> WARN naming it"; else fail "C75 missing config key -> $(printf '%s' "$out" | head -5)"; fi
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys' && ! grepq "$out" -F 'planted.example'; then pass "C75 JIRA_BASE_URL in .env -> OK"; else fail "C75 config key present -> $(printf '%s' "$out" | head -5)"; fi
+echo "== C75-config-keys: the Telegram pair names both chat ids; himmel.conf and a profile layer resolve them =="
+c75_reset
+printf 'TELEGRAM_BOT_TOKEN=planted-bot\n' > "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'WARN C75-config-keys' && grepq "$out" -F 'TELEGRAM_CHAT_ID' && grepq "$out" -F 'TELEGRAM_GROUP_CHAT_ID' && ! grepq "$out" -F 'planted'; then pass "C75 bot token without chat ids -> WARN naming both"; else fail "C75 telegram pair -> $(printf '%s' "$out" | head -5)"; fi
+mkdir -p "$c75_t/home/.himmel"
+printf 'TELEGRAM_CHAT_ID=1\nTELEGRAM_GROUP_CHAT_ID=2\n' > "$c75_t/home/.himmel/himmel.conf"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 chat ids in himmel.conf -> OK"; else fail "C75 chat ids in himmel.conf -> $(printf '%s' "$out" | head -5)"; fi
+rm -f "$c75_t/home/.himmel/himmel.conf"
+mkdir -p "$c75_t/vault/.himmel/profiles"
+printf 'TELEGRAM_CHAT_ID=1\nTELEGRAM_GROUP_CHAT_ID=2\n' > "$c75_t/vault/.himmel/profiles/p.conf"
+: > "$c75_t/vault/.himmel/himmel.conf"
+ln -sf "$c75_t/vault/.himmel/himmel.conf" "$c75_t/home/.himmel/himmel.conf"
+out="$(HIMMEL_PROFILE=p c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 chat ids in the active profile layer -> OK"; else fail "C75 chat ids in a profile -> $(printf '%s' "$out" | head -5)"; fi
+rm -f "$c75_t/home/.himmel/himmel.conf"
+echo "== C75-config-keys: an optional defaulted key resolving nowhere is not reported =="
+c75_reset
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c75_t/env"
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys' && ! grepq "$out" -F 'WHISPER_MODEL' && ! grepq "$out" -F 'FIRECRAWL_BASE_URL'; then pass "C75 unset WHISPER_MODEL/FIRECRAWL_BASE_URL -> not reported"; else fail "C75 optional keys -> $(printf '%s' "$out" | head -5)"; fi
 echo "== C75-keyring: a locked keyring -> WARN, no lookup =="
 c75_reset
 out="$(C75_LOCKED=true c75_run)"

@@ -92,13 +92,32 @@ for k in $identifiers; do
     out=$(run 'export "$k=dummy-process"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
     assert_eq_fp "$k preserves non-empty process env" "[dummy-process|rc=0]" "$out"
 done
-for k in JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID JIRA_API_TOKEN TELEGRAM_BOT_TOKEN GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL; do
+for k in JIRA_API_TOKEN TELEGRAM_BOT_TOKEN GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL; do
     reset
     assert_eq_fp "$k remains secret" "secret" "$(run '_himmel_key_class "$k"')"
     printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
     printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf.local"
     out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
     assert_eq_fp "$k is never read from config" "[|rc=0]" "$out"
+done
+# The two Telegram chat ids are config: himmel.conf serves them,
+# and himmel.conf is unguarded against agent writes (accepted exposure, see
+# docs/internals/config-layers.md). The env-only keys are config class but no
+# himmel.conf layer serves them.
+for k in TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID; do
+    reset
+    assert_eq_fp "$k is config" "config" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-config\n' "$k" > "$HOME/.himmel/himmel.conf"
+    out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq_fp "$k loads from himmel.conf" "[dummy-config|rc=0]" "$out"
+done
+for k in JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
+    reset
+    assert_eq_fp "$k is config" "config" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf.local"
+    out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq_fp "$k is never served from himmel.conf" "[|rc=0]" "$out"
 done
 
 # (a) A gate-policy key set in config.json is NOT overridden by the env.

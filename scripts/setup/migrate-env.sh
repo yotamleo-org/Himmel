@@ -141,7 +141,10 @@ config_keys=() policy_keys=() secret_keys=() plan="" stay_secrets=""
 for key in $names; do
     if ! is_owned "$key"; then plan="$plan  $key stays (not himmel's, left in place)"$'\n'; continue; fi
     case "$(_himmel_key_class "$key")" in
-        config) config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/himmel.conf"$'\n' ;;
+        config)
+            # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
+            if _himmel_env_only_key "$key"; then plan="$plan  $key stays (env-only: no himmel.conf reader)"$'\n'
+            else config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/himmel.conf"$'\n'; fi ;;
         policy) policy_keys[${#policy_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/config.json .policy"$'\n' ;;
         *)
             reader=$(printf '%s\n' "$readers" | awk -v k="$key" '$1 == k { print $2; exit }')

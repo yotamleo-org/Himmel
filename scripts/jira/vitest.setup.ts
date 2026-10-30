@@ -11,3 +11,6 @@ delete process.env.JIRA_SECTOR_FIELD;
 // off the operator's real release state.
 process.env.HIMMEL_RELEASE_STATE_DIR = mkdtempSync(join(tmpdir(), 'jira-test-release-'));
 process.env.HIMMEL_ADMISSIONS_LEDGER = join(mkdtempSync(join(tmpdir(), 'jira-test-admissions-')), 'admissions-ledger.jsonl');
+
+// Keep every test off the real keyring; the resolver test turns it back on with a stub.
+process.env.HIMMEL_SECRETS_KEYRING = "off";

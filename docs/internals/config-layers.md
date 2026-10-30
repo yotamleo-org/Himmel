@@ -232,7 +232,9 @@ add a new one to `stationSecrets` first. Then:
    that key ahead of the stored item: settle that layer first.
 3. Delete from `.env` exactly the lines import-env printed as `stored`, and
    nothing else. Until you do, each secret is still in plain text on disk.
-   A line it skipped stays until it moves to `~/.himmel`: a config key, or
+   A line it skipped stays: `JIRA_BASE_URL`, `FIRECRAWL_BASE_URL` and
+   `WHISPER_MODEL` stay in `.env` for good (nothing else reads them). The
+   others stay until they move to `~/.himmel`: a config key, or
    `HIMMEL_FLEET_CAP`, which is gate policy and belongs in `config.json`
    `.policy` (see the gate policy list below). A legacy `.env` cap still
    applies, with the `DEPRECATED: HIMMEL_FLEET_CAP read from .env` notice.
@@ -298,11 +300,18 @@ Three keys an operator may have in `.env` are never read from it:
   review step (HIMMEL-2704). Deleting the line is the operator's call.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
-class has not been decided yet: other account emails, chat IDs, cookie-file
+class has not been decided yet: other account emails, cookie-file
 paths, service URLs and VM user names. Only the explicitly named identifiers
 above are config; tokens and all other unclassified keys remain secrets.
-A key that decides where a credential or message is sent (`JIRA_BASE_URL`,
-`TELEGRAM_GROUP_CHAT_ID`) stays secret while `himmel.conf` is unguarded.
+Five more keys are config, so `import-env` leaves them alone (HIMMEL-8165).
+`TELEGRAM_CHAT_ID` and `TELEGRAM_GROUP_CHAT_ID` are served from `himmel.conf`;
+they decide where messages go, and `himmel.conf` is not guarded against an
+agent's writes. That exposure is accepted: a changed chat id re-routes
+Telegram messages, not credentials. A git-tracked `.env` serves neither id.
+`JIRA_BASE_URL`, `FIRECRAWL_BASE_URL` and `WHISPER_MODEL` are env-only: no
+`himmel.conf` layer serves them, so `JIRA_BASE_URL` (the destination of the
+Jira token, HIMMEL-3111) cannot be redirected by a planted config, and
+`import-env`, `migrate-env.sh` and the setup wizard keep them in `.env`.
 
 The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.

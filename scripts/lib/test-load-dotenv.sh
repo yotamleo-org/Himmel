@@ -560,6 +560,14 @@ got=$( cd "$TREPO" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>"$TMP/k
 assert_eq "K6 a tracked .env serves no secret" "<unset>" "$got"
 assert_eq "K6 one refusal line" "1" "$(grep -c 'tracked by git' "$TMP/k6.err")"
 
+# K6b: a tracked .env serves no chat id either: it picks where messages go.
+printf 'TELEGRAM_CHAT_ID=tracked-chat\nTELEGRAM_GROUP_CHAT_ID=tracked-group\n' >"$TREPO/.env"
+git -C "$TREPO" add .env
+git -C "$TREPO" commit -q -m tracked-chat
+got=$( cd "$TREPO" && unset TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID && HIMMEL_CONFIG_DIR="$TMP/k6b-none" load_dotenv TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID 2>"$TMP/k6b.err"; printf '[%s|%s]' "${TELEGRAM_CHAT_ID:-}" "${TELEGRAM_GROUP_CHAT_ID:-}" )
+assert_eq "K6b a tracked .env serves no chat id" "[|]" "$got"
+assert_eq "K6b one refusal line" "1" "$(grep -c 'tracked by git' "$TMP/k6b.err")"
+
 # K7: config-class and policy-class keys never touch the resolver.
 kreset
 printf 'HANDOVER_DIR=/c/h\nCR_REQUIRE_CROSS_MODEL=1\n' >"$REPO/.env"

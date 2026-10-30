@@ -119,7 +119,7 @@ async function main() {
     for (const row of rows) {
       assert(prompts.some(p => p.includes(row.name) && p.includes(row.explanation) && p.includes(row.effect)));
     }
-    assert.equal(prompts.filter(p => p.includes('> ')).length, rows.filter(r => r.class === 'config').length);
+    assert.equal(prompts.filter(p => p.includes('> ')).length, rows.filter(r => r.class === 'config' && !r.envOnly).length);
   });
   await test('metadata covers exactly reader keys and preserves existing secret-store compatibility', () => {
     const rows = require(path.join(root, 'scripts/himmelctl/lib/config-keys.json')).keys;
@@ -128,10 +128,25 @@ async function main() {
     assert.deepEqual(rows.map(r => r.name).sort(), [...new Set(classified)].sort());
     const manifest = require(path.join(root, 'scripts/himmelctl/lib/secrets-manifest.json'));
     assert.deepEqual(manifest.secrets.filter(s => rows.some(r => r.name === s.name)).map(s => s.name).sort(),
-      ['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
+      ['FIRECRAWL_BASE_URL', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY', 'WHISPER_MODEL']);
     const store = require(path.join(root, 'scripts/himmelctl/lib/secret-store.js'));
     assert.equal(store.validate('JIRA_EMAIL', 'fixture@example.invalid').ok, true);
     assert.equal(store.validate('JIRA_PROJECT_KEY', 'ABC').ok, true);
+  });
+  await test('env-only keys stay in .env across an install and are refused from a profile', () => {
+    const dir = fixture('envonly');
+    const envFile = path.join(dir, '.env');
+    const conf = path.join(dir, 'himmel.conf');
+    const original = 'JIRA_BASE_URL=https://fixture.example.invalid\nWHISPER_MODEL=/fixture/model.bin\nFIRECRAWL_BASE_URL=https://fixture-fc.example.invalid\nCR_PROFILE=legacy-panel\n';
+    fs.writeFileSync(envFile, original);
+    adopter.applyBehaviourConfig({}, { conf, envFile, log: () => {} });
+    assert.equal(read(envFile), original.replace('CR_PROFILE=legacy-panel\n', ''));
+    for (const key of ['JIRA_BASE_URL', 'WHISPER_MODEL', 'FIRECRAWL_BASE_URL']) {
+      assert.equal(load(conf, key), '');
+      assert.throws(() => adopter.validateBehaviourConfig({ [key]: 'https://planted.example.invalid' }), /read from \.env only/);
+      assert.throws(() => adopter.applyBehaviourConfig({ [key]: 'https://planted.example.invalid' },
+        { conf, envFile, log: () => {} }), /read from \.env only/);
+    }
   });
   await test('real wizard applies config, migrates legacy and leaves policy unchanged', () => {
     const dir = fixture('wizard');
@@ -156,7 +171,7 @@ async function main() {
       'install', '--from-profile', profile, ...extra], { cwd: dir, env, encoding: 'utf8' });
     const dry = invoke(['--dry-run']);
     assert.equal(dry.status, 0, dry.stderr);
-    assert.match(dry.stdout, /instruction card \+ probe for 2 secret\(s\)/);
+    assert.match(dry.stdout, /instruction card \+ probe for \d+ secret\(s\)/);
     assert(!fs.existsSync(path.join(dir, '.himmel/himmel.conf')));
     assert.equal(read(envFile).includes('CR_PROFILE='), true);
     const applied = invoke([]);

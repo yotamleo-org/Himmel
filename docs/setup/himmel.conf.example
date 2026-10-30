@@ -62,3 +62,12 @@
 # ALIBABA_CODING_PLAN_BASE_URL=https://dummy.example.invalid/coding-plan
 # ALIBABA_DASHSCOPE_BASE_URL=https://dummy.example.invalid/api/v1
 # ALIBABA_OPENAI_BASE_URL=https://dummy.example.invalid/compatible-mode/v1
+
+# Plain settings that once rode along in .env (HIMMEL-8165)
+# TELEGRAM_CHAT_ID=0
+# TELEGRAM_GROUP_CHAT_ID=0
+# The next three are NOT read from this file: their readers take the checkout .env or the process
+# environment only (JIRA_BASE_URL is a credential destination). Listed so the key set is complete.
+# JIRA_BASE_URL=https://dummy.atlassian.net
+# FIRECRAWL_BASE_URL=https://dummy.example.invalid
+# WHISPER_MODEL=/dummy/whisper/ggml-small.bin

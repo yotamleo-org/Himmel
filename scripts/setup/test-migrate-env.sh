@@ -216,6 +216,39 @@ lacks "HANDOVER_DIR moves without USER_SLUG" "HANDOVER_DIR=" "$envnow"
 has "a move without USER_SLUG still checks the handover root" "verified: load_dotenv, load_policy, jira config reader, jira handover root, lanes resolve" "$out"
 has "a line with no key name stays in .env" "=orphan-line" "$envnow"
 
+# An env-only key (no himmel.conf reader) stays in .env and the migration still
+# exits 0: it is not a key the copy moves, so verify has nothing to compare.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+printf 'HANDOVER_DIR=%s\nJIRA_BASE_URL=https://canary.example.net\nFIRECRAWL_BASE_URL=https://fc.example.net\nWHISPER_MODEL=/models/ggml-canary.bin\n' "$TMP/handovers" > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "an env-only key in .env does not fail the migration"; else fail "an env-only key in .env exited $rc: $out"; fi
+envnow=$(cat "$TMP/st/.env")
+has "JIRA_BASE_URL stays in .env" "JIRA_BASE_URL=https://canary.example.net" "$envnow"
+has "FIRECRAWL_BASE_URL stays in .env" "FIRECRAWL_BASE_URL=https://fc.example.net" "$envnow"
+has "WHISPER_MODEL stays in .env" "WHISPER_MODEL=/models/ggml-canary.bin" "$envnow"
+has "the report says an env-only key stays" "  JIRA_BASE_URL stays (env-only: no himmel.conf reader)" "$out"
+lacks "an env-only key is not copied to himmel.conf" "JIRA_BASE_URL" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+
+# The chat ids are config keys himmel.conf serves: the move succeeds and the .env lines go.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+printf 'HANDOVER_DIR=%s\nTELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=-100987654\n' "$TMP/handovers" > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "the chat ids move without a lanes mismatch"; else fail "the chat ids exited $rc: $out"; fi
+envnow=$(cat "$TMP/st/.env")
+lacks "TELEGRAM_CHAT_ID leaves .env" "TELEGRAM_CHAT_ID=" "$envnow"
+lacks "TELEGRAM_GROUP_CHAT_ID leaves .env" "TELEGRAM_GROUP_CHAT_ID=" "$envnow"
+
+# Known gap, unchanged here: a config key the lanes resolver does not read (JIRA_EMAIL)
+# fails the verify step and the migration stops. This row pins that, so the fix flips it.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+printf 'HANDOVER_DIR=%s\nJIRA_EMAIL=ops@example.net\n' "$TMP/handovers" > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 1 ]; then pass "JIRA_EMAIL still fails the lanes verify (known gap)"; else fail "JIRA_EMAIL exited $rc: $out"; fi
+has "JIRA_EMAIL is the reported mismatch" "MISMATCH JIRA_EMAIL (lanes resolve)" "$out"
+
 # The keep-list holds secrets only: a behaviour key on it still moves.
 rm -rf "$HOME/.himmel" "$HOME/.config"
 mkdir -p "$HOME/.himmel"
