@@ -164,6 +164,17 @@ out3="$(cd "$repo" && bash "$SCRIPT" --diff "HEAD...HEAD" 2>&1)"; rc3=$?
 check "clean diff exits 0" "$rc3" "0"
 contains "clean diff says so" "$out3" "no known class matches"
 
+# Unknown detector types must not turn stale catalog data into a clean review.
+cat > "$tmp/unknown-detector.json" <<'KFJSON'
+{"classes":[{"id":"old-twin","kind":"checklist","rung":"advisory","title":"t","globs":["scripts/**/*.sh"],"detector":{"type":"twin-missing"}}]}
+KFJSON
+for diff_range in "$base...HEAD" "HEAD...HEAD"; do
+  unknown="$(cd "$repo" && KNOWN_FINDINGS_FILE="$tmp/unknown-detector.json" bash "$SCRIPT" --diff "$diff_range" 2>&1)"; unknown_rc=$?
+  check "unknown detector: $diff_range refuses stale catalog" "$unknown_rc" "2"
+  contains "unknown detector: names the type and class" "$unknown" "unknown detector type twin-missing in class old-twin"
+  not_contains "unknown detector: never claims a clean review" "$unknown" "no known class matches"
+done
+
 # --prompt: rebuttal classes only, with the do-not-re-raise framing
 p="$(bash "$SCRIPT" --prompt 2>&1)"
 contains "prompt: framing" "$p" "do NOT re-raise"

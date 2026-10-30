@@ -39,7 +39,7 @@
 # Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
 #      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
-# Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input, 3 (--diff --area only) an open hit.
+# Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input / unknown detector type, 3 (--diff --area only) an open hit.
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
@@ -313,6 +313,11 @@ if (MODE === "prompt") {
 }
 
 if (MODE === "diff") {
+  const detectorTypes = new Set(["added-line-regex", "no-test-change", "removed-flag-in-docs", "md-fence-no-lang", "hook-header-no-fail-direction", "hook-no-bypass"]);
+  for (const c of classes) if (c.detector && !detectorTypes.has(c.detector.type)) {
+    console.error(`known-findings.sh: unknown detector type ${c.detector.type} in class ${c.id}`);
+    process.exit(2);
+  }
   // Parse unified diff (-U0): per file → {added:[{n,text}], removed:[...]}, plus rename/new markers.
   const files = {}; let cur = null, oldN = 0, newN = 0;
   for (const line of fs.readFileSync(process.env.DIFF_FILE, "utf8").split("\n")) {
