@@ -207,10 +207,11 @@ check runs it advisory-only (WARN on overlap, never FAIL) as part of a normal
 ## Files
 
 - `.claude-plugin/plugin.json` — plugin manifest (name: `lean-skills`).
-- `skills/` — the 14 vendored skill directories, copied verbatim (see table
-  above). Never edit these by hand.
+- `skills/` — the 14 vendored skill directories, copied verbatim bar the
+  `deviation=` lines in `VENDORED.md` (see table above). Never edit these by
+  hand.
 - `VENDORED.md` — the machine-readable-ish inventory: which skill came from
-  which upstream release, and why the 2 superpowers skills and the 10
+  which upstream release, and why the 3 superpowers skills and the 10
   mattpocock/skills skills were left out.
 - `LICENSE.superpowers`, `LICENSE.mattpocock-skills` — upstream licenses,
   carried forward per source.
