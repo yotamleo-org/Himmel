@@ -21,7 +21,7 @@
 # a worker edits its worktree copy freely, and a row added there must not widen
 # what the hook allows. A table not yet on the default branch allows nothing.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only chief-kit worker surface.
+# PLATFORM GUARD: Linux-only chief-kit worker surface.
 # Bash 3.2-compatible.
 set -uo pipefail
 trap 'exit 0' EXIT

@@ -18,9 +18,8 @@
 # `$HOME/...` for a home-relative one, and a bare PATH-resolved binary name
 # behind a fail-open guard for an optional tool.
 #
-# Platform guard (gitbash-only): a pre-commit gate — pre-commit runs its
-# hooks under Git Bash on Windows and any POSIX bash elsewhere, so no .ps1
-# twin is needed.
+# Platform guard: a pre-commit gate; pre-commit runs its hooks under any POSIX
+# bash.
 #
 # Exit codes:
 #   0 — clean

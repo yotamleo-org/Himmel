@@ -14,7 +14,7 @@
 # Bypass: HIMMEL_WEBFETCH_WALLED_OK=1 in the LAUNCHING shell (session-sticky; a
 # per-call prefix does not reach this hook process).
 #
-# Platform guard (gitbash-only): jq + bash string ops only; no .ps1 twin needed.
+# Platform guard: jq + bash string ops only; any POSIX bash.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr plus a
 # structured hookSpecificOutput.permissionDecision on stdout).

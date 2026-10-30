@@ -12,8 +12,7 @@
 # scripts/guardrails/agent-model-policy.json (listed -> deny, removed -> allow,
 # broken policy -> allow).
 #
-# bash 3.2-safe. Platform guard (gitbash-only): jq checks only, no git/path work;
-# runs unchanged under Git Bash on Windows. No .ps1 twin needed.
+# bash 3.2-safe. Platform guard: jq checks only, no git/path work.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

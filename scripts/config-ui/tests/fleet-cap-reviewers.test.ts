@@ -72,6 +72,18 @@ test("the cap is read from config.json .policy before the legacy .env", async ()
   expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 7, source: "config.json", configFile });
 });
 
+test("an empty-string policy cap shows 4, not the legacy .env cap", async () => {
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
+  writeFileSync(configFile, '{"policy":{"HIMMEL_FLEET_CAP":""}}\n');
+  expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "config.json" });
+});
+
+test("an array policy shows 4, as load_policy refuses the shape", async () => {
+  writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
+  writeFileSync(configFile, '{"policy":[]}\n');
+  expect(await (await get(boot(), "/api/fleet-cap")).json()).toMatchObject({ cap: 4, source: "default" });
+});
+
 test("a legacy .env cap still shows when config.json does not set it", async () => {
   writeFileSync(envFile, "HIMMEL_FLEET_CAP=3\n");
   writeFileSync(configFile, '{"version":1,"policy":{"HIMMEL_FLEET_CAP":null}}\n');

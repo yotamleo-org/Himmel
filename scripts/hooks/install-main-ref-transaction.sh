@@ -9,21 +9,7 @@
 # type pre-commit cannot wire, installed as a tiny shim that execs the
 # tracked, reviewable, testable script).
 #
-# PLATFORM GUARD (no .ps1 twin -- this note is that decision, not a
-# placeholder for one): this script is plain POSIX shell, so under Git Bash
-# on Windows it would run and install correctly the same way it does on
-# Linux/macOS -- nothing here needs a PowerShell-specific rewrite. The real
-# gap is that it is never INVOKED there at all: `scripts/setup.sh` and
-# `scripts/setup-hooks.sh` both call this installer, but their Windows twin
-# `scripts/setup-hooks.ps1` has no call to it whatsoever -- so a Windows
-# station's setup run installs every OTHER hook and silently skips this one,
-# leaving main completely unguarded with no error, no warning, nothing in
-# `himmel-doctor` to catch it until C32 happens to be checked from a git
-# context that can see it. That gap is tracked deliberately
-# rather than closed here (this session cannot test PowerShell). A future
-# `.ps1` twin -- or a call to this same script added to `setup-hooks.ps1` --
-# is what resolves it; this note exists so nobody mistakes "no twin" for
-# "no gap".
+# PLATFORM GUARD: plain POSIX shell; runs under any POSIX bash.
 #
 # DESIGN RULE: writing a file that LOOKS like protection is not protection, and
 # re-deriving either "where does git look" or "how do I safely embed one string

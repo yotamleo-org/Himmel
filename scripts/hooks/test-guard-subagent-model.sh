@@ -5,11 +5,8 @@
 #
 # Usage: bash scripts/hooks/test-guard-subagent-model.sh
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + jq over a temp sandbox; NOT ported to native PowerShell. A test
-# harness needs no .ps1 twin (project convention: a documented platform guard
-# suffices for a test fixture) — it exercises the bash hook above, so it runs
-# wherever that hook runs.
+# Platform guard: any POSIX bash 3.2+. Pure bash + jq over a temp sandbox; it
+# exercises the bash hook above, so it runs wherever that hook runs.
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO

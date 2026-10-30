@@ -47,10 +47,9 @@
 # launcher's write path DENIES when it cannot acquire the lock, since it is
 # advancing a pin mid-session rather than doing a best-effort initial record.
 #
-# PLATFORM GUARD: this is a POSIX/Git-Bash shell library, not a script with a
-# missing `.ps1` twin -- its cross-platform counterpart is the JS
+# PLATFORM GUARD: this is a POSIX shell library; its counterpart is the JS
 # implementation in scripts/hooks/hook-integrity.js, which the launcher runs
-# natively on Windows and which speaks the identical on-disk protocol. This
+# and which speaks the identical on-disk protocol. This
 # side is platform-AWARE, not platform-blind: it records
 # pid_namespace=<msys|win32|posix> in the owner file and refuses to reclaim a
 # lock owned by a foreign namespace, because under Git-Bash `$$` is an MSYS

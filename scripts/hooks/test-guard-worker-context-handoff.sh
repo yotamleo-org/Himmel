@@ -6,8 +6,7 @@
 # session: a transcript whose first user turn is the launcher's
 # `load <doc> and continue`, plus the claude-hud snapshot context-fill.sh reads.
 #
-# bash 3.2-safe. Platform guard (gitbash-only): env vars, jq, sha256sum/shasum,
-# touch -t; no .ps1 twin (the hook has none).
+# bash 3.2-safe. Platform guard: env vars, jq, sha256sum/shasum, touch -t.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

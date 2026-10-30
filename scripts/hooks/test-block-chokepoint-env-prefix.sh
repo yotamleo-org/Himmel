@@ -20,6 +20,10 @@
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed
 # bash 3.2-compatible. ASCII only.
 set -uo pipefail
+# bash 3.2 (macOS) brace-expands a `{a,b}` written inside the "$(j "...")" payload
+# of a row into two arguments, so the second payload reached `env` as a command
+# (rc=127). The payloads carry brace words as literal text for the hook to judge.
+set +B
 
 # Invoked via `bash` below, never chmod'd: making the hook executable from
 # the suite would hide a missing exec-bit/wiring problem and leave file-mode
@@ -98,6 +102,7 @@ assert_deny() {  # assert_deny <label> <json>
         echo "PASS $label (denied, message names the launching-shell convention)"
     else
         echo "FAIL $label -- expected rc=2 + permissionDecision=deny + launching-shell message, got rc=$RC decision='$decision'"
+        printf '  stderr: %s\n' "$(printf '%s' "$ERR" | head -n 3)"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -2637,14 +2642,8 @@ assert_allow "7366: a git push beside a grep keeps the relief" "$(j "grep -c x /
 assert_deny "7366 control: a bare glob can expand to a git grep pager option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git grep -n env *")"
 assert_deny "7366 control: a dash glob can expand to a git log output option, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; git log -1 --o*")"
 assert_deny "7366 control: a bare glob can expand to sed -i, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p *")"
-# The two brace-word rows exit 127 from the hook on macOS (bash 3.2) with no verdict; the
-# cause is not pinned, so they skip there and run everywhere else.
-if [ "$(uname -s)" = Darwin ]; then # prim-ok: brace-word rows skipped on Darwin, see the note above
-    echo "SKIP 7366 control: the two brace-word sed -e e rows on Darwin (hook exits 127): tracked in HIMMEL-7894"
-else
-    assert_deny "7366 control: a brace word can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p {-e,e}")"
-    assert_deny "7366 control: a brace word led by an unset parameter can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p - \${Z}{-e,e}")"
-fi
+assert_deny "7366 control: a brace word can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p {-e,e}")"
+assert_deny "7366 control: a brace word led by an unset parameter can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p - \${Z}{-e,e}")"
 assert_deny "7366 control: an unset parameter before -e can expand to sed -e e, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sed -n p - \${Z}-e e")"
 assert_deny "7366 control: a bare glob can expand to sort -o, beside the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh' | sort ?")"
 assert_deny "7366 control: file -C writes a file beside a git call and the env clear text" "$(j "echo 'env -i bash scripts/hooks/x*.sh'; file -C -m /tmp/m7366; git status")"

@@ -107,6 +107,8 @@ async function loadFleet() {
 }
 
 function paint() {
+  const buildOpen = $("#top details")?.open;
+  const focusBuild = document.activeElement === $("#top summary");
   const keep = document.activeElement && document.activeElement.id === "q" ? document.activeElement.selectionStart : null;
   const focusK = document.activeElement && document.activeElement.matches && document.activeElement.matches(".row-head") ? document.activeElement.dataset.k : null;
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
@@ -122,6 +124,9 @@ function paint() {
   for (const t of typing) { const i = document.querySelector(t.sel); if (i) { if (t.edited) i.value = t.value; if (t.had) { i.focus(); i.setSelectionRange(t.from, t.to); } } }
   $("#nav").innerHTML = "";
   $("#top").innerHTML = renderHeader(feed);
+  const buildDetails = $("#top details");
+  if (buildOpen && buildDetails) buildDetails.open = true;
+  if (focusBuild) $("#top summary")?.focus();
   renderPages(); // the Health dot follows the feed and the health read
   $("#where").textContent = `${location.host} · ${feed && feed.target ? feed.target.scope : "?"} scope`;
   if (focusK !== null) { for (const h of document.querySelectorAll(".row-head")) if (h.dataset.k === focusK) { h.focus(); break; } }

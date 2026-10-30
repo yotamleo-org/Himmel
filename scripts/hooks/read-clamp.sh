@@ -13,8 +13,8 @@
 # Scope: HIMMEL_CONSOLE_LEG=1 only (headed-arm-worker.sh's launcher export) --
 # never gates a chief or an interactive session.
 #
-# Platform guard: bash-only, no .ps1 twin -- worker-impl sessions run under the
-# .claude/settings.json Bash launcher (Linux/macOS/Git-Bash), never PowerShell.
+# Platform guard: bash-only -- worker-impl sessions run under the
+# .claude/settings.json Bash launcher (Linux/macOS).
 #
 # Workflow nudge, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs
 # fail-closed"): this hook saves tokens, it does not protect anything, so it

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderHealth } from "../public/health.js";
 import { renderToolHealth } from "../public/tool-health.js";
+import { renderHeader, renderInventory, renderTriage } from "../public/render.js";
 
 // The approved mockups take every colour from tokens.css and set text in the UI font, monospace only for
 // data. These pin that the served pages (public/) do the same: a colour literal outside tokens.css, or a var() that no
@@ -83,6 +84,58 @@ test("app.css carries the mockups' shared components", () => {
   for (const sel of [".ph", ".box", ".pill", ".strip", ".data"]) expect(css, sel).toMatch(new RegExp(`(^|[\\s,}])\\${sel}[\\s{,.:]`));
   expect(css).toMatch(/(^|[\s,}])\.box[,{][^}]*border-radius:10px/);
   expect(css).toMatch(/(^|[\s,}])\.pill[,{][^}]*border-radius:999px/);
+});
+
+test("the shell keeps live version identity under the Himmel brand, not above the page", () => {
+  const html = read(join(PUBLIC, "index.html"));
+  expect(html).not.toMatch(/<body>\s*<header/);
+  expect(html).toMatch(/<div class="brand">Himmel\s*<header class="top" id="top">[\s\S]*?<\/header>[\s\S]*?<\/div>/);
+  const header = renderHeader({ himmel: { version: "1.1.3", describe: "v1.1.3", commit: "0123456789abcdef", checkout: "/test/himmel" } });
+  expect(header).toContain('class="ver"');
+  expect(header).toContain("himmel 1.1.3 · v1.1.3");
+  expect(header).toContain("<summary>Build details</summary>");
+  expect(header).toContain("/test/himmel");
+});
+
+test("the desktop rail can scroll to navigation below a short viewport", () => {
+  const css = read(join(PUBLIC, "theme.css"));
+  expect(css).toMatch(/\.rail\{[^}]*overflow-y:auto/);
+});
+
+test("header repaint preserves the open build details and summary keyboard focus", () => {
+  const doc: any = { activeElement: null, querySelectorAll: () => [] };
+  let details: any = { open: true };
+  const makeSummary = (): any => ({ matches: () => false, focus() { doc.activeElement = this; } });
+  let summary = makeSummary();
+  doc.activeElement = summary;
+  const top = { set innerHTML(_html: string) { details = { open: false }; summary = makeSummary(); } };
+  const elements: Record<string, unknown> = { "#top": top, "#main": {}, "#nav": {}, "#where": {} };
+  const $ = (selector: string) => selector === "#top details" ? details : selector === "#top summary" ? summary : elements[selector];
+  const paint = read(join(PUBLIC, "app.js")).match(/function paint\(\) \{[\s\S]*?\n\}/)![0];
+  new Function("document", "$", "currentPage", "feed", "unmountPage", "renderHeader", "renderPages", "location", `${paint}\npaint();`)(
+    doc, $, { render: () => "" }, { himmel: { version: "1.1.3", describe: "v1.1.3", commit: "0123456789abcdef" }, target: { scope: "user" } }, null, renderHeader, () => {}, { host: "localhost" },
+  );
+  expect(details.open).toBe(true);
+  expect(doc.activeElement).toBe(summary);
+});
+
+test("Health Triage and Inventory use boxed sections, UI-font rows and status pills", () => {
+  const rows = ["fail", "warn", "ok", "off", "info"].map((health) => ({
+    id: `item-${health}`, source: "item", health, control: { class: "display-only" },
+    installed: { state: "present", detail: "probe detail" },
+  }));
+  const state = { open: new Set(), bundles: {}, filt: { q: "item" } };
+  const triage = renderTriage({ rows }, state);
+  const inventory = renderInventory({ rows }, state);
+  for (const [id, html] of [["triage", triage], ["inventory", inventory]]) {
+    expect(html, id).toMatch(new RegExp(`<section id="${id}"[^>]*class="box"`));
+    expect(html, id).toContain('class="st pill fail"');
+    expect(html, id).toContain('class="st pill warn"');
+  }
+  for (const health of ["ok", "off", "info"]) expect(inventory).toContain(`class="st pill ${health}"`);
+  const css = read(join(PUBLIC, "app.css"));
+  expect(css).toMatch(/\.box \.row-head[^}]*font:[^;]*var\(--font-ui\)/);
+  expect(css).toMatch(/\.box \.bhead[^}]*font:[^;]*var\(--font-ui\)/);
 });
 
 // The pages moved onto the layer draw with it, not with a page-local look.

@@ -8,8 +8,7 @@
 #
 # Usage: bash scripts/hooks/test-guard-rm-writes.sh
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + jq over a temp sandbox; not ported to native PowerShell — the
+# Platform guard: any POSIX bash 3.2+. Pure bash + jq over a temp sandbox; the
 # release-manager lane (headed-arm-worker.sh) is Linux-only.
 set -uo pipefail
 

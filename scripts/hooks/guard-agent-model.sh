@@ -37,9 +37,8 @@
 # Bypass: the `ESCALATION: <reason>` prompt line is the per-dispatch bypass; it
 # is a line of its own (a mid-sentence mention or an empty reason does not count).
 #
-# Platform guard (gitbash-only): jq only, no git/path work beyond the sibling
-# policy file; runs unchanged under Git Bash on Windows or POSIX bash 3.2+. No
-# .ps1 twin needed.
+# Platform guard: jq only, no git/path work beyond the sibling policy file; any
+# POSIX bash 3.2+.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr plus a
 # structured hookSpecificOutput.permissionDecision on stdout — same
