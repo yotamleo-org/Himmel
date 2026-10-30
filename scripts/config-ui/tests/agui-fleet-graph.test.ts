@@ -41,6 +41,9 @@ test("HIMMEL-8161: a cadence session is told by its cadence fragment or its unit
   expect(cadenceOf("graphmap-himmel", ["claude"])).toBe("graphmap");
   expect(cadenceOf("scratch-session", ["claude"])).toBeNull();
   expect(cadenceOf("HIMMEL-1-N1-x-2026-10-30", ["claude", "-n", "x"])).toBeNull();
+  // only the --settings value, by exact file name: another settings file or a prompt that names it is not a cadence
+  expect(cadenceOf("pid 8", ["claude", "--settings", "/home/u/non-cadence-settings.json"])).toBeNull();
+  expect(cadenceOf("pid 9", ["claude", "-p", "read cadence-settings.json"])).toBeNull();
   // every cadence the install registry offers is recognised
   const registry = JSON.parse(readFileSync(join(import.meta.dir, "../../himmelctl/lib/cadence-registry.json"), "utf8"));
   for (const c of registry.cadences) expect(CADENCE_IDS).toContain(c.id);

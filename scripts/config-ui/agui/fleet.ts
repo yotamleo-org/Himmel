@@ -345,7 +345,8 @@ const CADENCE_NAME = new RegExp("^(" + CADENCE_IDS.join("|") + ")(?:-cadence|-[a
 export function cadenceOf(name: string, argv: string[]): string | null {
   const id = CADENCE_NAME.exec(name)?.[1];
   if (id) return id;
-  return argv.some((a) => a.endsWith("cadence-settings.json")) ? "cadence" : null;
+  const settings = argv[argv.indexOf("--settings") + 1];
+  return settings?.split("/").pop() === "cadence-settings.json" ? "cadence" : null;
 }
 
 // The PR a worker doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
