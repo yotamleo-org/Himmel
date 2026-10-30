@@ -1398,19 +1398,16 @@ run_fence allow no "$HIMMEL" "redirect: standalone > target skipped -> allow" \
 run_fence deny no "$HIMMEL" "redirect: 2>/dev/null on salus target still denies" \
     "graphify update $SALUS/notes/patient.md --backend glm 2>/dev/null"
 
-echo "== HIMMEL-778: MSYS drive-path normalization =="
+echo "== HIMMEL-8174: POSIX and drive-rooted paths stay distinct =="
 
-# (M1) MSYS-form path under the himmel root -> himmel-code allow. PURE LEXICAL
-# (drive-lettered root + /c/... candidate) so it genuinely exercises the
-# translation on ANY OS - no real /c dir needed.
-run_fence allow no "$HIMMEL" "MSYS /c/... under himmel root -> himmel-code allow" \
+# (M1) A literal POSIX /c/... path must not alias a drive-rooted himmel corpus.
+# Pure lexical comparison - no real /c directory needed.
+run_fence deny no "$HIMMEL" "POSIX /c/... does not alias drive-rooted himmel -> deny" \
     "graphify update /c/fake/himmel/doc.md --backend deepseek" GRAPHIFY_HIMMEL_ROOT="C:/fake/himmel"
 
-# (M2) MSYS-form path under the luna root -> luna-personal (allow + ledger).
-# claude-cli is the sanctioned luna-personal backend (kimi/
-# moonshot's allow+log lane is retired) — declared via GRAPHIFY_DECLARED_BACKEND
-# so a ledger line exists to prove the MSYS path resolved under this root.
-run_fence allow yes "$HIMMEL" "MSYS /c/... under luna root -> luna-personal allow+ledger" \
+# (M2) The same separation holds for luna-personal even with a sanctioned
+# backend: an unclassifiable POSIX path must deny without an allow ledger row.
+run_fence deny no "$HIMMEL" "POSIX /c/... does not alias drive-rooted luna -> deny" \
     "graphify update /c/fake/luna/journal.md" LUNA_VAULT_PATH="C:/fake/luna" GRAPHIFY_DECLARED_BACKEND=claude-cli
 
 # (M3) THE --version regression: no path arg -> cwd fallback. The himmel root is

@@ -275,10 +275,7 @@ is_merged_into_main() {
         first_parents=$(git -C "$dir" rev-list --first-parent "$db" 2>/dev/null) || return 2
         # Pure-bash whole-line membership test — no pipeline and no here-string.
         # A `grep -q` pipeline takes SIGPIPE on first match, which `set -o
-        # pipefail` reports as a FAILED pipeline on a SUCCESSFUL match
-        # a here-string of >= 64 KiB (main passed 1600
-        # first-parent commits) wedges Git Bash forever — bash writes it into
-        # a pipe before the reader runs and MSYS over-reports the pipe size
+        # pipefail` reports as a FAILED pipeline on a SUCCESSFUL match.
         # Newline-framing both sides keeps the match exact.
         case "$first_parents" in
             "$head_sha"|"$head_sha"$'\n'*|*$'\n'"$head_sha"|*$'\n'"$head_sha"$'\n'*)
@@ -414,10 +411,8 @@ warn_doc_guard_off() {
 #
 # is_secret_basename used to fold case with `printf | tr`, a fork
 # PAIR per call. block-read-secrets.sh calls the predicate once per tokenised
-# argument of every Bash/PowerShell command, so on Windows with Defender
-# real-time scanning (~667 ms a fork pair, ~10x a normal Git-Bash spawn) that
-# fold was the dominant cost of a hook that fires on EVERY Read/Grep/Bash tool
-# call. This is the builtin-only replacement: zero processes.
+# argument of every Bash/PowerShell command. This is the builtin-only
+# replacement: zero processes.
 #
 # Result is returned in the global _TOLOWER_OUT rather than on stdout, because
 # `x=$(...)` would fork a subshell and reintroduce exactly the cost being

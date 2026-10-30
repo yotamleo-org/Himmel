@@ -362,6 +362,7 @@ scripts/guardrails/test-check-git-env-scrub.sh	15
 scripts/guardrails/test-gitleaks-retired-org.sh	3
 scripts/guardrails/test-graphify-fence.sh	40
 scripts/guardrails/test-guard-gh.sh	1
+scripts/guardrails/test-guardrail-posix-paths.sh	1
 scripts/guardrails/test-hook-probe.sh	9
 scripts/guardrails/test-leak-classes.sh	5
 scripts/guardrails/test-lesson-write-fence.sh	87

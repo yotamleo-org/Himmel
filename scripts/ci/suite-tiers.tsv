@@ -350,6 +350,7 @@ scripts/guardrails/test-check-git-env-scrub.sh	pr	guard
 scripts/guardrails/test-gitleaks-retired-org.sh	pr	guard
 scripts/guardrails/test-graphify-fence.sh	pr	guard
 scripts/guardrails/test-guard-gh.sh	pr	guard
+scripts/guardrails/test-guardrail-posix-paths.sh	pr	guard
 scripts/guardrails/test-himmel-adapters.sh	pr	guard
 scripts/guardrails/test-hook-probe.sh	pr	guard
 scripts/guardrails/test-leak-classes.sh	pr	guard
