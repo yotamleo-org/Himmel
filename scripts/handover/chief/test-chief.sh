@@ -354,9 +354,17 @@ token6da="$(token_of "$out6da")"
 doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-chief.md"
 doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-chief.md"
 mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.relay-on-live"
-printf 'STALE\n' > "$mark6d"  # earlier rows' plain `next` calls share this session name and leave a marker
-chief next --bucket reldemo --no-relay-on-live >/dev/null
-check "6d next --no-relay-on-live removes an existing relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
+chief next --bucket reldemo --doc "$doc6dA" >/dev/null
+chief next --bucket reldemo --doc "$doc6dA" --no-relay-on-live >/dev/null 2>&1  # stops at the successor doc the first call made
+check "6d next --no-relay-on-live disarms an earlier marker even when it stops at the existing successor doc" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+check "6d that opt-out retry leaves the successor doc alone" "$([ -f "$doc6dB" ] && echo yes || echo no)" "yes"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
+printf 'STALE\n' > "$mark6d"
+mkdir "$mark6d.tmp"  # a directory at the temp name makes the marker write fail
+chief next --bucket reldemo --doc "$doc6dA" >/dev/null 2>&1
+check "6d a failed marker write removes an earlier attempt's marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+rmdir "$mark6d.tmp"
 rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
 chief next --bucket reldemo >/dev/null
 check "6d plain next writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"

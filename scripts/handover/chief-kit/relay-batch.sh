@@ -75,6 +75,10 @@ if [ -z "$successor" ] || [ ! -f "$doc" ]; then usage; fi
 # A chief's session is its doc stem, so a successor given as its doc path is named by that.
 case "$successor" in */*|*.md) successor="$(basename "$successor" .md)" ;; esac
 sender="$(basename "$doc" .md)"
+# This run IS the relay, whoever started it: disarm the chief's relay-on-live marker for this
+# successor so the waiter never runs the batch a second time (a retry would resend).
+rol="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${sender}.md.relay-on-live"
+[ "$(sed -n 1p "$rol" 2>/dev/null)" = "$successor" ] && rm -f "$rol"  # swallow-ok: no marker, nothing to disarm
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"

@@ -1993,6 +1993,11 @@ cmd_next() {
         return 0
     fi
 
+    # An opt-out disarms any marker an earlier attempt left, before the successor-doc check
+    # below can exit: a retry that stops there must not leave the old successor armed.
+    local pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
+    [ "$RELAY_ON_LIVE" -eq 1 ] || rm -f "$pred_inbox.relay-on-live"
+
     # The successor doc is never re-rendered once it exists: unlike the
     # HANDOFF just below (existence-guarded) and `new` (which bumps the
     # letter), a second `next --doc <same predecessor>` would otherwise
@@ -2166,8 +2171,6 @@ cmd_next() {
     # keeps delivering Telegram lines but stops tick/bank/page sampling, so an
     # outgoing chief merely waiting for LIVE takes no tick wakes. Best-effort:
     # a failed write leaves the waiter as it was.
-    local pred_inbox
-    pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     if mkdir -p "$(dirname "$pred_inbox")" 2>/dev/null && printf '%s\n' "$session" > "$pred_inbox.handover" 2>/dev/null; then
         echo "handover-mode: $pred_inbox.handover"
         # --relay-on-live: the outgoing waiter wakes its chief once, when the successor
@@ -2175,12 +2178,14 @@ cmd_next() {
         # On by default (the workers' bus adopt needs the bus record relay-batch.sh sends,
         # which a hand relay never does); --no-relay-on-live opts out.
         # Written to a temp name then renamed, so the waiter never reads half a marker.
-        if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
-            && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
-            echo "relay-on-live: $pred_inbox.relay-on-live"
-        elif [ "$RELAY_ON_LIVE" -eq 0 ]; then
-            # an opt-out retry must not leave an earlier attempt's marker armed for the old successor
-            rm -f "$pred_inbox.relay-on-live"
+        if [ "$RELAY_ON_LIVE" -eq 1 ]; then
+            if printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
+                && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
+                echo "relay-on-live: $pred_inbox.relay-on-live"
+            else
+                # a failed write must not leave an earlier attempt's marker armed for the old successor
+                rm -f "$pred_inbox.relay-on-live"
+            fi
         fi
     fi
 

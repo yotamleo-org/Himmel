@@ -645,8 +645,9 @@ that `next --arm` printed and hand your live workers over by name.
 **Re-brief your live workers before you release**. Each
 worker's brief names *you* as its chief, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
-you relay each worker to it from your own session, never by hand: `next` leaves every chief a `WAKE relay-on-live` unless it passed `--no-relay-on-live` (or run `chief-kit/relay-batch.sh <this doc>
---successor <it>`). That run sends each native worker one himmel-bus relay record naming
+you relay each worker to it from your own session, never by hand: `next` leaves every chief a `WAKE relay-on-live` unless it passed `--no-relay-on-live`; with no such wake, run `chief-kit/relay-batch.sh <this doc>
+--successor <it>` once. Either run disarms the marker, so the waiter never runs the batch a
+second time. That run sends each native worker one himmel-bus relay record naming
 the successor (the bus proves you sent it, so the record carries no token), and each claudex
 worker its inbox relay plus the bus record its `bus adopt` needs. A native record that
 fails, or a chief with no bus identity, prints a `SENDMESSAGE` line quoting the worker's
@@ -665,8 +666,10 @@ relay: never re-run it (a retry resends the claudex inbox relays). Unless you pa
 `--fresh <label>=<token>`, it never carries a fresh token, and a relay with none is
 complete (the worker keeps its own): native and claudex workers are not rotated on a
 bus succession, and `WAKE relay-on-live` passes no `--fresh`. A successor that issued fresh
-tokens has the outgoing chief run `relay-batch.sh <this doc> --successor <it>` with one
-`--fresh <label>=<token>` per worker instead: the `SENDMESSAGE` line and the claudex inbox
+tokens before any batch ran has the outgoing chief run `relay-batch.sh <this doc> --successor <it>`
+once with one `--fresh <label>=<token>` per worker (that run disarms the waiter). After the
+waiter has relayed, each fresh token goes to its worker by direct message, never a second
+batch. In the `--fresh` run the `SENDMESSAGE` line and the claudex inbox
 relay quote the held token and the fresh one, and a native worker owed a fresh token gets
 that `SENDMESSAGE` rather than a bus record (a bus record is token-free). A claudex worker's
 bus record is sent right after its inbox relay. `FRESH-UNUSED <label>` means no relayed

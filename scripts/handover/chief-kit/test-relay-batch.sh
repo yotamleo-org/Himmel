@@ -17,6 +17,7 @@ check() { # <name> <expected> <actual>
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/relay-batch-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
+export BRIDGE_ROOT="$WORK/bridge"
 
 DOC="$WORK/DEMO-nextleg-2026-10-08A-chief.md"
 LEG1="$WORK/DEMO-1-N7-alpha.md"
@@ -384,5 +385,16 @@ outslow="$(INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OSLOW" RELAY_BATCH_BUS_TIMEOUT=
 check "a spent bus deadline skips the later notices" "1" "$(grep -c '^bus ' "$ORDER")"
 check "a skipped notice is reported" "1" "$(printf '%s\n' "$outslow" | grep -c '^BUS-RELAY-FAIL N71 (bus deadline spent)')"
 check "--fresh: a repeated label is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-a --fresh N7=fresh-b >/dev/null 2>&1; echo $?)"
+# a run disarms the chief's relay-on-live marker for its successor, so a hand or --fresh run and the waiter never relay twice
+ROL="$BRIDGE_ROOT/consoles/DEMO-nextleg-2026-10-08A-chief.md.relay-on-live"
+mkdir -p "$BRIDGE_ROOT/consoles"
+printf 'DEMO-nextleg-2026-10-08B-chief\n%s\n' "$WORK/DEMO-nextleg-2026-10-08B-chief.md" > "$ROL"
+bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-chief >/dev/null 2>&1
+check "a run for the marker's successor removes the relay-on-live marker" "no" "$([ -f "$ROL" ] && echo yes || echo no)"
+printf 'DEMO-nextleg-2026-10-08B-chief\n%s\n' "$WORK/DEMO-nextleg-2026-10-08B-chief.md" > "$ROL"
+bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08C-chief >/dev/null 2>&1
+check "a run for another successor leaves the marker armed" "yes" "$([ -f "$ROL" ] && echo yes || echo no)"
+rm -f "$ROL"
+check "a run with no marker still succeeds" "0" "$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-chief >/dev/null 2>&1; echo $?)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
