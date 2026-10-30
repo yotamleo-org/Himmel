@@ -427,6 +427,7 @@ scripts/handover/chief-kit/test-shepherd.sh	local	behaviour suite, 0 catches in 
 scripts/handover/chief-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path
 scripts/handover/chief-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
+scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new optional prerequisites (HIMMEL-8276)
 scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
