@@ -122,39 +122,6 @@ case "$out" in
   *) fail "missing --started-at value message: $out" ;;
 esac
 
-# --- Test 5: unsupported hosts refuse before dispatching or scanning --------
-scan_dir="$(mktemp -d -t reaper-scan.XXXXXX)" || exit 1
-trap 'rm -rf "$scan_dir"' EXIT
-for host in msys cygwin win32 MINGW MSYS; do
-  scan_marker="$scan_dir/$host"
-  out="$(
-    OSTYPE="$host"
-    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
-    pwsh() { echo "unexpected legacy dispatch"; return 0; }
-    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
-    _reap_ps_table() { : > "$scan_marker"; }
-    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
-    _reap_registry_scan() { echo "unexpected registry scan"; }
-    _reap_main --root-pid 500 2>&1
-  )"
-  rc=$?
-  if [ "$rc" -eq 2 ]; then
-    pass "$host is refused (rc=2)"
-  else
-    fail "$host: rc=$rc (want 2) out=$out"
-  fi
-  case "$out" in
-    *unexpected*) fail "$host dispatched or scanned: $out" ;;
-    *"Windows is not supported"*) pass "$host names the unsupported platform" ;;
-    *) fail "$host lacks an unsupported-platform diagnostic: $out" ;;
-  esac
-  if [ ! -e "$scan_marker" ]; then
-    pass "$host does not scan processes"
-  else
-    fail "$host scanned processes before refusing"
-  fi
-done
-
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"

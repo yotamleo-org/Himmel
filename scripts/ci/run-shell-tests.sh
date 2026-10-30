@@ -12,8 +12,7 @@
 # SUITE_REQUIRE_TOOL is capability-conditional: a suite there
 # RUNS on every host that has the tool and is [SKIP]ped loudly with its reason
 # where the tool is absent — never dead weight in SKIP_LIST on hosts that DO
-# have the capability, the exact blind spot that let a PowerShell-only
-# regression ship green — and SUITE_TIER is a
+# have the capability — and SUITE_TIER is a
 # declarative corpus-reduction table gated by env SUITE_TIER_MODE
 # (fast|extended|all|pr; unset = all = byte-identical to no filter;
 # pr reads scripts/ci/suite-tiers.tsv).
@@ -506,8 +505,7 @@ _suite_timeout_for() {
       # ~50 CFP invocations, ~31 of them through the real
       # scripts/hermes/invoke.sh chokepoint (mktemp x4, a `set -m` watchdog
       # subshell, a `>(tee)` process substitution, an exec'd python3 stub) --
-      # each one costs several seconds of pure MSYS process-spawn overhead, no
-      # single case hangs. Verified by isolating the case that looked "stuck"
+      # no single case hangs. Verified by isolating the case that looked "stuck"
       # under a short bound and re-running it 25x standalone (every run
       # returned, ~10-15s each, no runaway trend) and by full-suite runs
       # bookended with `date`: completed at RC=0 in <900s once, in 1129s once,
@@ -590,10 +588,7 @@ _suite_timeout_for() {
 # unattended session cannot leave one grinding for hours.
 #
 # Deliberately generous. This is a backstop against a runaway run, not a
-# performance target: the nightly matrix runs this on a windows-latest runner
-# where MSYS forks are slow and the job has no timeout-minutes of its own, so a
-# tight default would turn a merely slow CI worker red. Lower it per-run when you
-# want a tighter leash.
+# performance target. Lower it per-run when you want a tighter leash.
 #
 # The claim that "Two hours is
 # implausible for a healthy run on any platform" was FALSE by the time it was
@@ -833,11 +828,8 @@ scripts/hooks/test-block-write-into-main-checkout-forms.sh   # HIMMEL-7490: quar
 "
 
 # Off-Linux skips: same format as SKIP_LIST, but appended to it
-# only when `uname -s` is not Linux (macOS "Darwin", Git-Bash "MINGW*"), so a
-# suite that is fine on the Linux CI runner is not blanket-quarantined
-# everywhere. When the test-adopt.sh quarantine above lifts, the suite comes
-# back here, not to an unconditional run: its off-Linux skip (the Windows cap
-# exceedance, never re-measured) still holds.
+# only when `uname -s` is not Linux (macOS "Darwin"), so a suite that is fine
+# on the Linux CI runner is not blanket-quarantined everywhere.
 SKIP_LIST_NON_LINUX="
 scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203  # prim-ok: skip-list reason text, no lock runs here
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
@@ -954,10 +946,8 @@ ${tiers_quarantine_nl}
 fi
 
 # Capability-conditional suites. Neither table above can say
-# "runs exactly where the host has the tool": SKIP_LIST is a NEVER, which made
-# the pwsh smoke suite dead weight on every host that HAS pwsh — reproducing
-# the never-executed blind spot the suite exists to close — and SUITE_CONDITIONAL
-# keys on changed paths, not host capabilities. One entry per line:
+# "runs exactly where the host has the tool": SKIP_LIST is a NEVER, and
+# SUITE_CONDITIONAL keys on changed paths, not host capabilities. One entry per line:
 #   <repo-root-relative suite path>  <tool>  # <reason>
 # The suite RUNS wherever <tool> is on PATH; where it is not, the runner
 # [SKIP]s it loudly with this reason — a runner-level [SKIP] line is the only
@@ -2119,7 +2109,7 @@ suite_lock_queue_is_our_turn() {
 # contention, so a caller must not treat it as a race a re-run will resolve.
 _suite_lock_claim() {
   # The WHOLE brand, identity probe included, is computed BEFORE
-  # the mkdir. proc_tree_process_identity forks (pwsh on Windows, slow), and a
+  # the mkdir. proc_tree_process_identity forks, and a
   # fork between the mkdir and the owner write left the live lock unbranded
   # long enough for a second run to read it as a crash husk and reclaim it —
   # two holders. Now nothing between the mkdir and the write forks.
@@ -3407,9 +3397,8 @@ trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _la
 # `-H` dereferences the COMMAND-LINE argument only. Without
 # it, GNU find handed a scan root that is itself a symlink to a directory
 # reports the link and stops — it never descends — so discovery comes back
-# empty and the run dies at the "no test suites discovered" guard below. MSYS
-# find followed the link, which is why this only ever surfaced once the fleet
-# moved to a Linux station. `-H` is the narrow form deliberately: symlinks
+# empty and the run dies at the "no test suites discovered" guard below.
+# `-H` is the narrow form deliberately: symlinks
 # INSIDE the tree stay unfollowed exactly as before, so no scan root other
 # than a symlinked one changes what it discovers. (The symlinked root's
 # table-matching half is already handled by $scan_resolved.)
@@ -3487,8 +3476,7 @@ elif [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE
         if (p == want) { print NR; exit } }' "$suites_file")
     if [ -n "$_rot_idx" ]; then
       # Reuse $suites_raw: discovery is finished with it and it is already in
-      # the EXIT trap, so this costs no third mktemp. `cat` back into place
-      # rather than `mv` — mv is unreliable on MSYS, as the lock code documents.
+      # the EXIT trap, so this costs no third mktemp.
       { awk -v k="$_rot_idx" 'NR >= k' "$suites_file"
         awk -v k="$_rot_idx" 'NR <  k' "$suites_file"; } > "$suites_raw"
       cat "$suites_raw" > "$suites_file"
@@ -4337,7 +4325,6 @@ fi
 # (GITHUB_ACTIONS=true) uses its CPU count, capped at 4, and every other caller
 # stays serial: on a workstation the machine semaphore budgets one slot per
 # runner, and a nested runner inside a suite must not multiply its parent.
-# Windows stays serial too: MSYS forks are the bottleneck there already.
 if [ -n "${SUITE_JOBS:-}" ]; then
   suite_jobs=$(_suite_num SUITE_JOBS "$SUITE_JOBS" 1)
 elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && ! proc_tree_is_windows; then
