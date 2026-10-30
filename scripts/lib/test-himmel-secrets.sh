@@ -215,6 +215,13 @@ printf 'JIRA_BASE_URL=https://from-env.example.invalid\n' >"$REPO/.env"
 got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
 assert_eq "S5d .env still serves JIRA_BASE_URL" "[https://from-env.example.invalid]" "$got"
 rm -f "$REPO/.env"
+# A station profile layer is filtered the same way.
+mkdir -p "$TMP/s5d-prof/vault/.himmel/profiles" "$TMP/s5d-prof/conf"
+printf 'JIRA_BASE_URL=https://planted-profile.example.invalid\n' >"$TMP/s5d-prof/vault/.himmel/profiles/p.conf"
+: >"$TMP/s5d-prof/vault/.himmel/himmel.conf"
+ln -sf "$TMP/s5d-prof/vault/.himmel/himmel.conf" "$TMP/s5d-prof/conf/himmel.conf"
+got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-prof/conf" HIMMEL_PROFILE=p HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
+assert_eq "S5d a profile never sets JIRA_BASE_URL" "[]" "$got"
 
 # S5e: the telegram hooks load through load_dotenv, so the chat ids
 # come from himmel.conf and the bot token through the resolver, with no .env.
