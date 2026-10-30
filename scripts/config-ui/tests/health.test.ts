@@ -35,7 +35,7 @@ test("renderHealth escapes every feed, ledger, workers and alert string", () => 
   const f = feed(r(evil, "fail", { installed: { state: "present", detail: evil }, fix: { remedy: evil } }), r("job", "ok", { source: "cadence", id: `cadence:${evil}` }), r("q", "ok", { bundle: "search", id: evil }));
   const h = {
     bank: { state: "ok", row: { ts: evil, verdict: evil, five_hour: evil, seven_day: evil, age: evil, degraded: false } },
-    legs: { state: "ok", manifest: "m", legs: [{ doc: `/x/${evil}`, status: evil, description: evil }] },
+    workers: { state: "ok", manifest: "m", workers: [{ doc: `/x/${evil}`, status: evil, description: evil }] },
     monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: evil, severity: evil, summary: evil }] }, exporter: { state: "absent" } },
   };
   const html = renderHealth(f, h);
@@ -47,15 +47,15 @@ test("renderHealth escapes every feed, ledger, workers and alert string", () => 
 test("worker descriptions follow the doc name and legacy rows stay unchanged", () => {
   const html = renderHealth(null, {
     bank: { state: "absent" },
-    legs: { state: "ok", legs: [
+    workers: { state: "ok", workers: [
       { doc: "/x/worker.md", status: "LIVE", description: "Show worker descriptions" },
       { doc: "/x/legacy.md", status: "WRAPPED" },
       { doc: "/x/empty.md", status: "LIVE", description: "" },
     ] },
   });
   expect(html).toContain('<span class="doc" title="/x/worker.md">worker.md</span><span class="det">Show worker descriptions</span>');
-  expect(html).toContain('<div class="leg"><span class="mk">WRAPPED</span><span class="doc" title="/x/legacy.md">legacy.md</span></div>');
-  expect(html).toContain('<div class="leg"><span class="mk">LIVE</span><span class="doc" title="/x/empty.md">empty.md</span></div>');
+  expect(html).toContain('<div class="worker"><span class="mk">WRAPPED</span><span class="doc" title="/x/legacy.md">legacy.md</span></div>');
+  expect(html).toContain('<div class="worker"><span class="mk">LIVE</span><span class="doc" title="/x/empty.md">empty.md</span></div>');
 });
 
 test("renderHealth with no feed and no health still renders all seven sections", () => {
@@ -68,7 +68,7 @@ test("renderHealth with no feed and no health still renders all seven sections",
 // a responding exporter makes monitoring.state "ok", which must not hide a failing Prometheus.
 test("each monitoring source's failure is rendered on its own, even when the other is ok", () => {
   const gone = { state: "absent" };
-  const mon = (prometheus: object, exporter: object) => ({ bank: gone, legs: gone, monitoring: { state: "ok", prometheus, exporter } });
+  const mon = (prometheus: object, exporter: object) => ({ bank: gone, workers: gone, monitoring: { state: "ok", prometheus, exporter } });
   const promDown = renderHealth(feed(r("a", "ok")), mon({ state: "error", reason: "HTTP 500" }, { state: "ok" }));
   expect(promDown).toContain("monitoring prometheus unreachable: HTTP 500");
   expect(promDown).not.toContain("monitoring exporter unreachable");
@@ -83,9 +83,9 @@ test("each monitoring source's failure is rendered on its own, even when the oth
 test("renderHealth shows the project mode row from the resolver", () => {
   const gone = { state: "absent" };
   const mode = { state: "ok", tracker: "local", forge: "local-git", idRequired: "1" };
-  const html = renderHealth(null, { bank: gone, legs: gone, monitoring: gone, mode });
+  const html = renderHealth(null, { bank: gone, workers: gone, monitoring: gone, mode });
   expect(html).toContain("tracker=local forge=local-git");
-  expect(renderHealth(null, { bank: gone, legs: gone, monitoring: gone, mode: { state: "error", reason: "project-mode: invalid TRACKER='x'" } }))
+  expect(renderHealth(null, { bank: gone, workers: gone, monitoring: gone, mode: { state: "error", reason: "project-mode: invalid TRACKER='x'" } }))
     .toContain("project-mode: invalid TRACKER=&#39;x&#39;");
   expect(renderHealth(null, null)).toContain('id="mode"');
 });

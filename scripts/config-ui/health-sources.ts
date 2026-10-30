@@ -74,7 +74,7 @@ export function readLegs(script: string, env: Env, timeoutMs = WORKERS_TIMEOUT_M
       try {
         const j = JSON.parse(out);
         if (!j.manifest) return finish({ state: "absent", reason: "no fleet manifest" });
-        finish({ state: "ok", manifest: j.manifest, legs: j.legs });
+        finish({ state: "ok", manifest: j.manifest, workers: j.workers });
       } catch { finish({ state: "error", reason: "workers view printed no JSON" }); }
     });
   });

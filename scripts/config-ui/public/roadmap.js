@@ -35,7 +35,7 @@ const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"
 }).join("")}</select>`;
 
 function cardHtml(t, d, showVersion, w) {
-  const lg = t.leg ? `<div class="rm-worker"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
+  const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
