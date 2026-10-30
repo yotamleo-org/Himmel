@@ -44,8 +44,15 @@ eq "seed-broken: an unlisted name is refused" "$(node "$LISTING" --seed-broken t
 dry="$(env -u HIMMEL_BILLED_OK bash "$RUN" --model haiku --dry-run 2>&1)"
 eq "dry run: exits 0 with no billed opt-in" "$?" "0"
 has "dry run: lists an open case's request" "$dry" "o01 open   btw as we used more of code rabbit"
-has "dry run: lists a sealed case by id" "$dry" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["id"])' "$HERE/cases/sealed.jsonl") sealed (sealed)"
-hasnt "dry run: never prints a sealed request" "$dry" "the console does not start"
+first_sealed="$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["id"])' "$HERE/cases/sealed.jsonl")"
+# ids of the sealed cases whose request appears on stdin; --plant appends the first one first
+leaks() { python3 -c 'import json,sys
+cases = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]
+text = sys.stdin.read() + (cases[0]["request"] if sys.argv[2:] == ["--plant"] else "")
+print(" ".join(c["id"] for c in cases if c["request"] in text))' "$HERE/cases/sealed.jsonl" "$@"; }
+has "dry run: lists a sealed case by id" "$dry" "$first_sealed sealed (sealed)"
+eq "dry run: never prints a sealed request" "$(leaks <<<"$dry")" ""
+has "dry run: the leak check catches a planted sealed request" "$(leaks --plant <<<"$dry")" "$first_sealed"
 eq "dry run: one line per case" "$(grep -cE '^[os][0-9]+ ' <<<"$dry")" "$(cat "$HERE/cases/open.jsonl" "$HERE/cases/sealed.jsonl" | grep -c .)"
 eq "billed run: refused without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK bash "$RUN" --model haiku --out "$TMP/x" >/dev/null 2>&1; echo $?)" "2"
 
