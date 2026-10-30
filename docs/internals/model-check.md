@@ -26,13 +26,17 @@ The chief supplies these paths in the launching shell:
 - `STATECHART`: the single executable path to the reviewed `/statechart`
   compiler: an external copy of `cursor/plugins` at
   `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path
-  `pstack/skills/statechart/scripts/statechart`, or the same pinned tree at
-  `marketplace/plugins/pstack/skills/statechart/scripts/statechart` when vendored.
-  The wrapper snapshots the entire launcher directory (including reachable
-  compiler modules), rejects symlinks, checks its tree SHA-256 against
-  `569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13`,
-  and executes only that checked private snapshot. Any changed tree refuses
-  before execution; the digest is recorded in complete and incomplete reports.
+  `pstack/skills/statechart/scripts/statechart`, with tree SHA-256
+  `569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13`.
+  For a path ending in `marketplace/plugins/pstack/skills/statechart/scripts/statechart`,
+  the reviewed vendored tree at `ff8f35c3bb172d03dec3fdf93eaa539a5685d3ad`
+  instead requires `a13d367b20ca044bdeaac183fee0e06ad1887b513ff9fb76a4246e669239c18b`.
+  That variant changes `run.ts` to forbid automatic installation and includes
+  `package-lock.json`. The wrapper snapshots the entire launcher directory
+  (including reachable compiler modules), rejects symlinks, checks the
+  path-specific fixed tree digest, and executes only that checked private
+  snapshot. Any changed tree refuses before execution; the checked digest is
+  recorded in complete and incomplete reports.
   The tree digest hashes each sorted relative UTF-8 path, NUL, then its raw
   SHA-256 file digest, including test/config files. A different reviewed vendor
   tree needs an explicit pin update, never a caller-provided expected hash.
@@ -99,7 +103,8 @@ or 10 seconds for the whole command. The compiler's 100,000-state rerun cap
 is not an exhaustive pass. No automatic retry or widening of constants occurs.
 
 Exit 0 means bounded checks hold; 1 means a counterexample; 2 means an error,
-stale head or an incomplete check (including an unchecked rule); 3 means Java
+stale head or an incomplete check (including unchecked/stopped checks or a
+report with no checked-rules section); 3 means Java
 is absent and the feature stayed off. An exit 2 can still include a useful bug
 trace: do not mistake partial evidence for a clean result.
 

@@ -45,6 +45,11 @@ actual="$(sha256sum "$work/tla2tools.jar")" || error 'cannot hash TLC jar'
 [ "${actual%% *}" = "$sha" ] || error 'tla2tools.jar sha256 mismatch; expected v1.7.4, nothing executed'
 runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinned statechart executable (cursor/plugins 4dd1d058)'
 [ -x "$runner" ] || error 'STATECHART is not executable'
+case "$runner" in
+    */marketplace/plugins/pstack/skills/statechart/scripts/statechart)
+        approved_tree=a13d367b20ca044bdeaac183fee0e06ad1887b513ff9fb76a4246e669239c18b ;;
+    *) approved_tree=569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13 ;;
+esac
 # Pin every reachable compiler file, not just the launcher; execute the checked private snapshot.
 cp -R "$(dirname "$runner")" "$work/statechart" || error 'cannot snapshot statechart tree'
 runner="$work/statechart/$(basename "$runner")"
@@ -64,7 +69,6 @@ for p in sorted(root.rglob('*')):
 print(h.hexdigest())
 TREE
 )" || error 'cannot hash statechart tree'
-approved_tree=569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13
 [ "$runner_sha" = "$approved_tree" ] || error 'statechart tree sha256 mismatch; nothing executed'
 jar="$(existing_file "$jar")" || error 'missing TLC jar'
 case "$jar" in "$REPO"/*) error 'TLC must stay outside the repo' ;; esac
@@ -142,8 +146,10 @@ if bugs:
         sentence = f'{bug[1]} breaks; the shortest path is unavailable, so read the TLC counterexample before ruling.'
 elif '## Rules not checked' in text or '## TLC stopped' in text:
     sentence = 'Model checking is incomplete; no bug or shortest path can be ruled out.'
-else:
+elif re.search(r'^## Rules that hold$', text, re.M):
     sentence = 'No bug was found in this bounded model; there is no counterexample path.'
+else:
+    sentence = 'Model checking is incomplete; no bug or shortest path can be ruled out.'
 header = (f'{sentence}\n\nPR: #{pr}\nHead: {head}\nTarget: `{target}`\n'
           f'Statechart tree SHA-256: {runner_sha}\n'
           'Evidence only: a clean report never replaces the judge (HIMMEL-8273).\n'
@@ -163,5 +169,5 @@ fi
 latest="$(timeout -k 5s 30s gh pr view "$pr" --json headRefOid --jq .headRefOid)" || error "cannot recheck PR head; report is not current: $run/report.md"
 [ "$latest" = "$head" ] || error "PR head changed; discard this stale report: $run/report.md"
 printf 'model-check-report: report=%s chart=%s head=%s exit=%s\n' "$run/report.md" "$chart" "$head" "$rc"
-if grep -Eq '^## (Rules not checked|TLC stopped)' "$run/report.md"; then exit 2; fi
+if grep -Eq '^Model checking is incomplete;|^## (Rules not checked|TLC stopped)' "$run/report.md"; then exit 2; fi
 exit "$rc"

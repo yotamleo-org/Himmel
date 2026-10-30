@@ -55,6 +55,9 @@ fixtures = [
     ('unchecked rules cannot read as a clean run',
      '# Model\n\n## Rules not checked\nNoLostLock\n',
      'Model checking is incomplete; no bug or shortest path can be ruled out.'),
+    ('a report with no checked rules cannot read as clean',
+     '# Model\n\nNo rules ran.\n',
+     'Model checking is incomplete; no bug or shortest path can be ruled out.'),
 ]
 fails = 0
 for name, text, expected in fixtures:
@@ -120,6 +123,7 @@ done
 [ "$SCENARIO" != no-report ] || exit 0
 mkdir -p "$out" || exit 2
 if [ "$SCENARIO" = unchecked ]; then printf '# Model\\n\\n## Rules not checked\\nSafe\\n' > "$out/report.md";
+elif [ "$SCENARIO" = unknown ]; then printf '# Model\\n\\nNo rules ran.\\n' > "$out/report.md";
 else printf '# Model\\n\\n## Rules that hold\\nSafe\\n' > "$out/report.md"; fi
 printf 'stateDiagram-v2\\n' > "$out/chart.mmd"
 [ "$SCENARIO" != failed-runner ] || exit 124
@@ -133,11 +137,16 @@ def digest(root):
             h.update(hashlib.sha256(p.read_bytes()).digest())
     return h.hexdigest()
 tree_sha = digest(tree)
+vendored = repo / 'marketplace/plugins/pstack/skills/statechart/scripts'
+shutil.copytree(tree, vendored)
+(vendored / 'package-lock.json').write_text('{"fixture": true}\n')
+vendor_sha = digest(vendored)
 text = sut.read_text()
 # Dependency injection is confined to a scratch copy's approved fixture digest and repo paths.
 text = re.sub(r'^HERE=.*$', 'HERE=' + shlex.quote(str(sut.parent)), text, count=1, flags=re.M)
 text = re.sub(r'^REPO=.*$', 'REPO=' + shlex.quote(str(repo)), text, count=1, flags=re.M)
 text = text.replace('569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13', tree_sha)
+text = text.replace('a13d367b20ca044bdeaac183fee0e06ad1887b513ff9fb76a4246e669239c18b', vendor_sha)
 wrapper = work / 'wrapper.sh'
 wrapper.write_text(text)
 (work / 'bucket').mkdir()
@@ -192,13 +201,19 @@ inside_view.write_text((work / 'view.mjs').read_text())
 mutated = work / 'mutated-compiler'
 shutil.copytree(tree, mutated)
 (mutated / 'dependency.ts').write_text('// changed reachable compiler bytes\n')
-vendored = repo / 'marketplace/plugins/pstack/skills/statechart/scripts'
-shutil.copytree(tree, vendored)
+linked = work / 'linked-compiler'
+shutil.copytree(tree, linked)
+external = work / 'identical-dependency.ts'
+external.write_bytes((tree / 'dependency.ts').read_bytes())
+(linked / 'dependency.ts').unlink()
+(linked / 'dependency.ts').symlink_to(external)
 # Each control below must be rejected by the same behavioral check that passes on production.
 checks = [
     ('scratch cwd binds both PR reads and source', {}, clean_ok, ('cd "$REPO" || error', '# cd "$REPO" || error')),
     ('bad jar refuses with valid inputs', {'BAD_JAR': '1'}, lambda x: refused(x, 'sha256 mismatch'), ('[ "${actual%% *}" = "$sha" ] || error', ': || error')),
     ('changed reachable runner tree refuses before execution', {'STATECHART': str(mutated / 'statechart')}, lambda x: refused(x, 'statechart tree sha256 mismatch'), ('[ "$runner_sha" = "$approved_tree" ] || error', ': || error')),
+    ('identical-byte compiler symlink refuses before execution', {'STATECHART': str(linked / 'statechart')}, lambda x: refused(x, 'symlink in compiler tree'), ('    if p.is_symlink():\n        raise SystemExit(f\'symlink in compiler tree: {p}\')', '    if False:\n        raise SystemExit(f\'symlink in compiler tree: {p}\')')),
+    ('unknown report exits incomplete', {'SCENARIO': 'unknown'}, lambda x: x[0].returncode == 2 and x[2] is not None and x[2].read_text().startswith('Model checking is incomplete;'), ("elif re.search(r'^## Rules that hold$', text, re.M):", 'elif True:')),
     ('every JVM has hard time and heap limits', {}, lambda x: bounded(x, '-k 5s 60s /usr/bin/true -Xmx512m -XX:ActiveProcessorCount=2'), ('-k 5s 60s %q -Xmx512m', '%q -Xmx512m')),
     ('whole compiler has hard timeout', {}, lambda x: bounded(x, '-k 10s 300s '), ('timeout -k 10s 300s "$runner"', '"$runner"')),
     ('failed runner cannot leave a clean report', {'SCENARIO': 'failed-runner'}, incomplete, ('if [ "$rc" -gt 1 ] || [ ! -s "$run/output/report.md" ]; then', 'if false; then')),
@@ -231,8 +246,15 @@ for name, args, predicate, (old, new) in checks:
     else:
         print(f'PASS: {name}; guard removal RED')
 r, _, report = run(STATECHART=str(vendored / 'statechart'))
-if r.returncode == 0 and report and f'Statechart tree SHA-256: {tree_sha}' in report.read_text():
-    print('PASS: vendored runner path accepted and checked tree digest recorded')
+if r.returncode == 0 and report and f'Statechart tree SHA-256: {vendor_sha}' in report.read_text():
+    control = work / 'vendor-pin-control.sh'
+    control.write_text(text.replace(vendor_sha, tree_sha, 1))
+    bad, case, _ = run(script=control, STATECHART=str(vendored / 'statechart'))
+    if bad.returncode == 2 and not (case / 'called').exists():
+        print('PASS: distinct vendored tree accepted and digest recorded; removing vendor pin RED')
+    else:
+        print('FAIL: removing vendored tree pin stayed GREEN')
+        fails += 1
 else:
     print(f'FAIL: vendored runner path/digest: {r.returncode} {r.stderr.strip()}')
     fails += 1
