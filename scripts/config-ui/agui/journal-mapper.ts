@@ -114,7 +114,7 @@ const busDeliveries = (text: string) => [...text.matchAll(BUS_HEADER)].map((m) =
 const LEDGER_CONFIRMED = /^ledger-append\.sh: (amended|appended finding|appended verdict amend for) (\S+) at ([0-9a-f]+)(?: -> (\{.*\}))?/gm;
 
 const roleOfName = (name: string): AgentRole =>
-  /-(console|chief)$/.test(name) ? "console" : /judge/i.test(name) ? "judge" : /(^|-)N\d+(-|$)/.test(name) ? "leg" : "agent";
+  /-(console|chief)$/.test(name) ? "console" : /judge/i.test(name) ? "judge" : /(^|-)N\d+(-|$)/.test(name) ? "worker" : "agent";
 const roleOfKind = (kind: string): AgentRole => (/critic|review/i.test(kind) ? "critic" : /judge/i.test(kind) ? "judge" : "subagent");
 
 type Rec = Record<string, unknown>;

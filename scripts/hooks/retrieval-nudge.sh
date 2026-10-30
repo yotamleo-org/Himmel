@@ -52,7 +52,7 @@ case "$tool" in
         flat="$(printf '%s' "$cmd" | sed -E "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')"
         while IFS= read -r seg; do
             seg="$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command|bash|sh)[[:space:]]+)+//')"
-            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)(leg|worker)-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
+            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)worker-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
                 kind=retrieval
                 break
             elif printf '%s' "$seg" | grep -Eq '^(grep[[:space:]]+(-[A-Za-z]*[rR][A-Za-z]*|--recursive)([[:space:]]|$)|rg([[:space:]]|$)|git[[:space:]]+grep([[:space:]]|$)|git[[:space:]]+log[[:space:]]+([^[:space:]]+[[:space:]]+)*-S)'; then

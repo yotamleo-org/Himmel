@@ -91,6 +91,23 @@ for n in $cited; do
   [ -f "$PLUGIN_ROOT/skills/$n/SKILL.md" ] || bad "vendored tree cites superpowers:$n but skills/$n/SKILL.md is not vendored"
 done
 
+# DEVIATIONS: every file a VENDORED.md `deviation=` row names still carries the
+# row's `marker=` text. A re-vendor copies upstream over the file and drops the
+# local line without a sound.
+devs=$(grep '^deviation=' "$PLUGIN_ROOT/VENDORED.md")
+[ -n "$devs" ] || bad "VENDORED.md has no deviation= row (vacuous — the file changed shape?)"
+while IFS= read -r row; do
+  [ -n "$row" ] || continue
+  marker=$(printf '%s' "$row" | sed -n 's/.* marker=\([^ ]*\).*/\1/p')
+  [ -n "$marker" ] || { bad "deviation row names no marker=: $row"; continue; }
+  files=${row#deviation=}; files=${files%% *}
+  for f in $(printf '%s' "$files" | tr ',' ' '); do
+    grep -qF "$marker" "$PLUGIN_ROOT/$f" 2>/dev/null || bad "VENDORED.md lists a deviation in $f but the file lacks '$marker'"
+  done
+done <<EOF
+$devs
+EOF
+
 # COVERAGE: the hook hints for EXACTLY the skill dirs that cite superpowers:
 # (no hard-coded list to drift after a re-vendor).
 for d in "$PLUGIN_ROOT"/skills/*/; do

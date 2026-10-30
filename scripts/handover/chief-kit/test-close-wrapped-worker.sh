@@ -1305,7 +1305,7 @@ mkcmdline 264 claude -n "${SESSION_NAME}-extra" work
 pgrep_x_stub 262 263 264
 reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "non -r<N> suffixes are not this leg: CLOSED-ALREADY rc 0 (HIMMEL-7811)" "$rc" "0"
+check "non -r<N> suffixes are not this worker: CLOSED-ALREADY rc 0 (HIMMEL-7811)" "$rc" "0"
 check "non -r<N> suffixes: nothing signaled" "$(cat "$CALLS")" ""
 
 # --- A RESUME doc (label suffix c) closes the ORIGINAL session's window ----
@@ -1471,27 +1471,27 @@ not_contains "workers --check: a manifest older than the age window is not swept
 not_contains "workers --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run "$MS_PRED_M" --check 2>&1) || rc=$?
-check "legs: --check after a manifest -> rc 0" "$rc" "0"
-contains "legs: --check after a manifest still checks the worker" "$out" "sweep: would close $MS_PRED"
-contains "legs: --check after a manifest is not swept as a manifest" "$out" "sweeps: manifests=1 failed=0"
-not_contains "legs: --check after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+check "workers: --check after a manifest -> rc 0" "$rc" "0"
+contains "workers: --check after a manifest still checks the worker" "$out" "sweep: would close $MS_PRED"
+contains "workers: --check after a manifest is not swept as a manifest" "$out" "sweeps: manifests=1 failed=0"
+not_contains "workers: --check after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
 rc=0; CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run "$MS_PRED_M" --bogus >/dev/null 2>&1 || rc=$?
-check "legs: an unknown flag after a manifest -> rc 2" "$rc" "2"
-not_contains "legs: an unknown flag after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
+check "workers: an unknown flag after a manifest -> rc 2" "$rc" "2"
+not_contains "workers: an unknown flag after a manifest signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run "$W/no-such.fleet.json" "$MS_PRED_M" "$MS_CUR_M" 2>&1) || rc=$?
-check "legs: a failed sweep is reported -> rc 1" "$rc" "1"
-contains "legs: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=0"
-exact_count "legs: the predecessor manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 280" "1"
-exact_count "legs: the current manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 281" "1"
-check "legs: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"
-not_contains "legs: the held WRAPPED worker is never signaled" "$(cat "$CALLS")" "kill -TERM 282"
+check "workers: a failed sweep is reported -> rc 1" "$rc" "1"
+contains "workers: a failed sweep does not stop the others" "$out" "sweeps: manifests=3 failed=1 gone=0"
+exact_count "workers: the predecessor manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 280" "1"
+exact_count "workers: the current manifest's WRAPPED worker is closed" "$(cat "$CALLS")" "kill -TERM 281" "1"
+check "workers: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")" "2"
+not_contains "workers: the held WRAPPED worker is never signaled" "$(cat "$CALLS")" "kill -TERM 282"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$MS_HELD" "$token" >/dev/null 2>&1
 rc=0; CWL_SCRIPT="$HERE/close-wrapped-workers.sh" run --bogus >/dev/null 2>&1 || rc=$?
-check "legs: an unknown flag -> rc 2" "$rc" "2"
+check "workers: an unknown flag -> rc 2" "$rc" "2"
 rc=0; out=$(CWL_SCRIPT="$HERE/close-wrapped-workers.sh" HIMMEL_BUCKET_DIR="$W/bucket" CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN=abc run --check 2>&1) || rc=$?
-check "legs: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
-not_contains "legs: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
+check "workers: a failed manifest listing -> rc 2, not an empty sweep" "$rc" "2"
+not_contains "workers: a failed manifest listing prints no sweep total" "$out" "sweeps: manifests=0"
 
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent

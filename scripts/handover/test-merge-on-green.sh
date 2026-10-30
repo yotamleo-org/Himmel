@@ -5337,7 +5337,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=
 assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-chief-worker"
 no_merge_call "7001-c: no merge call"
 
-# 7001-c2 — an explicitly falsy marker is no leg: solo reads it the way the
+# 7001-c2 — an explicitly falsy marker is no worker: solo reads it the way the
 # chief-GO gate does.
 MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001i" \
     run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"

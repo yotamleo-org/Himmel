@@ -12,16 +12,16 @@ const row = (name: string, role: string, console: string | null, extra: any = {}
 const rows = [
   row("roadmap-chief", "console", "roadmap-chief"),
   row("project-chief", "console", "project-chief"),
-  row("native-worker", "leg", "roadmap-chief"),
-  row("claudex-worker", "leg", "project-chief", { lane: "claudex" }),
+  row("native-worker", "worker", "roadmap-chief"),
+  row("claudex-worker", "worker", "project-chief", { lane: "claudex" }),
   row("judge", "judge", "project-chief"),
   row("wrapped-chief", "console", "wrapped-chief", { state: "wrapped", live: false, lock: "released" }),
-  row("wrapped-parent-worker", "leg", "wrapped-chief"),
-  row("dead-parent-worker", "leg", "gone-chief"),
-  row("no-edge-worker", "leg", null),
+  row("wrapped-parent-worker", "worker", "wrapped-chief"),
+  row("dead-parent-worker", "worker", "gone-chief"),
+  row("no-edge-worker", "worker", null),
   row("cloud-unattended", "cloud", "roadmap-chief", { run: null, cloud: { phase: "working", url: null } }),
   row("old-cloud", "cloud", "wrapped-chief", { state: "wrapped", live: false, cloud: { phase: "merged", url: null } }),
-  row("wrapped-worker", "leg", "roadmap-chief", { state: "wrapped", live: false }),
+  row("wrapped-worker", "worker", "roadmap-chief", { state: "wrapped", live: false }),
 ];
 
 test("two console groups retain native, claudex and judge children; recent chiefs sort last", () => {
