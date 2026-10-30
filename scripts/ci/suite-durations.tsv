@@ -1014,6 +1014,7 @@ scripts/telegram/test-break-glass.sh	4
 scripts/telegram/test-dispatch-lane.sh	44
 scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	65
+scripts/trust/test-trust-status-no-exec.sh	1
 # Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
 scripts/test-adopt-features.sh	599
 scripts/test-adopt-merge-gate.sh	145

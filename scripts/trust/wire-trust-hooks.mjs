@@ -47,7 +47,7 @@
 
 import { spawnSync } from 'node:child_process';
 import {
-  existsSync, readFileSync, renameSync, unlinkSync, writeFileSync,
+  existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -452,6 +452,19 @@ function assertRecorderPresent(settingsPath) {
   }
 }
 
+// Status must not execute project code, even to ask it about capabilities.
+// Only an exact copy of the trusted installed recorder is recognised statically;
+// different or unreadable files are unverified, not necessarily incompatible.
+function recorderMatchesTrustedCopy(settingsPath) {
+  const recorder = recorderPathFor(settingsPath);
+  try {
+    return statSync(recorder).isFile()
+      && readFileSync(recorder).equals(readFileSync(join(HERE, 'shadow-ledger.mjs')));
+  } catch {
+    return false;
+  }
+}
+
 // existence is not compatibility.
 //
 // assertRecorderPresent proves a FILE sits at the resolved path; this proves
@@ -564,8 +577,8 @@ const CAPABILITY_REASONS = {
 };
 
 // The install-path precondition: refuse to wire hooks the recorder cannot
-// honour. `--check` reports the same state instead of refusing (see main), and
-// `--off` skips it entirely — removing dead wiring is exactly what you want
+// honour. `--check` uses static inspection instead, and `--off` skips it
+// entirely — removing dead wiring is exactly what you want
 // against a recorder that was never capable, and refusing would strand it.
 function assertRecorderCapable(settingsPath) {
   const cap = recorderCapabilities(settingsPath);
@@ -673,16 +686,8 @@ async function main() {
     const verb = args.off ? 'removed' : 'added';
     if (args.check) {
       const dupes = status.duplicates;
-      // The missing-recorder warning below covers the absent case; this probes
-      // the recorder-PRESENT-but-incapable sibling, so `--check` reports the
-      // same refusal `trust on` would actually give rather than hiding it
-      // behind a clean N/N. Skipped when removing (`--off` never handshakes)
-      // and when the recorder is absent (the other warning owns that case).
-      let incapable = null;
-      if (!args.off && existsSync(recorderPathFor(settingsPath))) {
-        const cap = recorderCapabilities(settingsPath);
-        if (!cap.ok) incapable = cap;
-      }
+      const recorderPresent = existsSync(recorderPathFor(settingsPath));
+      const unverified = !args.off && recorderPresent && !recorderMatchesTrustedCopy(settingsPath);
       process.stdout.write(
         `wire-trust-hooks: ${wired}/${total} entries wired in ${settingsPath}; `
         + `would have ${verb} ${changed}; wrote nothing\n`
@@ -695,21 +700,16 @@ async function main() {
         // silently reporting "would have added 6" in a project `trust on` will
         // REFUSE describes an install that cannot happen. Report the refusal
         // the operator is actually going to get.
-        + (!args.off && !existsSync(recorderPathFor(settingsPath))
+        + (!args.off && !recorderPresent
           ? `  ⚠ no recorder at ${recorderPathFor(settingsPath)} — \`trust on\` would REFUSE here; `
             + 'the trust ledger is not part of the portable core yet (HIMMEL-2756 tracks shipping it for adopted projects). '
             + 'Trust is currently supported in a himmel checkout; run this there, or pass that checkout\'s settings path.\n'
           : '')
-        // the recorder EXISTS but cannot be trusted to record
-        // every verb. Same refusal `trust on` would give, reported rather than
-        // acted on — naming the missing verbs and the consequence, in the same
-        // voice as the missing-recorder line above.
-        + (incapable
-          ? `  ⚠ the recorder at ${recorderPathFor(settingsPath)} did not prove it can record every `
-            + `verb this tool wires — ${CAPABILITY_REASONS[incapable.reason] ?? incapable.reason}. `
-            + `Missing: ${incapable.missing.join(', ')}. \`trust on\` would REFUSE here; these hooks `
-            + 'would fire, exit 0, record nothing, and status would still report '
-            + `${ENTRIES.length}/${ENTRIES.length}.\n`
+        + (unverified
+          ? `  ⚠ recorder compatibility UNVERIFIED at ${recorderPathFor(settingsPath)} — `
+            + 'not an exact readable copy of the trusted installed recorder. '
+            + 'Status does not execute project code; wiring counts do not prove recorder compatibility. '
+            + '`trust on` runs the project recorder to check its capabilities.\n'
           : ''),
       );
       return;
