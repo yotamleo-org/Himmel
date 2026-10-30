@@ -208,6 +208,65 @@ assert_eq_fp ".local beats himmel.conf" "[from-local]" "$out"
 out=$(run 'export CR_PROFILE=from-env; load_dotenv CR_PROFILE; printf "[%s]" "${CR_PROFILE-}"')
 assert_eq_fp "process env wins for an ordinary key" "[from-env]" "$out"
 
+# (p) Profiles: himmel.conf is the DEFAULT profile; a named station profile is
+# <vault>/.himmel/profiles/<name>.conf, found beside the link target of
+# himmel.conf. Order: env > project > .local > profile > himmel.conf.
+MIGRATE="$HERE/../setup/migrate-env-config.sh"
+VAULT="$TMP/vault"
+mkdir -p "$VAULT/.himmel/profiles"
+plink() { ln -s "$VAULT/.himmel/himmel.conf" "$HOME/.himmel/himmel.conf"; }
+pload() { run 'unset CR_PROFILE HANDOVER_DIR; load_dotenv CR_PROFILE HANDOVER_DIR; printf "[%s|%s]" "${CR_PROFILE-}" "${HANDOVER_DIR-}"'; }
+reset
+printf 'CR_PROFILE=from-default\n' > "$VAULT/.himmel/himmel.conf"
+printf 'CR_PROFILE=from-lab\n' > "$VAULT/.himmel/profiles/lab.conf"
+plink
+assert_eq_fp "(p) DEFAULT applies with no station profile" "[from-default|]" "$(pload)"
+assert_eq_fp "(p) a named profile overrides DEFAULT" "[from-lab|]" "$(HIMMEL_PROFILE=lab pload)"
+printf 'HANDOVER_DIR=/lab/handovers\n' >> "$VAULT/.himmel/profiles/lab.conf"
+assert_eq_fp "(p) a profile adds keys DEFAULT lacks" "[from-lab|/lab/handovers]" "$(HIMMEL_PROFILE=lab pload)"
+printf 'HIMMEL_PROFILE=lab\n' > "$HOME/.himmel/himmel.conf.local"
+assert_eq_fp "(p) himmel.conf.local selects the profile" "[from-lab|/lab/handovers]" "$(pload)"
+printf 'HIMMEL_PROFILE=lab\nCR_PROFILE=from-local\n' > "$HOME/.himmel/himmel.conf.local"
+assert_eq_fp "(p) .local beats the profile" "[from-local|/lab/handovers]" "$(pload)"
+assert_eq_fp "(p) the process env beats the profile" "[from-env|/lab/handovers]" "$(HIMMEL_PROFILE=lab run 'export CR_PROFILE=from-env; unset HANDOVER_DIR; load_dotenv CR_PROFILE HANDOVER_DIR; printf "[%s|%s]" "${CR_PROFILE-}" "${HANDOVER_DIR-}"')"
+printf 'HIMMEL_PROFILE=lab\n' > "$HOME/.himmel/himmel.conf.local"
+assert_eq_fp "(p) the env profile name beats the .local one" "[from-default|]" "$(HIMMEL_PROFILE=other pload)"
+mkdir -p "$VAULT/.himmel/hostile"
+printf 'CR_PROFILE=from-escape\n' > "$VAULT/.himmel/hostile/x.conf"
+assert_eq_fp "(p) a path-shaped profile name is ignored" "[from-default|]" "$(HIMMEL_PROFILE=../hostile/x pload)"
+reset
+printf 'CR_PROFILE=from-plain\n' > "$HOME/.himmel/himmel.conf"
+assert_eq_fp "(p) a plain himmel.conf has no profiles dir" "[from-plain|]" "$(HIMMEL_PROFILE=lab pload)"
+# A policy or secret key in a station profile is refused (trusted-file bridge).
+reset
+printf '{"version":1}\n' > "$HOME/.himmel/config.json"
+printf 'CR_FLOOR_FALLBACK=claude-only\nARMAUTOMERGE=1\nJIRA_API_TOKEN=planted\n' > "$VAULT/.himmel/profiles/lab.conf"
+: > "$VAULT/.himmel/himmel.conf"
+plink
+out=$(HIMMEL_PROFILE=lab run 'load_policy --root "$PWD" CR_FLOOR_FALLBACK ARMAUTOMERGE; printf "[%s|%s|rc=%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}" "$?"')
+assert_has "(p) a policy key in a station profile is not honoured by load_policy" "[||rc=0]" "$out"
+out=$(HIMMEL_PROFILE=lab run 'unset JIRA_API_TOKEN; load_dotenv CR_FLOOR_FALLBACK ARMAUTOMERGE JIRA_API_TOKEN; printf "[%s|%s|%s]" "${CR_FLOOR_FALLBACK-}" "${ARMAUTOMERGE-}" "${JIRA_API_TOKEN-}"')
+assert_has "(p) policy and secret keys in a station profile are not honoured by load_dotenv" "[||]" "$out"
+# The profile step creates <vault>/.himmel and the profile file, and links DEFAULT.
+reset
+rm -rf "$TMP/newvault"
+out=$(bash "$MIGRATE" --vault "$TMP/newvault" --profile lab 2>&1); rc=$?
+assert_eq_fp "(p) the profile step exits 0 with no .env" "0" "$rc"
+assert_eq_fp "(p) the profile step creates <vault>/.himmel/profiles/<name>.conf" "yes" "$([ -f "$TMP/newvault/.himmel/profiles/lab.conf" ] && echo yes)"
+assert_eq_fp "(p) the profile step links himmel.conf into the vault" "$TMP/newvault/.himmel/himmel.conf" "$(readlink "$HOME/.himmel/himmel.conf")"
+printf 'CR_PROFILE=from-new-lab\n' > "$TMP/newvault/.himmel/profiles/lab.conf"
+assert_eq_fp "(p) a profile the step created is read" "[from-new-lab|]" "$(HIMMEL_PROFILE=lab pload)"
+printf 'CR_PROFILE=kept\n' > "$TMP/newvault/.himmel/profiles/lab.conf"
+bash "$MIGRATE" --profile lab >/dev/null 2>&1; rc=$?
+assert_eq_fp "(p) re-running the step on a linked vault succeeds" "0" "$rc"
+assert_eq_fp "(p) re-running the step keeps the profile's keys" "CR_PROFILE=kept" "$(cat "$TMP/newvault/.himmel/profiles/lab.conf")"
+reset
+bash "$MIGRATE" --profile lab >/dev/null 2>&1; rc=$?
+assert_eq_fp "(p) the profile step with no vault and no link exits 2" "2" "$rc"
+bash "$MIGRATE" --vault "$TMP/v2" --profile ../x >/dev/null 2>&1; rc=$?
+assert_eq_fp "(p) the profile step refuses a path-shaped name" "2" "$rc"
+assert_eq_fp "(p) a refused name creates no vault dir" "" "$([ -e "$TMP/v2" ] && echo exists)"
+
 # A policy key requested through load_dotenv (advisory readers) comes from
 # config.json, and the process env still wins there (only load_policy ignores it).
 reset

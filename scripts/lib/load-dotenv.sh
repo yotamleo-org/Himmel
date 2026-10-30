@@ -452,6 +452,42 @@ _himmel_policy_dir() {
     printf '%s' "$_pd_home/.himmel"
 }
 
+# The profiles directory: profiles/ beside the vault file ~/.himmel/himmel.conf
+# links to, so station profiles are tracked with DEFAULT and a plain
+# himmel.conf has none. Fails when himmel.conf is not a link.
+_himmel_profiles_dir() {
+    local _pd_conf _pd_target
+    _pd_conf="$(_himmel_config_dir)/himmel.conf"
+    [ -L "$_pd_conf" ] || return 1
+    _pd_target=$(readlink "$_pd_conf") || return 1
+    case "$_pd_target" in /*) ;; *) _pd_target="${_pd_conf%/*}/$_pd_target" ;; esac
+    printf '%s/profiles' "${_pd_target%/*}"
+}
+
+# _himmel_profile_name — the active station profile: $HIMMEL_PROFILE, else the
+# HIMMEL_PROFILE line of himmel.conf.local (this machine only, never the
+# tracked file). Prints nothing for no name or one that is not a plain file
+# stem, so a name cannot walk out of the profiles directory.
+_himmel_profile_name() {
+    local _pn_name="${HIMMEL_PROFILE:-}" _pn_local
+    if [ -z "$_pn_name" ]; then
+        _pn_local="$(_himmel_config_dir)/himmel.conf.local"
+        [ -f "$_pn_local" ] && _pn_name=$(_load_dotenv_extract "$_pn_local" HIMMEL_PROFILE)
+        _pn_name=$(_load_dotenv_trim "${_pn_name#*=}")
+    fi
+    case "$_pn_name" in ''|.*|*[!A-Za-z0-9._-]*) return 0 ;; esac
+    printf '%s' "$_pn_name"
+}
+
+# The active station profile file; prints nothing when none applies.
+_himmel_profile_conf() {
+    local _pf_name _pf_dir
+    _pf_name=$(_himmel_profile_name)
+    [ -n "$_pf_name" ] || return 0
+    _pf_dir=$(_himmel_profiles_dir) || return 0
+    printf '%s/%s.conf' "$_pf_dir" "$_pf_name"
+}
+
 # The per-project override: .himmel/project.conf in the primary checkout of
 # the repo the caller runs in, so a worktree reads its primary's file. It is
 # resolved from the working directory even under --root, which callers pin to
@@ -591,7 +627,8 @@ _himmel_config_layers() {
     done
     if [ "${#_hc_cfg[@]}" -gt 0 ]; then
         # The project file comes first and serves project-scope keys only.
-        for _hc_file in "$(_himmel_project_conf)" "$_hc_dir/himmel.conf.local" "$_hc_dir/himmel.conf"; do
+        # The station profile sits between .local and the DEFAULT himmel.conf.
+        for _hc_file in "$(_himmel_project_conf)" "$_hc_dir/himmel.conf.local" "$(_himmel_profile_conf)" "$_hc_dir/himmel.conf"; do
             if [ "$_hc_first" = 1 ]; then
                 _hc_first=0
                 [ "${#_hc_proj[@]}" -gt 0 ] || continue

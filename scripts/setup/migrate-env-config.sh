@@ -3,7 +3,7 @@
 # ~/.himmel/himmel.conf, so .env can hold secrets only.
 # Layer table: docs/internals/config-layers.md.
 #
-#   bash scripts/setup/migrate-env-config.sh [--env <file>] [--vault <dir>]
+#   bash scripts/setup/migrate-env-config.sh [--env <file>] [--vault <dir>] [--profile <name>]
 #   bash scripts/setup/migrate-env-config.sh --dry-run [--env <file>]
 #
 #   --ahead-of-setup  accepted and ignored: setup, adopt and himmelctl read and
@@ -13,6 +13,9 @@
 #   --vault <dir>  keep the tracked file in <dir>/.himmel/himmel.conf and link
 #                  ~/.himmel/himmel.conf to it (a luna install). Without it,
 #                  ~/.himmel/himmel.conf is a plain file.
+#   --profile <name>  also create <vault>/.himmel/profiles/<name>.conf, with the
+#                  vault dir and link when absent. Needs --vault or a himmel.conf
+#                  already linked into a vault; needs no .env.
 #   --dry-run      say what would move; write nothing
 #
 # Values never reach stdout or stderr: each line is copied file to file, and
@@ -31,28 +34,75 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/load-dotenv.sh
 . "$HERE/../lib/load-dotenv.sh"
 
-envfile="" vault="" dry=0
+envfile="" vault="" profile="" dry=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --env|--vault)
+        --env|--vault|--profile)
             [ "$#" -ge 2 ] || { echo "migrate-env-config: $1 needs a value" >&2; exit 2; }
-            if [ "$1" = --env ]; then envfile="$2"; else vault="$2"; fi
+            case "$1" in --env) envfile="$2" ;; --vault) vault="$2" ;; *) profile="$2" ;; esac
             shift 2 ;;
         --dry-run) dry=1; shift ;;
         --ahead-of-setup) shift ;;
-        -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
         *) echo "migrate-env-config: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
+
+confdir=$(_himmel_config_dir)
+conf="$confdir/himmel.conf"
+
+# link_vault — keep the tracked file in <vault>/.himmel/himmel.conf and link
+# ~/.himmel/himmel.conf to it. Safe to repeat on a correct link.
+link_vault() {
+    tracked="$vault/.himmel/himmel.conf"
+    mkdir -p "$vault/.himmel" "$confdir"
+    [ -e "$tracked" ] || : > "$tracked"
+    if [ -L "$conf" ]; then
+        if [ "$(readlink "$conf")" != "$tracked" ]; then
+            echo "migrate-env-config: $conf links somewhere other than $tracked; not changing it." >&2
+            exit 1
+        fi
+    elif [ -e "$conf" ]; then
+        echo "migrate-env-config: $conf already exists as a plain file; not replacing it with a link to $tracked." >&2
+        exit 1
+    else
+        ln -s "$tracked" "$conf"
+        echo "linked $conf -> $tracked"
+    fi
+}
+
+# The profile step: <vault>/.himmel/profiles/<name>.conf beside the vault
+# link, made with the vault dir when absent. Needs --vault or an existing link.
+if [ -n "$profile" ]; then
+    case "$profile" in ''|.*|*[!A-Za-z0-9._-]*)
+        echo "migrate-env-config: --profile needs a plain name (letters, digits, . _ -), not a path." >&2
+        exit 2 ;;
+    esac
+    if [ -z "$vault" ]; then
+        target=$([ -L "$conf" ] && readlink "$conf")
+        case "$target" in
+            /*/.himmel/himmel.conf) vault="${target%/.himmel/himmel.conf}" ;;
+            *) echo "migrate-env-config: --profile needs --vault <dir>, or a himmel.conf already linked into a vault." >&2
+               exit 2 ;;
+        esac
+    fi
+    if [ "$dry" -eq 1 ]; then
+        echo "would create $vault/.himmel/profiles/$profile.conf"
+    else
+        link_vault
+        mkdir -p "$vault/.himmel/profiles"
+        if [ ! -e "$vault/.himmel/profiles/$profile.conf" ]; then
+            : > "$vault/.himmel/profiles/$profile.conf"
+            echo "created $vault/.himmel/profiles/$profile.conf"
+        fi
+    fi
+fi
 
 [ -n "$envfile" ] || envfile=$(_load_dotenv_envfile "")
 if [ -z "$envfile" ] || [ ! -f "$envfile" ]; then
     echo "migrate-env-config: no .env found; nothing to migrate."
     exit 0
 fi
-
-confdir=$(_himmel_config_dir)
-conf="$confdir/himmel.conf"
 
 # Key names only: the text before '=' on each uncommented line.
 # The shared registry includes non-secret Jira and service identifiers, so
@@ -71,23 +121,7 @@ for key in $names; do
     esac
 done
 
-if [ -n "$vault" ] && [ "$dry" -eq 0 ]; then
-    tracked="$vault/.himmel/himmel.conf"
-    mkdir -p "$vault/.himmel" "$confdir"
-    [ -e "$tracked" ] || : > "$tracked"
-    if [ -L "$conf" ]; then
-        if [ "$(readlink "$conf")" != "$tracked" ]; then
-            echo "migrate-env-config: $conf links somewhere other than $tracked; not changing it." >&2
-            exit 1
-        fi
-    elif [ -e "$conf" ]; then
-        echo "migrate-env-config: $conf already exists as a plain file; not replacing it with a link to $tracked." >&2
-        exit 1
-    else
-        ln -s "$tracked" "$conf"
-        echo "linked $conf -> $tracked"
-    fi
-fi
+[ -n "$vault" ] && [ "$dry" -eq 0 ] && link_vault
 
 moved=0
 for key in ${config_keys[@]+"${config_keys[@]}"}; do
