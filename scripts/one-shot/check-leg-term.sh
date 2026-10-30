@@ -49,7 +49,7 @@ fi
 
 # allow rows: path-regex <TAB> line-regex (empty = whole file) <TAB> reason
 hits="$(printf '%s\n' "$out" | awk -F'\t' '
-  FNR == NR {
+  FILENAME == ARGV[1] {
     if ($0 ~ /^#/ || $1 == "") next
     n++; pre[n] = $1; lre[n] = $2; next
   }
