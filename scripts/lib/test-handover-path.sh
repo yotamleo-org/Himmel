@@ -472,7 +472,7 @@ if [ "$T11_DIR/Foo11.md" -ef "$T11_DIR/foo11.md" ]; then
     assert_eq "T11e macos is not served the cached linux value for the same path" \
         "$(PLATFORM=macos _arm_identity_path "$T11_DIR/foo11.md")" "$(PLATFORM=macos _arm_identity_path "$T11_DIR/Foo11.md")"
 else
-    echo "SKIP T11a/b: this host cannot hard-link"
+    echo "SKIP T11a/b/e: this host cannot hard-link"
 fi
 # T11c/d need a case-SENSITIVE volume: on APFS Bar11.md/bar11.md are one file
 # and baz11.md resolves to Baz11.md, so their premise cannot be built there.

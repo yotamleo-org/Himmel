@@ -15,7 +15,7 @@ FILES="scripts/handover/arm-resume.sh scripts/handover/auto-commit.sh scripts/ha
 # shellcheck disable=SC2086  # FILES is a word list on purpose
 FILES_ARGS=$FILES
 AUDIT_RE='\.exe\b|win32|powershell|pwsh|\.ps1\b|cygwin|msys|mingw'
-TOOLS_RE='schtasks|tasklist|USERPROFILE|cygpath|PLATFORM=windows|:[0-9]+:[[:space:]]*windows\)|win\(\)'
+TOOLS_RE='schtasks|tasklist|USERPROFILE|cygpath|PLATFORM=windows|^[[:space:]]*windows\)|win\(\)'
 
 FAILED=0
 pass() { echo "PASS $1"; }
@@ -40,7 +40,7 @@ scan() {
 for f in $FILES; do
     if [ ! -f "$f" ]; then fail "W0 audited file missing: $f"; fi
 done
-ctl=$(printf 'run powershell\nschtasks /create\nf.sh:12:    windows) x ;;\nf.sh:13: on Windows)\nplain\n' | grep -c -i -E "$AUDIT_RE|$TOOLS_RE")
+ctl=$(printf 'run powershell\nschtasks /create\n    windows) x ;;\n# on Windows)\nplain\n' | grep -c -i -E "$AUDIT_RE|$TOOLS_RE")
 if [ "$ctl" = 3 ]; then
     pass "W0 the matchers hit known Windows lines and skip plain and prose ones"
 else
