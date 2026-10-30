@@ -4960,8 +4960,8 @@ exits 0 and has no bypass variable: a workflow nudge, not a security fence, so a
 failure must degrade to "no snapshot", never block a compaction.
 
 The consumer is `scripts/handover/chief-kit/compacted-check.sh` (G11): it
-compares the doc's last `COMPACTED` bullet (the worker list, `queue`, `last GO`, and
-`acked` when present) against the newest snap. rc 0 `G11 ok`; rc 1 `G11 LOSS
+compares the doc's last `COMPACTED` bullet (shape in `docs/handover/chief-template.md`:
+the worker list, `queue`, `last GO`, and `acked` when present) against the newest snap. rc 0 `G11 ok`; rc 1 `G11 LOSS
 <field>` per differing field; rc 2 `no snapshot` / `snapshot corrupt`, which the
 gate treats as a loss — preservation unverified is never a pass. Known
 simplifications (`ponytail:` in the sources): `## Live state` is read with a
