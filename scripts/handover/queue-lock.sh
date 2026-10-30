@@ -145,10 +145,11 @@
 #   release:   0  released
 #              1  usage error (incl. a lone session token in the
 #                 handover-path slot: `release <token>`) / environment
-#                 failure / rm failed to clear an existing lock dir (e.g.
-#                 an open handle on Windows)
-#              2  session token missing or does not match the current
-#                 holder -- refused (QUEUE_LOCK_FORCE_RELEASE=1 overrides)
+#                 failure / rm failed to clear an existing lock dir
+#              2  session token missing, mismatched or unverifiable holder,
+#                 changed ownership, or a held takeover/release claim --
+#                 refused. QUEUE_LOCK_FORCE_RELEASE=1 bypasses token checks,
+#                 not a held claim.
 #              3  no lock for this queue in ANY known handover root --
 #                 nothing was released (this was a silent
 #                 rc=0 before, which callers read as "released cleanly").
@@ -1595,6 +1596,39 @@ _ql_takeover_claim_release() {
     return 0
 }
 
+# A release holds the same claim as takeover/reap across its final fence and
+# delete. A fresh mkdir cannot succeed until that delete removes the old dir.
+# Release brands never expire: reclaiming one while its rm is stalled would
+# reopen the very check/delete gap this claim closes. A crash needs explicit
+# claim cleanup with all contenders stopped, not a timeout-based guess.
+_ql_release_remove() {
+    local lockdir="$1" rel_gen="$2" rel_arbiter="$3" force="${4:-0}"
+    local claim="${lockdir}.claim" claim_token="release-pid$$-r$RANDOM" rc=0 created=0
+    # prim-ok: the existing cross-process takeover/reap lease, shared with release; not a separate call-scoped mutex
+    if mkdir "$claim" 2>/dev/null; then created=1; fi
+    if [ "$created" -ne 1 ] \
+        || ! ( set -C; printf '%s' "$claim_token" > "$claim/owner" ) 2>/dev/null; then
+        # Only our own failed brand may leave an empty claim to clean up.
+        # A failed mkdir leaves the other contender's unbranded claim alone.
+        if [ "$created" -eq 1 ]; then rmdir "$claim" 2>/dev/null || true; fi
+        echo "queue-lock: release refused -- another taker or release holds the claim ($claim); nothing was released. If a release crashed, stop all contenders before manual recovery: rm -rf '$claim'" >&2
+        return 2
+    fi
+    if [ "$force" -ne 1 ] && { [ "$(_ql_read_gen "$lockdir")" != "$rel_gen" ] \
+        || [ "$(_ql_read_arbiter "$lockdir")" != "$rel_arbiter" ]; }; then
+        _ql_takeover_claim_release "$claim" "$claim_token" || true
+        echo "queue-lock: release refused -- the lock was taken over after this release verified it (ownership changed; now held by session=$(_ql_json_field "$lockdir/owner.json" session)); nothing was released" >&2
+        return 2
+    fi
+    rm -rf "$lockdir" 2>/dev/null || rc=1
+    if [ -d "$lockdir" ]; then
+        echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle or permission?); NOT released" >&2
+        rc=1
+    fi
+    _ql_takeover_claim_release "$claim" "$claim_token" || true
+    return "$rc"
+}
+
 # _ql_arms_retire_both <canonical> <raw> <root> -- an arms.jsonl record may
 # carry the doc as the arm wrote it (raw, e.g. a backslash or odd path) or as
 # the canonical key, so consume under both spellings; the second
@@ -1771,7 +1805,18 @@ queue_lock_acquire() {
         # failed mtime probe treats the claim as fresh (fail-safe: never
         # clear a claim we cannot age).
         if [ -d "$claim" ]; then
-            local claim_mtime claim_age
+            local claim_mtime claim_age claim_owner
+            # swallow-ok: an unreadable brand is release-unverified, so expiry refuses rather than deleting an unknown claim
+            claim_owner=$(cat "$claim/owner" 2>/dev/null) || claim_owner="release-unverified"
+            case "$claim_owner" in
+                ''|release-*)
+                    echo "WARN queue-lock: a release holds the takeover claim '$claim' -- it cannot be TTL-reclaimed while its delete may still be running. If it crashed, stop all contenders before manual recovery: rm -rf '$claim'" >&2
+                    return 2
+                    ;;
+            esac
+            # ponytail: a stale expirer can remove a replacement release claim; upgrade: HIMMEL-8278.
+            # The release prefix blocks direct TTL expiry, not an ordinary
+            # claim's earlier age/owner snapshot acted on after a stall.
             claim_mtime=$(py_armor_mtime "$claim")
             if [ -n "$claim_mtime" ] && [ -n "$now_epoch" ]; then
                 claim_age=$(( now_epoch - claim_mtime ))
@@ -1788,9 +1833,12 @@ queue_lock_acquire() {
         # mkdir success is provisional on uutils. Atomically brand the
         # claim with bash noclobber; a co-winner leaves the true winner's
         # directory/owner untouched and follows the normal held path.
-        local claim_token="pid$$-r$RANDOM"
-        if ! mkdir "$claim" 2>/dev/null \
+        local claim_token="pid$$-r$RANDOM" claim_created=0
+        if mkdir "$claim" 2>/dev/null; then claim_created=1; fi
+        if [ "$claim_created" -ne 1 ] \
             || ! ( set -C; printf '%s' "$claim_token" > "$claim/owner" ) 2>/dev/null; then
+            # Empty-directory cleanup cannot remove a co-winner's owner.
+            if [ "$claim_created" -eq 1 ]; then rmdir "$claim" 2>/dev/null || true; fi
             {
                 echo "queue-lock: held -- another taker holds the takeover claim for this queue right now ($claim)"
                 echo "Try again shortly, or check: queue-lock.sh status"
@@ -2154,15 +2202,11 @@ queue_lock_release() {
         local f_session f_host
         f_session=$(_ql_json_field "$lockdir/owner.json" session)
         f_host=$(_ql_json_field "$lockdir/owner.json" host)
+        _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \
             "$(_ql_now_iso)" "${f_session:-unknown}" "${f_host:-unknown}" "$lockdir" "$$" "$(_ql_hostname)" \
             >> "$(dirname "$lockdir")/takeovers.log" 2>/dev/null || true
         echo "WARN queue-lock: FORCED release of session=${f_session:-unknown} host=${f_host:-unknown} (QUEUE_LOCK_FORCE_RELEASE=1) -- logged to $(dirname "$lockdir")/takeovers.log" >&2
-        rm -rf "$lockdir" 2>/dev/null
-        if [ -d "$lockdir" ]; then
-            echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle on Windows? permission?); NOT released" >&2
-            return 1
-        fi
         # No _ql_emit_close_evidence here -- see its header comment: the
         # forcing session is a cleaner, not the holder wrapping up.
         return 0
@@ -2233,8 +2277,7 @@ queue_lock_release() {
         # else: a lock IS held here, by someone else, and no lock of ours
         # lives in any other root -- fall through to the holder check below
         # for the unchanged rc=2 "release refused -- held by session=..."
-        # (or, for a lock dir with no readable owner.json, the unchanged
-        # corrupt-lock cleanup).
+        # (or the fail-closed refusal when neither owner source is readable).
     fi
     # generation read BEFORE the token check -- see heartbeat.
     # the arbiter is read alongside it -- see
@@ -2249,38 +2292,33 @@ queue_lock_release() {
     # that has branded the owner arbiter (before gen and owner.json) but not
     # finished, or a lock whose owner.json was lost. The arbiter names that
     # holder, so a stranger's release is refused instead of deleting a lock it
-    # does not own. Only a lock with neither is ownerless and cleaned up.
+    # does not own. With neither, ownership is unproven: a fresh acquire is
+    # also empty between mkdir and its owner brand. Never delete that window.
     local rel_holder="${o_session:-$rel_arbiter}"
-    if [ -n "$rel_holder" ]; then
-        # _ql_token_matches, not a bare `!=` -- see the
-        # heartbeat function's identical comment. Normalize to the owner's
-        # canonical value on a match so _ql_token_forget below compares the
-        # PERSISTED file's exact content, not whatever form the caller
-        # happened to pass.
-        if ! _ql_token_matches "$session" "$rel_holder"; then
-            echo "queue-lock: release refused -- held by session=$rel_holder, not '$session' (QUEUE_LOCK_FORCE_RELEASE=1 to force)" >&2
-            return 2
-        fi
-        session="$rel_holder"
+    if [ -z "$rel_holder" ]; then
+        echo "queue-lock: release refused -- no readable owner; ownership cannot be verified (QUEUE_LOCK_FORCE_RELEASE=1 for manual cleanup after stopping contenders); nothing was released" >&2
+        return 2
     fi
+    # _ql_token_matches, not a bare `!=` -- see the
+    # heartbeat function's identical comment. Normalize to the owner's
+    # canonical value on a match so _ql_token_forget below compares the
+    # PERSISTED file's exact content, not whatever form the caller
+    # happened to pass.
+    if ! _ql_token_matches "$session" "$rel_holder"; then
+        echo "queue-lock: release refused -- held by session=$rel_holder, not '$session' (QUEUE_LOCK_FORCE_RELEASE=1 to force)" >&2
+        return 2
+    fi
+    session="$rel_holder"
     # the age at release time, read before the dir goes away. A
     # worker that held its lock past half the TTL without a single heartbeat
     # outran its own safety margin unseen -- say so now, while it still can.
-    # Read before the re-check: it forks, and any gap between the re-check
-    # and the rm below is a window for a takeover to land in.
+    # Read before the claim-protected re-check/delete, keeping the claim's
+    # critical section short.
     local rel_age rel_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
     case "$rel_ttl" in ''|*[!0-9]*) rel_ttl=21600 ;; esac
     rel_age=$(_ql_hb_age "$lockdir")
     _ql_test_pause release-verified
-    if [ "$(_ql_read_gen "$lockdir")" != "$rel_gen" ] || [ "$(_ql_read_arbiter "$lockdir")" != "$rel_arbiter" ]; then
-        echo "queue-lock: release refused -- the lock was taken over after this release verified it (ownership changed; now held by session=$(_ql_json_field "$lockdir/owner.json" session)); nothing was released" >&2
-        return 2
-    fi
-    rm -rf "$lockdir" 2>/dev/null
-    if [ -d "$lockdir" ]; then
-        echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle on Windows? permission?); NOT released" >&2
-        return 1
-    fi
+    _ql_release_remove "$lockdir" "$rel_gen" "$rel_arbiter" || return "$?"
     _ql_warn_aging "$rel_age" "$rel_ttl" "the lock was AGING when released: the worker outran half its TTL without a heartbeat and was takeable meanwhile (operator: wire the self-heartbeat hook VM-first (wire-session-telemetry-hooks.mjs rewrites settings.json); never from a worker)"
     _ql_token_forget "$ho" "$session"
     [ "$ho_raw" = "$ho" ] || _ql_token_forget "$ho_raw" "$session"
