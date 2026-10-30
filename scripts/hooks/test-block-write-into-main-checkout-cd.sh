@@ -356,6 +356,7 @@ check_both "54 fromP: x=\$(cd wt); echo x > a.txt (cd inside a command substitut
 # destination-type class deferred to) takes this relaxation back:
 # post-fix, the union check fires on every _bwimc_ecwd/_bwimc_cwd
 # divergence unconditionally, so this row denies again too.
+# (Relaxed ONLY for a cd target in no git repo at all — rows 97+.)
 check_both "55 fromP: cd wt && echo x > a.txt (genuine, runtime-safe cd — still denies post-fix under the strict superset rule)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > a.txt\",\"cwd\":\"$FIX/primary\"}}"
 
@@ -708,6 +709,41 @@ check_both "96g fromP: cd wt/missing; env -C scripts tee ../a.txt denies" block 
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt/missing7130; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
 check_both "96h fromP: false && cd wt; env -C scripts tee ../a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/wt; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
+
+echo "== HIMMEL-8200 (a relative write after a plain cd into a scratch folder resolves against the cd target) =="
+
+# 97: from a PRIMARY payload cwd, a cd that is the FIRST command of the line
+# always runs (a failing one is caught by the exists check, or ends the && chain),
+# so the cwd the write resolves in is the cd target and nothing else. When that
+# target lies in no git repo (a scratch folder), the union fallback of rows 43-54
+# must not re-check the write against the payload cwd.
+mkdir -p "$FIX/scratch8200"
+check_both "97 fromP: cd scratch && echo x > out.txt (cd target outside the primary) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97b fromP: cd scratch; echo x > out.txt allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 97c-d (control): the cd target itself is the primary, so the same write still denies.
+check_both "97c fromP: cd primary && echo x > out.txt still denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97d fromW: cd primary && echo x > out.txt still denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/wt\"}}"
+# 97e-g (controls): a cd that is NOT the first command may not have run, a second
+# cd re-opens the question, and an absolute write into the primary is untouched.
+check_both "97e fromP: false && cd scratch; echo x > out.txt (cd may not run) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97f fromP: cd scratch && cd nope; echo x > out.txt (second cd fails) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/scratch8200/nope; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97g fromP: cd scratch && echo x > primary/out.txt (absolute primary target) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > $FIX/primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 97h-i (controls): the cd target must lie in NO git repo once symlinks are
+# resolved: a link inside scratch pointing at the primary, and a worktree
+# target (row 55's shape, with a redirect), keep the payload-cwd re-check.
+ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk-to-primary"
+check_both "97h fromP: cd scratch/lnk-to-primary && echo x > out.txt (symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/lnk-to-primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97i fromP: cd wt && echo x > out.txt (worktree target) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

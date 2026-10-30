@@ -202,7 +202,13 @@
 #     deliberate exception: a genuine, unconditional `cd <worktree> &&
 #     <relative write>` issued from a primary cwd also denies under this rule,
 #     even though it is runtime-safe — the rule does not distinguish "safe"
-#     divergence from "unsafe" divergence). The fallback re-checks only the
+#     divergence from "unsafe" divergence). One narrow relaxation:
+#     when the cd is a plain, unpiped cd/pushd that is the FIRST command of the
+#     line, onto an existing directory that, symlinks resolved, lies in no git
+#     repo at all (a scratch folder), `_bwimc_ecwd_sure` is set and the fallback
+#     is skipped for the redirect/verb candidates that call `_bwimc_cd_guard`
+#     (a worktree, the primary or any other checkout keeps the re-check; the
+#     cp/mv/ln destination-type union below is untouched). The fallback re-checks only the
 #     raw operand, so the cp/mv/ln destination-TYPE decisions (dest is a dir
 #     vs an entry, entry vs follow) and the `<dest>/<basename(src)>` child
 #     check (incl. `-t`) get the same rule separately: each destination block
@@ -2515,6 +2521,7 @@ _bwimc_unq_eq() {
 # have failed or never run, so the modelled cwd is not where the shell is.
 _bwimc_chdir_model() {
     local raw="$1" carg r q="${1//[!\"]/}" a="${1//[!\']/}"
+    _bwimc_ecwd_sure=0
     case "$raw" in
         ''|*'$'*|*'`'*|*[*?[]*|*\\*) _bwimc_ecwd_unres=1; return 0 ;;
     esac
@@ -2674,7 +2681,8 @@ _bwimc_fsmut_hit() {
     return 1
 }
 _bwimc_ecwd_track() {
-    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0
+    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs first="${_bwimc_ecwd_first:-0}"
+    _bwimc_ecwd_first=0
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
     n=${#toks[@]}
     # a cd/pushd/popd that is not the clause's first command word
@@ -2690,6 +2698,7 @@ _bwimc_ecwd_track() {
     [ "$i" -lt "$n" ] || return 0
     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
+    case "$tu" in cd|pushd|popd) _bwimc_ecwd_sure=0 ;; esac
     case "$tu" in
         cd|pushd)
             i=$((i+1))
@@ -2794,6 +2803,16 @@ _bwimc_ecwd_track() {
                             _bwimc_ecwd_unres=1
                         elif r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
                             _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
+                            # A plain cd that is the FIRST command
+                            # of the line, unpiped, onto a directory that exists
+                            # always runs (and a `&&` chain stops if it fails),
+                            # so a write after it lands in $r and nowhere else.
+                            # Trusted only when $r, symlinks resolved, lies in no
+                            # git repo at all (a scratch folder): the primary, a
+                            # worktree or any other checkout keeps the re-check.
+                            [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
+                                && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
+                                && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] && _bwimc_ecwd_sure=1
                         else
                             # also reached when an earlier clause
                             # of this command removed/moved/chmod-ed the target.
@@ -2886,7 +2905,8 @@ _bwimc_cd_guard() {
         esac ;;
     esac
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
-    [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+    # a sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check
+    [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && [ "${_bwimc_ecwd_sure:-0}" != 1 ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
     return 0
 }
 
@@ -4715,6 +4735,8 @@ _bwimc_check_interp_body() {
     _bwimc_ibody_saved_ecwd="$_bwimc_ecwd"
     _bwimc_ibody_saved_unres="$_bwimc_ecwd_unres"
     _bwimc_ibody_saved_pushn="$_bwimc_ecwd_pushn"
+    _bwimc_ibody_saved_first="${_bwimc_ecwd_first:-0}"; _bwimc_ibody_saved_sure="${_bwimc_ecwd_sure:-0}"
+    _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
     # the body once as written, once with its comments removed.
     _bwimc_strip_comments "$body"
     _bwimc_ib_texts=("$body")
@@ -4831,6 +4853,7 @@ _bwimc_check_interp_body() {
     _bwimc_ecwd="$_bwimc_ibody_saved_ecwd"
     _bwimc_ecwd_unres="$_bwimc_ibody_saved_unres"
     _bwimc_ecwd_pushn="$_bwimc_ibody_saved_pushn"
+    _bwimc_ecwd_first="$_bwimc_ibody_saved_first"; _bwimc_ecwd_sure="$_bwimc_ibody_saved_sure"
 }
 
 # _bwimc_subst_paren_end TEXT START: Sets _BWIMC_PEND to the index
@@ -5193,6 +5216,8 @@ _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
+_bwimc_ecwd_first=1
+_bwimc_ecwd_sure=0
 _bwimc_fsmut=""
 [ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
 
@@ -6961,6 +6986,8 @@ _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
+_bwimc_ecwd_first=1
+_bwimc_ecwd_sure=0
 _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
@@ -6974,12 +7001,14 @@ while IFS= read -r _bwimc_clause; do
     fi
     case "$_bwimc_clause" in
         "$_BWIMC_SUBOPEN")
+            _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
             _bwimc_sub_ecwd[_bwimc_sub_d]="$_bwimc_ecwd"
             _bwimc_sub_unres[_bwimc_sub_d]="$_bwimc_ecwd_unres"
             _bwimc_sub_pushn[_bwimc_sub_d]="$_bwimc_ecwd_pushn"
             _bwimc_sub_d=$((_bwimc_sub_d+1))
             continue ;;
         "$_BWIMC_SUBCLOSE")
+            _bwimc_ecwd_sure=0
             if [ "$_bwimc_sub_d" -gt 0 ]; then
                 _bwimc_sub_d=$((_bwimc_sub_d-1))
                 _bwimc_ecwd="${_bwimc_sub_ecwd[_bwimc_sub_d]}"
