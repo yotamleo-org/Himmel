@@ -891,8 +891,8 @@ leg_forked() {
 }
 
 # leg_cachettl <candidate names, comma list> [idle seconds]: only warn on a
-# known idle transcript with no running wait or unfinished foreground Bash.
-# Leaves leg_idle_seconds for the cache and held-lock thresholds to share one read.
+# old transcript with no running background wait. Leaves leg_idle_seconds and
+# leg_foreground_running for the held-lock warning to exempt foreground work.
 # Mirror guard-worker-cache-ttl.sh's task signal; factoring it out would change
 # the Stop hook as well as this read-only view.
 leg_cachettl() {
@@ -923,8 +923,9 @@ leg_cachettl() {
     leg_idle_seconds=$(( $(date +%s) - epoch ))
     [ "$leg_idle_seconds" -ge "${2:-3000}" ] || return 1
     running="$(jq -R -r '
-        fromjson? // empty
-        | ( (select(.type == "assistant") | .message.content? | arrays | .[]
+        fromjson? // null
+        | if type != "object" then "X" else
+          ( (select(.type == "assistant") | .message.content? | arrays | .[]
               | select(.type == "tool_use" and (.name == "Bash" or .name == "PowerShell"))
               | .id | strings | "S foreground:" + .),
             (select(.type == "user") | .message.content? | arrays | .[]
@@ -938,13 +939,22 @@ leg_cachettl() {
               | split("<task-notification>")[1:][]
               | select(contains("<status>"))
               | capture("<task-id>(?<id>[^<]+)</task-id>").id
-              | "E background:" + . ) )
+              | "E background:" + . ) ) end
     ' "$newest" 2>/dev/null | awk '
+        $1 == "X" { bad = 1 }
         $1 == "S" { s[$2] = 1 }
         $1 == "E" { e[$2] = 1 }
-        END { n = 0; for (k in s) if (!(k in e)) n++; print n }
+        END {
+            if (bad) exit 1
+            n = 0; f = 0
+            for (k in s) if (!(k in e)) {
+                if (k ~ /^foreground:/) f++; else n++
+            }
+            print n " " f
+        }
     ')" || return 1
-    [ "$running" = 0 ]
+    leg_foreground_running="${running#* }"
+    [ "${running%% *}" = 0 ]
 }
 
 # leg_effort_mismatch <doc> <label>: succeeds only when the effort the
@@ -1111,7 +1121,7 @@ for leg in $WORKERS_SPLIT; do
                 fi
                 # Display only: the lock remains held for all ownership checks.
                 # A stable label lets chief-wait wake once, never on a growing age.
-                if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ]; then
+                if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ] && [ "$leg_foreground_running" = 0 ]; then
                     leg_label_state=IDLE-HELD
                 fi
             fi ;;

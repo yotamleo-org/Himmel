@@ -305,6 +305,18 @@ idle_held_cases() (
     printf '{"type":"user","timestamp":"%s","toolUseResult":{"task_id":"monitor-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
     out="$(bash "$SUT")"
     contains 'a stopped Monitor no longer hides an idle worker' "$out" 'workers=N61:IDLE-HELD'
+    stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"suite-2","name":"Bash","input":{"command":"bash test-long.sh"}}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an old foreground suite preserves the existing cachettl advisory' "$out" ' cachettl=N61'
+    contains 'an old foreground suite still keeps its held lock FRESH' "$out" 'workers=N61:FRESH'
+    {
+        printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"suite-2","content":"exit 0"}]}}\n' "$stamp"
+        printf '%s\n' '{malformed activity row'
+        printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp"
+    } >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'malformed middle activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
     rm -f "$TICK_PROJECTS_DIR/p/idle.jsonl"
     out="$(bash "$SUT")"
     contains 'missing session activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
