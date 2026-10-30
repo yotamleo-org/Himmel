@@ -3,7 +3,7 @@
 # WebFetch on a walled host (x.com / instagram.com ...) is denied with a
 # paste-ready scripts/web/fetch-url.sh command; any other host is allowed;
 # malformed input fails open.
-# Platform guard (gitbash-only): jq + bash string ops only; no .ps1 twin needed.
+# Platform guard: jq + bash string ops only; any POSIX bash.
 # ok/bad never fail, so `[ ] && ok || bad` is the if/else it reads as.
 # shellcheck disable=SC2015
 set -uo pipefail

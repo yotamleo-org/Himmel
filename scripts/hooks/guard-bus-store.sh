@@ -90,8 +90,8 @@
 # (docs/internals/retask-channel.md), since the launcher's own `bus register`
 # runs inside a script and never shows up in a tool call.
 #
-# Platform guard (gitbash-only): env + jq + `readlink -m` where present; runs
-# under Git Bash or POSIX bash 3.2+. The bus itself is Linux-only. No .ps1 twin.
+# Platform guard: env + jq + `readlink -m` where present; any POSIX bash 3.2+.
+# The bus itself is Linux-only.
 #
 # Exit codes: 0 allow (no output); 2 deny (JSON hookSpecificOutput with
 # permissionDecision "deny" on stdout, reason starting "bus store-deny: ", and

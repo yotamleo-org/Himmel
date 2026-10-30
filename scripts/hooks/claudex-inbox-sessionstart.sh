@@ -3,8 +3,7 @@
 # the "catches up a resumed session" half of the claudex file inbox. See
 # claudex-inbox-hook.sh (the PostToolUse half) for the full design note.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — same Linux-only
-# claudex lane as claudex-inbox-hook.sh.
+# PLATFORM GUARD: same Linux-only claudex lane as claudex-inbox-hook.sh.
 #
 # SessionStart is a `--lifecycle` chain (scripts/hooks/run-hook-with-bash.js:
 # "Claude injects a hook's plain stdout as context ... No JSON merging") —

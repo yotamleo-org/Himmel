@@ -10,7 +10,7 @@
 # `SessionStart`/`"matcher": "compact"` hook that `cat`s its contract back);
 # Chiefs had no equivalent. This is that equivalent.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — session
+# PLATFORM GUARD: session
 # resolution here is via scripts/lib/session-name.sh, which itself reads
 # /proc/<pid>/cmdline (Linux-only). On macOS/Windows session-name.sh
 # resolves to empty, this hook then finds no chief doc, and — same as the

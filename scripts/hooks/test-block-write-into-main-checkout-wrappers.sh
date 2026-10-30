@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Unit test for scripts/hooks/block-write-into-main-checkout.sh — the
 # rows: path-qualified wrapper names and chroot readings.
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+ (same as the
-# guard; no .ps1 twin). A sibling of test-block-write-into-main-checkout.sh,
+# Platform guard: any POSIX bash 3.2+ (same as the guard). A sibling of
+# test-block-write-into-main-checkout.sh,
 # split out so the parent suite stays under the CI per-suite cap; the harness
 # below is a trimmed copy of the parent's (same fixtures, same FIXTURE RULE).
 #

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for record-primary-baseline.sh.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, incl. Git Bash on Windows.
-# No .ps1 twin — the hook under test has none either (see its own header).
+# Platform guard: any POSIX bash 3.2+.
 #
 # Hermetic: git fixtures built under the REAL home (a temp dir there, NOT
 # under /tmp — the FIXTURE RULE this suite follows), a hermetic HOME set

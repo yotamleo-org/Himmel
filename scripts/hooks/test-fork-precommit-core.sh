@@ -14,8 +14,7 @@
 # block, not the rc. gitleaks needs no PATH binary: pre-commit builds it
 # (language: golang), so a missing toolchain fails the install arm instead.
 #
-# Platform guard (gitbash-only): POSIX bash fixture, no .ps1 twin (project
-# convention).
+# Platform guard: POSIX bash fixture.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

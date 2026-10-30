@@ -12,10 +12,10 @@
 # protected checkout (main/master, or the PRIMARY checkout on a feature
 # branch) — regardless of which tool carried the write.
 #
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+. No `.ps1` twin —
-# this script is invoked BY bash (`bash <this>` from run-hook-with-bash.js, or
-# sourced from block-terminal-write-fence.sh, both of which already resolve a
-# bash interpreter on every platform including Windows).
+# Platform guard: any POSIX bash 3.2+. This script is invoked BY bash (`bash
+# <this>` from run-hook-with-bash.js, or sourced from
+# block-terminal-write-fence.sh, both of which already resolve a bash
+# interpreter).
 #
 # Two entry modes — BOTH are real and BOTH are tested:
 #   1. SOURCED by block-terminal-write-fence.sh (the codex lane). The parent

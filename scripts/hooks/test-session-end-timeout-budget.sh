@@ -39,9 +39,7 @@
 # they enumerate zero SessionEnd commands/scripts — an emptied, truncated or
 # malformed config must never read as a vacuous green.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, incl. Git Bash on Windows. No
-# .ps1 twin — project convention for a test harness (see T15 in
-# scripts/parity/test-ws5-invariants.sh). Case 3 needs GNU coreutils `timeout`
+# Platform guard: any POSIX bash 3.2+. Case 3 needs GNU coreutils `timeout`
 # and SKIPs where it is absent (stock macOS).
 #
 # Wall time: case 3 deliberately spends ~(CHILD_DELAY + 2)s AFTER its command

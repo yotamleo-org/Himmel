@@ -9,10 +9,8 @@
 # the primary checkout via Bash while it was on main, and nothing noticed
 # for 18 minutes.
 #
-# Platform guard: POSIX bash 3.2+, incl. Git Bash on Windows. No .ps1 twin —
-# same project convention as record-hook-integrity.sh, this hook's sibling
-# (see scripts/parity/test-ws5-invariants.sh T15): nothing here touches a
-# Windows-only API.
+# Platform guard: any POSIX bash 3.2+, same as record-hook-integrity.sh, this
+# hook's sibling: nothing here touches a platform-specific API.
 #
 # Modelled closely on record-hook-integrity.sh — same
 # conventions: `set -uo pipefail`, best-effort/advisory (every early exit is

@@ -6,7 +6,7 @@
 # else through (no output). Builds a throwaway repo + linked worktree.
 # env: HOOK overrides the hook under test (RED run against a tree without it).
 #
-# bash 3.2-safe. PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin.
+# bash 3.2-safe. PLATFORM GUARD: Linux-only chief-kit surface.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

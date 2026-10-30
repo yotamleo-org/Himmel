@@ -25,9 +25,8 @@
 # marketplace/plugins/CLAUDE.md; .claude/settings.json is NOT touched (editing
 # it directly is a guarded self-mod).
 #
-# This hook runs under bash on every platform (no .ps1 twin — same rationale
-# as jira-nudge-on-end.sh: it does no OS-specific path work, so Git Bash on
-# Windows runs this file directly).
+# This hook runs under bash on every platform (same rationale as
+# jira-nudge-on-end.sh: it does no OS-specific path work).
 #
 # Full-body detach pattern. Even the
 # gate-off fast path costs real process-spawn time on Windows Git Bash, which
