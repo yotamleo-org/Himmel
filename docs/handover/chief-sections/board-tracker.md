@@ -46,8 +46,8 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     `himmel.board/1`) for a richer UI (HIMMEL-5968) to render. It holds:
     - `needs_you`: each item has a verb (`go`, `unblock`, `decide` or `act`); a
       `go` item carries the `go.sh` command.
-    - `legs`: each worker's stage, state, PR, ticket and brief links, and a
-      timeline of its marker bullets.
+    - The worker list: each worker's stage, state, PR, ticket and brief links,
+      and a timeline of its marker bullets.
     - `ci`, `bank`, and `milestones` (Jira fixVersion done/total).
     - `red_main`: `{ days: 30, merges }`, the `red-main:` count of
       `scripts/insights/self-review.sh` over the last 30 days (`merges` is null

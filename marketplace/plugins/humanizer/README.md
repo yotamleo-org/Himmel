@@ -16,7 +16,7 @@ scripts, and grants no autonomy.
 ## Where it is on
 
 Nowhere by default. It is in no profile in `scripts/lanes/plugin-profiles.json`,
-so no leg, lane, console or interactive profile enables it. The adopter
+so no worker, lane, console or interactive profile enables it. The adopter
 settings template lists it as on-demand: installed, disabled. Enable it by hand:
 
 ```
