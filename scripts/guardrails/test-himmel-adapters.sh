@@ -4,7 +4,7 @@
 # exactly one row, each row has the six fields with a legal role, and the operator-ruled
 # merge_allowed set holds. A first-party repo has upstream null and role first-party.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, jq.
+# Platform guard: POSIX bash 3.2+, jq.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

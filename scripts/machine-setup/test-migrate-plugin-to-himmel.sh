@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hermetic migration regression tests. Bash 3.2 compatible.
 # CI discovers test-*.sh; every claude invocation uses a PATH stub and fixture.
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows.
+# Platform guard: POSIX bash 3.2+ / Git Bash on Windows.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

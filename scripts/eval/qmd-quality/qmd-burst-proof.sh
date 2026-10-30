@@ -19,7 +19,7 @@
 # loopback host. Replies are classified, never printed, so the token cannot reach
 # the output. Milliseconds come from `date +%s%N` and bash arithmetic.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+ with GNU date (%N); curl and jq required.
+# Platform guard: POSIX bash 3.2+ with GNU date (%N); curl and jq required.
 
 set -u
 { set +x; } 2>/dev/null

@@ -10,7 +10,7 @@
 #   6. session resolution                 -> CLAUDE_CODE_SESSION_ID and --title
 #   7. sidechain rows and non-assistant rows are not turns
 #
-# Hermetic: temp dir only. Platform guard (gitbash-only): POSIX bash 3.2+.
+# Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

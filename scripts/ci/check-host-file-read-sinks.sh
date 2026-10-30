@@ -35,7 +35,7 @@
 # scanned, upgrade path is an AST rule in the swallowed-error lint family.
 #
 # Exit: 0 clean; 1 sink(s) found (file:line printed); 2 usage / git error.
-# Platform guard (gitbash-only): POSIX bash 3.2+, git, awk.
+# Platform guard: POSIX bash 3.2+, git, awk.
 set -uo pipefail
 
 usage() { echo "usage: check-host-file-read-sinks.sh --range [--merge-ref] <base>" >&2; exit 2; }

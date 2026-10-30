@@ -10,7 +10,7 @@
 #   6. unreadable / missing / empty      -> rc 2, never verdict=OK
 #   7. session resolution                -> CLAUDE_CODE_SESSION_ID and --title
 #
-# Hermetic: temp dir only. Platform guard (gitbash-only): POSIX bash 3.2+.
+# Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

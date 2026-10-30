@@ -24,7 +24,7 @@
 #   residual-lines.sh wrap-merged.sh close-wrapped-worker.sh succession-tracker.sh
 #   worker-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
 #
-# Platform guard (gitbash-only): bash 3.2+, jq, awk, grep.
+# Platform guard: bash 3.2+, jq, awk, grep.
 # Usage: bash scripts/docs/test-dev-graph.sh
 set -u
 

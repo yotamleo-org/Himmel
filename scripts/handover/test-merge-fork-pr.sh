@@ -10,7 +10,7 @@
 #      missing / forged / stale / other-repo / non-judged GO refused, head moved
 #      after the GO refused, and an allowlisted repo with a valid GO merges.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

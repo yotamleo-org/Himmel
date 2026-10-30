@@ -16,7 +16,7 @@
 #   13. --trust-reviewed <id>: id validated, signed into the mac.
 #   20. --fix-main-red <run-id>: the signed fix-GO for the red-main gate.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

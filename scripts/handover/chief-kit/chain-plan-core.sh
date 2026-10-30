@@ -31,7 +31,7 @@
 # go.sh calling it for chain-registry members.
 #
 # Exit: 0 plan, evidence or GO-CHECK OK  1 cycle among the hard edges, or REFUSE  2 usage or unreadable graph
-# Platform guard (gitbash-only): bash, jq, awk; --go-check also gh, git, GNU date and sha256sum (the kit is Linux-only).
+# Platform guard: bash, jq, awk; --go-check also gh, git, GNU date and sha256sum (the kit is Linux-only).
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh

@@ -5,7 +5,7 @@
 # --runner, so no real suite runs. The PR 2883 shape (a test that reads
 # $HOME/.env) must FAIL the canary; a clean run must pass.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, GNU/BSD coreutils.
+# Platform guard: POSIX bash 3.2+, GNU/BSD coreutils.
 # shellcheck disable=SC2015,SC2016 # fixtures are literal shell text; ok/bad never fail
 set -uo pipefail
 
