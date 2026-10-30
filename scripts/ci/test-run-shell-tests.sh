@@ -466,13 +466,15 @@ command -p sleep 5
 SHEOF
 chmod +x "$sb11/scripts/handover/test-arm-resume-identity.sh" "$sb11/bin/sleep"
 
+# The runner doubles every Darwin cap that has no row of its own.
+want11=2350; [ "$(uname -s)" != "Darwin" ] || want11=4700
 SLEEP_LOG="$sb11/default-timeout.log" PATH="$sb11/bin:$PATH" \
   env -u SUITE_TIMEOUT -u SUITE_TIER_MODE bash "$RUNNER" "$sb11/scripts" >/dev/null 2>&1
 rc11a=$?
-if [ "$rc11a" -eq 0 ] && [ "$(cat "$sb11/default-timeout.log" 2>/dev/null)" = "2350" ]; then
-  pass "known slow suite receives its 2350s path-specific budget"
+if [ "$rc11a" -eq 0 ] && [ "$(cat "$sb11/default-timeout.log" 2>/dev/null)" = "$want11" ]; then
+  pass "known slow suite receives its ${want11}s path-specific budget"
 else
-  fail "known slow suite budget: rc=$rc11a recorded=$(cat "$sb11/default-timeout.log" 2>/dev/null) (want rc=0, 2350)"
+  fail "known slow suite budget: rc=$rc11a recorded=$(cat "$sb11/default-timeout.log" 2>/dev/null) (want rc=0, $want11)"
 fi
 
 SLEEP_LOG="$sb11/explicit-timeout.log" PATH="$sb11/bin:$PATH" SUITE_TIMEOUT=7 \
@@ -492,10 +494,10 @@ for bad in '' '0' 'abc'; do
   SLEEP_LOG="$log11" PATH="$sb11/bin:$PATH" SUITE_TIMEOUT="$bad" \
     env -u SUITE_TIER_MODE bash "$RUNNER" "$sb11/scripts" >/dev/null 2>&1
   rc11c=$?
-  if [ "$rc11c" -eq 0 ] && [ "$(cat "$log11" 2>/dev/null)" = "2350" ]; then
+  if [ "$rc11c" -eq 0 ] && [ "$(cat "$log11" 2>/dev/null)" = "$want11" ]; then
     pass "malformed SUITE_TIMEOUT='$bad' falls back to the path-specific budget"
   else
-    fail "malformed SUITE_TIMEOUT='$bad': rc=$rc11c recorded=$(cat "$log11" 2>/dev/null) (want rc=0, 2350)"
+    fail "malformed SUITE_TIMEOUT='$bad': rc=$rc11c recorded=$(cat "$log11" 2>/dev/null) (want rc=0, $want11)"
   fi
 done
 rm -rf "$sb11"
