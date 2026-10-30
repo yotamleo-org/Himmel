@@ -2,7 +2,7 @@
 // worker and chief chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
-import { chainKey, chiefOf, cloudPhase, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
+import { chainKey, chiefOf, cloudPhase, consoleGroups, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
 
 const row = (name: string, role: string, console: string | null, extra: any = {}) => ({
   name, role, console, parent: console, live: true, lock: "unknown", lane: "native",
@@ -170,6 +170,8 @@ test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Oth
   expect(u.cadences.map((r) => r.name)).toEqual(["qmd-cadence"]);
   expect(u.running.flatMap((g) => g.rows)).toEqual([]);
   expect(u.counts.live).toBe(2);
+  // the navigation rail agrees: a cadence is not listed under its chief either
+  expect(consoleGroups(underChief)[0].rows).toEqual([]);
 });
 
 test("filters: lane, state and text narrow every section; the counts say how many are shown", () => {

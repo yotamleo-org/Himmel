@@ -65,7 +65,7 @@ export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
   const shown = visibleRows(rows);
   return shown.filter((r) => r.role === "console")
     .sort((a, b) => Number(isLive(b)) - Number(isLive(a)) || a.name.localeCompare(b.name))
-    .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && chiefOf(r, rows) === c.name && !orphanReason(r, rows)) }));
+    .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && !r.cadence && chiefOf(r, rows) === c.name && !orphanReason(r, rows)) }));
 }
 
 // the page's sections. Needs you / Needs the chief = one line per session, by owner then severity;
