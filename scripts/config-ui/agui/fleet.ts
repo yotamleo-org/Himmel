@@ -61,6 +61,8 @@ export type FleetRow = {
   cloud: { url: string | null; phase: CloudPhase } | null;
   runtime: { startedAt: number; endedAt: number | null; elapsedMs: number } | null;
   console: string | null; live: boolean; lock: "held" | "released" | "unknown";
+  // the cadence an unattended scheduled session belongs to (cadenceOf), else null.
+  cadence: string | null;
   lane: Lane; laneFrom: LaneFrom | null; backendModel: string | null; cost: CostRow | null; eval: EvalRow | null;
   // the doc's last Results marker (worker_tail_status), the doc's last write, and the PR's URL.
   marker: string | null; lastSeenAt: number | null; prUrl: string | null;
@@ -223,7 +225,7 @@ async function cloudRows(logs: string[], env: Record<string, string | undefined>
       activity: null, lastEventAt: null, subagents: { total: 0, running: 0 }, failures: 0,
       parent: await consoleOf(r), predecessor: null, agents: [], usage: null, cloud: { url: p.url, phase: p.phase },
       runtime: p.phase === "merged" || p.phase === "closed" ? null : { startedAt: r.at, endedAt: null, elapsedMs: Math.max(0, now - r.at) },
-      console: await consoleOf(r), live: p.phase !== "merged" && p.phase !== "closed", lock: "unknown", lane: "cloud", laneFrom: null, backendModel: null, cost: null, eval: null,
+      console: await consoleOf(r), live: p.phase !== "merged" && p.phase !== "closed", lock: "unknown", cadence: null, lane: "cloud", laneFrom: null, backendModel: null, cost: null, eval: null,
       marker: null, lastSeenAt: null, prUrl: null, bus: NO_BUS, description: "",
     };
   }));
@@ -334,6 +336,19 @@ const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release tok
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
   /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
 
+// Scheduled sessions. The ids are scripts/himmelctl/lib/cadence-registry.json's, plus luna-fb (the luna capture loop); the
+// runner basenames in scripts/lib/cadence-format.sh (CADENCE_RUNNER_BASENAMES) start with one of them. A cadence run is
+// usually unnamed but carries its --settings cadence-settings.json fragment in its argv (pipeline-cadence.sh).
+// ponytail: a name pattern plus one argv fragment, a cadence launched another way shows as another session; the upgrade is a launch-env marker the runners set.
+export const CADENCE_IDS = ["pipeline", "qmd", "graphmap", "drift-fix", "upstream-watch", "doctor", "pull-cadence", "vault-stall", "luna-fb"];
+const CADENCE_NAME = new RegExp("^(" + CADENCE_IDS.join("|") + ")(?:-cadence|-[a-z]+)?$");
+export function cadenceOf(name: string, argv: string[]): string | null {
+  const id = CADENCE_NAME.exec(name)?.[1];
+  if (id) return id;
+  const settings = argv[argv.indexOf("--settings") + 1];
+  return settings?.split("/").pop() === "cadence-settings.json" ? "cadence" : null;
+}
+
 // The PR a worker doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
 function prOf(text: string): number | null {
   let pr: number | null = null;
@@ -440,6 +455,8 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       launch = Object.fromEntries(env.filter((v) => v.includes("=")).map((v) => { const i = v.indexOf("="); return [v.slice(0, i), v.slice(i + 1)]; }));
     } catch { /* unavailable launch record: use doc or manifest */ }
     if (launch.CLAUDE_CONFIG_DIR) await registerConfigRoot(launch.CLAUDE_CONFIG_DIR);
+    let argv: string[] = [];
+    try { argv = (await readFile(join(opts.env.CLAUDE_SESSIONS_PROC || "/proc", c.pid, "cmdline"), "utf8")).split("\0"); } catch { /* unavailable: the name decides */ }
     let rec: { sessionId?: unknown; status?: unknown; name?: unknown; startedAt?: unknown } = {};
     const configs = launch.CLAUDE_CONFIG_DIR ? [launch.CLAUDE_CONFIG_DIR] : [join(opts.home, ".claude"), join(opts.home, ".claude-codex")];
     for (const config of configs) {
@@ -489,7 +506,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
-      ...graph, parent, console: role === "console" ? name : parent, live, lock,
+      ...graph, parent, console: role === "console" ? name : parent, live, lock, cadence: role === "interactive" ? cadenceOf(name, argv) : null,
       lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS, description: "",
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
@@ -520,7 +537,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
-        lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
+        lock, cadence: null, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
         marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
       };
     } catch { return null; /* archived console moved or unreadable */ }

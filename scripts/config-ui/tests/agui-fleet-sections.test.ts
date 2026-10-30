@@ -2,7 +2,7 @@
 // worker and chief chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
-import { chainKey, cloudPhase, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
+import { chainKey, chiefOf, cloudPhase, consoleGroups, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
 
 const row = (name: string, role: string, console: string | null, extra: any = {}) => ({
   name, role, console, parent: console, live: true, lock: "unknown", lane: "native",
@@ -126,6 +126,52 @@ test("a console filter scopes every section, and its process orphans, to that co
   expect(s.attention).toEqual({ operator: [], chief: [] });
   expect(s.finished.map((e) => e.row.name)).toEqual(["cloud-HIMMEL-2", BT]);
   expect(fleetSections(rows, BU, NO_FILTERS, procs).processOrphans.map((p) => p.pid)).toEqual([7, 8]);
+});
+
+test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live successor, never in Orphans or Other sessions", () => {
+  const KA = "HIMMEL-nextleg-2026-10-30KA-roadmap-chief", KB = "HIMMEL-nextleg-2026-10-30KB-roadmap-chief";
+  const inherited: any[] = [
+    row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
+    row(KB, "console", KB, { state: "running", predecessor: KA, ...at(9) }),
+    row("N4102", "leg", KA, { state: "running", ...at(8) }),
+  ];
+  const s = fleetSections(inherited);
+  expect(s.running.map((g) => [g.console?.name ?? null, g.rows.map((r) => r.name)])).toEqual([[KB, ["N4102"]]]);
+  expect(s.orphans).toEqual([]);
+  expect(orphanReason(inherited[2], inherited)).toBeNull();
+  // a worker whose chief wrapped with no successor is still an orphan
+  const alone = [inherited[0], inherited[2]];
+  expect(fleetSections(alone).orphans.map((o) => o.row.name)).toEqual(["N4102"]);
+  // scoping to the live chief keeps the inherited worker
+  expect(fleetSections(inherited, KB).running[0].rows.map((r) => r.name)).toEqual(["N4102"]);
+  // a chief with two wrapped successors is handed on through whichever one leads to a live chief
+  const K1 = "k1-chief", K2 = "k2-chief", K3 = "k3-chief";
+  const forked: any[] = [
+    row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
+    row(K1, "console", K1, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
+    row(K2, "console", K2, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
+    row(K3, "console", K3, { state: "running", predecessor: K2, ...at(9) }),
+    row("N4103", "leg", KA, { state: "running", ...at(8) }),
+  ];
+  expect(chiefOf(forked[4], forked)).toBe(K3);
+});
+
+test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Other sessions", () => {
+  const withCadence: any[] = [...rows, row("luna-fb", "interactive", null, { cadence: "luna-fb", state: "running", ...at(6) })];
+  const s = fleetSections(withCadence);
+  expect(s.cadences.map((r) => r.name)).toEqual(["luna-fb"]);
+  expect(s.running.flatMap((g) => g.rows).map((r) => r.name)).not.toContain("luna-fb");
+  expect(s.running[1].rows.map((r) => r.name)).toEqual(["scratch-session"]);
+  expect(fleetSections(rows).cadences).toEqual([]);
+  // a cadence launched from a live chief is still shown once, in Cadences, not also under that chief
+  const KB = "HIMMEL-nextleg-2026-10-30KB-roadmap-chief";
+  const underChief: any[] = [row(KB, "console", KB, { state: "running", ...at(9) }), row("qmd-cadence", "interactive", KB, { cadence: "qmd", state: "running", ...at(6) })];
+  const u = fleetSections(underChief);
+  expect(u.cadences.map((r) => r.name)).toEqual(["qmd-cadence"]);
+  expect(u.running.flatMap((g) => g.rows)).toEqual([]);
+  expect(u.counts.live).toBe(2);
+  // the navigation rail agrees: a cadence is not listed under its chief either
+  expect(consoleGroups(underChief)[0].rows).toEqual([]);
 });
 
 test("filters: lane, state and text narrow every section; the counts say how many are shown", () => {
