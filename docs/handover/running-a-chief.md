@@ -645,8 +645,7 @@ that `next --arm` printed and hand your live workers over by name.
 **Re-brief your live workers before you release**. Each
 worker's brief names *you* as its chief, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,
-you relay each worker to it from your own session, never by hand: `next` leaves a
-chief with a bus identity a `WAKE relay-on-live` (or run `chief-kit/relay-batch.sh <this doc>
+you relay each worker to it from your own session, never by hand: `next` leaves every chief a `WAKE relay-on-live` unless it passed `--no-relay-on-live` (or run `chief-kit/relay-batch.sh <this doc>
 --successor <it>`). That run sends each native worker one himmel-bus relay record naming
 the successor (the bus proves you sent it, so the record carries no token), and each claudex
 worker its inbox relay plus the bus record its `bus adopt` needs. A native record that

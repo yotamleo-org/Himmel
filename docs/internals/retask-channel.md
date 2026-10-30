@@ -220,7 +220,7 @@ asks the predecessor to re-brief each worker from its own socket, sends
 `<letter> LIVE` once the predecessor reports `RELAYED <n> of <m>` (its relays
 delivered), and updates a worker's `## Live state` nonce only after that worker's
 quote-back, which its informational `--succession` tally reports. The predecessor
-re-briefs before it releases and wraps on LIVE, without waiting for the quote-backs:
+re-briefs before it releases (`chief.sh next` relays on live by default (`--no-relay-on-live` opts out)) and wraps on LIVE, without waiting for the quote-backs:
 a delivered relay is drained at the worker's next tool round whether the predecessor
 is live or gone, so S1 holds either way. Prose
 alone drifted twice (the two occurrences above), so the catch is structural:

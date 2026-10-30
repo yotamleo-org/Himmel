@@ -233,8 +233,9 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    head, rulings made today, what wrapped. **The HANDOFF wins over this file's
    Results tail.** The waiter mutes while you hand over: `chief-sections/waiter.md`.
 3. `touch` the signal path from step 1.
-4. **Re-brief every live worker before you release, never by hand.** On
-   `WAKE relay-on-live` (set by `next` for a bus chief) or running
+4. **Re-brief every live worker before you release, never by hand.** Find the
+   successor in `ListAgents`, then, on `WAKE relay-on-live` (set by `next` unless
+   `--no-relay-on-live`) or running
    `relay-batch.sh <this doc> --successor <it>`: a bus record relays each native
    worker, an inbox relay plus a bus notice each claudex one. A failed or absent
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
