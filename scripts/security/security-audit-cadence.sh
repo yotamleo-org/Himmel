@@ -165,7 +165,7 @@ def exported(name):
     with (export_dir / f'{name}.csv').open(newline='', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         fields = {s.lower() for s in (reader.fieldnames or [])}
-        if not {'severity', 'file'} <= fields or not ({'state', 'status'} & fields) or not ({'category', 'type', 'cwe'} & fields):
+        if not {'severity', 'file'} <= fields or not ({'state', 'status'} & fields) or not ({'category', 'type', 'cwe'} & fields) or not ({'repository', 'asset'} & fields):
             raise Skip('unknown export headers')
         result = []
         for raw in reader:

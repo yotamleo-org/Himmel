@@ -75,6 +75,14 @@ class Audit(unittest.TestCase):
         self.assertIn('SKIP coderabbit', self.run_once())
         self.assertIn('New: 0; Closed: 0', self.report())
 
+    # Even an empty export needs scope headers before it can close previous rows.
+    def test_header_only_export_missing_repository(self):
+        self.export()
+        self.run_once()
+        (self.exports / 'coderabbit.csv').write_text('severity,file,state,cwe\n')
+        self.assertIn('SKIP coderabbit', self.run_once())
+        self.assertIn('New: 0; Closed: 0', self.report())
+
     # Repository override must not inherit a different checkout's Snyk inventory.
     def test_snyk_report_repository_binding(self):
         d = self.root / 'snyk'
