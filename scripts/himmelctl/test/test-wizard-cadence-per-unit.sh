@@ -361,26 +361,39 @@ cat > "$profileH" <<JSON
   "cadences": { "doctor": "off", "codex-sweep": "armed" }
 }
 JSON
+cacheH="$work/cache-h"; mkdir -p "$cacheH"
+cp "$profileH" "$cacheH/install-profile.json"
 run_h() {
-  HOME="$homeH" USERPROFILE="$(winpath "$homeH")" HIMMELCTL_INTERACTIVE=0 \
+  ( cd "$homeH" && HOME="$homeH" USERPROFILE="$(winpath "$homeH")" HIMMELCTL_INTERACTIVE=0 \
     HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-h.json")" \
-    HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-h")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$cacheH")" \
     HIMMELCTL_BIN_DIR="$(winpath "$work/bin-h")" \
-    "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$profileH")" </dev/null 2>&1
+    "$node_bin" "$wizard" "$@" </dev/null 2>&1 )
 }
+saved="$cacheH/install-profile.json"
+# a dry-run preview announces the drop but leaves the file alone
 set +e
-outH1=$(run_h); rcH1=$?
-outH2=$(run_h); rcH2=$?
+outH0=$(run_h install --dry-run --from-profile "$(winpath "$profileH")"); rcH0=$?
 set -e
-[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
+[ "$rcH0" -eq 0 ] || fail "case h: the dry-run preview should load (rc=$rcH0): $outH0"
+grepq "$outH0" -F -- "dropping retired cadence 'codex-sweep'" \
+  || fail "case h: the dry-run preview should announce the drop (got: $outH0)"
+grepq "$(cat "$profileH")" -F -- 'codex-sweep' \
+  || fail "case h: a dry-run preview must not rewrite the profile (got: $(cat "$profileH"))"
+# the saved profile is read by status: the first run drops, the second is quiet
+set +e
+outH1=$(run_h status --json); rcH1=$?
+outH2=$(run_h status --json); rcH2=$?
+set -e
+[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both status runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
 grepq "$outH1" -F -- "dropping retired cadence 'codex-sweep'" \
   || fail "case h: the first run should announce the drop (got: $outH1)"
 grepq "$outH2" -F -- "dropping retired cadence" \
   && fail "case h: the second run must be silent about the retired cadence (got: $outH2)"
-grepq "$(cat "$profileH")" -F -- 'codex-sweep' \
-  && fail "case h: the profile file must no longer name codex-sweep (got: $(cat "$profileH"))"
-grepq "$(cat "$profileH")" -F -- '"doctor": "off"' \
-  || fail "case h: the kept cadence rows must survive the rewrite (got: $(cat "$profileH"))"
-echo "ok: case h — a retired cadence is announced once and leaves the profile file"
+grepq "$(cat "$saved")" -F -- 'codex-sweep' \
+  && fail "case h: the saved profile must no longer name codex-sweep (got: $(cat "$saved"))"
+grepq "$(cat "$saved")" -F -- '"doctor": "off"' \
+  || fail "case h: the kept cadence rows must survive the rewrite (got: $(cat "$saved"))"
+echo "ok: case h — a retired cadence is announced once and leaves the saved profile; a dry run leaves it alone"
 
 echo "PASS"

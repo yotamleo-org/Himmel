@@ -2026,7 +2026,7 @@ function profileError(p, msg) {
 // role-only check let e.g. a bogus vault.mode fall back to --profile core
 // and a missing scope fall back to project). A missing/unreadable/non-JSON
 // file surfaces as a normal error (throw -> main()'s catch, exit 1).
-function loadProfile(p) {
+function loadProfile(p, persist = true) {
   const raw = fs.readFileSync(p, 'utf8');
   let obj;
   try {
@@ -2401,7 +2401,7 @@ function loadProfile(p) {
     obj.devOverlay = obj.role === 'contributor';
     delete obj.role;
   }
-  if (droppedRetired.length > 0) dropRetiredFromProfileFile(p, raw, droppedRetired);
+  if (persist && droppedRetired.length > 0) dropRetiredFromProfileFile(p, raw, droppedRetired);
   return obj;
 }
 
@@ -4876,7 +4876,7 @@ async function cmdInstall(args) {
   //    main()'s catch (exit 1). No stdin wait either way.
   let profileAnswers = null;
   if (args.fromProfile) {
-    profileAnswers = loadProfile(args.fromProfile);
+    profileAnswers = loadProfile(args.fromProfile, !args.dryRun);
     // --scope + --from-profile overrides the profile's own
     // scope rather than being ignored — the profile stays the single
     // authority for everything else, same posture as the lane flags above.
@@ -4888,7 +4888,7 @@ async function cmdInstall(args) {
     // location (not repoRoot()/HIMMELCTL_REPO_ROOT, which points hermetic
     // tests at a throwaway fixture repo with no docs/ tree) so it always
     // finds the real checked-in file regardless of install target.
-    profileAnswers = loadProfile(path.join(__dirname, '..', '..', 'docs', 'setup', 'profiles', `adopter-${args.scope}.install-profile.json`));
+    profileAnswers = loadProfile(path.join(__dirname, '..', '..', 'docs', 'setup', 'profiles', `adopter-${args.scope}.install-profile.json`), false);
   }
 
   // 0.5: --contribute outside a himmel checkout is
