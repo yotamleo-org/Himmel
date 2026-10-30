@@ -236,8 +236,7 @@ cmd_resolve() {
 
     # Git cross-reference: commits naming the ticket (recent, across refs).
     # Case-sensitive fixed-string match: ticket keys are upper-cased and commit
-    # refs use the same case, AND some MINGW greps abort (SIGABRT) on the -iF
-    # combination — so -F alone, never -iF.
+    # refs use the same case — so -F alone, never -iF.
     local git_hits=""
     if [ -n "$cur_head" ]; then
         git_hits="$(git -C "$cwd" log --oneline -n 30 --all 2>/dev/null | grep -F -- "$ticket" | head -n 8 || true)"

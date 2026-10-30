@@ -249,8 +249,8 @@ assert_eq "T8a alternate spelling canonicalizes to the folded root-relative key"
 assert_eq "T8b different absolute layouts share one registry key" "$key8a" "$key8b"
 MIXED8="$ROOT8A/HiMmEl-1344-TeSt/NeXt-SeSsIoN-1.Md"
 key8_linux=$(PLATFORM=linux _arm_registry_identity_path "$MIXED8" "$ROOT8A")
-key8_windows=$(PLATFORM=windows _arm_registry_identity_path "$MIXED8" "$ROOT8A")
-assert_eq "T8c mixed-case registry key is equal across simulated platforms" "$key8_linux" "$key8_windows"
+key8_macos=$(PLATFORM=macos _arm_registry_identity_path "$MIXED8" "$ROOT8A")
+assert_eq "T8c mixed-case registry key is equal across simulated platforms" "$key8_linux" "$key8_macos"
 assert_eq "T8d mixed-case root-relative remainder is uniformly folded" "$expected8" "$key8_linux"
 # T8e/T8f: the outside-root `absolute:` branch
 # PRESERVES case. It makes no cross-machine promise (documented cross-layout
@@ -286,7 +286,7 @@ fi
 # or removing the directory here would leave every subsequent subshell with
 # no cache dir to write into (caught in review: a first draft of this test
 # did exactly that and made T9a fail against a WORKING library).
-rm -f "${_ARM_CACHE_DIR:?}/identity" "${_ARM_CACHE_DIR:?}/cygpath-avail" 2>/dev/null || true
+rm -f "${_ARM_CACHE_DIR:?}/identity" 2>/dev/null || true
 T9PATH="$TMP/layout-a/handovers/HIMMEL-1344-test/next-session-1.md"
 first9=$(PLATFORM=linux _arm_identity_path "$T9PATH")
 if [ -n "${_ARM_CACHE_DIR:-}" ] && [ -s "$_ARM_CACHE_DIR/identity" ]; then
@@ -297,19 +297,14 @@ else
 fi
 second9=$(PLATFORM=linux _arm_identity_path "$T9PATH")
 assert_eq "T9b a cache HIT (same path, same PLATFORM) returns the identical value" "$first9" "$second9"
-windows9=$(PLATFORM=windows _arm_identity_path "$T9PATH")
+macos9=$(PLATFORM=macos _arm_identity_path "$T9PATH")
 linux9_again=$(PLATFORM=linux _arm_identity_path "$T9PATH")
 assert_eq "T9c a different PLATFORM for the SAME path is not served the other platform's cached value" "$first9" "$linux9_again"
-if [ "$windows9" != "$first9" ]; then
-    echo "PASS T9d windows (case-folded) and linux (case-preserved) cache independently for the same path"
-else
-    echo "FAIL T9d windows PLATFORM override returned the linux-cached (case-preserved) value"
-    FAILED=$((FAILED + 1))
-fi
+assert_eq "T9d macos (no case twin on disk) agrees with linux for the same path" "$first9" "$macos9"
 
 # T9e: a counting realpath stub proves the SECOND identical lookup is an
 # actual cache HIT (skips recomputation), not just an equal answer.
-rm -f "${_ARM_CACHE_DIR:?}/identity" "${_ARM_CACHE_DIR:?}/cygpath-avail" 2>/dev/null || true
+rm -f "${_ARM_CACHE_DIR:?}/identity" 2>/dev/null || true
 T9E_BIN="$TMP/t9e-bin"; mkdir -p "$T9E_BIN"
 T9E_COUNT="$TMP/t9e-realpath-calls"
 : > "$T9E_COUNT"
@@ -331,7 +326,7 @@ assert_eq "T9e the SECOND identical lookup skips realpath entirely (cache hit, n
 # T9f: the SAME relative path string means a
 # DIFFERENT file after a `cd` — the cache key must include $PWD, or a stale
 # cross-directory answer gets served back.
-rm -f "${_ARM_CACHE_DIR:?}/identity" "${_ARM_CACHE_DIR:?}/cygpath-avail" 2>/dev/null || true
+rm -f "${_ARM_CACHE_DIR:?}/identity" 2>/dev/null || true
 T9F_DIR_A="$TMP/t9f-a"; T9F_DIR_B="$TMP/t9f-b"
 mkdir -p "$T9F_DIR_A" "$T9F_DIR_B"
 t9f_from_a=$(cd "$T9F_DIR_A" && PLATFORM=linux _arm_identity_path "rel.md")
@@ -414,7 +409,6 @@ T9I_PATH="$TMP/layout-a/handovers/HIMMEL-1344-test/next-session-1.md"
 t9i_expected=$(_arm_realpath "$T9I_PATH")
 t9i_id1=$(PLATFORM=linux _arm_identity_path "$T9I_PATH" 2>"$T9I_STDERR")
 t9i_id2=$(PLATFORM=linux _arm_identity_path "$T9I_PATH" 2>>"$T9I_STDERR")
-_arm_cygpath_available 2>>"$T9I_STDERR" >/dev/null
 assert_eq "T9i identity lookup with a vanished cache dir still returns the correct (degraded, uncached) value" "$t9i_expected" "$t9i_id1"
 assert_eq "T9i a second lookup after a vanished cache dir agrees with the first (recompute, not a stale/garbage answer)" "$t9i_id1" "$t9i_id2"
 if [ -s "$T9I_STDERR" ]; then
@@ -452,7 +446,7 @@ fi
 
 # T11: macOS folds identity case only when the lowercased path is
 # the SAME file (APFS case-insensitive). A hard link stands in for that on any
-# host: Foo11.md and foo11.md are one inode. Linux/Windows output is unchanged.
+# host: Foo11.md and foo11.md are one inode. Linux output is unchanged.
 # ponytail: hard link + lowercase symlink stand in for APFS, so the real
 # case-insensitive volume is only proven by the macOS shard (G1.4b).
 T11_DIR="$TMP/t11"; mkdir -p "$T11_DIR"

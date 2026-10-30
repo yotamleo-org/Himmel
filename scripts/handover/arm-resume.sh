@@ -4149,10 +4149,8 @@ _arm_shipped_preflight() {
     # signal, and an OPEN+MERGEABLE one means the work is finished and waiting
     # on a human, which is the shape.
     # GH_CMD is the house seam for this (scripts/graphify/graph-publish.sh,
-    # scripts/cr/*): invoked DIRECTLY rather than found on PATH, because a
-    # PATH-shadowing stub does not work on Windows -- an extensionless `gh`
-    # script loses to gh.exe even when its directory comes first, so a test
-    # that stubs via PATH silently exercises the REAL gh. Verified here.
+    # scripts/cr/*): invoked DIRECTLY rather than found on PATH, so a test
+    # seam cannot silently exercise the REAL gh.
     _branch=$(_arm_branch_for_preflight)
     if [ -n "$_branch" ] && [ -n "${RESUME_CWD:-}" ] && [ -d "${RESUME_CWD:-}" ] \
        && command -v "${GH_CMD:-gh}" >/dev/null 2>&1; then

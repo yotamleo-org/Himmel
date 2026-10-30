@@ -176,7 +176,7 @@ _hp_ascii_lower() {
 # both caches below. Every call site of _arm_identity_path is
 # `x=$(_arm_identity_path ...)`; command substitution forks a SUBSHELL, so an
 # in-memory cache variable set inside it dies with it (a naive
-# `_ARM_CYGPATH_AVAILABLE=""` var, the _py_armor_have_gnu_timeout pattern,
+# module-level variable, the _py_armor_have_gnu_timeout pattern,
 # never actually caches anything here — verified: it measured ZERO
 # improvement). A FILE survives the subshell boundary.
 #
@@ -232,8 +232,8 @@ _hp_ascii_lower() {
 # invocation, and each of those invocations leaks one more cache dir, the
 # sweep got monotonically slower as the leak grew -- ~3 forks x every dir that
 # had ever leaked. Measured on OVERLORD8: 1034 dirs present, of which exactly 2
-# were age-eligible, and the sweep burned 23s of a 28s dry-run arm (MSYS forks
-# are ~10ms each). Hoisting the age test makes the expensive per-entry work run
+# were age-eligible, and the sweep burned 23s of a 28s dry-run arm (forks
+# add up). Hoisting the age test makes the expensive per-entry work run
 # only on the handful of dirs that can actually be deleted.
 #
 # The aggregate find is newline-delimited and read back with `while read`, so
@@ -270,7 +270,7 @@ _arm_cache_dir_gc() {
             [ -e "$_entry" ] || continue
             if [ -f "$_entry" ]; then
                 case "${_entry##*/}" in
-                    identity|cygpath-avail) ;;
+                    identity|cygpath-avail) ;;   # cygpath-avail: legacy cache file, still reaped
                     *) _looks_ours=0 ;;
                 esac
             else
@@ -321,43 +321,23 @@ if ! _arm_cache_dir_usable; then
     export _ARM_CACHE_DIR
 fi
 
-# _arm_cygpath_available -- rc 0 iff cygpath is on PATH. Probed once per
-# top-level process and cached in $_ARM_CACHE_DIR (falls back to recomputing
-# every call, the pre-cache behavior, when the dir could not be created).
-_arm_cygpath_available() {
-    local _avail="" _f=""
-    _arm_cache_dir_usable && _f="$_ARM_CACHE_DIR/cygpath-avail"
-    [ -n "$_f" ] && [ -r "$_f" ] && _avail=$(<"$_f")
-    if [ -z "$_avail" ]; then
-        if command -v cygpath >/dev/null 2>&1; then _avail=yes; else _avail=no; fi
-        # stderr redirected FIRST: redirections apply left to right, so if
-        # `> "$_f"` fails to open (e.g. $_ARM_CACHE_DIR vanished between the
-        # usability check above and here), the shell's own diagnostic lands
-        # on the ALREADY-redirected fd2 (/dev/null), not the real stderr.
-        # Reordered the other way around, the open failure fires before
-        # 2>/dev/null takes effect and prints raw regardless.
-        [ -n "$_f" ] && { printf '%s' "$_avail" 2>/dev/null > "$_f" || true; }
-    fi
-    [ "$_avail" = yes ]
-}
-
 # _arm_identity_path <path> -- the canonical handover identity first shipped
 # in arm-resume.sh for scheduler-row dedup. It lives in this
 # shared library now because queue-lock.sh must consume the exact same identity
-# from arms.jsonl. On Windows, cygpath folds C:/, C:\ and /c/
-# spellings together, then case-folding matches NTFS semantics; POSIX paths
-# retain case because it can distinguish real files there.
+# from arms.jsonl. On macOS the path is case-folded when the volume is
+# case-insensitive; Linux paths retain case because it can distinguish real
+# files there.
 #
 # Memoized per (raw input, raw $PLATFORM override) pair in $_ARM_CACHE_DIR
 # (falls back to always recomputing when the dir could not be created): a
 # single arm calls this on the SAME path (e.g. the handover root, from both
 # the scheduler-identity call site and the registry-dedup call site) more
-# than once, and each call was re-spawning `realpath` + `cygpath` for an
-# identical answer — measured at ~30% of a dry-run's wall time on Windows,
+# than once, and each call was re-spawning `realpath` for an
+# identical answer — measured at ~30% of a dry-run's wall time,
 # and 32% of its total subprocess/statement volume. $PLATFORM is the only
 # OTHER input this function's output depends on (test-handover-path.sh calls
-# it as `PLATFORM=linux _arm_identity_path ...` to exercise a non-Windows
-# branch on a Windows dev box) — omitting it from the key served a stale
+# it as `PLATFORM=macos _arm_identity_path ...` to exercise the macOS
+# branch on a Linux dev box) — omitting it from the key served a stale
 # cross-platform answer back the moment two calls shared a path but not a
 # $PLATFORM (caught by T8d in review).
 #
@@ -403,16 +383,9 @@ _arm_identity_path() {
     if [ -z "$_platform" ]; then
         _os="${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}"
         case "$_os" in
-            msys*|cygwin*|win32*|MINGW*) _platform=windows ;;
-            linux*|Linux*)               _platform=linux ;;
-            darwin*|Darwin*)             _platform=macos ;;
+            linux*|Linux*)   _platform=linux ;;
+            darwin*|Darwin*) _platform=macos ;;
         esac
-    fi
-    if [ "$_platform" = windows ]; then
-        if _arm_cygpath_available; then
-            _p=$(cygpath -u "$_p" 2>/dev/null) || _p=$(_arm_realpath "$1")
-        fi
-        _hp_ascii_lower "$_p"; _p="$_HP_LOWER"
     fi
     if [ "$_platform" = macos ]; then
         # APFS is case-insensitive by default, so Foo.md and foo.md
@@ -424,9 +397,9 @@ _arm_identity_path() {
             _p="$_HP_LOWER"
         fi
     fi
-    # stderr redirected FIRST (see the matching comment in
-    # _arm_cygpath_available above) so a failed `>>` open never reaches the
-    # real stderr even if $_ARM_CACHE_DIR vanished between the usability
+    # stderr redirected FIRST (redirections apply left to right, so a failed
+    # `>>` open reports onto the ALREADY-redirected fd2) so it never reaches
+    # the real stderr even if $_ARM_CACHE_DIR vanished between the usability
     # check and here.
     [ -n "$_cf" ] && { printf '%s\037%s\037%s\037%s\037%s\n' "$1" "${PLATFORM:-}" "${OSTYPE:-}" "$PWD" "$_p" 2>/dev/null >> "$_cf" || true; }
     printf '%s' "$_p"
@@ -603,16 +576,13 @@ _hp_json_unescape() {
     done
 }
 
-# _hp_path_quick_normalize <path> <fold-case> <windows-separators> -- cheap
+# _hp_path_quick_normalize <path> <fold-case> -- cheap
 # legacy-row filter into $_HP_PATH_NORM. It deliberately does not resolve the
 # filesystem; false positives only spend one rare canonicalization, while the
 # basename/symlink gate below rejects ordinary unrelated rows without a fork.
 _HP_PATH_NORM=""
 _hp_path_quick_normalize() {
     _HP_PATH_NORM="$1"
-    if [ "$3" -eq 1 ]; then
-        _HP_PATH_NORM="${_HP_PATH_NORM//\\//}"
-    fi
     if [ "$2" -eq 1 ]; then
         _hp_ascii_lower "$_HP_PATH_NORM"; _HP_PATH_NORM="$_HP_LOWER"
     fi
@@ -629,7 +599,7 @@ _hp_arms_record_matches_path() {
     local _hp_line="$1" _hp_raw="$2" _hp_key="$3" _hp_root="$4"
     local _hp_stored_key _hp_stored_raw _hp_key_esc _hp_raw_esc _hp_legacy_key
     local _hp_stored_norm _hp_raw_norm _hp_stored_leaf _hp_raw_leaf
-    local _hp_fold=0 _hp_windows=0
+    local _hp_fold=0
     _HP_ARMS_MATCH=0
 
     _hp_json_escape "$_hp_key"; _hp_key_esc="$_HP_ESC"
@@ -649,16 +619,12 @@ _hp_arms_record_matches_path() {
 
     _hp_json_unescape "$_hp_stored_raw"
     [ "$_HP_UNESC_OK" -eq 1 ] || return 0
-    case "${PLATFORM:-}:${OSTYPE:-}" in
-        windows:*|*:msys*|*:cygwin*|*:win32*|*:MINGW*) _hp_windows=1 ;;
-    esac
     case "$_hp_key" in
         root-relative:*) _hp_fold=1 ;;
-        *) _hp_fold="$_hp_windows" ;;
     esac
-    _hp_path_quick_normalize "$_HP_UNESC" "$_hp_fold" "$_hp_windows"
+    _hp_path_quick_normalize "$_HP_UNESC" "$_hp_fold"
     _hp_stored_norm="$_HP_PATH_NORM"
-    _hp_path_quick_normalize "$_hp_raw" "$_hp_fold" "$_hp_windows"
+    _hp_path_quick_normalize "$_hp_raw" "$_hp_fold"
     _hp_raw_norm="$_HP_PATH_NORM"
     if [ "$_hp_stored_norm" = "$_hp_raw_norm" ]; then
         _HP_ARMS_MATCH=1

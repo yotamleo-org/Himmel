@@ -32,8 +32,7 @@
 #                        ~/.claude/handover/bridge).
 #   WORKER_PID_ALIVE_CMD Test seam: executable invoked as <cmd> <pid>; rc 0
 #                        means live, rc 1 confirmed dead, every other rc
-#                        unprobeable. Production probes both MSYS and native
-#                        Windows pid namespaces.
+#                        unprobeable. Production probes with `kill -0`.
 #   RECONCILE_GRACE_SECS Minimum meta.json age before a confirmed-dead worker
 #                        may be orphaned (default: 120).
 #   RECONCILE_UNPROBEABLE_CEILING_SECS Absolute backstop (default: 172800 =
@@ -89,11 +88,9 @@ case "$RECONCILE_UNPROBEABLE_CEILING_SECS" in
 esac
 
 # worker_pid_alive <pid> -- rc 0 live, rc 1 confirmed dead, rc 2 unprobeable.
-# Bun reports native Windows pids; the shared-lock shell historically recorded
-# an MSYS pid. Checking both errs safely toward live if a number happens to exist
-# in both namespaces. Missing/failed census data must never authorize cleanup.
+# Missing/failed census data must never authorize cleanup.
 worker_pid_alive() {
-    local pid="$1" out rc
+    local pid="$1" rc
     case "$pid" in
         ''|*[!0-9]*|0) return 2 ;;
     esac
@@ -114,32 +111,13 @@ worker_pid_alive() {
         return 0
     fi
 
-    case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*)
-            if ! command -v tasklist >/dev/null 2>&1; then
-                echo "WARN reconcile-workers: tasklist unavailable for native PID $pid; liveness is unprobeable" >&2
-                return 2
-            fi
-            out=$(MSYS_NO_PATHCONV=1 tasklist /FO CSV /NH /FI "PID eq $pid" 2>&1)
-            rc=$?
-            if [ "$rc" -eq 0 ]; then
-                case "$out" in
-                    *\"$pid\"*) return 0 ;;
-                    *) return 1 ;;
-                esac
-            fi
-            echo "WARN reconcile-workers: tasklist failed for PID $pid (rc=$rc); liveness is unprobeable" >&2
-            return 2
-            ;;
-    esac
     return 1
 }
 
 # _worker_census -- batch replacement for the old per-file
 # _worker_meta_fields: ONE node process for the whole census run instead of
 # one `node -e` spawn per meta.json. ~0.5s node startup x hundreds of
-# meta.json files under Windows/Git-Bash ate the ASAP arm lead and tripped
-# the caller's timeout.
+# meta.json files ate the ASAP arm lead and tripped the caller's timeout.
 #
 # Reads newline-delimited "origPath\x1fopenPath" pairs on stdin (always
 # $BRIDGE/<lane>-sessions/<session>/meta.json -- no newlines in practice) and
@@ -152,16 +130,11 @@ worker_pid_alive() {
 # at the very end iff anything failed to parse, mirroring the old per-file
 # FAILED=1-but-keep-going contract.
 #
-# openPath (not origPath) is what actually gets fs.readFileSync'd: node.exe
-# is a native Windows binary, and MSYS/Git-Bash only rewrites POSIX-looking
-# ARGV elements into Windows form for a native child automatically -- it
-# does not touch data piped through stdin. The old per-file call passed its
-# one path as an argv element and got that translation for free; the caller
-# below does the equivalent translation itself (via cygpath, batched once)
-# before piping. origPath -- the untranslated bash-native path -- is what
-# gets reported back in each row, so every downstream consumer (the other
-# per-candidate node helpers below, --list-live output, callers' own path
-# matching) keeps seeing the same path shape as before this change.
+# openPath (not origPath) is what actually gets fs.readFileSync'd; on POSIX
+# the caller passes the same path for both. origPath is what gets reported
+# back in each row, so every downstream consumer (the other per-candidate
+# node helpers below, --list-live output, callers' own path matching) keeps
+# seeing the same path shape.
 _worker_census() {
     # shellcheck disable=SC2016  # JavaScript template literals, not shell expansion.
     node -e '
@@ -366,11 +339,8 @@ for lane_dir in "${claudex_dirs[@]}"; do
 done
 
 if [ -n "$census_paths" ]; then
-    # node.exe cannot open the bash-native (MSYS/POSIX-style) path directly on
-    # Windows -- see _worker_census's doc comment above. cygpath -f converts
-    # the WHOLE list in one extra process (still O(1) spawns for the batch,
-    # not O(files)); everywhere else (no cygpath, i.e. not Windows) the
-    # "open" path is just the original path, unchanged.
+    # The "open" path is just the original path, unchanged -- see
+    # _worker_census's doc comment above.
     census_orig_file=$(mktemp 2>/dev/null) && census_open_file=$(mktemp 2>/dev/null)
     if [ -z "${census_orig_file:-}" ] || [ -z "${census_open_file:-}" ]; then
         echo "ERR reconcile-workers: mktemp failed for worker census batch" >&2
@@ -379,16 +349,7 @@ if [ -n "$census_paths" ]; then
         census_rows=""
     else
         printf '%s' "$census_paths" > "$census_orig_file"
-        if command -v cygpath >/dev/null 2>&1; then
-            cygpath -w -f "$census_orig_file" > "$census_open_file"
-            cygpath_rc=$?
-            # Name the real cause up front -- without this, a failed batch
-            # conversion looks identical to hundreds of individually corrupt
-            # meta.json files (each still fails its own JSON.parse below).
-            [ "$cygpath_rc" -eq 0 ] || echo "ERR reconcile-workers: cygpath batch conversion failed rc=$cygpath_rc" >&2
-        else
-            cp "$census_orig_file" "$census_open_file"
-        fi
+        cp "$census_orig_file" "$census_open_file"
         census_rows=$(paste -d $'\x1f' "$census_orig_file" "$census_open_file" | _worker_census)
         rc=$?
         [ "$rc" -eq 0 ] || FAILED=1
@@ -421,7 +382,7 @@ if [ -n "$census_paths" ]; then
             # the same set worker_pid_alive itself short-circuits on above,
             # matching writeLiveWorkerMeta's fallback marker shape) gets an
             # absolute-ceiling backstop so it cannot block arming forever.
-            # A pid that failed to PROBE (tasklist/probe-command failure)
+            # A pid that failed to PROBE (probe-command failure)
             # keeps a real recorded pid here and is deliberately excluded --
             # that stays a pure grace-based case, not the relic shape.
             # a never-written pid with no started_at and no
