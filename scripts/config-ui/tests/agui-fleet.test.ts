@@ -270,7 +270,7 @@ test("launch environment and manifest edges group two chiefs without timing gues
 });
 
 test("a manifest in the old key shape still draws its edges while legacy names are on", async () => {
-  const s = boot();
+  const s = boot({ HIMMEL_LEGACY_NAMES: "on" });
   const bucket = join(s.dir, "handover", "yotam", "himmel");
   const other = "HIMMEL-project-chief";
   writeFileSync(join(bucket, `${other}.md`), `# ${other}\n## Results\n- 09:00 LIVE — started\n`);

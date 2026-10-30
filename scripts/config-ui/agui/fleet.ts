@@ -441,7 +441,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     if (!console) continue;
     try {
       const m = JSON.parse(await readFile(file, "utf8"));
-      const list = m.workers ?? (legacyNamesOn() ? m.legs : undefined); // legacy wire fallback
+      const list = m.workers ?? (legacyNamesOn(opts.env) ? m.legs : undefined); // legacy wire fallback
       if (m.schema !== 1 || !Array.isArray(list)) continue;
       for (const l of list) if (typeof l.doc === "string") {
         const at = Date.parse(l.added);
