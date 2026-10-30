@@ -1108,6 +1108,19 @@ test("ingest preserves sender_chat, and a mismatched one is not floored (HIMMEL-
   expect(ran).toEqual(["1:group_-1009999999"]);     // matching floored; mismatched dropped
 });
 
+test("ingest records a reply to a bot message as reply_to_bot, and no other reply", async () => {
+  const r = root();
+  const msg = (id: number, reply_to_message: object | undefined) => ({ update_id: id, message: { message_id: id, chat: { id: 5 }, from: { id: 5 }, text: "123456", ...(reply_to_message ? { reply_to_message } : {}) } });
+  await ingestUpdates(r, [
+    msg(1, { message_id: 40, from: { id: 99, is_bot: true } }),
+    msg(2, { message_id: 41, from: { id: 5, is_bot: false } }),
+    msg(3, undefined),
+  ], allowAll);
+  const lines = await readNewLines(join(r, "inbound.jsonl"), join(r, "inbound.jsonl.cursor"));
+  expect(lines.map((l: any) => l.reply_to_bot)).toEqual([true, undefined, undefined]);
+  expect(lines[0].reply_to_message_id).toBe(40);
+});
+
 // sender_chat is spread into all FOUR ingest branches, and the media ones append
 // their record only AFTER the download settles (`{ ...rec, ...path }`), so the
 // field survives by construction rather than by an explicit copy. Pin the two
