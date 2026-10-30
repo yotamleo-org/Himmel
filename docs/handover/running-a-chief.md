@@ -330,7 +330,8 @@ pasted into the brief. Detail:
 **Profile and context defaults.**
 - A worker whose Writes are all under `docs/` or `*.md` gets `worker-docs` by
   default: every Writes token must be a docs path, a `*.md` file or a connector
-  word. An unknown path such as `src/main.py`, `Makefile` or `LICENSE` keeps
+  word, unless the Writes name `scripts/config-ui/` (`worker-e2e`). An unknown
+  path such as `src/main.py`, `Makefile` or `LICENSE` keeps
   `worker-impl`. `worker-eval` is only an explicit `"profile"` key in the workers
   JSON.
 - On the native lane, a standard-context launch whose model matches
@@ -342,10 +343,10 @@ pasted into the brief. Detail:
   `1m`. `WORKER_SESSION_CONTEXT=1m` alone is refused: it needs the brief's
   reasoned Context line as well
   ([`lane-calibration.md`](../internals/lane-calibration.md)).
-- An `ab_arm` brief key needs a profile with standard `200000` context and no
-  Sonnet ceiling, for example `worker-docs`: the wrapper refuses it on a profile
-  that gives the launch a Sonnet ceiling (`worker-impl`, `worker-eval`) and
-  `gen-briefs` refuses it up front.
+- On a launch that takes a Sonnet ceiling (native lane, `claude-sonnet-5*`,
+  `worker-impl` or `worker-eval`), `ab_arm` is refused by the wrapper and up
+  front by `gen-briefs`, so run the arm on a profile without one, for example
+  `worker-docs`. The wrapper also refuses it on a 1m context.
 
 **Repo map (off by default).** Set `WORKER_SESSION_REPO_MAP=1` in the launching shell and
 a profiled worker's system prompt starts with a repo map: the files of
