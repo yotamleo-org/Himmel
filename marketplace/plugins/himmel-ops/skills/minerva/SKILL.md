@@ -284,7 +284,8 @@ spec's bucket.
 plan is written and self-reviewed, return HERE instead of letting it ask for an
 execution method or invoke subagent-driven-development or executing-plans: the
 plan critic and the terminal lint run first, and the Terminal section makes the
-hand-off.
+hand-off. If the operator already supplied an execution method, carry it to the
+Terminal section.
 
 ## Stage 4 — plan critic (adversarial)
 
@@ -341,8 +342,12 @@ Do not hand off until it prints `ok`, in either mode.
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan
   to implement it task-by-task. This is the execute-seam auto-handoff that makes
   the loop continuous. (You remain the parent: own synthesis across the subagents.)
+  When the operator already supplied `lean-skills:executing-plans` as the
+  method, invoke that instead.
 - Otherwise (interactive mode, or `execute` not active): minerva STOPS here — it
-  does not start implementation. Offer the hand-off:
+  does not start implementation. When the operator already supplied an execution
+  method, ask only whether the plan captures what they want, then use that
+  method. Otherwise offer the hand-off:
 
   > Plan ready. Execute with `lean-skills:subagent-driven-development`
   > (recommended) or `lean-skills:executing-plans`?

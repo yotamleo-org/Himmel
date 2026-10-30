@@ -17,6 +17,7 @@ case "$out" in *SPEC-CRITIC*) ;; *) echo "FAIL: brainstorming not injected with 
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"lean-skills:brainstorming"}}')
 case "$out" in *"STANDALONE brainstorm"*"a small change"*"finishes without minerva"*) ;; *) echo "FAIL: brainstorming injection does not let a standalone small change finish without minerva (got '$out')"; fail=1;; esac
 case "$out" in *"minerva-driven brainstorm always continues to Stage 2"*) ;; *) echo "FAIL: brainstorming injection lets a minerva-driven run skip Stage 2 (got '$out')"; fail=1;; esac
+case "$out" in *"For a project in a himmel-managed repo"*SPEC-CRITIC*) ;; *) echo "FAIL: brainstorming injection sends a project outside a himmel-managed repo to the spec critic (got '$out')"; fail=1;; esac
 
 # grilling (mattpocock) → routed into minerva Stage 1a
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"mattpocock-skills:grilling"}}')
@@ -29,7 +30,6 @@ out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"some:grilling-tips"}}')
 # writing-plans → inject plan-critic directive
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"superpowers:writing-plans"}}')
 case "$out" in *PLAN-CRITIC*) ;; *) echo "FAIL: writing-plans not injected with the PLAN-CRITIC directive (got '$out')"; fail=1;; esac
-
 # the injected JSON must be a well-formed PreToolUse hookSpecificOutput
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"superpowers:brainstorming"}}')
 case "$out" in *'"hookEventName":"PreToolUse"'*'"additionalContext"'*) ;; *) echo "FAIL: malformed injection envelope (got '$out')"; fail=1;; esac
