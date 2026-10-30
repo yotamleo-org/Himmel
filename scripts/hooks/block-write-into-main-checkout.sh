@@ -198,7 +198,8 @@
 #     real payload cwd, and denied if THAT resolves inside the primary — so
 #     cd tracking can only ADD denies relative to a payload-cwd-only check,
 #     never remove one, regardless of how wrong its own clause-connective
-#     modelling turns out to be (the "strict superset rule"; one documented,
+#     modelling turns out to be, bar the narrow scratch relaxation below
+#     (the "strict superset rule"; one documented,
 #     deliberate exception: a genuine, unconditional `cd <worktree> &&
 #     <relative write>` issued from a primary cwd also denies under this rule,
 #     even though it is runtime-safe — the rule does not distinguish "safe"
@@ -211,8 +212,12 @@
 #     cp/mv/ln destination-type union below is untouched). The flag survives only
 #     while every later clause's command word is a literal echo, printf, cat, tee or
 #     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
-#     wrapper, a group) clears it. While it holds, the candidate is checked against
-#     the cd target and its symlink-resolved form. Exposure left: after a `;` a cd
+#     wrapper, a group) clears it. While it holds, a plain relative candidate is
+#     checked against the cd target and its symlink-resolved form, and a candidate
+#     holding a `~` or a brace keeps the payload-cwd re-check, since the shell
+#     expands `~-`, `~1` and brace lists at run time (a harmless brace write in the
+#     scratch folder is refused too). A candidate holding `$` is not checked at all,
+#     as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
 #     The fallback re-checks only the
@@ -2821,8 +2826,10 @@ _bwimc_ecwd_track() {
                             # of the line, unpiped, onto a directory that exists
                             # and is enterable runs (and a `&&` chain stops if it fails;
                             # after a `;` a failing cd leaves the cwd unchanged, a race this
-                            # does not close), so a write that follows lands in $r, or in
-                            # its symlink-resolved form $cs. Trusted only when $cs lies in no
+                            # does not close), so a plain relative write that follows lands in
+                            # $r, or in its symlink-resolved form $cs (a candidate holding a ~
+                            # or a brace is expanded by the shell and keeps the payload-cwd
+                            # re-check in _bwimc_cd_guard). Trusted only when $cs lies in no
                             # git repo at all (a scratch folder): the primary, a worktree or
                             # any other checkout keeps the re-check. The trust ends at the
                             # first later clause whose command word is not in the closed set
@@ -2875,7 +2882,8 @@ _bwimc_ecwd_track() {
 # candidate against the real payload cwd and deny if THAT resolves inside
 # the primary — cd tracking may only ADD denies relative to a
 # payload-cwd-only check, never remove one, regardless of how wrong its
-# own clause-connective modelling turns out to be. _bwimc_check_target
+# own clause-connective modelling turns out to be (the one exception is a
+# sure cd, see the end of this function). _bwimc_check_target
 # itself calls _bwimc_deny (which exits) on a DENY verdict, so this runs
 # before the call site's own _bwimc_ecwd-based check ever gets a chance to
 # allow.
@@ -2923,9 +2931,15 @@ _bwimc_cd_guard() {
         esac ;;
     esac
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
-    # a sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check, but the candidate is
-    # also resolved against the symlink-resolved cd target, where the write physically lands
+    # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a plain relative
+    # candidate, which is also resolved against the symlink-resolved cd target, where the
+    # write physically lands. A candidate holding a ~ or a brace is expanded by the shell at
+    # run time (`~-` and `~1` name the directory the cd just left, a brace list becomes
+    # several words), so it keeps the payload-cwd re-check.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
+        case "$1" in
+            *'~'*|*'{'*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+        esac
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
         _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"

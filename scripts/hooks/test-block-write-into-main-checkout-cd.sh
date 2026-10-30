@@ -714,9 +714,10 @@ echo "== HIMMEL-8200 (a relative write after a plain cd into a scratch folder re
 
 # 97: from a PRIMARY payload cwd, a cd that is the FIRST command of the line
 # always runs (a failing one is caught by the exists check, or ends the && chain),
-# so the cwd the write resolves in is the cd target and nothing else. When that
-# target lies in no git repo (a scratch folder), the union fallback of rows 43-54
-# must not re-check the write against the payload cwd.
+# so a plain relative write resolves in the cd target and nowhere else (a ~ or
+# brace candidate is expanded by the shell, rows 99a-e). When that target lies in
+# no git repo (a scratch folder), the union fallback of rows 43-54 must not
+# re-check the write against the payload cwd.
 mkdir -p "$FIX/scratch8200"
 check_both "97 fromP: cd scratch && echo x > out.txt (cd target outside the primary) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
@@ -775,6 +776,32 @@ check_both "98j fromP: cd scratch && touch out.txt allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
 check_both "98k fromP: cd scratch && cd primary && echo x > out.txt (second cd) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 99: a candidate the shell expands at run time to a place the hook cannot see keeps
+# the payload-cwd re-check even under a sure cd: `~-` and `~1` name the directory
+# the cd (or pushd) just left, which here is the primary, and a brace list expands
+# to several words. Unquoted ~ or a brace anywhere in the candidate triggers it, so
+# a harmless brace write in the scratch folder is refused too (accepted over-deny).
+check_both "99a fromP: cd scratch; echo x > ~-/out.txt (OLDPWD is the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; echo x > ~-/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99b fromP: cd scratch && touch ~-/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch ~-/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99c fromP: pushd scratch; echo x > ~1/out.txt (dir stack entry is the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd $FIX/scratch8200 >/dev/null; echo x > ~1/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99d fromP: cd scratch && touch {~-/a,b} (brace holding ~-) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {~-/a,b}\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99e fromP: cd scratch && touch {out,out2}.txt (any brace) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {out,out2}.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 99f reaches the symlink-resolved cd target: the typed cd path is a link to a scratch
+# subfolder, so `..` climbs to $FIX lexically (no repo, allowed) but to scratch8200
+# physically, where lnk-to-primary leads into the primary. Only the check against the
+# canonical target sees it.
+mkdir -p "$FIX/scratch8200/a"
+if ! { ln -sfn "$FIX/scratch8200/a" "$FIX/lnkscratch8200" && [ -d "$FIX/lnkscratch8200" ]; }; then
+    bad "99f setup: the lnkscratch8200 symlink was not created"
+fi
+check_both "99f fromP: cd link-to-scratch && echo x > ../lnk-to-primary/out.txt (physical .. reaches the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/lnkscratch8200 && echo x > ../lnk-to-primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
