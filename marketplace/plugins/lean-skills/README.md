@@ -69,7 +69,8 @@ design/UI work opts in per-dispatch (`--profile design` or the operator's own
 
 ## Prose is copied VERBATIM — never edit it locally
 
-Every file under `skills/` is copied byte-for-byte from its upstream release.
+Every upstream file under `skills/` is copied byte-for-byte from its release,
+except the `See also:` lines `VENDORED.md` lists under `deviation=`.
 **Do not locally edit vendored prose** — not to fix a typo, not to adapt a
 reference, not for any reason. A local edit turns the next re-vendor from a
 straight copy into a manual merge, and the divergence is invisible until
@@ -141,7 +142,9 @@ vendored script is not locally edited to fix this — tracked in HIMMEL-3106.
    into `marketplace/plugins/lean-skills/skills/`, preserving the same
    subset rules above (the reference closure for superpowers; `grilling`
    only for mattpocock/skills — re-check whether a new release changed what
-   the closure needs to include).
+   the closure needs to include). Then re-add the `See also:` line to each
+   file a `deviation=` row in `VENDORED.md` names;
+   `hooks/test-note-superpowers-prefix.sh` fails while one is missing.
 3. Update `VENDORED.md`'s `vendored_from=<repo>@<version>` lines to the new
    version.
 4. Bump the matching `synced_base` in `scripts/upstreams.json` (rows
