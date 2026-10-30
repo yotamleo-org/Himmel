@@ -3081,6 +3081,15 @@ contains '--verbose labels pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc"
 printf '%s\n' '## Live state' 'priority: 904 901' > "$pc_doc"
 not_contains 'a priority line with no closed key hides pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" 'pool-closed'
 not_contains 'no --doc hides pool-closed (HIMMEL-6602)' "$(pc_tick)" 'pool-closed'
+# pool-stale=<n>:<KEY>,...: a pool-disposition: line whose named blocker is Done. The
+# detailed rows live in test-tick-pool-stale.sh; this pins the tick line and --verbose.
+printf '%s\n' '# chief' '' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-911 then the rest' '' '## Results' > "$pc_doc"
+contains 'a disposition whose blocker is Done shows as pool-stale=<n>:<KEY> (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" ' pool-stale=1:HIMMEL-7120'
+contains '--verbose labels pool-stale (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc" --verbose)" 'pool-stale: 1:HIMMEL-7120'
+not_contains 'a nothing-unversioned mirror hides residual-unversioned (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" 'residual-unversioned'
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-904 then the rest' > "$pc_doc"
+not_contains 'a disposition whose blocker is still open hides pool-stale (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" 'pool-stale'
+not_contains 'no --doc hides pool-stale (HIMMEL-6604)' "$(pc_tick)" 'pool-stale'
 rm -f "$pc_doc"
 
 # --- ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] ---

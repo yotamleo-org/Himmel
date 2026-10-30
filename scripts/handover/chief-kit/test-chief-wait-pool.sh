@@ -289,5 +289,35 @@ timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.
 check "(8134) the current-version rows are listed before the later-version pool row" "HIMMEL-10,HIMMEL-11,HIMMEL-20" "$(grep '^LOCAL' "$WORK/lp2.out" | cut -f2 | paste -sd, -)"
 check "(8134) the later-version pool row has its own heading after the current one" "yes" "$([ "$(grep -n '^# dispatchable in v1.0.1' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" -lt "$(grep -n '^# dispatchable in other versions' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" ] && echo yes)"
 
+# --- (6604) pool-stale= wakes once per newly stale disposition key ----------------------------
+stale_line() { # <pool-stale value>
+    sed "s/capacity=UNDERFILLED:7/capacity=ok pool-stale=$1/" "$STUB/tick.line.orig" > "$STUB/tick.line"
+}
+cp "$STUB/tick.line" "$STUB/tick.line.orig"
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"  # the sections above re-point it at the real dispatcher
+rm -f "$STUB/pool.rows" "$STUB/dispositions" "$STUB/pool.fail" "$STUB/pool.slow" "$STUB/pool.partial"  # an empty, resolved pool: only pool-stale= can wake here
+I="$(new_inbox st)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/st1.out" 15
+check "(6604) a stale disposition key wakes the waiter (rc 0)" "0" "$rc"
+check "(6604) the wake names the key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st1.out")"
+arm "$I" "$WORK/st2.out" 4
+check "(6604) the same stale key does not wake again on a re-arm" "124" "$rc"
+stale_line '2:HIMMEL-7120,HIMMEL-6866'
+arm "$I" "$WORK/st3.out" 15
+check "(6604) a newly stale key wakes and names only the new key" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/st3.out")"
+stale_line '?'
+arm "$I" "$WORK/st4.out" 4
+check "(6604) an unreadable blocker (?) never wakes" "124" "$rc"
+check "(6604) an unreadable blocker keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line '0'
+arm "$I" "$WORK/st5.out" 4
+check "(6604) pool-stale=0 never wakes" "124" "$rc"
+check "(6604) pool-stale=0 clears the marker" "no" "$([ -e "$I.wait.stale" ] && echo yes || echo no)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/st6.out" 15
+check "(6604) a key that left and rejoined wakes again" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st6.out")"
+cp "$STUB/tick.line.orig" "$STUB/tick.line"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

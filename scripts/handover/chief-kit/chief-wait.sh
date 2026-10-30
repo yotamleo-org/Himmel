@@ -132,6 +132,11 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
+# pool-stale= (`n:KEY,...`, `?` for an unreadable blocker, never in the action key) wakes
+# once per newly stale disposition key (`WAKE pool-stale <KEYS>`): the marker `<inbox>.wait.stale`
+# holds the keys last seen, shrinks to the current set on every sample (a key that leaves and
+# rejoins wakes again) and has no re-wake window. A `?`-only value keeps the marker (an
+# unreadable blocker is not an all-clear); a gone or 0 field clears it.
 # procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
 # chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
 # to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
@@ -808,6 +813,23 @@ unwatched_wake() {
     set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
 }
 
+stale_file="$inbox.wait.stale"
+# stale_wake: <pool-stale= value, `n:KEY,...` with an optional `?`> — prints the keys the marker does
+# not hold yet (comma-joined) and succeeds; the marker then holds the whole current set.
+stale_wake() {
+    local keys new
+    keys="$(printf '%s\n' "${1#*:}" | tr ',' '\n' | grep -E '^[A-Z]+-[0-9]+$')"  # swallow-ok: no key is an empty list, grep's no-match rc
+    [ -n "$keys" ] || return 1
+    if [ -e "$stale_file" ]; then
+        new="$(printf '%s\n' "$keys" | grep -vxFf "$stale_file" | paste -sd, -)"  # swallow-ok: no new key is an empty list, grep's no-match rc
+    else
+        new="$(printf '%s\n' "$keys" | paste -sd, -)"
+    fi
+    printf '%s\n' "$keys" > "$stale_file" 2>/dev/null
+    [ -n "$new" ] || return 1
+    printf '%s\n' "$new"
+}
+
 doctor_file="$inbox.wait.doctor"
 # doctor_wake: <doctor= ids, comma-joined> — a doctor WARN/FAIL id the marker does not hold. Prints
 # the new ids (comma-joined) and succeeds; the marker then holds the whole current set. No re-wake
@@ -1295,6 +1317,16 @@ while :; do
                     if doctor_new="$(doctor_wake "$doctor_val")"; then
                         printf 'WAKE doctor %s\n%s\n' "$doctor_new" "$tick_line"
                         exit_reason='wake-doctor'; exit 0
+                    fi ;;
+            esac
+            stale_val="$(field pool-stale "$tick_line")"
+            case "$stale_val" in
+                ''|0|skip) rm -f "$stale_file" ;;
+                '?') ;;
+                *)
+                    if stale_new="$(stale_wake "$stale_val")"; then
+                        printf 'WAKE pool-stale %s\n%s\n' "$stale_new" "$tick_line"
+                        exit_reason='wake-pool-stale'; exit 0
                     fi ;;
             esac
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
