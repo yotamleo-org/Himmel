@@ -36,7 +36,7 @@ const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${
 type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: Row[]; processOrphans?: ProcessOrphan[] | null };
 
 const POLL_MS = 5000;
-const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
+const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", waiting: "waiting", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 // The markers worth a word beside the state; LIVE, READY and WRAPPED are what the state already says.
 const LOUD = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
@@ -190,6 +190,10 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {tab === "trends" && !board && <><p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p><div className="bd-trends"><RollupCards rollup={rollup} /></div></>}
         {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
         {tab === "fleet" && <>
+        <details className="bd-legend">
+          <summary>Session state legend</summary>
+          <p><span className="state running">running</span>: busy · <span className="state waiting">waiting</span>: background shell · <span className="state waiting">waiting for GO</span>: ready for the chief · <span className="state idle">idle</span>: at the prompt · wrapped: finished · unknown: state unavailable</p>
+        </details>
         {s.attention.operator.length > 0 && <Section id="attention" title="Needs you" count={s.attention.operator.length} initial={true} className="fleet-attention bd-need">
           <Attention label="Needs you" items={s.attention.operator} needs={[]} token={token} now={now} />
         </Section>}
@@ -206,6 +210,11 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length + (g.showConsole ? 1 : 0), 0)} initial={true}>
           {s.running.length === 0 && <p className="quiet">{`No running sessions${filtering(filters) ? " match the filters" : ""}.${counts.finished > 0 ? ` ${counts.finished} finished below.` : ""}`}</p>}
           {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now} />)}
+        </Section>}
+        {fleet && !unavailable && s.cadences.length > 0 && <Section id="cadences" title="Cadences" count={s.cadences.length} initial={true} className="fleet-cadences">
+          <ul className="fleet-rows fleet-tree" aria-label="Cadence sessions">
+            {s.cadences.map((r) => <FleetNode key={r.name} node={{ row: r, kids: [] }} live={all} hops={s.hops} token={token} now={now} />)}
+          </ul>
         </Section>}
         {s.finished.length > 0 && <Section id="finished" title="Finished" count={counts.finished} initial={false} force={filters.finished} className="fleet-closed">
           <Finished entries={s.finished} token={token} now={now} />
@@ -411,6 +420,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
   const href = rowHref(token, row);
   const bctx = useBoardCtx(), card = cardOf(bctx, row.name);
   const desc = descriptionOf(row);
+  const actText = row.cloud ? PHASE[row.cloud.phase] : row.activity ? `${row.activity.tool} · ${row.activity.summary}` : "no activity yet";
   return (
     <div className={`fleet-row ${cls}${open ? " open" : ""}`} id={rowId(row.name)} tabIndex={-1}>
       <div className="fleet-line">
@@ -418,7 +428,8 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
         <span className={`fleet-dot ${cls}`} aria-hidden="true" />
         <span className="fleet-who">
           <NameLink row={row} token={token} />
-          {desc && <span className="fleet-desc fleet-age" title={desc}>{desc}</span>}
+          {row.cadence && <span className="fleet-chip" title="scheduled cadence session">{`cadence · ${row.cadence}`}</span>}
+          {desc &&<span className="fleet-desc fleet-age" title={desc}>{desc}</span>}
           {row.ticket && <span className="fleet-chip">{row.ticket}</span>}
           {row.pr !== null && <span className="fleet-age">{`PR ${row.pr}`}</span>}
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}
@@ -428,9 +439,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           <StageDots leg={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
           <StateChip board={bctx.board} state={card.leg.state} />
         </span>}
-        <span className="fleet-act">
-          {row.cloud ? PHASE[row.cloud.phase] : row.activity ? `${row.activity.tool} · ${row.activity.summary}` : "no activity yet"}
-        </span>
+        <span className="fleet-act" title={actText}>{actText}</span>
         {row.usage?.fill != null ? <Meter fill={row.usage.fill} /> : <span className="fleet-nometer" />}
         <span className={`state ${cls}`}>{state}</span>
       </div>

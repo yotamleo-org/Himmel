@@ -51,8 +51,8 @@
 # ponytail: `tick.sh` does not persist its output today, so the `--- tick` tail is
 # only populated when something writes <workdir>/last-tick.txt; nothing does yet.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, no .ps1 twin (the checker and
-# the launch-path exports are the only consumers, all bash).
+# Platform guard: POSIX bash 3.2+ (the checker and the launch-path exports are
+# the only consumers, all bash).
 set -o pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -145,9 +145,16 @@ EOF
         fi
     fi
 
-    local body
+    # `workers:` first; the pre-rename line only while legacy names are on.
+    # shellcheck source=scripts/lib/legacy-names.sh
+    . "$REPO/scripts/lib/legacy-names.sh" 2>/dev/null
+    local body workers_v
+    workers_v="$(live_field workers)"
+    if [ -z "$workers_v" ] && type legacy_names_on >/dev/null 2>&1 && legacy_names_on; then
+        workers_v="$(live_field legs)"
+    fi
     body="lock=$lock
-workers=$(live_field legs)
+workers=$workers_v
 queue=$(live_field queue)
 last-go=$(live_field 'last GO')
 go-file=$gofile

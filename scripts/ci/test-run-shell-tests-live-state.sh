@@ -31,8 +31,7 @@
 #       runner's unlisted suite under a hard outer suite reaches no scheduler,
 #       and the two shims never exec each other in a loop.
 #
-# Platform guard: bash-only, like every suite in this family, and no .ps1
-# twin. L3 is skipped on Git Bash, where the runner does not take the census.
+# Platform guard: bash-only, like every suite in this family; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-run-shell-tests-live-state.sh
 #

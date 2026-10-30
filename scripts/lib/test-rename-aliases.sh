@@ -284,8 +284,8 @@ EOF
 check "scripts/lib/chief-context.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/chief-context.sh" ] && echo yes || echo no)"
 check "scripts/lib/console-context.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/console-context.sh" ] && echo yes || echo no)"
 check "the registry has no console-context.sh row" "0" "$(printf '%s\n' "$ROWS" | awk -F'\t' '$2 == "console-context.sh"' | wc -l | tr -d ' ')"
-stub .claude/commands/supervisor-session.md .claude/commands/chief.md
-stub .claude/commands/console.md .claude/commands/chief.md
+check "the permanent /supervisor-session alias exists" yes "$([ -f "$ROOT/.claude/commands/supervisor-session.md" ] && echo yes || echo no)"
+check "the permanent /console alias exists" yes "$([ -f "$ROOT/.claude/commands/console.md" ] && echo yes || echo no)"
 
 # --- slice V4b: the worker scripts, each old name a registry row ---
 V4B_ROWS='close-wrapped-leg.sh|close-wrapped-worker.sh|identifier|old-to-new|V4b|X
@@ -324,8 +324,8 @@ for gone in scripts/handover/chief-kit/close-wrapped-legs.sh scripts/handover/ch
   docs/handover/leg-brief-template.md docs/handover/leg-preface.md; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
-stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
-stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
+check "the permanent /himmel-ops:supervisor-session alias exists" yes "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/supervisor-session.md" ] && echo yes || echo no)"
+check "the permanent /himmel-ops:console alias exists" yes "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/console.md" ] && echo yes || echo no)"
 for a in supervisor-session console; do
   check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/chief/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/chief/chief.sh" ] && echo yes || echo no)"
   check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`" "$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
@@ -574,7 +574,7 @@ check "HIMMEL_CONSOLE_ is do-not-rename" "do-not-rename keep" "$(awk -F'\t' '$1 
 reject_old_flag() {
   local script="$1" old="$2" want_rc="$3" out rc accepted
   local runner=(bash)
-  case "$script" in *.py) runner=(python3 -I) ;; esac
+  case "$script" in *.py) runner=(python3 -I) ;; *.mjs) runner=(node) ;; esac
   shift 3
   out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/old-flags" -- \
     env HIMMEL_LEGACY_NAMES=1 "${runner[@]}" "$ROOT/$script" "$@" 2>&1)"
@@ -586,7 +586,7 @@ reject_old_flag() {
 }
 reject_old_flag scripts/eval/cache-health-cadence.sh --console 64 run --console
 reject_old_flag scripts/eval/lane-quality/pilot-4869/pilot.sh --console 1 init --console
-reject_old_flag scripts/handover/chief-kit/action-zero.sh --render-legs 2 --render-legs
+reject_old_flag scripts/handover/chief-kit/board.mjs --legs 2 --doc "$FT/missing" --legs unused
 reject_old_flag scripts/handover/chief-kit/close-wrapped-worker.sh --console 2 --console
 reject_old_flag scripts/handover/chief-kit/headed-arm-worker.sh --console 2 --console
 reject_old_flag scripts/handover/chief-kit/worker-digest-step.sh --console 2 --console unused
@@ -600,6 +600,70 @@ reject_old_flag scripts/handover/chief-kit/verdict-go.sh --leg 2 unused NO-GO un
 reject_old_flag scripts/lanes/srt-poc/push-wrapper.sh --leg-branch 20 --leg-branch
 reject_old_flag scripts/eval/worker-digest/worker_ledger.py --leg 2 record --digest "$FT/missing.json" --leg N1
 reject_old_flag scripts/eval/worker-digest/worker_ledger.py --console 2 record --digest "$FT/missing.json" --console unused
+
+# The last filename aliases must not dispatch even with compatibility enabled.
+# Empty argv keeps the waiter and PR publisher before any external action;
+# the UI and plugin read only the private handover root / explicit initiative.
+mkdir -p "$FT/forwarders/root"
+while IFS='|' read -r old new want_rc want_output; do
+  out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/forwarders" -- \
+    env HIMMEL_LEGACY_NAMES=1 HANDOVER_DIR="$FT/forwarders/root" HIMMEL_REPO="$ROOT" HIMMEL_INITIATIVE=prcheck,pr \
+    bash "$ROOT/$old" 2>&1)"
+  rc=$?
+  check "$old never dispatches with legacy names on" 127 "$rc"
+  out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/forwarders" -- \
+    env HIMMEL_LEGACY_NAMES=1 HANDOVER_DIR="$FT/forwarders/root" HIMMEL_REPO="$ROOT" HIMMEL_INITIATIVE=prcheck,pr \
+    bash "$ROOT/$new" 2>&1)"
+  rc=$?
+  check "$new retains its canonical status" "$want_rc" "$rc"
+  case "$out" in *"$want_output"*) canonical=yes ;; *) canonical=no ;; esac
+  check "$new retains its canonical output" yes "$canonical"
+done <<'FORWARDERS'
+scripts/config-ui/legs.sh|scripts/config-ui/workers.sh|0|{"manifest": null, "legs": []}
+marketplace/plugins/himmel-ops/scripts/legs.sh|marketplace/plugins/himmel-ops/scripts/workers.sh|0|prcheck pr
+scripts/handover/chief-kit/console-wait.sh|scripts/handover/chief-kit/chief-wait.sh|2|usage: chief-wait.sh
+scripts/lanes/leg-burn.sh|scripts/lanes/worker-burn.sh|2|usage: worker-burn.sh
+scripts/lanes/leg-pr-open.sh|scripts/lanes/worker-pr-open.sh|1|Usage: worker-pr-open.sh
+FORWARDERS
+
+# Valid required arguments distinguish refusal from a silently re-accepted flag.
+# --lock-only prevents probes/rendering, and the real lock status reads only
+# this scratch doc/root. The mutant changes only the removed parser arm.
+mkdir -p "$FT/action-zero/root"
+az_doc="$FT/action-zero/root/chief.md"
+printf '# chief\n\n## Live state\nlegs: none\n' > "$az_doc"
+python3 -I - "$ROOT/scripts/handover/chief-kit/action-zero.sh" "$FT/action-zero/mutant.sh" <<'PY'
+import pathlib
+import sys
+source = pathlib.Path(sys.argv[1]).read_text()
+arm = '        --render-workers) render=1; shift ;;'
+assert source.count(arm) == 1
+pathlib.Path(sys.argv[2]).write_text(source.replace(arm, '        --render-workers|--render-legs) render=1; shift ;;'))
+PY
+check "action-zero silent-alias mutant was built" 0 "$?"
+action_zero_rejects() {
+  local script="$1"
+  bash "$HERE/clean-sandbox.sh" --scratch "$FT/action-zero/sandbox" -- \
+    env HIMMEL_LEGACY_NAMES=1 bash "$script" --doc "$az_doc" --root "$FT/action-zero/root" \
+    --repo "$ROOT" --lock-only --render-legs >"$FT/action-zero/out" 2>&1
+  az_probe_rc=$?
+  [ "$az_probe_rc" -eq 2 ]
+}
+action_zero_rejects "$ROOT/scripts/handover/chief-kit/action-zero.sh"
+check "action-zero rejects --render-legs with valid doc/root" 0 "$?"
+action_zero_rejects "$FT/action-zero/mutant.sh"
+check "the full-argv action-zero probe detects silent alias re-acceptance" 1 "$?"
+check "the silent-alias mutant succeeds rather than failing to start" 0 "${az_probe_rc:-not-recorded}"
+case "$(<"$FT/action-zero/out")" in *"== LOCK (this document)"*free*) reached=yes ;; *) reached=no ;; esac
+check "the silent-alias mutant reaches the real lock reader" yes "$reached"
+out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/action-zero/sandbox" -- \
+  env HIMMEL_LEGACY_NAMES=1 bash "$ROOT/scripts/handover/chief-kit/action-zero.sh" \
+  --doc "$az_doc" --root "$FT/action-zero/root" --repo "$ROOT" --lock-only --render-workers 2>&1)"
+rc=$?
+check "action-zero accepts canonical --render-workers with valid doc/root" 0 "$rc"
+case "$out" in *"== LOCK (this document)"*free*) canonical=yes ;; *) canonical=no ;; esac
+check "action-zero canonical lock-only control reaches the real lock reader" yes "$canonical"
+check "action-zero parser probes leave the scratch doc unchanged" "$(printf '# chief\n\n## Live state\nlegs: none')" "$(<"$az_doc")"
 
 # A full argv must not turn the removed option into the session name.
 out="$(bash "$HERE/clean-sandbox.sh" --scratch "$FT/old-flags" -- \
@@ -621,6 +685,19 @@ case "$out" in *" test-worker $FT/brief.md $FT/signal 4102444800 $FT/launch.log 
 check "headed-arm canonical launch keeps positional arguments aligned" yes "$aligned"
 case "$out" in *"HIMMEL_CONSOLE_NAME=test-chief "*) routed=yes ;; *) routed=no ;; esac
 check "headed-arm canonical chief retains the bus wire identity" yes "$routed"
+
+# The old Telegram auto-action op names are plain unknown tokens: they enable nothing,
+# and the renamed op still enables itself (negative control).
+if command -v bun >/dev/null 2>&1; then
+  ops="$(env HIMMEL_LEGACY_NAMES=1 AUTO_ACTION_TS="$ROOT/scripts/telegram/auto-action.ts" bun -e '
+    const { parseEnabledOps, KNOWN_OPS } = await import(process.env.AUTO_ACTION_TS);
+    const on = (v) => [...parseEnabledOps(v, KNOWN_OPS)].join(",");
+    console.log(["launch-leg", "launch-bypass-leg", "relaunch-console", "launch-worker", "relaunch-chief"].map(on).join("|"));
+  ' 2>&1)"
+  check "auto-action.ts enables the renamed ops only, never the old op names" "|||launch-worker|relaunch-chief" "$ops"
+else
+  echo "SKIP: bun absent, auto-action.ts old-op rows not run" >&2
+fi
 
 if [ "$FAIL" -ne 0 ]; then
   echo "test-rename-aliases: $FAIL failed, $PASS passed" >&2

@@ -20,7 +20,7 @@
 //
 // ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
 // last refresh's own spacing from focus-state.
-// Platform guard: Node only, no .ps1 twin by design (shell-only harness).
+// Platform guard: Node only (shell-only harness).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -5,8 +5,7 @@
 # the forge seam passes to gh, never in the Bash command a worker types) is a
 # grep, not a guess. No network, no real gh/PR.
 #
-# Platform guard: no .ps1 twin, by design. Bash plus git — it runs under git
-# bash on Windows unchanged (same requirements as the SUT it exercises).
+# Platform guard: Bash plus git (same requirements as the SUT it exercises).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

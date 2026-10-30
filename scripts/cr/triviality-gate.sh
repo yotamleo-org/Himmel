@@ -106,7 +106,7 @@ classify_triviality() {
     esac
   # process substitution, NOT `printf ... | while`. A pipe would
   # run this loop in a subshell, silently discarding nfiles/nlines/any_safety/
-  # all_docs; a here-string can deadlock MSYS bash on diffs near 64 KiB.
+  # all_docs.
   done < <(printf '%s\n' "$diff_text")
 
   # Non-empty but pathless diff (no 'diff --git' parsed): fail closed.

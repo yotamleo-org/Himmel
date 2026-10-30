@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/lib/user-claude-md.sh's wire_user_claude_md
 # (the user-scope "working principles" CLAUDE.md installer
-# wired into adopt.sh's/adopt.ps1's do_core(), user-scope branch only).
+# wired into adopt.sh's do_core(), user-scope branch only).
 #
 # Every case runs against its own TEMP HOME fixture (mktemp -d) and an
 # explicit --target path under it -- this NEVER reads or writes the real
@@ -160,7 +160,7 @@ else
 fi
 rm -rf "$home5"
 
-# ── Case 6: two-target install -- adopt.sh/adopt.ps1 call
+# ── Case 6: two-target install -- adopt.sh calls
 #            wire_user_claude_md once per user-scope rule file (Claude Code's
 #            ~/.claude/CLAUDE.md AND Codex's ~/.codex/AGENTS.md) so a Codex
 #            adopter isn't left with the principles nowhere. Fresh HOME -> both

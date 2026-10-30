@@ -1319,7 +1319,9 @@ echo "ok: HIMMEL-7001 an adopted project carries merge-on-green.sh and its ancho
 # status line producer's real output (five_hour / seven_day / extra_usage /
 # primaries_refreshed_at / account).
 uptarget="$work/usagepf-6965"; uphome="$work/usagepf-6965-home"
-mkdir -p "$uptarget" "$uphome"
+mkdir -p "$uptarget" "$uphome/.himmel"
+# The fleet cap is gate policy: the preflight reads it from this config.json.
+printf '{"policy":{"HIMMEL_FLEET_CAP":50}}\n' > "$uphome/.himmel/config.json"
 HOME="$pchome" git init -q -b main "$uptarget"
 out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
       --profile core --scope project --target "$uptarget" 2>&1) \
@@ -1342,7 +1344,7 @@ up_cache() {
 up_run() {
   (cd "$uptarget" && HOME="$uphome" CADENCE_USAGE_CACHE="$work/usagepf-6965-cache.json" \
      CADENCE_USAGE_LEDGER="$uphome/.himmel/cadence-ledger.jsonl" CADENCE_USAGE_SKIP_REFRESH=1 \
-     HIMMEL_FLEET_CAP=50 HIMMEL_FLEET_SLOTS="$work/usagepf-6965-slots" \
+     HIMMEL_POLICY_FOLLOWS_HOME=1 HIMMEL_FLEET_SLOTS="$work/usagepf-6965-slots" \
      bash scripts/lib/"$1" 2>"$work/usagepf-6965.err")
 }
 up_cache 10 20

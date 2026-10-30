@@ -12,9 +12,8 @@
 # PATH-stubbed schtasks/atq/at/crontab under --dry-run — except 9e/9f, which
 # exercise the WET crontab rewrite against a stdin-capturing crontab stub
 # (PATH puts the stub first, so the real crontab is never invoked).
-# Partial-delete residue detection (an open handle surviving rm) is covered
-# by the PS sibling test-uninstall.ps1 — bash has no portable way to hold an
-# open handle that blocks rm, so this suite does not assert it.
+# Partial-delete residue detection is not asserted here: bash has no portable
+# way to hold an open handle that blocks rm.
 set -uo pipefail
 
 CLI="$(cd "$(dirname "$0")" && pwd)/uninstall.sh"

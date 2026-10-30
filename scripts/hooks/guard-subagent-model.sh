@@ -35,15 +35,10 @@
 #
 # Bash 3.2-compatible. Exit codes: 0 allow; 2 deny.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Reads the hook payload from stdin and shells out to jq; NOT ported to native
-# PowerShell, and deliberately shipped without a .ps1 twin — hooks.json invokes
-# this script through hooks/run-hook-with-bash.js, so it runs under bash on
-# every platform himmel supports and a twin would be dead code. A real Windows
-# port (only needed if that wiring ever changes) would have to read the same
-# stdin JSON, reproduce the fail-open contract above exactly — absent
-# tool_input, wrong-typed fields and any parse failure all allow — and emit the
-# same permissionDecision object and 0/2 exit codes.
+# Platform guard: any POSIX bash 3.2+. Reads the hook payload from stdin and
+# shells out to jq; hooks.json invokes this script through
+# hooks/run-hook-with-bash.js, so it runs under bash on every platform himmel
+# supports.
 set -uo pipefail
 
 warn() { echo "guard-subagent-model: $*" >&2; }

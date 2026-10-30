@@ -42,7 +42,6 @@ README.md	  run. Windows is not supported. Details in the
 README.md	himmel is developed on Linux and macOS. **Windows (Git Bash, WSL) is not
 README.md	supported.** Windows support was dropped; nothing about Windows is claimed as
 README.md	| **Dropped** | Windows (Git Bash), WSL | Support was dropped: no CI gate, no guarantee. |
-docs/daily-loop.md	| Touches `*.sh`, `*.bash`, PowerShell files (`*.ps1`, `*.psm1`, `*.psd1`), `scripts/**`, `**/bin/*` | `Platforms tested: <os>` |
 docs/daily-loop.md	arch mac darwin wsl posix gitbash git-bash powershell pwsh`.
 docs/evals/README.md	| `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-27, n = 113 ruled findings over 27 PRs |
 docs/evals/README.md	| `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-27, n = 1,231 ruled findings over 362 PRs |
@@ -78,7 +77,6 @@ docs/handover/running-a-chief.md	`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Hai
 docs/handover/running-a-chief.md	and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
 docs/handover/running-a-chief.md	  `/Windows/1 newSession`), titled with the worker's session name.
 docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.**
-docs/operator-conventions.md	  No `.ps1` twin is needed or wanted: Windows is dropped and the old twins are removed.
 docs/operator-conventions.md	- **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs an operator decision that can't be pre-teed. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
 docs/operator-conventions.md	  prompting guide flags that Fable 5.1 can write denser than Fable 5
 docs/operator-conventions.md	qmd bun-install Windows hotfix (already a structural fix in
@@ -457,6 +455,61 @@ fi
 for page in $PENDING; do
   in_list "$page" "$(cat "$tmp/scope")" || bad "PENDING names $page, which is out of scope"
 done
+
+# No tracked shell or JS launcher calls pwsh or powershell. A
+# non-comment line counts when it runs the binary with a PowerShell flag or
+# passes its name to a spawn/exec call. PWSH_ALLOW lists the files that keep
+# such a line on purpose: negative fixtures that feed the string to a guard
+# and this file's own samples. An entry whose
+# file no longer carries a call fails, so the list only shrinks.
+PWSH_CALL=$'(^|[^A-Za-z0-9_.-])["\']?(pwsh|powershell)(\\.exe)?["\']?[[:space:]]+(-[A-Za-z]+([[:space:]]|$)|[^[:space:]]*\\.ps1)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\\([[:space:]]*.(pwsh|powershell)(\\.exe)?.[,)]'
+# The last three entries are Windows-only test branches kept until the win32
+# branch sweep removes them.
+PWSH_ALLOW='scripts/cr/test-cr-guarded-closure.sh
+scripts/docs/test-docs-dropped-terms.sh
+scripts/hermes/test-parity-guard.sh
+scripts/hooks/test-block-bare-qmd-query.sh
+scripts/hooks/test-block-destructive-commands-a.sh
+scripts/hooks/test-block-edit-live-settings.sh
+scripts/handover/test-merge-on-green.sh
+scripts/lib/test-worktree-inuse.sh
+scripts/test-clean-garden-accounting.sh'
+
+# pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call;
+# a file grep cannot read is printed as path:0 so it fails the check, not passes it.
+pwsh_calls() {
+  while IFS= read -r f; do
+    hits=$(grep -n -i -E "$PWSH_CALL" "$1/$f" 2> /dev/null)
+    [ $? -le 1 ] || echo "$f:0:unreadable or matcher error"
+    [ -z "$hits" ] || printf '%s\n' "$hits" | grep -v -E '^[0-9]+:[[:space:]]*(#|//)' | sed "s#^#$f:#"
+  done
+}
+
+mkdir "$tmp/fx"
+printf '#!/usr/bin/env bash\npwsh -File ./install.ps1\n/usr/bin/pwsh -File x\n"pwsh" -File x\npwsh install.ps1\npwsh -NoLogo -File x.ps1\n' > "$tmp/fx/launch.sh"
+printf "spawn('powershell.exe', ['-File', 'x.ps1']);\n" > "$tmp/fx/launch.mjs"
+printf '# pwsh -File old.ps1\nPowerShell is dropped.\n' > "$tmp/fx/clean.sh"
+fx_hits=$(printf '%s\n' launch.sh launch.mjs clean.sh missing.sh | pwsh_calls "$tmp/fx")
+case $fx_hits in *launch.sh:2:*) ok "no-pwsh-invocation flags a launcher running pwsh -File" ;; *) bad "no-pwsh-invocation misses pwsh -File in a launcher" ;; esac
+case $fx_hits in *launch.sh:3:*launch.sh:4:*launch.sh:5:*launch.sh:6:*) ok "no-pwsh-invocation flags a pathed, a quoted, a script-argument and a flag-first pwsh call" ;; *) bad "no-pwsh-invocation misses a pathed, quoted, script-argument or flag-first pwsh call" ;; esac
+case $fx_hits in *missing.sh:0:*) ok "no-pwsh-invocation fails on a file it cannot read" ;; *) bad "no-pwsh-invocation passes a file it cannot read" ;; esac
+case $fx_hits in *launch.mjs:1:*) ok "no-pwsh-invocation flags a spawn of powershell" ;; *) bad "no-pwsh-invocation misses a spawn of powershell" ;; esac
+case $fx_hits in *clean.sh*) bad "no-pwsh-invocation flags a comment or prose mention" ;; *) ok "no-pwsh-invocation ignores comments and prose" ;; esac
+
+git -C "$ROOT" ls-files '*.sh' '*.js' '*.mjs' '*.cjs' '*.ts' > "$tmp/tracked" || : > "$tmp/tracked"
+grep -v -x -F "$PWSH_ALLOW" "$tmp/tracked" > "$tmp/launchers"
+pwsh_found=$(pwsh_calls "$ROOT" < "$tmp/launchers")
+if [ ! -s "$tmp/launchers" ]; then
+  bad "no tracked launcher list: git ls-files failed or found nothing"
+elif [ -n "$pwsh_found" ]; then
+  printf '%s\n' "$pwsh_found"
+  bad "a tracked launcher calls pwsh or powershell (listed above)"
+else
+  ok "no tracked launcher calls pwsh or powershell"
+fi
+while IFS= read -r f; do
+  [ -n "$(printf '%s\n' "$f" | pwsh_calls "$ROOT")" ] || bad "PWSH_ALLOW names $f, which carries no pwsh call: remove it"
+done <<< "$PWSH_ALLOW"
 
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

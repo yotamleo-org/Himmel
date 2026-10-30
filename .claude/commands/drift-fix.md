@@ -1,5 +1,5 @@
 ---
-description: Resolve upstream fork-drift end-to-end — bump auto-bumpable pins, open a PR, and land it on main once approved.
+description: Bump drifted upstream pins via a PR.
 argument-hint: [--dry-run]
 ---
 

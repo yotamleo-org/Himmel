@@ -72,10 +72,9 @@
 #
 # Seam: WORKER_SESSION_BURN_PROJECTS_DIR overrides the transcript root that a bare session
 # name is resolved against (default: ~/.claude/projects).
-# Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq, and the
-# thing it reads is a Claude Code transcript, which is the same JSONL on every
-# platform - it runs under git bash unchanged; only the default transcript root
-# is Linux/macOS-shaped, and WORKER_SESSION_BURN_PROJECTS_DIR overrides that.
+# Platform guard: POSIX bash 3.2+ plus jq, and the thing it reads is a Claude
+# Code transcript (JSONL); the default transcript root is Linux/macOS-shaped,
+# and WORKER_SESSION_BURN_PROJECTS_DIR overrides that.
 set -u
 
 

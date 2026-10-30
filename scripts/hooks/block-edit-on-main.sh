@@ -119,10 +119,9 @@ canon() {
     # on empty output. Python branch uses pathlib.resolve(strict=False) so
     # non-existent paths still canonicalise, and as_posix() forces forward
     # slashes for cross-branch consistency with realpath -m. Python calls
-    # are armored (py_armor_capture): a wedged Store stub reads
+    # are armored (py_armor_capture): a wedged interpreter reads
     # as a nonzero rc -> empty output -> the caller's fail-closed exit 2,
-    # never a hung hook. The WindowsApps stub ships python.exe too, so the
-    # plain-python branch is armored via PY_ARMOR_BIN.
+    # never a hung hook. The plain-python branch is also armored via PY_ARMOR_BIN.
     case "$CANON_MODE" in
         realpath-m)
             # prim-ok: the probed realpath -m arm of this guard's own mode dispatch; canon_path would change its allow/deny decisions

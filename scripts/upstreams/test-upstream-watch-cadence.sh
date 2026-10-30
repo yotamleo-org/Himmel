@@ -2,23 +2,14 @@
 # scripts/upstreams/test-upstream-watch-cadence.sh — hermetic suite for the
 # daily upstream-watch scheduler cadence.
 #
-# Never touches the real scheduler or observability registry: schtasks is
-# replaced by a fake via UPSTREAMWATCH_SCHTASKS, the runner dir by
+# Never touches the real scheduler or observability registry: crontab is
+# replaced by a fake via UPSTREAMWATCH_CRONTAB, the runner dir by
 # UPSTREAMWATCH_BAT_DIR, the himmel root by UPSTREAMWATCH_HIMMEL_ROOT pointing
 # at a stub tree, and — critically — HIMMEL_OBSERVABILITY_CONFIG is pinned to
 # a per-test scratch file on EVERY invocation below. Omitting that seam is
 # exactly the leak seen live: a hand smoke-test that
 # forgot it registered a real task into ~/.himmel/observability.json and paged
 # on the resulting scheduled-task-missing alert.
-#
-# The Windows/schtasks half (win_arm/win_disarm, exercised via run_cadence)
-# needs a real `cygpath` to convert paths for schtasks — schtasks itself is
-# faked via UPSTREAMWATCH_SCHTASKS, but cygpath is NOT, so on a non-Windows
-# host cmd_arm dies with "cygpath not on PATH; cannot convert paths for
-# schtasks". That half is gated below the same way
-# scripts/luna/test-qmd-cadence.sh and scripts/graphify/test-ggs-cadence.sh
-# gate their own Windows-only schtasks suites, loudly skipping on Linux/macOS
-# rather than failing on a dependency this suite cannot fake.
 #
 # bash 3.2-safe: no mapfile, no associative arrays.
 set -uo pipefail
@@ -55,43 +46,6 @@ make_root() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/upstreams/upstream-watch.sh"
   chmod +x "$root/scripts/upstreams/upstream-watch.sh"
   printf '%s' "$root"
-}
-
-# Fake schtasks — same shape as test-drift-fix-cadence.sh's, single task name.
-make_fake_schtasks() {
-  local state="$1" f="$1/schtasks"
-  cat > "$f" <<'FAKE'
-#!/usr/bin/env bash
-state="$(dirname "$0")"
-echo "$*" >> "$state/calls"
-tn=""
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "/tn" ]; then tn="$a"; fi
-  prev="$a"
-done
-armed_file="$state/armed_${tn:-_none_}"
-case "$1" in
-  /query)
-    if [ -f "$state/query_fail" ]; then
-      echo "some unrecognized localized failure" >&2; exit 1
-    fi
-    if [ -f "$armed_file" ]; then
-      echo "TaskName: \\$tn"
-      if [ ! -f "$state/no_next_run_$tn" ]; then
-        echo "Next Run Time: 1/1/2027 6:00:00 AM"
-      fi
-      echo "Status: Ready"
-      exit 0
-    fi
-    echo "ERROR: The system cannot find the file specified." >&2; exit 1 ;;
-  /create) touch "$armed_file"; echo "SUCCESS: created"; exit 0 ;;
-  /delete) rm -f "$armed_file"; echo "SUCCESS: deleted"; exit 0 ;;
-esac
-exit 0
-FAKE
-  chmod +x "$f"
-  printf '%s' "$f"
 }
 
 # Fake crontab — same shape as test-drift-fix-cadence.sh's: `-l` prints the
@@ -147,13 +101,6 @@ make_bare_anchor() {
   printf '%s' "$anchor"
 }
 
-new_scratch() {
-  local state
-  state=$(mktemp -d "${TMPDIR:-/tmp}/upstream-watch-cadence-test.XXXXXX")
-  make_fake_schtasks "$state" >/dev/null
-  printf '%s' "$state"
-}
-
 new_scratch_posix() {
   local state
   state=$(mktemp -d "${TMPDIR:-/tmp}/upstream-watch-cadence-test-posix.XXXXXX")
@@ -161,24 +108,8 @@ new_scratch_posix() {
   printf '%s' "$state"
 }
 
-# run_cadence <state> <args...> — every call pins HIMMEL_OBSERVABILITY_CONFIG
-# to the scratch state dir; nothing here may ever reach the real registry.
-run_cadence() {
-  local state="$1"; shift
-  UPSTREAMWATCH_SCHTASKS="$state/schtasks" \
-    UPSTREAMWATCH_BAT_DIR="$state/bat" \
-    UPSTREAMWATCH_HIMMEL_ROOT="$state/root" \
-    UPSTREAMWATCH_PLATFORM=windows \
-    HIMMEL_OBSERVABILITY_CONFIG="$state/observability.json" \
-    HIMMEL_PROVENANCE_DIR="$state/provenance" \
-    bash "$CADENCE" "$@"
-}
-
-# run_cadence_posix — same contract as run_cadence but the POSIX/crontab arm
-# path (UPSTREAMWATCH_CRONTAB), never touching a real cygpath/wscript
-# dependency the Windows path needs. HANDOVER_DIR resolution is
-# pinned to a scratch external anchor so this stays hermetic regardless of
-# this station's own real HANDOVER_DIR/`.env` — see make_anchor.
+# Pin scheduler, runner, registry, provenance and HANDOVER_DIR to scratch.
+# HANDOVER_DIR resolution uses a scratch external anchor — see make_anchor.
 run_cadence_posix() {
   local state="$1"; shift
   local anchor; anchor=$(make_anchor "$state")
@@ -215,118 +146,20 @@ registry_has_task() {
   [ -f "$reg" ] && jq -e '.expected_tasks // [] | index("HIMMEL-UpstreamWatch")' "$reg" >/dev/null 2>&1
 }
 
-# --- Windows (schtasks) suite — gated: cmd_arm's XML path shells out to a
-# real cygpath, which is faked nowhere in this suite (unlike schtasks itself,
-# via UPSTREAMWATCH_SCHTASKS). Same platform predicate + SKIP voice as
-# scripts/luna/test-qmd-cadence.sh and scripts/graphify/test-ggs-cadence.sh.
-case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*) RUN_WINDOWS_SUITE=1 ;;
-    *)
-        RUN_WINDOWS_SUITE=0
-        echo "SKIP: Windows/schtasks suite (Windows-only — needs a real cygpath, not faked here)"
-        ;;
-esac
+echo "== test: dropped Windows scheduler is refused before probing tools =="
+for platform in windows msys cygwin win32 MINGW64_NT; do
+  out=$(UPSTREAMWATCH_PLATFORM="$platform" bash "$CADENCE" status 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then pass "$platform status is rc=2"; else fail "$platform status rc=$rc: $out"; fi
+  assert_has "$out" "unsupported platform" "$platform is rejected at the platform gate"
+done
 
-if [ "$RUN_WINDOWS_SUITE" = "1" ]; then
-echo "== test: arm =="
-state=$(new_scratch); root=$(make_root); mv "$root" "$state/root"
-out=$(run_cadence "$state" arm 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "arm: rc=0"; else fail "arm: expected rc=0 got rc=$rc; output: $out"; fi
-assert_has "$out" "ARMED" "arm: reports ARMED"
-if registry_has_task "$state/observability.json"; then
-  pass "arm: registered in scratch registry"
-else
-  fail "arm: HIMMEL-UpstreamWatch missing from scratch registry"
-fi
-
-echo "== test: status (armed) =="
-out=$(run_cadence "$state" status 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "status: rc=0"; else fail "status: expected rc=0 got rc=$rc"; fi
-assert_has "$out" "ARMED" "status: reports ARMED"
-
-echo "== test: arm again — dedup =="
-assert_rc 3 "dedup: re-arm without --force" run_cadence "$state" arm
-
-echo "== test: arm --force replaces =="
-out=$(run_cadence "$state" arm --time 07:15 --force 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "force re-arm: rc=0"; else fail "force re-arm: expected rc=0 got rc=$rc; output: $out"; fi
-assert_has "$out" "--force set" "force re-arm: acknowledges force"
-
-echo "== test: disarm removes task AND registry entry =="
-out=$(run_cadence "$state" disarm 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "disarm: rc=0"; else fail "disarm: expected rc=0 got rc=$rc; output: $out"; fi
-assert_has "$out" "cadence disarmed" "disarm: confirms disarmed"
-if registry_has_task "$state/observability.json"; then
-  fail "disarm: HIMMEL-UpstreamWatch still in registry"
-else
-  pass "disarm: registry entry removed"
-fi
-
-echo "== test: status (not armed) =="
-out=$(run_cadence "$state" status 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "status after disarm: rc=0"; else fail "status after disarm: expected rc=0 got rc=$rc"; fi
-assert_has "$out" "not armed" "status after disarm: reports not armed"
-
-echo "== test: disarm no-op still cleans a stale registry entry =="
-# Simulate the leak shape directly: a registry entry exists with
-# no matching live task (e.g. the task was deleted outside this script).
-state2=$(new_scratch); root2=$(make_root); mv "$root2" "$state2/root"
-jq -n '{flows:[{name:"upstream-watch",cadence_seconds:86400}], expected_tasks:["HIMMEL-UpstreamWatch"]}' \
-  > "$state2/observability.json"
-if ! registry_has_task "$state2/observability.json"; then
-  fail "setup: seeded registry should carry the stale entry"
-fi
-out=$(run_cadence "$state2" disarm 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "no-op disarm: rc=0"; else fail "no-op disarm: expected rc=0 got rc=$rc; output: $out"; fi
-assert_has "$out" "disarm is a no-op" "no-op disarm: reports no-op"
-if registry_has_task "$state2/observability.json"; then
-  fail "no-op disarm: stale registry entry should be gone"
-else
-  pass "no-op disarm: stale registry entry cleaned"
-fi
-
-echo "== test: dry-run arm makes no changes (task or registry) =="
-state3=$(new_scratch); root3=$(make_root); mv "$root3" "$state3/root"
-out=$(run_cadence "$state3" arm --dry-run 2>&1); rc=$?
-if [ "$rc" -eq 0 ]; then pass "dry-run arm: rc=0"; else fail "dry-run arm: expected rc=0 got rc=$rc"; fi
-assert_has "$out" "dry-run complete" "dry-run arm: reports dry-run complete"
-if [ -f "$state3/armed_HIMMEL-UpstreamWatch" ]; then
-  fail "dry-run arm: task should not be created"
-else
-  pass "dry-run arm: no task created"
-fi
-if registry_has_task "$state3/observability.json"; then
-  fail "dry-run arm: registry should be untouched"
-else
-  pass "dry-run arm: registry untouched"
-fi
-
-fi
-
-# --time is validated BEFORE the platform gate in upstream-watch-cadence.sh
-# (see its own comment: "Validate input BEFORE the platform gate so a bad
-# value is rc 1 everywhere, not rc 2 on whichever platform happens to gate
-# first") — confirmed empirically on this Linux box: run_cadence's
-# UPSTREAMWATCH_PLATFORM=windows never reaches cygpath/schtasks for this
-# input. So this assertion is a cross-platform contract of the production
-# script, not part of the Windows/schtasks suite, and must run on every host.
-#
-# Asserted on the MESSAGE, not just rc=1 (CR [codex-1]): rc alone is vacuous
-# here, because a failed setup (new_scratch/make_root/mv) would ALSO exit 1 —
-# on a different error entirely — and read as a pass. --time is validated
-# before the payload check, so the rc cannot distinguish the two; the
-# diagnostic can.
+# Validate inputs before the platform gate, even on an unsupported host.
 echo "== test: bad --time rejected =="
-state=$(new_scratch); root=$(make_root); mv "$root" "$state/root"
-out=$(run_cadence "$state" arm --time nonsense 2>&1); rc=$?
+out=$(UPSTREAMWATCH_PLATFORM=windows bash "$CADENCE" arm --time nonsense 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "bad --time (rc=1)"; else fail "bad --time — expected rc=1 got rc=$rc; output: $out"; fi
 assert_has "$out" "--time must be HH:MM" "bad --time: rejected for the right reason"
 
-# --- POSIX (crontab) path — the Windows cases above
-# only exercise win_arm/win_disarm via UPSTREAMWATCH_PLATFORM=windows;
-# cron_arm/cron_disarm (including the publish-before-install
-# ordering) need their own coverage. No cygpath/wscript dependency here — the
-# fake crontab is the only external tool cron_arm/cron_disarm touch.
+# POSIX arm/disarm and publish-before-install ordering.
 echo "== test: POSIX arm =="
 pstate=$(new_scratch_posix); proot=$(make_root); mv "$proot" "$pstate/root"
 out=$(run_cadence_posix "$pstate" arm 2>&1); rc=$?

@@ -5,7 +5,7 @@
 # directory ($HIMMEL_REPO -> git toplevel -> canonical install path -> error).
 # This test EXTRACTS that snippet from the command file (single source of truth,
 # so the test can't drift from the prose) and exercises every branch.
-# bash-only (the snippet is bash inside the command; no .ps1 twin). Needs git.
+# bash-only (the snippet is bash inside the command). Needs git.
 # HIMMEL_REPO is never exported globally here (only via per-call env prefix) so
 # the unset-cases see it genuinely absent.
 set -u

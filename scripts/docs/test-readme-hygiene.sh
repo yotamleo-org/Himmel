@@ -8,7 +8,7 @@
 #   4. The README shows the flow graph, and docs/assets/flows.svg is exactly
 #      what scripts/docs/render-flows.py renders (no hand-edited or stale SVG).
 #
-# Platform guard (gitbash-only): bash 3.2+, grep, cmp, python3.
+# Platform guard: bash 3.2+, grep, cmp, python3.
 # Usage: bash scripts/docs/test-readme-hygiene.sh
 set -u
 

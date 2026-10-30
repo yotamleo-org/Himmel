@@ -13,7 +13,7 @@ function load() {
 }
 
 export function renderWorkflow() {
-  return `<h2>Workflow</h2><p class="sub">How a change travels from a console's dispatch to a merged pull request: the lanes, the gates, and the refusals between them.</p><div id="workflow-graph" aria-label="Development graph"></div>`;
+  return `<header class="ph"><h1>Workflow</h1><p>How a change travels from a console's dispatch to a merged pull request: the lanes, the gates, and the refusals between them.</p></header><section class="box"><div id="workflow-graph" aria-label="Development graph"></div></section>`;
 }
 
 // Draws the graph into #workflow-graph once renderWorkflow's markup is in the page; returns the function that undoes it,

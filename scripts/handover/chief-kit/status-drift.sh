@@ -46,7 +46,7 @@
 # Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); the rest is
 # read by the lib.
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

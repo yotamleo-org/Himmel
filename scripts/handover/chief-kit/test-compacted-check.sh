@@ -17,7 +17,7 @@
 #   9. an optional `, acked:` trailer is compared only when the bullet has one
 #  10. a non-COMPACTED prose bullet mentioning the word is never picked
 #
-# Hermetic: temp dir only. Platform guard (gitbash-only): POSIX bash 3.2+.
+# Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

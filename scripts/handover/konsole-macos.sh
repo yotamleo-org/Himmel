@@ -9,8 +9,8 @@
 # -- every existing test asserts their exact argv shape, and a shim keeps
 # that contract instead of forking it per platform.
 #
-# Platform guard (gitbash-only): macOS only, by construction - it shells out
-# to `open -a`, which exists nowhere else. No .ps1 twin: Linux keeps using
+# Platform guard: macOS only, by construction - it shells out
+# to `open -a`, which exists nowhere else. Linux keeps using
 # konsole directly, so it never reaches this file.
 # headed-arm.sh only defaults to it when `uname -s` is Darwin.
 #

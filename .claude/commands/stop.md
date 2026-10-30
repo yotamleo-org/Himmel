@@ -1,5 +1,5 @@
 ---
-description: Graceful-halt marker for in-progress /afk-shift sessions.
+description: Halt a running /afk-shift.
 argument-hint: [--hard | --reset]
 ---
 

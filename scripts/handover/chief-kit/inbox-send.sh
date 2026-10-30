@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # inbox-send.sh — chief-side write for the claudex file inbox.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
+# PLATFORM GUARD: Linux-only. The claudex lane
 # (scripts/claude-codex, konsole + /proc/$CLAUDE_PID/cmdline session-name
 # recovery) is Linux-only; this sender has no Windows-side consumer to serve.
 #
@@ -48,8 +48,7 @@
 # audit, same as a genuinely forged one.
 #
 # bash 3.2-safe, shellcheck-clean. Linux/konsole-only lane (claudex workers run
-# on Linux today, same as headed-arm-worker.sh's sibling in this directory) — no
-# .ps1 twin.
+# on Linux today, same as headed-arm-worker.sh's sibling in this directory).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

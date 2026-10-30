@@ -25,7 +25,7 @@ cat > "$G" <<'JSON'
  {"id": "b", "label": "b()", "source_file": "scripts/b.sh"},
  {"id": "c", "label": "c()", "source_file": "docs/c.md"},
  {"id": "leaf", "label": "leaf\u001b[31m()", "source_file": "scripts/leaf.sh"},
- {"id": "old", "label": "old()", "source_file": "archive/windows/old.ps1"},
+ {"id": "old", "label": "old()", "source_file": "archive/legacy/old.sh"},
  {"id": "nofile", "label": "concept"}
 ], "links": [
  {"source": "a", "target": "hub_main", "relation": "calls"},

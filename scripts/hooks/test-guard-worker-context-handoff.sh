@@ -6,8 +6,7 @@
 # session: a transcript whose first user turn is the launcher's
 # `load <doc> and continue`, plus the claude-hud snapshot context-fill.sh reads.
 #
-# bash 3.2-safe. Platform guard (gitbash-only): env vars, jq, sha256sum/shasum,
-# touch -t; no .ps1 twin (the hook has none).
+# bash 3.2-safe. Platform guard: env vars, jq, sha256sum/shasum, touch -t.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -303,7 +302,7 @@ doc "- 10:01 FINDING — question"
 check "last marker FINDING -> block" block "$LS"
 doc "- 10:01 LIVE — working"
 
-echo "== a resumed leg: its own RESUME-named doc is not its hand-off =="
+echo "== a resumed worker: its own RESUME-named doc is not its hand-off =="
 DOC2="$DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md"
 printf -- '# resumed\n\n## Results\n\n- 10:01 LIVE — resumed\n' > "$DOC2"
 session "load $DOC2 and continue"

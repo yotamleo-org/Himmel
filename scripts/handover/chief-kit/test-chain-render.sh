@@ -3,7 +3,7 @@
 # The graph is a fixture file in chain-graph.py --json shape and the Jira mirror is a temp dir, so the suite
 # never touches the network, Jira or GitHub. Both states of the chain_render flag run here.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only; this suite exercises a kit script.
+# PLATFORM GUARD: The chief kit is Linux-only; this suite exercises a kit script.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -12,6 +12,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'SKIP - test-chain-render.sh (python3 not installed)\n'
     exit 0
 fi
+python3 -I "$HERE/fixtures/chain-parity/check.py" render || exit 1
 W="$(mktemp -d "${TMPDIR:-/tmp}/chain-render-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0

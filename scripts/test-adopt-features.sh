@@ -1176,9 +1176,7 @@ echo "ok: HIMMEL-3332 S4 a preserved HANDOVER_DIR is recorded as noop preexisted
 # dir), isolating it from this script's hermetic PATH scrub. That scrub dropped
 # node/npm/bun suite-wide for the adopt.sh scenarios above; the wizard suites
 # shell out to bin.js and need a REAL node, so each is invoked with `saved_path`
-# (the pre-scrub environment PATH captured above). The .ps1 shim suite is
-# skipped — not failed — when pwsh is absent, mirroring the availability guard
-# in scripts/himmelctl/test/test-wizard-bootstrap.sh.
+# (the pre-scrub environment PATH captured above).
 #
 # run_wizard_suite <relpath-under-scripts/> <label> — run one suite under the
 # real PATH; tail its log + fail on non-zero (cleans up via this script's trap).

@@ -31,7 +31,7 @@
 # arm/status/disarm: this same file doubles as its own cadence
 # controller, structural sibling of upstream-watch-cadence.sh (ONE daily task,
 # no claude session, no --model). `bash pull-cadence.sh <arm|status|disarm>`
-# manages the OS scheduler (schtasks on Windows, crontab on Linux/macOS); ANY
+# manages crontab on Linux/macOS; ANY
 # other invocation (including the existing bare `bash pull-cadence.sh`, used
 # both by the operator directly and by the armed task itself) is the
 # connector-pull path below, byte-for-byte unchanged.
@@ -48,11 +48,10 @@
 # via its daily re-consent log lines.
 #
 # Test seams (used by test-pull-cadence-arm.sh):
-#   PULLCADENCE_SCHTASKS      command invoked instead of `schtasks` (Windows)
 #   PULLCADENCE_CRONTAB       command invoked instead of `crontab` (POSIX)
-#   PULLCADENCE_BAT_DIR       where the persistent runner (.bat/.vbs/.sh) + log live
+#   PULLCADENCE_BAT_DIR       where the persistent runner (.sh) + log live
 #   PULLCADENCE_HIMMEL_ROOT   overrides the resolved primary checkout outright
-#   PULLCADENCE_PLATFORM      force `windows` or `posix` (else: derived from OSTYPE)
+#   PULLCADENCE_PLATFORM      force `posix` (else: derived from OSTYPE)
 #   HIMMEL_OBSERVABILITY_CONFIG  (existing seam, scripts/lib/observability-registry.sh)
 #
 # Exit codes (arm/status/disarm; mirrors upstream-watch-cadence.sh exactly):
@@ -66,7 +65,7 @@
 # unaffected — rc=75 (re-consent needed) is a REAL failure for the cadence
 # report (unlike upstream-watch's rc=10, nothing here remaps it to 0).
 #
-# Bash 3.2-safe (macOS / Git Bash on Windows).
+# Bash 3.2-safe (Linux/macOS).
 set -euo pipefail
 
 RECONSENT_EXIT=75
@@ -74,7 +73,6 @@ RECONSENT_EXIT=75
 case "${1:-}" in
   arm|status|disarm|-h|--help)
     TASK_NAME="HIMMEL-LunaVitalsPull"
-    SCHTASKS_BIN="${PULLCADENCE_SCHTASKS:-schtasks}"
     CRONTAB_BIN="${PULLCADENCE_CRONTAB:-crontab}"
 
     _CADENCE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -115,7 +113,6 @@ case "${1:-}" in
         HIMMEL_ROOT="$(cd "$_CADENCE_SCRIPT_DIR/../.." 2>/dev/null && cd .. && pwd)"
     fi
     PULL_SCRIPT_SH="$HIMMEL_ROOT/scripts/luna-vitals/connectors/pull-cadence.sh"
-    PULL_SCRIPT_PS1="$HIMMEL_ROOT/scripts/luna-vitals/connectors/pull-cadence.ps1"
 
     # shellcheck source=../../lib/cadence-format.sh
     # shellcheck disable=SC1091
@@ -191,13 +188,12 @@ EOF
     fi
 
     case "${PULLCADENCE_PLATFORM:-${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}}" in
-        windows|msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
         posix|linux*|darwin*|freebsd*|Linux|Darwin) PLATFORM=posix ;;
         *) PLATFORM=unknown ;;
     esac
     if [ "$PLATFORM" = "unknown" ]; then
         echo "ERR pull-cadence: unsupported platform '${OSTYPE:-unknown}'." >&2
-        echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+        echo "    Supported: Linux/macOS (crontab)" >&2
         exit 2
     fi
 
@@ -217,16 +213,9 @@ EOF
     }
 
     require_payload() {
-        if [ "$PLATFORM" = "windows" ]; then
-            if [ ! -f "$PULL_SCRIPT_PS1" ]; then
-                echo "ERR pull-cadence: pull-cadence.ps1 not found at $PULL_SCRIPT_PS1" >&2
-                exit 2
-            fi
-        else
-            if [ ! -f "$PULL_SCRIPT_SH" ]; then
-                echo "ERR pull-cadence: pull-cadence.sh not found at $PULL_SCRIPT_SH" >&2
-                exit 2
-            fi
+        if [ ! -f "$PULL_SCRIPT_SH" ]; then
+            echo "ERR pull-cadence: pull-cadence.sh not found at $PULL_SCRIPT_SH" >&2
+            exit 2
         fi
     }
 
@@ -248,296 +237,6 @@ EOF
                 || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log.prev" 2>/dev/null || echo '?')
             echo "  prev log   $log.prev (last write: $mtime)"
         fi
-    }
-
-    # -- Windows (schtasks) ---------------------------------------------------
-
-    run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-    # emit_bat <pwsh_win_esc> <ps1_win_esc> <log_esc> — the Action runs pwsh
-    # directly against pull-cadence.ps1 (no bash-on-Windows detour needed —
-    # unlike the sibling cadences this fires a NATIVE .ps1 twin that already
-    # exists), captures its rc, and exits with that same rc unmodified (rc=75
-    # is a real reported failure, see the header).
-    emit_bat() {
-        local pwsh_win_esc="$1" ps1_win_esc="$2" log_esc="$3"
-        printf '@echo off\r\n'
-        printf 'rem pull-cadence runner\r\n'
-        printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-        cadence_bat_editor_set
-        printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_esc" "$log_esc" "$log_esc"
-        printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_esc"
-        printf '"%s" -NoProfile -File "%s" >> "%s" 2>&1\r\n' "$pwsh_win_esc" "$ps1_win_esc" "$log_esc"
-        printf 'set RC=%%ERRORLEVEL%%\r\n'
-        printf 'echo [exit rc=%%RC%%] >> "%s"\r\n' "$log_esc"
-        printf 'exit /b %%RC%%\r\n'
-    }
-
-    xml_escape() {
-        printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-    }
-
-    emit_task_xml() {
-        local bat_win="$1" start_time="$2" vbs_win vbs_args
-        vbs_win=$(cadence_vbs_path "$bat_win")
-        vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-        cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel pull-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-      <ScheduleByDay>
-        <DaysInterval>1</DaysInterval>
-      </ScheduleByDay>
-    </CalendarTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-    }
-
-    schtasks_create_xml() {
-        local name="$1" start_time="$2" bat_win="$3" err_file="$4"
-        local xml_file xml_win rc
-        if ! xml_file=$(mktemp -t pull-cadence.xml.XXXXXX 2>"$err_file"); then
-            return 1
-        fi
-        emit_task_xml "$bat_win" "$start_time" > "$xml_file"
-        if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-            rm -f "$xml_file"; return 1
-        fi
-        set +e
-        run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-        rc=$?
-        set -e
-        rm -f "$xml_file"
-        return "$rc"
-    }
-
-    NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-    QUERY_OUT=""
-    query_task() {
-        local name="$1" rc err_file
-        err_file=$(mktemp -t pull-cadence.err.XXXXXX)
-        set +e
-        QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-        rc=$?
-        set -e
-        if [ "$rc" -eq 0 ]; then rm -f "$err_file"; return 0; fi
-        if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-            rm -f "$err_file"; return 1
-        fi
-        echo "ERR pull-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        return 2
-    }
-
-    win_rollback() {
-        run_schtasks /delete /tn "$TASK_NAME" /f >/dev/null 2>&1 || true
-        local rc=0
-        query_task "$TASK_NAME" 2>/dev/null || rc=$?
-        if [ "$rc" -eq 1 ]; then
-            rm -f "$BAT_DIR/pull-cadence.bat" "$BAT_DIR/pull-cadence.vbs"
-        fi
-    }
-
-cmd_arm() {
-        command -v cygpath >/dev/null 2>&1 || {
-            echo "ERR pull-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-            exit 2
-        }
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR pull-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        cadence_require_wsh "pull-cadence" || exit 2
-        require_payload
-        warn_if_unconfigured
-
-        local pwsh_posix pwsh_win
-        if ! pwsh_posix=$(command -v pwsh 2>/dev/null); then
-            echo "ERR pull-cadence: 'pwsh' not on PATH at arm time" >&2
-            exit 2
-        fi
-        if ! pwsh_win=$(cygpath -w "$pwsh_posix" 2>&1); then
-            echo "ERR pull-cadence: cygpath -w failed for pwsh path: $pwsh_win" >&2
-            exit 4
-        fi
-
-        local dedup_rc=0
-        query_task "$TASK_NAME" || dedup_rc=$?
-        case "$dedup_rc" in
-            0)
-                if [ "$FORCE" -eq 1 ]; then
-                    echo "pull-cadence: --force set; existing task $TASK_NAME will be replaced by /create /f" >&2
-                else
-                    {
-                        echo "ERR pull-cadence: already armed: $TASK_NAME."
-                        echo ""
-                        echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-                        echo "    bash scripts/luna-vitals/connectors/pull-cadence.sh status"
-                    } >&2
-                    exit 3
-                fi
-                ;;
-            1) : ;;
-            *) exit 2 ;;
-        esac
-
-        local ps1_win
-        if ! ps1_win=$(cygpath -w "$PULL_SCRIPT_PS1" 2>&1); then
-            echo "ERR pull-cadence: cygpath -w failed for pull-cadence.ps1: $ps1_win" >&2; exit 4
-        fi
-        [ "$DRY_RUN" -eq 0 ] && mkdir -p "$BAT_DIR"
-
-        local pwsh_win_esc ps1_win_esc log_win log_esc
-        pwsh_win_esc=$(cadence_cmd_escape "$pwsh_win")
-        ps1_win_esc=$(cadence_cmd_escape "$ps1_win")
-
-        local bat_file="$BAT_DIR/pull-cadence.bat" vbs_file="$BAT_DIR/pull-cadence.vbs" bat_win
-        if ! bat_win=$(cygpath -w "$bat_file" 2>&1); then
-            echo "ERR pull-cadence: cygpath -w failed for bat file: $bat_win" >&2; exit 4
-        fi
-        log_win="${bat_win%.bat}.log"
-        log_esc=$(cadence_cmd_escape "$log_win")
-
-        if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY pull-cadence: would write $bat_file:"
-            emit_bat "$pwsh_win_esc" "$ps1_win_esc" "$log_esc" | sed 's/^/    /'
-            echo "DRY pull-cadence: would write $vbs_file:"
-            cadence_vbs_wrapper "$bat_win" | sed 's/^/    /'
-            echo "DRY pull-cadence: would schtasks /create /tn $TASK_NAME /xml <daily $FIRE_TIME, StartWhenAvailable=true> /f"
-            emit_task_xml "$bat_win" "$FIRE_TIME" | sed 's/^/    /'
-            echo "pull-cadence: dry-run complete (no changes made)"
-            return 0
-        fi
-
-        local bat_tmp vbs_tmp
-        bat_tmp=$(mktemp "$BAT_DIR/.pull-cadence.bat.XXXXXX")
-        vbs_tmp=$(mktemp "$BAT_DIR/.pull-cadence.vbs.XXXXXX")
-        if ! emit_bat "$pwsh_win_esc" "$ps1_win_esc" "$log_esc" > "$bat_tmp"; then
-            echo "ERR pull-cadence: could not write staged runner" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-        fi
-        if ! cadence_vbs_wrapper "$bat_win" > "$vbs_tmp"; then
-            echo "ERR pull-cadence: could not write staged shim" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-        fi
-        for final_to_check in "$bat_file" "$vbs_file"; do
-            if [ -e "$final_to_check" ] && [ ! -f "$final_to_check" ]; then
-                echo "ERR pull-cadence: $final_to_check exists and is not a regular file — refusing to publish" >&2
-                rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-            fi
-        done
-        if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
-            echo "ERR pull-cadence: failed to publish shim to $vbs_file" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-        fi
-        rm -f "$vbs_tmp"
-        if ! atomic_write "$bat_file" < "$bat_tmp"; then
-            echo "ERR pull-cadence: failed to publish runner to $bat_file" >&2
-            rm -f "$bat_tmp"; exit 4
-        fi
-        rm -f "$bat_tmp"
-
-        local err_file
-        err_file=$(mktemp -t pull-cadence.err.XXXXXX)
-        if ! schtasks_create_xml "$TASK_NAME" "$FIRE_TIME" "$bat_win" "$err_file"; then
-            echo "ERR pull-cadence: schtasks /create $TASK_NAME failed:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            win_rollback
-            exit 4
-        fi
-        rm -f "$err_file"
-
-        observability_register_cadence pull-cadence 86400 "$TASK_NAME"
-
-        local verify_rc=0
-        query_task "$TASK_NAME" || verify_rc=$?
-        if [ "$verify_rc" -ne 0 ] || ! grep -qi 'Next Run Time' <<< "$QUERY_OUT"; then
-            echo "ERR pull-cadence: post-arm verify failed for $TASK_NAME — rolling back." >&2
-            win_rollback
-            echo "    Re-arm with: bash scripts/luna-vitals/connectors/pull-cadence.sh arm --time $FIRE_TIME" >&2
-            exit 4
-        fi
-
-        arm_summary "schtasks task" "$bat_file" "$log_win"
-    }
-
-cmd_status() {
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR pull-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        echo "pull-cadence status:"
-        local rc=0 next status_rc=0
-        query_task "$TASK_NAME" || rc=$?
-        case "$rc" in
-            0)
-                next=$(printf '%s' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 | sed 's/^[^:]*: *//' | tr -d '\r') || true
-                cadence_registered_status "$TASK_NAME" " (next run: ${next:-?})" || status_rc=2
-                ;;
-            1) echo "not armed  $TASK_NAME" ;;
-            *) exit 2 ;;
-        esac
-        echo "  runner     $BAT_DIR/pull-cadence.bat"
-        status_log "$BAT_DIR/pull-cadence.log"
-        return "$status_rc"
-    }
-
-cmd_disarm() {
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR pull-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        local rc=0
-        query_task "$TASK_NAME" || rc=$?
-        case "$rc" in
-            1)
-                if [ "$DRY_RUN" -eq 0 ]; then
-                    rm -f "$BAT_DIR/pull-cadence.bat" "$BAT_DIR/pull-cadence.vbs"
-                    observability_unregister_cadence pull-cadence "$TASK_NAME"
-                fi
-                echo "pull-cadence: nothing armed — disarm is a no-op"
-                return 0
-                ;;
-            2) exit 2 ;;
-        esac
-        if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY pull-cadence: would schtasks /delete /tn $TASK_NAME /f"
-            echo "DRY pull-cadence: would remove $BAT_DIR/pull-cadence.bat + .vbs"
-            echo "DRY pull-cadence: no changes made"
-            return 0
-        fi
-        local err_file
-        err_file=$(mktemp -t pull-cadence.err.XXXXXX)
-        if ! run_schtasks /delete /tn "$TASK_NAME" /f >/dev/null 2>"$err_file"; then
-            echo "ERR pull-cadence: schtasks /delete $TASK_NAME failed:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 4
-        fi
-        rm -f "$err_file" "$BAT_DIR/pull-cadence.bat" "$BAT_DIR/pull-cadence.vbs"
-        observability_unregister_cadence pull-cadence "$TASK_NAME"
-        echo "pull-cadence: cadence disarmed"
     }
 
     # -- POSIX (crontab) -------------------------------------------------------
@@ -602,7 +301,7 @@ cmd_disarm() {
         printf 'exit "$_rc"\n'
     }
 
-    cron_status() {
+cmd_status() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -623,7 +322,7 @@ cmd_disarm() {
         status_log "$BAT_DIR/pull-cadence.log"
     }
 
-    cron_disarm() {
+cmd_disarm() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -653,7 +352,7 @@ cmd_disarm() {
         echo "pull-cadence: cadence disarmed"
     }
 
-    cron_arm() {
+cmd_arm() {
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pull-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
             exit 2
@@ -770,12 +469,9 @@ EOF
 
     _cadence_rc=0
     case "$PLATFORM:$SUBCMD" in
-        windows:arm)    cmd_arm ;;
-        windows:status) cmd_status || _cadence_rc=$? ;;
-        windows:disarm) cmd_disarm ;;
-        posix:arm)      cron_arm ;;
-        posix:status)   cron_status || _cadence_rc=$? ;;
-        posix:disarm)   cron_disarm ;;
+        posix:arm)      cmd_arm ;;
+        posix:status)   cmd_status || _cadence_rc=$? ;;
+        posix:disarm)   cmd_disarm ;;
     esac
     exit "$_cadence_rc"
     ;;

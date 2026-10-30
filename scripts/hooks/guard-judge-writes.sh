@@ -13,9 +13,8 @@
 # load there. The plugin copy is byte-identical to this file and sources
 # nothing, for the same reason.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the judge lane (headed-arm-worker.sh --judge)
-# is Linux-only.
+# Platform guard: any POSIX bash 3.2+. The judge lane
+# (headed-arm-worker.sh --judge) is Linux-only.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_JUDGE=1 in this process's environment AND one
 # of:
@@ -52,8 +51,9 @@
 # shell-separator words, not a shell parser — eval, a wrapper script that does
 # the write itself, curl to an API, or a write verb this vocabulary does not
 # list still pass, and Bash file writes (a redirect, rm/mv/tee/sed -i, an
-# interpreter -c) are not screened at all: the structural fix is HIMMEL-4607
-# (judge-lane sandbox or permission profile). Over-matching (a read whose text
+# interpreter -c) are not screened at all: the structural fix is a
+# judge-lane sandbox or permission profile.
+# ponytail: structural fix HIMMEL-4607. Over-matching (a read whose text
 # merely carries a verb word, e.g. `gh pr view 12 --comments` is fine but
 # `git log --grep push` denies) is the safe direction.
 #

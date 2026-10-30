@@ -125,6 +125,7 @@ stubbed `claude`/`codex`/`pwsh` — it never spends a token.
 
 Three non-obvious things the runner depends on, in both directions:
 
+<!-- mem:be914dcc9d8c -->
 - **Codex hook trust is keyed to the absolute `hooks.json` path**
   (`~/.codex/config.toml` → `[hooks.state.'<abs path>:<event>:<i>:<j>']`), so a
   fresh clone at a fresh path is untrusted and its hooks would silently **not
@@ -195,6 +196,7 @@ PreToolUse contract mirrors Claude Code's:
   Windows-runner subsection below for the two traps that follow. A hook entry may
   carry `commandWindows` (alias `command_windows`) as a per-platform override.
 
+<!-- mem:ee5e4645b352 -->
 **The bugs (3 — the third found only by live verification).** himmel's original
 hand-ported `.codex/hooks.json` used `bash $CLAUDE_PROJECT_DIR/scripts/hooks/…`,
 which fails on Windows under Codex because (1) `$CLAUDE_PROJECT_DIR` is **unset**

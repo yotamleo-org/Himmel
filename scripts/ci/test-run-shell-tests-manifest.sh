@@ -18,7 +18,7 @@
 #   RM6  a shard that records a listed suite as `notfound` is refused
 #        (the aggregator's real `--list .` output is the check)
 #
-# Platform guard: bash-only, no .ps1 twin; the shards run on Linux CI.
+# Platform guard: bash-only; the shards run on Linux CI.
 #
 # Usage: bash scripts/ci/test-run-shell-tests-manifest.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.

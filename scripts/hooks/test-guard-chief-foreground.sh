@@ -127,7 +127,7 @@ expect "chief, timeout 2m: denied" 2 \
     "$(run_hook yes "timeout 2m $K/ready-check.sh 12 abc" absent)"
 expect "chief, timeout 90 chief-wait.sh (unbounded waiter): denied" 2 \
     "$(run_hook yes "timeout 90 $K/chief-wait.sh --doc x" absent)"
-expect "chief, timeout 90 console-wait.sh (the old waiter name): denied" 2 \
+expect "chief, timeout 90 console-wait.sh (retired, unlisted name): allowed" 0 \
     "$(run_hook yes "timeout 90 $K/console-wait.sh --doc x" absent)"
 expect "chief, timeout 90 run-suite.sh (suite): denied" 2 \
     "$(run_hook yes "timeout 90 $K/run-suite.sh x" absent)"

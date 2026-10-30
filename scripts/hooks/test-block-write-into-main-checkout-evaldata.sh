@@ -9,8 +9,8 @@
 # command (the shared tokenizer), so a quoted, escaped or spaced spelling of a
 # shadowing word or a PATH change is the same word (rows 218-220), and an eval
 # of ANY variable is denied (a variable set by an earlier call is not seen).
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+ (same as the
-# guard; no .ps1 twin). A sibling of test-block-write-into-main-checkout.sh,
+# Platform guard: any POSIX bash 3.2+ (same as the guard). A sibling of
+# test-block-write-into-main-checkout.sh,
 # split out so the parent suite stays under the CI per-suite cap; the harness
 # below is a trimmed copy of the -wrappers sibling's (same fixtures).
 #
@@ -177,6 +177,31 @@ _r5098 "227f control: second heredoc, literal body"    allow "cat <<'A' >/dev/nu
 # past 8 KiB the crude fallback cannot name a command held in a variable
 _r5098 "228e control: padded variable argument"        allow ": ${_PAD}; ls \"\$HOME\""
 _r5098 "228f control: padded assignment from date"     allow ": ${_PAD}; x=\$(date); echo \"\$x\""
+# the stub count of a clause is taken in 128-character windows (0-127, 128-255,
+# 256-383): a substitution whose stub sits at index 128 (first character of the
+# second window) or 257 (second character of the third) must still be counted,
+# or its body goes unscanned and the write inside it passes. Those two indexes
+# are the ones a stride of 129 skips; the pads differ by 129 for that reason.
+# After "echo " pads 120 and 249 put the stub there: they are the only pads in
+# 110-135 and 240-265 a stride-129 counter lets through (measured by sweeping).
+_r5098 "228fa substitution stub at index 128 reaches its body" block "echo ${_PAD:0:120}\$(touch @P@/pwned)"
+_r5098 "228fb substitution stub at index 257 reaches its body" block "echo ${_PAD:0:249}\$(touch @P@/pwned)"
+_r5098 "228fc control: stub at index 128 over a benign body"   allow "echo ${_PAD:0:120}\$(date)"
+# the counter itself against the whole-string expression it replaces, with one
+# stub on each side of both window edges
+eval "$(sed -n '/^_bwimc_count_stubs() {/,/^}/p' "$DIRECT")"
+_cs_S=$'\001'
+_cs_x=$(printf '%0300d' 0)
+for _cs_p in 126 127 128 129 130 254 255 256 257 258; do
+    _cs_t="${_cs_x:0:$_cs_p}${_cs_S}${_cs_x:$((_cs_p+1))}"
+    _cs_old="${_cs_t//[!$'\001']/}"
+    _bwimc_count_stubs "$_cs_t"
+    if [ "$_BWIMC_CNT" -eq 1 ] && [ "$_BWIMC_CNT" -eq "${#_cs_old}" ]; then
+        ok "228fd stub count at index $_cs_p equals the whole-string count"
+    else
+        bad "228fd stub count at index $_cs_p: got $_BWIMC_CNT, whole-string ${#_cs_old}, want 1"
+    fi
+done
 _r5098 "228l control: padded quoted heredoc of prose"   allow "cat > @W@/n.md <<'EOF'${NL}\`foo\` is done! \`bar\` too.${NL}\$x\$y \"\$(cat f)\"${NL}${_PAD}${NL}EOF"
 _r5098 "228n control: padded closing backtick ends its word" allow ": ${_PAD}; echo \`date\`/x"
 _r5098 "228m control: padded <<- body with tab-led end" allow "cat > @W@/n.md <<-'EOF'${NL}\$x run${NL}${_PAD}${NL}	EOF"

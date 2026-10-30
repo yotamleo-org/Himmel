@@ -19,7 +19,7 @@
 # row. Never prints verdict=OK for a transcript it could not measure.
 #
 # Run it in an ordinary Bash call, not inside a Monitor (same as context-fill.sh).
-# Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
+# Platform guard: POSIX bash 3.2+, no mapfile.
 set -uo pipefail
 
 num_env() { # <name> <default> - a bad value warns and falls back, never disables the budget

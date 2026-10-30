@@ -31,7 +31,7 @@
 #   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
 #        ci.yml's plan step then falls back to its empty output (8 workers)
 #
-# Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
+# Platform guard: bash-only; Linux CI is the caller.
 #
 # Usage: bash scripts/ci/test-plan-shards.sh
 # Exit codes: 0 — all cases passed; 1 — at least one failed.

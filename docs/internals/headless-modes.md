@@ -11,6 +11,8 @@ and are not restated here.
 
 ## Decision table
 
+<!-- mem:313824cdace7 -->
+<!-- mem:15f327bdb7d7 -->
 | Job shape | Mode | Why |
 |---|---|---|
 | One-shot scripted call, output parsed as JSON, a cron/pipeline step, a CI-adjacent check | `claude -p` | Exits when the turn budget or the prompt is exhausted; nothing is left running to confirm, track or clean up later. |

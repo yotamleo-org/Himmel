@@ -7,7 +7,7 @@
 # compaction) and writes NOTHING for a session that is not a chief.
 #
 # Hermetic: temp HOME / HANDOVER_DIR / workdir; never the live ~/.claude or
-# /run/user/<uid>. PLATFORM GUARD: no .ps1 twin — bash 3.2-safe.
+# /run/user/<uid>. PLATFORM GUARD: bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -47,7 +47,7 @@ write_doc() {
 
 ## Live state
 
-legs: \`N1:nA:lA:111\`, \`N2:nB:lB:222\`
+workers: \`N1:nA:lA:111\`, \`N2:nB:lB:222\`
 queue: $1
 last GO: \`13:2222222\`
 acked: none
@@ -69,7 +69,7 @@ STDIN='{"session_id":"s1","transcript_path":"/x/t.jsonl","cwd":"/y","hook_event_
 # fire <stdin> [extra env assignments...] -- runs the hook in a scrubbed env.
 fire() {
     local in="$1"; shift
-    printf '%s' "$in" | env -u HIMMEL_CONSOLE_DOC -u HIMMEL_CONSOLE_WORKDIR -u HANDOVER_DIR \
+    printf '%s' "$in" | env -u HIMMEL_CONSOLE_DOC -u HIMMEL_CONSOLE_WORKDIR -u HANDOVER_DIR -u HIMMEL_LEGACY_NAMES \
         HOME="$HOME_FIX" HANDOVER_DIR="$ROOT" "$@" bash "$HOOK" 2>&1
 }
 
@@ -116,6 +116,22 @@ if grep -qx -- '--- tick' "$SNAP3" 2>/dev/null; then ok "--- tick separator pres
 if grep -qx 'tick fixture line' "$SNAP3" 2>/dev/null; then ok "tick output carried verbatim"; else bad "tick output missing"; fi
 bash "$CHECKER" "$TMP/bullet.md" "$WORK" >/dev/null 2>&1; crc=$?
 eq "checker still parses a snap with a tick tail (LOSS rc 1 vs the stale bullet, never rc 2)" "$crc" 1
+
+echo "== an old-spelling doc still reads (legacy names on) and is ignored when off =="
+OLDDOC="$ROOT/yotamleo/himmel/old-chief.md"
+# shellcheck disable=SC2016  # backtick spans are literal fixture text
+printf '# Old Chief\n\n## Live state\n\nlegs: `N1:nA:lA:111`, `N2:nB:lB:222`\nqueue: 12\n\n## Results\n' > "$OLDDOC"
+fire "$STDIN" HIMMEL_CONSOLE_DOC="$OLDDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-old" >/dev/null
+eq "old-spelling line read as workers= by default" "$(field "$TMP/work-old/precompact-1.snap" workers)" "N1:nA:lA:111, N2:nB:lB:222"
+fire "$STDIN" HIMMEL_CONSOLE_DOC="$OLDDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-old-off" HIMMEL_LEGACY_NAMES=0 >/dev/null; rc=$?
+eq "legacy names off: exits 0" "$rc" 0
+eq "legacy names off: a snapshot is still written" "$([ -f "$TMP/work-old-off/precompact-1.snap" ] && echo yes || echo no)" "yes"
+eq "legacy names off: workers= is present and empty" "$(grep -c '^workers=$' "$TMP/work-old-off/precompact-1.snap" 2>/dev/null)" "1"
+BOTHDOC="$ROOT/yotamleo/himmel/both-chief.md"
+# shellcheck disable=SC2016  # backtick spans are literal fixture text
+printf '# Both\n\n## Live state\n\nlegs: `N9:old`\nworkers: `N1:nA:lA:111`\nqueue: 12\n\n## Results\n' > "$BOTHDOC"
+fire "$STDIN" HIMMEL_CONSOLE_DOC="$BOTHDOC" HIMMEL_CONSOLE_WORKDIR="$TMP/work-both" >/dev/null
+eq "workers: wins when both lines exist" "$(field "$TMP/work-both/precompact-1.snap" workers)" "N1:nA:lA:111"
 
 echo "== sourced queue-lock.sh leaks nounset; a scrubbed env (no HOME) must still snapshot =="
 W4="$TMP/work-nounset"

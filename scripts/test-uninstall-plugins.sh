@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard: bash suite for the shell uninstaller and its stateful CLI
-# stub; no .ps1 twin because this tests the bash implementation directly.
+# stub; this tests the bash implementation directly.
 # WHY: installed scopes, safe marketplace removal, and
 # repair must be measured against a stateful CLI, never the operator's CLI.
 set -uo pipefail

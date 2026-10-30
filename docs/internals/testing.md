@@ -37,6 +37,8 @@ pre-commit and, through its suite, on every PR. It refuses each of these:
   or a `.github/workflows/` file;
 - a `scripts/one-shot/` helper that carries `# selector: tree-scan`.
 
+The current example is `scripts/one-shot/check-leg-term.sh [--root DIR] [--paths FILE]`, the leg-to-worker sweep's helper: it prints one `HIT path:line: text` per leftover line outside `leg-term-allow.tsv` and exits 0 clean, 1 on hits, 2 on a usage or git error.
+
 The gate keys on a directory and a filename and never reads shell text. A
 ratchet renamed to dodge the `test-no-*` key is still a new suite. A new suite
 needs a `suite-tiers.tsv` row, and that file is a trust path, so the
@@ -681,6 +683,7 @@ strip, which this gate keeps unchanged.
 
 ## VM round trip — station-only, never CI
 
+<!-- mem:8dbf61035c55 -->
 `VBOXMANAGE_PATH=/usr/bin/VBoxManage bash scripts/vm/provenance-roundtrip.sh <ref> [--expect-red] [--purge-state] [--profile core|all]`
 runs a seeded install/uninstall round trip on a real VirtualBox clone. The
 details are in `docs/setup/vms.md`. The script is deliberately not named

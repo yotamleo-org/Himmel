@@ -412,15 +412,10 @@ _abs() {
 }
 
 # _normalize <abs-path> -> lexically normalized, forward-slashed (collapse
-# `.` / `..` segments; translate MSYS `/c/...` -> `c:/...`). Lexical only -
-# no symlink resolution, no filesystem access.
+# `.` / `..` segments). Lexical only - no symlink resolution, no filesystem access.
 _normalize() {
     local p="$1"
     p="${p//\\//}"   # backslashes -> forward slashes (Windows paths)
-    case "$p" in
-        /[A-Za-z]/*) p="${p:1:1}:/${p:3}" ;;
-        /[A-Za-z])   p="${p:1:1}:/" ;;
-    esac
     local prefix=""
     case "$p" in
         [A-Za-z]:/*) prefix="${p%%:*}:"; p="${p#[A-Za-z]:}" ;;
@@ -441,9 +436,7 @@ _normalize() {
 }
 
 # _drive_of <path> -> echoes the LOWER-CASE drive letter of a path that is (or
-# lexically normalizes to) drive-rooted (`C:/x`, MSYS `/c/x`), or "" when the
-# path carries no determinable drive (a genuine POSIX root, or an MSYS MOUNT
-# form like `/tmp/...` whose backing drive is not lexically derivable).
+# lexically normalizes to) drive-rooted (`C:/x`), or "" for a POSIX root.
 # Parity twin of graphify-fence.sh's _drive_of.
 _drive_of() {
     local p; p="$(_normalize "$1")"

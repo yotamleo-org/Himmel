@@ -13,7 +13,7 @@
 #   worker     the five worker states; no D6 without end evidence
 #   wiring     LIVE bullet, opt-out, bad keys, failures never block
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

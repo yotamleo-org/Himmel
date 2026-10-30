@@ -14,6 +14,9 @@ const READ_ONLY = {
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// One compact command control; the full command is available on hover and to the existing copy handler.
+export const copyCommand = (command, label = "copy command") => `<button class="btn" type="button" data-act="copy" data-cmd="${esc(command)}" title="${esc(command)}">${esc(label)}</button>`;
+
 const kindOf = (r) => ({ doctor: "check", item: "item" }[r.source] || r.source);
 const remedyOf = (r) => (r.fix && r.fix.remedy) || "";
 const isTriage = (r) => r.health === "fail" || r.health === "warn";
@@ -30,7 +33,7 @@ function slot(r, where) {
     const v = c.action === "config.initiative" ? (on ? "off" : "on") : "";
     return `<button class="sw" role="switch" aria-checked="${on}" ${a(v)}>${on ? "on" : "off"} <span class="t"></span></button>`;
   }
-  if (isCopy(r)) return `<button class="btn" data-act="copy" data-cmd="${esc(remedyOf(r))}">copy · runs in your terminal</button>`;
+  if (isCopy(r)) return copyCommand(remedyOf(r), "copy · runs in your terminal");
   return `<span class="ro">⊘ read-only · ${esc(READ_ONLY[c.reason] || c.reason || "probe")}</span>`;
 }
 
@@ -43,12 +46,12 @@ export function planHtml(k, p) {
   const dk = `data-k="${esc(k)}"`;
   const cancel = `<button class="btn" data-act="close" ${dk}>${p.stage === "done" || p.stage === "error" ? "close" : "cancel"}</button>`;
   if (p.stage === "loading") return `<div class="plan"><span class="ro">running dry-run…</span></div>`;
-  if (p.stage === "running") return `<div class="plan"><span class="ro">running ${esc(p.command)}…</span></div>`;
+  if (p.stage === "running") return `<div class="plan"><span class="ro">running…</span> ${copyCommand(p.command)}</div>`;
   if (p.stage === "error") return `<div class="plan"><b>${esc(p.error)}</b>${p.output ? `<pre>${esc(p.output)}</pre>` : ""}${cancel}</div>`;
   if (p.stage === "plan") {
     const typed = p.consent && p.consent.kind === "typed";
     const ok = !typed || p.typed === p.consent.expect;
-    return `<div class="plan"><div class="ro">dry-run · nothing has changed</div><pre>$ ${esc(p.command)}\n${esc(p.output)}</pre>
+    return `<div class="plan"><div class="ro">dry-run · nothing has changed</div>${copyCommand(p.command)}<pre>${esc(p.output)}</pre>
       ${p.bank && p.bank !== "none" ? `<div class="ro">usage budget: ${esc(p.bank)}</div>` : ""}<div class="ro">takes effect: ${esc(p.effect)}</div>
       ${typed ? `<label>type <b>${esc(p.consent.expect)}</b> to confirm <input data-act="consent" ${dk} value="${esc(p.typed)}" autocomplete="off"></label>` : ""}
       <button class="btn primary" data-act="run" ${dk}${ok ? "" : " disabled"}>confirm</button>${cancel}
@@ -59,7 +62,7 @@ export function planHtml(k, p) {
     const b = (p.before || {})[id] || {}, a = (p.after || {})[id] || {};
     return `<div class="ba"><b>${esc(id)}</b><span>installed ${esc(b.installed)} → ${esc(a.installed)}</span><span>health ${esc(b.health)} → ${esc(a.health)}</span></div>`;
   }).join("");
-  return `<div class="plan"><div>${p.rc === 0 ? "✓" : "✕"} ran ${esc(p.command)} · rc=${esc(p.rc)}${p.timedOut ? " · timed out" : ""}</div>${ba}
+  return `<div class="plan"><div>${p.rc === 0 ? "✓" : "✕"} ran ${copyCommand(p.command)} · rc=${esc(p.rc)}${p.timedOut ? " · timed out" : ""}</div>${ba}
     ${p.output ? `<pre>${esc(p.output)}</pre>` : ""}<div class="ro">${p.reprobe === "ok" ? "re-probed" : esc(p.reprobe)} · ${p.audit === "failed" ? "<b>audit log append FAILED</b>" : "logged to actions.jsonl"}</div>${cancel}</div>`;
 }
 
@@ -69,7 +72,7 @@ function rowHtml(r, where, state) {
   const d = r.declared || {};
   const i = r.installed || {};
   let h = `<div class="row"><div class="row-head" tabindex="0" role="button" aria-expanded="${open}" data-act="toggle" data-k="${esc(k)}">
-    <span class="st ${esc(r.health)}">${ST[r.health] || esc(r.health)}</span><span class="kind">[${esc(kindOf(r))}]</span>
+    <span class="st pill ${esc(r.health)}">${ST[r.health] || esc(r.health)}</span><span class="kind">[${esc(kindOf(r))}]</span>
     <span class="id" title="${esc(r.id)}">${esc(r.id)}</span><span class="det">${esc(i.detail)}</span>
     <span class="slot">${slot(r, where)}</span></div>`;
   const plan = state.plans && state.plans[k];
@@ -115,7 +118,7 @@ export function isOpen(region, bundleId, baseRows, state, q) {
 function bundleHead(where, b, open, r, shown) {
   const counts = ORDER.filter((h) => r[h] > 0).map((h) => `${r[h]} ${h}`).join(" · ");
   return `<div class="bhead" role="button" tabindex="0" aria-expanded="${open}" data-act="bundle" data-b="${esc(`${where}|${b.id}`)}" data-rank="${r.rank}">
-    <span class="chev">${open ? "▾" : "▸"}</span><span class="st ${r.headline}">${ST[r.headline].split(" ")[0]}</span>
+    <span class="chev">${open ? "▾" : "▸"}</span><span class="st pill ${r.headline}">${ST[r.headline]}</span>
     <span class="bt">${esc(b.title)}</span><span class="bc">${counts}</span><span class="bn">${shown === r.total ? r.total : `${shown} of ${r.total}`}</span></div>`;
 }
 
@@ -148,8 +151,9 @@ export function renderHeader(feed) {
   if (!h) return `<span class="ver unk">version unknown (feed has no himmel identity)</span>${t}`;
   const c = String(h.commit ?? "");
   return `<span class="ver">himmel ${esc(h.version)} · ${esc(h.describe)}</span>
+    <details><summary>Build details</summary>
     <span title="${esc(c)}"><span class="k">commit</span> ${esc(c.slice(0, 12))}</span>
-    ${h.checkout ? `<span><span class="k">serving</span> ${esc(h.checkout)}</span>` : ""}${t}`;
+    ${h.checkout ? `<span><span class="k">serving</span> ${esc(h.checkout)}</span>` : ""}${t}</details>`;
 }
 
 // the status while the report runs. j is the feed's 202 body ({ elapsedMs, progress }); progress
@@ -189,19 +193,17 @@ export function renderVm(vm) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
 }
 
-// the fleet cap card. fc = { data: GET /api/fleet-cap, error, draft: the cap as typed, msg }. The server validates and writes the one .env line.
+// the fleet cap card. fc = { data: GET /api/fleet-cap, error }. Read-only: the cap is gate policy, edited by hand in config.json.
 export function renderFleetCap(fc) {
   const head = `<h2 id="h-fleet-cap">Fleet cap</h2><p class="sub">How many workers may run at once. Launching one more than this is refused.</p>`;
   if (!fc || (!fc.data && !fc.error)) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="empty">loading…</div></section>`;
   if (!fc.data) return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="nodata">${esc(fc.error)}</div></section>`;
-  const d = fc.data, v = fc.draft === undefined || fc.draft === null ? d.cap : fc.draft;
-  const over = d.source === "env" ? `<div class="nodata" role="status">the launching shell sets HIMMEL_FLEET_CAP=${esc(d.cap)}, which wins over .env until the UI restarts without it${d.fileValue !== null ? ` (saved in .env: ${esc(d.fileValue)})` : ""}</div>` : "";
-  const msg = fc.msg ? `<div class="${fc.msg.ok ? "ro" : "nodata"}" role="status">${esc(fc.msg.text)}</div>` : "";
+  const d = fc.data;
+  const from = d.source === "config.json" ? `set in <code>${esc(d.configFile)}</code>` : d.source === ".env" ? `set in the legacy <code>${esc(d.envFile)}</code>; move it to <code>${esc(d.configFile)}</code>` : "not set";
   return `<section id="fleet-cap" aria-labelledby="h-fleet-cap">${head}<div class="card">
-    <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">whole number from ${esc(d.min)} to ${esc(d.max)}</span>
-    <span class="slot"><label>cap <input type="text" inputmode="numeric" data-fc="cap" value="${esc(v)}" aria-label="fleet cap"></label></span></div>
-    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · saved to <code>${esc(d.envFile)}</code>, read at the next worker launch</div></div>${over}
-    <button class="btn" data-act="fleet-cap-save">save</button>${msg}</div></section>`;
+    <div class="setrow"><div class="sethead"><span class="id">HIMMEL_FLEET_CAP</span><span class="det">gate policy, read-only here</span>
+    <span class="slot"><label>cap <input type="text" data-fc="cap" value="${esc(d.cap)}" readonly aria-label="fleet cap"></label></span></div>
+    <div class="ro">now: ${esc(d.cap)} · default: ${esc(d.default)} · ${from}. To change it, edit <code>${esc(d.edit)}</code> by hand; the launching shell does not count.</div></div></div></section>`;
 }
 
 // the review gate card. rg = { data: GET /api/review-gate, error, draft: [{ slug, mode, required, enabled }], msg }.
@@ -210,6 +212,18 @@ export const reviewGateDraft = (d) => [
   ...d.reviewers.map((r) => ({ slug: r.slug, mode: r.mode, required: r.required, enabled: true, ...(r.hasModel ? { model: r.model } : {}), ...(r.hasEffort ? { effort: r.effort } : {}) })),
   ...(d.dropped || []).map((slug) => ({ slug, mode: (d.droppedBase?.[slug]?.mode) || "best-effort", required: d.droppedBase?.[slug]?.required === true, enabled: false })),
 ];
+const PROVIDER_SAYS = {
+  "claude-api": "runs on your Anthropic API key and bills API credit, separate from your plan",
+  "claude-subscription": "runs through the Claude CLI on your Claude plan and uses the same 5-hour and weekly limits as your own sessions",
+};
+const ENV_HOME = {
+  CR_PROFILE: "Set in ~/.himmel/himmel.conf (machine), ~/.himmel/himmel.conf.local (local override), or .himmel/himmel.conf in your project. This selects the /pr-check panel, not the reviewer definitions in critics.json.",
+  CR_REQUIRE_CROSS_MODEL: "Edit policy.CR_REQUIRE_CROSS_MODEL in ~/.himmel/config.json by hand. This is operator-owned gate policy, so the UI cannot change it and the launching shell does not override it.",
+  CR_FLOOR_FALLBACK: "Edit policy.CR_FLOOR_FALLBACK in ~/.himmel/config.json by hand. This is operator-owned gate policy, so the UI cannot change it and the launching shell does not override it.",
+  CRITIC_PANEL_TIERS: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; CR_PROFILE takes precedence when set.",
+  CRITIC_TIMEOUT_SECS: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; it bounds one reviewer, not the whole panel.",
+  CRITIC_PARALLEL: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; 1 runs reviewers concurrently, 0 sequentially.",
+};
 const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note", advisory: "critic findings are notes until precision reaches the floor; review threads still hold" };
 // extra: html drawn under the reviewers (the Configure page folds CodeRabbit's install state in there).
 export function renderReviewGate(rg, extra = "") {
@@ -231,17 +245,17 @@ export function renderReviewGate(rg, extra = "") {
       <span class="slot">${model}${effort}<label>mode <select data-rg="mode" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} mode">${modes}</select></label>
       <label><input type="checkbox" data-rg="required" data-slug="${esc(x.slug)}"${x.required ? " checked" : ""}> required</label>
       <label><input type="checkbox" data-rg="enabled" data-slug="${esc(x.slug)}"${x.enabled ? " checked" : ""}> on</label></span></div>
-      <div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
+      ${r && PROVIDER_SAYS[r.provider] ? `<div class="ro">${esc(PROVIDER_SAYS[r.provider])}</div>` : ""}<div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
   }).join("");
   const env = d.env.map((e) => `<div class="setrow"><div class="sethead"><span class="id">${esc(e.name)}</span><span class="det">${esc(e.means)}</span></div>
-    <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · set in .env or the launching shell, read-only here</div></div>`).join("");
+    <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · ${esc(ENV_HOME[e.name])}</div></div>`).join("");
   const msg = rg.msg ? `<div class="${rg.msg.ok ? "ro" : "nodata"}" role="status">${esc(rg.msg.text)}</div>` : "";
   return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="card">
     <p class="sub">Reviewers run in this order. Changes are saved to <code>${esc(d.overlay)}</code> on this machine; the shared critics.json is never written.</p>
     ${rows}${extra}
     <p class="sub">${esc(d.rateLimit)}</p>
     <button class="btn" data-act="review-gate-save">save</button>${msg}</div>
-    <div class="card"><h3>Timeouts and tiers</h3>${env}</div></section>`;
+    <div class="card"><h3>Timeouts and tiers</h3><p class="sub">These are review-run settings, not critics.json reviewer definitions. Read-only here; each row says where to change it and why.</p>${env}</div></section>`;
 }
 
 // Settings: what can be changed and where it lives. Each row shows the himmelctl command it runs, when it takes
@@ -325,7 +339,7 @@ function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }
   const ks = keys || [`settings|${id}`];
   const open = ks.filter((k) => state.plans && state.plans[k]);
   return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="det">${esc(detail)}</span><span class="slot">${slot}</span></div>
-    <pre><code>${esc(cmd)}</code></pre>
+    ${open.length ? "" : cmd.includes(" ") || cmd.includes("=") ? [...new Set(cmd.split("\n"))].map((c, i, all) => copyCommand(c, all.length > 1 ? `copy command ${i + 1}` : "copy command")).join(" ") : `<code>${esc(cmd)}</code>`}
     <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
 }
 
@@ -369,7 +383,7 @@ export function renderInventory(feed, state) {
   const kinds = [...new Set(rows.map(kindOf))];
   const chips = ["fail", "warn", "ok", "off", "info"].map((h) => `<button class="chip" data-f="health" data-v="${h}" aria-pressed="${filt.health === h}">${h}</button>`)
     .concat(kinds.map((k) => `<button class="chip" data-f="kind" data-v="${esc(k)}" aria-pressed="${filt.kind === k}">${esc(k)}</button>`)).join("");
-  return `<section id="inventory" aria-labelledby="h-inv">
+  return `<section id="inventory" aria-labelledby="h-inv" class="box">
   <h2 id="h-inv">Inventory</h2>
   <p class="sub">Every item, check, flag and secret, grouped by feature.</p>
   <div class="filters"><input id="q" placeholder="filter by id" value="${esc(filt.q || "")}" aria-label="Filter by id">${prob}${chips}</div>
@@ -381,10 +395,10 @@ export function renderTriage(feed, state) {
   const { rows, triage } = sets(feed);
   const nf = triage.filter((r) => r.health === "fail").length;
   const okOf = (src) => { const l = rows.filter((r) => r.source === src); return `${l.filter((r) => r.health === "ok").length}/${l.length}`; };
-  return `<section id="triage" aria-labelledby="h-triage">
+  return `<section id="triage" aria-labelledby="h-triage" class="box">
   <h2 id="h-triage">Triage</h2>
   <p class="sub">Only rows that are failing or drifting. Opt-in items you left off are not listed.</p>
-  <div class="summary"><span class="st fail">${nf} fail</span><span class="st warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
+  <div class="summary"><span class="st pill fail">${nf} fail</span><span class="st pill warn">${triage.length - nf} warn</span><span class="ro">items ${okOf("item")} ok · doctor ${okOf("doctor")} ok</span></div>
   ${triage.length ? triage.map((r) => rowHtml(r, "triage", state)).join("") : `<div class="empty">Nothing wrong. ${okOf("item")} items ok, doctor ${okOf("doctor")}.</div>`}
 </section>`;
 }

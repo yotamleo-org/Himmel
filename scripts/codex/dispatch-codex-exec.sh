@@ -27,9 +27,7 @@
 #      Default posture (no --shared-branch) is unchanged: own worktree, own
 #      throwaway branch, no lock.
 #   6. Job registry + descendant reap: the codex-exec CLI sandbox
-#      leaks its own MCP-server fleet (npx/node children under cmd.exe
-#      wrappers) that the app-server fingerprint cannot see (no
-#      codex path marker survives on those processes once codex.exe is gone).
+#      leaks its own MCP-server fleet (npx/node children) after codex exits.
 #      This wrapper now ALWAYS runs codex as a child (never exec's it, in
 #      either path - exec would drop the trap below), records the child pid
 #      under CODEX_JOBS_DIR right after it starts, and on EXIT reaps the
@@ -618,10 +616,9 @@ const noMatcherEvents = new Set(["UserPromptSubmit", "Stop", "Interrupt"]);
 const expectedHash = (event, group, hook) => {
     const shortEvent = event === "SessionEnd" || event === "Interrupt";
     const t = Number.isInteger(hook.timeout) ? hook.timeout : undefined;
-    const win = hook.commandWindows !== undefined ? hook.commandWindows : hook.command_windows;
     const handler = {
         type: "command",
-        command: (process.platform === "win32" && typeof win === "string") ? win : hook.command,
+        command: hook.command,
         async: hook.async === true,
         timeout: shortEvent ? Math.min(Math.max(t === undefined ? 1 : t, 1), 3) : Math.max(t === undefined ? 600 : t, 1),
     };

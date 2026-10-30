@@ -1241,6 +1241,34 @@ jobs:
           bash "$gate/check-hardcoded-env-values.sh" "$BASE_SHA"
       - name: hardcoded-env-values lint (whole tree)
         run: bash scripts/ci/check-hardcoded-env-values.sh --tree
+      - name: platform-dropped lint (PR range)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}"; then
+            echo "platform-dropped lint: PR base missing or unreachable" >&2
+            exit 2
+          fi
+          gate="$GITHUB_WORKSPACE"
+          # Bootstrap only until the gate first lands; later PRs cannot weaken their own policy.
+          if git cat-file -e "$BASE_SHA:scripts/lint/check-platform-dropped.sh" 2>/dev/null; then
+            gate="$RUNNER_TEMP/base-platform-lint"
+            for p in scripts/lint/check-platform-dropped.sh scripts/lint/platform-dropped-allow.json scripts/handover/chief-kit/platform-dropped.re; do
+              mkdir -p "$gate/$(dirname "$p")"
+              if ! git show "$BASE_SHA:$p" > "$gate/$p" || [ ! -s "$gate/$p" ]; then
+                echo "platform-dropped lint: policy absent at base: $p" >&2
+                exit 2
+              fi
+            done
+          fi
+          # The recorded base can predate main's tip; a diff from it would count main's
+          # later lines as this PR's. The merge commit's first parent is the current tip.
+          if ! git rev-parse -q --verify HEAD^2 > /dev/null; then
+            echo "platform-dropped lint: checkout is not a merge commit, cannot tell the PR's own lines" >&2
+            exit 2
+          fi
+          bash "$gate/scripts/lint/check-platform-dropped.sh" --range HEAD^1
       # The whole-tree pre-commit gates with no other CI copy, in ONE step (not a
       # job per hook): a session without hooks, or a --no-verify commit, never ran
       # them. Each runs from its BASE copy so a PR cannot weaken the gate that

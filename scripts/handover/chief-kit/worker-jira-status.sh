@@ -26,7 +26,7 @@
 # Env: WORKER_SESSION_JIRA_STATUS=0 opts out (a disabled row); HIMMEL_RELEASE_MANAGER=1 skips (a skip rule=RM row). TICKET_STATUS_LOCK_WAIT
 # (default 10) bounds the flock wait. The rest is read by the lib.
 #
-# Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
 
 usage() {

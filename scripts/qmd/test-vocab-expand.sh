@@ -5,7 +5,7 @@
 # a qmd query document with one lex: line per registry swap; a question naming no registry word, or
 # one that already is a document, passes through unchanged. Reads the real registry; no qmd needed.
 #
-# Platform guard (gitbash-only): python3 and bash 3.2-safe, no .ps1 twin needed.
+# Platform guard: python3 and bash 3.2-safe.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VX="$HERE/vocab-expand.py"

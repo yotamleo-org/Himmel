@@ -345,4 +345,78 @@ grepq "$outG" -F -- 'luna cadence — would arm via pipeline-cadence.sh' \
   || fail "case g: with only retired ids dropped, luna.cadenceEnabled=true should still arm pipeline (got: $outG)"
 echo "ok: case g — a cadences section of only retired ids is dropped, so the legacy cadenceEnabled answer applies"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case h: the first run that drops a retired cadence rewrites the profile
+# file without it, so the second run is quiet.
+# ═══════════════════════════════════════════════════════════════════════════
+
+homeH="$work/homeH"; mkdir -p "$homeH"
+profileH="$work/profileH.json"
+cat > "$profileH" <<JSON
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "none", "path": "" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "cadences": { "doctor": "off", "codex-sweep": "armed" }
+}
+JSON
+cacheH="$work/cache-h"; mkdir -p "$cacheH"
+cp "$profileH" "$cacheH/install-profile.json"
+run_h() {
+  ( cd "$homeH" && HOME="$homeH" USERPROFILE="$(winpath "$homeH")" HIMMELCTL_INTERACTIVE=0 \
+    HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-h.json")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$cacheH")" \
+    HIMMELCTL_BIN_DIR="$(winpath "$work/bin-h")" \
+    "$node_bin" "$wizard" "$@" </dev/null 2>&1 )
+}
+saved="$cacheH/install-profile.json"
+# a dry-run preview announces the drop but leaves the file alone
+set +e
+outH0=$(run_h install --dry-run --from-profile "$(winpath "$profileH")"); rcH0=$?
+set -e
+[ "$rcH0" -eq 0 ] || fail "case h: the dry-run preview should load (rc=$rcH0): $outH0"
+grepq "$outH0" -F -- "dropping retired cadence 'codex-sweep'" \
+  || fail "case h: the dry-run preview should announce the drop (got: $outH0)"
+grepq "$(cat "$profileH")" -F -- 'codex-sweep' \
+  || fail "case h: a dry-run preview must not rewrite the profile (got: $(cat "$profileH"))"
+# read-only verbs and an ensure dry run read the saved profile and never rewrite it
+set +e
+outHs=$(run_h status --json); rcHs=$?
+outHd=$(run_h ensure --dry-run --no-network --items wiring-pretooluse); rcHd=$?
+set -e
+[ "$rcHs" -eq 0 ] || fail "case h: status should load (rc=$rcHs): $outHs"
+[ "$rcHd" -eq 0 ] || fail "case h: ensure --dry-run should load (rc=$rcHd): $outHd"
+cmp -s "$profileH" "$saved" \
+  || fail "case h: status and ensure --dry-run must leave the saved profile byte-identical (got: $(cat "$saved"))"
+# a symlinked saved profile is never replaced by a regular file
+realH="$work/profileH-real.json"
+mv "$saved" "$realH"; ln -s "$realH" "$saved"
+set +e
+outHl=$(run_h ensure --no-network --items wiring-pretooluse); rcHl=$?
+set -e
+[ -L "$saved" ] || fail "case h: a symlinked saved profile must stay a symlink (rc=$rcHl): $outHl"
+cmp -s "$profileH" "$realH" \
+  || fail "case h: a symlinked saved profile must not be rewritten (got: $(cat "$realH"))"
+grepq "$outHl" -F -- 'is a symlink' \
+  || fail "case h: the symlink refusal should be said (got: $outHl)"
+rm "$saved"; cp "$profileH" "$saved"; chmod 644 "$saved"
+# a real ensure drops the retired cadence from the saved profile: the first run announces, the second is quiet
+set +e
+outH1=$(umask 077; run_h ensure --no-network --items wiring-pretooluse); rcH1=$?
+outH2=$(run_h ensure --no-network --items wiring-pretooluse); rcH2=$?
+set -e
+[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both ensure runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
+grepq "$outH1" -F -- "dropping retired cadence 'codex-sweep'" \
+  || fail "case h: the first run should announce the drop (got: $outH1)"
+grepq "$outH2" -F -- "dropping retired cadence" \
+  && fail "case h: the second run must be silent about the retired cadence (got: $outH2)"
+grepq "$(cat "$saved")" -F -- 'codex-sweep' \
+  && fail "case h: the saved profile must no longer name codex-sweep (got: $(cat "$saved"))"
+jq -e '.cadences.doctor == "off"' "$saved" >/dev/null \
+  || fail "case h: the kept cadence rows must survive the rewrite under .cadences (got: $(cat "$saved"))"
+[ -n "$(find "$saved" -perm 644)" ] \
+  || fail "case h: the rewrite must keep the profile's 0644 mode under umask 077 (got: $(ls -l "$saved"))"
+echo "ok: case h — a retired cadence is announced once and leaves the saved profile on a real ensure; status, a dry run and a symlinked profile are left alone"
+
 echo "PASS"

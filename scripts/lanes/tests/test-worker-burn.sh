@@ -26,8 +26,7 @@
 #     compaction-rewarm: 2 compact_boundary markers; the first NEW message
 #     after each is msg_C (ctx 550) then msg_D (ctx 100), mean 325 * 2 = 650
 #
-# Platform guard: no .ps1 twin, by design - it drives worker-burn.sh, which is
-# itself twin-less for the reason its own header gives.
+# Platform guard: it drives worker-burn.sh; see that script's header.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -191,7 +191,6 @@ graphify_install() {
             echo "  NOTE: could not validate the adopted install's mcp import (unrecognized install layout) -- if graphify-mcp crashes at startup, reinstall: $(graphify_install_hint)"
             ;;
         esac
-        graphify_wsl_share_store
         return 0
       fi
       # CR-r2: install metadata exists but the binary does not resolve
@@ -228,7 +227,6 @@ graphify_install() {
         ;;
     esac
     echo "  graphify installed and verified (source=himmel-pin)."
-    graphify_wsl_share_store
     return 0
   fi
   echo "  WARNING: graphify installed but '$(_graphify_bin_name)' is still not resolvable on PATH." >&2
@@ -240,14 +238,13 @@ graphify_install() {
 # import the `mcp` package (its startup dependency).
 # Interpreter resolution, most-specific first (CR: a PATH-based foreign
 # install -- pip/pipx/brew -- must probe ITS interpreter, not the uv venv):
-#   1. the resolved graphify-mcp chief script's shebang python (posix;
-#      Windows .exe launchers carry no readable shebang -- falls through);
-#   2. the uv tool venv's python (bin/ posix, Scripts/ windows layouts).
+#   1. the resolved graphify-mcp chief script's shebang python;
+#   2. the uv tool venv's bin/python.
 # rc 0 = import OK; rc 1 = import FAILS (the known missing-dep defect);
 # rc 2 = no interpreter resolvable -- UNVALIDATED, callers must say so
 # rather than treat it as success.
 _graphify_mcp_import_ok() {
-  local py="" mcp_bin shebang tool_venv c
+  local py="" mcp_bin shebang tool_venv
   mcp_bin="$(command -v graphify-mcp 2>/dev/null)"
   if [ -n "$mcp_bin" ] && [ -f "$mcp_bin" ]; then
     shebang="$(head -1 "$mcp_bin" 2>/dev/null)"
@@ -264,46 +261,10 @@ _graphify_mcp_import_ok() {
   fi
   if [ -z "$py" ]; then
     tool_venv="$(_graphify_uv_tool_dir)/$(_graphify_pypi_name)"
-    for c in "$tool_venv/bin/python" "$tool_venv/Scripts/python.exe"; do
-      [ -f "$c" ] && { py="$c"; break; }
-    done
+    [ -f "$tool_venv/bin/python" ] && py="$tool_venv/bin/python"
   fi
   [ -n "$py" ] || return 2
   "$py" -c 'import mcp' >/dev/null 2>&1 || return 1
-  return 0
-}
-
-# On WSL, share the WINDOWS-side global graph store instead of regenerating:
-# graph extraction is LLM-backed (real spend), and the store is plain JSON
-# (~/.graphify/global-graph.json + manifest -- no sqlite/WAL hazard, so
-# sharing over /mnt/c is safe, unlike .tokensave). Symlinks ~/.graphify at
-# the Windows user's store when: running under WSL, the Windows store
-# exists, and ~/.graphify is absent or an empty directory. Never touches an
-# existing populated ~/.graphify (merge is the operator's call). Best-effort
-# by contract: always returns 0.
-graphify_wsl_share_store() {
-  grep -qi microsoft /proc/version 2>/dev/null || return 0
-  command -v wslpath >/dev/null 2>&1 || return 0
-  command -v cmd.exe >/dev/null 2>&1 || return 0
-  # Cheap check first -- skip the costly cmd.exe interop once already linked.
-  [ -L "$HOME/.graphify" ] && return 0
-  local win_home win_store
-  # cmd.exe interop warns (and can fail) from a linux-fs cwd -- run it from /mnt/c.
-  win_home="$(cd /mnt/c 2>/dev/null && cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
-  [ -n "$win_home" ] || return 0
-  win_store="$(wslpath -u "$win_home" 2>/dev/null)/.graphify"
-  [ -d "$win_store" ] || return 0
-  if [ -e "$HOME/.graphify" ]; then
-    if [ -d "$HOME/.graphify" ] && [ -z "$(ls -A "$HOME/.graphify" 2>/dev/null)" ]; then
-      rmdir "$HOME/.graphify" 2>/dev/null || return 0
-    else
-      echo "  graphify store: ~/.graphify already has content -- NOT replacing it with the shared Windows store (merge manually if desired)."
-      return 0
-    fi
-  fi
-  if ln -s "$win_store" "$HOME/.graphify" 2>/dev/null; then
-    echo "  graphify store: linked ~/.graphify -> $win_store (shared Win+WSL store; both sides contribute, nothing regenerates)."
-  fi
   return 0
 }
 
@@ -315,9 +276,7 @@ graphify_wsl_share_store() {
 _graphify_mcp_entrypoint() {
   local bin_dir
   bin_dir="$(uv tool dir --bin 2>/dev/null || true)"
-  if [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp.exe" ]; then
-    printf '%s\n' "$bin_dir/graphify-mcp.exe"
-  elif [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp" ]; then
+  if [ -n "$bin_dir" ] && [ -f "$bin_dir/graphify-mcp" ]; then
     printf '%s\n' "$bin_dir/graphify-mcp"
   else
     command -v graphify-mcp 2>/dev/null || true
@@ -368,8 +327,7 @@ graphify_register_mcp_on_demand() {
 # SCOPE-DEPENDENT entrypoint:
 #   - user/local (a PERSONAL config) -> the ABSOLUTE path (robust in the MCP
 #     launch context; matches /himmel-doctor's absolute-not-bare convention).
-#     uv places the shim in `uv tool dir --bin` (graphify-mcp.exe on Windows,
-#     graphify-mcp on posix), with a PATH lookup as fallback.
+#     uv places the shim in `uv tool dir --bin`, with a PATH lookup as fallback.
 #   - project (a COMMITTED .mcp.json) -> the BARE name, PATH-resolved per
 #     machine: a machine-specific absolute path would break for teammates on
 #     other machines.
@@ -521,11 +479,8 @@ PY
 # Echoes a COUNT on stdout; rc 1 when this platform offers no probe (the caller
 # must not read the count then).
 #
-# Match on the COMMAND LINE, not the process name. A uv-installed graphify-mcp
-# runs as a plain `python.exe` whose argv is
-# `<...>\Scripts\python.exe <...>\Scripts\<entrypoint>.exe` (verified live on
-# Windows, 2026-07-26), so a name-based probe finds nothing and reports "clear"
-# on exactly the busy machine this guard exists for.
+# Match on the COMMAND LINE, not the process name: a graphify-mcp server can
+# run under its Python interpreter's process name.
 #
 # Two needles: the entrypoint name, and the uv tool dir itself — a process
 # executing anything out of that directory holds it just as effectively.
@@ -535,16 +490,14 @@ PY
 # and every reinstall test skips. That is not hypothetical: it is how this seam
 # came to exist (the pre-existing extras-preserved test went red on a machine
 # with 4 live sessions).
-# _graphify_pat_from_path <path> — turn a REAL filesystem path into a pattern
-# that matches it in both an ERE (`pgrep -f`, `grep -E`) and a .NET regex
-# (PowerShell `-match`), so one needle serves every branch of the holder probe.
+# _graphify_pat_from_path <path> — turn a REAL filesystem path into an ERE
+# for `pgrep -f` and `grep -E`.
 #
 # Two jobs. Escape the regex metacharacters a real path can contain — a `.` in
 # `~/.local` otherwise matches any character, and an unbalanced `(` in a path
 # like `/opt/tools (v2)/…` is a SYNTAX error that makes the whole probe rc 2,
-# i.e. "unavailable" on a machine that is merely oddly named. And normalize
-# BOTH separators to `[/\]`, because the same install is spelled with `/` under
-# MSYS and `\` in a Windows argv.
+# i.e. "unavailable" on a machine that is merely oddly named. Both separator
+# spellings are recognized conservatively by the holder detector.
 #
 # Done character-by-character rather than with sed: the separator class has to
 # survive the metacharacter pass without being re-escaped, and every sed
@@ -602,7 +555,7 @@ _graphify_mcp_holder_pats() {
 # word, so a `bash -c "... uv/tools/graphifyy ..."` string never matches. The
 # update's own ancestor chain is never a holder.
 #
-# Fails CLOSED: with no /proc (macOS, Windows) or an unreadable command line the
+# Fails CLOSED: with no /proc (macOS) or an unreadable command line the
 # pid is still counted, as before. Only a pid that vanished since pgrep ran
 # (its entry gone while /proc itself is mounted) is dropped.
 # ponytail: hosts without /proc (and the ps fallback) keep the argv-mention
@@ -660,7 +613,7 @@ EOF
 }
 
 _graphify_mcp_holders() {
-  local pat_entry pat_dir c ps_bin="" _out=""
+  local pat_entry pat_dir _out=""
   if [ -n "${GRAPHIFY_MCP_HOLDERS:-}" ]; then
     [ "$GRAPHIFY_MCP_HOLDERS" = "unavailable" ] && return 1
     printf '%s\n' "$GRAPHIFY_MCP_HOLDERS"
@@ -669,117 +622,40 @@ _graphify_mcp_holders() {
   { read -r pat_entry; read -r pat_dir; } <<EOF
 $(_graphify_mcp_holder_pats)
 EOF
-  case "$(uname -s 2>/dev/null || echo)" in
-    MINGW*|MSYS*|CYGWIN*)
-      for c in pwsh powershell; do command -v "$c" >/dev/null 2>&1 && { ps_bin="$c"; break; }; done
-      [ -n "$ps_bin" ] || return 1
-      # Capture, THEN validate. Piping straight to stdout failed OPEN: if pwsh
-      # errors or is blocked by policy the pipeline emits nothing, and the
-      # caller's `case ''|*[!0-9]*) holders=0` sanitizer read that empty line as
-      # "0 holders" — so the reinstall proceeded on exactly the platform this
-      # guard protects, which inverts the entire point of it. An unusable probe
-      # is UNAVAILABLE (rc 1), never "clear".
-      #
-      # Doubling apostrophes is the PowerShell string boundary, and it is
-      # SEPARATE from the regex escaping (codex-adv round). pat_dir now carries
-      # a RESOLVED path, so it can contain `'` — `C:\Users\O'Brien\...` is an
-      # ordinary profile — and a lone apostrophe closes the single-quoted
-      # -Command string, making it a syntax error. That is not a harmless
-      # failure: an unusable probe returns 1, and the CALLER treats "cannot
-      # probe" as "proceed", so the reinstall would run against a held venv —
-      # the corruption this guard exists to stop, on the platform it was
-      # written for. Escaping here, not in _graphify_pat_from_path, because
-      # that helper also feeds pgrep/grep where `''` would be a literal.
-      local ps_entry ps_dir
-      ps_entry="$(printf '%s' "$pat_entry" | sed "s/'/''/g")"
-      ps_dir="$(printf '%s' "$pat_dir" | sed "s/'/''/g")"
-      # `ProcessId -ne $PID` excludes the PROBE ITSELF. The
-      # needles are literally present in this pwsh process's own CommandLine,
-      # so Win32_Process matched it every time and the count was always one
-      # too high. That is the Windows twin of the `[g]raphify-mcp` bracket
-      # trick on the ps branch, and it was missing: on a machine with ZERO
-      # real holders the probe returned 1, the caller read "1 holder — NOT
-      # attempting the reinstall", and the graphify pin could never advance on
-      # Windows at all. Measured on this host: 7 matches self-counted vs 6
-      # real. Fails closed, so nothing was corrupted — it just silently never
-      # updated.
-      _out="$(MSYS_NO_PATHCONV=1 "$ps_bin" -NoProfile -Command \
-        "@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { \$_.ProcessId -ne \$PID -and (\$_.CommandLine -match '$ps_entry' -or \$_.CommandLine -match '$ps_dir') }).Count" \
-        2>/dev/null | tr -cd '0-9')" || return 1
-      case "$_out" in ''|*[!0-9]*) return 1 ;; esac
-      printf '%s\n' "$_out"
-      ;;
-    *)
-      if command -v pgrep >/dev/null 2>&1; then
-        # NOT `pgrep -c`: the count flag is a GNU/procps extension and macOS
-        # BSD pgrep has no equivalent, so `-fc` there is a usage error.
-        #
-        # Branch on pgrep's OWN exit code, and do NOT pipe it into a counter.
-        # `pgrep … | grep -c .` always emits a digit, so the numeric validator
-        # can never fire and a BROKEN pgrep still reports "0 holders" — the
-        # exact fail-open this fix was supposed to close (caught by both
-        # critics on the first pass; the first attempt at it was itself
-        # fail-open). pgrep's codes are load-bearing here:
-        #   0 = matched, 1 = ran fine and matched NOTHING (a real zero),
-        #   2/3 = usage error / fatal -> the probe is UNAVAILABLE, not clear.
-        # BOTH needles, same as the Windows branch (public-PR CR): the two
-        # documented above are entrypoint-name AND tool-dir, and a holder can
-        # present either — a uv-installed server whose argv names the tool dir
-        # without the literal entrypoint string was counted as CLEAR here while
-        # Windows counted it. `pgrep -f` takes an ERE, so alternation is free.
-        _out="$(pgrep -f "$pat_entry|$pat_dir" 2>/dev/null)"
-        case "$?" in
-          0) _out="$(printf '%s\n' "$_out" | _graphify_mcp_real_holders | grep -c . || true)" ;;
-          1) _out=0 ;;
-          *) return 1 ;;
-        esac
-        case "$_out" in ''|*[!0-9]*) return 1 ;; esac
-        printf '%s\n' "$_out"
-      elif command -v ps >/dev/null 2>&1; then
-        # shellcheck disable=SC2009
-        # pgrep is preferred and tried first; this is the fallback for hosts
-        # without it. The bracket in "[g]raphify-mcp" keeps the grep from
-        # matching ITS OWN argv in the ps output — the classic off-by-one that
-        # would report a holder on a completely idle machine and block the
-        # update forever. `ps` is captured and status-checked FIRST for the
-        # same reason as above: a failed ps piped into grep -c yields "0",
-        # which would read as a clear machine.
-        # -ww FIRST, with a fallback (public-PR CR): plain `ps -eo args` truncates
-        # the command line to terminal width on procps, and the tool-dir needle
-        # this branch now also searches for is a long absolute path — exactly the
-        # part that gets cut. A truncated line silently reads as "no holder",
-        # which is the fail-OPEN direction: it lets the destructive update
-        # proceed while a graphify-mcp is live.
-        #
-        # It cannot be applied unconditionally, though — the MSYS `ps` that Git
-        # Bash ships REJECTS -ww (verified on this host), and a hard switch would
-        # turn every such host from "probes correctly" into "cannot probe at
-        # all". So: try widened, fall back to plain, and only then give up.
-        _out="$(ps -ww -eo args 2>/dev/null)" || _out="$(ps -eo args 2>/dev/null)" || return 1
-        [ -n "$_out" ] || return 1
-        # -cE + both needles, matching the pgrep branch and Windows.
-        #
-        # What keeps this from matching ITSELF is the pre-captured snapshot
-        # above, NOT the bracket trick (CR round — the first draft of this
-        # comment credited the brackets and was wrong). `ps` has already run
-        # and its output is in $_out before grep starts, so grep's own argv was
-        # never in the text being searched.
-        #
-        # The brackets alone would NOT save it: pat_dir ends with the plain,
-        # unbracketed tool name, so the argv string
-        #   grep -cE -- [g]raphify-mcp|uv[/\]tools[/\]graphify-mcp
-        # contains a literal `graphify-mcp` that the `[g]raphify-mcp` branch
-        # matches — verified. Refactoring this to a live `ps -eo args | grep`
-        # pipe would therefore count grep itself and report a phantom holder,
-        # blocking every update forever. Keep the capture-then-search shape.
-        _out="$(printf '%s\n' "$_out" | grep -cE -- "[g]raphify-mcp|$pat_dir" || true)"
-        case "$_out" in ''|*[!0-9]*) return 1 ;; esac
-        printf '%s\n' "$_out"
-      else
-        return 1
-      fi
-      ;;
-  esac
+  if command -v pgrep >/dev/null 2>&1; then
+    # NOT `pgrep -c`: the count flag is a GNU/procps extension and macOS
+    # BSD pgrep has no equivalent, so `-fc` there is a usage error.
+    #
+    # Check pgrep's OWN exit code before counting: a broken probe piped into
+    # `grep -c .` would otherwise report a misleading zero and fail open.
+    #   0 = matched, 1 = ran fine and matched NOTHING (a real zero),
+    #   2/3 = usage error / fatal -> the probe is UNAVAILABLE, not clear.
+    # Match BOTH entrypoint-name AND tool-dir: a uv-installed server can
+    # name the tool dir without the literal entrypoint string.
+    _out="$(pgrep -f "$pat_entry|$pat_dir" 2>/dev/null)"
+    case "$?" in
+      0) _out="$(printf '%s\n' "$_out" | _graphify_mcp_real_holders | grep -c . || true)" ;;
+      1) _out=0 ;;
+      *) return 1 ;;
+    esac
+    case "$_out" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$_out"
+  elif command -v ps >/dev/null 2>&1; then
+    # shellcheck disable=SC2009
+    # Capture and status-check ps FIRST: a failed ps piped into grep -c
+    # yields "0", which would read as a clear machine. Prefer -ww because
+    # terminal-width truncation can hide the long absolute tool-dir needle.
+    _out="$(ps -ww -eo args 2>/dev/null)" || _out="$(ps -eo args 2>/dev/null)" || return 1
+    [ -n "$_out" ] || return 1
+    # Both needles match the pgrep branch. The PRE-CAPTURED snapshot, not
+    # the brackets, prevents grep from matching itself: pat_dir still carries
+    # the plain tool name. Never turn this into a live ps-to-grep pipeline.
+    _out="$(printf '%s\n' "$_out" | grep -cE -- "[g]raphify-mcp|$pat_dir" || true)"
+    case "$_out" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$_out"
+  else
+    return 1
+  fi
 }
 
 # _graphify_mcp_holder_details -- one line per holder for the
@@ -787,9 +663,7 @@ EOF
 # comm, and its cwd when /proc exposes it). rc 1 when no details can be had;
 # the caller then prints the count alone, so this can never fail an update.
 # POSIX only, via pgrep on the same needles _graphify_mcp_holders counts.
-# Windows keeps the count alone: the only detail source there is another
-# pwsh/CIM round trip, not a cheap one. Test seam: GRAPHIFY_MCP_HOLDER_DETAILS
-# (literal text printed as-is).
+# Test seam: GRAPHIFY_MCP_HOLDER_DETAILS (literal text printed as-is).
 _graphify_mcp_holder_details() {
   local pat_entry pat_dir pids p pp comm cwd line
   if [ -n "${GRAPHIFY_MCP_HOLDER_DETAILS:-}" ]; then
@@ -857,15 +731,11 @@ _graphify_extras_with_ollama() {
 # dependency the [ollama] extra adds)? rc 0 yes; rc 1 no; rc 2 no venv python
 # found (unknown: callers leave the install alone).
 _graphify_ollama_extra_ok() {
-  local venv c
-  venv="$(_graphify_uv_tool_dir)/$(_graphify_pypi_name)"
-  for c in "$venv/bin/python" "$venv/Scripts/python.exe" "$venv/Scripts/python"; do
-    if [ -x "$c" ]; then
-      "$c" -c 'import openai' >/dev/null 2>&1 && return 0
-      return 1
-    fi
-  done
-  return 2
+  local py
+  py="$(_graphify_uv_tool_dir)/$(_graphify_pypi_name)/bin/python"
+  [ -x "$py" ] || return 2
+  "$py" -c 'import openai' >/dev/null 2>&1 && return 0
+  return 1
 }
 
 # _graphify_stage_install <spec> <pin> -- install <spec> into a
@@ -1214,19 +1084,14 @@ _graphify_skill_refresh_one() {
 # platform (codex, hermes) whose skill dir is ALREADY on disk
 # widens the refresh without ever inventing a platform that wasn't there.
 _graphify_skill_refresh() {
-  local py pkg inst dst tool_dir skill_src refs_src _cand plat plat_root
+  local py pkg inst dst tool_dir skill_src refs_src plat plat_root
   local bundle plat_skill_file plat_refs_bundle
   dst="$(_graphify_claude_skill_dir)"
   tool_dir="$(_graphify_uv_tool_dir)"
-  py=""
-  for _cand in "$tool_dir/graphifyy/Scripts/python.exe" \
-               "$tool_dir/graphifyy/Scripts/python" \
-               "$tool_dir/graphifyy/bin/python"; do
-    [ -x "$_cand" ] && { py="$_cand"; break; }
-  done
+  py="$tool_dir/graphifyy/bin/python"
   # No uv-managed venv -> nothing to refresh (foreign installs stay untouched,
   # matching the file-wide adopt-don't-clobber contract).
-  [ -n "$py" ] || return 0
+  [ -x "$py" ] || return 0
   pkg="$("$py" -c 'import graphify, os; print(os.path.dirname(os.path.abspath(graphify.__file__)))' 2>/dev/null)" || pkg=""
   if [ -z "$pkg" ]; then
     echo "  WARNING: graphify skill refresh SKIPPED -- the uv-managed Python cannot resolve the installed graphify package path." >&2
@@ -1238,16 +1103,8 @@ _graphify_skill_refresh() {
     echo "  WARNING: graphify skill refresh SKIPPED -- the uv-managed Python cannot resolve graphifyy package metadata." >&2
     return 0
   fi
-  case "$(uname -s 2>/dev/null || echo)" in
-    MINGW*|MSYS*|CYGWIN*)
-      skill_src="$pkg/skill-windows.md"
-      refs_src="$pkg/skills/windows/references"
-      ;;
-    *)
-      skill_src="$pkg/skill.md"
-      refs_src="$pkg/skills/claude/references"
-      ;;
-  esac
+  skill_src="$pkg/skill.md"
+  refs_src="$pkg/skills/claude/references"
 
   _graphify_skill_refresh_one "$dst" "claude" "$inst" "$skill_src" "$refs_src" 0
   # Retire the old user-scope copy only once the plugin copy is current.
@@ -1269,14 +1126,14 @@ _graphify_skill_refresh() {
 # _graphify_holder_gate <installed> <pin> <spec> <platform> --
 # the pre-flight holder decision, run before staging AND again after it.
 # rc 0: clear (or unprobeable with GRAPHIFY_UNPROBED_OK=1), proceed. rc 1:
-# SKIPPED and fully handled (message, WSL store share, skill refresh, skip
+# SKIPPED and fully handled (message, skill refresh, skip
 # tracking), so graphify_update returns 0 -- see the PRE-FLIGHT comment there.
 _graphify_holder_gate() {
   local installed="$1" pin="$2" spec="$3" platform="$4" holders holder_details
   if holders="$(_graphify_mcp_holders)"; then
     case "$holders" in ''|*[!0-9]*) holders=0 ;; esac
     if [ "$holders" -gt 0 ]; then
-      # ponytail: SKIP while graphify-mcp holders are live (codex-1: lazy imports mix versions on a live swap; HIMMEL-1274 on Windows), versioned tool dirs + atomic bin swap -> HIMMEL-4532
+      # ponytail: SKIP while graphify-mcp holders are live (codex-1: lazy imports mix versions on a live swap), versioned tool dirs + atomic bin swap -> HIMMEL-4532
       {
         echo "  SKIP: $holders graphify-mcp process(es) hold the uv tool dir — NOT attempting the reinstall."
         echo "        graphify stays at v${installed:-?} and KEEPS WORKING; the pin has NOT advanced to $pin."
@@ -1301,13 +1158,6 @@ _graphify_holder_gate() {
           echo "            graphify install --platform $_plat"
         done
       } >&2
-      # Share the WSL store like EVERY other path that leaves a working
-      # uv-managed install in place and returns 0 (already-at-pin,
-      # not-behind-pin, successful reinstall). Omitting it here was a real gap,
-      # not a deliberate difference: this SKIP is the ROUTINE outcome on a busy
-      # workstation — every live Claude Code session spawns a graphify-mcp — so
-      # a WSL operator would have silently lost the store link on most updates
-      graphify_wsl_share_store
       # The PACKAGE reinstall is refused (correctly -- see
       # above), but the SKILL is a completely separate,
       # non-locked target (~/.claude/skills/graphify, refreshed FROM the
@@ -1350,11 +1200,8 @@ _graphify_holder_gate() {
     # entry points are already gone.
     #
     # GRAPHIFY_UNPROBED_OK=1 is the escape hatch for a host that legitimately
-    # cannot probe (no pwsh/powershell on Windows; neither pgrep nor ps on a
-    # slim POSIX image). Without it, fail-closed would mean such a host never
-    # updates again — the same silent permanent staleness the Windows
-    # self-match bug caused — so the default is safe and the
-    # operator keeps an explicit, one-line way out.
+    # cannot probe (neither pgrep nor ps on a slim POSIX image). The default
+    # stays safe and the operator keeps an explicit, one-line way out.
     if [ "${GRAPHIFY_UNPROBED_OK:-}" = "1" ]; then
       echo "  note: cannot probe for graphify-mcp holders on this platform — proceeding anyway (GRAPHIFY_UNPROBED_OK=1). If a graphify-mcp is live this reinstall can leave graphify BROKEN; the post-install verify reports that but cannot repair it." >&2
     else
@@ -1373,9 +1220,6 @@ _graphify_holder_gate() {
         echo "        or, on a host that genuinely cannot probe, re-run with the override:"
         echo "            GRAPHIFY_UNPROBED_OK=1 <this command>"
       } >&2
-      # Same as the holders>0 skip: a working uv-managed install is left in
-      # place and we return 0, so the WSL store link must be shared here too.
-      graphify_wsl_share_store
       # Same two follow-ups as the holders>0 skip above -- the
       # skill is a separate, non-locked target so refresh it regardless of
       # whether the package reinstall could run, and escalate the skip with
@@ -1417,7 +1261,6 @@ graphify_update() {
     if [ "$ollama_rc" -ne 1 ]; then
       echo "  graphify already at pinned version $pin -- up to date."
       _graphify_skill_refresh
-      graphify_wsl_share_store
       _graphify_pin_skip_reset
       return 0
     fi
@@ -1447,7 +1290,6 @@ graphify_update() {
     # refresh kept the stale skill emitting per-run version warnings. The
     # refresh keys on the INSTALLED version, so it never downgrades anything.
     _graphify_skill_refresh
-    graphify_wsl_share_store
     _graphify_pin_skip_reset
     return 0
   fi
@@ -1462,14 +1304,7 @@ graphify_update() {
   # one argv word already.
 
   # PRE-FLIGHT. `uv tool install --force` removes the old
-  # distribution's entry points, THEN replaces the tool dir. On Windows a live
-  # graphify-mcp holds that directory open, so the removal half-succeeds: the
-  # entry points are gone, the replace fails, and the machine goes from
-  # "graphify present and working" to "graphify absent and broken". Refusing to
-  # start is the only fail-SAFE option — a reinstall that cannot finish is worse
-  # than one never attempted.
-  #
-  # POSIX SKIPs too. There the swap itself succeeds --
+  # distribution's entry points, THEN replaces the tool dir. The swap succeeds --
   # the holder runs on in the unlinked inodes -- but a holder has only its
   # already-imported modules in memory, and graphify's serve.py lazy-imports
   # graphify.prs, graphify.analyze, mcp.server.stdio and starlette inside its
@@ -1514,7 +1349,6 @@ graphify_update() {
     fi
     echo "  graphify updated to $pin (source=himmel-pin)."
     _graphify_skill_refresh
-    graphify_wsl_share_store
     _graphify_pin_skip_reset
     return 0
   fi
@@ -1562,8 +1396,8 @@ graphify_update() {
 # per call, fired on Bash, Grep, Read AND Glob -- the four highest-frequency
 # tools. himmel already spawns ~25 processes per Bash call, so on Bash the guard
 # is noise; on Read/Glob it is the ONLY extra spawn, and with 7 concurrent
-# sessions Windows process creation is the bottleneck that trips the 15 s hook
-# budget. The nudge is a feature, so it is PRICED, not dropped:
+# sessions those extra processes can trip the 15 s hook budget. The nudge is a
+# feature, so it is PRICED, not dropped:
 #   - Claude: ONE entry, matcher "Grep|Glob", timeout 3, PATH-resolved command
 #     that exits 0 when graphify is absent -- advisory by construction, so its
 #     absence can never block a tool call.
@@ -1575,14 +1409,9 @@ graphify_update() {
 # Best-effort by contract: a missing file or unparseable JSON WARNs and returns
 # 0 -- this never aborts setup / adopt / himmel-update.
 #
-# node resolution: a bare `command -v node` check here
-# previously no-op'd this entire function -- with a soft NOTE, not a WARNING --
-# on exactly the shell class it exists to serve (a pwsh-launched Git Bash,
-# where node is genuinely installed but absent from THAT shell's minimal
-# PATH). Route through resolve-node.sh's `resolve_node` instead (same runtime
-# resolver run-node.sh uses for hook commands: nvm-windows, PATH, and other
-# well-known install locations, in that order -- see its own WHY). When no
-# node resolves at all, fall back to python3: already a hard dep of two other
+# node resolution: use resolve-node.sh's `resolve_node`, the same runtime
+# resolver run-node.sh uses for hook commands. When no node resolves at all,
+# fall back to python3: already a hard dep of two other
 # helpers in this file (_graphify_installed_extras, _graphify_version_lt), so
 # it is reuse, not a third implementation of the same rewrite (jq would be
 # that). The two engines are kept behaviorally identical -- same PRICED entry,
@@ -1615,11 +1444,9 @@ _graphify_price_hooks_warn_disagreement() {
   line2="$(sed -n '2p' <<< "$out")"
   if [ "$settings_seen" = 1 ] && grep -qE 'absent \(nothing to price\)' <<< "$line1"; then
     echo "  WARNING: bash can see $root/.claude/settings.json but the pricing engine (given root=$native_root) reported it absent -- this looks like a path-translation failure, not a missing file." >&2
-    echo "  Usual cause: MSYS_NO_PATHCONV=1 or MSYS2_ARG_CONV_EXCL set in this shell -- unset them and re-run, or verify the file directly." >&2
   fi
   if [ "$hooks_seen" = 1 ] && grep -qE 'absent \(nothing to price\)' <<< "$line2"; then
     echo "  WARNING: bash can see $root/.codex/hooks.json but the pricing engine (given root=$native_root) reported it absent -- this looks like a path-translation failure, not a missing file." >&2
-    echo "  Usual cause: MSYS_NO_PATHCONV=1 or MSYS2_ARG_CONV_EXCL set in this shell -- unset them and re-run, or verify the file directly." >&2
   fi
 }
 
@@ -1645,21 +1472,6 @@ graphify_price_hooks() {
   local _node=""
   if command -v resolve_node >/dev/null 2>&1; then
     _node="$(resolve_node)" || _node=""
-  fi
-
-  # Path-translation silent no-op: $root is bash's
-  # own POSIX/MSYS view of the path -- handed straight to a NATIVE Windows
-  # node/python. MSYS normally rewrites a POSIX argv into Windows form on the
-  # way into a real .exe, but that rewrite is OFF under MSYS_NO_PATHCONV=1 /
-  # MSYS2_ARG_CONV_EXCL='*' (both real himmel scripts and operator shells set
-  # for git operations) -- the engine then looks for the untranslated path,
-  # finds nothing, and reports "absent" at rc 0: a silent no-op. Translate
-  # explicitly instead of relying on that implicit rewrite: cygpath exists
-  # only on MSYS/Cygwin, where the translation is needed; elsewhere (Linux/
-  # macOS) $root is already native and cygpath is absent, so this is a no-op.
-  local _pgh_native_root="$root"
-  if command -v cygpath >/dev/null 2>&1; then
-    _pgh_native_root="$(cygpath -w "$root" 2>/dev/null)" || _pgh_native_root="$root"
   fi
 
   # BASH -- not the engine -- is the authority on whether these files exist:
@@ -1878,7 +1690,7 @@ for (const line of [
   console.log('  graphify hook pricing -- ' + line);
 }
 PRICE_JS
-    _pgh_out="$(printf '%s\n' "$_pgh_js" | "$_node" - "$_pgh_native_root")" || _pgh_rc=$?
+    _pgh_out="$(printf '%s\n' "$_pgh_js" | "$_node" - "$root")" || _pgh_rc=$?
     printf '%s\n' "$_pgh_out"
     # A non-zero exit here (e.g. atomicWrite rethrowing on EACCES/ENOSPC, an
     # unremovable rename) must NOT reach the caller: this function is
@@ -1891,7 +1703,7 @@ PRICE_JS
     if [ "$_pgh_rc" -ne 0 ]; then
       echo "  WARNING: graphify hook pricing (node engine) exited $_pgh_rc for root '$root' -- pricing may be incomplete or unapplied; see output above for detail." >&2
     fi
-    _graphify_price_hooks_warn_disagreement "$_pgh_out" "$_pgh_settings_seen" "$_pgh_hooks_seen" "$root" "$_pgh_native_root"
+    _graphify_price_hooks_warn_disagreement "$_pgh_out" "$_pgh_settings_seen" "$_pgh_hooks_seen" "$root" "$root"
     return 0
   fi
 
@@ -2111,7 +1923,7 @@ for line in (
 ):
     print('  graphify hook pricing -- ' + line)
 PRICE_PY
-    _pgh_out="$(printf '%s\n' "$_pgh_py" | python3 - "$_pgh_native_root")" || _pgh_rc=$?
+    _pgh_out="$(printf '%s\n' "$_pgh_py" | python3 - "$root")" || _pgh_rc=$?
     printf '%s\n' "$_pgh_out"
     # See the node engine's matching comment above: a non-zero exit here must
     # not propagate through this `set -e`-sensitive assignment shape and abort
@@ -2119,7 +1931,7 @@ PRICE_PY
     if [ "$_pgh_rc" -ne 0 ]; then
       echo "  WARNING: graphify hook pricing (python3 engine) exited $_pgh_rc for root '$root' -- pricing may be incomplete or unapplied; see output above for detail." >&2
     fi
-    _graphify_price_hooks_warn_disagreement "$_pgh_out" "$_pgh_settings_seen" "$_pgh_hooks_seen" "$root" "$_pgh_native_root"
+    _graphify_price_hooks_warn_disagreement "$_pgh_out" "$_pgh_settings_seen" "$_pgh_hooks_seen" "$root" "$root"
     return 0
   fi
 
@@ -2137,10 +1949,9 @@ if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
     install) graphify_install ;;
     update)  graphify_update ;;
     source)  graphify_source ;;
-    share-store) graphify_wsl_share_store ;;
     register-mcp) graphify_register_mcp "${2:-user}" ;;
     register-mcp-on-demand) graphify_register_mcp_on_demand ;;
     price-hooks) graphify_price_hooks "${2:-}" ;;
-    *) echo "Usage: bash scripts/lib/graphify-bin.sh install|update|source|share-store|register-mcp [scope]|register-mcp-on-demand|price-hooks [project-dir]" >&2; exit 2 ;;
+    *) echo "Usage: bash scripts/lib/graphify-bin.sh install|update|source|register-mcp [scope]|register-mcp-on-demand|price-hooks [project-dir]" >&2; exit 2 ;;
   esac
 fi

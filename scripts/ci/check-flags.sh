@@ -22,7 +22,7 @@
 # A flag with 3 days or fewer left prints `WARN flag <name> expires <date> (in <n> days)` and does not fail.
 #
 # Exit: 0 clean; 1 findings (one `FAIL <class>: ...` line each); 2 usage or unreadable registry.
-# Platform guard (gitbash-only): POSIX bash 3.2+, git or find, grep, awk, xargs.
+# Platform guard: POSIX bash 3.2+, git or find, grep, awk, xargs.
 set -uo pipefail
 
 usage() { echo "usage: check-flags.sh [--root DIR] [--today YYYY-MM-DD]" >&2; exit 2; }

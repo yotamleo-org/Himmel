@@ -5,8 +5,7 @@
 # restore / boot bodies are proven by scripts/vm/test-after-report.sh and
 # test-dry-run-restore.sh, which run UNCHANGED against the extracted lib.
 #
-# Platform guard (linux-only): flock + a bash harness, no .ps1 twin needed
-# (project convention: a documented guard suffices for a test harness).
+# Platform guard (linux-only): flock + a bash harness.
 #
 # Usage: bash scripts/vm/test-vm-clone-lib.sh
 # shellcheck disable=SC2016,SC2317,SC2329  # bash -c bodies are single-quoted on purpose; trap/exported-function bodies run indirectly

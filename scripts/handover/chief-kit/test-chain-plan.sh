@@ -3,7 +3,7 @@
 # lines of a chain graph, both states of the chain_merge_plan flag. Graphs are fixture JSON in the
 # chain-graph.py --json shape; nothing touches git, gh or Jira.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only; this suite exercises a kit script.
+# PLATFORM GUARD: The chief kit is Linux-only; this suite exercises a kit script.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

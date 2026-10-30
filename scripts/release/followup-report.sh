@@ -18,7 +18,7 @@
 # CLI); the usage store through usage-read.sh. Exit 0 report printed, 1 usage,
 # 2 the Jira read failed (never an empty report).
 #
-# Platform guard (gitbash-only): bash 3.2-safe + jq + awk; no .ps1 twin needed.
+# Platform guard: bash 3.2-safe + jq + awk.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -10,7 +10,7 @@
 # CHIEF_WAIT overrides the script under test (the RED
 # control: the pre-change once-per-streak waiter fails the re-wake rows).
 #
-# Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
+# Linux-only: this suite uses GNU
 # timeout and stat -c.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-pool.sh
@@ -224,7 +224,7 @@ mk() { # <key> <labels json> <title> <body>
         "$1" "$2" "$1" "$3" "$4" > "$M/$1.md"
 }
 mk HIMMEL-1 '["ps3-blocker"]' "pool head" "Edit scripts/lib/alpha.sh only."
-mk HIMMEL-2 '[]' "outside the pool" "Edit scripts/lib/beta.sh only."
+mk HIMMEL-2 '[]' "plain current version" "Edit scripts/lib/beta.sh only."
 printf 'v1.0.1\tfalse\t\n' > "$WORK/mirror/HIMMEL.versions.tsv"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/gh"
 # shellcheck disable=SC2016  # the stub body is literal text, expanded when the stub runs
@@ -239,9 +239,9 @@ hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$W
 I="$(new_inbox rpreal)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/rpreal.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-real) the real dispatcher's pool wakes the waiter (rc 0)" "0" "$rc"
-check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d' "$WORK/rpreal.out")"
+check "(rp-real) the pool in the wake block equals a hand run with the same flags" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rpreal.out")"
 check "(rp-real) the hand run lists the pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
-check "(rp-real) the wake block carries the drop summary" "1" "$(grep -c '^# dropped from v1.0.1: 1 of 2 To Do (tier 1)' "$WORK/rpreal.out")"
+check "(rp-real) the wake block carries the drop summary (the LOW pool's second pass prints its own too)" "2" "$(grep -c '^# dropped from v1.0.1: 0 of 2 To Do (none)' "$WORK/rpreal.out")"
 
 # --- (rp-workers) a live worker's ticket stays out of the pool: --workers-from reaches the dispatcher ---
 mk HIMMEL-3 '["ps3-blocker"]' "second pool head" "Edit scripts/lib/gamma.sh only."
@@ -252,9 +252,9 @@ I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(rp-workers) the hand run keeps the held worker's ticket out of the pool" "0" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-1	')"
 check "(rp-workers) and lists the other pool head" "1" "$(printf '%s\n' "$hand" | grep -c 'HIMMEL-3	')"
-check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d' "$WORK/rplegs.out")"
+check "(rp-workers) the pool in the wake block equals that hand run" "$hand" "$(sed '1,2d;/^# version backlog/,$d;/^# disposition /d;/^# pool-unresolved /d;/^# dispatchable in /d' "$WORK/rplegs.out")"
 
-# --- (lp) a LOW pool (2 of 7) still lists the plain current-version rows under their own heading ----
+# --- (lp) the plain current-version rows are pool rows: 2 labelled heads and 5 plain tickets fill 7 of 7 ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
 mk HIMMEL-1 '["ps3-blocker"]' "pool head one" "Edit scripts/lib/alpha.sh only."
 mk HIMMEL-3 '["ps3-blocker"]' "pool head two" "Edit scripts/lib/gamma.sh only."
@@ -267,8 +267,102 @@ check "(lp) the LOW pool wakes the waiter (rc 0)" "0" "$rc"
 check "(lp) the pool rows are listed" "2" "$(grep -c '^LOCAL.HIMMEL-[13]	' "$WORK/lp.out")"
 check "(lp) every plain current-version To Do row is listed" "5" "$(grep -c '^LOCAL.HIMMEL-1[0-4]	' "$WORK/lp.out")"
 check "(lp) a pool row is not listed twice" "1" "$(grep -c '^LOCAL.HIMMEL-1	' "$WORK/lp.out")"
-check "(lp) the plain rows sit under their own heading" "1" "$(grep -c '^# version backlog' "$WORK/lp.out")"
-check "(lp) the wake line carries the one count of dispatchable rows" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=7/0/0/7 dispatchable=7" "$(head -n1 "$WORK/lp.out")"
+check "(lp) a full pool runs no second pass, so the wake line carries no dispatchable count" "WAKE pool-unresolved capacity=UNDERFILLED:7 pool=7/0/0/7" "$(head -n1 "$WORK/lp.out")"
+
+# --- (8134) the plain current-version rows are pool rows: one heading names the version, no
+# dispatchable row is a disposition line, and no tier-4 drop line reaches the wake ----
+check "(8134) the current-version rows sit under one '# dispatchable in <version>' heading" "1" "$(grep -c '^# dispatchable in v1.0.1' "$WORK/lp.out")"
+check "(8134) the heading comes before the first ticket row" "yes" "$([ "$(grep -n '^# dispatchable in v1.0.1' "$WORK/lp.out" | head -n1 | cut -d: -f1)" -lt "$(grep -n '^LOCAL' "$WORK/lp.out" | head -n1 | cut -d: -f1)" ] && echo yes)"
+check "(8134) no listed row is printed as a disposition line" "0" "$(grep -c '^# disposition .* listed ' "$WORK/lp.out")"
+check "(8134) no ticket is dropped as outside the priority pool" "0" "$(grep -c 'outside the priority pool' "$WORK/lp.out")"
+check "(8134) a full pool prints no version backlog" "0" "$(grep -c '^# version backlog' "$WORK/lp.out")"
+
+# a labelled pool row of a later version comes after the current version's rows, under its own heading
+M="$WORK/mirror-lp2/HIMMEL"; mkdir -p "$M"
+for n in 10 11; do mk "HIMMEL-$n" '[]' "plain task $n" "Edit scripts/lib/plain$n.sh only."; done
+mk HIMMEL-20 '["ps3-blocker"]' "labelled later version" "Edit scripts/lib/later20.sh only."
+sed 's/\["v1.0.1"\]/["v1.0.2"]/' "$M/HIMMEL-20.md" > "$M/HIMMEL-20.md.tmp" && mv "$M/HIMMEL-20.md.tmp" "$M/HIMMEL-20.md"
+printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\n' > "$WORK/mirror-lp2/HIMMEL.versions.tsv"
+export NEXT_DISPATCH_MIRROR="$M"
+I="$(new_inbox lp2)"
+timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/lp2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(8134) the current-version rows are listed before the later-version pool row" "HIMMEL-10,HIMMEL-11,HIMMEL-20" "$(grep '^LOCAL' "$WORK/lp2.out" | cut -f2 | paste -sd, -)"
+check "(8134) the later-version pool row has its own heading after the current one" "yes" "$([ "$(grep -n '^# dispatchable in v1.0.1' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" -lt "$(grep -n '^# dispatchable in other versions' "$WORK/lp2.out" | head -n1 | cut -d: -f1)" ] && echo yes)"
+
+# --- (6604) a RESUME-HELD line is not a pool key: the pool signature ignores it ----------------
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"  # the sections above re-point it at the real dispatcher
+rm -f "$STUB/dispositions"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+I="$(new_inbox rh)"
+arm "$I" "$WORK/rh1.out" 6
+check "(6604) the streak's first sample wakes with the pool (rc 0)" "0" "$rc"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nRESUME-HELD HIMMEL-9005 by N4200\n' > "$STUB/pool.rows"
+c0="$(calls)"
+arm "$I" "$WORK/rh2.out" 5
+check "(6604) the pool was re-probed with the RESUME-HELD line in it" "yes" "$([ "$(calls)" -gt "$c0" ] && echo yes)"
+check "(6604) a RESUME-HELD line does not change the pool signature: no re-wake (rc 124)" "124" "$rc"
+rm -f "$STUB/pool.rows"
+
+# --- (6604) pool-stale= wakes once per newly stale disposition key ----------------------------
+stale_line() { # <pool-stale value>
+    sed "s/capacity=UNDERFILLED:7/capacity=ok pool-stale=$1/" "$STUB/tick.line.orig" > "$STUB/tick.line"
+}
+cp "$STUB/tick.line" "$STUB/tick.line.orig"
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"  # the sections above re-point it at the real dispatcher
+rm -f "$STUB/pool.rows" "$STUB/dispositions" "$STUB/pool.fail" "$STUB/pool.slow" "$STUB/pool.partial"  # an empty, resolved pool: only pool-stale= can wake here
+I="$(new_inbox st)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/st1.out" 15
+check "(6604) a stale disposition key wakes the waiter (rc 0)" "0" "$rc"
+check "(6604) the wake names the key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st1.out")"
+arm "$I" "$WORK/st2.out" 4
+check "(6604) the same stale key does not wake again on a re-arm" "124" "$rc"
+stale_line '2:HIMMEL-7120,HIMMEL-6866'
+arm "$I" "$WORK/st3.out" 15
+check "(6604) a newly stale key wakes and names only the new key" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/st3.out")"
+stale_line '?'
+arm "$I" "$WORK/st4.out" 4
+check "(6604) an unreadable blocker (?) never wakes" "124" "$rc"
+check "(6604) an unreadable blocker keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line '0'
+arm "$I" "$WORK/st5.out" 4
+check "(6604) pool-stale=0 never wakes" "124" "$rc"
+check "(6604) pool-stale=0 clears the marker" "no" "$([ -e "$I.wait.stale" ] && echo yes || echo no)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/st6.out" 15
+check "(6604) a key that left and rejoined wakes again" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st6.out")"
+
+# a tick that omits the field (a timeout or a failed gh read) or says skip keeps the marker
+I="$(new_inbox st2)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/sm1.out" 15
+check "(6604) the first stale key wakes (rc 0)" "0" "$rc"
+sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line.orig" > "$STUB/tick.line"  # no pool-stale field at all
+arm "$I" "$WORK/sm2.out" 4
+check "(6604) a tick without the field never wakes (rc 124)" "124" "$rc"
+check "(6604) a tick without the field keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line 'skip'
+arm "$I" "$WORK/sm3.out" 4
+check "(6604) pool-stale=skip keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
+stale_line '1:HIMMEL-7120'
+arm "$I" "$WORK/sm4.out" 4
+check "(6604) the key reported before the gap does not re-wake after it (rc 124)" "124" "$rc"
+
+# a partial read (a key plus ?) merges into the marker and never shrinks it
+I="$(new_inbox st3)"
+stale_line '1:HIMMEL-7120,?'
+arm "$I" "$WORK/sp1.out" 15
+check "(6604) a partial read wakes for its readable key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/sp1.out")"
+stale_line '1:HIMMEL-6866,?'
+arm "$I" "$WORK/sp2.out" 15
+check "(6604) a later partial read wakes only for the key it adds" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/sp2.out")"
+stale_line '1:HIMMEL-7120,?'
+arm "$I" "$WORK/sp3.out" 4
+check "(6604) a partial read never shrinks the marker: the first key stays quiet (rc 124)" "124" "$rc"
+stale_line '2:HIMMEL-7120,HIMMEL-6866'
+arm "$I" "$WORK/sp4.out" 4
+check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
+cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

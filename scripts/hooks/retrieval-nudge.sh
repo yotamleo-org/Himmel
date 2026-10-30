@@ -13,7 +13,7 @@
 #
 # Sweep = Grep/Glob tool call, or a Bash call with a segment that is `grep -r`,
 # `rg`, `git grep`, `git log -S`, or a `find` carrying a match predicate (a bare
-# `find DIR -type d` listing is not a search). Retrieval = any mcp__qmd__ tool,
+# `find DIR -type d` listing is not a search). Retrieval = any mcp__qmd__ or mcp__plugin_qmd_qmd__ tool,
 # qmd-bounded.sh / `qmd query|search|get…`, or graphify / worker-graph.sh
 # query|explain|path. A retrieval call stops the nudge for the session.
 #
@@ -44,7 +44,7 @@ mkdir -p "$DIR" 2>/dev/null || exit 0
 
 kind=""   # retrieval | sweep
 case "$tool" in
-    mcp__qmd__*) kind=retrieval ;;
+    mcp__qmd__* | mcp__plugin_qmd_qmd__*) kind=retrieval ;;
     Grep|Glob) kind=sweep ;;
     Bash)
         # Quoted text (commit messages, echo args) is not a command: blank it,
@@ -52,7 +52,7 @@ case "$tool" in
         flat="$(printf '%s' "$cmd" | sed -E "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')"
         while IFS= read -r seg; do
             seg="$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command|bash|sh)[[:space:]]+)+//')"
-            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)(leg|worker)-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
+            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)worker-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
                 kind=retrieval
                 break
             elif printf '%s' "$seg" | grep -Eq '^(grep[[:space:]]+(-[A-Za-z]*[rR][A-Za-z]*|--recursive)([[:space:]]|$)|rg([[:space:]]|$)|git[[:space:]]+grep([[:space:]]|$)|git[[:space:]]+log[[:space:]]+([^[:space:]]+[[:space:]]+)*-S)'; then

@@ -47,7 +47,7 @@
 // render, so a merged PR older than 24 h survives there only as its worker's line; upgrade
 // path: merge the previous archive's PR lines into the new one.
 //
-// PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (tick.sh
+// PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: the epic "merged" count is PRs whose title cites [KEY], from one
@@ -67,7 +67,6 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitClean } from '../../lanes/git-clean.mjs';
 import { readToolHealth } from '../../eval/worker-digest/tool-health.mjs';
-import { legacyFlag } from '../../lib/env-alias.mjs';
 import { redact } from './redact.mjs';
 import { collect as collectCloud } from './cloud-liveness.mjs';
 import { goalOf, renderUserBoard } from './board-user.mjs';
@@ -83,12 +82,11 @@ const changedFlag = rawArgs.includes('--changed');
 const args = rawArgs.filter((a) => a !== '--changed');
 const opt = {};
 for (let i = 0; i < args.length; i += 2) {
-    if (!['--doc', '--workers', '--legs', '--out', '--repo', '--json', '--view'].includes(args[i]) || args[i + 1] === undefined
-        || (args[i] === '--legs' && !legacyFlag('--legs', '--workers'))) {
+    if (!['--doc', '--workers', '--out', '--repo', '--json', '--view'].includes(args[i]) || args[i + 1] === undefined) {
         console.error(USAGE);
         process.exit(2);
     }
-    opt[args[i] === '--legs' ? 'workers' : args[i].slice(2)] = args[i + 1];
+    opt[args[i].slice(2)] = args[i + 1];
 }
 // The user page embeds no fingerprint and writes no json, so --changed and --json have nothing to act on.
 if (!opt.doc || (opt.view !== undefined && opt.view !== 'user') || (opt.view === 'user' && (changedFlag || opt.json !== undefined))) {

@@ -13,9 +13,9 @@
 #   (r0d) a RETASK token in the bullet never reaches worker-event, the WAKE line or
 #         the out file
 #   (r0e) without --workers-from the waiter never calls worker-event
-#   (r0f) two legs: N2 changed a sample before the relay absorbs N1's wrap, and
+#   (r0f) two workers: N2 changed a sample before the relay absorbs N1's wrap, and
 #         N2's change still wakes
-#   (r0g) two legs: N1's wrap and N2's change in one sample, then the manifest
+#   (r0g) two workers: N1's wrap and N2's change in one sample, then the manifest
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
 #   (r0j) the heartbeat is refreshed before each worker-event call of a pass
@@ -25,7 +25,7 @@
 # tick.sh, the bank verdict and worker-event.sh are stubbed (CHIEF_WAIT_TICK,
 # CHIEF_WAIT_USAGE, CHIEF_WAIT_WORKER_EVENT): nothing closes a window here.
 #
-# Linux-only: chief-wait.sh has no .ps1 twin by design; this suite uses GNU
+# Linux-only: this suite uses GNU
 # timeout, so run-shell-tests.sh skips it off-Linux.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-r0.sh

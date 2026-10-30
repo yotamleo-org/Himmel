@@ -50,7 +50,7 @@
 #
 # Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_KNOWN_SYNC (each one executable),
 # TICK_TRACKER_MIRROR_DIR.
-# Platform guard: POSIX bash 3.2+, flock optional; no .ps1 twin by design (shell-only harness).
+# Platform guard: POSIX bash 3.2+, flock optional (shell-only harness).
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

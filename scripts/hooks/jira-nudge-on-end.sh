@@ -38,8 +38,7 @@
 #                           that un-detaches the body would make this delay
 #                           block teardown.
 
-# This hook runs under bash on every platform (no .ps1 twin), so do NOT add a
-# msys/cygwin guard — that would silence the nudge on Windows/Git-Bash.
+# This hook runs under bash on both Linux and macOS.
 
 # Error isolation: do NOT use `set -e`/`pipefail` + an ERR trap — the many
 # best-effort probes below (jq pipelines, `git log`, the `|| exit 0`

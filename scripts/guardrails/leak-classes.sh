@@ -9,10 +9,8 @@
 # pre-commit: a --no-verify commit, a merge, a stale clone). This script is
 # the ONE implementation both callers share.
 #
-# Platform guard (gitbash-only): both callers (the pre-commit hook and the
-# public CI job) invoke this as `bash scripts/guardrails/leak-classes.sh`,
-# Git Bash on Windows / any POSIX bash 3.2+ — no .ps1 twin (project
-# convention, matches the other shell guardrails).
+# Platform guard: both callers (the pre-commit hook and the public CI job)
+# invoke this as `bash scripts/guardrails/leak-classes.sh`; POSIX bash 3.2+.
 #
 # Five classes, each ANCHORED so a documentation-range value stays usable
 # (mirrors the existing gitleaks convention of anchored regexes to avoid

@@ -568,8 +568,6 @@ EOF
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
-# shellcheck source=../lib/env-alias.sh
-. "$_csg_dir/../lib/env-alias.sh"
 CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-}"
 # shellcheck source=../lib/claude-version.sh
@@ -579,18 +577,10 @@ CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-}"
 # unknown flags are rejected loudly. Avoids the v1 "$3 == --force"
 # positional trap.
 ARGC_AT_START=$#
-# _arm_tier VALUE: prints worker for worker, and for the old value leg while
-# legacy names are on; anything else is an error.
+# _arm_tier VALUE: prints worker for worker; anything else is an error.
 _arm_tier() {
     case "$1" in
         worker) printf 'worker' ;;
-        leg)
-            case "${HIMMEL_LEGACY_NAMES:-}" in
-                0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
-                    echo "ERR arm-resume: --tier leg was renamed to --tier worker; legacy names are off" >&2
-                    return 1 ;;
-            esac
-            printf 'worker' ;;
         *)
             echo "ERR arm-resume: --tier must be worker, got: ${1:-<empty>}" >&2
             return 1 ;;
@@ -2142,7 +2132,7 @@ fi
 # `case` (rc 0 on every branch), so it never aborts under `set -euo pipefail`.
 _validate_key() {
     local k
-    k=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')   # himmel-540 -> HIMMEL-540
+    k=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')   # himmel-<n> -> HIMMEL-<n>
     # Fully-anchored canonical shape <KEY>-<NUM> with nothing trailing, so a
     # malformed value (e.g. ABC-123-456 or trailing junk) is rejected rather than
     # truncated-and-accepted. `grep -qE` inside `if` is errexit-safe; the `if` is

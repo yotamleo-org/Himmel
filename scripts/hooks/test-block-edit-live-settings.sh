@@ -3730,6 +3730,63 @@ python3 - <<'EOF'\nprint(1)\nEOF\necho 'cp /tmp/x @P@/.cl*ude/' | bash
 python3 - <<'EOF'\nprint(1)\nEOF\nbash <(echo 'cp /tmp/x @P@/.cl*ude/')
 ROWS
 
+# 9720-9741: a gh subcommand that downloads or clones into a
+# directory writes there like cp does. Each of these named the live `.claude`
+# directory and passed before the guard knew the gh write shapes.
+rows_both 9720 2 "gh download or clone into the live .claude directory denies" <<'ROWS'
+gh run download 123 -D @P@/.claude/agents
+gh run download 123 --dir @P@/.claude/agents
+gh run download 123 --dir=@P@/.claude/agents
+gh run download 123 -D @H@/.claude/agents
+gh run download 123 -D ~/.claude/agents
+gh release download v1 -D @P@/.claude/hooks
+gh release download v1 --dir @P@/.claude
+gh release download v1 --dir=@P@/.claude
+gh release download v1 -O @P@/.claude/hooks/x.sh
+gh release download v1 --output @P@/.claude/hooks/x.sh
+gh release download v1 -D @H@/.claude/agents
+gh gist clone abc123 @P@/.claude/hooks
+gh gist clone abc123 @H@/.claude/hooks
+gh repo clone o/r @P@/.claude/hooks
+gh repo clone o/r @H@/.claude/hooks
+gh -R o/r release download v1 -D @P@/.claude/hooks
+gh run download 123 -n art -D @P@/.claude/agents && echo ok
+echo go; gh release download v1 --pattern '*.sh' -D @P@/.claude/hooks
+ROWS
+# 9740-9749: the same commands aimed at a scratch directory, a worktree's own
+# .claude, or only mentioning the live path as a repo or a read still pass.
+rows_both 9740 0 "gh download or clone into a scratch directory allows" <<'ROWS'
+gh run download 123 -D /tmp/claude-1000/x/scratchpad/art
+gh run download 123 --dir=/tmp/claude-1000/x/scratchpad/art
+gh release download v1 -D /tmp/claude-1000/x/scratchpad/rel
+gh release download v1 -O /tmp/claude-1000/x/scratchpad/rel/x.sh
+gh release download v1 --output /tmp/claude-1000/x/scratchpad/rel/x.sh
+gh gist clone abc123 /tmp/claude-1000/x/scratchpad/gist
+gh repo clone o/r /tmp/claude-1000/x/scratchpad/repo
+gh release view v1 --json assets && cat @P@/.claude/hooks/x.sh
+gh run list --json name | jq .
+ROWS
+# 9760-9765: with no directory operand the download lands in the cwd, so a cwd
+# inside the live .claude denies; a worktree's own .claude and a scratch dir allow.
+# A cwd deeper under .claude/ is not a destination, as for `cp x .` (J1676).
+assert_rc "9760 gh run download with no -D from the live .claude denies" 2 \
+    "$(bash_rc_of "$PRIMARY/.claude" "gh run download 123" HOME="$FAKEHOME")"
+assert_rc "9761 gh release download with no -D from the live .claude denies" 2 \
+    "$(bash_rc_of "$PRIMARY/.claude" "gh release download v1" HOME="$FAKEHOME")"
+assert_rc "9762 gh gist clone with no directory from the live user .claude denies" 2 \
+    "$(bash_rc_of "$FAKEHOME/.claude" "gh gist clone abc123" HOME="$FAKEHOME")"
+assert_rc "9763 gh release download with no -D from the primary root allows" 0 \
+    "$(bash_rc_of "$PRIMARY" "gh release download v1" HOME="$FAKEHOME")"
+assert_rc "9764 gh release download with no -D from a worktree's own .claude allows" 0 \
+    "$(bash_rc_of "$NESTED_WT/.claude" "gh release download v1" HOME="$FAKEHOME")"
+assert_rc "9765 gh run download with no -D from a scratch directory allows" 0 \
+    "$(bash_rc_of "/tmp" "gh run download 123" HOME="$FAKEHOME")"
+# 9766: a subcommand the shell expands cannot be read, so it denies beside a
+# live .claude destination.
+rows_both 9766 2 "gh with an expanded subcommand beside a live .claude denies" <<'ROWS'
+gh release $v -D @P@/.claude/hooks
+ROWS
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

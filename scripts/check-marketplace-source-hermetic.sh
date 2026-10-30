@@ -44,8 +44,7 @@
 #      object; or the per-plugin jq extraction itself failing for any
 #      reason — all fail closed, never read as an empty/passing result.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure jq + POSIX shell; no .ps1 twin needed.
+# Platform guard: pure jq + POSIX shell, bash 3.2+.
 set -euo pipefail
 
 TEMPLATE_JSON="${HIMMEL_SETTINGS_TEMPLATE:-docs/setup/settings-template.json}"

@@ -18,8 +18,7 @@
 #   24f  --list plans only the impacted suite and runs nothing
 #   24g  --impacted with no value is REFUSED rc 2
 #
-# Platform guard: bash-only, like every suite in this family, and no .ps1
-# twin — it runs under Git Bash on Windows as well as Linux.
+# Platform guard: bash-only, like every suite in this family; Linux/macOS.
 #
 # Usage: bash scripts/ci/test-run-shell-tests-impacted.sh
 #

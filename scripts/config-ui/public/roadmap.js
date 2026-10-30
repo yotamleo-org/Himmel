@@ -5,7 +5,8 @@
 import { esc } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
-const section = (id, title, sub, body) => `<section id="${id}" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
+const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
+const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 const jira = (argv) => "jira " + argv.map((a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`)).join(" ");
 
 function releasesHtml(d) {
@@ -14,8 +15,8 @@ function releasesHtml(d) {
   return note + d.versions.map((v, i) => {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0);
     const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : i === d.cur ? "running" : i === d.next ? "next" : "planned";
-    const alert = v.open.length ? `<div class="alert"><span class="st fail">open</span> ${v.open.length} still open on a released version: ${v.open.map((k) => `HIMMEL-${k}`).map(esc).join(", ")}</div>` : "";
-    return `<div class="card rm-rel${i === d.cur ? " cur" : ""}"><h3><a href="#/roadmap/${encodeURIComponent(v.n)}">${esc(v.n)}</a> <span class="ro">${esc(tag)}</span></h3>
+    const alert = v.open.length ? `<div class="alert"><span class="st pill fail">open</span> ${v.open.length} still open on a released version: ${v.open.map((k) => `HIMMEL-${k}`).map(esc).join(", ")}</div>` : "";
+    return `<div class="card rm-rel${i === d.cur ? " cur" : ""}"><h3><a href="#/roadmap/${encodeURIComponent(v.n)}">${esc(v.n)}</a> <span class="ro pill${v.rel ? " ok" : i === d.cur ? " warn" : ""}">${esc(tag)}</span></h3>
       <div class="kv">${COLS.map(([b, l]) => `${esc(l)} ${c[b]}`).join(" · ")} · ${total} total</div>${alert}</div>`;
   }).join("");
 }
@@ -35,10 +36,10 @@ const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"
 
 function cardHtml(t, d, showVersion, w) {
   const lg = t.leg ? `<div class="rm-worker"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
-  const dr = t.drift === 1 ? `<span class="st warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st warn">unplanned</span>` : "";
+  const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
-  return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>${esc(t.id || "HIMMEL-" + t.k)}</b> <span class="ro">${esc(t.s)}</span><div>${esc(t.t)}</div>
+  return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>${esc(t.id || "HIMMEL-" + t.k)}</b> <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
@@ -54,30 +55,31 @@ function boardHtml(d, tickets, showVersion, w) {
 const themeSel = (d, ui) => `<label>Theme <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
   `<option value="${i}"${ui.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
 // A refused or failed write: shown above the board, the card has already moved back (the board is redrawn from the server).
-const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st fail">refused</span> ${esc(ui.writeError)}</div>` : "");
+const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st pill fail">refused</span> ${esc(ui.writeError)}</div>` : "");
 const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme === ui.theme);
 
 // #/roadmap/<version>, one version's board.
 function versionHtml(d, ui) {
-  const back = `<p><a href="#/roadmap">← Roadmap</a></p>`;
+  const back = pageHeader(ui.ver, "Tickets by status and theme.") + `<p><a href="#/roadmap">← Roadmap</a></p>`;
   const v = d.versions.findIndex((x) => x.n === ui.ver);
   if (v < 0) return back + `<div class="empty">${esc(ui.ver)}: no such version in the mirror.</div>`;
   const shown = byTheme(d, ui).filter((t) => t.v === v);
-  const head = `<div class="rm-bar">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
+  const head = `<div class="rm-bar fields">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
   return back + section("rm-version", d.versions[v].n, `${shown.length} tickets in this version; the worker marker shows on the card.`,
     head + (shown.length ? boardHtml(d, shown, false, ui.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
 // #/kanban, every version on one board with no version filter. Done can be hidden.
 export function renderKanban(data, ui) {
-  if (!data) return `<p class="sub" id="status">loading…</p>`;
-  if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
+  const page = pageHeader("Kanban", "Tickets across versions, grouped by status.");
+  if (!data) return page + `<p class="sub" id="status">loading…</p>`;
+  if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   const u = { ...ui, writes: ui && ui.writes && data.source !== "github" };
   const shown = byTheme(data, u).filter((t) => !(u.hideDone && t.b === "done"));
-  const head = `<div class="rm-bar">${themeSel(data, u)}<label><input type="checkbox" data-rm-hide-done${u.hideDone ? " checked" : ""}> Hide Done</label>`
+  const head = `<div class="rm-bar fields">${themeSel(data, u)}<label><input type="checkbox" data-rm-hide-done${u.hideDone ? " checked" : ""}> Hide Done</label>`
     + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(u)}`;
   const gh = data.source === "github";
-  return section("rm-kanban", "Kanban", gh ? `Every issue across milestones (${shown.length} shown). GitHub issues are read-only here: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
+  return page + section("rm-kanban", "Kanban", gh ? `Every issue across milestones (${shown.length} shown). GitHub issues are read-only here: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `Every train ticket across versions (${shown.length} shown).${u.writes ? " Drag a card to another column to change its Jira status." : ""}`,
     head + (shown.length ? boardHtml(data, shown, true, u.writes) : `<div class="empty">No tickets match.</div>`));
 }
@@ -100,7 +102,7 @@ function syncHtml(d, ui) {
       <td><code>${esc(jira(o.argv))}</code> <button class="btn" data-act="copy" data-cmd="${esc(jira(o.argv))}">copy</button></td></tr>`).join("")
     : `<tr><td colspan="4" class="empty">Jira already matches the workers.</td></tr>`;
   return `<p class="ro">Planned only: the console kit is the one writer, via the Jira CLI. Workers never write Jira and this page never does.</p>
-    <table class="rm-sync"><thead><tr><th>Ticket</th><th>Worker</th><th>Why</th><th>Command</th></tr></thead><tbody>${body}</tbody></table>`;
+    <div class="scroll"><table class="rm-sync data"><thead><tr><th>Ticket</th><th>Worker</th><th>Why</th><th>Command</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function librarianHtml(d, ui) {
@@ -114,16 +116,18 @@ function librarianHtml(d, ui) {
 }
 
 export function renderRoadmap(data, ui) {
-  if (!data) return `<p class="sub" id="status">loading…</p>`;
-  if (data.state !== "ok") return `<div class="nodata">${esc(data.reason || "roadmap unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
+  const page = pageHeader("Roadmap", "Versions, drift and worker proposals.");
+  if (!data) return page + `<p class="sub" id="status">loading…</p>`;
+  if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "roadmap unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
   const gh = data.source === "github";
   const u = { ...ui, writes: ui && ui.writes && !gh };
   if (u.ver) return versionHtml(data, u);
-  const bar = `<div class="rm-bar">${filters(data, u)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
+  const bar = `<div class="rm-bar fields">${filters(data, u)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>`;
   if (gh) {
-    return section("rm-releases", "Milestones", `Live from GitHub issues (${data.mirror.count} issues). Read-only: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""} Open a milestone for its kanban.`, releasesHtml(data));
+    return page + section("rm-releases", "Milestones", `Live from GitHub issues (${data.mirror.count} issues). Read-only: change them on GitHub.${data.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""} Open a milestone for its kanban.`, releasesHtml(data));
   }
   return [
+    page,
     section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}). Open a version for its kanban.`, releasesHtml(data)),
     section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(data)),
     bar, // narrows the sync and librarian lists below

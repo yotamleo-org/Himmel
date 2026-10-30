@@ -119,6 +119,28 @@ post-swap check fails. Delete the `.pre-swap-` files once you are satisfied.
 
 Switching back to gemma is the same procedure with `--model gemma`.
 
+<!-- mem:ad0fbcf0d5ac -->
+**Rolling back by hand.** If you swap `index.sqlite` back yourself, the order
+matters. A daemon still running keeps the old file open, and the stale
+`index.sqlite-shm` makes new readers report "database disk image is malformed".
+
+1. Stop every process that uses the index: each `qmd mcp` daemon and any
+   `qmd update` or `qmd embed` run. Confirm none is left before you go on.
+2. Only now test the file itself:
+   `sqlite3 "file:<index>?immutable=1" "pragma quick_check"`.
+3. Deal with the `-shm` and `-wal` files beside the index. They belong to the
+   index you swapped out, not the one now in place, and a non-empty `-wal`
+   holds committed transactions. Move the swapped-out index aside together
+   with both sidecars if you may still want anything the old daemons wrote;
+   otherwise remove them.
+4. Run `bash scripts/luna/qmd-embed-model.sh set <model>`, then `check`.
+5. Only now let a daemon start.
+
+A session start before step 4 relaunches the daemon on the OLD config; compare
+the daemon's `ps -o lstart` with the config file's mtime. Two daemons can run
+side by side, with the old one still holding the port: confirm with
+`ss -ltnp`, and run one live vec query before you call it done.
+
 `set gemma|qwen` alone only writes `models.embed` into `~/.config/qmd/index.yml`.
 It refuses when the index holds another model, because the result would be a
 mismatch; `--force` overrides the guard, leaving the index mismatched until a

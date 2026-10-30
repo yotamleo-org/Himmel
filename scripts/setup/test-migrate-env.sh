@@ -121,6 +121,7 @@ fixture_env() {  # a fresh station-shaped .env, mode 600, and no config files
       echo "USER_SLUG=$(canary slug)"
       echo "CR_PROFILE=$(canary profile)"
       echo "CR_REQUIRE_CROSS_MODEL=1"
+      echo "HIMMEL_FLEET_CAP=7"
       echo "READ_SECRET=$(canary read)"
       echo "UNREAD_SECRET=$(canary unread)"
       echo "KEEP_ME=$(canary keep)"
@@ -173,6 +174,8 @@ has "HANDOVER_DIR moved to himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$conf"
 has "USER_SLUG moved to himmel.conf" "USER_SLUG=CANARY-slug-" "$conf"
 pol=$(node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policy || {}; process.stdout.write(String(p.CR_REQUIRE_CROSS_MODEL))' "$HOME/.himmel/config.json" 2>/dev/null)
 if [ "$pol" = 1 ]; then pass "the policy key moved to config.json with its value"; else fail "config.json .policy.CR_REQUIRE_CROSS_MODEL is '$pol'"; fi
+cap=$(node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policy || {}; process.stdout.write(String(p.HIMMEL_FLEET_CAP))' "$HOME/.himmel/config.json" 2>/dev/null)
+if [ "$cap" = 7 ]; then pass "the legacy fleet cap moved to config.json .policy"; else fail "config.json .policy.HIMMEL_FLEET_CAP is '$cap'"; fi
 store="$HOME/.config/secrets/himmel.env"
 if grep -q '^UNREAD_SECRET=CANARY-unread-' "$store" 2>/dev/null && [ "$(mode_of "$store")" = 600 ]; then
     pass "the unread secret moved to a mode-600 store"
@@ -180,7 +183,7 @@ else
     fail "the unread secret is not in a mode-600 store"
 fi
 envnow=$(cat "$TMP/st/.env")
-for k in HANDOVER_DIR USER_SLUG CR_PROFILE CR_REQUIRE_CROSS_MODEL UNREAD_SECRET; do
+for k in HANDOVER_DIR USER_SLUG CR_PROFILE CR_REQUIRE_CROSS_MODEL HIMMEL_FLEET_CAP UNREAD_SECRET; do
     lacks "$k removed from .env" "$k=" "$envnow"
 done
 has "a secret something reads stays in .env" "READ_SECRET=CANARY-read-" "$envnow"

@@ -90,8 +90,8 @@
 # (docs/internals/retask-channel.md), since the launcher's own `bus register`
 # runs inside a script and never shows up in a tool call.
 #
-# Platform guard (gitbash-only): env + jq + `readlink -m` where present; runs
-# under Git Bash or POSIX bash 3.2+. The bus itself is Linux-only. No .ps1 twin.
+# Platform guard: env + jq + `readlink -m` where present; any POSIX bash 3.2+.
+# The bus itself is Linux-only.
 #
 # Exit codes: 0 allow (no output); 2 deny (JSON hookSpecificOutput with
 # permissionDecision "deny" on stdout, reason starting "bus store-deny: ", and
@@ -269,8 +269,9 @@ verbish() {
 # segment, a verbish one.
 # ponytail: a text walker cannot close the shell-parsing class (parens are
 # counted without modelling quotes; each round finds another spelling), so the
-# hook stays advisory; upgrade path is HIMMEL-5238 (store reachable only through
-# the bus CLI by permission or ownership) and HIMMEL-5233.
+# hook stays advisory; upgrade path: the store reachable only through
+# the bus CLI by permission or ownership.
+# ponytail: upgrade path HIMMEL-5238, HIMMEL-5233.
 walk_words() {
     local mode="$1" seg word words seen rest has stk n nopen nclose opener
     while IFS= read -r seg; do

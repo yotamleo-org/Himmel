@@ -113,7 +113,7 @@ export function removeFixture(dir: string): boolean {
   // fixture here, leaking them all; keep this guard on TMP_ROOT too.
   const underTmp = key(abs).startsWith(key(TMP_ROOT) + sep);
   if (!created.has(key(dir)) || !underTmp) {
-    console.error(`fixture-repo: REFUSED to remove ${abs} -- this run did not create it, or it is outside ${TMP_ROOT} (HIMMEL-1888: teardown removes registered fixtures only)`);
+    console.error(`fixture-repo: REFUSED to remove ${abs} -- this run did not create it, or it is outside ${TMP_ROOT} (teardown removes registered fixtures only)`);
     return false;
   }
   let lastErr: unknown;

@@ -1,6 +1,6 @@
 ---
 name: technical-writing
-description: "Layered writing standard: Diátaxis mode, Google style, STE and Global English rules, for docs, PRs and commits."
+description: "Docs/PR/commit writing standard."
 disable-model-invocation: true
 ---
 

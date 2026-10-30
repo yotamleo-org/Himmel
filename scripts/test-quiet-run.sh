@@ -7,8 +7,7 @@
 #
 # Usage: bash scripts/test-quiet-run.sh
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + coreutils + git; no .ps1 twin needed.
+# Platform guard: POSIX bash 3.2+, coreutils and git.
 #
 # Exit codes:
 #   0 - all cases passed

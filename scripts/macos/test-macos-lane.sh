@@ -3,8 +3,8 @@
 # ssh, rsync and timeout are PATH-independent stubs that log their argv, so
 # nothing real (no docker, no network, no VM) is touched.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the lane drives KVM/docker on the
-# Linux station; this Bash 3.2 suite tests that platform-specific script.
+# PLATFORM GUARD: the lane drives KVM/docker on the Linux station;
+# this Bash 3.2 suite tests that platform-specific script.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

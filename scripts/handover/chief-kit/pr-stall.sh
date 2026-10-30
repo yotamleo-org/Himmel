@@ -32,7 +32,7 @@
 # pr-stall.sent so a repeat run does not re-send. A PR with no worker in the
 # manifest is listed with worker `-` and never sent to.
 #
-# PR to leg: a manifest worker owns a PR when its doc names the PR's head branch
+# PR to worker: a manifest worker owns a PR when its doc names the PR's head branch
 # or `PR <n>` / `pull/<n>`. Session name: worker-identity.sh's first name.
 #
 # Exit: 0 (also when nothing is stuck); 3 when gh itself fails, with
@@ -46,7 +46,7 @@
 # tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
 # chief-wait.sh wakes once per new conflict or no-ci token.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
+# PLATFORM GUARD: the chief kit is Linux-only
 # (GNU date). needs gh and jq.
 set -uo pipefail
 

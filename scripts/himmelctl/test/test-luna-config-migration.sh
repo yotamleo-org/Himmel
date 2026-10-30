@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + node + jq.
+# Platform guard: bash + node + jq.
 # test-luna-config-migration.sh -- `himmelctl install` must not fail
 # on a ~/.himmel/config.json that carries an unknown key, and must migrate a
 # pre-schema config (a required v1 field missing) instead of refusing it.

@@ -24,8 +24,7 @@
 #      and names it — proves the poll is PER-DISPATCH, not just a
 #      one-time check before the loop.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+ —
-# no .ps1 twin needed, same as the sibling test-stop-marker.sh.
+# Platform guard: POSIX bash 3.2+, same as the sibling test-stop-marker.sh.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

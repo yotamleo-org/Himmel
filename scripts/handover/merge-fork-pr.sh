@@ -27,7 +27,7 @@
 #      merge itself failed
 #   8  refused: no valid trust-reviewed GO for this repo, PR and head
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as go.sh.
+# Platform guard: POSIX bash 3.2+, same as go.sh.
 set -u
 # a relative-entry copy that is not the anchor's hands off to it
 # (the same one-hop, fail-closed pattern go.sh uses).

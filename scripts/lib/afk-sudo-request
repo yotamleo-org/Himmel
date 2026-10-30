@@ -40,6 +40,14 @@ operator=$(field operator "$out")
 expires=$(field expires "$out")
 text=$(printf '%s\n' "$out" | sed -n 's/^text=//p')
 
+# Approve / Deny buttons: a tap on Approve only makes the bridge ask
+# for the code, so the TOTP check stays the helper's. The id is the helper's own
+# 8-char base32, checked before it goes into the callback data.
+markup=()
+if [[ $id =~ ^[a-z2-7]{8}$ ]]; then
+    markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}")
+fi
+
 # The bridge's own bot (the one the operator replies to), read the way
 # session-status.ts reads it; the repo .env / keyring token is a different bot.
 # The URL carrying the token goes to curl on stdin, never argv.
@@ -48,7 +56,7 @@ token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$bridge_env"
 if [ -z "$token" ] || ! printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
         | curl -sS -m 10 -o /dev/null -K - \
             --data-urlencode "chat_id=${operator}" \
-            --data-urlencode "text=${text}"; then
+            --data-urlencode "text=${text}" ${markup[@]+"${markup[@]}"}; then
     echo "afk-sudo-request: the Telegram notice failed; request $id stays pending until it expires" >&2
 fi
 

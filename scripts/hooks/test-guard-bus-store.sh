@@ -8,7 +8,7 @@
 # does NOT catch, so nobody mistakes it for a fence.
 #
 # Payloads are built with jq from plain strings, so no row needs shell quoting.
-# bash 3.2-safe. Platform guard (gitbash-only): env + jq, no git/path work.
+# bash 3.2-safe. Platform guard: env + jq, no git/path work; any POSIX bash 3.2+.
 # The single-quoted $VAR rows are literal command text, never expanded.
 # shellcheck disable=SC2016
 set -uo pipefail

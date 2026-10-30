@@ -3,45 +3,17 @@
  *
  * Uses the PULL_CMD test seam: the wrapper passes PULL_CMD to `bash -c` so
  * a shell snippet like 'exit 75' substitutes the real pull invocation.
- *
- * The .ps1 twin is verified by code-review parity (not run here):
- * its PULL_CMD seam uses `pwsh -NoProfile -Command $env:PULL_CMD`.
  */
 import { test, expect } from 'bun:test';
-import { existsSync, mkdtempSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const SCRIPT = join(import.meta.dir, 'pull-cadence.sh');
 
-/**
- * Locate Git Bash on Windows, avoiding the WSL System32 stub.
- * See luna-upgrade-all.ps1 and docs/internals/environment-gotchas.md.
- */
-function findGitBash(): string {
-  const candidates: string[] = [
-    'C:/Program Files/Git/bin/bash.exe',
-    'C:/Program Files (x86)/Git/bin/bash.exe',
-  ];
-  // Derive from the git.exe location if available.
-  const gitExe = Bun.which('git');
-  if (gitExe) {
-    // git.exe lives at <GitRoot>/cmd/git.exe; bash at <GitRoot>/bin/bash.exe
-    const gitRoot = dirname(dirname(gitExe.replace(/\\/g, '/')));
-    candidates.push(gitRoot + '/bin/bash.exe');
-  }
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
-  }
-  // PATH fallback: exclude Windows System32 WSL stub.
-  const pathBash = Bun.which('bash');
-  if (pathBash && !pathBash.toLowerCase().includes('system32')) return pathBash;
-  return 'bash';
-}
-
-const BASH = findGitBash();
+const BASH = Bun.which('bash') ?? 'bash';
 
 interface RunResult {
   rc: number;

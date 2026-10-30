@@ -20,9 +20,7 @@
 # (a top-level `model:` with `default:`, a `fallback_providers:` list, and a
 # `hooks:` block whose matcher+command identifies the guard).
 #
-# Platform: Git Bash on Windows (gitbash) / any POSIX bash 3.2+. Pure shell +
-# awk + grep over fixture files; NOT ported to native PowerShell. A test harness
-# needs no .ps1 twin (project convention: a documented platform guard suffices).
+# Platform: POSIX bash 3.2+, awk + grep over fixture files.
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO

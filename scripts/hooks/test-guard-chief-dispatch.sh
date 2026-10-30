@@ -83,7 +83,7 @@ combined_output() {
 CHIEF_TRANSCRIPT="$TMP/worker-chief.md-loaded.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/worker-chief.md — resume from there."}}' > "$CHIEF_TRANSCRIPT"
 
-WORKER_SESSION_TRANSCRIPT="$TMP/leg-w1-normal.jsonl"
+WORKER_SESSION_TRANSCRIPT="$TMP/worker-w1-normal.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotam/himmel/HIMMEL-2323-w1.md — implement the guard."}}' > "$WORKER_SESSION_TRANSCRIPT"
 
 MISSING_TRANSCRIPT="$TMP/does-not-exist.jsonl"

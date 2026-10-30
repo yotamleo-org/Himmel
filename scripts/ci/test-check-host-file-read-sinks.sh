@@ -5,7 +5,7 @@
 # Fixtures live in test-check-host-file-read-sinks-fixtures/*.fixture (not *.sh),
 # so the check does not scan its own test cases.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, git.
+# Platform guard: POSIX bash 3.2+, git.
 # shellcheck disable=SC2015 # ok/bad never fail
 set -uo pipefail
 

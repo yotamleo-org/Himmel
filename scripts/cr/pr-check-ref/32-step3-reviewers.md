@@ -35,7 +35,7 @@
 
    **Opt-in (`CR_CLAUDE_AGENTS=1`): ALSO dispatch the per-agent matrix below** (the pre-HIMMEL-926 default). All dispatches use the upstream `pr-review-toolkit:*` agent types — himmel's own `scripts/cr/floor-reviewer.md` is not an Agent-tool type (the floor script loads it as a prompt file). The HIMMEL-178 verify-before-critical rule is carried by prepending the directive below to EVERY agent prompt, code-reviewer included.
 
-   Do NOT spawn `claude --print` as a subprocess (HIMMEL-128 billing — interactive only). Sole exception: `scripts/cr/claude-floor-review.sh` above (HIMMEL-3107).
+   Do NOT spawn `claude --print` as a subprocess (billing — interactive only). Sole exception: `scripts/cr/claude-floor-review.sh` above.
 
    **Dispatch matrix (opt-in path only)** — always dispatch the first row; add others when the diff matches:
 

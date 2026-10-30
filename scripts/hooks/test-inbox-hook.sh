@@ -5,7 +5,7 @@
 # fabricated HANDOVER_DIR + session-name.sh's SESSION_NAME_CMDLINE_FILE test
 # seam. bash 3.2-safe. Run: bash scripts/hooks/test-inbox-hook.sh
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight — tests a Linux-only
+# PLATFORM GUARD: tests a Linux-only
 # claudex lane (see claudex-inbox-hook.sh's header).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -11,7 +11,7 @@
 # BEFORE releasing the lock). RED first: against a tree without the rule every
 # assertion below fails, none of them vacuously.
 #
-# Docs-only reads, no network, no live state. PLATFORM GUARD: no .ps1 twin —
+# Docs-only reads, no network, no live state. PLATFORM GUARD:
 # Bash 3.2, grep/awk/sed only.
 set -uo pipefail
 
@@ -264,7 +264,7 @@ absent() {  # absent <label> <haystack> <regex>  (case-insensitive, whitespace-n
 
 # Control: the pattern must be able to fire on the retired wording, or every
 # `absent` below is vacuous.
-retired_step9='So, per leg: mint a fresh B-<worker>-<hex> token, hand it to the predecessor, and ask it'
+retired_step9='So, per worker: mint a fresh B-<worker>-<hex> token, hand it to the predecessor, and ask it'
 retired_starts='Rotate nonces to B-<worker>-<hex>, quoting each A token verbatim'
 retired_step4='The successor hands you a fresh token per worker (ACTION ZERO step 9)'
 stale_rotate='mint a fresh|rotate nonces to|hands you a fresh token per worker'

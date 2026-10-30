@@ -17,7 +17,7 @@
 # <candidates> is a newline list of session names. Never guesses: callers
 # treat anything but exactly one match as unresolved.
 #
-# Platform guard: Linux bash 3.2+ (chief kit; no .ps1 twin).
+# Platform guard: Linux bash 3.2+ (chief kit).
 
 match_transcripts() {
     local files="$1" hw="$2" candidates="$3" matches="" f hit cand

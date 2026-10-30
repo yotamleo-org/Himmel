@@ -34,7 +34,7 @@ Claude-Code-specific mechanisms — skill / subagent / shell invocation,
 (pre-commit / pre-push) run under any harness and are the safety net that always
 fires.
 
-## Scope and standing permissions (HIMMEL-2585)
+## Scope and standing permissions
 
 These three notes are hand-written here rather than generated from `CLAUDE.md`:
 they are addressed to non-Claude harnesses reading this file, and `CLAUDE.md`

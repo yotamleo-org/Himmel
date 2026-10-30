@@ -40,7 +40,7 @@
 #
 # Exit: 0 ok; 1 missing/invalid manifest, lock or write failure; 2 usage.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
+# PLATFORM GUARD: the chief kit is Linux-only
 # (util-linux flock). bash 3.2-safe; needs jq.
 set -uo pipefail
 

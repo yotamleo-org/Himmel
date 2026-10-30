@@ -41,7 +41,7 @@
 # writable, and the merge gate re-reads the PR author), upgrade: a go_msg_mac on
 # the row, as cr-disposition.sh signs its rows.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 usage() { echo "usage: dependabot-go.sh <pr> <head-sha> --judge <qid> | <pr> <head-sha> --check | --sweep" >&2; exit 2; }

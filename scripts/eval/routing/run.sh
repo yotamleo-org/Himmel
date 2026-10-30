@@ -187,7 +187,12 @@ ok = not env.get("is_error") and env.get("subtype") in (None, "success")
 print(("ok " if ok else "err ") + ("" if cost is None else str(cost)))' "$out/$cid.tmp")"
     case "$verdict" in
         "ok "?*) mv "$out/$cid.tmp" "$out/$cid.json"; rm -f "$out/$cid.stderr"
-                 echo "run.sh: $cid $half -> $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("result","").strip()[:80])' "$out/$cid.json")" ;;
+                 # a sealed pick stays out of the log: the tuner reads only the aggregate
+                 if [ "$half" = open ]; then
+                     echo "run.sh: $cid $half -> $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("result","").strip()[:80])' "$out/$cid.json")"
+                 else
+                     echo "run.sh: $cid $half done"
+                 fi ;;
         "err "?*) printf '%s\n' "${verdict#err }" >>"$out/errored-spend.log"; rm -f "$out/$cid.tmp"
                   errored=$((errored + 1)); echo "run.sh: $cid errored, retried on the next run" >&2 ;;
         *) rm -f "$out/$cid.tmp"

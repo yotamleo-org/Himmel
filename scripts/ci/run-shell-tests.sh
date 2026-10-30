@@ -12,8 +12,7 @@
 # SUITE_REQUIRE_TOOL is capability-conditional: a suite there
 # RUNS on every host that has the tool and is [SKIP]ped loudly with its reason
 # where the tool is absent — never dead weight in SKIP_LIST on hosts that DO
-# have the capability, the exact blind spot that let a PowerShell-only
-# regression ship green — and SUITE_TIER is a
+# have the capability — and SUITE_TIER is a
 # declarative corpus-reduction table gated by env SUITE_TIER_MODE
 # (fast|extended|all|pr; unset = all = byte-identical to no filter;
 # pr reads scripts/ci/suite-tiers.tsv).
@@ -342,46 +341,36 @@ _suite_timeout_for() {
     return 0
   fi
 
-  if [ "$(uname -s)" = Darwin ]; then
+  # On macOS a suite's cap is its Linux cap times one multiplier
+  # (macOS runs killed 8 suites at 600-1800s caps in run 40664974972), so a
+  # suite no longer needs its own Darwin row. A row below is kept only where the
+  # measured macOS time is beyond multiplier x Linux cap. The second argument
+  # `linux` returns the unmultiplied Linux cap.
+  if [ "$(uname -s)" = Darwin ] && [ "${2:-}" != linux ]; then
+    darwin_cap_mult=2
     case "${1#./}" in
       scripts/ci/test-tier-replay.sh|*/scripts/ci/test-tier-replay.sh)
         # macOS cadence runs: PASS at 495s, then 874s (run 39986815551), against
-        # the 600s default. 1800s is the slower figure x2 (the loaded-budget
-        # rule); Linux keeps the default.
+        # the 600s default (x2 = 1200s, 1.4x headroom). 1800s is the slower
+        # figure x2 (the loaded-budget rule).
         printf '1800'; return 0 ;;
       scripts/cr/test-pr-check-rounds.sh|*/scripts/cr/test-pr-check-rounds.sh)
-        # Same run: PASS at 1700s against the 1200s Linux arm below. 3400s is
-        # that x2; the Linux arm is untouched.
+        # Same run: PASS at 1700s against the 1200s Linux cap (x2 = 2400s, 1.4x
+        # headroom). 3400s is that x2 (the loaded-budget rule).
         printf '3400'; return 0 ;;
-      scripts/ci/test-run-shell-tests.sh|*/scripts/ci/test-run-shell-tests.sh)
-        # macOS run 40408566333: killed at 603s on both attempts with every
-        # assertion passing (129s on the Linux ledger), the last case still
-        # pending. Run 40413314701 ran it to the end in 911s. 2000s is that
-        # figure x2 (the loaded-budget rule); the Linux default is untouched.
-        printf '2000'; return 0 ;;
       scripts/hooks/test-block-edit-live-settings.sh|*/scripts/hooks/test-block-edit-live-settings.sh)
-        # macOS runs 40457809286 and 40514166576: killed at 603s with every
-        # row passing (995 rows reached), against 151s on the Linux ledger.
-        # 1800s is the cap x3 (the loaded-budget rule); Linux keeps the default.
-        printf '1800'; return 0 ;;
-      scripts/test-adopt-sequences.sh|*/scripts/test-adopt-sequences.sh)
-        # macOS run 40633905316: killed at 603s on both attempts, against about
-        # 150s on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux
-        # keeps the default.
-        printf '1800'; return 0 ;;
-      scripts/test-adopt-features.sh|*/scripts/test-adopt-features.sh)
-        # macOS runs 40664974972 and 40786835131: killed at 1203s against the
-        # 1200s Linux arm below (457s on the Linux ledger), the macOS time sitting
-        # at the cap edge. 3600s is the cap x3 (the loaded-budget rule); Linux
-        # keeps the default.
+        # macOS run 40664974972: killed at 1803s against a 1800s Darwin row
+        # (995 rows reached by 603s in runs 40457809286 and 40514166576, 151s on
+        # the Linux ledger). 3600s is that cap x2 (the loaded-budget rule).
         printf '3600'; return 0 ;;
-      scripts/hooks/test-block-primary-git-writes.sh|*/scripts/hooks/test-block-primary-git-writes.sh|scripts/hooks/test-block-unresolved-cr-merge.sh|*/scripts/hooks/test-block-unresolved-cr-merge.sh)
-        # macOS: PASS at 461s and 575s (run 40745067827), then both killed at
-        # 603s with every assertion passing (run 40760092281), against 210-421s
-        # on Linux. 1800s is the cap x3 (the loaded-budget rule); Linux keeps
-        # the default.
-        printf '1800'; return 0 ;;
+      scripts/hooks/test-block-write-into-main-checkout-evaldata.sh|*/scripts/hooks/test-block-write-into-main-checkout-evaldata.sh)
+        # macOS suites dispatch 40903741163: killed at 1203s against the 1200s
+        # (2 x 600s) cap, and at 603s in run 40664974972 (87s on the Linux
+        # ledger). 3600s is that kill x3 (the loaded-budget rule).
+        printf '3600'; return 0 ;;
     esac
+    printf '%s' $(( $(_suite_timeout_for "$1" linux) * darwin_cap_mult ))
+    return 0
   fi
 
   case "${1#./}" in
@@ -516,8 +505,7 @@ _suite_timeout_for() {
       # ~50 CFP invocations, ~31 of them through the real
       # scripts/hermes/invoke.sh chokepoint (mktemp x4, a `set -m` watchdog
       # subshell, a `>(tee)` process substitution, an exec'd python3 stub) --
-      # each one costs several seconds of pure MSYS process-spawn overhead, no
-      # single case hangs. Verified by isolating the case that looked "stuck"
+      # no single case hangs. Verified by isolating the case that looked "stuck"
       # under a short bound and re-running it 25x standalone (every run
       # returned, ~10-15s each, no runaway trend) and by full-suite runs
       # bookended with `date`: completed at RC=0 in <900s once, in 1129s once,
@@ -600,10 +588,7 @@ _suite_timeout_for() {
 # unattended session cannot leave one grinding for hours.
 #
 # Deliberately generous. This is a backstop against a runaway run, not a
-# performance target: the nightly matrix runs this on a windows-latest runner
-# where MSYS forks are slow and the job has no timeout-minutes of its own, so a
-# tight default would turn a merely slow CI worker red. Lower it per-run when you
-# want a tighter leash.
+# performance target. Lower it per-run when you want a tighter leash.
 #
 # The claim that "Two hours is
 # implausible for a healthy run on any platform" was FALSE by the time it was
@@ -843,37 +828,34 @@ scripts/hooks/test-block-write-into-main-checkout-forms.sh   # HIMMEL-7490: quar
 "
 
 # Off-Linux skips: same format as SKIP_LIST, but appended to it
-# only when `uname -s` is not Linux (macOS "Darwin", Git-Bash "MINGW*"), so a
-# suite that is fine on the Linux CI runner is not blanket-quarantined
-# everywhere. When the test-adopt.sh quarantine above lifts, the suite comes
-# back here, not to an unconditional run: its off-Linux skip (the Windows cap
-# exceedance, never re-measured) still holds.
+# only when `uname -s` is not Linux (macOS "Darwin"), so a suite that is fine
+# on the Linux CI runner is not blanket-quarantined everywhere.
 SKIP_LIST_NON_LINUX="
 scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203  # prim-ok: skip-list reason text, no lock runs here
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
-scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; precedent HIMMEL-3203
+scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; precedent HIMMEL-3203
 scripts/handover/chief-kit/test-chief-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
 scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
 scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
-scripts/handover/chief-kit/test-chief-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-chief-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh\"; the kit PLATFORM GUARD is chief-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: the chief kit is Linux-only\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says Linux-only (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 scripts/ci/test-ci-lint-tree-gates.sh  # HIMMEL-7101: skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
 scripts/handover/chief-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); precedent HIMMEL-3699
 scripts/handover/chief-kit/test-close-wrapped-worker.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-worker.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: the chief kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.\` and it drives tick.sh and chief-wait.sh, both on the kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-chief-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-chief-wait-pool.sh:13) says \`Linux-only: chief-wait.sh has no .ps1 twin by design\`; kit PLATFORM GUARD
-scripts/hooks/test-notify-chief-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-chief-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin\`
+scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it drives tick.sh and chief-wait.sh, both on the kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-chief-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-chief-wait-pool.sh:13) says \`Linux-only: chief-wait.sh\`; kit PLATFORM GUARD
+scripts/hooks/test-notify-chief-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-chief-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface\`
 scripts/ci/test-gcp-runners.sh  # HIMMEL-7101: skipped off-Linux only — gcp-runners.sh:112 refuses the up verb off Linux (\`up: Linux only (the pool lock needs flock)\`, flock absent from stock macOS), so every up/create case fails there by design; run 40441833569 shard 7; precedent HIMMEL-3699  # prim-ok: skip-list reason text, no lock runs here
-scripts/handover/chief-kit/test-chain-graph.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chain-graph.sh:6) says \`PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only\`, and its fixtures edit with in-place GNU \`sed -i\` (:73-88, marked \`gnu-ok: linux-only fixture\`); run 40441833569 shard 5 (S1/H2 edges read independent); precedent HIMMEL-3699  # prim-ok: skip-list reason text, no file is written here
+scripts/handover/chief-kit/test-chain-graph.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chain-graph.sh:6) says \`PLATFORM GUARD: The chief kit is Linux-only\`, and its fixtures edit with in-place GNU \`sed -i\` (:73-88, marked \`gnu-ok: linux-only fixture\`); run 40441833569 shard 5 (S1/H2 edges read independent); precedent HIMMEL-3699  # prim-ok: skip-list reason text, no file is written here
 scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
@@ -964,10 +946,8 @@ ${tiers_quarantine_nl}
 fi
 
 # Capability-conditional suites. Neither table above can say
-# "runs exactly where the host has the tool": SKIP_LIST is a NEVER, which made
-# the pwsh smoke suite dead weight on every host that HAS pwsh — reproducing
-# the never-executed blind spot the suite exists to close — and SUITE_CONDITIONAL
-# keys on changed paths, not host capabilities. One entry per line:
+# "runs exactly where the host has the tool": SKIP_LIST is a NEVER, and
+# SUITE_CONDITIONAL keys on changed paths, not host capabilities. One entry per line:
 #   <repo-root-relative suite path>  <tool>  # <reason>
 # The suite RUNS wherever <tool> is on PATH; where it is not, the runner
 # [SKIP]s it loudly with this reason — a runner-level [SKIP] line is the only
@@ -2129,7 +2109,7 @@ suite_lock_queue_is_our_turn() {
 # contention, so a caller must not treat it as a race a re-run will resolve.
 _suite_lock_claim() {
   # The WHOLE brand, identity probe included, is computed BEFORE
-  # the mkdir. proc_tree_process_identity forks (pwsh on Windows, slow), and a
+  # the mkdir. proc_tree_process_identity forks, and a
   # fork between the mkdir and the owner write left the live lock unbranded
   # long enough for a second run to read it as a crash husk and reclaim it —
   # two holders. Now nothing between the mkdir and the write forks.
@@ -3417,9 +3397,8 @@ trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _la
 # `-H` dereferences the COMMAND-LINE argument only. Without
 # it, GNU find handed a scan root that is itself a symlink to a directory
 # reports the link and stops — it never descends — so discovery comes back
-# empty and the run dies at the "no test suites discovered" guard below. MSYS
-# find followed the link, which is why this only ever surfaced once the fleet
-# moved to a Linux station. `-H` is the narrow form deliberately: symlinks
+# empty and the run dies at the "no test suites discovered" guard below.
+# `-H` is the narrow form deliberately: symlinks
 # INSIDE the tree stay unfollowed exactly as before, so no scan root other
 # than a symlinked one changes what it discovers. (The symlinked root's
 # table-matching half is already handled by $scan_resolved.)
@@ -3497,8 +3476,7 @@ elif [ "$list_only" -eq 0 ] && [ "$SUITE_ROTATE" != "0" ] && [ -n "$SUITE_ROTATE
         if (p == want) { print NR; exit } }' "$suites_file")
     if [ -n "$_rot_idx" ]; then
       # Reuse $suites_raw: discovery is finished with it and it is already in
-      # the EXIT trap, so this costs no third mktemp. `cat` back into place
-      # rather than `mv` — mv is unreliable on MSYS, as the lock code documents.
+      # the EXIT trap, so this costs no third mktemp.
       { awk -v k="$_rot_idx" 'NR >= k' "$suites_file"
         awk -v k="$_rot_idx" 'NR <  k' "$suites_file"; } > "$suites_raw"
       cat "$suites_raw" > "$suites_file"
@@ -4347,7 +4325,6 @@ fi
 # (GITHUB_ACTIONS=true) uses its CPU count, capped at 4, and every other caller
 # stays serial: on a workstation the machine semaphore budgets one slot per
 # runner, and a nested runner inside a suite must not multiply its parent.
-# Windows stays serial too: MSYS forks are the bottleneck there already.
 if [ -n "${SUITE_JOBS:-}" ]; then
   suite_jobs=$(_suite_num SUITE_JOBS "$SUITE_JOBS" 1)
 elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && ! proc_tree_is_windows; then

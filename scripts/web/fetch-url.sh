@@ -4,7 +4,7 @@
 # Scrapling stealth fetcher with no cookies; any other host is a plain GET.
 # Exit: 0 ok, 2 usage, 3 scrapling venv missing (install hint on stderr),
 # 4 fetch failed (status on stderr).
-# Platform guard (gitbash-only): bash + python only; a .ps1 twin is not needed.
+# Platform guard: bash + python only.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"

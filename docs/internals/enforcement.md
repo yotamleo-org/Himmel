@@ -1019,6 +1019,7 @@ Live smoke (OVERLORD8, 2026-08-22) measured 4.2 s wall, rc 0, empty stderr.
 
 ### `auto-approve-safe-bash.sh` — pre-Bash auto-approve gateway (HIMMEL-203)
 
+<!-- mem:6a7dd385a645 -->
 Fires on Bash. Returns a `permissionDecision:"allow"` for read-only /
 inspection commands so they run without a prompt — INCLUDING ones wrapped
 in loops/pipes with `$var` expansion, which Claude Code's native matcher
@@ -2134,7 +2135,7 @@ live in `test-guard-memory-capture.sh` (S/F/D/W/N cases).
 **Topic-file cap (HIMMEL-8005).** A Write, Edit or MultiEdit that leaves a topic
 file (`*.md` other than `MEMORY.md`; `*.bak` stays exempt) over `MEMORY_TOPIC_MAX`
 (default 8192) bytes **and** bigger than before fires `topic-cap`. Shrinking never
-fires. `MEMORY_TOPIC_MODE` (default `warn`) picks the outcome: `warn` allows the
+fires. `MEMORY_TOPIC_MODE` (default `deny` since HIMMEL-8006) picks the outcome: `warn` allows the
 write with an `additionalContext` advisory (no `permissionDecision`) and
 logs a `warn` row; `deny` exits 2, naming the bypass `MEMORY_CAPTURE_OK=1` in the
 launching shell. Both texts send the session to `himmel-ops:memory-compound` to
@@ -2191,8 +2192,8 @@ What it gates, by target:
   payload doesn't reveal the resulting content, so the guard forces a
   whole-file `Write` it can inspect.
 - **topic files** — the tier-2 landing spot; `Edit` allowed. A write that ends
-  over `MEMORY_TOPIC_MAX` bytes and grows the file gets a warn-only advisory; only
-  `MEMORY_TOPIC_MODE=deny` refuses it. This is what makes capture always work.
+  over `MEMORY_TOPIC_MAX` bytes and grows the file is denied by default;
+  `MEMORY_TOPIC_MODE=warn` allows it with an advisory.
 - **`*.bak`** — exempt (compound writes a ~25KB backup by design).
 
 Adopter story is **unconditional**: no vault/qmd predicate. A machine with no
@@ -3062,6 +3063,7 @@ Fails OPEN on anything this
 hook cannot evaluate (missing `jq`, unparseable JSON, non-Bash tool) — a
 workflow nudge, not a security fence. Bypass: `QUIET_RUN_BYPASS=1`
 (launching shell, session-sticky). Spec: `scripts/hooks/test-require-quiet-run.sh`.
+<!-- mem:24954dff2210 -->
 Two wait shapes that never end are also refused (HIMMEL-4970): `until ! pgrep
 -f <pat>` / `while pgrep -f <pat>` whose `<pat>` occurs in the same command
 (the harness runs every Bash call as `<shell> -c "... eval '<command>'"`, so
@@ -3156,6 +3158,7 @@ mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
 
+<!-- mem:9d6b22f2b7eb -->
 **HIMMEL-1072 — CodeRabbit posts a STATUS, not a check-run.** This gate used to
 query `check-runs` for `.name=="CodeRabbit"`, which matched **nothing on every
 PR since it shipped** (verified on 5 consecutive live PRs: `check-runs` = 0,
@@ -3462,6 +3465,7 @@ What gates every PR, machine or not: the checks-green watch, the
 `CHANGES_REQUESTED` blocker, the paginated unresolved-thread gate, and
 `cr_body_gate`'s outside-diff-range body findings whenever the App did post.
 
+<!-- mem:fb54b3f23230 -->
 **Zero-review-object shapes at a head.** A clean walkthrough with nothing
 actionable mints no review object, and neither does a rate-limited or
 skipped run, or a `success :: Review completed` status over a PR that never
@@ -3593,6 +3597,7 @@ the opens"; that was the second drift, so the rule became a gate.
    HIMMEL-1125 with `git config --local himmel.coderabbit true`; unarmed, it
    is silent. A `failure` / `error` status is a NOTE too — what the App found
    reaches the gate as threads and body findings, not as a status colour.
+   <!-- mem:8d778d568d0f -->
 3. **One trigger per head, from CI, never from a session.** `auto_review` is
    off in `.coderabbit.yaml`, so the review runs on an explicit `@coderabbitai
    review` comment that `scripts/hooks/trigger-cr-on-pr-create.sh` and
@@ -3873,6 +3878,7 @@ Spec: `scripts/hooks/test-guard-implementor-dispatch.sh`.
 
 ### `guard-chief-dispatch.sh` — chief/worker dispatch fence (HIMMEL-2323)
 
+<!-- mem:c8ba25c12e69 -->
 Fires on `Agent`. Structural enforcement of standing operator ruling 20:
 PR/ticket-shaped work dispatched FROM A CHIEF must go to an armed
 DETACHED session with a mission doc (`bash scripts/handover/arm-resume.sh`),
@@ -4592,7 +4598,8 @@ the session context, so anything else reads as no cache at all and the hook
 probes inline instead.
 
 Guard exit codes (`scripts/luna/qmd-staleness.sh`): 0 healthy · 1 usage/config
-· 2 qmd not installed · 3 STALE · 4 INCOMPLETE · 5 both · 6 unreadable report ·
+· 2 qmd not installed · 3 STALE (also a named index, `--index NAME` or salus
+when `salus.yml` exists, with notes newer than its last refresh) · 4 INCOMPLETE · 5 both · 6 unreadable report (or a named index with no readable collection path) ·
 7 `qmd status` failed · 8 required collection absent (outranks 3/4/5 in the
 exit code; the banner still names every condition). A bad
 `QMD_STALENESS_MAX_AGE_HOURS` or `QMD_STALENESS_REQUIRE_COLLECTIONS` surfaces

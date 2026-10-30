@@ -12,7 +12,7 @@
 # Every gh and git subprocess is bounded by CHAIN_PUSH_CHECK_TIMEOUT seconds (default 60).
 # Only committed HEAD is checked. merge-tree changes neither index nor worktree.
 # Peer objects must already be available locally; this check never fetches.
-# Platform guard: no .ps1 twin, by design; bash, python3, git and gh.
+# Platform guard: bash, python3, git and gh.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/flags.sh

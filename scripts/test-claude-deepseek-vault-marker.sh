@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # marker classification must beat an ancestor handover root and
-# caller CWD overrides. Execute both launchers and their actual PS egress JS.
+# caller CWD overrides. Execute both launchers.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)" || exit 2
 bash "$HERE/lib/clean-sandbox.sh" -- node - "$HERE" <<'NODE'
@@ -8,7 +8,7 @@ const fs=require('fs'),path=require('path'),cp=require('child_process'),assert=r
 const scripts=process.argv[2],roots=[];
 let passed=0,failed=0;
 function test(name,fn){try{fn();passed++;console.log('ok: '+name);}catch(e){failed++;console.error('FAIL: '+name+' — '+e.message);}}
-for(const lane of ['deepseek','openrouter']) for(const twin of ['bash']) for(const kind of ['root','nested','symlink','override','file-control','outside-control']) test(lane+' '+twin+' '+kind,()=>{
+for(const lane of ['deepseek','openrouter']) for(const kind of ['root','nested','symlink','override','file-control','outside-control']) test(lane+' bash '+kind,()=>{
  const root=fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR),'vault-marker-'));roots.push(root);
  const home=path.join(root,'home'),bin=path.join(root,'bin'),vault=path.join(root,'vault'),nested=path.join(vault,'nested');
  for(const d of [home,bin,nested])fs.mkdirSync(d,{recursive:true});
@@ -30,13 +30,10 @@ require('fs').writeFileSync(process.env.CHILD_CAPTURE,JSON.stringify({argv:proce
  const prefix='CLAUDE_'+lane.toUpperCase();
  env[lane.toUpperCase()+'_API_KEY']='marker-test-secret';env[prefix+'_EGRESS_MATRIX']=matrix;env[prefix+'_DOTENV_ROOT']=home;
  if(kind==='override')env[prefix+'_CWD']=home;
- let args;
- if(twin==='bash')args=[path.join(scripts,'claude-'+lane)];
- else{const source=fs.readFileSync(path.join(scripts,'claude-'+lane+'.ps1'),'utf8');const m=source.match(/\$EgressJs = @'\r?\n([\s\S]*?)\r?\n'@/);assert(m,'missing twin egress predicate');args=['-e',m[1],matrix,path.dirname(scripts)];}
- const r=cp.spawnSync(twin==='bash'?'bash':'node',args,{cwd,env,encoding:'utf8'});
+ const r=cp.spawnSync('bash',[path.join(scripts,'claude-'+lane)],{cwd,env,encoding:'utf8'});
  const control=kind.endsWith('control');assert.strictEqual(r.status,control?0:3,r.stderr);
  assert(!(r.stdout+r.stderr).includes('marker-test-secret'),'secret in output');
- if(control&&twin==='bash')assert(fs.existsSync(capture),'allowed workspace did not launch Claude');
+ if(control)assert(fs.existsSync(capture),'allowed workspace did not launch Claude');
  if(!control){assert(!fs.existsSync(capture),'Claude launched in a vault');assert(!fs.existsSync(curlCapture),'network reached before vault refusal');assert(/vault corpus|luna-personal/.test(r.stderr),'missing vault classification');}
  if(fs.existsSync(capture))assert(!fs.readFileSync(capture,'utf8').includes('marker-test-secret'),'secret in Claude argv');
  if(fs.existsSync(curlCapture))assert(!fs.readFileSync(curlCapture,'utf8').includes('marker-test-secret'),'secret in curl argv');

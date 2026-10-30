@@ -17,7 +17,7 @@
 # scripts/handover/test-arm-resume-tier.sh (do not invent a new hermetic
 # pattern) — this suite is that one's --context sibling, not a replacement.
 #
-# Platform guard (gitbash-only): the SUITE ITSELF runs under any POSIX bash
+# Platform guard: the SUITE ITSELF runs under any POSIX bash
 # 3.2+, Git Bash on Windows included -- pure `case`/`[ ]`, mktemp, and
 # PATH-stubbed schtasks/at/atq binaries it writes itself. But cases (c),
 # (d), and (f)'s command-rendering assertions ('opus\[1m\]', '--autocompact
@@ -30,8 +30,7 @@
 # BOTH operands (`--model "opus[1m]"`, `--autocompact "auto"`) rather than
 # %q-quoting them bare. The positive command-rendering
 # assertions therefore go through assert_contains_either and accept either
-# rendering. No .ps1 twin (project convention: a documented platform guard
-# suffices for a test harness).
+# rendering.
 set -uo pipefail
 
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"
@@ -423,6 +422,12 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_H4" --tier chief --dry-run
 rc=$?
 assert_rc "h4: unknown --tier value refuses with exit 2" 2 "$rc"
 assert_contains "h4: unknown tier names the accepted value" '--tier must be worker' "$out"
+
+HO_H5=$(make_handover)
+out=$(HIMMEL_LEGACY_NAMES=1 run_arm --time "$(future_time)" --handover "$HO_H5" --tier leg --dry-run 2>&1)
+rc=$?
+assert_rc "h5: the old --tier leg refuses with exit 2 even with legacy names on" 2 "$rc"
+assert_contains "h5: the old tier value names the accepted value" '--tier must be worker, got: leg' "$out"
 
 # (i) Real non-dry-run path through a stateful at/atq stub. The stub records the
 # actual job body and makes it queryable so arm-resume's post-create verify is

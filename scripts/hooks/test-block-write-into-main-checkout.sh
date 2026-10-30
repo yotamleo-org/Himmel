@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Unit test for scripts/hooks/block-write-into-main-checkout.sh
-# — the DESTINATION-based Bash/PowerShell write fence. Platform guard: Git
-# Bash on Windows / any POSIX bash 3.2+ (see the guard's own header; no .ps1
-# twin — both entry modes are already invoked BY a resolved bash).
+# — the DESTINATION-based Bash/PowerShell write fence. Platform guard: any
+# POSIX bash 3.2+ (see the guard's own header; both entry modes are already
+# invoked BY a resolved bash).
 #
 # Exercises BOTH entry modes for every destination row via `check_both`:
 #   - DIRECT-EXEC: `bash block-write-into-main-checkout.sh` with the raw JSON

@@ -28,7 +28,10 @@
 #                               pool does not), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
-#                               the pool); a LOW or empty pool adds a second pass
+#                               the pool), the earliest unreleased version's rows first under
+#                               `# dispatchable in <version>`, other pool rows under
+#                               `# dispatchable in other versions`, and no `# disposition`
+#                               line for a listed row; a LOW or empty pool adds a second pass
 #                               without it, its rows not already in the pool under
 #                               `# version backlog`, and the wake line then carries
 #                               dispatchable=<n>, the count of dispatchable To Do
@@ -129,6 +132,12 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
+# pool-stale= (`n:KEY,...`, `?` for an unreadable blocker, never in the action key) wakes
+# once per newly stale disposition key (`WAKE pool-stale <KEYS>`): the marker `<inbox>.wait.stale`
+# holds the keys last seen, shrinks to the current set on a full read and has no re-wake
+# window. A `?`-only value, a partial read (`1:KEY,?`, which only adds to the marker) and an
+# absent or skip field keep it (a failed read is not an all-clear); an explicit 0 clears it,
+# so a key that leaves and rejoins wakes again.
 # procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
 # chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
 # to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
@@ -244,7 +253,7 @@
 # is visible only as a stale heartbeat, upgrade: a bridge-side
 # stale-heartbeat alert.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
+# PLATFORM GUARD: the chief kit is Linux-only.
 # bash 3.2-safe.
 set -u
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
@@ -673,10 +682,32 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live legs' files must reach the collision check
     pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
-    pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
+    pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
+}
+pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '# dispatchable in <version>' heading (the version of its '# dropped from' line), then the rest; a listed row's '# disposition' line is dropped, the row already says it
+    awk -F'\t' '
+        /^# dropped from / { ver = $0; sub(/^# dropped from /, "", ver); sub(/:.*/, "", ver) }
+        { line[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                n = split(line[i], f, "\t")
+                if (f[1] ~ /^(LOCAL\??|CLOUD|RESUME|MERGED-NOT-CLOSED)$/ && f[2] ~ /^[A-Z]+-[0-9]+$/) {
+                    is_cur = 0
+                    m = split(f[4], v, ",")
+                    for (j = 1; j <= m; j++) if (ver != "" && v[j] == ver) is_cur = 1
+                    kind[i] = is_cur ? "cur" : "other"
+                } else if (line[i] ~ /^# disposition [A-Z]+-[0-9]+ listed /) kind[i] = "drop"
+                else kind[i] = "rest"
+            }
+            for (i = 1; i <= NR && kind[i] != "cur" && kind[i] != "other"; i++) if (kind[i] == "rest") print line[i]  # the header lines before the first row stay first
+            first = i
+            for (i = 1; i <= NR; i++) if (kind[i] == "cur") { if (!hc++) print "# dispatchable in " ver; print line[i] }
+            for (i = 1; i <= NR; i++) if (kind[i] == "other") { if (!ho++ && ver != "") print "# dispatchable in other versions"; print line[i] }
+            for (i = first; i <= NR; i++) if (kind[i] == "rest") print line[i]
+        }'
 }
 underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
     local back="" extra="" count="" wake=underfilled
@@ -685,7 +716,7 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
         case "$pool_counts" in ''|'?') ;; *) return 1 ;; esac
     fi
     # a LOW or empty pool leaves slots idle: a second pass without --priority-pool-only lists the version
-    # backlog (tier 4 included); its rows already in the pool are printed once, under their own heading
+    # backlog (later versions included); its rows already in the pool are printed once, under their own heading
     if printf '%s\n' "$pool_out" | grep -Eq '^(# pool=[0-9]+/[0-9]+,LOW|POOL-EMPTY)$'; then
         heartbeat sampling
         back="$(timeout -k 2 "${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || back=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out second pass drops its partial rows, the pool list still prints
@@ -700,7 +731,7 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
     else
         printf 'WAKE underfilled capacity=%s%s%s\n%s\n' "$cap_val" "${pool_counts:+ pool=$pool_counts}" "${count:+ dispatchable=$count}" "$tick_line"
     fi
-    [ -z "$pool_out" ] || printf '%s\n' "$pool_out"
+    [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
@@ -781,6 +812,27 @@ set_wake() {
 unwatched_file="$inbox.wait.unwatched"
 unwatched_wake() {
     set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
+}
+
+stale_file="$inbox.wait.stale"
+# stale_wake: <pool-stale= value, `n:KEY,...` with an optional `?`> — prints the keys the marker does
+# not hold yet (comma-joined) and succeeds. A full read leaves the marker holding the current set;
+# a partial read (a `?` among the keys) only adds to it, so a key already reported never re-wakes.
+stale_wake() {
+    local keys new
+    keys="$(printf '%s\n' "${1#*:}" | tr ',' '\n' | grep -E '^[A-Z]+-[0-9]+$')"  # swallow-ok: no key is an empty list, grep's no-match rc
+    [ -n "$keys" ] || return 1
+    if [ -e "$stale_file" ]; then
+        new="$(printf '%s\n' "$keys" | grep -vxFf "$stale_file" | paste -sd, -)"  # swallow-ok: no new key is an empty list, grep's no-match rc
+    else
+        new="$(printf '%s\n' "$keys" | paste -sd, -)"
+    fi
+    case "$1" in
+        *'?'*) printf '%s\n' "$keys" >> "$stale_file" 2>/dev/null ;;
+        *) printf '%s\n' "$keys" > "$stale_file" 2>/dev/null ;;
+    esac
+    [ -n "$new" ] || return 1
+    printf '%s\n' "$new"
 }
 
 doctor_file="$inbox.wait.doctor"
@@ -1270,6 +1322,16 @@ while :; do
                     if doctor_new="$(doctor_wake "$doctor_val")"; then
                         printf 'WAKE doctor %s\n%s\n' "$doctor_new" "$tick_line"
                         exit_reason='wake-doctor'; exit 0
+                    fi ;;
+            esac
+            stale_val="$(field pool-stale "$tick_line")"
+            case "$stale_val" in
+                0) rm -f "$stale_file" ;;
+                ''|skip|'?') ;;  # an absent or skipped field is a timeout or a failed read, never an all-clear
+                *)
+                    if stale_new="$(stale_wake "$stale_val")"; then
+                        printf 'WAKE pool-stale %s\n%s\n' "$stale_new" "$tick_line"
+                        exit_reason='wake-pool-stale'; exit 0
                     fi ;;
             esac
             if tracker_stale_wake "$(field tracker "$tick_line")"; then

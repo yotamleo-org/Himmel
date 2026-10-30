@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # claudex-inbox-hook.sh — PostToolUse hook, matcher `*`.
 #
-# PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
-# this hook serves (scripts/claude-codex, /proc/$CLAUDE_PID/cmdline session-
-# name recovery) is Linux-only — there is no Windows-side claudex worker to fire
-# for.
+# PLATFORM GUARD: Linux-only. The claudex lane this hook serves
+# (scripts/claude-codex, /proc/$CLAUDE_PID/cmdline session-name recovery) is
+# Linux-only.
 #
 # WHY: claudex workers (GPT-6 Astra via scripts/claude-codex,
 # CLAUDE_CONFIG_DIR=~/.claude-codex) cannot ListAgents/SendMessage a native

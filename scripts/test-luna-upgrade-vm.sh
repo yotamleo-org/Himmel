@@ -4,8 +4,7 @@
 # Ubuntu OR Windows VM over ssh (key auth) and, on the VM:
 #   A. runs the shipped hermetic engine suite (scripts/test-upgrade.sh) against
 #      the REAL template -- proves the T1..Tn cases pass on the VM, not just the
-#      host. On Windows it ALSO runs the PowerShell smoke (test-upgrade.ps1) to
-#      prove the PS entry (upgrade.ps1 -> Git Bash -> upgrade.sh) wires through.
+#      host.
 #   B. runs a REAL scaffold -> rollback -> upgrade ROUNDTRIP with the real
 #      template: scaffold a fresh vault, plant user content, diverge a
 #      template-owned file, roll the version stamp back, then
@@ -88,7 +87,7 @@ fi
 
 # 0b. Detect the guest OS. cmd.exe (Windows OpenSSH default shell) expands %OS%
 # to "Windows_NT"; a POSIX guest echoes the literal "%OS%". A Windows guest runs
-# the engine under Git Bash and additionally exercises the PowerShell entry.
+# the engine under Git Bash.
 GUEST_OS="$(ssh_vm 'echo %OS%' 2>/dev/null || true)"
 case "$GUEST_OS" in
   Windows_NT*) GUEST_WIN=1 ;;
@@ -201,9 +200,7 @@ done
 
 # --------------------------------------------------------------------------
 # Phase A: shipped engine suite against the REAL template, on the VM. Proves the
-# T1..Tn engine cases pass on this OS (under Git Bash on Windows). On Windows,
-# ALSO run the PowerShell smoke test-upgrade.ps1 to prove the PS entry
-# (upgrade.ps1 -> Git Bash -> upgrade.sh) wires through on real Windows.
+# T1..Tn engine cases pass on this OS.
 # --------------------------------------------------------------------------
 echo "---- Phase A: shipped engine suite (scripts/test-upgrade.sh) ----"
 if [ "$HAVE_PY" -eq 1 ] && command -v git >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1; then
@@ -215,21 +212,6 @@ if [ "$HAVE_PY" -eq 1 ] && command -v git >/dev/null 2>&1 && command -v sha256su
   fi
 else
   echo "GAP:  engine suite SKIPPED -- needs python+git+sha256sum" >&2
-fi
-
-if [ "${WIN:-0}" = 1 ]; then
-  echo "---- Phase A (Windows): PowerShell smoke (scripts/test-upgrade.ps1) ----"
-  if command -v pwsh >/dev/null 2>&1 && pwsh -NoProfile -Command "exit 0" >/dev/null 2>&1; then
-    ps1_win="$(cygpath -w "$TMPL/scripts/test-upgrade.ps1")"
-    if pwsh -NoProfile -File "$ps1_win" >/tmp/luna-upgrade-ps.log 2>&1; then
-      pass "PowerShell smoke (test-upgrade.ps1) green on Windows"
-    else
-      fail "PowerShell smoke (test-upgrade.ps1) on Windows" "see tail below"
-      tail -15 /tmp/luna-upgrade-ps.log | sed 's/^/      /'
-    fi
-  else
-    echo "GAP:  PS smoke SKIPPED -- pwsh (PowerShell 7) not available on the guest" >&2
-  fi
 fi
 
 # --------------------------------------------------------------------------

@@ -1084,6 +1084,16 @@ assert_gh_lacks "public repo: no merge attempted" "pr merge"
 # the refusal names the chief's adapter merge path.
 assert_err_has "adapter hint: not-private refusal says stop at READY, chief merges with merge-fork-pr.sh" "a worker stops at READY and the chief merges with merge-fork-pr.sh."
 
+# --fixture-cleanup-only: test-fixture-trap-clean.sh needs the EXIT trap to
+# remove every mog-* fixture, which the first cases above already create (the
+# suite dir, the scratch HOME and a mog-run.* sandbox per run_mog). It stops
+# here instead of running the other ~1,000 assertions under a 300 s timeout.
+if [ "${1:-}" = "--fixture-cleanup-only" ]; then
+    echo "merge-on-green (fixture-cleanup-only): $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit
+fi
+
 # RC-3 — the comment on assert_state_requery above claims a
 # LITERAL (unanchored) 'pr view .*--json state' matcher would ALSO match the
 # initial metadata query as a substring. Placed right here, immediately after
@@ -5327,7 +5337,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=
 assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-chief-worker"
 no_merge_call "7001-c: no merge call"
 
-# 7001-c2 — an explicitly falsy marker is no leg: solo reads it the way the
+# 7001-c2 — an explicitly falsy marker is no worker: solo reads it the way the
 # chief-GO gate does.
 MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001i" \
     run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"

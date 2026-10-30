@@ -24,7 +24,7 @@ export function verdict(feed, health) {
 }
 
 const nodata = (what) => `<div class="nodata">No data: ${esc(what)}</div>`;
-const section = (id, title, sub, body) => `<section id="${id}" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
+const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 
 function verdictHtml(feed, health) {
   const v = verdict(feed, health);
@@ -35,7 +35,7 @@ function verdictHtml(feed, health) {
     .map((k) => `<div class="nodata">monitoring ${k} unreachable: ${esc(m[k].reason || "no answer")}</div>`).join("");
   const mon = m && m.state === "absent" ? `<div class="nodata">monitoring tier not running</div>`
     : srcErrs || (m && m.state === "error" ? `<div class="nodata">monitoring unreachable: ${esc(m.reason || "no answer")}</div>` : "");
-  return `<div class="vhead"><span class="word st ${v.cls}">${esc(v.word)}</span><span class="inputs">${esc(inputs)}</span>
+  return `<div class="vhead strip v-${v.cls}"><span class="word st ${v.cls}">${esc(v.word)}</span><span class="inputs">${esc(inputs)}</span>
     <button class="btn" data-act="refresh-health">refresh</button></div>${mon}`;
 }
 
@@ -133,14 +133,14 @@ function sparkSvg(spark, label) {
 function trendCard(c) {
   if (c.state !== "ok") return `<div class="card"><h3>${esc(c.title)}</h3>${nodata("no data yet")}</div>`;
   const d = (x, than) => (x && x.delta !== null ? `<span class="kv">${esc(signed(x.delta))} vs ${than}</span> ` : "");
-  return `<div class="card trend"><h3>${esc(c.title)}</h3><div class="ro">${esc(c.metric)}</div>${sparkSvg(c.spark, c.metric)}
-    <div class="kv">${c.week ? `${esc(c.week.key)}: ${esc(compact(c.week.value))} ${esc(c.unit)}` : ""}</div>
+  return `<div class="card trend"><h3>${esc(c.title)}</h3><div class="ro">${esc(c.metric)}</div>
+    ${c.week ? `<div class="big">${esc(compact(c.week.value))} <small>${esc(c.unit)} · ${esc(c.week.key)}</small></div>` : ""}${sparkSvg(c.spark, c.metric)}
     <div>${d(c.week, "last week")}${d(c.version, "last version")}</div><p class="sentence">${esc(c.sentence)}</p></div>`;
 }
 function trendsHtml(health) {
   const r = health && health.rollup;
   if (!r || r.state !== "ok") return nodata(r && r.reason ? `no data yet (${r.reason})` : "no data yet");
-  return r.cards.map(trendCard).join("");
+  return `<div class="trends">${r.cards.map(trendCard).join("")}</div>`;
 }
 
 // The review page text from GET /api/reviewers, as sent: only its Markdown headings, bullets and paragraphs are shaped here.
@@ -170,6 +170,7 @@ function searchHtml(feed) {
 
 export function renderHealth(feed, health) {
   return [
+    `<header class="ph"><h1>Health</h1><p>Is himmel healthy, what is broken and what to run, from the doctor feed and the monitoring tier.</p></header>`,
     section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, health) + modeHtml(health)),
     section("broken", "What is broken, and what do I do", "Failing and drifting rows, worst first, with the fix to run in your terminal.", brokenHtml(feed, health)),
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),

@@ -28,7 +28,7 @@
 # Seams (tests): GH_CMD and JIRA_CMD, as in ready-check.sh; READY_GO_ANCHOR
 # replaces the harness anchor that trust_path_check and the Jira CLI are read from.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
+# Platform guard: POSIX bash 3.2+, no mapfile.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

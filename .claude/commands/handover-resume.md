@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Read, AskUserQuestion
-description: Resume a tracked handover item — cold-start brief, latest session, open bugs, CR findings. No arg picks from active.
+description: Resume a tracked handover item from its brief.
 argument-hint: "[#N | HIMMEL-N | <ID>]  (omit → pick from active items; append 'overnight' for AFK mode)"
 ---
 

@@ -21,8 +21,7 @@
 # never answers ssh.
 #
 # Platform guard (linux-only): a bash test harness driving a FAKE
-# VBoxManage/ssh/scp/gh, never a real VM — a documented guard suffices
-# here (project convention: a test harness needs no .ps1 twin). Bash-only
+# VBoxManage/ssh/scp/gh, never a real VM. Bash-only
 # because the script it covers, after-report.sh, is itself linux-only.
 #
 # Usage: bash scripts/vm/test-after-report.sh

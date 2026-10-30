@@ -36,9 +36,8 @@
 # bare ssh exec, fine under `bash -lc`) — the same shape. Drive
 # this suite through a LOGIN shell on a remote guest or you bank a non-result.
 #
-# Platform guard (gitbash-only): test fixture for the commit-msg gate; runs
-# wherever the gate runs (Git Bash / POSIX bash), no .ps1 twin (project
-# convention).
+# Platform guard: test fixture for the commit-msg gate; runs wherever the gate
+# runs (any POSIX bash).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

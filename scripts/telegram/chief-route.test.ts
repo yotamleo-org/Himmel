@@ -697,3 +697,166 @@ test("reply without --satellite never calls Home Assistant", async () => {
   expect(code).toBe(0);
   expect(seen).toEqual([]);
 });
+
+// A project's chiefs share a lineage (<PREFIX>-nextleg-<date><letters>-<name>);
+// the newest owns the operator's messages, so a handover never needs a typed session name.
+const OLD = "HIMMEL-nextleg-2026-10-30KE-roadmap-chief";
+const NEWEST = "HIMMEL-nextleg-2026-10-30KH-roadmap-chief";
+
+test("HIMMEL-8196: bare /chief with two live chiefs of one lineage reaches the newest", async () => {
+  for (const [older, newer] of [[OLD, NEWEST], ["HIMMEL-nextleg-2026-10-29Z-roadmap-chief", "HIMMEL-nextleg-2026-10-30A-roadmap-chief"], ["HIMMEL-nextleg-2026-10-30Z-roadmap-chief", "HIMMEL-nextleg-2026-10-30AA-roadmap-chief"]]) {
+    for (const order of [[older, newer], [newer, older]]) {
+      const r = root(); for (const n of order) heartbeat(r, n);
+      for (const text of ["/chief halt the wave", "/chief halt"]) {
+        for (const n of [older, newer]) writeFileSync(join(r, "consoles", `${n}.md`), "");
+        const reply = await routeText(r, text);
+        expect(readFileSync(join(r, "consoles", `${newer}.md`), "utf8")).toContain(`[telegram from=1 chat=1] ${text.slice(7)}`);
+        expect(readFileSync(join(r, "consoles", `${older}.md`), "utf8")).toBe("");
+        expect(reply).toContain(newer);
+      }
+    }
+  }
+});
+
+test("HIMMEL-8196: two live chiefs of different lineages are still refused", async () => {
+  const r = root(); heartbeat(r, NEWEST); heartbeat(r, "HIMMEL-nextleg-2026-10-30B-other-chief");
+  const reply = await routeText(r, "/chief halt");
+  expect(reply).toContain("More than one chief is live");
+  expect(readFileSync(join(r, "consoles", `${NEWEST}.md`), "utf8")).toBe("");
+});
+
+test("HIMMEL-8196: an explicit name or unique fragment still pins the older chief", async () => {
+  const r = root(); const old = heartbeat(r, OLD); heartbeat(r, NEWEST);
+  await routeText(r, `/chief ${OLD} keep it`);
+  expect(readFileSync(old, "utf8")).toContain("] keep it");
+  writeFileSync(old, "");
+  await routeText(r, "/chief KE keep it");
+  expect(readFileSync(old, "utf8")).toContain("] keep it");
+  expect(readFileSync(join(r, "consoles", `${NEWEST}.md`), "utf8")).toBe("");
+});
+
+test("HIMMEL-8196: the alias chief:himmel resolves to the newest chief across a simulated handover", async () => {
+  const r = root(); const old = heartbeat(r, OLD);
+  await routeText(r, "/chief chief:himmel before the handover");
+  expect(readFileSync(old, "utf8")).toContain("[telegram from=1 chat=1] before the handover\n");
+  writeFileSync(old, "");
+  const next = heartbeat(r, NEWEST);
+  const reply = await routeText(r, "/chief chief:HIMMEL after the handover");
+  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1] after the handover\n");
+  expect(readFileSync(old, "utf8")).toBe("");
+  expect(reply).toContain(NEWEST);
+});
+
+test("HIMMEL-8196: an alias with no live chief, or two lineages, queues nothing", async () => {
+  const r = root(); const a = heartbeat(r, NEWEST); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-30B-other-chief");
+  expect(await routeText(r, "/chief chief:nobody hi")).toContain("no live chief");
+  expect(await routeText(r, "/chief chief:himmel hi")).toContain("More than one chief");
+  expect(readFileSync(a, "utf8")).toBe("");
+  expect(readFileSync(b, "utf8")).toBe("");
+});
+
+async function tapHarness(r: string) {
+  const { makeChiefTap } = await import("./chief-route");
+  const answers: string[] = []; const prompts: { chat: number; text: string }[] = []; const pickers: { chat: number; markup: any }[] = [];
+  const tap = makeChiefTap({
+    root: r,
+    authorize: (from, chat) => from === 1 && chat === 1,
+    prompt: async (chat, text) => { prompts.push({ chat, text }); return 900 + prompts.length; },
+    picker: async (chat, _text, markup) => { pickers.push({ chat, markup }); return true; },
+    answer: async (_id, text) => { answers.push(text); },
+  });
+  return { tap, answers, prompts, pickers };
+}
+const tapOf = (data: string, extra: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: 1, chat_id: 1, data, ...extra });
+
+test("HIMMEL-8196: a Send-to-chief tap from outside allowFrom is refused and writes nothing", async () => {
+  const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
+  const { tap, answers, prompts, pickers } = await tapHarness(r);
+  for (const extra of [{ from: 999 }, { chat_id: -99 }]) {
+    expect(tap(tapOf("chief:send", extra))).toBe(true);
+    expect(tap(tapOf("chief:pick", extra))).toBe(true);
+    expect(tap(tapOf(`chief:to:${OLD}`, extra))).toBe(true);
+  }
+  await tap.idle();
+  expect(answers).toEqual(Array(6).fill("Not authorized."));
+  expect(prompts).toEqual([]);
+  expect(pickers).toEqual([]);
+  expect(readFileSync(old, "utf8")).toBe("");
+  expect(readFileSync(next, "utf8")).toBe("");
+});
+
+test("HIMMEL-8196: an allowed Send-to-chief tap prompts for the text and the reply lands in the newest chief's inbox", async () => {
+  const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
+  const { tap, prompts } = await tapHarness(r);
+  expect(tap(tapOf("chief:send"))).toBe(true);
+  await tap.idle();
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0].text).toContain(NEWEST);
+  const replies: string[] = [];
+  await handleInbound(r, fresh("status please", { reply_to_message_id: 901 }), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1] status please\n");
+  expect(readFileSync(old, "utf8")).toBe("");
+});
+
+test("HIMMEL-8196: the picker lists the newest chief first and a pick pins that chief", async () => {
+  const r = root(); const old = heartbeat(r, OLD); heartbeat(r, NEWEST);
+  const { tap, prompts, pickers } = await tapHarness(r);
+  expect(tap(tapOf("chief:pick"))).toBe(true);
+  await tap.idle();
+  expect(pickers[0].markup.inline_keyboard.map((row: any[]) => row[0].callback_data)).toEqual([`chief:to:${NEWEST}`, `chief:to:${OLD}`]);
+  expect(tap(tapOf(`chief:to:${OLD}`))).toBe(true);
+  await tap.idle();
+  expect(prompts[0].text).toContain(OLD);
+  await handleInbound(r, fresh("old context please", { reply_to_message_id: 901 }), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  expect(readFileSync(old, "utf8")).toContain("] old context please\n");
+});
+
+test("HIMMEL-8196: a tap that is not a chief button falls through, and with no live chief nothing is prompted", async () => {
+  const r = root();
+  const { tap, answers, prompts } = await tapHarness(r);
+  expect(tap(tapOf("afk:approve:abcdefgh"))).toBe(false);
+  expect(tap(tapOf("chief:send"))).toBe(true);
+  await tap.idle();
+  expect(answers).toEqual(["No live chief."]);
+  expect(prompts).toEqual([]);
+});
+
+test("a first word matching several chiefs of one lineage stays in the text sent to the newest", async () => {
+  const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
+  await routeText(r, "/chief me first, then merge");
+  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1] me first, then merge\n");
+  expect(readFileSync(old, "utf8")).toBe("");
+});
+
+test("an alias with no text after it queues nothing", async () => {
+  const r = root(); const next = heartbeat(r, NEWEST);
+  expect(await routeText(r, "/chief chief:himmel")).toContain("nothing was sent");
+  expect(readFileSync(next, "utf8")).toBe("");
+});
+
+test("an allowed tap on a chief that is not live, or on a traversal name, is refused and appends nothing", async () => {
+  const r = root(); const next = heartbeat(r, NEWEST); const dead = heartbeat(r, OLD, "waiting", 100000);
+  const { tap, answers, prompts } = await tapHarness(r);
+  expect(tap(tapOf(`chief:to:${OLD}`))).toBe(true);
+  expect(tap(tapOf("chief:to:.."))).toBe(true);
+  await tap.idle();
+  expect(answers).toEqual(Array(2).fill("That chief is no longer live."));
+  expect(prompts).toEqual([]);
+  expect(readFileSync(dead, "utf8")).toBe("");
+  expect(readFileSync(next, "utf8")).toBe("");
+  expect(existsSync(join(r, "consoles", "replies"))).toBe(false);
+});
+
+test("a name outside the convention is its own lineage, never merged into a convention lineage", async () => {
+  const r = root(); const a = heartbeat(r, "HIMMEL-roadmap-chief"); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-30A-roadmap-chief");
+  expect(await routeText(r, "/chief halt")).toContain("More than one chief is live");
+  expect(readFileSync(a, "utf8")).toBe("");
+  expect(readFileSync(b, "utf8")).toBe("");
+});
+
+test("an alias matches the chief's bucket, so a hyphenated project resolves", async () => {
+  const r = root(); const f = heartbeat(r, "MYP-nextleg-2026-10-30A-roadmap-chief");
+  writeFileSync(f + ".meta.json", JSON.stringify({ bucket: "my-project", project: "/repos/my-project" }));
+  await routeText(r, "/chief chief:my-project hello");
+  expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] hello\n");
+});

@@ -55,9 +55,8 @@ fi
 # command in ONE jq call (via `<<<`, no printf fork) instead of two separate
 # `printf | jq` pipelines. `// ""` (empty STRING), not `// empty` (a
 # zero-output jq GENERATOR): in a `+`-concatenation, one operand collapsing
-# to `empty` zeroes out the WHOLE expression, not just that field. Windows
-# jq.exe writes CRLF, so strip the stray CR off $tool (same shape as
-# require-quiet-run.sh).
+# to `empty` zeroes out the WHOLE expression, not just that field. Strip a
+# stray CR off $tool defensively (same shape as require-quiet-run.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null || true)
@@ -94,8 +93,7 @@ cmd_lc=$(printf '%s' "$cmd" | tr '[:upper:]\n\r' '[:lower:]  ')
 # every match below is the bash builtin `[[ =~ ]]` (or a `[[ ==
 # *glob* ]]` for the two fixed-string tests), NOT `printf | grep`. The old form
 # forked a PAIR of processes per check and this hook runs up to nine of them on
-# every Bash/PowerShell tool call — ~667 ms a pair on Windows with Defender
-# real-time scanning, i.e. most of the hook's cost. Both engines are POSIX ERE
+# every matching tool call. Both engines are POSIX ERE
 # and the pattern text is UNCHANGED; patterns are held in variables and left
 # UNQUOTED on the right of `=~` (a quoted pattern is matched literally in bash
 # >= 3.2). Per-rule equivalence cases live in the paired test suite.

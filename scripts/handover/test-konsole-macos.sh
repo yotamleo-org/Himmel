@@ -21,7 +21,7 @@
 #   6. a failing `open` is exit 3; a session that never reports a pid is
 #      exit 4 (never a silent success).
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+. The suite is hermetic - it
+# Platform guard: POSIX bash 3.2+. The suite is hermetic - it
 # stubs `open` on PATH with a stand-in that runs the .command itself, so no
 # real terminal window is ever opened and the cases run in milliseconds.
 #

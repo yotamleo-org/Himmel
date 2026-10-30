@@ -54,7 +54,7 @@ SEED_VERSION="5"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # CLAUDE_CODEX_SRT_PROFILE=<impl|research> runs this whole launcher
 # inside sandbox-runtime (srt) with settings rendered from that profile. Linux
-# only (no .ps1 twin). Outside the box this block renders and asserts the
+# only. Outside the box this block renders and asserts the
 # settings, writes a wrapper file and execs `srt --settings X -- bash <wrapper>`;
 # inside (the generated wrapper exports CLAUDE_CODEX_SRT_INBOX=1 and srt sets
 # SANDBOX_RUNTIME=1) it only sets SRT_ACTIVE for the proxy handling below; the

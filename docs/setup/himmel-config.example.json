@@ -4,6 +4,7 @@
     "CR_REQUIRE_CROSS_MODEL": null,
     "CR_FLOOR_FALLBACK": null,
     "ARMAUTOMERGE": null,
-    "ENV_MIGRATION_CONSENT": null
+    "ENV_MIGRATION_CONSENT": null,
+    "HIMMEL_FLEET_CAP": null
   }
 }

@@ -14,9 +14,9 @@
 # (case 8). The suite runs chief.sh from the fixture's copy, so the
 # resolved repo path is a clean /tmp path.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; exercises chief.sh,
-# which is konsole/Linux-only for --arm (see chief.sh's own header) —
-# same platform scope, no .ps1 twin.
+# Platform guard: POSIX bash 3.2+; exercises chief.sh, whose --arm
+# launches through konsole (Linux/KDE) or the konsole-macos.sh shim on
+# macOS (see chief.sh's own header) — same platform scope.
 set -uo pipefail
 
 # a bus-identified chief's `next` leaves the relay-on-live marker unasked; only 6e sets it
@@ -336,7 +336,7 @@ check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT
 # files, not the templates: this is what every chief hand-patched.
 stale6c='mint a fresh|rotate nonces to|hands you a fresh token per worker'
 check "6c control: the stale-rotation pattern matches the pre-#967 wording" \
-    "$(printf '%s\n' 'So, per leg: mint a fresh B-<worker>-<hex> token, hand it to the predecessor' | grep -icE "$stale6c")" "1"
+    "$(printf '%s\n' 'So, per worker: mint a fresh B-<worker>-<hex> token, hand it to the predecessor' | grep -icE "$stale6c")" "1"
 check "6c successor stub carries no mint-and-rotate instruction" \
     "$(tr '\n' ' ' < "$doc6B" | tr -s ' ' | grep -icE "$stale6c")" "0"
 check "6c HANDOFF carries no mint-and-rotate instruction" \
@@ -2367,7 +2367,7 @@ session79f="DEMO-nextleg-${today}B-bus79-chief"
 check "79 failed succeed: chief still arms" "$(printf '%s\n' "$out79f" | grep -c '^armed: ')" "1"
 check "79 failed succeed: warned on stderr" "$(printf '%s\n' "$out79f" | grep -c 'WARN bus succeed failed')" "1"
 check "79 failed succeed: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* legs adopt only once')" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* workers adopt only once')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/$session79f.md" "$(token_of "$out79f")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79e")" >/dev/null 2>&1
 # a profile probe that errors is not "opted out": the chief arms unbound and the launch log says why

@@ -18,8 +18,7 @@
 #      deadline -> exit 2, konsole missing from PATH -> exit 3.
 #   7. the signal-file path (not just the deadline) also triggers a launch.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
-# itself - no .ps1 twin (the script under test has none either).
+# Platform guard: POSIX bash 3.2+, same as headed-arm.sh itself.
 #
 # Seams used (see headed-arm.sh's own header): KONSOLE_CMD / PGREP_CMD point
 # at stub binaries this suite writes per case; HEADED_ARM_REPO points at a
@@ -1707,9 +1706,9 @@ KONSOLE_CMD="$d38a/konsole" PGREP_CMD="$d38a/pgrep" HEADED_ARM_REPO="$REPO" HEAD
 wait_record "$d38a" || true
 rec38a="$(cat "$d38a/record" 2>/dev/null || true)"
 log38a="$(cat "$d38a/log" 2>/dev/null || true)"
-check "38a --role console: exit 0" "$rc38a" "0"
-contains "38a --role console: armed log line stamps role=chief" "$log38a" "role=chief"
-contains "38a --role console: konsole record clears HIMMEL_CONSOLE_RELAY" "$rec38a" "-u HIMMEL_CONSOLE_RELAY"
+check "38a --role chief: exit 0" "$rc38a" "0"
+contains "38a --role chief: armed log line stamps role=chief" "$log38a" "role=chief"
+contains "38a --role chief: konsole record clears HIMMEL_CONSOLE_RELAY" "$rec38a" "-u HIMMEL_CONSOLE_RELAY"
 
 # 38b. the chief clear is UNCONDITIONAL: an inherited HIMMEL_CONSOLE_RELAY=1
 # in the arming shell's own env never reaches the child.
@@ -1742,6 +1741,19 @@ contains "38d --role bogus: usage text" "$outd38d" "usage: headed-arm.sh"
 contains "38d --role bogus: error names 'console' as the valid role" "$outd38d" "--role must be chief, got: bogus"
 not_contains "38d --role bogus: error does not advertise relay as valid" "$outd38d" "relay or chief"
 
+# 38c2. the old value console is refused even with legacy names on: no alias,
+# no deprecation line, no launch. Hermetic like 38a: stub konsole/pgrep and a
+# private lock dir, so a regression that accepts the value spawns nothing real.
+d38c2="$tmp/c38c2"; mk_stub "$d38c2" 1 alive "HIMMEL-role38c2"
+outc38c2=$(HIMMEL_LEGACY_NAMES=1 HEADED_ARM_HEADLESS=0 KONSOLE_CMD="$d38c2/konsole" PGREP_CMD="$d38c2/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38c2/locks" HEADED_ARM_PROC="$d38c2/proc" \
+  bash "$SCRIPT" --role console "HIMMEL-role38c2" "doc38c2.md" "$d38c2/signal-never" "$PAST" "$d38c2/log" 2>&1)
+rc38c2=$?
+check "38c2 --role console: exit 2" "$rc38c2" "2"
+contains "38c2 --role console: error names chief as the only valid role" "$outc38c2" "--role must be chief, got: console"
+not_contains "38c2 --role console: not forwarded as a chief arm" "$outc38c2" "armed"
+check "38c2 --role console: no log written" "$([ -e "$d38c2/log" ] && echo yes || echo no)" "no"
+check "38c2 --role console: stub konsole never launched" "$([ -e "$d38c2/record" ] && echo yes || echo no)" "no"
+
 # 38e. --role with no value: exit 2.
 oute38e=$(bash "$SCRIPT" --role 2>&1)
 rc38e=$?
@@ -1772,10 +1784,10 @@ KONSOLE_CMD="$d38g/konsole" PGREP_CMD="$d38g/pgrep" HEADED_ARM_REPO="$REPO" HEAD
   bash "$SCRIPT" --role chief "HIMMEL-role38g" "doc38g.md" "$d38g/chain/sig-HIMMEL-role38g" "$PAST" "$d38g/log" >/dev/null 2>&1 || rc38g=$?
 wait_record "$d38g" || true
 rec38g="$(cat "$d38g/record" 2>/dev/null || true)"
-check "38g --role console: exit 0" "$rc38g" "0"
-contains "38g --role console: a repo-relative DOC is exported ABSOLUTE (against REPO, where the session runs)" "$rec38g" "HIMMEL_CONSOLE_DOC=$REPO/doc38g.md"
-contains "38g --role console: konsole record exports HIMMEL_CONSOLE_WORKDIR=dirname(signal)" "$rec38g" "HIMMEL_CONSOLE_WORKDIR=$d38g/chain"
-contains "38g --role console: konsole record exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
+check "38g --role chief: exit 0" "$rc38g" "0"
+contains "38g --role chief: a repo-relative DOC is exported ABSOLUTE (against REPO, where the session runs)" "$rec38g" "HIMMEL_CONSOLE_DOC=$REPO/doc38g.md"
+contains "38g --role chief: konsole record exports HIMMEL_CONSOLE_WORKDIR=dirname(signal)" "$rec38g" "HIMMEL_CONSOLE_WORKDIR=$d38g/chain"
+contains "38g --role chief: konsole record exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
 d38h="$tmp/c38h"; mk_stub "$d38h" 1 alive "HIMMEL-role38h"
 rc38h=0
 KONSOLE_CMD="$d38h/konsole" PGREP_CMD="$d38h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38h/locks" HEADED_ARM_PROC="$d38h/proc" \
@@ -1783,7 +1795,7 @@ KONSOLE_CMD="$d38h/konsole" PGREP_CMD="$d38h/pgrep" HEADED_ARM_REPO="$REPO" HEAD
 wait_record "$d38h" || true
 rec38h="$(cat "$d38h/record" 2>/dev/null || true)"
 check "38h --role chief (absolute DOC): exit 0" "$rc38h" "0"
-contains "38h --role console: an absolute DOC is exported unchanged" "$rec38h" "HIMMEL_CONSOLE_DOC=/abs/doc38h.md"
+contains "38h --role chief: an absolute DOC is exported unchanged" "$rec38h" "HIMMEL_CONSOLE_DOC=/abs/doc38h.md"
 
 # 38i/38j. The chief clear survives HEADED_ARM_LAUNCHER_ENV:
 # `env -u FOO FOO=1` ends with FOO=1, so a HIMMEL_CONSOLE_RELAY=<v> token carried
@@ -1798,9 +1810,9 @@ KONSOLE_CMD="$d38i/konsole" PGREP_CMD="$d38i/pgrep" HEADED_ARM_REPO="$REPO" HEAD
 wait_record "$d38i" || true
 rec38i="$(cat "$d38i/record" 2>/dev/null || true)"
 check "38i --role chief + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38i" "0"
-contains "38i --role console: the -u HIMMEL_CONSOLE_RELAY clear stays" "$rec38i" "-u HIMMEL_CONSOLE_RELAY"
-not_contains "38i --role console: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (default branch)" "$rec38i" "HIMMEL_CONSOLE_RELAY="
-contains "38i --role console: the sibling LAUNCHER_ENV token still reaches the argv" "$rec38i" "CLAUDEX_LANE_OK=1"
+contains "38i --role chief: the -u HIMMEL_CONSOLE_RELAY clear stays" "$rec38i" "-u HIMMEL_CONSOLE_RELAY"
+not_contains "38i --role chief: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (default branch)" "$rec38i" "HIMMEL_CONSOLE_RELAY="
+contains "38i --role chief: the sibling LAUNCHER_ENV token still reaches the argv" "$rec38i" "CLAUDEX_LANE_OK=1"
 
 d38j="$tmp/c38j"; mk_stub "$d38j" 1 alive "HIMMEL-role38j"
 rc38j=0
@@ -1812,9 +1824,9 @@ wait_record "$d38j" || true
 rec38j="$(cat "$d38j/record" 2>/dev/null || true)"
 check "38j --role chief + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1 + RECORDER=1: exit 0" "$rc38j" "0"
 contains "38j RECORDER branch reached (script(1) wrapper present)" "$rec38j" "script -q -a -f"
-contains "38j --role console: the -u HIMMEL_CONSOLE_RELAY clear stays (recorder branch)" "$rec38j" "-u HIMMEL_CONSOLE_RELAY"
-not_contains "38j --role console: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (recorder branch)" "$rec38j" "HIMMEL_CONSOLE_RELAY="
-contains "38j --role console: the sibling LAUNCHER_ENV token still reaches the argv (recorder branch)" "$rec38j" "CLAUDEX_LANE_OK=1"
+contains "38j --role chief: the -u HIMMEL_CONSOLE_RELAY clear stays (recorder branch)" "$rec38j" "-u HIMMEL_CONSOLE_RELAY"
+not_contains "38j --role chief: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (recorder branch)" "$rec38j" "HIMMEL_CONSOLE_RELAY="
+contains "38j --role chief: the sibling LAUNCHER_ENV token still reaches the argv (recorder branch)" "$rec38j" "CLAUDEX_LANE_OK=1"
 
 # 38k. control: with NO --role the launcher env is passed through untouched --
 # the strip is chief-only (a relay WORKER legitimately carries the marker).
@@ -1838,8 +1850,8 @@ KONSOLE_CMD="$d38l/konsole" PGREP_CMD="$d38l/pgrep" HEADED_ARM_REPO="$REPO" HEAD
 wait_record "$d38l" || true
 rec38l="$(cat "$d38l/record" 2>/dev/null || true)"
 check "38l --role chief + prefix-sharing token: exit 0" "$rc38l" "0"
-contains "38l --role console: HIMMEL_CONSOLE_RELAY_X=1 (prefix-sharing) is NOT stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY_X=1"
-not_contains "38l --role console: the exact HIMMEL_CONSOLE_RELAY=1 beside it IS stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY="
+contains "38l --role chief: HIMMEL_CONSOLE_RELAY_X=1 (prefix-sharing) is NOT stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY_X=1"
+not_contains "38l --role chief: the exact HIMMEL_CONSOLE_RELAY=1 beside it IS stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY="
 
 # --- 39. --dry-run: prints the resolved argv + exits 0 BEFORE
 # the signal/deadline wait loop, the claim lock, or konsole/pgrep are ever

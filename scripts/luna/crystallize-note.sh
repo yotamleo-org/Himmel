@@ -195,9 +195,8 @@ fi
 
 # Operator rules/context injection: when a readable rules file was supplied,
 # append its content as a clearly delimited block. Unreadable / missing / empty
-# -> append nothing (fail-open). Trim whitespace before the emptiness guard to
-# ensure parity with PowerShell (Get-Content -Raw keeps trailing newline, but
-# bash `$(cat)` strips it; both must skip on whitespace-only files).
+# -> append nothing (fail-open). Trim whitespace before the emptiness guard
+# so whitespace-only files are skipped.
 if [ -n "$RULES_FILE" ] && [ -r "$RULES_FILE" ]; then
     _rules_content="$(cat "$RULES_FILE" 2>/dev/null)"
     # Trim whitespace (spaces, tabs, newlines) before the emptiness check
@@ -240,7 +239,7 @@ launch_api_lane() {
 # timestamp this script owns (CRYSTALLIZE_NOW overridable for hermetic tests).
 HASH_AFTER="$(_hash "$NOTE_PATH")"
 # Both hashes must be measurable (errs toward leaving the flag false when a hash
-# can't be taken — never fabricates a crystallized:true) — matches the .ps1 twin.
+# can't be taken — never fabricates a crystallized:true).
 if [ -n "$HASH_BEFORE" ] && [ -n "$HASH_AFTER" ] && [ "$HASH_BEFORE" != "$HASH_AFTER" ]; then
     # Refresh loss-proofing: a changed-but-structurally-broken result (truncated
     # note, lost frontmatter/sections — the shape of a half-applied edit) is
