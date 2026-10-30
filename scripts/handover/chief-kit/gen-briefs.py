@@ -449,6 +449,16 @@ _SCOPE_END = re.compile(r'completes-ticket:|Other live workers|Touch nothing|REA
 def write_paths(scope):
     # The paths the ticket's Writes text names, and nothing else: the collision check holds every path on the
     # Writes line, so prose here ("find and fix the caller in x") must never reach it.
+    scope = _writes_scope(scope)
+    out = []
+    for m in WRITE_PATH_RE.finditer(scope):
+        p = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
+        if p and p not in out:
+            out.append(p)
+    return ' '.join(out) or ('none named' if scope.strip() == 'none named' else '')
+
+
+def _writes_scope(scope):
     end = _SCOPE_END.search(scope)
     scope = scope[:end.start()] if end else scope
     for rx in _READ_ONLY:
@@ -461,19 +471,21 @@ def write_paths(scope):
         if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
             return ' '.join(g.group(1) + p for p in parts)
         return g.group(1)
-    scope = re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, scope)
-    out = []
-    for m in WRITE_PATH_RE.finditer(scope):
-        p = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
-        if p and p not in out:
-            out.append(p)
-    return ' '.join(out) or ('none named' if scope.strip() == 'none named' else '')
+    return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, scope)
+
+
+_DOCS_FILLER = {'writes', 'write', 'and', 'or', 'plus', 'also', 'the', 'a', 'an', 'only', 'new', 'edit', 'update', 'add', 'in', 'under', 'of', 'to', 'doc', 'docs', 'file', 'files', 'section', 'sections'}
 
 
 def docs_only(scope):
-    # True when the Writes name at least one path and every one is under docs/ or is a *.md file.
-    paths = write_paths(scope).split()
-    return bool(paths) and paths != ['none', 'named'] and all(p.startswith('docs/') or p.endswith('.md') for p in paths)
+    # True only when every token of the Writes text is positively docs: a path under docs/, a *.md file or a plain
+    # connector word. write_paths() recognises a fixed set of roots, so a path it misses (src/main.py, Makefile,
+    # LICENSE) must not pass as docs: an unknown token keeps the worker on worker-impl.
+    toks = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', _writes_scope(scope))]
+    toks = [t for t in toks if t.strip('.-')]
+    if not toks or not any(t.startswith('docs/') or t.endswith('.md') for t in toks):
+        return False
+    return all(t.startswith('docs/') or t.endswith('.md') or t.lower() in _DOCS_FILLER for t in toks)
 
 
 def sonnet_ceiling_profile(profile):

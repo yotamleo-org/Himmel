@@ -805,6 +805,10 @@ ui_gen "Writes docs/internals/ (a.md)." -
 has "a docs/ dir worker arms worker-docs" "$ui_launch" "--profile worker-docs --chief BZ"
 ui_gen "Writes docs/internals/a.md and scripts/lib/x.sh." -
 has "a worker writing docs and one script stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+for unk in "src/main.py" "Makefile" "LICENSE"; do
+  ui_gen "Writes docs/internals/a.md and $unk." -
+  has "a docs path plus an unrecognised path ($unk) stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+done
 ui_gen "Writes docs/internals/a.md and scripts/config-ui/page.ts." -
 has "a docs plus config-ui worker keeps worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
 ui_gen "Writes docs/internals/a.md." worker-eval

@@ -448,8 +448,8 @@ def cmd_judge(a):
                     "Bash", "Read", "Edit", "Write", "Grep", "Glob", "Agent", "WebFetch", "WebSearch"]
             run_segment(argv, scratch, stream, 900, stdin_text=judge_prompt(rd))
             j = summarize_streams([stream], 200000)
-            lines = [ln for ln in j["reply"].splitlines() if "SCORE:" in ln]   # the last SCORE line is the verdict; an earlier one never stands in for it
-            m = re.search(r"SCORE:\s*(\d+)[\s.*]*$", lines[-1]) if lines else None
+            lines = [ln for ln in j["reply"].splitlines() if re.match(r"[\s*_#>-]*SCORE:", ln)]   # the last line that starts with the SCORE label is the verdict; an earlier one never stands in for it, and SUBSCORE is not one
+            m = re.match(r"[\s*_#>-]*SCORE:\s*(\d+)[\s.*]*$", lines[-1]) if lines else None
             score = int(m.group(1)) if m and j["result_ok"] and 1 <= int(m.group(1)) <= 10 else None
             if score is None:   # a null score is retried by the next `judge`; its cost stays counted
                 print("ab.py: judge gave no usable SCORE (1 to 10 on a clean result) for %s" % rd, file=sys.stderr)

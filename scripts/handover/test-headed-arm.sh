@@ -460,8 +460,11 @@ for bad in 500000 199999 400000.5 abc; do
   check "Sonnet ceiling marker ($bad): refused exit 2" "$rc" "2"
   not_contains "Sonnet ceiling marker ($bad): no launch argv" "$out" "--autocompact $bad"
 done
-rc=0; out="$(ab_run paired 1m "" sonnet1m worker-impl claude-sonnet-5 450000)" || rc=$?
+# design is the one profile whose 1m context passes the worker-context gate, so this row
+# reaches the marker's own 1m check; on worker-impl the earlier gate would refuse it first.
+rc=0; out="$(ab_run paired 1m "" sonnet1m design claude-sonnet-5 450000)" || rc=$?
 check "Sonnet ceiling marker (1m context): refused exit 2" "$rc" "2"
+contains "Sonnet ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_SONNET_AUTOCOMPACT=450000"
 rc=0; out="$(ab_run paired standard "" sonnetchief chief claude-sonnet-5 450000)" || rc=$?
 check "Sonnet ceiling marker (chief profile): refused exit 2" "$rc" "2"
 rc=0; out="$(ab_run stale standard 400000 stale)" || rc=$?

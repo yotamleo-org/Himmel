@@ -14,8 +14,8 @@
 # standard - see docs/internals/lane-calibration.md "Context mode" and
 # headed-arm.sh's own --context handling, which this wrapper reuses rather
 # than forking). What was missing was a fail-closed PIN: the resolved worker argv
-# must carry the cost-driving `--autocompact 200000`, not merely lack a [1m]
-# model suffix. WORKER_SESSION_CONTEXT=1m therefore refuses with an actionable exit 2.
+# must carry the cost-driving `--autocompact` (200000, or the profile's Sonnet 5.5
+# ceiling), not merely lack a [1m] model suffix. WORKER_SESSION_CONTEXT=1m therefore refuses with an actionable exit 2.
 # The raw model string is still headed-arm.sh's concern: a caller handing this
 # wrapper an already-[1m]-suffixed model gets it forwarded unchanged, and
 # headed-arm.sh strips it under standard mode (test-headed-arm-worker.sh asserts
@@ -1075,8 +1075,9 @@ unset -v _worker_rcwd _worker_rcwd_phys _worker_vroot _worker_vroot_phys _worker
 #
 # the `design` profile (and only it) resolves 1m by itself - an
 # operator ruling (2026-10-01) that early compaction hurts design work, so no
-# WORKER_SESSION_CONTEXT or brief Context line is needed; every other profile keeps the
-# 200000 ceiling and a bare WORKER_SESSION_CONTEXT=1m is still refused below.
+# WORKER_SESSION_CONTEXT or brief Context line is needed; every other profile keeps a
+# standard window (200000, or 450000 for a Sonnet 5.5 profile) and a bare
+# WORKER_SESSION_CONTEXT=1m is still refused below.
 PROFILES_MJS="${HEADED_ARM_WORKER_PROFILES:-$HERE/../../lanes/plugin-profiles.mjs}"
 CONTEXT="standard"
 RESOLVED_AUTOCOMPACT="200000"
