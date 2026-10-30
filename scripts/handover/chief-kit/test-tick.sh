@@ -277,6 +277,12 @@ idle_held_cases() (
     printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
     idle1="$(bash "$SUT")"
     contains 'held lock with no activity past 45 minutes reports IDLE-HELD' "$idle1" 'workers=N61:IDLE-HELD'
+    # shellcheck disable=SC2016  # backticks delimit literal Live-state entries
+    printf '%s\n' '# chief' '## Live state' 'legs: `N61:TEST-N61-ab:lock:101`' > "$W/handover/idle-chief.md"
+    out="$(DOC="$W/handover/idle-chief.md" bash "$SUT")"
+    contains 'IDLE-HELD still counts as held in the chief live state' "$out" 'livestate=ok'
+    contains 'IDLE-HELD still counts its live worker process' "$out" 'procs=1'
+    rm -f "$W/handover/idle-chief.md"
     printf 'idle proof: %s\n' "$idle1"
     out="$(TICK_IDLE_MIN=60 bash "$SUT")"
     contains 'idle threshold override preserves a younger worker' "$out" 'workers=N61:FRESH'

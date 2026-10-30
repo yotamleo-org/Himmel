@@ -1139,7 +1139,7 @@ done
 [ -n "$acts_summary" ] || acts_summary=none
 
 # cross-reference the chief doc's own `## Live state`
-# `legs:` line against the lock status just computed above (legs_summary),
+# `legs:` line against the ownership status just computed above (leg_candmap),
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
 # "unknown" (doc given but no `## Live state`/`legs:` line found -- e.g. a
@@ -1246,7 +1246,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         live_spans="$(legs_line_spans entries "$legs_line")"
         live_legs="$(printf '%s\n' "$live_spans" | sed -E 's/:.*$//')"
         malformed_legs="$(legs_line_spans malformed "$legs_line")"
-        held_legs="$(printf '%s\n' "$legs_summary" | tr ',' '\n' | awk -F: '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
+        held_legs="$(printf '%s' "$leg_candmap" | awk -F'\t' '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
         # the worker set this tick watches is the --workers arm, and Live
         # state is the chief's own record; the two are supplied separately and
         # can disagree. A worker Live state names that the arm does not is UNARMED --
