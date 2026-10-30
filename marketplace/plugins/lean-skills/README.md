@@ -26,7 +26,7 @@ below.
 | [`mattpocock/skills`](https://github.com/mattpocock/skills) @ 1.3.1 | `grilling` | 1 of 11 |
 | himmel-authored, no upstream | `context7-mcp` (moved here from `~/.claude/skills` — always-on before per-skill toggling existed, so a plugin profile can scope it) | — |
 
-14 skill directories total, replacing 25 (14 + 11) across the two upstream
+14 skill directories total, replacing 26 (15 + 11) across the two upstream
 plugins. Full per-source detail (including the upstream license each skill
 inherits) lives in [`VENDORED.md`](VENDORED.md) — read that file before
 touching anything under `skills/`.
