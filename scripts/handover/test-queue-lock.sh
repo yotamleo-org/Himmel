@@ -92,6 +92,155 @@ HO1="$HANDOVER_DIR/HIMMEL-856-test/next-session-1.md"
 mkdir -p "$(dirname "$HO1")"
 : > "$HO1"
 
+# Release race rows run in CI with the suite, or alone via --release-races.
+# The wrappers only delay real filesystem operations; ownership decisions and
+# takeover/acquire/release all run through the unmodified CLI under test.
+t_release_wait() {
+    local i=0
+    while [ ! -e "$1.reached" ] && [ ! -e "$1.rc" ] && [ "$i" -lt 200 ]; do
+        sleep 0.05; i=$((i + 1))
+    done
+    [ -e "$1.reached" ]
+}
+t_release_races() {
+    local bin="$TMPDIR_ROOT/release-bin" doc lk gate pid a_rc b_rc out
+    mkdir -p "$bin"
+    RACE_REAL_MKDIR="$(command -v mkdir)"
+    RACE_REAL_RM="$(command -v rm)"
+    export RACE_REAL_MKDIR RACE_REAL_RM
+    cat > "$bin/mkdir" <<'SH'
+#!/usr/bin/env bash
+"$RACE_REAL_MKDIR" "$@" || exit "$?"
+for arg in "$@"; do
+    if [ "$arg" = "$RACE_LOCK" ]; then
+        : > "$RACE_GATE.reached"
+        i=0
+        while [ -e "$RACE_GATE" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
+        break
+    fi
+done
+SH
+    cat > "$bin/rm" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+    if [ "$arg" = "$RACE_LOCK" ]; then
+        : > "$RACE_GATE.reached"
+        i=0
+        while [ -e "$RACE_GATE" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
+        break
+    fi
+ done
+exec "$RACE_REAL_RM" "$@"
+SH
+    chmod +x "$bin/mkdir" "$bin/rm"
+
+    # T8273: a fresh mkdir is not an abandoned husk. Removing the mandatory
+    # holder check lets an old token erase it before the acquire brands it.
+    doc="$HANDOVER_DIR/release-t8273.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8273.lock"
+    gate="$TMPDIR_ROOT/release-t8273-gate"; : > "$gate"
+    ( PATH="$bin:$PATH" RACE_LOCK="$lk" RACE_GATE="$gate" \
+        bash "$LIB" acquire "$doc" fresh8273 > "$gate.out" 2>&1; echo $? > "$gate.rc" ) &
+    pid=$!
+    t_release_wait "$gate" || fail "T8273: acquire did not reach its successful mkdir"
+    out="$(bash "$LIB" release "$doc" old8273 2>&1)"; a_rc=$?
+    rm -f "$gate"; wait "$pid"
+    b_rc="$(cat "$gate.rc")"
+    if [ "$a_rc" -eq 2 ] && [ "$b_rc" -eq 0 ] \
+        && grep -q '"session":"fresh8273"' "$lk/owner.json" 2>/dev/null; then
+        pass "T8273: an old token refuses a fresh unbranded lock (rc=2); its acquire completes intact"
+    else
+        fail "T8273: ownerless release=$a_rc acquire=$b_rc lock=$([ -d "$lk" ] && echo held || echo GONE) release=$out acquire=$(cat "$gate.out")"
+    fi
+    bash "$LIB" release "$doc" fresh8273 >/dev/null 2>&1
+
+    # T8274: pause INSIDE rm, after the release's last ownership recheck.
+    # Without mutual exclusion a takeover wins here and the old rm deletes it.
+    doc="$HANDOVER_DIR/release-t8274.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8274.lock"
+    bash "$LIB" acquire "$doc" old8274 >/dev/null 2>&1
+    gate="$TMPDIR_ROOT/release-t8274-gate"; : > "$gate"
+    ( PATH="$bin:$PATH" RACE_LOCK="$lk" RACE_GATE="$gate" \
+        bash "$LIB" release "$doc" old8274 > "$gate.out" 2>&1; echo $? > "$gate.rc" ) &
+    pid=$!
+    t_release_wait "$gate" || fail "T8274: release did not reach its final delete"
+    out="$(QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" fresh8274 2>&1)"; b_rc=$?
+    rm -f "$gate"; wait "$pid"
+    a_rc="$(cat "$gate.rc")"
+    if [ "$b_rc" -eq 2 ] && [ "$a_rc" -eq 0 ] && [ ! -d "$lk" ]; then
+        pass "T8274: takeover cannot cross a release's final check/delete boundary; holder releases normally"
+    elif [ "$b_rc" -eq 0 ] && [ "$a_rc" -eq 2 ] \
+        && grep -q '"session":"fresh8274"' "$lk/owner.json" 2>/dev/null; then
+        pass "T8274: release refuses and preserves the takeover winner at its final delete boundary"
+    else
+        fail "T8274: release=$a_rc takeover=$b_rc lock=$([ -d "$lk" ] && echo held || echo GONE) release=$(cat "$gate.out") takeover=$out"
+    fi
+    bash "$LIB" release "$doc" fresh8274 >/dev/null 2>&1
+
+    # A takeover BEFORE the final boundary still succeeds; a failed release
+    # must not hide, restore over, or remove that holder's finished lock.
+    doc="$HANDOVER_DIR/release-t8274-fenced.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8274-fenced.lock"
+    bash "$LIB" acquire "$doc" old8274f >/dev/null 2>&1
+    gate="$TMPDIR_ROOT/release-t8274-fenced-gate"; : > "$gate"
+    ( QUEUE_LOCK_TEST_PAUSE_AT=release-verified QUEUE_LOCK_TEST_PAUSE_FILE="$gate" \
+        bash "$LIB" release "$doc" old8274f > "$gate.out" 2>&1; echo $? > "$gate.rc" ) &
+    pid=$!
+    t_release_wait "$gate" || fail "T8274f: release did not reach its verification pause"
+    QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" fresh8274f > "$gate.takeover" 2>&1; b_rc=$?
+    rm -f "$gate"; wait "$pid"
+    a_rc="$(cat "$gate.rc")"
+    if [ "$b_rc" -eq 0 ] && [ "$a_rc" -eq 2 ] \
+        && grep -q '"session":"fresh8274f"' "$lk/owner.json" 2>/dev/null; then
+        pass "T8274f: a failed late release preserves the earlier takeover winner"
+    else
+        fail "T8274f: release=$a_rc takeover=$b_rc release=$(cat "$gate.out") takeover=$(cat "$gate.takeover")"
+    fi
+    bash "$LIB" release "$doc" fresh8274f >/dev/null 2>&1
+
+    # T8274c: a release killed while holding its deletion claim must not
+    # have that claim TTL-reclaimed underneath its potentially surviving rm.
+    doc="$HANDOVER_DIR/release-t8274-crashed.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8274-crashed.lock"
+    bash "$LIB" acquire "$doc" holder8274c >/dev/null 2>&1
+    mkdir "$lk.claim"
+    printf '%s' release-pid0-r8274 > "$lk.claim/owner"
+    _t_touch_at "$(( $(date -u +%s) - 300 ))" "$lk.claim"
+    out="$(QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" taker8274c 2>&1)"; b_rc=$?
+    if [ "$b_rc" -eq 2 ] && [ -d "$lk.claim" ] \
+        && grep -q '"session":"holder8274c"' "$lk/owner.json" 2>/dev/null \
+        && grepq "$out" 'manual' && grepq "$out" 'rm -rf'; then
+        pass "T8274c: an expired crashed-release claim fails closed, preserves the holder, and names manual recovery"
+    else
+        fail "T8274c: crashed claim takeover=$b_rc claim=$([ -d "$lk.claim" ] && echo held || echo GONE) out=$out"
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        chmod 000 "$lk.claim/owner"
+        out="$(QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" taker8274u 2>&1)"; b_rc=$?
+        chmod 600 "$lk.claim/owner" 2>/dev/null
+        if [ "$b_rc" -eq 2 ] && [ -d "$lk.claim" ] \
+            && grep -q '"session":"holder8274c"' "$lk/owner.json" 2>/dev/null; then
+            pass "T8274u: an unreadable release claim also refuses expiry, preserving the holder"
+        else
+            fail "T8274u: unreadable release claim takeover=$b_rc out=$out"
+        fi
+    fi
+    rm -rf "$lk.claim"
+    QUEUE_LOCK_TAKEOVER=1 bash "$LIB" acquire "$doc" recovered8274c >/dev/null 2>&1; b_rc=$?
+    bash "$LIB" release "$doc" recovered8274c >/dev/null 2>&1; a_rc=$?
+    if [ "$b_rc" -eq 0 ] && [ "$a_rc" -eq 0 ] && [ ! -d "$lk" ]; then
+        pass "T8274c: after explicit claim recovery, takeover and the genuine holder's release still work"
+    else
+        fail "T8274c: explicit recovery takeover=$b_rc release=$a_rc"
+    fi
+}
+t_release_races
+if [ "${1:-}" = --release-races ]; then
+    echo "PASSED=$PASSED FAILED=$FAILED"
+    [ "$FAILED" -eq 0 ]
+    exit "$?"
+fi
+
 # --- T1: acquire succeeds, owner.json has all fields ------------------------
 out="$(bash "$LIB" acquire "$HO1" "session-a" 2>&1)"
 rc=$?
@@ -2812,7 +2961,7 @@ fi
 # taker had branded (owner arbiter + gen) but not yet finished -- and the
 # generation re-check passed because both were branded before release read
 # them. The arbiter names the holder; a stranger is refused, the holder's own
-# ownerless lock and a genuinely empty husk still clean up.
+# ownerless lock still cleans up, but an unbranded husk must fail closed.
 f_wait_reached_or_rc() {
     local i=0
     while [ ! -e "$1.reached" ] && [ ! -e "$1.rc" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
@@ -2852,13 +3001,14 @@ fi
 
 F_DOC="$F_HO/fence-t7036c.md"; : > "$F_DOC"
 F_LK="$(f_lockdir fence-t7036c)"
-mkdir -p "$F_LK"     # no owner.json, no arbiter: nobody's lock
+mkdir -p "$F_LK"     # indistinguishable from a fresh acquire before its owner brand
 out="$(bash "$LIB" release "$F_DOC" tokAny7036 2>&1)"; rc=$?
-if [ "$rc" -eq 0 ] && [ ! -e "$F_LK" ]; then
-    pass "T7036c: control -- an empty lock husk (no owner.json, no arbiter) still cleans up (rc=0)"
+if [ "$rc" -eq 2 ] && [ -d "$F_LK" ]; then
+    pass "T7036c: an unbranded lock refuses release (rc=2); manual recovery must be explicit"
 else
     fail "T7036c: empty husk: rc=$rc out=$out lock=$(ls -d "$F_LK" 2>/dev/null || echo GONE)"
 fi
+rm -rf "$F_LK"
 
 # --- T88-T95: a live worker must not silently outrun the TTL. The
 # AGING warning used to live in `status` alone, which a worker never calls between
