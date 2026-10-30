@@ -8,9 +8,8 @@
 #
 # Usage: bash scripts/hooks/test-guard-relay-writes.sh
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Pure bash + jq over a temp sandbox; NOT ported to native PowerShell — see
-# guard-relay-writes.sh's own header for why (the relay lane is Linux-only).
+# Platform guard: any POSIX bash 3.2+. Pure bash + jq over a temp sandbox; see
+# guard-relay-writes.sh's own header (the relay lane is Linux-only).
 set -uo pipefail
 
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
