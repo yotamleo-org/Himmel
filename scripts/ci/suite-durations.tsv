@@ -1,4 +1,5 @@
 # suite	seconds — the shell-unit shard bin-pack ledger.
+scripts/security/test-security-audit-cadence.sh	2
 #
 # source: per-suite timings from the green Linux main CI runs 40844423484 (head
 #   a737d0a77fc47c8d282f3ce5faf37d54912cb16f, 2026-10-29), 40834964997 (head

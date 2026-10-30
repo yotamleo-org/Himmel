@@ -43,8 +43,68 @@ task silently vanishes.
 | `vault-stall` | `scripts/luna/vault-stall-cadence.sh` | a vault exists | Every 15 minutes: detect a stalled vault auto-commit, remediate only the known-benign pre-commit refusals, alert on everything else without echoing the secret. `arm --vault <path>` |
 | `drift-fix` | `scripts/upstreams/drift-fix-cadence.sh` | always | Nightly `/drift-fix` (bump auto-bumpable pins, open an ordinary PR) and `/fork-resync` (rebase carried forks, audit only). Stops at the PR or audit; never merges. Extra flag `--resync-time` |
 | `upstream-watch` | `scripts/upstreams/upstream-watch-cadence.sh` | always | Daily scan of himmel's open upstream PRs and issues for a delta. No Claude session; Telegram-notified only when something changed |
+| `security-audit` | `scripts/security/security-audit-cadence.sh` | always | Weekly read-only diff of existing GitHub, Snyk, Arnica and CodeRabbit findings; optional sources skip. No new scan, paid call or LLM call. `arm --day 0-6 --time HH:MM` (default Monday 07:00). See [setup and sources](#weekly-security-findings-audit) |
 | `doctor` | `scripts/doctor-cadence.sh` | always | Daily `himmel-doctor` run from the primary checkout. A FAIL or a new WARN goes to Telegram and the statusline shows the counts. Report only, fixes nothing. Cron only (Linux, macOS) |
 | `pull-cadence` | `scripts/luna-vitals/connectors/pull-cadence.sh` | `GOOGLE_HEALTH_REFRESH_TOKEN` is set | Daily Google Health connector pull to a review artifact. No Claude session. Setup: [luna/google-health-connector-setup.md](luna/google-health-connector-setup.md) |
+
+## Weekly security findings audit
+
+`security-audit` reads **existing findings**, never starts a scan, calls a model,
+upgrades a subscription or spends a Snyk test. It stays off until armed:
+
+```bash
+bash scripts/security/security-audit-cadence.sh run
+bash scripts/security/security-audit-cadence.sh arm --day 1 --time 07:00 --dry-run
+bash scripts/security/security-audit-cadence.sh status
+bash scripts/security/security-audit-cadence.sh disarm --dry-run
+```
+
+The default is Monday 07:00, local cron time (Linux/macOS). Remove `--dry-run`
+only when you intend to change the schedule. `arm --force` replaces its own
+entry; other cron entries are preserved. `run --repo owner/name` or
+`run --repo /checkout/path` overrides the primary checkout's GitHub origin.
+The wizard row and script expose the same arm/status/disarm interface.
+
+| Source | Probe / free-plan behavior |
+|---|---|
+| GitHub code scanning, Dependabot, secret scanning | Read-only, paginated `gh api` GETs using gh's existing authentication. Missing tools, inaccessible endpoints, disabled scanners and quota failures each print one `SKIP` line. Secret values and alert descriptions are never persisted; only secret type and location are read into the normalized inventory. `SECURITY_AUDIT_GITHUB=off` skips these API reads. |
+| Snyk | Reads the latest dated JSON produced by `snyk-scan.sh`, by default in the same state-repo bucket's `specs/security/snyk/`. Override with `SECURITY_AUDIT_SNYK_DIR`. **Does not run Snyk**, even when the report is missing or over quota; the separate weekly scanner owns the 400-test Open Source allowance. Snyk Code skips retain their own baseline independently. Fork reports are outside this repository audit. |
+| Arnica | Reads `arnica.csv` from the export folder. As checked on 2026-10-30, the [documentation index](https://docs.arnica.io/arnica-documentation/llms.txt), [billing page](https://docs.arnica.io/arnica-documentation/platform-operations/billing.md) and [Swagger entry](https://api.app.arnica.io/swagger) did not establish a free-plan findings-read API contract. No speculative API or paid fallback is used. |
+| CodeRabbit | Prefers `coderabbit.csv` from the export folder. Otherwise, its [Deep Scan read API](https://docs.coderabbit.ai/api-reference/security-scans-code-list.md) explicitly supports **all plans** with a non-agentic `security:read` key, unlike the general Enterprise API listing. Set `SECURITY_AUDIT_CODERABBIT_REPO_ID` to the exact Git-provider numeric repository ID. The key is resolved internally via `himmel-secrets get --no-dotenv CODERABBIT_API_KEY`; store it through the keyring, not `.env`. The fixed HTTPS endpoint is GET-only, cursor-paginated and does not follow redirects or start scans. No key in argv, logs, reports or generated runners. `SECURITY_AUDIT_CODERABBIT=off` disables API access, not local exports. |
+
+Exports go in `~/.himmel/security-exports/` (override:
+`SECURITY_AUDIT_EXPORT_DIR`). Replace each named file atomically with a complete
+export of that source's findings, including the repository field; a header-only
+export is an authoritative empty inventory. Both observed CSV shapes are
+supported: CodeRabbit's `repository,file,start_line,cwe,category,severity,state`
+and Arnica's `Severity,Status,Asset,File,Type` (GitHub blob URLs with `#L` lines).
+Only open rows for the chosen repository are included. These files are untrusted
+data: CSV quoting and multiline fields are parsed without executing content;
+descriptions, recommendations and secret payloads are ignored. A deleted,
+malformed or inaccessible source **retains its last baseline**, never reports all
+its rows closed. Skips are visible in both stdout and the dated report.
+
+State and dated reports default to
+`~/.himmel/state/security-audit/<owner>/<repo>/` (override:
+`SECURITY_AUDIT_STATE_DIR`, which must not be shared by different repositories).
+Reports list new, newly closed and severity-escalated rows with file, line,
+category, severity and source. Repeating an unchanged export reports zero new
+rows. A complete refreshed source is compared with its previous successful
+snapshot, not with a forced fresh scan; the cadence cannot detect vendor changes
+until that export/report is refreshed. Concurrent runs on the same state skip.
+New High/Critical rows, or promotions to those severities, notify through the
+existing cadence alert/keyring-backed sender; a failed send leaves the baseline
+unchanged for retry. Local state/report failures remain errors.
+
+ponytail: cross-source deduplication requires the same normalized file, line and
+category (for example matching CWE or GHSA IDs); unrelated vendor taxonomies
+remain separate rather than guessing equivalence. Upgrade path: explicit
+reviewed identifier mappings. The highest observed severity and every reporting
+source survive an exact match. No absent source is treated as proof of closure.
+
+`arm` captures only the non-secret configuration above and the arming PATH and
+handover directory; it never arms the separate Snyk scanner. Runs need Python 3.9+
+and Bash, with optional `gh` for GitHub reads.
 
 ## Cadences armed by hand (not in the wizard)
 
