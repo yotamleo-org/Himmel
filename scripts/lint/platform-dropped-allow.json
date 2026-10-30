@@ -1,0 +1,985 @@
+{
+  "marketplace/plugins/himmel-ops/hooks/hook-integrity.js": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "// denies a Bash/PowerShell command that references this directory for EVERY"
+    ]
+  },
+  "marketplace/plugins/himmel-ops/hooks/hooks.json": {
+    "reason": "matcher Bash/PowerShell keeps guard coverage of the PowerShell tool",
+    "lines": [
+      "        \"matcher\": \"Bash|PowerShell\",",
+      "        \"matcher\": \"Bash|PowerShell|mcp__.*\",",
+      "        \"matcher\": \"Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell\","
+    ]
+  },
+  "marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "// still lets any future chain (PreToolUse Bash *and* PowerShell both wire"
+    ]
+  },
+  "scripts/bitbucket/package-lock.json": {
+    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
+    "lines": [
+      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
+      "        \"win32\"",
+      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-x64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
+      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
+      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
+      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
+      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
+      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
+      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
+      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
+      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
+    ]
+  },
+  "scripts/ci-orchestrator/package-lock.json": {
+    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
+    "lines": [
+      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
+      "        \"win32\"",
+      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-x64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
+      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
+      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
+      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
+      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
+      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
+      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
+      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
+      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
+    ]
+  },
+  "scripts/ci/suite-durations.tsv": {
+    "reason": "registry row for the cadence-deny-powershell detector suite",
+    "lines": [
+      "scripts/hooks/test-cadence-deny-powershell.sh\t0"
+    ]
+  },
+  "scripts/ci/suite-tiers.tsv": {
+    "reason": "registry row for the cadence-deny-powershell detector suite",
+    "lines": [
+      "scripts/hooks/test-cadence-deny-powershell.sh\tpr\ttrust-path"
+    ]
+  },
+  "scripts/cleanup/steering-cull-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR steering-cull: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/cloud/parity-probe.sh": {
+    "reason": "fixture / eval / probe data for a detector",
+    "lines": [
+      "probe block-rogue-claude-schedule.sh \"$(bash_in 'schtasks /create /tn X /tr claude.exe /sc ONCE')\""
+    ]
+  },
+  "scripts/cr/cr-round-metrics.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "  [\"portability\",         /bash 3\\.2|macos|bsd|\\bgnu\\b|busybox|portab|powershell|\\.ps1|windows|crlf/i],"
+    ]
+  },
+  "scripts/cr/known-findings.json": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "      \"coverage\": \"No structural check; shellcheck does not model locale-dependent bracket expressions. Tree sweep 2026-09-02 (LC_ALL=C, positive-controlled): 0 real occurrences — the 26 apparent file hits are all prose comments and JSON string literals, not matcher bracket expressions, which is why the detector is scoped to a grep/sed/awk/=~ context rather than to any `[...]`. Same family as HIMMEL-2236 (pwsh_unicode awk %c locale). Detector-flavour note: `added-line-regex` patterns are compiled by `ere()` in known-findings.sh — POSIX class names ([:space:], [:alnum:], [:alpha:], [:digit:]) are substituted, then the result is handed to JavaScript's `new RegExp`. That is the ONLY consumer of `detector.pattern`; nothing feeds it to `grep -E`. So `\\\\x00`/`\\\\x7F` here are ECMAScript escapes, fully specified rather than implementation-dependent, and the negated class `[^\\\\x00-\\\\x7F]` means exactly 'any non-ASCII code unit'.\","
+    ]
+  },
+  "scripts/cr/known-findings.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "    if (/\\bwindows\\b|\\.ps1\\b|powershell|\\bpwsh\\b|git.?bash|\\bmsys2?\\b|cygwin/i.test(r.text)) reason = \"windows\";"
+    ]
+  },
+  "scripts/cr/ledger-append.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "  const NAMES = [\"busybox ash\",\"busybox sh\",\"git-bash\",\"busybox\",\"freebsd\",\"openbsd\",\"netbsd\",\"macos\",\"darwin\",\"bsd\",\"msys\",\"mingw\",\"wsl\",\"alpine\",\"zsh\",\"ksh\",\"mksh\",\"yash\",\"posh\",\"dash\",\"bash\",\"ash\"];"
+    ]
+  },
+  "scripts/doctor-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR doctor-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/eval/cache-health-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR cache-health: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/eval/judge-accuracy/judge-accuracy-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR judge-accuracy-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/eval/qmd-quality/golden/himmel.jsonl": {
+    "reason": "historical qmd eval golden query (fixture)",
+    "lines": [
+      "{\"id\":\"h087\",\"query\":\"wsl.exe from Git Bash mangles mnt path arguments\",\"lex\":\"wsl.exe Git Bash mangles /mnt\",\"collections\":[\"himmel\"],\"expect\":[\"himmel/docs/internals/environment-gotchas.md\"]}",
+      "{\"id\":\"h099\",\"query\":\"traps of the Windows hook runner that uses pwsh -Command\",\"lex\":\"pwsh Command Windows hook runner\",\"collections\":[\"himmel\"],\"expect\":[\"himmel/docs/internals/harness-compat.md\"]}",
+      "{\"id\":\"h141\",\"query\":\"how expensive is spawning processes on Windows and how do we reduce it\",\"lex\":\"MSYS spawn economics defork\",\"collections\":[\"himmel\"],\"expect\":[\"himmel/docs/internals/script-runtime-practices.md\"]}"
+    ]
+  },
+  "scripts/eval/qmd-quality/qmd-quality-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR qmd-quality-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/eval/worker-digest/failure-review-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR failure-review-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/guardrails/git-env-baseline.txt": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "# Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked."
+    ]
+  },
+  "scripts/guardrails/graphify-fence.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "#   (c) PowerShell - the hook routes PowerShell commands here too, but they are",
+      "#       parsed with POSIX word-splitting; a PowerShell-only quoting/escaping",
+      "# (CLAUDE_CODE_USE_COWORK_PLUGINS / _NATIVE_FILE_SEARCH / _POWERSHELL_TOOL);"
+    ]
+  },
+  "scripts/guardrails/leak-classes.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "#   parity, mismatched, plainhome, whoever, msysuser, fixture, runner, other,",
+      "ALLOW_HOME_NAMES=' you user <user> $user ${user} me <me> example <you> %username% $env:username %s leaktestuser leaker testop testuser test osboxes nulleak name <name> yourname wineonlyuser shouldnotleak realop quarantoken priorleak posixuser profileonlyuser unixonlyuser fakeuser myvault op ops otheruser fakeop runneradmin fake-sensitive-scriptpath-marker ... parity mismatched plainhome whoever msysuser fixture runner other current-user '"
+    ]
+  },
+  "scripts/guardrails/lesson-write-fence.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "#     4. Bash|PowerShell: an ARCHITECTURE INVERSION, not",
+      "#        `-tDIR` attached, PowerShell built-in aliases, `ln -sf`,",
+      "#             `test`/`[`/`echo`/`printf`/the PowerShell readers `Get-Content`",
+      "#             interpreters `node`/`python`/`python3`/`bash`/`sh`/`pwsh`/",
+      "#             `-e`/`--eval`, python `-c`, bash/sh `-c`, pwsh",
+      "#             INLINE value: PowerShell/long-option `-Path:X`/`-Path=X`/",
+      "#             `mv`'s source does, without a PowerShell-specific dispatch.",
+      "#             named PowerShell cmdlets: that",
+      "#        `git`/`git.exe` clause carrying a",
+      "#     scanning limits documented on block-terminal-write-fence.sh. (PowerShell",
+      "#     `includeif.*`) is SHAPE-detected (git/git.exe command-position token",
+      "# _ps_inline_value <dash-token> -> prints the value half of a PowerShell",
+      "# \"...\"`, `pwsh -Command \"...\"`) - a write hidden inside a quoted argument",
+      "            pwsh)",
+      "# inline-eval clause (`python -c`/`node -e`/`bash -c`/`pwsh -Command`/...)",
+      "# INVERSION at the center of this fence's Bash/PowerShell model: everything",
+      "# (`node`/`python`/`python3`/`bash`/`sh`/`pwsh`/`bun`/`deno`) are NOT static",
+      "# PowerShell/long-option `-Path:X`/`-Path=X`/`--target-directory=X`",
+      "# named PowerShell content-writer cmdlets:",
+      "# INVERTED Bash/PowerShell classifier for one already-split clause. See the",
+      "        node|bun|deno|python|python3|bash|sh|pwsh)",
+      "# command-position token is git/git.exe AND it carries a hook-routing",
+      "        git|git.exe|*/git|*/git.exe) : ;;",
+      "    Bash|PowerShell)"
+    ]
+  },
+  "scripts/guardrails/lib.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# launcher wrapper — sudo/env/cmd [/switches] /c/powershell|pwsh [-flags]",
+      "#   grep -Eq \"${CMDPOS}graphify(\\.exe)?([^[:alnum:]_.-]|\\$)\"",
+      "    local wrap='sudo([[:space:]]+'\"$flg\"'('\"$val\"')?)*|env([[:space:]]+('\"$flg\"'('\"$val\"')?|'\"$ASSIGN\"'))*|exec([[:space:]]+(-a'\"$val\"'|'\"$flg\"'))*|timeout([[:space:]]+'\"$flg\"'('\"$val\"')?)*'\"$val\"'|nohup([[:space:]]+--)?|nice([[:space:]]+(-n'\"$val\"'|--a[a-z-]*'\"$val\"'|'\"$flg\"'))*|time([[:space:]]+(-[of]'\"$val\"'|--[of][a-z-]*'\"$val\"'|'\"$flg\"'))*|xargs([[:space:]]+(-[adeilnps]'\"$val\"'|--[admp][a-z-]*'\"$val\"'|'\"$flg\"'))*|cmd(\\.exe)?([[:space:]]+/[[:alnum:]]+(:[[:alnum:]]+)?)*[[:space:]]+/c|(powershell|pwsh)(\\.exe)?([[:space:]]+-[^[:space:]]+)*[[:space:]]+-c[[:alnum:]]*'",
+      "# file_path, PowerShell commands) carry native backslash paths there, so",
+      "# class): Win32 CreateFile / Node fs strip trailing spaces and dots from"
+    ]
+  },
+  "scripts/handover/arm-resume.sh": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "# `claude.exe ... OVERNITE MODE` session mid-chain. It was found still armed"
+    ]
+  },
+  "scripts/handover/chief-kit/platform-dropped.re": {
+    "reason": "the shared platform-dropped detector pattern itself",
+    "lines": [
+      "(?<!\\bcontext )(?<!\\btime )(?<!\\btoken )(?<!\\brate )(?<!\\bsliding )(?<!\\busage )(?-i:\\b(?:Windows|WINDOWS)\\b)|\\bwsl2?\\b|\\bpowershell\\b|\\bpwsh\\b|\\.ps1\\b|\\bgit[ -]bash\\b|\\bmsys2?\\b|\\bmingw(?:32|64)?\\b|\\bwin32\\b|\\bcmd\\.exe\\b|\\.exe\\b|\\bcygwin\\b|\\bMSYS_NO_PATHCONV\\b"
+    ]
+  },
+  "scripts/handover/chief-kit/ready-check.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "#      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/",
+      "    PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'"
+    ]
+  },
+  "scripts/handover/librarian-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR librarian-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/hermes/assets/parity_guard.py": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# cmd /c, powershell/pwsh -c/-command — plus one optional quote before the",
+      "# `c:/windows/system32/shutdown.exe` (quoted or not; norm() folds \"\\\" to \"/\")",
+      "# `/usr/bin/sudo shutdown` / `c:/windows/system32/cmd.exe /c shutdown` are",
+      "    ((r\"cmd(?:\\.exe)?\",), (r\"/\\w+(?::\\w+)?\",), (r\"\\s+/c\",)),   # cmd accepts /d /s /e:on … before /c (CR r3)",
+      "    ((r\"(?:powershell|pwsh)(?:\\.exe)?\",), (r\"-\\S+\",), (r\"\\s+-c\\w*\",)),",
+      "    + r\"(?:(?:format|diskpart|bcdedit)(?:\\.exe)?(?:[^A-Za-z0-9_.-]|$)|mkfs)\"",
+      "    + r\"|schtasks(?:\\.exe)?\\s+(/create|/change|/delete|/end|/run|/config)(?:[^A-Za-z0-9_.-]|$)\"    # protects scheduled jobs (mutations only)",
+      "    + r\"|(?:taskkill|stop-process|pskill)(?:\\.exe)?(?:[^A-Za-z0-9_.-]|$)\"",
+      "    + r\"|(?:shutdown|reboot|logoff)(?:\\.exe)?(?:[^A-Za-z0-9_.-]|$)\"",
+      "    + r\"|(?:icacls|takeown)(?:\\.exe)?(?:[^A-Za-z0-9_.-]|$)\"",
+      "_FIND_VERB = re.compile(_EXE_PREFIX + r\"find(?:\\.exe)?(?=\\s)\")",
+      "# Every head here takes an optional .exe, and xargs does too in this set only",
+      "# (the .sh twin's _xwrap adds xargs.exe to lib.sh's xargs).",
+      "    ((re.compile(_EXE_PREFIX + r\"xargs(?:\\.exe)?\"),),) + w[1:] if i == _XARGS else w",
+      "    ((re.compile(_EXE_PREFIX + h + r\"(?:\\.exe)?\"),),",
+      "_RM_VERB = re.compile(_EXE_PREFIX + r\"rm(?:\\.exe)?(?=[^a-z0-9_.-]|$)\")",
+      "    # same capability, other spellings — the PowerShell",
+      "    # launches schtasks.exe, so the CLI line alone guards one spelling out of",
+      "    # that no command-position anchor sees; PowerShell binds unambiguous",
+      "# command in its worktree. Quoted or bare dir; `cd /d X` (cmd.exe) tolerated. A",
+      "    _CMDPOS + r\"(?:\" + _QW + _QW.join(\"gh\") + _QW + r\"(?:\\.exe)?|[^\\s;&|()<>$`]*[$`][^\\s;&|()<>]*)\"",
+      "_GH_PR_CREATE_MAIN = re.compile(_CMDPOS + r\"gh(?:\\.exe)?(?:\\s+-\\S+(?:\\s+[^\\s-]\\S*)?)*\\s+pr\\s+(?:create|new)(?:\\s|$|(?=[;&|()<>]))\", re.IGNORECASE)",
+      "EXT_GIT_PUSH = re.compile(_CMDPOS + r\"git(?:\\.exe)?(?:\\s+-\\S+(?:\\s+\\S+)?)*\\s+push(?:\\s|$)\")",
+      "    _CMDPOS + r\"git(?:\\.exe)?(?:\\s+-\\S+(?:\\s+\\S+)?)*\\s+\"",
+      "    r\"|\" + _CMDPOS + r\"git(?:\\.exe)?\\s+(?:[^;&|]*\\s)?(?:-c|--config-env)[=\\s]*\\S*(?i:insteadof)=\")",
+      "EXT_GH_ANY = re.compile(_CMDPOS + r\"gh(?:\\.exe)?(?:\\s|$)\")",
+      "    _CMDPOS + r\"gh(?:\\.exe)?\\s+(?:issue(?:\\s|$)\"",
+      "    _CMDPOS + r\"(?:curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)(?:\\.exe)?(?:\\s|$)\")"
+    ]
+  },
+  "scripts/hermes/parity-measure.py": {
+    "reason": "fixture / eval / probe data for a detector",
+    "lines": [
+      "    (\"rogue-scheduler-arm\", \"block-rogue-claude-schedule\", \"scheduler\", \"Bash\", {\"command\": \"schtasks /create /tn X /tr \\\"claude.exe go\\\" /sc ONCE /st 03:00\"}, \"feat\"),"
+    ]
+  },
+  "scripts/himmel-run/package-lock.json": {
+    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
+    "lines": [
+      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
+      "        \"win32\"",
+      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-x64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
+      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
+      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
+      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
+      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
+      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
+      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
+      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
+      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
+    ]
+  },
+  "scripts/himmelctl/lib/bypass-flags.json": {
+    "reason": "bypass flag of the cadence-deny-powershell detector",
+    "lines": [
+      "      \"name\": \"CADENCE_POWERSHELL_OK\",",
+      "        \"scripts/hooks/cadence-deny-powershell.sh\"",
+      "      \"bypasses\": \"Skips the \\\"cadence deny powershell\\\" guard (scripts/hooks/cadence-deny-powershell.sh).\",",
+      "      \"remedy\": \"CADENCE_POWERSHELL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook\""
+    ]
+  },
+  "scripts/himmelctl/lib/probes.js": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "//     never fires on PowerShell/Read/Grep) still read complete:true. Fixed by"
+    ]
+  },
+  "scripts/hooks/auto-approve-safe-bash.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "        /[A-Za-z]|/[A-Za-z]/)     return 0 ;;  # MSYS drive root: /c, /c/ (NOT /c/subpath)",
+      "        find|find.exe|*/find|*/find.exe) ;;",
+      "        find|find.exe)    sw_find_walks_unproven_cwd; return ;;",
+      "# POSIX/MSYS path (`/x`, `/c/x`) or a Git-Bash drive-letter path (`C:/x`, `c:\\x`).",
+      "# one is refused, since MSYS reads it as a separator that would hide a `..`.",
+      "[ \"$tool\" = \"Bash\" ] || exit 0   # PowerShell keeps its own native rules"
+    ]
+  },
+  "scripts/hooks/bench-hook-stack.mjs": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "  if (tool === 'Bash' || tool === 'PowerShell') toolInput = { command: 'echo himmel-hook-bench' };",
+      "  // executable itself for a bare binary invocation (graphify.EXE hook-guard)."
+    ]
+  },
+  "scripts/hooks/block-bank-lift-writes.sh": {
+    "reason": "comment that is still true (history or detector scope); guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# ponytail: the PowerShell tool is not wired, Windows is parked (HIMMEL-4102);",
+      "INTERP_RE='^(python[0-9.]*|pypy[0-9.]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|deno|bun|php[0-9.]*|lua[0-9.]*|luajit|[gmn]?awk|busybox-awk|osascript|pwsh|powershell|rscript|julia|tclsh|wish|jshell|groovy|scala|kotlin|swift)$'"
+    ]
+  },
+  "scripts/hooks/block-bare-qmd-query.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# wrappers (setpriv … pkexec) and elvish/nu/xonsh/pwsh `-c`.",
+      "# kubectl, oc, lxc, incus, distrobox, toolbox). pwsh/powershell",
+      "# session wrappers, and the -c shells elvish, nu, xonsh and pwsh. chroot and",
+      "WRAP='(sudo|doas|nice|ionice|chrt|taskset|stdbuf|setsid|nohup|command|builtin|busybox|exec|eval|coproc|time|xargs|watch|unbuffer|parallel|systemd-run|systemd-inhibit|su|runuser|script|setpriv|unshare|nsenter|firejail|xvfb-run|strace|ltrace|chpst|cgexec|pkexec|screen|elvish|nu|xonsh|pwsh(\\.exe)?|powershell(\\.exe)?|fish|(r?ba|z|da|k|mk|lk|ok|pdk|po|ya|a|tc|c)?sh(\\.exe)?)'\"$OPTV\"",
+      "RUNTIME='((bun|node|bunx|npx|deno)(\\.exe)?[\"'\\'']?'\"$OPTV\"'[[:space:]]+((run|x)[[:space:]]+)?'\"$EXEPFX\"')?'",
+      "NESTWORD='(^|[^[:alnum:]_.-])((r?ba|z|da|k|mk|lk|ok|pdk|po|ya|a|tc|c)?sh|fish|elvish|nu|xonsh|pwsh|powershell|sg|su|runuser|script|flock|source|at|batch|eval|watch|parallel|tmux|screen|env|alias|xargs|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby|irb|node|nodejs|bun|deno|php|lua|luajit|tclsh|expect|rscript|osascript|ssh|docker|podman|nerdctl|kubectl|oc|lxc|incus|distrobox|toolbox)(\\.exe)?([^[:alnum:]_.-]|$)|<<<|<\\('",
+      "    case \"${1%.exe}\" in",
+      "        sh|bash|rbash|zsh|dash|ksh|mksh|lksh|oksh|pdksh|ash|yash|posh|csh|tcsh|fish|elvish|nu|xonsh|pwsh|powershell|sg|su|runuser|script|flock) mode='sh' ;;",
+      "        case \"${t%.exe}\" in",
+      "        piped=$pipe nw=${t%.exe} e0=$i enc=0 fo=0 ia=0 ct='' sj='' tk=0 hx=0 hs=0 tx=0",
+      "                # pwsh -EncodedCommand's base64 of UTF-16LE text,",
+      "                # pwsh's -EncodedCommand (any prefix, -ec, a",
+      "                if [ \"$mode\" = sh ] && { [ \"$nw\" = pwsh ] || [ \"$nw\" = powershell ]; } && [ \"$x\" != \"$t\" ] &&",
+      "# defined in the command, can be tmux, screen or pwsh, which type or run a",
+      "DYNCAND=' tmux screen pwsh powershell '",
+      "DYNBODY='(^|[^[:alnum:]_.-])(tmux|screen|pwsh|powershell)(\\.exe)?([^[:alnum:]_.-]|$)'",
+      "# _dyn_cand WORD — succeed when WORD, path and .exe removed, is one of them.",
+      "    b=${b%.exe}",
+      "    for p in tmux screen pwsh powershell tmux.exe screen.exe pwsh.exe powershell.exe; do",
+      "# pwsh, a command substitution, a variable bound by read, for, printf -v or a",
+      "# tmux, screen or pwsh at all, so nothing else reads it.",
+      "    #  screen and pwsh decode keys, escapes and base64 that can spell it",
+      "        *qmd*|*\\$\\'*|*\\$\\\"*|*tmux*|*screen*|*pwsh*|*powershell*) ;;",
+      "                $cmd_lc$crude == *pwsh* || $cmd_lc$crude == *powershell* ]] ||",
+      "        # tmux, screen and pwsh spell qmd with keys, escapes or base64 and"
+    ]
+  },
+  "scripts/hooks/block-chokepoint-env-prefix.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# block-chokepoint-env-prefix.sh -- PreToolUse hook (matcher \"Bash|PowerShell\"):",
+      "# PowerShell-native $env: syntax, sudo / xargs / find -exec wrappers (the",
+      "    Bash|PowerShell|\"\") ;;",
+      "            bash|sh|*/bash|*/sh|bash.exe|*/bash.exe|sh.exe|*/sh.exe|.|source)"
+    ]
+  },
+  "scripts/hooks/block-destructive-commands.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell.",
+      "    Bash|PowerShell|\"\") ;;",
+      "if [ \"$tool\" != PowerShell ]; then",
+      "# loaded for PowerShell too, because the git argv parser below reads every",
+      "    if contains '(^|[^[:alnum:]_.-])(ssh|scp|sftp)(\\.exe)?[[:space:]][^;&|]*(-[[:alnum:]]*p[[:space:]]*|-o[[:space:]]*[\"'\"'\"']?port[=[:space:]]+|(ssh|scp|sftp)://[^[:space:]/]*:)'\"$_vp\"; then",
+      "# that parity_guard names tolerates an optional .exe suffix for the Windows lane.",
+      "# of launcher wrappers - sudo, env, cmd [/switches] /c, powershell/pwsh",
+      "# drive-qualified <name>.exe forms (quoted or not) are refused like the bare",
+      "# cmd.exe /c are refused like the bare-wrapper forms. sudo/env tolerate their",
+      "# Every head here takes an optional .exe, and xargs.exe joins lib.sh's xargs",
+      "# (which has no .exe), with the same flags.",
+      "_xwrap='(busybox(\\.exe)?|command(\\.exe)?([[:space:]]+-[-[:alnum:]]*)*|eval(\\.exe)?|xargs\\.exe([[:space:]]+(-[adeilnps]'\"${CMDVAL}\"'|--[admp][a-z-]*'\"${CMDVAL}\"'|'\"${CMDFLG}\"'))*|((ba|da|k|mk|z|a)?sh|fish)(\\.exe)?([[:space:]]+'\"${CMDFLG}\"'('\"${CMDVAL}\"')?)*[[:space:]]+-[[:alnum:]]*c[[:alnum:]]*)[[:space:]]+'",
+      "FIND_VERB_PAT=\"${MASS_CMDPOS}\"'find(\\.exe)?[[:space:]]'",
+      "FIND_RM_PAT='[[:space:]]-(exec|execdir|ok|okdir|x|-exec|-exec-batch)[[:space:]]+'\"${MASS_PFX}\"'rm(\\.exe)?([^[:alnum:]_.-]|$)'",
+      "XARGS_RM_PAT=\"${MASS_CMDPOS}\"'xargs(\\.exe)?([[:space:]]+(-[adeilnps]'\"${CMDVAL}\"'|--[admp][a-z-]*'\"${CMDVAL}\"'|'\"${CMDFLG}\"'))*[[:space:]]+'\"${MASS_PFX}\"'rm(\\.exe)?([^[:alnum:]_.-]|$)'",
+      "RM_R_PAT=\"${RMPOS}\"'rm(\\.exe)?([^[:alnum:]_.-][^|;&]*)?([[:space:]]|\\$\\{ifs\\})['\\''\"]?-[[:alnum:]_]*r'",
+      "RM_RECURSIVE_PAT=\"${RMPOS}\"'rm(\\.exe)?([^[:alnum:]_.-]|$).*--r[a-z-]*([^[:alnum:]_-]|$)'",
+      "RM_ANSIC_ESC_PAT=\"(^|[^[:alnum:]_.-])rm(\\\\.exe)?([^|;&]*)\\\\\\$${_sq}[^${_sq}]*\\\\\\\\\"",
+      "RM_OPT_DOLLAR_PAT=\"${RMPOS}\"'rm(\\.exe)?([^[:alnum:]_.-][^|;&]*)?([[:space:]]|\\$\\{ifs\\})-[^[:space:]|;&]*\\$'",
+      "RM_CONT_PAT=\"${RMPOS}\"'rm(\\.exe)?[[:space:]]*\\\\[[:space:]]*;+[[:space:]]*-[[:alnum:]_]*r'",
+      "if contains '(^|[^[:alnum:]_.-])(del|erase|rd|rmdir)(\\.exe)?([^[:alnum:]_.-]|$)[^|;&]*/s([^[:alnum:]_.-]|$)'; then",
+      "if contains \"${CMDPOS}\"'((format|diskpart|bcdedit)(\\.exe)?([^[:alnum:]_.-]|$)|mkfs)'; then",
+      "if contains '(^|[^[:alnum:]_.-])cipher(\\.exe)?[[:space:]]+/w'; then",
+      "if contains \"${CMDPOS}\"'schtasks(\\.exe)?[[:space:]]+(/create|/change|/delete|/end|/run|/config)([^[:alnum:]_.-]|$)'; then",
+      "# The same CAPABILITY is reachable without schtasks.exe - the",
+      "# PowerShell ScheduledTasks module drives the Task Scheduler COM API directly,",
+      "# that is refused here. `pwsh -Command \"Register-ScheduledTask ...\"` is covered",
+      "# by CMDPOS's powershell/pwsh -c wrapper + optional-quote tolerance, and the",
+      "# command-position anchor sees. PowerShell resolves unambiguous parameter",
+      "# WIDENED by `=`, because the idiomatic PowerShell form is an assignment",
+      "if contains \"${CMDPOS}\"'(taskkill|stop-process|pskill)(\\.exe)?([^[:alnum:]_.-]|$)'; then",
+      "if contains '(^|[^[:alnum:]_.-])kill(\\.exe)?[[:space:]]+-9'; then",
+      "if contains \"${CMDPOS}\"'(shutdown|reboot|logoff)(\\.exe)?([^[:alnum:]_.-]|$)'; then",
+      "if contains '(^|[^[:alnum:]_.-])reg(\\.exe)?[[:space:]]+(add|delete)([[:space:]]|$)'; then",
+      "if contains \"${CMDPOS}\"'(icacls|takeown)(\\.exe)?([^[:alnum:]_.-]|$)'; then",
+      "_gp_re_text='(^|[^a-z0-9_.-])(git|gh)(\\.exe)?([^a-z0-9_-]|$)'",
+      "# basename is gh or gh.exe (no env prefix, wrapper or computed word) running",
+      "                git|git.exe) _gp_inv $((i + 1)) \"$sa\" 0 ;;",
+      "                gh|gh.exe) _gh_inv $((i + 1)) ;;",
+      "                rm|rm.exe) _rm_inv $((i + 1)) ;;",
+      "    local l=$1 g='(^|[^[:alnum:]_.-])git(\\.exe)?[[:space:]]+'",
+      "# PowerShell text is always blind: the bash tokenizer drops the backslashes of",
+      "# a drive-qualified rm.exe, so the word never basenames to rm.",
+      "if [ \"$tool\" = PowerShell ] && [ \"$_rm_long_hit\" = 1 ]; then _rm_blind=1; fi",
+      "_gg='git(\\.exe)?[[:space:]]+([^;&|]*[[:space:]])?'",
+      "_re_shell='(ba|z|da|k|c|tc)?sh(\\.exe)?([^[:alnum:]_.-]|$)'",
+      "_re_bare='(python[0-9.]*|nodejs|node|perl|ruby|php|deno|bun)(\\.exe)?([[:space:]]+-[a-z]?)*[[:space:]]*($|[;&|)<>]|[0-9]+>)'",
+      "_re_dl='(^|[^[:alnum:]_.-])(curl|wget)(\\.exe)?'",
+      "if contains '(^|[^[:alnum:]_.-])(source|\\.|eval|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\\.exe)?[[:space:]][^;&|]*(<\\(|\\$\\(|`)[[:space:]]*(curl|wget)(\\.exe)?([^[:alnum:]_.-]|$)'; then",
+      "# PowerShell download-and-evaluate.",
+      "if contains '(^|[^[:alnum:]_.-])(iwr|irm|invoke-webrequest|invoke-restmethod|curl|wget)(\\.exe)?[^|;&]*\\|[[:space:]]*(iex|invoke-expression)([^[:alnum:]_.-]|$)' \\",
+      "            run1='(^|[^[:alnum:]_.-])(source|\\.|(ba|z|da|k)?sh|python[0-9.]*|nodejs|node|perl|ruby)(\\.exe)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*'\"$q\"'(\\./)?'\"$xr\"'([^[:alnum:]_./~-]|$)'"
+    ]
+  },
+  "scripts/hooks/block-docker-privesc.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell.",
+      "    Bash|PowerShell) ;;",
+      "# FALLBACK reader (PowerShell, or text shfmt cannot parse): split into clauses at",
+      "# the regex alone. PowerShell (which shfmt cannot read) goes to the regex reader.",
+      "if [ \"$tool\" != PowerShell ]; then"
+    ]
+  },
+  "scripts/hooks/block-edit-live-settings.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PowerShell write-path arms.",
+      "# under PowerShell aren't covered (see the PowerShell arm below).",
+      "# Bash/PowerShell arm:",
+      "# tokenizer could not vouch for the command (TOK=0, a heredoc, PowerShell); a",
+      "# PowerShell and a Bash command the tokenizer could not vouch for (TOK=0).",
+      "# PowerShell would need its own tokenizer, if a false deny there recurs.",
+      "    # or `/` (a directory named tee is not the command). PowerShell spells it",
+      "    # `Tee-Object` or `tee.exe`, which that rule would pass, so there any",
+      "# to the older whole-text scan (PowerShell always) or fails closed.",
+      "# _tar_verb_mode/_unzip_verb_mode serve PowerShell only: a Bash command goes",
+      "    # PowerShell keeps the _verb_segment text scan.",
+      "if [ \"$tool_name\" = \"Bash\" ] || [ \"$tool_name\" = \"PowerShell\" ]; then",
+      "    # stricter. PowerShell's escape is the backtick, and there `\\` is a path",
+      "    if [ \"$tool_name\" = \"PowerShell\" ]; then",
+      "    # spaces intact; use those instead. PowerShell and any Bash command the"
+    ]
+  },
+  "scripts/hooks/block-git-stash.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell.",
+      "    Bash|PowerShell|\"\") ;;",
+      "# FALLBACK reader (PowerShell, or text shfmt cannot parse); a Bash command that",
+      "CMDPOS='(^|[|;&(`])[[:space:]]*(('\"$ASSIGN\"'|'\"$EXEPFX\"'(sudo([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*|env([[:space:]]+(-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?|'\"$ASSIGN\"'))*|cmd(\\.exe)?([[:space:]]+/[[:alnum:]]+(:[[:alnum:]]+)?)*[[:space:]]+/c|(powershell|pwsh)(\\.exe)?([[:space:]]+-[^[:space:]]+)*[[:space:]]+-c[[:alnum:]]*))[[:space:]]+)*'\"$EXEPFX\"",
+      "GITSTASH=\"${CMDPOS}\"'git(\\.exe)?'\"${GITOPTS}${SEP}\"'stash'",
+      "GITREFVERB=\"${CMDPOS}\"'git(\\.exe)?'\"${GITOPTS}${SEP}\"'(update-ref|symbolic-ref)'",
+      "GITUPDATEREF_STDIN=\"${CMDPOS}\"'git(\\.exe)?'\"${GITOPTS}${SEP}\"'update-ref[^|;&`]*'\"${STDIN_LIT}\"'([^[:alnum:]_-]|$)'",
+      "def base: lcs | sub(\"^.*[/\\\\\\\\]\"; \"\") | sub(\"\\\\.exe$\"; \"\");",
+      "  | (if (.prog | IN(\"cmd\", \"cmd.exe\", \"powershell\", \"pwsh\", \"powershell.exe\", \"pwsh.exe\")) then ($a0 | split_words) else $a0 end) as $a",
+      "    elif (.opaque != null) or (.prog | IN(\"cmd\", \"cmd.exe\", \"powershell\", \"pwsh\", \"powershell.exe\", \"pwsh.exe\")) then",
+      "# run. Not for PowerShell, which shfmt cannot read, and not when shfmt cannot",
+      "if [ \"$tool\" != PowerShell ]; then"
+    ]
+  },
+  "scripts/hooks/block-graphify-egress.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook (Bash|PowerShell) - NARROW data-egress fence for `graphify`",
+      "    Bash|PowerShell) ;;",
+      "# [/switches] /c / powershell|pwsh [-flags] -c), so a wrapped invocation",
+      "# powershell|pwsh) does not include `timeout` -- block-destructive-",
+      "CMDPOS='(^|[|;&(`]|[)][[:space:]]*[{])[[:space:]]*(('\"$ASSIGN\"'|'\"$EXEPFX\"'(sudo([[:space:]]+'\"$CMDFLG\"'('\"$CMDVAL\"')?)*|setsid([[:space:]]+'\"$CMDFLG\"')*|stdbuf([[:space:]]+'\"$CMDFLG\"'('\"$CMDVAL\"')?)*|env([[:space:]]+('\"$CMDFLG\"'('\"$CMDVAL\"')?|'\"$ASSIGN\"'))*|timeout([[:space:]]+('\"$CMDFLG\"'('\"$CMDVAL\"')?))*'\"$CMDVAL\"'|nice([[:space:]]+(-n'\"$CMDVAL\"'|--a[a-z-]*'\"$CMDVAL\"'|'\"$CMDFLG\"'))*|time([[:space:]]+(-[of]'\"$CMDVAL\"'|--o[a-z-]*'\"$CMDVAL\"'|--f[a-z-]*'\"$CMDVAL\"'|'\"$CMDFLG\"'))*|exec([[:space:]]+(-a'\"$CMDVAL\"'|'\"$CMDFLG\"'))*|command([[:space:]]+'\"$CMDFLG\"')*|nohup([[:space:]]+--)?|builtin|cmd(\\.exe)?([[:space:]]+/[[:alnum:]]+(:[[:alnum:]]+)?)*[[:space:]]+/c|(powershell|pwsh)(\\.exe)?([[:space:]]+-[^[:space:]]+)*[[:space:]]+-c[[:alnum:]]*))[[:space:]]+)*'\"$EXEPFX\"",
+      "QUIETRUN_TAIL='quiet-run\\.sh.*[^[:alnum:]_.-]graphify(\\.exe)?([^[:alnum:]_.-]|$)'",
+      "cmdpos_hit=$(printf '%s\\n%s' \"$cmd_lc\" \"$cmd_nq\" | grep -E \"${CMDPOS}graphify(\\.exe)?([^[:alnum:]_.-]|\\$)\")",
+      "# cmd / powershell, the quiet runner, a wrapper flag it read as the program)",
+      "# data and heredoc bodies. Not for PowerShell, which shfmt cannot read, and not",
+      "if [ \"$tool\" != PowerShell ]; then",
+      "def base: lcs | sub(\"^.*[/\\\\\\\\]\"; \"\") | sub(\"\\\\.exe$\"; \"\");",
+      "def shellish: .prog | IN(\"cmd\", \"cmd.exe\", \"powershell\", \"pwsh\", \"powershell.exe\", \"pwsh.exe\");"
+    ]
+  },
+  "scripts/hooks/block-infra-destroy.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell.",
+      "#   * the flat scan (PowerShell, or input the tokenizer cannot read) denies a",
+      "    Bash|PowerShell) ;;",
+      "if [ \"$tool\" != PowerShell ]; then",
+      "        bin=$(printf '%s' \"${1##*[/\\\\]}\" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}",
+      "            bin=$(printf '%s' \"${1##*[/\\\\]}\" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}",
+      "if [ \"$tool\" != PowerShell ] && [ \"${GU_TOKENIZED:-0}\" = 1 ]; then",
+      "    # PowerShell, or a command the tokenizer does not model: no command-word",
+      "        _b=${_b%.exe}"
+    ]
+  },
+  "scripts/hooks/block-jira-compound-write.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "        node|node.exe|*/node|*/node.exe) ;;",
+      "[ \"$tool\" = \"Bash\" ] || exit 0   # PowerShell keeps its own native rules"
+    ]
+  },
+  "scripts/hooks/block-lesson-enforcement-writes.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|",
+      "    Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|apply_patch) ;;"
+    ]
+  },
+  "scripts/hooks/block-pr-check-args.sh": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "# (claude.exe 2.1.251 — the published hook docs disagree with the binary on two"
+    ]
+  },
+  "scripts/hooks/block-read-secrets.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell/Read/Grep.",
+      "#     (bundled `-rf.env` too) / PowerShell's `-Path:.env` — matched no glob",
+      "# hook's tool/cmd extraction went silently blank for every Bash/PowerShell",
+      "        # PowerShell readers (Bash matcher may still see these via pwsh -c).",
+      "    # PowerShell's `-Param:<value>`. The tokenizer only ever fed WHOLE tokens",
+      "        -*:*)  v=\"${v#*:}\" ;;   # PowerShell -Path:<value>",
+      "            cmd=\"${d##*/}\"; cmd=\"${cmd%.exe}\"",
+      "    Bash|PowerShell)"
+    ]
+  },
+  "scripts/hooks/block-rogue-claude-schedule.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell.",
+      "# where the .bat was just `\"claude.exe\" \"load <handover> overnight mode\"` — no",
+      "#     (b) launches the claude EXECUTABLE (claude.exe/.cmd/.ps1, a `/claude`",
+      "# The incident did both in ONE PowerShell call, which IS caught.",
+      "    Bash|PowerShell) ;;",
+      "# at, claude.exe, arm-resume.sh) are ASCII. ALSO flatten newlines/CRs to spaces:",
+      "    # claude.exe / claude.cmd / claude.ps1"
+    ]
+  },
+  "scripts/hooks/block-rogue-codex-exec.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# Fail posture (sized for a Bash|PowerShell-wide matcher - a missing dep",
+      "#      codex/codex.exe in COMMAND POSITION + an `exec` verb -> exit 2.",
+      "# (Codex.exe == codex.exe), so an uppercased raw dispatch must not slip the",
+      "# (case-INSENSITIVE, Codex.exe == codex.exe on Windows):",
+      "#               ending in / or \\ (/path/codex, C:\\...\\codex.exe).",
+      "_CODEX_BASE='([^[:space:]|;&()`]*[/\\\\])?(codex|codex\\.exe)'",
+      "# (path-)codex(.exe), which a quoted DATA string like \"codex exec x\" never"
+    ]
+  },
+  "scripts/hooks/block-terminal-write-fence.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell — codex-lane terminal write-fence.",
+      "# Two classes, both scoped to a tool_input.command (Bash/PowerShell payloads):",
+      "#       it. The git-commit and PowerShell-writer (Set-Content/Out-File/",
+      "# `.exe` suffix on the Windows lane (`git.exe push`, `curl.exe`) IS handled.",
+      "    Bash|PowerShell|\"\") ;;   # \"\" = tolerate a payload with no tool_name",
+      "    # `git(\\.exe)?` etc: a Windows lane invokes git.exe/curl.exe/gh.exe — the",
+      "    # `.exe`. Flag atom is `-[^[:space:];&|]+` (spec parity: parity_guard uses",
+      "    gp_shape='git(\\.exe)?([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+push([[:space:]]|$)'",
+      "    gu_shape='(git(\\.exe)?([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+remote[[:space:]]+set-url|git(\\.exe)?([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+config([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*([[:space:]]+(set|add|replace-all))?([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+[^[:space:];&|]*(url|insteadof)[[:space:]]+[^[:space:];&|]|git(\\.exe)?[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[=[:space:]]*[^[:space:];&|]*insteadof=)'",
+      "    gh_shape='gh(\\.exe)?([[:space:]]|$)'",
+      "    gh_allow='gh(\\.exe)?[[:space:]]+(issue([[:space:]]|$)|pr[[:space:]]+(view|diff|checks|status|list)([[:space:]]|$)|run[[:space:]]+(view|list|watch)([[:space:]]|$))'",
+      "    net_shape='(curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)(\\.exe)?([[:space:]]|$)'",
+      "# CODEX-LANE PARITY (unchanged in this PR): the git-commit / PowerShell-writer"
+    ]
+  },
+  "scripts/hooks/block-worker-write-fence.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# PreToolUse hook for Bash/PowerShell/mcp__* — the dispatched-worker write fence.",
+      "#   - the pin-dir class: a Bash/PowerShell command whose text names the",
+      "# fences are command-TEXT fences: they deny a Bash/PowerShell command whose text",
+      "    # though that denies every Bash/PowerShell/mcp__* call for the worker (not just",
+      "# The SHELL tools this hook mediates are Bash AND PowerShell — hooks.json",
+      "# registers the matcher as \"Bash|PowerShell|mcp__.*\", and both carry their",
+      "case \"$tool\" in Bash|PowerShell) tool_is_shell=1 ;; esac",
+      "        # PowerShell's `$env:X`/`${env:X}` scope-qualified spelling of the",
+      "        # unconditionally even when the mediated tool is PowerShell (this",
+      "        # hook's matcher covers Bash AND PowerShell alike, tool_is_shell",
+      "        # PowerShell had its separators silently stripped, missing the real",
+      "        # stays LITERAL, both characters kept). Fixed with a `pwsh` flag",
+      "        # backslash-escape handling for a PowerShell command, plus a one-token",
+      "        # PowerShell backtick escapes and",
+      "        # PowerShell script-file indirection (dot-sourcing, the `&` call",
+      "        # block), PowerShell's `\"\"` doubled DOUBLE-quote (the twin of the",
+      "            # A PowerShell `u{1} escape (any zero-padded spelling) resolves to the",
+      "$(pwsh_flag=0; [ \"$tool\" = \"PowerShell\" ] && pwsh_flag=1",
+      "printf '%s' \"$pin_cmd\" | awk -v initcwd=\"$tool_cwd\" -v pwsh=\"$pwsh_flag\" '",
+      "# PowerShell. One variable drives both the",
+      "BEGIN { SQ = sprintf(\"%c\", 39); NUL = sprintf(\"%c\", 0); if (NUL == \"\") NUL = \"\\001NUL\\001\"; ESC = pwsh ? \"`\" : \"\\\\\"; cwd_cand[1] = initcwd; ncand = 1; MAXCAND = 32 }",
+      "# a command PowerShell never pointed there. Caught by the escape-grammar",
+      "# PowerShell backtick escapes are not",
+      "# PowerShell command like  bash \"C:/dir/`forge.sh\"  -- which really does run",
+      "# ponytail: HIMMEL-2236 -- PowerShell also recognizes `e",
+      "function pwsh_unescape(c) {",
+      "    # existing forge.sh and the fence denied a command PowerShell would never",
+      "# PowerShell also has a",
+      "# VARIABLE-LENGTH escape, `u{...}, which pwsh_unescape() above cannot express",
+      "# because it resolves exactly one character. Checked against a real PowerShell",
+      "# character is left in PWSH_U. The hex is converted by hand because gawk",
+      "function pwsh_unicode(line, p,   rest, hex, i, c, n, d) {",
+      "    PWSH_U = sprintf(\"%c\", n)",
+      "        if (esc) { cur = cur (pwsh ? pwsh_unescape(ch) : ch); esc = 0; continue }",
+      "            # PowerShell embeds a literal quote by",
+      "            # content-scanned: a fail-OPEN. pwsh-gated because bash has no",
+      "                if (pwsh && substr(line, p + 1, 1) == SQ) { cur = cur SQ; p++; continue }",
+      "            # Inside a double-quoted PowerShell string",
+      "            # narrow because real bash IS narrow there). pwsh_unescape() above",
+      "            if (pwsh && ch == ESC) {",
+      "                uadv = pwsh_unicode(line, p)",
+      "                if (uadv > 0) { cur = cur PWSH_U; p += uadv - 1; continue }",
+      "            if (!pwsh && ch == ESC) {",
+      "        # this, the PowerShell arm had no escape handling of any kind, so a",
+      "        # backtick-escaped separator inside an unquoted PowerShell path split",
+      "            if (pwsh) {",
+      "    # A bash backslash-newline (or PowerShell",
+      "                echo \"⛔ block-worker-write-fence: refusing a Bash/PowerShell command that\"",
+      "# runs a Bash/PowerShell command that repoints origin/<default> by",
+      "        # Bash/PowerShell call.",
+      "                echo \"⛔ block-worker-write-fence: refusing a Bash/PowerShell command that could\""
+    ]
+  },
+  "scripts/hooks/block-write-into-main-checkout.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# Shared DESTINATION-based write fence for Bash/PowerShell-mediated writes into",
+      "# This script closes that gap by resolving the TARGET PATH a Bash/PowerShell",
+      "# and PowerShell-writer (Set-Content/Out-File/Add-Content) arms have NO",
+      "        Bash|PowerShell) ;;",
+      "# `nice.exe`). `chroot [opts] DIR` and `sudo -R DIR`/`--chroot` change the",
+      "_BWIMC_ARMVERB_RE='^([^[:space:]]*/)?(sed|eval|bash|sh|zsh|dash|ksh|install|rsync|dd|cp|mv|rm|touch|truncate|tar|gtar|bsdtar|ln|git)(\\.exe)?$'",
+      "        # a wrapper matches on its basename, `.exe` dropped",
+      "        # (`/usr/bin/nice`, `nice.exe`), as _bwimc_check_interp_body does",
+      "        _tolower_ascii \"${_BWIMC_SPU##*/}\"; wl=\"${_TOLOWER_OUT%.exe}\"",
+      "        echo \"    PRIMARY checkout from a Bash/PowerShell-mediated command —\"",
+      "# rule, applied here because PowerShell never reaches this mode",
+      "# shfmt, a parse error, an unknown node kind or a jq error denies. PowerShell",
+      "      else ($p.v | base_of | ascii_downcase | sub(\"\\\\.exe$\"; \"\")) as $n",
+      "    # find the first token that IS one (unquoted, any path, any case, `.exe`)",
+      "            _tolower_ascii \"$t\"; t=\"${_TOLOWER_OUT%.exe}\"",
+      "        if _bwimc_m=$(printf '%s' \"$_bwimc_ibody_clause_sp\" | tr '[:upper:]' '[:lower:]' | grep -E '^[[:space:]]*git(\\.exe)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)') && [ -n \"$_bwimc_m\" ]; then",
+      "_BWIMC_WRAP_RE='(^|[[:space:]/])(bash|sh|zsh|dash|ksh|su|runuser|flock|eval)(\\.exe)?([[:space:]]|$)'",
+      "_BWIMC_XTRACT_RE='(^|[^[:alnum:]_.-])(tar|bsdtar|gtar|star|cpio|bsdcpio|pax|unzip|funzip|bsdunzip|7z|7za|7zr|ar|unar|atool|jar|busybox|toybox|python[0-9.]*|perl|ruby|node|php|xargs|bash|sh|zsh|dash|ksh|fish|eval|source|exec|ln|link|cp|mv|rsync|install)(\\.exe)?([^[:alnum:]_-]|$)'",
+      "    _bwimc_unqv \"${xt[0]}\"; t=$_BWIMC_UNQ; t=\"${t##*/}\"; _tolower_ascii \"$t\"; wl=\"${_TOLOWER_OUT%.exe}\"",
+      "                if [ \"${_TOLOWER_OUT%.exe}\" = git ]; then xi=$k; break; fi",
+      "        git|git.exe|GIT|GIT.EXE|Git.exe) ;;",
+      "    if _bwimc_gm '^[[:space:]]*sed(\\.exe)?[[:space:]]+'; then",
+      "        # `sed(\\.exe)?[[:space:]]+.*-i` — an UNANCHORED substring search over",
+      "    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(bash|sh|zsh|dash|ksh)(\\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+-[a-z]*c[a-z]*([[:space:]]|$)'; then",
+      "    elif _bwimc_gm '^[[:space:]]*(install|rsync)(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*dd(\\.exe)?([[:space:]]|$)'; then",
+      "    elif _bwimc_gm '^[[:space:]]*(cp|mv)(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*(rm|touch|truncate)(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(tar|gtar|bsdtar)(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?tee(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*ln(\\.exe)?[[:space:]]+'; then",
+      "    elif _bwimc_gm '^[[:space:]]*git(\\.exe)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)'; then",
+      "        # PowerShell writers: sourced/codex lane only (see CODEX-LANE PARITY",
+      "        # header note) — PowerShell never reaches direct-exec (Claude wires"
+    ]
+  },
+  "scripts/hooks/cadence-approve-engines.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "#                                    no .exe — a `$cmd`/absolute interpreter"
+    ]
+  },
+  "scripts/hooks/cadence-deny-powershell.sh": {
+    "reason": "the PowerShell-tool deny detector for cadence sessions",
+    "lines": [
+      "# Cadence-scoped PreToolUse DENY hook for the PowerShell tool.",
+      "# cadence-approve-engines.sh and auto-approve-safe-bash.sh alike. The PowerShell",
+      "# vault-lint engine call through the PowerShell tool on 2026-08-20 04:00 —",
+      "# arrived as PowerShell, no hook saw it, the model got an approval-required",
+      "#   * tool_name PowerShell -> exit 2 (deny), stderr shown to the model naming",
+      "#     That read is defence-in-depth only: the `\"matcher\": \"PowerShell\"` block in",
+      "#     safe-command auto-approve reaches a PowerShell call), and the matcher is",
+      "#     independent evidence that the tool IS PowerShell. Failing open here would",
+      "# so nothing downstream can re-grant a PowerShell call.",
+      "#   * CADENCE_POWERSHELL_OK=1 -> exit 0, no decision (see BYPASS below).",
+      "#     interactive sessions keep the PowerShell tool. On POSIX hosts the tool",
+      "# BYPASS: CADENCE_POWERSHELL_OK=1 — a single-run operator carve-out, set in the",
+      "# shell that LAUNCHES Claude Code (`CADENCE_POWERSHELL_OK=1 claude …`). A",
+      "# to the deny: the matcher already told us this is a PowerShell call.",
+      "    if [ -n \"$tool\" ] && [ \"$tool\" != \"PowerShell\" ]; then",
+      "if [ \"${CADENCE_POWERSHELL_OK:-}\" = \"1\" ]; then",
+      "echo \"cadence-deny-powershell: the PowerShell tool is denied in a cadence session\" \\",
+      "     \"enumerated-engine auto-approval, so a PowerShell call stalls on an\" \\",
+      "     \"CADENCE_POWERSHELL_OK=1 must be set in the shell that LAUNCHES claude\" \\"
+    ]
+  },
+  "scripts/hooks/check-no-headless-gemini.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# lib/headless-spawn-join.sh. `gemini.exe` and the npm shim `gemini.cmd`",
+      "SPAWN_PATTERN=$(headless_spawn_pattern 'gemini(\\.exe|\\.cmd)?')"
+    ]
+  },
+  "scripts/hooks/check-platforms-tested.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "#   *.sh, *.bash, *.zsh, *.ps1, *.psm1, *.psd1, *.cmd, *.bat",
+      "PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'",
+      "#      existing values (`linux, windows`, `gitbash (msys2), wsl`) already use.",
+      "# not count while `windows-gitbash` / `gitbash (msys2)` / `linux, windows` do.",
+      "        darwin, wsl, posix, gitbash, git-bash, powershell, pwsh"
+    ]
+  },
+  "scripts/hooks/check-settings-portability.sh": {
+    "reason": "the .exe-in-hook-command detector and its selftests",
+    "lines": [
+      "# carries a MACHINE-ABSOLUTE path or a Windows `.exe` in a hook command",
+      "# .codex/hooks.json with `C:/Users/<me>/.local/bin/graphify.EXE …` every time",
+      "# on purpose: `\"Bash(curl.exe:*)\"` in a permissions array is a legitimate",
+      "# sibling key's `\"Bash(curl.exe:*)\"` satisfy the match and falsely reject a file",
+      "# stops scanning right there, so a `.exe` written after it is invisible to the",
+      "# sibling key's `\"Bash(curl.exe:*)\"` satisfy the match.",
+      "selftest \"$EXE_PATTERN\" '      \"command\": \"tool.EXE hook-check\"' EXE_PATTERN",
+      "# A `.exe` reached only by crossing a JSON-escaped quote — the shape `[^\"]*`",
+      "selftest \"$EXE_PATTERN\" '      \"command\": \"if [ -f \\\"$X\\\" ]; then tool.exe run; fi\"' 'EXE_PATTERN (escaped-quote crossing)'",
+      "if grep -Eq \"$EXE_PATTERN\" <<< '      \"Bash(curl.exe:*)\",'; then",
+      "    # re-check the .exe rule so that shape cannot slip through. The flattened",
+      "    echo \"  - no .exe/.EXE in a hook command\""
+    ]
+  },
+  "scripts/hooks/end-session-wiki.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "# Windows shell (msys/cygwin/Windows_NT).",
+      "    msys*|cygwin*|*Windows_NT*) exit 0 ;;"
+    ]
+  },
+  "scripts/hooks/guard-pr-check-literal.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "    # three times: rbash, BASH, bash.EXE): every command word after a pipe that",
+      "                case \"${x%.exe}\" in"
+    ]
+  },
+  "scripts/hooks/guardrail-block.mjs": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "  { basename: 'block-read-secrets.sh', matcher: 'Bash|PowerShell|Read|Grep' },"
+    ]
+  },
+  "scripts/hooks/hook-integrity.js": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "// denies a Bash/PowerShell command that references this directory for EVERY"
+    ]
+  },
+  "scripts/hooks/infra-destroy-verbs.json": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "    { \"id\": \"dropdb\", \"bins\": [\"dropdb\", \"dropuser\", \"dropdb.exe\"], \"always\": true, \"note\": \"dropdb\" },"
+    ]
+  },
+  "scripts/hooks/lib-test-block-destructive.sh": {
+    "reason": "fixture / eval / probe data for a detector",
+    "lines": [
+      "j_pwsh() { printf '{\"tool_name\":\"PowerShell\",\"tool_input\":{\"command\":%s}}' \"$(printf '%s' \"$1\" | jq -Rs .)\"; }"
+    ]
+  },
+  "scripts/hooks/lib/bash-ast-bwimc.jq": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "      else ($p.v | base_of | ascii_downcase | sub(\"\\\\.exe$\"; \"\")) as $n"
+    ]
+  },
+  "scripts/hooks/lib/guard-unwrap.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "        b=${b%.exe}",
+      "    local re_nest='(^|[^A-Za-z0-9_.-])(ba|z|da|k|mk|a|ya|po)?sh(\\.exe)?[\"'\"'\"']?[[:space:]]+([-+][A-Za-z]*[[:space:]]+)*[\"'\"'\"']?[-+][A-Za-z]*c'"
+    ]
+  },
+  "scripts/hooks/lib/headless-spawn-join.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "# Prints the SPAWN_PATTERN for one program (e.g. `claude(\\.exe)?`). Deny-leaning",
+      "        *.py|*.sh|*.bash|*.zsh|*.rb|*.yaml|*.yml|*.toml|*.pl|*.r|*.R|*.ps1) hash_cmt=1 ;;"
+    ]
+  },
+  "scripts/hooks/record-hook-integrity.sh": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "# now denies that Bash/PowerShell shape for EVERY dispatched worker lane (GLM"
+    ]
+  },
+  "scripts/hooks/run-hook-with-bash.js": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "// still lets any future chain (PreToolUse Bash *and* PowerShell both wire"
+    ]
+  },
+  "scripts/hooks/wire-hook-bash.mjs": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "  // PreToolUse `PowerShell` chain.",
+      "  // The PowerShell matcher never carried this guard at all, so"
+    ]
+  },
+  "scripts/insights/session-analyzer.sh": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "    /^TOOL:PowerShell/  { bash++; next }",
+      "    printf '| Bash/PowerShell   | %d |\\n' \"$TOOL_BASH\""
+    ]
+  },
+  "scripts/jira/package-lock.json": {
+    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
+    "lines": [
+      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
+      "        \"win32\"",
+      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
+      "    \"node_modules/@typescript/typescript-win32-x64\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
+      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
+      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
+      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
+      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
+      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
+      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
+      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
+      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
+      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
+    ]
+  },
+  "scripts/lanes/skill-cost.mjs": {
+    "reason": "comment that is still true (history or detector scope); guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "// the installed claude.exe binary's string constants): the substitution",
+      "// $1/$2 JS/PowerShell `.replace()`/`-replace` backreference sits unguarded in"
+    ]
+  },
+  "scripts/lessons/validate-lesson.mjs": {
+    "reason": "BOM strip stays defensive on any OS; comment true",
+    "lines": [
+      "// Strip a UTF-8 BOM (Windows editors/PowerShell 5.1 prepend one; it would"
+    ]
+  },
+  "scripts/lib/graphify-bin.sh": {
+    "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
+    "lines": [
+      "// regex requires \"graphify\" (optionally \".exe\"/\".EXE\", optionally quoted)",
+      "const GUARD_RE = /(?:^|[ \\t\\n\"'/\\\\])graphify(?:\\.exe)?[\"']?[ \\t\\n]+(?:hook-guard|hook-check)(?![^ \\t\\n])/i;",
+      "# rationale): \"graphify\" (optionally \".exe\"/\".EXE\", optionally quoted) must",
+      "    r'(?:^|[ \\t\\n\\x22\\x27/\\\\])graphify(?:\\.exe)?[\\x22\\x27]?[ \\t\\n]+(?:hook-guard|hook-check)(?![^ \\t\\n])',"
+    ]
+  },
+  "scripts/lib/orphan-branches.sh": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "#   claude.exe is not evidence work is progressing, and an exited session is"
+    ]
+  },
+  "scripts/lib/override-env.sh": {
+    "reason": "CADENCE_POWERSHELL_OK bypass of the PowerShell-tool detector",
+    "lines": [
+      "CADENCE_POWERSHELL_OK AGENTS_MD_OK PUSH_FOREIGN_REF_OK DOC_GUARD_OK"
+    ]
+  },
+  "scripts/lib/session-transcript.sh": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "        # Bash/PowerShell tool commands (in chronological order)",
+      "                | select(.type == \"tool_use\" and (.name == \"Bash\" or .name == \"PowerShell\"))"
+    ]
+  },
+  "scripts/lib/unchecked-mktemp.sh": {
+    "reason": "fixture / eval / probe data for a detector",
+    "lines": [
+      "#      `[ \"$out\" = \"$tmp/bin/node.exe\" ]` tests `$out`, not `$tmp`; `$tmp` is"
+    ]
+  },
+  "scripts/lib/wire-pretooluse-hooks.sh": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "      spec(\"block-read-secrets\"; \"Bash|PowerShell|Read|Grep\") ]"
+    ]
+  },
+  "scripts/lint/check-history-comments.sh": {
+    "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
+    "lines": [
+      "# Scope: .sh .bash .zsh .ps1 .psm1 .py .js .mjs .cjs .ts .tsx .mts .cts; paths with a"
+    ]
+  },
+  "scripts/lint/hook-parse-check.sh": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "    # a future THIRD caller cannot hand it a .ps1/.py/whatever and get a"
+    ]
+  },
+  "scripts/lint/swallowed-errors-baseline.txt": {
+    "reason": "baseline row for the cadence-deny-powershell detector",
+    "lines": [
+      "scripts/hooks/cadence-deny-powershell.sh\tcmdsub-devnull\t2",
+      "scripts/hooks/cadence-deny-powershell.sh\ttrue-after-read\t2"
+    ]
+  },
+  "scripts/luna/pipeline-cadence.sh": {
+    "reason": "wires the cadence-deny-powershell detector",
+    "lines": [
+      "    # Bash-only, so the PowerShell tool is an unguarded second shell in a",
+      "    local deny_pwsh_hook=\"$hooks_dir/cadence-deny-powershell.sh\"",
+      "        \"matcher\": \"PowerShell\",",
+      "          { \"type\": \"command\", \"command\": \"\\\"${bash_cmd}\\\" \\\"${deny_pwsh_hook}\\\"\" }",
+      "    [ -r \"$hooks_dir_check/cadence-deny-powershell.sh\" ] || \\",
+      "        echo \"WARN pipeline-cadence: deny-powershell hook not readable at $hooks_dir_check/cadence-deny-powershell.sh (PowerShell-tool calls will bypass every cadence guardrail)\" >&2"
+    ]
+  },
+  "scripts/luna/vault-stall-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR vault-stall: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/observability/install-grafana.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    MINGW*|MSYS*|CYGWIN*) die \"Windows is not supported\" 2 ;;"
+    ]
+  },
+  "scripts/observability/install-stack.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    MINGW*|MSYS*|CYGWIN*) die \"Windows is not supported\" 2 ;;"
+    ]
+  },
+  "scripts/probes/claude-p/07-dual-shell-allowlist.sh": {
+    "reason": "names the PowerShell tool for guard coverage or transcript parsing",
+    "lines": [
+      "# model actually reached for (Bash vs PowerShell vs Write) — measured"
+    ]
+  },
+  "scripts/security/snyk-scan-cadence.sh": {
+    "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
+    "lines": [
+      "    case \"$(uname -s 2>/dev/null)\" in MINGW*|MSYS*|CYGWIN*) echo \"ERR snyk-scan-cadence: cron only; Windows is parked\" >&2; return 2 ;; esac"
+    ]
+  },
+  "scripts/testing/unwired-hooks-allowlist.txt": {
+    "reason": "allowlist row for the cadence-deny-powershell detector",
+    "lines": [
+      "cadence-deny-powershell.sh|called by pipeline-cadence.sh and the cadence-approve-engines chain, not project-wired"
+    ]
+  },
+  "scripts/vm/vm-lock.sh": {
+    "reason": "comment that is still true (history or detector scope)",
+    "lines": [
+      "#   - No BSD/uutils/MSYS-specific probing (the original's `date +%N`"
+    ]
+  }
+}

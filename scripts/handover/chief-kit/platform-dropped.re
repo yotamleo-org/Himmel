@@ -5,4 +5,4 @@
 # case-sensitively (Windows / WINDOWS) so lowercase chief wording ('chief windows', '5-hour
 # windows') passes; it is also not the tail of a context/time/token/rate/sliding/usage window
 # (each qualifier a whole word, so 'runtime Windows' still matches); 'Windowed' never matches.
-(?<!\bcontext )(?<!\btime )(?<!\btoken )(?<!\brate )(?<!\bsliding )(?<!\busage )(?-i:\b(?:Windows|WINDOWS)\b)|\bwsl2?\b|\bpowershell\b|\bpwsh\b|\.ps1\b|\bgit[ -]bash\b|\bmsys2?\b|\bmingw(?:32|64)?\b|\bwin32\b|\bcmd\.exe\b
+(?<!\bcontext )(?<!\btime )(?<!\btoken )(?<!\brate )(?<!\bsliding )(?<!\busage )(?-i:\b(?:Windows|WINDOWS)\b)|\bwsl2?\b|\bpowershell\b|\bpwsh\b|\.ps1\b|\bgit[ -]bash\b|\bmsys2?\b|\bmingw(?:32|64)?\b|\bwin32\b|\bcmd\.exe\b|\.exe\b|\bcygwin\b|\bMSYS_NO_PATHCONV\b

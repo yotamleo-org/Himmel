@@ -900,6 +900,7 @@ scripts/lib/test-wire-statusline.sh	30
 scripts/lib/test-worktree-inuse.sh	2
 scripts/lint/test-check-history-comments.sh	2
 scripts/lint/test-check-mcp-sdk-v1.sh	1
+scripts/lint/test-check-platform-dropped.sh	1
 scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
 scripts/lint/test-flag-parity.sh	1
