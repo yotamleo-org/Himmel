@@ -348,13 +348,16 @@ def execute_run(payload, config):
         rec = load_record(rid)
         if rec.get("id") != rid or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
             return {"result": "hash-mismatch"}
-        if sha256_file(os.path.realpath(rec["argv0_path"]))[0] != rec["argv0_sha256"]:
-            return {"result": "changed"}
-        for f in rec["files"]:
-            if sha256_file(f["path"])[0] != f["sha256"]:
+        try:  # a program, file argument or cwd that is gone or no longer a regular file has changed
+            if sha256_file(os.path.realpath(rec["argv0_path"]))[0] != rec["argv0_sha256"]:
                 return {"result": "changed"}
-        st = os.stat(rec["cwd"])
-        if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
+            for f in rec["files"]:
+                if sha256_file(f["path"])[0] != f["sha256"]:
+                    return {"result": "changed"}
+            st = os.stat(rec["cwd"])
+            if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
+                return {"result": "changed"}
+        except OSError:
             return {"result": "changed"}
         if not run_shipped():
             return {"result": "run-not-shipped"}

@@ -66,7 +66,7 @@ broker's pending payload, not next to the record.
 
 The executor re-checks, in this order, and writes a ledger row on the first mismatch:
 record hash (`hash-mismatch`); argv[0] sha256, each file sha256 and the cwd identity
-(`changed`); `run-not-shipped`; `run-disabled`; the floor again with the current config
+(`changed`, also when one is gone or no longer a regular file); `run-not-shipped`; `run-disabled`; the floor again with the current config
 (`never-remote`); the mode and user rules (`bad-user`, `not-in-class`). A non-root run
 goes through `setpriv --reuid --regid --init-groups --no-new-privs --inh-caps=-all`
 (`no-setpriv` at request time when it is missing); a root run executes directly.

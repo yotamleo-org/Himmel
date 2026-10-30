@@ -8,6 +8,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck source=scripts/lib/portable-timeout.sh
+. "$REPO_ROOT/scripts/lib/portable-timeout.sh"
 LIB="$REPO_ROOT/scripts/lib/afk-sudo"
 HELPER="$LIB/afk_sudo.py"
 OP=4242
@@ -313,6 +315,21 @@ printf 'echo hi\n' > "$R/x.sh"
 out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
 printf 'echo changed\n' > "$R/x.sh"
 assert_contains "a file argument changed after the request is refused" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root argv0gone; cfg "$ALL" true
+printf '#!/bin/sh\nexit 0\n' > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+out=$(rr 0 -- "$R/bin/mytool"); id=$(rid "$out")
+rm -f "$R/bin/mytool"
+assert_contains "an argv0 removed after the request reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root filegone; cfg "$ALL" true
+printf 'echo hi\n' > "$R/x.sh"
+out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
+rm -f "$R/x.sh"
+assert_contains "a file argument removed after the request reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root cwdgone; cfg "$ALL" true
+mkdir "$R/work"; printf 'echo hi\n' > "$R/work/x.sh"
+out=$(rr 0 --cwd "$R/work" -- sh x.sh); id=$(rid "$out")
+rm -rf "$R/work"
+assert_contains "a cwd removed after the request reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 
 if [ "$(uname -s)" = Linux ] && command -v setpriv >/dev/null 2>&1; then
     new_root drop; cfg "$ALL" true
@@ -325,7 +342,8 @@ if [ "$(uname -s)" = Linux ] && command -v setpriv >/dev/null 2>&1; then
     assert_contains "RED 5: the run has NoNewPrivs set" "NoNewPrivs:1" "$(h 34 run-result "$id" --stream stdout | tr -d '[:space:]')"
 else
     new_root drop; cfg "$ALL" true
-    assert_contains "without setpriv a non-root run is refused" "result=no-setpriv" "$(rr 0 -- id -u)"
+    # no-setpriv is refused only outside the seam (not SEAM); inside it the request is filed and the run keeps the caller's uid.
+    assert_contains "in the seam a run is filed without setpriv" "result=pending" "$(rr 0 -- id -u)"
 fi
 
 echo "== slice 1a: the never-remote floor (RED 4) =="
