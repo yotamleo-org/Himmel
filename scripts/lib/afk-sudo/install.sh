@@ -14,6 +14,8 @@
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
 # allowlist, mode allowlist and the run kind off (the run kind is also compiled
 # off until a release flips it); enabling it is a separate `sudoedit` by the operator.
+# A session talks to the installed helper through scripts/lib/afk-run (run kind) or
+# scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the
 # seed, the state and the ledger.
 set -uo pipefail

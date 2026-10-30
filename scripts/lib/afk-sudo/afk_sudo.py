@@ -22,6 +22,9 @@ the never-remote floor (never_remote.py) refuses first, and the request is froze
 root-owned record whose hash the executor re-checks, with the argv0, file and cwd identities,
 after the code is accepted.
 
+A session reaches `run-request` through scripts/lib/afk-run (sudo -n, then it polls run-status and
+relays the captured output and exit status); scripts/lib/afk-sudo-request does the same for `request`.
+
 Prints `result=<word> …` lines. Exit 0 ok, 5 refused, 2 usage.
 Test seam: AFK_SUDO_ROOT (a sandbox root), AFK_SUDO_NOW (epoch seconds) and AFK_SUDO_RUN=1 (the
 run kind on) are honoured only when euid != 0; there the files must be owned by the caller
