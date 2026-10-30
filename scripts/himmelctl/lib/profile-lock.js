@@ -12,7 +12,7 @@ const path = require('path');
 const WAIT_MS = 10000;
 const POLL_MS = 20;
 // A lock whose owner is gone is taken over; this age only covers an owner we
-// cannot signal (another user, or a reused pid).
+// cannot signal (another user's pid).
 const STALE_MS = 60000;
 
 function sleep(ms) {
@@ -29,6 +29,7 @@ function ownerGone(lock) {
   if (Number.isInteger(pid) && pid > 0) {
     try {
       process.kill(pid, 0);
+      return false; // a live owner keeps the lock however long it holds it
     } catch (e) {
       if (e.code === 'ESRCH') return true;
     }
@@ -56,8 +57,10 @@ function withProfileLock(profilePath, fn) {
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       if (ownerGone(lock)) {
-        try { fs.unlinkSync(lock); } catch (_e) { /* a peer took it over */ }
-        continue;
+        try {
+          fs.unlinkSync(lock);
+          continue;
+        } catch (_e) { /* a peer took it over, or it cannot be removed: wait like any other holder */ }
       }
       if (Date.now() > deadline) throw new Error(`the profile lock ${lock} is held by another himmelctl`);
       sleep(POLL_MS);
