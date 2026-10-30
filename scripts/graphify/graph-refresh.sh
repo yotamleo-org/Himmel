@@ -100,11 +100,7 @@ HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
 
-# Cross-platform user-home resolution (mirrors graphmap-cadence.sh /
-# pipeline-cadence). On Windows Git-Bash $HOME can be the MSYS home
-# while the vault lives under the Windows user profile, so prefer USERPROFILE via
-# cygpath BEFORE $HOME. POSIX hosts have USERPROFILE unset and fall straight
-# through to $HOME. /tmp is the last-resort floor when both are unset.
+# User-home resolution (mirrors graphmap-cadence.sh / pipeline-cadence).
 resolve_user_home() {
     if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
         cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
@@ -172,7 +168,7 @@ _abs() {
     printf '%s' "$p"
 }
 
-# _normalize <abs-path> -> lexically normalized, forward-slashed, MSYS
+# _normalize <abs-path> -> lexically normalized, forward-slashed,
 # drive-path-translated (collapse `.` / `..` so a `Clippings/../../salus`
 # traversal cannot mis-match). Lexical only — no symlink resolution. Identical
 # to graphify-fence.sh's _normalize. Globbing is disabled across the split (the
@@ -300,7 +296,7 @@ _resolve_symlinks() {
 # path where one is available, so intermediate components are covered too (-L
 # only dereferences the final component).
 #
-# GNU stat (-c) first (Linux, MSYS2/Git-Bash -- busybox mimics it), BSD stat
+# GNU stat (-c) first (Linux -- busybox mimics it), BSD stat
 # (-f) second (macOS); the RESULT is checked, not just the exit (a stat that
 # exits 0 on empty output is not an identity).
 _fs_id() {
@@ -321,7 +317,7 @@ _fs_id() {
 # descriptor open across both -- an actor could swap the path for a symlink
 # in the gap between them. Folding "is it a directory" and "what is its
 # identity" into ONE combined stat call is the tightest closure achievable
-# here. GNU stat (-c, Linux/MSYS2/Git-Bash) first, BSD stat (-f, macOS)
+# here. GNU stat (-c, Linux) first, BSD stat (-f, macOS)
 # second -- same fallback order as _fs_id.
 _fs_dir_id() {
     local p="$1" out
@@ -388,12 +384,10 @@ preflight_vault() {
     # genuinely-different dirs that differ only by case into a match (a false
     # refusal); and a text compare cannot see a symlink / trailing slash / `.`
     # / `..` / 8.3 short path that names the SAME dir with DIFFERENT text.
-    # device+inode is case-AGNOSTIC, so it is correct on a case-insensitive FS
-    # (Windows NTFS: the same dir via any case spelling is one id -- realpath
-    # and pwd -P do NOT normalize case on MSYS/Git-Bash, so the old fold was
-    # load-bearing there; inode replaces it correctly) AND on a case-sensitive
-    # FS (two case-distinct dirs keep distinct ids -> the false refusal is
-    # gone). Both sides are probed as their REAL TARGET, and that takes two
+    # device+inode is case-AGNOSTIC, so it is correct on both case-insensitive
+    # and case-sensitive filesystems. Two case-distinct dirs keep distinct ids,
+    # eliminating the false refusal. Both sides are probed as their REAL TARGET,
+    # and that takes two
     # things, not one (CR codex-adv-1): _fs_id passes stat -L (stat defaults to
     # LSTAT -- see _fs_id), AND the vault is probed via the symlink-RESOLVED
     # $class_path rather than the lexical $canon, with HOME resolved the same
