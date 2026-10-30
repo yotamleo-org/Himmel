@@ -228,21 +228,6 @@ const ENV_ALWAYS = ['PATH', 'Path', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TM
 // Match is case-insensitive: Windows hands these back as `windir`,
 // `ProgramFiles(x86)`, `CommonProgramW6432` and friends.
 const ENV_SYSTEM = new Set([
-  // --- Windows: the OS's own roots ---
-  'SYSTEMROOT',   // Win32/winsock/crypto DLL resolution; uv's tmpdir fallback
-  'SYSTEMDRIVE',  // resolves drive-relative paths and MSYS `/` translation
-  'WINDIR',       // the same root under the older name; some tools read only this
-  'COMSPEC',      // cmd.exe — anything spawning with `shell: true` resolves it
-  'PATHEXT',      // without it a .cmd/.bat shim on PATH (npm, bun, gh) is invisible
-  'PROGRAMDATA',  // machine-wide tool config (git's system config lives here)
-  'PROGRAMFILES', 'PROGRAMFILES(X86)', 'PROGRAMW6432', // install roots tools self-locate from
-  'HOMEDRIVE', 'HOMEPATH',   // Windows home when HOME is unset (cmd-launched tools)
-  'APPDATA', 'LOCALAPPDATA', // per-user config/cache roots: gh, git, bun, npm
-  'USERNAME',                // identity; git's fallback author and %USERNAME% expansions
-  'NUMBER_OF_PROCESSORS',    // os.cpus()/parallelism on Windows
-  'PROCESSOR_ARCHITECTURE',  // arch detection in installer shims
-  'OS',                      // MSYS scripts branch on OS=Windows_NT
-  'EXEPATH',                 // Git-for-Windows install root, set by its own profile
   // --- POSIX ---
   'SHELL',        // the interpreter a script re-execs
   'TERM',         // a terminal-library tool aborts outright on an unset TERM
@@ -255,10 +240,9 @@ const ENV_SYSTEM = new Set([
   // admits XDG_MQTT_PASS, and `PASS` is not one of the shapes the fence below
   // knows — the exact hole this ticket exists to close. Every one of these
   // namespaces is a FIXED set (POSIX locale, the freedesktop base-dir spec,
-  // MSYS, the version managers), so enumerating costs nothing but length.
+  // the version managers), so enumerating costs nothing but length.
   'LC_ALL', 'LC_CTYPE', 'LC_COLLATE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME',
   'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR',
-  'MSYS', 'MSYSTEM', 'MSYSTEM_PREFIX', 'MSYSTEM_CHOST', 'MSYS2_ARG_CONV_EXCL', 'MSYS_NO_PATHCONV',
   'NVM_DIR', 'NVM_BIN', 'NVM_INC', 'NVM_HOME', 'NVM_SYMLINK',
   'FNM_DIR', 'FNM_MULTISHELL_PATH', 'VOLTA_HOME', 'ASDF_DIR', 'ASDF_DATA_DIR',
 ]);

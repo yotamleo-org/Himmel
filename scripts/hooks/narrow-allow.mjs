@@ -217,14 +217,11 @@ export function writeSettingsAtomic(settingsPath, output, tmpPath = tempPathFor(
   // temp is created with umask-default permissions (0o666 & ~umask), so
   // renaming it over settings.json would silently loosen a restrictive mode
   // (e.g. 0o600 -> 0o644 on a typical 022 umask). Stat the target first, then
-  // chmod the staged temp to match before the rename. POSIX-only in effect;
-  // on Windows mode bits are a no-op (ACLs govern), so the chmod is harmlessly
-  // best-effort there. A missing target (first-time write) leaves the temp's
-  // default mode in place. FAIL-CLOSED on POSIX:
-  // only ENOENT is a sanctioned stat miss; any other stat error, or a POSIX
+  // chmod the staged temp to match before the rename. A missing target
+  // (first-time write) leaves the temp's default mode in place. FAIL-CLOSED:
+  // only ENOENT is a sanctioned stat miss; any other stat error, or a
   // chmod failure, aborts BEFORE the rename — silently proceeding is exactly
-  // the 0o600 -> 0o644 loosening this block exists to prevent. Windows keeps
-  // best-effort (mode bits are a no-op there; ACLs govern).
+  // the 0o600 -> 0o644 loosening this block exists to prevent.
   let targetMode;
   try {
     targetMode = statSync(settingsPath).mode & 0o777;
@@ -235,13 +232,7 @@ export function writeSettingsAtomic(settingsPath, output, tmpPath = tempPathFor(
   try {
     writeFileSync(tmpPath, output, { encoding: 'utf8', flag: 'wx' });
     staged = true;
-    if (targetMode !== undefined) {
-      try {
-        chmodSync(tmpPath, targetMode);
-      } catch (error) {
-        if (process.platform !== 'win32') throw error;
-      }
-    }
+    if (targetMode !== undefined) chmodSync(tmpPath, targetMode);
     renameSync(tmpPath, settingsPath);
   } catch (error) {
     if (staged) { try { unlinkSync(tmpPath); } catch { /* best-effort cleanup of our own staged temp */ } }

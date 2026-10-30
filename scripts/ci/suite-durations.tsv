@@ -727,6 +727,7 @@ scripts/hooks/test-notify-chief-on-prompt.sh	0
 scripts/hooks/test-orchestrator-inline-guard.sh	3
 scripts/hooks/test-permission-allow-gate-shapes.sh	2
 scripts/hooks/test-plugin-hook-bash-wiring.sh	2
+scripts/hooks/test-posix-hook-runtime.sh	1
 scripts/hooks/test-qmd-staleness-notice.sh	43
 scripts/hooks/test-quota-gauge-claude-writer.sh	1
 scripts/hooks/test-quota-gauge-ledger.sh	1

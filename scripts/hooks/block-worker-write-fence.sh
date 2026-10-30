@@ -116,9 +116,8 @@ case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 # and run from the temp dir, so neither the worktree's own .git nor a replace ref
 # can steer the answer, and each is bounded by `timeout` (the launcher's
 # HIMMEL_HOOK_INTEGRITY_GIT_TIMEOUT_MS budget): a missing `timeout`, a hung or
-# timed-out git refuses the bypass. A `C:` drive spelling counts as absolute only
-# on msys/cygwin (JS path.isAbsolute parity). The result is memoized: both fences share one audit line
-# per hook invocation.
+# timed-out git refuses the bypass. The result is memoized: both fences share
+# one audit line per hook invocation.
 # ponytail: the audit line records that the bypass was CONSULTED and granted for
 # this call, not that a fence would have fired (the predicate cannot know), so it
 # over-reports; and the symlink/regular-file check on the sink is a
@@ -126,13 +125,11 @@ case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 # a link swapped in between the two survives — same-user, same-window only.
 bypass_memo=""
 bypass_canon() { (cd -P "$1" 2>/dev/null && pwd -P); }
-# Absolute like JS path.isAbsolute: a `C:` drive spelling is absolute only where
-# the platform has drives (msys/cygwin); on POSIX `C:/g` is a RELATIVE path a
-# worker can back with a symlink under the cwd.
+# Absolute like JS path.isAbsolute: `C:/g` is a RELATIVE path a worker can
+# back with a symlink under the cwd.
 bypass_abs() {
     case "$1" in
         /*) return 0 ;;
-        [A-Za-z]:[/\\]*) case "${OSTYPE:-}" in msys*|cygwin*) return 0 ;; esac ;;
     esac
     return 1
 }
