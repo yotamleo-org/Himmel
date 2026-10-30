@@ -846,3 +846,17 @@ test("an allowed tap on a chief that is not live, or on a traversal name, is ref
   expect(readFileSync(next, "utf8")).toBe("");
   expect(existsSync(join(r, "consoles", "replies"))).toBe(false);
 });
+
+test("a name outside the convention is its own lineage, never merged into a convention lineage", async () => {
+  const r = root(); const a = heartbeat(r, "HIMMEL-roadmap-chief"); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-30A-roadmap-chief");
+  expect(await routeText(r, "/chief halt")).toContain("More than one chief is live");
+  expect(readFileSync(a, "utf8")).toBe("");
+  expect(readFileSync(b, "utf8")).toBe("");
+});
+
+test("an alias matches the chief's bucket, so a hyphenated project resolves", async () => {
+  const r = root(); const f = heartbeat(r, "MYP-nextleg-2026-10-30A-roadmap-chief");
+  writeFileSync(f + ".meta.json", JSON.stringify({ bucket: "my-project", project: "/repos/my-project" }));
+  await routeText(r, "/chief chief:my-project hello");
+  expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] hello\n");
+});

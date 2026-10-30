@@ -91,8 +91,8 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
 // returns for it) — record the link in <inbox>.meta.json if that recurs.
 export function chiefLineage(name: string): { prefix: string; key: string; rank: string } {
   const m = /^([A-Za-z0-9]+)-nextleg-(\d{4}-\d{2}-\d{2})([A-Z]{1,2})-(.+)$/.exec(name);
-  if (!m) return { prefix: "", key: name, rank: "" };
-  return { prefix: m[1], key: `${m[1]}-${m[4]}`, rank: `${m[2]}${m[3].length}${m[3]}` };
+  if (!m) return { prefix: "", key: `singleton:${name}`, rank: "" };
+  return { prefix: m[1], key: `lineage:${m[1]}-${m[4]}`, rank: `${m[2]}${m[3].length}${m[3]}` };
 }
 
 // The newest chief, only when every given chief belongs to one lineage.
@@ -182,7 +182,8 @@ export async function routeToConsole(
     if (alias) {
       if (!name) { name = alias[0]; text = text.slice(alias[0].length).trim(); }
       if (!text) { await say(`⚠️ no message after "${name}" — nothing was sent.`); return; }
-      const hits = live.filter(c => chiefLineage(c.name).prefix.toLowerCase() === alias[1].toLowerCase());
+      const want = alias[1].toLowerCase();
+      const hits = live.filter(c => c.bucket.toLowerCase() === want || chiefLineage(c.name).prefix.toLowerCase() === want);
       const newest = newestChief(hits);
       if (!newest) {
         await say(hits.length ? `More than one chief lineage matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : `⚠️ no live chief for "${name}" — nothing was sent.`);
