@@ -1250,5 +1250,27 @@ fi
 chmod 600 "$M/HIMMEL-9690.md"
 M="$WORK/jira-mirror/HIMMEL"
 
+# A RESUME row a collision drops is named `RESUME-HELD <key> by <holder>`, never silent:
+# one a live worker's write scope holds, one another listed RESUME row holds (full pass only).
+M7="$WORK/m7/HIMMEL"; mkdir -p "$M7"
+M_SAVE="$M"; M="$M7"
+mk HIMMEL-80 "In Progress" High '[]' '[]' '[]' "held by a live worker scope" "Edit scripts/lib/rh1.sh."
+mk HIMMEL-81 "In Progress" High '[]' '[]' '[]' "free in work" "Edit scripts/lib/rh2.sh."
+mk HIMMEL-82 "In Progress" Low '[]' '[]' '[]' "held by the listed 81" "Edit scripts/lib/rh2.sh."
+M="$M_SAVE"
+LEG7="$WORK/HIMMEL-79-N8-live.md"; printf '> **Writes:** scripts/lib/rh1.sh\n# live\n' > "$LEG7"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"}]}\n' "$LEG7" > "$WORK/fleet7.json"
+rh() { NEXT_DISPATCH_MIRROR="$M7" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" --workers-from "$WORK/fleet7.json" 2>/dev/null; }
+rh_full="$(rh)"; rh_full_rc=$?
+check "the full pass exits 0 (HIMMEL-6604)" "0" "$rh_full_rc"
+has "a RESUME row a live worker's scope holds is named RESUME-HELD (HIMMEL-6604)" "$rh_full" "RESUME-HELD HIMMEL-80 by live worker N8"
+has "a RESUME row another listed RESUME row holds is named RESUME-HELD (HIMMEL-6604)" "$rh_full" "RESUME-HELD HIMMEL-82 by listed HIMMEL-81"
+lacks "a held RESUME row is not also offered as RESUME (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-80"
+lacks "a RESUME row held by a listed ticket is not also offered as RESUME (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-82"
+has "the free RESUME row is still offered (HIMMEL-6604)" "$rh_full" "RESUME	HIMMEL-81"
+rh_only="$(rh --resume-only)"; rh_only_rc=$?
+check "--resume-only exits 0 (HIMMEL-6604)" "0" "$rh_only_rc"
+has "--resume-only names the worker-held RESUME row too (HIMMEL-6604)" "$rh_only" "RESUME-HELD HIMMEL-80 by live worker N8"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

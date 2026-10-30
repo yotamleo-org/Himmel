@@ -127,6 +127,15 @@ for work no live worker or open PR holds, `BLOCKED-BY <key> <ref>` while the blo
 by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` again once
 that PR merges or closes). Give each one a disposition:
 `<kit>/stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
+`next-dispatchable.sh` names a RESUME row a file collision drops as
+`RESUME-HELD <key> by <worker or listed key>` (HIMMEL-6604), so the held ticket is never silent.
+The tick also re-reads the Live-state `pool-disposition:` lines: `pool-stale=<n>:<KEY>,...`
+lists the ones whose named blocker is now Done or merged (`?` = an unreadable target, never
+stale) and `WAKE pool-stale` fires once per newly stale key; `residual-unversioned=<n>:<KEY>,...`
+counts open residuals of an open focus-version ticket that carry no fixVersion.
+`residual-unversioned` hides at `0` or `skip`; `pool-stale` hides only at `skip` (no doc, or a
+failed read), so `pool-stale=0` on the tick line is the all-clear that lets the waiter wake again for
+a key that goes stale a second time. Both read only the Jira mirror plus one batched `gh pr list`.
 
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads

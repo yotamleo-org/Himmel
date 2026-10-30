@@ -63,6 +63,22 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     it, ticket it, or record a ruling** that it is acceptable. Never leave it
     unread because the next wake will not repeat it.
 
+    **`WAKE pool-stale <KEYS>`** (HIMMEL-6604): the tick re-checks every Live-state
+    `pool-disposition: KEY slice|close|question <target>` line whose target names a
+    ticket key or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
+    blocker is Done (Jira mirror) or merged (one batched `gh pr list`); `?` in the
+    list marks a target it could not read, never a stale one. The waiter wakes once
+    per newly stale key (marker `<inbox>.wait.stale`; the tick prints `pool-stale=0` on
+    every compact line that read a doc and found nothing stale, and that explicit `0`
+    clears the marker, so a key that leaves and comes back wakes again; an absent or `skip`
+    field, `?`-only, or a partial read like `1:KEY,?` keeps it and never shrinks it).
+    The line is never rewritten:
+    re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
+    then the key leaves the field. The tick also prints
+    `residual-unversioned=<n>:<KEY>,...` (open residuals of an open focus-version
+    ticket with no fixVersion, invisible to every version count): it never wakes;
+    give each a fixVersion or a disposition.
+
     **Re-start it at the end of the turn that handles each wake** — the waiter
     has exited, so a turn that does not re-start it leaves you deaf to Telegram
     and to the tick. Start it in the same turn as your other work, never as a
