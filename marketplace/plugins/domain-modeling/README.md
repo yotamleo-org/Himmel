@@ -15,7 +15,7 @@ hooks, agents, commands, MCP servers or scripts, and grants no autonomy.
 ## Where it is on
 
 Only in the `design` profile of `scripts/lanes/plugin-profiles.json`. No base,
-floor, worker, lane or console profile enables it, and the catalog resolves it off
+floor, worker, lane or chief profile enables it, and the catalog resolves it off
 for all of them.
 
 ## Remove it (one step)
