@@ -2589,6 +2589,19 @@ echo "$outWRabsent" | jq -e '.detail | contains("not on PATH either") and contai
   || fail "cmd:whisper_ready: absent detail should say it is not on PATH and carry an install hint (got: $outWRabsent)"
 echo "ok: cmd:whisper_ready — absent detail carries the whisper-cpp install hint"
 
+# a PINNED binary (WHISPER_CLI) that is missing never claims "not on PATH either":
+# the PATH lookup was bypassed, so the claim would be untrue.
+outWRpinned=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_absent")', WHISPER_CLI: '$(winpath "$wr_absent")/pinned-whisper-cli', WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRpinned" | jq -e '.actual == "absent" and (.detail | contains("pinned-whisper-cli") and (contains("not on PATH") | not))' >/dev/null \
+  || fail "cmd:whisper_ready: a missing pinned WHISPER_CLI must read absent without the 'not on PATH either' claim (got: $outWRpinned)"
+echo "ok: cmd:whisper_ready — a missing pinned binary reads absent without the PATH claim"
+
 # whisper-cli on PATH (no WHISPER_CLI, an EMPTY WHISPER_DIR) is the default
 # binary, found before the WHISPER_DIR fallback.
 wr_pathbin="$work/wr-pathbin"; mkdir -p "$wr_pathbin"

@@ -2559,14 +2559,15 @@ function probeWhisperReady(item, ctx) {
   const whisperConfig = (config && config.bridge && config.bridge.whisper) || {};
   const configuredCli = nonEmpty(whisperConfig.cli) ? whisperConfig.cli : null;
   const configuredModel = nonEmpty(whisperConfig.model) ? path.join(dir, whisperConfig.model) : null;
-  const cli = env.WHISPER_CLI || configuredCli || which(defaultBin, env) || path.join(dir, defaultBin);
+  const pinnedCli = env.WHISPER_CLI || configuredCli;
+  const cli = pinnedCli || which(defaultBin, env) || path.join(dir, defaultBin);
   const model = env.WHISPER_MODEL || configuredModel || path.join(dir, 'ggml-small.bin');
   const cliCheck = isUsableFile(cli, { execCheck: true });
   if (!cliCheck.ok) {
     return {
       actual: 'absent',
       detail: cliCheck.reason === 'not found'
-        ? `whisper binary not found at ${cli} (not on PATH either) — install whisper-cpp (pacman -S whisper-cpp / brew install whisper-cpp)`
+        ? `whisper binary not found at ${cli}${pinnedCli ? '' : ' (not on PATH either)'} — install whisper-cpp (pacman -S whisper-cpp / brew install whisper-cpp)`
         : `whisper binary at ${cli} is unusable (${cliCheck.reason})`,
     };
   }
