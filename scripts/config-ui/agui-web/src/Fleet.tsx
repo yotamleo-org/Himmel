@@ -106,7 +106,7 @@ export function useFilters(): [ViewFilters, (f: ViewFilters) => void] {
 }
 export const filtering = (f: Filters) => f.lanes.length > 0 || f.states.length > 0 || f.text.trim() !== "";
 // display name for a session role; the role value itself (chief, worker) is a parsed key and stays.
-export const roleLabel = (role: string) => role === "console" ? "supervisor session" : role === "leg" ? "worker session" : role;
+export const roleLabel = (role: string) => role === "console" ? "supervisor session" : role === "worker" ? "worker session" : role;
 
 function Section({ id, title, count, initial, force = false, className, children }: { id: string; title: string; count: number; initial: boolean; force?: boolean; className?: string; children: ReactNode }) {
   const [open, setOpen] = useOpen(id, initial);
@@ -142,20 +142,20 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const needs = needsShown(joined, all, filters).filter((j) => !s.attention.operator.some((a) => a.row.name === j.row?.name));
   const [tab, setTab] = useState(() => parseView(location.hash).tab);
   const initial = parseView(location.hash).k;
-  const [drawer, setDrawer] = useState<Drawer | null>(initial ? openAt(null, initial.leg, initial.stage) : null);
-  const [panel, setPanel] = useState<Panel | null>(initial ? { kind: "leg" } : null);
+  const [drawer, setDrawer] = useState<Drawer | null>(initial ? openAt(null, initial.worker, initial.stage) : null);
+  const [panel, setPanel] = useState<Panel | null>(initial ? { kind: "worker" } : null);
   // the fragment follows the view (replaceState: no history entry per key press, and no hashchange to re-route the page).
   useEffect(() => {
     // `selected`, not boardConsole: an auto-picked chief must not turn an unscoped fleet URL into a scoped one.
-    const h = viewHash(token, selected, tab, panel?.kind === "leg" && drawer ? { leg: drawer.leg, stage: drawer.stage } : null);
+    const h = viewHash(token, selected, tab, panel?.kind === "worker" && drawer ? { worker: drawer.worker, stage: drawer.stage } : null);
     if (h !== location.hash) history.replaceState(null, "", h);
   }, [token, selected, tab, drawer, panel]);
   const closeDrawer = () => { setDrawer(null); setPanel(null); };
-  const legOrder = joined.map((j) => j.leg.leg);
-  useDrawerKeys(drawer, panel, legOrder, setDrawer, closeDrawer);
+  const workerOrder = joined.map((j) => j.worker.worker);
+  useDrawerKeys(drawer, panel, workerOrder, setDrawer, closeDrawer);
   const ctx: BoardCtx = useMemo(() => ({
     board, cards: new Map(joined.flatMap((j) => (j.row ? [[j.row.name, j] as const] : []))),
-    open: (leg, stage = "live") => { setDrawer((d) => openAt(d, leg, stage as Stage)); setPanel({ kind: "leg" }); },
+    open: (worker, stage = "live") => { setDrawer((d) => openAt(d, worker, stage as Stage)); setPanel({ kind: "worker" }); },
   }), [board, joined]);
   return (
     <BoardContext.Provider value={ctx}>
@@ -277,9 +277,9 @@ function NameLink({ row, token, className = "" }: { row: Row; token: string; cla
 function Attention({ label, items, needs, token, now }: { label: string; items: ReturnType<typeof fleetSections>["attention"]["chief"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
   const ctx = useBoardCtx();
   return <ul className="fleet-attn-list" aria-label={label}>
-    {needs.map(({ leg, need }) => ctx.board && need && <li key={`need:${leg.leg}`} className="fleet-attn bd-need-row">
+    {needs.map(({ worker, need }) => ctx.board && need && <li key={`need:${worker.worker}`} className="fleet-attn bd-need-row">
       <Swatch board={ctx.board} group="verb" k={need.verb} />
-      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(leg.leg, leg.stage)}>{leg.leg}</button>
+      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(worker.worker, worker.stage)}>{worker.worker}</button>
       {` · ${need.action}`}
       {need.since && <span className="fleet-age">{` · ${ago(now - Date.parse(need.since))}`}</span>}
     </li>)}
@@ -435,9 +435,9 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}
         </span>
         {card && bctx.board && <span className="bd-goalcell">
-          <button type="button" className="bd-link" onClick={() => bctx.open(card.leg.leg, card.leg.stage)} title="open the worker's stages">{card.leg.goal || card.leg.ticket}</button>
-          <StageDots leg={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
-          <StateChip board={bctx.board} state={card.leg.state} />
+          <button type="button" className="bd-link" onClick={() => bctx.open(card.worker.worker, card.worker.stage)} title="open the worker's stages">{card.worker.goal || card.worker.ticket}</button>
+          <StageDots worker={card.worker} board={bctx.board} onPick={(s) => bctx.open(card.worker.worker, s)} />
+          <StateChip board={bctx.board} state={card.worker.state} />
         </span>}
         <span className="fleet-act" title={actText}>{actText}</span>
         {row.usage?.fill != null ? <Meter fill={row.usage.fill} /> : <span className="fleet-nometer" />}
@@ -474,7 +474,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           {row.usage?.fill != null
             ? <span className="fleet-context">{`context ${row.usage.fill}% of ${k(row.usage.ceiling)}`}<Meter fill={row.usage.fill} /></span>
             : <span className="fleet-context">{row.cloud ? "tokens not measured (cloud)" : row.usage ? "context unknown (no trusted window)" : "context not measured"}</span>}
-          {row.role === "leg" && <a className="fleet-link" href={pageHref({ here: "agui", token, id: "health" })}>worker sessions and usage budget on Health</a>}
+          {row.role === "worker" && <a className="fleet-link" href={pageHref({ here: "agui", token, id: "health" })}>worker sessions and usage budget on Health</a>}
           <details className="fleet-more">
             <summary>{[row.agents.length > 0 && plural(row.agents.length, "subagent"), "usage"].filter(Boolean).join(" · ")}</summary>
             {row.agents.length > 0 && (

@@ -55,7 +55,7 @@ export function codexStartOf(launch: Record<string, string>): { pct: number; at:
 
 // scripts/lanes/lib/burn-weights.sh's defaults: the price-weighted token-equivalent worker-burn.sh reports.
 export const W = { input: 1, cacheRead: 0.1, cacheCreate: 1.25, output: 5 };
-type Ids = { session: string; leg: string; ticket: string | null; model: string | null };
+type Ids = { session: string; worker: string; ticket: string | null; model: string | null };
 export type Tally = { calls: number; input: number; output: number; cacheRead: number; cacheCreate: number };
 export type CostRow = Ids & {
   lane: Lane; bank: "claude" | "codex" | "openrouter"; priced_by: "claude-weights" | "codex-bank" | "unpriced";
@@ -65,8 +65,8 @@ export type CostRow = Ids & {
 const BANK = { native: "claude", cloud: "claude", claudex: "codex", openrouter: "openrouter" } as const;
 
 export function costRowOf(a: Ids & { lane: Lane; tally: Tally; codexStart: { pct: number; at: number } | null; codexNow: CodexBank | null }): CostRow {
-  const { session, leg, ticket, model, lane, tally: t, codexStart: s, codexNow: n } = a;
-  const base = { session, leg, ticket, model, lane, bank: BANK[lane] };
+  const { session, worker, ticket, model, lane, tally: t, codexStart: s, codexNow: n } = a;
+  const base = { session, worker, ticket, model, lane, bank: BANK[lane] };
   const counts = { calls: t.calls, input: t.input, output: t.output, cache_read: t.cacheRead, cache_create: t.cacheCreate };
   const none = { codex_used_pct_start: null, codex_used_pct_end: null, codex_used_pct_delta: null };
   if (lane === "native" || lane === "cloud") {
@@ -74,7 +74,7 @@ export function costRowOf(a: Ids & { lane: Lane; tally: Tally; codexStart: { pct
     return { ...base, priced_by: "claude-weights", ...counts, cost_eq, ...none };
   }
   if (lane === "openrouter") return { ...base, priced_by: "unpriced", ...counts, cost_eq: null, ...none };
-  // A lower end reading means the weekly window reset under the leg: no delta, rather than a negative burn.
+  // A lower end reading means the weekly window reset under the worker: no delta, rather than a negative burn.
   const start = s?.pct ?? null, end = n?.weeklyPct ?? null;
   // A start reading older than the current weekly window (resetsAt - 7d) was taken before a reset: no delta either.
   const sameWindow = !!s && !!n && (n.resetsAt === null || s.at >= n.resetsAt - 7 * 86400_000);
@@ -90,7 +90,7 @@ export type EvalRow = Ids & {
 };
 
 export function evalRowOf(a: Ids & { lane: Lane; rounds: number[]; view: View | null; doc: string }): EvalRow {
-  const { session, leg, ticket, model, lane, rounds, view, doc } = a;
+  const { session, worker, ticket, model, lane, rounds, view, doc } = a;
   const clean = rounds.indexOf(0);
   let verdicts = 0, noGo = 0;
   for (const m of doc.matchAll(/^- (.*)$/gm)) {
@@ -110,7 +110,7 @@ export function evalRowOf(a: Ids & { lane: Lane; rounds: number[]; view: View | 
   if (l2r !== null && l2r < 0) l2r += 24 * 3600_000;
   const denied = tools.filter((t) => t.failure === "denied");
   return {
-    session, leg, ticket, model, lane, cr_rounds: rounds.length, cr_findings_per_round: rounds, rounds_to_clean: clean >= 0 ? clean + 1 : null,
+    session, worker, ticket, model, lane, cr_rounds: rounds.length, cr_findings_per_round: rounds, rounds_to_clean: clean >= 0 ? clean + 1 : null,
     judge_verdicts: verdicts, judge_no_go: noGo, judge_no_go_rate: verdicts ? noGo / verdicts : null, red_before_green,
     live_to_ready_ms: l2r, denials: denied.length,
     denials_recovered: denied.filter((d) => tools.some((t) => t.start > d.start && t.name === d.name && t.status === "done")).length,
