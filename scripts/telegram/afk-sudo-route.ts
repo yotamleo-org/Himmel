@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { GROUP_ANONYMOUS_BOT_ID, isAllowed, type Access } from "./gate";
+import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
 
 // Operator `approve <id> <code>` / `deny <id>` -> the root afk-sudo helper.
 // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
@@ -29,7 +29,7 @@ const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
 const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
-export type AfkSudoMsg = { from: number; chat_id: number; text: string; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
+export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
 export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
 export type HelperRun = (args: string[], stdin: string) => Promise<{ code: number; stdout: string }>;
 export type AfkSudoDeps = {
@@ -151,8 +151,6 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // inbox is readable by the sessions that can run the helper. Consume it, never
       // pass it on: a reply to a bot message whose prompt is gone (the map is in
       // memory, so a restart forgets it), or any message sent while a prompt waits.
-      // ponytail: ordinary bare six-digit numbers with no reply are held too;
-      // escape path: prefix them with "text:" to send them as ordinary text.
       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? null;
         if (msg.reply_to_bot === true || waiting) {
@@ -161,10 +159,16 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
           return true;
         }
-        if (msg.reply_to_message_id == null && CODE_REPLY.test(msg.text)) {
-          void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => {});
-          return true;
-        }
+      }
+      // Holding is not helper authorization: operator group messages, including
+      // trusted anonymous admins, must not carry a bare code into an inbox either.
+      // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
+      // Upgrade path: an explicit non-code message mode instead of guessing intent.
+      if (msg.reply_to_message_id == null && CODE_REPLY.test(msg.text)
+        && msg.forwarded === false && msg.caption === false
+        && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
+        void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
+        return true;
       }
       return false;
     }

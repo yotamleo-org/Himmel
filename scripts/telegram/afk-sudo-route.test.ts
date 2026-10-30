@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
-import { GROUP_ANONYMOUS_BOT_ID } from "./gate";
+import { GROUP_ANONYMOUS_BOT_ID, isOperatorIdentity } from "./gate";
 import { afkTapUnlessLocked, handleInbound, ingestBatch, ingestUpdates, inboundToDelivered, type AutoGate } from "./poller";
 import { sessionDir } from "./bus";
 
@@ -126,6 +126,52 @@ test("handleInbound: a bare six-digit message with no reply or live prompt is he
     expect(replies[0]).toContain("text:");
     expect([...replies, ...logs].join("\n")).not.toContain("123456");
   }
+});
+
+test("handleInbound: operator and trusted anonymous-admin bare codes in a group never reach an inbox or run", async () => {
+  for (const from of [OP, GROUP_ANONYMOUS_BOT_ID]) {
+    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+    const { deps, calls, replies, logs } = fake();
+    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: true } } };
+    deps.access = () => groupAccess;
+    const ran: string[] = [];
+    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: -100123 }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
+    await settle();
+    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(false);
+    expect(ran).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("held");
+    expect([...replies, ...logs].join("\n")).not.toContain("123456");
+  }
+});
+
+test("handleInbound: non-operator group numbers stay forwarded", async () => {
+  for (const [from, trusted, senderChat] of [[999, true, -100123], [GROUP_ANONYMOUS_BOT_ID, false, -100123], [GROUP_ANONYMOUS_BOT_ID, true, -100999]] as const) {
+    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+    const { deps, calls, replies } = fake();
+    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: trusted } } };
+    deps.access = () => groupAccess;
+    const ran: string[] = [];
+    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: senderChat }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
+    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(true);
+    expect(ran).toEqual(["group_-100123"]);
+    expect(calls).toEqual([]);
+    expect(replies).toEqual([]);
+  }
+});
+
+test("a failed hold notice is logged without leaking the code or reopening delivery", async () => {
+  const { deps, calls, logs } = fake();
+  deps.reply = async () => { throw new Error("outbox refused 123456"); };
+  expect(makeAfkSudoGate(deps)(dm("123456"))).toBe(true);
+  await settle();
+  expect(calls).toEqual([]);
+  expect(logs).toHaveLength(1);
+  expect(logs[0]).toContain("hold notice failed");
+  expect(logs.join("\n")).not.toContain("123456");
 });
 
 test("off by default: a bare six-digit message stays ordinary text without the helper", () => {
