@@ -15,11 +15,11 @@ test("transcribe happy path: ffmpeg converts to 16kHz mono wav, whisper runs -l 
   };
   expect(await transcribe("/att/20.oga", exec)).toBe("hello world");
   expect(calls.length).toBe(2);
-  // ffmpeg leg: source in, 16kHz mono wav out
+  // ffmpeg step: source in, 16kHz mono wav out
   expect(calls[0]).toContain("/att/20.oga");
   expect(calls[0]).toContain("16000");
   expect(calls[0]).toContain("/att/20.oga.wav");
-  // whisper leg: wav in, auto language (multi-language requirement)
+  // whisper step: wav in, auto language (multi-language requirement)
   expect(calls[1]).toContain("/att/20.oga.wav");
   expect(calls[1]).toContain("auto");
 });
@@ -126,7 +126,7 @@ test("transcribe: wav cleanup ENOENT is silently swallowed", async () => {
 
 // Default whisper binary resolution. WHISPER_CLI is read at module load, so each
 // case runs transcribe() in a fresh bun child with a temp HOME and a controlled
-// PATH, and prints argv[0] of the whisper leg.
+// PATH, and prints argv[0] of the whisper step.
 async function whisperBinFor(env: Record<string, string>): Promise<string> {
   const home = mkdtempSync(join(tmpdir(), "whisper-home-"));
   try {

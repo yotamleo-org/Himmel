@@ -237,7 +237,7 @@ FLEET="$BUCKET/HIMMEL-nextleg-2026-10-09ZZ-roadmap-console.fleet.json"
 mkleg() { printf -- '---\nresume_cwd: %s\n---\n\n# HIMMEL-1 — x — worker %s (claude-opus-5-5, native), 2026-10-09\n' "$2" "$1" > "$BUCKET/HIMMEL-1-$1-x-2026-10-09.md"; }
 mkleg N7 "$TMP/wt"; mkleg N8 "$TMP/gone"; mkleg N9 "$PRIMARY"
 cat > "$FLEET" <<EOF
-{"schema":1,"legs":[
+{"schema":1,"workers":[
  {"doc":"$BUCKET/HIMMEL-1-N7-x-2026-10-09.md","label":"N7"},
  {"doc":"$BUCKET/HIMMEL-1-N8-x-2026-10-09.md","label":"N8"},
  {"doc":"$BUCKET/HIMMEL-1-N9-x-2026-10-09.md","label":"N9"},
@@ -279,7 +279,7 @@ echo "# tampered" >> "$BUCKET/launch-N6.sh"
 bg launch-worker N6 bypass >/dev/null; assert_rc "L19 a launcher edited after the chief recorded it is refused" 23 "$?"
 # gen-briefs.py writes the launcher in --bucket and the sidecar beside --manifest
 MDIR="$TMP/manifests"; mkdir -p "$MDIR"; FLEET2="$MDIR/HIMMEL-nextleg-2026-10-09ZY-roadmap-console.fleet.json"
-echo '{"schema":1,"legs":[]}' > "$FLEET2"
+echo '{"schema":1,"workers":[]}' > "$FLEET2"
 cat > "$BUCKET/launch-N2.sh" <<EOF
 #!/usr/bin/env bash
 RECORD="$TMP/launcher2.rec" "$TMP/bin/record"
@@ -292,12 +292,20 @@ wait_for "$TMP/launcher2.rec"
 git init -q -b main "$TMP/foreign"; git -C "$TMP/foreign" commit -q --allow-empty -m f
 git -C "$TMP/foreign" worktree add -q "$TMP/fwt" -b feat/foreign
 mkleg N3 "$TMP/fwt"
-jq --arg d "$BUCKET/HIMMEL-1-N3-x-2026-10-09.md" '.legs += [{"doc":$d,"label":"N3"}]' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
+jq --arg d "$BUCKET/HIMMEL-1-N3-x-2026-10-09.md" '.workers += [{"doc":$d,"label":"N3"}]' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
 rm -f "$RECORD"; bg launch-worker N3 bypass >/dev/null; assert_rc "L22 a linked worktree of another repo is refused" 23 "$?"
-jq 'del(.legs[] | select(.label == "N3"))' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
+jq 'del(.workers[] | select(.label == "N3"))' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
 out=$(BREAK_GLASS_WORKER_CMD="$TMP/bin/no-such-launcher" bg launch-worker N7 bypass); rc=$?
 assert_rc "L23 a launcher command that is not there is not reported as launched" 23 "$rc"
 assert_not_contains "L24 and it never says launching" "launching" "$out"
+# a manifest still keyed with the pre-rename array: read while legacy names are on, ignored when off
+OLDF="$BUCKET/HIMMEL-nextleg-2026-10-09ZW-roadmap-console.fleet.json"
+jq '{schema, legs: .workers}' "$FLEET" > "$OLDF"
+rm -f "$RECORD"; BREAK_GLASS_FLEET="$OLDF" bg launch-worker N7 - >/dev/null; rc=$?
+assert_rc "L25 an old manifest keyed by the pre-rename array still launches" 0 "$rc"
+wait_for "$RECORD"
+BREAK_GLASS_FLEET="$OLDF" HIMMEL_LEGACY_NAMES=0 bg launch-worker N7 - >/dev/null
+assert_rc "L26 with legacy names off the old array is not read" 23 "$?"
 unset BREAK_GLASS_WORKER_CMD
 
 # --- /close-wrapped ------------------------------------------------------------

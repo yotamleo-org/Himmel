@@ -20,7 +20,7 @@ export type Route =
   | { kind: "auto"; op: "station-status" | "revert-main" | "repin-hooks" | "launch-worker" | "cr-reset" | "close-wrapped" | "relaunch-chief" | "restart-bridge" | "allow-rule" | "confirm"; arg: string; time: string }
   | { kind: "console"; name: string; text: string }
   | { kind: "consoles" }
-  | { kind: "fleet"; verb: "status" | "legs" | "go?" | "push" | "halt"; leg?: string }
+  | { kind: "fleet"; verb: "status" | "workers" | "go?" | "push" | "halt"; worker?: string }
   | { kind: "fleet-malformed" }
   | { kind: "lockdown" }
   | { kind: "chat"; text: string };
@@ -97,11 +97,11 @@ export function classify(raw: string, botUsername?: string | null): Route {
     if (rest === "") {
       if (verb === "lockdown") return { kind: "lockdown" };
       if (verb === "fleet") return { kind: "fleet", verb: "status" };
-      if (verb === "workers" || verb === "legs") return { kind: "fleet", verb: "legs" };
+      if (verb === "workers" || verb === "legs") return { kind: "fleet", verb: "workers" };
       if (verb === "halt") return { kind: "fleet", verb: "halt" };
     }
     const label = rest.match(/^ ([A-Za-z0-9_.-]{1,64})$/);
-    if (label && !label[1].includes("..") && (verb === "go" || verb === "push" || verb === "halt")) return { kind: "fleet", verb: verb === "go" ? "go?" : verb, leg: label[1] };
+    if (label && !label[1].includes("..") && (verb === "go" || verb === "push" || verb === "halt")) return { kind: "fleet", verb: verb === "go" ? "go?" : verb, worker: label[1] };
     // a reserved fleet verb with any other shape (bad/oversized/
     // traversal label, control char, extra args, missing label) is a terminal
     // refusal, never agent chat. FLEET_VERB's lookahead keeps `/gopher` and
