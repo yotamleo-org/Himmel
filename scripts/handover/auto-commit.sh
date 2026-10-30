@@ -609,7 +609,7 @@ if [ "${HANDOVER_WORKER_SPLIT_OK:-}" != "1" ]; then
     _worker_split_reset
     _hp_collect_or_die _worker_split_add_path diff --cached --name-only --diff-filter=A
     if [ "$worker_split_found" -eq 1 ]; then
-        echo "ERR auto-commit: refusing — this commit would create a SECOND handover file for the same leg:" >&2
+        echo "ERR auto-commit: refusing — this commit would create a SECOND handover file for the same worker:" >&2
         _worker_split_print >&2
         echo "    One worker writes ONE file (state first, then orders, in the SAME doc)." >&2
         echo "    If these genuinely are two separate workers' work, commit them separately." >&2
