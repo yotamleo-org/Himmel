@@ -300,7 +300,7 @@ async function loadHealth() {
   } catch (_) { j = null; toast("health sources: server unreachable"); }
   if (gen !== healthGen) return;
   const gone = { state: "error", reason: "health endpoint unreachable" };
-  health = j || { bank: gone, legs: gone, monitoring: { state: "error", reason: "health endpoint unreachable" } };
+  health = j || { bank: gone, workers: gone, monitoring: { state: "error", reason: "health endpoint unreachable" } };
   if (currentPage.needsFeed === false) paint();
 }
 

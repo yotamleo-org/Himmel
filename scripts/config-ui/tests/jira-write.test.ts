@@ -44,11 +44,11 @@ test("a drop transitions the ticket with the mapped Jira status name", async () 
 });
 
 test("a theme select replaces the previous theme- label and keeps the others", async () => {
-  const b = boot({ STUB_JIRA_LABELS: "product, theme-old-theme, leg-blocked" });
+  const b = boot({ STUB_JIRA_LABELS: "product, theme-old-theme, worker-blocked" });
   const r = await b.post({ key: "HIMMEL-12", theme: "tracker" });
   expect(r.status).toBe(200);
   const edit = b.calls().find((c) => c[0] === "edit")!;
-  expect(edit).toEqual(["edit", "HIMMEL-12", "--labels", "product,leg-blocked,theme-tracker"]);
+  expect(edit).toEqual(["edit", "HIMMEL-12", "--labels", "product,worker-blocked,theme-tracker"]);
   expect(b.audit()[0]).toMatchObject({ action: "jira-theme", target: "HIMMEL-12", value: "tracker", rc: 0 });
 });
 
@@ -77,11 +77,11 @@ test("refused with no CLI call: missing token, bad key, unknown status, bad them
 });
 
 test("a description line that starts with Labels: is not read as the ticket's labels", async () => {
-  const b = boot({ STUB_JIRA_LABELS: "product, theme-old, leg-blocked", STUB_JIRA_DESC: "intro\nLabels: decoy\nmore" });
+  const b = boot({ STUB_JIRA_LABELS: "product, theme-old, worker-blocked", STUB_JIRA_DESC: "intro\nLabels: decoy\nmore" });
   const r = await b.post({ key: "HIMMEL-12", theme: "tracker" });
   expect(r.status).toBe(200);
   expect(b.calls().find((c) => c[0] === "get")).toEqual(["get", "HIMMEL-12", "--json"]);
-  expect(b.calls().find((c) => c[0] === "edit")).toEqual(["edit", "HIMMEL-12", "--labels", "product,leg-blocked,theme-tracker"]);
+  expect(b.calls().find((c) => c[0] === "edit")).toEqual(["edit", "HIMMEL-12", "--labels", "product,worker-blocked,theme-tracker"]);
 });
 
 test("clearing the theme of a ticket whose only label is the theme is refused, with no edit call", async () => {
@@ -130,7 +130,7 @@ test("roadmap.ts prefers the Jira theme label over the plan theme, and maps a ma
   writeFileSync(join(mirror, "HIMMEL-3.md"), issue(3, []));
   writeFileSync(join(mirror, "..", "m.versions.tsv"), "v1.1.2\tfalse\t\n");
   writeFileSync(join(plan, "stage1", "C01.tsv"), "key\ttheme\nHIMMEL-1\ttracker\nHIMMEL-3\ttracker\nHIMMEL-9\tFleet Ops\n");
-  const r = readRoadmap({ mirrorDir: mirror, planDir: plan, legs: { state: "absent" } as never });
+  const r = readRoadmap({ mirrorDir: mirror, planDir: plan, workers: { state: "absent" } as never });
   const t = Object.fromEntries(r.tickets.map((x) => [x.k, r.themes[x.theme]]));
   expect(t).toEqual({ 1: "Fleet Ops", 2: "brand-new", 3: "tracker" });
   expect(r.themeSlugs[r.themes.indexOf("Fleet Ops")]).toBe("fleet-ops");
@@ -138,7 +138,7 @@ test("roadmap.ts prefers the Jira theme label over the plan theme, and maps a ma
 
 test("the Kanban card carries a theme select and a draggable card; columns are drop targets", () => {
   const data = { state: "ok", versions: [{ n: "v1.1.2", rel: false, date: "", counts: {}, open: [] }], themes: ["(no theme)", "tracker"], themeSlugs: ["", "tracker"],
-    tickets: [{ k: 7, t: "x", s: "To Do", b: "todo", v: 0, theme: 1, pv: null, drift: 0, labels: [], leg: null }], mirror: { count: 1, newest: "" } };
+    tickets: [{ k: 7, t: "x", s: "To Do", b: "todo", v: 0, theme: 1, pv: null, drift: 0, labels: [], worker: null }], mirror: { count: 1, newest: "" } };
   const html = renderKanban(data, { writes: true });
   expect(html).toContain('draggable="true"');
   expect(html).toContain('data-rm-drop="prog"');
@@ -150,7 +150,7 @@ test("the Kanban card carries a theme select and a draggable card; columns are d
 test("a theme slug over the 40-char write cap is offered disabled, not as a write the server would refuse", () => {
   const long = "a".repeat(41);
   const data = { state: "ok", versions: [{ n: "v1.1.2", rel: false, date: "", counts: {}, open: [] }], themes: ["(no theme)", "ok", "Long"], themeSlugs: ["", "ok", long],
-    tickets: [{ k: 7, t: "x", s: "To Do", b: "todo", v: 0, theme: 0, pv: null, drift: 0, labels: [], leg: null }], mirror: { count: 1, newest: "" } };
+    tickets: [{ k: 7, t: "x", s: "To Do", b: "todo", v: 0, theme: 0, pv: null, drift: 0, labels: [], worker: null }], mirror: { count: 1, newest: "" } };
   const html = renderKanban(data, { writes: true });
   expect(html).toContain(`<option value="${long}" disabled>`);
   expect(html).toContain('<option value="ok">');

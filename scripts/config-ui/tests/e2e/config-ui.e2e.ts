@@ -154,9 +154,9 @@ test("at 390 px the page does not scroll horizontally", async ({ page }) => {
 
 // the Health page.
 const LEDGER = [
-  { ts: "2026-10-05T01:00:00Z", leg: "old", verdict: "SKIPPED-BANK", five_hour: "91.0", seven_day: "77.0", age: "3", degraded: false },
-  { ts: "2026-10-05T02:00:00Z", leg: "l", verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false },
-  { ts: "2026-10-05T02:30:00Z", leg: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
+  { ts: "2026-10-05T01:00:00Z", worker: "old", verdict: "SKIPPED-BANK", five_hour: "91.0", seven_day: "77.0", age: "3", degraded: false },
+  { ts: "2026-10-05T02:00:00Z", worker: "l", verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false },
+  { ts: "2026-10-05T02:30:00Z", worker: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
 ];
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
 const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Trends", "How good are our reviewers?", "Search and graph freshness"];
@@ -188,7 +188,7 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   await page.reload();
   await page.locator("#verdict .word").waitFor();
   expect(errors).toEqual([]);
-  await expect(page.locator("#bank, #legs").first()).not.toContainText("loading");
+  await expect(page.locator("#bank, #workers").first()).not.toContainText("loading");
 });
 
 test("health: the seven sections appear in spec order", async ({ page }) => {
@@ -237,12 +237,12 @@ test("health: bank card shows the newest row with bank numbers; I2 the ledger is
 
 test("health: workers card shows the worker doc and its marker from the real parsers (BLOCKED flips it)", async ({ page }) => {
   await openHealth(page, {}, { handover: { bullet: "- 03:00 LIVE — x" } });
-  const workers = page.locator("#legs");
+  const workers = page.locator("#workers");
   await expect(workers).toContainText("HIMMEL-9999-N1-e2e-worker-RESUME.md");
-  await expect(workers.locator(".leg .mk")).toHaveText("LIVE");
+  await expect(workers.locator(".worker .mk")).toHaveText("LIVE");
   h.setBullet("- 03:05 BLOCKED — y");
   await page.locator('[data-act="refresh-health"]').click();
-  await expect(workers.locator(".leg .mk")).toHaveText("BLOCKED");
+  await expect(workers.locator(".worker .mk")).toHaveText("BLOCKED");
 });
 
 test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows (HIMMEL-7350)", async ({ page }) => {
@@ -259,7 +259,7 @@ test("health: with the feed pending the verdict is No data and bank and workers 
   await page.evaluate(() => { location.hash = "#/health"; });
   await expect(verdictWord(page)).toHaveText("No data");
   await expect(page.locator("#bank")).toContainText("86.0");
-  await expect(page.locator("#legs")).toContainText("LIVE");
+  await expect(page.locator("#workers")).toContainText("LIVE");
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
 });
 
@@ -326,7 +326,7 @@ test("health: every source absent leaves No data cards that name the source; ver
   await expect(verdictWord(page)).toHaveText("All clear");
   await expect(page.locator("#verdict")).toContainText("alerts not checked");
   await expect(page.locator("#bank .nodata")).toContainText("bank-preflight ledger");
-  await expect(page.locator("#legs .nodata")).toContainText("fleet manifest");
+  await expect(page.locator("#workers .nodata")).toContainText("fleet manifest");
   await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running");
   expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Triage", "Inventory"]); // Health ends with the Triage and Inventory sections
 });

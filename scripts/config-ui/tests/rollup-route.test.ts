@@ -78,7 +78,7 @@ test("rollup: an absent file is state absent; the route is token-gated and read-
 test("Health page: the Trends section shows the three cards, a sparkline and the sentence", async () => {
   const s = boot(ROWS);
   const rollup = await (await get(s.port)).json();
-  const html = renderHealth(null, { bank: { state: "absent" }, legs: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup });
+  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup });
   for (const t of ["Velocity", "Cost", "Health"]) expect(html).toContain(`<h3>${t}</h3>`);
   expect(html).toContain("Faster than last week and slower than last version");
   expect(html).toContain("<polyline");
@@ -89,6 +89,6 @@ test("Health page: the Trends section shows the three cards, a sparkline and the
 test("Health page: no roll-up shows 'no data yet' in the Trends section; strings are escaped", () => {
   expect(renderHealth(null, null)).toContain("no data yet");
   const evil = `<img src=x onerror=alert(1)>`;
-  const html = renderHealth(null, { bank: { state: "absent" }, legs: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup: { state: "ok", cards: [{ id: "velocity", title: evil, metric: evil, unit: evil, state: "ok", spark: [], week: null, version: null, sentence: evil }] } });
+  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, rollup: { state: "ok", cards: [{ id: "velocity", title: evil, metric: evil, unit: evil, state: "ok", spark: [], week: null, version: null, sentence: evil }] } });
   expect(html).not.toContain("<img");
 });
