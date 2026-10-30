@@ -334,8 +334,9 @@ pasted into the brief. Detail:
   path such as `src/main.py`, `Makefile` or `LICENSE` keeps
   `worker-impl`. `worker-eval` is only an explicit `"profile"` key in the workers
   JSON.
-- On the native lane, a standard-context launch of a Sonnet 5.5 model (the
-  launcher matches the model id by prefix in `headed-arm-worker.sh`) takes the profile's `sonnetAutocompact` as its ceiling
+- On the native lane, a standard-context launch of a model in the Sonnet 5.0
+  to 5.9 range (`headed-arm-worker.sh` matches the id by prefix, so the plain,
+  unnumbered id counts too) takes the profile's `sonnetAutocompact` as its ceiling
   (`worker-impl` and `worker-eval`: `450000`) and the profile's
   `sonnetContextGuard` as its default context guard (`worker-impl`: hand-off,
   `worker-eval`: compaction). An explicit `--context-guard` (including `none`)
@@ -343,10 +344,10 @@ pasted into the brief. Detail:
   `1m`. `WORKER_SESSION_CONTEXT=1m` alone is refused: it needs the brief's
   reasoned Context line as well
   ([`lane-calibration.md`](../internals/lane-calibration.md)).
-- On a launch that takes a Sonnet ceiling (native lane, Sonnet 5.5 model,
-  `worker-impl` or `worker-eval`), `ab_arm` is refused by the wrapper and up
-  front by `gen-briefs`, so run the arm on a profile without one, for example
-  `worker-docs`. The wrapper also refuses it on a 1m context.
+- On a launch that takes a Sonnet ceiling (native lane, a model in the Sonnet
+  5.0 to 5.9 range, `worker-impl` or `worker-eval`), `ab_arm` is refused by the
+  wrapper and up front by `gen-briefs`, so run the arm on a profile without
+  one, for example `worker-docs`. The wrapper also refuses it on a 1m context.
 
 **Repo map (off by default).** Set `WORKER_SESSION_REPO_MAP=1` in the launching shell and
 a profiled worker's system prompt starts with a repo map: the files of
