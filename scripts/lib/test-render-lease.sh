@@ -59,9 +59,10 @@ render_lease_lock_release
 
 mkdir -p "$RENDER_LEASE_DIR/.registry.lock"
 printf 'pid:%s\n' "$$" > "$RENDER_LEASE_DIR/.registry.lock/owner.pid"
-touch -t 202001010000 "$RENDER_LEASE_DIR/.registry.lock"
-rc=0; render_lease_lock_acquire 2>/dev/null || rc=$?
+touch -t 202001010000 "$RENDER_LEASE_DIR/.registry.lock" || exit 1
+rc=0; RENDER_LEASE_LOCK_STALE_SECS=1 render_lease_lock_acquire 2>/dev/null || rc=$?
 check "aged POSIX live-owner lock is never broken" "$rc" "1"
+check "aged POSIX live-owner lock is preserved" "$(test -d "$RENDER_LEASE_DIR/.registry.lock" && echo held || echo broken)" "held"
 render_lease_lock_release
 check "POSIX owner can release its lock" "$(test -e "$RENDER_LEASE_DIR/.registry.lock" && echo held || echo released)" "released"
 

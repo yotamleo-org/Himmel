@@ -37,8 +37,8 @@ HIM_ROOT=$(cd "$(dirname "$CENSUS")/../.." && pwd -P)
 # under it, which a worktree path cannot exercise.
 HIM_PRIMARY="${HIM_ROOT%/.claude/worktrees/*}"
 # Live enumeration must use ps even when PowerShell is installed.
-mkdir -p "$WORK/bin"
-cat > "$WORK/bin/ps" <<'EOF'
+mkdir -p "$WORK/bin" || exit 1
+cat > "$WORK/bin/ps" <<'EOF' || exit 1
 #!/bin/sh
 case "$*" in
     '-ww -eo pid=,ppid=,etime=,lstart=,args='|'-eo pid=,ppid=,etime=,lstart=,args=') ;;
@@ -47,14 +47,17 @@ esac
 printf 'ps\n' >> "$CENSUS_ENUM_TRACE"
 printf '920001 1 40:00 Fri Oct 30 12:00:00 2026 /usr/bin/bash %s/scripts/ci/test-posix-enumeration.sh\n' "$CENSUS_TEST_ROOT"
 EOF
-cat > "$WORK/bin/powershell" <<'EOF'
+cat > "$WORK/bin/powershell" <<'EOF' || exit 1
 #!/bin/sh
 printf 'powershell\n' >> "$CENSUS_ENUM_TRACE"
 printf '920002|1|2400|20261030120000|/usr/bin/bash %s/scripts/ci/test-wrong-enumerator.sh\n' "$CENSUS_TEST_ROOT"
 EOF
-chmod +x "$WORK/bin/ps" "$WORK/bin/powershell"
-ln -s powershell "$WORK/bin/powershell.exe"
-ln -s powershell "$WORK/bin/pwsh"
+chmod +x "$WORK/bin/ps" "$WORK/bin/powershell" || exit 1
+ln -s powershell "$WORK/bin/powershell.exe" || exit 1
+ln -s powershell "$WORK/bin/pwsh" || exit 1
+for tool in ps powershell powershell.exe pwsh; do
+    [ -x "$WORK/bin/$tool" ] && [ "$(PATH="$WORK/bin:$PATH" command -v "$tool")" = "$WORK/bin/$tool" ] || exit 1
+done
 out=$(
     unset ORPHAN_CENSUS_INPUT
     PATH="$WORK/bin:$PATH" CENSUS_ENUM_TRACE="$WORK/enumeration.trace" CENSUS_TEST_ROOT="$HIM_ROOT" bash "$CENSUS" --min-age 10 2>&1
