@@ -21,8 +21,10 @@ name: "CI (os:macos cadence)"
 #   gh workflow run macos-cadence.yml --ref main
 #
 # A fix PR proves only ITS suites. Dispatch with `suites` set (space-
-# separated repo-relative test-*.sh paths) and ONE runner runs just those via
-# run-shell-tests.sh --only-list, in minutes instead of the 8-shard hour-plus run:
+# separated repo-relative test-*.sh paths) and each suite runs as its OWN job
+# (named after the suite, own runner, own failed-log artifact) via
+# run-shell-tests.sh --only-list, in the time of the slowest suite instead of the
+# 8-shard hour-plus run:
 #   gh workflow run macos-cadence.yml --ref <branch> -f suites="<path> <path>"
 # The run-name carries the list, and ready-check.sh item 10 accepts the run when
 # the log shows [PASS] for every named suite (however red the rest). Empty
@@ -57,9 +59,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A `suites` dispatch is one job per suite (see `suite` below).
+  # This job validates the input once, on a cheap runner, before any macOS
+  # runner starts, and hands the matrix a JSON list of {path, slug}: the slug is
+  # the path with `/` made `__`, because an artifact name cannot hold a `/`.
+  plan:
+    name: macos-cadence / plan
+    if: inputs.suites != ''
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.split.outputs.suites }}
+    steps:
+      - id: split
+        run: |
+          set -f
+          printf '%s\n' $SUITES | awk '!seen[$0]++' > suites.txt
+          if grep -qvE '^[A-Za-z0-9_./-]+$' suites.txt || grep -q '\.\.' suites.txt; then
+            echo "::error::suites must be plain repo-relative paths"
+            exit 2
+          fi
+          echo "suites=$(jq -Rsc 'split("\n") | map(select(. != "")) | map({path: ., slug: gsub("/"; "__")})' suites.txt)" >> "$GITHUB_OUTPUT"
+        env:
+          SUITES: ${{ inputs.suites }}
+
   shell:
     name: macos-cadence / shell (${{ matrix.os }}, ${{ matrix.shard }})
-    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'ci:macos') && (github.event.action != 'labeled' || github.event.label.name == 'ci:macos'))
+    if: inputs.suites == '' && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'ci:macos') && (github.event.action != 'labeled' || github.event.label.name == 'ci:macos')))
     strategy:
       fail-fast: false
       matrix:
@@ -170,11 +195,77 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # A `suites` dispatch: one job per suite, each on its own runner (own HOME and
+  # TMPDIR), named after its suite, uploading its own failed-log artifact. The
+  # run takes as long as its slowest suite. `(macos-latest)` stays in the name:
+  # check-macos-nightly-health.sh finds the macOS jobs by it. The setup steps
+  # repeat `shell`'s; keep the two in step. No breakage metric: a partial suite
+  # set would read the unlisted suites as fixed.
+  suite:
+    name: macos-cadence / ${{ matrix.suite.path }} (${{ matrix.os }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        suite: ${{ fromJSON(needs.plan.outputs.suites) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Install obsidian-triage tool deps (marketplace suites)
+        run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
+      - name: Install pre-commit (scripts/test-template-nostash-hooks.sh)
+        run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
+      - name: PyYAML for python3 (the coderabbit-yaml-carveouts suite)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/py3"
+          "$RUNNER_TEMP/py3/bin/python" -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
+          echo "$RUNNER_TEMP/py3/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/py3/bin/python" -I -c 'import yaml'
+      - name: Put pinned shfmt on PATH (bash-ast model rows)
+        run: |
+          ver=3.14.1
+          sha=b7c872db63553ccffc7253aba3ed7d4885a27d83f1ba567b1138c6315a5847e5
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_darwin_arm64" -o "$RUNNER_TEMP/shfmt"
+          echo "${sha}  $RUNNER_TEMP/shfmt" | shasum -a 256 -c -
+          sudo mkdir -p /usr/local/bin
+          sudo install -m 755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
+          /usr/local/bin/shfmt --version
+          echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
+      # The suite path reaches the shell through SUITE (never interpolated into
+      # the script); `plan` already checked it is a plain repo-relative path.
+      - name: Run the suite
+        run: |
+          printf '%s\n' "$SUITE" > macos-suites.txt
+          bash scripts/ci/run-shell-tests.sh --only-list macos-suites.txt .
+        env:
+          FAIL_LOG_DIR: failed-suite-logs
+          SUITE_TIER_MODE: all
+          SUITE: ${{ matrix.suite.path }}
+      - name: Upload failed-suite logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-cadence-failed-logs-${{ matrix.suite.slug }}
+          overwrite: true
+          path: failed-suite-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Verdict + breakage metric. actions:read is for `gh run download/list` of
   # this and earlier cadence runs; nothing here writes to the repo.
+  # `needs` lists plan too so a failed plan (a bad suites input) is a red
+  # verdict, not a skipped one; the health step below fails on any macOS job
+  # that is not green, so one red suite reddens this job.
   summary:
     name: macos-cadence / summary
-    needs: shell
+    needs: [plan, shell, suite]
     if: always() && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'ci:macos') && (github.event.action != 'labeled' || github.event.label.name == 'ci:macos')))
     runs-on: ubuntu-latest
     permissions:

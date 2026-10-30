@@ -1172,6 +1172,7 @@ scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suit
 scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role, HIMMEL-6827
 scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role, HIMMEL-6827
 scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
+scripts/ci/test-macos-cadence-matrix.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
 scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
 scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088

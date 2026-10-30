@@ -1147,6 +1147,7 @@ scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	1
 scripts/handover/chief-kit/test-drift-summary.sh	1
 scripts/test-doctor-status-drift.sh	1
 scripts/ci/test-macos-cadence-concurrency.sh	1
+scripts/ci/test-macos-cadence-matrix.sh	1
 scripts/lib/test-afk-sudo.sh	4
 scripts/test-himmel-doctor-hook-layers.sh	2
 marketplace/plugins/himmel-guard/test-himmel-guard-hermetic.sh	0
