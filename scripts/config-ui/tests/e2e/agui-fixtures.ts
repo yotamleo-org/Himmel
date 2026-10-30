@@ -62,13 +62,13 @@ export function boardFixture(): object {
     headline: { live: 1, cap: 15, merged_today: 0, needs_you: 0, blocked: 0 },
     bank: { week_pct: 46, five_hour_pct: 2 }, ci: { open: 1, green: 1, pending: 0, no_checks: 0, red: 0 },
     milestones: [], needs_you: [],
-    legs: [{
-      leg: "N9001", ticket: "HIMMEL-901", goal: "Make the fleet board cards readable at every width", state: "building", stage: "pr",
+    workers: [{
+      worker: "N9001", ticket: "HIMMEL-901", goal: "Make the fleet board cards readable at every width", state: "building", stage: "pr",
       stages: { dispatch: STAGE_AT(0), live: STAGE_AT(5), pr: STAGE_AT(20), ready: null, go: null, merged: null },
       pr: { number: 9001, url: null }, links: { ticket: null, brief: null }, timeline: [],
     }],
     trends: {
-      leg_time: { unit: "min", today: [] }, cost: { total: 12_400_000 }, exploration: null, failures: null, tools: [],
+      worker_time: { unit: "min", today: [] }, cost: { total: 12_400_000 }, exploration: null, failures: null, tools: [],
       console_cost: { unit: "eq", since: STAGE_AT(0), messages: 40, eq: 10_700_000, per_hour: 5_350_000, fleet_eq: null,
         hourly: [{ hour: STAGE_AT(0), eq: 4_000_000 }, { hour: STAGE_AT(60), eq: 6_700_000 }] },
     },

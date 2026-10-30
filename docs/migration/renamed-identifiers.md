@@ -86,7 +86,10 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N42 | F7 | - | `other leg-*.sh scripts (leg-burn, leg-pr-open, leg-resume-brief, leg-timeline, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 34 | 400 / 140 | `(?<![A-Za-z0-9-])[a-z-]*leg-(?!identity\|doc-lock\|event\|jira-status\|pretrust\|transcripts\|graph\|digest\|preface\|brief\|sections)[a-z0-9-]+\.sh` | not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list) |
 | N43 | F9 | - | `other console-* scripts (console-wait.sh, console-budget.sh, guard-console-dispatch.sh, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 47 | 495 / 137 | `(?<![A-Za-z0-9-])[a-z-]*console-(?!context\.sh\|compact-reinject\|foreground\|kit\|template\|sections\|judge)[a-z0-9-]+\.(?:sh\|ts\|py\|mjs\|md)` | not in the approved rename table; a rename needs a ruling |
 
-Total: 43 old-name entries, 8899 matching lines (a line that matches two entries counts in each).
+| N44 | F18 | M | `fleet manifest key legs (read in scripts/config-ui/agui/fleet.ts)` | `workers` | id (JSON key) | HIMMEL-6647 | new name live 1/1; reader falls back to the old key while legacy names are on (`legacyNamesOn`) | 1 / 1 | `m\.legs` | HIMMEL-8204 batch M3a; the line is marked `legacy wire fallback` and allowlisted in scripts/one-shot/leg-term-allow.tsv; delete both with the fallback |
+| N45 | F18 | M | `board wire keys legs, leg_time and the per-row leg (read in scripts/config-ui/agui-web/src/board-model.ts normalizeBoard)` | `workers`, `worker_time`, `worker` | id (JSON key) | HIMMEL-6647 | new name live 1/1; the browser reader falls back to the old keys with no switch (the page has no HIMMEL_LEGACY_NAMES) | 3 / 1 | `legacy wire fallback` | HIMMEL-8204 batch M3a; board.mjs emits the old keys until its M1 flip; delete the three marked lines and the old-shape fixture scripts/config-ui/tests/fixtures/agui/board-old-wire.json with the fallback |
+
+Total: 45 old-name entries (N44 and N45 were added by HIMMEL-8204 after the measurement), 8899 matching lines (a line that matches two entries counts in each).
 N01 to N36 keep the numbers of the first draft; N37 to N43 were missing from it.
 
 ## Rename families and the order of the rename PRs

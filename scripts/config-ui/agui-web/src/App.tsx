@@ -215,7 +215,7 @@ function RunStrip({ view, now, only, onPick }: { view: View; now: number; only: 
   );
 }
 
-const ROLE: Record<Agent["role"], string> = { console: "supervisor session", leg: "worker session", judge: "judge", critic: "critic", subagent: "subagent", agent: "agent" };
+const ROLE: Record<Agent["role"], string> = { console: "supervisor session", worker: "worker session", judge: "judge", critic: "critic", subagent: "subagent", agent: "agent" };
 // "claude-opus-5-5" reads as "opus 5.5"; an alias or anything else stays as written.
 const model = (m?: string) => m?.replace(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?$/, "$1 $2.$3");
 

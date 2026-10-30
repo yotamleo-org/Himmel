@@ -13,12 +13,12 @@ const PRIOR = "HIMMEL-nextleg-2026-10-07BM-roadmap-chief";
 
 test("a worker's parent is the console its brief names", () => {
   const doc = `# HIMMEL-1 — x — worker N1 (opus, native), 2026-10-07\n\n> **You are N1.** Your RETASK token is \`BN-N1-0000aaaa\`; your console is **\`${CHIEF}\`**\n> (the only session)\n\n## Results\n\n- 09:00 LIVE — started\n`;
-  expect(graphOf("leg", doc)).toEqual({ parent: CHIEF, predecessor: null });
+  expect(graphOf("worker", doc)).toEqual({ parent: CHIEF, predecessor: null });
 });
 
 test("a worker that accepted a succession hangs under the console it accepted, the newest one winning", () => {
   const doc = `> Your console is **\`${PRIOR}\`**.\n\n## Results\n\n- 09:00 LIVE — started\n- SUCCESSION accepted: ${PRIOR} replaces HIMMEL-nextleg-2026-10-07BL-roadmap-chief\n- SUCCESSION accepted: \`${CHIEF}\` replaces ${PRIOR}\n- 10:00 LIVE — PR 5 open\n`;
-  expect(graphOf("leg", doc).parent).toBe(CHIEF);
+  expect(graphOf("worker", doc).parent).toBe(CHIEF);
 });
 
 test("a judge session's parent is the console that dispatched it, across the brief's line wrap", () => {
@@ -28,9 +28,9 @@ test("a judge session's parent is the console that dispatched it, across the bri
 
 test("consult children use their dispatch edge and stamped succession overrides the original console", () => {
   expect(graphOf("consult" as any, `dispatched by \`${CHIEF}\``).parent).toBe(CHIEF);
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
+  expect(graphOf("worker", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
   // the relay wording a worker improvised: it still names the new chief
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
+  expect(graphOf("worker", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
 });
 
 test("HIMMEL-8161: a cadence session is told by its cadence fragment or its unit name, an operator session never", () => {
@@ -56,7 +56,7 @@ test("a console hangs under the operator and names the console it succeeded", ()
 
 test("no doc, or a name that is not a plain session name, links nothing (never a guess)", () => {
   expect(graphOf("interactive", "")).toEqual({ parent: null, predecessor: null });
-  expect(graphOf("leg", "> your console is **`bad name; rm -rf`**\n")).toEqual({ parent: null, predecessor: null });
+  expect(graphOf("worker", "> your console is **`bad name; rm -rf`**\n")).toEqual({ parent: null, predecessor: null });
 });
 
 const rec = (o: Record<string, unknown>) => JSON.stringify(o);

@@ -13,7 +13,7 @@ export const PRIOR_CHIEF = "HIMMEL-nextleg-2026-10-07ZY-roadmap-chief";
 export const FLEET = {
   console: { pid: 4101, name: "HIMMEL-nextleg-2026-10-07ZZ-roadmap-chief", run: "1a000000-0000-4000-8000-000000000001", model: "claude-opus-5-5[1m]", status: "busy",
     autocompact: "auto", head: [`— CHIEF — successor to ${PRIOR_CHIEF}.md (fill signal 45 %)`], doc: [] },
-  leg: { pid: 4102, name: "HIMMEL-901-N9001-fleet-worker-2026-10-07", run: "1a000000-0000-4000-8000-000000000002", model: "opus", status: "busy",
+  worker: { pid: 4102, name: "HIMMEL-901-N9001-fleet-worker-2026-10-07", run: "1a000000-0000-4000-8000-000000000002", model: "opus", status: "busy",
     autocompact: "200000", head: ["", "> **You are N9001.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-chief`**."],
     doc: ["- 09:00 LIVE — started", "- 09:40 LIVE — PR 1901 open, watching CI"] },
   idle: { pid: 4103, name: "scratch-session", run: "1a000000-0000-4000-8000-000000000003", model: "sonnet", status: "idle" },
@@ -37,7 +37,7 @@ const BRIEF = "Check the fleet census for a missing row.";
 const SUB = { isSidechain: true, agentId: "a9001" };
 function journal(m: Member): { main: string; sub?: string } {
   if (m === FLEET.console) return { main: prompt(m, "tick") + call(m, "toolu_c1", "Bash", { command: "bash tick.sh", description: "Tick the fleet" }) };
-  if (m === FLEET.leg) return {
+  if (m === FLEET.worker) return {
     main: prompt(m, "work the ticket")
       + call(m, "toolu_l1", "Bash", { command: "git push origin HEAD:main", description: "Push" })
       + result(m, "toolu_l1", "PreToolUse:Bash hook error: check-push-target: refusing a direct push to main", true)
@@ -52,11 +52,11 @@ export function customConfig(fx: FleetFixture): string {
   const config = join(fx.dir, "custom-config"), slug = join(config, "projects", "fleet-project");
   mkdirSync(slug, { recursive: true });
   mkdirSync(join(config, "sessions"));
-  renameSync(fx.journal(FLEET.leg), join(slug, `${FLEET.leg.run}.jsonl`));
-  renameSync(join(dirname(fx.journal(FLEET.leg)), FLEET.leg.run), join(slug, FLEET.leg.run));
-  writeFileSync(join(config, "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.leg.run, status: "busy" }));
-  writeFileSync(join(fx.home, ".claude", "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run }));
-  writeFileSync(join(fx.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
+  renameSync(fx.journal(FLEET.worker), join(slug, `${FLEET.worker.run}.jsonl`));
+  renameSync(join(dirname(fx.journal(FLEET.worker)), FLEET.worker.run), join(slug, FLEET.worker.run));
+  writeFileSync(join(config, "sessions", `${FLEET.worker.pid}.json`), JSON.stringify({ sessionId: FLEET.worker.run, status: "busy" }));
+  writeFileSync(join(fx.home, ".claude", "sessions", `${FLEET.worker.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run }));
+  writeFileSync(join(fx.dir, "proc", String(FLEET.worker.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
   return config;
 }
 
