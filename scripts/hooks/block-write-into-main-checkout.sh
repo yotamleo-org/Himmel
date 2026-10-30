@@ -212,11 +212,12 @@
 #     cp/mv/ln destination-type union below is untouched). The flag survives only
 #     while every later clause's command word is a literal echo, printf, cat, tee or
 #     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
-#     wrapper, a group) clears it. While it holds, a plain relative candidate is
-#     checked against the cd target and its symlink-resolved form, and a candidate
-#     holding a `~`, a brace or a glob character keeps the payload-cwd re-check, since
-#     the shell expands `~-`, `~1`, brace lists and globs at run time (a harmless
-#     brace or glob write in the scratch folder is refused too). A candidate holding `$` is not checked at all,
+#     wrapper, a group) clears it. While it holds, a candidate proven plain by
+#     _bwimc_plain_word (only letters, digits and . _ - / + , @ :, optionally in one
+#     whole-word quote pair, no `..` component) is checked against the cd target and its
+#     symlink-resolved form; every other word keeps the payload-cwd re-check and so gets
+#     main's verdict (a harmless mid-word quote, backslash, brace or glob write in the
+#     scratch folder is refused too). A candidate holding `$` is not checked at all,
 #     as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
@@ -2827,9 +2828,9 @@ _bwimc_ecwd_track() {
                             # and is enterable runs (and a `&&` chain stops if it fails;
                             # after a `;` a failing cd leaves the cwd unchanged, a race this
                             # does not close), so a plain relative write that follows lands in
-                            # $r, or in its symlink-resolved form $cs (a candidate holding a ~
-                            # or a brace is expanded by the shell and keeps the payload-cwd
-                            # re-check in _bwimc_cd_guard). Trusted only when $cs lies in no
+                            # $r, or in its symlink-resolved form $cs (only a candidate proven
+                            # plain by _bwimc_plain_word skips the payload-cwd re-check in
+                            # _bwimc_cd_guard). Trusted only when $cs lies in no
                             # git repo at all (a scratch folder): the primary, a worktree or
                             # any other checkout keeps the re-check. The trust ends at the
                             # first later clause whose command word is not in the closed set
@@ -2934,26 +2935,40 @@ _bwimc_cd_guard() {
         esac ;;
     esac
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
-    # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a plain relative
-    # candidate, which is also resolved against the symlink-resolved cd target, where the
-    # write physically lands. A candidate holding a ~, a brace or a glob character is expanded
-    # by the shell at run time (`~-` and `~1` name the directory the cd just left, a brace list
-    # becomes several words, a glob can match a symlink into the primary that the directory
-    # prefix check never resolves), so it keeps the payload-cwd re-check.
+    # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a candidate proven
+    # plain by _bwimc_plain_word (a fixed allowlist of ordinary path characters), which is also
+    # resolved against the symlink-resolved cd target, where the write physically lands. Every
+    # other word keeps the payload-cwd re-check, so it gets main's verdict by construction.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
-        # the `..` test reads the unquoted word, as the later resolver does (`lnk/".."/x` names the same parent)
-        _bwimc_unqv "$1"
-        case "$1" in
-            *'~'*|*'{'*|*'*'*|*'?'*|*'['*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
-            *) case "$_BWIMC_UNQ" in
-                ..|../*|*/../*|*/..) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
-            esac ;;
-        esac
-        # second layer for a symlink-free prefix: the kernel resolves a `..` after a symlink physically but the check below collapses it logically, so a `..` candidate is sent to the payload-cwd re-check above (rows 100a-100c, 101a-101e); no shape was found where only this line decides (row 99f)
+        _bwimc_plain_word "$1" || { [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"; }
+        # second layer for a symlink-free prefix: the kernel resolves a `..` after a symlink physically but the check below collapses it logically, so a `..` word is never plain and takes the re-check above; no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
         _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
     fi
+    return 0
+}
+
+# _bwimc_plain_word WORD: succeeds only for a candidate whose raw text the shell and the later
+# resolver (the sed in _bwimc_expand_token_raw_set) read the same way. Plain means: only the
+# characters letters, digits and . _ - / + , @ : (spelled out, no range, so the locale cannot
+# widen them), optionally wrapped in exactly ONE whole-word pair of quotes whose inner text may
+# also hold a space, but never at its edge or beside a `/`; no component equal to `..`; not empty.
+# Anything else (a mid-word quote, a backslash, ~, a brace, a glob character, $) is not plain.
+_bwimc_plain_word() {
+    local w="$1"
+    case "$w" in
+        '"'?*'"'|"'"?*"'")
+            w=${w#?}; w=${w%?}
+            case "$w" in
+                ' '*|*' '|*' /'*|*'/ '*) return 1 ;;
+                *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/+,@:\ -]*) return 1 ;;
+            esac ;;
+        *) case "$w" in
+            ''|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/+,@:-]*) return 1 ;;
+        esac ;;
+    esac
+    case "$w" in ..|../*|*/../*|*/..) return 1 ;; esac
     return 0
 }
 

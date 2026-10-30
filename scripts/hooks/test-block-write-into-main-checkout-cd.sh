@@ -861,5 +861,35 @@ check_both "101e fromP: cd scratch && tee lnk/'..'/out.txt denies" block \
 check_both "101f fromP: cd scratch && echo x > \"out.txt\" (quoted plain filename) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
 
+# 102: after a sure cd the payload-cwd re-check is skipped ONLY for a candidate proven plain (a
+# fixed allowlist of ordinary path characters, optionally in one whole-word quote pair, no `..`
+# component). Any other word keeps main's re-check, so a mid-word quote or a backslash, which the
+# shell strips but the later resolver does not, gets main's verdict by construction.
+check_both "102a fromP: cd scratch && echo x > l\"n\"k/out.txt (mid-word double quote) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l\\\"n\\\"k8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102b fromP: cd scratch && echo x > l'n'k/out.txt (mid-word single quote) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l'n'k8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102c fromP: cd scratch && echo x > l\\nk/out.txt (backslash) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l\\\\nk8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102d fromP: cd scratch && echo x > vic\"t\"im (mid-word quote on the symlink itself) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102e fromP: cd scratch && touch vic\"t\"im denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102f fromP: cd scratch && tee vic\"t\"im denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102g fromP: cd scratch && echo x > \"vic\"\"tim\" (two quote pairs in one word) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"vic\\\"\\\"tim\\\"\",\"cwd\":\"$FIX/primary\"}}"
+mkdir -p "$FIX/scratch8200/sub8200"
+check_both "102h fromP: cd scratch && echo x > sub/out.txt (plain subfolder path) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > sub8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102i fromP: cd scratch && echo x > ./my-file_1.txt (plain, dot slash) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > ./my-file_1.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102j fromP: cd scratch && echo x > \"my file.txt\" (whole-word quoted, space) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"my file.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102k fromP: cd scratch && echo x > 'out.txt' (whole-word single-quoted) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > 'out.txt'\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102l fromP: cd scratch && touch \"sub/out.txt\" (quoted subfolder path) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch \\\"sub8200/out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
