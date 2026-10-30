@@ -15,6 +15,9 @@ contains() {
     case "$2" in *"$3"*) printf 'PASS: %s\n' "$1" ;;
         *) printf 'FAIL: %s (missing %s)\n' "$1" "$3"; fails=$((fails + 1)) ;; esac
 }
+printf '%s\n' '---- MODULE Model ----' '====' > "$WORK/Model.tla"
+printf 'SPECIFICATION Spec\n' > "$WORK/Model.cfg"
+printf 'export const title = "fixture";\n' > "$WORK/view.mjs"
 printf 'not a jar\n' > "$WORK/tla2tools.jar"
 # shellcheck disable=SC2016  # expanded by the runner, not by fixture creation
 printf '%s\n' '#!/bin/sh' 'touch "$MODEL_CHECK_CALLED"' > "$WORK/statechart"
@@ -56,7 +59,7 @@ fixtures = [
 fails = 0
 for name, text, expected in fixtures:
     (work / 'output/report.md').write_text(text)
-    r = subprocess.run([sys.executable, '-I', '-c', code, str(work), '123', 'a' * 40, 'scripts/handover/queue-lock.sh'])
+    r = subprocess.run([sys.executable, '-I', '-c', code, str(work), '123', 'a' * 40, 'scripts/handover/queue-lock.sh', 'f' * 64])
     got = (work / 'report.md').read_text().splitlines()[0] if r.returncode == 0 else f'formatter exit {r.returncode}'
     if got == expected:
         print(f'PASS: {name}')
@@ -72,57 +75,168 @@ raise SystemExit(bool(fails))
 PY
 rc=$?
 [ "$rc" -eq 0 ] || fails=$((fails + 1))
-# Without repository binding, an absolute invocation from scratch cannot read the intended PR.
-# Only the external boundaries are doubled; the real wrapper, git source read and formatter run.
+# Isolate optional runtimes/network, while exercising the real wrapper and a real fixture git repo.
+# Counterfactual copies change one guard each; no tracked file or external compiler is modified/run.
 python3 -I - "$SUT" "$WORK" <<'PY'
-import json, os, pathlib, subprocess, sys
+import hashlib, json, os, pathlib, re, shlex, shutil, subprocess, sys
 sut, work = map(pathlib.Path, sys.argv[1:])
-repo = sut.parents[3]
+repo = work / 'repo'
+repo.mkdir()
+subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+source = repo / 'scripts/handover/queue-lock.sh'
+source.parent.mkdir(parents=True)
+source.write_text('# fixture source, never executed\n')
+subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
 head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
 bin_dir = work / 'bin'
 bin_dir.mkdir()
-def executable(name, text):
-    p = bin_dir / name
+def executable(p, text):
     p.write_text('#!/bin/bash\n' + text)
     p.chmod(0o700)
-# No external jar/compiler executes: these doubles isolate orchestration from optional runtimes.
-executable('sha256sum', 'printf "%s  fixture\\n" 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88\n')
-executable('gh', '''[ "$PWD" = "$EXPECTED_REPO" ] || exit 77
+# The jar boundary is doubled, not the compiler tree hashing code.
+executable(bin_dir / 'sha256sum', '''if [ "${BAD_JAR:-0}" = 1 ]; then printf 'bad  fixture\\n'; else
+printf '%s  fixture\\n' 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88; fi
+''')
+executable(bin_dir / 'gh', '''[ "$PWD" = "$EXPECTED_REPO" ] || exit 77
 printf '%s\\n' "$PWD" >> "$GH_CALLS"
 case " $* " in
-  *' --jq '*) printf '%s\\n' "$EXPECTED_HEAD" ;;
+  *' --jq '*) if [ "$SCENARIO" = stale ]; then printf '%040d\\n' 0; else printf '%s\\n' "$EXPECTED_HEAD"; fi ;;
   *) printf '%s\\n' "$PR_METADATA" ;;
 esac
 ''')
-executable('statechart', '''while [ "$#" -gt 0 ]; do
+executable(bin_dir / 'timeout', '''printf '%s\\n' "$*" >> "$TIMEOUT_CALLS"
+if [ "$1" = -k ]; then shift 3; fi
+exec "$@"
+''')
+tree = work / 'compiler'
+tree.mkdir()
+executable(tree / 'statechart', '''touch "$RUNNER_CALLED"
+"$JAVA" -version || exit 2
+while [ "$#" -gt 0 ]; do
   if [ "$1" = --out ]; then out="$2"; break; fi
   shift
 done
+[ "$SCENARIO" != no-report ] || exit 0
 mkdir -p "$out" || exit 2
-printf '# Model\\n\\n## Rules that hold\\nSafe\\n' > "$out/report.md"
+if [ "$SCENARIO" = unchecked ]; then printf '# Model\\n\\n## Rules not checked\\nSafe\\n' > "$out/report.md";
+else printf '# Model\\n\\n## Rules that hold\\nSafe\\n' > "$out/report.md"; fi
 printf 'stateDiagram-v2\\n' > "$out/chart.mmd"
+[ "$SCENARIO" != failed-runner ] || exit 124
 ''')
-(work / 'Model.tla').write_text('---- MODULE Model ----\n====\n')
-(work / 'Model.cfg').write_text('SPECIFICATION Spec\n')
-(work / 'view.mjs').write_text('export const title = "fixture";\n')
+(tree / 'dependency.ts').write_text('// compiler dependency fixture\n')
+def digest(root):
+    h = hashlib.sha256()
+    for p in sorted(root.rglob('*')):
+        if p.is_file():
+            h.update(p.relative_to(root).as_posix().encode() + b'\0')
+            h.update(hashlib.sha256(p.read_bytes()).digest())
+    return h.hexdigest()
+tree_sha = digest(tree)
+text = sut.read_text()
+# Dependency injection is confined to a scratch copy's approved fixture digest and repo paths.
+text = re.sub(r'^HERE=.*$', 'HERE=' + shlex.quote(str(sut.parent)), text, count=1, flags=re.M)
+text = re.sub(r'^REPO=.*$', 'REPO=' + shlex.quote(str(repo)), text, count=1, flags=re.M)
+text = text.replace('569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13', tree_sha)
+wrapper = work / 'wrapper.sh'
+wrapper.write_text(text)
 (work / 'bucket').mkdir()
-env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
-           JAVA='/usr/bin/true', TLA2TOOLS=str(work / 'tla2tools.jar'),
-           STATECHART=str(bin_dir / 'statechart'), HANDOVER_DIR=str(work / 'bucket'), USER_SLUG='fixture',
-           EXPECTED_REPO=str(repo), EXPECTED_HEAD=head, GH_CALLS=str(work / 'gh-calls'),
-           PR_METADATA=json.dumps({'headRefOid': head, 'files': [{'path': 'scripts/handover/queue-lock.sh'}]}))
-r = subprocess.run(['bash', str(sut), '4313', 'queue-lock', str(work / 'Model.tla'), str(work / 'view.mjs')],
-                   cwd=work, env=env, capture_output=True, text=True)
-if r.returncode != 0:
-    print(f'FAIL: absolute invocation from scratch binds PR and source to its own repo (exit {r.returncode}: {r.stderr.strip()})')
-    raise SystemExit(1)
-calls = (work / 'gh-calls').read_text().splitlines()
-reports = list((work / 'bucket').rglob('report.md'))
-assert calls == [str(repo), str(repo)], calls
-report = next(p for p in reports if p.parent.name.startswith('pr-4313-'))
-assert f'Head: {head}' in report.read_text()
-assert (report.parent / 'inputs/source.sh').read_bytes() == subprocess.check_output(['git', '-C', str(repo), 'show', f'{head}:scripts/handover/queue-lock.sh'])
-print('PASS: absolute invocation from scratch binds both PR reads and source to its own repo')
+base_env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
+                JAVA='/usr/bin/true', TLA2TOOLS=str(work / 'tla2tools.jar'),
+                STATECHART=str(tree / 'statechart'), USER_SLUG='fixture', EXPECTED_REPO=str(repo), EXPECTED_HEAD=head,
+                PR_METADATA=json.dumps({'headRefOid': head, 'files': [{'path': 'scripts/handover/queue-lock.sh'}]}))
+count = 0
+def run(scenario='clean', script=wrapper, **extra):
+    global count
+    count += 1
+    case = work / f'case-{count}'
+    case.mkdir()
+    bucket = case / 'bucket'
+    bucket.mkdir()
+    env = dict(base_env, SCENARIO=scenario, HANDOVER_DIR=str(bucket), GH_CALLS=str(case / 'gh'),
+               TIMEOUT_CALLS=str(case / 'timeouts'), RUNNER_CALLED=str(case / 'called'))
+    env.update(extra)
+    if scenario == 'output-link':
+        parent = bucket / 'fixture/himmel'
+        parent.mkdir(parents=True)
+        dest = case / 'redirected'
+        dest.mkdir()
+        (parent / 'model-check').symlink_to(dest, target_is_directory=True)
+    spec = extra.get('MODEL', str(work / 'Model.tla'))
+    view = extra.get('VIEW', str(work / 'view.mjs'))
+    r = subprocess.run(['bash', str(script), '4313', 'queue-lock', spec, view], cwd=work, env=env, capture_output=True, text=True)
+    reports = list(bucket.rglob('report.md'))
+    report = next((p for p in reports if p.parent.name.startswith('pr-4313-')), None)
+    return r, case, report
+
+def clean_ok(result):
+    r, case, report = result
+    return (r.returncode == 0 and report is not None and f'Head: {head}' in report.read_text()
+            and (case / 'gh').read_text().splitlines() == [str(repo), str(repo)]
+            and (report.parent / 'inputs/source.sh').read_bytes() == source.read_bytes())
+def refused(result, message):
+    r, case, _ = result
+    return r.returncode == 2 and message in r.stderr and not (case / 'called').exists()
+def bounded(result, bound):
+    r, case, _ = result
+    calls = (case / 'timeouts').read_text() if (case / 'timeouts').exists() else ''
+    return r.returncode == 0 and bound in calls
+def incomplete(result):
+    r, _, report = result
+    return r.returncode == 2 and report is not None and report.read_text().startswith('Model checking did not complete;')
+inside = repo / 'Model.tla'
+inside.write_text((work / 'Model.tla').read_text())
+inside.with_suffix('.cfg').write_text((work / 'Model.cfg').read_text())
+inside_view = repo / 'view.mjs'
+inside_view.write_text((work / 'view.mjs').read_text())
+mutated = work / 'mutated-compiler'
+shutil.copytree(tree, mutated)
+(mutated / 'dependency.ts').write_text('// changed reachable compiler bytes\n')
+vendored = repo / 'marketplace/plugins/pstack/skills/statechart/scripts'
+shutil.copytree(tree, vendored)
+# Each control below must be rejected by the same behavioral check that passes on production.
+checks = [
+    ('scratch cwd binds both PR reads and source', {}, clean_ok, ('cd "$REPO" || error', '# cd "$REPO" || error')),
+    ('bad jar refuses with valid inputs', {'BAD_JAR': '1'}, lambda x: refused(x, 'sha256 mismatch'), ('[ "${actual%% *}" = "$sha" ] || error', ': || error')),
+    ('changed reachable runner tree refuses before execution', {'STATECHART': str(mutated / 'statechart')}, lambda x: refused(x, 'statechart tree sha256 mismatch'), ('[ "$runner_sha" = "$approved_tree" ] || error', ': || error')),
+    ('every JVM has hard time and heap limits', {}, lambda x: bounded(x, '-k 5s 60s /usr/bin/true -Xmx512m -XX:ActiveProcessorCount=2'), ('-k 5s 60s %q -Xmx512m', '%q -Xmx512m')),
+    ('whole compiler has hard timeout', {}, lambda x: bounded(x, '-k 10s 300s '), ('timeout -k 10s 300s "$runner"', '"$runner"')),
+    ('failed runner cannot leave a clean report', {'SCENARIO': 'failed-runner'}, incomplete, ('if [ "$rc" -gt 1 ] || [ ! -s "$run/output/report.md" ]; then', 'if false; then')),
+    ('missing runner report is explicitly incomplete', {'SCENARIO': 'no-report'}, incomplete, ('if [ "$rc" -gt 1 ] || [ ! -s "$run/output/report.md" ]; then', 'if false; then')),
+    ('stale PR head is refused', {'SCENARIO': 'stale'}, lambda x: x[0].returncode == 2 and 'PR head changed' in x[0].stderr, ('[ "$latest" = "$head" ] || error', ': || error')),
+    ('unchecked rules exit incomplete', {'SCENARIO': 'unchecked'}, lambda x: x[0].returncode == 2 and x[2] is not None and x[2].read_text().startswith('Model checking is incomplete;'), ('if grep -Eq', 'if false; then :; elif false && grep -Eq')),
+    ('in-repo jar is refused', {'TLA2TOOLS': str(source)}, lambda x: refused(x, 'TLC must stay outside'), ('"$REPO"/*) error \'TLC must stay outside', '"/never-matches"/*) error \'TLC must stay outside')),
+    ('in-repo model is refused', {'MODEL': str(inside)}, lambda x: refused(x, 'model and view in external scratch'), ('"$REPO"/*) error \'write the model', '"/never-matches"/*) error \'write the model')),
+    ('in-repo view is refused', {'VIEW': str(inside_view)}, lambda x: refused(x, 'model and view in external scratch'), ('"$REPO"/*) error \'write the model', '"/never-matches"/*) error \'write the model')),
+    ('symlink output component is refused', {'SCENARIO': 'output-link'}, lambda x: refused(x, 'symlink output component'), ('[ ! -L "$p" ] || error', ': || error')),
+]
+fails = 0
+for name, args, predicate, (old, new) in checks:
+    scenario = args.get('SCENARIO', 'clean')
+    extra = {k: v for k, v in args.items() if k != 'SCENARIO'}
+    result = run(scenario, **extra)
+    if not predicate(result):
+        print(f'FAIL: {name}: exit={result[0].returncode} stderr={result[0].stderr.strip()}')
+        fails += 1
+        continue
+    if old not in text:
+        print(f'FAIL: {name}: missing counterfactual seam')
+        fails += 1
+        continue
+    control = work / f'control-{count}.sh'
+    control.write_text(text.replace(old, new, 1))
+    if predicate(run(scenario, script=control, **extra)):
+        print(f'FAIL: {name}: removing guard stayed GREEN')
+        fails += 1
+    else:
+        print(f'PASS: {name}; guard removal RED')
+r, _, report = run(STATECHART=str(vendored / 'statechart'))
+if r.returncode == 0 and report and f'Statechart tree SHA-256: {tree_sha}' in report.read_text():
+    print('PASS: vendored runner path accepted and checked tree digest recorded')
+else:
+    print(f'FAIL: vendored runner path/digest: {r.returncode} {r.stderr.strip()}')
+    fails += 1
+raise SystemExit(bool(fails))
 PY
 rc=$?
 [ "$rc" -eq 0 ] || fails=$((fails + 1))

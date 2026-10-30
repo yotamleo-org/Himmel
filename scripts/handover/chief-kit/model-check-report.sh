@@ -45,6 +45,27 @@ actual="$(sha256sum "$work/tla2tools.jar")" || error 'cannot hash TLC jar'
 [ "${actual%% *}" = "$sha" ] || error 'tla2tools.jar sha256 mismatch; expected v1.7.4, nothing executed'
 runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinned statechart executable (cursor/plugins 4dd1d058)'
 [ -x "$runner" ] || error 'STATECHART is not executable'
+# Pin every reachable compiler file, not just the launcher; execute the checked private snapshot.
+cp -R "$(dirname "$runner")" "$work/statechart" || error 'cannot snapshot statechart tree'
+runner="$work/statechart/$(basename "$runner")"
+runner_sha="$(python3 -I - "$work/statechart" <<'TREE'
+import hashlib, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+h = hashlib.sha256()
+for p in sorted(root.rglob('*')):
+    if p.is_symlink():
+        raise SystemExit(f'symlink in compiler tree: {p}')
+    if p.is_dir():
+        continue
+    if not p.is_file():
+        raise SystemExit(f'non-file in compiler tree: {p}')
+    h.update(p.relative_to(root).as_posix().encode() + b'\0')
+    h.update(hashlib.sha256(p.read_bytes()).digest())
+print(h.hexdigest())
+TREE
+)" || error 'cannot hash statechart tree'
+approved_tree=569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13
+[ "$runner_sha" = "$approved_tree" ] || error 'statechart tree sha256 mismatch; nothing executed'
 jar="$(existing_file "$jar")" || error 'missing TLC jar'
 case "$jar" in "$REPO"/*) error 'TLC must stay outside the repo' ;; esac
 spec="$(existing_file "$spec")" || error 'missing model'
@@ -101,14 +122,14 @@ JAVA="$work/java" TLA2TOOLS="$work/tla2tools.jar" timeout -k 10s 300s "$runner" 
     --view "$run/inputs/view.mjs" --out "$run/output" > "$run/runner.log" 2>&1 || rc=$?
 # Never label a killed/errored run clean, and retain its log for the judge.
 if [ "$rc" -gt 1 ] || [ ! -s "$run/output/report.md" ]; then
-    printf 'Model checking did not complete; no bug or shortest path can be ruled out.\n\nPR: #%s\nHead: %s\nTarget: %s\nRunner exit: %s\nSee runner.log.\n' "$pr" "$head" "$source_path" "$rc" > "$run/report.md"
+    printf 'Model checking did not complete; no bug or shortest path can be ruled out.\n\nPR: #%s\nHead: %s\nTarget: %s\nStatechart tree SHA-256: %s\nRunner exit: %s\nSee runner.log.\n' "$pr" "$head" "$source_path" "$runner_sha" "$rc" > "$run/report.md"
     printf 'model-check-report: incomplete: %s\n' "$run/report.md" >&2
     exit 2
 fi
 # State/step text already came from this run's view, not a canned bug description.
-if ! python3 -I - "$run" "$pr" "$head" "$source_path" <<'PY'
+if ! python3 -I - "$run" "$pr" "$head" "$source_path" "$runner_sha" <<'PY'
 import pathlib, re, sys
-run, pr, head, target = sys.argv[1:]
+run, pr, head, target, runner_sha = sys.argv[1:]
 p = pathlib.Path(run)
 text = (p / 'output/report.md').read_text()
 bugs = list(re.finditer(r'^## ([^\n]+) breaks\n(.*?)(?=^## |\Z)', text, re.M | re.S))
@@ -124,6 +145,7 @@ elif '## Rules not checked' in text or '## TLC stopped' in text:
 else:
     sentence = 'No bug was found in this bounded model; there is no counterexample path.'
 header = (f'{sentence}\n\nPR: #{pr}\nHead: {head}\nTarget: `{target}`\n'
+          f'Statechart tree SHA-256: {runner_sha}\n'
           'Evidence only: a clean report never replaces the judge (HIMMEL-8273).\n'
           'Limits: 512 MiB heap, 60 seconds per JVM, 300 seconds total; '
           'model constants and fidelity require judge review.\n\n')

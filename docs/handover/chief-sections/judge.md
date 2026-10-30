@@ -36,8 +36,10 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   `chief-kit/succession-tracker.sh`, the chief assigns an isolated worker or
   subagent to run
   `bash scripts/handover/chief-kit/model-check-report.sh <pr> <queue-lock|succession-tracker> <absolute-model.tla> <absolute-view.mjs>`.
-  Never run statechart inside the chief: the chief and judge read the report
-  and chart only, keeping model execution cost/context in its own session.
+  Never run statechart inside the chief: the chief and judge read the report,
+  chart and retained `inputs/` (model, config, view and source snapshot) as
+  needed for fidelity review, not the compiler execution transcript. Keep
+  model execution cost/context in its own session.
   Java is an optional prerequisite; without it this step stays off and prints
   OpenJDK installation guidance. Preparation, fixed small constants (at most
   four busy-loop iterations), pinned external TLC jar and hard timeouts:

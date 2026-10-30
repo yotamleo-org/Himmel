@@ -24,10 +24,20 @@ The chief supplies these paths in the launching shell:
   before executing any Java. A mismatch exits 2. No automatic download or mise
   install is allowed by this entry point.
 - `STATECHART`: the single executable path to the reviewed `/statechart`
-  compiler. Until HIMMEL-6690 vendors it, use an external copy of
-  `cursor/plugins` at `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path
-  `pstack/skills/statechart/scripts/statechart`. This change does not vendor or
-  install that plugin. Its runtime needs Node 22.18–22.x or 23.6+, Bun 1.1.5+,
+  compiler: an external copy of `cursor/plugins` at
+  `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path
+  `pstack/skills/statechart/scripts/statechart`, or the same pinned tree at
+  `marketplace/plugins/pstack/skills/statechart/scripts/statechart` when vendored.
+  The wrapper snapshots the entire launcher directory (including reachable
+  compiler modules), rejects symlinks, checks its tree SHA-256 against
+  `569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13`,
+  and executes only that checked private snapshot. Any changed tree refuses
+  before execution; the digest is recorded in complete and incomplete reports.
+  The tree digest hashes each sorted relative UTF-8 path, NUL, then its raw
+  SHA-256 file digest, including test/config files. A different reviewed vendor
+  tree needs an explicit pin update, never a caller-provided expected hash.
+  This change does not vendor or install that plugin.
+  Its runtime needs Node 22.18–22.x or 23.6+, Bun 1.1.5+,
   or Deno 2; Python 3, GNU timeout, sha256sum, realpath, jq and authenticated gh
   are also required by the wrapper.
 
@@ -37,9 +47,10 @@ uses Pele 1.10.0; `chart.mmd` is the portable artifact.
 ## Prepare and run
 
 The chief assigns this step to its own worker or subagent, never executes
-statechart in the chief session. The chief and judge consume only the report
-and chart. The execution worker reads source/models and carries the runtime
-cost/context. This also leaves the chief free to coordinate while TLC runs.
+statechart in the chief session. The chief and judge consume the report,
+chart and retained `inputs/` as needed to check fidelity; they do not run the
+compiler or ingest its execution transcript. The execution worker carries the
+runtime cost/context, leaving the chief free to coordinate while TLC runs.
 
 Read the PR's source at its full head SHA. In external scratch, write a
 reviewed `Model.tla`, adjacent `Model.cfg`, and `view.mjs`. The view exports
@@ -97,8 +108,8 @@ trace: do not mistake partial evidence for a clean result.
 Name the report's absolute path and full head in the judge brief. The judge
 cites that path in their verdict, checks the bounds/exclusions the execution
 worker reports, and checks that the current PR head still matches. The chief
-and judge consume the report and chart, not the compiler/model-run transcript;
-the execution worker retains inputs and source snapshot for replay/audit. Missing,
+and judge may read the report, chart and `inputs/` model/config/view/source
+snapshot for fidelity review and replay/audit, not the compiler execution transcript. Missing,
 stale, timed-out or unchecked evidence cannot support a safety claim. The
 report is not signed merge authorization and does not change GO/trust gates.
 
