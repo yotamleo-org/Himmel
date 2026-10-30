@@ -10,6 +10,7 @@
 #   AB_STUB_RESUME_FAIL=1 / AB_STUB_NOWRITE=1  the --resume segment errors / writes no HANDOFF.md
 #   AB_STUB_STALE=1  the first segment leaves a HANDOFF.md behind
 #   AB_STUB_NOSCORE=1  the judge replies without a SCORE line
+#   AB_STUB_NOREAD=1  a stdin prompt is not read for 60 s (the driver's timer must stop it)
 #   AB_STUB_BIGDIFF=N  the solving run also leaves a file of about N chars ending in BIGDIFF-END-MARKER
 # The judge sends its prompt on stdin (no argument after -p); the log entry carries "prompt".
 # A compaction fires when the next context would pass 85 % of --autocompact; the
@@ -24,6 +25,8 @@ import time
 a = sys.argv[1:]
 prompt = a[a.index("-p") + 1]
 if prompt.startswith("--"):   # no prompt argument: it arrives on stdin (the judge)
+    if os.environ.get("AB_STUB_NOREAD") == "1":
+        time.sleep(60)
     prompt = sys.stdin.read()
 ceil = int(a[a.index("--autocompact") + 1]) if "--autocompact" in a else 200000
 step = int(os.environ.get("AB_STUB_STEP", "60000"))

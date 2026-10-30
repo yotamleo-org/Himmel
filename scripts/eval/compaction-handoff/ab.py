@@ -207,12 +207,15 @@ def run_segment(argv, cwd, stream, timeout, stop_at=None, stdin_text=None):
     with open(stream, "w") as out, open(stream[:-len(".stream.jsonl")] + ".stderr", "w") as err:
         p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=err, text=True, env=env,
                              stdin=subprocess.PIPE if stdin_text is not None else None)
-        if stdin_text is not None:   # a prompt past ~128 KiB does not fit one argv entry
-            p.stdin.write(stdin_text)
-            p.stdin.close()
         timer = threading.Timer(timeout, lambda: (timed.append(1), p.kill()))
-        timer.start()
+        timer.start()   # before the stdin write: a child that stops reading must not block the driver past the timeout
         try:
+            if stdin_text is not None:   # a prompt past ~128 KiB does not fit one argv entry
+                try:
+                    p.stdin.write(stdin_text)
+                    p.stdin.close()
+                except BrokenPipeError:   # the child died or the timer killed it mid-write
+                    pass
             for line in p.stdout:
                 out.write(line)
                 out.flush()
