@@ -27,14 +27,16 @@
 
 row_report() { printf 'ROW %s %s %s: %s\n' "$1" "$3" "$2" "$4"; }
 
-# rows_tally <file> -- prints the RESULT line; rc 1 on any FAIL row or when fewer than
-# ten rows were reported (a row that never ran must not read as a pass).
+# rows_tally <file> -- prints the RESULT line; rc 1 on any FAIL row or unless each of the
+# rows 1..10 reported exactly once (a row that never ran must not read as a pass).
 rows_tally() {
-  local f="$1" fails findings rows
+  local f="$1" fails findings n complete=1
   fails=$(grep -c '^ROW [0-9]* FAIL ' "$f"); findings=$(grep -c '^ROW [0-9]* FINDING ' "$f")
-  rows=$(grep -c '^ROW [0-9]* \(PASS\|FINDING\|FAIL\) ' "$f")
+  for n in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(grep -c "^ROW $n \(PASS\|FINDING\|FAIL\) " "$f")" -eq 1 ] || complete=0
+  done
   echo "RESULT: $fails failure(s), $findings finding(s)"
-  [ "$fails" -eq 0 ] && [ "$rows" -ge 10 ]
+  [ "$fails" -eq 0 ] && [ "$complete" -eq 1 ]
 }
 
 # --- per-row state (set by the stage below) ----------------------------------------
@@ -320,7 +322,7 @@ EOF
 }
 
 row_9() {
-  local nm="inject-initiative SessionStart hook" p="$P9" s ss_cmd out clone="$WORK/clone-9"
+  local nm="inject-initiative SessionStart hook" p="$P9" s ss_cmd out hook_rc clone="$WORK/clone-9"
   s="$p/.claude/settings.json"
   ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$s")
   [ -n "$ss_cmd" ] || { _fail 9 "$nm" "adopt did not wire the inject-initiative SessionStart hook in the project"; return 0; }
@@ -328,6 +330,8 @@ row_9() {
   out=$(cd "$p" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HOME="$FH" HIMMEL_REPO="$clone" bash -c "$ss_cmd" </dev/null 2>&1)
   grep -q 'HIMMEL_INITIATIVE is active' <<<"$out" || { _fail 9 "$nm" "a set step did not reach the session: $(head -c 300 <<<"$out")"; return 0; }
   out=$(cd "$p" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HOME="$FH" HIMMEL_REPO="$WORK/no-such-clone" bash -c "$ss_cmd" </dev/null 2>&1)
+  hook_rc=$?
+  [ "$hook_rc" -eq 0 ] || { _fail 9 "$nm" "the hook exited $hook_rc with no step set: $(head -c 300 <<<"$out")"; return 0; }
   ! grep -q 'HIMMEL_INITIATIVE is active' <<<"$out" || { _fail 9 "$nm" "an unset step still injected"; return 0; }
   _pass 9 "$nm" "the project-scope hook injects a set step and nothing when unset"
 }

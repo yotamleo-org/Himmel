@@ -51,6 +51,8 @@ rows_tally "$WORK/rows.txt" >/dev/null; expect_rc "a FAIL row fails the stage" 1
 rows_tally "$WORK/rows-empty.txt" >/dev/null; expect_rc "an empty row log fails the stage (no row ran)" 1 $?
 printf 'ROW 1 PASS a: x\n' > "$WORK/rows-short.txt"
 rows_tally "$WORK/rows-short.txt" >/dev/null; expect_rc "fewer than ten rows fails the stage" 1 $?
+{ for n in 1 1 2 3 4 5 6 7 8 9; do printf 'ROW %s PASS r: ok\n' "$n"; done; } > "$WORK/rows-dup.txt"
+rows_tally "$WORK/rows-dup.txt" >/dev/null; expect_rc "ten rows with a duplicate id and a missing id fails the stage" 1 $?
 
 # --- guest guard: refuses to adopt anywhere but the VM ----------------------------
 env -i PATH="$PATH" HOME="$WORK/home" bash "$GUEST" "$WORK" >"$WORK/g.out" 2>&1; rc=$?
@@ -64,6 +66,7 @@ LOG="$WORK/calls.log"
 cat > "$BIN/vmsdk" <<'EOS'
 #!/usr/bin/env bash
 echo "vmsdk $*" >> "${FAKE_LOG:?}"
+if [ -n "${FAKE_FAIL_POST_RUN:-}" ] && grep -q 'adopted-features-guest.sh' "$FAKE_LOG"; then exit 1; fi
 exit "${FAKE_VMSDK_RC:-0}"
 EOS
 # guest-exec fake: logs the command; the guest-script call prints FAKE_GUEST_OUT and
@@ -82,7 +85,7 @@ GOOD_OUT="$(printf 'ROW 1 PASS a: x\nROW 2 FINDING b: y\nRESULT: 0 failure(s), 1
 run_driver() { # <guest-rc> <guest-out> args...
   local grc="$1" gout="$2"; shift 2
   : > "$LOG"
-  env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" \
+  env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" FAKE_FAIL_POST_RUN="${FAKE_FAIL_POST_RUN:-}" \
     HIMMEL_ADOPTED_VMSDK="$BIN/vmsdk" HIMMEL_ADOPTED_GUEST_EXEC="$BIN/guest-exec" \
     HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_ADOPTED_STAGE_TMP="$WORK/stage" \
     bash "$DRIVER" "$@" >"$WORK/driver.out" 2>&1
@@ -121,6 +124,15 @@ if [ ! -s "$LOG" ]; then pass "...before any vmsdk call"; else fail_case "...bef
 
 run_driver 0 "$GOOD_OUT"
 expect_rc "driver refuses a missing vm name" 2 "$DRV_RC"
+run_driver 0 "$GOOD_OUT" ubuntu_new
+expect_rc "driver refuses the golden image name" 2 "$DRV_RC"
+run_driver 0 "$GOOD_OUT" himmel-ar-1x
+expect_rc "driver refuses a name that only starts like a clone" 2 "$DRV_RC"
+if [ ! -s "$LOG" ]; then pass "...before any vmsdk call"; else fail_case "...before any vmsdk call (golden/lookalike)"; fi
+
+FAKE_FAIL_POST_RUN=1 run_driver 0 "$GOOD_OUT" himmel-ar-1
+expect_rc "driver exits 3 when the post-run restore or power-off fails" 3 "$DRV_RC"
+if [ ! -e "$WORK/locks/himmel-vm-lock-himmel-ar-1" ]; then pass "...and still releases the vm-lock"; else fail_case "...and still releases the vm-lock (lifecycle failure)"; fi
 
 # A held lock refuses the run and touches no VM.
 env -i PATH="$PATH" HOME="$WORK/hhome" HIMMEL_VM_LOCK_DIR="$WORK/locks" \
@@ -134,13 +146,25 @@ kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf "$WORK/locks/himmel-vm-lock-himmel-ar-1"
 
 # RED control: --expect-red passes only when the guest FAILS on row 3.
-run_driver 1 'ROW 3 FAIL no force push: the gate did not refuse' --expect-red himmel-ar-1
-expect_rc "--expect-red passes when row 3 fails" 0 "$DRV_RC"
+red_out() { # <failing-row>... -- ten rows, the listed ones FAIL, then the RESULT line
+  local n k=0 f
+  for n in 1 2 3 4 5 6 7 8 9 10; do
+    f=PASS; for _r in "$@"; do [ "$_r" = "$n" ] && f=FAIL && k=$((k+1)); done
+    printf 'ROW %s %s r%s: x\n' "$n" "$f" "$n"
+  done
+  printf 'RESULT: %s failure(s), 0 finding(s)\n' "$#"
+}
+run_driver 1 "$(red_out 3)" --expect-red himmel-ar-1
+expect_rc "--expect-red passes when row 3 alone fails and all ten rows ran" 0 "$DRV_RC"
 expect_has "--expect-red tells the guest to sabotage row 3" "ADOPTED_E2E_RED=1" "$(cat "$LOG")"
 run_driver 0 "$GOOD_OUT" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when the sabotage did not fail the stage" 1 "$DRV_RC"
-run_driver 1 'ROW 7 FAIL usage preflight: unrelated' --expect-red himmel-ar-1
+run_driver 1 "$(red_out 7)" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when another row failed instead of row 3" 1 "$DRV_RC"
+run_driver 1 "$(red_out 3 7)" --expect-red himmel-ar-1
+expect_rc "--expect-red FAILS when another row failed besides row 3" 1 "$DRV_RC"
+run_driver 1 'ROW 3 FAIL no force push: the gate did not refuse' --expect-red himmel-ar-1
+expect_rc "--expect-red FAILS when the guest died right after row 3 (no ten-row result)" 1 "$DRV_RC"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASSED"; else echo "$FAILED FAILED"; fi

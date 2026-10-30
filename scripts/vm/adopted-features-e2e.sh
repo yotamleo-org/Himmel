@@ -26,7 +26,8 @@ EXPECT_RED=0
 if [ "${1:-}" = "--expect-red" ]; then EXPECT_RED=1; shift; fi
 VM="${1:-}"
 case "$VM" in
-  ''|*[!A-Za-z0-9_-]*) echo "usage: adopted-features-e2e.sh [--expect-red] <vm>  (vm name: letters, digits, _ -)" >&2; exit 2 ;;
+  himmel-ar-[0-9]|himmel-ar-[0-9][0-9]|himmel-ci-[0-9]|himmel-ci-[0-9][0-9]) ;;
+  *) echo "usage: adopted-features-e2e.sh [--expect-red] <vm>  (vm: himmel-ar-N or himmel-ci-N, never the golden image)" >&2; exit 2 ;;
 esac
 
 SNAPSHOT="${HIMMEL_ADOPTED_E2E_SNAPSHOT:-suite-ready-v4}"
@@ -59,8 +60,8 @@ cleanup() {
   [ -z "$TARBALL" ] || rm -f "$TARBALL"
   [ -z "$OUT" ] || rm -f "$OUT"
   if [ "$BOOTED" = 1 ]; then
-    vmsdk restore "$SNAPSHOT" >/dev/null 2>&1 || echo "adopted-features-e2e: WARNING restore $SNAPSHOT after the run failed; $VM may be dirty" >&2
-    vmsdk down >/dev/null 2>&1 || echo "adopted-features-e2e: WARNING could not power $VM off" >&2
+    vmsdk restore "$SNAPSHOT" >/dev/null 2>&1 || { echo "adopted-features-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
+    vmsdk down >/dev/null 2>&1 || { echo "adopted-features-e2e: could not power $VM off" >&2; rc=3; }
   fi
   [ "$LOCKED" != 1 ] || vm_lock_release "$VM"
   exit "$rc"
@@ -98,8 +99,8 @@ if grep -q ' FINDING ' "$OUT"; then
 fi
 
 if [ "$EXPECT_RED" = 1 ]; then
-  other_fails=$(grep '^ROW [0-9]* FAIL' "$OUT" | grep -v '^ROW 3 ' || true)
-  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL' "$OUT" && [ -z "$other_fails" ]; then
+  rows_seen=$(grep -o '^ROW [0-9]*' "$OUT" | sort -u | wc -l)
+  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL' "$OUT" && grep -q '^RESULT: 1 failure(s)' "$OUT" && [ "$rows_seen" -eq 10 ]; then
     echo "==> RED control PASSED: the stage failed on row 3 only (rc=$rc)"
     exit 0
   fi
