@@ -471,6 +471,18 @@ test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer
   });
 });
 
+test('M2: a console that names a pair draws no pair edge (only worker, judge and consult pair)', async () => {
+  const peers = {
+    con: { n: 'con', role: 'console', pair: 'w2' },
+    con2: { n: 'con2', role: 'console' },
+    w2: { n: 'w2', role: 'worker', console: 'con2' },
+  };
+  await withSwitch(undefined, () => {
+    assert.equal(edges.check(peers, 'con', 'w2').ok, false);
+    assert.equal(edges.check(peers, 'w2', 'con').ok, false);
+  });
+});
+
 test('M2: with the switch off, --role leg is refused and a stored leg record is not read', async t => {
   const { root } = await fixture(t);
   await identity.register(root, 'con', { role: 'console' });

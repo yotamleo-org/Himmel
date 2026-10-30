@@ -151,8 +151,9 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
    >/dev/null 2>&1 &` — headed (no TTY exits at the first idle message);
    `--profile` is required (else exit 2; `--no-profile` when the brief
    pastes the preface). A worker whose Writes are all docs or `*.md` files gets
-   `worker-docs` by default; a native Sonnet 5.5 worker runs at 450000 (guard per
-   profile), any other lane or model at 200000 — detail in `running-a-chief.md`
+   `worker-docs` by default; a native Sonnet 5.5 `worker-impl` or `worker-eval`
+   worker runs at 450000 (guard per profile), `worker-docs` carries no ceiling,
+   any other lane or model runs at 200000 — detail in `running-a-chief.md`
    ("Profile and context defaults"). The launcher exports
    `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
 5. Record the launch log path (window pid).

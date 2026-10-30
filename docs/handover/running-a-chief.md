@@ -334,9 +334,12 @@ pasted into the brief. Detail:
   `worker-impl`. `worker-eval` is only an explicit `"profile"` key in the workers
   JSON.
 - A Sonnet 5.5 worker on the native lane runs at `450000`: `worker-impl` with the
-  hand-off guard, `worker-eval` with the compaction guard. Every other lane, model
-  or profile stays at `200000` with no guard. `WORKER_SESSION_CONTEXT=1m` or an
-  explicit `--context-guard` (including `none`) overrides the profile default.
+  hand-off guard, `worker-eval` with the compaction guard. The `design` profile
+  runs at `1m`. Every other lane, model or profile stays at `200000` with no
+  guard. An explicit `--context-guard` (including `none`) overrides the profile
+  default. `WORKER_SESSION_CONTEXT=1m` alone is refused: it needs the brief's
+  reasoned Context line as well
+  ([`lane-calibration.md`](../internals/lane-calibration.md)).
 - An `ab_arm` brief key needs `"profile": "worker-docs"` for a native Sonnet 5.5
   launch; `gen-briefs` and the wrapper both refuse it on `worker-impl` and
   `worker-eval`.
