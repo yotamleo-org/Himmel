@@ -286,9 +286,26 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
                         ($row.state == "SUCCESS")
                      end),
                 detail: (if $is_checkrun then (($row.status // "?") + "/" + ($row.conclusion // "null"))
-                         else ($row.state // "?") end)
+                         else ($row.state // "?") end),
+                success: ($is_checkrun and $row.conclusion == "SUCCESS"),
+                run: (if $is_checkrun and (($row.detailsUrl | type) == "string") then
+                          ([$row.detailsUrl | scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0] | tonumber] | first // null)
+                      else null end)
             }
         ]
+        # A skipped job reports its unevaluated name: expression, so a fresh green
+        # run never re-reports a job (fail-fast-lint) an older run of the same
+        # workflow left CANCELLED. Such a row is dropped only when a NEWER run of
+        # that workflow finished green: every row of that run completed
+        # SUCCESS/SKIPPED/NEUTRAL with at least one SUCCESS (a wholly skipped run,
+        # e.g. the ci:go label, a cancelled, failed or still-running run
+        # supersedes nothing). A row with no readable run id or no workflow stays
+        # judged (fail closed).
+        | . as $all
+        | ($all | map(select(.run != null and .workflow != "")) | group_by([.workflow, .run])
+           | map(select(all(.[]; .ok) and any(.[]; .success)) | {workflow: .[0].workflow, run: .[0].run})) as $green
+        | map(select(. as $e | ($e.run != null and $e.workflow != "" and
+              ($green | any(.workflow == $e.workflow and .run > $e.run))) | not))
         | map(.key = key_of(.))
         | map(.sort_key = [(.ts == null), (.ts // .idx)])
         | group_by(.key)
