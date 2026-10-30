@@ -16,7 +16,7 @@
 #
 # HARD RULE: input_head and reason_tag NEVER leave this host. They are
 # redacted best-effort, not scrubbed -- tick.sh reads them locally only to
-# classify (SHIP-STEP / REPEAT / PAUSE-RISK) and prints just leg:count:class.
+# classify (SHIP-STEP / REPEAT / PAUSE-RISK) and prints just worker:count:class.
 # The later Telegram page must obey the same rule; test-log-classifier-denial.sh
 # pins the set of files allowed to name either field.
 #
