@@ -1129,15 +1129,11 @@ set -e
 [ "$rcNB" -eq 0 ] \
   || fail "caseSecretsWalkNoBridge: a profile with secretsWalk=run and no bridge key should still exit 0 (got rc=$rcNB): $outNB"
 
-whisperLineNB=$(printf '%s\n' "$outNB" | sed -n '/^  WHISPER_MODEL \[/,/^    probe:/p' | grep -F 'probe:')
-[ -n "$whisperLineNB" ] || fail "caseSecretsWalkNoBridge: expected a WHISPER_MODEL probe line in the walk (got: $outNB)"
-grepq "$whisperLineNB" -F -- 'error' \
-  && fail "caseSecretsWalkNoBridge [codex-1]: WHISPER_MODEL must NOT report an internal/thrown error when bridge is entirely absent (got: $whisperLineNB)"
-grepq "$whisperLineNB" -F -- 'probe threw' \
-  && fail "caseSecretsWalkNoBridge [codex-1]: WHISPER_MODEL must NOT crash resolveWhisperEnvOverrides on an absent bridge section (got: $whisperLineNB)"
-grepq "$whisperLineNB" -F -- 'unconfigured' \
-  || fail "caseSecretsWalkNoBridge [codex-1]: WHISPER_MODEL should probe with the hardcoded defaults and report a normal 'unconfigured' verdict (no model on disk in this fixture) (got: $whisperLineNB)"
-echo "ok: caseSecretsWalkNoBridge [codex-1] secretsWalk=run with a bridge section carrying only enabled:true still probes WHISPER_MODEL with the hardcoded defaults and reports a normal verdict, never an internal error"
+# WHISPER_MODEL is a config key now: the walk no longer asks for it, so a
+# partial bridge section cannot reach its probe at all.
+grepq "$outNB" -F -- 'WHISPER_MODEL [' \
+  && fail "caseSecretsWalkNoBridge: WHISPER_MODEL is a config key and must not appear in the secrets walk (got: $outNB)"
+echo "ok: caseSecretsWalkNoBridge [codex-1] a bridge section carrying only enabled:true never walks WHISPER_MODEL, now a config key"
 
 # TELEGRAM_BOT_TOKEN must be probed against the
 # documented bridge default (~/.claude/channels/telegram/.env, i.e.

@@ -1002,7 +1002,7 @@ async function askBehaviourConfig(ask, opts = {}) {
   validateBehaviourConfig(Object.fromEntries(CONFIG_KEYS.filter(r => r.class === 'config').map(r => [r.name, ''])));
   for (const row of CONFIG_KEYS) {
     const help = `${row.name}: ${row.explanation} Effect: ${row.effect}`;
-    if (row.class === 'policy' || (opts.handledKeys || []).includes(row.name)) { log(help); continue; }
+    if (row.class === 'policy' || row.envOnly || (opts.handledKeys || []).includes(row.name)) { log(help); continue; }
     for (;;) {
       const value = (await ask(`? ${help}\n  value (Enter keeps existing/default):\n> `)).trim();
       if (!value) break;
