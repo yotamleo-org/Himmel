@@ -240,7 +240,8 @@ set -eu
 printf '%s\n' "$PWD $*" >> "$SCAN_FIXTURE/npm-log"
 case " $* " in *" --ignore-scripts "*) ;; *) exit 94 ;; esac
 case " $* " in
-    *" license-checker "*)
+    *" --prefix "*)
+        [ "$1" = ci ] || exit 97
         case "$PWD/" in "$SCAN_REPO/"*) exit 95 ;; esac
         prefix=
         while [ "$#" -gt 0 ]; do
@@ -250,6 +251,19 @@ case " $* " in
         [ -n "$prefix" ] || exit 96
         case "$prefix/" in "$SCAN_REPO/"*) exit 95 ;; esac
         printf '%s\n' "$prefix" > "$SCAN_FIXTURE/tool-dir"
+        # Refuse floating specs, missing locks and a lock that does not bind
+        # the exact scanner version and registry integrity.
+        node - "$prefix" <<'JS'
+const fs = require('node:fs');
+const prefix = process.argv[2];
+const pkg = JSON.parse(fs.readFileSync(`${prefix}/package.json`, 'utf8'));
+const lock = JSON.parse(fs.readFileSync(`${prefix}/package-lock.json`, 'utf8'));
+const version = pkg.dependencies['license-checker'];
+const scanner = lock.packages['node_modules/license-checker'];
+if (!/^\d+\.\d+\.\d+$/.test(version) ||
+    lock.packages[''].dependencies['license-checker'] !== version ||
+    scanner.version !== version || !scanner.resolved || !scanner.integrity) process.exit(98);
+JS
         [ "${BOOTSTRAP_FAIL:-0}" = 0 ] || exit 1
         mkdir -p "$prefix/node_modules/.bin"
         cp "$SCAN_FIXTURE/trusted-scanner" "$prefix/node_modules/.bin/license-checker"

@@ -1,0 +1,7 @@
+{
+  "name": "himmel-license-scanner",
+  "private": true,
+  "dependencies": {
+    "license-checker": "25.0.1"
+  }
+}

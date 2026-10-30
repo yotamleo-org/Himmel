@@ -7,6 +7,8 @@
 # Installs license-checker independently of the inspected dependency trees.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Python-2.0 / PSF-2.0 (the PSF License; argparse 3.x relabels the SPDX id) is
 # permissive + GPL-compatible; Python-2.0 added when the
 # broadened enumeration surfaced argparse@2.0.1 (transitive via js-yaml) in
@@ -76,9 +78,10 @@ for pkg in "${pkgs[@]}"; do
         # prim-ok: fixed external root must not honor an inspected-tree TMPDIR
         scanner_dir=$(mktemp -d /tmp/himmel-license-checker.XXXXXX) || exit 1
         # Never let the inspected package's .npmrc or node_modules select the
-        # scanner. Both installation and execution use this independent cwd;
-        # the absolute --prefix and binary also avoid local npx resolution.
-        if ! (cd "$scanner_dir" && npm install --prefix "$scanner_dir" --ignore-scripts --no-audit --no-fund license-checker); then
+        # scanner. Its committed lock binds the scanner and transitive versions;
+        # installation and execution both use this independent cwd and prefix.
+        cp "$SCRIPT_DIR/license-scanner/package.json" "$SCRIPT_DIR/license-scanner/package-lock.json" "$scanner_dir/"
+        if ! (cd "$scanner_dir" && npm ci --ignore-scripts --no-audit --no-fund --prefix "$scanner_dir"); then
             echo "ERROR: independent license-checker install failed — cannot license-check." >&2
             exit 1
         fi
