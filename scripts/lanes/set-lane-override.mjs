@@ -209,9 +209,9 @@ export function releaseLock(file) {
 }
 
 function sameAsSharedRegistry(file) {
-  // Case-fold on the case-insensitive default filesystems — win32 (NTFS) AND
-  // macOS (APFS/HFS+): `LANES.JSON` opens the same file as `lanes.json`.
-  const ciFs = process.platform === 'win32' || process.platform === 'darwin';
+  // Case-fold on macOS's case-insensitive default filesystem (APFS/HFS+):
+  // `LANES.JSON` opens the same file as `lanes.json`.
+  const ciFs = process.platform === 'darwin';
   return ciFs
     ? resolve(file).toLowerCase() === resolve(SHARED_REGISTRY).toLowerCase()
     : resolve(file) === resolve(SHARED_REGISTRY);

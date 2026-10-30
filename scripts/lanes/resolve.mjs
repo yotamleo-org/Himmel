@@ -196,11 +196,7 @@ function mainCheckoutRoot(repoRoot) {
 
 function pathHasFactory(env) {
   const dirs = (env.PATH || env.Path || '').split(delimiter).filter(Boolean);
-  // Windows resolves .cmd/.exe/.bat via PATHEXT; POSIX matches the bare name.
-  const exts = process.platform === 'win32'
-    ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.toLowerCase())
-    : [''];
-  return (cli) => dirs.some((d) => exts.some((e) => existsSync(join(d, cli + e))));
+  return (cli) => dirs.some((d) => existsSync(join(d, cli)));
 }
 
 // hermes install probe — locate the venv python the SAME way resolve-hermes-py.sh:25-44
@@ -208,12 +204,10 @@ function pathHasFactory(env) {
 // R2 B-R2-1: that script is a SOURCED LIBRARY (only defines a function; "Source this
 // file, then call resolve_hermes_py") — running it hits EOF and exits 0 on EVERY
 // machine, so a bash-spawn probe is unconditionally true (re-opening R1 B2).
-// Pure existsSync also sidesteps the Windows WSL-`bash`-stub trap (R2 I-R2-3).
 function hermesInstalled(env) {
   // A regular file that is executable, not merely a path that exists: the shell
   // resolver tests `[ -x ]`, so a directory or a non-executable file named like
-  // an interpreter would otherwise pass here and fail there. On Windows Node
-  // ignores X_OK, which matches what MSYS `[ -x ]` reports for the same file.
+  // an interpreter would otherwise pass here and fail there.
   const isExe = (p) => {
     try { if (!statSync(p).isFile()) return false; accessSync(p, constants.X_OK); return true; }
     catch { return false; }
@@ -222,7 +216,7 @@ function hermesInstalled(env) {
   const local = env.LOCALAPPDATA || join(env.HOME || env.USERPROFILE || '', 'AppData', 'Local');
   const root  = env.HERMES_HOME || join(local, 'hermes');
   for (const src of [join(root, 'hermes-agent'), root]) {                     // tolerate venv/ at root
-    if (isExe(join(src, 'venv', 'Scripts', 'python.exe')) || isExe(join(src, 'venv', 'bin', 'python'))) return true;
+    if (isExe(join(src, 'venv', 'bin', 'python'))) return true;
     const launcher = join(src, '.hermes', 'bin', 'hermes');                    // PM-managed install (HIMMEL-4307): the launcher names the runtime
     if (isExe(launcher)) {
       try {                                                                    // read-only, same as resolve-hermes-py.sh: argv[0] must be a live interpreter
@@ -433,16 +427,11 @@ export function formatCodexHealth(rc, stdout) {
 // Impure companion (real machine, untested by design, mirrors buildCtx). Spawns
 // the bash detector non-fatally: findings make execFileSync throw with e.status=1
 // and the WARN lines on e.stdout; a missing bash / missing script returns rc<0
-// so formatCodexHealth renders nothing. Git-Bash is resolved explicitly on
-// Windows (a bare `bash` is the WSL stub) — matching scripts/hooks tests.
+// so formatCodexHealth renders nothing.
 function runCodexHealth(repoRoot, env) {
   const script = join(repoRoot, 'scripts', 'codex', 'startup-health.sh');
   if (!existsSync(script)) return { rc: -1, out: '' };
-  let bash = '/bin/bash';
-  if (process.platform === 'win32') {
-    const cands = [env.GUARDRAIL_BASH, 'C:/Program Files/Git/bin/bash.exe', 'C:/Program Files/Git/usr/bin/bash.exe'].filter(Boolean);
-    bash = cands.find((b) => existsSync(b)) || 'bash';
-  }
+  const bash = '/bin/bash';
   try {
     const out = execFileSync(bash, [script], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000 });
     return { rc: 0, out };
@@ -460,9 +449,6 @@ function runBankStatus(repoRoot, env, registry) {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 10000,
       env,
-      windowsHide: true, // HIMMEL-2081: same fix as HIMMEL-2042 (node spawn sites) -- this
-      // runs unattended off guard-implementor-dispatch.sh on every lane dispatch and
-      // popped a visible bun.exe chief without this.
     });
     return parseBankStatusOutput(out);
   } catch (e) {

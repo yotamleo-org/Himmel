@@ -8,7 +8,7 @@
 // breaker left by a dead taker fails closed with a remedy. Each child runs as
 // its own process-group leader, the whole group is killed on every finish, and
 // the result waits until the group is gone.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -17,9 +17,8 @@ const alive = (pid: number) => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 };
-// ponytail: Windows has no process groups, so a crashed server's orphan does not keep the lock there, upgrade path is a Job Object (Windows parked, epic HIMMEL-4102)
 const groupAlive = (pgid: number) => {
-  if (process.platform === "win32" || !Number.isInteger(pgid) || pgid <= 1) return false;
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
   try { process.kill(-pgid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 };
 const parse = (s: string) => { const [pid, token = "", pgid] = s.trim().split(/\s+/); return { pid: Number(pid), token, pgid: Number(pgid) }; };
@@ -103,7 +102,7 @@ const REAP_WAIT_MS = 5000;
 
 // execFile semantics (argv array, no shell) plus detached: the child leads its
 // own process group, so a timeout kills every descendant with kill(-pgid)
-// (taskkill /T on Windows, which has no process groups). onSpawn gets the
+// onSpawn gets the
 // pgid (= the leader's pid) so the caller can record it in the lock. If onSpawn
 // throws, the group is killed and reaped and the promise rejects: the child
 // never runs unsupervised.
@@ -118,12 +117,6 @@ export function runChild(argv: string[], o: { cwd: string; env: Record<string, s
     c.stderr!.on("data", (d) => { if (stderr.length < MAX_OUT) stderr += errDec.write(d); });
     const killGroup = () => {
       if (c.pid === undefined) return;
-      if (process.platform === "win32") {
-        // Only while the leader lives: an exited pid can be reused on Windows.
-        // ponytail: Windows cannot reap a descendant that outlives the leader, upgrade path is a Job Object if Windows actions leave orphans (Windows parked, epic HIMMEL-4102)
-        if (c.exitCode === null && c.signalCode === null) spawnSync("taskkill", ["/pid", String(c.pid), "/T", "/F"], { stdio: "ignore" });
-        return;
-      }
       try { process.kill(-c.pid, "SIGKILL"); } catch { try { c.kill("SIGKILL"); } catch { /* already gone */ } }
     };
     // SIGKILL is delivered at once but reaped later: wait (bounded) until

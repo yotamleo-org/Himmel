@@ -65,7 +65,7 @@ function jqCanon(text) {
       if (r.status === null) throw fail(`jq was killed (${r.signal})`);
       jqOk = true;
       if (r.status !== 0) return null;
-      const out = r.stdout.replace(/\r?\n$/, ''); // jq.exe on Windows ends its lines with CRLF
+      const out = r.stdout.replace(/\n$/, '');
       // one JSON document only: jq -c prints a line per document ('1 2' -> two lines)
       return out === '' || out.includes('\n') ? null : out;
     }

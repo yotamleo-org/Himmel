@@ -18,18 +18,15 @@
 #      unchanged back through himmelctl, not just "any" non-zero.
 #   D. `update` rejects options not in its own whitelist (e.g. --items),
 #      same validation posture as every other subcommand.
-#   E. deriveUpdateCommand forward-slashes the script path (toBashPath) so the
-#      resolved Git Bash doesn't MSYS-mangle a backslash Windows path (part 2
-#      of the Windows fix).
 #   F. resolveBash() picks a Windows-native Git Bash DETERMINISTICALLY from
 #      %ProgramFiles% instead of trusting PATH order — part 1, the REOPENED
 #  root cause: bare `bash` on the operator's PowerShell PATH is
 #      C:\Windows\System32\bash.exe (WSL), which cannot run a Windows-path
 #      script AT ALL. The s2 fix (toBashPath only) targeted the wrong bash.
 #
-# Cases A–E pin HIMMELCTL_BASH=bash so they exercise the update WRAPPER +
-# toBashPath in isolation — argv[0] stays the bare 'bash' those assertions
-# expect, independent of whichever Git Bash resolveBash would pick on the host.
+# Cases A–D pin HIMMELCTL_BASH=bash so they exercise the update WRAPPER
+# in isolation — argv[0] stays the bare 'bash' those assertions
+# expect, independent of whichever bash resolveBash would pick on the host.
 # Case F drops the pin to exercise resolveBash()'s real resolution.
 
 set -euo pipefail
@@ -187,37 +184,6 @@ grepq "$out" -- '--items is not valid' \
 [ -f "$fixtureD/update-args.log" ] \
   && fail "caseD: --items rejection must NOT invoke himmel-update.sh (got: $(cat "$fixtureD/update-args.log"))"
 echo "ok: caseD update rejects options outside its whitelist (--items), stub never invoked"
-
-# ── Case E: a backslash repo root is forward-slashed for bash ──
-# deriveUpdateCommand must run the script path through toBashPath so Git Bash
-# does not eat the backslashes ('\U'->'U', '\D'->'D' ...) and collapse
-# C:\Users\...\himmel-update.sh into a nonexistent C:Users...himmel-update.sh.
-# Feed a Windows-style backslash HIMMELCTL_REPO_ROOT and assert the printed
-# derived command carries NO backslash (every separator forward-slashed) — the
-# tell that toBashPath was applied. --dry-run prints without executing, and
-# repoRoot() returns HIMMELCTL_REPO_ROOT verbatim, so the fake root needs no
-# real himmel-update.sh on disk. The assertion holds on posix too: path.join
-# leaves the input backslashes as literals there, and toBashPath still maps
-# them to '/'. HIMMELCTL_BASH=bash pins argv[0] to the bare 'bash' so the
-# no-backslash assertion below scopes cleanly to the SCRIPT path (a resolved
-# Git-Bash launcher would itself carry backslashes — that is Case F's concern).
-stubE="$work/caseE"; mkdir -p "$stubE"
-cE=$(build_path "$stubE" bash git jq python3 npm -- )
-hE="$work/hE"; mkdir -p "$hE"
-set +e
-out=$(PATH="$cE" HOME="$hE" USERPROFILE="$(winpath "$hE")" HIMMELCTL_CACHE_DIR="$(winpath "$hE.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$hE.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 HIMMELCTL_BASH=bash \
-      HIMMELCTL_REPO_ROOT='C:\Users\test\himmel' \
-      "$node_bin" "$wizard" update --dry-run \
-      </dev/null 2>&1); rc=$?
-set -e
-[ "$rc" -eq 0 ] || fail "caseE: dry-run should exit 0 (got rc=$rc): $out"
-derived_line=$(printf '%s\n' "$out" | grep 'derived:')
-case "$derived_line" in
-  *\\*) fail "caseE: derived command still contains a backslash — toBashPath not applied: $derived_line" ;;
-esac
-grepq "$derived_line" -E 'bash C:/Users/test/himmel/scripts/himmel-update\.sh' \
-  || fail "caseE: expected forward-slashed script path in derived command (got: $derived_line)"
-echo "ok: caseE backslash repo root -> derived command forward-slashed (toBashPath applied)"
 
 # ── Case F: resolveBash falls through to bare 'bash' ─
 # No HIMMELCTL_BASH — that seam would short-circuit the resolution under test.

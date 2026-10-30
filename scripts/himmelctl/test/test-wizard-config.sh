@@ -495,40 +495,6 @@ lanes_after=$(cat "$fxJ/lanes.json")
   || fail "caseJ: resolve.mjs must never modify the base lanes.json"
 echo "ok: caseJ lanes.local.json overlay (base + local, local wins) actually suppresses the overridden lane in resolve.mjs; base lanes.json unchanged"
 
-# ── Case K: native BACKSLASH HIMMELCTL_REPO_ROOT still hits the intended .env ─
-# Regression guard for writeEnvVar passes its --env-file target to
-# bash in forward-slice form (toBashPath) because Git-Bash can misresolve a
-# backslashed/drive-letter path to the wrong file. Force a NATIVE Windows path
-# (cygpath -w — the form path.join also emits on Windows node) as
-# HIMMELCTL_REPO_ROOT and confirm the write lands in the INTENDED fixture .env,
-# not a misresolved sibling. Git-Bash/MSYS/Cygwin only: posix has no backslash
-# separator, so the case self-skips there.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    fxK="$work/fixtureK"; build_fixture "$fxK"
-    winroot=$(cygpath -w "$fxK" 2>/dev/null || printf '%s' "$fxK")
-    case "$winroot" in
-      *\\*)
-        _hK="$work/homeK"; mkdir -p "$_hK"
-        set +e
-        outK=$(HOME="$_hK" USERPROFILE="$(winpath "$_hK")" HIMMELCTL_CACHE_DIR="$(winpath "$_hK.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hK.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$winroot" \
-          "$node_bin" "$wizard" config set initiative.execute on 2>&1); rcK=$?
-        set -e
-        [ "$rcK" -eq 0 ] || fail "caseK: backslash-root set should exit 0 (got rc=$rcK): $outK"
-        grep -qE '^HIMMEL_INITIATIVE=execute$' "$_hK/.himmel/himmel.conf" \
-          || fail "caseK: write must land in himmel.conf even under a backslash repoRoot (got: $(cat "$_hK/.himmel/himmel.conf" 2>&1))"
-        echo "ok: caseK a native backslash HIMMELCTL_REPO_ROOT still resolves the himmel.conf write (Git-Bash)"
-        ;;
-      *)
-        echo "ok: caseK skipped — cygpath emitted no backslashes (non-drive-letter tmp), nothing to prove"
-        ;;
-    esac
-    ;;
-  *)
-    echo "ok: caseK skipped on posix (no backslash path separator)"
-    ;;
-esac
-
 # ── Case N: an unreadable .env aborts, never silently drops tokens ───────────
 # CodeRabbit (Major, data integrity): readEnvVarFile treated EVERY read error
 # as '' (unset), so config set would derive a replacement from an empty base

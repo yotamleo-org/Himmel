@@ -39,26 +39,12 @@ export const RATES = {
   'gpt-6-luna': { inputPerM: 0.20, outputPerM: 1.20 },
 };
 
-// windowsDriveFormPath / cwdToProjectSlug mirror Claude Code's own path->slug
+// cwdToProjectSlug mirrors Claude Code's own path->slug
 // encoding, PROVEN against a real ~/.claude/projects listing on this machine
 // (same algorithm as scripts/luna/backfill-sessions.sh:_path_to_slug): every
 // character outside [a-zA-Z0-9] becomes '-', a leading '-' is stripped.
-//
-// Windows-only nuance: Claude Code is a native Node process, so it reports
-// its own cwd in DRIVE-LETTER form (C:\Users\...) even when the launching
-// shell's cwd is a Git-Bash POSIX mount path (/c/Users/...) — that mount
-// form must be converted FIRST (mirrors `cygpath -w`) or the slug silently
-// diverges (wrong drive-letter case, missing ':' before the first
-// separator). Off Windows this is a no-op.
-export function windowsDriveFormPath(p) {
-  const m = /^\/([a-zA-Z])\/(.*)$/.exec(String(p));
-  if (!m) return p;
-  return `${m[1].toUpperCase()}:\\${m[2].replace(/\//g, '\\')}`;
-}
-
-export function cwdToProjectSlug(cwdPath, platform = process.platform) {
-  const winForm = platform === 'win32' ? windowsDriveFormPath(cwdPath) : cwdPath;
-  return String(winForm).replace(/[^a-zA-Z0-9]/g, '-').replace(/^-+/, '');
+export function cwdToProjectSlug(cwdPath) {
+  return String(cwdPath).replace(/[^a-zA-Z0-9]/g, '-').replace(/^-+/, '');
 }
 
 // resolveLunaTranscript — the newest .jsonl under
