@@ -2420,7 +2420,7 @@ function dropRetiredFromProfileFile(p, raw, ids) {
     for (const id of ids) delete orig.cadences[id];
     if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
     const mode = fs.statSync(p).mode & 0o777;
-    fs.writeFileSync(tmp, serialize(orig) + '\n', { mode });
+    fs.writeFileSync(tmp, serialize(orig) + '\n', { mode, flag: 'wx' });
     fs.chmodSync(tmp, mode); // the process umask masks the mode given at create
     if (fs.readFileSync(p, 'utf8') !== raw) throw new Error('the profile changed while it was read');
     fs.renameSync(tmp, p);

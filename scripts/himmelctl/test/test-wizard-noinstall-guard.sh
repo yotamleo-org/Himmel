@@ -10,12 +10,13 @@
 #      member of the documented allow-set (script-target guard).
 #   B. NEGATIVE proof the guard actually constrains: removing ANY single name
 #      from the allow-set makes case A's checker fail.
-#   C. bin.js calls fs.writeFileSync exactly five times: the profile-cache
+#   C. bin.js calls fs.writeFileSync exactly six times: the profile-cache
 #      write (writeCache()), the named install-profile save
 #      (offerSaveProfile()), the PATH-launcher shim tmp write
 #      (writeMarkedLauncher()), and the two PHI guard-input writes
-#      (mergePhiRoot(), the .salus marker) — no other file the wizard itself
-#      writes.
+#      (mergePhiRoot(), the .salus marker), and the retired-cadence profile
+#      rewrite (dropRetiredFromProfileFile()) — no other file the wizard
+#      itself writes.
 #   D. bin.js requires ONLY node builtins (fs/os/path/readline/child_process)
 #      — zero npm deps, and no new lib smuggled in to reimplement
 #      plugin-install/hook-wire/settings-merge logic.
@@ -209,8 +210,8 @@ echo "ok: caseB dropping any single allow-set name breaks the guard (proves it c
 # `dest` itself is left untouched until the rename, so a failure at any point
 # up to and including the write leaves a previously-saved profile intact.
 writes=$(grep -c 'fs\.writeFileSync' "$wizard")
-[ "$writes" -eq 5 ] \
-  || fail "caseC: expected exactly 5 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1, and the ~/.himmel/himmel.conf writes to lib/behaviour-config.js, HIMMEL-7021), got $writes"
+[ "$writes" -eq 6 ] \
+  || fail "caseC: expected exactly 6 fs.writeFileSync calls in bin.js (profile cache + install-profile save + phi-roots + .salus marker + the vm.mode resolver probe + the retired-cadence profile rewrite; the PATH-launcher tmp write moved to lib/launcher.js, HIMMEL-3312 S13 item 1, and the ~/.himmel/himmel.conf writes to lib/behaviour-config.js, HIMMEL-7021), got $writes"
 # vmProofRoute writes the doc-with-answer to a
 # mkdtemp dir under os.tmpdir() so scripts/lib/vm-mode.sh can resolve it,
 # and removes the dir in finally -- a probe, never an install write.
@@ -240,7 +241,13 @@ grep -q "fs.writeFileSync(tmp, lines.join('" "$wizard" \
   || fail "caseC: missing the phi-roots merge write (mergePhiRoot, HIMMEL-2347 — now via tmp+rename, HIMMEL-2347 CR fix 3)"
 grep -q "fs.writeFileSync(markerPath, '', { flag: 'wx' })" "$wizard" \
   || fail "caseC: missing the .salus marker write, or it is no longer exclusive-create 'wx' (HIMMEL-2347 — a plain write would truncate an existing marker)"
-echo "ok: caseC bin.js's only fs.writeFileSync calls are the profile cache, the install-profile save, the two PHI guard inputs and the vm.mode resolver probe; lib/launcher.js's is the PATH-launcher shim"
+# dropRetiredFromProfileFile rewrites the saved profile without its retired
+# cadence ids through a temp file + rename. Pinned on the FULL call shape, with
+# the exclusive-create flag, so a plain write can never truncate a leftover temp
+# file, and so the pin cannot collapse onto the other writes to a variable `tmp`.
+grep -q "fs.writeFileSync(tmp, serialize(orig) + '\\\\n', { mode, flag: 'wx' })" "$wizard" \
+  || fail "caseC: missing the retired-cadence profile rewrite (dropRetiredFromProfileFile tmp), or it is no longer exclusive-create 'wx'"
+echo "ok: caseC bin.js's only fs.writeFileSync calls are the profile cache, the install-profile save, the two PHI guard inputs, the vm.mode resolver probe and the retired-cadence profile rewrite; lib/launcher.js's is the PATH-launcher shim"
 
 # ── Case D: only node builtins are required -- zero npm deps ───────────────
 required=$(grep -oE "require\('[a-zA-Z_/-]+'\)" "$wizard" | sed -E "s/require\('(.*)'\)/\1/" | sort -u)
