@@ -19,8 +19,7 @@
 # inside a checkout or not. The plugin copy is byte-identical to this file and
 # sources nothing, for the same reason.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the release-manager lane
+# Platform guard: any POSIX bash 3.2+. The release-manager lane
 # (headed-arm-worker.sh) is Linux-only.
 #
 # TRIP CONDITION, mode 1 (any session; a payload not containing "release" is
