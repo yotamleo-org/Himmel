@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -1037,7 +1037,7 @@ export async function runAndSettle(root: string, session: string, run: Runner, n
   return res;
 }
 
-export type SendFn = (chat_id: number, text: string, replyToMessageId?: number) => Promise<void | number>;
+export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, markup?: object) => Promise<void | number>;
 
 // Send-then-commit: send each complete outbox line, advance the byte-cursor only
 // AFTER the send resolves (at-least-once on crash). Per-chat throttle is the caller's job.
@@ -1061,10 +1061,10 @@ export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         if (ln.trim()) {
-          let out: { text?: string; console?: string; reply_to_message_id?: number } | null = null;
+          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out) {
-            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id); // send BEFORE committing
+            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
         }
@@ -2187,14 +2187,14 @@ async function sessionsList(root: string): Promise<string[]> {
 // block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
 // group `/arm` reply lands in that group and its per-group context is preserved;
 // __chat__ for a DM) — mirrors handleInbound's chatSession routing.
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number): Promise<void> {
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
   const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
   const { created } = await ensureSession(root, session);
   const meta = await readMeta(root, session);
   if (created || !meta) {
     await writeMeta(root, session, { chat_id, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
   }
-  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify({ text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}) }));
+  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify({ text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) }));
 }
 
 // --- getUpdates outage handling ---
@@ -2332,9 +2332,9 @@ export async function main(): Promise<void> {
   const notifyDocFail: NotifyDocFailFn = async (chatId, name) => {
     await sendMessage(token, chatId, `⚠️ couldn't download "${name}" (it may exceed Telegram's ~20MB limit) — I forwarded your caption only.`);
   };
-  const send: SendFn = async (chat, text, replyTo) => {
+  const send: SendFn = async (chat, text, replyTo, markup) => {
     let messageId: number | undefined;
-    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo);
+    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo, markup);
     return messageId;
   };
   // inbound.jsonl's cursor is ROOT-scoped, not chat-scoped, so a
@@ -2415,6 +2415,18 @@ export async function main(): Promise<void> {
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
   const consoleGate: ConsoleRouteGate = { authorize: autoGate.authorize, reply: (chat, text, name, replyTo) => replyViaOutbox(root, chat, text, name, replyTo) };
+  // "Send to chief" / "Choose chief" buttons: same authorize as a typed /chief.
+  const chiefTap = makeChiefTap({
+    root,
+    authorize: autoGate.authorize,
+    prompt: async (chat, text) => {
+      let mid: number | null = null;
+      const ok = await sendMessage(token, chat, text, undefined, undefined, (m) => { mid = m; }, undefined, { force_reply: true, input_field_placeholder: "Your message for the chief" });
+      return ok ? mid : null;
+    },
+    picker: (chat, text, markup) => sendMessage(token, chat, text, undefined, undefined, undefined, undefined, markup),
+    answer: (id, text) => answerCallbackQuery(token, id, text),
+  });
   // Burst coalescing: handleInbound requests through this instead
   // of dispatching per message, so a burst becomes ONE run.
   const coalesce = makeBurstCoalescer(dispatch);
@@ -2500,7 +2512,7 @@ export async function main(): Promise<void> {
       continue;
     }
     // Button taps are not messages: ingest skips them, and they advance the offset like any update.
-    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, afkTap));
+    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t)));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);

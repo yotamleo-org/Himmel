@@ -2363,6 +2363,17 @@ test("replyViaOutbox routes a group reply to group_<id> and a DM reply to __chat
   expect(sent).toContainEqual([7, "dm reply"]);
 });
 
+test("replyViaOutbox carries inline-button markup through the outbox to send; a plain reply carries none", async () => {
+  const r = root();
+  const kb = { inline_keyboard: [[{ text: "Send to chief", callback_data: "chief:send" }]] };
+  await replyViaOutbox(r, 7, "with buttons", undefined, undefined, kb);
+  await replyViaOutbox(r, 7, "plain");
+  const sent: any[] = [];
+  await flushOutboxes(r, async (_c: number, t: string, _reply?: number, markup?: object) => { sent.push([t, markup]); });
+  expect(sent).toContainEqual(["with buttons", kb]);
+  expect(sent).toContainEqual(["plain", undefined]);
+});
+
 test("handleAutoCommand: a reply-delivery failure does NOT swallow the audit nor throw (CR I1)", async () => {
   const r = root(); const audits: any[] = [];
   const deps = {
