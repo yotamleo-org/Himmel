@@ -164,7 +164,7 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // trusted anonymous admins, must not carry a bare code into an inbox either.
       // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
       // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      if (msg.reply_to_message_id == null && CODE_REPLY.test(msg.text)
+      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && CODE_REPLY.test(msg.text)
         && msg.forwarded === false && msg.caption === false
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));

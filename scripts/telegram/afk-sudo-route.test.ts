@@ -147,6 +147,25 @@ test("handleInbound: operator and trusted anonymous-admin bare codes in a group 
   }
 });
 
+test("handleInbound: operator and trusted anonymous-admin bare replies to the bot in a group are held", async () => {
+  for (const from of [OP, GROUP_ANONYMOUS_BOT_ID]) {
+    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+    const { deps, calls, replies, logs } = fake();
+    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: true } } };
+    deps.access = () => groupAccess;
+    const ran: string[] = [];
+    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: -100123, reply_to_message_id: 42, reply_to_bot: true }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
+    await settle();
+    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(false);
+    expect(ran).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("held");
+    expect([...replies, ...logs].join("\n")).not.toContain("123456");
+  }
+});
+
 test("handleInbound: non-operator group numbers stay forwarded", async () => {
   for (const [from, trusted, senderChat] of [[999, true, -100123], [GROUP_ANONYMOUS_BOT_ID, false, -100123], [GROUP_ANONYMOUS_BOT_ID, true, -100999]] as const) {
     const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
