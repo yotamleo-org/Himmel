@@ -20,6 +20,10 @@
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed
 # bash 3.2-compatible. ASCII only.
 set -uo pipefail
+# bash 3.2 (macOS) brace-expands a `{a,b}` written inside the "$(j "...")" payload
+# of a row into two arguments, so the second payload reached `env` as a command
+# (rc=127). The payloads carry brace words as literal text for the hook to judge.
+set +B
 
 # Invoked via `bash` below, never chmod'd: making the hook executable from
 # the suite would hide a missing exec-bit/wiring problem and leave file-mode
