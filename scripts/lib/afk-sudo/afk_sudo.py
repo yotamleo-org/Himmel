@@ -178,15 +178,44 @@ def sha256_file(path):
     return h.hexdigest(), n
 
 
+class BadFile(Exception):
+    """An argv element names something the helper will not bind: refused, never skipped."""
+
+
+def bind_target(a, cwd):
+    """The regular file an argv element names, as the kernel resolves it (links first, then ..),
+    or None when it names no file or a directory. A pseudo-file (under /proc, /sys, /dev; only
+    /dev/null is let through), a FIFO or other non-regular file, and an entry that cannot be
+    examined raise BadFile: a run that is not bound by hash must not go ahead."""
+    if not a or "\0" in a or len(a) > 4096:
+        return None
+    joined = a if a.startswith("/") else os.path.join(cwd, a)
+    lex, real = os.path.normpath(joined), os.path.realpath(joined)
+    if real == "/dev/null":
+        return None
+    if lex.startswith(PSEUDO) or real.startswith(PSEUDO):
+        raise BadFile(a)
+    try:
+        mode = os.stat(real).st_mode
+    except OSError as e:
+        if e.errno in (errno.ENOENT, errno.ENOTDIR, errno.ENAMETOOLONG):
+            return None
+        raise BadFile(a) from e
+    if stat.S_ISDIR(mode):
+        return None
+    if not stat.S_ISREG(mode):
+        raise BadFile(a)
+    return real
+
+
 def collect_files(argv, cwd, op_uid):
     """Every argv element naming a regular file: hashed, and read when it is small and the
-    operator could read it themselves (a root-only file is hashed, never read or shown)."""
+    operator could read it themselves (a root-only file is hashed, never read or shown).
+    The recorded path is the resolved one. Raises BadFile for an element that cannot be bound."""
     seen, out = set(), []
     for a in argv:
-        if not a or "\0" in a or len(a) > 4096:
-            continue
-        p = os.path.normpath(a if a.startswith("/") else os.path.join(cwd, a))
-        if p in seen or p.startswith(PSEUDO):
+        p = bind_target(a, cwd)
+        if p is None or p in seen:
             continue
         seen.add(p)
         try:
@@ -197,8 +226,8 @@ def collect_files(argv, cwd, op_uid):
                 for chunk in iter(lambda: f.read(1 << 16), b""):
                     h.update(chunk)
                     n += len(chunk)
-        except OSError:
-            continue
+        except OSError as e:
+            raise BadFile(a) from e
         body = head if n <= READ_CAP and (st.st_mode & 0o004 or st.st_uid == op_uid) else None
         out.append(({"path": p, "sha256": h.hexdigest(), "bytes": n, "shown": body is not None}, body))
     return out
@@ -357,7 +386,12 @@ def execute_run(payload, config):
             st = os.stat(rec["cwd"])
             if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
                 return {"result": "changed"}
-        except OSError:
+            frozen = {f["path"] for f in rec["files"]}  # an element that names a file now, but did not at request
+            for a in rec["argv"]:
+                p = bind_target(a, rec["cwd"])
+                if p is not None and p not in frozen:
+                    return {"result": "changed"}
+        except (OSError, BadFile):
             return {"result": "changed"}
         if not run_shipped():
             return {"result": "run-not-shipped"}
@@ -374,10 +408,9 @@ def execute_run(payload, config):
         rule = nr.check(rec["argv"], texts, rec["cwd"], op_pw.pw_dir, extra if isinstance(extra, list) else [])
         if rule:
             return {"result": "never-remote", "rule": rule}
-        if mode_of(config) == "all":
-            if rec["run_as"] not in ("root", config.get("operator_user")):
-                return {"result": "bad-user"}
-        else:
+        if rec["run_as"] not in ("root", config.get("operator_user")):
+            return {"result": "bad-user"}
+        if mode_of(config) != "all":
             hit = match_class(config, rec["argv"])
             if not hit:
                 return {"result": "not-in-class"}
@@ -460,7 +493,8 @@ def run_request(broker, config, args):
             print("result=not-in-class")
             return 5
         argv = hit[1]
-        run_pw = user_pw(config["classes"][hit[0]].get("run_as", "root"))
+        want = config["classes"][hit[0]].get("run_as", "root")
+        run_pw = user_pw(want) if want in ("root", config.get("operator_user")) else None
     if run_pw is None:
         print("result=bad-user")
         return 5
@@ -477,13 +511,19 @@ def run_request(broker, config, args):
     if argv0_path is None:
         print("result=no-such-command")
         return 5
-    files = collect_files(argv, cwd, (op_pw or run_pw).pw_uid)
+    try:
+        files, unbound = collect_files(argv, cwd, (op_pw or run_pw).pw_uid), False
+    except BadFile:
+        files, unbound = [], True  # the floor still reads the argv, so a wipe of /dev/x stays never-remote
     texts = [b.decode("utf-8", "replace") for _, b in files if b is not None] + [stdin.decode("utf-8", "replace")]
     extra = config.get("never_remote_extra")
     rule = nr.check(argv, texts, cwd, (op_pw or run_pw).pw_dir, extra if isinstance(extra, list) else [])
     if rule:
         refuse_row(meta, "never-remote", rule=rule)
         print(f"result=never-remote rule={rule}")
+        return 5
+    if unbound:
+        print("result=bad-file")
         return 5
     if not SEAM and run_pw.pw_uid != 0 and not setpriv_path():
         print("result=no-setpriv")
@@ -540,6 +580,8 @@ def main(argv):
         ab.check_safe(CONFIG, OWNER)
         with open(CONFIG) as f:
             config = json.load(f)
+        if not isinstance(config, dict):
+            raise TypeError("config is not an object")
         if args.verb == "mode":
             print(f"result=mode mode={mode_of(config)} enabled={str(config.get('enabled') is True).lower()} "
                   f"run_enabled={str(run_enabled(config)).lower()}")

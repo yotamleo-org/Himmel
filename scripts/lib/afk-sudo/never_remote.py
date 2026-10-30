@@ -4,9 +4,10 @@ Installed root-owned next to the helper, so a config cannot remove it; changing 
 takes a himmel PR plus a re-install at the station. `/etc/himmel/afk-sudo.json`
 may only ADD patterns (`never_remote_extra`).
 
-One word set per request: every argv element, the words of each `-c` string, file
-argument and stdin, each also in its trimmed, `key=value`, path-normalised,
-realpath'd and basename forms. Every rule is a membership test on that set, so
+One word set per request: every argv element and its whitespace-split words, the words
+of each file argument and stdin, each also in its trimmed, `key=value`, path-normalised,
+realpath'd and basename forms (links resolve before `..`, as the kernel opens a path).
+A word that derives more than MAX_FORMS forms is refused as `oversize`. Every rule is a membership test on that set, so
 there is no shell syntax or word order to model and no shape list to keep closing.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
@@ -21,6 +22,7 @@ import re
 
 TRIM = "\"'`;&|(){}<>,"
 HOME_FORMS = ("~", "$HOME", "${HOME}")
+MAX_FORMS = 64
 
 DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdisk", "parted", "luksFormat", "luksErase")
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",
@@ -47,40 +49,49 @@ def _path_forms(w, cwd, home):
     # A bare word (`rm`) only names a path under cwd if that path exists; else cwd `/` makes `/rm`.
     if "/" not in w and not w.startswith(HOME_FORMS) and not os.path.lexists(n):
         return set()
-    out = {n}
-    if os.path.lexists(n):
-        out.add(os.path.realpath(n))
+    return {n, os.path.realpath(p)}  # realpath of the joined path: `link/..` is the link target's parent
+
+
+def _forms(w, pathy, cwd, home):
+    """Every form of one word, or None when it derives more than MAX_FORMS (a crafted word)."""
+    out, seen, todo = set(), set(), [(w, pathy)]
+    while todo:
+        w, pathy = todo.pop()
+        for v in {w, w.strip(TRIM)}:
+            if not v or (v, pathy) in seen:
+                continue
+            seen.add((v, pathy))
+            if len(seen) > MAX_FORMS:
+                return None
+            out.add(v)
+            if "=" in v[1:]:
+                todo.append((v.split("=", 1)[1], False))
+            if v[0] in "+:" and len(v) > 1:  # a refspec: +main forces main, :main deletes it
+                todo.append((v[1:], False))
+            if len(v) <= 4096 and (pathy or "/" in v or v.startswith(HOME_FORMS)):
+                for f in _path_forms(v, cwd, home):
+                    out.add(f)
+                    if os.path.basename(f):
+                        out.add(os.path.basename(f))
     return out
 
 
 def word_set(argv, texts, cwd, home):
-    raw = list(argv)
-    for i, a in enumerate(argv[:-1]):
-        if re.fullmatch(r"-[A-Za-z]*c", a):
-            raw += argv[i + 1].split()
+    """The word set of a request, or None when one word derives too many forms."""
+    todo = [(w, True) for w in argv]
+    for a in argv:
+        todo += [(w, False) for w in a.split()]
     for t in texts:
-        raw += t.split()
-    ws = set()
-
-    def add(w, pathy):
-        for v in {w, w.strip(TRIM)}:
-            if not v:
-                continue
-            ws.add(v)
-            if "=" in v[1:]:
-                add(v.split("=", 1)[1], False)
-            if v[0] in "+:" and len(v) > 1:  # a refspec: +main forces main, :main deletes it
-                add(v[1:], False)
-            if pathy or "/" in v or v.startswith(HOME_FORMS):
-                for f in _path_forms(v, cwd, home):
-                    ws.add(f)
-                    if os.path.basename(f):
-                        ws.add(os.path.basename(f))
-
-    for w in argv:
-        add(w, True)
-    for w in raw[len(argv):]:
-        add(w, False)
+        todo += [(w, False) for w in t.split()]
+    ws, done = set(), set()
+    for item in todo:
+        if item in done:
+            continue
+        done.add(item)
+        forms = _forms(item[0], item[1], cwd, home)
+        if forms is None:
+            return None
+        ws |= forms
     return ws
 
 
@@ -89,12 +100,12 @@ def _any(ws, pats):
 
 
 def _top(w, home):
-    """A word that is `/`, a top-level directory, or the operator's home itself."""
-    if w in ("/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "$HOME/*"):
+    """A word that is `/`, a top-level directory, or the operator's home itself, or a glob of one."""
+    if w in ("~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "${HOME}/", "$HOME/*", "${HOME}/*"):
         return True
-    if os.path.normpath(w) in ("/", home):
-        return True
-    return bool(re.fullmatch(r"/[^/]+/?", w)) and not os.path.isfile(w)
+    base = w[:-2] if w.endswith("/*") else w
+    n = re.sub(r"^/+", "/", os.path.normpath(base)) if base else "/"
+    return n in ("/", home) or (bool(re.fullmatch(r"/[^/]+", n)) and not os.path.isfile(n))
 
 
 def _disk_wipe(ws, home):
@@ -141,6 +152,8 @@ RULES = (("disk-wipe", _disk_wipe), ("secret-read", _secret_read), ("main-histor
 def check(argv, texts, cwd, home, extra=()):
     """The name of the first rule the request trips, else None. `extra` only adds patterns."""
     ws = word_set(argv, texts, cwd, home)
+    if ws is None:
+        return "oversize"
     for name, rule in RULES:
         if rule(ws, home):
             return name

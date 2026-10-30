@@ -35,7 +35,7 @@ Config `mode` is `"allowlist"` (default; any other or absent value reads as this
 | | `allowlist` | `all` |
 |---|---|---|
 | Which argv | one a class names (`not-in-class` otherwise) | any |
-| Runs as | the class's `run_as` (default root); `--as` is ignored | `operator_user`, or root with `--as root`; any other user is `bad-user` |
+| Runs as | the class's `run_as` (default root; root or `operator_user` only, any other user is `bad-user`); `--as` is ignored | `operator_user`, or root with `--as root`; any other user is `bad-user` |
 
 The never-remote floor applies in both modes, at request and again at exec. At request in
 `allowlist` mode an argv no class names is refused as `not-in-class` before the floor runs (it
@@ -45,13 +45,22 @@ never reaches the operator either way); an argv a class names goes through the f
 
 A `run-request` writes a root-owned record `STATE/records/<id>.json` (0600, dirs 0700,
 created lazily): argv, `run_as` and its uid/gid, the absolute path of argv[0] and the
-sha256 of its realpath, every argv element that names a regular file (path, sha256,
-size, whether its body was kept), cwd and its device/inode, the env names, the stdin
+sha256 of its realpath, every argv element that resolves to a regular file (the resolved
+path, sha256, size, whether its body was kept), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
 broker's pending payload, not next to the record.
 
 - argv[0] resolves in the fixed PATH `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
+- An argv element is read as the kernel opens it: joined to the cwd, links resolved before
+  `..` (`realpath`). One that resolves to a regular file is hashed. A directory, or a name
+  that is no file, is not bound. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
+  passes), a FIFO, socket or device, and an existing file that cannot be opened and hashed
+  are refused at request (`result=bad-file`, exit 5, no ledger row), never skipped. At exec
+  an element that names a file now but did not at request reports `changed`.
+- The run is of the file in place, not of the copy, and a file a command loads itself (a
+  script it sources, an interpreter's imports, a config it reads) is not bound. The instant
+  between the exec-time check and the exec is an accepted residual (HIMMEL-8250).
 - Files up to 64 KiB are copied to `STATE/files/<id>/` so the floor scans their text; a
   larger file is hashed only (`shown: false`). A file the operator could not read
   themselves (not world-readable, not theirs) is hashed and never copied. File bodies
@@ -65,11 +74,14 @@ broker's pending payload, not next to the record.
 ## What runs after the code is accepted
 
 The executor re-checks, in this order, and writes a ledger row on the first mismatch:
-record hash (`hash-mismatch`); argv[0] sha256, each file sha256 and the cwd identity
-(`changed`, also when one is gone or no longer a regular file); `run-not-shipped`; `run-disabled`; the floor again with the current config
+record hash (`hash-mismatch`); argv[0] sha256, each file sha256, the cwd identity and the
+argv elements that now name a file (`changed`, also when one is gone or no longer a regular
+file); `run-not-shipped`; `run-disabled`; the floor again with the current config
 (`never-remote`); the mode and user rules (`bad-user`, `not-in-class`). A non-root run
 goes through `setpriv --reuid --regid --init-groups --no-new-privs --inh-caps=-all`
-(`no-setpriv` at request time when it is missing); a root run executes directly.
+(`no-setpriv` at request time and again at exec when it is missing); a root run executes
+directly. `--no-new-privs` also means a setuid or setgid tool (`crontab`, `sudo`) fails
+closed in an operator-mode run.
 Output is captured to 256 KiB per stream (the rest is counted and hashed), the
 timeout is `run.timeout_s` (default 300, max 1800; exit 124), and the result lands in
 `STATE/results/<id>.json` for `run-result`.
@@ -80,12 +92,13 @@ The code is spent whatever happens next: a refusal after the code still consumed
 
 `never_remote.py` is installed root-owned beside the helper, so a config cannot remove
 it. Five rules, each a membership test on one word set built from every argv element,
-the words of each `-c` string, the file copies and the stdin (each word also in its
-trimmed, `key=value`, normalised, realpath and basename forms):
+the whitespace-split words of each element, the file copies and the stdin (each word also
+in its trimmed, `key=value`, normalised, realpath and basename forms; links resolve before
+`..`). A word that derives more than 64 forms is refused as `rule=oversize`:
 
 | rule | refuses |
 |---|---|
-| `disk-wipe` | mkfs/wipefs/blkdiscard/partitioners, block devices, `rm` of `/` a top-level directory or home, btrfs subvolume delete of `/` |
+| `disk-wipe` | mkfs/wipefs/blkdiscard/partitioners, block devices, `rm` of `/`, a top-level directory or home (or a `/*` glob of one), btrfs subvolume delete of `/` |
 | `secret-read` | `/etc/shadow`, ssh and gpg keys, the Claude credentials and channel `.env`, `.env`, `totp.seed`, secret-tool/gh token/himmel-secrets reads |
 | `main-history` | a force push or delete naming main/master, deleting `refs/heads/main`, `gh repo delete` |
 | `approval-system` | `/etc/himmel`, the libexec dir, state and ledger dirs, sudoers, visudo, this installer |
@@ -96,17 +109,29 @@ Config `never_remote_extra` only adds fnmatch patterns. A match answers
 notice. It runs at request time and again at exec time.
 
 It is word-set membership, not a semantic policy (`ponytail:` in the module): blind to
-computed paths, text a command fetches or assembles, and files over 64 KiB. Co-occurrence
-over-blocks (an unrelated `main` beside `git push -f`); that cost is accepted.
+computed paths, text a command fetches or assembles, a word split across quotes, and files
+over 64 KiB. Co-occurrence over-blocks (an unrelated `main` beside `git push -f`, `rm` of a
+top-level glob such as `/tmp/*`); that cost is accepted.
+
+Honest limits: the floor is a seatbelt against mistakes and against an injected request
+that names its target. It is not a complete policy: a script can compute a path the floor
+never sees. In `all` mode one approved root run that computes its paths can change the
+approval system itself (the config and `mode`, the floor, the helper, sudoers); the floor
+only stops a request that names them. The operator's read of the notice (mode, run-as,
+argv, script text, hash) stays the main control; the ledger and the morning report make
+every run visible afterwards.
 
 ## Ledger
 
 `/var/log/himmel/afk-sudo.jsonl` rows gain `kind`, `run_as`, `hash`, `blocked_by`,
 `why` (cleaned, 200 chars), `mode`, `argv` (elements over 120 characters cut to 100),
 `argv0_sha256`, `frozen` (files, stdin size and hash, cwd), `stdout_bytes`,
-`stderr_bytes`, `stdout_sha256`, `duration_ms`. New results: `never-remote`,
-`hash-mismatch`, `changed`, `bad-user`, `not-in-class`, `busy`, `run-not-shipped`,
-`run-disabled`, `no-setpriv`, `stdin-too-large`. The ledger never holds the code, the
+`stderr_bytes`, `stdout_sha256`, `duration_ms`. A refusal at request writes a row for
+`never-remote`, `not-in-class` and `busy` only. The other request refusals (`run-not-shipped`,
+`run-disabled`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
+`stdin-too-large`) answer on stdout and write none. After the code, the executor's result
+(`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
+`not-in-class`, `no-setpriv`, or the run itself) is the row. The ledger never holds the code, the
 seed, any output or a stdin body. A `busy` refusal writes one row per session per 10
 minutes.
 

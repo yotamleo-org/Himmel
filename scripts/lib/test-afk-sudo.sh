@@ -21,6 +21,7 @@ pass() { printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); }
 fail() { printf '  FAIL  %s\n' "$1"; [ -n "${2:-}" ] && printf '        got: %s\n' "$2"; FAIL=$((FAIL+1)); }
 assert_contains() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "$3" ;; esac; }
 assert_absent() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
+assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "$3"; fi; }
 
 # The helper honours AFK_SUDO_ROOT only for a non-root euid, and refuses a
 # group- or world-writable tree, so neither may come from the caller.
@@ -226,13 +227,15 @@ me=$(id -un)
 ALL='"mode": "all", '
 # cfg <mode member or empty> <run.enabled> [extra members, leading comma]: rewrite the sandbox config.
 cfg() {
-    printf '{"enabled": true, "operator_id": %s, "window_s": 120, %s"operator_user": "%s", "run": {"enabled": %s, "ttl_s": 900, "timeout_s": 60}, "classes": {"systemctl-restart": {"argv": ["%s/bin/systemctl", "restart", "{unit}"], "unit": ["himmel-test.service"]}}%s}\n' \
-        "$OP" "$1" "$me" "$2" "$R" "${3:-}" > "$R/etc/himmel/afk-sudo.json"
+    printf '{"enabled": true, "operator_id": %s, "window_s": 120, %s"operator_user": "%s", "run": {"enabled": %s, "ttl_s": 900, "timeout_s": %s}, "classes": {"systemctl-restart": {"argv": ["%s/bin/systemctl", "restart", "{unit}"], "unit": ["himmel-test.service"]}}%s}\n' \
+        "$OP" "$1" "$me" "$2" "${TMO:-60}" "$R" "${3:-}" > "$R/etc/himmel/afk-sudo.json"
 }
 # The seam turns the run kind on with AFK_SUDO_RUN=1; the installed helper (euid 0) never reads it.
 hr() { local off="$1"; shift; AFK_SUDO_RUN=1 h "$off" "$@"; }
 rr() { local off="$1"; shift; hr "$off" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier "$@" </dev/null; }
 approve_r() { AFK_SUDO_RUN=1 approve "$@"; }
+# cfg_class_user <user>: make the one class run as <user> (the default is root).
+cfg_class_user() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); c["classes"]["systemctl-restart"]["run_as"] = sys.argv[2]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json" "$1"; }
 if grep -q '^RUN_KIND_SHIPPED = False$' "$HELPER"; then pass "the helper compiles RUN_KIND_SHIPPED as False"; else fail "RUN_KIND_SHIPPED is not the compiled False"; fi
 new_root notshipped; cfg "$ALL" true
 out=$(h 0 run-request --session S1 --ticket T --blocked-by classifier -- true </dev/null)
@@ -330,6 +333,83 @@ mkdir "$R/work"; printf 'echo hi\n' > "$R/work/x.sh"
 out=$(rr 0 --cwd "$R/work" -- sh x.sh); id=$(rid "$out")
 rm -rf "$R/work"
 assert_contains "a cwd removed after the request reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root cwdswap; cfg "$ALL" true
+mkdir "$R/work"; printf 'echo hi\n' > "$R/work/x.sh"
+out=$(rr 0 --cwd "$R/work" -- sh x.sh); id=$(rid "$out")
+mv "$R/work" "$R/work.old"; mkdir "$R/work"; cp "$R/work.old/x.sh" "$R/work/x.sh"
+assert_contains "a cwd replaced by another directory (same files) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+
+echo "== slice 1a: the file binding fails closed =="
+new_root bindfile; cfg "$ALL" true
+mkfifo "$R/fifo.p"; ln -s /proc/self/stat "$R/lnk.p"
+assert_contains "an argument under /dev is refused at request, not skipped" "result=bad-file" "$(rr 0 -- cat /dev/zero)"
+assert_contains "an argument under /proc is refused" "result=bad-file" "$(rr 1 -- cat /proc/self/status)"
+assert_contains "a link into /proc is refused" "result=bad-file" "$(rr 2 --cwd "$R" -- cat lnk.p)"
+assert_contains "a FIFO, which cannot be hashed, is refused" "result=bad-file" "$(rr 3 --cwd "$R" -- cat fifo.p)"
+out=$(rr 4 -- cat /dev/null); id=$(rid "$out")
+assert_contains "/dev/null stays allowed" "result=pending" "$out"
+h 5 deny "$id" --from "$OP" --chat "$OP" >/dev/null
+out=$(rr 6 -- ls "$R"); id=$(rid "$out")
+assert_contains "a directory argument is not bound" "result=pending" "$out"
+assert_contains "and its run goes ahead" "result=ran" "$(approve_r 33 "$id" "$(code 33)")"
+new_root bindreal; cfg "$ALL" true
+mkdir -p "$R/real/sub"; printf 'echo REAL\n' > "$R/real/x.sh"; ln -s "$R/real/sub" "$R/lnk"
+out=$(rr 0 --cwd "$R" -- sh lnk/../x.sh); id=$(rid "$out")
+printf 'echo CHANGED\n' > "$R/real/x.sh"
+assert_contains "link/../x binds the file the kernel opens, not the lexical path" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root bindnew; cfg "$ALL" true
+out=$(rr 0 --cwd "$R" -- sh later.sh); id=$(rid "$out")
+printf 'echo hi\n' > "$R/later.sh"
+assert_contains "an argument that named no file at request and names one at exec reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+
+echo "== slice 1a: the executor re-checks what can move after the request =="
+new_root exshipped; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+assert_contains "exec time: a run filed in the seam is refused when the run kind is no longer shipped" "result=run-not-shipped" "$(approve 3 "$id" "$(code 3)")"
+new_root exdisabled; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+cfg "$ALL" false
+assert_contains "exec time: run.enabled turned off after the request is refused" "result=run-disabled" "$(approve_r 3 "$id" "$(code 3)")"
+new_root exmode; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+cfg '' true
+assert_contains "exec time: a station switched to allowlist refuses a free-form argv" "result=not-in-class" "$(approve_r 3 "$id" "$(code 3)")"
+new_root exuser; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real
+assert_contains "exec time: an operator_user changed after the request is bad-user" "result=bad-user" "$(approve_r 3 "$id" "$(code 3)")"
+new_root thirduser; cfg '' true
+cfg_class_user nobody
+assert_contains "allowlist: a class that names a third user is bad-user at request" "result=bad-user" "$(rr 0 -- systemctl restart himmel-test.service)"
+new_root extimeout; TMO=1 cfg "$ALL" true
+out=$(rr 0 -- sleep 30); id=$(rid "$out")
+assert_contains "the run timeout kills the command with exit 124" "exit=124" "$(approve_r 3 "$id" "$(code 3)")"
+out=$(rr 31 -- sh -c 'exec 1>&- 2>&-; sleep 30'); id=$(rid "$out")
+assert_contains "a command that closed its pipes and kept running is killed too" "exit=124" "$(approve_r 33 "$id" "$(code 33)")"
+new_root excap; cfg "$ALL" true
+out=$(rr 0 -- sh -c 'head -c 300000 /dev/zero'); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+assert_contains "output past the cap is still counted" "stdout_bytes=300000" "$(h 4 run-result "$id")"
+assert_eq "output is kept up to 256 KiB" 262144 "$(h 4 run-result "$id" --stream stdout | wc -c | tr -d ' ')"
+cat > "$tmp/exec-nosetpriv.py" <<'EXECNOSP'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+cfg = json.load(open(s.CONFIG))
+s.SEAM = False  # act as the installed helper: outside the seam a missing setpriv is a refusal
+s.RUN_KIND_SHIPPED = True
+s.setpriv_path = lambda: None
+print(s.execute_run({"id": sys.argv[2], "hash": s.rec_hash(s.load_record(sys.argv[2]))}, cfg)["result"])
+EXECNOSP
+new_root exnosetpriv; cfg "$ALL" true
+out=$(rr 0 -- touch "$R/ranmark"); id=$(rid "$out")
+assert_contains "exec time: a non-root run without setpriv is refused" "no-setpriv" "$(AFK_SUDO_ROOT="$R" python3 -I "$tmp/exec-nosetpriv.py" "$LIB" "$id")"
+if [ ! -e "$R/ranmark" ]; then pass "exec time: the refused run did not run"; else fail "exec time: the refused run ran"; fi
+new_root badcfg
+printf '[]\n' > "$R/etc/himmel/afk-sudo.json"
+out=$(h 0 mode)
+assert_contains "a config that is JSON but not an object is a clean error" "result=error" "$out"
+assert_absent "and not a traceback" "Traceback" "$out"
 
 if [ "$(uname -s)" = Linux ] && command -v setpriv >/dev/null 2>&1; then
     new_root drop; cfg "$ALL" true
@@ -370,7 +450,7 @@ assert_contains "the floor is checked again at exec with the current config" "ru
 assert_contains "a refused exec is ledgered" '"result": "never-remote"' "$(ledger)"
 
 # nr <argv...>: the rule the floor names for this argv in cwd /work as operator /home/op, else none.
-nr() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import never_remote as n; print(n.check(sys.argv[3:], [], sys.argv[2], "/home/op") or "none")' "$LIB" /work "$@"; }
+nr() { timeout 20 python3 -I -c'import sys; sys.path.insert(0, sys.argv[1]); import never_remote as n; print(n.check(sys.argv[3:], [], sys.argv[2], "/home/op") or "none")' "$LIB" /work "$@"; }
 expect_rule() { local want=$1 got; shift; got=$(nr "$@"); if [ "$got" = "$want" ]; then pass "floor $want: $*"; else fail "floor $want: $*" "$got"; fi; }
 expect_rule disk-wipe mkfs.ext4 /dev/vdb
 expect_rule disk-wipe dd if=/dev/zero of=/dev/nvme0n1
@@ -428,6 +508,17 @@ expect_rule guards-off systemctl stop telegram-bridge
 expect_rule none cat /repo/.claude/worktrees/w1/scripts/hooks/guard.sh
 expect_rule none systemctl status telegram-bridge
 expect_rule none ls /repo/scripts/lib
+# the floor reads paths as the kernel does (realpath, so a link resolves before ..) and splits every argv element
+expect_rule disk-wipe rm -rf '/etc/*'
+expect_rule disk-wipe rm -rf '/home/op/*'
+ln -s /usr/bin "$tmp/usrlnk"
+expect_rule disk-wipe rm -rf "$tmp/usrlnk/.."
+expect_rule disk-wipe awk 'BEGIN{system("wipefs -a /dev/vdb")}'
+expect_rule disk-wipe env -S 'echo x; mkfs.ext4 /dev/vdb'
+expect_rule none awk 'BEGIN{print 1}'
+expect_rule none rm -rf /tmp/build/x/y
+crafted=$(printf '"a=%.0s' $(seq 1 200))x
+expect_rule oversize true "$crafted"
 
 echo "== slice 1a: limits, the busy row and the retained files =="
 new_root busyrow; cfg "$ALL" true
@@ -487,10 +578,10 @@ ar() {
 AR=(--session S1 --ticket HIMMEL-8067 --blocked-by classifier)
 new_root arun; cfg "$ALL" true
 ar 3 "${AR[@]}" -- sh -c 'exit 3'
-assert_contains "RED 6: afk-run exits with the command's status" "3" "$ARRC"
+assert_eq "RED 6: afk-run exits with the command's status" 3 "$ARRC"
 if [[ $ARLAST =~ ^afk-run:\ status=ran:3\ id=[a-z2-7]{8}$ ]]; then pass "RED 6: the last stderr line is status=ran:3 with the id"; else fail "RED 6: the last stderr line" "$ARLAST"; fi
 ar 33 "${AR[@]}" -- sh -c 'echo relayed; echo errrelayed >&2'
-assert_contains "afk-run exits 0 for a command that exits 0" "0" "$ARRC"
+assert_eq "afk-run exits 0 for a command that exits 0" 0 "$ARRC"
 assert_contains "afk-run prints the captured stdout" "relayed" "$(cat "$tmp/ar.out")"
 assert_contains "afk-run prints the captured stderr" "errrelayed" "$(cat "$tmp/ar.err")"
 assert_contains "the last stderr line names the status" "status=ran:0" "$ARLAST"
@@ -504,23 +595,23 @@ AR_OUT=/dev/full ar 3 "${AR[@]}" -- sh -c 'echo fullout'
 assert_contains "afk-run says so when it cannot relay the stored stdout" "stdout output could not be read or relayed" "$(cat "$tmp/ar.err")"
 new_root ardeny; cfg "$ALL" true
 FAKE_ACTION=deny ar 3 "${AR[@]}" -- true
-assert_contains "a denied run exits 3" "3" "$ARRC"
+assert_eq "a denied run exits 3" 3 "$ARRC"
 assert_contains "a denied run says so on the last line" "status=denied" "$ARLAST"
 new_root arexp; cfg "$ALL" true
 FAKE_ACTION=expire ar 3 "${AR[@]}" -- true
-assert_contains "an expired run exits 4" "4" "$ARRC"
+assert_eq "an expired run exits 4" 4 "$ARRC"
 assert_contains "an expired run says so on the last line" "status=expired" "$ARLAST"
 new_root arref; cfg "$ALL" true
 ar 3 "${AR[@]}" -- bash -c 'mkfs.ext4 /dev/vdb'
-assert_contains "a refused run exits 5" "5" "$ARRC"
+assert_eq "a refused run exits 5" 5 "$ARRC"
 assert_contains "a refused run names the result" "afk-run: status=refused:never-remote" "$ARLAST"
 assert_absent "a refused run has no id" "id=" "$ARLAST"
 new_root arpend; cfg "$ALL" true
 FAKE_ACTION=none ar 3 "${AR[@]}" -- true
-assert_contains "a run still pending at the end of the wait exits 75" "75" "$ARRC"
+assert_eq "a run still pending at the end of the wait exits 75" 75 "$ARRC"
 assert_contains "a pending run says so with its id" "status=pending id=" "$ARLAST"
 FAKE_ACTION=none ar 4 "${AR[@]}" -- true
-assert_contains "a busy helper exits 76" "76" "$ARRC"
+assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
 
