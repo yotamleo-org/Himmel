@@ -62,6 +62,9 @@ hits="$(printf '%s\n' "$out" | awk -F'\t' '
       if (path ~ pre[i] && (lre[i] == "" || text ~ lre[i])) next
     printf "HIT %s:%s: %s\n", path, line, text
   }' "$allow" -)"
+# a bad allowlist regex kills awk with empty output, which must not read as clean
+awk_rc=$?
+[ "$awk_rc" -eq 0 ] || { echo "check-leg-term: awk failed on $allow (rc=$awk_rc)" >&2; exit 2; }
 
 [ -n "$hits" ] || exit 0
 printf '%s\n' "$hits"
