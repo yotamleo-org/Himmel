@@ -456,5 +456,48 @@ for page in $PENDING; do
   in_list "$page" "$(cat "$tmp/scope")" || bad "PENDING names $page, which is out of scope"
 done
 
+# No tracked shell or JS launcher calls pwsh or powershell. A
+# non-comment line counts when it runs the binary with a PowerShell flag or
+# passes its name to a spawn/exec call. PWSH_ALLOW lists the files that keep
+# such a line on purpose: negative fixtures that feed the string to a guard
+# and this file's own samples. An entry whose
+# file no longer carries a call fails, so the list only shrinks.
+# shellcheck disable=SC2016
+PWSH_CALL='(^|[^A-Za-z0-9_./-])(pwsh|powershell)(\.exe)?[[:space:]]+-(File|Command|NoProfile|NonInteractive|ExecutionPolicy|EncodedCommand|c)([[:space:]]|$)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\([[:space:]]*.(pwsh|powershell)(\.exe)?.[,)]'
+PWSH_ALLOW='scripts/cr/test-cr-guarded-closure.sh
+scripts/docs/test-docs-dropped-terms.sh
+scripts/hermes/test-parity-guard.sh
+scripts/hooks/test-block-bare-qmd-query.sh
+scripts/hooks/test-block-destructive-commands-a.sh
+scripts/hooks/test-block-edit-live-settings.sh'
+
+# pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call.
+pwsh_calls() {
+  while IFS= read -r f; do
+    grep -n -i -E "$PWSH_CALL" "$1/$f" 2> /dev/null | grep -v -E '^[0-9]+:[[:space:]]*(#|//)' | sed "s#^#$f:#"
+  done
+}
+
+mkdir "$tmp/fx"
+printf '#!/usr/bin/env bash\npwsh -File ./install.ps1\n' > "$tmp/fx/launch.sh"
+printf "spawn('powershell.exe', ['-File', 'x.ps1']);\n" > "$tmp/fx/launch.mjs"
+printf '# pwsh -File old.ps1\nPowerShell is dropped.\n' > "$tmp/fx/clean.sh"
+fx_hits=$(printf '%s\n' launch.sh launch.mjs clean.sh | pwsh_calls "$tmp/fx")
+case $fx_hits in *launch.sh:2:*) ok "no-pwsh-invocation flags a launcher running pwsh -File" ;; *) bad "no-pwsh-invocation misses pwsh -File in a launcher" ;; esac
+case $fx_hits in *launch.mjs:1:*) ok "no-pwsh-invocation flags a spawn of powershell" ;; *) bad "no-pwsh-invocation misses a spawn of powershell" ;; esac
+case $fx_hits in *clean.sh*) bad "no-pwsh-invocation flags a comment or prose mention" ;; *) ok "no-pwsh-invocation ignores comments and prose" ;; esac
+
+git -C "$ROOT" ls-files '*.sh' '*.js' '*.mjs' '*.cjs' '*.ts' | grep -v -x -F "$PWSH_ALLOW" > "$tmp/launchers"
+pwsh_found=$(pwsh_calls "$ROOT" < "$tmp/launchers")
+if [ -n "$pwsh_found" ]; then
+  printf '%s\n' "$pwsh_found"
+  bad "a tracked launcher calls pwsh or powershell (listed above)"
+else
+  ok "no tracked launcher calls pwsh or powershell"
+fi
+while IFS= read -r f; do
+  [ -n "$(printf '%s\n' "$f" | pwsh_calls "$ROOT")" ] || bad "PWSH_ALLOW names $f, which carries no pwsh call: remove it"
+done <<< "$PWSH_ALLOW"
+
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
