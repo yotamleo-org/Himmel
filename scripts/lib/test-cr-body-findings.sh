@@ -280,6 +280,20 @@ mk_json_from_file "$RESP_DIR/od-followup-other-badge-prior.json" "$UID_OK" "olds
 sed '/^\[Open the source location\]/d' "$OD_FOLLOWUP" > "$TMP/od-followup-no-link.txt"
 printf '\n[elsewhere](https://github.com/o/r/blob/abc/other.sh#L1)\n' >> "$TMP/od-followup-no-link.txt"
 mk_json_from_file "$RESP_DIR/od-followup-no-link.json" "$UID_OK" "$HEAD" "$TMP/od-followup-no-link.txt"
+# A Follow-up section holding only a Nitpick badge (real PR #4291 review
+# 5709661095 at 74a82fc8) is a non-blocking nit, not drift.
+NIT_FOLLOWUP="$FIXDIR/pr-4291-followup-nitpick.body.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick.json" "$UID_OK" "$HEAD" "$NIT_FOLLOWUP"
+mk_json_from_file "$RESP_DIR/fu-nitpick-prior.json" "$UID_OK" "oldsha1" "$NIT_FOLLOWUP"
+# The same body with its badge of a kind this reader does not know, at head and on a prior head.
+sed 's/alt="Nitpick"/alt="Potential issue"/' "$NIT_FOLLOWUP" > "$TMP/fu-nitpick-other-badge.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge.json" "$UID_OK" "$HEAD" "$TMP/fu-nitpick-other-badge.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-nitpick-other-badge.txt"
+# One Outside-diff finding (the 4269 body) plus the 4291 Nitpick finding in one Follow-up section.
+sed -n '/^<details>$/,/^<\/blockquote><\/details>$/{p;/^<\/blockquote><\/details>$/q}' "$NIT_FOLLOWUP" > "$TMP/fu-nit-block.txt"
+sed '/^## Follow-up Comments[ ]*$/r '"$TMP/fu-nit-block.txt" "$OD_FOLLOWUP" > "$TMP/fu-mixed.txt"
+mk_json_from_file "$RESP_DIR/fu-mixed.json" "$UID_OK" "$HEAD" "$TMP/fu-mixed.txt"
+mk_json_from_file "$RESP_DIR/fu-mixed-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-mixed.txt"
 
 # to <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>
 to() {
@@ -326,6 +340,15 @@ t followup-header-without-finding-blocks    od-followup-header-only    2
 t followup-unknown-badge-blocks             od-followup-other-badge    2
 t followup-prior-head-counted               od-followup-prior          0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 t followup-prior-drift-not-clean            od-followup-other-badge-prior 0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+to od-followup-nitpick-only-no-rows         fu-nitpick                 0 ""
+to od-followup-mixed-keeps-outside-row      fu-mixed                   0 "$OD_FOLLOWUP_ROW"
+to od-followup-nitpick-unknown-badge-drifts fu-nitpick-other-badge     2 ""
+t followup-nitpick-only-counted             fu-nitpick                 0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t followup-nitpick-prior-not-outside        fu-nitpick-prior           0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=0 substantive=0"
+t followup-mixed-outside-still-counted      fu-mixed                   0 "outside=1 nitpick=1 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
+t followup-mixed-prior-outside-counted      fu-mixed-prior             0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+t followup-nitpick-unknown-badge-blocks     fu-nitpick-other-badge     2
+t followup-nitpick-unknown-badge-prior-drift fu-nitpick-other-badge-prior 0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 to od-infra-error-rc1         error             1 ""
 # cr_body_findings itself: the header variant "Outside the diff (N)" is now
 # COUNTED (before, outside read 0 and only the markers canary caught it).
@@ -402,6 +425,9 @@ tp ph-empty-later-review-keeps-head         ph-empty-later-keeps       0 "shaA"
 tp ph-current-head-is-not-prior             ph-head-only               0 ""
 tp ph-wrong-user-id-no-heads                ph-wrong-id                0 ""
 tp ph-followup-drift-head-kept              ph-followup-drift          0 "shaA"
+tp ph-followup-nitpick-only-omitted         fu-nitpick-prior           0 ""
+tp ph-followup-mixed-keeps-head             fu-mixed-prior             0 "oldsha1"
+tp ph-followup-nitpick-unknown-badge-kept   fu-nitpick-other-badge-prior 0 "oldsha1"
 tp ph-infra-error-rc1                       error                      1 ""
 
 echo "pass=$pass fail=$fail"

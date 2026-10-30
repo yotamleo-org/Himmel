@@ -163,14 +163,18 @@ def count_matches(re):
   ( [ scan(re) ] | length );
 # The "## Follow-up Comments" layout has no (N) header: each finding is a
 # <details> whose <summary> opens with a badge image, an "Outside diff" badge
-# for an outside-diff finding. One such badge = one finding. A Follow-up header
-# with no Outside-diff badge, or with a badge of any other kind, is drift.
+# for an outside-diff finding and a "Nitpick" badge for a nitpick. One such badge
+# = one finding. The known badges are Outside diff and Nitpick; a Follow-up
+# header with no known badge, or with a badge of any other kind, is drift.
 def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
 def fu_badge_re: "<summary><sub><picture>";
 def fu_od_re: "<summary><sub><picture>[^\n]*alt=\"Outside diff\"";
+def fu_nit_re: "<summary><sub><picture>[^\n]*alt=\"Nitpick\"";
+def fu_known_n: count_matches(fu_od_re) + count_matches(fu_nit_re);
 def fu_drift:
-  test(fu_hdr_re) and ( count_matches(fu_od_re) == 0 or count_matches(fu_badge_re) != count_matches(fu_od_re) );
+  test(fu_hdr_re) and ( fu_known_n == 0 or count_matches(fu_badge_re) != fu_known_n );
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
+def nitpick_n: sum_matches(nitpick_re) + count_matches(fu_nit_re);
 # A prior review whose Follow-up section is malformed counts as one finding, so
 # its head stays in the prior-head gate and the per-head reader returns rc 2.
 def prior_n: outside_n as $n | if $n == 0 and fu_drift then 1 else $n end;
@@ -204,7 +208,7 @@ _CBF_JQ_COUNTS='
 | ( [ $priorr[] | (.body // "" | norm) ] ) as $pb
 | {
     outside:       ( $chosen | outside_n ),
-    nitpick:       ( $chosen | sum_matches(nitpick_re) ),
+    nitpick:       ( $chosen | nitpick_n ),
     additional:    ( $chosen | sum_matches(additional_re) ),
     prior_outside: ( [ $pb[] | prior_n ]      | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
@@ -261,6 +265,8 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
 | ( reduce $L[] as $l ({hdr:0, cur:null, items:[]};
     if ($l | test(fu_od_re)) then
         .hdr += 1 | .cur = {file: null, line: null, sev: null, title: null}
+    elif ($l | test(fu_nit_re)) then
+        .cur = null
     elif (.cur != null and .cur.line == null and ($l | test("^`[0-9]+(?:-[0-9]+)?`:"))) then
         .cur.line = ($l | capture("^`(?<l>[0-9]+(?:-[0-9]+)?)`:").l)
         | .cur.sev = (($l | capture("(?<s>Critical|Major|Minor|Trivial)\\*\\*") // {s: ""}).s)
