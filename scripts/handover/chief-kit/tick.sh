@@ -466,7 +466,7 @@ if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("residual-unversioned=skip")
     sys.exit(0)
 
-lines = []
+latest = {}
 live = False
 for line in open(doc).read().splitlines():
     if line.startswith("## "):
@@ -476,8 +476,8 @@ for line in open(doc).read().splitlines():
         if m:
             refs = {k for k in re.findall(r"\b[A-Z]+-\d+\b", m[2]) if k != m[1]}
             prs = set(re.findall(r"\bPR\s*#?(\d+)", m[2]))
-            if refs or prs:
-                lines.append((m[1], refs, prs))
+            latest[m[1]] = (refs, prs)
+lines = [(k, refs, prs) for k, (refs, prs) in latest.items() if refs or prs]
 
 prstate = None
 if any(prs for _, _, prs in lines):
@@ -538,7 +538,7 @@ if focus:
         f = front(name[:-3])
         if not f or f.get("statusCategory", "").strip('"') == "Done" or f.get("fixVersions", "[]") != "[]":
             continue
-        if not any(l == '"residual"' or re.fullmatch(r'"residual-depth-[1-9]\d*"', l) for l in f.get("labels", "").strip("[]").split(",")):
+        if not any(l == '"residual"' or re.fullmatch(r'"residual-depth-[1-9]\d*"', l) for l in (x.strip() for x in f.get("labels", "").strip("[]").split(","))):
             continue
         for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
             p = front(target)

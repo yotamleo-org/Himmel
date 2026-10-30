@@ -104,5 +104,15 @@ rm -f "$M/HIMMEL-111.md"
 check 'a versioned, Done, closed-parent or unlabeled ticket is not an unversioned residual' '0' "$(field residual-unversioned "$d")"
 check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRROR="$WORK/no-such-mirror" TOKEN='' bash "$SUT" --pool-stale --doc "$d" 2>/dev/null | sed -n 's/^residual-unversioned=//p')"
 
+mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
+check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
+
+d="$(doc rerule 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902')"
+check 'a later disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
+d="$(doc rerule2 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902' 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"
+check 'the later of two dispositions decides: an older open one does not mask a stale one' '1:HIMMEL-101' "$(field pool-stale "$d")"
+d="$(doc rerule3 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question operator decision 268')"
+check 'a later ref-less disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
