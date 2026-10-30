@@ -101,9 +101,8 @@ const CLOSE_GRACE_MS = 2000;
 const REAP_WAIT_MS = 5000;
 
 // execFile semantics (argv array, no shell) plus detached: the child leads its
-// own process group, so a timeout kills every descendant with kill(-pgid)
-// onSpawn gets the
-// pgid (= the leader's pid) so the caller can record it in the lock. If onSpawn
+// own process group, so a timeout kills every descendant with kill(-pgid).
+// onSpawn gets the pgid (= the leader's pid) so the caller can record it in the lock. If onSpawn
 // throws, the group is killed and reaped and the promise rejects: the child
 // never runs unsupervised.
 // ponytail: a server crash between spawn and onSpawn leaves that one orphan unrecorded (the window is spawn-to-onSpawn only), upgrade path is spawning through a wrapper that writes its own pgid first, HIMMEL-4354

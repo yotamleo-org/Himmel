@@ -428,7 +428,7 @@ export function formatCodexHealth(rc, stdout) {
 // the bash detector non-fatally: findings make execFileSync throw with e.status=1
 // and the WARN lines on e.stdout; a missing bash / missing script returns rc<0
 // so formatCodexHealth renders nothing.
-function runCodexHealth(repoRoot, env) {
+function runCodexHealth(repoRoot) {
   const script = join(repoRoot, 'scripts', 'codex', 'startup-health.sh');
   if (!existsSync(script)) return { rc: -1, out: '' };
   const bash = '/bin/bash';
@@ -476,7 +476,7 @@ if (process.argv[1]?.endsWith('resolve.mjs')) {
   if (mode === '--json') process.stdout.write(JSON.stringify(lanes, null, 2) + '\n');
   else {
     const bankStatuses = runBankStatus(REPO_ROOT, process.env, registry);
-    const { rc, out } = runCodexHealth(REPO_ROOT, process.env);
+    const { rc, out } = runCodexHealth(REPO_ROOT);
     process.stdout.write(renderText(lanes, suppressed, bankStatuses) + formatCodexHealth(rc, out));
   }
   process.exit(0);
