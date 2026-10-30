@@ -619,7 +619,7 @@ while IFS='|' read -r old new want_rc want_output; do
   case "$out" in *"$want_output"*) canonical=yes ;; *) canonical=no ;; esac
   check "$new retains its canonical output" yes "$canonical"
 done <<'FORWARDERS'
-scripts/config-ui/legs.sh|scripts/config-ui/workers.sh|0|{"manifest": null, "legs": []}
+scripts/config-ui/legs.sh|scripts/config-ui/workers.sh|0|{"manifest": null, "workers": []}
 marketplace/plugins/himmel-ops/scripts/legs.sh|marketplace/plugins/himmel-ops/scripts/workers.sh|0|prcheck pr
 scripts/handover/chief-kit/console-wait.sh|scripts/handover/chief-kit/chief-wait.sh|2|usage: chief-wait.sh
 scripts/lanes/leg-burn.sh|scripts/lanes/worker-burn.sh|2|usage: worker-burn.sh

@@ -26,7 +26,7 @@ function boot(env: Env = {}, opts: Record<string, unknown> = {}) {
 const health = async (port: number, headers: Record<string, string> = { "X-Himmel-Token": TOKEN }) => fetch(`http://127.0.0.1:${port}/api/health`, { headers });
 const body = async (port: number) => (await health(port)).json();
 const writeLedger = (file: string, lines: string[]) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, lines.join("\n") + "\n"); };
-const bankRow = (extra: Record<string, unknown> = {}) => JSON.stringify({ ts: "2026-10-05T02:00:00Z", leg: "l", verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false, ...extra });
+const bankRow = (extra: Record<string, unknown> = {}) => JSON.stringify({ ts: "2026-10-05T02:00:00Z", worker: "l", verdict: "PROCEED", five_hour: "22.0", seven_day: "86.0", age: "12", degraded: false, ...extra });
 const hold = () => Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Promise<Response>(() => {}) });
 
 test("I4: no token is 401 and POST is 405", async () => {
@@ -65,27 +65,37 @@ test("bank: only the last 64 KiB is read (a 44k-line ledger; numbers only beyond
 test("bank: a row that starts exactly at the 64 KiB tail boundary is kept", async () => {
   const s = boot();
   const head = bankRow({ five_hour: "", seven_day: "" }) + "\n";
-  const probe = bankRow({ seven_day: "3.0", leg: "" }) + "\n";
-  const last = bankRow({ seven_day: "3.0", leg: "p".repeat(64 * 1024 - probe.length) }) + "\n";
+  const probe = bankRow({ seven_day: "3.0", worker: "" }) + "\n";
+  const last = bankRow({ seven_day: "3.0", worker: "p".repeat(64 * 1024 - probe.length) }) + "\n";
   expect(last.length).toBe(64 * 1024); // the read window starts exactly where this row does
   writeLedger(s.ledger, [head.trimEnd(), last.trimEnd()]);
   expect((await body(s.port)).bank.row.seven_day).toBe("3.0");
 });
 
-test("legs: absent with no manifest, ok with one (real fleet-manifest.sh and worker_tail_status)", async () => {
+test("workers: absent with no manifest, ok with one (real fleet-manifest.sh and worker_tail_status)", async () => {
   const s = boot();
-  expect((await body(s.port)).legs.state).toBe("absent");
+  expect((await body(s.port)).workers.state).toBe("absent");
   const doc = join(s.root, "HIMMEL-1-N1-x-RESUME.md");
   writeFileSync(doc, "---\ndescription: Show the worker descriptions\n---\n## Results\n- 03:00 LIVE — x\n");
   writeFileSync(join(s.root, "c.fleet.json"), JSON.stringify({ schema: 1, legs: [{ doc }] }));
-  const l = (await body(s.port)).legs;
+  const l = (await body(s.port)).workers;
   expect(l.state).toBe("ok");
-  expect(l.legs).toEqual([{ doc, status: "LIVE", description: "Show the worker descriptions" }]);
+  expect(l.workers).toEqual([{ doc, status: "LIVE", description: "Show the worker descriptions" }]);
 });
 
-test("legs: a HANDOVER_DIR that is not a directory is absent, not an error page", async () => {
+test("brief: the worker name arrives as ?worker= or the old ?leg=, and a missing name is refused", async () => {
+  const { port } = boot();
+  const brief = async (q: string) => (await fetch(`http://127.0.0.1:${port}/api/agui/brief${q}`, { headers: { "X-Himmel-Token": TOKEN } })).status;
+  expect(await brief("")).toBe(400);
+  expect(await brief("?worker=..%2F..%2Fetc%2Fpasswd")).toBe(400);
+  expect(await brief("?worker=..%2F..%2Fetc%2Fpasswd&leg=HIMMEL-0-N1-none")).toBe(400);
+  expect(await brief("?worker=HIMMEL-0-N1-none")).toBe(404);
+  expect(await brief("?leg=HIMMEL-0-N1-none")).toBe(404);
+});
+
+test("workers: a HANDOVER_DIR that is not a directory is absent, not an error page", async () => {
   const s = boot({ HANDOVER_DIR: "/nonexistent/health-route-root" });
-  expect((await body(s.port)).legs.state).toBe("absent");
+  expect((await body(s.port)).workers.state).toBe("absent");
 });
 
 test("monitoring: absent when nothing answers; ok with Prometheus alerts (firing only) and the exporter", async () => {
@@ -152,7 +162,7 @@ test("hanging sources answer within the slowest budget, not the sum (parallel)",
   const t0 = Date.now();
   const j = await body(s.port);
   const took = Date.now() - t0;
-  expect(j.legs.state).toBe("error");
+  expect(j.workers.state).toBe("error");
   expect(j.monitoring.prometheus.state).toBe("error");
   expect(j.monitoring.exporter.state).toBe("error");
   expect(took).toBeLessThan(4500); // sequential would be 2 + 2 + 2.5 s

@@ -163,16 +163,33 @@ def count_matches(re):
   ( [ scan(re) ] | length );
 # The "## Follow-up Comments" layout has no (N) header: each finding is a
 # <details> whose <summary> opens with a badge image, an "Outside diff" badge
-# for an outside-diff finding. One such badge = one finding. A Follow-up header
-# with no Outside-diff badge, or with a badge of any other kind, is drift.
+# for an outside-diff finding and a "Nitpick" badge for a nitpick. One such badge
+# = one finding. The known badges are Outside diff and Nitpick; the alt match
+# stops at the closing picture tag, so title text quoting a badge never counts.
+# Everything is counted over the WHOLE body. Drift (one definition, read by the
+# count program, the prior-head reader and the row extractor alike) = a header
+# with no known badge, a badge of any other kind, a cr-comment marker count
+# (CodeRabbit writes one per finding, in any badge shape) that differs from the
+# known badge count, any legacy count form, or Outside-diff text with no
+# Outside-diff badge behind it.
+# ponytail: a body mixing the Follow-up and legacy layouts stalls at rc 2, upgrade path is HIMMEL-8209 (generic fallback)
 def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
 def fu_badge_re: "<summary><sub><picture>";
-def fu_od_re: "<summary><sub><picture>[^\n]*alt=\"Outside diff\"";
+def fu_od_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Outside diff\"";
+def fu_nit_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Nitpick\"";
+def fu_known_n: count_matches(fu_od_re) + count_matches(fu_nit_re);
 def fu_drift:
-  test(fu_hdr_re) and ( count_matches(fu_od_re) == 0 or count_matches(fu_badge_re) != count_matches(fu_od_re) );
+  test(fu_hdr_re) and (
+    fu_known_n == 0
+    or count_matches(fu_badge_re) != fu_known_n
+    or count_matches(marker_re) != fu_known_n
+    or test(outside_re) or test(nitpick_re) or test(additional_re)
+    or ( count_matches(fu_od_re) == 0 and test(loose_outside_re) )
+  );
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
-# A prior review whose Follow-up section is malformed counts as one finding, so
-# its head stays in the prior-head gate and the per-head reader returns rc 2.
+def nitpick_n: sum_matches(nitpick_re) + ( if test(fu_hdr_re) then count_matches(fu_nit_re) else 0 end );
+# A prior review that reads as drift counts as one finding, so its head stays in
+# the prior-head gate and the per-head reader returns rc 2.
 def prior_n: outside_n as $n | if $n == 0 and fu_drift then 1 else $n end;
 def has_content: test("\\S");
 # CodeRabbit now writes counts as "comments: N" and
@@ -204,7 +221,7 @@ _CBF_JQ_COUNTS='
 | ( [ $priorr[] | (.body // "" | norm) ] ) as $pb
 | {
     outside:       ( $chosen | outside_n ),
-    nitpick:       ( $chosen | sum_matches(nitpick_re) ),
+    nitpick:       ( $chosen | nitpick_n ),
     additional:    ( $chosen | sum_matches(additional_re) ),
     prior_outside: ( [ $pb[] | prior_n ]      | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
@@ -261,6 +278,8 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
 | ( reduce $L[] as $l ({hdr:0, cur:null, items:[]};
     if ($l | test(fu_od_re)) then
         .hdr += 1 | .cur = {file: null, line: null, sev: null, title: null}
+    elif ($l | test(fu_nit_re)) then
+        .cur = null
     elif (.cur != null and .cur.line == null and ($l | test("^`[0-9]+(?:-[0-9]+)?`:"))) then
         .cur.line = ($l | capture("^`(?<l>[0-9]+(?:-[0-9]+)?)`:").l)
         | .cur.sev = (($l | capture("(?<s>Critical|Major|Minor|Trivial)\\*\\*") // {s: ""}).s)
@@ -426,7 +445,7 @@ cr_body_outside_findings() {
     drift=$(printf '%s' "$result" | jq -r '.drift' 2>/dev/null || true)
     case "$hdr$n" in ''|*[!0-9]*) return 1 ;; esac
     if [ "$drift" = "true" ]; then
-        echo "cr-body-findings: a Follow-up Comments section has no parseable Outside-diff finding (or an unknown badge) for PR #$num at head $head (format drift)" >&2
+        echo "cr-body-findings: a Follow-up Comments section has no parseable finding, an unknown badge, or a finding marker count that differs from its badges, for PR #$num at head $head (format drift)" >&2
         return 2
     fi
     if [ "$hdr" -ne "$n" ]; then
