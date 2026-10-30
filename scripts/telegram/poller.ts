@@ -496,6 +496,9 @@ function lockdownEnabled(root: string): boolean {
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
 
+// The journal record as handleInbound takes it; main() delivers every record through this.
+export const inboundToDelivered = (i: Inbound): DeliveredMsg => ({ from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, reply_to_bot: i.reply_to_bot, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id });
+
 // Under lockdown a button tap is dropped before the AFK sudo gate sees it.
 export const afkTapUnlessLocked = <T>(root: string, tap: (t: T) => boolean) => (t: T): boolean => !lockdownEnabled(root) && tap(t);
 
@@ -2519,7 +2522,7 @@ export async function main(): Promise<void> {
     // the rest of the already-consumed batch with it.
     await ingestBatch(
       root,
-      (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, reply_to_bot: i.reply_to_bot, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
+      (i) => handleInbound(root, inboundToDelivered(i), coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
       // sendMessage, NOT replyViaOutbox: the outbox is
       // written INTO the same session directory whose failure caused the drop,
       // so on an unwritable session it fails too — and the bridge would then eat

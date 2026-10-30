@@ -53,6 +53,8 @@ export type AfkSudoPrompts = {
   add: (chat_id: number, message_id: number, id: string) => void;
   get: (chat_id: number, message_id: number) => { id: string; expired: boolean; used: boolean } | null;
   use: (chat_id: number, message_id: number) => void;
+  // The id of an unused, unexpired prompt waiting for a code in this chat, or null.
+  live: (chat_id: number) => string | null;
 };
 export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000): AfkSudoPrompts {
   const m = new Map<string, { id: string; at: number; used: boolean }>();
@@ -67,6 +69,10 @@ export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000
       return v ? { id: v.id, expired: now() - v.at > ttlMs, used: v.used } : null;
     },
     use(c, p) { const v = m.get(key(c, p)); if (v) v.used = true; },
+    live(c) {
+      for (const [k, v] of m) if (k.startsWith(`${c}:`) && !v.used && now() - v.at <= ttlMs) return v.id;
+      return null;
+    },
   };
 }
 
@@ -96,6 +102,9 @@ function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny", id: string, code: 
 }
 
 const CODE_REPLY = /^\s*(\d{6})\s*$/;
+// Anything an authenticator code can look like when typed: six or more digits with
+// spaces or hyphens between them. Used only to decide a message must not be forwarded.
+const CODE_SHAPED = /^(?=(?:\D*\d){6})[\d\s-]+$/;
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -129,11 +138,18 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (!deps.installed()) return false;
     const prompt = prompts && msg.reply_to_message_id != null ? prompts.get(msg.chat_id, msg.reply_to_message_id) : null;
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
-    // The prompt map is in memory: after a restart or prune a six-digit reply to a bot
-    // message has no prompt, yet is still a code. Consume it, never pass it on.
-    if (msg.reply_to_bot === true && CODE_REPLY.test(msg.text) && eligible(deps.access(), msg)) {
-      void deps.reply(msg.chat_id, "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
-      return true;
+    // A code-shaped message that is not a reply to a known prompt is still a code, and
+    // an inbox is readable by the sessions that can run the helper. Consume it, never
+    // pass it on: a reply to a bot message whose prompt is gone (the map is in memory,
+    // so a restart forgets it), or any message sent while a prompt is waiting.
+    if (CODE_SHAPED.test(msg.text) && eligible(deps.access(), msg)) {
+      const waiting = prompts?.live(msg.chat_id) ?? null;
+      if (msg.reply_to_bot === true || waiting) {
+        void deps.reply(msg.chat_id, waiting
+          ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
+          : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
+        return true;
+      }
     }
     const line = parseAfkSudo(msg.text);
     if (!line) {

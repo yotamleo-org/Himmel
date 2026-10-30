@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
 import { GROUP_ANONYMOUS_BOT_ID } from "./gate";
-import { afkTapUnlessLocked, handleInbound, type AutoGate } from "./poller";
+import { afkTapUnlessLocked, handleInbound, ingestBatch, ingestUpdates, inboundToDelivered, type AutoGate } from "./poller";
 import { sessionDir } from "./bus";
 
 const OP = 4242;
@@ -241,8 +241,58 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
   expect(b.gate(reply("123456", 77))).toBe(false);
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  expect(b.gate(reply("123456", 78))).toBe(false);
+  expect(b.gate(reply("hello", 78))).toBe(false);
   expect(b.calls).toEqual([]);
+});
+
+test("button: a code-shaped reply to a bot message with no known prompt is consumed, however it is spaced", async () => {
+  for (const text of ["123 456", "123-456", " 123456 ", "1234567", "12 34 56"]) {
+    const b = buttons();
+    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  }
+});
+
+test("button: while a code prompt is live, a code-shaped message sent without replying is consumed, not forwarded", async () => {
+  for (const text of ["123456", "123 456", "123-456"]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(b.gate(dm(text))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies.at(-1)).toContain("abcdefgh");
+    expect([...b.replies, ...b.logs].join("\n")).not.toContain("456");
+  }
+  // not live: no tap, an expired window, a prompt that failed to send, a stranger, a forward, plain words
+  const none = buttons();
+  expect(none.gate(dm("123456"))).toBe(false);
+  const late = buttons();
+  late.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  late.tick(151_000);
+  expect(late.gate(dm("123456"))).toBe(false);
+  const live = buttons();
+  live.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  for (const msg of [dm("123456", { from: 999, chat_id: 999 }), dm("123456", { forwarded: true }), dm("hello"), dm("42")]) {
+    expect(live.gate(msg)).toBe(false);
+  }
+});
+
+test("poller: ingest then the real delivery mapping carries reply_to_bot into the gate", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123 456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
+  await ingestBatch(r, (i) => handleInbound(r, inboundToDelivered(i), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true));
+  await settle();
+  expect(calls.length).toBe(0);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
 test("button: a six-digit reply to a bot message with no known prompt is consumed and never forwarded", async () => {
