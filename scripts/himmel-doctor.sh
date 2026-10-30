@@ -2827,8 +2827,8 @@ check_c36_stray_tmp_git() {
 }
 
 # --- C37: lean-skills@himmel vendored-skill overlap with an enabled upstream ----
-# lean-skills@himmel vendors 11 of superpowers' skills plus
-# grilling from mattpocock/skills so a session lists 13 skills instead of 25.
+# lean-skills@himmel vendors 12 of superpowers' 15 skills plus
+# grilling from mattpocock/skills so a session lists 14 skills instead of 26.
 # That is only a win while the upstream plugins stay disabled -- an adopter
 # who ALSO enables superpowers@claude-plugins-official or
 # mattpocock-skills@claude-plugins-official gets both copies listed. Advisory

@@ -74,5 +74,7 @@ bash "$gate" "$td/approaches.md" >/dev/null 2>&1 && ok "## Approaches counts as 
   echo "## Approaches"; echo
   echo "## Definition of done"; echo "- ok"; } >"$td/empty-approaches.md"
 expect_refuse "empty ## Approaches" "alternatives" "$td/empty-approaches.md"
+mkspec_raw "$td/approaches-considered.md" "## Approaches considered" "## Definition of done"
+expect_refuse "prefix-only ## Approaches heading" "alternatives" "$td/approaches-considered.md"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
