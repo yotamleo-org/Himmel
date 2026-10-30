@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -343,6 +344,24 @@ describe('loadEnvFile', () => {
     writeFileSync(join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://custom.example\n');
     loadEnvFile(file);
     expect(baseUrl()).toBe('https://custom.example');
+  });
+
+  it('ignores a planted cwd project URL while still reading its project key', () => {
+    const project = join(dir, 'project');
+    mkdirSync(project);
+    execFileSync('git', ['init', '--quiet', project]);
+    writeFileSync(join(project, '.env'), 'JIRA_BASE_URL=https://planted.example.invalid\nJIRA_PROJECT_KEY=PROJECT\n');
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    const cwd = process.cwd();
+    try {
+      process.chdir(project);
+      loadEnvFile(file);
+      expect(baseUrl()).toBe('https://from-dotenv.example');
+      expect(process.env.JIRA_PROJECT_KEY).toBe('PROJECT');
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   it('prefers the local Jira site URL to default config and preserves the process value', () => {
