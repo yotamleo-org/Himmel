@@ -1398,37 +1398,22 @@ run_fence allow no "$HIMMEL" "redirect: standalone > target skipped -> allow" \
 run_fence deny no "$HIMMEL" "redirect: 2>/dev/null on salus target still denies" \
     "graphify update $SALUS/notes/patient.md --backend glm 2>/dev/null"
 
-echo "== HIMMEL-778: MSYS drive-path normalization =="
+echo "== HIMMEL-8174: POSIX and drive-rooted paths stay distinct =="
 
-# (M1) MSYS-form path under the himmel root -> himmel-code allow. PURE LEXICAL
-# (drive-lettered root + /c/... candidate) so it genuinely exercises the
-# translation on ANY OS - no real /c dir needed.
-run_fence allow no "$HIMMEL" "MSYS /c/... under himmel root -> himmel-code allow" \
+# (M1) A literal POSIX /c/... path must not alias a drive-rooted himmel corpus.
+# Pure lexical comparison - no real /c directory needed.
+run_fence deny no "$HIMMEL" "POSIX /c/... does not alias drive-rooted himmel -> deny" \
     "graphify update /c/fake/himmel/doc.md --backend deepseek" GRAPHIFY_HIMMEL_ROOT="C:/fake/himmel"
 
-# (M2) MSYS-form path under the luna root -> luna-personal (allow + ledger).
-# claude-cli is the sanctioned luna-personal backend (kimi/
-# moonshot's allow+log lane is retired) — declared via GRAPHIFY_DECLARED_BACKEND
-# so a ledger line exists to prove the MSYS path resolved under this root.
-run_fence allow yes "$HIMMEL" "MSYS /c/... under luna root -> luna-personal allow+ledger" \
+# (M2) The same separation holds for luna-personal even with a sanctioned
+# backend: an unclassifiable POSIX path must deny without an allow ledger row.
+run_fence deny no "$HIMMEL" "POSIX /c/... does not alias drive-rooted luna -> deny" \
     "graphify update /c/fake/luna/journal.md" LUNA_VAULT_PATH="C:/fake/luna" GRAPHIFY_DECLARED_BACKEND=claude-cli
 
-# (M3) THE --version regression: no path arg -> cwd fallback. The himmel root is
-# supplied drive-lettered (as git prints it); the fence must still classify the
-# cwd as himmel-code. drive_form() below yields a genuine drive-lettered/MSYS
-# mismatch on Windows Git Bash (where $PWD is /c/...) and degrades to a plain
-# match under a POSIX /tmp fixture root (still green).
-drive_form() {  # /c/Users/x -> C:/Users/x ; POSIX /tmp/x unchanged
-    local L
-    case "$1" in
-        /[A-Za-z]/*) L=$(printf '%s' "$1" | cut -c2 | tr '[:lower:]' '[:upper:]'); printf '%s:/%s' "$L" "${1#/?/}" ;;
-        /[A-Za-z])   L=$(printf '%s' "$1" | cut -c2 | tr '[:lower:]' '[:upper:]'); printf '%s:/' "$L" ;;
-        *)           printf '%s' "$1" ;;
-    esac
-}
-ROOT_DRIVE=$( cd "$HIMMEL" && drive_form "$PWD" )
-run_fence allow no "$HIMMEL/scripts" "MSYS --version cwd-in-himmel (drive-lettered root) -> allow" \
-    "graphify --version" GRAPHIFY_HIMMEL_ROOT="$ROOT_DRIVE"
+# (M3) No path arg -> cwd fallback. The fixture cwd and corpus root must use
+# the same literal POSIX spelling, including under a single-letter root.
+run_fence allow no "$HIMMEL/scripts" "POSIX --version cwd-in-himmel -> allow" \
+    "graphify --version" GRAPHIFY_HIMMEL_ROOT="$HIMMEL"
 
 BACKSLASH_SALUS="$SALUS/notes/patient.md"
 BACKSLASH_SALUS="${BACKSLASH_SALUS//\//\\}"
@@ -1468,10 +1453,8 @@ run_fence allow no "$HIMMEL" "845: drive-ROOTED C:/... is cwd-independent, not c
 
 # (X4/X5) With a drive-lettered cwd the fence can PROVE the drive relation, so
 # same-drive must still anchor (allow) and a genuine mismatch must deny. Needs a
-# genuinely drive-lettered form of the fixture root: `drive_form`/$ROOT_DRIVE
-# above only rewrites an MSYS `/c/...` path, and the mktemp fixture lives under
-# Git-Bash's virtual `/tmp` mount, which has no such form. `pwd -W` is the MSYS
-# builtin that yields the real Windows view; it fails on POSIX -> skip there.
+# genuinely drive-lettered form of the fixture root, not the POSIX spelling
+# used above. `pwd -W` yields the Windows view; it fails on POSIX -> skip there.
 HIMMEL_WIN=""
 if HIMMEL_WIN_TRY=$( cd "$HIMMEL" && pwd -W 2>/dev/null ); then
     HIMMEL_WIN="$HIMMEL_WIN_TRY"
