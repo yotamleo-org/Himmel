@@ -110,6 +110,11 @@ eq "run: and is not an error" "$(jget "$S" error)" "false"
 O="$TMP/ot"; AB_STUB_PRE=100000 AB_STUB_MSGS=8 AB_STUB_STEP=60000 run docs a "$O" >/dev/null
 eq "run a: a compaction at 100k of 200k is off-trigger" "$(jget "$O/docs/a/1/summary.json" valid)/$(jget "$O/docs/a/1/summary.json" invalid_reason)" "false/off-trigger"
 
+# run refuses a cell that already holds a priced run: replacing it would drop its spend from the ceiling total
+sum_before="$(sha256sum "$TMP/ot/docs/a/1/summary.json" | cut -d' ' -f1)"
+eq "run: an existing priced cell is refused" "$(python3 "$AB" run --task docs --arm a --rep 1 --out "$TMP/ot" --scale 0.05 >/dev/null 2>&1; echo $?)" "2"
+eq "run: and its summary is left as it was" "$(sha256sum "$TMP/ot/docs/a/1/summary.json" | cut -d' ' -f1)" "$sum_before"
+
 # a context drop with no compact_boundary is not a compaction
 O="$TMP/od"; AB_STUB_NOBOUNDARY=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 run docs a "$O" >/dev/null
 eq "run a: a context drop without a compact_boundary is invalid" "$(jget "$O/docs/a/1/summary.json" valid)/$(jget "$O/docs/a/1/summary.json" invalid_reason)" "false/no-compaction"

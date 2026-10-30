@@ -236,6 +236,9 @@ def run_segment(argv, cwd, stream, timeout, stop_at=None, stdin_text=None):
 def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, timeout=5400, seed=1, scale=1.0):
     rd = os.path.join(out, task, arm, str(rep))
     ws = os.path.join(rd, "ws")
+    if os.path.exists(os.path.join(rd, "summary.json")):   # replacing a priced run would drop its spend from the ceiling total
+        print("ab.py: %s already holds a priced run - use a new --out, or sweep --rerun-invalid" % rd, file=sys.stderr)
+        sys.exit(2)
     shutil.rmtree(rd, ignore_errors=True)
     os.makedirs(rd)
     tasks.gen(task, ws, seed, scale)
