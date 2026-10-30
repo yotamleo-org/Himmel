@@ -1149,7 +1149,7 @@ else
 fi
 
 # ============================================================================
-# Publish leg: HIMMEL-GraphPublish-Himmel, POSIX/cron path.
+# Publish task: HIMMEL-GraphPublish-Himmel, POSIX/cron path.
 # A dedicated fixture (mirrors the run_cron2 "unrelated prefix" fixture
 # above) rather than reusing $CSTATE/$CRON_DIR, whose state is cumulative
 # across every test above this point -- this block's assertions must not
@@ -1453,7 +1453,7 @@ printf '#!/bin/sh\necho "OUT: ${GRAPHIFY_OUT:-unset}"\n' > "$lsp_stub"
 lsp_run=$(GRAPHIFY_OUT=/ambient/override sh -c "$(run_lsp bash "$lsp_stub" corpus)" 2>&1)
 assert_contains "no-dir payload hands the updater no ambient GRAPHIFY_OUT" "OUT: unset" "$lsp_run"
 
-# Luna semantic leg: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
+# Luna semantic task: HIMMEL-GraphSemantic-Luna, POSIX/cron path. Reuses the publish
 # fixture's fake crontab and runner dir, disarmed first so nothing from that block leaks in.
 # The GRAPHIFY_OUT shape asserted below is the one the station's armed graphmap-ast-luna.sh carries
 # (~/.local/share/himmel/graphify/luna/graphify-out), copied from that runner.

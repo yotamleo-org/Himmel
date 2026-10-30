@@ -46,22 +46,22 @@ check "rc 0 with a root and manifests" 0 "$rc"
 check "the newer manifest is picked" "$root/himmel/new.fleet.json" "$(printf '%s' "$out" | jq -r .manifest)"
 check "workers are the manifest's, in order" "$live
 $wrapped
-$quoted" "$(printf '%s' "$out" | jq -r '.legs[].doc')"
+$quoted" "$(printf '%s' "$out" | jq -r '.workers[].doc')"
 for d in "$live" "$wrapped" "$quoted"; do
-    check "description equals the resolver with tabs and newlines folded: ${d##*/}" "$(worker_description "$d" | tr -s '\t\n' ' ')" "$(printf '%s' "$out" | jq -r --arg d "$d" '.legs[] | select(.doc==$d) | .description')"
+    check "description equals the resolver with tabs and newlines folded: ${d##*/}" "$(worker_description "$d" | tr -s '\t\n' ' ')" "$(printf '%s' "$out" | jq -r --arg d "$d" '.workers[] | select(.doc==$d) | .description')"
 done
 check "descriptions keep the field, H1 fallback and double quotes in manifest order" 'Show worker descriptions
 Finish the workers list
-Show "quoted" workers' "$(printf '%s' "$out" | jq -r '.legs[].description')"
-check "a LIVE doc's status equals worker_tail_status" "$(worker_tail_status "$live")" "$(printf '%s' "$out" | jq -r --arg d "$live" '.legs[] | select(.doc==$d) | .status')"
-check "a WRAPPED doc's status equals worker_tail_status" "$(worker_tail_status "$wrapped")" "$(printf '%s' "$out" | jq -r --arg d "$wrapped" '.legs[] | select(.doc==$d) | .status')"
-check "the LIVE doc reads LIVE (not vacuous)" LIVE "$(printf '%s' "$out" | jq -r --arg d "$live" '.legs[] | select(.doc==$d) | .status')"
-check "the WRAPPED doc reads WRAPPED (not vacuous)" WRAPPED "$(printf '%s' "$out" | jq -r --arg d "$wrapped" '.legs[] | select(.doc==$d) | .status')"
+Show "quoted" workers' "$(printf '%s' "$out" | jq -r '.workers[].description')"
+check "a LIVE doc's status equals worker_tail_status" "$(worker_tail_status "$live")" "$(printf '%s' "$out" | jq -r --arg d "$live" '.workers[] | select(.doc==$d) | .status')"
+check "a WRAPPED doc's status equals worker_tail_status" "$(worker_tail_status "$wrapped")" "$(printf '%s' "$out" | jq -r --arg d "$wrapped" '.workers[] | select(.doc==$d) | .status')"
+check "the LIVE doc reads LIVE (not vacuous)" LIVE "$(printf '%s' "$out" | jq -r --arg d "$live" '.workers[] | select(.doc==$d) | .status')"
+check "the WRAPPED doc reads WRAPPED (not vacuous)" WRAPPED "$(printf '%s' "$out" | jq -r --arg d "$wrapped" '.workers[] | select(.doc==$d) | .status')"
 
 empty="$W/empty"; mkdir -p "$empty"
 out=$(HANDOVER_DIR="$empty" bash "$WORKERS"); rc=$?
 check "an empty root exits 0" 0 "$rc"
-check "an empty root prints no manifest and no workers" '{"manifest":null,"legs":[]}' "$(printf '%s' "$out" | jq -c '{manifest, legs}')"
+check "an empty root prints no manifest and no workers" '{"manifest":null,"workers":[]}' "$(printf '%s' "$out" | jq -c '{manifest, workers}')"
 
 # No HANDOVER_DIR in the env: the root comes from the checkout's own .env.
 printf 'HANDOVER_DIR=%s\n' "$root" > "$co/.env"
@@ -73,5 +73,5 @@ rm -f "$co/.env"
 bash "$REPO/scripts/lib/clean-sandbox.sh" --scratch "$W/sandbox" -- bash "$WORKERS" >/dev/null 2>&1; rc=$?
 check "no handover root exits 3" 3 "$rc"
 
-echo "legs: $PASS passed, $FAIL failed"
+echo "workers: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

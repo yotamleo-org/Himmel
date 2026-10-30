@@ -124,7 +124,7 @@ test("an inherited-property label name is no status, and a malformed entry canno
 });
 
 test("the Roadmap page says when the issue list is truncated, as the Kanban does", () => {
-  const r = { ...readRoadmap({ mirrorDir: "", github: ISSUES, legs: { state: "absent" } }), sync: [], truncated: true };
+  const r = { ...readRoadmap({ mirrorDir: "", github: ISSUES, workers: { state: "absent" } }), sync: [], truncated: true };
   expect(renderRoadmap(r, { writes: false })).toContain("older ones are missing");
   expect(renderRoadmap({ ...r, truncated: false }, { writes: false })).not.toContain("older ones are missing");
 });
@@ -138,7 +138,7 @@ test("the rail hides Roadmap and Kanban when the sources are empty, keeps them o
 });
 
 test("GitHub issues map to the roadmap: state and labels to columns, milestone to version, theme- label to theme, #number ids", () => {
-  const r = readRoadmap({ mirrorDir: "", github: ISSUES, legs: { state: "absent" } });
+  const r = readRoadmap({ mirrorDir: "", github: ISSUES, workers: { state: "absent" } });
   expect(r.state).toBe("ok");
   expect(r.source).toBe("github");
   expect(r.versions.map((v) => v.n)).toEqual(["v1", "v2", "(no milestone)"]);
@@ -151,7 +151,7 @@ test("GitHub issues map to the roadmap: state and labels to columns, milestone t
 });
 
 test("GitHub cards render read-only, with their #number, and the page says so", () => {
-  const r = { ...readRoadmap({ mirrorDir: "", github: ISSUES, legs: { state: "absent" } }), sync: [] };
+  const r = { ...readRoadmap({ mirrorDir: "", github: ISSUES, workers: { state: "absent" } }), sync: [] };
   const html = renderKanban(r, { hideDone: false, writes: true });
   expect(html).toContain("#12");
   expect(html).toContain("read-only");

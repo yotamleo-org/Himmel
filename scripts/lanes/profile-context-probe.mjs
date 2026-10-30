@@ -492,9 +492,7 @@ export function resolveLedgerTarget({ ledgerFlag, noLedger }, env) {
 
 // ── live spawn (never imported by the CI-safe test) ────────────────────────
 
-// Spawned directly — no shell wrapper: the `claude` this repo
-// targets is the native installer binary (not an npm .cmd shim), so win32
-// PATH resolution finds it without cmd.exe in the loop.
+// Spawned directly, no shell wrapper.
 function spawnClaude(extraArgs, prompt) {
   const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk',
     '--output-format', 'stream-json', '--verbose', ...extraArgs, prompt];
@@ -504,7 +502,7 @@ function spawnClaude(extraArgs, prompt) {
     encoding: 'utf8',
     timeout: CLAUDE_TIMEOUT_MS,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, MSYS_NO_PATHCONV: '1' },
+    env: process.env,
   });
 }
 
@@ -576,7 +574,7 @@ async function captureRequests(extraArgs, prompt = BASELINE_PROMPT) {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk', ...extraArgs, prompt];
   // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
-  const child = spawn('claude', args, { cwd: REPO_ROOT, env: { ...process.env, MSYS_NO_PATHCONV: '1', ANTHROPIC_BASE_URL: `http://127.0.0.1:${srv.address().port}` }, stdio: 'ignore' });
+  const child = spawn('claude', args, { cwd: REPO_ROOT, env: { ...process.env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${srv.address().port}` }, stdio: 'ignore' });
   const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);
   const code = await new Promise((r) => { child.on('close', r); child.on('error', () => r(-1)); });
   clearTimeout(timer);

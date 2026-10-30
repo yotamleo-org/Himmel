@@ -1143,14 +1143,8 @@ function probeTimeoutSecs(r) {
 // resolveProbeBash(env) -> concrete bash executable, or null.
 //
 // every bash-backed probe in this file used to spawn the BARE
-// name. On Windows that resolves through PATH to
-// C:\WINDOWS\system32\bash.exe — the WSL launcher, which cannot read a
-// Windows-form repo path at all — so on a fully healthy host the
-// resolver-sourcing probes reported "cannot source resolver C:\...\lib.sh —
-// probe wiring broken" (degraded) and "/bin/bash: line 1: C:\...\
-// handover-path.sh: No such file or directory" (missing). deps-engine.js
-//  and install-engine.js already carried this
-// rule; probes.js was the sibling that never got it.
+// name. deps-engine.js and install-engine.js already resolved the bash they
+// spawn; probes.js was the sibling that never got it.
 //
 // HIMMELCTL_BASH overrides the resolver (nonstandard install, or a hermetic
 // test pinning — or deliberately UN-resolving — bash), the same env seam
@@ -1418,7 +1412,7 @@ function probeMcpConfigFile(item, ctx, filePath) {
   // validate the REGISTERED
   // entry's OWN `command` resolves — not just a descriptor-named `bin`
   // guess, which can name the wrong binary entirely (found live: graphify's
-  // registered command is the MCP entrypoint graphify-mcp[.exe], not the
+  // registered command is the MCP entrypoint graphify-mcp, not the
   // bare `graphify` CLI a stale descriptor checked). This runs
   // unconditionally (registration always implies SOME configured command;
   // there's no opt-out) — see registeredCommandCheck() above for the exact
@@ -1523,10 +1517,8 @@ function probeDep(item, ctx) {
 }
 
 // bash is the ONE hard-gate dep for which a which-style
-// presence answer is VACUOUS. On Windows, which('bash') happily returns
-// C:\WINDOWS\system32\bash.exe and the toolchain row read "ok bash ready"
-// while every bash-backed probe in this file was failing against that exact
-// binary — existence is not enablement. Probe the bash the rest of himmel
+// presence answer is VACUOUS: a bash that which() finds can still fail every
+// bash-backed probe in this file — existence is not enablement. Probe the bash the rest of himmel
 // actually spawns (spawnProbeSync's resolution, HIMMELCTL_BASH included), and
 // prove it by SOURCING a tracked repo script rather than by mere presence.
 //
@@ -2599,11 +2591,9 @@ function probeWhisperReady(item, ctx) {
 // ── cmd:python_interpreter ───────────────────────────────────────────────
 
 // A11: adopters genuinely hit "interpreter stub" classes
-// — most visibly the Windows Store python.exe/python3.exe app-execution
-// aliases, which resolve fine on PATH (which() would find them) but, run
-// non-interactively, print a Store-install nudge and exit non-zero without
-// ever running the given script; a stray WSL interop shim or a broken venv
-// activation can produce the same shape on POSIX. PATH-resolution alone is
+// — a stray interpreter shim or a broken venv activation resolves fine on
+// PATH (which() would find it) but exits non-zero without ever running the
+// given script. PATH-resolution alone is
 // necessary but not sufficient proof of a working interpreter — this probe
 // actually SPAWNS the candidate with the caller's OWN environment (so a
 // caller-set PYTHONHOME/PYTHONPATH is exercised, not just read) and asserts
@@ -3404,7 +3394,7 @@ function normalizeForPollerAnchorMatch(p) {
 // thisCheckoutAnchor — a healthy LOCAL poller then read as foreign, and
 // bridge-health falsely reported zero pollers. Rather than fight whitespace
 // inside a bare regex, this leans on the fact that a process
-// command line (like any Windows/PowerShell command line) quotes an argument
+// command line quotes an argument
 // that itself contains a space — so a quoted 'poller.ts' path is tried
 // FIRST, capturing everything between the quotes (spaces included); only
 // when no quoted match exists does this fall back to the original bare-token
@@ -3425,7 +3415,7 @@ function extractPollerToken(line) {
 
 function pollerLineIsThisCheckout(line, thisCheckoutAnchor) {
   const token = extractPollerToken(line);
-  if (!token) return false; // defensive: the line was already PowerShell-filtered on 'poller.ts'
+  if (!token) return false; // defensive: the line was already filtered on 'poller.ts'
   const sepIdx = Math.max(token.lastIndexOf('/'), token.lastIndexOf('\\'));
   if (sepIdx === -1) return true; // bare token, no path — the genuine, unattributable shape; counted, unchanged
   if (!thisCheckoutAnchor) return false; // a path IS present but there is no root to compare it against — fail-safe

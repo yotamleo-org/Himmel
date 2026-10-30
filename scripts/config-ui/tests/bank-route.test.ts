@@ -130,7 +130,7 @@ test("panel: unknown shows 'unknown (why)' and its age, never 0 %; possibly rese
     claude: { five_hour: unknown, seven_day: { ...unknown, state: "stale", used_pct: 74, age_s: 700, resets_at: "2026-10-13T11:00:00.000Z", possibly_reset: true, reason: null } },
     codex: { five_hour: { ...unknown, reason: "not reported by this plan" }, weekly: { ...unknown, state: "ok", used_pct: 12, age_s: 60, reason: null } },
   };
-  const html = renderHealth(null, { bank: { state: "absent" }, legs: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, quota: bank });
+  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, quota: bank });
   expect(html).toContain("unknown (usage cache missing)");
   expect(html).toContain("unknown (not reported by this plan)");
   expect(html).toContain("possibly reset");

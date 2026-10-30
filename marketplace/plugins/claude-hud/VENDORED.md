@@ -16,7 +16,7 @@ fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HI
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
 pinned_commit:        cf95a322afd18db045175d28962650ae7392ed77  # v0.13.1 + 2 docs commits, 6 commits past 3bb6835 (HIMMEL-7394)
 pinned_upstream_tree: 766b96c41249f4a185dd8a14cf3cc4d0127d11e6  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   6d3808640c542bad279b148f87334f96e959804b2d03a6dd088aa70e5179bf4c  # sha256 over VENDORED.manifest
+vendored_tree_hash:   10f23077b82ee206b72636c8023f47a1a1d84191ce4142b1fd2b6b2e8e124bc5  # sha256 over VENDORED.manifest
 vendored_at:          2026-10-26
 ```
 
@@ -178,7 +178,7 @@ protected: editing it without bumping the pin trips the guard.
     `tests/render.test.js` zh row and `tests/golden/expected.txt` updated.
   - **Context snapshot writer** (kept deliberately): v0.10.0 deleted
     `src/context-cache.ts`, but `scripts/context-fill.sh` (console 45% handover
-    trigger, leg context guard, arm-resume) reads
+    trigger, worker context guard, arm-resume) reads
     `<config>/plugins/claude-hud/context-cache/<sha256(resolved transcript path)>.json`.
     The file is re-added **write-only** and called from `src/index.ts` before the
     usage lookup. Path and JSON fields (`used_percentage`, `remaining_percentage`,

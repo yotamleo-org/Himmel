@@ -416,9 +416,8 @@ grepq "$ep" 'cross-model CR floor — NOT satisfied' \
 # see caseK above), so this builds that fixture directly rather than through
 # the shared capture() helper, which has no HERMES_HOME seam.
 sC4="$work/c4"; mkdir -p "$sC4"; hC4="$work/c4-home"; mkdir -p "$hC4"
-vC4="$work/c4-venv"; mkdir -p "$vC4/venv/bin" "$vC4/venv/Scripts"
+vC4="$work/c4-venv"; mkdir -p "$vC4/venv/bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$vC4/venv/bin/python"; chmod +x "$vC4/venv/bin/python"
-printf 'stub\n' > "$vC4/venv/Scripts/python.exe"
 pC4=$(build_path "$sC4" bash jq python3 npm -- "${LANE_TOOLS[@]}")
 make_git_stub "$sC4" "https://github.com/someone/other-repo.git"
 set +e
@@ -945,11 +944,9 @@ grepq "$out" -E '!! +hermes +MISSING' \
   || fail "caseK1: an unrelated hermes on PATH must NOT read as installed: $(epilogue "$out")"
 
 # K2 — a standard venv under HERMES_HOME, with `hermes` scrubbed off PATH.
-# Both layouts resolve.mjs accepts are planted so this holds on either layout.
 sK2="$work/k2"; mkdir -p "$sK2"
-vK="$work/k-venv"; mkdir -p "$vK/venv/bin" "$vK/venv/Scripts"
+vK="$work/k-venv"; mkdir -p "$vK/venv/bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$vK/venv/bin/python"; chmod +x "$vK/venv/bin/python"
-printf 'stub\n' > "$vK/venv/Scripts/python.exe"
 out=$(hermes_probe k2 "$sK2" "$(winpath "$vK")" "")
 grepq "$out" -E '~ +hermes +binary present' \
   || fail "caseK2: a venv under HERMES_HOME must read as installed: $(epilogue "$out")"

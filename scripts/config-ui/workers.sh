@@ -4,8 +4,8 @@
 # `load_dotenv HANDOVER_DIR` + `handover_root`, the workers from `fleet-manifest.sh
 # list`, each worker's status from `worker_tail_status` and description from
 # `worker_description`. Prints one JSON object:
-#   {"manifest": "<path>", "legs": [{"doc": "<path>", "status": "<marker>", "description": "<text>"}]}
-#   {"manifest": null, "legs": []}     no *.fleet.json under the root
+#   {"manifest": "<path>", "workers": [{"doc": "<path>", "status": "<marker>", "description": "<text>"}]}
+#   {"manifest": null, "workers": []}     no *.fleet.json under the root
 # Exit 3 when there is no handover root. `himmelctl ui` is launched without
 # HANDOVER_DIR, and a bare handover_root would fall back to a worktree's
 # handovers/ stub, so resolve from the station anchor: the
@@ -26,7 +26,7 @@ common=$(git -C "$self" rev-parse --path-format=absolute --git-common-dir 2>/dev
 . "$self/../lib/worker-identity.sh"
 
 load_dotenv --root "$anchor" HANDOVER_DIR
-root=$(cd "$anchor" && handover_root 2>/dev/null) || { echo "legs: no handover root" >&2; exit 3; }
+root=$(cd "$anchor" && handover_root 2>/dev/null) || { echo "workers: no handover root" >&2; exit 3; }
 
 best=""
 while IFS= read -r f; do
@@ -34,11 +34,11 @@ while IFS= read -r f; do
 done < <(find "$root" -maxdepth 4 -type f -name '*.fleet.json' 2>/dev/null) # gnu-ok: BSD find also supports -maxdepth
 
 if [ -z "$best" ]; then
-    echo '{"manifest": null, "legs": []}'
+    echo '{"manifest": null, "workers": []}'
     exit 0
 fi
 
-docs=$(bash "$self/../handover/chief-kit/fleet-manifest.sh" list "$best") || { echo "legs: fleet-manifest list failed for $best" >&2; exit 1; }
+docs=$(bash "$self/../handover/chief-kit/fleet-manifest.sh" list "$best") || { echo "workers: fleet-manifest list failed for $best" >&2; exit 1; }
 rows=""
 while IFS= read -r d; do
     [ -n "$d" ] || continue
@@ -47,4 +47,4 @@ while IFS= read -r d; do
 done <<EOF
 $docs
 EOF
-jq -n --arg m "$best" --arg rows "$rows" '{manifest: $m, legs: [$rows | split("\n")[] | select(length > 0) | split("\t") | {doc: .[0], status: (.[1] // ""), description: (.[2] // "")}]}'
+jq -n --arg m "$best" --arg rows "$rows" '{manifest: $m, workers: [$rows | split("\n")[] | select(length > 0) | split("\t") | {doc: .[0], status: (.[1] // ""), description: (.[2] // "")}]}'

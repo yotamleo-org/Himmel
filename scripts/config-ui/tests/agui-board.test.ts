@@ -102,6 +102,9 @@ test("brief: a worker doc, token-gated, read-only, redacted, names only", async 
   expect(t).toContain("LIVE");
   expect(t).not.toContain(NONCE);
   expect(t).not.toContain(LOCK);
+  const w = await get(port, `/api/agui/brief?worker=${WORKER}`);
+  expect(w.status).toBe(200);
+  expect(await w.text()).toBe(t);
 });
 
 test("findDoc: a doc symlinked outside the handover root is null; one that resolves inside the root is found", async () => {

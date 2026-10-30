@@ -121,7 +121,7 @@ async function inbound(r: string, msg: ReturnType<typeof say>, replies: string[]
 }
 
 test("short-verbs-auth-targeting", async () => {
-  const requests = ["fleet status", "legs", "go? N1490", "push N1490", "halt", "halt N1490"];
+  const requests = ["fleet status", "workers", "go? N1490", "push N1490", "halt", "halt N1490"];
   for (let i = 0; i < verbs.length; i++) {
     const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = [];
     await inbound(r, fresh(verbs[i]), replies, ran);
@@ -151,7 +151,7 @@ test("short-verbs-auth-targeting", async () => {
 });
 
 test("slash-only-plain-words-are-chat", () => {
-  for (const text of ["fleet", "legs", "go N1490", "push N1490", "halt", "lockdown", "/gopher", "/legsx", "/halting now", "/go@bridge_bot x"]) expect(classify(text).kind).toBe("chat");
+  for (const text of ["fleet", "workers", "go N1490", "push N1490", "halt", "lockdown", "/gopher", "/workersx", "/halting now", "/go@bridge_bot x"]) expect(classify(text).kind).toBe("chat");
   expect(classify("status")).toEqual({ kind: "control", verb: "status" });
   for (const text of verbs) expect(classify(text).kind).toBe("fleet");
 });

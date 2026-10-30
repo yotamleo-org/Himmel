@@ -50,12 +50,12 @@ function station() {
   writeFileSync(live, "## Results\n- 03:00 BLOCKED — waiting\n- 05:00 RESUMED — going again\n");
   const ready = join(legsDir, "HIMMEL-7-N3-ready-RESUME.md");
   writeFileSync(ready, "## Results\n- 06:00 READY: PR #9\n");
-  const legs = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), legs: [
+  const workers = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), workers: [
     { doc: blocked, status: "BLOCKED" }, { doc: live, status: "RESUMED" }, { doc: ready, status: "READY" }] };
-  return { d, mirror, plan, drift, legs };
+  return { d, mirror, plan, drift, workers };
 }
 const read = (s: ReturnType<typeof station>, o: Record<string, unknown> = {}) =>
-  readRoadmap({ mirrorDir: s.mirror, planDir: s.plan, driftLog: s.drift, legs: s.legs, ...o });
+  readRoadmap({ mirrorDir: s.mirror, planDir: s.plan, driftLog: s.drift, workers: s.workers, ...o });
 const byKey = (r: ReturnType<typeof readRoadmap>) => Object.fromEntries(r.tickets.map((t) => [t.k, t]));
 
 test("the kanban: every train ticket sits in its Jira version and its status column, themed from the plan", () => {
@@ -119,15 +119,15 @@ test("no plan dir: the kanban still renders from Jira, and the plan says why it 
 });
 
 test("no mirror: absent, with the command that makes one", () => {
-  const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", legs: { state: "absent" } });
+  const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", workers: { state: "absent" } });
   expect(r.state).toBe("absent");
   expect(r.reason).toContain("mirror");
 });
 
 test("workers join their tickets with the marker and the reason line", () => {
   const t = byKey(read(station()));
-  expect(t[1].leg).toEqual({ label: "N1466b", marker: "BLOCKED", reason: "classifier permission hold" });
-  expect(t[2].leg).toBeNull();
+  expect(t[1].worker).toEqual({ label: "N1466b", marker: "BLOCKED", reason: "classifier permission hold" });
+  expect(t[2].worker).toBeNull();
 });
 
 test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag on resume, note READY once", () => {
@@ -135,10 +135,10 @@ test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag o
   const of = (k: number) => ops.filter((o) => o.k === k);
   expect(of(1).map((o) => o.argv)).toEqual([
     ["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL],
-    ["comment", "HIMMEL-1", "[leg-sync] N1466b BLOCKED: classifier permission hold"],
+    ["comment", "HIMMEL-1", "[worker-sync] N1466b BLOCKED: classifier permission hold"],
   ]);
-  // resume: the flag goes, every other label stays (--labels is a full replace)
-  expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--labels", "product"]]);
+  // resume: only the sync flag goes (--remove-labels), every other label stays
+  expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--remove-labels", "worker-blocked,leg-blocked"]]);
   // READY was already noted on the ticket: nothing to write
   expect(of(7)).toEqual([]);
   // the planner never moves a status
@@ -147,8 +147,32 @@ test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag o
 
 test("worker -> Jira sync: a parked worker is stuck under either marker name", () => {
   for (const marker of ["PARKED-USAGE", "PARKED-BANK"]) {
-    const ops = legSync([{ k: 1, labels: [], noted: "", leg: { label: "N1", marker, reason: "" } } as any]);
+    const ops = legSync([{ k: 1, labels: [], noted: "", worker: { label: "N1", marker, reason: "" } } as any]);
     expect(ops.map((o) => o.argv)[0]).toEqual(["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL]);
+  }
+});
+
+test("worker -> Jira sync: a ticket flagged and noted under the pre-rename names is not flagged or noted twice", () => {
+  const tk = (labels: string[], noted: string, marker: string) => ({ k: 1, labels, noted, worker: { label: "N1", marker, reason: "hold" } }) as any;
+  // stuck: the old label and the old comment line already say it
+  expect(legSync([tk(["product", "leg-blocked"], "[leg-sync] N1 BLOCKED: hold", "BLOCKED")])).toEqual([]);
+  // resume: the old label is cleared too
+  expect(legSync([tk(["product", "leg-blocked"], "", "LIVE")]).map((o) => o.argv)).toEqual([["edit", "HIMMEL-1", "--remove-labels", "worker-blocked,leg-blocked"]]);
+  // READY was noted under the old prefix: no second comment
+  expect(legSync([tk([], "[leg-sync] N1 READY: hold", "READY")])).toEqual([]);
+  // the new names are what gets written
+  expect(legSync([tk([], "", "BLOCKED")]).map((o) => o.argv)).toEqual([
+    ["edit", "HIMMEL-1", "--add-labels", "worker-blocked"],
+    ["comment", "HIMMEL-1", "[worker-sync] N1 BLOCKED: hold"],
+  ]);
+});
+
+test("worker -> Jira sync: a ticket whose only labels are sync labels is cleared with --remove-labels, never an empty --labels", () => {
+  const tk = (labels: string[]) => ({ k: 1, labels, noted: "", worker: { label: "N1", marker: "LIVE", reason: "" } }) as any;
+  for (const labels of [["worker-blocked"], ["leg-blocked"], ["worker-blocked", "leg-blocked"]]) {
+    const argv = legSync([tk(labels)]).map((o) => o.argv);
+    expect(argv).toEqual([["edit", "HIMMEL-1", "--remove-labels", "worker-blocked,leg-blocked"]]);
+    expect(argv[0]).not.toContain("--labels");
   }
 });
 
@@ -228,7 +252,7 @@ test("#/kanban: every version's tickets on one board, no version filter, Done hi
 });
 
 test("kanban pages: an empty mirror shows the empty state, not a blank board", () => {
-  const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", legs: { state: "absent" } });
+  const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", workers: { state: "absent" } });
   expect(renderKanban(r, { hideDone: false })).toContain("no Jira mirror");
   expect(renderRoadmap(r, { ver: "v1.1.2" })).toContain("no Jira mirror");
   expect(renderKanban(null, {})).toContain("loading");

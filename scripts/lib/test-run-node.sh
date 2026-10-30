@@ -366,7 +366,7 @@ EOF
 # fires first and probes $ltmp/plugin/hooks/resolve-node.sh — ABSENT by
 # construction above — so _script_dir stays empty and the CLAUDE_PLUGIN_ROOT
 # lane under test is still the one that decides. The `$0` case cannot mask
-# this leg: its candidate directory IS the plugin root.
+# this lane: its candidate directory IS the plugin root.
 lane_out="$(cd "$ltmp" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
     CLAUDE_PLUGIN_ROOT="$ltmp/plugin" CLAUDE_PROJECT_DIR="$ltmp/hostile" \
     CLAUDE_DIR="$ltmp/claude" \

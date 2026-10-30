@@ -198,10 +198,10 @@ def node(i, label, src, ft="code", **kw):
     n.update(kw)
     return n
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"), # old-term-ok
-    node("arm_fn", "start_leg_session()", "scripts/handover/chief-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."), # old-term-ok
-    node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"), # old-term-ok
-    node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."), # old-term-ok
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
+    node("arm_fn", "start_leg_session()", "scripts/handover/chief-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
+    node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"),
+    node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
     node("stop_fn", "stop_lane_worker()", "scripts/lanes/stop-worker.sh", rationale="Stops a lane worker process."),
     node("rec_w", "reconcile-workers.sh", "scripts/handover/reconcile-workers.sh"),
@@ -216,13 +216,13 @@ aseeds() { python3 -I "$SEM" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
 
 # S14: a new-vocabulary question seeds the file written in the old one, not a lane-worker file.
 got="$(aseeds "how does the chief start a worker")"
-case "$got" in arm_leg\ *) pass "S14 chief/worker question leads with headed-arm-leg.sh" ;; *) fail "S14 got='$got'" ;; esac # old-term-ok
+case "$got" in arm_leg\ *) pass "S14 chief/worker question leads with headed-arm-leg.sh" ;; *) fail "S14 got='$got'" ;; esac
 got="$(aseeds "how does the chief arm a worker")"
-case "$got" in arm_leg\ *) pass "S14b the arm phrasing leads with headed-arm-leg.sh" ;; *) fail "S14b got='$got'" ;; esac # old-term-ok
+case "$got" in arm_leg\ *) pass "S14b the arm phrasing leads with headed-arm-leg.sh" ;; *) fail "S14b got='$got'" ;; esac
 
-# S15: the same for a doc: the leg preface answers how a worker reports to the chief.
+# S15: the same for a doc: the worker preface answers how a worker reports to the chief.
 got="$(aseeds "how does a worker report a blocker to the chief")"
-case "$got" in preface\ *) pass "S15 worker/chief question leads with the leg preface" ;; *) fail "S15 got='$got'" ;; esac
+case "$got" in preface\ *) pass "S15 worker/chief question leads with the worker preface" ;; *) fail "S15 got='$got'" ;; esac
 
 # S16: a question about the lane worker itself still leads with it.
 got="$(aseeds "how does stop-worker.sh stop a lane worker")"
