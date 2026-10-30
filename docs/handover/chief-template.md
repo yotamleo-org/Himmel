@@ -80,11 +80,10 @@ Run these, in order, and write the result as the first bullet under
     first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
     states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
-11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (alias `/console`);
-    the bridge appends only to an existing inbox file. The waiter
-    (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
-    The waiter reads it through `inbox-follow.sh --once` with a persisted
-    cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
+11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>`; bare `/chief <text>` or `chief:<project>` goes
+    to the newest chief, who owns it and asks older chiefs by bus. The bridge appends only to an
+    existing inbox file; the waiter (step 10) creates it (`consoles/{{SESSION_NAME}}.md`).
+    A repeated line is a duplicate (persisted cursor). **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
     operator's authority** but never changes permissions or settings, widens a
     worker's tool permissions, or replaces `merge-on-green.sh`'s GO verification. Reply with
     `bun "{{REPO}}/scripts/telegram/chief-route.ts" reply <chat_id> "<text>"`.

@@ -82,6 +82,28 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
   return live;
 }
 
+// A chief's session name is <PREFIX>-nextleg-<date><letters>-<name> (chief.sh); a
+// handover keeps PREFIX and name and advances date/letters, so those chiefs share
+// one lineage and the newest rank owns the operator's messages. A name outside the
+// convention is a lineage of one.
+// ponytail: lineage is read from the name, not chief.sh's recorded predecessor link;
+// a renamed chain splits into two lineages (the "more than one chief" refusal
+// returns for it) — record the link in <inbox>.meta.json if that recurs.
+export function chiefLineage(name: string): { prefix: string; key: string; rank: string } {
+  const m = /^([A-Za-z0-9]+)-nextleg-(\d{4}-\d{2}-\d{2})([A-Z]{1,2})-(.+)$/.exec(name);
+  if (!m) return { prefix: "", key: name, rank: "" };
+  return { prefix: m[1], key: `${m[1]}-${m[4]}`, rank: `${m[2]}${m[3].length}${m[3]}` };
+}
+
+// The newest chief, only when every given chief belongs to one lineage.
+export function newestChief<T extends { name: string }>(chiefs: T[]): T | undefined {
+  if (new Set(chiefs.map(c => chiefLineage(c.name).key)).size !== 1) return undefined;
+  return chiefs.reduce((a, b) => chiefLineage(b.name).rank > chiefLineage(a.name).rank ? b : a);
+}
+
+// `chief:<project>` always reaches the newest live chief of that project.
+const CHIEF_ALIAS = /^chief:([A-Za-z0-9_.-]+)$/i;
+
 const describeConsoles = (live: (LiveConsole & { busy?: boolean })[]) => live.map(c => `${c.name} — hb=${c.hb} (${new Date(c.hb * 1000).toISOString()}) bucket=${c.bucket} project=${c.project}${c.busy ? " (busy)" : ""}`).join("\n");
 
 // Same refusals as chief-kit/inbox-send.sh (empty, path separator, `..`,
@@ -154,7 +176,19 @@ export async function routeToConsole(
   if (!named) {
     if (route.thread) { await say(`⚠️ no chief "${name}" has an armed inbox — nothing was sent.`); return; }
     const live = await armedConsoles(root);
-    if (live.length === 1) {
+    // The router's name charset has no `:`, so `/chief chief:himmel go` arrives as
+    // a bare message whose text starts with the alias.
+    const alias = CHIEF_ALIAS.exec(name || text.split(/\s/, 1)[0]);
+    if (alias) {
+      if (!name) { name = alias[0]; text = text.slice(alias[0].length).trim(); }
+      const hits = live.filter(c => chiefLineage(c.name).prefix.toLowerCase() === alias[1].toLowerCase());
+      const newest = newestChief(hits);
+      if (!newest) {
+        await say(hits.length ? `More than one chief lineage matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : `⚠️ no live chief for "${name}" — nothing was sent.`);
+        return;
+      }
+      name = newest.name;
+    } else if (live.length === 1) {
       text = name ? `${name} ${text}` : text;
       name = live[0].name;
     } else {
@@ -170,8 +204,15 @@ export async function routeToConsole(
         (c: ArmedConsole) => c.name.toLowerCase().includes(frag),
       ] : [];
       const hits = tiers.map(t => live.filter(t)).find(h => h.length) ?? [];
-      if (hits.length === 1) name = hits[0].name;
-      else {
+      const pinned = hits.length > 1 ? newestChief(hits) : hits[0];
+      const newest = newestChief(live);
+      if (pinned) name = pinned.name;
+      else if (!hits.length && newest) {
+        // Several chiefs of ONE lineage are live: the first word names none of them,
+        // so the whole text goes to the newest.
+        text = name ? `${name} ${text}` : text;
+        name = newest.name;
+      } else {
         await say(hits.length > 1 ? `More than one chief matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : live.length ? `More than one chief is live; choose /chief <name> <text>:\n${describeConsoles(live)}` : `⚠️ no live chief${name ? ` (requested "${name}")` : ""} — nothing was sent.`);
         return;
       }
@@ -211,6 +252,58 @@ export async function consoleReplyTarget(root: string, chat: number, message: nu
   } catch { return null; }
 }
 
+// Inline buttons: "Send to chief" (the newest chief) and "Choose chief" (a picker,
+// newest first). A tap never carries text: it asks for a message with a ForceReply
+// prompt pinned to the chosen chief, and the operator's reply then rides the same
+// reply-receipt route as any chief answer (consoleReplyTarget).
+export const CHIEF_KEYBOARD = { inline_keyboard: [[{ text: "Send to chief", callback_data: "chief:send" }, { text: "Choose chief", callback_data: "chief:pick" }]] };
+
+const CHIEF_BUTTON = /^chief:(send|pick|to:([A-Za-z0-9_.-]{1,55}))$/;
+
+export type ChiefTap = { callback_id: string; from: number; chat_id: number; data: string };
+export type ChiefTapDeps = {
+  root: string;
+  authorize: (from: number, chat_id: number) => boolean;
+  prompt: (chat_id: number, text: string) => Promise<number | null>;
+  picker: (chat_id: number, text: string, markup: object) => Promise<boolean>;
+  answer: (callback_id: string, text: string) => Promise<void>;
+};
+
+// The inline-button gate poller.ts chains after the AFK sudo one: true = consumed.
+// authorize is the same sender-and-chat gate as a typed /chief, so a tap from
+// outside allowFrom is answered "Not authorized." and touches nothing.
+export function makeChiefTap(deps: ChiefTapDeps): ((tap: ChiefTap) => boolean) & { idle: () => Promise<void> } {
+  const inflight = new Set<Promise<void>>();
+  const answer = (id: string, text: string) => deps.answer(id, text).catch(() => {});
+  const ask = async (tap: ChiefTap, name: string) => {
+    const mid = await deps.prompt(tap.chat_id, `Message for chief ${name}:`);
+    if (mid != null) await rememberConsoleReply(deps.root, tap.chat_id, mid, name);
+    await answer(tap.callback_id, mid != null ? "Reply with your message" : "Could not ask for the message");
+  };
+  const handle = async (tap: ChiefTap, m: RegExpExecArray) => {
+    if (!deps.authorize(tap.from, tap.chat_id)) { await answer(tap.callback_id, "Not authorized."); return; }
+    const live = (await armedConsoles(deps.root)).sort((a, b) => chiefLineage(b.name).rank.localeCompare(chiefLineage(a.name).rank) || a.name.localeCompare(b.name));
+    if (!live.length) { await answer(tap.callback_id, "No live chief."); return; }
+    if (m[1] === "send" && newestChief(live)) { await ask(tap, newestChief(live)!.name); return; }
+    if (m[1].startsWith("to:")) {
+      if (!live.some(c => c.name === m[2])) { await answer(tap.callback_id, "That chief is no longer live."); return; }
+      await ask(tap, m[2]);
+      return;
+    }
+    const buttons = live.filter(c => CHIEF_BUTTON.test(`chief:to:${c.name}`)).map(c => [{ text: c.name, callback_data: `chief:to:${c.name}` }]);
+    const ok = buttons.length > 0 && await deps.picker(tap.chat_id, "Which chief? Newest first.", { inline_keyboard: buttons });
+    await answer(tap.callback_id, ok ? "Pick a chief" : "Could not list the chiefs");
+  };
+  const tap = (t: ChiefTap): boolean => {
+    const m = CHIEF_BUTTON.exec(t.data);
+    if (!m) return false;
+    const run: Promise<void> = handle(t, m).catch(e => console.error(`[chief-route] chief button failed: ${e}`)).finally(() => inflight.delete(run));
+    inflight.add(run);
+    return true;
+  };
+  return Object.assign(tap, { idle: async () => { while (inflight.size) await Promise.all([...inflight]); } });
+}
+
 function inboxIdentity(inbox: string): { root: string; name: string } {
   const path = resolve(inbox);
   const root = dirname(dirname(path));
@@ -239,7 +332,7 @@ export async function announceConsole(inbox: string): Promise<void> {
   // use transactional outbox dedupe if crash-loss is observed. Re-arms never spam.
   try {
     const { replyViaOutbox } = await import("./poller");
-    await replyViaOutbox(root, chat, `Chief ${name} is live — just send /chief <text>`, name);
+    await replyViaOutbox(root, chat, `Chief ${name} is live — just send /chief <text>`, name, undefined, CHIEF_KEYBOARD);
   } catch (e) { await unlink(marker); throw e; }
 }
 
