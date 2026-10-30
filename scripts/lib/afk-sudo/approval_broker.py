@@ -29,6 +29,7 @@ DIGITS = 6
 MAX_WRONG = 3
 LOCK_S = 900
 MAX_PER_HOUR = 6
+BUSY_ROW_S = 600
 KEEP_DONE = 20
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 
@@ -76,9 +77,12 @@ def append_row(path, row, owner):
 
 
 class Broker:
-    def __init__(self, state_dir, ledger, seed_path, operator_id, window_s=120, owner=0, now=time.time):
+    def __init__(self, state_dir, ledger, seed_path, operator_id, window_s=120, owner=0, now=time.time,
+                 max_per_hour=MAX_PER_HOUR):
         self.state_dir, self.ledger, self.seed_path = state_dir, ledger, seed_path
         self.operator_id, self.window_s, self.owner, self.now = int(operator_id), int(window_s), owner, now
+        self.max_per_hour = int(max_per_hour)
+        self.retain = None  # called under the lock with the ids still live, after a request opens
         self.state_path = os.path.join(state_dir, "state.json")
         for d in (state_dir, os.path.dirname(ledger), os.path.dirname(seed_path)):
             check_safe(d, owner, kind="dir")
@@ -119,11 +123,22 @@ class Broker:
         for old in list(s["done"])[:-KEEP_DONE]:
             del s["done"][old]
 
+    @staticmethod
+    def _bump(s, step):
+        s["last_step"] = max(s["last_step"], int(step))
+
+    def _spend(self, s, t):
+        """A request that ends without running spends the current step: a code the operator
+        may have typed for it can never approve the next request."""
+        self._bump(s, t // STEP_S)
+
     def _expire(self, s, t):
         p = s["pending"]
         if p and t > p["expires"]:
             self._finish(s, p["id"], "expired")
             s["pending"] = None
+            # The step the request ran out in, not the (lazy) detection time.
+            self._bump(s, p["expires"] // STEP_S)
             self._row("expire", "expired", p["meta"], id=p["id"])
 
     def _refuse(self, event, result, meta, **extra):
@@ -131,28 +146,50 @@ class Broker:
         raise Refused(result)
 
     # --- API ---
-    def request(self, kind, display, payload, meta):
-        """Open the one pending slot; returns (id, expires). Raises Refused."""
+    def _busy_quiet(self, s, meta, t):
+        """True when this session already has a `busy` ledger row in the last BUSY_ROW_S."""
+        rows = {k: v for k, v in s.get("busy_rows", {}).items() if t - v < BUSY_ROW_S}
+        sess = str(meta.get("session", ""))
+        quiet = sess in rows
+        if not quiet:
+            rows[sess] = t
+        s["busy_rows"] = rows
+        return quiet
+
+    def request(self, kind, display, payload, meta, window_s=None):
+        """Open the one pending slot; returns (id, expires). Raises Refused.
+
+        `payload` may be a callable f(rid, created, expires) -> (payload, meta_extra), run once the id
+        and the window are known and before anything is saved."""
         fd = self._locked()
         try:
             s, t = self._load(), self.now()
+            window = int(window_s or self.window_s)
             meta = dict(meta, kind=kind)
             if t < s["locked_until"]:
                 self._refuse("request", "locked", meta)
             self._expire(s, t)
             if s["pending"]:
+                quiet = self._busy_quiet(s, meta, t)
                 self._save(s)
+                if quiet:
+                    raise Refused("busy")
                 self._refuse("request", "busy", meta)
             s["requests"] = [r for r in s["requests"] if t - r < 3600]
-            if len(s["requests"]) >= MAX_PER_HOUR:
+            if len(s["requests"]) >= self.max_per_hour:
                 self._save(s)
                 self._refuse("request", "rate-limited", meta)
             rid = "".join(secrets.choice(ID_ALPHABET) for _ in range(8))
+            if callable(payload):
+                payload, extra = payload(rid, int(t), int(t + window))
+                meta.update(extra)
             s["requests"].append(t)
-            s["pending"] = {"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta, "expires": t + self.window_s}
+            s["pending"] = {"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta, "expires": t + window}
             self._save(s)
             self._row("request", "pending", meta, id=rid)
-            return rid, int(t + self.window_s)
+            if self.retain:
+                self.retain(set(s["done"]) | {rid})
+            return rid, int(t + window)
         finally:
             os.close(fd)
 
@@ -183,7 +220,7 @@ class Broker:
             if p and p["id"] == rid and t > p["expires"]:
                 self._expire(s, t)
                 if spend:
-                    s["last_step"] = hit
+                    self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", "expired", meta, id=rid)
             self._expire(s, t)
@@ -192,8 +229,9 @@ class Broker:
                 if p:
                     self._finish(s, p["id"], "burned")
                     s["pending"] = None
+                    self._spend(s, t)
                 if spend:
-                    s["last_step"] = hit
+                    self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", "no-pending", meta, id=rid)
             if hit is None or hit <= s["last_step"]:
@@ -204,24 +242,36 @@ class Broker:
                         s["locked_until"], s["wrong"] = t + LOCK_S, 0
                 self._finish(s, rid, "denied:" + result)
                 s["pending"] = None
+                self._spend(s, t)
                 self._save(s)
                 self._refuse("code-check", result, p["meta"], id=rid)
-            s["last_step"], s["wrong"], s["pending"] = hit, 0, None
+            s["wrong"], s["pending"] = 0, None
+            self._bump(s, max(hit, t // STEP_S))
             self._finish(s, rid, "running")
             self._save(s)
             self._row("code-check", "approved", p["meta"], id=rid, sender=int(sender))
         finally:
             os.close(fd)
-        rc = executor(p["payload"])
+        res = executor(p["payload"])
+        # An executor returns the exit status (int), or a dict {"result", "exit", ...ledger extras}:
+        # "ran" is a run, anything else a refusal made after the code was accepted.
+        if not isinstance(res, dict):
+            res = {"result": "ran", "exit": res}
+        extra = {k: v for k, v in res.items() if k not in ("result", "exit")}
         fd = self._locked()
         try:
             s = self._load()
-            self._finish(s, rid, f"ran:{rc}")
-            self._save(s)
-            self._row("run", "ran", p["meta"], id=rid, exit=rc)
+            if res["result"] == "ran":
+                self._finish(s, rid, f"ran:{res['exit']}")
+                self._save(s)
+                self._row("run", "ran", p["meta"], id=rid, exit=res["exit"], **extra)
+            else:
+                self._finish(s, rid, "refused:" + res["result"])
+                self._save(s)
+                self._row("run", res["result"], p["meta"], id=rid, **extra)
         finally:
             os.close(fd)
-        return p, rc
+        return p, res
 
     def deny(self, rid, sender, chat):
         fd = self._locked()
@@ -234,6 +284,7 @@ class Broker:
                 self._refuse("deny", "no-pending", meta, id=rid)
             self._finish(s, rid, "denied")
             s["pending"] = None
+            self._spend(s, self.now())
             self._save(s)
             self._row("deny", "denied", meta, id=rid, sender=int(sender))
         finally:

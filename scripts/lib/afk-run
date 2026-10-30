@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# afk-run — what an AFK session runs for ONE privileged command it is blocked on.
+#
+#   afk-run --session S --ticket T --blocked-by classifier|hook:<guard>|prompt|operator-step \
+#           [--as root] [--cwd DIR] [--stdin-file F] [--why W] -- ARGV...
+#   afk-run wait <id>
+#
+# Files a `run-request` with the root helper (sudo -n, the one NOPASSWD rule install.sh
+# writes), then polls it until the operator approves or denies it with a TOTP code. The
+# helper freezes the argv and runs exactly that once; nothing runs here. The command's
+# captured stdout goes to this stdout, its stderr to this stderr, and the exit status is
+# its own. There is no Telegram notice from this script in slice 1a.
+#
+# Exit: the command's own status once it ran (a signal death -N becomes 128+N);
+# 3 denied or burned; 4 expired; 5 refused (never-remote, run kind off, bad user, helper
+# missing, ...); 75 still pending when the wait ran out, re-attach with `afk-run wait <id>`;
+# 76 the helper stayed busy, nothing filed, run the same afk-run again later; 2 usage.
+# The last stderr line is always
+#   afk-run: status=ran:<exit>|denied|expired|refused:<result>|pending|busy [id=<id>]
+# (no id when nothing was filed).
+#
+# Timing env vars, also the test seams: AFK_RUN_WAIT_S (540, total wait), AFK_RUN_POLL_S (3),
+# AFK_RUN_BUSY_EVERY_S (15, how often a busy helper is asked again).
+set -uo pipefail
+
+HELPER=/usr/local/libexec/himmel/afk-sudo
+WAIT_S=${AFK_RUN_WAIT_S:-540}
+POLL_S=${AFK_RUN_POLL_S:-3}
+BUSY_S=${AFK_RUN_BUSY_EVERY_S:-15}
+
+usage() {
+    echo "usage: afk-run --session S --ticket T --blocked-by classifier|hook:<guard>|prompt|operator-step [--as root] [--cwd DIR] [--stdin-file F] [--why W] -- ARGV..." >&2
+    echo "       afk-run wait <id>" >&2
+    exit 2
+}
+
+# word <key> <output>: the value of key=value on the helper's first result line.
+word() { printf '%s\n' "$2" | sed -n "1s/^result=[^ ]* \\(.* \\)\\{0,1\\}$1=\\([^ ]*\\).*/\\2/p"; }
+result_of() { printf '%s\n' "$1" | sed -n '1s/^result=\([^ ]*\).*/\1/p'; }
+
+end_with() {  # end_with <code> <status> [id]
+    local line="afk-run: status=$2"
+    [ -z "${3:-}" ] || line="$line id=$3"
+    printf '%s\n' "$line" >&2
+    exit "$1"
+}
+
+finish_ran() {  # finish_ran <id> <exit>
+    local id=$1 n=$2 errf
+    sudo -n "$HELPER" run-result "$id" --stream stdout 2>/dev/null
+    errf=$(mktemp "${TMPDIR:-/tmp}/afk-run.XXXXXX") || errf=/dev/null
+    # shellcheck disable=SC2024 # the caller's own temp file, not a root-opened path
+    sudo -n "$HELPER" run-result "$id" --stream stderr > "$errf" 2>/dev/null
+    cat "$errf" >&2
+    # The status line must start a line of its own.
+    [ ! -s "$errf" ] || [ -z "$(tail -c 1 "$errf")" ] || echo >&2
+    [ "$errf" = /dev/null ] || rm -f "$errf"
+    [[ $n =~ ^-?[0-9]+$ ]] || n=1
+    local status="ran:$n"
+    [ "$n" -ge 0 ] || n=$((128 - n))
+    end_with "$n" "$status" "$id"
+}
+
+poll() {  # poll <id> <deadline in $SECONDS>
+    local id=$1 end=$2 st
+    while :; do
+        st=$(sudo -n "$HELPER" run-status "$id" 2>/dev/null | sed -n '1s/^result=\([^ ]*\).*/\1/p')
+        case "$st" in
+            pending | running) ;;
+            ran:*) finish_ran "$id" "${st#ran:}" ;;
+            denied* | burned) echo "afk-run: request $id was not approved ($st)" >&2; end_with 3 denied "$id" ;;
+            expired) echo "afk-run: request $id expired" >&2; end_with 4 expired "$id" ;;
+            refused:*) echo "afk-run: request $id was refused after the code ($st)" >&2; end_with 5 "$st" "$id" ;;
+            *) echo "afk-run: request $id has status '${st:-none}'" >&2; end_with 5 "refused:${st:-helper-unavailable}" "$id" ;;
+        esac
+        if [ "$SECONDS" -ge "$end" ]; then
+            echo "afk-run: request $id is still pending; re-attach with: afk-run wait $id" >&2
+            end_with 75 pending "$id"
+        fi
+        sleep "$POLL_S"
+    done
+}
+
+if [ "${1:-}" = wait ]; then
+    [ $# -eq 2 ] && [[ $2 =~ ^[a-z2-7]{8}$ ]] || usage
+    poll "$2" $((SECONDS + WAIT_S))
+fi
+
+session="" ticket="" blocked="" runas="" cwd=$PWD stdin_file=/dev/null why=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --session) [ $# -ge 2 ] || usage; session=$2; shift 2 ;;
+        --ticket) [ $# -ge 2 ] || usage; ticket=$2; shift 2 ;;
+        --blocked-by) [ $# -ge 2 ] || usage; blocked=$2; shift 2 ;;
+        --as) [ $# -ge 2 ] || usage; runas=$2; shift 2 ;;
+        --cwd) [ $# -ge 2 ] || usage; cwd=$2; shift 2 ;;
+        --stdin-file) [ $# -ge 2 ] || usage; stdin_file=$2; shift 2 ;;
+        --why) [ $# -ge 2 ] || usage; why=$2; shift 2 ;;
+        --) shift; break ;;
+        *) usage ;;
+    esac
+done
+[ -n "$session" ] && [ -n "$ticket" ] && [ -n "$blocked" ] && [ $# -gt 0 ] || usage
+[ -r "$stdin_file" ] || { echo "afk-run: cannot read --stdin-file $stdin_file" >&2; exit 2; }
+
+req=(run-request --session "$session" --ticket "$ticket" --blocked-by "$blocked" --cwd "$cwd")
+[ -z "$runas" ] || req+=(--as "$runas")
+[ -z "$why" ] || req+=(--why "$why")
+
+end=$((SECONDS + WAIT_S))
+while :; do
+    # shellcheck disable=SC2024 # the caller opens its own --stdin-file; root never opens a caller path
+    out=$(sudo -n "$HELPER" "${req[@]}" -- "$@" 2>&1 < "$stdin_file")
+    res=$(result_of "$out")
+    case "$res" in
+        pending)
+            id=$(word id "$out")
+            [[ $id =~ ^[a-z2-7]{8}$ ]] || end_with 5 "refused:bad-helper-reply"
+            echo "afk-run: filed request $id, waiting for the operator" >&2
+            poll "$id" "$end" ;;
+        busy)
+            if [ "$SECONDS" -ge "$end" ]; then
+                echo "afk-run: another request is pending" >&2
+                end_with 76 "busy, nothing filed, run the same afk-run again later"
+            fi
+            sleep "$BUSY_S" ;;
+        "") printf 'afk-run: %s\n' "${out:-helper not installed}" >&2; end_with 5 "refused:helper-unavailable" ;;
+        *) printf 'afk-run: refused: %s\n' "$(printf '%s\n' "$out" | sed -n 1p)" >&2; end_with 5 "refused:$res" ;;
+    esac
+done
