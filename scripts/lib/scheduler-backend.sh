@@ -3,7 +3,6 @@
 # auto-arm-on-cap watchdog relies on via arm-resume.sh. Pure: no
 # privileged commands, sourceable, bash-3.2-safe. The STATUS mirrors what
 # arm-resume.sh actually selects so the verdict can never be a false-OK:
-#   - windows: schtasks (always present)
 #   - linux:   `at` when present (needs atd live), else crontab fallback
 #   - macos:   crontab only (arm-resume skips `at` there — atrun unreliable)
 # Consumed by himmel-doctor C9 + the ubuntu/macos installers. No `set -e`
@@ -12,10 +11,9 @@
 scheduler_backend_os() {
     if [ -n "${SCHEDULER_BACKEND_OS:-}" ]; then printf '%s\n' "$SCHEDULER_BACKEND_OS"; return; fi
     case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*|MSYS*|CYGWIN*) echo windows ;;
-        linux*|Linux*)                             echo linux ;;
-        darwin*|Darwin*)                           echo macos ;;
-        *)                                         echo unknown ;;
+        linux*|Linux*)   echo linux ;;
+        darwin*|Darwin*) echo macos ;;
+        *)               echo unknown ;;
     esac
 }
 
@@ -36,7 +34,6 @@ _scheduler_atd_live() {
 
 scheduler_backend_status() {
     case "$(scheduler_backend_os)" in
-        windows) command -v "${SCHTASKS_CMD:-schtasks}" >/dev/null 2>&1 && echo ok || echo missing ;;
         linux)
             if command -v at >/dev/null 2>&1; then
                 if _scheduler_atd_live; then echo ok; else echo disabled; fi
@@ -51,7 +48,6 @@ scheduler_backend_status() {
 scheduler_backend_remediation() {
     local os status; os="$(scheduler_backend_os)"; status="$(scheduler_backend_status)"
     case "$os" in
-        windows) : ;;  # schtasks always present
         linux)
             case "$status" in
                 disabled|missing) echo "sudo apt install -y at && sudo systemctl enable --now atd" ;;

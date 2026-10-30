@@ -2,7 +2,7 @@
 # hop.sh — invocable mid-session jump to a fresh claude session.
 #
 # Sibling of scripts/handover/arm-resume.sh. arm-resume is *cron-armed*
-# (schtasks ONCE at a future time, operator chooses the time, dedup-
+# (`at` ONCE at a future time, operator chooses the time, dedup-
 # guarded). hop is *operator-invoked NOW* — used when the current
 # session approaches the context-window budget (typically 75-80%) and
 # the operator wants to /exit and pick up in a clean session without
@@ -16,7 +16,7 @@
 #       spawns the new claude via the OS scheduler. Default delay is 2
 #       minutes — gives the operator time to /exit the current session
 #       cleanly before the new one fires. Reuses arm-resume's tested
-#       cd-into-repo + dedup + MSYS_NO_PATHCONV path (PRs #137, #139).
+#       cd-into-repo + dedup path (PRs #137, #139).
 #
 #   --print
 #       Don't schedule anything. Just write the snapshot + print the

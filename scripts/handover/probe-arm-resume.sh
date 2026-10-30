@@ -7,7 +7,7 @@
 # WHY THIS EXISTS: test-arm-resume-identity.sh is the correctness suite and
 # runs ~40+ minutes -- unusable as an iteration loop for a latency change.
 # This probe splices that suite's hermetic setup (fresh HANDOVER_DIR, the
-# stateful schtasks/at/claude/powershell/reg stubs, the temp-target +
+# stateful at/atq/atrm/crontab/claude stubs, the temp-target +
 # shipped-work shields) around ONE arm and reports:
 #
 #   * wall-clock seconds for a --dry-run arm and for a real (stubbed) arm
@@ -17,7 +17,7 @@
 #     one line per invocation to $PY_SPAWN_LOG before exec'ing through.
 #
 # The spawn count is the number the consolidation work moves;
-# wall-clock on a loaded Windows host is noisy enough that the count is the
+# wall-clock on a loaded host is noisy enough that the count is the
 # more honest signal. Run it before and after a change and diff both.
 #
 # Usage: bash scripts/handover/probe-arm-resume.sh [--repeat N]
@@ -76,43 +76,9 @@ mkdir -p "$WORK_REPO"
 git init -q "$WORK_REPO"
 
 # --- stubs ------------------------------------------------------------------
-# Only the binaries an arm actually reaches. Stateful schtasks (flat file, one
-# task name per line) so a real arm registers exactly as the identity suite
-# models it; powershell exits 1 so the post-arm verify fail-OPENS;
-# reg emits a parseable US short-date so the locale probe stays HEALTHY (a
-# degraded locale + a dead verify is the deliberate rc-2 dual-failure refuse,
-# which would cut the arm short and make the timing meaningless).
+# Only the binaries an arm actually reaches.
 STUB="$TMP/stub-bin"
 mkdir -p "$STUB"
-cat > "$STUB/schtasks" <<'EOF'
-#!/usr/bin/env bash
-db="${SCHED_DB:?SCHED_DB unset}"
-cmd="${1:-}"; shift || true
-tn=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        /tn)   tn="${2:-}"; shift 2 ;;
-        /tn=*) tn="${1#/tn=}"; shift ;;
-        *)     shift ;;
-    esac
-done
-case "$cmd" in
-    /query)
-        [ -f "$db" ] || exit 0
-        while IFS= read -r t; do
-            [ -n "$t" ] && printf '"\\%s","2026-01-01","Ready"\n' "$t"
-        done < "$db"
-        exit 0 ;;
-    /create) printf '%s\n' "$tn" >> "$db"; exit 0 ;;
-    /delete)
-        if [ -f "$db" ]; then
-            grep -vFx "$tn" "$db" > "$db.tmp" 2>/dev/null || : > "$db.tmp"
-            mv "$db.tmp" "$db"
-        fi
-        exit 0 ;;
-    *) exit 0 ;;
-esac
-EOF
 cat > "$STUB/at" <<'EOF'
 #!/usr/bin/env bash
 d="${SCHED_DB_DIR:?SCHED_DB_DIR unset}"; mkdir -p "$d"
@@ -151,13 +117,6 @@ case "${1:-}" in
 esac
 EOF
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/claude"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB/powershell"
-cat > "$STUB/reg" <<'EOF'
-#!/usr/bin/env bash
-echo 'HKEY_CURRENT_USER\Control Panel\International'
-echo '    sShortDate    REG_SZ    M/d/yyyy'
-exit 0
-EOF
 
 # python3 counting shim. Appends one line per interpreter spawn -- the first
 # ~70 chars of the program text, enough to identify the call SITE -- then

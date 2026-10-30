@@ -1526,7 +1526,7 @@ _ql_emit_close_evidence() {
 # ponytail: the re-check and the act are two syscalls, so a stall of
 # microseconds exactly between them is still unfenced (the window shrank from
 # "anywhere after verify" to that gap); closing it needs an atomic
-# compare-and-rename of the lock dir, which MSYS rename is not trusted to be
+# compare-and-rename of the lock dir, which rename is not trusted to be
 # (see ATOMIC TAKEOVER). Revisit if a dual-owner incident is ever traced to it.
 
 # _ql_new_gen -- a generation id unique per acquire on this host.
@@ -1741,8 +1741,8 @@ queue_lock_acquire() {
         # dir we did not just create via mkdir. An in-place owner.json
         # rewrite would let two concurrent stale-acquirers BOTH "win".
         # NOTE: an earlier revision claimed the old dir via `mv` to a
-        # graveyard name -- observed UNRELIABLE on MSYS/Git-Bash (rc-0 mv
-        # with a missing or empty target under concurrent rename), so the
+        # graveyard name -- observed UNRELIABLE (rc-0 mv with a missing
+        # or empty target under concurrent rename), so the
         # only atomic primitive this takeover trusts is mkdir:
         #   1. mkdir <lockdir>.claim -- the exclusive right to take over
         #      this slug. Exactly one contender wins; every other taker

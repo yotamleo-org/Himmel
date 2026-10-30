@@ -9,7 +9,7 @@
 # prove the suspicious-path guard refuses it (nothing is removed). The
 # bridge-stop step runs only against a stubbed `bun` + supervisor.pid seeded
 # in a temp BRIDGE_ROOT; scheduled-job discovery runs only against
-# PATH-stubbed schtasks/atq/at/crontab under --dry-run — except 9e/9f, which
+# PATH-stubbed atq/at/crontab under --dry-run — except 9e/9f, which
 # exercise the WET crontab rewrite against a stdin-capturing crontab stub
 # (PATH puts the stub first, so the real crontab is never invoked).
 # Partial-delete residue detection is not asserted here: bash has no portable
@@ -287,46 +287,27 @@ fi
 # Tests 7-12 run the CLI under a controlled PATH (stub dir first, the
 # hermetic $HBIN second: "$STUB_WIN/$STUB_NIX/$STUB_BUN:$HBIN" —,
 # $HBIN never carries claude/pre-commit/bun/crontab/schtasks/systemctl) so
-# command -v resolves to the stubs (and, for the unix-branch tests, so the
-# real Windows schtasks is invisible). All discovery tests use --dry-run:
+# command -v resolves to the stubs. All discovery tests use --dry-run:
 # even if a stub leaked a name, no delete would execute.
 
-# 7. scheduled-task discovery (stubbed schtasks): CSV extraction incl. a
-#    path-prefixed task name + DRY delete preview
+# 7. a schtasks binary on PATH is ignored: the Windows scheduler backend is
+#    gone, so it is neither queried nor deleted from.
 mk_state
 STUB_WIN="$TMP/stub-win"
 mkdir -p "$STUB_WIN"
 cat > "$STUB_WIN/schtasks" <<'STUB_EOF'
 #!/usr/bin/env bash
-case "$*" in
-  *"/query /fo CSV /nh"*)
-    printf '%s\n' '"\HIMMEL-Resume-X","Ready"' '"HIMMEL-Resume-Y","Running"' '"UnrelatedTask","Ready"'
-    exit 0 ;;
-  *"/query /tn HimmelTelegramBridge"*) exit 0 ;;
-  *) exit 1 ;;
-esac
+echo "schtasks was invoked: $*" >> "${STUB_WIN_SENTINEL:?}"
+exit 0
 STUB_EOF
 chmod +x "$STUB_WIN/schtasks"
-out=$(TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$STUB_WIN:$HBIN" \
+out=$(STUB_WIN_SENTINEL="$TMP/schtasks-sentinel" TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$STUB_WIN:$HBIN" \
     bash "$CLI" --purge-state --dry-run --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
-assert_rc "stubbed schtasks dry-run exits 0" 0 "$rc"
-assert_has "path-prefixed task name extracted" "DRY: schtasks /delete /tn HIMMEL-Resume-X /f" "$out"
-assert_has "plain task name extracted" "DRY: schtasks /delete /tn HIMMEL-Resume-Y /f" "$out"
-assert_has "bridge logon task included" "DRY: schtasks /delete /tn HimmelTelegramBridge /f" "$out"
-assert_not_has "unrelated task untouched" "UnrelatedTask" "$out"
+assert_rc "dry-run with a schtasks on PATH exits 0" 0 "$rc"
+assert_not_has "schtasks is not previewed for deletion" "DRY: schtasks" "$out"
+assert_not_has "schtasks on PATH is never invoked" "schtasks was invoked" "$(cat "$TMP/schtasks-sentinel" 2>/dev/null)"
 
-# 8. schtasks enumeration failure is WARNed, not masked as "no tasks"
-cat > "$STUB_WIN/schtasks" <<'STUB_EOF'
-#!/usr/bin/env bash
-exit 1
-STUB_EOF
-out=$(TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$STUB_WIN:$HBIN" \
-    bash "$CLI" --purge-state --dry-run --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
-assert_rc "query-failure dry-run halts with rc=2" 2 "$rc"
-assert_has "query failure WARNs" "WARN: schtasks /query failed (rc=1)" "$out"
-assert_not_has "query failure not masked as no-tasks" "no matching scheduled tasks found" "$out"
-
-# 9. at/crontab discovery (no schtasks on PATH): stubbed atq/at/crontab
+# 9. at/crontab discovery: stubbed atq/at/crontab
 mk_state
 STUB_NIX="$TMP/stub-nix"
 mkdir -p "$STUB_NIX"
@@ -408,7 +389,7 @@ assert_not_has "rc1-real-stderr not masked as no-jobs" "no matching scheduled jo
 assert_not_has "rc1-real-stderr rewrite not attempted" "stripped HIMMEL-Resume-" "$out"
 
 # 9e. WET crontab rewrite (no --dry-run; the cron worker actually executes):
-#     atq is stubbed to an empty listing, schtasks is invisible, and the
+#     atq is stubbed to an empty listing, and the
 #     crontab stub captures the rewrite's stdin to a file — the operator's
 #     real crontab is never invoked. The failure mode pinned here is wiping
 #     unrelated cron jobs: the unrelated line must SURVIVE the rewrite and

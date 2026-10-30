@@ -1178,3 +1178,4 @@ scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doc
 scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
 scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role, HIMMEL-8061
 scripts/eval/compaction-handoff/test-compaction-ab.sh	local	behaviour suite, new HIMMEL-7667
+scripts/handover/test-windows-arms-dropped.sh	pr	static-gate
