@@ -248,8 +248,8 @@ IFS= read -r -d '' input 2>/dev/null || true
 # operand collapsing to `empty` zeroes out the WHOLE expression, not just
 # that field -- and this hook's case arm allows tool=="" through on purpose,
 # so silently blanking $cmd here would have been a real behavior change, not
-# a coincidental no-op like in the sibling hooks. Windows jq.exe writes
-# CRLF, so strip the stray CR off $tool (same shape as require-quiet-run.sh).
+# a coincidental no-op like in the sibling hooks. Strip a stray CR off $tool
+# defensively (same shape as require-quiet-run.sh).
 # RETASK R2123A (independent review): `|tostring` on both operands -- a
 # NON-STRING but present field (e.g. `"command":["x"]`) makes jq's `+` a
 # type error, a DIFFERENT failure than "field is null" and swallowed by the

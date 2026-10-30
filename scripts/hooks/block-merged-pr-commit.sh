@@ -154,13 +154,11 @@ _is_literal() {
     return 0
 }
 
-# Resolve a path relative to a base dir (both absolute already on POSIX, or
-# absolute on Windows with /c/... MINGW paths).
+# Resolve a path relative to an absolute base dir.
 # Returns empty if resolution fails.
 _resolve_path() {
     local base="$1" target="$2"
-    # If target is absolute (starts with / or a drive letter like /c/ on MINGW),
-    # use it directly.
+    # Use an absolute target directly; otherwise prepend the base dir.
     case "$target" in
         /*) printf '%s' "$target" ;;
         [A-Za-z]:/*) printf '%s' "$target" ;;

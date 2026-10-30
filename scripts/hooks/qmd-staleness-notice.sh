@@ -273,9 +273,7 @@ if [ "${QMD_STALENESS_REFRESH:-0}" = "1" ]; then
     # `>` redirect FOLLOWS a symlink someone else pre-placed there — which would
     # hand this hook out as a write primitive against any file the operator can
     # write. mktemp creates O_EXCL, so it can neither follow nor clobber, and it
-    # applies the tightest mode the platform honours (0600 on POSIX; MSYS derives
-    # the bits from the ACL and reports 0644, which _qmd_not_shared_writable
-    # accepts because it is not writable by anyone else either).
+    # applies mode 0600 so only the owner can read or write the file.
     # Explicit template: BSD mktemp (stock macOS) rejects a bare invocation.
     _cache_tmp="$(mktemp "$CACHE.XXXXXX" 2>/dev/null)" || _cache_tmp=""
     if [ -n "$_cache_tmp" ] && exec >"$_cache_tmp" 2>/dev/null; then
@@ -395,18 +393,10 @@ fi
 # nothing left behind either way, and the TERM reaches the same target
 # `timeout` would have signalled.
 GUARD_BUDGET_SECS=15
-# `command -v timeout` is NOT the test — this is Git Bash's oldest trap, and
-# qmd-cadence.sh already carries the fix (see its liveness probe). Windows ships
-# C:\Windows\System32\timeout.exe, which is a SLEEP, not a command runner: no
-# -k, no subcommand. Where PATH resolves to that one, `timeout -k 3 15 bash …`
-# fails INSTANTLY with a usage error — and this hook would then read that rc as
-# the guard's own rc 1 and print "qmd staleness check is MISCONFIGURED", a
-# diagnosis pointing at the operator's env vars for a fault that is neither
-# theirs nor real, while never checking the index at all. The check that
-# silently stops checking, one more time, in a new disguise.
-#
-# Only GNU coreutils names itself in --version (the Windows one writes an
-# "Invalid value for timeout (/T)" error to stderr and nothing to stdout).
+# Require GNU coreutils timeout, not just a same-named command on PATH:
+# this invocation needs -k and subcommand execution. Stock macOS lacks it,
+# so the bounded fallback below must remain available.
+# Identify GNU coreutils by its --version output.
 # Captured into a variable rather than piped into grep -q: an early-exiting
 # reader can SIGPIPE the producer, and under pipefail that reads as "not GNU" —
 # dropping the bounded path on exactly the hosts that have it.

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Pre-push hook: cross-platform validation gate for shell/script changes.
 #
-# Friction this prevents: scripts in `scripts/` (shell + powershell + node
-# shims) repeatedly ship with platform-specific bugs that only surface at
-# runtime on the OTHER OS — e.g. spawn() missing `shell:true` on Windows,
-# `$Args` collision in PowerShell, `python` vs `python3` on Linux, UTF-8
-# BOM mojibake, unquoted `#` in YAML paths. CR catches some; many slip.
+# Friction this prevents: bash and node scripts in `scripts/` can ship with
+# platform-specific bugs that only surface on Linux or macOS — e.g.
+# `python` vs `python3`, /bin/sh shims, UTF-8 BOM mojibake, or unquoted `#`
+# in YAML paths. CR catches some; many slip.
 #
 # Gate: if the diff vs main touches any cross-platform-sensitive path,
 # require either
@@ -231,9 +230,8 @@ $(printf '%s\n' "$sensitive" | sed 's/^/     /')
           PLATFORMS_TESTED_OK=1 git push ...
       or include \`[skip platforms-check]\` in a commit message.
 
-   Why: scripts in this repo run on both Linux/macOS (bash) and Windows
-   (PowerShell + Git Bash). Bugs from one side keep slipping through CR
-   (shell:true, \$Args, BOM, python vs python3, /bin/sh shims). This
-   gate forces the cross-platform check to be acknowledged before push.
+   Why: bash and node scripts in this repo run on Linux and macOS.
+   Platform-specific bugs can slip through CR (python vs python3,
+   /bin/sh shims). This gate requires acknowledging the platforms tested.
 EOF
 exit 1

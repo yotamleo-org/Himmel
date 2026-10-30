@@ -368,8 +368,7 @@ esac
 # parent work — allow and do NOT consume the budget. MERGE_HEAD / REBASE_HEAD
 # (and the rebase-merge / rebase-apply dirs) live in the CURRENT worktree's
 # git dir; `rev-parse --git-path` resolves each against it and is made
-# absolute below (git may emit an MSYS-relative path; Windows drive-letter
-# forms are left alone).
+# absolute below if git emits a relative path.
 gitpath() {  # gitpath <name> — absolute path of a worktree git-dir entry, or empty
     local p
     p=$(git -C "$repo_dir" rev-parse --git-path "$1" 2>/dev/null) || return 1
