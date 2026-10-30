@@ -356,6 +356,7 @@ check_both "54 fromP: x=\$(cd wt); echo x > a.txt (cd inside a command substitut
 # destination-type class deferred to) takes this relaxation back:
 # post-fix, the union check fires on every _bwimc_ecwd/_bwimc_cwd
 # divergence unconditionally, so this row denies again too.
+# (Relaxed ONLY for a cd target in no git repo at all — rows 97+.)
 check_both "55 fromP: cd wt && echo x > a.txt (genuine, runtime-safe cd — still denies post-fix under the strict superset rule)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > a.txt\",\"cwd\":\"$FIX/primary\"}}"
 
@@ -708,6 +709,276 @@ check_both "96g fromP: cd wt/missing; env -C scripts tee ../a.txt denies" block 
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt/missing7130; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
 check_both "96h fromP: false && cd wt; env -C scripts tee ../a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/wt; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
+
+echo "== HIMMEL-8200 (a relative write after a plain cd into a scratch folder resolves against the cd target) =="
+
+# 97: from a PRIMARY payload cwd, a cd that is the FIRST command of the line
+# always runs (a failing one is caught by the exists check, or ends the && chain),
+# so a plain relative write resolves in the cd target and nowhere else (a ~ or
+# brace candidate is expanded by the shell, rows 99a-e). When that target lies in
+# no git repo (a scratch folder), the union fallback of rows 43-54 must not
+# re-check the write against the payload cwd.
+mkdir -p "$FIX/scratch8200"
+check_both "97 fromP: cd scratch && echo x > out.txt (cd target outside the primary) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97b fromP: cd scratch; echo x > out.txt allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 97c-d (control): the cd target itself is the primary, so the same write still denies.
+check_both "97c fromP: cd primary && echo x > out.txt still denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97d fromW: cd primary && echo x > out.txt still denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/wt\"}}"
+# 97e-g (controls): a cd that is NOT the first command may not have run, a second
+# cd re-opens the question, and an absolute write into the primary is untouched.
+check_both "97e fromP: false && cd scratch; echo x > out.txt (cd may not run) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97f fromP: cd scratch && cd nope; echo x > out.txt (second cd fails) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/scratch8200/nope; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97g fromP: cd scratch && echo x > primary/out.txt (absolute primary target) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > $FIX/primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 97h-i (controls): the cd target must lie in NO git repo once symlinks are
+# resolved: a link inside scratch pointing at the primary, and a worktree
+# target (row 55's shape, with a redirect), keep the payload-cwd re-check.
+if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk-to-primary" && [ -d "$FIX/scratch8200/lnk-to-primary" ]; }; then
+    bad "97h setup: the lnk-to-primary symlink was not created"
+fi
+check_both "97h fromP: cd scratch/lnk-to-primary && echo x > out.txt (symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/lnk-to-primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "97i fromP: cd wt && echo x > out.txt (worktree target) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 98: the trust a sure cd earns lasts only while every later clause names a
+# command from a closed set that cannot move the shell's cwd. A later clause that
+# moves it in a way the tracker cannot see (brace expansion, eval, a variable
+# holding `cd`, `.` reading stdin) must clear it, so the write is re-checked
+# against the payload cwd and denies.
+check_both "98a fromP: cd scratch; {cd,-}; echo x > out.txt (brace-expanded cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; {cd,-}; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98b fromP: pushd scratch; eval ' popd'; echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd $FIX/scratch8200; eval ' popd'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98c fromP: cd scratch; X=cd; \$X -; echo x > out.txt (variable cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; X=cd; \$X -; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98d fromP: cd scratch; . /dev/stdin <<< 'cd -'; echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; . /dev/stdin <<< 'cd -'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 98e-j: the plain shapes around the first command of the line.
+check_both "98e fromP: cd scratch | cat; echo x > out.txt (piped cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 | cat; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98f fromP: cd scratch & echo x > out.txt (background cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 & echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98g fromP: cd scratch && (cd primary; echo x > out.txt) (subshell cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && (cd $FIX/primary; echo x > out.txt)\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98h fromP: cd scratch && pushd primary && echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && pushd $FIX/primary >/dev/null && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98i fromP: cd scratch && rm out.txt (rm is not in the closed set) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && rm out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98j fromP: cd scratch && touch out.txt allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98k fromP: cd scratch && cd primary && echo x > out.txt (second cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 99: a candidate the shell expands at run time to a place the hook cannot see keeps
+# the payload-cwd re-check even under a sure cd: `~-` and `~1` name the directory
+# the cd (or pushd) just left, which here is the primary, and a brace list expands
+# to several words. Unquoted ~ or a brace anywhere in the candidate triggers it, so
+# a harmless brace write in the scratch folder is refused too (accepted over-deny).
+check_both "99a fromP: cd scratch; echo x > ~-/out.txt (OLDPWD is the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; echo x > ~-/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99b fromP: cd scratch && touch ~-/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch ~-/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99c fromP: pushd scratch; echo x > ~1/out.txt (dir stack entry is the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd $FIX/scratch8200 >/dev/null; echo x > ~1/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99d fromP: cd scratch && touch {~-/a,b} (brace holding ~-) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {~-/a,b}\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99e fromP: cd scratch && touch {out,out2}.txt (any brace) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {out,out2}.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 99f is a regression row for the symlink-resolved cd target: the typed cd path is a link
+# to a scratch subfolder, so `..` climbs to $FIX lexically (no repo, allowed) but to
+# scratch8200 physically, where lnk-to-primary leads into the primary. No shape was found
+# where only the check against the canonical target decides: _bwimc_check_target resolves
+# the symlinked target physically too.
+mkdir -p "$FIX/scratch8200/a"
+if ! { ln -sfn "$FIX/scratch8200/a" "$FIX/lnkscratch8200" && [ -d "$FIX/lnkscratch8200" ]; }; then
+    bad "99f setup: the lnkscratch8200 symlink was not created"
+fi
+check_both "99f fromP: cd link-to-scratch && echo x > ../lnk-to-primary/out.txt (physical .. reaches the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/lnkscratch8200 && echo x > ../lnk-to-primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 99g: a glob is expanded by the shell at run time, and the glob check reduces the operand to
+# its directory prefix without resolving the matched entry, so `vic*` can name a symlink in the
+# scratch folder that leads into the primary. A glob candidate keeps the payload-cwd re-check.
+echo orig > "$FIX/primary/victim-target8200.txt"
+if ! { ln -sfn "$FIX/primary/victim-target8200.txt" "$FIX/scratch8200/victim" && [ -L "$FIX/scratch8200/victim" ]; }; then
+    bad "99g setup: the scratch8200/victim symlink was not created"
+fi
+check_both "99g fromP: cd scratch && touch vic* (glob matches a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch vic*\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99h fromP: cd scratch && echo x > vic* denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic*\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99i fromP: cd scratch && echo x > vict?m (? glob) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vict?m\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99j fromP: cd scratch && echo x > vic[t]im (bracket glob) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic[t]im\",\"cwd\":\"$FIX/primary\"}}"
+
+# 100a: a `..` after a symlink component is resolved by the kernel at write time, so
+# `lnk/../out.txt` lands in the parent of the link target (the primary), not in the scratch
+# folder the typed path names. A candidate holding a `..` component keeps the payload-cwd re-check.
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8200" && [ -d "$FIX/scratch8200/lnk8200" ]; }; then
+    bad "100a setup: the scratch8200/lnk8200 symlink was not created"
+fi
+check_both "100a fromP: cd scratch && echo x > lnk/../out.txt (.. after a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100b fromP: cd scratch && touch lnk/../out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100c fromP: cd scratch && tee lnk/../out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200/../out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 100d: a brace in the cd word is expanded by the shell, so `{1..1}` becomes `1`, a symlink into
+# the primary, while the hook sees a literal directory of that name and finds it in no repo.
+# A cd word holding `{` is never sure.
+mkdir -p "$FIX/scratch8200/{1..1}"
+if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/1" && [ -d "$FIX/scratch8200/1" ]; }; then
+    bad "100d setup: the scratch8200/1 symlink was not created"
+fi
+check_both "100d fromP: cd scratch/{1..1} && echo x > out.txt (brace expands to a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/{1..1} && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "100e fromP: cd scratch/{1..1} && touch out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/{1..1} && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 101a: the shell strips quotes before the kernel resolves the path, so a quoted `..` component
+# (`lnk/".."/out.txt`, `lnk/'..'/out.txt`, `"lnk/.."/out.txt`) names the same parent as the bare
+# spelling. The `..` test runs on the unquoted word; a quoted plain filename stays allowed.
+check_both "101a fromP: cd scratch && echo x > lnk/\\\"..\\\"/out.txt (double-quoted ..) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/\\\"..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101b fromP: cd scratch && echo x > lnk/'..'/out.txt (single-quoted ..) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/'..'/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101c fromP: cd scratch && echo x > \"lnk/..\"/out.txt (whole-word quoted) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"lnk8200/..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101d fromP: cd scratch && touch lnk/\"..\"/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch lnk8200/\\\"..\\\"/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101e fromP: cd scratch && tee lnk/'..'/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200/'..'/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "101f fromP: cd scratch && echo x > \"out.txt\" (quoted plain filename) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+
+# 102: after a sure cd the payload-cwd re-check is skipped ONLY for a candidate proven plain (a
+# fixed allowlist of ordinary path characters, optionally in one whole-word quote pair, no `..`
+# component). Any other word keeps main's re-check, so a mid-word quote or a backslash, which the
+# shell strips but the later resolver does not, gets main's verdict by construction.
+check_both "102a fromP: cd scratch && echo x > l\"n\"k/out.txt (mid-word double quote) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l\\\"n\\\"k8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102b fromP: cd scratch && echo x > l'n'k/out.txt (mid-word single quote) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l'n'k8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102c fromP: cd scratch && echo x > l\\nk/out.txt (backslash) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > l\\\\nk8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102d fromP: cd scratch && echo x > vic\"t\"im (mid-word quote on the symlink itself) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102e fromP: cd scratch && touch vic\"t\"im denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102f fromP: cd scratch && tee vic\"t\"im denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee vic\\\"t\\\"im\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102g fromP: cd scratch && echo x > \"vic\"\"tim\" (two quote pairs in one word) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"vic\\\"\\\"tim\\\"\",\"cwd\":\"$FIX/primary\"}}"
+mkdir -p "$FIX/scratch8200/sub8200"
+check_both "102h fromP: cd scratch && echo x > sub/out.txt (plain subfolder path) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > sub8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102i fromP: cd scratch && echo x > ./my-file_1.txt (plain, dot slash) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > ./my-file_1.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102j fromP: cd scratch && echo x > \"my file.txt\" (whole-word quoted, space) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"my file.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102k fromP: cd scratch && echo x > 'out.txt' (whole-word single-quoted) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > 'out.txt'\",\"cwd\":\"$FIX/primary\"}}"
+check_both "102l fromP: cd scratch && touch \"sub/out.txt\" (quoted subfolder path) allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch \\\"sub8200/out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+
+# 103: a command substitution in the operand is a stub that _bwimc_check_target reduces to its
+# static prefix (`lnk$(true)/out.txt` becomes `./`) before it calls the guard. That derived word is
+# plain, but it is not the word the shell sees, so it never takes the plain skip: it gets the
+# payload-cwd re-check on its prefix, as on main.
+mkdir -p "$FIX/scratch8200/sub8200"
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/sub8200/lnk8200" && [ -d "$FIX/scratch8200/sub8200/lnk8200" ]; }; then
+    bad "103 setup: the scratch8200/sub8200/lnk8200 symlink was not created"
+fi
+check_both "103a fromP: cd scratch && echo x > lnk\$(true)/out.txt (substitution after a symlink name) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\$(true)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103b fromP: cd scratch && echo x > vic\$(true)tim denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic\$(true)tim\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103c fromP: cd scratch && tee lnk\$(true)/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && tee lnk8200\$(true)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103d fromP: cd scratch && echo x > lnk\`true\`/out.txt (backtick form) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\`true\`/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103e fromP: cd scratch && echo x > \"lnk\$(true)/out.txt\" (quoted) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \\\"lnk8200\$(true)/out.txt\\\"\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103f fromP: cd scratch && echo x > sub/lnk\$(true)/x (symlink below a subfolder) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > sub8200/lnk8200\$(true)/x\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103g fromP: cd scratch && echo x > lnk/out.txt (plain symlink name into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "103h fromP: cd scratch && echo x > f\$(date) denies, as on main (accepted over-deny)" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > f\$(date)\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104a fromP: cd scratch && echo x > lnk\$((8))/out.txt (arithmetic flattened to a plain word) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\$((8))/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104b fromP: cd scratch && echo x > \$(pwd)/out.txt (pwd stub) denies, as on main" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \$(pwd)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104c fromP: cd scratch && echo x > out.txt still allows (no dynamic text)" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+for _wn in CR VT FF; do
+    case "$_wn" in CR) _wb=$'\r' ;; VT) _wb=$'\v' ;; *) _wb=$'\f' ;; esac
+    if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8201$_wb" && [ -d "$FIX/scratch8200/lnk8201$_wb" ]; }; then
+        bad "104 setup: the scratch8200/lnk8201+$_wn symlink was not created"
+    fi
+done
+check_both "104d fromP: cd scratch && echo x > lnk<CR>/out.txt (CR is a word byte for the shell, a split for the tokenizer) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\r/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104e fromP: cd scratch<CR>; echo x > out.txt (the shell cd fails on the CR name) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200\\r; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104f fromP: cd scratch && echo x > lnk<VT>/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\u000b/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104g fromP: cd scratch && echo x > lnk<FF>/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\u000c/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' && [ -d "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' ]; }; then
+    bad "104h setup: the scratch8200/lnk8202+EM SPACE symlink was not created"
+fi
+# the tokenizer splits at U+2003 only under a UTF-8 locale, so pin one for this row
+_lc_save=${LC_ALL-unset}
+for _lc in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+    if locale -a 2>/dev/null | grep -qix "$_lc"; then LC_ALL=$_lc; export LC_ALL; break; fi
+done
+case "${LC_ALL:-}" in
+    *[Uu][Tt][Ff]*) ;;
+    *) bad "104h setup: no UTF-8 locale is installed, the row would pass vacuously" ;;
+esac
+check_both "104h fromP: cd scratch && echo x > lnk<U+2003>/out.txt (non-ASCII space is a word byte for the shell) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8202\\u2003/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if [ "$_lc_save" = unset ]; then unset LC_ALL; else LC_ALL=$_lc_save; export LC_ALL; fi
+for _wl in ' ' "sub'8200" 'sub\8200'; do
+    if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/$_wl" && [ -d "$FIX/scratch8200/$_wl" ]; }; then
+        bad "104i setup: the scratch8200/$_wl symlink was not created"
+    fi
+done
+check_both "104i fromP: cd \"scratch/ \" && echo x > out.txt (edge space trimmed by the hook, kept by the shell) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd \\\"$FIX/scratch8200/ \\\" && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104j fromP: cd scratch/\\ (backslash space) && echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/\\\\ && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104k fromP: cd \"scratch/sub'8200\" && echo x > out.txt (quote dropped by the hook) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd \\\"$FIX/scratch8200/sub'8200\\\" && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104l fromP: cd 'scratch/sub\\8200' && echo x > out.txt (backslash dropped by the hook) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd '$FIX/scratch8200/sub\\\\8200' && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104m fromP: cd scratch, heredoc delimiter wider than the walker's match hides a cd denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200\\ncat <<echo-1\\necho-1\\ncd $FIX/primary\\necho\\necho x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if ! { ln -sfn "$FIX/scratch8200" "$FIX/primary/lnk8203" && [ -d "$FIX/primary/lnk8203" ]; }; then
+    bad "104n setup: the primary/lnk8203 symlink was not created"
+fi
+check_both "104n fromP: cd lnk8203 && echo x > out.txt (a relative cd word may resolve through CDPATH) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd lnk8203 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104o fromP: pushd -P scratch; echo x > out.txt (bash refuses the option, the cwd stays) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd -P $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104p fromP: cd -@ scratch; echo x > out.txt (no O_XATTR, the cd is refused) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd -@ $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104q fromP: cd -e scratch; echo x > out.txt (zsh refuses the option) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd -e $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+mkdir -p "$FIX/scratch8200/c:/sub"
+check_both "104r fromP: cd c:/sub; echo x > out.txt (a drive spelling is relative here) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd c:/sub; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}" "$FIX/scratch8200"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
