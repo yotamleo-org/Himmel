@@ -282,6 +282,39 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   }
 });
 
+test("button: a code buried in words or punctuation is consumed on a reply to a bot message and while a prompt is live", async () => {
+  const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
+  for (const text of texts) {
+    const gone = buttons();
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    const live = buttons();
+    live.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(live.gate(dm(text))).toBe(true);
+    await settle();
+    expect(gone.calls).toEqual([]);
+    expect(live.calls).toEqual([]);
+  }
+  // control: a five-digit run is not a code
+  for (const text of ["12345", "call 12345 now", "12 345", "see 1234 and 56 tomorrow"]) {
+    const gone = buttons();
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
+    const live = buttons();
+    live.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(live.gate(dm(text))).toBe(false);
+  }
+});
+
+test("button: the typed approve line still reaches the helper while a prompt is live", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(dm("approve ijklmnop 123456"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["approve", "ijklmnop", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+});
+
 test("poller: ingest then the real delivery mapping carries reply_to_bot into the gate", async () => {
   const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
   const { deps, calls } = fake();

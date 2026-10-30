@@ -102,9 +102,9 @@ function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny", id: string, code: 
 }
 
 const CODE_REPLY = /^\s*(\d{6})\s*$/;
-// Anything an authenticator code can look like when typed: six or more digits with
-// spaces or hyphens between them. Used only to decide a message must not be forwarded.
-const CODE_SHAPED = /^(?=(?:\D*\d){6})[\d\s-]+$/;
+// Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
+// anywhere in the text. Used only to decide a message must not be forwarded.
+const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -138,27 +138,32 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (!deps.installed()) return false;
     const prompt = prompts && msg.reply_to_message_id != null ? prompts.get(msg.chat_id, msg.reply_to_message_id) : null;
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
-    // A code-shaped message that is not a reply to a known prompt is still a code, and
-    // an inbox is readable by the sessions that can run the helper. Consume it, never
-    // pass it on: a reply to a bot message whose prompt is gone (the map is in memory,
-    // so a restart forgets it), or any message sent while a prompt is waiting.
-    if (CODE_SHAPED.test(msg.text) && eligible(deps.access(), msg)) {
-      const waiting = prompts?.live(msg.chat_id) ?? null;
-      if (msg.reply_to_bot === true || waiting) {
-        void deps.reply(msg.chat_id, waiting
-          ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
-          : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
-        return true;
-      }
-    }
     const line = parseAfkSudo(msg.text);
     if (!line) {
-      if (!MALFORMED.test(msg.text)) return false;
-      deps.log("[afk-sudo] approve with a malformed id consumed");
-      if (eligible(deps.access(), msg)) {
-        void deps.reply(msg.chat_id, "⚠️ afk-sudo: the id is not 8 letters, nothing ran").catch(() => {});
+      if (MALFORMED.test(msg.text)) {
+        deps.log("[afk-sudo] approve with a malformed id consumed");
+        if (eligible(deps.access(), msg)) {
+          void deps.reply(msg.chat_id, "⚠️ afk-sudo: the id is not 8 letters, nothing ran").catch(() => {});
+        }
+        return true;
       }
-      return true;
+      // A message holding a code is still a code, wherever it sits in the text, and an
+      // inbox is readable by the sessions that can run the helper. Consume it, never
+      // pass it on: a reply to a bot message whose prompt is gone (the map is in
+      // memory, so a restart forgets it), or any message sent while a prompt waits.
+      // ponytail: a bare code with no reply and no live prompt is still forwarded,
+      // refusing every six-digit message would swallow ordinary numbers; upgrade
+      // path: refuse an operator message that is only a six-digit run.
+      if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
+        const waiting = prompts?.live(msg.chat_id) ?? null;
+        if (msg.reply_to_bot === true || waiting) {
+          void deps.reply(msg.chat_id, waiting
+            ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
+            : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
+          return true;
+        }
+      }
+      return false;
     }
     if (!eligible(deps.access(), msg)) {
       deps.log(`[afk-sudo] ${line.verb} ${line.id} refused: not a typed message in the operator's private chat`);
