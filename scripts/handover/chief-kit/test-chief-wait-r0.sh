@@ -22,6 +22,9 @@
 #   (r0k) a WRAPPED worker with a merged PR finishes beyond the old relay bound
 #         without waking the chief
 #   (r0l) a silent relay timeout names its reason in the wake and a non-empty out file
+#   (r0m/n) the bound stays below heartbeat consumers and the header names it
+#   (r0o) silent failure/SIGKILL diagnostics and output-bearing failures retain rc
+#   (r0p) Telegram is serviced between pending slow wraps
 #   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
@@ -154,6 +157,13 @@ start() { # <inbox> <outfile> [tick args...]
     WPID=$!
 }
 
+# fleet2 <case>: fleet plus a second worker N2 in the manifest; sets L2 too.
+fleet2() {
+    fleet "$1"
+    L2="$WORK/$1/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
+    printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
+}
+
 # --- (r0k/l) the wrap bound and silent timeout diagnostics -------------------
 # Keep the real timeout/exit status, but scale only worker-event's bound by 100:
 # a 1.2s stub outlasts the old 90s bound (0.90s), not the longer wrap allowance.
@@ -204,6 +214,57 @@ contains "(r0l) the wake names the output artifact" "$(head -n 1 "$WORK/r0l.out"
 if test -s "$I.wait.le-N1"; then pass "(r0l) test -s on the out file"; else fail "(r0l) test -s on the out file"; fi
 contains "(r0l) the out file explains the timeout" "$(cat "$I.wait.le-N1" 2>/dev/null)" "ESCALATE relay-timeout N1 rc=124"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# --- (r0m/n) keep the relay within the heartbeat consumers' contract --------
+# Match the variable name literally in the source.
+# shellcheck disable=SC2016
+check "(r0m) bound under stop guard" 1 "$(grep -cE 'timeout -k 5 ([1-9][0-9]|1[0-9][0-9]|2[0-8][0-9]) bash "\$leg_event_cmd"' "$WAIT")"
+check "(r0n) header names relay bound" 1 "$(sed -n 214,219p "$WAIT" | grep -c 'relay')"
+
+# --- (r0o) silent failures, SIGKILL and output-bearing failures keep the rc ---
+for event_rc in 7 137; do
+    reset_stub
+    fleet "r0o-$event_rc"
+    echo "$event_rc" > "$STUB/le.rc"; : > "$STUB/le.out"
+    start "$I" "$WORK/r0o-$event_rc.out" --doc "$D" --workers-from "$M"
+    wait_hb "$I" || fail "(r0o) no baseline heartbeat"
+    printf -- '- 11:00 WRAPPED — done\n' >> "$L"; tick_line "N1:WRAPPED"
+    wait_exit "$WPID"
+    check "(r0o) rc $event_rc wakes" 0 "$rc"
+    if [ "$event_rc" -eq 7 ]; then
+        contains "(r0o) rc named" "$(head -n 1 "$WORK/r0o-$event_rc.out")" "ESCALATE relay-failed N1 rc=7"
+    else
+        contains "(r0o) SIGKILL named" "$(head -n 1 "$WORK/r0o-$event_rc.out")" "ESCALATE relay-timeout N1 rc=137"
+    fi
+    if test -s "$I.wait.le-N1"; then pass "(r0o) rc $event_rc artifact has a reason"; else fail "(r0o) rc $event_rc artifact has a reason"; fi
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+done
+reset_stub
+fleet r0o-output
+echo 7 > "$STUB/le.rc"; printf 'worker-event failed during close\n' > "$STUB/le.out"
+start "$I" "$WORK/r0o-output.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0o) no output-case heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"; tick_line "N1:WRAPPED"
+wait_exit "$WPID"
+contains "(r0o) an output-bearing failure still records its rc" "$(head -n 1 "$WORK/r0o-output.out")" "rc=7 out=$I.wait.le-N1"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0p) service Telegram between two pending slow wraps ------------------
+reset_stub
+fleet2 r0p
+echo 1.2 > "$STUB/le.sleep"
+tick_line "N1:LIVE,N2:LIVE"
+start "$I" "$WORK/r0p.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0p) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"; printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
+tick_line "N1:WRAPPED,N2:WRAPPED"
+n=0
+while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.calls" ]; do sleep 0.1; n=$((n + 1)); done
+printf -- '- 03:45 [telegram from=1 chat=2] urgent\n' >> "$I"
+wait_exit "$WPID"
+check "(r0p) Telegram wakes after one slow wrap" 0 "$rc"
+check "(r0p) the second wrap waits for the next sample" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0p) the wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0p.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then
     if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
@@ -240,7 +301,7 @@ printf -- '- 11:00 WRAPPED — N1 done, N2 next\n' >> "$L"
 tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0b) an ESCALATE wakes (rc 0)" "0" "$rc"
-check "(r0b) naming worker-event, the line and the out file" "WAKE worker-event ESCALATE ambiguous-label out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0b.out")"
+check "(r0b) naming worker-event, the line and the out file" "WAKE worker-event ESCALATE ambiguous-label rc=10 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0b.out")"
 check "(r0b) then the tick line" "$(cat "$STUB/tick.line")" "$(sed -n 2p "$WORK/r0b.out")"
 check "(r0b) the out file holds worker-event's output" "ESCALATE ambiguous-label" "$(cat "$I.wait.le-N1" 2>/dev/null)"
 start "$I" "$WORK/r0b2.out" --doc "$D" --workers-from "$M"
@@ -274,7 +335,7 @@ wait_hb "$I" || fail "(r0h) no baseline heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_line "N1:WRAPPED"
 wait_exit "$WPID"
-check "(r0h) rc 124 is a worker-event wake, not a retry" "WAKE worker-event ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
+check "(r0h) rc 124 is a worker-event wake, not a retry" "WAKE worker-event ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held rc=124 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0h.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0d) no RETASK token reaches worker-event, the wake or the out file -------
@@ -303,13 +364,6 @@ wait_exit "$WPID"
 check "(r0e) the tick change wakes as before" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0e.out")"
 check "(r0e) worker-event never ran" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
-
-# fleet2 <case>: fleet plus a second worker N2 in the manifest; sets L2 too.
-fleet2() {
-    fleet "$1"
-    L2="$WORK/$1/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
-    printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
-}
 
 # --- (r0f) BLOCKED wakes first; the re-arm still absorbs the pending wrap ------
 reset_stub
@@ -368,8 +422,8 @@ check "(r0i) as a tick wake on closable" "WAKE tick changed=closable usage=PROCE
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0j) the heartbeat is refreshed before each worker-event call -------------
-# One pass over two wraps: each worker-event call is up to 905 s, so the heartbeat
-# the second call starts under must be newer than the first's.
+# Two samples over two wraps: each worker-event call is up to 245 s, so the
+# heartbeat the second call starts under must be newer than the first's.
 reset_stub
 fleet2 r0j
 echo 1.2 > "$STUB/le.sleep"

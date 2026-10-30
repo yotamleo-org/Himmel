@@ -67,9 +67,9 @@
 #                               (default 3) in a row, then it wakes (the streak shows
 #                               in the heartbeat as pred_hangs=<n>); any other
 #                               refusal wakes once (CHIEF_WAIT_CLOSE = seam).
-#   WAKE worker-event <line> out=<file>  with --doc and --workers-from (the script relay,
+#   WAKE worker-event <line> rc=<n> out=<file>  with --doc and --workers-from (the script relay,
 #                               R0): a worker whose tails= is WRAPPED or acts= MERGED is
-#                               wrapped by `timeout -k 5 900 worker-event.sh --doc --fleet` on
+#                               wrapped by `timeout -k 5 240 worker-event.sh --doc --fleet` on
 #                               a line built from its newest such bullet; HANDLED is a
 #                               digest line, no wake; a lock-held / not-yet-WRAPPED /
 #                               subtree-alive refusal retries next sample; any other
@@ -213,10 +213,10 @@
 #                      A sample (a predecessor close, a tick, then bank) can take up to
 #                      CHIEF_WAIT_CLOSE_TIMEOUT once, then twice
 #                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
-#                      Telegram line waits for it. A heartbeat older than that
-#                      plus a few polls, still
-#                      waiting or sampling, is a waiter that died without
-#                      trapping (SIGKILL).
+#                      Telegram line waits for it. The relay adds at most one
+#                      handled wrap (240 s +5 s kill grace), refreshing the heartbeat
+#                      before its call. Older than those bounds plus a few polls,
+#                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
 #                        line 3 `failwoke` once a failure streak has woken).
 #                        Written atomically: temp file in the same dir, then
@@ -1098,7 +1098,9 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # check runs). HANDLED appends `<label> <what> <pr|->` to the digest and sets
 # r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
 # tail not WRAPPED, subtree or subagent alive) is retried next sample; anything else
-# prints `WAKE worker-event <first line> out=<file>` and returns 0. HANDLED and WAKE record
+# prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
+# HANDLED the relay yields to the inbox; later workers wait until the next sample.
+# HANDLED and WAKE record
 # `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
@@ -1129,13 +1131,13 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         outf="$inbox.wait.le-$label"
         heartbeat sampling
-        # wrap-merged's tracker steps allow 120s each and focus allows 300s;
-        # worker-event captures their output until they finish, including on WRAPPED.
-        out="$(printf '%s\n' "$line" | timeout -k 5 900 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        # Allow a slow close and refresh, but stay below heartbeat consumers' 300s
+        # floor. Capture the rc: an empty result alone does not prove a timeout.
+        out="$(printf '%s\n' "$line" | timeout -k 5 240 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         out="$(printf '%s\n' "$out" | r0_scrub)"
         if [ "$rc" -ne 0 ] && ! [[ $out =~ [^[:space:]] ]]; then
             case "$rc" in
-                124|137) out="ESCALATE relay-timeout $label rc=$rc limit=900s" ;;
+                124|137) out="ESCALATE relay-timeout $label rc=$rc limit=240s" ;;
                 *) out="ESCALATE relay-failed $label rc=$rc no-output" ;;
             esac
         fi
@@ -1145,7 +1147,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             r0_handled=1
             r0_fold="$r0_fold $label"
             what="$(printf '%s\n' "$out" | sed -n 's/^HANDLED \([a-z-]*\).*/\1/p' | head -n 1)"
-            [ "$what" = noop ] && continue
+            [ "$what" = noop ] && break
             pr=""
             if [ "$what" != close-wrapped ]; then
                 pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
@@ -1153,14 +1155,14 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             fi
             [ -z "$pr" ] || r0_fold="$r0_fold #$pr"
             printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
-            continue
+            break  # service the inbox before another slow wrap, next sample
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
             10:*-failed\ rc=[3467]\ *) continue ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
-        printf 'WAKE worker-event %s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$outf"
+        printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
         return 0
     done <<EOF
 $cands

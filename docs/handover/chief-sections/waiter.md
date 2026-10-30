@@ -113,11 +113,12 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     progress: a sample (tick, then usage) can take about 4 min (twice the 120 s
     timeout, plus a 5 s kill grace each), and a Telegram line waits for it. The
     wrap relay refreshes the heartbeat before each `worker-event.sh` call (up to
-    905 s each, including kill grace), so a pass over several wraps never ages it
-    past one call. `state=exited exit=<reason>` is a waiter that stopped
-    (`wake-telegram`, `wake-tick`, `signal-TERM` …); a `state=waiting` heartbeat
-    older than about 5 min, or a `state=sampling` heartbeat older than the relay
-    bound plus a few polls, is one that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
+    245 s including kill grace). It handles at most one wrap per sample before
+    servicing the inbox; later workers wait for the next sample. This keeps each
+    relay call under the heartbeat consumers' 300 s floor. `state=exited
+    exit=<reason>` is a waiter that stopped (`wake-telegram`, `wake-tick`,
+    `signal-TERM` …); a `state=waiting` or `state=sampling` heartbeat older than
+    about 5 min is one that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
     non-zero or produced no TICK line (it runs under a 120 s timeout, so a hung
     tick cannot hold the Telegram path forever). A second waiter on the same
     inbox is refused (exit 3, naming the live pid). Measured: a
@@ -161,16 +162,17 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     hand; run any other bounded script as `timeout 90` in the foreground.** Armed
     with both `--doc` and `--workers-from`, the waiter is the script relay (R0): a
     worker whose `tails=` turns `WRAPPED` or whose `acts=` turns `MERGED` is
-    wrapped by `timeout -k 5 900 worker-event.sh --doc --fleet` on a line built from
-    that worker's bullet, with no wake. The 900 s bound accommodates wrap-merged's
-    120 s tracker steps and 300 s focus refresh, even when the event is WRAPPED
-    rather than MERGED. A Telegram line waits while the relay runs.
+    wrapped by `timeout -k 5 240 worker-event.sh --doc --fleet` on a line built from
+    that worker's bullet, with no wake. The 240 s bound allows a slow close and
+    refresh without exceeding heartbeat consumers' limits; tracker/focus work
+    that exceeds it escalates. WRAPPED workers with a PR take the wrap path too.
+    A Telegram line waits for at most one handled relay before the inbox is serviced.
     `HANDLED` lands in `<inbox>.wait.digest`; a
     refusal that only means "not yet" (lock still held, tail not yet `WRAPPED`,
     subtree alive) is retried next sample. Anything else wakes you once per
-    bullet with `WAKE worker-event <its first non-blank line> out=<file>` plus the
+    bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
     tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
-    limit=900s` to both the wake and the out file; another silent failure names
+    limit=240s` to both the wake and the out file; another silent failure names
     `relay-failed`, its label and rc. Read the out file and finish that wrap by hand
     (`wrapping.md`). Every WAKE block
     ends with `absorbed since last wake: wraps=<n> (<labels>) merged=<n> (#<pr>,…)`
