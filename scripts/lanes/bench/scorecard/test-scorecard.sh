@@ -175,7 +175,7 @@ COUNTED_UNDER=$(printf '%s\n' "$SHIFT_UNDER_OUT" | awk -F'\t' '$1=="chief" && $2
 check "shift: <100 chief-role calls -> counted_shifts=0" "$COUNTED_UNDER" "0"
 
 # --- (e0) role-relay: a title matching both *legN* and *-relay* must be
-# classified as relay, not leg: role_of() here must carry the *-relay* branch
+# classified as relay, not worker: role_of() here must carry the *-relay* branch
 # agg-burn.sh's role_of() has, else this file - restricted to role in {worker,
 # chief} - would count a relay session into the worker cohort.
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-relay"

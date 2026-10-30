@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # scripts/eval/compaction-handoff/compaction-defects.py - what a compaction
-# costs a leg: the defects in the turns after each compact_boundary, against a
+# costs a worker: the defects in the turns after each compact_boundary, against a
 # control window of the same length before it, plus the per-turn cost-eq and
 # context size on both sides. Local-only: reads Claude Code session JSONL, runs
 # no inference, sends nothing anywhere.
@@ -8,7 +8,7 @@
 #   compaction-defects.py [--projects <dir>] [--since-days N] [--window N]
 #                         [--json] [--evidence] [--simulate CEILING]...
 #
-# A leg transcript is one whose customTitle is a leg doc stem
+# A worker transcript is one whose customTitle is a worker doc stem
 # (TICKET-N<k>[x]-...). A turn is one assistant API call (rows deduped by
 # message id). The post window is the N turns after a boundary, clipped at the
 # next one. The control window is the N turns before it, scored against the
@@ -21,7 +21,7 @@
 #                  task output or log, which grows on its own
 #   denied_repeat  a call identical to one denied earlier (hook or permission
 #                  denial), denied again
-#   nonce          a RETASK-shaped token (ABC-N123-<hex>) the leg writes that no
+#   nonce          a RETASK-shaped token (ABC-N123-<hex>) the worker writes that no
 #                  user row or tool result has shown it, or a SendMessage asking
 #                  for a token or ruling again (resend / remind / re-confirm)
 #   verdict        a judge dispatch (Agent whose type or description names a
@@ -34,9 +34,9 @@
 # Cost: cost-eq per turn uses the weights of scripts/eval/autocompact-ab.py
 # (cache_read x0.1). A compaction call is not in the transcript; its cost is
 # estimated as preTokens read from cache plus the summary (chars / 4) as output.
-# --simulate C replays each leg at a ceiling C: the context it would have held
+# --simulate C replays each worker at a ceiling C: the context it would have held
 # (actual context plus the tokens every earlier compaction dropped), with a
-# succession hand-off (arm b: restart at the leg's first-turn context plus
+# succession hand-off (arm b: restart at the worker's first-turn context plus
 # --resume-tokens) or a compaction (arm c: back to the median post-compaction
 # context) whenever it reaches C. A cache-miss turn (cache_create above half
 # the context) re-creates the simulated context; the rest of the context is
@@ -57,8 +57,8 @@ WORKER_TITLE = re.compile(r"^[A-Z][A-Z0-9]*-\d+-[NP]\d+[a-z]*-")
 TOKEN = re.compile(r"\b[A-Z][A-Z0-9]{0,8}-N\d+[a-z]?-[0-9a-f]{6,10}\b")
 DENIED = re.compile(r"PreToolUse:\S+ hook error|Permission for this action was denied|"
                     r"doesn't want to proceed|permission to use \S+ has been denied", re.I)
-# the leg asking for its own token or ruling; asking the chief to re-send a GO
-# that did not quote the token is the chief's miss, not the leg's
+# the worker asking for its own token or ruling; asking the chief to re-send a GO
+# that did not quote the token is the chief's miss, not the worker's
 ASK = re.compile(r"\b(remind me (of|what)|what (is|was) my (token|nonce|ruling)|"
                  r"(lost|forgot|cannot find|can't find) (the|my) (token|nonce|ruling)|"
                  r"repeat (the|your) ruling)\b", re.I)
@@ -75,7 +75,7 @@ MUTATE = re.compile(
     r"(?:^|[;&|(]\s*)(?:git(?:\s+-C\s+\S+)?\s+(?:commit|push|tag)\b|"
     r"gh\s+(?:pr\s+(?:create|comment|edit|merge|ready|close)|issue\s+(?:create|comment))\b|"
     r"(?:bash\s+)?\S*(?:append-results\.sh|queue-lock\.sh\s+(?:acquire|release)|write-verdicts\.sh\s+\w|"
-    r"ledger-append\.sh|merge-on-green\.sh|(?:worker|leg)-pr-open\.sh|clear-review-marker\.sh|clear-cr-marker\.sh)|"  # old-term-ok: past transcripts
+    r"ledger-append\.sh|merge-on-green\.sh|(?:worker|leg)-pr-open\.sh|clear-review-marker\.sh|clear-cr-marker\.sh)|"
     r"node\s+\S*jira/dist/index\.js\s+(?:create|comment|transition|update|edit|link))", re.M)
 # a call that ran past its timeout went to the background: not known to be done
 BACKGROUNDED = re.compile(r"^Command (?:did not complete|running in background)|moved to the background")
@@ -219,7 +219,7 @@ def load(path):
             elif b.get("type") == "tool_use":
                 c = {"name": b.get("name"), "input": b.get("input") or {}, "error": False, "denied": False}
                 t["calls"].append(c)
-                # what the leg says: messages and Results bullets, never file
+                # what the worker says: messages and Results bullets, never file
                 # content (a test fixture carries made-up tokens)
                 cmd = c["input"].get("command") or "" if isinstance(c["input"], dict) else ""
                 if c["name"] == "SendMessage" or "append-results.sh" in cmd:
@@ -412,15 +412,15 @@ def main():
     paths = sorted((p for p in glob.glob(os.path.join(a.projects, "**", "*.jsonl"), recursive=True)
                     if os.path.getmtime(p) >= cut), key=os.path.getmtime)
     N = a.window
-    comps, legs, seen_b, seen_turn, sims = {}, {}, set(), set(), []
+    comps, workers, seen_b, seen_turn, sims = {}, {}, set(), set(), []
     for path in paths:
         title, turns, bounds = load(path)
         if not title or not WORKER_TITLE.match(title):
             continue
         prof = profile_of(title)
         model = model_of(turns)
-        legs.setdefault(title, {"profile": prof, "model": model, "transcripts": 0})
-        legs[title]["transcripts"] += 1
+        workers.setdefault(title, {"profile": prof, "model": model, "transcripts": 0})
+        workers[title]["transcripts"] += 1
         # a resumed transcript repeats its parent's turns: price each turn once
         fresh = [t for t in turns if t["id"] not in seen_turn]
         seen_turn.update(t["id"] for t in turns)
@@ -460,8 +460,8 @@ def main():
         seen_b.update(b["uuid"] for b in bounds)
 
     comps = list(comps.values())
-    summary = summarize(comps, legs, N)
-    out = {"window": N, "legs": len(legs), "transcripts": sum(l["transcripts"] for l in legs.values()),
+    summary = summarize(comps, workers, N)
+    out = {"window": N, "legs": len(workers), "transcripts": sum(l["transcripts"] for l in workers.values()),
            "compactions": comps, "summary": summary}
     if a.simulate:
         posts = [c["cost"]["post_ctx"] for c in comps if c["cost"]["post_ctx"]]
@@ -485,7 +485,7 @@ def main():
     return 0
 
 
-def summarize(comps, legs, N):
+def summarize(comps, workers, N):
     groups = {}
     for c in comps:
         for g in ("all", "profile:" + c["profile"], "model:" + (c["model"] or "?")):
@@ -556,10 +556,10 @@ def print_text(out):
     for s in out.get("simulate", []):
         print("\nsimulated at ceiling %s (post-compaction ctx median %s)" % (ab.fmt_tok(s["ceiling"]),
                                                                           ab.fmt_tok(s["post_ctx_median"])))
-        print("%-14s %5s %11s %11s %11s %7s %7s %7s" % ("group", "legs", "a-actual", "b-handoff", "c-compact",
+        print("%-14s %7s %11s %11s %11s %7s %7s %7s" % ("group", "workers", "a-actual", "b-handoff", "c-compact",
                                                      "a-comp", "b-hops", "c-comp"))
         for g, r in sorted(s["by_profile"].items()):
-            print("%-14s %5d %11s %11s %11s %7d %7d %7d" % (
+            print("%-14s %7d %11s %11s %11s %7d %7d %7d" % (
                 g, r["legs"], ab.fmt_tok(r["actual"]), ab.fmt_tok(r["b"]), ab.fmt_tok(r["c"]),
                 r["a_compactions"], r["b_events"], r["c_events"]))
 
