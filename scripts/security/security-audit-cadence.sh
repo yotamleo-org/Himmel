@@ -22,7 +22,7 @@ resolve_primary() {
 }
 
 cmd_run() {
-    local repo="" primary snyk_dir="${SECURITY_AUDIT_SNYK_DIR:-}" root scope
+    local repo="" primary snyk_dir="${SECURITY_AUDIT_SNYK_DIR:-}" root scope rc
     if [ "${1:-}" = --repo ] && [ $# -eq 2 ]; then repo="$2"
     elif [ $# -ne 0 ]; then echo 'Usage: security-audit-cadence.sh run [--repo owner/name|path]' >&2; return 64; fi
     primary="$(resolve_primary)" || return 2
@@ -55,15 +55,17 @@ repo, script_dir, snyk_dir = sys.argv[1:]
 def command(argv):
     return subprocess.check_output(argv, stderr=subprocess.DEVNULL, text=True, timeout=90)
 
-if Path(repo).is_dir():
-    origin = command(['git', '-C', repo, 'remote', 'get-url', 'origin']).strip()
-    match = re.fullmatch(r'(?:https://github\.com/|git@github\.com:)([^/]+/[^/]+?)(?:\.git)?/?', origin)
-    if not match:
-        sys.exit('ERR security-audit: expected a GitHub origin or --repo owner/name')
-    repo = match[1]
-if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
-    sys.exit('ERR security-audit: --repo must name a GitHub repository')
-repo = repo.lower()
+def repository(value):
+    if Path(value).is_dir():
+        value = command(['git', '-C', value, 'remote', 'get-url', 'origin']).strip()
+    match = re.fullmatch(r'(?:https://github\.com/|git@github\.com:)([^/]+/[^/]+?)(?:\.git)?/?', value)
+    if match:
+        value = match[1]
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', value):
+        raise ValueError('expected a GitHub origin or owner/name')
+    return value.lower()
+
+repo = repository(repo)
 state_dir = Path(os.environ.get('SECURITY_AUDIT_STATE_DIR', str(Path.home() / '.himmel/state/security-audit' / repo)))
 state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 lock = (state_dir / 'run.lock').open('a')
@@ -128,7 +130,9 @@ def github(kind):
         raise Skip('off')
     result = []
     for item in pages(f'repos/{repo}/{kind}/alerts?state=open&per_page=100'):
-        if item.get('state') != 'open':
+        if item['state'] not in ('open', 'fixed', 'resolved', 'dismissed', 'auto_dismissed'):
+            raise Skip('unknown alert state')
+        if item['state'] != 'open':
             continue
         if kind == 'code-scanning':
             loc = item['most_recent_instance']['location']
@@ -166,7 +170,10 @@ def exported(name):
         result = []
         for raw in reader:
             item = {k.lower(): v for k, v in raw.items() if k is not None}
-            if (item.get('state') or item.get('status') or '').lower() != 'open':
+            state = (item.get('state') or item.get('status') or '').lower()
+            if state not in ('open', 'closed', 'fixed', 'resolved', 'dismissed', 'ignored', 'suppressed'):
+                raise Skip('missing or unknown finding state')
+            if state != 'open':
                 continue
             target = item.get('repository') or item.get('asset')
             if not target:
@@ -208,6 +215,8 @@ def coderabbit():
         for item in data['data']:
             if str(item['repository_id']) != repo_id:
                 raise Skip('wrong repository')
+            if item['state'] not in ('open', 'fixed', 'dismissed'):
+                raise Skip('unknown finding state')
             if item['state'] == 'open':
                 result.append(row(item['file_path'], item.get('start_line'), item.get('cwe') or 'code', item['severity']))
         cursor = data['next_cursor']
@@ -226,6 +235,8 @@ def snyk():
     if not files:
         raise Skip('no existing report')
     data = json.loads(files[-1].read_text())
+    if repository(data['repo']) != repo:
+        raise Skip('report belongs to a different repository')
     projects = data['open_source']
     if not isinstance(projects, list):
         raise Skip('invalid report')
@@ -270,7 +281,7 @@ old, current = inventory(previous['sources']), inventory(sources)
 new = sorted(current.keys() - old.keys())
 closed = sorted(old.keys() - current.keys())
 # An existing row promoted to High/Critical also deserves an alert.
-escalated = [k for k in current.keys() & old.keys() if RANK[current[k]['severity']] >= 3 and RANK[old[k]['severity']] < 3]
+escalated = [k for k in current.keys() & old.keys() if RANK[current[k]['severity']] >= 3 and RANK[old[k]['severity']] < RANK[current[k]['severity']]]
 high = [k for k in new + escalated if RANK[current[k]['severity']] >= 3]
 now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H%M%S.%fZ')
 reports = state_dir / 'reports'
@@ -292,7 +303,7 @@ print('\n'.join(messages))
 print(f'security-audit: New: {len(new)}; Closed: {len(closed)}; report: {report}')
 alert = str(Path(script_dir).parent / 'luna/cadence-alert.sh')
 if high:
-    fingerprint = hashlib.sha256(json.dumps(sorted(high)).encode()).hexdigest()[:16]
+    fingerprint = hashlib.sha256(json.dumps([(k, current[k]['severity']) for k in sorted(high)]).encode()).hexdigest()[:16]
     env = dict(os.environ, CADENCE_ALERT_EXIT_ON_SEND_FAIL='1')
     subprocess.run(['bash', alert, 'fail', 'security-audit', f'{len(high)} new-high-critical-{fingerprint}',
                     str(report), 'new or escalated security findings', 'review the dated report'], env=env, check=True)
@@ -305,6 +316,8 @@ with staged.open('w') as f:
     json.dump({'repo': repo, 'sources': sources}, f, sort_keys=True)
 os.replace(staged, state_file)
 PY
+    rc=$?
+    [ "$rc" -eq 0 ] || return 2
 }
 
 cron_read() {

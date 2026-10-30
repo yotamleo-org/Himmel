@@ -67,6 +67,43 @@ class Audit(unittest.TestCase):
             w.writerow(['repository', 'file', 'start_line', 'cwe', 'severity', 'state'])
             w.writerows(rows)
 
+    # A source's missing/unknown state is not evidence that an old finding closed.
+    def test_unknown_csv_state_retains_baseline(self):
+        self.export()
+        self.run_once()
+        self.export(rows=[('project', 'src/a.py', '9', 'CWE-79', 'high', '')])
+        self.assertIn('SKIP coderabbit', self.run_once())
+        self.assertIn('New: 0; Closed: 0', self.report())
+
+    # Repository override must not inherit a different checkout's Snyk inventory.
+    def test_snyk_report_repository_binding(self):
+        d = self.root / 'snyk'
+        d.mkdir()
+        data = {'repo': 'other/project', 'code_status': 'quota', 'code': None,
+                'open_source': [{'displayTargetFile': 'package-lock.json',
+                                 'vulnerabilities': [{'id': 'GHSA-123', 'severity': 'critical'}]}]}
+        (d / '2026-10-30.json').write_text(json.dumps(data))
+        self.assertIn('SKIP snyk:', self.run_once())
+        self.assertIn('New: 0; Closed: 0', self.report())
+
+    # Promotions between alerting severities still need a fresh notification.
+    def test_high_to_critical_promotion(self):
+        self.export()
+        self.run_once()
+        self.export(rows=[('project', 'src/a.py', '9', 'CWE-79', 'critical', 'open')])
+        self.run_once()
+        self.assertEqual(len((self.root / 'notified').read_text().splitlines()), 2)
+        self.assertIn('<code>critical</code>', self.report().split('## Severity escalations')[1])
+
+    # The shell's documented IO failure code must not depend on a Python traceback.
+    def test_local_io_error_exit_code(self):
+        target = self.root / 'not-a-directory'
+        target.write_text('occupied')
+        self.env['SECURITY_AUDIT_STATE_DIR'] = str(target)
+        proc = subprocess.run(['bash', str(SCRIPT), 'run', '--repo', 'example/project'],
+                              env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+
     # Missing adapters must not turn an optional cadence into a failing job.
     def test_no_scanner(self):
         out = self.run_once()
