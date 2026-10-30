@@ -1189,6 +1189,11 @@ else
   check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
   check_timeout_2267 "scripts/ci/test-suite-concurrency.sh" "1500"
   check_timeout_2267 "/repo/scripts/ci/test-suite-concurrency.sh" "1500"
+  # PR 4300 shard 3: every assertion passing, killed at 603s against the 600s
+  # default (CAP EXCEEDED); 508s on the ledger. 603s is a truncation floor, so
+  # 1200s is that x2 (the loaded-budget rule).
+  check_timeout_2267 "scripts/test-himmel-doctor.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-himmel-doctor.sh" "1200"
 
   # Per-hook namespace/runtime inspection measured 1407s alone
   # and 1434s with another suite (full replay, ~6x on CI). PR CI runs the fast
