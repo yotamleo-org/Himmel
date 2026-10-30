@@ -241,7 +241,7 @@ eq "judge: and adds to the cost already spent" "$([ "$(jget "$O3/docs/a/1/judge.
 
 # a SCORE counts only as a whole number from 1 to 10 on a clean result; anything else leaves the run unscored for a retry
 OJ="$TMP/ojs"; run docs a "$OJ" >/dev/null
-for sv in 42 0 8.5 error; do
+for sv in 42 0 8.5 8e-1 error; do
     AB_STUB_SCORE=$sv python3 "$AB" judge --out "$OJ" --ceiling 1000000000 >/dev/null 2>&1
     eq "judge: SCORE '$sv' leaves the run unscored" "$(jget "$OJ/docs/a/1/judge.json" score)" "null"
 done
