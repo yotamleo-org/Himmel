@@ -41,7 +41,7 @@ script.
    script) — all three against a **dedicated worktree**, never the
    primary checkout (see below). A failing refresh short-circuits the
    remaining steps (see `graph-cadence.sh`'s own header for why this diverges
-   from `ggs-cadence.sh`'s "run every leg regardless" convention).
+   from `ggs-cadence.sh`'s convention of running every step regardless).
 
 ## Where it runs — the dedicated worktree
 

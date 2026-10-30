@@ -26,8 +26,8 @@ order, even at defaults: `workers`, `livestate`, `prs`, `tails`, `workerset`,
 `parked`, `closable` and `deadwin` alerts. In particular, `capacity=ok`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
 waiter's persisted streaks. From an older tick.sh, `chief-wait.sh` also
-reads the old names `legs`, `legset` and `bank`, and `board.mjs` reads `legs`
-and `bank`.
+reads the old names of `workers`, `workerset` and `usage`, and `board.mjs` the
+old names of `workers` and `usage`.
 
 `holds=<label>:<age>m[,...]` is conditional too, and `chief-wait.sh` reads it: a
 worker whose newest marker is `BLOCKED` (or a `FINDING` that awaits a ruling) and whose

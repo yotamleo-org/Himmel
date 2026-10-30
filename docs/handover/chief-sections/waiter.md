@@ -129,7 +129,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     The tick re-reads the manifest every sample and the waiter takes a silent
     baseline when its worker set changes, so neither needs a re-start; the
     `workerset=`/`unwatched=` checks above then compare against the manifest.
-    Then render the `legs:` entries from it instead of editing
+    Then render the `## Live state` worker entries from it instead of editing
     them: `bash "<kit>/live-state.sh" "<this doc>" [--nonce <N-label>=<nonce>]`.
     It reads each worker's lock token from its held lock and keeps the nonce and
     pid already on the line; a worker not yet listed needs `--nonce` (the nonce is

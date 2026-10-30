@@ -377,8 +377,10 @@ failed check. Launch a resume worker for it on the next WAKE; triaging the red i
 resumed worker's job. A pending or green orphan keeps its plain `#<pr>:<age>m` entry.
 
 **Reading worker locks and the tick.** `tick.sh --workers` takes **absolute**
-handover-doc paths on ONE `legs:` line; a relative path drops the bucket
-prefix out of the lock key and the worker reads `free` while it is live. The
+handover-doc paths; the tick compares that arm with the `## Live state` worker
+line (its field name: [`chief-sections/live-state.md`](chief-sections/live-state.md)).
+A relative path drops the bucket prefix out of the lock key and the worker reads
+`free` while it is live. The
 queue-lock owner pid is the launcher **wrapper**, so every owner reads dead
 while its worker is alive, and the release token a worker pasted into its LIVE
 bullet can be wrong; recover the real one from
