@@ -275,9 +275,9 @@ fi
 # Assert the cache dir/file actually gets created + populated (proves the
 # mechanism is live, not just that recomputation happens to agree with
 # itself), that a repeated call with the SAME path but a DIFFERENT $PLATFORM
-# still returns the platform-correct answer (the exact regression T8c/T8d
-# above already caught once: a naive path-only cache key served a stale
-# cross-platform value), and — T9e — that a second call
+# does not trip the cache (T9c; the proof that the platform differs in the
+# answer needs a case twin on disk, which T11a/T11b build: a naive path-only
+# cache key served a stale cross-platform value), and — T9e — that a second call
 # with the identical (path, PLATFORM) genuinely SKIPS recomputation rather
 # than merely landing on the same answer by coincidence: a counting `realpath`
 # stub on PATH proves it is invoked exactly once across two lookups.
