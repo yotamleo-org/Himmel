@@ -754,4 +754,85 @@ shopt -u nullglob dotglob
 [ "${#leftover11[@]}" -eq 0 ] || fail "case11: a failed rename must not litter the profiles dir with a temp file (found: ${leftover11[*]})"
 echo "ok: case11 a rename failure during the temp-file-then-rename save cleans up the leftover temp file, leaves the pre-existing destination byte-unchanged, warns, and does not touch the install's exit code"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case12: a profile save that lands INSIDE the retired-cadence
+# rewrite is kept. The rewrite (dropRetiredFromProfileFile) compares the file
+# with what it read, then renames its temp file over it; a second writer
+# (writeCache — the one himmelctl itself and the config UI save go through)
+# that lands between that compare and the rename used to be overwritten with
+# the stale content. A --require preload holds the rewrite right before its
+# rename, starts the second writer (a separate process) and gives it up to 3s
+# to write; an unlocked second writer writes inside that window and is lost,
+# a locked one waits for the rewrite to finish and writes after it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+h12="$work/home12"; mkdir -p "$h12"
+cache12="$work/cache12"; mkdir -p "$cache12"
+saved12="$cache12/install-profile.json"
+cat > "$saved12" <<'JSON'
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "none", "path": "" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "cadences": { "doctor": "off", "codex-sweep": "armed" }
+}
+JSON
+done12="$work/second-writer12.done"
+
+# secondWriter12.js — the second profile writer: writeCache() from bin.js, in
+# its own process, then a marker file so the test knows it finished.
+second12="$work/second-writer12.js"
+cat > "$second12" <<'JS'
+const fs = require('fs');
+require(process.env.SECOND_WRITER_BIN).writeCache({ schemaVersion: 2, savedBy: 'second-writer' });
+fs.writeFileSync(process.env.SECOND_WRITER_DONE, 'done');
+JS
+
+# holdRewrite12.js — holds the retired-cadence rewrite between its compare and
+# its rename (the window), starts the second writer, and waits until that
+# writer has changed the profile or 3s are up (a locked writer cannot change it
+# until the rewrite is done, so it never will inside the window).
+hold12="$work/hold-rewrite12.js"
+cat > "$hold12" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const realRenameSync = fs.renameSync;
+let started = false;
+fs.renameSync = function (oldPath, newPath) {
+  const dir = process.env.HOLD_REWRITE_DIR;
+  if (!started && typeof oldPath === 'string' && oldPath.endsWith('.tmp')
+      && path.resolve(path.dirname(oldPath)) === path.resolve(dir)) {
+    started = true;
+    const before = fs.readFileSync(newPath, 'utf8');
+    cp.spawn(process.execPath, [process.env.SECOND_WRITER_JS], { stdio: 'ignore', env: Object.assign({}, process.env, { NODE_OPTIONS: '' }) }).unref();
+    const sleeper = new Int32Array(new SharedArrayBuffer(4));
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && fs.readFileSync(newPath, 'utf8') === before) Atomics.wait(sleeper, 0, 0, 20);
+  }
+  return realRenameSync.call(fs, oldPath, newPath);
+};
+JS
+
+set +e
+out12=$(
+  cd "$h12" && HOME="$h12" USERPROFILE="$(winpath "$h12")" HIMMELCTL_INTERACTIVE=0 \
+    HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-12.json")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$cache12")" HIMMELCTL_BIN_DIR="$(winpath "$work/bin-12")" \
+    HOLD_REWRITE_DIR="$(winpath "$cache12")" SECOND_WRITER_JS="$(winpath "$second12")" \
+    SECOND_WRITER_BIN="$(winpath "$wizard")" SECOND_WRITER_DONE="$(winpath "$done12")" \
+    NODE_OPTIONS="--require=$(winpath "$hold12")" \
+    "$node_bin" "$wizard" ensure --no-network --items wiring-pretooluse </dev/null 2>&1
+)
+rc12=$?
+set -e
+[ "$rc12" -eq 0 ] || fail "case12: the ensure that rewrites the profile should exit 0 (got rc=$rc12): $out12"
+# the second writer is its own process: give it up to 15s to finish
+for _i in $(seq 1 150); do [ -f "$done12" ] && break; sleep 0.1; done
+[ -f "$done12" ] || fail "case12: the second profile writer never finished (ensure said: $out12)"
+grepq "$(cat "$saved12")" -F -- 'second-writer' \
+  || fail "case12: a profile save that landed during the retired-cadence rewrite was overwritten (saved profile: $(cat "$saved12"))"
+echo "ok: case12 a profile save that lands inside the retired-cadence rewrite is kept"
+
 echo "PASS"

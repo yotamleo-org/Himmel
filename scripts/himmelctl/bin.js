@@ -31,6 +31,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
+const { withProfileLock } = require('./lib/profile-lock.js');
 const { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd } = require('./lib/helpers.js');
 const launcherLib = require('./lib/launcher.js');
 const uninstallWrapperLib = require('./lib/uninstall-wrapper.js');
@@ -2004,9 +2005,11 @@ function cachePath() {
 // fresh HOME/cache dir just works.
 function writeCache(answers) {
   fs.mkdirSync(cacheDir(), { recursive: true });
-  const recorded = provBefore(cachePath(), { scope: 'user', cls: 'code', row: 'himmelctl-cache' });
-  fs.writeFileSync(cachePath(), serialize(answers) + '\n');
-  recorded();
+  withProfileLock(cachePath(), () => {
+    const recorded = provBefore(cachePath(), { scope: 'user', cls: 'code', row: 'himmelctl-cache' });
+    fs.writeFileSync(cachePath(), serialize(answers) + '\n');
+    recorded();
+  });
 }
 
 // Hard-error exit for a profile that fails schema validation: clear stderr
@@ -2410,20 +2413,24 @@ function loadProfile(p, persist = false) {
 // in-memory object) through a temp file + rename; a failed write only warns,
 // the in-memory drop already applies. A file that changed since it was read is
 // left alone, so a concurrent save is never overwritten (the notice repeats).
+// The compare and the rename run under the profile lock every other profile
+// writer takes (lib/profile-lock.js), so no save can land between them.
 function dropRetiredFromProfileFile(p, raw, ids) {
   const tmp = `${p}.${process.pid}.tmp`;
   try {
-    // Same policy as saveProfile: a symlink an operator placed at this path is
-    // not silently replaced by a regular file.
-    if (fs.lstatSync(p).isSymbolicLink()) throw new Error('the profile is a symlink');
-    const orig = JSON.parse(raw);
-    for (const id of ids) delete orig.cadences[id];
-    if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
-    const mode = fs.statSync(p).mode & 0o777;
-    fs.writeFileSync(tmp, serialize(orig) + '\n', { mode, flag: 'wx' });
-    fs.chmodSync(tmp, mode); // the process umask masks the mode given at create
-    if (fs.readFileSync(p, 'utf8') !== raw) throw new Error('the profile changed while it was read');
-    fs.renameSync(tmp, p);
+    withProfileLock(p, () => {
+      // Same policy as saveProfile: a symlink an operator placed at this path is
+      // not silently replaced by a regular file.
+      if (fs.lstatSync(p).isSymbolicLink()) throw new Error('the profile is a symlink');
+      const orig = JSON.parse(raw);
+      for (const id of ids) delete orig.cadences[id];
+      if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
+      const mode = fs.statSync(p).mode & 0o777;
+      fs.writeFileSync(tmp, serialize(orig) + '\n', { mode, flag: 'wx' });
+      fs.chmodSync(tmp, mode); // the process umask masks the mode given at create
+      if (fs.readFileSync(p, 'utf8') !== raw) throw new Error('the profile changed while it was read');
+      fs.renameSync(tmp, p);
+    });
   } catch (e) {
     try { fs.unlinkSync(tmp); } catch (_e) { /* no tmp left */ }
     console.error(`himmelctl: profile ${p}: could not drop the retired cadence from the file (${e.message}); the notice will repeat`);
@@ -8575,4 +8582,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { installUiHandoff, augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry };
+module.exports = { installUiHandoff, augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry, writeCache };
