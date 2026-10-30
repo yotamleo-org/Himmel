@@ -191,10 +191,38 @@ assert_eq "S6 export-env writes no altered value" "0" "$(grep -c 'TEST_HS_[CD]' 
 # S5b: import-env also stores the station secrets a script loads from .env
 # outside the wizard's list.
 kreset
-printf 'GOOGLE_HEALTH_REFRESH_TOKEN=fake-g\nZAI_API_KEY=fake-z\nTELEGRAM_CHAT_ID=fake-t\nhimmel_github_token_vm2=fake-v\n' >"$TMP/in-station.env"
+printf 'GOOGLE_HEALTH_REFRESH_TOKEN=fake-g\nZAI_API_KEY=fake-z\nhimmel_github_token_vm2=fake-v\n' >"$TMP/in-station.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in-station.env" 2>&1)
-assert_eq "S5b import-env stores the station secrets" "4" "$(grep -c '^service=himmel key=\(GOOGLE_HEALTH_REFRESH_TOKEN\|ZAI_API_KEY\|TELEGRAM_CHAT_ID\|himmel_github_token_vm2\) scope=user' "$KSTUB_STORE")"
+assert_eq "S5b import-env stores the station secrets" "3" "$(grep -c '^service=himmel key=\(GOOGLE_HEALTH_REFRESH_TOKEN\|ZAI_API_KEY\|himmel_github_token_vm2\) scope=user' "$KSTUB_STORE")"
 assert_eq "S5b import-env skips none of them" "0" "$(printf '%s' "$out" | grep -c '^skipped')"
+
+# S5c: the settings a consumer reads from .env or himmel.conf
+# are not secrets, so import-env leaves each in place and names it.
+kreset
+printf 'JIRA_BASE_URL=https://fake.example.invalid\nTELEGRAM_CHAT_ID=fake-t\nTELEGRAM_GROUP_CHAT_ID=fake-g\nFIRECRAWL_BASE_URL=https://fake-fc.example.invalid\nWHISPER_MODEL=/fake/model.bin\nZAI_API_KEY=fake-z\n' >"$TMP/in-conf.env"
+out=$(cd "$REPO" && "$HS" import-env "$TMP/in-conf.env" 2>&1)
+assert_eq "S5c import-env stores none of the 5 config keys" "0" "$(grep -c 'key=\(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) ' "$KSTUB_STORE")"
+assert_eq "S5c import-env names each config key it leaves" "5" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key')"
+assert_eq "S5c import-env still stores the real secret" "1" "$(grep -c '^service=himmel key=ZAI_API_KEY scope=user' "$KSTUB_STORE")"
+
+# S5d: JIRA_BASE_URL is a credential destination, so a
+# planted himmel.conf never reaches the process env; the .env value still does.
+mkdir -p "$TMP/s5d-conf"
+printf 'JIRA_BASE_URL=https://planted.example.invalid\n' >"$TMP/s5d-conf/himmel.conf"
+got=$(cd "$REPO" && rm -f .env && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
+assert_eq "S5d himmel.conf never sets JIRA_BASE_URL" "[]" "$got"
+printf 'JIRA_BASE_URL=https://from-env.example.invalid\n' >"$REPO/.env"
+got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
+assert_eq "S5d .env still serves JIRA_BASE_URL" "[https://from-env.example.invalid]" "$got"
+rm -f "$REPO/.env"
+
+# S5e: the telegram hooks load through load_dotenv, so the chat ids
+# come from himmel.conf and the bot token through the resolver, with no .env.
+kreset
+printf 'service=himmel key=TELEGRAM_BOT_TOKEN scope=user\tfake-bot\n' >"$KSTUB_STORE"
+printf 'TELEGRAM_CHAT_ID=fake-chat\nTELEGRAM_GROUP_CHAT_ID=fake-group\n' >"$TMP/s5d-conf/himmel.conf"
+got=$(cd "$REPO" && unset TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID 2>/dev/null; printf '[%s|%s|%s]' "${TELEGRAM_BOT_TOKEN-}" "${TELEGRAM_CHAT_ID-}" "${TELEGRAM_GROUP_CHAT_ID-}")
+assert_eq "S5e telegram: token from the keyring, chat ids from himmel.conf" "[fake-bot|fake-chat|fake-group]" "$got"
 
 # S7: a locked keyring makes no lookup, and put changes nothing.
 kreset

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile } from './client.js';
@@ -255,6 +255,24 @@ describe('loadEnvFile', () => {
     expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
     expect(process.env.JIRA_EMAIL).toBe('dummy@example.invalid');
     expect(process.env.JIRA_PROJECT_KEY).toBe('DUMMY');
+  });
+
+  it('with a stubbed keyring and no Jira keys in .env, takes the base URL from .env and the credentials from the keyring', () => {
+    for (const k of ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN']) vi.stubEnv(k, '');
+    const bin = join(dir, 'kbin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'secret-tool'),
+      '#!/usr/bin/env bash\ncase "$*" in\n *"key JIRA_API_TOKEN"*) printf stub-token ;;\n *"key JIRA_EMAIL"*) printf stub@example.invalid ;;\n *) exit 1 ;;\nesac\n');
+    writeFileSync(join(bin, 'busctl'), '#!/usr/bin/env bash\necho "b false"\n');
+    chmodSync(join(bin, 'secret-tool'), 0o755);
+    chmodSync(join(bin, 'busctl'), 0o755);
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    vi.stubEnv('HIMMEL_SECRETS_KEYRING', '');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_API_TOKEN).toBe('stub-token');
+    expect(process.env.JIRA_EMAIL).toBe('stub@example.invalid');
   });
 
   it('prefers .local to himmel.conf but preserves a non-empty process value', () => {

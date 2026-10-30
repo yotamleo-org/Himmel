@@ -163,7 +163,7 @@ for key in $identifiers; do
         fail "migration did not copy an active $key assignment"
     fi
 done
-for key in JIRA_API_TOKEN JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID; do
+for key in JIRA_API_TOKEN JIRA_BASE_URL; do
     lacks "dry run excludes $key" "$key" "$preview"
     lacks "identifier migration leaves $key behind" "$key" "$conf"
 done

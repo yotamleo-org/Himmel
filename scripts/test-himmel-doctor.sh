@@ -7160,6 +7160,11 @@ c74_reset
 printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'INFO C74-himmel-conf' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no himmel.conf, nothing to migrate -> INFO only"; else fail "C74 absent conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: JIRA_BASE_URL in .env is never listed as moved (HIMMEL-8165) =="
+c74_reset
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'JIRA_BASE_URL'; then pass "C74 JIRA_BASE_URL in .env -> not listed, OK"; else fail "C74 JIRA_BASE_URL -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C74-config-split: himmel.conf with a line that is not KEY=value -> WARN =="
 c74_reset
 printf 'HANDOVER_DIR=/x\nthis line is not a setting\n' > "$c74_conf"
@@ -7248,6 +7253,14 @@ c75_reset
 printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
 out="$(c75_run)"
 if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'OK   C75-secrets' && grepq "$out" -F '1 from the keyring' && ! grepq "$out" -F 'planted'; then pass "C75 keyring-served station -> two OK rows"; else fail "C75 keyring -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-config-keys: a served credential whose paired setting resolves nowhere -> WARN naming the setting =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+out="$(c75_run)"
+if grepq "$out" -F 'WARN C75-config-keys' && grepq "$out" -F 'JIRA_BASE_URL' && ! grepq "$out" -F 'planted'; then pass "C75 token without JIRA_BASE_URL -> WARN naming it"; else fail "C75 missing config key -> $(printf '%s' "$out" | head -5)"; fi
+printf 'JIRA_BASE_URL=https://planted.example\n' > "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-config-keys' && ! grepq "$out" -F 'planted.example'; then pass "C75 JIRA_BASE_URL in .env -> OK"; else fail "C75 config key present -> $(printf '%s' "$out" | head -5)"; fi
 echo "== C75-keyring: a locked keyring -> WARN, no lookup =="
 c75_reset
 out="$(C75_LOCKED=true c75_run)"

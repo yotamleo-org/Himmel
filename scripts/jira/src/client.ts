@@ -34,6 +34,32 @@ const DOTENV_KEYS = new Set([
 
 const CONFIG_KEYS = new Set(['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
 
+// The credentials a station secrets move takes out of .env: when
+// neither the environment nor .env supplies one, the one resolver is asked.
+const RESOLVED_KEYS = ['JIRA_EMAIL', 'JIRA_API_TOKEN'];
+
+function resolveFromKeyring(): void {
+  const missing = RESOLVED_KEYS.filter((k) => !process.env[k]);
+  if (missing.length === 0) return;
+  const resolver = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'lib', 'himmel-secrets');
+  if (!existsSync(resolver)) return;
+  let out = '';
+  try {
+    out = execFileSync('bash', [resolver, 'get', '--no-dotenv', ...missing], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000,
+    });
+  } catch (e) {
+    // exit 1 = nothing served; stdout of a partial hit is still usable
+    out = (e as { stdout?: string }).stdout ?? '';
+  }
+  for (const line of out.split('\n')) {
+    const i = line.indexOf('=');
+    if (i < 1) continue;
+    const k = line.slice(0, i);
+    if (missing.includes(k)) process.env[k] ||= line.slice(i + 1);
+  }
+}
+
 export function loadEnvFile(envPath: string): void {
   const confDir = join(process.env.HOME || homedir(), '.himmel');
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
@@ -48,6 +74,7 @@ export function loadEnvFile(envPath: string): void {
   }
   if (projectRoot) readEnvFile(join(projectRoot, '.env'), new Set(['JIRA_PROJECT_KEY']));
   readEnvFile(envPath, DOTENV_KEYS);
+  resolveFromKeyring();
 }
 
 function stripInlineComment(value: string): string {

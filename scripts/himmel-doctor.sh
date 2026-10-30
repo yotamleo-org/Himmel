@@ -3351,7 +3351,8 @@ check_c74_config_split() {
         }' "$envfile")"
         for key in $names; do
             case "$(_himmel_key_class "$key")" in
-                config) cfg="${cfg:+$cfg, }$key" ;;
+                # JIRA_BASE_URL is never moved: only .env serves it.
+                config) [ "$key" = JIRA_BASE_URL ] || cfg="${cfg:+$cfg, }$key" ;;
                 policy) present="$present $key" ;;
             esac
         done
@@ -3453,6 +3454,32 @@ check_c75_keyring() {
         emit INFO C75-secrets "secrets served from .env: $dot ($unset_n unset); no unlocked keyring to move them to"
     else
         emit OK C75-secrets "no secret comes from .env ($kr from the keyring, $other from the environment, $unset_n unset)"
+    fi
+    # A served credential whose paired setting resolves nowhere is a consumer that
+    # fails at its first call. JIRA_BASE_URL is read from the
+    # environment or .env only; the chat id also from himmel.conf.
+    local pair secret setting miss="" confdir
+    confdir="$(_himmel_config_dir)"
+    for pair in JIRA_API_TOKEN:JIRA_BASE_URL TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID; do
+        secret="${pair%%:*}"; setting="${pair##*:}"
+        layer="$(printf '%s\n' "$status_out" | sed -n "s/^$secret: //p")"
+        case "$layer" in
+            keyring|keyring-project|env|credentials) ;;
+            *) case "$envnames" in *" $secret "*) ;; *) continue ;; esac ;;
+        esac
+        [ -z "${!setting:-}" ] || continue
+        case "$envnames" in *" $setting "*) continue ;; esac
+        if [ "$setting" != JIRA_BASE_URL ] \
+            && grep -qsE "^[[:space:]]*${setting}[[:space:]]*=[[:space:]]*[^[:space:]#]" "$confdir/himmel.conf.local" "$confdir/himmel.conf"; then
+            continue
+        fi
+        miss="${miss:+$miss, }$setting"
+    done
+    if [ -n "$miss" ]; then
+        emit WARN C75-config-keys "a credential is served but its setting resolves nowhere: $miss" \
+            "add each to the checkout .env (JIRA_BASE_URL) or ~/.himmel/himmel.conf (the chat ids); the secrets move leaves them in place"
+    else
+        emit OK C75-config-keys "every served credential has its paired setting"
     fi
 }
 
