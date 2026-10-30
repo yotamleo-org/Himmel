@@ -400,9 +400,8 @@ lane_runnable() {
 # and return 124 on overrun, else the command's own exit. Portable bash 3.2: a
 # background job under `set -m` polled on the $SECONDS builtin, then
 # process-group-killed on overrun. GNU coreutils `timeout` is intentionally NOT
-# used — Windows ships a SLEEP named timeout.exe and stock macOS lacks
-# coreutils, so `command -v timeout` is a trap (see qmd-staleness-notice.sh for
-# the full lesson). $SECONDS keeps the bound working under the narrowed PATH
+# used — stock macOS lacks coreutils. $SECONDS keeps the bound working
+# under the narrowed PATH
 # this hook sometimes runs under, and the process-group kill reaps the helper's
 # children so a wedged reader leaves nothing behind.
 _run_bounded() {

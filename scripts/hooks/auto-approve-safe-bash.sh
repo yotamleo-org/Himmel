@@ -1724,8 +1724,7 @@ segment_is_queue_lock() {
 # ponytail: checked at match time only - the bytes can change between this
 # check and the exec (TOCTOU), as in guard-pr-check-literal.sh; and a
 # docs-audit lane's `origin/main..<head>` range is not accepted (it falls
-# through to the classifier); and Windows Git Bash always falls through to a
-# prompt (its jq.exe CRLF output, drive-letter cwd and paths are all refused).
+# through to the classifier).
 IS_LINE1_RE="^bash +(\"[^\"]*\"|[^ \"]+) +(--check +)?[0-9a-f]{40}\\.\\.[0-9a-f]{40}( +<<'IMPACTED_EOF')? *\$"
 cmd_is_impacted_suites() {
     local c="${1%$'\n'}" l1 body word root
@@ -2028,7 +2027,7 @@ IFS= read -r -d '' input 2>/dev/null || true
 # tool_name + command in ONE jq call (via `<<<`, no printf fork) instead of
 # two separate `printf | jq` pipelines — same shape already proven in
 # require-quiet-run.sh and block-tail-pipe-on-gates.sh
-#. Windows jq.exe writes CRLF, so strip the stray CR off $tool.
+# Strip a stray CR off $tool defensively.
 # `// ""` (empty STRING), not `// empty` (a zero-output jq GENERATOR): in a
 # `+`-concatenation, one operand collapsing to `empty` zeroes out the WHOLE
 # expression (cross-product-of-generators semantics), not just that field.
@@ -2036,7 +2035,7 @@ result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$in
 tool="${result%%$'\n'*}"
 # `tool` is jq's own first output
 # line and never legitimately contains a CR — a trailing CR on it means jq
-# itself is rendering every LF in `result` as CRLF (Windows jq.exe), so the
+# itself is rendering every LF in `result` as CRLF, so the
 # SAME rendering also doubled every embedded newline in `cmd` below. Detect
 # that here, before stripping the CR off `tool`.
 case "$tool" in
@@ -2045,8 +2044,8 @@ case "$tool" in
 esac
 tool="${tool%$'\r'}"
 cmd="${result#*$'\n'}"
-# On the CRLF-jq (Windows) rendering, jq.exe's OWN final
-# newline also comes out as CRLF, but the `<<<`/`$()` substitution above
+# When jq renders CRLF, its own final newline also comes out as CRLF,
+# but the `<<<`/`$()` substitution above
 # strips only the trailing LF, leaving a stray, unpaired CR on the end of
 # every command (nothing to fold: no CRLF pair remains to match). That is
 # jq's own artifact, not part of the command bash will see, so strip exactly
@@ -2061,7 +2060,7 @@ cmd="${result#*$'\n'}"
 case "$cmd" in
     *$'\r'*)
         if [ "$win_crlf" = 1 ]; then
-            # Windows jq.exe rendering: every LF became CRLF, including the
+            # CRLF rendering: every LF became CRLF, including the
             # LF of a genuine `\`+LF continuation, so a blind fold back to
             # LF (main's original behavior) is correct here — it restores
             # exactly what the shell will actually execute. A CRAFTED

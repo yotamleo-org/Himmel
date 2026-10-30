@@ -91,8 +91,6 @@
 # other position naming qmd in its arguments or heredoc, an assignment, an opaque
 # position, an interpreter with no literal body, a pipe consumer beside a
 # mention, a command over 8 KiB — is left to the regex reader below.
-# ponytail: Bash only — a PowerShell `qmd query` is unguarded; wire a
-# PowerShell twin if a Windows station starts running qmd ad hoc.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow
