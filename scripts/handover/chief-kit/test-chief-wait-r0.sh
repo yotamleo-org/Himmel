@@ -248,23 +248,29 @@ wait_exit "$WPID"
 contains "(r0o) an output-bearing failure still records its rc" "$(head -n 1 "$WORK/r0o-output.out")" "rc=7 out=$I.wait.le-N1"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (r0p) service Telegram between two pending slow wraps ------------------
-reset_stub
-fleet2 r0p
-echo 1.2 > "$STUB/le.sleep"
-tick_line "N1:LIVE,N2:LIVE"
-start "$I" "$WORK/r0p.out" --doc "$D" --workers-from "$M"
-wait_hb "$I" || fail "(r0p) no baseline heartbeat"
-printf -- '- 11:00 WRAPPED — done\n' >> "$L"; printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
-tick_line "N1:WRAPPED,N2:WRAPPED"
-n=0
-while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.calls" ]; do sleep 0.1; n=$((n + 1)); done
-printf -- '- 03:45 [telegram from=1 chat=2] urgent\n' >> "$I"
-wait_exit "$WPID"
-check "(r0p) Telegram wakes after one slow wrap" 0 "$rc"
-check "(r0p) the second wrap waits for the next sample" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
-check "(r0p) the wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0p.out")"
-kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# --- (r0p) service Telegram between handled OR retryable slow wraps ---------
+for relay_mode in handled retry; do
+    reset_stub
+    fleet2 "r0p-$relay_mode"
+    echo 1.2 > "$STUB/le.sleep"
+    if [ "$relay_mode" = retry ]; then
+        printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n' > "$STUB/le.out"
+        echo 10 > "$STUB/le.rc"
+    fi
+    tick_line "N1:LIVE,N2:LIVE"
+    start "$I" "$WORK/r0p-$relay_mode.out" --doc "$D" --workers-from "$M"
+    wait_hb "$I" || fail "(r0p) no baseline heartbeat"
+    printf -- '- 11:00 WRAPPED — done\n' >> "$L"; printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
+    tick_line "N1:WRAPPED,N2:WRAPPED"
+    n=0
+    while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.calls" ]; do sleep 0.1; n=$((n + 1)); done
+    printf -- '- 03:45 [telegram from=1 chat=2] urgent\n' >> "$I"
+    wait_exit "$WPID"
+    check "(r0p) Telegram wakes after one $relay_mode call" 0 "$rc"
+    check "(r0p) $relay_mode leaves the second wrap for the next sample" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
+    check "(r0p) the $relay_mode wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0p-$relay_mode.out")"
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+done
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then
     if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

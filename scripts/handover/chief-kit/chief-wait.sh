@@ -214,7 +214,7 @@
 #                      CHIEF_WAIT_CLOSE_TIMEOUT once, then twice
 #                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
 #                      Telegram line waits for it. The relay adds at most one
-#                      handled wrap (240 s +5 s kill grace), refreshing the heartbeat
+#                      wrap attempt (240 s +5 s kill grace), refreshing the heartbeat
 #                      before its call. Older than those bounds plus a few polls,
 #                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
@@ -1099,7 +1099,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
 # tail not WRAPPED, subtree or subagent alive) is retried next sample; anything else
 # prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
-# HANDLED the relay yields to the inbox; later workers wait until the next sample.
+# call the relay yields to the inbox; later workers wait until the next sample.
 # HANDLED and WAKE record
 # `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
@@ -1159,7 +1159,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
-            10:*-failed\ rc=[3467]\ *) continue ;;
+            10:*-failed\ rc=[3467]\ *) break ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
         printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"

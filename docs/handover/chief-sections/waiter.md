@@ -113,7 +113,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     progress: a sample (tick, then usage) can take about 4 min (twice the 120 s
     timeout, plus a 5 s kill grace each), and a Telegram line waits for it. The
     wrap relay refreshes the heartbeat before each `worker-event.sh` call (up to
-    245 s including kill grace). It handles at most one wrap per sample before
+    245 s including kill grace). It attempts at most one wrap per sample before
     servicing the inbox; later workers wait for the next sample. This keeps each
     relay call under the heartbeat consumers' 300 s floor. `state=exited
     exit=<reason>` is a waiter that stopped (`wake-telegram`, `wake-tick`,
@@ -166,7 +166,8 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     that worker's bullet, with no wake. The 240 s bound allows a slow close and
     refresh without exceeding heartbeat consumers' limits; tracker/focus work
     that exceeds it escalates. WRAPPED workers with a PR take the wrap path too.
-    A Telegram line waits for at most one handled relay before the inbox is serviced.
+    A Telegram line waits for at most one relay attempt (including a retryable
+    refusal) before the inbox is serviced.
     `HANDLED` lands in `<inbox>.wait.digest`; a
     refusal that only means "not yet" (lock still held, tail not yet `WRAPPED`,
     subtree alive) is retried next sample. Anything else wakes you once per
