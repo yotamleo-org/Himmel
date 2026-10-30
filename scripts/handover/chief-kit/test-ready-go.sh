@@ -13,7 +13,7 @@
 #   8. --ledger appends one bullet to a chief doc; a failing run appends nothing.
 #   9. read-only: no GO file is written under the handover root.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

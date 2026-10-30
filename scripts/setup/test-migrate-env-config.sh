@@ -170,6 +170,32 @@ done
 lacks "migration never prints identifier values" "dummy-identifier" "$out"
 if [ "$before" = "$(cat "$ENVF")" ]; then pass "migration leaves legacy .env unchanged"; else fail "migration changed legacy .env"; fi
 
+# --profile: a relative --vault is made absolute before it is linked.
+rm -rf "$HOME/.himmel"
+mkdir -p "$TMP/work"
+out=$(cd "$TMP/work" && bash "$SCRIPT" --vault ./rv --profile lab 2>&1)
+rc=$?
+if [ "$rc" = 0 ]; then pass "a relative --vault with --profile exits 0"; else fail "a relative --vault with --profile exited $rc: $out"; fi
+if [ "$(readlink "$HOME/.himmel/himmel.conf")" = "$TMP/work/rv/.himmel/himmel.conf" ]; then pass "a relative --vault links to the absolute vault"; else fail "a relative --vault linked to '$(readlink "$HOME/.himmel/himmel.conf")'"; fi
+if [ -f "$TMP/work/rv/.himmel/profiles/lab.conf" ]; then pass "a relative --vault gets its profile file"; else fail "a relative --vault got no profile file"; fi
+
+# --profile: a relative himmel.conf link that resolves to the vault is accepted.
+rm -rf "$HOME/.himmel"
+mkdir -p "$HOME/.himmel" "$TMP/rl/.himmel"
+: > "$TMP/rl/.himmel/himmel.conf"
+ln -s "../../rl/.himmel/himmel.conf" "$HOME/.himmel/himmel.conf"
+out=$(bash "$SCRIPT" --vault "$TMP/rl" --profile lab 2>&1)
+rc=$?
+if [ "$rc" = 0 ]; then pass "a relative link that resolves to the vault exits 0"; else fail "a relative link that resolves to the vault exited $rc: $out"; fi
+if [ -f "$TMP/rl/.himmel/profiles/lab.conf" ]; then pass "a relative link that resolves to the vault gets its profile"; else fail "a relative link that resolves to the vault got no profile"; fi
+
+# --profile "" is refused, not skipped.
+rm -rf "$HOME/.himmel"
+out=$(bash "$SCRIPT" --vault "$TMP/ev" --profile "" --env "$TMP/no-such.env" 2>&1)
+rc=$?
+if [ "$rc" = 2 ]; then pass "an empty --profile exits 2"; else fail "an empty --profile exited $rc"; fi
+if [ -e "$TMP/ev" ]; then fail "an empty --profile created the vault dir"; else pass "an empty --profile creates nothing"; fi
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env-config: $FAILED FAILED"
     exit 1

@@ -47,18 +47,15 @@ command -v jq >/dev/null 2>&1 || exit 0
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 
-# One jq launch instead of three (validate-JSON + tool_name +
-# command) - the largest per-call fork lever on a loaded Windows/Git-Bash box,
-# where every jq launch is a full MSYS2 process spawn. Invalid JSON makes the
-# combined query fail exactly like the old standalone `jq empty` did, so the
+# One jq launch instead of three (validate-JSON + tool_name + command)
+# reduces per-call process spawns. Invalid JSON makes the combined query
+# fail exactly like the old standalone `jq empty` did, so the
 # fail-open behaviour is unchanged. tool_name and command come back on one
 # jq-emitted line separated by a real newline (command is emitted RAW, not
 # TSV-escaped, so a heredoc/multi-line command keeps its literal newlines for
 # the tr step below); bash parameter expansion splits at the first one, no
-# extra fork needed. The Windows jq.exe build writes stdout in TEXT mode, so
-# every "\n" this filter emits - including the tool/command separator AND
-# every line boundary inside a multi-line $cmd - comes back as "\r\n"; strip
-# the stray \r off $tool explicitly. $cmd needs the same: the heredoc-body stage below does its
+# extra fork needed. Strip a stray \r off $tool defensively. $cmd needs
+# the same: the heredoc-body stage below does its
 # own line-based `read`, which treats \r as ordinary line content, not a
 # terminator - a body/delimiter line ending in a stray \r would never
 # string-match its (clean) heredoc delimiter and the whole rest of the

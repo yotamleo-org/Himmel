@@ -1,7 +1,7 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { esc, planHtml, renderFleetCap, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { copyCommand, esc, planHtml, renderFleetCap, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
 import { TILES } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
@@ -9,6 +9,8 @@ const TRACKERS = [["jira", "Jira"], ["local", "Local"], ["none", "None"]];
 
 const JIRA_LABEL = { JIRA_BASE_URL: "Site", JIRA_EMAIL: "Email", JIRA_API_TOKEN: "API token", JIRA_PROJECT_KEY: "Project key" };
 const JIRA_ORDER = Object.keys(JIRA_LABEL);
+const TEXT_FIELDS = new Set(["JIRA_EMAIL", "JIRA_BASE_URL", "JIRA_PROJECT_KEY"]);
+const revealButton = (name) => `<button class="btn" type="button" data-act="reveal" data-reveal="${esc(name)}" aria-pressed="false" aria-label="Show ${esc(name)}">show</button>`;
 
 // cfg: the Configure look, a friendly name with the key as its meta line, and the example as the field's placeholder.
 function secretRow(s, msg, cfg) {
@@ -20,8 +22,8 @@ function secretRow(s, msg, cfg) {
   const remove = s.status === "set" ? `<button class="btn" type="button" data-act="setup-remove" data-name="${esc(s.name)}">remove</button>` : "";
   return `<div class="srow">${what}${status}
     <form class="sform" data-setup-form data-name="${esc(s.name)}" autocomplete="off">
-      <input type="password" data-secret="${esc(s.name)}" autocomplete="new-password" spellcheck="false" aria-label="${esc(s.name)} value"${cfg && s.example ? ` placeholder="e.g. ${esc(s.example)}"` : ""}>
-      ${cfg ? `<span class="acts"><button class="btn primary" type="submit">save</button>${remove}</span>` : `<button class="btn primary" type="submit">save</button>${remove}`}</form>
+      <input type="${TEXT_FIELDS.has(s.name) ? "text" : "password"}" data-secret="${esc(s.name)}" autocomplete="${TEXT_FIELDS.has(s.name) ? "off" : "new-password"}" spellcheck="false" aria-label="${esc(s.name)} value"${cfg && s.example ? ` placeholder="e.g. ${esc(s.example)}"` : ""}>
+      ${cfg ? `<span class="acts">${TEXT_FIELDS.has(s.name) ? "" : revealButton(s.name)}<button class="btn primary" type="submit">save</button>${remove}</span>` : `${TEXT_FIELDS.has(s.name) ? "" : revealButton(s.name)}<button class="btn primary" type="submit">save</button>${remove}`}</form>
     ${s.example && !cfg ? `<span class="ro">e.g. ${esc(s.example)}</span>` : ""}
     ${msg ? `<span class="ro" role="status">${esc(msg)}</span>` : ""}</div>`;
 }
@@ -31,11 +33,13 @@ const CR_STATE = { installed: "installed", "not-installed": "not detected", unkn
 function coderabbit(c) {
   if (!c) return "";
   const st = `<span class="st ${c.installed === "installed" ? "ok" : "warn"}">${esc(CR_STATE[c.installed] || c.installed)}</span>`;
-  return `<h3>CodeRabbit</h3>
-    <div class="srow"><span class="id">CodeRabbit review</span><span class="det">${esc(c.requirement)} add-on · gates ${c.armed ? "armed" : "not armed"} in this clone</span>${st}</div>
+  return `<details class="more"${c.installed === "installed" ? "" : " open"}><summary>CodeRabbit · ${st} · ${esc(c.requirement)} add-on · gates ${c.armed ? "armed" : "not armed"} in this clone</summary>
     <p class="sub">${esc(c.what)}</p>
-    <ol class="sub">${c.steps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
-    ${c.manual ? `<p class="sub" role="status">${esc(c.manual)}</p>` : ""}`;
+    <ol class="sub">${c.steps.map((t) => {
+      const prefix = "Arm the gates for this clone: ";
+      return `<li>${t.startsWith(prefix) ? `${esc(prefix)}${copyCommand(t.slice(prefix.length))}` : esc(t)}</li>`;
+    }).join("")}</ol>
+    ${c.manual ? `<p class="sub" role="status">${esc(c.manual)}</p>` : ""}</details>`;
 }
 
 function choice(label, action, target, value, current, k, disabled) {
@@ -87,14 +91,14 @@ function forgeRow(c) {
   const f = c.forge || {};
   return `<div class="srow"><span class="id">Forge</span>
     <span class="det">${f.error ? esc(f.error) : `detected: ${esc(f.value)}`}</span>
-    <span class="ro">set <code>FORGE</code> or <code>git config himmel.forge</code> in the terminal</span></div>`;
+    <span class="ro">set <code>FORGE</code> or Git's <code>himmel.forge</code> setting in the terminal</span></div>`;
 }
 
 function setupChoices(c, plans) {
   if (!c) return "";
   const rows = pathRows(c, plans), forge = forgeRow(c);
   return `<h3>Setup choices</h3>
-    <p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>
+    <p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by the path config writer after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>
     ${rows}${forge}
     <p class="sub">Plugin set, Review by a second model and Auto-ship steps are toggles on <a href="#/config">the Settings page</a>.</p>`;
 }
@@ -103,16 +107,16 @@ function setupChoices(c, plans) {
 function account(a, msg, cfg) {
   if (!a) return "";
   const note = msg ? `<p class="sub" role="status">${esc(msg)}</p>` : "";
-  if (a.status === "set") return `<h3>Account</h3><p class="sub">The UI login is set for <code>${esc(a.user)}</code>. Log in with it at <code>/login</code> on the always-on UI. To change it, run <code>${esc(a.setLogin)}</code> in your own terminal.</p>${note}`;
-  if (a.create !== "ui") return `<h3>Account</h3><p class="sub">${a.status === "unreadable" ? "The login file cannot be read. " : "No UI login is set yet. "}Set it with <code>${esc(a.setLogin)}</code> in your own terminal.</p>${note}`;
+  if (a.status === "set") return `<h3>Account</h3><p class="sub">The UI login is set for <code>${esc(a.user)}</code>. Log in with it at <code>/login</code> on the always-on UI. To change it, run ${copyCommand(a.setLogin)} in your own terminal.</p>${note}`;
+  if (a.create !== "ui") return `<h3>Account</h3><p class="sub">${a.status === "unreadable" ? "The login file cannot be read. " : "No UI login is set yet. "}Set it with ${copyCommand(a.setLogin)} in your own terminal.</p>${note}`;
   return `<h3>Account</h3><p class="sub">Create the login for the always-on UI first: it asks for this user and password before it saves a secret. The password is at least 8 characters and is kept only as a hash.</p>
     <form class="sform" data-account-form autocomplete="off">${cfg ? `
       <label class="fld">User<input type="text" data-account="user" autocomplete="username" spellcheck="false" placeholder="a user name"></label>
-      <label class="fld">Password<input type="password" data-account="password" autocomplete="new-password" placeholder="at least 8 characters"></label>
-      <label class="fld">Password again<input type="password" data-account="confirm" autocomplete="new-password" placeholder="the same password"></label>` : `
+      <label class="fld">Password<input type="password" data-account="password" autocomplete="new-password" placeholder="at least 8 characters"></label>${revealButton("password")}
+      <label class="fld">Password again<input type="password" data-account="confirm" autocomplete="new-password" placeholder="the same password"></label>${revealButton("confirm")}` : `
       <input type="text" data-account="user" autocomplete="username" spellcheck="false" aria-label="user name">
-      <input type="password" data-account="password" autocomplete="new-password" aria-label="password">
-      <input type="password" data-account="confirm" autocomplete="new-password" aria-label="password again">`}
+      <input type="password" data-account="password" autocomplete="new-password" aria-label="password">${revealButton("password")}
+      <input type="password" data-account="confirm" autocomplete="new-password" aria-label="password again">${revealButton("confirm")}`}
       <button class="btn primary" type="submit">create login</button></form>${note}`;
 }
 
@@ -187,7 +191,7 @@ const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(
 function secretsPanel({ setup, msgs }) {
   if (!setup || setup.error) return setupFailed(setup);
   const own = setup.secrets.filter((s) => !isJira(s));
-  return `<p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
+  return `<p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, ${copyCommand("himmelctl install")} asks for secrets in the terminal instead.</p>
     ${account(setup.account, msgs.account, true)}
     ${own.filter((s) => s.collect === "file").sort((a, b) => (a.required !== "required") - (b.required !== "required")).map((s) => secretRow(s, msgs[s.name], true)).join("")}
     <div class="srow"><span class="id">Set in the terminal <span class="tag">read-only</span></span><span class="det">These are collected by their feature's own setup card, so the page shows only whether each is set.</span><span class="chips">${own.filter((s) => s.collect !== "file").map((s) => `<span class="ro" title="${esc(s.feature)}">${esc(s.name)} · ${esc(STATUS[s.status] || s.status)}</span>`).join(" ")}</span></div>
@@ -197,10 +201,7 @@ function secretsPanel({ setup, msgs }) {
 // CodeRabbit is reviewer 1's install state, so it sits with the reviewers rather than in a step of its own.
 function crFold(c) {
   if (!c) return "";
-  const st = `<span class="st ${c.installed === "installed" ? "ok" : "warn"}">${esc(CR_STATE[c.installed] || c.installed)}</span>`;
-  return `<div class="setrow"><div class="sethead"><span class="id">CodeRabbit review</span><span class="det">${esc(c.requirement)} add-on · gates ${c.armed ? "armed" : "not armed"} in this clone</span><span class="slot">${st}</span></div>
-    <details class="more"><summary>what it is, and how to install it</summary><p class="sub">${esc(c.what)}</p>
-    <ol class="sub">${c.steps.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>${c.manual ? `<p class="sub" role="status">${esc(c.manual)}</p>` : ""}</details></div>`;
+  return `<div class="setrow">${coderabbit(c)}</div>`;
 }
 
 function reviewPanel({ setup, feed, state }) {
@@ -232,7 +233,7 @@ function scopePanel({ setup, feed, state }) {
   const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold) : loading("the station report"));
   const choices = setup && setup.choices;
   const paths = !setup || setup.error ? setupFailed(setup)
-    : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
+    : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by the path config writer after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
   return `<p class="sub">What himmel does on its own in this install, which plugins and jobs it runs, and where its state lives. Each switch shows a dry run before it writes.</p>
     ${group(["auto-ship"])}${group(["plugins"], 3)}${group(["scheduled-jobs"])}${paths}
     <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}</div>
@@ -262,7 +263,7 @@ export function renderSetup(setup, plans, msgs, verify = null) {
   if (!setup) return `${head}<p class="sub">loading…</p>`;
   if (setup.error) return `${head}<div class="nodata" role="alert">${esc(setup.error)}</div>`;
   return `${head}${account(setup.account, msgs.account)}
-    <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
+    <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, ${copyCommand("himmelctl install")} asks for secrets in the terminal instead.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
     ${commitRules(setup.commit, plans)}

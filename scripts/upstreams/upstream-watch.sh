@@ -85,25 +85,8 @@ command -v node >/dev/null 2>&1 || {
     exit 2
 }
 
-# jq shim — strip CR from every jq invocation in this script.
-#
-# The native Windows jq (winget jqlang.jq, and the msys/choco builds) writes
-# stdout in TEXT mode: `jq -rn '"abc"'` emits `abc\r\n`, not `abc\n`. Command
-# substitution strips the trailing NEWLINE only, so EVERY value this script
-# captured from jq carried a trailing \r — and a \r is invisible in every
-# diagnostic that prints it. That is what produced the 21 rows of
-# `- [owner/repo#N](null) — null` in the first scheduled report: the keys read
-# out of the delta were `owner/repo#N\r`, so `.[$k]` matched nothing and both
-# the title and url lookups answered null. The report bytes carry the proof
-# (`…graphify#2984\r](null)`). `head_sha` was poisoned the same way and went
-# into a check-runs URL.
-#
-# Fixing it at the ~15 capture sites would leave the next one to rediscover
-# this; fixing it here covers every present and future jq call in one place.
-# On Linux/macOS jq already emits LF and `tr -d '\r'` is a no-op. `command jq`
-# is what stops this recursing. Exit status still propagates: `set -o pipefail`
-# is on, and tr always exits 0, so the pipeline's status is jq's — `jq -e`
-# checks keep working.
+# Strip CR centrally so captured keys cannot carry invisible trailing bytes.
+# `command jq` prevents recursion; pipefail preserves jq's exit status.
 jq() { command jq "$@" | tr -d '\r'; }
 
 GH_BIN="${UPSTREAM_WATCH_GH:-gh}"
@@ -536,13 +519,8 @@ if [ ! -f "$REGISTRY_FILE" ]; then
     exit 2
 fi
 
-# Path matching is the trap: the registry stores Windows-style lowercase
-# paths (c:/users/...) while resolve_himmel_root under Git Bash returns
-# /c/Users/... -- so on WINDOWS normalize both sides (backslash -> /, strip
-# trailing slash, fold a leading MSYS /c/ to c:/, then lowercase) before
-# comparing. Case folding and the drive-letter fold are deliberately Windows-
-# ONLY: Linux and macOS filesystems are case-sensitive, and folding there
-# would match two genuinely different checkouts that differ only by case.
+# Match paths case-sensitively first, then compare filesystem identity so
+# aliases on case-insensitive volumes still resolve to the same checkout.
 reg_rc=0
 # shellcheck disable=SC2016  # the node program is single-quoted ON PURPOSE:
 # its $ and ` characters belong to JavaScript (regex anchors, template
@@ -553,31 +531,11 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
     let j;
     try { j = JSON.parse(fs.readFileSync(e.REG, "utf8")); }
     catch (err) { console.error("registry parse error: " + err.message); process.exit(2); }
-    // Case folding and the MSYS drive-letter fold are WINDOWS-ONLY. NTFS is
-    // case-insensitive and the registry stores these paths lowercased, so
-    // Windows needs both. Linux and macOS filesystems are case-SENSITIVE:
-    // folding there would let ~/work/Himmel and ~/work/himmel -- two genuinely
-    // different checkouts -- match the same registry entry and route the
-    // report to the wrong bucket. The `/c/...` -> `c:/...` rewrite is likewise
-    // an MSYS artifact; on Linux a real top-level `/c/` directory must stay a
-    // path, not become a drive letter.
-    //
-    // process.platform is only a proxy for FS case-sensitivity (a default
-    // macOS volume is case-insensitive, a Linux box can mount one), so the
-    // string compare below is the fast path and a miss falls back to an
-    // IDENTITY compare: stat both paths and accept when dev AND ino agree.
-    // That matches a case-differing or symlinked entry on a case-insensitive
-    // volume and never matches two different checkouts on a case-sensitive one.
-    const isWin = process.platform === "win32";
+    // A string miss falls back to dev/ino identity, covering symlinks and
+    // case-insensitive volumes without folding distinct POSIX checkouts.
     function norm(p) {
         if (!p) return "";
-        let s = String(p).replace(/\\/g, "/").replace(/\/+$/, "");
-        if (isWin) {
-            const m = s.match(/^\/([A-Za-z])\/(.*)$/);
-            if (m) s = m[1] + ":/" + m[2];
-            s = s.toLowerCase();
-        }
-        return s;
+        return String(p).replace(/\/+$/, "");
     }
     const target = norm(e.HROOT);
     // A path that does not exist here (or any stat error) means "not this

@@ -206,13 +206,8 @@ probe_version() {
   local cmd_arr out
   read -r -a cmd_arr <<< "$VERSION_COMMAND"
   command -v "${cmd_arr[0]}" >/dev/null 2>&1 || return 1
-  # Only use `timeout` if it is the GNU/coreutils one (CR glm-4). On a minimal
-  # Git-Bash, `command -v timeout` can resolve to Windows' timeout.exe, which is
-  # a SLEEP with `/T` syntax, not a command wrapper — it would consume the
-  # probe's argv, fail, and make an installed tool read as "not installed"
-  # (rc 2). `timeout --help` naming coreutils is the cheap discriminator;
-  # anything else falls through to running the probe unbounded, the same
-  # graceful-degrade the drift guard uses.
+  # Only use GNU/coreutils timeout; otherwise run the probe unbounded,
+  # the same graceful-degrade the drift guard uses.
   if command -v timeout >/dev/null 2>&1 && timeout --help 2>&1 | grep -qi 'coreutils\|GNU'; then
     out=$(timeout 20 "${cmd_arr[@]}" 2>&1)
   else

@@ -42,39 +42,17 @@ THRESHOLD="${CODEX_STUCK_THRESHOLD_SECS:-1800}"
 WORKSPACE="${1:-$PWD}"
 
 NODE_BIN=""
-for c in node node.exe; do
-  if command -v "$c" >/dev/null 2>&1; then NODE_BIN="$c"; break; fi
-done
+if command -v node >/dev/null 2>&1; then NODE_BIN=node; fi
 if [ -z "$NODE_BIN" ]; then
   echo "cannot-read: node not found on PATH (needed to parse the JSON registry)." >&2
   exit 2
 fi
 
-# --- platform + pid liveness (mirror arm-resume.sh _pid_alive) ---------------
-case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-  msys*|cygwin*|win32*|MINGW*|MSYS*) PLATFORM=windows ;;
-  linux*|Linux*)                     PLATFORM=linux ;;
-  darwin*|Darwin*)                   PLATFORM=macos ;;
-  *)                                 PLATFORM=unknown ;;
-esac
-
+# --- pid liveness (mirror arm-resume.sh _pid_alive) -------------------------
 _pid_alive() {
   local pid="$1"
   [ -n "$pid" ] || return 1
-  case "$PLATFORM" in
-    windows)
-      local out rc
-      out=$(MSYS_NO_PATHCONV=1 tasklist /FI "PID eq $pid" 2>&1); rc=$?
-      case "$out" in
-        *"No tasks"*) return 1 ;;
-        *"$pid"*)     [ "$rc" -eq 0 ] && return 0 ;;
-      esac
-      return 1
-      ;;
-    *)
-      kill -0 "$pid" 2>/dev/null
-      ;;
-  esac
+  kill -0 "$pid" 2>/dev/null
 }
 
 # --- resolve the state dir(s) for this workspace -----------------------------

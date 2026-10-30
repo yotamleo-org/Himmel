@@ -77,11 +77,11 @@ done
 
 # --- 2. gen-briefs.py worker nonces --------------------------------------------
 printf '#!/usr/bin/env bash\necho "created worktree $1"\n' > "$WORK/wt.sh"; chmod +x "$WORK/wt.sh"
-printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/legs.json"
+printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/workers.json"
 n=0
 for letter in "" ABC; do
     n=$((n + 1)); mkdir -p "$WORK/repo$n"
-    out="$(GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$HERE/gen-briefs.py" "$WORK/legs.json" \
+    out="$(GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$HERE/gen-briefs.py" "$WORK/workers.json" \
         --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief \
         --bucket "$WORK/briefs$n" --date 2026-10-08 --repo "$WORK/repo$n" --handover-root "$WORK/handovers" \
         --work-dir "$WORK/w$n" --deadline 1791475000 ${letter:+--letter "$letter"} 2>/dev/null)"

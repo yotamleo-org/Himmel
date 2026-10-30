@@ -165,8 +165,7 @@ QMD_REFRESH_STAMP="${QMD_REFRESH_STAMP:-$(dirname "$QMD_INDEX_PATH")/refresh-sta
 # index.
 #
 # complete : the no-op pass. Matched as a fixed ASCII substring only — the real
-#            line is prefixed with a UTF-8 check mark, and this output is read
-#            under the OEM codepage when the cadence fires from cmd.exe.
+#            line is prefixed with a UTF-8 check mark.
 # did-work : the pass embedded something, i.e. work WAS pending. Regex, because
 #            the counts vary.
 QMD_SENTINEL_COMPLETE='All content hashes already have embeddings'
@@ -441,8 +440,7 @@ fi
 # applies to the `claude` it pins. `command -v` also resolves shell FUNCTIONS and
 # ALIASES (to their own name) and relative PATH entries (to a relative path);
 # either would be meaningless once a scheduled runner has cd'd elsewhere under a
-# different PATH. Windows note: `command -v qmd` yields an extensionless path
-# that MSYS resolves to qmd.exe, and -f/-x accept it.
+# different PATH.
 case "$QMD_BIN" in
     /*|[A-Za-z]:[/\\]*) : ;;
     *)
@@ -585,8 +583,7 @@ fi
 # progress evidence; the fork logs "embed: request failed status=<code>" for
 # every failed provider attempt, which is how the rc 5 cause names the status.
 # A no-op embed prints "All content hashes already have embeddings". Match the
-# ASCII substring only: the real line is prefixed with a UTF-8 check mark, and
-# this output is read under the OEM codepage when the cadence fires from cmd.exe.
+# ASCII substring only: the real line is prefixed with a UTF-8 check mark.
 EMBED_MAX_SESSIONS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SESSIONS:-}" 4)
 [ "$EMBED_MAX_SESSIONS" -ge 1 ] || EMBED_MAX_SESSIONS=1
 EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)

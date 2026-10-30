@@ -1,0 +1,42 @@
+# path-regex	line-regex (empty = whole file)	reason
+^docs/migration/renamed-identifiers\.md$		K1 exempt file: the rename record
+^scripts/lib/rename-aliases\.tsv$		K1 exempt file: old-to-new alias table
+^CHANGELOG\.md$		K2 history
+^docs/release/		K2 history
+^docs/migration/		K2 history
+(^|/)fixtures?/		K3 frozen fixtures
+(^|/)testdata/		K3 frozen fixtures
+\.(jsonl|log)$		K3 frozen logs
+^docs/evals/		K4 generated from scripts/cr/evals-page-gen.py
+^docs/guide/dev-graph/graph\.json$		K4 generated graph
+^marketplace/plugins/claude-hud/dist/		K4 built from src/
+/\.obsidian/plugins/[^/]+/main\.js$		K4 vendored obsidian plugin
+^scripts/qmd/vocab-expand\.py$		K6 deliberate leg/worker synonym map
+^scripts/qmd/test-vocab-expand\.sh$		K6 tests the synonym map
+^scripts/setup/migrate-renamed-names\.py$		K6 migration reads the old names
+^scripts/himmelctl/lib/probes\.js$		K6 regexes that read the old spelling
+^scripts/jira/reconcile-lib\.mjs$		K6 regexes that read the old spelling
+^scripts/cr/known-findings\.json$		K6 generated CR history keys
+^scripts/lanes/bench/scorecard/memory-traps\.json$		K6 names the real memory file leg-lifecycle.md
+^templates/luna-second-brain/CHANGELOG\.md$		K6 history
+^scripts/one-shot/(check-leg-term\.sh|leg-term-allow\.tsv)$		the helper and its allowlist name the term
+.	(block|guard)-leg-[a-z-]+	K5 old hook names; leaves with HIMMEL-6647
+.	(^|[^a-z])leg-[a-z0-9-]+\.(sh|md|py|mjs|js)	K5 old forwarder and template file names; leaves with HIMMEL-6647
+.	(close-wrapped|headed-arm)-leg	K5 old forwarder names; leaves with HIMMEL-6647
+.	leg-(impl|bus|vm|preface|brief-template|lifecycle)	K5 old profile, template and memory names; leaves with HIMMEL-6647
+.	\.leg-settings	K5 legacy settings read; leaves with HIMMEL-6647
+.	(^|[^a-z0-9-])--leg([^a-z-]|$)	K5 legacy --leg flag; leaves with HIMMEL-6647
+.	-leg(\[N\]|N|<k>|[0-9])	K5 legacy -leg[N] doc spelling; leaves with HIMMEL-6647
+^docs/glossary\.md$	tick fields `legs=`	glossary old-to-new map row (F16)
+.	nextleg	K5 old chief session name; leaves with HIMMEL-6647
+.	leg-(burn|pr-open|timeline|relaunch|over-by-day)	K5 old forwarder, ledger and fixture names; leaves with HIMMEL-6647
+.	fixtures/leg-	K5 old fixture directory names; leaves with HIMMEL-6647
+.	[?&]leg=	K5 legacy query parameter read; leaves with HIMMEL-6647
+.	(^|[^a-zA-Z_])leg=	K5 legacy denial-ack key; leaves with HIMMEL-6647
+.	-leg\(N\??\)	K5 legacy -leg[N] doc spelling regexes; leaves with HIMMEL-6647
+.	HIMMEL-[0-9]+ leg [a-z]	K5 old sub-ticket leg-letter reference; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/worker-digest-step\.sh$	state/leg-digest	K5 legacy state-dir read; leaves with HIMMEL-6647
+^scripts/lib/legacy-names\.sh$	\(console, leg, 	K5 legacy-name reader; leaves with HIMMEL-6647
+^scripts/lib/worker-identity\.sh$	`legs:`|legs: line	K5 legacy-name reader; leaves with HIMMEL-6647
+.	rename-aliases	K5 rename-alias table readers; leaves with HIMMEL-6647
+^scripts/config-ui/(agui(-web/src/board-model|/fleet)|tests/e2e/agui-fixtures)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys and the e2e fixture that feeds them (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647

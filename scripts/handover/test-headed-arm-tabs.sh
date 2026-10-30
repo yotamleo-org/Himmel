@@ -15,7 +15,7 @@
 #            saves its env, then waits; TERM exits it 0, as claude does.
 #   pgrep    matches the -f pattern against the live fixture pids.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh.
+# Platform guard: POSIX bash 3.2+, same as headed-arm.sh.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"

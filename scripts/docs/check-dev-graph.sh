@@ -22,7 +22,7 @@
 # Anchors are fixed strings (grep -F) without backslash or tab. Line numbers are
 # resolved here and never committed.
 #
-# Platform guard (gitbash-only): bash 3.2+, jq, awk, grep, sort, comm.
+# Platform guard: bash 3.2+, jq, awk, grep, sort, comm.
 set -u
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)

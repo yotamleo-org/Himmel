@@ -79,6 +79,18 @@ test("J5. a saved secret is set in the store and its value is nowhere else", asy
   const row = page.locator(".srow", { has: page.locator(`input[data-secret="${NAME}"]`) });
   await expect(row).toContainText("not set");
   await row.locator("input").fill(secret);
+  const reveal = row.locator('button[data-act="reveal"]');
+  await reveal.click();
+  await expect(row.locator("input")).toHaveAttribute("type", "text");
+  await expect(reveal).toHaveText("hide");
+  await expect(reveal).toHaveAttribute("aria-pressed", "true");
+  expect(await leaks(page, secret)).toEqual(["a field"]);
+  await reveal.click();
+  await expect(row.locator("input")).toHaveAttribute("type", "password");
+  await expect(reveal).toHaveText("show");
+  await expect(reveal).toHaveAttribute("aria-pressed", "false");
+  await expect(row.locator("input")).toHaveValue(secret);
+  expect(await leaks(page, secret)).toEqual(["a field"]);
   await row.locator('button[type="submit"]').click();
   await expect(row).toContainText("saved");
   await expect(row.locator(".st")).toHaveText("set");

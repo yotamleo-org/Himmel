@@ -1,0 +1,7 @@
+{"schema":"himmel.board/1","generated_at":"2026-10-16T12:00+02:00","console":{"name":"c"},
+ "needs_you":[{"leg":"N1","verb":"go","action":"GO","detail":"","command":null,"since":null}],
+ "legs":[
+  {"leg":"N1","ticket":"HIMMEL-1","goal":"do it","state":"building","stage":"live","stages":{"dispatch":null,"live":"2026-10-16T10:00+02:00","pr":null,"ready":null,"go":null,"merged":null},"pr":null,"links":{"ticket":null,"brief":null},"timeline":[]},
+  {"leg":"N2","ticket":"HIMMEL-1","goal":"do it","state":"building","stage":"live","stages":{"dispatch":null,"live":"2026-10-16T10:00+02:00","pr":null,"ready":null,"go":null,"merged":null},"pr":null,"links":{"ticket":null,"brief":null},"timeline":[]}],
+ "legend":{},"cards":{},
+ "trends":{"leg_time":{"unit":"min","today":[{"leg":"N1","live_at":null,"merged_at":null,"live_to_merged_min":null,"to_pr_min":null,"ready_to_merged_min":null}]}}}

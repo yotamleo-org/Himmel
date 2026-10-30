@@ -51,7 +51,8 @@ try {
   // Keep Unix socket fixture paths below sockaddr_un's pathname limit: the root is under /tmp,
   // not os.tmpdir() (CI's TMPDIR is already /tmp/himmel-suite.XXXXXX deep).
   const scratch=path.join(root,String(passed+failed));
-  const r=sandbox(scratch,['bash',path.join(repo,suite)],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
+  const args=suite==='scripts/handover/test-merge-on-green.sh'?['--fixture-cleanup-only']:[];
+  const r=sandbox(scratch,['bash',path.join(repo,suite),...args],{cwd:repo,encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
   assert.strictEqual(r.status,0,'suite exit '+r.status+'; '+(r.error||'')+'\n'+r.stdout+'\n'+r.stderr);
   const left=dirs(scratch).filter(p=>path.basename(p).startsWith(prefix));
   assert.strictEqual(left.length,0,'left '+left.length+' directories: '+left.slice(0,5).join(', '));

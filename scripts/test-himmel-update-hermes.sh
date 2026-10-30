@@ -696,25 +696,23 @@ if [ "$restarts21" -eq 2 ]; then echo "ok: mixed shapes -> exactly two restart c
 
 # ── report_cadence_stale() — stale cadence runner nudge ─────
 # Same lib seams; *_BAT_DIR point at fixture runner dirs.
-# cadence_runner_stamp now reads only the CURRENT platform's
-# runner extension (.sh on Linux/macOS, .bat on Windows).
-# CADENCE_RUNNER_PLATFORM_OS is the test seam that forces which platform
-# "current" means, mirroring scheduler_backend_os's SCHEDULER_BACKEND_OS
-# override — it lets these fixtures exercise both platform branches without
-# an actual Windows host.
+# cadence_runner_stamp reads only POSIX .sh runners.
 
 # Case 5: no runners present anywhere → silent no-op (cadences not armed).
 out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 if [ -z "$out" ]; then echo "ok: cadence absent → silent"; else echo "FAIL: cadence absent not silent"; printf '%s\n' "$out"; fail=1; fi
 
-# Case 6: a .bat runner stamped current, read under a forced-Windows
-# platform → shared probe returns its version.
+# Case 6: a retired-format-only directory is not armed, even if a stale
+# platform override remains in the environment.
 mkdir -p "$tmp/cad-bat-current"
 printf 'rem himmel-cadence-runner-format: %s\r\n' "$CADENCE_RUNNER_FORMAT_VERSION" \
   > "$tmp/cad-bat-current/pipeline-harvest.bat"
-ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-bat-current")
-if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: .bat stamp probed (forced-Windows)"; else echo "FAIL: .bat stamp probe got '$ver'"; fail=1; fi
+if ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-bat-current"); then
+  echo "FAIL: retired-format probe unexpectedly armed (got '$ver')"; fail=1
+else
+  echo "ok: retired-format-only directory is not armed"
+fi
 
 # Case 6b: the SAME .bat-only fixture, read as Linux → the
 # dormant Windows twin is invisible to the Linux reader (reads as "not
@@ -790,11 +788,9 @@ out=$(CADENCE_RUNNER_PLATFORM_OS=linux PIPELINE_BAT_DIR="$tmp/cad-platform-twin"
 if [ -z "$out" ]; then echo "ok: pipeline platform-twin fixture → no STALE line on Linux"; else echo "FAIL: pipeline platform-twin fixture wrongly nudged on Linux"; printf '%s\n' "$out"; fail=1; fi
 
 ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-platform-twin")
-if [ "$ver" = "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" ]; then echo "ok: Windows probe reads only the .bat twin (stale)"; else echo "FAIL: Windows probe got '$ver'"; fail=1; fi
+if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: retired platform override cannot select the .bat twin"; else echo "FAIL: retired platform override changed the POSIX stamp to '$ver'"; fail=1; fi
 
-# Case 13: cadence_user_home — with USERPROFILE unset it echoes $HOME verbatim
-# (the POSIX worker; the Windows USERPROFILE/cygpath worker is exercised by real
-# Git-Bash runs where the two homes coincide).
+# Case 13: cadence_user_home echoes $HOME verbatim.
 uh=$(USERPROFILE='' HOME="$tmp/fake-home" cadence_user_home)
 if [ "$uh" = "$tmp/fake-home" ]; then echo "ok: cadence_user_home falls back to HOME"; else echo "FAIL: cadence_user_home got '$uh'"; fail=1; fi
 

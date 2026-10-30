@@ -5,7 +5,7 @@ import { test, expect } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { graphOf, usageOf } from "../agui/fleet";
+import { CADENCE_IDS, cadenceOf, graphOf, usageOf } from "../agui/fleet";
 import { CLOUD_COMMENT_WINDOW, CLOUD_PR_PAGE, CLOUD_RECENT_MS, cloudPrs, cloudQuery, cloudRoutes, GH_TTL_MS, readCloudPrs } from "../agui/fleet-cloud";
 
 const CHIEF = "HIMMEL-nextleg-2026-10-07BN-roadmap-chief";
@@ -13,12 +13,12 @@ const PRIOR = "HIMMEL-nextleg-2026-10-07BM-roadmap-chief";
 
 test("a worker's parent is the console its brief names", () => {
   const doc = `# HIMMEL-1 — x — worker N1 (opus, native), 2026-10-07\n\n> **You are N1.** Your RETASK token is \`BN-N1-0000aaaa\`; your console is **\`${CHIEF}\`**\n> (the only session)\n\n## Results\n\n- 09:00 LIVE — started\n`;
-  expect(graphOf("leg", doc)).toEqual({ parent: CHIEF, predecessor: null });
+  expect(graphOf("worker", doc)).toEqual({ parent: CHIEF, predecessor: null });
 });
 
 test("a worker that accepted a succession hangs under the console it accepted, the newest one winning", () => {
   const doc = `> Your console is **\`${PRIOR}\`**.\n\n## Results\n\n- 09:00 LIVE — started\n- SUCCESSION accepted: ${PRIOR} replaces HIMMEL-nextleg-2026-10-07BL-roadmap-chief\n- SUCCESSION accepted: \`${CHIEF}\` replaces ${PRIOR}\n- 10:00 LIVE — PR 5 open\n`;
-  expect(graphOf("leg", doc).parent).toBe(CHIEF);
+  expect(graphOf("worker", doc).parent).toBe(CHIEF);
 });
 
 test("a judge session's parent is the console that dispatched it, across the brief's line wrap", () => {
@@ -28,9 +28,25 @@ test("a judge session's parent is the console that dispatched it, across the bri
 
 test("consult children use their dispatch edge and stamped succession overrides the original console", () => {
   expect(graphOf("consult" as any, `dispatched by \`${CHIEF}\``).parent).toBe(CHIEF);
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
+  expect(graphOf("worker", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
   // the relay wording a worker improvised: it still names the new chief
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
+  expect(graphOf("worker", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
+});
+
+test("HIMMEL-8161: a cadence session is told by its cadence fragment or its unit name, an operator session never", () => {
+  const frag = ["claude", "--model", "x", "--settings", "/home/u/.claude/pipeline-cadence/cadence-settings.json", "prompt"];
+  expect(cadenceOf("pid 7", frag)).toBe("cadence");
+  expect(cadenceOf("luna-fb", ["claude"])).toBe("luna-fb");
+  expect(cadenceOf("qmd-cadence", ["claude"])).toBe("qmd");
+  expect(cadenceOf("graphmap-himmel", ["claude"])).toBe("graphmap");
+  expect(cadenceOf("scratch-session", ["claude"])).toBeNull();
+  expect(cadenceOf("HIMMEL-1-N1-x-2026-10-30", ["claude", "-n", "x"])).toBeNull();
+  // only the --settings value, by exact file name: another settings file or a prompt that names it is not a cadence
+  expect(cadenceOf("pid 8", ["claude", "--settings", "/home/u/non-cadence-settings.json"])).toBeNull();
+  expect(cadenceOf("pid 9", ["claude", "-p", "read cadence-settings.json"])).toBeNull();
+  // every cadence the install registry offers is recognised
+  const registry = JSON.parse(readFileSync(join(import.meta.dir, "../../himmelctl/lib/cadence-registry.json"), "utf8"));
+  for (const c of registry.cadences) expect(CADENCE_IDS).toContain(c.id);
 });
 
 test("a console hangs under the operator and names the console it succeeded", () => {
@@ -40,7 +56,7 @@ test("a console hangs under the operator and names the console it succeeded", ()
 
 test("no doc, or a name that is not a plain session name, links nothing (never a guess)", () => {
   expect(graphOf("interactive", "")).toEqual({ parent: null, predecessor: null });
-  expect(graphOf("leg", "> your console is **`bad name; rm -rf`**\n")).toEqual({ parent: null, predecessor: null });
+  expect(graphOf("worker", "> your console is **`bad name; rm -rf`**\n")).toEqual({ parent: null, predecessor: null });
 });
 
 const rec = (o: Record<string, unknown>) => JSON.stringify(o);

@@ -34,8 +34,7 @@
 # pipeline-cadence's 02:00/03:00/04:00 workers (no overlap on the same machine)
 # and before the workday, so the drift worker's PR is already waiting when the
 # operator checks (the resync worker's unattended run opens nothing — see
-# above). StartWhenAvailable=true: a fire missed because the machine was
-# off/asleep catches up when it is next on. See the WORKER_SESSION_DRIFT/WORKER_SESSION_RESYNC
+# above). See the WORKER_SESSION_DRIFT/WORKER_SESSION_RESYNC
 # block below for why this is two tasks in one script rather than one task or
 # two scripts.
 #
@@ -55,41 +54,31 @@
 #   bash scripts/upstreams/drift-fix-cadence.sh disarm [--dry-run]
 #
 # Test seams (used by test-drift-fix-cadence.sh):
-#   DRIFTFIX_SCHTASKS     command invoked instead of `schtasks` (Windows)
 #   DRIFTFIX_CRONTAB      command invoked instead of `crontab` (POSIX)
-#   DRIFTFIX_BAT_DIR      where the persistent runner (.bat/.sh) + log live
+#   DRIFTFIX_BAT_DIR      where the persistent runner (.sh) + log live
 #   DRIFTFIX_CLAUDE       claude binary override (else: command -v claude)
 #   DRIFTFIX_HIMMEL_ROOT  overrides the resolved primary checkout outright
-#   DRIFTFIX_PLATFORM     force `windows` or `posix` (else: derived from OSTYPE)
+#   DRIFTFIX_PLATFORM     override OS detection (`posix` is supported)
 #
 # Exit codes:
 #   0  done (armed / status printed / disarmed / dry-run complete)
 #   1  usage or input error (bad subcommand, flag, --time, --resync-time, --model)
 #   2  env unusable (no scheduler, no claude, unknown platform, missing payload)
 #   3  dedup block — either worker already armed; --force replaces
-#   4  scheduler invocation failed (create/delete/query), or the post-arm
-#      verify failed (Windows: both workers are deleted before exiting, so arm
-#      is all-or-nothing — never one worker live and the other missing)
+#   4  scheduler invocation failed
 set -euo pipefail
 
-SCHTASKS_BIN="${DRIFTFIX_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${DRIFTFIX_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/prim.sh
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 4
 
-# Cross-platform user-home resolution: on Windows Git-Bash the MSYS
-# $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
 resolve_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
-# Persistent runner home — deliberately NOT %TEMP%/mktemp: this task recurs
+# Persistent runner home — deliberately not a temp directory: this task recurs
 # daily and temp sweeps would silently kill the cadence.
 BAT_DIR="${DRIFTFIX_BAT_DIR:-$(resolve_user_home)/.claude/drift-fix-cadence}"
 
@@ -147,15 +136,13 @@ FORCE=0
 #
 # Deliberately ONE script rather than a second near-identical cadence file: the
 # arm/status/disarm/dedup/rollback machinery below is the part that is hard to
-# get right (locale-independent query classification, StartWhenAvailable XML,
-# fail-closed crontab reads), and a copy of it would drift from this one.
+# get right (fail-closed crontab reads and runner restoration), and a copy of
+# it would drift from this one.
 WORKER_SESSION_DRIFT="HIMMEL-DriftFix"
 WORKER_SESSION_RESYNC="HIMMEL-ForkResync"
 
-# Payload prompts. ASCII-only on purpose: the .bat is parsed by cmd.exe under
-# the OEM codepage, where UTF-8 punctuation mojibakes. One line each, same
-# reason. The real runbooks live in .claude/commands/{drift-fix,fork-resync}.md
-# — these are only the invocations.
+# Payload invocations; the real runbooks live in
+# .claude/commands/{drift-fix,fork-resync}.md.
 PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence (HIMMEL-1323) - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed."
 PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly carried-fork re-sync cadence (HIMMEL-1323/HIMMEL-1435) - fully autonomous, no user prompts; audit every BEHIND scripts/upstreams.json entry with a fork block (each entry's own note says whether a non-additive result is a regression to report or an expected known gap), then STOP at the end of step 3; NEVER run resync-fork.sh --push and do not open a branch or PR; report every result."
 
@@ -283,7 +270,7 @@ if ! [[ "$RESYNC_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
     echo "ERR drift-fix-cadence: --resync-time must be HH:MM (24h), got: $RESYNC_TIME" >&2
     exit 1
 fi
-# The model lands inside a generated .bat/cron line; keep it to the shape a
+# The model lands inside a generated runner; keep it to the shape a
 # model name actually has rather than escaping arbitrary text into a shell.
 if ! [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     echo "ERR drift-fix-cadence: --model must be a plain model name (letters, digits, . _ -), got: $MODEL" >&2
@@ -291,13 +278,12 @@ if ! [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 
 case "${DRIFTFIX_PLATFORM:-${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}}" in
-    windows|msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     posix|linux*|darwin*|freebsd*|Linux|Darwin) PLATFORM=posix ;;
     *) PLATFORM=unknown ;;
 esac
 if [ "$PLATFORM" = "unknown" ]; then
     echo "ERR drift-fix-cadence: unsupported platform '${OSTYPE:-unknown}'." >&2
-    echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+    echo "    Supported: Linux/macOS (crontab)" >&2
     exit 2
 fi
 
@@ -337,10 +323,7 @@ require_payload() {
 #
 # The override is existence-checked but the PATH lookup is not: `command -v`
 # already guarantees an executable, whereas a hand-set DRIFTFIX_CLAUDE pointing
-# at nothing would arm a cadence that fails silently every night. Deliberately
-# NOT applying -x to the `command -v` result too — on Windows the claude shim
-# resolves through .cmd/.exe extension search, and a false negative there would
-# block real arming on the platform this cadence primarily runs on.
+# at nothing would arm a cadence that fails silently every night.
 resolve_claude() {
     if [ -n "${DRIFTFIX_CLAUDE:-}" ]; then
         [ -x "$DRIFTFIX_CLAUDE" ] || return 1
@@ -349,7 +332,7 @@ resolve_claude() {
     command -v claude 2>/dev/null
 }
 
-# Shared by both arm paths so the two platforms cannot drift on the message.
+# Explain which arm-time lookup failed.
 claude_unresolved_msg() {
     if [ -n "${DRIFTFIX_CLAUDE:-}" ]; then
         echo "ERR drift-fix-cadence: DRIFTFIX_CLAUDE is set to '$DRIFTFIX_CLAUDE' but that is not an executable file" >&2
@@ -384,7 +367,7 @@ status_log() {
     fi
 }
 
-# Best-effort: pre-trust the himmel checkout so an unattended `< NUL` run can't
+# Best-effort: pre-trust the himmel checkout so an unattended run can't
 # stall on Claude Code's interactive workspace-trust prompt. Never
 # fatal — a pre-seed failure must not block arming.
 pretrust_workspace() {
@@ -396,452 +379,6 @@ pretrust_workspace() {
     fi
     bash "$lib" "$HIMMEL_ROOT" >/dev/null 2>&1 \
         || echo "WARN drift-fix-cadence: workspace-trust pre-seed failed for '$HIMMEL_ROOT' (arm continues; first run may prompt to trust the folder)" >&2
-}
-
-# --------------------------------------------------------------------------
-# Windows (schtasks)
-# --------------------------------------------------------------------------
-
-# MSYS_NO_PATHCONV=1 per call: without it Git-Bash mangles /query, /create etc.
-# into Windows-rooted paths before schtasks ever sees them.
-run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-# Emit the .bat runner: stamp the format version, rotate the log, stamp the fire
-# time, cd into the primary checkout (a failed cd lands in the log rather than
-# running claude from the wrong cwd), then the bounded interactive claude run.
-# `< NUL` gives stdin EOF; there is deliberately no -p/--print.
-# EVERY parameter arrives already cadence_cmd_escape'd — the convention the
-# sibling emitters settled on: if it is not named _esc it does not
-# belong in a printf here.
-emit_bat() {
-    local root_esc="$1" claude_esc="$2" prompt_esc="$3" log_esc="$4" model_esc="$5"
-    printf '@echo off\r\n'
-    printf 'rem drift-fix-cadence runner\r\n'
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt.
-    cadence_bat_editor_set
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_esc" "$log_esc" "$log_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_esc"
-    printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$root_esc" "$log_esc"
-    # launch-profile-ok: audited, NOT folded: this Windows .bat runs the drift-fix/fork-resync runbooks, which need the himmel + pr-review plugin skills the operator's default set carries; a named profile for it is follow-up work, and the .bat cannot call plugin-profiles.mjs at arm time
-    printf 'call "%s" --model "%s" "%s" < NUL >> "%s" 2>&1\r\n' "$claude_esc" "$model_esc" "$prompt_esc" "$log_esc"
-    printf 'echo [exit rc=%%ERRORLEVEL%%] >> "%s"\r\n' "$log_esc"
-    printf 'exit /b %%ERRORLEVEL%%\r\n'
-}
-
-# Escape the three XML-significant characters for element-body text. sed, not
-# bash ${s//&/&amp;}: bash 5.1+ treats a literal `&` in a substitution
-# REPLACEMENT as the matched text, a version-dependent trap.
-xml_escape() {
-    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-# schtasks /create has no flag for StartWhenAvailable, so a daily run is
-# SILENTLY SKIPPED when the machine was off/asleep. The only CLI route is
-# /create /xml (same approach as the sibling cadences).
-#
-# The `encoding="UTF-16"` declaration on ASCII bytes is DELIBERATE and correct
-# here — do not "fix" it. It looks like a parse risk, but it is disproved by
-# production evidence, not
-# argument: real `schtasks /create /xml` accepts the declaration without a
-# BOM or a UTF-16LE re-encode. The sibling emitters (graphmap, this one) share
-# the convention, so "fixing" it would break a working pattern in both places
-# at once.
-#
-# The load-bearing constraint is the OTHER direction: the bytes must STAY
-# ASCII. cmd.exe's OEM codepage mojibakes non-ASCII, and a non-ASCII byte here
-# would genuinely require a real UTF-16LE encode to match the declaration —
-# which is why every interpolated value above is ASCII-only by construction.
-emit_task_xml() {
-    local bat_win="$1" start_time="$2" vbs_win vbs_args
-    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-    # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
-    # still allocate visible chiefs; wscript //B hosting the .vbs shim (which
-    # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
-    # WScript.Quit) allocates zero chiefs. The shim path is derived from the
-    # .bat path through cadence_vbs_path — the SAME helper cmd_arm writes the
-    # file with — so the referenced path and the written file can never disagree.
-    # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
-    # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
-    # re-arm survives — proven in test-cadence-format.sh).
-    vbs_win=$(cadence_vbs_path "$bat_win")
-    vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-    cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel drift-fix-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-      <ScheduleByDay>
-        <DaysInterval>1</DaysInterval>
-      </ScheduleByDay>
-    </CalendarTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-}
-
-schtasks_create_xml() {
-    local name="$1" start_time="$2" bat_win="$3" err_file="$4"
-    local xml_file xml_win rc
-    if ! xml_file=$(mktemp -t drift-fix-cadence.xml.XXXXXX 2>"$err_file"); then
-        return 1
-    fi
-    emit_task_xml "$bat_win" "$start_time" > "$xml_file"
-    if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-        rm -f "$xml_file"; return 1
-    fi
-    set +e
-    run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-    rc=$?
-    set -e
-    rm -f "$xml_file"
-    return "$rc"
-}
-
-# Real schtasks always emits one of these on a missing task, so rc=1 WITHOUT a
-# match (silent rc=1 included) is a real query failure, not "not armed".
-NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-# query_task: rc 0 = armed (QUERY_OUT set), 1 = trusted not-found, 2 = query
-# failed. Fail-CLOSED — a failed query must never read as "not armed" (arm would
-# double-register, disarm would delete the runner while the task stayed live).
-QUERY_OUT=""
-query_task() {
-    local name="$1" rc err_file
-    err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
-    set +e
-    QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then rm -f "$err_file"; return 0; fi
-    if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-        rm -f "$err_file"; return 1
-    fi
-    echo "ERR drift-fix-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-    cat "$err_file" >&2
-    echo "    If this is a LOCALIZED 'task does not exist' message, the task may simply" >&2
-    echo "    not be armed (only English stderr is trusted here). Verify / remove manually:" >&2
-    echo "        schtasks /query /tn $name" >&2
-    echo "        schtasks /delete /tn $name /f" >&2
-    rm -f "$err_file"
-    return 2
-}
-
-# Roll back BOTH workers, best-effort (a worker that was never created simply errors
-# on /delete, which is ignored) — arm is all-or-nothing, so any failure past
-# the dedup gate rolls back whatever the run may have already created.
-# Rollback also removes the $slug.vbs shims this
-# arm may have published — a failed arm must not leave orphaned shims behind
-# for a later disarm to trip over. Only once the worker's task is confirmed GONE,
-# though (query_task rc 1, trusted not-found): if the /delete itself failed,
-# that task is still armed and pointing at its shim, and removing the shim
-# THEN would leave an armed task referencing nothing — the exact state this
-# file's publish/registration ordering exists to prevent. A query error
-# (rc 2) keeps the shim for the same fail-safe reason; disarm removes both.
-win_rollback_both() {
-    local worker rc
-    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        run_schtasks /delete /tn "$worker" /f >/dev/null 2>&1 || true
-        rc=0
-        query_task "$worker" 2>/dev/null || rc=$?
-        if [ "$rc" -eq 1 ]; then
-            rm -f "$BAT_DIR/$(worker_slug "$worker").vbs"
-        fi
-    done
-}
-
-cmd_arm() {
-    command -v cygpath >/dev/null 2>&1 || {
-        echo "ERR drift-fix-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-        exit 2
-    }
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR drift-fix-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    cadence_require_wsh "drift-fix-cadence" || exit 2
-    require_payload
-    local claude_bin
-    if ! claude_bin=$(resolve_claude) || [ -z "$claude_bin" ]; then
-        claude_unresolved_msg
-        exit 2
-    fi
-
-    # Dedup guard, both workers. No /delete here: `/create /xml <file> /f` already
-    # force-overwrites IN PLACE, so --force just skips the rc=3 refusal and lets
-    # the replacement happen atomically AFTER all prep below has succeeded —
-    # deleting first would leave no cadence at all if a later step failed.
-    local worker worker_rc dedup_names=""
-    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        worker_rc=0
-        query_task "$worker" || worker_rc=$?
-        case "$worker_rc" in
-            0)
-                if [ "$FORCE" -eq 1 ]; then
-                    echo "drift-fix-cadence: --force set; existing task $worker will be replaced by /create /f" >&2
-                else
-                    if [ -z "$dedup_names" ]; then dedup_names="$worker"; else dedup_names="$dedup_names, $worker"; fi
-                fi
-                ;;
-            1) : ;;
-            *) exit 2 ;;
-        esac
-    done
-    if [ -n "$dedup_names" ]; then
-        {
-            echo "ERR drift-fix-cadence: already armed: $dedup_names."
-            echo ""
-            echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-            echo "    bash scripts/upstreams/drift-fix-cadence.sh status"
-        } >&2
-        exit 3
-    fi
-
-    pretrust_workspace
-
-    local root_win claude_win
-    if ! root_win=$(cygpath -w "$HIMMEL_ROOT" 2>&1); then
-        echo "ERR drift-fix-cadence: cygpath -w failed for himmel root: $root_win" >&2; exit 4
-    fi
-    if ! claude_win=$(cygpath -w "$claude_bin" 2>&1); then
-        echo "ERR drift-fix-cadence: cygpath -w failed for claude: $claude_win" >&2; exit 4
-    fi
-    # The .bat is launched by cmd.exe, which cannot run an extensionless target.
-    # Existence alone is NOT sufficient: an npm-style `claude` shell shim (a
-    # #!/usr/bin/env bash text file with no extension) exists on disk, passes an
-    # existence check, and bakes an extensionless path into the .bat that cmd.exe
-    # then cannot launch — the failure surfaces at 05:00 in a log nobody reads.
-    # MSYS usually makes `cygpath -w` append .exe for a native claude.exe (so a
-    # bare `command -v claude` resolves cleanly), but where `command -v` returned
-    # a literal extensionless shim, cygpath leaves it extensionless. Require a
-    # cmd-launchable extension ON TOP of existence, so a target cmd.exe cannot run
-    # fails at ARM time, when someone is present to act on it (CR round-9).
-    # REFUSE, don't warn (CR round-7 codex-1): arming into a known-broken state
-    # is worse than not arming — the failure then surfaces at 05:00, in a log
-    # nobody reads, on a cadence the operator believes is running.
-    local claude_ext claude_launchable=0
-    claude_ext=$(printf '%s' "${claude_win##*.}" | tr '[:upper:]' '[:lower:]')
-    case "$claude_ext" in
-        exe|cmd|bat|com) [ -f "$(cygpath -u "$claude_win" 2>/dev/null)" ] && claude_launchable=1 ;;
-    esac
-    if [ "$claude_launchable" -eq 0 ]; then
-        {
-            echo "ERR drift-fix-cadence: the resolved claude path is not a file cmd.exe can run:"
-            echo "    posix : $claude_bin"
-            echo "    win32 : $claude_win   <-- this is what the .bat would invoke"
-            echo ""
-            echo "It does not exist as a file, or it has no cmd-launchable extension"
-            echo "(.exe/.cmd/.bat/.com): cmd.exe cannot run an extensionless shell shim,"
-            echo "and MSYS's silent .exe-suffix resolution does not carry through cygpath"
-            echo "on every setup. Refusing to arm a cadence that would fail at fire time."
-            echo "Point DRIFTFIX_CLAUDE at the real executable and re-arm:"
-            echo "    DRIFTFIX_CLAUDE=/c/path/to/claude.exe bash scripts/upstreams/drift-fix-cadence.sh arm --force"
-        } >&2
-        exit 2
-    fi
-    [ "$DRY_RUN" -eq 0 ] && mkdir -p "$BAT_DIR"
-
-    local root_esc claude_esc model_esc
-    root_esc=$(cadence_cmd_escape "$root_win")
-    claude_esc=$(cadence_cmd_escape "$claude_win")
-    model_esc=$(cadence_cmd_escape "$MODEL")
-
-    # One iteration per worker. Dry-run only previews; the real path writes the
-    # .bat, creates the task, and verifies it — rolling back BOTH workers on any
-    # failure so arm never leaves one worker live and the other missing.
-    local slug time bat_file vbs_file bat_win log_file log_win prompt_esc log_esc err_file verify_rc
-    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(worker_slug "$worker")
-        time=$(worker_time "$worker")
-        bat_file="$BAT_DIR/$slug.bat"
-        # wscript //B shim lives beside the .bat; rollback + disarm
-        # remove both. The Windows path cadence_vbs_path derives from $bat_win is
-        # the same one emit_task_xml references, so write + reference agree.
-        vbs_file="$BAT_DIR/$slug.vbs"
-        log_file="$BAT_DIR/$slug.log"
-        if ! bat_win=$(cygpath -w "$bat_file" 2>&1); then
-            echo "ERR drift-fix-cadence: cygpath -w failed for $slug bat file: $bat_win" >&2
-            win_rollback_both; exit 4
-        fi
-        if ! log_win=$(cygpath -w "$log_file" 2>&1); then
-            echo "ERR drift-fix-cadence: cygpath -w failed for $slug log file: $log_win" >&2
-            win_rollback_both; exit 4
-        fi
-        prompt_esc=$(cadence_cmd_escape "$(worker_prompt "$worker")")
-        log_esc=$(cadence_cmd_escape "$log_win")
-
-        if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY drift-fix-cadence: would write $bat_file:"
-            emit_bat "$root_esc" "$claude_esc" "$prompt_esc" "$log_esc" "$model_esc" | sed 's/^/    /'
-            echo "DRY drift-fix-cadence: would write $vbs_file:"
-            cadence_vbs_wrapper "$bat_win" | sed 's/^/    /'
-            echo "DRY drift-fix-cadence: would schtasks /create /tn $worker /xml <daily $time, StartWhenAvailable=true, InteractiveToken/LeastPrivilege> /f"
-            emit_task_xml "$bat_win" "$time" | sed 's/^/    /'
-            continue
-        fi
-
-        # Atomic runner publication: emit
-        # to a staged temp BESIDE the final path (same dir -> same filesystem
-        # -> `mv` is an atomic rename, not a copy). Redirecting straight onto the final path let a
-        # task firing concurrently with a re-arm read a half-written
-        # .bat/.vbs; after the rename the final path only ever holds a
-        # complete file (old or new). A non-regular final path is refused up
-        # front: `mv` onto a directory squatting on a runner name "succeeds"
-        # by moving the staged file INSIDE it, so a checked rename alone
-        # cannot catch a target the task could never run. The shim promotes
-        # FIRST — an already-armed task can safely run a new shim against the
-        # still-current .bat while the pair is replaced.
-        local bat_tmp vbs_tmp
-        bat_tmp=$(mktemp "$BAT_DIR/.$slug.bat.XXXXXX")
-        vbs_tmp=$(mktemp "$BAT_DIR/.$slug.vbs.XXXXXX")
-        if ! emit_bat "$root_esc" "$claude_esc" "$prompt_esc" "$log_esc" "$model_esc" > "$bat_tmp"; then
-            echo "ERR drift-fix-cadence: could not write staged runner for $slug" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"
-            win_rollback_both; exit 4
-        fi
-        if ! cadence_vbs_wrapper "$bat_win" > "$vbs_tmp"; then
-            echo "ERR drift-fix-cadence: could not write staged shim for $slug" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"
-            win_rollback_both; exit 4
-        fi
-        for final_to_check in "$bat_file" "$vbs_file"; do
-            if [ -e "$final_to_check" ] && [ ! -f "$final_to_check" ]; then
-                echo "ERR drift-fix-cadence: $final_to_check exists and is not a regular file — refusing to publish" >&2
-                rm -f "$bat_tmp" "$vbs_tmp"
-                win_rollback_both; exit 4
-            fi
-        done
-        if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
-            echo "ERR drift-fix-cadence: failed to publish shim to $vbs_file" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"
-            win_rollback_both; exit 4
-        fi
-        if ! atomic_write "$bat_file" < "$bat_tmp"; then
-            echo "ERR drift-fix-cadence: failed to publish runner to $bat_file" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"
-            win_rollback_both; exit 4
-        fi
-
-        rm -f "$bat_tmp" "$vbs_tmp"
-
-        err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
-        if ! schtasks_create_xml "$worker" "$time" "$bat_win" "$err_file"; then
-            echo "ERR drift-fix-cadence: schtasks /create $worker failed:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            win_rollback_both
-            exit 4
-        fi
-        rm -f "$err_file"
-
-        # Post-arm verify: a /create that "succeeded" but produced a task with no
-        # live next-run time is not armed in any useful sense. Roll back BOTH
-        # workers — arm is all-or-nothing — rather than report a half-armed cadence.
-        verify_rc=0
-        query_task "$worker" || verify_rc=$?
-        if [ "$verify_rc" -ne 0 ] || ! printf '%s' "$QUERY_OUT" | grep -qi 'Next Run Time'; then
-            echo "ERR drift-fix-cadence: post-arm verify failed for $worker — rolling back both workers." >&2
-            win_rollback_both
-            echo "    Re-arm with: bash scripts/upstreams/drift-fix-cadence.sh arm --time $FIRE_TIME --resync-time $RESYNC_TIME --model $MODEL" >&2
-            exit 4
-        fi
-    done
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "drift-fix-cadence: dry-run complete (no changes made)"
-        return 0
-    fi
-    arm_summary "schtasks task"
-}
-
-cmd_status() {
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR drift-fix-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    echo "drift-fix-cadence status:"
-    local worker slug rc next status_rc=0
-    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(worker_slug "$worker")
-        rc=0
-        query_task "$worker" || rc=$?
-        case "$rc" in
-            0)
-                next=$(printf '%s' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 | sed 's/^[^:]*: *//' | tr -d '\r') || true
-                cadence_registered_status "$worker" " (next run: ${next:-?})" || status_rc=2
-                ;;
-            1) echo "not armed  $worker" ;;
-            *) exit 2 ;;
-        esac
-        echo "  runner     $BAT_DIR/$slug.bat"
-        status_log "$BAT_DIR/$slug.log"
-    done
-    return "$status_rc"
-}
-
-cmd_disarm() {
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR drift-fix-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    local worker slug rc any_armed=0 err_file
-    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(worker_slug "$worker")
-        rc=0
-        query_task "$worker" || rc=$?
-        case "$rc" in
-            1)
-                if [ "$DRY_RUN" -eq 0 ]; then rm -f "$BAT_DIR/$slug.bat" "$BAT_DIR/$slug.vbs"; fi
-                continue
-                ;;
-            2) exit 2 ;;
-        esac
-        any_armed=1
-        if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY drift-fix-cadence: would schtasks /delete /tn $worker /f"
-            echo "DRY drift-fix-cadence: would remove $BAT_DIR/$slug.bat + $BAT_DIR/$slug.vbs"
-            continue
-        fi
-        err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
-        if ! run_schtasks /delete /tn "$worker" /f >/dev/null 2>"$err_file"; then
-            echo "ERR drift-fix-cadence: schtasks /delete $worker failed:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 4
-        fi
-        rm -f "$err_file" "$BAT_DIR/$slug.bat" "$BAT_DIR/$slug.vbs"
-    done
-    if [ "$any_armed" -eq 0 ]; then
-        echo "drift-fix-cadence: nothing armed — disarm is a no-op"
-    elif [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY drift-fix-cadence: no changes made"
-    else
-        echo "drift-fix-cadence: cadence disarmed"
-    fi
 }
 
 # --------------------------------------------------------------------------
@@ -905,7 +442,7 @@ cron_install() {
 # filter here would silently sweep entries this script does not own.
 worker_existing() { printf '%s\n' "$CRON_TAB" | grep -F "# $1" || true; }
 
-# The .sh runner mirrors the .bat: rotate the log, stamp the fire, cd into the
+# Rotate the log, stamp the fire, cd into the
 # checkout, bounded interactive claude run. All values arrive pre-quoted with
 # printf %q. node_dir is prepended to PATH because an nvm-managed node is not on
 # cron's minimal PATH even when the claude shim itself is absolute (#317).
@@ -931,13 +468,11 @@ emit_runner() {
     # subshell, so $_rc survives it. Without this the runner's last command is
     # the redirected group (effectively the `echo`), so it exited 0 no matter
     # how the run went — cron would mail nothing and any scheduler-level status
-    # would read success on a failed drift repair. The .bat twin already ends
-    # with `exit /b %ERRORLEVEL%`; this keeps the two platforms honest in the
-    # same way.
+    # would read success on a failed drift repair.
     printf 'exit "$_rc"\n'
 }
 
-cron_arm() {
+cmd_arm() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR drift-fix-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -1009,7 +544,7 @@ cron_arm() {
     # No blank-line strip here (CR glm-2): blank lines are valid crontab
     # syntax (cron_install just pipes this to `crontab -`), and stripping
     # them ate the operator's own formatting on every arm/disarm cycle while
-    # disarm's equivalent rewrite below never did. Symmetric with cron_disarm.
+    # disarm's equivalent rewrite below never did. Symmetric with cmd_disarm.
     local newtab
     newtab=$(mktemp -t drift-fix-cadence.cron.XXXXXX)
     printf '%s\n' "$CRON_TAB" | grep -vF "# $WORKER_SESSION_DRIFT" | grep -vF "# $WORKER_SESSION_RESYNC" > "$newtab" || true
@@ -1031,7 +566,7 @@ cron_arm() {
     # never-installed config — the operator is told the arm FAILED while the
     # already-armed cadence has silently been mutated to fire the new body
     # next time it runs (CR codex-1). Deleting the runners instead — the
-    # ordering cron_disarm documents (install must succeed BEFORE anything is
+    # ordering cmd_disarm documents (install must succeed BEFORE anything is
     # removed) — would be worse: that working cadence would fire a missing
     # file every night, silently: the arm failed AND the pre-existing arm
     # broke. A runner with no snapshot (first-arm failure, nothing
@@ -1060,8 +595,7 @@ cron_arm() {
         # Under set -e (line 59) a write/chmod failure here (e.g. disk full on
         # worker 2 after worker 1 was already overwritten) would otherwise exit
         # WITHOUT the restore below — a pre-existing armed runner silently
-        # mutated while the crontab still points at it (the same class
-        # win_arm's emit_bat guards against on Windows).
+        # mutated while the crontab still points at it.
         if ! emit_runner "$q_root" "$q_claude" "$q_prompt" "$q_log" "$q_model" "$q_node_dir" > "$runner" \
            || ! chmod +x "$runner"; then
             echo "ERR drift-fix-cadence: could not write $runner — restoring any pre-existing runners." >&2
@@ -1085,7 +619,7 @@ cron_arm() {
     arm_summary "crontab entry"
 }
 
-cron_status() {
+cmd_status() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR drift-fix-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -1110,7 +644,7 @@ cron_status() {
     done
 }
 
-cron_disarm() {
+cmd_disarm() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR drift-fix-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -1151,10 +685,9 @@ cron_disarm() {
 # --------------------------------------------------------------------------
 
 arm_summary() {
-    local kind="$1" ext runner_drift runner_resync log_drift log_resync
-    if [ "$PLATFORM" = "windows" ]; then ext="bat"; else ext="sh"; fi
-    runner_drift="$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").$ext"
-    runner_resync="$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").$ext"
+    local kind="$1" runner_drift runner_resync log_drift log_resync
+    runner_drift="$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").sh"
+    runner_resync="$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").sh"
     log_drift="$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").log"
     log_resync="$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").log"
     cat <<EOF
@@ -1189,16 +722,8 @@ drift-fix-cadence ARMED
 EOF
 }
 
-# Dispatch uses the cmd_arm/cmd_status/cmd_disarm naming
-# every OTHER registry-eligible cadence script already uses (pipeline-cadence.sh,
-# qmd-cadence.sh, graphmap-cadence.sh) — the windows-branch function IS the
-# literal name; cadence-registry.json's staleness lint (test-wizard-cadence-
-# registry.sh) requires that exact function to exist for a row to lint clean.
-case "$PLATFORM:$SUBCMD" in
-    windows:arm)    cmd_arm ;;
-    windows:status) cmd_status ;;
-    windows:disarm) cmd_disarm ;;
-    posix:arm)      cron_arm ;;
-    posix:status)   cron_status ;;
-    posix:disarm)   cron_disarm ;;
+case "$SUBCMD" in
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac

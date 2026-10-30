@@ -960,11 +960,8 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
         # the BRANCH for a delegation that never occurred. Minting first
         # means a failed write never reaches ledger-append.sh at all: zero
         # rows, ledger_written stays no, and the assertion correctly forces
-        # the anchor. openssl is Git for Windows' own bundled dependency (it
-        # ships openssl.exe for HTTPS transport), so it is present in every
-        # Git Bash this script already requires; /dev/urandom+od is the
-        # POSIX fallback if some environment lacks it, and $RANDOM/$$/head
-        # is a last resort that is not cryptographically strong but is
+        # the anchor. /dev/urandom+od is the fallback if openssl is absent,
+        # and $RANDOM/$$/head is a last resort that is not cryptographically strong but is
         # still unpredictable enough to defeat a STALE value (the threat
         # this closes - see the header comment) since a stale value can
         # never carry a LATER run's nonce, whatever its quality.

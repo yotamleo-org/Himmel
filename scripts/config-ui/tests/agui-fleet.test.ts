@@ -41,33 +41,33 @@ test("3 live sessions and 1 wrapped: roles, tickets, PR, state, activity, subage
   const b = await (await fleet(port)).json();
   expect(b.census).toBe("ok");
   const by = Object.fromEntries(b.sessions.map((s: any) => [s.name, s]));
-  expect(Object.keys(by).sort()).toEqual([FLEET.console.name, FLEET.idle.name, FLEET.leg.name, FLEET.wrapped.name].sort());
+  expect(Object.keys(by).sort()).toEqual([FLEET.console.name, FLEET.idle.name, FLEET.worker.name, FLEET.wrapped.name].sort());
 
   const c = by[FLEET.console.name];
   expect(c).toMatchObject({ run: FLEET.console.run, role: "console", state: "running", ticket: null });
   expect(c.activity).toMatchObject({ tool: "Bash", summary: "Tick the fleet" });
   expect(typeof c.activity.at).toBe("number");
 
-  const l = by[FLEET.leg.name];
-  expect(l).toMatchObject({ run: FLEET.leg.run, role: "leg", state: "running", ticket: "HIMMEL-901", pr: 1901, failures: 1, model: "opus" });
+  const l = by[FLEET.worker.name];
+  expect(l).toMatchObject({ run: FLEET.worker.run, role: "worker", state: "running", ticket: "HIMMEL-901", pr: 1901, failures: 1, model: "opus" });
   expect(l.subagents).toEqual({ total: 1, running: 1 });
   expect(l.activity).toMatchObject({ tool: "Grep" }); // the newest call is the subagent's
 
   expect(by[FLEET.idle.name]).toMatchObject({ role: "interactive", state: "idle", subagents: { total: 0, running: 0 }, failures: 0 });
 
   // A wrapped worker is wrapped whatever its process says, never running.
-  expect(by[FLEET.wrapped.name]).toMatchObject({ role: "leg", state: "wrapped", ticket: "HIMMEL-903" });
+  expect(by[FLEET.wrapped.name]).toMatchObject({ role: "worker", state: "wrapped", ticket: "HIMMEL-903" });
 });
 
 test("a session waiting on its background shell is waiting, not idle or running", async () => {
   const s = boot();
-  const record = join(s.home, ".claude", "sessions", `${FLEET.leg.pid}.json`);
+  const record = join(s.home, ".claude", "sessions", `${FLEET.worker.pid}.json`);
   const rec = JSON.parse(readFileSync(record, "utf8"));
   writeFileSync(record, JSON.stringify({ ...rec, status: "shell" }));
-  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.pid === FLEET.leg.pid);
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.pid === FLEET.worker.pid);
   expect(row.state).not.toBe("idle");
   expect(row.state).not.toBe("running");
-  expect(row).toMatchObject({ run: FLEET.leg.run, state: "waiting", live: true, marker: "LIVE" });
+  expect(row).toMatchObject({ run: FLEET.worker.run, state: "waiting", live: true, marker: "LIVE" });
   expect(filterCount([row], { ...NO_FILTERS, states: ["waiting"] })).toBe(1);
   expect(filterCount([row], { ...NO_FILTERS, states: ["idle"] })).toBe(0);
   expect(filterCount([row], { ...NO_FILTERS, states: ["running"] })).toBe(0);
@@ -81,8 +81,8 @@ test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", asyn
   const b = await (await fleet(port)).json();
   expect(b.processOrphans).toEqual([{ pid: 4242, owner: "orphan", ageMin: 95, kind: "orphan" }, { pid: 4243, owner: FLEET.wrapped.name, ageMin: 31, kind: "orphan" }]);
   const by = Object.fromEntries(b.sessions.map((s: any) => [s.name, s]));
-  expect(by[FLEET.leg.name]).toMatchObject({ marker: "LIVE", prUrl: "https://github.com/acme/widgets/pull/1901" });
-  expect(typeof by[FLEET.leg.name].lastSeenAt).toBe("number");
+  expect(by[FLEET.worker.name]).toMatchObject({ marker: "LIVE", prUrl: "https://github.com/acme/widgets/pull/1901" });
+  expect(typeof by[FLEET.worker.name].lastSeenAt).toBe("number");
   expect(by[FLEET.wrapped.name]).toMatchObject({ marker: "WRAPPED", prUrl: "https://github.com/acme/widgets/pull/1903" });
   expect(by[FLEET.idle.name]).toMatchObject({ marker: null, lastSeenAt: null, prUrl: null });
 
@@ -94,20 +94,20 @@ test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", asyn
 // description field, else the H1 (the whole stem-like title here); a session with no doc has none. TRACKER/FORGE pinned off so no row reaches Jira or GitHub.
 test("a worker row carries its description and its name is unchanged; a session with no doc has none", async () => {
   const { port, dir } = boot({ TRACKER: "none", FORGE: "none" });
-  const doc = join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`);
-  writeFileSync(doc, `---\ndescription: Show each worker's description on the fleet page\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const doc = join(dir, "handover", "yotam", "himmel", `${FLEET.worker.name}.md`);
+  writeFileSync(doc, `---\ndescription: Show each worker's description on the fleet page\n---\n# ${FLEET.worker.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
   const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
-  expect(by[FLEET.leg.name].description).toBe("Show each worker's description on the fleet page");
-  expect(by[FLEET.leg.name].name).toBe(FLEET.leg.name);
+  expect(by[FLEET.worker.name].description).toBe("Show each worker's description on the fleet page");
+  expect(by[FLEET.worker.name].name).toBe(FLEET.worker.name);
   expect(by[FLEET.wrapped.name].description).toBe(FLEET.wrapped.name); // no field: the H1
   expect(by[FLEET.idle.name].description).toBe("");
 
   // an edited doc re-resolves on its new mtime
-  writeFileSync(doc, `---\ndescription: Edited description\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  writeFileSync(doc, `---\ndescription: Edited description\n---\n# ${FLEET.worker.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
   const later = Date.now() / 1000 + 60;
   utimesSync(doc, later, later);
   const again = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
-  expect(again[FLEET.leg.name].description).toBe("Edited description");
+  expect(again[FLEET.worker.name].description).toBe("Edited description");
 });
 
 // a forge that never answers (a gh stub that sleeps) must not hold the page. HIMMEL_FLEET_DESC_TIMEOUT_MS shortens the
@@ -122,13 +122,13 @@ function hangingForge(tag: string) {
   cleanups.push(() => { spawnSync("pkill", ["-f", `sleep ${tag}`]); rmSync(bin, { recursive: true, force: true }); });
   const bucket = join(s.dir, "handover", "yotam", "himmel");
   const seen = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "").split("\n").filter(Boolean);
-  const leg = (pr: number) => writeFileSync(join(bucket, `${FLEET.leg.name}.md`), `# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 READY #${pr} abcdef1 GREEN\n`);
-  return { ...s, bucket, seen, leg };
+  const worker = (pr: number) => writeFileSync(join(bucket, `${FLEET.worker.name}.md`), `# ${FLEET.worker.name}\n\n## Results\n\n- 09:00 READY #${pr} abcdef1 GREEN\n`);
+  return { ...s, bucket, seen, worker };
 }
 
 test("descriptions resolve only for listed rows: 30 archived console docs past the window are never looked up", async () => {
   const h = hangingForge("3011");
-  h.leg(4200);
+  h.worker(4200);
   const old = Date.now() / 1000 - 100 * 60 * 60;
   for (let i = 0; i < 30; i++) {
     const f = join(h.bucket, `OLD${i}-console.md`);
@@ -136,7 +136,7 @@ test("descriptions resolve only for listed rows: 30 archived console docs past t
     utimesSync(f, old, old);
   }
   const first = await (await fleet(h.port)).json();
-  expect(first.sessions.some((s: any) => s.name === FLEET.leg.name)).toBe(true);
+  expect(first.sessions.some((s: any) => s.name === FLEET.worker.name)).toBe(true);
   const seen = h.seen();
   expect(seen.join("\n")).not.toContain("4100");
   expect(seen.length).toBe(1);
@@ -145,9 +145,9 @@ test("descriptions resolve only for listed rows: 30 archived console docs past t
 
 test("a lookup that hit its deadline is cached against the doc's mtime: later polls do not start it again", async () => {
   const h = hangingForge("3022");
-  h.leg(4200);
+  h.worker(4200);
   const first = await (await fleet(h.port)).json();
-  expect(first.sessions.find((s: any) => s.name === FLEET.leg.name).description).toBe("");
+  expect(first.sessions.find((s: any) => s.name === FLEET.worker.name).description).toBe("");
   await fleet(h.port);
   await fleet(h.port);
   expect(h.seen().length).toBe(1);
@@ -164,7 +164,7 @@ test("one request starts at most 8 lookups, however many rows are listed", async
 
 test("a lookup past its deadline is killed with its whole process group: no stub sleep survives", async () => {
   const h = hangingForge("3033");
-  h.leg(4200);
+  h.worker(4200);
   await fleet(h.port);
   expect(h.seen().length).toBe(1);
   const alive = () => spawnSync("pgrep", ["-f", "sleep 3033"]).status === 0;
@@ -205,10 +205,10 @@ test("secrets in the latest call's summary pass the redactor; names are kept", a
 test("a description carrying a secret passes the redactor", async () => {
   const { port, dir } = boot({ TRACKER: "none", FORGE: "none" });
   const secret = "sk-ant-api03-" + "B".repeat(60);
-  writeFileSync(join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`), `---\ndescription: rotate ${secret} today\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  writeFileSync(join(dir, "handover", "yotam", "himmel", `${FLEET.worker.name}.md`), `---\ndescription: rotate ${secret} today\n---\n# ${FLEET.worker.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
   const raw = await (await fleet(port)).text();
   expect(raw).not.toContain(secret);
-  expect(JSON.parse(raw).sessions.find((x: any) => x.name === FLEET.leg.name).description).toContain("rotate");
+  expect(JSON.parse(raw).sessions.find((x: any) => x.name === FLEET.worker.name).description).toContain("rotate");
 });
 
 test("a session started without a name keeps its model and takes the harness's name (empty census columns do not shift)", async () => {
@@ -221,9 +221,9 @@ test("a session started without a name keeps its model and takes the harness's n
 test("a quiet main journal with a subagent still writing stays listed", async () => {
   const s = boot();
   const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
-  utimesSync(s.journal(FLEET.leg), old, old);
+  utimesSync(s.journal(FLEET.worker), old, old);
   const b = await (await fleet(s.port)).json();
-  expect(b.sessions.map((x: any) => x.name)).toContain(FLEET.leg.name);
+  expect(b.sessions.map((x: any) => x.name)).toContain(FLEET.worker.name);
 });
 
 test("a secret straddling the summary cut is redacted whole, not left as a fragment", async () => {
@@ -260,13 +260,35 @@ test("launch environment and manifest edges group two chiefs without timing gues
   const bucket = join(s.dir, "handover", "yotam", "himmel");
   const other = "HIMMEL-project-chief";
   writeFileSync(join(bucket, `${other}.md`), `# ${other}\n## Results\n- 09:00 LIVE — started\n`);
-  writeFileSync(join(bucket, `${other}.fleet.json`), JSON.stringify({ schema: 1, legs: [{ doc: join(bucket, `${FLEET.wrapped.name}.md`), label: "N9003", added: "2026-10-07T08:00:00Z" }] }));
+  writeFileSync(join(bucket, `${other}.fleet.json`), JSON.stringify({ schema: 1, workers: [{ doc: join(bucket, `${FLEET.wrapped.name}.md`), label: "N9003", added: "2026-10-07T08:00:00Z" }] }));
   writeFileSync(join(s.dir, "proc", String(FLEET.idle.pid), "environ"), `HIMMEL_CONSOLE_NAME=${other}\0`);
   const b = await (await fleet(s.port)).json();
   expect(b.sessions.find((r: any) => r.pid === FLEET.idle.pid)).toMatchObject({ parent: other, console: other });
   expect(b.sessions.find((r: any) => r.name === FLEET.wrapped.name).console).toBe(other);
-  expect(b.sessions.find((r: any) => r.name === FLEET.leg.name).console).toBe(FLEET.console.name);
+  expect(b.sessions.find((r: any) => r.name === FLEET.worker.name).console).toBe(FLEET.console.name);
   expect(b.sessions.find((r: any) => r.name === other)).toMatchObject({ role: "console", live: false });
+});
+
+test("a manifest in the old key shape still draws its edges while legacy names are on", async () => {
+  const s = boot({ HIMMEL_LEGACY_NAMES: "on" });
+  const bucket = join(s.dir, "handover", "yotam", "himmel");
+  const other = "HIMMEL-project-chief";
+  writeFileSync(join(bucket, `${other}.md`), `# ${other}\n## Results\n- 09:00 LIVE — started\n`);
+  const old = readFileSync(join(import.meta.dir, "fixtures", "agui", "fleet-old-manifest.json"), "utf8");
+  writeFileSync(join(bucket, `${other}.fleet.json`), old.replace("@DOC@", join(bucket, `${FLEET.wrapped.name}.md`)));
+  const b = await (await fleet(s.port)).json();
+  expect(b.sessions.find((r: any) => r.name === FLEET.wrapped.name).console).toBe(other);
+});
+
+test("a manifest in the old key shape draws no edge once legacy names are off", async () => {
+  const s = boot({ HIMMEL_LEGACY_NAMES: "0" });
+  const bucket = join(s.dir, "handover", "yotam", "himmel");
+  const other = "HIMMEL-project-chief";
+  writeFileSync(join(bucket, `${other}.md`), `# ${other}\n## Results\n- 09:00 LIVE — started\n`);
+  const old = readFileSync(join(import.meta.dir, "fixtures", "agui", "fleet-old-manifest.json"), "utf8");
+  writeFileSync(join(bucket, `${other}.fleet.json`), old.replace("@DOC@", join(bucket, `${FLEET.wrapped.name}.md`)));
+  const b = await (await fleet(s.port)).json();
+  expect(b.sessions.find((r: any) => r.name === FLEET.wrapped.name).console).not.toBe(other);
 });
 
 test("a console that released its lock is retired even while its process is alive", async () => {
@@ -357,7 +379,7 @@ test("a console doc whose token block still reads none yet is not a recorded loc
 
 test("a wrapper whose owner is a live worker is a long-lived wait; one under a wrapped worker or no session is an orphan", async () => {
   const { port, dir } = boot();
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\npid=4243 owner=${FLEET.leg.name} age=31m\\npid=4244 owner=${FLEET.wrapped.name} age=40m\\n'\n`);
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\npid=4243 owner=${FLEET.worker.name} age=31m\\npid=4244 owner=${FLEET.wrapped.name} age=40m\\n'\n`);
   const b = await (await fleet(port)).json();
   expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4242, "orphan"], [4243, "wait"], [4244, "orphan"]]);
 });
@@ -383,7 +405,7 @@ test("a wrapper waiting on a pgrep -f pattern its own command spells is STUCK, l
   wrapper(4256, "while pgrep -xvf 'worker job'; do sleep 5; done");
   wrapper(4257, "while pgrep -xf '.*worker job.*'; do sleep 5; done");
   wrapper(4258, "while pgrep -ixf 'BASH -C .*'; do sleep 5; done");
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\npid=4251 owner=orphan age=60m\\npid=4252 owner=orphan age=60m\\npid=4253 owner=orphan age=60m\\npid=4254 owner=orphan age=60m\\npid=4255 owner=orphan age=60m\\npid=4256 owner=orphan age=60m\\npid=4257 owner=orphan age=60m\\npid=4258 owner=orphan age=60m\\n'\n`);
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.worker.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.worker.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\npid=4251 owner=orphan age=60m\\npid=4252 owner=orphan age=60m\\npid=4253 owner=orphan age=60m\\npid=4254 owner=orphan age=60m\\npid=4255 owner=orphan age=60m\\npid=4256 owner=orphan age=60m\\npid=4257 owner=orphan age=60m\\npid=4258 owner=orphan age=60m\\n'\n`);
   const b = await (await fleet(port)).json();
   expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"], [4251, "orphan"], [4252, "orphan"], [4253, "orphan"], [4254, "stuck"], [4255, "stuck"], [4256, "stuck"], [4257, "stuck"], [4258, "stuck"]]);
 });
@@ -420,11 +442,11 @@ test("claudex sessions retain their run, journal usage, console edge and bank la
   const s = boot();
   renameSync(join(s.home, ".claude"), join(s.home, ".claude-codex"));
   mkdirSync(join(s.home, ".claude", "sessions"), { recursive: true });
-  writeFileSync(join(s.home, ".claude", "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run, startedAt: "2000-01-01T00:00:00Z" }));
-  writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${s.home}/.claude-codex\0`);
+  writeFileSync(join(s.home, ".claude", "sessions", `${FLEET.worker.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run, startedAt: "2000-01-01T00:00:00Z" }));
+  writeFileSync(join(s.dir, "proc", String(FLEET.worker.pid), "environ"), `CLAUDE_CONFIG_DIR=${s.home}/.claude-codex\0`);
   const b = await (await fleet(s.port)).json();
-  expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid)).toMatchObject({ run: FLEET.leg.run, lane: "claudex", console: FLEET.console.name, usage: { calls: 3 } });
-  const response = await fetch(`http://127.0.0.1:${s.port}/api/agui/${FLEET.leg.run}`, { headers: { "X-Himmel-Token": TOKEN } });
+  expect(b.sessions.find((r: any) => r.pid === FLEET.worker.pid)).toMatchObject({ run: FLEET.worker.run, lane: "claudex", console: FLEET.console.name, usage: { calls: 3 } });
+  const response = await fetch(`http://127.0.0.1:${s.port}/api/agui/${FLEET.worker.run}`, { headers: { "X-Himmel-Token": TOKEN } });
   expect(response.status).toBe(200);
   await response.body?.cancel();
 });
@@ -433,19 +455,19 @@ test("a custom launch config directory wins over an unrelated default PID record
   const s = boot();
   const config = join(s.home, "custom-config");
   mkdirSync(join(config, "sessions"), { recursive: true });
-  writeFileSync(join(config, "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.leg.run, startedAt: "2026-10-07T08:00:00Z" }));
-  writeFileSync(join(s.home, ".claude", "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run }));
-  writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
+  writeFileSync(join(config, "sessions", `${FLEET.worker.pid}.json`), JSON.stringify({ sessionId: FLEET.worker.run, startedAt: "2026-10-07T08:00:00Z" }));
+  writeFileSync(join(s.home, ".claude", "sessions", `${FLEET.worker.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run }));
+  writeFileSync(join(s.dir, "proc", String(FLEET.worker.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
   const b = await (await fleet(s.port)).json();
-  expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid).run).toBe(FLEET.leg.run);
+  expect(b.sessions.find((r: any) => r.pid === FLEET.worker.pid).run).toBe(FLEET.worker.run);
 });
 
 test("a custom config census reads usage and activity from its journal, not the default PID record", async () => {
   const s = boot();
   customConfig(s);
   const b = await (await fleet(s.port)).json();
-  expect(b.sessions.find((r: any) => r.pid === FLEET.leg.pid)).toMatchObject({
-    run: FLEET.leg.run, activity: { tool: "Grep" }, usage: { calls: 3, input: 30, output: 300, cacheRead: 120000 },
+  expect(b.sessions.find((r: any) => r.pid === FLEET.worker.pid)).toMatchObject({
+    run: FLEET.worker.run, activity: { tool: "Grep" }, usage: { calls: 3, input: 30, output: 300, cacheRead: 120000 },
     subagents: { total: 1, running: 1 }, failures: 1,
   });
 });
@@ -454,11 +476,11 @@ test("a custom config census reads usage and activity from its journal, not the 
 test("graph: the worker hangs under its console, the console names its predecessor, the rest sit under the operator", async () => {
   const { port } = boot();
   const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
-  expect(by[FLEET.leg.name]).toMatchObject({ parent: FLEET.console.name, predecessor: null });
+  expect(by[FLEET.worker.name]).toMatchObject({ parent: FLEET.console.name, predecessor: null });
   expect(by[FLEET.console.name]).toMatchObject({ parent: null, predecessor: PRIOR_CHIEF });
   expect(by[FLEET.idle.name]).toMatchObject({ parent: null, predecessor: null });
   // The worker's in-process children: its one subagent, still running.
-  expect(by[FLEET.leg.name].agents).toEqual([expect.objectContaining({ state: "running" })]);
+  expect(by[FLEET.worker.name].agents).toEqual([expect.objectContaining({ state: "running" })]);
   expect(by[FLEET.idle.name].agents).toEqual([]);
 });
 
@@ -466,7 +488,7 @@ test("usage: summed per API call across the journal and its subagents, filled ag
   const { port } = boot();
   const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
   // Worker: 2 main calls + 1 subagent call, each 10 in / 100 out / 40000 cache read; --autocompact 200000.
-  expect(by[FLEET.leg.name].usage).toEqual({
+  expect(by[FLEET.worker.name].usage).toEqual({
     calls: 3, input: 30, output: 300, cacheRead: 120000, cacheCreate: 0, costEq: Math.round(30 + 12000 + 1500),
     resident: 40010, ceiling: 200000, ceilingFrom: "autocompact", fill: 20,
   });
@@ -491,8 +513,8 @@ test("cloud: each recent CLOUD-OK route is a node under its console, from its PR
   expect(by["cloud-HIMMEL-906"]).toMatchObject({ pr: null, state: "running", parent: FLEET.console.name, cloud: { url: null, phase: "working" } });
   expect(by["cloud-HIMMEL-907"]).toMatchObject({ pr: 1907, state: "wrapped", cloud: { phase: "merged" } });
   // The shepherd's brief names the chief; as the cloud session's local shepherd it hangs under the cloud node.
-  expect(by[CLOUD.shepherd.name]).toMatchObject({ role: "leg", ticket: "HIMMEL-905", parent: "cloud-HIMMEL-905", cloud: null });
-  expect(by[FLEET.leg.name]).toMatchObject({ parent: FLEET.console.name, cloud: null });
+  expect(by[CLOUD.shepherd.name]).toMatchObject({ role: "worker", ticket: "HIMMEL-905", parent: "cloud-HIMMEL-905", cloud: null });
+  expect(by[FLEET.worker.name]).toMatchObject({ parent: FLEET.console.name, cloud: null });
 });
 
 test("a live shepherd whose journal is old remains attached to its cloud session", async () => {
@@ -549,9 +571,9 @@ test("HIMMEL-4817: a claudex worker renders lane, backend model, codex-bank cost
   cleanups.push(() => rmSync(bankDir, { recursive: true, force: true }));
   const s = boot({ CODEX_USAGE_CACHE: bank });
   writeFileSync(bank, JSON.stringify({ capturedAt: new Date(now).toISOString(), limits: [{ limitId: "codex/primary", usedPercent: 46, windowDurationMins: 10080, resetsAt: now / 1000 + 86400 }] }));
-  writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `WORKER_SESSION_LANE=claudex\0HIMMEL_SESSION_MODEL=gpt-6.1-sol\0HIMMEL_CODEX_BANK_START=40@${now - 3600_000}\0`);
+  writeFileSync(join(s.dir, "proc", String(FLEET.worker.pid), "environ"), `WORKER_SESSION_LANE=claudex\0HIMMEL_SESSION_MODEL=gpt-6.1-sol\0HIMMEL_CODEX_BANK_START=40@${now - 3600_000}\0`);
   const b = await (await fleet(s.port)).json();
-  const worker = b.sessions.find((r: any) => r.pid === FLEET.leg.pid);
+  const worker = b.sessions.find((r: any) => r.pid === FLEET.worker.pid);
   expect(worker).toMatchObject({ lane: "claudex", laneFrom: "WORKER_SESSION_LANE", backendModel: "gpt-6.1-sol", usage: { costEq: null, calls: 3 } });
   expect(worker.cost).toMatchObject({ lane: "claudex", bank: "codex", priced_by: "codex-bank", cost_eq: null, calls: 3, codex_used_pct_delta: 6 });
   expect(worker.eval).toMatchObject({ lane: "claudex", denials: 1, denials_recovered: 0 });

@@ -7,7 +7,7 @@ import type { BaseEvent } from "@ag-ui/core";
 // it is all one agent, "main"), and a failure is a call or text the mapper classified (`failure`), or a call a
 // run error cut off.
 export type Failure = "denied" | "suite" | "blocked" | "error";
-export type Role = "console" | "leg" | "judge" | "critic" | "subagent" | "agent";
+export type Role = "console" | "worker" | "judge" | "critic" | "subagent" | "agent";
 export type Agent = {
   id: string; name: string; role: Role; model?: string; kind?: string; parentToolCallId?: string;
   calls: number; failures: number; lanes: number; // lanes: its rows in the run strip
@@ -39,7 +39,7 @@ export const initialView = (): View => ({
   agents: {}, agentOrder: [], failures: [], lanes: 0, laneEnds: {}, state: {},
 });
 
-const ROLES = new Set<Role>(["console", "leg", "judge", "critic", "subagent", "agent"]);
+const ROLES = new Set<Role>(["console", "worker", "judge", "critic", "subagent", "agent"]);
 const FAILURES = new Set<Failure>(["denied", "suite", "blocked", "error"]);
 
 // The agent an event names, merged into the registry (later events may know its model or real name).

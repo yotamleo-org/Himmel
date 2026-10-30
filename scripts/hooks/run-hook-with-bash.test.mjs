@@ -14,7 +14,6 @@ const {
   MIN_MEMBER_TIMEOUT_MS,
   MUST_RUN_CHAIN_MEMBERS,
   memberTimeoutMs,
-  isKnownBadWindowsBash,
   isRecoverableEpipe,
   isUsable,
   mergeHookOutputs,
@@ -46,42 +45,41 @@ test('member window grows with payload size, is capped, and a pin disables scali
   }
 });
 
-test('Windows resolver refuses WSL and WindowsApps bash aliases', () => {
-  assert.equal(isKnownBadWindowsBash('C:\\Windows\\System32\\bash.exe'), true);
-  assert.equal(isKnownBadWindowsBash('C:\\Windows\\Sysnative\\bash.exe'), true);
-  assert.equal(isKnownBadWindowsBash('C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe'), true);
-  assert.equal(isKnownBadWindowsBash('C:\\Program Files\\Git\\bin\\bash.exe'), false);
-});
-
-test('Windows resolver refuses zero-byte alias files outside WindowsApps', () => {
-  const dir = makeTmpDir('hook-bash-zero-byte-');
-  const alias = join(dir, 'bash.exe');
+test('resolver refuses missing files and directories', () => {
+  const dir = makeTmpDir('hook-bash-missing-');
   try {
-    writeFileSync(alias, '');
-    assert.equal(isUsable(alias, 'win32'), false);
-    writeFileSync(alias, 'not empty');
-    assert.equal(isUsable(alias, 'win32'), true);
+    assert.equal(isUsable(join(dir, 'missing')), false);
+    assert.equal(isUsable(dir), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('Windows resolver selects Git Bash even when bad aliases lead PATH', () => {
-  const gitBash = 'C:/Tools/Git/bin/bash.exe';
-  const usable = new Set([gitBash.toLowerCase()]);
-  const resolved = resolveBash({
-    platform: 'win32',
-    env: { PATH: 'C:\\Windows\\System32;C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Tools\\Git\\cmd' },
-    isUsable: (candidate) => usable.has(norm(candidate).toLowerCase()),
-  });
-  assert.equal(resolved, gitBash);
+test('resolver requires executable permission, not nonempty content', () => {
+  const dir = makeTmpDir('hook-bash-executable-');
+  const bash = join(dir, 'bash');
+  try {
+    writeFileSync(bash, '', { mode: 0o600 });
+    assert.equal(isUsable(bash), false);
+    chmodSync(bash, 0o700);
+    assert.equal(isUsable(bash), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test('Windows resolver fails closed when only bad aliases are available', () => {
+test('resolver falls back to a system Bash when PATH has no usable candidate', () => {
   const resolved = resolveBash({
-    platform: 'win32',
-    env: { PATH: 'C:\\Windows\\System32;C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps' },
-    isUsable: (candidate) => !isKnownBadWindowsBash(candidate) && false,
+    env: { PATH: '/missing/bin' },
+    isUsable: (candidate) => norm(candidate) === '/bin/bash',
+  });
+  assert.equal(resolved, '/bin/bash');
+});
+
+test('resolver fails closed when no candidate is usable', () => {
+  const resolved = resolveBash({
+    env: { PATH: '/missing/bin' },
+    isUsable: () => false,
   });
   assert.equal(resolved, null);
 });
@@ -99,7 +97,6 @@ test('current platform resolves a concrete Bash executable', () => {
   const resolved = resolveBash();
   assert.ok(resolved);
   assert.equal(isAbsolute(resolved), true);
-  if (process.platform === 'win32') assert.equal(isKnownBadWindowsBash(resolved), false);
 });
 
 test('launcher executes a hook through the resolved Bash and forwards extra args', () => {

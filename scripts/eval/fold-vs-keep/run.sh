@@ -145,7 +145,7 @@ run_judge() { # $1 task, $2 arm, $3 rep, $4 stem
     prepare_tree "$1" "$w" || { echo "run.sh: tree export failed for $1" >&2; return 1; }
     local prompt; prompt="$(judge_prompt "$1" "$w")"
     # fold-vs-keep judge replay, bank-preflighted per task, explicit permission mode, budget-capped
-    # launch-profile-ok: the eval measures the judge-ro definition itself on frozen evidence, not a leg profile
+    # launch-profile-ok: the eval measures the judge-ro definition itself on frozen evidence, not a worker profile
     (cd "$w/tree" && timeout "$tmo" "$CLAUDE_BIN" -p "$prompt" --agents "$(agents_json)" --agent judge-ro \
         --model "$model" --effort high --permission-mode dontAsk --output-format stream-json --verbose \
         --max-budget-usd "$max_usd" --setting-sources user --strict-mcp-config --no-session-persistence \

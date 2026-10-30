@@ -13,8 +13,7 @@
 # session-name resolution and inbox-send.sh's relay check read) and Guard C
 # (inbox-send.sh --token, reserved for the chief).
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the chief relay lane
+# Platform guard: any POSIX bash 3.2+. The chief relay lane
 # (headed-arm-worker.sh --relay, scripts/handover/chief-kit/) is Linux-only,
 # same as inbox-send.sh's own platform guard.
 #

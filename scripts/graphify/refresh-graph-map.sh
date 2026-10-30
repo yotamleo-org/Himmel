@@ -1015,11 +1015,7 @@ _promote_lock_release() {
 # exactly one contender's mv succeeds; the loser's mv fails and it just
 # loops back to the mkdir spin. rm-then-continue would race: two contenders
 # judging the same stale stamp could have the second's rm -rf destroy the
-# first's freshly-won lock. NOTE queue-lock.sh's header documents mv-to-
-# graveyard as unreliable under concurrent rename on MSYS (spurious rc-0);
-# here that is harmless -- mv only picks who prints the trail and reaps the
-# sideline, while mkdir stays the sole acquire arbiter, so a spurious
-# double-win degrades to a duplicate WARN, never a double-acquire.
+# first's freshly-won lock. mkdir stays the sole acquire arbiter.
 _promote_lock_takeover() {
   local sideline="$PROMOTE_LOCK.stale.$$.$RANDOM"
   if mv "$PROMOTE_LOCK" "$sideline" 2>/dev/null; then
@@ -1710,52 +1706,20 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # dense enough to blow a rate-limited backend's per-chunk output cap
   # (bisect-retry storms, depth-3 partials, outright-skipped chunks -- ALL
   # from 60-Maps/graph sources). Computed via a plain bash prefix match, NOT
-  # a python3 round-trip: --corpus-root and --maps-dir are always constructed
-  # by the SAME caller in the SAME invocation (e.g. graphmap-cadence.sh builds
-  # both from one $VAULT), so they already share syntactic path form --
-  # handing them to a SEPARATE native python3.exe process for
-  # os.path.relpath instead invites MSYS's own argv-to-Windows-path
-  # translation, which was observed to
-  # resolve the two strings to DIFFERENT drive roots for a maps-dir
-  # containing "[", silently disabling the exclusion -- strictly worse than
-  # the drive-letter mismatch a python3 round-trip was meant to guard
-  # against. When --maps-dir isn't actually a subdirectory of --corpus-root
-  # there's nothing under the corpus to exclude and this stays empty (a
-  # no-op below). Only "graph/" and the slug MOC are excluded -- a
-  # hand-authored, non-derived note living directly under maps-dir is real
-  # corpus content and still gets extracted.
+  # a python3 round-trip. When --maps-dir isn't actually a subdirectory of
+  # --corpus-root there's nothing under the corpus to exclude. Only "graph/"
+  # and the slug MOC are excluded; hand-authored notes under maps-dir remain
+  # real corpus content.
   #
-  # The plain lexical prefix match above
-  # only catches --maps-dir/--corpus-root spelled with a SHARED literal
-  # prefix. Two equivalent-path spellings slip through it:
-  #   (a) relative-vs-absolute -- e.g. `--corpus-root . --maps-dir
-  #       "$PWD/60-Maps"` share no string prefix even though maps-dir IS
-  #       "./60-Maps", silently disabling the exclusion and reopening the
-  #       derived-content feedback loop; and
-  #   (b) Windows case variants (C:/Users vs c:/users) -- NTFS is
-  #       case-insensitive but a bash `case` pattern match is not.
-  # So both are canonicalized to absolute paths FIRST (below), then compared
-  # case-insensitively where the filesystem is.
+  # Canonicalize both paths first so relative/absolute spellings of the same
+  # directory compare correctly. Compare case-insensitively only where the
+  # filesystem is. Bash builtins (`cd` + `pwd -P` in a subshell) keep literal
+  # directory-name bytes such as "[" quoted throughout.
   #
-  # Resolved with ONLY bash builtins (`cd` + `pwd -P`, in a subshell so the
-  # cd never leaks into the script's own $PWD) -- deliberately NOT a
-  # python3/external-process round-trip: os.path.relpath in a spawned
-  # python3.exe is WORSE, because MSYS's argv-to-Windows-path translation
-  # resolves --corpus-root
-  # and --maps-dir to DIFFERENT drive roots for a maps-dir containing "[",
-  # silently disabling the exclusion (T28). `cd`/`pwd -P`
-  # never cross into a separate native process -- the path stays a plain,
-  # always-quoted bash string throughout, so a literal "[" is just a
-  # directory-name byte, never glob syntax, and that translation never gets
-  # a chance to run.
-  #
-  # _abs_path -- anchor a possibly-relative path at $PWD. Recognizes
-  # POSIX/MSYS-absolute ("/...") and Windows drive-absolute ("C:/..." or
-  # "C:\...") forms; anything else is relative and gets $PWD prepended.
+  # _abs_path -- anchor a possibly-relative path at $PWD.
   _abs_path() {
     case "$1" in
       /*) printf '%s\n' "$1" ;;
-      [A-Za-z]:[/\\]*) printf '%s\n' "$1" ;;
       *) printf '%s\n' "$PWD/$1" ;;
     esac
   }
@@ -1769,29 +1733,15 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # truth (and it's exactly the case still needed downstream to build the
   # `find -path` exclusion pattern once the dir DOES exist).
   #
-  # Backslashes are normalized to
-  # forward slashes UP FRONT -- the walk below only ever splits on "/", and
-  # _abs_path accepts a backslash-form Windows-drive-absolute input
-  # ("C:\Users\...") as already-absolute without touching its separators.
-  # Without this, a non-existent backslash-form path has no "/" to strip,
-  # so `${abs%/*}` is a no-op on every iteration and the walk spins
-  # forever. The loop also gets an explicit structural terminator for the
-  # same failure mode in forward-slash form (e.g. a non-existent
-  # drive-absolute path shrinks down to a bare "Q:" with no "/" left to
-  # strip) -- break the instant a strip attempt produces no change, rather
-  # than relying on eventually reaching "/" or empty (which a bare drive
-  # token never does).
   _canon_path() {
     (
       local abs suffix comp new resolved
       abs="$(_abs_path "$1")"
-      abs="${abs//\\//}"
       suffix=""
       while [ ! -d "$abs" ] && [ "$abs" != "/" ] && [ -n "$abs" ]; do
         new="${abs%/*}"
         if [ "$new" = "$abs" ]; then
-          # Nothing left to strip (e.g. a bare "Q:" that isn't itself a
-          # directory) -- stop shrinking. $abs is left OUT of the
+          # Nothing left to strip -- stop shrinking. $abs is left OUT of the
           # reattached suffix; the `[ -d "$abs" ]` check right below will
           # correctly find it's not a directory and skip the cd/pwd -P
           # step, so the caller's original spelling for this remainder
@@ -1833,8 +1783,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # slice below applies the FOLDED string's length to the original-case path.
   _lc() { printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
   # _fs_case_insensitive -- true iff the filesystem the CORPUS actually
-  # lives on is case-insensitive. PROBE-FIRST: keying off OS TYPE
-  # (msys/cygwin/mingw/win32 -> insensitive, everything else -> sensitive)
+  # lives on is case-insensitive. PROBE-FIRST: assuming sensitivity
   # misreads macOS APFS, which is
   # case-INSENSITIVE by default while $OSTYPE reports "darwin" -- so on this
   # repo's Bash-3.2 macOS floor, a maps-dir passed with a case-variant
@@ -1854,7 +1803,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   #      test whether the UPPERCASE spelling resolves (cache in
   #      _GRAPHIFY_FS_CASE so a second consult never re-probes).
   #   3. If the probe cannot run (corpus root read-only/unwritable/not a
-  #      directory yet), FALL BACK to the OS-type heuristic below -- never
+  #      directory yet), FALL BACK to the case-sensitive default below -- never
   #      fail the refresh because of the probe itself.
   _fs_case_insensitive() {
     case "${GRAPHIFY_FS_CASE_INSENSITIVE:-}" in
@@ -1925,20 +1874,15 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     if [ -z "${_GRAPHIFY_FS_CASE:+x}" ]; then
       # Corpus root unwritable / read-only / not a directory yet, OR every
       # candidate name was occupied (pathological) -- the probe cannot run.
-      # Fall back to the OS-type heuristic rather than
+      # Fall back to the case-sensitive default rather than
       # fail the whole refresh over the probe itself; the fold direction it
       # picks is still strictly safer than no fold. NOT silent:
       # on a case-insensitive fs the OS-type answer can be WRONG
       # (macOS/APFS reads as case-sensitive here -- the exact misread the
       # probe exists to avoid), so a fallback is worth a loud advisory: the
       # operator can set GRAPHIFY_FS_CASE_INSENSITIVE=1/0 to pin the truth.
-      echo "WARN refresh-graph-map: case-sensitivity probe could not run in $CORPUS_ROOT_CANON (unwritable, or all candidate names occupied) -- falling back to the OS-type heuristic, which can misread e.g. macOS/APFS as case-sensitive. Pin with GRAPHIFY_FS_CASE_INSENSITIVE=1/0 if the exclusion misbehaves." >&2
-      local ostype="${OSTYPE:-}"
-      [ -n "$ostype" ] || ostype="$(uname 2>/dev/null || true)"
-      case "$(_lc "$ostype")" in
-        msys*|cygwin*|mingw*|win32*) _GRAPHIFY_FS_CASE=1 ;;
-        *) _GRAPHIFY_FS_CASE=0 ;;
-      esac
+      echo "WARN refresh-graph-map: case-sensitivity probe could not run in $CORPUS_ROOT_CANON (unwritable, or all candidate names occupied) -- falling back to the case-sensitive default, which can misread e.g. macOS/APFS as case-sensitive. Pin with GRAPHIFY_FS_CASE_INSENSITIVE=1/0 if the exclusion misbehaves." >&2
+      _GRAPHIFY_FS_CASE=0
     fi
     [ "$_GRAPHIFY_FS_CASE" -eq 1 ] && return 0 || return 1
   }
@@ -2652,9 +2596,8 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # public-mirrored artifact (graphify-out/ is tracked).
   # Rewrite line 1 to carry the corpus NAME instead, preserving a trailing
   # " (YYYY-MM-DD)" stamp if present. Matched on the generic
-  # `# Graph Report - <anything>` SHAPE, not the specific scratch string
-  # (MSYS vs Windows give different separator forms). awk, not
-  # sed/parameter-expansion: $NAME lands as an awk -v value (no
+  # `# Graph Report - <anything>` SHAPE, not the specific scratch string.
+  # awk, not sed/parameter-expansion: $NAME lands as an awk -v value (no
   # regex-replacement escaping of & or \ to worry about).
   if ! report_line1="$(head -n 1 "$SCRATCH_REPORT" 2>/dev/null)"; then
     echo "refresh-graph-map: failed to read report header" >&2

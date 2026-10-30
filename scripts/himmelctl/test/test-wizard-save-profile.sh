@@ -754,4 +754,187 @@ shopt -u nullglob dotglob
 [ "${#leftover11[@]}" -eq 0 ] || fail "case11: a failed rename must not litter the profiles dir with a temp file (found: ${leftover11[*]})"
 echo "ok: case11 a rename failure during the temp-file-then-rename save cleans up the leftover temp file, leaves the pre-existing destination byte-unchanged, warns, and does not touch the install's exit code"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case12: a profile save that lands INSIDE the retired-cadence
+# rewrite is kept. The rewrite (dropRetiredFromProfileFile) compares the file
+# with what it read, then renames its temp file over it; a second writer
+# (writeCache — the one himmelctl itself and the config UI save go through)
+# that lands between that compare and the rename used to be overwritten with
+# the stale content. A --require preload holds the rewrite right before its
+# rename, starts the second writer (a separate process) and gives it up to 3s
+# to write; an unlocked second writer writes inside that window and is lost,
+# a locked one waits for the rewrite to finish and writes after it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+h12="$work/home12"; mkdir -p "$h12"
+cache12="$work/cache12"; mkdir -p "$cache12"
+saved12="$cache12/install-profile.json"
+cat > "$saved12" <<'JSON'
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "none", "path": "" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "cadences": { "doctor": "off", "codex-sweep": "armed" }
+}
+JSON
+done12="$work/second-writer12.done"
+
+# secondWriter12.js — the second profile writer: writeCache() from bin.js, in
+# its own process, then a marker file so the test knows it finished.
+second12="$work/second-writer12.js"
+cat > "$second12" <<'JS'
+const fs = require('fs');
+require(process.env.SECOND_WRITER_BIN).writeCache({ schemaVersion: 2, savedBy: 'second-writer' });
+fs.writeFileSync(process.env.SECOND_WRITER_DONE, 'done');
+JS
+
+# holdRewrite12.js — holds the retired-cadence rewrite between its compare and
+# its rename (the window), starts the second writer, and waits until that
+# writer has changed the profile or 3s are up (a locked writer cannot change it
+# until the rewrite is done, so it never will inside the window).
+hold12="$work/hold-rewrite12.js"
+cat > "$hold12" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const realRenameSync = fs.renameSync;
+let started = false;
+fs.renameSync = function (oldPath, newPath) {
+  const dir = process.env.HOLD_REWRITE_DIR;
+  if (!started && typeof oldPath === 'string' && oldPath.endsWith('.tmp')
+      && path.resolve(path.dirname(oldPath)) === path.resolve(dir)) {
+    started = true;
+    const before = fs.readFileSync(newPath, 'utf8');
+    // the window only counts while the rewrite itself owns the lock
+    let owner = '';
+    try { owner = fs.readFileSync(`${path.resolve(newPath)}.lock`, 'utf8'); } catch (_e) { /* no lock */ }
+    if (owner !== String(process.pid)) { fs.writeFileSync(process.env.NOT_OWNER_FILE, owner); return realRenameSync.call(fs, oldPath, newPath); }
+    cp.spawn(process.execPath, [process.env.SECOND_WRITER_JS], { stdio: 'ignore', env: Object.assign({}, process.env, { NODE_OPTIONS: '' }) }).unref();
+    const sleeper = new Int32Array(new SharedArrayBuffer(4));
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && fs.readFileSync(newPath, 'utf8') === before) Atomics.wait(sleeper, 0, 0, 20);
+  }
+  return realRenameSync.call(fs, oldPath, newPath);
+};
+JS
+
+set +e
+out12=$(
+  cd "$h12" && HOME="$h12" USERPROFILE="$(winpath "$h12")" HIMMELCTL_INTERACTIVE=0 \
+    HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-12.json")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$cache12")" HIMMELCTL_BIN_DIR="$(winpath "$work/bin-12")" \
+    HOLD_REWRITE_DIR="$(winpath "$cache12")" SECOND_WRITER_JS="$(winpath "$second12")" \
+    NOT_OWNER_FILE="$(winpath "$work/not-owner12")" \
+    SECOND_WRITER_BIN="$(winpath "$wizard")" SECOND_WRITER_DONE="$(winpath "$done12")" \
+    NODE_OPTIONS="--require=$(winpath "$hold12")" \
+    "$node_bin" "$wizard" ensure --no-network --items wiring-pretooluse </dev/null 2>&1
+)
+rc12=$?
+set -e
+[ "$rc12" -eq 0 ] || fail "case12: the ensure that rewrites the profile should exit 0 (got rc=$rc12): $out12"
+[ ! -f "$work/not-owner12" ] || fail "case12: the rewrite did not hold the profile lock at its rename (lock said: '$(cat "$work/not-owner12")')"
+# the second writer is its own process: give it up to 15s to finish
+for _i in $(seq 1 150); do [ -f "$done12" ] && break; sleep 0.1; done
+[ -f "$done12" ] || fail "case12: the second profile writer never finished (ensure said: $out12)"
+grepq "$(cat "$saved12")" -F -- 'second-writer' \
+  || fail "case12: a profile save that landed during the retired-cadence rewrite was overwritten (saved profile: $(cat "$saved12"))"
+echo "ok: case12 a profile save that lands inside the retired-cadence rewrite is kept"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# case13: two waiters that both find the SAME dead lock owner must not both
+# take the lock. Waiter B reads the dead owner, then (held by a patched
+# readFileSync) waits until waiter A has taken the stale lock over and is
+# inside its critical section; only then does B go on to take over. B must
+# find A's fresh lock under its rename and leave it alone: B enters only after
+# A has left. The lib under test is LOCK_LIB, so the same driver can be pointed
+# at another copy of it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+dir13="$work/case13"; mkdir -p "$dir13"
+lib13="${LOCK_LIB_OVERRIDE:-$(dirname "$wizard")/lib/profile-lock.js}"
+
+# waiter-b.js: reads the stale lock, then waits until A holds it before it goes
+# on. With PAUSE_TOMB_UNTIL set it also waits, after renaming the lock to a
+# tombstone, until that file exists before it reads the tombstone.
+cat > "$dir13/waiter-b.js" <<'JS'
+const fs = require('fs');
+const lib = require(process.env.LOCK_LIB);
+const lock = `${require('path').resolve(process.env.PROFILE)}.lock`;
+const realRead = fs.readFileSync;
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+const waitFor = (file) => {
+  const deadline = Date.now() + 10000;
+  while (!fs.existsSync(file) && Date.now() < deadline) Atomics.wait(sleeper, 0, 0, 20);
+};
+let lockPaused = false;
+let tombPaused = false;
+fs.readFileSync = function (p, ...rest) {
+  const out = realRead.call(fs, p, ...rest);
+  if (!lockPaused && p === lock) {
+    lockPaused = true;
+    fs.writeFileSync(process.env.B_READ, '1');
+    waitFor(process.env.A_HOLD);
+  } else if (!tombPaused && process.env.PAUSE_TOMB_UNTIL && String(p).startsWith(`${lock}.stale.`)) {
+    tombPaused = true;
+    waitFor(process.env.PAUSE_TOMB_UNTIL);
+  }
+  return out;
+};
+lib.withProfileLock(process.env.PROFILE, () => { fs.writeFileSync(process.env.B_IN, String(Date.now())); });
+JS
+# waiter-a.js: takes the lock, holds it 1.5s, then (A_LINGER_MS) stays alive.
+cat > "$dir13/waiter-a.js" <<'JS'
+const fs = require('fs');
+const lib = require(process.env.LOCK_LIB);
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+lib.withProfileLock(process.env.PROFILE, () => {
+  fs.writeFileSync(process.env.A_HOLD, '1');
+  Atomics.wait(sleeper, 0, 0, 1500);
+  fs.writeFileSync(process.env.A_OUT, String(Date.now()));
+});
+if (process.env.A_LINGER_MS) Atomics.wait(sleeper, 0, 0, Number(process.env.A_LINGER_MS));
+JS
+
+# race_two_waiters <case> [VAR=value...] — B reads a dead owner's lock, A takes
+# it over, B goes on; the files a-out / b-in under $work/<case> hold the times.
+race_two_waiters() {
+  local name="$1" dir="$work/$1"; shift
+  mkdir -p "$dir"
+  printf '%s' "$("$node_bin" -e 'process.stdout.write(String(process.pid))')" > "$dir/install-profile.json.lock"
+  local envs=(LOCK_LIB="$(winpath "$lib13")" PROFILE="$(winpath "$dir/install-profile.json")"
+    B_READ="$(winpath "$dir/b-read")" A_HOLD="$(winpath "$dir/a-hold")"
+    A_OUT="$(winpath "$dir/a-out")" B_IN="$(winpath "$dir/b-in")" "$@")
+  env "${envs[@]}" "$node_bin" "$(winpath "$dir13/waiter-b.js")" &
+  local pid_b=$!
+  for _i in $(seq 1 100); do [ -f "$dir/b-read" ] && break; sleep 0.1; done
+  [ -f "$dir/b-read" ] || fail "$name: waiter B never read the stale lock"
+  env "${envs[@]}" "$node_bin" "$(winpath "$dir13/waiter-a.js")" &
+  local pid_a=$!
+  wait "$pid_a" || fail "$name: waiter A failed to take the stale lock over"
+  wait "$pid_b" || fail "$name: waiter B failed"
+  [ -f "$dir/a-out" ] && [ -f "$dir/b-in" ] || fail "$name: a waiter never ran its critical section"
+  [ ! -e "$dir/install-profile.json.lock" ] || fail "$name: the lock file was left behind"
+}
+
+race_two_waiters case13
+b13="$(cat "$work/case13/b-in")"; a13="$(cat "$work/case13/a-out")"
+[ "$b13" -ge "$a13" ] || fail "case13: waiter B took the lock while waiter A still held it (B in at $b13, A out at $a13)"
+echo "ok: case13 two waiters that find the same dead owner do not both take the lock"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# case14: a waiter that renamed a FRESH owner's lock to its tombstone must not
+# leave that lock behind once the owner is done. B renames A's live lock and is
+# held until A has finished its critical section; A stays alive afterwards (the
+# config UI save is a long-lived process). B links the lock back, so A has to
+# release the restored file: B then gets the lock at once instead of waiting
+# for A's process to exit (3s here).
+# ═══════════════════════════════════════════════════════════════════════════
+
+race_two_waiters case14 PAUSE_TOMB_UNTIL="$(winpath "$work/case14/a-out")" A_LINGER_MS=3000
+b14="$(cat "$work/case14/b-in")"; a14="$(cat "$work/case14/a-out")"
+[ $((b14 - a14)) -lt 2000 ] \
+  || fail "case14: waiter B waited $((b14 - a14))ms for a lock its owner had already released (the restored lock stayed behind)"
+echo "ok: case14 a lock restored after a waiter's rename is released by its owner"
+
 echo "PASS"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): POSIX bash 3.2+ / Git Bash on Windows.
+# Platform guard: POSIX bash 3.2+ / Git Bash on Windows.
 #
 # check-swallowed-errors.sh — refuse NEW swallowed errors in gate and hook scripts.
 # A read whose failure is turned into a plausible value reaches the decision as

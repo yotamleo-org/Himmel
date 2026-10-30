@@ -49,7 +49,7 @@
 # shields, helpers and fixtures are copied from test-arm-resume-context.sh (do
 # not invent a new hermetic pattern).
 #
-# Platform guard (gitbash-only): the suite itself runs under any POSIX bash
+# Platform guard: the suite itself runs under any POSIX bash
 # 3.2+; its assertions target arm-resume.sh's POSIX crontab emitter
 # specifically (forced via OSTYPE), so they hold on a Windows host too — the
 # Windows .bat branch is never entered here.

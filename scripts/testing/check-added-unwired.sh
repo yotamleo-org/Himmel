@@ -46,7 +46,7 @@
 #          else HEAD, vs its merge-base with $ADDED_UNWIRED_BASE, else origin/main, else
 #          main; the status-A files of that diff. No resolvable base or no added file: exit 0, nothing to judge.)
 # Exit: 0 clean, 1 unwired file(s), 2 usage / unreadable ref.
-# Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
+# Platform guard: POSIX bash 3.2+, no mapfile.
 set -uo pipefail
 
 ALLOW_PATH_RE='(^|/)(fixtures|testdata|node_modules)/'

@@ -69,9 +69,9 @@ case "$_ah_self" in
         # parameter expansion (never basename/dirname); git, env and cmp come
         # from the fixed system dirs, the same order chokepoint-seam-guard.sh
         # uses; the hand-off re-exec uses "$BASH", not PATH's bash.
-        # ponytail: a tool absent from those dirs (git under Git-Bash lives in
-        # /mingw64/bin) falls back to PATH's, so a PATH-shadowed tool is only
-        # shut out where the system dirs carry the real one; upgrade path is a
+        # ponytail: a tool absent from those dirs falls back to PATH's, so a
+        # PATH-shadowed tool is only shut out where the system dirs carry the
+        # real one; upgrade path is a
         # per-platform tool dir list if a station hits it.
         _ah_bin() {
             local _d

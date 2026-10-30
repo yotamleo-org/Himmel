@@ -161,18 +161,18 @@ def zone(name):
         refuse("unknown --tz: " + name)
 
 
-def legs_of(a, since):
-    legs, seen = [], {}
+def workers_of(a, since):
+    workers, seen = [], {}
     for m in a.manifest:
         try:
             data = json.loads(read(m))
         except (OSError, ValueError) as e:
             refuse("unreadable manifest %s: %s" % (m, e))
-        for leg in data.get("legs") or []:
-            doc = leg.get("doc") or ""
+        for wk in data.get("workers") or data.get("legs") or []:
+            doc = wk.get("doc") or ""
             if doc and not os.path.isabs(doc):
                 doc = os.path.join(os.path.dirname(os.path.abspath(m)), doc)
-            added = judge_accuracy.when(leg.get("added") or "")
+            added = judge_accuracy.when(wk.get("added") or "")
             if since and (added is None or added < since):
                 continue
             key = os.path.realpath(doc)
@@ -181,9 +181,9 @@ def legs_of(a, since):
                 if added and (old["added"] is None or added < old["added"]):
                     old["added"] = added
                 continue
-            seen[key] = {"doc": doc, "label": leg.get("label") or os.path.basename(doc),
-                         "lane": leg.get("lane") or None, "added": added}
-            legs.append(seen[key])
+            seen[key] = {"doc": doc, "label": wk.get("label") or os.path.basename(doc),
+                         "lane": wk.get("lane") or None, "added": added}
+            workers.append(seen[key])
     for doc, label in zip(a.doc, a.label):
         key = os.path.realpath(doc)
         if key in seen:
@@ -192,23 +192,23 @@ def legs_of(a, since):
         if since and day and day.group(1) < since.date().isoformat():
             continue
         seen[key] = {"doc": doc, "label": label, "lane": None, "added": None}
-        legs.append(seen[key])
-    legs.sort(key=lambda g: (int(re.sub(r"\D", "", g["label"]) or 0), g["label"]))
-    return legs
+        workers.append(seen[key])
+    workers.sort(key=lambda g: (int(re.sub(r"\D", "", g["label"]) or 0), g["label"]))
+    return workers
 
 
-def parse_doc(leg, tz):
+def parse_doc(wk, tz):
     """The doc's resume_cwd and its bullets: (dt, marker, text, is_chief)."""
     try:
-        text = read(leg["doc"])
+        text = read(wk["doc"])
     except OSError:
         return None
     m = re.search(r"^resume_cwd: *(\S+)", text, re.M)
-    leg["cwd"] = m.group(1) if m else None
-    if leg["added"]:
-        prev = leg["added"].astimezone(tz)
+    wk["cwd"] = m.group(1) if m else None
+    if wk["added"]:
+        prev = wk["added"].astimezone(tz)
     else:
-        day = re.search(r"(\d{4}-\d{2}-\d{2})\.md$", leg["doc"])
+        day = re.search(r"(\d{4}-\d{2}-\d{2})\.md$", wk["doc"])
         prev = datetime.fromisoformat(day.group(1)).replace(tzinfo=tz) if day else None
     bullets = []
     for line in text.splitlines():
@@ -255,11 +255,11 @@ def minutes(a, b):
     return round((b - a).total_seconds() / 60)
 
 
-def leg_prs(leg, bullets, prs):
+def worker_prs(wk, bullets, prs):
     branch = None
-    if leg.get("cwd"):
-        branch = os.path.basename(leg["cwd"].rstrip("/")).replace("+", "/", 1)
-    leg["branch"] = branch
+    if wk.get("cwd"):
+        branch = os.path.basename(wk["cwd"].rstrip("/")).replace("+", "/", 1)
+    wk["branch"] = branch
     cited = {int(m.group(1)) for b in bullets if not b["chief"] and b["word"] == "READY"
              for m in [re.match(r"READY (\d+)", b["text"])] if m}
     if prs is None:
@@ -342,15 +342,15 @@ def escapes_cell(merged, prs, bugs):
     return cell
 
 
-def score(leg, ctx):
+def score(wk, ctx):
     q, f, v = {}, {}, {}
-    bullets = parse_doc(leg, ctx["tz"])
-    lane = leg["lane"] or "unknown"
+    bullets = parse_doc(wk, ctx["tz"])
+    lane = wk["lane"] or "unknown"
     q["lane"] = f["lane"] = lane
-    t = re.match(r"([A-Z][A-Z0-9]+-\d+)-", os.path.basename(leg["doc"]))
+    t = re.match(r"([A-Z][A-Z0-9]+-\d+)-", os.path.basename(wk["doc"]))
     q["ticket"] = t.group(1) if t else na("no ticket in doc name")
     if bullets is None:
-        reason = na("no worker doc: %s" % leg["doc"])
+        reason = na("no worker doc: %s" % wk["doc"])
         for k in ("PR", "state", "judge", "cr", "rounds", "pushes", "reds", "escapes"):
             q[k] = reason
         for k in ("live", "ready", "interventions", "breakdown", "protocol", "delivery", "stalls", "denials", "cost"):
@@ -358,7 +358,7 @@ def score(leg, ctx):
         return q, f, {"merged": None, "in_flight": None}
     worker = [b for b in bullets if not b["chief"]]
     chief_entries = [b for b in bullets if b["chief"]]
-    mine = leg_prs(leg, bullets, ctx["prs"])
+    mine = worker_prs(wk, bullets, ctx["prs"])
     merged = [p for p in mine or [] if p.get("mergedAt")]
     wrapped = any(b["word"] == "WRAPPED" for b in worker)
 
@@ -379,7 +379,7 @@ def score(leg, ctx):
         q["judge"] = nopr
     else:
         q["judge"], v["judge"] = judge_cell(mine, ctx["recs"], ctx["vdir"])
-    q["cr"], q["rounds"], v["cr"], v["rounds"] = cr_cells(leg.get("branch"), ctx["ledger_rows"], ctx["folded"], ctx["ledger"])
+    q["cr"], q["rounds"], v["cr"], v["rounds"] = cr_cells(wk.get("branch"), ctx["ledger_rows"], ctx["folded"], ctx["ledger"])
     q["pushes"], _ = pushes_after_ready(bullets, mine)
     if nopr:
         q["reds"] = nopr
@@ -395,12 +395,12 @@ def score(leg, ctx):
     live = next((b for b in worker if b["word"] == "LIVE"), None)
     ready = next((b for b in worker if b["word"] == "READY"), None)
     for key, b, what in (("live", live, "LIVE"), ("ready", ready, "READY")):
-        if not leg["added"]:
+        if not wk["added"]:
             f[key] = na("no manifest launch time")
         elif not b:
             f[key] = na("no %s bullet" % what if what == "LIVE" else "no READY yet")
         else:
-            v[key] = minutes(leg["added"], b["dt"])
+            v[key] = minutes(wk["added"], b["dt"])
             f[key] = "%dm" % v[key]
     asks = sum(1 for b in worker if b["word"] == "FINDING")
     resolved = sum(1 for b in worker if b["word"] == "RESOLVED")
@@ -409,8 +409,8 @@ def score(leg, ctx):
     expand_at = [b["hm"] for b in chief_entries
                  if b not in relays and not NUDGE.search(b["text"]) and EXPAND.search(b["text"])]
     rulings = max(resolved, len(chief_entries) - len(relays) - len(nudge_at) - len(expand_at))
-    label = re.compile(r"\b%s\b" % re.escape(leg["label"]))
-    stem = os.path.splitext(os.path.basename(leg["doc"]))[0]
+    label = re.compile(r"\b%s\b" % re.escape(wk["label"]))
+    stem = os.path.splitext(os.path.basename(wk["doc"]))[0]
     chief_lines = [ln for ln in ctx["chief_text"].splitlines() if label.search(ln)] if ctx["chief_text"] else []
     nudges = events(nudge_at, [clock(ln) for ln in chief_lines if NUDGE.search(ln)])
     expands = events(expand_at, [clock(ln) for ln in chief_lines if not NUDGE.search(ln) and EXPAND.search(ln)])
@@ -457,14 +457,14 @@ def score(leg, ctx):
     f["stalls"] = ", ".join(stalls) or "none"
     if ctx["denials"] is None:
         f["denials"] = na("no denial log: %s" % ctx["denials_path"])
-    elif not leg.get("cwd"):
+    elif not wk.get("cwd"):
         f["denials"] = na("no resume_cwd")
-    elif "/.claude/worktrees/" not in leg["cwd"]:
+    elif "/.claude/worktrees/" not in wk["cwd"]:
         # the primary checkout is shared by the chief and every session in it
-        f["denials"] = na("no worktree: %s" % leg["cwd"])
+        f["denials"] = na("no worktree: %s" % wk["cwd"])
     else:
-        wt = os.path.basename(leg["cwd"].rstrip("/"))
-        v["denials"] = sum(1 for d in ctx["denials"] if (d.get("cwd") == leg["cwd"] or d.get("session_title") == wt)
+        wt = os.path.basename(wk["cwd"].rstrip("/"))
+        v["denials"] = sum(1 for d in ctx["denials"] if (d.get("cwd") == wk["cwd"] or d.get("session_title") == wt)
                            and (ctx["since"] is None or (judge_accuracy.when(d.get("ts") or "") or ctx["since"]) >= ctx["since"]))
         f["denials"] = str(v["denials"])
     if mine is None:
@@ -484,7 +484,7 @@ def score(leg, ctx):
 
 def lane_rows(scored):
     lanes = {}
-    for leg, q, f, v in scored:
+    for wk, q, f, v in scored:
         lanes.setdefault(q["lane"], []).append(v)
     out = []
 
@@ -532,7 +532,7 @@ def main():
         since = judge_accuracy.when(a.since)
         if since is None:
             refuse("--since is not an ISO-8601 timestamp: " + a.since)
-    legs = legs_of(a, since)
+    workers = workers_of(a, since)
     ctx = {"tz": tz, "since": since}
     ctx["prs"] = None
     if a.prs:
@@ -540,7 +540,7 @@ def main():
             ctx["prs"] = judge_accuracy.load_json(a.prs, "--prs")
         except ValueError as e:
             refuse(str(e))
-    first_doc = legs[0]["doc"] if legs else (a.manifest or a.doc)[0]
+    first_doc = workers[0]["doc"] if workers else (a.manifest or a.doc)[0]
     ctx["vdir"] = a.verdicts or os.path.join(os.path.dirname(os.path.abspath(first_doc)), "verdicts")
     ctx["recs"] = judge_accuracy.load_verdicts(ctx["vdir"])[0] if os.path.isdir(ctx["vdir"]) else None
     ledger = a.cr_ledger or os.environ.get("CR_LEDGER")
@@ -580,32 +580,32 @@ def main():
     except OSError:
         ctx["bugs"], mirror_why = None, "unreadable"
 
-    scored = [(leg,) + score(leg, ctx) for leg in legs]
+    scored = [(wk,) + score(wk, ctx) for wk in workers]
     lanes = {}
     for _, q, _, _ in scored:
         lanes[q["lane"]] = lanes.get(q["lane"], 0) + 1
     out = ["# Fleet scorecard", "",
-           "cohort: %d legs (%s)%s; local report, never published" % (
-               len(legs), ", ".join("%s %d" % (k, lanes[k]) for k in sorted(lanes)) or "none",
+           "cohort: %d workers (%s)%s; local report, never published" % (
+               len(workers), ", ".join("%s %d" % (k, lanes[k]) for k in sorted(lanes)) or "none",
                ", since " + a.since if a.since else ""), "",
            "## Output quality", "",
-           table(["leg", "lane", "ticket", "PR", "state", "judge", "CR findings per reviewed head", "rounds to clean",
+           table(["worker", "lane", "ticket", "PR", "state", "judge", "CR findings per reviewed head", "rounds to clean",
                   "pushes after READY", "main reds caused", "escapes 7d"],
-                 [[leg["label"], q["lane"], q["ticket"], q["PR"], q["state"], q["judge"], q["cr"], q["rounds"],
-                   q["pushes"], q["reds"], q["escapes"]] for leg, q, _, _ in scored]), "",
+                 [[wk["label"], q["lane"], q["ticket"], q["PR"], q["state"], q["judge"], q["cr"], q["rounds"],
+                   q["pushes"], q["reds"], q["escapes"]] for wk, q, _, _ in scored]), "",
            "## Fleet management", "",
-           table(["leg", "lane", "launch to LIVE", "launch to READY", "interventions", "asks/rulings/nudges/expansions",
+           table(["worker", "lane", "launch to LIVE", "launch to READY", "interventions", "asks/rulings/nudges/expansions",
                   "protocol", "delivery", "stalls", "denials", "cost-eq per merged PR"],
-                 [[leg["label"], f["lane"], f["live"], f["ready"], f["interventions"], f["breakdown"], f["protocol"],
-                   f["delivery"], f["stalls"], f["denials"], f["cost"]] for leg, _, f, _ in scored]), "",
+                 [[wk["label"], f["lane"], f["live"], f["ready"], f["interventions"], f["breakdown"], f["protocol"],
+                   f["delivery"], f["stalls"], f["denials"], f["cost"]] for wk, _, f, _ in scored]), "",
            "## Per lane", "",
-           table(["lane", "legs", "merged", "in flight", "judge GO", "judge NO-GO", "blockers", "majors", "CR findings",
+           table(["lane", "workers", "merged", "in flight", "judge GO", "judge NO-GO", "blockers", "majors", "CR findings",
                   "median rounds to clean", "median launch to LIVE", "median launch to READY", "interventions",
                   "median interventions", "denials", "median cost-eq per merged PR"], lane_rows(scored)), "",
            "- interventions: a ruling or nudge sent by SendMessage counts only when a doc logs it, "
            "so a worker with message delivery shows a floor", "",
            "## Sources", "",
-           "- manifests: %s" % (", ".join(a.manifest) or "none (bare --doc legs)"),
+           "- manifests: %s" % (", ".join(a.manifest) or "none (bare --doc workers)"),
            "- chief docs: %s%s" % (", ".join(found) or na("none found"),
                                    " (missing: %s)" % ", ".join(c for c in chief_docs if c not in found)
                                    if found and len(found) < len(chief_docs) else ""),

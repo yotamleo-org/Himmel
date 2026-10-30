@@ -17,7 +17,7 @@ scrape_configs:
           - 127.0.0.1:9090
 
   - job_name: flow-exporter
-    # Rendering shells out to schtasks, PowerShell and git (~9.9s peak).
+    # Rendering shells out to scheduler and git probes.
     # A timeout stales every exported series and makes stall alerts flap.
     # 30s leaves ~3x peak headroom within the 60s scrape interval.
     scrape_timeout: 30s

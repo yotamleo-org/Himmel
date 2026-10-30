@@ -13,20 +13,18 @@ pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1 — $2"; FAILED=$((FAILED + 1)); }
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "expected '$2', got '$3'"; fi; }
 
-# The engine's real deps are a WORKING python + git + a SHA-256 tool (NOT node
-# — it is never invoked; the prior node gate was vestigial). A working python
-# means one whose stdout actually runs: on Windows `python3` is the Microsoft
-# Store stub (on PATH but emits nothing), so gate on real output, not
-# `command -v`.
+# The engine's real deps are a working Python + git + a SHA-256 tool (NOT node
+# — it is never invoked; the prior node gate was vestigial). Gate on real
+# output, not just `command -v`.
 PY=""
 SHA256=()
 _resolve_py() {
-    for c in python3 python py; do
+    for c in python3 python; do
         command -v "$c" >/dev/null 2>&1 && [ "$("$c" -c 'print(1)' 2>/dev/null)" = "1" ] && { PY="$c"; return 0; }
     done
     return 1
 }
-_resolve_py || { echo "SKIP all — no working python (python3/python/py) on PATH"; exit 0; }
+_resolve_py || { echo "SKIP all — no working python (python3/python) on PATH"; exit 0; }
 command -v git >/dev/null 2>&1 || { echo "SKIP all — git not on PATH"; exit 0; }
 if command -v sha256sum >/dev/null 2>&1; then
     SHA256=(sha256sum)
@@ -411,7 +409,7 @@ printf 'STALE\n' > "$V/scripts/hooks/check-no-force-push.sh"
 out=$(env -u HIMMEL_DIR HOME="$T16HOME" bash "$UPGRADE" --vault-dir "$V" --dry-run 2>&1); rc=$?
 assert_eq "T16 candidate-path rc" "0" "$rc"
 case "$out" in *"t16-home/github/himmel/templates/luna-second-brain"*) pass "T16 resolves via generic candidate path" ;; *) fail "T16 resolves via generic candidate path" "got: $out" ;; esac
-# A SINGLE clone must never false-warn. On a case-insensitive FS (Windows/macOS)
+# A SINGLE clone must never false-warn. On a case-insensitive FS (macOS)
 # the `himmel` and `Himmel` candidate spellings BOTH resolve to this one dir, so
 # this case exercises the device:inode dedup branch (same key => no warn).
 case "$out" in *"multiple himmel checkouts"*) fail "T16 single clone: no false multi-checkout warn" "warned: $out" ;; *) pass "T16 single clone: no false multi-checkout warn (dedup branch)" ;; esac
@@ -1822,7 +1820,7 @@ t63_expect_withheld "T63l leading-space pattern" .gitignore "$t63_pre"
 
 # ---------------------------------------------------------------------------
 # T64: a file that differs from the template ONLY in line
-# ending (CRLF vs LF — an operator's editor, or a Windows checkout, re-saving
+# ending (CRLF vs LF — an operator's editor re-saving
 # a template-owned file with no content change) reads as identical, not as a
 # local edit: no WRITE, no LOCAL-EDIT, the run completes and the stamp
 # advances.

@@ -22,7 +22,51 @@ CONFIG=/etc/himmel/afk-sudo.json
 SEED=/etc/himmel/afk-sudo/totp.seed
 LEDGER=/var/log/himmel/afk-sudo.jsonl
 
-usage() { echo "usage: sudo bash install.sh --user <login> | --uninstall" >&2; exit 2; }
+# --- hints for the operator's next step ---
+# Bash builtins plus uname only, so a test can source this file under a stubbed
+# PATH and AFK_OS_RELEASE.
+os_family() {
+    local id="" like="" k v osr=${AFK_OS_RELEASE:-/etc/os-release}
+    if [ "$(uname -s 2>/dev/null)" = Darwin ]; then echo mac; return; fi
+    if [ -r "$osr" ]; then
+        while IFS='=' read -r k v; do
+            v=${v//\"/}
+            case "$k" in ID) id=$v ;; ID_LIKE) like=$v ;; esac
+        done < "$osr"
+    fi
+    case " $id $like " in
+        *" arch "*) echo arch ;;
+        *" debian "* | *" ubuntu "*) echo debian ;;
+        *) echo unknown ;;
+    esac
+}
+pkg_hint() {
+    case "$(os_family)" in
+        arch) echo "sudo pacman -S $*" ;;
+        debian) echo "sudo apt install $*" ;;
+        mac) echo "brew install $*" ;;
+        *) echo "install with your package manager: $*" ;;
+    esac
+}
+# The sudoedit command that works here: sudoedit needs an editor, and a minimal
+# station has no vi.
+enable_cmd() {
+    local e
+    if [ -n "${SUDO_EDITOR:-}${VISUAL:-}${EDITOR:-}" ] || command -v vi >/dev/null 2>&1; then
+        echo "sudoedit $CONFIG"; return
+    fi
+    for e in nano vim micro; do
+        if command -v "$e" >/dev/null 2>&1; then echo "SUDO_EDITOR=$e sudoedit $CONFIG"; return; fi
+    done
+    echo "SUDO_EDITOR=nano sudoedit $CONFIG   (no editor found; install one first: $(pkg_hint nano))"
+}
+qr_hint() {
+    if ! command -v qrencode >/dev/null 2>&1; then echo "No QR code (qrencode is missing); to get one next time: $(pkg_hint qrencode)"; fi
+}
+# Sourced by the test: stop before the root check and the install.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
+usage(){ echo "usage: sudo bash install.sh --user <login> | --uninstall" >&2; exit 2; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || { echo "install.sh: run it with sudo" >&2; exit 2; }
 src=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || die "cannot resolve the source dir"
@@ -58,10 +102,10 @@ if [ ! -e "$SEED" ]; then
     uri="otpauth://totp/himmel-afk-sudo:$(hostname)?secret=$(cat "$SEED")&issuer=himmel"
     echo "Add this to your authenticator app now; it is not shown again:"
     echo "$uri"
-    if command -v qrencode >/dev/null 2>&1; then qrencode -t ansiutf8 "$uri"; fi
+    if command -v qrencode >/dev/null 2>&1; then qrencode -t ansiutf8 "$uri"; else qr_hint; fi
 fi
 
 printf '%s ALL=(root) NOPASSWD: %s\n' "$user" "$LIBEXEC/afk-sudo" > "$tmp" || die "cannot write the sudoers rule"
 visudo -cf "$tmp" >/dev/null || die "visudo rejected the sudoers rule"
 install -o root -g root -m 0440 "$tmp" "$SUDOERS" || die "cannot install the sudoers rule"
-echo "installed for $user; still disabled. Enable: sudoedit $CONFIG (enabled, operator_id, classes)"
+echo "installed for $user; still disabled. Enable: $(enable_cmd) (enabled, operator_id, classes)"

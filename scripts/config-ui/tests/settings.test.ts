@@ -46,7 +46,8 @@ test("every group is drawn even when the feed offers it no switch, so the order 
 test("every row shows its command, when it takes effect, and a Learn more link into the docs site", () => {
   expect(rows.length).toBeGreaterThanOrEqual(12);
   for (const r of rows) {
-    expect(r, r.slice(0, 120)).toMatch(/<pre><code>[^<]+<\/code><\/pre>/);
+    expect(r, r.slice(0, 120)).toMatch(/data-act="copy"[^>]*data-cmd="[^"]+"|<code>~\/\.himmel\/config.json<\/code>/);
+    expect(r).not.toContain("<pre><code>");
     expect(r, r.slice(0, 120)).toContain("takes effect: ");
     expect(r, r.slice(0, 120)).toMatch(new RegExp(`<a class="learn" href="${DOCS_URL}[a-z/-]*" target="_blank" rel="noopener">Learn more</a>`));
   }
@@ -117,7 +118,7 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
 test("a lane row prints one command for on and one for off, never an on|off a shell would read as a pipe", () => {
   const html = R.renderSettings(feed, { plans: {} });
   expect(html).not.toContain("on|off");
-  expect(html).toContain("config set lanes.codex on\nnode ~/himmel/scripts/himmelctl/bin.js config set lanes.codex off");
+  for (const value of ["on", "off"]) expect(html).toContain(`data-cmd="node ~/himmel/scripts/himmelctl/bin.js config set lanes.codex ${value}"`);
 });
 
 test("settingsEffect has plain words for every action in the table", () => {
@@ -188,7 +189,7 @@ test("a secret row keeps save and remove in one actions box so every input ends 
   const stored = { ...setupData, secrets: setupData.secrets.map((s) => (s.name === "TELEGRAM_BOT_TOKEN" ? { ...s, status: "set" } : s)) };
   const forms = [...panel(cfg("secrets", { setup: stored })).matchAll(/<form class="sform" data-setup-form[\s\S]*?<\/form>/g)].map((m) => m[0]);
   expect(forms.length).toBe(3);
-  for (const f of forms) expect(f).toMatch(/<span class="acts"><button class="btn primary" type="submit">save<\/button>(<button class="btn"[^>]*>remove<\/button>)?<\/span><\/form>/);
+  for (const f of forms) expect(f).toMatch(/<span class="acts">(<button class="btn"[^>]*data-act="reveal"[^>]*>show<\/button>)?<button class="btn primary" type="submit">save<\/button>(<button class="btn"[^>]*>remove<\/button>)?<\/span><\/form>/);
   expect(forms.filter((f) => f.includes("remove")).length).toBe(1);
 });
 

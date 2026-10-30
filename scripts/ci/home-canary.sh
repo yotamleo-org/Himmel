@@ -30,7 +30,7 @@
 # and the judge cover that route, upgrade path is an fanotify/strace watch on
 # the real home.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, GNU/BSD coreutils.
+# Platform guard: POSIX bash 3.2+, GNU/BSD coreutils.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

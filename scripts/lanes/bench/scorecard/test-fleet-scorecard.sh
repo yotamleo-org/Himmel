@@ -130,10 +130,10 @@ check "(d) a refused --out writes nothing in the working dir" "$(ls -A "$TMP")" 
 
 # --- (b) continued: a source that cannot be read is n/a, never read as another
 mkdir -p "$TMP/m" "$TMP/mirror/HIMMEL-1.md"
-cp "$FX/FT-roadmap-chief.fleet.json" "$TMP/m/legs.json"
-OTHER=$(run --manifest "$TMP/m/legs.json" 2>/dev/null)
+cp "$FX/FT-roadmap-chief.fleet.json" "$TMP/m/workers.json"
+OTHER=$(run --manifest "$TMP/m/workers.json" 2>/dev/null)
 check "(b) a manifest not named *.fleet.json is not read as its own chief doc" \
-    "$(printf '%s\n' "$OTHER" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $TMP/m/legs.md)"
+    "$(printf '%s\n' "$OTHER" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $TMP/m/workers.md)"
 BADMIRROR=$(run --mirror "$TMP/mirror" 2>/dev/null); RC=$?
 check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
 check "(b) an unreadable Jira mirror is n/a with its reason" \

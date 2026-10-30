@@ -6,7 +6,7 @@
 # Covers: usage (arg count / bad PR / bad sha), one all-green PR, and one
 # failing case per check (1..6).
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 set -uo pipefail
 
@@ -429,6 +429,85 @@ rc=0; out="$(run)" || rc=$?
 check "later-queued-untimed: exit 1" "$rc" "1"
 contains "later-queued-untimed: check 2 fails on the still-queued later run" "$out" "[FAIL] 2."
 contains "later-queued-untimed: names the queued run" "$out" "pr-title-lint=QUEUED/null"
+
+# --- 2i. superseded runs: a green fresh run clears an old run's rows that
+# the fresh run never re-reports. The rows are PR 4277's real rollup at
+# head 212754674539 (CI runs 41005958845 and 41057072476 failed lint, 41059698017
+# is green; fail-fast-lint only runs when lint fails, so the green run reports no
+# row under that name). Repo slug rewritten to acme/repo. ----------------------
+R4277='[{"completedAt":"2026-10-30T05:02:41Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/repo/actions/runs/41005958845/job/123900901871","name":"plan","startedAt":"2026-10-30T05:00:31Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T12:42:09Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/repo/actions/runs/41057072476/job/124067191535","name":"plan","startedAt":"2026-10-30T12:40:12Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T13:03:12Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/repo/actions/runs/41059698017/job/124076049152","name":"plan","startedAt":"2026-10-30T13:00:38Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T05:12:41Z","conclusion":"FAILURE","detailsUrl":"https://github.com/acme/repo/actions/runs/41005958845/job/123900901660","name":"lint","startedAt":"2026-10-30T05:00:32Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T12:55:10Z","conclusion":"FAILURE","detailsUrl":"https://github.com/acme/repo/actions/runs/41057072476/job/124067191570","name":"lint","startedAt":"2026-10-30T12:40:13Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T13:15:56Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/repo/actions/runs/41059698017/job/124076049669","name":"lint","startedAt":"2026-10-30T13:00:39Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T05:12:46Z","conclusion":"CANCELLED","detailsUrl":"https://github.com/acme/repo/actions/runs/41005958845/job/123904504863","name":"fail-fast-lint","startedAt":"2026-10-30T05:12:43Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T12:55:16Z","conclusion":"CANCELLED","detailsUrl":"https://github.com/acme/repo/actions/runs/41057072476/job/124073676920","name":"fail-fast-lint","startedAt":"2026-10-30T12:55:12Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T05:14:09Z","conclusion":"CANCELLED","detailsUrl":"https://github.com/acme/repo/actions/runs/41005958845/job/123904939618","name":"(!(github.event_name == '\''pull_request'\'' && github.event.action == '\''labeled'\'') || (github.event.label.name == (vars.CI_GO_LABEL || '\''ci:go'\'') && vars.CI_GO_GATE == '\''on'\'')) && '\''fail-fast-shell-unit-shard'\'' || '\''fail-fast-shell-unit-shard (deferred)'\''","startedAt":"2026-10-30T05:14:09Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T12:56:15Z","conclusion":"CANCELLED","detailsUrl":"https://github.com/acme/repo/actions/runs/41057072476/job/124074152290","name":"(!(github.event_name == '\''pull_request'\'' && github.event.action == '\''labeled'\'') || (github.event.label.name == (vars.CI_GO_LABEL || '\''ci:go'\'') && vars.CI_GO_GATE == '\''on'\'')) && '\''fail-fast-shell-unit-shard'\'' || '\''fail-fast-shell-unit-shard (deferred)'\''","startedAt":"2026-10-30T12:56:16Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T13:23:40Z","conclusion":"SKIPPED","detailsUrl":"https://github.com/acme/repo/actions/runs/41059698017/job/124086698085","name":"(!(github.event_name == '\''pull_request'\'' && github.event.action == '\''labeled'\'') || (github.event.label.name == (vars.CI_GO_LABEL || '\''ci:go'\'') && vars.CI_GO_GATE == '\''on'\'')) && '\''fail-fast-shell-unit-shard'\'' || '\''fail-fast-shell-unit-shard (deferred)'\''","startedAt":"2026-10-30T13:23:41Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T05:14:22Z","conclusion":"FAILURE","detailsUrl":"https://github.com/acme/repo/actions/runs/41005958845/job/123904938080","name":"shell-unit (ubuntu-latest)","startedAt":"2026-10-30T05:14:10Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T12:56:29Z","conclusion":"FAILURE","detailsUrl":"https://github.com/acme/repo/actions/runs/41057072476/job/124074150849","name":"shell-unit (ubuntu-latest)","startedAt":"2026-10-30T12:56:17Z","status":"COMPLETED","workflowName":"CI"},{"completedAt":"2026-10-30T13:25:17Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/repo/actions/runs/41059698017/job/124086694892","name":"shell-unit (ubuntu-latest)","startedAt":"2026-10-30T13:23:42Z","status":"COMPLETED","workflowName":"CI"}]'
+FFL='fail-fast-lint=COMPLETED/CANCELLED'
+reset_stubs
+STUB_ROLLUP="$R4277"
+rc=0; out="$(run)" || rc=$?
+check "4277-real-rollup: exit 0" "$rc" "0"
+contains "4277-real-rollup: check 2 passes" "$out" "[PASS] 2."
+# the snapshot query must ask for each CheckRun's detailsUrl, or the run id is never readable
+contains "4277-real-rollup: the snapshot query requests detailsUrl" "$(cat "$GH_LOG")" "completedAt detailsUrl checkSuite"
+
+# a newer run that is wholly skipped (the ci:go label) supersedes nothing
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41059698017/")) then .conclusion = "SKIPPED" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-wholly-skipped: exit 1" "$rc" "1"
+contains "newer-run-wholly-skipped: the old cancelled fail-fast row stays judged" "$out" "$FFL"
+
+# a newer run still in progress supersedes nothing
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41059698017/")) and .name == "lint" then .status = "IN_PROGRESS" | .conclusion = "" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-in-progress: exit 1" "$rc" "1"
+contains "newer-run-in-progress: the old cancelled fail-fast row stays judged" "$out" "$FFL"
+
+# a newer run that failed supersedes nothing
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41059698017/")) and .name == "plan" then .conclusion = "FAILURE" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-failed: exit 1" "$rc" "1"
+contains "newer-run-failed: the old cancelled fail-fast row stays judged" "$out" "$FFL"
+
+# a row with no readable run id stays judged
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if .name == "fail-fast-lint" then del(.detailsUrl) else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "row-without-run-id: exit 1" "$rc" "1"
+contains "row-without-run-id: the cancelled fail-fast row stays judged" "$out" "$FFL"
+
+# a newer green run of ANOTHER workflow supersedes nothing
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41059698017/")) then .workflowName = "Other" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-other-workflow: exit 1" "$rc" "1"
+contains "newer-run-other-workflow: the old cancelled fail-fast row stays judged" "$out" "$FFL"
+
+# only a COMPLETED/CANCELLED row is dropped: a re-run of a LOWER run id (later
+# startedAt, lower id) that is still running or failed must not hide behind the
+# higher run id's green rows
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41005958845/")) and .name == "plan" then .startedAt = "2026-10-30T14:00:00Z" | .status = "IN_PROGRESS" | .conclusion = "" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "lower-run-rerun-in-progress: exit 1" "$rc" "1"
+contains "lower-run-rerun-in-progress: the running row stays judged" "$out" "plan=IN_PROGRESS"
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41005958845/")) and .name == "plan" then .startedAt = "2026-10-30T14:00:00Z" | .conclusion = "FAILURE" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "lower-run-rerun-failure: exit 1" "$rc" "1"
+contains "lower-run-rerun-failure: the failed row stays judged" "$out" "plan=COMPLETED/FAILURE"
+
+# a green newer run with a narrower job set (it never re-reports lint) leaves the
+# older run's FAILURE row judged
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(select((.detailsUrl | contains("/runs/41059698017/")) and .name == "lint" | not))' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-narrower-job-set: exit 1" "$rc" "1"
+contains "newer-run-narrower-job-set: the older failed lint row stays judged" "$out" "lint=COMPLETED/FAILURE"
+
+# a detailsUrl that is not an actions job URL carries no run id: the row stays judged
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if .name == "fail-fast-lint" then .detailsUrl = "https://github.com/acme/repo/actions/runs/abc/job/1" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "malformed-details-url: exit 1" "$rc" "1"
+contains "malformed-details-url: the cancelled fail-fast row stays judged" "$out" "$FFL"
 
 # --- 3. check 3 fails: unresolved review threads > 0 --------------------
 reset_stubs

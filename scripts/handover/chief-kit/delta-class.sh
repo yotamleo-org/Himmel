@@ -28,7 +28,7 @@
 # A NO-GO verdict that names no `finding:` line classifies finding, never none:
 # its findings exist only as prose, so any delta needs a judge.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+; needs git, jq (ledger rows only).
+# Platform guard: POSIX bash 3.2+; needs git, jq (ledger rows only).
 set -u
 
 fin() { printf '%s\n' "$1"; exit 0; }

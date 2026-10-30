@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeAfkSudoGate, parseAfkSudo, type AfkSudoDeps } from "./afk-sudo-route";
+import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
 import { GROUP_ANONYMOUS_BOT_ID } from "./gate";
-import { handleInbound, type AutoGate } from "./poller";
+import { afkTapUnlessLocked, handleInbound, ingestBatch, ingestUpdates, inboundToDelivered, type AutoGate } from "./poller";
 import { sessionDir } from "./bus";
 
 const OP = 4242;
@@ -13,14 +13,15 @@ const access = { allowFrom: [String(OP)] };
 function fake(installed = true) {
   const calls: { args: string[]; stdin: string }[] = [];
   const replies: string[] = [];
+  const logs: string[] = [];
   const deps: AfkSudoDeps = {
     access: () => access,
     installed: () => installed,
     runHelper: async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=ran id=abcdefgh exit=0 argv=/usr/bin/systemctl restart x.service\n" }; },
     reply: async (_chat, text) => { replies.push(text); },
-    log: () => {},
+    log: (l) => { logs.push(l); },
   };
-  return { deps, calls, replies };
+  return { deps, calls, replies, logs };
 }
 const dm = (text: string, extra: Record<string, unknown> = {}) => ({ from: OP, chat_id: OP, text, forwarded: false, caption: false, ...extra });
 const settle = () => new Promise((r) => setTimeout(r, 5));
@@ -120,4 +121,302 @@ test("handleInbound: under lockdown an approve line never reaches the helper", a
   expect(calls.length).toBe(0);
   expect(ran).toEqual([]);
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+});
+
+// --- Approve / Deny buttons, then a ForceReply code prompt ---
+
+function buttons(opts: { operator?: number | null; promptId?: number | null; allowFrom?: string[] } = {}) {
+  const base = fake();
+  if (opts.allowFrom) base.deps.access = () => ({ allowFrom: opts.allowFrom! });
+  const sent: { chat: number; text: string }[] = [];
+  const answers: string[] = [];
+  let clock = 1_000_000;
+  const deps: AfkSudoCallbackDeps = {
+    ...base.deps,
+    operatorId: () => (opts.operator === undefined ? OP : opts.operator),
+    prompt: async (chat, text) => { sent.push({ chat, text }); return opts.promptId === undefined ? 77 : opts.promptId; },
+    answer: async (_cb, text) => { answers.push(text); },
+  };
+  const prompts = makeAfkSudoPrompts(() => clock, 150_000);
+  return {
+    ...base, sent, answers, prompts, tick: (ms: number) => { clock += ms; },
+    gate: makeAfkSudoGate(deps, prompts), tap: makeAfkSudoCallback(deps, prompts),
+  };
+}
+const tapOf = (data: string, extra: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: OP, chat_id: OP, data, ...extra });
+const reply = (text: string, to: number, extra: Record<string, unknown> = {}) => dm(text, { reply_to_message_id: to, ...extra });
+
+test("button: an Approve tap asks for the code with a prompt and never reaches the helper", async () => {
+  const b = buttons();
+  expect(b.tap(tapOf("afk:approve:abcdefgh"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Code for abcdefgh:" }]);
+  expect(b.answers.length).toBe(1);
+});
+
+test("button: the six-digit reply to that prompt approves with the code on stdin, never in argv or logs", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(reply("123456", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+  expect([...b.replies, ...b.sent.map((s) => s.text), ...b.answers, ...b.logs].join("\n")).not.toContain("123456");
+});
+
+test("button: a prompt is single use", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  b.gate(reply("123456", 77));
+  await settle();
+  expect(b.gate(reply("654321", 77))).toBe(true);
+  await settle();
+  expect(b.calls.length).toBe(1);
+  expect(b.replies.at(-1)).toContain("already used");
+  expect([...b.replies, ...b.logs].join("\n")).not.toContain("654321");
+});
+
+test("button: a Deny tap denies at once and asks for no code", async () => {
+  const b = buttons();
+  expect(b.tap(tapOf("afk:deny:abcdefgh"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["deny", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "" }]);
+  expect(b.sent).toEqual([]);
+});
+
+test("button: a tap from a stranger, a non-operator allowFrom id, or a group chat does nothing", async () => {
+  for (const [tap, operator] of [
+    [tapOf("afk:approve:abcdefgh", { from: 999, chat_id: 999 }), OP],
+    [tapOf("afk:deny:abcdefgh", { from: 999, chat_id: 999 }), OP],
+    [tapOf("afk:approve:abcdefgh"), 5151],
+    [tapOf("afk:approve:abcdefgh"), null],
+    [tapOf("afk:deny:abcdefgh", { chat_id: -100123 }), OP],
+  ] as const) {
+    const b = buttons({ operator });
+    expect(b.tap(tap)).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.sent).toEqual([]);
+    expect(b.answers).toEqual(["Not authorized."]);
+  }
+});
+
+test("button: a tap from the helper's operator id is refused when that id is outside allowFrom", async () => {
+  for (const data of ["afk:approve:abcdefgh", "afk:deny:abcdefgh"]) {
+    const b = buttons({ allowFrom: ["999"] });
+    expect(b.tap(tapOf(data))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.sent).toEqual([]);
+    expect(b.answers).toEqual(["Not authorized."]);
+  }
+});
+
+test("poller: a button tap under lockdown never reaches the tap gate", () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const updates = [{ update_id: 1, callback_query: { id: "c1", from: { id: OP }, data: "afk:deny:abcdefgh", message: { chat: { id: OP } } } }];
+  const seen: unknown[] = [];
+  dispatchAfkCallbacks(updates, afkTapUnlessLocked(r, (t) => { seen.push(t); return true; }));
+  expect(seen.length).toBe(1);
+  writeFileSync(join(r, "lockdown"), "locked\n");
+  dispatchAfkCallbacks(updates, afkTapUnlessLocked(r, (t) => { seen.push(t); return true; }));
+  expect(seen.length).toBe(1);
+});
+
+test("button: data that is not an afk button is not consumed", () => {
+  const b = buttons();
+  for (const data of ["perm:allow:abcde", "afk:approve:abc", "afk:run:abcdefgh", "afk:approve:abcdefgh;x"]) expect(b.tap(tapOf(data))).toBe(false);
+});
+
+test("button: with no installed helper a tap is not consumed", () => {
+  const base = buttons();
+  const off = makeAfkSudoCallback({ ...fake(false).deps, operatorId: () => OP, prompt: async () => 1, answer: async () => {} }, base.prompts);
+  expect(off(tapOf("afk:approve:abcdefgh"))).toBe(false);
+});
+
+test("button: a six-digit reply to an unknown message is ordinary text, not consumed", async () => {
+  const b = buttons();
+  expect(b.gate(reply("123456", 77))).toBe(false);
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(reply("hello", 78))).toBe(false);
+  expect(b.calls).toEqual([]);
+});
+
+test("button: a code-shaped reply to a bot message with no known prompt is consumed, however it is spaced", async () => {
+  for (const text of ["123 456", "123-456", " 123456 ", "1234567", "12 34 56"]) {
+    const b = buttons();
+    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  }
+});
+
+test("button: while a code prompt is live, a code-shaped message sent without replying is consumed, not forwarded", async () => {
+  for (const text of ["123456", "123 456", "123-456"]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(b.gate(dm(text))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies.at(-1)).toContain("abcdefgh");
+    expect([...b.replies, ...b.logs].join("\n")).not.toContain("456");
+  }
+  // not live: no tap, an expired window, a prompt that failed to send, a stranger, a forward, plain words
+  const none = buttons();
+  expect(none.gate(dm("123456"))).toBe(false);
+  const late = buttons();
+  late.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  late.tick(151_000);
+  expect(late.gate(dm("123456"))).toBe(false);
+  const live = buttons();
+  live.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  for (const msg of [dm("123456", { from: 999, chat_id: 999 }), dm("123456", { forwarded: true }), dm("hello"), dm("42")]) {
+    expect(live.gate(msg)).toBe(false);
+  }
+});
+
+test("button: a code buried in words or punctuation is consumed on a reply to a bot message and while a prompt is live", async () => {
+  const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
+  for (const text of texts) {
+    const gone = buttons();
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    const live = buttons();
+    live.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(live.gate(dm(text))).toBe(true);
+    await settle();
+    expect(gone.calls).toEqual([]);
+    expect(live.calls).toEqual([]);
+  }
+  // control: a five-digit run is not a code
+  for (const text of ["12345", "call 12345 now", "12 345", "see 1234 and 56 tomorrow"]) {
+    const gone = buttons();
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
+    const live = buttons();
+    live.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(live.gate(dm(text))).toBe(false);
+  }
+});
+
+test("button: the typed approve line still reaches the helper while a prompt is live", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(dm("approve ijklmnop 123456"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["approve", "ijklmnop", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+});
+
+test("poller: ingest then the real delivery mapping carries reply_to_bot into the gate", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123 456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
+  await ingestBatch(r, (i) => handleInbound(r, inboundToDelivered(i), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true));
+  await settle();
+  expect(calls.length).toBe(0);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+});
+
+test("button: a six-digit reply to a bot message with no known prompt is consumed and never forwarded", async () => {
+  const b = buttons();
+  expect(b.gate(reply("123456", 99, { reply_to_bot: true }))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  expect(b.logs.join("\n")).not.toContain("123456");
+  // other shapes of a reply to the bot stay ordinary text
+  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99), reply("123456", 99, { reply_to_bot: true, forwarded: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
+    expect(buttons().gate(msg)).toBe(false);
+  }
+});
+
+test("handleInbound: a six-digit reply to a bot message after a restart never lands in an inbox or run", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+  await handleInbound(r, reply("123456", 99, { reply_to_bot: true }), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
+  await settle();
+  expect(calls.length).toBe(0);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+});
+
+test("button: a reply that is not exactly six digits is consumed, tells the operator, and keeps the prompt alive", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  for (const t of ["12345", "1234567", "hello", "123 456 ok"]) {
+    expect(b.gate(reply(t, 77))).toBe(true);
+  }
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies.length).toBe(4);
+  expect(b.gate(reply("123456", 77))).toBe(true);
+  await settle();
+  expect(b.calls.length).toBe(1);
+});
+
+test("button: a reply after the prompt window is consumed but never reaches the helper", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  b.tick(151_000);
+  expect(b.gate(reply("123456", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies[0]).toContain("expired");
+  expect(b.gate(reply("654321", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+});
+
+test("button: a reply that is forwarded, from another chat or from another sender never reaches the helper", async () => {
+  for (const extra of [{ forwarded: true }, { from: 999, chat_id: 999 }, { chat_id: -100123 }]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    b.gate(reply("123456", 77, extra));
+    await settle();
+    expect(b.calls).toEqual([]);
+  }
+});
+
+test("button: when the prompt cannot be sent nothing is remembered", async () => {
+  const b = buttons({ promptId: null });
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(reply("123456", 77))).toBe(false);
+  expect(b.calls).toEqual([]);
+});
+
+test("button: the typed approve line keeps working beside the buttons", async () => {
+  const b = buttons();
+  expect(b.gate(dm("approve abcdefgh 123456"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+});
+
+test("dispatch: callback_query updates reach the tap gate with the sender and chat; malformed ones are skipped", () => {
+  const seen: unknown[] = [];
+  const updates = [
+    { update_id: 1, callback_query: { id: "c1", from: { id: OP }, data: "afk:deny:abcdefgh", message: { chat: { id: OP } } } },
+    { update_id: 2, message: { text: "hi" } },
+    { update_id: 3, callback_query: { id: "c3", from: { id: OP }, data: "afk:deny:abcdefgh" } },
+    { update_id: 4, callback_query: { id: "c4", from: { id: "x" }, data: "afk:deny:abcdefgh", message: { chat: { id: OP } } } },
+    { update_id: 5, callback_query: { id: "c5", from: { id: OP }, message: { chat: { id: OP } } } },
+  ];
+  dispatchAfkCallbacks(updates, (tap) => { seen.push(tap); return true; });
+  expect(seen).toEqual([{ callback_id: "c1", from: OP, chat_id: OP, data: "afk:deny:abcdefgh" }]);
 });

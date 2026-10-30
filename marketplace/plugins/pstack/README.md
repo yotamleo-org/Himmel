@@ -22,9 +22,9 @@ console.
 ## Where it is on
 
 On in the interactive `user` profile and the adopter `settings-template.json`.
-Off in every leg, lane and console profile: it is in the `catalog` of
+Off in every worker, lane and chief profile: it is in the `catalog` of
 `scripts/lanes/plugin-profiles.json` and in no `base`, `floor` or `enable` list
-beyond `user`, so each lean profile resolves it to `false`. Legs are not
+beyond `user`, so each lean profile resolves it to `false`. Workers are not
 disrupted.
 
 ## Remove it (one step)

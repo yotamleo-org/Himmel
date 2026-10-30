@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + node + jq.
+# Platform guard: bash + node + jq.
 # test-provenance-session.sh -- `himmelctl install` opens a
 # provenance session (install-begin ... install-end) and its writers record
 # their own units into it.

@@ -49,7 +49,7 @@ test("codex bank: the governing weekly reading; stale, reset or unparseable is n
 });
 
 const TALLY = { calls: 3, input: 30, output: 300, cacheRead: 120000, cacheCreate: 0 };
-const ID = { session: "s1", leg: "HIMMEL-901-N9001-worker", ticket: "HIMMEL-901", model: "gpt-6.1-sol" };
+const ID = { session: "s1", worker: "HIMMEL-901-N9001-worker", ticket: "HIMMEL-901", model: "gpt-6.1-sol" };
 
 test("a claudex cost row is priced from the codex bank delta, never at Claude weights", () => {
   const bank = readCodexBank(cache(46), NOW)!;

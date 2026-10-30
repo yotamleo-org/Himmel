@@ -962,13 +962,33 @@ function collectHookCommands(hooksArray) {
   return commands;
 }
 
+// The checkout's own project layer wires the whole trio (guardrail-mode=project).
+// A user-scope row with no user-layer markers is then correct, not a fault: wiring
+// the user layer too runs each guard twice, which doctor C81 reports.
+function projectLayerOwnsTrio(item, ctx) {
+  try {
+    const projectFile = path.join(ctx.repoRoot, item.probe.file);
+    const data = JSON.parse(fs.readFileSync(projectFile, 'utf8'));
+    const commands = collectHookCommands(getDotPath(data, item.probe.key));
+    return PRETOOLUSE_MARKERS.every((m) => commands.some((c) => c.indexOf(m) !== -1)) ? projectFile : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function probeSettingsHooks(item, ctx) {
   const filePath = resolveConfigFile(item.probe.file, ctx);
+  const ownedByProject = (why) => {
+    const projectFile = ctx.scope === 'user' ? projectLayerOwnsTrio(item, ctx) : null;
+    return projectFile
+      ? { actual: 'present', detail: `guardrail-mode=project: the project layer (${projectFile}) wires the guard hooks, so no user-layer markers are needed (${why}); wiring them in the user settings too would run each guard twice (doctor C81)` }
+      : null;
+  };
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (_e) {
-    return { actual: 'absent', detail: `cannot read/parse ${filePath}` };
+  } catch (e) {
+    return (e.code === 'ENOENT' && ownedByProject(`no ${filePath}`)) || { actual: 'absent', detail: `cannot read/parse ${filePath}` };
   }
   const commands = collectHookCommands(getDotPath(data, item.probe.key));
   const found = PRETOOLUSE_MARKERS.filter((m) => commands.some((c) => c.indexOf(m) !== -1));
@@ -985,7 +1005,7 @@ function probeSettingsHooks(item, ctx) {
     return { actual: 'present', detail: `${filePath}; ${allowNote}` };
   }
   if (found.length === 0) {
-    return { actual: 'absent', detail: `no himmel PreToolUse markers found in ${filePath}` };
+    return ownedByProject(`no markers in ${filePath}`) || { actual: 'absent', detail: `no himmel PreToolUse markers found in ${filePath}` };
   }
   const missing = PRETOOLUSE_MARKERS.filter((m) => found.indexOf(m) === -1);
   return { actual: 'degraded', detail: `${found.length}/${PRETOOLUSE_MARKERS.length} himmel PreToolUse markers found in ${filePath} (missing: ${missing.join(', ')})` };
@@ -2466,9 +2486,7 @@ function probeTelegramGetMe(item, ctx) {
 // transcribe a single voice note. Pure fs, no spawn: mirrors
 // scripts/telegram/transcribe.ts:15-25's own resolution (WHISPER_DIR
 // override else ~/.himmel/whisper; WHISPER_CLI/WHISPER_MODEL override else
-// <dir>/<default>), with ONE deliberate deviation — transcribe.ts's own
-// default binary name is `whisper-cli.exe`, but a
-// READINESS probe needs a sane POSIX default, so it checks `whisper-cli`.
+// `whisper-cli` on PATH, then <dir>/whisper-cli; model <dir>/<default>).
 // Two-step degrade, not a single yes/no: a binary
 // present but the model missing is a DIFFERENT, more specific problem
 // (whisper-cli then fails per-invocation, not at bridge startup) —
@@ -2506,6 +2524,19 @@ function isUsableFile(p, { execCheck } = {}) {
   return { ok: true };
 }
 
+// First executable `tool` on env's PATH, skipping a non-executable entry the
+// way Bun.which in transcribe.ts does (helpers.js's which() takes any existing
+// file). Same PATH-key rule as helpers.js: the first key present wins.
+function whichExecutable(tool, env) {
+  const rawPath = ('PATH' in env) ? env.PATH : (('Path' in env) ? env.Path : '');
+  for (const dir of String(rawPath || '').split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, tool);
+    if (isUsableFile(candidate, { execCheck: true }).ok) return candidate;
+  }
+  return null;
+}
+
 // C, Part B: bridge.whisper.{cli,model} used to be
 // read by nothing — the wizard writes them, but this probe only ever
 // consulted WHISPER_CLI/WHISPER_MODEL/the hardcoded default. Precedence
@@ -2541,14 +2572,15 @@ function probeWhisperReady(item, ctx) {
   const whisperConfig = (config && config.bridge && config.bridge.whisper) || {};
   const configuredCli = nonEmpty(whisperConfig.cli) ? whisperConfig.cli : null;
   const configuredModel = nonEmpty(whisperConfig.model) ? path.join(dir, whisperConfig.model) : null;
-  const cli = env.WHISPER_CLI || configuredCli || path.join(dir, defaultBin);
+  const pinnedCli = env.WHISPER_CLI || configuredCli;
+  const cli = pinnedCli || whichExecutable(defaultBin, env) || path.join(dir, defaultBin);
   const model = env.WHISPER_MODEL || configuredModel || path.join(dir, 'ggml-small.bin');
   const cliCheck = isUsableFile(cli, { execCheck: true });
   if (!cliCheck.ok) {
     return {
       actual: 'absent',
       detail: cliCheck.reason === 'not found'
-        ? `whisper binary not found at ${cli}`
+        ? `whisper binary not found at ${cli}${pinnedCli ? '' : ' (not on PATH either)'} — install whisper-cpp (pacman -S whisper-cpp / brew install whisper-cpp)`
         : `whisper binary at ${cli} is unusable (${cliCheck.reason})`,
     };
   }

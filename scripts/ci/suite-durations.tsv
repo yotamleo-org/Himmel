@@ -219,6 +219,7 @@ scripts/codex/test-install-himmel-codex.sh	1
 scripts/codex/test-reap-mcp-fleet.sh	0
 scripts/codex/test-sanitize-plugin-hooks.sh	0
 scripts/codex/test-startup-health.sh	2
+scripts/config-ui/tests/test-configure-controls.sh	2
 scripts/config-ui/tests/test-workers.sh	1
 scripts/chief/test-base-status.sh	16
 scripts/chief/test-sweep-cr-threads.sh	1
@@ -288,6 +289,7 @@ scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	3
 scripts/docs/test-team-page.sh	1
 scripts/docs/test-troubleshooting-page.sh	0
+scripts/eval/compaction-handoff/test-compaction-ab.sh	3
 scripts/eval/cr-ledger/test-cr-ledger.sh	2
 scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	8
 scripts/eval/friction/test-friction.sh	3
@@ -362,6 +364,7 @@ scripts/guardrails/test-check-git-env-scrub.sh	15
 scripts/guardrails/test-gitleaks-retired-org.sh	3
 scripts/guardrails/test-graphify-fence.sh	40
 scripts/guardrails/test-guard-gh.sh	1
+scripts/guardrails/test-guardrail-posix-paths.sh	1
 scripts/guardrails/test-hook-probe.sh	9
 scripts/guardrails/test-leak-classes.sh	5
 scripts/guardrails/test-lesson-write-fence.sh	87
@@ -432,6 +435,7 @@ scripts/handover/chief-kit/test-succession-tracker.sh	1
 scripts/handover/chief-kit/test-tick-deadwin.sh	8
 scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	15
+scripts/handover/chief-kit/test-tick-pool-stale.sh	1
 scripts/handover/chief-kit/test-tick-rmqueue.sh	19
 scripts/handover/chief-kit/test-tick.sh	319
 scripts/handover/chief-kit/test-tracker.sh	11
@@ -724,6 +728,7 @@ scripts/hooks/test-notify-chief-on-prompt.sh	0
 scripts/hooks/test-orchestrator-inline-guard.sh	3
 scripts/hooks/test-permission-allow-gate-shapes.sh	2
 scripts/hooks/test-plugin-hook-bash-wiring.sh	2
+scripts/hooks/test-posix-hook-runtime.sh	1
 scripts/hooks/test-qmd-staleness-notice.sh	43
 scripts/hooks/test-quota-gauge-claude-writer.sh	1
 scripts/hooks/test-quota-gauge-ledger.sh	1
@@ -900,6 +905,7 @@ scripts/lib/test-wire-statusline.sh	30
 scripts/lib/test-worktree-inuse.sh	2
 scripts/lint/test-check-history-comments.sh	2
 scripts/lint/test-check-mcp-sdk-v1.sh	1
+scripts/lint/test-check-platform-dropped.sh	2
 scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
 scripts/lint/test-flag-parity.sh	1
@@ -1096,6 +1102,7 @@ scripts/upstreams/test-update-marketplaces.sh	1
 scripts/upstreams/test-upstream-watch-cadence.sh	2
 scripts/upstreams/test-upstream-watch.sh	15
 scripts/usage/test-usage.sh	13
+scripts/vm/test-adopted-features-stage.sh	8
 scripts/vm/test-after-report.sh	28
 scripts/vm/test-assert-provenance.sh	23
 scripts/vm/test-ci-runner.sh	11
@@ -1140,6 +1147,7 @@ scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	1
 scripts/handover/chief-kit/test-drift-summary.sh	1
 scripts/test-doctor-status-drift.sh	1
 scripts/ci/test-macos-cadence-concurrency.sh	1
+scripts/ci/test-macos-cadence-matrix.sh	1
 scripts/lib/test-afk-sudo.sh	4
 scripts/test-himmel-doctor-hook-layers.sh	2
 marketplace/plugins/himmel-guard/test-himmel-guard-hermetic.sh	0

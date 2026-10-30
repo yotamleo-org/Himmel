@@ -1967,11 +1967,11 @@ test("eval-runs regression gauge follows eval-compare's noise bands", async () =
 
 test("eval-runs observational rows export values but no baseline delta or regression (HIMMEL-4670)", async () => {
   const thresholds = join(tmp, "obs-thresholds.json");
-  writeFileSync(thresholds, JSON.stringify({ "leg-trajectory": { fail_denied: { higher_is_better: false, band: 0 } } }));
+  writeFileSync(thresholds, JSON.stringify({ "worker-trajectory": { fail_denied: { higher_is_better: false, band: 0 } } }));
   const ledger = join(tmp, "eval-runs.jsonl");
   writeFileSync(ledger, [
-    evalRow({ run_id: "s1", eval: "leg-trajectory", confighash: "dddd", ts: "2026-07-10T00:00:00Z", metrics: { fail_denied: 1 }, meta: { observational: true } }),
-    evalRow({ run_id: "s2", eval: "leg-trajectory", confighash: "dddd", ts: "2026-07-12T00:00:00Z", metrics: { fail_denied: 9 }, meta: { observational: true } }),
+    evalRow({ run_id: "s1", eval: "worker-trajectory", confighash: "dddd", ts: "2026-07-10T00:00:00Z", metrics: { fail_denied: 1 }, meta: { observational: true } }),
+    evalRow({ run_id: "s2", eval: "worker-trajectory", confighash: "dddd", ts: "2026-07-12T00:00:00Z", metrics: { fail_denied: 9 }, meta: { observational: true } }),
     evalRow({ run_id: "a1", ts: "2026-07-10T00:00:00Z", metrics: { accept_rate: 0.8 } }),
     evalRow({ run_id: "a2", ts: "2026-07-12T00:00:00Z", metrics: { accept_rate: 0.5 } }),
   ].join("\n") + "\n");
@@ -1985,10 +1985,10 @@ test("eval-runs observational rows export values but no baseline delta or regres
     evalRunsLedgerPath: ledger,
     evalThresholdsPath: thresholds,
   });
-  expect(body).toContain('himmel_eval_metric_value{eval="leg-trajectory",metric="fail_denied"} 9');
-  expect(body).toContain('himmel_eval_last_run_ok{eval="leg-trajectory"} 1');
-  expect(body).not.toContain('himmel_eval_metric_baseline_delta{eval="leg-trajectory"');
-  expect(body).not.toContain('himmel_eval_metric_regression{eval="leg-trajectory"');
+  expect(body).toContain('himmel_eval_metric_value{eval="worker-trajectory",metric="fail_denied"} 9');
+  expect(body).toContain('himmel_eval_last_run_ok{eval="worker-trajectory"} 1');
+  expect(body).not.toContain('himmel_eval_metric_baseline_delta{eval="worker-trajectory"');
+  expect(body).not.toContain('himmel_eval_metric_regression{eval="worker-trajectory"');
   // a controlled eval beside it keeps its delta
   expect(body).toContain('himmel_eval_metric_baseline_delta{eval="lane-quality",metric="accept_rate"} -0.3');
 });

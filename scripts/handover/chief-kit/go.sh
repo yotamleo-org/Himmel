@@ -97,7 +97,7 @@
 # must never decide what its own GO writer does. An absolute entry (the
 # chief's own invocation) is unaffected - see anchor-handoff.sh's header.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm-worker.sh.
+# Platform guard: POSIX bash 3.2+, same as headed-arm-worker.sh.
 set -u
 # a relative-entry copy that is not the anchor's hands off to it
 # (the same one-hop, fail-closed pattern scripts/cr/anchor-handoff.sh uses).

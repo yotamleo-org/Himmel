@@ -53,6 +53,15 @@ export async function sendChatAction(token: string, chat_id: number, f: F = fetc
   } catch {}
 }
 
+// Best-effort ack of an inline-button tap (stops the client spinner, may show a
+// toast). No retries, failures swallowed, like sendChatAction.
+export async function answerCallbackQuery(token: string, callback_query_id: string, text: string, f: F = fetch): Promise<void> {
+  try {
+    await f(API(token, "answerCallbackQuery"), { method: "POST",
+      headers: { "content-type": "application/json" }, body: JSON.stringify({ callback_query_id, text }) });
+  } catch {}
+}
+
 // Redact chat_id for logs (CR public-474): it's a stable user/group identifier
 // and these logs get captured into session notes committed to a vault. For
 // longer ids, keeps the last 2 digits so repeated failures for the same chat
@@ -70,12 +79,12 @@ export const redactChatId = (chat_id: number): string => {
 // know delivery happened (e.g. luna-sync-alert's cooldown state) can gate on it.
 
 export async function sendMessage(token: string, chat_id: number, text: string,
-    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number): Promise<boolean> {
+    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object): Promise<boolean> {
   for (let attempt = 0; attempt < 5; attempt++) {
     let res: Response;
     try {
       res = await f(API(token, "sendMessage"), { method: "POST",
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}) }) });
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}), ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }) });
     } catch {
       // A lost response is indistinguishable from a failed send; retrying can duplicate alerts.
       console.error(`[telegram] sendMessage transport failure chat=${redactChatId(chat_id)}`);

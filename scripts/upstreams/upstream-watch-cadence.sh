@@ -5,8 +5,8 @@
 # WHY: a resident interactive claude session used to poll himmel's open
 # upstream PRs/issues every 20 minutes, burning tokens. Operator ruling
 # 2026-09-01: "we should monitor it daily not as a puller and with tokens" —
-# this arms ONE daily local scheduled task (schtasks on Windows, crontab on
-# Linux/macOS; structural sibling of drift-fix-cadence.sh / qmd-cadence.sh)
+# this arms ONE daily local cron task on Linux/macOS
+# (structural sibling of drift-fix-cadence.sh / qmd-cadence.sh)
 # that runs `bash scripts/upstreams/upstream-watch.sh` directly. There is NO
 # claude session here at all — never `--model`, never a payload prompt — so
 # the headless-claude billing rule does not apply even indirectly, the
@@ -25,8 +25,6 @@
 #
 # Default fire time 06:00 local — after drift-fix-cadence's 05:00/05:30 workers
 # (no overlap on the same machine) and still well before the workday.
-# StartWhenAvailable=true (Windows): a fire missed because the machine was
-# off/asleep catches up when it is next on.
 #
 # Usage:
 #   bash scripts/upstreams/upstream-watch-cadence.sh arm [--time HH:MM] [--force] [--dry-run]
@@ -34,11 +32,10 @@
 #   bash scripts/upstreams/upstream-watch-cadence.sh disarm [--dry-run]
 #
 # Test seams (used by test-upstream-watch-cadence.sh):
-#   UPSTREAMWATCH_SCHTASKS       command invoked instead of `schtasks` (Windows)
 #   UPSTREAMWATCH_CRONTAB        command invoked instead of `crontab` (POSIX)
-#   UPSTREAMWATCH_BAT_DIR        where the persistent runner (.bat/.sh) + log live
+#   UPSTREAMWATCH_BAT_DIR        where the persistent runner (.sh) + log live
 #   UPSTREAMWATCH_HIMMEL_ROOT    overrides the resolved primary checkout outright
-#   UPSTREAMWATCH_PLATFORM       force `windows` or `posix` (else: derived from OSTYPE)
+#   UPSTREAMWATCH_PLATFORM       override OS detection (`posix` is supported)
 #   HIMMEL_OBSERVABILITY_CONFIG  (existing seam, scripts/lib/observability-registry.sh)
 #                                 overrides the observability-registry path arm/disarm
 #                                 register with — MUST be set in tests, real or hand
@@ -61,25 +58,17 @@
 set -euo pipefail
 
 TASK_NAME="HIMMEL-UpstreamWatch"
-SCHTASKS_BIN="${UPSTREAMWATCH_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${UPSTREAMWATCH_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/prim.sh
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 4
 
-# Cross-platform user-home resolution: prefer USERPROFILE via
-# cygpath on Windows Git-Bash (MSYS $HOME can differ from where ~/.claude
-# actually lives).
 resolve_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
-# Persistent runner home — deliberately NOT %TEMP%/mktemp: this task recurs
+# Persistent runner home — deliberately not a temp directory: this task recurs
 # daily and temp sweeps would silently kill the cadence.
 BAT_DIR="${UPSTREAMWATCH_BAT_DIR:-$(resolve_user_home)/.claude/upstream-watch-cadence}"
 
@@ -234,13 +223,12 @@ if ! [[ "$FIRE_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
 fi
 
 case "${UPSTREAMWATCH_PLATFORM:-${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}}" in
-    windows|msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     posix|linux*|darwin*|freebsd*|Linux|Darwin) PLATFORM=posix ;;
     *) PLATFORM=unknown ;;
 esac
 if [ "$PLATFORM" = "unknown" ]; then
     echo "ERR upstream-watch-cadence: unsupported platform '${OSTYPE:-unknown}'." >&2
-    echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+    echo "    Supported: Linux/macOS (crontab)" >&2
     exit 2
 fi
 
@@ -277,333 +265,6 @@ status_log() {
             || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log.prev" 2>/dev/null || echo '?')
         echo "  prev log   $log.prev (last write: $mtime)"
     fi
-}
-
-# --------------------------------------------------------------------------
-# Windows (schtasks)
-# --------------------------------------------------------------------------
-
-run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-# emit_bat <himmel_win_esc> <payload> <log_esc> <git_bin_esc> — stamp the
-# format version, rotate the log, stamp the fire time, cd into the primary
-# checkout, run the payload with its rc captured and stamped, then exit /b
-# with that SAME rc (0/2/10 from upstream-watch.sh are all "the task ran" —
-# none of them is a scheduler-level failure, so nothing here treats 10
-# specially). EVERY interpolated value arrives pre-cadence_cmd_escape'd.
-emit_bat() {
-    local himmel_win_esc="$1" payload="$2" log_esc="$3" git_bin_esc="${4:-}"
-    printf '@echo off\r\n'
-    printf 'rem upstream-watch-cadence runner\r\n'
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    cadence_bat_editor_set
-    # Prepend Git's usr\bin + bin: the payload is a bash script
-    # that itself shells out to jq/gh/git/node, and a NON-LOGIN bash.exe (the
-    # interpreter this runner bakes in) does not source the MSYS profile that
-    # would otherwise put GNU coreutils ahead of System32.
-    if [ -n "$git_bin_esc" ]; then
-        printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
-    fi
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_esc" "$log_esc" "$log_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_esc"
-    printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$himmel_win_esc" "$log_esc"
-    printf '%s >> "%s" 2>&1\r\n' "$payload" "$log_esc"
-    printf 'set RC=%%ERRORLEVEL%%\r\n'
-    printf 'echo [exit rc=%%RC%%] >> "%s"\r\n' "$log_esc"
-    # rc=10 is upstream-watch.sh's own "delta found, handled" success code
-    # (see its header) - map it to 0 so Task Scheduler's Last Run Result
-    # reflects a normal run, not a failure, on every delta day.
-    printf 'if %%RC%%==10 set RC=0\r\n'
-    printf 'exit /b %%RC%%\r\n'
-}
-
-xml_escape() {
-    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-emit_task_xml() {
-    local bat_win="$1" start_time="$2" vbs_win vbs_args
-    vbs_win=$(cadence_vbs_path "$bat_win")
-    vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-    cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel upstream-watch-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-      <ScheduleByDay>
-        <DaysInterval>1</DaysInterval>
-      </ScheduleByDay>
-    </CalendarTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-}
-
-schtasks_create_xml() {
-    local name="$1" start_time="$2" bat_win="$3" err_file="$4"
-    local xml_file xml_win rc
-    if ! xml_file=$(mktemp -t upstream-watch-cadence.xml.XXXXXX 2>"$err_file"); then
-        return 1
-    fi
-    emit_task_xml "$bat_win" "$start_time" > "$xml_file"
-    if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-        rm -f "$xml_file"; return 1
-    fi
-    set +e
-    run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-    rc=$?
-    set -e
-    rm -f "$xml_file"
-    return "$rc"
-}
-
-NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-QUERY_OUT=""
-query_task() {
-    local name="$1" rc err_file
-    err_file=$(mktemp -t upstream-watch-cadence.err.XXXXXX)
-    set +e
-    QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then rm -f "$err_file"; return 0; fi
-    if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-        rm -f "$err_file"; return 1
-    fi
-    echo "ERR upstream-watch-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-    cat "$err_file" >&2
-    echo "    If this is a LOCALIZED 'task does not exist' message, the task may simply" >&2
-    echo "    not be armed (only English stderr is trusted here). Verify / remove manually:" >&2
-    echo "        schtasks /query /tn $name" >&2
-    echo "        schtasks /delete /tn $name /f" >&2
-    rm -f "$err_file"
-    return 2
-}
-
-win_rollback() {
-    run_schtasks /delete /tn "$TASK_NAME" /f >/dev/null 2>&1 || true
-    local rc=0
-    query_task "$TASK_NAME" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 1 ]; then
-        rm -f "$BAT_DIR/upstream-watch.bat" "$BAT_DIR/upstream-watch.vbs"
-    fi
-}
-
-cmd_arm() {
-    command -v cygpath >/dev/null 2>&1 || {
-        echo "ERR upstream-watch-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-        exit 2
-    }
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR upstream-watch-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    cadence_require_wsh "upstream-watch-cadence" || exit 2
-    require_payload
-
-    local bash_posix bash_win
-    if ! bash_posix=$(command -v bash 2>/dev/null); then
-        echo "ERR upstream-watch-cadence: 'bash' not on PATH at arm time" >&2
-        exit 2
-    fi
-    if ! bash_win=$(cygpath -w "$bash_posix" 2>&1); then
-        echo "ERR upstream-watch-cadence: cygpath -w failed for bash path: $bash_win" >&2
-        exit 4
-    fi
-
-    local dedup_rc=0
-    query_task "$TASK_NAME" || dedup_rc=$?
-    case "$dedup_rc" in
-        0)
-            if [ "$FORCE" -eq 1 ]; then
-                echo "upstream-watch-cadence: --force set; existing task $TASK_NAME will be replaced by /create /f" >&2
-            else
-                {
-                    echo "ERR upstream-watch-cadence: already armed: $TASK_NAME."
-                    echo ""
-                    echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-                    echo "    bash scripts/upstreams/upstream-watch-cadence.sh status"
-                } >&2
-                exit 3
-            fi
-            ;;
-        1) : ;;
-        *) exit 2 ;;
-    esac
-
-    local himmel_win script_mixed
-    if ! himmel_win=$(cygpath -w "$HIMMEL_ROOT" 2>&1); then
-        echo "ERR upstream-watch-cadence: cygpath -w failed for himmel root: $himmel_win" >&2; exit 4
-    fi
-    if ! script_mixed=$(cygpath -m "$WATCH_SCRIPT" 2>&1); then
-        echo "ERR upstream-watch-cadence: cygpath -m failed for upstream-watch.sh: $script_mixed" >&2; exit 4
-    fi
-    [ "$DRY_RUN" -eq 0 ] && mkdir -p "$BAT_DIR"
-
-    local himmel_win_esc bash_win_esc script_esc git_bin_esc log_win log_esc payload
-    himmel_win_esc=$(cadence_cmd_escape "$himmel_win")
-    bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    script_esc=$(cadence_cmd_escape "$script_mixed")
-    git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
-    payload="\"$bash_win_esc\" \"$script_esc\""
-
-    local bat_file="$BAT_DIR/upstream-watch.bat" vbs_file="$BAT_DIR/upstream-watch.vbs" bat_win
-    if ! bat_win=$(cygpath -w "$bat_file" 2>&1); then
-        echo "ERR upstream-watch-cadence: cygpath -w failed for bat file: $bat_win" >&2; exit 4
-    fi
-    log_win="${bat_win%.bat}.log"
-    log_esc=$(cadence_cmd_escape "$log_win")
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY upstream-watch-cadence: would write $bat_file:"
-        emit_bat "$himmel_win_esc" "$payload" "$log_esc" "$git_bin_esc" | sed 's/^/    /'
-        echo "DRY upstream-watch-cadence: would write $vbs_file:"
-        cadence_vbs_wrapper "$bat_win" | sed 's/^/    /'
-        echo "DRY upstream-watch-cadence: would schtasks /create /tn $TASK_NAME /xml <daily $FIRE_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_win" "$FIRE_TIME" | sed 's/^/    /'
-        echo "upstream-watch-cadence: dry-run complete (no changes made)"
-        return 0
-    fi
-
-    # Atomic runner publication (mirrors drift-fix-cadence/qmd-cadence): stage
-    # beside the final path, promote with `mv` only once both files are
-    # complete, so a task firing concurrently with a re-arm never reads a
-    # half-written .bat/.vbs.
-    local bat_tmp vbs_tmp
-    bat_tmp=$(mktemp "$BAT_DIR/.upstream-watch.bat.XXXXXX")
-    vbs_tmp=$(mktemp "$BAT_DIR/.upstream-watch.vbs.XXXXXX")
-    if ! emit_bat "$himmel_win_esc" "$payload" "$log_esc" "$git_bin_esc" > "$bat_tmp"; then
-        echo "ERR upstream-watch-cadence: could not write staged runner" >&2
-        rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-    fi
-    if ! cadence_vbs_wrapper "$bat_win" > "$vbs_tmp"; then
-        echo "ERR upstream-watch-cadence: could not write staged shim" >&2
-        rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-    fi
-    for final_to_check in "$bat_file" "$vbs_file"; do
-        if [ -e "$final_to_check" ] && [ ! -f "$final_to_check" ]; then
-            echo "ERR upstream-watch-cadence: $final_to_check exists and is not a regular file — refusing to publish" >&2
-            rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-        fi
-    done
-    if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
-        echo "ERR upstream-watch-cadence: failed to publish shim to $vbs_file" >&2
-        rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-    fi
-    if ! atomic_write "$bat_file" < "$bat_tmp"; then
-        echo "ERR upstream-watch-cadence: failed to publish runner to $bat_file" >&2
-        rm -f "$bat_tmp" "$vbs_tmp"; exit 4
-    fi
-
-    rm -f "$bat_tmp" "$vbs_tmp"
-
-    local err_file
-    err_file=$(mktemp -t upstream-watch-cadence.err.XXXXXX)
-    if ! schtasks_create_xml "$TASK_NAME" "$FIRE_TIME" "$bat_win" "$err_file"; then
-        echo "ERR upstream-watch-cadence: schtasks /create $TASK_NAME failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        win_rollback
-        exit 4
-    fi
-    rm -f "$err_file"
-
-    # Register immediately after /create succeeds:
-    # if the post-arm verify below proves the task dead and rolls it back, the
-    # task intentionally stays "expected" so himmel-doctor's C24 check pages on
-    # the vanished registration instead of staying silent about it.
-    observability_register_cadence upstream-watch 86400 "$TASK_NAME"
-
-    local verify_rc=0
-    query_task "$TASK_NAME" || verify_rc=$?
-    if [ "$verify_rc" -ne 0 ] || ! grep -qi 'Next Run Time' <<< "$QUERY_OUT"; then
-        echo "ERR upstream-watch-cadence: post-arm verify failed for $TASK_NAME — rolling back." >&2
-        win_rollback
-        echo "    Re-arm with: bash scripts/upstreams/upstream-watch-cadence.sh arm --time $FIRE_TIME" >&2
-        exit 4
-    fi
-
-    arm_summary "schtasks task" "$bat_file" "$log_win"
-}
-
-cmd_status() {
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR upstream-watch-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    echo "upstream-watch-cadence status:"
-    local rc=0 next status_rc=0
-    query_task "$TASK_NAME" || rc=$?
-    case "$rc" in
-        0)
-            next=$(printf '%s' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 | sed 's/^[^:]*: *//' | tr -d '\r') || true
-            cadence_registered_status "$TASK_NAME" " (next run: ${next:-?})" || status_rc=2
-            ;;
-        1) echo "not armed  $TASK_NAME" ;;
-        *) exit 2 ;;
-    esac
-    echo "  runner     $BAT_DIR/upstream-watch.bat"
-    status_log "$BAT_DIR/upstream-watch.log"
-    return "$status_rc"
-}
-
-cmd_disarm() {
-    command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-        echo "ERR upstream-watch-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-        exit 2
-    }
-    local rc=0
-    query_task "$TASK_NAME" || rc=$?
-    case "$rc" in
-        1)
-            if [ "$DRY_RUN" -eq 0 ]; then
-                rm -f "$BAT_DIR/upstream-watch.bat" "$BAT_DIR/upstream-watch.vbs"
-                # No live task, but the registry may still expect one (e.g. it
-                # was deleted outside this script, or arm registered then a
-                # later step failed before this disarm ran) — unregister
-                # unconditionally so disarm never leaves a stale expectation
-                # behind (which would page as a missing scheduled task).
-                observability_unregister_cadence upstream-watch "$TASK_NAME"
-            fi
-            echo "upstream-watch-cadence: nothing armed — disarm is a no-op"
-            return 0
-            ;;
-        2) exit 2 ;;
-    esac
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY upstream-watch-cadence: would schtasks /delete /tn $TASK_NAME /f"
-        echo "DRY upstream-watch-cadence: would remove $BAT_DIR/upstream-watch.bat + .vbs"
-        echo "DRY upstream-watch-cadence: no changes made"
-        return 0
-    fi
-    local err_file
-    err_file=$(mktemp -t upstream-watch-cadence.err.XXXXXX)
-    if ! run_schtasks /delete /tn "$TASK_NAME" /f >/dev/null 2>"$err_file"; then
-        echo "ERR upstream-watch-cadence: schtasks /delete $TASK_NAME failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        exit 4
-    fi
-    rm -f "$err_file" "$BAT_DIR/upstream-watch.bat" "$BAT_DIR/upstream-watch.vbs"
-    observability_unregister_cadence upstream-watch "$TASK_NAME"
-    echo "upstream-watch-cadence: cadence disarmed"
 }
 
 # --------------------------------------------------------------------------
@@ -671,7 +332,7 @@ cron_install() {
 
 cron_existing() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
-# emit_runner <q_himmel> <q_handover> <payload> <q_log> — mirrors emit_bat:
+# emit_runner <q_himmel> <q_handover> <payload> <q_log> —
 # rotate the log, stamp the fire, cd into the checkout, run the payload with
 # its rc captured, then exit WITH that rc (not the trailing echo's).
 # shellcheck disable=SC2016  # $log / $(date) are emitted literally for the runner's own /bin/sh
@@ -709,7 +370,7 @@ emit_runner() {
     printf 'exit "$_rc"\n'
 }
 
-cron_status() {
+cmd_status() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR upstream-watch-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -730,7 +391,7 @@ cron_status() {
     status_log "$BAT_DIR/upstream-watch.log"
 }
 
-cron_disarm() {
+cmd_disarm() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR upstream-watch-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -764,7 +425,7 @@ cron_disarm() {
     echo "upstream-watch-cadence: cadence disarmed"
 }
 
-cron_arm() {
+cmd_arm() {
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
         echo "ERR upstream-watch-cadence: '$CRONTAB_BIN' not on PATH (required on Linux/macOS)" >&2
         exit 2
@@ -827,9 +488,8 @@ cron_arm() {
 
     mkdir -p "$BAT_DIR"
 
-    # Stage the runner and PROMOTE (checked mv) BEFORE touching the crontab
-    # (mirrors drift-fix-cadence.sh's own cron_arm and win_arm's staged
-    # bat/vbs publish above): publishing the artifact first means a failed
+    # Stage the runner and PROMOTE (checked mv) BEFORE touching the crontab.
+    # Publishing the artifact first means a failed
     # publish never reaches the scheduler at all, and a failed crontab
     # install afterward leaves a fully-published runner an operator can
     # inspect or retry against, rather than a live schedule pointing at a
@@ -901,16 +561,8 @@ upstream-watch-cadence ARMED
 EOF
 }
 
-# Dispatch uses the cmd_arm/cmd_status/cmd_disarm naming
-# every OTHER registry-eligible cadence script already uses (pipeline-cadence.sh,
-# qmd-cadence.sh, graphmap-cadence.sh) — the windows-branch function IS the
-# literal name; cadence-registry.json's staleness lint (test-wizard-cadence-
-# registry.sh) requires that exact function to exist for a row to lint clean.
-case "$PLATFORM:$SUBCMD" in
-    windows:arm)    cmd_arm ;;
-    windows:status) cmd_status ;;
-    windows:disarm) cmd_disarm ;;
-    posix:arm)      cron_arm ;;
-    posix:status)   cron_status ;;
-    posix:disarm)   cron_disarm ;;
+case "$SUBCMD" in
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac

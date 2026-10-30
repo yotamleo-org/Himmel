@@ -31,6 +31,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
+const { withProfileLock } = require('./lib/profile-lock.js');
 const { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd } = require('./lib/helpers.js');
 const launcherLib = require('./lib/launcher.js');
 const uninstallWrapperLib = require('./lib/uninstall-wrapper.js');
@@ -2004,9 +2005,11 @@ function cachePath() {
 // fresh HOME/cache dir just works.
 function writeCache(answers) {
   fs.mkdirSync(cacheDir(), { recursive: true });
-  const recorded = provBefore(cachePath(), { scope: 'user', cls: 'code', row: 'himmelctl-cache' });
-  fs.writeFileSync(cachePath(), serialize(answers) + '\n');
-  recorded();
+  withProfileLock(cachePath(), () => {
+    const recorded = provBefore(cachePath(), { scope: 'user', cls: 'code', row: 'himmelctl-cache' });
+    fs.writeFileSync(cachePath(), serialize(answers) + '\n');
+    recorded();
+  });
 }
 
 // Hard-error exit for a profile that fails schema validation: clear stderr
@@ -2026,7 +2029,7 @@ function profileError(p, msg) {
 // role-only check let e.g. a bogus vault.mode fall back to --profile core
 // and a missing scope fall back to project). A missing/unreadable/non-JSON
 // file surfaces as a normal error (throw -> main()'s catch, exit 1).
-function loadProfile(p) {
+function loadProfile(p, persist = false) {
   const raw = fs.readFileSync(p, 'utf8');
   let obj;
   try {
@@ -2321,6 +2324,7 @@ function loadProfile(p) {
   // question). When present, ids must be known CADENCE_REGISTRY ids and
   // values strictly 'armed'|'off' — a malformed/stale id must fail loud
   // before any side effect, exactly like every other field here.
+  const droppedRetired = [];
   if (obj.cadences !== undefined) {
     if (!obj.cadences || typeof obj.cadences !== 'object' || Array.isArray(obj.cadences)) {
       profileError(p, "field 'cadences' must be an object when present");
@@ -2347,6 +2351,7 @@ function loadProfile(p) {
       // Rows the wizard used to save before these cadences were removed.
       if (RETIRED_CADENCE_IDS.indexOf(id) !== -1) {
         console.error(`himmelctl: profile ${p}: dropping retired cadence '${id}' (no longer shipped)`);
+        droppedRetired.push(id);
         delete obj.cadences[id];
         continue;
       }
@@ -2399,7 +2404,37 @@ function loadProfile(p) {
     obj.devOverlay = obj.role === 'contributor';
     delete obj.role;
   }
+  if (persist && droppedRetired.length > 0) dropRetiredFromProfileFile(p, raw, droppedRetired);
   return obj;
+}
+
+// Remove the retired cadence ids from the saved profile file, so the drop
+// notice prints once. Rewrites the file's own parsed JSON (not the migrated
+// in-memory object) through a temp file + rename; a failed write only warns,
+// the in-memory drop already applies. A file that changed since it was read is
+// left alone, so a concurrent save is never overwritten (the notice repeats).
+// The compare and the rename run under the profile lock every other profile
+// writer takes (lib/profile-lock.js), so no save can land between them.
+function dropRetiredFromProfileFile(p, raw, ids) {
+  const tmp = `${p}.${process.pid}.tmp`;
+  try {
+    withProfileLock(p, () => {
+      // Same policy as saveProfile: a symlink an operator placed at this path is
+      // not silently replaced by a regular file.
+      if (fs.lstatSync(p).isSymbolicLink()) throw new Error('the profile is a symlink');
+      const orig = JSON.parse(raw);
+      for (const id of ids) delete orig.cadences[id];
+      if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
+      const mode = fs.statSync(p).mode & 0o777;
+      fs.writeFileSync(tmp, serialize(orig) + '\n', { mode, flag: 'wx' });
+      fs.chmodSync(tmp, mode); // the process umask masks the mode given at create
+      if (fs.readFileSync(p, 'utf8') !== raw) throw new Error('the profile changed while it was read');
+      fs.renameSync(tmp, p);
+    });
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_e) { /* no tmp left */ }
+    console.error(`himmelctl: profile ${p}: could not drop the retired cadence from the file (${e.message}); the notice will repeat`);
+  }
 }
 
 // ── save-your-profile — offer to persist the answered profile
@@ -4855,7 +4890,7 @@ async function cmdInstall(args) {
   //    main()'s catch (exit 1). No stdin wait either way.
   let profileAnswers = null;
   if (args.fromProfile) {
-    profileAnswers = loadProfile(args.fromProfile);
+    profileAnswers = loadProfile(args.fromProfile, !args.dryRun);
     // --scope + --from-profile overrides the profile's own
     // scope rather than being ignored — the profile stays the single
     // authority for everything else, same posture as the lane flags above.
@@ -4867,7 +4902,7 @@ async function cmdInstall(args) {
     // location (not repoRoot()/HIMMELCTL_REPO_ROOT, which points hermetic
     // tests at a throwaway fixture repo with no docs/ tree) so it always
     // finds the real checked-in file regardless of install target.
-    profileAnswers = loadProfile(path.join(__dirname, '..', '..', 'docs', 'setup', 'profiles', `adopter-${args.scope}.install-profile.json`));
+    profileAnswers = loadProfile(path.join(__dirname, '..', '..', 'docs', 'setup', 'profiles', `adopter-${args.scope}.install-profile.json`), false);
   }
 
   // 0.5: --contribute outside a himmel checkout is
@@ -6100,7 +6135,7 @@ async function cmdEnsure(args) {
     console.error('himmelctl: no himmelctl install profile found — run himmelctl install first');
     return 2;
   }
-  const cachedAnswers = loadProfile(profilePath);
+  const cachedAnswers = loadProfile(profilePath, !args.dryRun);
   // install-profile.json carries no "recorded at" field of its
   // own (writeCache() just serializes the answers) — the file's own mtime is
   // the best available "when" for the per-item disable-evidence lines below.
@@ -8547,4 +8582,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { installUiHandoff, augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry };
+module.exports = { installUiHandoff, augmentPathForRun, gitGateHooksState, userSlugState, applyWorkspaceTrust, offeredCadenceRows, askCadences, askVm, applyVmAnswer, sameFsEntry, writeCache };

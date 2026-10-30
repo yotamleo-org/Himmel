@@ -154,8 +154,7 @@ check_hook_deny_messages() {
     while IFS= read -r line || [ -n "$line" ]; do
         ln=$((ln + 1))
         # Strip leading whitespace with pure parameter expansion (no fork) —
-        # a per-line subshell here made this check O(minutes) on a large hook
-        # file under MSYS's slow fork(), the environment this repo targets.
+        # avoid a per-line subshell when scanning large hook files.
         trimmed="${line#"${line%%[![:space:]]*}"}"
         case "$trimmed" in
             '#'*) continue ;;  # a comment line — IDs stay allowed there

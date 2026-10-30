@@ -23,12 +23,10 @@
 # LOCK: an atomic `mkdir "<record_path>.lock"`. Inside it, a single file
 # `owner` with exactly three `key=value` lines:
 #   pid=<pid>
-#   pid_namespace=<msys|win32|posix>
+#   pid_namespace=posix
 #   start_time=<opaque token, or empty>
-# `pid_namespace` exists because bash and node cannot always interpret each
-# other's pid: under Git-Bash, `$$` is an MSYS pid, not the Windows pid node
-# would report for the "same" process, so a pid number alone is ambiguous
-# without knowing which runtime minted it. `start_time` is a pid-reuse guard:
+# `pid_namespace` remains in the shared protocol; an unknown namespace is never
+# reclaimed. `start_time` is a pid-reuse guard:
 # a dead pid can be recycled by the OS to an unrelated live process before we
 # get around to checking it; comparing the process's start time (not just its
 # aliveness) tells a live original from a live impostor with the same number.
@@ -49,11 +47,8 @@
 #
 # PLATFORM GUARD: this is a POSIX shell library; its counterpart is the JS
 # implementation in scripts/hooks/hook-integrity.js, which the launcher runs
-# and which speaks the identical on-disk protocol. This
-# side is platform-AWARE, not platform-blind: it records
-# pid_namespace=<msys|win32|posix> in the owner file and refuses to reclaim a
-# lock owned by a foreign namespace, because under Git-Bash `$$` is an MSYS
-# pid while node's is a Windows pid, so the two cannot be compared; liveness
+# and which speaks the identical on-disk protocol. Both record
+# pid_namespace=posix and refuse to reclaim a foreign namespace. Liveness
 # runs `kill -0` under `LC_ALL=C` and classifies the errno text into
 # alive/dead, defaulting an unrecognised message to ALIVE (fail closed); and
 # start_time, read from /proc, is unavailable on hosts with no /proc
@@ -98,17 +93,9 @@ else
     HIL_LOCK_POLL_MS=10
 fi
 
-# hil_pid_namespace -- print this bash process's pid namespace. `msys` when
-# running under Git-Bash/MSYS2/Cygwin (uname -s reports MINGW*/MSYS*/CYGWIN*)
-# because $$ there is an MSYS pid, not the Windows pid the JS twin would see
-# for the same process; `posix` everywhere else (Linux, macOS, WSL bash).
-# `win32` is only ever written by the JS twin (native node on Windows) -- the
-# bash side never emits it.
+# hil_pid_namespace -- shared pid namespace for the bash and JS writers.
 hil_pid_namespace() {
-    case "$(uname -s 2>/dev/null)" in
-        MINGW*|MSYS*|CYGWIN*) printf 'msys\n' ;;
-        *) printf 'posix\n' ;;
-    esac
+    printf 'posix\n'
 }
 
 # hil_start_time <pid> -- print an opaque start-time token for PID, or empty

@@ -2,11 +2,12 @@
 // vendored-skill-dupes.mjs — detect a lean-skills@himmel / upstream-plugin overlap
 // .
 //
-// WHY: lean-skills@himmel vendors 11 of superpowers' 14 skill directories and
-// grilling from mattpocock/skills, so a session lists 13 skills instead of 25.
+// WHY: lean-skills@himmel vendors 12 of superpowers' 15 skill directories and
+// grilling from mattpocock/skills, plus the himmel-authored context7-mcp, so a
+// session lists 14 skills instead of 26.
 // That is only a win while the UPSTREAM plugins stay disabled. An adopter who
 // enables superpowers@claude-plugins-official alongside it gets BOTH copies of
-// brainstorming, writing-plans, systematic-debugging and eight more — a
+// brainstorming, writing-plans, systematic-debugging and nine more — a
 // duplicated listing that costs more context than either arrangement alone, and
 // two same-named skills whose bodies drift apart as upstream moves.
 //

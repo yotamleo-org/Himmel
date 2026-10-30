@@ -198,6 +198,7 @@ scripts/codex/test-install-himmel-codex.sh	local	behaviour suite, 0 catches in t
 scripts/codex/test-reap-mcp-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/codex/test-sanitize-plugin-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/codex/test-startup-health.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/config-ui/tests/test-configure-controls.sh	local	Configure command and password controls regression
 scripts/config-ui/tests/test-workers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/chief/test-base-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/chief/test-sweep-cr-threads.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -350,6 +351,7 @@ scripts/guardrails/test-check-git-env-scrub.sh	pr	guard
 scripts/guardrails/test-gitleaks-retired-org.sh	pr	guard
 scripts/guardrails/test-graphify-fence.sh	pr	guard
 scripts/guardrails/test-guard-gh.sh	pr	guard
+scripts/guardrails/test-guardrail-posix-paths.sh	pr	guard
 scripts/guardrails/test-himmel-adapters.sh	pr	guard
 scripts/guardrails/test-hook-probe.sh	pr	guard
 scripts/guardrails/test-leak-classes.sh	pr	guard
@@ -430,6 +432,7 @@ scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behav
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned= (HIMMEL-6604)
 scripts/handover/chief-kit/test-tick-rmqueue.sh	local	new, behaviour suite for tick.sh rm-queue= and the auto rm-run (HIMMEL-7641)
 scripts/handover/chief-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -731,6 +734,7 @@ scripts/hooks/test-notify-chief-on-prompt.sh	local	behaviour suite, 0 catches in
 scripts/hooks/test-orchestrator-inline-guard.sh	pr	trust-path
 scripts/hooks/test-permission-allow-gate-shapes.sh	pr	trust-path
 scripts/hooks/test-plugin-hook-bash-wiring.sh	pr	trust-path
+scripts/hooks/test-posix-hook-runtime.sh	pr	guard
 scripts/hooks/test-qmd-staleness-notice.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-claude-writer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-quota-gauge-ledger.sh	pr	static-gate
@@ -911,6 +915,7 @@ scripts/lib/test-wire-statusline.sh	pr	trust-path
 scripts/lib/test-worktree-inuse.sh	pr	trust-path
 scripts/lint/test-check-history-comments.sh	pr	static-gate
 scripts/lint/test-check-mcp-sdk-v1.sh	pr	static-gate
+scripts/lint/test-check-platform-dropped.sh	pr	static-gate
 scripts/lint/test-check-rule-tags.sh	pr	catch:3125
 scripts/lint/test-check-swallowed-errors.sh	pr	catch:2919
 scripts/lint/test-flag-parity.sh	pr	static-gate
@@ -1122,6 +1127,7 @@ scripts/upstreams/test-update-marketplaces.sh	local	behaviour suite, 0 catches i
 scripts/upstreams/test-upstream-watch-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/upstreams/test-upstream-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/usage/test-usage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new (HIMMEL-6866)
 scripts/vm/test-after-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1166,7 +1172,9 @@ scripts/himmelctl/test/test-wizard-qmd-himmel-collection.sh	local	behaviour suit
 scripts/handover/chief-kit/test-drift-summary.sh	local	new, behaviour suite for drift-summary.mjs and known-bugs-sync.sh, no gate role, HIMMEL-6827
 scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C80 status-drift check, no gate role, HIMMEL-6827
 scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
+scripts/ci/test-macos-cadence-matrix.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
 scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
 scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
 scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role, HIMMEL-8061
+scripts/eval/compaction-handoff/test-compaction-ab.sh	local	behaviour suite, new HIMMEL-7667

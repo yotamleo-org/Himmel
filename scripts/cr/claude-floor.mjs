@@ -71,10 +71,7 @@ const readArtifact = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")
 // The one chokepoint every snapshot write goes through: the host path for tree
 // path <name> under <dest>, or null when it could leave <dest>. Refuses (never
 // normalises) any component that is empty, `.` or `..`, or holds a backslash
-// or a colon (Windows splits on `\`, so `..\..\x` — one legal component on
-// POSIX git — climbs out there; `C:x` is drive-relative), on every platform;
-// then requires the resolved path to stay inside <dest>. <p> is path.win32 in
-// the unit test.
+// or a colon; then requires the resolved path to stay inside <dest>.
 export function snapshotPath(dest, name, p = path) {
     if (name.split("/").some((c) => c === "" || c === "." || c === ".." || c.includes("\\") || c.includes(":"))) return null;
     const file = p.resolve(dest, name), rel = p.relative(p.resolve(dest), file);
@@ -185,9 +182,8 @@ function initKey() {
 }
 
 // A private key other users can read fails CLOSED: they could sign with it.
-// ponytail: POSIX mode bits only; on Windows the ACL is not checked.
 function keyPrivate(f) {
-    if (process.platform !== "win32" && (fs.statSync(f).mode & 0o077) !== 0) die(`${f} is readable by other users; restrict it: chmod 600 ${f}`);
+    if ((fs.statSync(f).mode & 0o077) !== 0) die(`${f} is readable by other users; restrict it: chmod 600 ${f}`);
 }
 
 // A missing key fails CLOSED and names the init command — never an unsigned artifact.
