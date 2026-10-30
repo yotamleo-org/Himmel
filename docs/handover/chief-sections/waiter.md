@@ -10,8 +10,8 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     are required: the default background limit (30 min) killed a waiter once. The harness re-invokes you when the command exits:
     `bash scripts/handover/chief-kit/chief-wait.sh "<inbox>" --doc "<this file>" --token <your token> --workers "<absolute worker docs>"`
     (everything after the inbox path is passed to `tick.sh` unchanged). It is
-    silent while nothing happens and **exits on the first real event**,
-    printing one block: `WAKE telegram` plus the operator's line(s), or
+    silent while nothing happens and **exits on an urgent event or a due
+    housekeeping digest**, printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> usage=<verdict>` plus the tick line, or
     `WAKE underfilled capacity=UNDERFILLED:<slack>` (on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
     ranked list (the pool: the `priority:` line in Live state, labels `ps3-blocker` / `must-v1.1.3` / `operator-directed`, High+ bugs, security and data-integrity; per tier its `RESUME` rows, In Progress with no worker and no open PR, lead the To Do rows, only when a worker source (`--owners` / `--workers-from`) is given, and they are kept in `--priority-pool-only` by design (operator decision 29: drain In Progress work with no worker first): the waiter passes its own `--workers-from` file when it was started with one, and no `--owners`;
@@ -78,6 +78,24 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `residual-unversioned=<n>:<KEY>,...` (open residuals of an open focus-version
     ticket with no fixVersion, invisible to every version count): it never wakes;
     give each a fixVersion or a disposition.
+
+    **Housekeeping digest (HIMMEL-8197).** Board class changes and `board-stale`,
+    `status-sweep`, and informational `tails=`/`acts=` changes to LIVE, ACK,
+    WRAPPED or MERGED wait in `<inbox>.wait.housekeeping`. The first buffered
+    event starts a `HOUSEKEEPING_DIGEST_SECS` window (default **900 seconds**).
+    When it ends, one `WAKE housekeeping kinds=<sorted kinds>` block carries
+    the buffered `<kind> <detail>` lines. `HOUSEKEEPING_DIGEST_SECS=0` disables
+    batching and preserves the original wake lines. An urgent wake leaves the
+    buffer and its original deadline intact for the next arm; a due digest can
+    still emit when a tick fails. Handover mode mutes the digest with the tick.
+    **Telegram, actionable worker events (including READY, FINDING and BLOCKED),
+    succession, and handover-budget remain immediate**; a new actionable worker
+    marker bypasses the two-sample debounce. Unknown marker changes are never
+    treated as housekeeping. Handover-budget repeats are unchanged.
+
+    This is digest-only: the waiter still exits on WAKE. Persistent delivery and
+    tick-side suppression of changes authored by the chief are deferred to
+    **HIMMEL-8247**; no authorship is inferred from worker marker text.
 
     **Re-start it at the end of the turn that handles each wake** — the waiter
     has exited, so a turn that does not re-start it leaves you deaf to Telegram
