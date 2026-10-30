@@ -58,7 +58,7 @@ the plain name, and say the old name once, the first time, in brackets.
 
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
-| **auto-ship step** | initiative step | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
+| **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
 | **usage** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables were renamed by HIMMEL-5689 slice V1; HIMMEL-6647 removed the old names. |
 | **weekly limit override** | bank lift | Renamed by slice V1; HIMMEL-6647 removed the old names. |
 | **review-owed marker** | CR marker | |
