@@ -92,5 +92,4 @@ row from the parser's option table.
   file.)
 - A prose row matches whole words, case-insensitive, with an optional plural
   `s`; a word followed by `.name` is code and is skipped. Words with other
-  senses (the browser console, a lane worker) are decided by the registry
-  rows, not by the gate.
+  senses are decided by the registry rows, not by the gate.

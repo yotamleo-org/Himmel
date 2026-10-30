@@ -52,9 +52,9 @@ echo "== RED: a doc literal the CLI refuses =="
 run_case "bus register row from docs/himmel-bus.md" 1 docs/himmel-bus.md "$BUS_DOC_ROW"
 case "$LAST_OUT" in *docs/himmel-bus.md:1:*--chief*) pass "finding names the file, line and --chief" ;; *) fail "finding names --chief: $LAST_OUT" ;; esac
 case "$LAST_OUT" in *"role 'worker'"*) pass "finding names the role value" ;; *) fail "finding names the role value: $LAST_OUT" ;; esac
-run_case "retired tick flag" 1 docs/a.md 'run `bash scripts/handover/chief-kit/tick.sh --legs "a b"` first'
+run_case "retired tick flag" 1 docs/a.md 'run `bash scripts/handover/chief-kit/tick.sh --legs "a b"` first' # old-term-ok: the retired flag
 run_case "unknown board flag in a fence" 1 docs/a.md 'node scripts/handover/chief-kit/board.mjs --doc d.md --nope x'
-run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me'
+run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me' # old-term-ok: the refused flag
 run_case "bus send with an unknown flag" 1 docs/a.md 'bus send chief body.md --urgent'
 run_case "flag in a SKILL.md" 1 marketplace/plugins/x/skills/y/SKILL.md 'run chief.sh --nope'
 run_case "flag in a slash command" 1 .claude/commands/z.md 'run gen-briefs --nope'
@@ -70,12 +70,12 @@ run_case "--flag=value form" 0 docs/a.md 'chief.sh next --model=opus --bucket hi
 run_case "role placeholder is skipped" 0 docs/a.md 'bus register x --role <role>'
 run_case "another tool named like a suffix" 0 docs/a.md 'bash test-tick.sh --nope'
 run_case "old-term-ok marker skips the line" 0 docs/a.md 'headed-arm-worker.sh --console me <!-- old-term-ok: shows the refusal -->'
-run_case "history dirs are not scanned" 0 docs/migration/old.md 'tick.sh --legs x'
-run_case "non-doc paths are not scanned" 0 scripts/x.sh 'tick.sh --legs x'
+run_case "history dirs are not scanned" 0 docs/migration/old.md 'tick.sh --nope x'
+run_case "non-doc paths are not scanned" 0 scripts/x.sh 'tick.sh --nope x'
 
 echo "== --warn reports and exits 0 =="
-run_case "warn mode prints the finding" 0 docs/a.md 'tick.sh --legs x' --warn
-case "$LAST_OUT" in *--legs*) pass "warn output carries the finding" ;; *) fail "warn output carries the finding: $LAST_OUT" ;; esac
+run_case "warn mode prints the finding" 0 docs/a.md 'tick.sh --nope x' --warn
+case "$LAST_OUT" in *--nope*) pass "warn output carries the finding" ;; *) fail "warn output carries the finding: $LAST_OUT" ;; esac
 
 echo "== declared accept lists match each CLI's own source =="
 sorted() { tr ' ' '\n' | grep -E '^--' | sort | uniq | tr '\n' ' '; }

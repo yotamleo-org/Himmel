@@ -18,7 +18,7 @@
 # A line carrying `old-term-ok` (the existing inline marker, `# old-term-ok:` or
 # `<!-- old-term-ok: ... -->`) is skipped. A prose word followed by `.name` is
 # code (`x.word`), not prose, and is skipped; a prose row whose new phrase
-# contains the old word ignores the new phrase (`wave` in `parallel wave`).
+# contains the old word ignores the new phrase (old `X`, new `Y X`).
 #
 # Default mode scans <base>...HEAD (base: origin/main, else main) and exits
 # 0 clean, 1 on a hit. --warn prints the hits and exits 0 (report mode: the CI

@@ -31,7 +31,8 @@ reg="$tmp/registry.tsv"
     printf 'ZZOLD_PENDING\tpending-N2892\tidentifier\told-to-new\tpending-N2892\tpending-N2892\n'
     printf 'ZZ-OLD-MARK\tZZ-NEW-MARK\tmarker\told-to-new\tV1\tnever\n'
     printf 'retiredword\tfreshword\tprose\tfail\tV5\tnever\n'
-    printf 'old wave\tnew wave\tprose\tfail\tR2\tnever\n'
+    printf 'zz two words\tzz-two\tprose\tfail\tR2\tnever\n'
+    printf 'fuzzword\tgood fuzzword\tprose\tfail\tR2\tnever\n'
     printf 'softword\tfirmword\tprose\twarn\tD\tnever\n'
     printf 'zz-old-dir\tzz-new-dir\tpath\tfail\tM\tnever\n'
 } > "$reg"
@@ -73,7 +74,8 @@ run_case "added old identifier with no ruled new name" 1 scripts/run.sh 'x=ZZOLD
 run_case "added old marker" 1 docs/a.md 'status is ZZ-OLD-MARK today'
 run_case "added retired prose word, any case" 1 docs/a.md 'The Retiredword is back'
 run_case "added retired prose word, plural" 1 docs/a.md 'two retiredwords here'
-run_case "added multi-word prose" 1 docs/a.md 'an old wave of work'
+run_case "added multi-word prose" 1 docs/a.md 'a zz two words phrase'
+run_case "added prose whose new phrase contains it" 1 docs/a.md 'a fuzzword here'
 run_case "added old path" 1 docs/a.md 'see docs/zz-old-dir/x.md'
 
 echo "== GREEN: the new name, markers and keep rows pass =="
@@ -81,7 +83,7 @@ run_case "new name" 0 scripts/run.sh 'export ZZNEW_ONE=1'
 run_case "old-term-ok marker" 0 scripts/run.sh 'export ZZOLD_ONE=1 # old-term-ok: reads the old spelling'
 run_case "old-term-ok html marker" 0 docs/a.md 'ZZ-OLD-MARK <!-- old-term-ok: inventory -->'
 run_case "keep row exact" 0 scripts/run.sh 'x=$ZZOLD_KEEP'
-run_case "prose inside its own new phrase" 0 docs/a.md 'a new wave of work'
+run_case "prose inside its own new phrase" 0 docs/a.md 'a good fuzzword here'
 run_case "prose property access is code" 0 docs/a.md 'call retiredword.log() here'
 run_case "warn-direction prose row is not scanned" 0 docs/a.md 'a softword'
 run_case "left boundary: longer identifier" 0 scripts/run.sh 'XZZOLD_ONE=1'
@@ -134,7 +136,7 @@ printf 'export HIMMEL_WORKER_SESSION_PROFILE=x\n' > "$repo/real.sh"
 git -C "$repo" add -A && git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "real new name"
 out=$(cd "$repo" && bash "$GATE" "$real_base" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "real registry passes the new name (rc=0)"; else fail "real registry new name: rc=$rc $out"; fi
-# the registry's own console prose row (V5): the word is covered, code is not
+# the registry's own prose row for the chief word (V5): the word is covered, code is not
 printf 'Ask the %s about it\n' "conso""le" > "$repo/real.md"
 git -C "$repo" add -A && git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "real prose"
 out=$(cd "$repo" && bash "$GATE" "$real_base" 2>&1); rc=$?
