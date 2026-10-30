@@ -218,7 +218,7 @@
 #     symlink-resolved form; every other word keeps the payload-cwd re-check and so gets
 #     main's verdict (a harmless mid-word quote, backslash, brace or glob write in the
 #     scratch folder is refused too). The flag is never set when the payload command, as
-#     given, holds a `$` or a backtick anywhere (`_bwimc_orig_dynamic`, tested once before any
+#     given, holds a `$`, a backtick or a byte outside printable ASCII, tab and newline anywhere (`_bwimc_orig_dynamic`, tested once before any
 #     reading is flattened), so `cd scratch && echo "$x" > out.txt` is refused as on main.
 #     A candidate holding `$` is not checked at all, as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
@@ -2942,8 +2942,9 @@ _bwimc_cd_guard() {
     # plain by _bwimc_plain_word (a fixed allowlist of ordinary path characters), which is also
     # resolved against the symlink-resolved cd target, where the write physically lands. Every
     # other word keeps the payload-cwd re-check, so it gets main's verdict by construction. The
-    # flag is never set when the payload command holds a `$` or a backtick (_bwimc_orig_dynamic),
-    # so no word derived from a substitution, stub or flattened reading reaches this test.
+    # flag is never set when the payload command holds a `$`, a backtick or a byte outside printable ASCII, tab and newline
+    # (_bwimc_orig_dynamic), so no word derived from a substitution, stub, flattened reading or
+    # a tokenizer split at one of those bytes reaches this test.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
         if ! _bwimc_plain_word "$1"; then
             [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
@@ -2963,7 +2964,7 @@ _bwimc_cd_guard() {
 # also hold a space, but never at its edge or beside a `/`; no component equal to `..`; not empty.
 # Anything else (a mid-word quote, a backslash, ~, a brace, a glob character, $) is not plain.
 # The word must be the raw operand token; the sure flag is never set for a payload command
-# holding `$` or a backtick, so no derived word reaches this test.
+# holding `$`, a backtick or such a byte, so no derived word reaches this test.
 _bwimc_plain_word() {
     local w="$1"
     case "$w" in
@@ -4481,10 +4482,19 @@ BWIMC_AST_EOF
 
 # tested once on the command as the payload gave it, before any reading is flattened: a `$` or a
 # backtick anywhere means no cd is ever sure (a flattened reading turns `lnk$((8))` into the plain
-# `lnk0`, a stub into its prefix), so a dynamic command gets main's verdict whole (row 104a)
+# `lnk0`, a stub into its prefix), so a dynamic command gets main's verdict whole (row 104a).
+# Any byte outside printable ASCII, tab and newline counts too (a CR, VT, FF or a non-ASCII
+# space): _bwimc_tokenize splits a word there, the shell does not (rows 104d-104h)
+_bwimc_exotic_byte() {
+    local LC_ALL=C
+    case "$1" in
+        *[!$' \t\n'!-~]*) return 0 ;;
+    esac
+    return 1
+}
 case "$cmd" in
     *'$'*|*'`'*) _bwimc_orig_dynamic=1 ;;
-    *) _bwimc_orig_dynamic=0 ;;
+    *) if _bwimc_exotic_byte "$cmd"; then _bwimc_orig_dynamic=1; else _bwimc_orig_dynamic=0; fi ;;
 esac
 
 if [ "$_bwimc_engine" != regex ]; then

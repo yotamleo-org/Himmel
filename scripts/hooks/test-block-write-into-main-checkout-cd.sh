@@ -921,6 +921,25 @@ check_both "104b fromP: cd scratch && echo x > \$(pwd)/out.txt (pwd stub) denies
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \$(pwd)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
 check_both "104c fromP: cd scratch && echo x > out.txt still allows (no dynamic text)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+for _wn in CR VT FF; do
+    case "$_wn" in CR) _wb=$'\r' ;; VT) _wb=$'\v' ;; *) _wb=$'\f' ;; esac
+    if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8201$_wb" && [ -d "$FIX/scratch8200/lnk8201$_wb" ]; }; then
+        bad "104 setup: the scratch8200/lnk8201+$_wn symlink was not created"
+    fi
+done
+check_both "104d fromP: cd scratch && echo x > lnk<CR>/out.txt (CR is a word byte for the shell, a split for the tokenizer) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\r/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104e fromP: cd scratch<CR>; echo x > out.txt (the shell cd fails on the CR name) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200\\r; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104f fromP: cd scratch && echo x > lnk<VT>/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\u000b/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104g fromP: cd scratch && echo x > lnk<FF>/out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8201\\u000c/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' && [ -d "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' ]; }; then
+    bad "104h setup: the scratch8200/lnk8202+EM SPACE symlink was not created"
+fi
+check_both "104h fromP: cd scratch && echo x > lnk<U+2003>/out.txt (non-ASCII space is a word byte for the shell) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8202\\u2003/out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
