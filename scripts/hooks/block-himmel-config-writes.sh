@@ -42,7 +42,7 @@
 #     (a symlinked directory that never names `.himmel`).
 # ALSO GUARDS <repo>/.himmel/project.conf, the per-project override that
 # can tighten a repo's gate policy (scripts/lib/load-dotenv.sh):
-# a leg must not change its own repo's settings. The same Bash, file-tool and
+# a worker must not change its own repo's settings. The same Bash, file-tool and
 # apply_patch rules apply with `project.conf` (or `project.c*`, `project.*`,
 # `proj*`) as the name; a file-tool or patch path is refused when it is named,
 # or resolves to, any `.himmel/project.conf`, in any repo or worktree.

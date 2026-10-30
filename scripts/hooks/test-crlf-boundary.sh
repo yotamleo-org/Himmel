@@ -115,7 +115,7 @@ D_PRCHECK="bash scripts/cr/pr-check-cont""ext.sh"
 D_PRCHECK_ENV="bash scripts/cr/pr-check-e""nv.sh CR_CLAUDE_AGENTS"
 D_LIFT="echo x > ~/.himmel/state/usage-lift.json"
 D_LIFTSET="bash scripts/lib/usage-lift.sh set seven_day"
-D_BUS="bus regis""ter x --role leg"
+D_BUS="bus regis""ter x --role worker"
 D_HCFG="echo x > ~/.himmel/con""fig.json"
 A_OK="git status"
 
