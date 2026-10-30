@@ -171,6 +171,9 @@ def fu_od_re: "<summary><sub><picture>[^\n]*alt=\"Outside diff\"";
 def fu_drift:
   test(fu_hdr_re) and ( count_matches(fu_od_re) == 0 or count_matches(fu_badge_re) != count_matches(fu_od_re) );
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
+# A prior review whose Follow-up section is malformed counts as one finding, so
+# its head stays in the prior-head gate and the per-head reader returns rc 2.
+def prior_n: outside_n as $n | if $n == 0 and fu_drift then 1 else $n end;
 def has_content: test("\\S");
 # CodeRabbit now writes counts as "comments: N" and
 # "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
@@ -203,7 +206,7 @@ _CBF_JQ_COUNTS='
     outside:       ( $chosen | outside_n ),
     nitpick:       ( $chosen | sum_matches(nitpick_re) ),
     additional:    ( $chosen | sum_matches(additional_re) ),
-    prior_outside: ( [ $pb[] | outside_n ]    | add // 0 ),
+    prior_outside: ( [ $pb[] | prior_n ]      | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
     outside_drift:    ( $chosen | fu_drift or ((test(loose_outside_re) and (test(outside_re)|not)) and (count_matches(fu_od_re) == 0)) ),
     nitpick_drift:    ( $chosen | (test(loose_nitpick_re)    and (test(nitpick_re)|not)) ),
@@ -265,6 +268,8 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
         .cur.title = ($l | capture("^\\*\\*(?<t>.+)\\*\\*[ ]*$").t | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))
     elif (.cur != null and .cur.title != null and ($l | test("\\]\\(https://[^)/]+/[^)/]+/[^)/]+/blob/[^)/]+/[^)#]+#L"))) then
         .items += [ .cur + {file: ($l | capture("/blob/[^/)]+/(?<f>[^)#]+)#L").f)} ] | .cur = null
+    elif (.cur != null and ($l | test("cr-comment:v1:[A-Za-z0-9]+|^---+[ ]*$"))) then
+        .cur = null
     else . end ) ) as $fu
 | { hdr: ($old.hdr + $fu.hdr),
     items: ($old.items + [ $fu.items[] | {file, line, sev: sev_of(.sev // ""), title} ]),
@@ -281,7 +286,7 @@ _CBF_JQ_PRIOR_HEADS='
 | ( [ $priorr[] | select((.body // "") | has_content) ]
     | group_by(.commit_id)
     | map( sort_by(.submitted_at, .id) | .[-1] )
-    | map( select((.body // "" | norm) | outside_n > 0) )
+    | map( select((.body // "" | norm) | prior_n > 0) )
     | sort_by(.submitted_at, .id)
     | map(.commit_id) ) as $heads
 | $heads[]

@@ -274,6 +274,12 @@ mk_json_from_str "$RESP_DIR/od-followup-badge-only.json" "$UID_OK" "$HEAD" '## F
 sed 's/alt="Outside diff" src="https:\/\/storage.googleapis.com\/coderabbit_public_assets\/review-finding-badges-v1\/outside-diff.svg"/alt="Potential issue" src="x"/' "$OD_FOLLOWUP" > "$TMP/od-followup-other-badge.txt"
 mk_json_from_file "$RESP_DIR/od-followup-other-badge.json" "$UID_OK" "$HEAD" "$TMP/od-followup-other-badge.txt"
 mk_json_from_file "$RESP_DIR/od-followup-prior.json" "$UID_OK" "oldsha1" "$OD_FOLLOWUP"
+# The same unknown-badge body on a PRIOR head: drift there must not read as clean.
+mk_json_from_file "$RESP_DIR/od-followup-other-badge-prior.json" "$UID_OK" "oldsha1" "$TMP/od-followup-other-badge.txt"
+# A finding that lost its source link must not borrow a blob link from a later section.
+sed '/^\[Open the source location\]/d' "$OD_FOLLOWUP" > "$TMP/od-followup-no-link.txt"
+printf '\n[elsewhere](https://github.com/o/r/blob/abc/other.sh#L1)\n' >> "$TMP/od-followup-no-link.txt"
+mk_json_from_file "$RESP_DIR/od-followup-no-link.json" "$UID_OK" "$HEAD" "$TMP/od-followup-no-link.txt"
 
 # to <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>
 to() {
@@ -314,10 +320,12 @@ to od-followup-comments-layout              od-followup                0 "$OD_FO
 to od-followup-header-without-finding       od-followup-header-only    2 ""
 to od-followup-badge-without-fields         od-followup-badge-only     2 ""
 to od-followup-unknown-badge-drifts         od-followup-other-badge    2 ""
+to od-followup-missing-link-not-borrowed    od-followup-no-link        2 ""
 t followup-comments-counted                 od-followup                0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t followup-header-without-finding-blocks    od-followup-header-only    2
 t followup-unknown-badge-blocks             od-followup-other-badge    2
 t followup-prior-head-counted               od-followup-prior          0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+t followup-prior-drift-not-clean            od-followup-other-badge-prior 0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 to od-infra-error-rc1         error             1 ""
 # cr_body_findings itself: the header variant "Outside the diff (N)" is now
 # COUNTED (before, outside read 0 and only the markers canary caught it).
@@ -362,6 +370,8 @@ mk_prior_reviews "$RESP_DIR/ph-head-only.json" "$UID_OK" \
     "$HEAD" 2024-01-01T00:00:00Z 4041 "$BQ_BODY"
 mk_prior_reviews "$RESP_DIR/ph-wrong-id.json" "$UID_WRONG" \
     shaA 2024-01-01T00:00:00Z 4051 "$BQ_BODY"
+mk_prior_reviews "$RESP_DIR/ph-followup-drift.json" "$UID_OK" \
+    shaA 2024-01-01T00:00:00Z 4061 "$(cat "$TMP/od-followup-other-badge.txt")"
 
 # tp <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>
 tp() {
@@ -391,6 +401,7 @@ tp ph-superseded-at-same-head-omitted       ph-superseded-at-same-head 0 ""
 tp ph-empty-later-review-keeps-head         ph-empty-later-keeps       0 "shaA"
 tp ph-current-head-is-not-prior             ph-head-only               0 ""
 tp ph-wrong-user-id-no-heads                ph-wrong-id                0 ""
+tp ph-followup-drift-head-kept              ph-followup-drift          0 "shaA"
 tp ph-infra-error-rc1                       error                      1 ""
 
 echo "pass=$pass fail=$fail"
