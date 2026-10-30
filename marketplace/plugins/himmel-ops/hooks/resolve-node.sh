@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # resolve-node.sh — locate an absolute `node` binary at RUNTIME, cross-platform.
 #
-# WHY: GUI-launched Claude Code (macOS app, Windows) starts hooks in a shell with
-# a minimal PATH that often lacks node — so a SessionStart hook wired as a bare
-# `node …` (or a setup-time-substituted absolute path that a later `winget`/nvm/
-# homebrew upgrade moved) fails every session. Resolving at runtime, every call,
+# WHY: GUI-launched Claude Code starts hooks in a shell with a minimal PATH
+# that often lacks node — so a SessionStart hook wired as a bare `node …` (or
+# a setup-time absolute path moved by an nvm/homebrew upgrade) fails every
+# session. Resolving at runtime, every call,
 # survives node upgrades and a PATH-less launch. See `run-node.sh` (the wrapper
 # hook commands route through) and `scripts/himmel-doctor.sh`.
 #
@@ -18,74 +18,18 @@
 #
 # Test seams (used only by scripts/lib/test-resolve-node.sh):
 #   RESOLVE_NODE_PROBE_DIRS  colon-separated dir list that REPLACES the built-in
-#                            OTHER-absolute-location candidates checked AFTER
-#                            PATH (step 3) — NOT the nvm-windows candidates
-#                            (NVM_SYMLINK / /c/nvm4w/nodejs) checked before
-#                            PATH in step 1, which stay live under this seam
-#                            Step 1 is controlled by NVM_SYMLINK
-#                            directly, plus RESOLVE_NODE_NVM4W_DIR below for its
-#                            hardcoded default.
-#   RESOLVE_NODE_NVM4W_DIR   override /c/nvm4w/nodejs, nvm-windows' own default
-#                            install location (unconditionally probed in step 1
-#                            otherwise) — set to "" to disable it for a
-#                            hermetic test on a machine where it is real.
+#                            absolute-location candidates checked AFTER PATH
+#                            (step 2). Set to "" to disable these fallbacks.
 #   RESOLVE_NODE_NVM_ROOT    override the nvm versions root (default ~/.nvm/versions/node).
 
 resolve_node() {
-    # 1) nvm-windows ONLY, ahead of PATH: NVM_SYMLINK (default C:\nvm4w\nodejs)
-    #    is the operator's CHOSEN version, and /c/nvm4w/nodejs is that same
-    #    tool's own default install location — both nvm-windows
-    #    conventions, not a foreign version manager's choice. PATH is checked
-    #    AFTER this (below), not before it, so a stale winget/MSI node sitting
-    #    on PATH cannot beat nvm-windows (PATH used to run first,
-    #    silently re-breaking that choice whenever the stale install also
-    #    happened to be on PATH). Scoped to ONLY these two nvm-windows paths —
-    #    NOT the rest of the well-known-locations list in step 3 — because
-    #    those are generic cross-platform paths (/usr/bin, homebrew, a user's
-    #    ~/.local/bin) that a DIFFERENT operator may have deliberately put
-    #    behind a hand-picked PATH entry (a Unix version manager, asdf shims,
-    #    etc); promoting that whole list ahead of PATH regressed that case
-    #. Backslashes → slashes so the -x
-    #    probe works under Git Bash, and a drive-letter prefix (C:/x) is
-    #    rewritten to MSYS form (/c/x).
-    _rn_nvm_symlink="${NVM_SYMLINK:-}"
-    if [ -n "$_rn_nvm_symlink" ]; then
-        # POSIX builtins only (no tr fork) — this runs even when no node/PATH
-        # is found at all, the exact minimal-utils case this file exists to
-        # survive (a caught-by-the-widened-gate regression).
-        _rn_nvmw_rest="$_rn_nvm_symlink" _rn_nvmw_out=''
-        while :; do
-            case "$_rn_nvmw_rest" in
-                *\\*)
-                    _rn_nvmw_out="${_rn_nvmw_out}${_rn_nvmw_rest%%\\*}/"
-                    _rn_nvmw_rest="${_rn_nvmw_rest#*\\}"
-                    ;;
-                *) _rn_nvmw_out="${_rn_nvmw_out}${_rn_nvmw_rest}"; break ;;
-            esac
-        done
-        _rn_nvm_symlink="$_rn_nvmw_out"
-    fi
-    case "$_rn_nvm_symlink" in
-        [A-Za-z]:/*) _rn_nvm_symlink="/$(printf '%s' "${_rn_nvm_symlink%%:*}" | tr '[:upper:]' '[:lower:]')${_rn_nvm_symlink#?:}" ;;
-    esac
-    _rn_nvmw_dirs="${_rn_nvm_symlink}:${RESOLVE_NODE_NVM4W_DIR-/c/nvm4w/nodejs}"
-    _rn_save_ifs="$IFS"
-    IFS=:
-    for _rn_d in $_rn_nvmw_dirs; do
-        [ -n "$_rn_d" ] || continue
-        if [ -x "$_rn_d/node" ]; then printf '%s\n' "$_rn_d/node"; IFS="$_rn_save_ifs"; return 0; fi
-        if [ -x "$_rn_d/node.exe" ]; then printf '%s\n' "$_rn_d/node.exe"; IFS="$_rn_save_ifs"; return 0; fi
-    done
-    IFS="$_rn_save_ifs"
-
-    # 2) PATH — the common case (and what setup-time invocations see) once the
-    #    operator's explicitly-chosen nvm-windows install has had first look.
+    # 1) PATH — respect the operator's chosen node before fallback locations.
     if command -v node >/dev/null 2>&1; then
         command -v node
         return 0
     fi
 
-    # 3) Other well-known absolute locations (macOS homebrew, Linux, Windows),
+    # 2) Well-known absolute locations (macOS homebrew, Linux),
     #    a PATH fallback — these are generic
     #    system paths, not an operator's explicit version choice, so they stay
     #    behind PATH. The test seam replaces this list wholesale so cases stay
@@ -94,17 +38,17 @@ resolve_node() {
     if [ "${RESOLVE_NODE_PROBE_DIRS+set}" = set ]; then
         _rn_dirs="$RESOLVE_NODE_PROBE_DIRS"
     else
-        _rn_dirs="/opt/homebrew/bin:/usr/local/bin:/usr/bin:${HOME:-}/.local/bin:/c/Program Files/nodejs:${LOCALAPPDATA:-}/nodejs"
+        _rn_dirs="/opt/homebrew/bin:/usr/local/bin:/usr/bin:${HOME:-}/.local/bin"
     fi
+    _rn_save_ifs="$IFS"
     IFS=:
     for _rn_d in $_rn_dirs; do
         [ -n "$_rn_d" ] || continue
         if [ -x "$_rn_d/node" ]; then printf '%s\n' "$_rn_d/node"; IFS="$_rn_save_ifs"; return 0; fi
-        if [ -x "$_rn_d/node.exe" ]; then printf '%s\n' "$_rn_d/node.exe"; IFS="$_rn_save_ifs"; return 0; fi
     done
     IFS="$_rn_save_ifs"
 
-    # 4) nvm — newest installed version. sort -V (NOT lexical: "v8" > "v20"
+    # 3) nvm — newest installed version. sort -V (NOT lexical: "v8" > "v20"
     #    lexically would pick an EOL node that can't run modern ESM).
     _rn_nvm_root="${RESOLVE_NODE_NVM_ROOT:-${HOME:-}/.nvm/versions/node}"
     if [ -d "$_rn_nvm_root" ]; then
@@ -114,7 +58,7 @@ resolve_node() {
         if [ -n "$_rn_newest" ] && [ -x "$_rn_newest" ]; then printf '%s\n' "$_rn_newest"; return 0; fi
     fi
 
-    # 5) fnm — newest installed version (its layout: <dir>/node-versions/*/installation/bin/node).
+    # 4) fnm — newest installed version (its layout: <dir>/node-versions/*/installation/bin/node).
     _rn_fnm_root="${FNM_DIR:-${HOME:-}/.local/share/fnm}"
     if [ -d "$_rn_fnm_root/node-versions" ]; then
         _rn_fnm_newest="$(printf '%s\n' "$_rn_fnm_root"/node-versions/*/installation/bin/node | sort -V | tail -1)"
