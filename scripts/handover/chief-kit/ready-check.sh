@@ -22,7 +22,10 @@
 #   2. statusCheckRollup: every check IDENTITY's LATEST run is COMPLETED with
 #      conclusion SUCCESS/SKIPPED/NEUTRAL (CheckRun), or state SUCCESS
 #      (StatusContext) — a superseded run (e.g. an earlier CANCELLED run
-#      before a later SUCCESS) is not judged. Identity =
+#      before a later SUCCESS) is not judged. A CANCELLED row of an older
+#      run is also dropped when a newer run of the same workflow is wholly
+#      green (read from the run id in detailsUrl); no other state is dropped
+#      that way. Identity =
 #      CheckRun name + workflowName when present, else StatusContext
 #      context. Read via --json, never `gh pr checks` text (a green check
 #      whose name contains a space mislabels under naive text parsing).
@@ -286,9 +289,29 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
                         ($row.state == "SUCCESS")
                      end),
                 detail: (if $is_checkrun then (($row.status // "?") + "/" + ($row.conclusion // "null"))
-                         else ($row.state // "?") end)
+                         else ($row.state // "?") end),
+                success: ($is_checkrun and $row.conclusion == "SUCCESS"),
+                cancelled: ($is_checkrun and $row.status == "COMPLETED" and $row.conclusion == "CANCELLED"),
+                run: (if $is_checkrun and (($row.detailsUrl | type) == "string") then
+                          ([$row.detailsUrl | scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0] | tonumber] | first // null)
+                      else null end)
             }
         ]
+        # A skipped job reports its unevaluated name: expression, so a fresh green
+        # run never re-reports a job (fail-fast-lint) an older run of the same
+        # workflow left CANCELLED. Only a COMPLETED/CANCELLED row is dropped, and
+        # only when a NEWER run of that workflow finished green: every row of that
+        # run completed SUCCESS/SKIPPED/NEUTRAL with at least one SUCCESS (a wholly
+        # skipped run, e.g. the ci:go label, a cancelled, failed or still-running
+        # run supersedes nothing). Every other state (queued, in progress, failure,
+        # timed out) stays judged whatever a higher run id shows, as does a row
+        # with no readable run id or no workflow (fail closed).
+        # ponytail: a CANCELLED row in a job the newer run skipped stays droppable, non-required rows only (the ruleset holds the required contexts), HIMMEL-8239 confirms the run itself through the run API
+        | . as $all
+        | ($all | map(select(.run != null and .workflow != "")) | group_by([.workflow, .run])
+           | map(select(all(.[]; .ok) and any(.[]; .success)) | {workflow: .[0].workflow, run: .[0].run})) as $green
+        | map(select(. as $e | ($e.cancelled and $e.run != null and $e.workflow != "" and
+              ($green | any(.workflow == $e.workflow and .run > $e.run))) | not))
         | map(.key = key_of(.))
         | map(.sort_key = [(.ts == null), (.ts // .idx)])
         | group_by(.key)
