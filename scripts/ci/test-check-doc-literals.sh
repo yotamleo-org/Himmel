@@ -33,8 +33,7 @@ git -C "$repo" config commit.gpgsign false
 run_case() {
     local name="$1" want="$2" path="$3" content="$4" rc out
     shift 4
-    git -C "$repo" rm -rq --cached . >/dev/null 2>&1
-    find "$repo" -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
+    git -C "$repo" rm -rfq --ignore-unmatch . >/dev/null 2>&1
     mkdir -p "$repo/$(dirname "$path")" || { fail "$name: setup mkdir failed"; return; }
     printf '%s\n' "$content" > "$repo/$path" || { fail "$name: setup write failed"; return; }
     git -C "$repo" add -A || { fail "$name: setup add failed"; return; }
