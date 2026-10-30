@@ -1,7 +1,7 @@
 # Probe 3e result — `--settings` overlay vs. project hooks
 
 Run with `bash scripts/probes/claude-p/07-settings-overlay-hooks.sh` (guarded
-by `bank-preflight.sh`; SKIPs loudly if the bank is not available). CLI under <!-- old-term-ok -->
+by `usage-preflight.sh`; SKIPs loudly if the bank is not available). CLI under <!-- old-term-ok -->
 test: 2.1.250, Windows/Git Bash, model haiku.
 
 Question (architecture doc §4 Chain 2a): does a `--settings <overlay.json>`
