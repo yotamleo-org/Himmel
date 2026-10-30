@@ -50,7 +50,7 @@ for p in sys.argv[2:]:
     # The real open is the seam: swap after the old path check, then restore
     # the name before returning, so only the opened descriptor exposes /proc.
     cat > "$tmp/open-regular-race.py" <<'OPENRACE'
-import ctypes, errno, os, sys, types
+import ctypes, errno, os, stat, sys, types
 from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 import afk_sudo as s
@@ -58,13 +58,16 @@ path = sys.argv[2]
 real_open = os.open
 fifo = path + ".fifo"
 os.mkfifo(fifo)
-for mode in ("race", "unresolved", "fs-unresolved", "device", "fifo", "directory", "regular-swap"):
+for mode in ("race", "unresolved", "fs-unresolved", "procfs", "device", "fifo", "directory", "regular-swap"):
     if os.path.lexists(path):
         os.unlink(path)
     with open(path, "wb") as f:
         f.write(b"regular")
     fds = []
     def at_open(name, flags):
+        if name.startswith("/proc/self/fd/") and not flags & os.O_PATH:
+            if not stat.S_ISREG(os.fstat(int(name.rsplit("/", 1)[1])).st_mode):
+                raise AssertionError("unsafe read-open")
         if name == path and mode in ("race", "device", "fifo", "directory"):
             os.unlink(path)
             os.symlink({"race": "/proc/self/stat", "device": "/dev/zero",
@@ -91,6 +94,12 @@ for mode in ("race", "unresolved", "fs-unresolved", "device", "fifo", "directory
     with patch.object(s.os, "open", at_open):
         if mode == "unresolved":
             with patch.object(s.os, "readlink", side_effect=OSError(errno.ENOENT, "unresolvable fd")):
+                result = outcome()
+        elif mode == "procfs":
+            def procfs_magic(fd, buf):
+                ctypes.cast(buf, ctypes.POINTER(ctypes.c_long))[0] = 0x9FA0
+                return 0
+            with patch.object(ctypes, "CDLL", return_value=types.SimpleNamespace(fstatfs=procfs_magic)):
                 result = outcome()
         elif mode == "fs-unresolved":
             ctypes.set_errno(errno.EACCES)
@@ -124,6 +133,7 @@ OPENRACE
     assert_contains "RED HIMMEL-8277: an opened object whose descriptor cannot be resolved is refused and closed" "unresolved=refused:closed" "$OPENED"
     assert_contains "a known pseudo path is refused without opening it" "prefilter=refused" "$OPENED"
     assert_contains "an object whose filesystem type cannot be determined is refused and closed" "fs-unresolved=refused:closed" "$OPENED"
+    assert_contains "a procfs filesystem type is refused outside pseudo paths without namespace tools" "procfs=refused:closed" "$OPENED"
     assert_contains "a swap to a device is refused before any driver read-open" "device=refused:closed" "$OPENED"
     assert_contains "a swap to a FIFO is refused before any read-open" "fifo=refused:closed" "$OPENED"
     assert_contains "a directory swapped in during open is refused without leaking a descriptor" "directory=refused:closed" "$OPENED"
@@ -139,7 +149,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--child":
 sys.path.insert(0, sys.argv[1])
 import afk_sudo as s
 with tempfile.TemporaryDirectory(prefix="afk-private-proc-") as root:
-    proc = os.path.join(root, "private-proc")
+    proc = os.path.join(os.path.realpath(root), "private-proc")
     os.mkdir(proc)
     child = subprocess.Popen(
         ["unshare", "--mount", "--pid", "--fork", sys.executable, "-I", __file__, "--child", proc],

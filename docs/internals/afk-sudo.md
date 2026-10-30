@@ -73,7 +73,8 @@ broker's pending payload, not next to the record.
   filesystem query is refused too. Only a validated descriptor is reopened through
   `/proc/self/fd/N` for reading, never through the caller's path. The path-only descriptor
   is always closed; failures during the read-open or stream wrapping close any read fd too.
-  Thus a path swap cannot trigger a device/FIFO read-open or bypass pseudo-file validation.
+  Thus a path swap cannot trigger a device/FIFO read-open; procfs and sysfs are refused
+  even through private-mount aliases.
   "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a
   non-directory in the way:
   a walk past PATH_MAX in bytes, a name past 255 bytes (so a `python -c` program with a
