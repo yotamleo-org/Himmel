@@ -310,6 +310,7 @@ mk_fu_pair() {
 # mk_fu_body <out> <block-file>...: the Follow-up header, then the blocks
 mk_fu_body() {
     local out="$1"; shift
+    # read-sink-ok: the blocks are this suite's own fixture files under its mktemp dir
     { printf '## Follow-up Comments\n\n'; cat "$@"; } > "$out"
 }
 # an unknown badge beside a known Nitpick
