@@ -98,7 +98,8 @@ if grep -q ' FINDING ' "$OUT"; then
 fi
 
 if [ "$EXPECT_RED" = 1 ]; then
-  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL' "$OUT" && ! grep '^ROW [0-9]* FAIL' "$OUT" | grep -qv '^ROW 3 '; then
+  other_fails=$(grep '^ROW [0-9]* FAIL' "$OUT" | grep -v '^ROW 3 ' || true)
+  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL' "$OUT" && [ -z "$other_fails" ]; then
     echo "==> RED control PASSED: the stage failed on row 3 only (rc=$rc)"
     exit 0
   fi
