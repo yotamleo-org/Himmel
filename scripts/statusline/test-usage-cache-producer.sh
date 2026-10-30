@@ -560,10 +560,10 @@ run_test "(22) HIMMEL-3846: a session-less OAuth write stamps the CURRENT identi
   stub="$W/stub.sh";
   printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20}}" "JSON" > "$stub";
   chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub"; export USAGE_OAUTH_TTL=0;
-  export USAGE_PRODUCER_CALLER="bank-preflight/leg-x";
+  export USAGE_PRODUCER_CALLER="bank-preflight/worker-x";
   bash "$PRODUCER" </dev/null;
   [ "$(jq -r ".account" "$CLAUDE_USAGE_CACHE")" = "$want" ] || exit 1;
-  [[ "$(jq -r ".produced_by" "$CLAUDE_USAGE_CACHE")" =~ ^bank-preflight/leg-x:[0-9]+$ ]] || exit 1;
+  [[ "$(jq -r ".produced_by" "$CLAUDE_USAGE_CACHE")" =~ ^bank-preflight/worker-x:[0-9]+$ ]] || exit 1;
 '
 
 run_test "(23) HIMMEL-3846: an unnamed caller is stamped unknown:pid; a caller name with shell/JSON-hostile bytes is sanitized" '

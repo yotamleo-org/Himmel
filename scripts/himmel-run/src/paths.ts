@@ -1,14 +1,10 @@
 import envPaths from 'env-paths';
-import { join, dirname } from 'node:path';
-import { platform } from 'node:os';
+import { join } from 'node:path';
 
 const paths = envPaths('himmel-cli', { suffix: '' });
 
-// On Linux/macOS, paths.cache is already the bare "himmel-cli" dir, so no
-// stripping is needed. On Windows, env-paths appends \Cache to the app dir;
-// strip it so the root is always the bare "himmel-cli" directory regardless
-// of platform.
-const CACHE_ROOT = platform() === 'win32' ? dirname(paths.cache) : paths.cache;
+// On Linux/macOS, paths.cache is already the bare "himmel-cli" dir.
+const CACHE_ROOT = paths.cache;
 
 export function cacheRoot(): string {
   return CACHE_ROOT;

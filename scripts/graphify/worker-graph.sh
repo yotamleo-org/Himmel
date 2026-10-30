@@ -22,7 +22,7 @@
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
 
-# A hung graphify must not hang the leg: the probe and every real call run under a deadline
+# A hung graphify must not hang the worker: the probe and every real call run under a deadline
 # that kills the process group. Without GNU timeout they run unbounded.
 # shellcheck source=../lib/timeout-bin.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/timeout-bin.sh" 2>/dev/null

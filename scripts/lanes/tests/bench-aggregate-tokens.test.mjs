@@ -12,7 +12,6 @@ import {
   costUsd,
   cwdToProjectSlug,
   sumTranscriptUsage,
-  windowsDriveFormPath,
 } from '../bench/aggregate-tokens.mjs';
 import { buildRunRecord, writeRunManifest } from '../bench/run-manifest.mjs';
 
@@ -21,21 +20,8 @@ const CLI = join(TEST_DIR, '..', 'bench', 'aggregate-tokens.mjs');
 const HAIKU_SAMPLE = join(TEST_DIR, 'fixtures', 'bench-transcripts', 'haiku-sample.jsonl');
 const LUNA_SAMPLE = join(TEST_DIR, 'fixtures', 'bench-transcripts', 'luna-sample.jsonl');
 
-test('windowsDriveFormPath converts a Git-Bash POSIX mount path and passes through a native form', () => {
-  assert.equal(windowsDriveFormPath('/c/Users/ada/AppData/Local/Temp'), 'C:\\Users\\ada\\AppData\\Local\\Temp');  // leak-allow: home-path fixture username, not a real path
-  assert.equal(windowsDriveFormPath('C:\\Users\\ada'), 'C:\\Users\\ada'); // already native, no-op  // leak-allow: home-path fixture username, not a real path
-});
-
-test('cwdToProjectSlug matches the empirically-verified real ~/.claude/projects encoding', () => {
-  // Verified against a real directory on this machine (username neutralized,
-  // the transform is username-agnostic, only the literal changed):
-  // C:\Users\ada\AppData\Local\Temp -> C--Users-ada-AppData-Local-Temp  // leak-allow: home-path fixture username, not a real path
-  assert.equal(cwdToProjectSlug('/c/Users/ada/AppData/Local/Temp', 'win32'), 'C--Users-ada-AppData-Local-Temp');  // leak-allow: home-path fixture username, not a real path
-  assert.equal(cwdToProjectSlug('C:\\Users\\ada\\AppData\\Local\\Temp', 'win32'), 'C--Users-ada-AppData-Local-Temp');  // leak-allow: home-path fixture username, not a real path
-});
-
-test('cwdToProjectSlug is a no-op path-shape conversion off Windows', () => {
-  assert.equal(cwdToProjectSlug('/home/ada/project', 'linux'), 'home-ada-project');  // leak-allow: home-path fixture username, not a real path
+test('cwdToProjectSlug matches the real ~/.claude/projects encoding', () => {
+  assert.equal(cwdToProjectSlug('/home/ada/project'), 'home-ada-project');  // leak-allow: home-path fixture username, not a real path
 });
 
 test('sumTranscriptUsage sums the committed synthetic sample fixtures correctly', () => {

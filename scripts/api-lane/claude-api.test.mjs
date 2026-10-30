@@ -702,8 +702,8 @@ test('HIMMEL-5519: the reservation lives exactly as long as the call, so the api
     const seen = readFileSync(f.paths.env, 'utf8');
     const ppid = /^ppid=(\d+)$/m.exec(seen)[1];
     assert.equal(/^resv_pid=(\d+)$/m.exec(seen)[1], ppid);
-    // A second launch, even one carrying an inherited non-api leg name, hits the api cap.
-    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_USAGE_WORKER: 'inherited-leg' }, encoding: 'utf8', timeout: 30000 });
+    // A second launch, even one carrying an inherited non-api worker name, hits the api cap.
+    second = spawnSync('bash', [LAUNCH, ...f.good], { env: { ...env, HIMMEL_API_JOB_ID: 'job-2', CADENCE_USAGE_WORKER: 'inherited-worker' }, encoding: 'utf8', timeout: 30000 });
   } finally { rmSync(hold, { force: true }); }
   assert.equal(second.status, 2);
   assert.match(second.stderr, /api bank gate said SKIPPED-FLEET/);

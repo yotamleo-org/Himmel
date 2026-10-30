@@ -894,7 +894,7 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
     # call also counts a GITIGNORED file under these paths - an unreviewed
     # scripts/cr/ change hidden behind .gitignore must not read as "no diff".
     # No replace refs, no repo-configured fsmonitor. --full-name
-    # on the untracked leg: run from a subdirectory it otherwise prints
+    # on the untracked listing: run from a subdirectory it otherwise prints
     # cwd-relative paths while both diff workers print top-relative ones.
     if mb=$(gitd merge-base HEAD "$base_ref" 2>/dev/null); then
         if committed_files=$(gitd diff --name-only "$mb"..HEAD -- "${cr_pathspecs[@]}" 2>/dev/null); then

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # synth-input-check.sh — free precondition for the nightly
-# Pipeline-Synthesize cadence leg: is there anything new to synthesize?
+# Pipeline-Synthesize cadence step: is there anything new to synthesize?
 #
 # WHY: /synthesize-clips wrote 0, 1, 0 pages on 2026-08-21/22/23 — two of three
 # sonnet sessions bought nothing. The decision "is there new triaged input?" is

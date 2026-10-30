@@ -1114,7 +1114,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     esac
 fi
 
-# --- 6a. retired publish/merge legs: clean no-op, not a skip ----------------
+# --- 6a. retired publish/merge tasks: clean no-op, not a skip ----------------
 # PUBLISH_POSSIBLE=0 (see step 2/PUBLISH_POSSIBLE above) means origin/main
 # does not track graphify-out/graph.json at all -- the permanent
 # steady state. The local refresh above still ran (that IS the point

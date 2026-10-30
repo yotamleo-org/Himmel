@@ -569,10 +569,7 @@ function runHardenedSpawn(entry) {
     entry = Object.assign({}, entry, { input: `${password}\n` });
   }
   // buildEntry emits the literal `cmd: 'bash'`
-  // for every shell primitive (adopt/setup/wire/plugins/qmd/dep). Spawning
-  // that bare name resolves through PATH — on Windows to
-  // C:\WINDOWS\system32\bash.exe, the WSL launcher, which cannot read the
-  // Windows-form script path in entry.args at all.
+  // for every shell primitive (adopt/setup/wire/plugins/qmd/dep).
   // Only the guardrail-block-global wire target had the rule (it needed an
   // ABSOLUTE --bash to hand onward); resolving here covers every other
   // primitive at the single spawn seam, and leaves PLAN output ('bash')
