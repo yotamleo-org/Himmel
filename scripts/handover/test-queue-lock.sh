@@ -198,6 +198,22 @@ SH
     fi
     bash "$LIB" release "$doc" fresh8274f >/dev/null 2>&1
 
+    # A contender paused between claim mkdir and branding still owns the
+    # empty directory. A failed release mkdir must leave it untouched.
+    doc="$HANDOVER_DIR/release-t8274-claim.md"; : > "$doc"
+    lk="$HANDOVER_DIR/.locks/queue/release-t8274-claim.lock"
+    bash "$LIB" acquire "$doc" holder8274q >/dev/null 2>&1
+    mkdir "$lk.claim"
+    out="$(bash "$LIB" release "$doc" holder8274q 2>&1)"; a_rc=$?
+    if [ "$a_rc" -eq 2 ] && [ -d "$lk.claim" ] \
+        && grep -q '"session":"holder8274q"' "$lk/owner.json" 2>/dev/null; then
+        pass "T8274q: failed release claim mkdir preserves the unbranded contender and holder"
+    else
+        fail "T8274q: release=$a_rc claim=$([ -d "$lk.claim" ] && echo held || echo GONE) out=$out"
+    fi
+    rmdir "$lk.claim" 2>/dev/null
+    bash "$LIB" release "$doc" holder8274q >/dev/null 2>&1
+
     # T8274c: a release killed while holding its deletion claim must not
     # have that claim TTL-reclaimed underneath its potentially surviving rm.
     doc="$HANDOVER_DIR/release-t8274-crashed.md"; : > "$doc"

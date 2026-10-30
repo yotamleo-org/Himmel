@@ -1602,13 +1602,14 @@ _ql_takeover_claim_release() {
 # claim cleanup with all contenders stopped, not a timeout-based guess.
 _ql_release_remove() {
     local lockdir="$1" rel_gen="$2" rel_arbiter="$3" force="${4:-0}"
-    local claim="${lockdir}.claim" claim_token="release-pid$$-r$RANDOM" rc=0
+    local claim="${lockdir}.claim" claim_token="release-pid$$-r$RANDOM" rc=0 created=0
     # prim-ok: the existing cross-process takeover/reap lease, shared with release; not a separate call-scoped mutex
-    if ! mkdir "$claim" 2>/dev/null \
+    if mkdir "$claim" 2>/dev/null; then created=1; fi
+    if [ "$created" -ne 1 ] \
         || ! ( set -C; printf '%s' "$claim_token" > "$claim/owner" ) 2>/dev/null; then
-        # An unbranded failed create must not strand an empty claim; rmdir
-        # cannot remove a winner that has already branded its owner.
-        rmdir "$claim" 2>/dev/null || true
+        # Only our own failed brand may leave an empty claim to clean up.
+        # A failed mkdir leaves the other contender's unbranded claim alone.
+        if [ "$created" -eq 1 ]; then rmdir "$claim" 2>/dev/null || true; fi
         echo "queue-lock: release refused -- another taker or release holds the claim ($claim); nothing was released. If a release crashed, stop all contenders before manual recovery: rm -rf '$claim'" >&2
         return 2
     fi
