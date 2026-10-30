@@ -442,6 +442,8 @@ STUB_ROLLUP="$R4277"
 rc=0; out="$(run)" || rc=$?
 check "4277-real-rollup: exit 0" "$rc" "0"
 contains "4277-real-rollup: check 2 passes" "$out" "[PASS] 2."
+# the snapshot query must ask for each CheckRun's detailsUrl, or the run id is never readable
+contains "4277-real-rollup: the snapshot query requests detailsUrl" "$(cat "$GH_LOG")" "completedAt detailsUrl checkSuite"
 
 # a newer run that is wholly skipped (the ci:go label) supersedes nothing
 reset_stubs
