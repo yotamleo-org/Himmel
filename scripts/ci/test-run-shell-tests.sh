@@ -2818,7 +2818,9 @@ done <<< "$(grep -F "[SKIP] $sb22w/stubs/" <<< "$capl22w" | grep -F ' — capabi
 nexp22w=$((nexp22w - ncap22w))
 floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
 bound22w=$(( floor22w * 105 / 100 ))
-if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nexp22w" ] && [ "$slow22w" -le "$bound22w" ]; then
+# Darwin+notool must see its one injected suite skipped, or the pass proves nothing.
+if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nexp22w" ] && [ "$slow22w" -le "$bound22w" ] \
+   && { [ "$os22w" != "Darwin+notool" ] || [ "$ncap22w" -eq 1 ]; }; then
   pass "22w (uname=$_pass22w): slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w skip-listed, $ncap22w tool-absent)"
 else
   fail "22w (uname=$_pass22w): slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w skip-listed, $ncap22w tool-absent), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
