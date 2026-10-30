@@ -85,11 +85,10 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N41 | F10 | M | `directories scripts/console/, scripts/handover/console/, scripts/overnight/` | `scripts/chief/, scripts/handover/chief/, scripts/afk/` | directory | HIMMEL-6646 | new name live 0/3 | 151 / 62 | `scripts/(?:handover/)?console/\|scripts/overnight/` | plan row 61; scripts/eval/leg-digest/ is in N17 |
 | N42 | F7 | - | `other leg-*.sh scripts (leg-burn, leg-pr-open, leg-resume-brief, leg-timeline, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 34 | 400 / 140 | `(?<![A-Za-z0-9-])[a-z-]*leg-(?!identity\|doc-lock\|event\|jira-status\|pretrust\|transcripts\|graph\|digest\|preface\|brief\|sections)[a-z0-9-]+\.sh` | not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list) |
 | N43 | F9 | - | `other console-* scripts (console-wait.sh, console-budget.sh, guard-console-dispatch.sh, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 47 | 495 / 137 | `(?<![A-Za-z0-9-])[a-z-]*console-(?!context\.sh\|compact-reinject\|foreground\|kit\|template\|sections\|judge)[a-z0-9-]+\.(?:sh\|ts\|py\|mjs\|md)` | not in the approved rename table; a rename needs a ruling |
+| N44 | F2 | - | `fleet manifest key legs (read in scripts/config-ui/agui/fleet.ts)` | `workers` | id (JSON key) | HIMMEL-6647 | new name live 1/1; reader falls back to the old key while legacy names are on (`legacyNamesOn`) | 1 / 1 | `m\.legs` | HIMMEL-8204 batch M3a; the line is marked `legacy wire fallback` and allowlisted in scripts/one-shot/leg-term-allow.tsv; delete both with the fallback, with the two old-key rows in scripts/config-ui/tests/agui-fleet.test.ts and the fixture scripts/config-ui/tests/fixtures/agui/fleet-old-manifest.json |
+| N45 | F2 | - | `board wire keys legs, leg_time and the per-row leg (read in scripts/config-ui/agui-web/src/board-model.ts normalizeBoard)` | `workers`, `worker_time`, `worker` | id (JSON key) | HIMMEL-6647 | new name live 1/1; the browser reader falls back to the old keys with no switch (the page has no HIMMEL_LEGACY_NAMES) | 8 / 2 | `legs: oldWorkers\|leg: oldName\|leg_time: oldTime\|\?\? oldTime\|\?\? oldWorkers\|^\s+(legs?\|leg_time): ` | HIMMEL-8204 batch M3a; board.mjs emits the old keys until its M1 flip; the removal deletes the five marked lines of normalizeBoard (board-model.ts:42 to 45 and :48, and swaps the call in Board.tsx for the plain json), the three marked lines of the e2e fixture scripts/config-ui/tests/e2e/agui-fixtures.ts (:66, :67, :72, which go back to the new keys), and the old-shape fixture scripts/config-ui/tests/fixtures/agui/board-old-wire.json |
 
-| N44 | F18 | M | `fleet manifest key legs (read in scripts/config-ui/agui/fleet.ts)` | `workers` | id (JSON key) | HIMMEL-6647 | new name live 1/1; reader falls back to the old key while legacy names are on (`legacyNamesOn`) | 1 / 1 | `m\.legs` | HIMMEL-8204 batch M3a; the line is marked `legacy wire fallback` and allowlisted in scripts/one-shot/leg-term-allow.tsv; delete both with the fallback |
-| N45 | F18 | M | `board wire keys legs, leg_time and the per-row leg (read in scripts/config-ui/agui-web/src/board-model.ts normalizeBoard)` | `workers`, `worker_time`, `worker` | id (JSON key) | HIMMEL-6647 | new name live 1/1; the browser reader falls back to the old keys with no switch (the page has no HIMMEL_LEGACY_NAMES) | 3 / 1 | `legacy wire fallback` | HIMMEL-8204 batch M3a; board.mjs emits the old keys until its M1 flip; delete the three marked lines and the old-shape fixture scripts/config-ui/tests/fixtures/agui/board-old-wire.json with the fallback |
-
-Total: 45 old-name entries (N44 and N45 were added by HIMMEL-8204 after the measurement), 8899 matching lines (a line that matches two entries counts in each).
+Total: 45 old-name entries (N44 and N45 were added by HIMMEL-8204 after the measurement), 8899 matching lines (a line that matches two entries counts in each; N44 and N45 add 9 more).
 N01 to N36 keep the numbers of the first draft; N37 to N43 were missing from it.
 
 ## Rename families and the order of the rename PRs
@@ -3032,6 +3031,23 @@ Distinct matched strings (47): `console-2026-10-01.md` (no ruled name), `console
 | `scripts/telegram/router.ts` | code | 78 |
 | `scripts/telegram/test-break-glass.sh` | test | 121, 133 |
 | `scripts/testing/documented-commands.tsv` | config | 9, 74 |
+
+### N44 `fleet manifest key legs (read in scripts/config-ui/agui/fleet.ts)` to `workers`
+
+Family F2, slice -; id (JSON key); owner HIMMEL-6647; 1 line in 1 file; new name live 1/1. HIMMEL-8204 batch M3a; the reader takes `workers` first and falls back to `legs` under `legacyNamesOn`.
+
+| File | Class | Lines |
+|---|---|---|
+| `scripts/config-ui/agui/fleet.ts` | code | 444 |
+
+### N45 `board wire keys legs, leg_time and the per-row leg (read in scripts/config-ui/agui-web/src/board-model.ts normalizeBoard)` to `workers`, `worker_time`, `worker`
+
+Family F2, slice -; id (JSON key); owner HIMMEL-6647; 8 lines in 2 files; new name live 1/1. HIMMEL-8204 batch M3a; `normalizeBoard` takes the new keys first and falls back to the old ones with no switch, because board.mjs emits the old keys until its M1 flip.
+
+| File | Class | Lines |
+|---|---|---|
+| `scripts/config-ui/agui-web/src/board-model.ts` | code | 42, 43, 44, 45, 48 |
+| `scripts/config-ui/tests/e2e/agui-fixtures.ts` | test | 66, 67, 72 |
 
 ## Files whose own name carries an old name
 

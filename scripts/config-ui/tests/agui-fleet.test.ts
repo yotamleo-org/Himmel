@@ -280,6 +280,17 @@ test("a manifest in the old key shape still draws its edges while legacy names a
   expect(b.sessions.find((r: any) => r.name === FLEET.wrapped.name).console).toBe(other);
 });
 
+test("a manifest in the old key shape draws no edge once legacy names are off", async () => {
+  const s = boot({ HIMMEL_LEGACY_NAMES: "0" });
+  const bucket = join(s.dir, "handover", "yotam", "himmel");
+  const other = "HIMMEL-project-chief";
+  writeFileSync(join(bucket, `${other}.md`), `# ${other}\n## Results\n- 09:00 LIVE — started\n`);
+  const old = readFileSync(join(import.meta.dir, "fixtures", "agui", "fleet-old-manifest.json"), "utf8");
+  writeFileSync(join(bucket, `${other}.fleet.json`), old.replace("@DOC@", join(bucket, `${FLEET.wrapped.name}.md`)));
+  const b = await (await fleet(s.port)).json();
+  expect(b.sessions.find((r: any) => r.name === FLEET.wrapped.name).console).not.toBe(other);
+});
+
 test("a console that released its lock is retired even while its process is alive", async () => {
   const s = boot();
   const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);

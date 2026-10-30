@@ -108,6 +108,11 @@ test("normalizeBoard: the old wire shape from board.mjs yields the same board as
   expect(normalizeBoard(want)).toEqual(want); // the new shape passes through untouched
 });
 
+test("normalizeBoard: a board with no worker-time block still loads, with an empty one", () => {
+  const b = board([worker("N1")], []);
+  expect(normalizeBoard({ ...b, trends: {} }).trends.worker_time).toEqual({ unit: "min", today: [] });
+});
+
 test("briefNext: a new request clears the previous text and error", () => {
   const withText = briefNext(BRIEF_IDLE, { kind: "text", text: "old" });
   expect(withText.text).toBe("old");

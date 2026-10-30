@@ -39,4 +39,4 @@
 ^scripts/lib/legacy-names\.sh$	\(console, leg, 	K5 legacy-name reader; leaves with HIMMEL-6647
 ^scripts/lib/worker-identity\.sh$	`legs:`|legs: line	K5 legacy-name reader; leaves with HIMMEL-6647
 .	rename-aliases	K5 rename-alias table readers; leaves with HIMMEL-6647
-^scripts/config-ui/agui(-web/src/board-model|/fleet)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647
+^scripts/config-ui/(agui(-web/src/board-model|/fleet)|tests/e2e/agui-fixtures)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys and the e2e fixture that feeds them (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647

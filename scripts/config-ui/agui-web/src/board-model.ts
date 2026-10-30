@@ -42,16 +42,16 @@ export function normalizeBoard(raw: any): Board {
   const { legs: oldWorkers, ...rest } = raw; // legacy wire fallback
   const workerOf = ({ leg: oldName, ...r }: any) => ({ ...r, worker: r.worker ?? oldName }); // legacy wire fallback
   const { leg_time: oldTime, ...trends } = raw.trends; // legacy wire fallback
-  const time = trends.worker_time ?? oldTime;
+  const time = trends.worker_time ?? oldTime ?? { unit: "min", today: [] }; // legacy wire fallback
   return {
     ...rest,
-    workers: (rest.workers ?? oldWorkers).map(workerOf),
+    workers: (rest.workers ?? oldWorkers).map(workerOf), // legacy wire fallback
     needs_you: raw.needs_you.map(workerOf),
     trends: { ...trends, worker_time: { ...time, today: time.today.map(workerOf) } },
   };
 }
 
-export type Joined ={ worker: BoardWorker; row: Row | null; need: Need | null };
+export type Joined = { worker: BoardWorker; row: Row | null; need: Need | null };
 // A board card per board worker: its fleet row (null when the census has no live session for it) and what it needs.
 export function joinBoard(rows: Row[], board: Board): Joined[] {
   // the board labels a worker by its number (N2339); a fleet row is its doc stem, whose -N2339[b]- names the same worker.
