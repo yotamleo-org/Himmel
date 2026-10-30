@@ -480,6 +480,35 @@ rc=0; out="$(run)" || rc=$?
 check "newer-run-other-workflow: exit 1" "$rc" "1"
 contains "newer-run-other-workflow: the old cancelled fail-fast row stays judged" "$out" "$FFL"
 
+# only a COMPLETED/CANCELLED row is dropped: a re-run of a LOWER run id (later
+# startedAt, lower id) that is still running or failed must not hide behind the
+# higher run id's green rows
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41005958845/")) and .name == "plan" then .startedAt = "2026-10-30T14:00:00Z" | .status = "IN_PROGRESS" | .conclusion = "" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "lower-run-rerun-in-progress: exit 1" "$rc" "1"
+contains "lower-run-rerun-in-progress: the running row stays judged" "$out" "plan=IN_PROGRESS"
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if (.detailsUrl | contains("/runs/41005958845/")) and .name == "plan" then .startedAt = "2026-10-30T14:00:00Z" | .conclusion = "FAILURE" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "lower-run-rerun-failure: exit 1" "$rc" "1"
+contains "lower-run-rerun-failure: the failed row stays judged" "$out" "plan=COMPLETED/FAILURE"
+
+# a green newer run with a narrower job set (it never re-reports lint) leaves the
+# older run's FAILURE row judged
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(select((.detailsUrl | contains("/runs/41059698017/")) and .name == "lint" | not))' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "newer-run-narrower-job-set: exit 1" "$rc" "1"
+contains "newer-run-narrower-job-set: the older failed lint row stays judged" "$out" "lint=COMPLETED/FAILURE"
+
+# a detailsUrl that is not an actions job URL carries no run id: the row stays judged
+reset_stubs
+STUB_ROLLUP="$(jq -c 'map(if .name == "fail-fast-lint" then .detailsUrl = "https://github.com/acme/repo/actions/runs/abc/job/1" else . end)' <<< "$R4277")"
+rc=0; out="$(run)" || rc=$?
+check "malformed-details-url: exit 1" "$rc" "1"
+contains "malformed-details-url: the cancelled fail-fast row stays judged" "$out" "$FFL"
+
 # --- 3. check 3 fails: unresolved review threads > 0 --------------------
 reset_stubs
 STUB_UNRESOLVED=2
