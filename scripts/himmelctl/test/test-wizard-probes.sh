@@ -2619,6 +2619,21 @@ echo "$outWRpath" | jq -e '.actual == "present" and (.detail | contains("wr-path
   || fail "cmd:whisper_ready: a whisper-cli on PATH should be the resolved binary and read present: (got: $outWRpath)"
 echo "ok: cmd:whisper_ready — a whisper-cli on PATH resolves before the WHISPER_DIR fallback"
 
+# a NON-executable whisper-cli earlier on PATH is skipped for the executable one
+# behind it (Bun.which in transcribe.ts does the same).
+wr_pathnox="$work/wr-pathnox"; mkdir -p "$wr_pathnox"
+printf 'stub-binary' > "$wr_pathnox/whisper-cli"; chmod -x "$wr_pathnox/whisper-cli"
+outWRnox=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_pathnox"):$(winpath "$wr_pathbin")', WHISPER_DIR: '$(winpath "$wr_pathdir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRnox" | jq -e '.actual == "present" and (.detail | contains("wr-pathbin/whisper-cli"))' >/dev/null \
+  || fail "cmd:whisper_ready: a non-executable whisper-cli earlier on PATH must be skipped for the executable one behind it: (got: $outWRnox)"
+echo "ok: cmd:whisper_ready — a non-executable whisper-cli on PATH is skipped for a later executable one"
+
 wr_degraded="$work/wr-degraded-dir"; mkdir -p "$wr_degraded"
 printf 'stub-binary' > "$wr_degraded/whisper-cli"; chmod +x "$wr_degraded/whisper-cli"
 outWRdegraded=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "

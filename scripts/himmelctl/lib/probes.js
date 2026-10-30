@@ -2524,6 +2524,19 @@ function isUsableFile(p, { execCheck } = {}) {
   return { ok: true };
 }
 
+// First executable `tool` on env's PATH, skipping a non-executable entry the
+// way Bun.which in transcribe.ts does (helpers.js's which() takes any existing
+// file). Same PATH-key rule as helpers.js: the first key present wins.
+function whichExecutable(tool, env) {
+  const rawPath = ('PATH' in env) ? env.PATH : (('Path' in env) ? env.Path : '');
+  for (const dir of String(rawPath || '').split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, tool);
+    if (isUsableFile(candidate, { execCheck: true }).ok) return candidate;
+  }
+  return null;
+}
+
 // C, Part B: bridge.whisper.{cli,model} used to be
 // read by nothing — the wizard writes them, but this probe only ever
 // consulted WHISPER_CLI/WHISPER_MODEL/the hardcoded default. Precedence
@@ -2560,7 +2573,7 @@ function probeWhisperReady(item, ctx) {
   const configuredCli = nonEmpty(whisperConfig.cli) ? whisperConfig.cli : null;
   const configuredModel = nonEmpty(whisperConfig.model) ? path.join(dir, whisperConfig.model) : null;
   const pinnedCli = env.WHISPER_CLI || configuredCli;
-  const cli = pinnedCli || which(defaultBin, env) || path.join(dir, defaultBin);
+  const cli = pinnedCli || whichExecutable(defaultBin, env) || path.join(dir, defaultBin);
   const model = env.WHISPER_MODEL || configuredModel || path.join(dir, 'ggml-small.bin');
   const cliCheck = isUsableFile(cli, { execCheck: true });
   if (!cliCheck.ok) {
