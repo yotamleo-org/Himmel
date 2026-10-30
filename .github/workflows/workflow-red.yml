@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   workflow-red:
-    # Legs own PR CI; only non-PR runs are tracked.
+    # Workers own PR CI; only non-PR runs are tracked.
     if: github.event.workflow_run.event != 'pull_request'
     runs-on: ubuntu-latest
     steps:
