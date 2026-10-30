@@ -2591,7 +2591,7 @@ function probeWhisperReady(item, ctx) {
 // ── cmd:python_interpreter ───────────────────────────────────────────────
 
 // A11: adopters genuinely hit "interpreter stub" classes
-// — a stray WSL interop shim or a broken venv activation resolves fine on
+// — a stray interpreter shim or a broken venv activation resolves fine on
 // PATH (which() would find it) but exits non-zero without ever running the
 // given script. PATH-resolution alone is
 // necessary but not sufficient proof of a working interpreter — this probe
