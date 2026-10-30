@@ -5,7 +5,7 @@ import { test, expect } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { graphOf, usageOf } from "../agui/fleet";
+import { CADENCE_IDS, cadenceOf, graphOf, usageOf } from "../agui/fleet";
 import { CLOUD_COMMENT_WINDOW, CLOUD_PR_PAGE, CLOUD_RECENT_MS, cloudPrs, cloudQuery, cloudRoutes, GH_TTL_MS, readCloudPrs } from "../agui/fleet-cloud";
 
 const CHIEF = "HIMMEL-nextleg-2026-10-07BN-roadmap-chief";
@@ -31,6 +31,19 @@ test("consult children use their dispatch edge and stamped succession overrides 
   expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
   // the relay wording a worker improvised: it still names the new chief
   expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
+});
+
+test("HIMMEL-8161: a cadence session is told by its cadence fragment or its unit name, an operator session never", () => {
+  const frag = ["claude", "--model", "x", "--settings", "/home/u/.claude/pipeline-cadence/cadence-settings.json", "prompt"];
+  expect(cadenceOf("pid 7", frag)).toBe("cadence");
+  expect(cadenceOf("luna-fb", ["claude"])).toBe("luna-fb");
+  expect(cadenceOf("qmd-cadence", ["claude"])).toBe("qmd");
+  expect(cadenceOf("graphmap-himmel", ["claude"])).toBe("graphmap");
+  expect(cadenceOf("scratch-session", ["claude"])).toBeNull();
+  expect(cadenceOf("HIMMEL-1-N1-x-2026-10-30", ["claude", "-n", "x"])).toBeNull();
+  // every cadence the install registry offers is recognised
+  const registry = JSON.parse(readFileSync(join(import.meta.dir, "../../himmelctl/lib/cadence-registry.json"), "utf8"));
+  for (const c of registry.cadences) expect(CADENCE_IDS).toContain(c.id);
 });
 
 test("a console hangs under the operator and names the console it succeeded", () => {

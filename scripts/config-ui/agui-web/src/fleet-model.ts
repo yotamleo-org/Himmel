@@ -13,6 +13,8 @@ export type Row = {
   console?: string | null; live?: boolean; lock?: "held" | "released" | "unknown"; lane?: string;
   // read when the server sends them (the worker doc's last marker, the doc's last write, the PR's URL).
   marker?: string | null; lastSeenAt?: number | null; prUrl?: string | null;
+  // the cadence a scheduled session belongs to (fleet.ts cadenceOf); such a session is a cadence, not an "other" one.
+  cadence?: string | null;
 };
 
 export const runHash = (token: string, run: string) => `#${new URLSearchParams({ t: token, run })}`;
@@ -28,25 +30,41 @@ export function fleetToken(hash: string): string | null {
 
 export const consoleName = (r: Row) => r.console === undefined ? r.parent : r.console;
 export const isLive = (r: Row) => r.live !== false && r.state !== "wrapped" && r.lock !== "released";
+// A worker's recorded chief is the one that launched it; a succession never rewrites that. Follow the chiefs' predecessor
+// links (a live successor first) to the live chief now watching it; with none, the recorded name stands. A cloud
+// session stays with the chief that routed it: only a local session is handed on.
+export function chiefOf(r: Row, rows: Row[]): string | null {
+  const recorded = consoleName(r);
+  if (r.role === "cloud") return recorded;
+  const seen = new Set<string>();
+  for (let name = recorded; name && !seen.has(name); ) {
+    seen.add(name);
+    const here = rows.find((c) => c.role === "console" && c.name === name);
+    if (here && isLive(here)) return name;
+    const next = rows.filter((c) => c.role === "console" && c.predecessor === name && !seen.has(c.name)).sort((a, b) => Number(isLive(b)) - Number(isLive(a)))[0];
+    name = next?.name ?? null;
+  }
+  return recorded;
+}
 export const rowHref = (token: string, r: Row) => r.run ? runHash(token, r.run) : r.cloud?.url ?? null;
 // a cloud session is a lane, not an orphan (the operator does not keep a shepherd on every one), and an
 // interactive session is the operator's own; neither is ever one.
 export function orphanReason(r: Row, rows: Row[]): string | null {
   if (r.role === "console" || r.role === "cloud" || r.role === "interactive" || r.state === "wrapped") return null;
-  const name = consoleName(r);
+  const name = chiefOf(r, rows);
   if (!name) return "no console edge";
   const c = rows.find((s) => s.role === "console" && s.name === name);
   if (c?.state === "wrapped" || c?.lock === "released") return "chief wrapped / lock released";
   return c && isLive(c) ? null : "chief process gone";
 }
 export function visibleRows(rows: Row[]): Row[] {
-  return rows.filter((r) => !(r.cloud?.phase === "merged" && !rows.some((c) => c.role === "console" && c.name === consoleName(r) && isLive(c))));
+  return rows.filter((r) => !(r.cloud?.phase === "merged" && !rows.some((c) => c.role === "console" && c.name === chiefOf(r, rows) && isLive(c))));
 }
 export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
   const shown = visibleRows(rows);
   return shown.filter((r) => r.role === "console")
     .sort((a, b) => Number(isLive(b)) - Number(isLive(a)) || a.name.localeCompare(b.name))
-    .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && consoleName(r) === c.name && !orphanReason(r, rows)) }));
+    .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && chiefOf(r, rows) === c.name && !orphanReason(r, rows)) }));
 }
 
 // the page's sections. Needs you / Needs the chief = one line per session, by owner then severity;
@@ -82,7 +100,7 @@ export type Filters = { lanes: string[]; states: string[]; text: string };
 export const NO_FILTERS: Filters = { lanes: [], states: [], text: "" };
 export type FleetSections = {
   attention: Record<AttentionOwner, Attention[]>; orphans: Attention[]; processOrphans: ProcessOrphan[]; waits: ProcessOrphan[];
-  running: { console: Row | null; showConsole: boolean; rows: Row[] }[];
+  running: { console: Row | null; showConsole: boolean; rows: Row[] }[]; cadences: Row[];
   finished: { row: Row; hops: Row[] }[]; hops: Record<string, Row[]>;
   counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; live: number; total: number };
 };
@@ -108,8 +126,8 @@ export function cloudPhase(r: Row, rows: Row[]): string {
 export function fleetSections(all: Row[], selected: string | null = null, filters: Filters = NO_FILTERS, procs: ProcessOrphan[] = []): FleetSections {
   const rows = visibleRows(all);
   const liveConsole = (name: string | null) => !!name && rows.some((c) => c.role === "console" && c.name === name && isLive(c));
-  const finished = (r: Row) => !isLive(r) || (r.role === "cloud" && !liveConsole(consoleName(r)));
-  const mine = (r: Row) => !selected || r.name === selected || consoleName(r) === selected;
+  const finished = (r: Row) => !isLive(r) || (r.role === "cloud" && !liveConsole(chiefOf(r, rows)));
+  const mine = (r: Row) => !selected || r.name === selected || chiefOf(r, rows) === selected;
   const orphanOf = (r: Row) => (finished(r) ? null : orphanReason(r, rows));
   const why = (r: Row): [number, string, AttentionOwner] | null => {
     if (finished(r)) return null;
@@ -134,9 +152,10 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   const running = rows.filter((r) => !finished(r) && !orphanOf(r) && mine(r)).sort(siblingOrder);
   const groups: FleetSections["running"] = running.filter((r) => r.role === "console")
     .sort((a, b) => newest(recency(a), recency(b)) || byName(a, b))
-    .map((c) => ({ console: c, showConsole: shown(c), rows: running.filter((r) => r.role !== "console" && consoleName(r) === c.name && shown(r)) }))
+    .map((c) => ({ console: c, showConsole: shown(c), rows: running.filter((r) => r.role !== "console" && chiefOf(r, rows) === c.name && shown(r)) }))
     .filter((g) => g.showConsole || g.rows.length > 0);
-  const rest = running.filter((r) => r.role !== "console" && !liveConsole(consoleName(r)) && shown(r));
+  const cadences = running.filter((r) => r.cadence && r.role !== "console" && shown(r));
+  const rest = running.filter((r) => r.role !== "console" && !r.cadence && !liveConsole(chiefOf(r, rows)) && shown(r));
   if (rest.length) groups.push({ console: null, showConsole: false, rows: rest });
 
   // Chains: a finished hop of a live worker rides on that worker's card; the rest fold into one Finished entry per chain
@@ -183,9 +202,9 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   // A long-lived wait is its owner's own call, not an orphan: it has no state filter and is never counted as one.
   const processOrphans = procs.filter((p) => p.kind !== "wait" && procShown(p) && (!filters.states.length || filters.states.includes("orphaned")));
   const waits = procs.filter((p) => p.kind === "wait" && procShown(p) && !filters.states.length);
-  const live = groups.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]);
+  const live = [...groups.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]), ...cadences];
   return {
-    attention, orphans, processOrphans, waits, running: groups, finished: finishedEntries, hops,
+    attention, orphans, processOrphans, waits, running: groups, cadences, finished: finishedEntries, hops,
     counts: {
       running: live.filter((r) => r.state === "running").length, waiting: live.filter((r) => r.state === "waiting for GO").length,
       attention: attention.operator.length + attention.chief.length, orphaned: orphans.length + processOrphans.length, finished: finishedEntries.length,

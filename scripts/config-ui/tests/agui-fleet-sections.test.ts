@@ -128,6 +128,33 @@ test("a console filter scopes every section, and its process orphans, to that co
   expect(fleetSections(rows, BU, NO_FILTERS, procs).processOrphans.map((p) => p.pid)).toEqual([7, 8]);
 });
 
+test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live successor, never in Orphans or Other sessions", () => {
+  const KA = "HIMMEL-nextleg-2026-10-30KA-roadmap-chief", KB = "HIMMEL-nextleg-2026-10-30KB-roadmap-chief";
+  const inherited: any[] = [
+    row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
+    row(KB, "console", KB, { state: "running", predecessor: KA, ...at(9) }),
+    row("N4102", "leg", KA, { state: "running", ...at(8) }),
+  ];
+  const s = fleetSections(inherited);
+  expect(s.running.map((g) => [g.console?.name ?? null, g.rows.map((r) => r.name)])).toEqual([[KB, ["N4102"]]]);
+  expect(s.orphans).toEqual([]);
+  expect(orphanReason(inherited[2], inherited)).toBeNull();
+  // a worker whose chief wrapped with no successor is still an orphan
+  const alone = [inherited[0], inherited[2]];
+  expect(fleetSections(alone).orphans.map((o) => o.row.name)).toEqual(["N4102"]);
+  // scoping to the live chief keeps the inherited worker
+  expect(fleetSections(inherited, KB).running[0].rows.map((r) => r.name)).toEqual(["N4102"]);
+});
+
+test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Other sessions", () => {
+  const withCadence: any[] = [...rows, row("luna-fb", "interactive", null, { cadence: "luna-fb", state: "running", ...at(6) })];
+  const s = fleetSections(withCadence);
+  expect(s.cadences.map((r) => r.name)).toEqual(["luna-fb"]);
+  expect(s.running.flatMap((g) => g.rows).map((r) => r.name)).not.toContain("luna-fb");
+  expect(s.running[1].rows.map((r) => r.name)).toEqual(["scratch-session"]);
+  expect(fleetSections(rows).cadences).toEqual([]);
+});
+
 test("filters: lane, state and text narrow every section; the counts say how many are shown", () => {
   const claudex = fleetSections(rows, null, { lanes: ["claudex"], states: [], text: "" });
   expect(claudex.running.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["running-old"]);

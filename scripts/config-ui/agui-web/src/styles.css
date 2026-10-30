@@ -220,6 +220,7 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .fleet-hops{grid-column:1/-1;font:12px var(--mono);color:var(--dim);border-top:1px dashed var(--line);padding-top:6px}
 .fleet-hops a,.fleet-attn a,.fleet-orphan a{color:var(--accent)}
 .fleet-chip{font:var(--fs-xs) var(--font-mono);padding:0 6px;border:1px solid var(--rule);border-radius:999px;color:var(--muted);background:var(--surface-2)}
+.fleet-detail,.fleet-detail>*{min-width:0;overflow-wrap:anywhere}
 .fleet-status{display:flex;flex-direction:column;gap:2px;min-width:0}
 .fleet-lineage{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:12px;border-left:1px solid var(--line);font:12px var(--mono);color:var(--dim)}
 /* The rail: wider on the fleet, with its filters. */
