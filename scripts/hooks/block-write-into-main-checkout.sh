@@ -214,9 +214,9 @@
 #     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
 #     wrapper, a group) clears it. While it holds, a plain relative candidate is
 #     checked against the cd target and its symlink-resolved form, and a candidate
-#     holding a `~` or a brace keeps the payload-cwd re-check, since the shell
-#     expands `~-`, `~1` and brace lists at run time (a harmless brace write in the
-#     scratch folder is refused too). A candidate holding `$` is not checked at all,
+#     holding a `~`, a brace or a glob character keeps the payload-cwd re-check, since
+#     the shell expands `~-`, `~1`, brace lists and globs at run time (a harmless
+#     brace or glob write in the scratch folder is refused too). A candidate holding `$` is not checked at all,
 #     as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
@@ -2933,12 +2933,13 @@ _bwimc_cd_guard() {
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
     # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a plain relative
     # candidate, which is also resolved against the symlink-resolved cd target, where the
-    # write physically lands. A candidate holding a ~ or a brace is expanded by the shell at
-    # run time (`~-` and `~1` name the directory the cd just left, a brace list becomes
-    # several words), so it keeps the payload-cwd re-check.
+    # write physically lands. A candidate holding a ~, a brace or a glob character is expanded
+    # by the shell at run time (`~-` and `~1` name the directory the cd just left, a brace list
+    # becomes several words, a glob can match a symlink into the primary that the directory
+    # prefix check never resolves), so it keeps the payload-cwd re-check.
     if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
         case "$1" in
-            *'~'*|*'{'*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
+            *'~'*|*'{'*|*'*'*|*'?'*|*'['*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
         esac
         # second layer: _bwimc_check_target already resolves symlinks physically, so no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"

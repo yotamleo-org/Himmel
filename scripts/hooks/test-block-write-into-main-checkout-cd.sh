@@ -792,16 +792,33 @@ check_both "99d fromP: cd scratch && touch {~-/a,b} (brace holding ~-) denies" b
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {~-/a,b}\",\"cwd\":\"$FIX/primary\"}}"
 check_both "99e fromP: cd scratch && touch {out,out2}.txt (any brace) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch {out,out2}.txt\",\"cwd\":\"$FIX/primary\"}}"
-# 99f reaches the symlink-resolved cd target: the typed cd path is a link to a scratch
-# subfolder, so `..` climbs to $FIX lexically (no repo, allowed) but to scratch8200
-# physically, where lnk-to-primary leads into the primary. Only the check against the
-# canonical target sees it.
+# 99f is a regression row for the symlink-resolved cd target: the typed cd path is a link
+# to a scratch subfolder, so `..` climbs to $FIX lexically (no repo, allowed) but to
+# scratch8200 physically, where lnk-to-primary leads into the primary. No shape was found
+# where only the check against the canonical target decides: _bwimc_check_target resolves
+# the symlinked target physically too.
 mkdir -p "$FIX/scratch8200/a"
 if ! { ln -sfn "$FIX/scratch8200/a" "$FIX/lnkscratch8200" && [ -d "$FIX/lnkscratch8200" ]; }; then
     bad "99f setup: the lnkscratch8200 symlink was not created"
 fi
 check_both "99f fromP: cd link-to-scratch && echo x > ../lnk-to-primary/out.txt (physical .. reaches the primary) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/lnkscratch8200 && echo x > ../lnk-to-primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+# 99g: a glob is expanded by the shell at run time, and the glob check reduces the operand to
+# its directory prefix without resolving the matched entry, so `vic*` can name a symlink in the
+# scratch folder that leads into the primary. A glob candidate keeps the payload-cwd re-check.
+echo orig > "$FIX/primary/victim-target8200.txt"
+if ! { ln -sfn "$FIX/primary/victim-target8200.txt" "$FIX/scratch8200/victim" && [ -L "$FIX/scratch8200/victim" ]; }; then
+    bad "99g setup: the scratch8200/victim symlink was not created"
+fi
+check_both "99g fromP: cd scratch && touch vic* (glob matches a symlink into the primary) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch vic*\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99h fromP: cd scratch && echo x > vic* denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic*\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99i fromP: cd scratch && echo x > vict?m (? glob) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vict?m\",\"cwd\":\"$FIX/primary\"}}"
+check_both "99j fromP: cd scratch && echo x > vic[t]im (bracket glob) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > vic[t]im\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
