@@ -465,6 +465,9 @@ test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer
   await withSwitch('0', () => {
     assert.equal(edges.check(peers, 'w', 'a').ok, false);
     assert.equal(edges.check(peers, 'a', 'w').ok, false);
+    assert.equal(edges.check(peers, 'a', 'con').ok, false);
+    assert.equal(edges.check(peers, 'con', 'a').ok, false);
+    assert.equal(edges.check(peers, 'w', 'con').ok, true);
   });
 });
 

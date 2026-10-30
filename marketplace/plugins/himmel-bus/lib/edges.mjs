@@ -18,7 +18,7 @@ function declared(peers, name) {
   const me = peers[name];
   const mine = role(peers, name);
   const out = [];
-  if (me.console && mine !== 'console' && role(peers, me.console) === 'console') out.push(me.console);
+  if (me.console && PAIRED.includes(mine) && role(peers, me.console) === 'console') out.push(me.console);
   const mate = role(peers, me.pair);
   if (me.pair && PAIRED.includes(mine) && PAIRED.includes(mate) && (mine === 'worker' || mate === 'worker')) out.push(me.pair);
   if (me.predecessor && mine === 'console' && role(peers, me.predecessor) === 'console') out.push(me.predecessor);
