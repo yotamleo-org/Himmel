@@ -37,6 +37,9 @@ case "$OUT" in *scripts/new-default.sh:1:*) ok 'diagnostic names file:line' ;; *
 mkdiff scripts/new-default.sh 'WHISPER_CLI="${WHISPER_DIR}/whisper-cli"'
 run
 expect 0 'same diff with POSIX default passes'
+mkdiff scripts/new-command.ps1 'Get-Content input.txt'
+run
+expect 1 'new dropped-platform filename refused without a keyword in its content'
 for text in 'case "$host" in CYGWIN*) exit 0 ;; esac' 'MSYS_NO_PATHCONV=1 run' "if (process.platform === 'win32') run();" 'pwsh -Command run'; do
     mkdiff scripts/new-code.sh "$text"
     run
@@ -75,7 +78,8 @@ done
 
 # Real commits prove --range, attributes and unusual filenames cannot hide hits.
 R="$T/repo"
-mkdir -p "$R/scripts"
+mkdir -p "$R/scripts/tests"
+printf 'legacy.exe\n' > "$R/scripts/tests/legacy.sh"
 git -C "$R" init -q
 git -C "$R" config user.name fixture
 git -C "$R" config user.email fixture@example.invalid
@@ -95,6 +99,13 @@ git -C "$R" commit -qm addition
 OUT=$(cd "$R" && bash "$GATE" --range "$base" 2>&1); RC=$?
 expect 1 'range checks additions despite -diff attribute'
 case "$OUT" in *'scripts/space name.sh:1:'*) ok 'range handles spaced path' ;; *) bad "spaced path diagnostic: $OUT" ;; esac
+rename_base=$(git -C "$R" rev-parse HEAD)
+mv "$R/scripts/tests/legacy.sh" "$R/scripts/renamed.sh"
+git -C "$R" add .
+git -C "$R" commit -qm rename
+OUT=$(cd "$R" && bash "$GATE" --range "$rename_base" 2>&1); RC=$?
+expect 1 'rename from excluded tests into production is checked'
+case "$OUT" in *scripts/renamed.sh:1:*) ok 'rename names newly in-scope default' ;; *) bad "rename diagnostic: $OUT" ;; esac
 OUT=$(cd "$R" && bash "$GATE" --range does-not-exist 2>&1); RC=$?
 expect 2 'unreadable range fails closed'
 printf 'not a diff\n' > "$T/input.diff"

@@ -95,12 +95,12 @@ def main():
     else:
         base = subprocess.check_output(['git', 'rev-parse', '--verify', args[1] + '^{commit}'], text=True).strip()
         diff = subprocess.check_output(['git', 'diff', '--patch', '-U0', '--text', '--no-textconv',
-                                        '--no-ext-diff', '--no-color', '--find-renames',
+                                        '--no-ext-diff', '--no-color', '--no-renames',
                                         '--src-prefix=a/', '--dst-prefix=b/', base, 'HEAD', '--'],
                                        text=True, errors='surrogateescape')
     findings = 0
     for path, number, text in added_lines(diff):
-        if detector.search(text) and text not in allow.get(path, {}).get('lines', []):
+        if (detector.search(text) or re.search(r'\.(ps1|exe)$', path, re.I)) and text not in allow.get(path, {}).get('lines', []):
             print(f'{path}:{number}: dropped-platform addition: {text}')
             findings += 1
     print(f'check-platform-dropped: {findings} new unallowlisted hits')
