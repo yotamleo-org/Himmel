@@ -32,15 +32,15 @@ EOF
 chmod +x "$WORK/wt.sh"
 export GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1
 
-cat > "$WORK/legs.json" <<'EOF'
+cat > "$WORK/workers.json" <<'EOF'
 [
  {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"none found (qmd jira-himmel plain thing)","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}
 ]
 EOF
 
-out="$(python3 "$GEN" "$WORK/legs.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/bucket" --date 2026-10-08 --repo "$WORK/repo" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 2>&1)" \
+out="$(python3 "$GEN" "$WORK/workers.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/bucket" --date 2026-10-08 --repo "$WORK/repo" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 2>&1)" \
     && pass "gen-briefs.py generates a fixture workers file" || fail "gen-briefs.py failed: $out"
-ends_nl "gen-briefs.py <workers>.out ends with a newline" "$WORK/legs.json.out"
+ends_nl "gen-briefs.py <workers>.out ends with a newline" "$WORK/workers.json.out"
 
 D="$WORK/HIMMEL-1-N61-a-2026-10-20-RESUME.md"
 M="$WORK/console.fleet.json"
