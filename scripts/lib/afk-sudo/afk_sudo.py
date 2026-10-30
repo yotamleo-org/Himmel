@@ -161,12 +161,15 @@ def setpriv_path():
 def open_regular(path):
     """Open a regular file for reading. A link into /proc, /sys or /dev, a FIFO and any other
     non-regular file are refused: root reading one could hang or flood the helper."""
-    if os.path.realpath(path).startswith(PSEUDO):
-        raise OSError(errno.EINVAL, "pseudo-file", path)
     f = os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY), "rb")
-    if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+    try:
+        if os.readlink(f"/proc/self/fd/{f.fileno()}").startswith(PSEUDO):
+            raise OSError(errno.EINVAL, "pseudo-file", path)
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", path)
+    except OSError:
         f.close()
-        raise OSError(errno.EINVAL, "not a regular file", path)
+        raise
     return f
 
 

@@ -31,6 +31,76 @@ umask 022
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/afk-sudo-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 
+open_regular_tests() {
+    echo "== root opens only a regular file outside /proc /sys /dev, links followed =="
+    mkfifo "$tmp/fifo.p"; printf x > "$tmp/reg.p"; ln -s /proc/self/stat "$tmp/lnk.p"; ln -s "$tmp/reg.p" "$tmp/okl.p"
+    # shellcheck disable=SC2016 # python source, not shell
+    OPENR='import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s
+for p in sys.argv[2:]:
+    try:
+        s.open_regular(p).close(); print("opened")
+    except OSError:
+        print("refused")'
+    OPENED=$(timeout 10 python3 -I -c "$OPENR" "$LIB" "$tmp/reg.p" "$tmp/okl.p" "$tmp/lnk.p" "$tmp/fifo.p" | tr '\n' ' ')
+    assert_eq "a regular file and a link to one open, a link into /proc and a FIFO are refused" "opened opened refused refused " "$OPENED"
+
+    # The real open is the seam: swap after the old path check, then restore
+    # the name before returning, so only the opened descriptor exposes /proc.
+    cat > "$tmp/open-regular-race.py" <<'OPENRACE'
+import errno, os, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+path = sys.argv[2]
+real_open = os.open
+for mode in ("race", "unresolved"):
+    with open(path, "wb") as f:
+        f.write(b"regular")
+    fds = []
+    def at_open(name, flags):
+        if name == path and mode == "race":
+            os.unlink(path)
+            os.symlink("/proc/self/stat", path)
+        fd = real_open(name, flags)
+        fds.append(fd)
+        if name == path and mode == "race":
+            os.unlink(path)
+            with open(path, "wb") as f:
+                f.write(b"restored")
+        return fd
+    def outcome():
+        try:
+            with s.open_regular(path):
+                return "opened"
+        except OSError:
+            return "refused"
+    with patch.object(s.os, "open", at_open):
+        if mode == "unresolved":
+            with patch.object(s.os, "readlink", side_effect=OSError(errno.ENOENT, "unresolvable fd")):
+                result = outcome()
+        else:
+            result = outcome()
+    try:
+        os.fstat(fds[-1])
+        closed = "leaked"
+        os.close(fds[-1])
+    except OSError as e:
+        closed = "closed" if e.errno == errno.EBADF else "error"
+    print(f"{mode}={result}:{closed}")
+OPENRACE
+    OPENED=$(timeout 10 python3 -I "$tmp/open-regular-race.py" "$LIB" "$tmp/race.p")
+    assert_contains "RED HIMMEL-8277: a path swapped into /proc during open is refused and closed even after the name is restored" "race=refused:closed" "$OPENED"
+    assert_contains "RED HIMMEL-8277: an opened object whose descriptor cannot be resolved is refused and closed" "unresolved=refused:closed" "$OPENED"
+}
+
+# Run only the ticket's file-opening rows locally; the default still runs all rows in CI.
+if [ "${1:-}" = --open-regular ]; then
+    open_regular_tests
+    echo "test summary: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit $?
+fi
+
 # new_root <name> [enabled]: a sandbox station with one class, systemctl-restart
 # of himmel-test.service, served by a fake systemctl (basename systemctl) that appends to ran.log.
 new_root() {
@@ -800,17 +870,7 @@ assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
 
-echo "== slice 1a: root opens only a regular file outside /proc /sys /dev, links followed =="
-mkfifo "$tmp/fifo.p"; printf x > "$tmp/reg.p"; ln -s /proc/self/stat "$tmp/lnk.p"; ln -s "$tmp/reg.p" "$tmp/okl.p"
-# shellcheck disable=SC2016 # python source, not shell
-OPENR='import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s
-for p in sys.argv[2:]:
-    try:
-        s.open_regular(p).close(); print("opened")
-    except OSError:
-        print("refused")'
-OPENED=$(timeout 10 python3 -I -c "$OPENR" "$LIB" "$tmp/reg.p" "$tmp/okl.p" "$tmp/lnk.p" "$tmp/fifo.p" | tr '\n' ' ')
-assert_contains "a regular file and a link to one open, a link into /proc and a FIFO are refused" "opened opened refused refused " "$OPENED"
+open_regular_tests
 
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"

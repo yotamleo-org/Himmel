@@ -61,8 +61,13 @@ broker's pending payload, not next to the record.
   `..` (`realpath`). One that resolves to a regular file is hashed. A directory, or a name
   that is no file, is not hashed. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
   passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
-  an element whose path the kernel cannot walk are refused, never skipped. "Cannot walk" is a
-  strict `realpath` that fails for any reason but a missing name or a non-directory in the way:
+  an element whose path the kernel cannot walk are refused, never skipped. Before reading or
+  hashing, `open_regular` opens the file, resolves `/proc/self/fd/N` and checks that opened
+  object's path against `/proc`, `/sys` and `/dev`, then requires a regular file with `fstat`.
+  It closes and refuses the descriptor if its target cannot be resolved or either check fails:
+  swapping the caller's path during the open cannot bypass the pseudo-file refusal.
+  "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a
+  non-directory in the way:
   a walk past PATH_MAX in bytes, a name past 255 bytes (so a `python -c` program with a
   slash-bearing run that long is refused too; put it in a file), a loop, a directory that cannot
   be searched. Plain `realpath` is not enough there: it keeps a link it cannot `lstat` as a plain
