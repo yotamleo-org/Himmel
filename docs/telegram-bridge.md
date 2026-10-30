@@ -128,7 +128,7 @@ path separators and controls refuse the command shape. A reserved verb
 oversized or traversal label, control characters, extra arguments, a missing
 label, wrong case) is a **terminal refusal** ("malformed fleet command —
 nothing was queued"), never agent chat; a nonoperator's malformed shape is
-dropped silently. Bare `fleet`, `legs`,
+dropped silently. Bare `fleet`, `workers`,
 `go`, `push` and `halt` (no slash) remain chat; existing `status` still reports bridge
 session status. Messages must pass the existing operator/allowed-chat gate,
 be typed, unforwarded and without a `model:` tag.

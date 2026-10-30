@@ -89,7 +89,7 @@ cost is joined later from the session transcript, not written at launch.
 
 `worker-impl` is the profile a worker gets from
 `headed-arm-worker.sh --profile worker-impl`. **There is exactly one worker profile, and
-that is deliberate:** it is `lane-impl` minus `i-have-adhd` (the operator reads console windows, not leg windows) — HIMMEL-4017
+that is deliberate:** it is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — HIMMEL-4017
 audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 sibling profiles for docs or upstream work would either resolve to `bare` and

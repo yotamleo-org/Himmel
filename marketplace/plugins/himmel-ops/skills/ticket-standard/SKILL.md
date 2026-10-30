@@ -42,7 +42,7 @@ line). A Plan naming one key or none is unaffected. Any `ABC-123`-shaped token c
 key, so answer a false hit with `Edges: none`.
 
 A **Bug** draft also asks for two labels, so the weekly escape report
-(`scripts/ci/escape-report.sh`) can group it: `found-by:<who>` (`operator`, `leg`,
+(`scripts/ci/escape-report.sh`) can group it: `found-by:<who>` (`operator`, `worker`,
 `console`, `tick`, `ci-pr`, `ci-main`, `review` or `user`) and `escape:<class>`
 (`contract`, `merge-skew`, `platform`, `guard` or `flake`). Ask for both when you file
 a Bug; a Bug missing either is listed as UNLABELLED in the report. This is a request,

@@ -264,7 +264,7 @@ Three keys an operator may have in `.env` are never read from it:
   launchers export their own value, and the worker context guard reads the
   process environment.
 - `CODERABBIT_CLI_DISABLE` is dead: its reader went with the CodeRabbit CLI
-  review leg (HIMMEL-2704). Deleting the line is the operator's call.
+  review step (HIMMEL-2704). Deleting the line is the operator's call.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
 class has not been decided yet: other account emails, chat IDs, cookie-file
