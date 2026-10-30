@@ -5,7 +5,9 @@ Read on demand: `worker-preface.md` names this file when the context guard denie
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on:** checkpoint or hand off. The guard (`guard-worker-context-handoff.sh`) is **off by default**: it runs only when your chief
 launched you with `--context-guard compact|handoff`, which sets
-`HIMMEL_WORKER_SESSION_CONTEXT_MODE`; you cannot change it in-session. The one reference is
+`HIMMEL_WORKER_SESSION_CONTEXT_MODE`, or when your profile turns it on (a native Sonnet 5.5
+`worker-impl` launch hands off and `worker-eval` compacts, both at a 450000 ceiling); you cannot
+change it in-session. The one reference is
 `docs/internals/worker-context-guard.md`. The threshold is 75 % of the ceiling, not
 of the window: an opus worker pinned at 200000 runs on a 1000000-token window, so it
 fires at 15 % fill (150k tokens), 7k before the earliest observed compaction

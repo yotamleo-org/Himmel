@@ -10,6 +10,7 @@
 #   AB_STUB_RESUME_FAIL=1 / AB_STUB_NOWRITE=1  the --resume segment errors / writes no HANDOFF.md
 #   AB_STUB_STALE=1  the first segment leaves a HANDOFF.md behind
 #   AB_STUB_NOSCORE=1  the judge replies without a SCORE line
+#   AB_STUB_SCORE=N  the judge's SCORE line (default 8); "error" is an errored result that still says SCORE: 9
 #   AB_STUB_NOREAD=1  a stdin prompt is not read for 60 s (the driver's timer must stop it)
 #   AB_STUB_BIGDIFF=N  the solving run also leaves a file of about N chars ending in BIGDIFF-END-MARKER
 # The judge sends its prompt on stdin (no argument after -p); the log entry carries "prompt".
@@ -67,7 +68,11 @@ def solve():
 
 if "Rate the work" in prompt:
     msg(1, 5000)
-    result("The work is mostly right." if os.environ.get("AB_STUB_NOSCORE") == "1" else "The work is mostly right.\nSCORE: 8")
+    score = os.environ.get("AB_STUB_SCORE", "8")
+    if score == "error":
+        emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "The work is mostly right.\nSCORE: 9"})
+        sys.exit(1)
+    result("The work is mostly right." if os.environ.get("AB_STUB_NOSCORE") == "1" else "The work is mostly right.\nSCORE: " + score)
 elif "--resume" in a:
     if os.environ.get("AB_STUB_RESUME_FAIL") == "1":
         emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "failed"})

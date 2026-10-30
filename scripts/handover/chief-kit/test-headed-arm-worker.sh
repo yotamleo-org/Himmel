@@ -957,6 +957,85 @@ contains "profile numeric ceiling: wrapper names profile source" "$log8profile" 
 contains "profile numeric ceiling: renderer names profile source" "$log8profile" "context=1m (profile design contextMode 1m); model="
 not_contains "profile numeric ceiling: not an operator ruling" "$log8profile" "operator-ruling"
 
+# a standard profile may carry a Sonnet-only ceiling (sonnetAutocompact) and context
+# guard (sonnetContextGuard): impl hands off at 450k, eval compacts at 450k, docs stays
+# at 200k, and any other model keeps today's 200000 with no guard. Full launch through
+# the real renderer, so the final argv check is exercised too.
+sonnet_reg="$tmp/sonnet-registry.json"
+cat > "$sonnet_reg" <<'SONNET_EOF'
+{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,
+"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff"},
+"worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"compact"},
+"worker-docs":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000}}}
+SONNET_EOF
+# sonnet_launch <tag> <profile> <model> [extra worker args] sets sa_rc / sa_rec / sa_env
+sa_opus_doc="$tmp/sa-opus-doc.md"
+fx_brief '# fixture brief' '> **Tier:** opus — design: multi-step design' > "$sa_opus_doc"
+sonnet_launch() {
+  local d="$tmp/c-sa-$1" sa_doc="$some_doc"; mk_launch_stubs "$d" "HIMMEL-7667-$1"; mkdir -p "$tmp/repo-sa-$1"
+  case "$3" in claude-opus*) sa_doc="$sa_opus_doc" ;; esac   # an Opus launch needs a Tier line
+  sa_rc=0
+  PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS="--profile $2 ${4-}" some_doc="$sa_doc" \
+    run_worker "$d" "$tmp/repo-sa-$1" "HIMMEL-7667-$1" "$3" >/dev/null 2>&1 || sa_rc=$?
+  wait_record "$d" || true
+  sa_rec="$(cat "$d/record" 2>/dev/null || true)"
+  sa_env="$(cat "$d/env-record" 2>/dev/null || true)"
+}
+sonnet_launch impl-sonnet worker-impl claude-sonnet-5-5
+check "sonnet ceiling: impl on Sonnet launches" "$sa_rc" "0"
+contains "sonnet ceiling: impl on Sonnet renders --autocompact 450000" "$sa_rec" "--autocompact 450000"
+contains "sonnet ceiling: impl on Sonnet exports the 450000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=450000"
+contains "sonnet ceiling: impl on Sonnet turns the hand-off guard on" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
+not_contains "sonnet ceiling: no 1m suffix" "$sa_rec" "[1m]"
+sonnet_launch impl-opus worker-impl claude-opus-5-5
+check "sonnet ceiling: impl on Opus launches" "$sa_rc" "0"
+contains "sonnet ceiling: impl on Opus keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
+contains "sonnet ceiling: impl on Opus exports the 200000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+not_contains "sonnet ceiling: impl on Opus sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+sonnet_launch eval-sonnet worker-eval claude-sonnet-5-5
+contains "sonnet ceiling: eval on Sonnet renders --autocompact 450000" "$sa_rec" "--autocompact 450000"
+contains "sonnet ceiling: eval on Sonnet compacts" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+sonnet_launch eval-opus worker-eval claude-opus-5-5
+contains "sonnet ceiling: eval on Opus keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
+not_contains "sonnet ceiling: eval on Opus sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+sonnet_launch docs-sonnet worker-docs claude-sonnet-5-5
+contains "sonnet ceiling: docs on Sonnet stays at --autocompact 200000" "$sa_rec" "--autocompact 200000"
+not_contains "sonnet ceiling: docs on Sonnet sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+sonnet_launch impl-flag worker-impl claude-sonnet-5-5 "--context-guard compact"
+contains "sonnet ceiling: an explicit --context-guard wins over the profile's" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
+sonnet_launch impl-none worker-impl claude-sonnet-5-5 "--context-guard none"
+not_contains "sonnet ceiling: --context-guard none turns the profile's guard off" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+# The ceiling is resolved once, in the wrapper, and only for the native lane on a
+# claude-sonnet-5 model. A lane that rewrites MODEL before the renderer (openrouter),
+# another lane, an older Sonnet or the bare alias keep 200000 with no guard - and
+# these are full launches through the real renderer, so its argv check runs.
+for sl in "or-impl:worker-impl:claude-sonnet-5-5:--lane openrouter" \
+          "or-eval:worker-eval:claude-sonnet-5-5:--lane openrouter" \
+          "ds-impl:worker-impl:claude-sonnet-5-5:--lane deepseek" \
+          "s4-impl:worker-impl:claude-sonnet-4-6:" \
+          "bare-impl:worker-impl:sonnet:"; do
+  IFS=: read -r sl_tag sl_prof sl_model sl_args <<< "$sl"
+  sonnet_launch "$sl_tag" "$sl_prof" "$sl_model" "$sl_args"
+  check "sonnet ceiling: $sl_tag launches (exit 0)" "$sa_rc" "0"
+  contains "sonnet ceiling: $sl_tag keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
+  not_contains "sonnet ceiling: $sl_tag has no 450000" "$sa_rec" "450000"
+  not_contains "sonnet ceiling: $sl_tag sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+done
+# WORKER_SESSION_CONTEXT=1m drops the profile's guard together with its ceiling.
+sa_doc_1m="$tmp/sa-1m-doc.md"
+fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: fixture' > "$sa_doc_1m"
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT=1m WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$sa_doc_1m" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "sonnet ceiling: 1m override on worker-impl: exit 0" "$rc" "0"
+contains "sonnet ceiling: 1m override drops the profile's hand-off guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+# The audited A/B arm needs the plain 200000 ceiling: a Sonnet impl launch is refused
+# with the real reason, a docs launch (no Sonnet ceiling) takes the control arm.
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "A/B arm on a Sonnet worker-impl launch: refused" "$rc" "2"
+contains "A/B arm on a Sonnet worker-impl launch: names the profile's Sonnet ceiling" "$out" "profile's Sonnet ceiling"
+not_contains "A/B arm on a Sonnet worker-impl launch: does not blame 1m" "$out" "never combines with a 1m opt-in"
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-docs HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "A/B arm control on a Sonnet worker-docs launch: exit 0" "$rc" "0"
+
 # a caller passing an ALREADY-SUFFIXED model
 # (claude-sonnet-5[1m]) under the DEFAULT (standard) context must still end
 # up unsuffixed with --autocompact 200000 - the wrapper forwards the model
@@ -1444,7 +1523,7 @@ rec17="$(cat "$d17/record" 2>/dev/null || true)"
 env17="$(cat "$d17/env-record" 2>/dev/null || true)"
 check "full launch --profile: exit 0" "$rc" "0"
 contains "full launch --profile: the launcher is the profile shim" "$rec17" "worker-claude-launcher.sh"
-contains "full launch --profile: the ceiling guard still holds" "$rec17" "--autocompact 200000"
+contains "full launch --profile: the ceiling guard still holds (HIMMEL-7667: worker-impl on Sonnet is 450000)" "$rec17" "--autocompact 450000"
 contains "full launch --profile: HIMMEL_LEAN_WORKER_SESSION=1 reaches the launched environment" "$env17" "HIMMEL_LEAN_WORKER_SESSION=1"
 contains "full launch --profile: the shim is told where the settings live" "$env17" "WORKER_SESSION_PROFILE_SETTINGS=$d17/HIMMEL-3333-leg.leg-settings.json"
 if [ -s "$d17/HIMMEL-3333-leg.leg-settings.json" ]; then
@@ -3082,7 +3161,7 @@ set29="$tmp/c29/HIMMEL-3403-hl.leg-settings.json"
 check "29a --headless: exit 0" "$rc" "0"
 contains "29b --headless: argv carries --bg" "$rec29" "--bg"
 contains "29c --headless: argv declares --permission-mode auto" "$rec29" "--permission-mode auto"
-contains "29d --headless: autocompact pin kept" "$rec29" "--autocompact 200000"
+contains "29d --headless: autocompact pin kept (HIMMEL-7667: worker-impl on Sonnet is 450000)" "$rec29" "--autocompact 450000"
 contains "29e --headless: session name kept" "$rec29" "-n HIMMEL-3403-hl"
 contains "29f --headless: profile settings still injected" "$rec29" "--settings $set29"
 check "29g --headless: konsole never called" "$([ -e "$d29/konsole-called" ] && echo called || echo none)" "none"

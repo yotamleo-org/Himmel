@@ -357,10 +357,15 @@ fi
 # The audited 400k A/B arm marker, set only by headed-arm-worker.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
 _ab_autocompact=""
+# The Sonnet ceiling the wrapper resolved for this launch (200000 to 450000), under
+# the same pairing. The wrapper decides it once; this renderer never re-derives it
+# from a model string the wrapper may since have rewritten.
+_sonnet_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _ab_autocompact="${HEADED_ARM_AB_AUTOCOMPACT:-}"
+    _sonnet_autocompact="${HEADED_ARM_SONNET_AUTOCOMPACT:-}"
 fi
-unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT
+unset HEADED_ARM_CONTEXT_PROFILE HEADED_ARM_WORKER_PROFILES HEADED_ARM_CONTEXT_PID HEADED_ARM_AB_AUTOCOMPACT HEADED_ARM_SONNET_AUTOCOMPACT
 if ! _context_json="$(node "$_context_profiles" "$_context_profile" --context)" \
     || ! _profile_mode="$(printf '%s' "$_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
     || ! _profile_autocompact="$(printf '%s' "$_context_json" | jq -er '.autocompact | select(type == "number" and . >= 200000 and . <= 1000000 and floor == .)')"; then
@@ -400,6 +405,16 @@ if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONT
     echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context worker arm is accepted" >&2
     exit 2
 fi
+if [ -n "$_sonnet_autocompact" ]; then
+    case "$_sonnet_autocompact" in
+        *[!0-9]*) _sonnet_bad=1 ;;
+        *) _sonnet_bad=0; { [ "$_sonnet_autocompact" -ge 200000 ] && [ "$_sonnet_autocompact" -le 450000 ]; } || _sonnet_bad=1 ;;
+    esac
+    if [ "$_sonnet_bad" = "1" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "chief" ] || [ -n "$_ab_autocompact" ]; then
+        echo "headed-arm: refusing HEADED_ARM_SONNET_AUTOCOMPACT=$_sonnet_autocompact: only 200000 to 450000 on a standard-context worker arm without the A/B marker is accepted" >&2
+        exit 2
+    fi
+fi
 # Fable-family match (shared with arm-resume.sh via chief_context_model_is_fable)
 # -- only an explicit Fable [model] takes this branch now (the default MODEL
 # is Opus).
@@ -415,7 +430,7 @@ if [ "$_context_profile" != "chief" ] && [ "$CONTEXT" = "1m" ] && [ "$_profile_m
 fi
 AUTOCOMPACT="$_profile_autocompact"
 if [ "$CONTEXT" = "standard" ]; then
-    AUTOCOMPACT="200000"
+    AUTOCOMPACT="${_sonnet_autocompact:-200000}"
     [ "$_ab_autocompact" != "400000" ] || AUTOCOMPACT="400000"
 elif [ "$_context_profile" = "chief" ] || [ "${CHIEF_CONTEXT:-}" = "1m" ]; then
     AUTOCOMPACT="auto"

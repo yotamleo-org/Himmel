@@ -4066,7 +4066,9 @@ Reads fill with `scripts/context-fill.sh --percent` on the hook's
 
 **Off by default (HIMMEL-4710).** With no `HIMMEL_WORKER_SESSION_CONTEXT_MODE`
 (or `none`) the hook exits 0 with no output for PreToolUse and PreCompact at any
-fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on. One
+fill; `headed-arm-worker.sh --context-guard compact|handoff` turns it on, and so does a
+native-lane Sonnet 5.5 launch on a profile with `sonnetContextGuard` (`worker-impl` hands
+off, `worker-eval` compacts, both at 450000). One
 reference: [`worker-context-guard.md`](worker-context-guard.md).
 
 **Threshold — 75 % of the autocompact ceiling, not of the window.** The ceiling

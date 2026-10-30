@@ -95,7 +95,7 @@ for (const tail of SUITE_TAILS) {
 }
 
 // The headed worker profiles opt in to himmel-bus and also allow its tools, both name forms.
-const BUS_PROFILES = ['worker-impl', 'worker-bus', 'worker-vm', 'worker-e2e'];
+const BUS_PROFILES = ['worker-impl', 'worker-eval', 'worker-docs', 'worker-bus', 'worker-vm', 'worker-e2e'];
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
 const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
 const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
@@ -2044,7 +2044,7 @@ test('vmLaunch is restricted to worker-vm', () => {
 
 test('worker family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
   const workers = Object.keys(REG.profiles).filter((n) => n.startsWith('worker-'));
-  assert.deepEqual(workers.sort(), ['worker-bus', 'worker-e2e', 'worker-impl', 'worker-vm']);
+  assert.deepEqual(workers.sort(), ['worker-bus', 'worker-docs', 'worker-e2e', 'worker-eval', 'worker-impl', 'worker-vm']);
   for (const name of workers) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     for (const id of ['i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
