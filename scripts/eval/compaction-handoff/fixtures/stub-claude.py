@@ -10,6 +10,7 @@
 #   AB_STUB_RESUME_FAIL=1 / AB_STUB_NOWRITE=1  the --resume segment errors / writes no HANDOFF.md
 #   AB_STUB_STALE=1  the first segment leaves a HANDOFF.md behind
 #   AB_STUB_NOSCORE=1  the judge replies without a SCORE line
+# The judge sends its prompt on stdin (no argument after -p); the log entry carries "prompt".
 # A compaction fires when the next context would pass 85 % of --autocompact; the
 # context then restarts at 20000. --resume writes HANDOFF.md; a prompt starting
 # "Load HANDOFF.md" is the successor; "Rate the work" is the judge.
@@ -21,12 +22,14 @@ import time
 
 a = sys.argv[1:]
 prompt = a[a.index("-p") + 1]
+if prompt.startswith("--"):   # no prompt argument: it arrives on stdin (the judge)
+    prompt = sys.stdin.read()
 ceil = int(a[a.index("--autocompact") + 1]) if "--autocompact" in a else 200000
 step = int(os.environ.get("AB_STUB_STEP", "60000"))
 n = int(os.environ.get("AB_STUB_MSGS", "8"))
 with open(os.environ["AB_STUB_LOG"], "a") as fh:
     in_git = subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True).returncode == 0
-    fh.write(json.dumps({"args": a, "cwd": os.getcwd(), "in_git": in_git}) + "\n")
+    fh.write(json.dumps({"args": a, "cwd": os.getcwd(), "in_git": in_git, "prompt": prompt}) + "\n")
 
 
 def emit(o):

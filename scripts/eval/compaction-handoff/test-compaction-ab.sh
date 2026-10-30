@@ -47,6 +47,9 @@ for t in docs impl audit; do
 done
 printf 'tampered\n' >"$TMP/g1-impl/specs/spec_001.txt"
 eq "impl: editing a spec fails the check even when every module is right" "$(python3 "$TASKS" check impl "$TMP/g1-impl" --scale 0.05 2>&1 | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["failed"])')" "['specs-config-untouched']"
+printf 'raise SystemExit(0)\n' >"$TMP/g1-impl/pkg/mod_001.py"
+printf 'while True:\n    pass\n' >"$TMP/g1-impl/pkg/mod_002.py"
+eq "impl: a worker module that exits or never returns fails its check, not the driver" "$(timeout 60 python3 "$TASKS" check impl "$TMP/g1-impl" --scale 0.05 2>&1 | python3 -c 'import json,sys; d=json.load(sys.stdin); print("mod-001" in d["failed"] and "mod-002" in d["failed"])' 2>&1)" "True"   # gnu-ok: local-tier suite, hang guard
 python3 "$TASKS" gen docs "$TMP/full-docs" >/dev/null 2>&1
 if [ "$(du -sk "$TMP/full-docs" | cut -f1)" -ge 1200 ]; then pass "docs: a full-scale workspace is at least 1.2 MB, enough to pass a 200k window"; else fail "docs: full-scale workspace under 1.2 MB"; fi
 
@@ -180,14 +183,21 @@ eq "judge: a score per run" "$(jget "$O/docs/a/1/judge.json" score)" "8"
 eq "judge: both valid runs scored" "$(find "$O" -name judge.json | wc -l | tr -d ' ')" "2"
 jp="$(python3 -c 'import json,sys
 for l in open(sys.argv[1]):
-    d=json.loads(l); print(d["args"][d["args"].index("-p")+1])' "$AB_STUB_LOG")"
+    d=json.loads(l); print(d["prompt"])' "$AB_STUB_LOG")"
+ja="$(python3 -c 'import json,sys
+for l in open(sys.argv[1]):
+    print(" ".join(json.loads(l)["args"]))' "$AB_STUB_LOG")"
 hasnt "judge: the prompt does not name the arm or the ceiling" "$jp" "autocompact"
 hasnt "judge: nor the hand-off" "$jp" "HANDOFF"
 has "judge: it asks for a SCORE" "$jp" "SCORE:"
+hasnt "judge: the prompt goes on stdin, not in argv (a long diff would pass the per-argument limit)" "$ja" "Rate the work"
 AB_STUB_NOSCORE=1 python3 "$AB" judge --out "$O3" >/dev/null 2>&1
-eq "judge: a reply with no SCORE is not cached" "$(find "$O3" -name judge.json | wc -l | tr -d ' ')" "0"
+eq "judge: a reply with no SCORE leaves the run unscored" "$(jget "$O3/docs/a/1/judge.json" score)" "null"
+c1="$(jget "$O3/docs/a/1/judge.json" cost_eq)"
+eq "judge: and still counts the attempt's cost" "$([ "$c1" -gt 0 ] && echo yes)" "yes"
 python3 "$AB" judge --out "$O3" >/dev/null 2>&1
-eq "judge: and the next judge pass retries it" "$(jget "$O3/docs/a/1/judge.json" score)" "8"
+eq "judge: the next judge pass retries it" "$(jget "$O3/docs/a/1/judge.json" score)" "8"
+eq "judge: and adds to the cost already spent" "$([ "$(jget "$O3/docs/a/1/judge.json" cost_eq)" -gt "$c1" ] && echo yes)" "yes"
 
 # --- score: the table and a recommendation per profile ---
 python3 "$AB" score --out "$O" >"$TMP/score.out" 2>&1

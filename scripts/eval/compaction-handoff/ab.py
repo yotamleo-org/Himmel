@@ -194,16 +194,20 @@ def build_cmd(prompt, model, effort, ceiling, max_usd, session=None, resume=None
     return c + (["--resume", resume] if resume else ["--session-id", session])
 
 
-def run_segment(argv, cwd, stream, timeout, stop_at=None):
+def run_segment(argv, cwd, stream, timeout, stop_at=None, stdin_text=None):
     """Run one claude process, teeing its stream to `stream`. With stop_at, stop it (SIGTERM) the
     moment an assistant message shows a context at or past it. -> (stopped, timed_out, wall_s)."""
     env = dict(os.environ)
     env.pop("CLAUDE_CODE_AUTO_COMPACT_WINDOW", None)   # outranks --autocompact
     t0, stopped, timed = time.time(), False, []
-    # eval run in a scratch workspace, bank-preflighted per task, explicit permission mode, budget-capped
+    # eval run in a scratch workspace, explicit permission mode, budget-capped; `sweep` bank-preflights per task, `run` does not
     # launch-profile-ok: the eval measures the 200k and 450k launch ceilings themselves, not a worker profile
     with open(stream, "w") as out, open(stream[:-len(".stream.jsonl")] + ".stderr", "w") as err:
-        p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=err, text=True, env=env)
+        p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=err, text=True, env=env,
+                             stdin=subprocess.PIPE if stdin_text is not None else None)
+        if stdin_text is not None:   # a prompt past ~128 KiB does not fit one argv entry
+            p.stdin.write(stdin_text)
+            p.stdin.close()
         timer = threading.Timer(timeout, lambda: (timed.append(1), p.kill()))
         timer.start()
         try:
@@ -394,29 +398,38 @@ def judge_prompt(rd):
             "End your reply with one line: SCORE: <n>." % (brief, reply, diff))
 
 
+def judge_state(rd):
+    """-> (score or None, cost_eq already spent judging this run)."""
+    try:
+        j = json.load(open(os.path.join(rd, "judge.json")))
+    except (OSError, ValueError):
+        return None, 0
+    return j.get("score"), j.get("cost_eq") or 0
+
+
 def cmd_judge(a):
     need_billed()
     for sp in sorted(glob.glob(os.path.join(a.out, "*", "*", "*", "summary.json"))):
         rd = os.path.dirname(sp)
-        if os.path.exists(os.path.join(rd, "judge.json")) or not json.load(open(sp)).get("valid"):
+        prev_score, prev_cost = judge_state(rd)
+        if prev_score is not None or not json.load(open(sp)).get("valid"):
             continue
         scratch = tempfile.mkdtemp(prefix="ab-judge-")
         try:
             stream = os.path.join(scratch, "judge.stream.jsonl")
             # blind judge replay of a finished run, explicit permission mode, budget-capped
             # launch-profile-ok: scores outcome quality only, not a worker profile
-            argv = [claude_bin(), "-p", judge_prompt(rd), "--model", a.model, "--effort", "high", "--permission-mode", "dontAsk",
+            argv = [claude_bin(), "-p", "--model", a.model, "--effort", "high", "--permission-mode", "dontAsk",
                     "--output-format", "stream-json", "--verbose", "--max-budget-usd", "2", "--setting-sources", "user",
                     "--strict-mcp-config", "--no-session-persistence", "--disallowedTools",
                     "Bash", "Read", "Edit", "Write", "Grep", "Glob", "Agent", "WebFetch", "WebSearch"]
-            run_segment(argv, scratch, stream, 900)
+            run_segment(argv, scratch, stream, 900, stdin_text=judge_prompt(rd))
             j = summarize_streams([stream], 200000)
             m = re.findall(r"SCORE:\s*(\d+)", j["reply"])
-            if not m:   # no score: leave the run unjudged so the next `judge` retries it
-                print("ab.py: judge gave no SCORE for %s - not cached" % rd, file=sys.stderr)
-                continue
+            if not m:   # a null score is retried by the next `judge`; its cost stays counted
+                print("ab.py: judge gave no SCORE for %s" % rd, file=sys.stderr)
             with open(os.path.join(rd, "judge.json"), "w") as fh:
-                json.dump({"score": int(m[-1]), "cost_eq": j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
+                json.dump({"score": int(m[-1]) if m else None, "cost_eq": prev_cost + j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
     return 0

@@ -25,9 +25,11 @@ import os
 import random
 import re
 import shutil
+import signal
 import sys
 import tempfile
 
+EXEC_SECS = 2   # one worker-written module may run this long inside the checker
 PROFILE = {"docs": "docs", "impl": "impl", "audit": "eval"}
 BASE = {"docs": 100, "impl": 60, "audit": 80}
 ADJ = ["quiet", "steady", "narrow", "broad", "careful", "early", "late", "plain", "stable", "shared",
@@ -216,19 +218,30 @@ def impl_brief(seed, scale):
         % (impl_late(n), t))
 
 
+def _timed_out(signum, frame):
+    raise TimeoutError("worker module ran past %ds" % EXEC_SECS)
+
+
 def impl_check(ws, seed, scale):
     res = []
-    for nn, (k, c, m) in impl_expected(seed, scale).items():
-        ok = False
-        src = read(ws, "pkg/mod_%03d.py" % nn)
-        if src:
-            ns = {}
-            try:
-                exec(compile(src, "mod_%03d" % nn, "exec"), ns)
-                ok = all(ns["f_%03d" % nn](x) == (x * k + c) % m for x in range(6))
-            except Exception:
-                ok = False
-        res.append(("mod-%03d" % nn, ok))
+    old = signal.signal(signal.SIGALRM, _timed_out)
+    try:
+        for nn, (k, c, m) in impl_expected(seed, scale).items():
+            ok = False
+            src = read(ws, "pkg/mod_%03d.py" % nn)
+            if src:
+                ns = {}
+                signal.alarm(EXEC_SECS)
+                try:   # worker-written code: a raise, an exit or a loop fails its row, never the driver
+                    exec(compile(src, "mod_%03d" % nn, "exec"), ns)
+                    ok = all(ns["f_%03d" % nn](x) == (x * k + c) % m for x in range(6))
+                except (Exception, SystemExit):
+                    ok = False
+                finally:
+                    signal.alarm(0)
+            res.append(("mod-%03d" % nn, ok))
+    finally:
+        signal.signal(signal.SIGALRM, old)
     notes = (read(ws, "NOTES.md") or "").split("\n")
     res.append(("notes-token", notes[0].strip() == "token: " + token("impl", seed)))
     ref = tempfile.mkdtemp(prefix="ab-impl-ref-")

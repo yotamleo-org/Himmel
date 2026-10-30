@@ -26,7 +26,7 @@ Tasks (`ab_tasks.py gen|solve|check|brief`, seeded, a hidden check per task; the
 - Contamination: the Phase 1 classifier over a 40-turn window after every compaction and every hand-off.
 - Quality: the check fraction from the hidden check, and a blind opus judge (`ab.py judge`; the prompt names neither the arm nor the ceiling and drops hand-off lines).
 - `ab.py score` prints one row per task and arm (n, check, judge, cost_eq, wall, turns, compactions, hand-offs, peak context, defects), the invalid runs, and a recommended arm per profile: among arms within 0.05 check share and 1 judge point of the best, the cheapest.
-- The sweep resumes (a cell with a `summary.json` is skipped), runs `usage-preflight.sh` before each task (must print PROCEED, else exit 3) and stops before the first cell it starts once the spend already priced reaches `--ceiling`; one run can still add up to `--max-usd` (shared by all of a hand-off run's segments) beyond it.
+- The sweep resumes (a cell with a `summary.json` is skipped), runs `usage-preflight.sh` before each task (must print PROCEED, else exit 3; `ab.py run` does not run it, only `sweep` does) and stops before the first cell it starts once the spend already priced reaches `--ceiling`; one run can still add up to `--max-usd` (shared by all of a hand-off run's segments) beyond it.
 
 ## Run
 
