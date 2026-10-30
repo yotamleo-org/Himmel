@@ -299,7 +299,9 @@ template_version: 3
 - (a) One plan task per worker, plus the stage-worker rule: run the context-fill
   probe after every completed step (ruling A1). The worker context guard
   (`guard-worker-context-handoff.sh`) is off by default;
-  arm with `--context-guard compact|handoff` to turn it on. When it is on, past
+  arm with `--context-guard compact|handoff` to turn it on. A native Sonnet 5.5 launch on
+  `worker-impl` (hand-off) or `worker-eval` (compaction) turns it on itself, at a 450000
+  ceiling. When it is on, past
   75 % of the worker's `--autocompact` ceiling (15 % fill for an opus worker pinned
   at 200000 on its 1M window) it blocks ordinary work until the worker acts on its
   mode: `compact` commits, pushes and writes a `CHECKPOINT <sha> pushed`

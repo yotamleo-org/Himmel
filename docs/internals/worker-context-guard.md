@@ -20,6 +20,10 @@ The operator ruled on 2026-10-07 that the guard is
 **off by default**. A worker launched without a mode never sees it: the hook exits 0 with no
 output for every PreToolUse call and every PreCompact, at any fill. Workers
 auto-compact anyway, and an always-on guard stopped every opus worker at 13 % fill.
+The one exception is a native-lane Sonnet 5.5 launch on a profile that sets
+`sonnetContextGuard`: the default `worker-impl` launch runs the guard in hand-off mode
+and `worker-eval` in compaction mode, both at the 450000 ceiling (see Turning it on).
+Opus, other lanes and `worker-docs` stay off.
 
 ## Turning it on
 
@@ -30,7 +34,8 @@ bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard compact …
 bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard handoff …
 ```
 
-- `--context-guard none` is the default and turns the guard off.
+- `--context-guard none` turns the guard off. It is the default except for the Sonnet
+  profile launches in the next bullet.
 - A Sonnet launch on a profile that sets `sonnetContextGuard` turns the guard on without a
   flag: `worker-impl` hands off, `worker-eval` compacts. It applies only to the native lane
   on a Sonnet 5.5 model, together with that profile's 450000 ceiling (see
@@ -83,8 +88,10 @@ ceiling; that is an operator decision.
 
 ## The autocompact A/B arm
 
-The 200000 ceiling is the default for every worker. A measured A/B against 400000
-is opt-in and audited:
+The 200000 ceiling is the default for every worker except a native-lane Sonnet 5.5
+launch on a profile with `sonnetAutocompact` (`worker-impl` and `worker-eval` run 450000).
+A measured A/B against 400000 is opt-in and audited, and needs the plain 200000 ceiling,
+so it runs on `worker-docs`:
 
 - **Launch.** `WORKER_SESSION_AUTOCOMPACT_AB=400000` (only `200000` or `400000`; anything
   else refuses) on `headed-arm-worker.sh`, with the brief line

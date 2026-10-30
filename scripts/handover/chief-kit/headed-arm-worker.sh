@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/headed-arm-worker.sh - versioned WORKER launcher
 # A thin wrapper around scripts/handover/headed-arm.sh that
-# pins every worker arm to the standard --autocompact 200000 ceiling - the window
+# pins every worker arm to the standard --autocompact 200000 ceiling (a native-lane
+# Sonnet 5.5 launch on a profile with sonnetAutocompact, today worker-impl and
+# worker-eval, pins 450000 instead) - the window
 # itself measures 1M regardless (docs/internals/lane-calibration.md "What a
 # plain launch reports") - and adds the worker-only env the chief lane does not
 # need.
@@ -1320,9 +1322,10 @@ worker_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
 # a sanctioned operator ruling opens this door - mirrors the
 # Tier-line gate below, same shape: a fixed marker line in the
 # brief, grepped by exact prefix, non-blank free text required. CONTEXT_REASON
-# stays empty for every standard-ceiling launch (the case above never sets
-# RESOLVED_AUTOCOMPACT to anything but 200000 there), so this block is a
-# no-op for every existing caller.
+# stays empty for every standard-ceiling launch (the case above sets
+# RESOLVED_AUTOCOMPACT to 200000, or to the profile's Sonnet ceiling, which the
+# SONNET_CEILING test below skips), so this block is a no-op for every existing
+# caller.
 CONTEXT_REASON=""
 if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ] && [ "$SONNET_CEILING" != "1" ]; then
     CONTEXT_REASON="$DESIGN_CONTEXT_REASON"
