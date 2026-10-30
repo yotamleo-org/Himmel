@@ -11,7 +11,7 @@
 # Fields:
 #   head     `<sha>` on `<branch>` at `<repo>`, remote `<url>`
 #   bank     5-hour / 7-day utilisation (usage-preflight.sh)
-#   workers     one line per fleet-manifest leg: label, last marker, last bullet
+#   workers     one line per fleet-manifest worker: label, last marker, last bullet
 #            (backtick spans stripped: a worker bullet may quote a token)
 #   prs      the open PR set (gh); `unavailable` when gh fails
 #   summary  the chief's last HANDOFF_FACTS_BULLETS (12) Results bullets

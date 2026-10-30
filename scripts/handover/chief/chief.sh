@@ -134,7 +134,7 @@ rolled over since.
 (plugin /chief from any repo); bucket/prefix derive from it instead of
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
-the console doc, and a worker session (leg) for the project is dispatched into it explicitly
+the console doc, and a worker session (worker) for the project is dispatched into it explicitly
 with WORKER_SESSION_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
 --bucket/--prefix still override it when given.
 USAGE
@@ -383,7 +383,7 @@ do_arm() {
                 if bus_out="$("$bus_cli" succeed "$session" 2>&1)"; then
                     bus_stamp=", stamped successor of $CHIEF_BUS_PREDECESSOR"
                 else
-                    bus_warn "$log" "bus succeed failed for $session - legs adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
+                    bus_warn "$log" "bus succeed failed for $session - workers adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
                 fi
             fi
             bus_note "$log" "registered $session as console$bus_stamp"
@@ -571,9 +571,9 @@ $rows
 EOF_ROWS
     fi
     if [ -n "$lookup_failed" ]; then
-        printf 'unknown — the open-PR lookup failed, so check the open PRs against the WRAPPED legs by hand.\n'
+        printf 'unknown — the open-PR lookup failed, so check the open PRs against the WRAPPED workers by hand.\n'
     elif [ "$found" -ne 1 ]; then
-        printf 'none — no WRAPPED leg in the fleet manifest names a PR that is still open.\n'
+        printf 'none — no WRAPPED worker in the fleet manifest names a PR that is still open.\n'
     fi
 }
 
