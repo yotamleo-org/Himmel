@@ -118,9 +118,8 @@ seed_config_dir() {
   fi
 
   umask 077
-  # A same-directory mv is atomic on POSIX. MSYS cannot promise the same
-  # guarantee, but replacing a complete temp file still avoids truncating the
-  # live credentials or settings file in place.
+  # A same-directory mv atomically replaces the complete file without
+  # truncating live credentials or settings in place.
   CREDENTIALS_TMP="$(mktemp "$CONFIG_DIR/.credentials.json.tmp.XXXXXX")" \
     || seed_fail "create a subscription credentials temp file"
   if [ -f "$SOURCE_DIR/.credentials.json" ]; then

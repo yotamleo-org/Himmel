@@ -462,14 +462,14 @@ assert "update at-pin: reports up to date" grep -qi 'up to date' <<<"$out"
 assert "update at-pin: no install call" bash -c '! grep -q "tool install" "$1"' _ "$gup_log"
 
 # Shared fixture for the direct-copy skill refresh:
-# a fake uv tool venv shaped like the real Windows install. Its python stub
+# a fake uv tool venv shaped like the POSIX install. Its python stub
 # resolves the package path and importlib metadata but deliberately has NO
 # graphify.__version__ response (the real 0.9.40 package has no such attribute).
 # The metadata answer uses CRLF to exercise command-substitution normalization.
 make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
   local tooldir="$1" ver="$2" pkg
   pkg="$tooldir/graphifyy/fake-site/graphify"
-  mkdir -p "$tooldir/graphifyy/Scripts" "$pkg/skills/claude/references" "$pkg/skills/windows/references" \
+  mkdir -p "$tooldir/graphifyy/bin" "$pkg/skills/claude/references" "$pkg/skills/windows/references" \
     "$pkg/skills/codex/references" "$pkg/skills/claw/references"
   printf 'FAKE POSIX SKILL BODY v%s\n' "$ver" > "$pkg/skill.md"
   printf 'FAKE WINDOWS SKILL BODY v%s\n' "$ver" > "$pkg/skill-windows.md"
@@ -482,7 +482,7 @@ make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
   printf 'windows ref content v%s\n' "$ver" > "$pkg/skills/windows/references/quickstart.md"
   printf 'codex ref content v%s\n' "$ver" > "$pkg/skills/codex/references/quickstart.md"
   printf 'claw ref content v%s\n' "$ver" > "$pkg/skills/claw/references/quickstart.md"
-  cat > "$tooldir/graphifyy/Scripts/python" <<EOF
+  cat > "$tooldir/graphifyy/bin/python" <<EOF
 #!/usr/bin/env bash
 case "\$2" in
   *__file__*)              printf '%s\n' "$pkg" ;;
@@ -491,7 +491,7 @@ case "\$2" in
   *) exit 1 ;;
 esac
 EOF
-  chmod +x "$tooldir/graphifyy/Scripts/python"
+  chmod +x "$tooldir/graphifyy/bin/python"
   printf '%s' "$pkg"
 }
 
@@ -515,14 +515,14 @@ echo "[test-graphify-bin] _graphify_skill_refresh: resolved Python with unreadab
 srb_home="$tmpdir/sr-bad-metadata"; mkdir -p "$srb_home/gplug/skills/graphify"
 srb_tools="$tmpdir/sr-bad-metadata-tools"
 srb_pkg=$(make_fake_graphify_venv "$srb_tools" "$pinned_ver")
-cat > "$srb_tools/graphifyy/Scripts/python" <<EOF
+cat > "$srb_tools/graphifyy/bin/python" <<EOF
 #!/usr/bin/env bash
 case "\$2" in
   *__file__*) printf '%s\n' "$srb_pkg" ;;
   *) exit 1 ;;
 esac
 EOF
-chmod +x "$srb_tools/graphifyy/Scripts/python"
+chmod +x "$srb_tools/graphifyy/bin/python"
 out=$(HOME="$srb_home" GRAPHIFY_PLUGIN_DIR="$srb_home/gplug" PATH="$stub_dir/bin:$base_path" \
       UV_TOOL_DIR="$srb_tools" UV_LIST_FILE="$tmpdir/sr-bad-metadata-list" UV_LOG="$tmpdir/sr-bad-metadata-uvlog" \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_skill_refresh; echo "RC=$?"' 2>&1)
@@ -539,18 +539,9 @@ srr_cfg="$tmpdir/sr-redir-cfg"; mkdir -p "$srr_cfg/skills/graphify"
 printf '0.0.1' > "$srr_cfg/skills/graphify/.graphify_version"
 srr_tools="$tmpdir/sr-redir-tools"
 srr_pkg=$(make_fake_graphify_venv "$srr_tools" "$pinned_ver")
-case "$(uname -s 2>/dev/null || echo)" in
-  MINGW*|MSYS*|CYGWIN*)
-    expected_skill="$srr_pkg/skill-windows.md"
-    expected_refs="$srr_pkg/skills/windows/references/quickstart.md"
-    ;;
-  *)
-    expected_skill="$srr_pkg/skill.md"
-    expected_refs="$srr_pkg/skills/claude/references/quickstart.md"
-    ;;
-esac
-# codex/hermes package their OWN bundle (never claude's); the
-# host-uname branch above is claude/windows-only and does not apply here.
+expected_skill="$srr_pkg/skill.md"
+expected_refs="$srr_pkg/skills/claude/references/quickstart.md"
+# codex/hermes package their OWN bundle (never claude's).
 expected_codex_skill="$srr_pkg/skill-codex.md"
 expected_codex_refs="$srr_pkg/skills/codex/references/quickstart.md"
 expected_hermes_skill="$srr_pkg/skill-claw.md"
@@ -1205,51 +1196,6 @@ assert "a path with parens and a dot still matches itself" \
 assert "the dot is escaped, not a wildcard" \
   bash -c 'pat=$(. "$1/graphify-bin.sh"; _graphify_pat_from_path "/a/.local/graphifyy"); ! printf "%s\n" "/a/Xlocal/graphifyy" | grep -qE -- "$pat"' _ "$SCRIPT_DIR"
 
-# Windows branch: an apostrophe in the resolved tool dir must not break the
-# -Command string (codex-adv round). pat_dir carries a RESOLVED path now, so
-# `C:\Users\O'Brien\…` — an ordinary profile — would close the PowerShell
-# single-quoted string early. That is not a soft failure: the probe returns
-# "unavailable", and the CALLER treats "cannot probe" as "proceed", so the
-# reinstall would run against a held venv on the very platform this guard was
-# written for. Asserted on the generated -Command, captured from a fake pwsh.
-echo "[test-graphify-bin] Windows probe survives an apostrophe in the tool dir"
-win_dir="$tmpdir/win-probe"; mkdir -p "$win_dir"
-apos_root="/c/Users/O'Brien/AppData/uv/tools"
-printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$win_dir/uname"; chmod +x "$win_dir/uname"
-cat > "$win_dir/uv" <<UVAPOS
-#!/bin/sh
-[ "\$1" = "tool" ] && [ "\$2" = "dir" ] && { printf '%s\n' "$apos_root"; exit 0; }
-exit 1
-UVAPOS
-chmod +x "$win_dir/uv"
-# Fake pwsh: log the -Command it was handed, then answer "1 holder".
-cat > "$win_dir/pwsh" <<'PWSHFAKE'
-#!/bin/sh
-for a in "$@"; do last="$a"; done
-printf '%s\n' "$last" > "$PS_CMD_LOG"
-printf '1\n'
-PWSHFAKE
-chmod +x "$win_dir/pwsh"
-ps_log="$tmpdir/ps-command.txt"
-# SCRIPT_DIR goes in as a POSITIONAL arg, not interpolated into the command
-# string: a repo path containing a quote would otherwise
-# break the command the same way the apostrophe this very test is about breaks
-# the PowerShell one.
-# shellcheck disable=SC2016
-apos_out="$(PATH="$win_dir:/usr/bin:/bin" PS_CMD_LOG="$ps_log" bash -c '. "$1/graphify-bin.sh"; _graphify_mcp_holders' _ "$SCRIPT_DIR" 2>/dev/null)"
-assert "apostrophe path -> probe returns a COUNT, not unavailable" test "$apos_out" = "1"
-# The probe must not count ITSELF: the needles appear in this pwsh process's
-# own CommandLine, so without the exclusion a machine with zero real holders
-# reported 1 and the update was skipped forever.
-assert "generated -Command excludes the probe's own PID" grep -q 'ProcessId -ne' "$ps_log"
-# The generated command must have balanced single quotes; a lone apostrophe
-# from the path is exactly what unbalances it.
-apos_sq="'"
-# shellcheck disable=SC2016
-assert "generated -Command has balanced single quotes" \
-  bash -c 'n=$(tr -cd "$2" < "$1" | wc -c); [ $((n % 2)) -eq 0 ]' _ "$ps_log" "$apos_sq"
-assert "the apostrophe was doubled for PowerShell" grep -q "O''Brien" "$ps_log"
-
 echo "[test-graphify-bin] graphify_update: install 'succeeds' but the binary does not run -> HARD failure"
 gb_home="$tmpdir/gup-broken"; mkdir -p "$gb_home"
 gb_tools="$tmpdir/gup-broken-tools"; mkdir -p "$gb_tools/graphifyy"
@@ -1800,6 +1746,15 @@ assert "update foreign non-uv: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "update foreign non-uv: left as-is" grep -qi 'leaves it as-is' <<<"$out"
 # shellcheck disable=SC2016
 assert "update foreign non-uv: no install call" bash -c '! grep -q "tool install" "$1"' _ "$guf_log"
+
+echo "[test-graphify-bin] POSIX MCP entrypoint wins over a stale executable-suffix shim (HIMMEL-8179)"
+posix_mcp="$tmpdir/posix-mcp"; mkdir -p "$posix_mcp"
+printf '#!/bin/sh\nexit 0\n' > "$posix_mcp/graphify-mcp"
+printf '#!/bin/sh\nexit 1\n' > "$posix_mcp/graphify-mcp.exe"
+# shellcheck disable=SC2016
+mcp_path=$(PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$posix_mcp" UV_LOG="$tmpdir/posix-mcp-log" \
+  bash -c '. "$1/graphify-bin.sh"; _graphify_mcp_entrypoint' _ "$SCRIPT_DIR")
+assert "entrypoint uses graphify-mcp, not the retired executable-suffix shim" test "$mcp_path" = "$posix_mcp/graphify-mcp"
 
 echo "[test-graphify-bin] _graphify_mcp_import_ok probes the ENTRYPOINT's interpreter (HIMMEL-996)"
 # A chief script's shebang python is the most-specific env (covers pip/
@@ -2537,92 +2492,6 @@ shapes_py_out=$(env "${force_python_env[@]}" bash -c '. "'"$SCRIPT_DIR"'/graphif
 assert "shapes (python): rc 0" grep -q '^RC=0$' <<<"$shapes_py_out"
 assert "shapes (python): settings reported repriced" price_verdict "$shapes_py_out" "repriced" ".claude/settings.json"
 assert "shapes (python): output is byte-identical to the node engine's" cmp -s "$shapes_fixture/.claude/settings.json" "$shapes_py_fixture/.claude/settings.json"
-
-# ─── graphify_price_hooks: Finding A (path-translation silent no-op) ─────────
-# Only meaningful on MSYS/Cygwin, where MSYS_NO_PATHCONV/MSYS2_ARG_CONV_EXCL
-# disable the implicit POSIX->Windows argv rewrite that the fix now performs
-# EXPLICITLY via cygpath -- gate on BOTH `cygpath` being present (the
-# translator the fix uses) and `uname -s` reporting an MSYS/MINGW/Cygwin
-# kernel (the only platform where that env var pair has this effect at all;
-# on Linux/macOS the vars are meaningless and $root is already native). A
-# machine with neither (Linux CI, some containers) skips cleanly rather than
-# failing.
-case "$(uname -s 2>/dev/null || echo)" in
-  MINGW*|MSYS*|CYGWIN*) _pconv_platform_ok=1 ;;
-  *) _pconv_platform_ok=0 ;;
-esac
-
-if [ "$_pconv_platform_ok" = 1 ] && command -v cygpath >/dev/null 2>&1; then
-  echo "[test-graphify-bin] graphify_price_hooks: Finding A — MSYS_NO_PATHCONV / MSYS2_ARG_CONV_EXCL no longer produces a silent no-op (HIMMEL-2480 follow-up)"
-  pconv_node_fixture="$tmpdir/price-pathconv-node"
-  pconv_py_fixture="$tmpdir/price-pathconv-python"
-  write_price_identity_fixture "$pconv_node_fixture"
-  write_price_identity_fixture "$pconv_py_fixture"
-
-  pconv_node_out=$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_price_hooks "$1"; echo "RC=$?"' _ "$pconv_node_fixture" 2>&1)
-  assert "pathconv (node): rc 0" grep -q '^RC=0$' <<<"$pconv_node_out"
-  assert "pathconv (node): settings reported repriced (not silently absent)" price_verdict "$pconv_node_out" "repriced" ".claude/settings.json"
-  assert "pathconv (node): the priced matcher is actually IN THE FILE" grep -qF '"Grep|Glob"' "$pconv_node_fixture/.claude/settings.json"
-  assert "pathconv (node): the priced command is actually IN THE FILE" grep -qF "$expected_priced_command" "$pconv_node_fixture/.claude/settings.json"
-
-  # shellcheck disable=SC2016
-  pconv_py_out=$(env "${force_python_env[@]}" MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_price_hooks "$1"; echo "RC=$?"' _ "$pconv_py_fixture" 2>&1)
-  assert "pathconv (python): rc 0" grep -q '^RC=0$' <<<"$pconv_py_out"
-  assert "pathconv (python): settings reported repriced (not silently absent)" price_verdict "$pconv_py_out" "repriced" ".claude/settings.json"
-  assert "pathconv (python): the priced matcher is actually IN THE FILE" grep -qF '"Grep|Glob"' "$pconv_py_fixture/.claude/settings.json"
-  assert "pathconv (python): the priced command is actually IN THE FILE" grep -qF "$expected_priced_command" "$pconv_py_fixture/.claude/settings.json"
-
-  echo "[test-graphify-bin] graphify_price_hooks: Finding A class guard — bash sees a file the engine reports absent -> loud WARNING, never a quiet success (HIMMEL-2480 follow-up)"
-  # Honest construction: stub `cygpath -w` to always return a bogus,
-  # nonexistent native path, so the engine is handed a root that resolves to
-  # nothing on disk while bash's OWN [-f] check (against the REAL,
-  # untranslated root) still sees the real file. That is exactly the
-  # disagreement the guard exists to catch -- without needing an actually
-  # broken MSYS shell to reproduce it. Prepended ahead of the real PATH so
-  # `command -v cygpath` picks up the stub first.
-  stub_cygpath_dir="$tmpdir/stub-cygpath"
-  mkdir -p "$stub_cygpath_dir"
-  cat > "$stub_cygpath_dir/cygpath" <<'STUB'
-#!/usr/bin/env bash
-if [ "$1" = "-w" ]; then
-  printf '%s\n' 'C:\nonexistent-pathconv-guard-fixture'
-  exit 0
-fi
-exit 1
-STUB
-  chmod +x "$stub_cygpath_dir/cygpath"
-
-  guard_fixture="$tmpdir/price-disagreement-guard"
-  mkdir -p "$guard_fixture/.claude"
-  cat > "$guard_fixture/.claude/settings.json" <<'EOF'
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Grep",
-        "hooks": [
-          { "type": "command", "command": "C:/Users/x/.local/bin/graphify.EXE hook-guard search" }
-        ]
-      }
-    ]
-  }
-}
-EOF
-  guard_before="$(cat "$guard_fixture/.claude/settings.json")"
-  guard_out=$(PATH="$stub_cygpath_dir:$PATH" bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_price_hooks "$1"; echo "RC=$?"' _ "$guard_fixture" 2>&1)
-  guard_after="$(cat "$guard_fixture/.claude/settings.json")"
-  assert "disagreement guard: rc 0 (WARN-not-fail contract preserved)" grep -q '^RC=0$' <<<"$guard_out"
-  assert "disagreement guard: engine (fed the bogus stub path) reported settings absent" price_verdict "$guard_out" 'absent \(nothing to price\)' ".claude/settings.json"
-  assert "disagreement guard: emits a loud WARNING naming settings.json" grep -qE 'WARNING:.*\.claude/settings\.json' <<<"$guard_out"
-  assert "disagreement guard: WARNING names MSYS_NO_PATHCONV as the usual cause" grep -q 'MSYS_NO_PATHCONV' <<<"$guard_out"
-  # shellcheck disable=SC2016
-  # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
-  assert "disagreement guard: does NOT downgrade to a quiet success (still says absent, not repriced)" \
-    bash -c '! grep -q "graphify hook pricing -- repriced: .*settings" <<<"$1"' _ "$guard_out"
-  assert "disagreement guard: file was left byte-identical (never actually reached)" test "$guard_before" = "$guard_after"
-else
-  echo "[test-graphify-bin] SKIP: Finding A pathconv + disagreement-guard tests need an MSYS/MINGW/Cygwin uname AND cygpath on PATH -- neither present, or not applicable, on this platform."
-fi
 
 # ─── graphify_price_hooks: Finding 1 (anchored guard matcher) ────────────────
 echo "[test-graphify-bin] graphify_price_hooks: Finding 1 -- anchored guard matcher, all 23 shapes, both engines (HIMMEL-2480 CR round 3, third and final narrowing)"
