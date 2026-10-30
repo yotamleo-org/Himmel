@@ -1621,7 +1621,7 @@ _ql_release_remove() {
     fi
     rm -rf "$lockdir" 2>/dev/null || rc=1
     if [ -d "$lockdir" ]; then
-        echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle on Windows? permission?); NOT released" >&2
+        echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle or permission?); NOT released" >&2
         rc=1
     fi
     _ql_takeover_claim_release "$claim" "$claim_token" || true
@@ -1832,9 +1832,12 @@ queue_lock_acquire() {
         # mkdir success is provisional on uutils. Atomically brand the
         # claim with bash noclobber; a co-winner leaves the true winner's
         # directory/owner untouched and follows the normal held path.
-        local claim_token="pid$$-r$RANDOM"
-        if ! mkdir "$claim" 2>/dev/null \
+        local claim_token="pid$$-r$RANDOM" claim_created=0
+        if mkdir "$claim" 2>/dev/null; then claim_created=1; fi
+        if [ "$claim_created" -ne 1 ] \
             || ! ( set -C; printf '%s' "$claim_token" > "$claim/owner" ) 2>/dev/null; then
+            # Empty-directory cleanup cannot remove a co-winner's owner.
+            if [ "$claim_created" -eq 1 ]; then rmdir "$claim" 2>/dev/null || true; fi
             {
                 echo "queue-lock: held -- another taker holds the takeover claim for this queue right now ($claim)"
                 echo "Try again shortly, or check: queue-lock.sh status"

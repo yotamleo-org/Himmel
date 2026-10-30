@@ -112,6 +112,7 @@ t_release_races() {
 #!/usr/bin/env bash
 "$RACE_REAL_MKDIR" "$@" || exit "$?"
 for arg in "$@"; do
+    if [ "$arg" = "${RACE_READONLY_CLAIM:-}" ]; then chmod 500 "$arg"; fi
     if [ "$arg" = "$RACE_LOCK" ]; then
         : > "$RACE_GATE.reached"
         i=0
@@ -213,6 +214,26 @@ SH
     fi
     rmdir "$lk.claim" 2>/dev/null
     bash "$LIB" release "$doc" holder8274q >/dev/null 2>&1
+
+    # A failed takeover brand must not strand its own empty claim now that
+    # missing claim brands fail closed rather than expiring.
+    if [ "$(id -u)" -ne 0 ]; then
+        doc="$HANDOVER_DIR/release-t8274-brand.md"; : > "$doc"
+        lk="$HANDOVER_DIR/.locks/queue/release-t8274-brand.lock"
+        bash "$LIB" acquire "$doc" holder8274b >/dev/null 2>&1
+        out="$(PATH="$bin:$PATH" RACE_READONLY_CLAIM="$lk.claim" \
+            RACE_LOCK=unused RACE_GATE=unused QUEUE_LOCK_TAKEOVER=1 \
+            bash "$LIB" acquire "$doc" taker8274b 2>&1)"; b_rc=$?
+        if [ "$b_rc" -eq 2 ] && [ ! -d "$lk.claim" ] \
+            && grep -q '"session":"holder8274b"' "$lk/owner.json" 2>/dev/null; then
+            pass "T8274b: failed takeover brand cleans only its own empty claim and preserves the holder"
+        else
+            fail "T8274b: takeover=$b_rc claim=$([ -d "$lk.claim" ] && echo held || echo GONE) out=$out"
+        fi
+        chmod 700 "$lk.claim" 2>/dev/null
+        rmdir "$lk.claim" 2>/dev/null
+        bash "$LIB" release "$doc" holder8274b >/dev/null 2>&1
+    fi
 
     # T8274c: a release killed while holding its deletion claim must not
     # have that claim TTL-reclaimed underneath its potentially surviving rm.
