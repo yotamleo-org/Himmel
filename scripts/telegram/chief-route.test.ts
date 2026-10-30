@@ -820,3 +820,29 @@ test("HIMMEL-8196: a tap that is not a chief button falls through, and with no l
   expect(answers).toEqual(["No live chief."]);
   expect(prompts).toEqual([]);
 });
+
+test("a first word matching several chiefs of one lineage stays in the text sent to the newest", async () => {
+  const r = root(); const old = heartbeat(r, OLD); const next = heartbeat(r, NEWEST);
+  await routeText(r, "/chief me first, then merge");
+  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1] me first, then merge\n");
+  expect(readFileSync(old, "utf8")).toBe("");
+});
+
+test("an alias with no text after it queues nothing", async () => {
+  const r = root(); const next = heartbeat(r, NEWEST);
+  expect(await routeText(r, "/chief chief:himmel")).toContain("nothing was sent");
+  expect(readFileSync(next, "utf8")).toBe("");
+});
+
+test("an allowed tap on a chief that is not live, or on a traversal name, is refused and appends nothing", async () => {
+  const r = root(); const next = heartbeat(r, NEWEST); const dead = heartbeat(r, OLD, "waiting", 100000);
+  const { tap, answers, prompts } = await tapHarness(r);
+  expect(tap(tapOf(`chief:to:${OLD}`))).toBe(true);
+  expect(tap(tapOf("chief:to:.."))).toBe(true);
+  await tap.idle();
+  expect(answers).toEqual(Array(2).fill("That chief is no longer live."));
+  expect(prompts).toEqual([]);
+  expect(readFileSync(dead, "utf8")).toBe("");
+  expect(readFileSync(next, "utf8")).toBe("");
+  expect(existsSync(join(r, "consoles", "replies"))).toBe(false);
+});

@@ -181,6 +181,7 @@ export async function routeToConsole(
     const alias = CHIEF_ALIAS.exec(name || text.split(/\s/, 1)[0]);
     if (alias) {
       if (!name) { name = alias[0]; text = text.slice(alias[0].length).trim(); }
+      if (!text) { await say(`⚠️ no message after "${name}" — nothing was sent.`); return; }
       const hits = live.filter(c => chiefLineage(c.name).prefix.toLowerCase() === alias[1].toLowerCase());
       const newest = newestChief(hits);
       if (!newest) {
@@ -206,8 +207,11 @@ export async function routeToConsole(
       const hits = tiers.map(t => live.filter(t)).find(h => h.length) ?? [];
       const pinned = hits.length > 1 ? newestChief(hits) : hits[0];
       const newest = newestChief(live);
-      if (pinned) name = pinned.name;
-      else if (!hits.length && newest) {
+      if (pinned) {
+        // A fragment that names several chiefs picks none of them, so it stays in the text.
+        if (hits.length > 1) text = name ? `${name} ${text}` : text;
+        name = pinned.name;
+      } else if (!hits.length && newest) {
         // Several chiefs of ONE lineage are live: the first word names none of them,
         // so the whole text goes to the newest.
         text = name ? `${name} ${text}` : text;
