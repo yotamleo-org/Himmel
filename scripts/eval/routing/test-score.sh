@@ -44,9 +44,9 @@ eq "seed-broken: an unlisted name is refused" "$(node "$LISTING" --seed-broken t
 dry="$(env -u HIMMEL_BILLED_OK bash "$RUN" --model haiku --dry-run 2>&1)"
 eq "dry run: exits 0 with no billed opt-in" "$?" "0"
 has "dry run: lists an open case's request" "$dry" "o01 open   btw as we used more of code rabbit"
-has "dry run: lists a sealed case by id" "$dry" "s01 sealed (sealed)"
+has "dry run: lists a sealed case by id" "$dry" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["id"])' "$HERE/cases/sealed.jsonl") sealed (sealed)"
 hasnt "dry run: never prints a sealed request" "$dry" "the console does not start"
-eq "dry run: one line per case" "$(grep -cE '^[os][0-9]+ ' <<<"$dry")" "47"
+eq "dry run: one line per case" "$(grep -cE '^[os][0-9]+ ' <<<"$dry")" "$(cat "$HERE/cases/open.jsonl" "$HERE/cases/sealed.jsonl" | grep -c .)"
 eq "billed run: refused without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK bash "$RUN" --model haiku --out "$TMP/x" >/dev/null 2>&1; echo $?)" "2"
 
 # --- fixture listing, cases, stub claude and stub preflight ---
