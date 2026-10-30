@@ -208,7 +208,14 @@
 #     repo at all (a scratch folder), `_bwimc_ecwd_sure` is set and the fallback
 #     is skipped for the redirect/verb candidates that call `_bwimc_cd_guard`
 #     (a worktree, the primary or any other checkout keeps the re-check; the
-#     cp/mv/ln destination-type union below is untouched). The fallback re-checks only the
+#     cp/mv/ln destination-type union below is untouched). The flag survives only
+#     while every later clause's command word is a literal echo, printf, cat, tee or
+#     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
+#     wrapper, a group) clears it. While it holds, the candidate is checked against
+#     the cd target and its symlink-resolved form. Exposure left: after a `;` a cd
+#     that fails at runtime leaves the cwd unchanged although the write is allowed,
+#     and a directory made a repo by a `.git` created after the check is not seen.
+#     The fallback re-checks only the
 #     raw operand, so the cp/mv/ln destination-TYPE decisions (dest is a dir
 #     vs an entry, entry vs follow) and the `<dest>/<basename(src)>` child
 #     check (incl. `-t`) get the same rule separately: each destination block
@@ -2698,7 +2705,14 @@ _bwimc_ecwd_track() {
     [ "$i" -lt "$n" ] || return 0
     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
-    case "$tu" in cd|pushd|popd) _bwimc_ecwd_sure=0 ;; esac
+    # A sure cd (set at the end of this function) survives only a later clause whose command
+    # word is a literal from this closed set of commands that cannot move the shell's cwd.
+    # Anything else (a cd/pushd/popd, eval, `.`/source, a variable or brace-expanded command word,
+    # a wrapper, a group) clears it, so the write is re-checked against the payload cwd.
+    case "$tu" in
+        echo|printf|cat|tee|touch) ;;
+        *) _bwimc_ecwd_sure=0 ;;
+    esac
     case "$tu" in
         cd|pushd)
             i=$((i+1))
@@ -2805,14 +2819,18 @@ _bwimc_ecwd_track() {
                             _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
                             # A plain cd that is the FIRST command
                             # of the line, unpiped, onto a directory that exists
-                            # always runs (and a `&&` chain stops if it fails),
-                            # so a write after it lands in $r and nowhere else.
-                            # Trusted only when $r, symlinks resolved, lies in no
-                            # git repo at all (a scratch folder): the primary, a
-                            # worktree or any other checkout keeps the re-check.
+                            # and is enterable runs (and a `&&` chain stops if it fails;
+                            # after a `;` a failing cd leaves the cwd unchanged, a race this
+                            # does not close), so a write that follows lands in $r, or in
+                            # its symlink-resolved form $cs. Trusted only when $cs lies in no
+                            # git repo at all (a scratch folder): the primary, a worktree or
+                            # any other checkout keeps the re-check. The trust ends at the
+                            # first later clause whose command word is not in the closed set
+                            # above, and a candidate is checked against both $r and $cs.
                             [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
-                                && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] && _bwimc_ecwd_sure=1
+                                && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
+                                && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
                         else
                             # also reached when an earlier clause
                             # of this command removed/moved/chmod-ed the target.
@@ -2905,8 +2923,13 @@ _bwimc_cd_guard() {
         esac ;;
     esac
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
-    # a sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check
-    [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && [ "${_bwimc_ecwd_sure:-0}" != 1 ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+    # a sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check, but the candidate is
+    # also resolved against the symlink-resolved cd target, where the write physically lands
+    if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
+        [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
+    elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
+        _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+    fi
     return 0
 }
 

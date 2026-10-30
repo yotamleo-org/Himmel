@@ -745,5 +745,34 @@ check_both "97h fromP: cd scratch/lnk-to-primary && echo x > out.txt (symlink in
 check_both "97i fromP: cd wt && echo x > out.txt (worktree target) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
+# 98: the trust a sure cd earns lasts only while every later clause names a
+# command from a closed set that cannot move the shell's cwd. A later clause that
+# moves it in a way the tracker cannot see (brace expansion, eval, a variable
+# holding `cd`, `.` reading stdin) must clear it, so the write is re-checked
+# against the payload cwd and denies.
+check_both "98a fromP: cd scratch; {cd,-}; echo x > out.txt (brace-expanded cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; {cd,-}; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98b fromP: pushd scratch; eval ' popd'; echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd $FIX/scratch8200; eval ' popd'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98c fromP: cd scratch; X=cd; \$X -; echo x > out.txt (variable cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; X=cd; \$X -; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98d fromP: cd scratch; . /dev/stdin <<< 'cd -'; echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; . /dev/stdin <<< 'cd -'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+# 98e-j: the plain shapes around the first command of the line.
+check_both "98e fromP: cd scratch | cat; echo x > out.txt (piped cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 | cat; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98f fromP: cd scratch & echo x > out.txt (background cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 & echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98g fromP: cd scratch && (cd primary; echo x > out.txt) (subshell cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && (cd $FIX/primary; echo x > out.txt)\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98h fromP: cd scratch && pushd primary && echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && pushd $FIX/primary >/dev/null && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98i fromP: cd scratch && rm out.txt (rm is not in the closed set) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && rm out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98j fromP: cd scratch && touch out.txt allows" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "98k fromP: cd scratch && cd primary && echo x > out.txt (second cd) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
