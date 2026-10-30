@@ -104,7 +104,7 @@ usage: chief.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
        chief.sh next [--doc <path>] [--date <YYYY-MM-DD>] [--name <slug>]
                        [--arm] [--dry-run] [--model <m>] [--bucket <b>]
                        [--prefix <P>] [--project <dir>] [--deadline-min <n>]
-                       [--context <1m|standard>] [--relay-on-live]
+                       [--context <1m|standard>] [--no-relay-on-live]
        chief.sh wrap <chief-doc> <release-token> [<text>]
        chief.sh -h|--help
 
@@ -115,11 +115,11 @@ while this session has a live in-process subagent (HIMMEL-5071).
 Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT and the default;
 --context standard or CHIEF_CONTEXT=standard opts down to 200000.
 
---relay-on-live (next only) leaves a marker beside the outgoing console's inbox; its
-chief-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
-its queue lock, with relay-batch.sh's SENDMESSAGE lines, so the outgoing console need
-not ask before relaying. It sends nothing itself. A console with a bus identity
-(HIMMEL_BUS_NAME) gets the marker without the flag.
+next leaves a marker beside the outgoing console's inbox; its chief-wait.sh waiter
+then wakes the outgoing console ONCE, when the successor holds its queue lock, with
+relay-batch.sh's SENDMESSAGE lines, so the outgoing console need not ask before
+relaying. It sends nothing itself. --no-relay-on-live (next only) leaves no marker;
+--relay-on-live is the default and stays accepted.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "chief". A name must be "chief" or end in "-chief"; a pre-rename
@@ -589,7 +589,7 @@ esac
 NAME="chief"
 NAME_GIVEN=0
 ARM=0
-RELAY_ON_LIVE=0
+RELAY_ON_LIVE=1
 DRY_RUN=0
 MODEL=""
 CONTEXT=""
@@ -627,6 +627,9 @@ while [ "$#" -gt 0 ]; do
         --relay-on-live)
             [ "$CMD" = next ] || { err "--relay-on-live is only valid for 'next'"; usage >&2; exit 1; }
             RELAY_ON_LIVE=1; shift ;;
+        --no-relay-on-live)
+            [ "$CMD" = next ] || { err "--no-relay-on-live is only valid for 'next'"; usage >&2; exit 1; }
+            RELAY_ON_LIVE=0; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --model) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; MODEL="$2"; shift 2 ;;
         --model=*) MODEL="${1#--model=}"; shift ;;
@@ -1990,6 +1993,11 @@ cmd_next() {
         return 0
     fi
 
+    # An opt-out disarms any marker an earlier attempt left, before the successor-doc check
+    # below can exit: a retry that stops there must not leave the old successor armed.
+    local pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
+    [ "$RELAY_ON_LIVE" -eq 1 ] || rm -f "$pred_inbox.relay-on-live"
+
     # The successor doc is never re-rendered once it exists: unlike the
     # HANDOFF just below (existence-guarded) and `new` (which bumps the
     # letter), a second `next --doc <same predecessor>` would otherwise
@@ -2163,18 +2171,21 @@ cmd_next() {
     # keeps delivering Telegram lines but stops tick/bank/page sampling, so an
     # outgoing chief merely waiting for LIVE takes no tick wakes. Best-effort:
     # a failed write leaves the waiter as it was.
-    local pred_inbox
-    pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     if mkdir -p "$(dirname "$pred_inbox")" 2>/dev/null && printf '%s\n' "$session" > "$pred_inbox.handover" 2>/dev/null; then
         echo "handover-mode: $pred_inbox.handover"
         # --relay-on-live: the outgoing waiter wakes its chief once, when the successor
         # holds its lock, with the relay lines (line 1 successor session, line 2 its doc).
-        # A chief with a bus identity always gets it: the workers' bus adopt needs the bus
-        # record relay-batch.sh sends, which a hand relay never does.
+        # On by default (the workers' bus adopt needs the bus record relay-batch.sh sends,
+        # which a hand relay never does); --no-relay-on-live opts out.
         # Written to a temp name then renamed, so the waiter never reads half a marker.
-        if { [ "$RELAY_ON_LIVE" -eq 1 ] || [ -n "${HIMMEL_BUS_NAME:-}" ]; } && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
-            && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
-            echo "relay-on-live: $pred_inbox.relay-on-live"
+        if [ "$RELAY_ON_LIVE" -eq 1 ]; then
+            if printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
+                && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
+                echo "relay-on-live: $pred_inbox.relay-on-live"
+            else
+                # a failed write must not leave an earlier attempt's marker armed for the old successor
+                rm -f "$pred_inbox.relay-on-live"
+            fi
         fi
     fi
 
