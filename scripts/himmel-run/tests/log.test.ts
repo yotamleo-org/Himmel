@@ -17,9 +17,7 @@ describe('log.appendLog', () => {
     const end = appendLog(f, 'second line\n');
     expect(readFileSync(f, 'utf8')).toBe('first line\nsecond line\n');
     expect(end).toBeGreaterThan(start);
-    if (process.platform !== 'win32') {
-      expect(statSync(f).mode & 0o777).toBe(0o600);
-    }
+    expect(statSync(f).mode & 0o777).toBe(0o600);
   });
 
   it('truncates oversized payloads at byte boundary (UTF-8 safe)', () => {

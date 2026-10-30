@@ -43,9 +43,7 @@ function which(tool, env) {
 // The interactive answers are cached so the same install can be replayed
 // non-interactively via --from-profile. The cache dir defaults to
 // ~/.claude/himmel/ but is overridable via HIMMELCTL_CACHE_DIR — same class of
-// seam as HIMMELCTL_INTERACTIVE, and genuinely useful for CI (and essential
-// for hermetic tests: under Git Bash, HOME does NOT propagate into node.exe
-// children, so ~/.claude/himmel/ cannot be redirected via fake-HOME alone).
+// seam as HIMMELCTL_INTERACTIVE, and genuinely useful for CI and hermetic tests.
 function cacheDir() {
   return process.env.HIMMELCTL_CACHE_DIR || path.join(os.homedir(), '.claude', 'himmel');
 }

@@ -29,8 +29,7 @@
 // branching here — explicitly Phase 2 (a later follow-on).
 //
 // HIMMELCTL_CACHE_DIR overrides the cache dir (see lib/helpers.js) — the same
-// seam hermetic tests use to redirect ~/.claude/himmel/ under Git Bash, where
-// HOME does not propagate into node.exe children.
+// seam hermetic tests use to redirect ~/.claude/himmel/.
 
 const fs = require('fs');
 const path = require('path');

@@ -51,19 +51,14 @@ test('free-bank CLI lanes (copilot/agy/ollama) resolve via PATH (HIMMEL-780)', (
     assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === id), `${id} should not resolve on a bare machine`);
   }
 });
-test('buildCtx pathHas does real PATH/PATHEXT lookup (HIMMEL-780 follow-through)', () => {
+test('buildCtx pathHas does a real PATH lookup (HIMMEL-780 follow-through)', () => {
   const bin = makeTmpDir('lanes-bin-');
   writeFileSync(join(bin, 'copilot.cmd'), '@echo off\n');
   writeFileSync(join(bin, 'agy'), '#!/bin/sh\n');
   const repo = makeTmpDir('lanes-repo-');
-  const { pathHas } = buildCtx(repo, { HOME: repo, PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' });
-  if (process.platform === 'win32') {
-    assert.equal(pathHas('copilot'), true, 'PATHEXT .cmd shim should resolve on Windows');
-    assert.equal(pathHas('agy'), false, 'bare extensionless file is not executable on Windows');
-  } else {
-    assert.equal(pathHas('agy'), true, 'bare name should resolve on POSIX');
-    assert.equal(pathHas('copilot'), false, 'POSIX matches the bare name only, not .cmd');
-  }
+  const { pathHas } = buildCtx(repo, { HOME: repo, PATH: bin });
+  assert.equal(pathHas('agy'), true, 'bare name should resolve');
+  assert.equal(pathHas('copilot'), false, 'the bare name only, not .cmd');
   assert.equal(pathHas('missing-cli'), false);
 });
 test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf.local > himmel.conf > .env', () => {
@@ -106,13 +101,11 @@ test('buildCtx installed.hermes accepts only a real interpreter, matching resolv
 
   const plain = join(home, 'not-executable');
   writeFileSync(plain, 'x');
-  if (process.platform !== 'win32') {
-    chmodSync(plain, 0o644);
-    assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: plain, HERMES_HOME: home }).installed.hermes, false,
-      'a non-executable file is not an interpreter');
-  }
+  chmodSync(plain, 0o644);
+  assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: plain, HERMES_HOME: home }).installed.hermes, false,
+    'a non-executable file is not an interpreter');
 
-  const real = join(home, process.platform === 'win32' ? 'python.exe' : 'python');
+  const real = join(home, 'python');
   writeFileSync(real, '#!/bin/sh');
   chmodSync(real, 0o755);
   assert.equal(buildCtx(repo, { HOME: home, HERMES_PY: real, HERMES_HOME: home }).installed.hermes, true,
@@ -124,11 +117,11 @@ test('buildCtx installed.hermes accepts only a real interpreter, matching resolv
   // Pins the round-10 removal: a hermes/hermes-agent shim on PATH must NOT make
   // the lane resolve, because resolve-hermes-py.sh never reads PATH.
   const bin = makeTmpDir('lanes-shim-');
-  for (const nm of ['hermes', 'hermes.cmd', 'hermes-agent', 'hermes-agent.cmd']) {
+  for (const nm of ['hermes', 'hermes-agent']) {
     writeFileSync(join(bin, nm), 'shim');
     chmodSync(join(bin, nm), 0o755);
   }
-  const shimEnv = { HOME: home, PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD', HERMES_HOME: makeTmpDir('lanes-empty-') };
+  const shimEnv = { HOME: home, PATH: bin, HERMES_HOME: makeTmpDir('lanes-empty-') };
   const shimCtx = buildCtx(repo, shimEnv);
   assert.equal(shimCtx.pathHas('hermes'), true, 'fixture must really put a shim on PATH');
   assert.equal(shimCtx.installed.hermes, false, 'a PATH shim is not an interpreter');

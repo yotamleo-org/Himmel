@@ -17,7 +17,7 @@ function ensureFile(file: string): void {
   ensureDir(file);
   const fd = openSync(file, 'a');
   closeSync(fd);
-  if (process.platform !== 'win32') chmodSync(file, 0o600);
+  chmodSync(file, 0o600);
 }
 
 export function appendLog(file: string, chunk: string): number {

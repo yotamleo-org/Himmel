@@ -887,7 +887,7 @@ function runPreflight(answers) {
   // the warning once the profile says vault=none and no contributor overlay
   // (which also uses the framework); unknown answers keep it.
   const noVault = Boolean(answers && answers.vault && answers.vault.mode === 'none' && !answers.devOverlay);
-  const argv = [toBashPath(script)].concat(noVault ? ['--no-vault'] : []);
+  const argv = [script].concat(noVault ? ['--no-vault'] : []);
   const r = spawnSync(resolveBash(), argv, { stdio: 'inherit' });
   return { ran: !r.error, rc: r.status };
 }
@@ -1608,7 +1608,7 @@ function vmProofRoute(doc, vmAnswer) {
         fs.writeFileSync(cfg, JSON.stringify(probe));
       }
     }
-    const r = spawnSync(resolveBash(), [toBashPath(path.join(repoRoot(), 'scripts', 'lib', 'vm-mode.sh')), 'route'],
+    const r = spawnSync(resolveBash(), [path.join(repoRoot(), 'scripts', 'lib', 'vm-mode.sh'), 'route'],
       { encoding: 'utf8', env: Object.assign({}, process.env, { HIMMEL_VM_MODE_CONFIG: cfg }) });
     // fail closed: a spawn failure or any rc but 0/1 is a resolver error
     return { rc: r.status === 0 || r.status === 1 ? r.status : 2 };
@@ -1990,9 +1990,7 @@ function defaultAnswers(defaultScope, laneOpts, devOverlay) {
 // The interactive answers are cached so the same install can be replayed
 // non-interactively via --from-profile. The cache dir defaults to
 // ~/.claude/himmel/ but is overridable via HIMMELCTL_CACHE_DIR — same class of
-// seam as HIMMELCTL_INTERACTIVE, and genuinely useful for CI (and essential
-// for hermetic tests: under Git Bash, HOME does NOT propagate into node.exe
-// children, so ~/.claude/himmel/ cannot be redirected via fake-HOME alone).
+// seam as HIMMELCTL_INTERACTIVE, and genuinely useful for CI and hermetic tests.
 // (cacheDir() itself lives in lib/helpers.js — required above.)
 
 function cachePath() {
@@ -2685,8 +2683,8 @@ function deriveExistingVaultPlan(answers) {
   const vaultPath = expandHome(answers.vault.path);
   const settings = settingsPathForScope(answers.scope);
   return {
-    wire: { argv: [resolveBash(), toBashPath(path.join(scriptsDir, 'lib', 'wire-luna-vault.sh')), toBashPath(settings), toBashPath(vaultPath)] },
-    apply: { argv: [resolveBash(), toBashPath(path.join(scriptsDir, 'luna-upgrade-all.sh')), 'apply', '--vault', toBashPath(vaultPath)] },
+    wire: { argv: [resolveBash(), path.join(scriptsDir, 'lib', 'wire-luna-vault.sh'), settings, vaultPath] },
+    apply: { argv: [resolveBash(), path.join(scriptsDir, 'luna-upgrade-all.sh'), 'apply', '--vault', vaultPath] },
   };
 }
 
@@ -2697,11 +2695,11 @@ function deriveExistingVaultPlan(answers) {
 // below for the dev-overlay's ADDITIONAL command).
 function deriveCommand(answers) {
   const scriptsDir = path.join(repoRoot(), 'scripts');
-  const argv = [resolveBash(), toBashPath(path.join(scriptsDir, 'adopt.sh'))];
+  const argv = [resolveBash(), path.join(scriptsDir, 'adopt.sh')];
   const profile = profileForVault(answers);
   argv.push('--profile', profile, '--scope', answers.scope || 'project');
   if (profile === 'all' && answers.vault && answers.vault.path) {
-    argv.push('--luna-target', toBashPath(expandHome(answers.vault.path)));
+    argv.push('--luna-target', expandHome(answers.vault.path));
     // adopt.sh's do_luna only runs here (a vault is actually
     // being scaffolded) — thread handover.mode through so its own
     // wire_handover_dir_luna gate agrees with the JS-side no-op T4.5
@@ -2717,7 +2715,7 @@ function deriveCommand(answers) {
 // it. Only reached when answers.devOverlay is true (the --contribute flag).
 function deriveOverlayCommand() {
   const scriptsDir = path.join(repoRoot(), 'scripts');
-  return { argv: [resolveBash(), toBashPath(path.join(scriptsDir, 'setup.sh'))] };
+  return { argv: [resolveBash(), path.join(scriptsDir, 'setup.sh')] };
 }
 
 // The dev-overlay primitive's filename — shared by
@@ -2881,14 +2879,14 @@ function registerStateScript() {
 function handoverRegistered() {
   const script = registerStateScript();
   if (!fs.existsSync(script)) return true;
-  const r = spawnSync(resolveBash(), [toBashPath(script), '--check', '--repo-path', toBashPath(repoRoot())], { encoding: 'utf8' });
+  const r = spawnSync(resolveBash(), [script, '--check', '--repo-path', repoRoot()], { encoding: 'utf8' });
   return r.status === 0;
 }
 
 function registerHandoverState(p) {
   const target = expandHome(p);
   const script = registerStateScript();
-  const r = spawnSync(resolveBash(), [toBashPath(script), '--repo-path', toBashPath(repoRoot()), '--state-host', toBashPath(target), '--init-if-empty'], { encoding: 'utf8' });
+  const r = spawnSync(resolveBash(), [script, '--repo-path', repoRoot(), '--state-host', target, '--init-if-empty'], { encoding: 'utf8' });
   if (r.error || r.status !== 0) {
     const detail = (r.stderr || (r.error && r.error.message) || '').trim();
     console.error(`himmelctl: failed to register handover state via ${script}${detail ? `: ${detail}` : ''}`);
@@ -4001,7 +3999,7 @@ function applyLunaSectionsStep(answers) {
       } else if (disp === 'armed') {
         try {
           const flags = cadenceArmFlags(row.id, { doc: doc, vaultPath: doc.luna.vaultPath });
-          const argv = [resolveBash(), toBashPath(cadenceScriptPath(row.id)), 'arm'].concat(flags);
+          const argv = [resolveBash(), cadenceScriptPath(row.id), 'arm'].concat(flags);
           const cmd = { argv: argv };
           const armRc = runSpawn(cmd);
           result.cadenceResults = result.cadenceResults || {};
@@ -4023,7 +4021,7 @@ function applyLunaSectionsStep(answers) {
         // into the disarm question. `<script> disarm` is idempotent (rc=0
         // "nothing armed" when there was nothing to remove).
         try {
-          const argv = [resolveBash(), toBashPath(cadenceScriptPath(row.id)), 'disarm'];
+          const argv = [resolveBash(), cadenceScriptPath(row.id), 'disarm'];
           const cmd = { argv: argv };
           const disarmRc = runSpawn(cmd);
           result.cadenceDisarmResults = result.cadenceDisarmResults || {};
@@ -4268,7 +4266,7 @@ function userSlugState() {
   if (!fs.existsSync(script)) {
     return { applicable: true, verified: false, reason: 'scripts/setup/check-user-slug.sh not found' };
   }
-  const r = spawnSync(resolveBash(), [toBashPath(script), '--dotenv-root', toBashPath(repoRoot())], { cwd: repoRoot(), encoding: 'utf8' });
+  const r = spawnSync(resolveBash(), [script, '--dotenv-root', repoRoot()], { cwd: repoRoot(), encoding: 'utf8' });
   // 0 = resolved, 3 = advised. Any other status (or a spawn error) means the
   // probe broke, which is not the same fact as an unresolved slug.
   if (r.error || (r.status !== 0 && r.status !== 3)) {
@@ -4294,15 +4292,7 @@ function userSlugState() {
 // preview must never write to ~/.claude.json.
 function applyWorkspaceTrust() {
   const target = process.cwd();
-  // CR finding [coderabbitai]: report the SAME key form the helper actually
-  // writes to ~/.claude.json, not the raw process.cwd() — on native Windows
-  // node, process.cwd() returns backslashes, but the helper's own key
-  // derivation runs everything through `cygpath -m` there, so a `\`-form dir
-  // in the still-manual remedy (`projects["<dir>"]...`) would not match the
-  // real key. toBashPath() (backslash -> forward-slash) reproduces cygpath
-  // -m's output for an already-drive-letter Windows path, and is a no-op on
-  // POSIX — same value the helper receives as its own argv[1].
-  const dir = toBashPath(target);
+  const dir = target;
   const script = path.join(repoRoot(), 'scripts', 'lib', 'ensure-workspace-trust.sh');
   if (!fs.existsSync(script)) {
     return { applied: false, dir: dir, reason: 'scripts/lib/ensure-workspace-trust.sh not found' };
@@ -4325,7 +4315,7 @@ function applyWorkspaceTrust() {
     // invalid one has an unknown pre-state, so no row is recorded for it
     if (!(e && e.code === 'ENOENT')) preKnown = false;
   }
-  const r = spawnSync(resolveBash(), [toBashPath(script), dir], { encoding: 'utf8' });
+  const r = spawnSync(resolveBash(), [script, dir], { encoding: 'utf8' });
   if (r.error || r.status !== 0) {
     const why = r.error ? r.error.message : (r.stderr || `exited rc=${r.status}`).trim();
     return { applied: false, dir: dir, reason: why };
@@ -4524,7 +4514,7 @@ async function applyLaneProfileStep(answers) {
 function offerRetiredPluginRemoval() {
   const script = path.join(repoRoot(), 'scripts', 'machine-setup', 'remove-retired-plugin.sh');
   if (!fs.existsSync(script)) return;
-  spawnSync(resolveBash(), [toBashPath(script)], { stdio: 'inherit' });
+  spawnSync(resolveBash(), [script], { stdio: 'inherit' });
 }
 
 // T4.5 helper: pluginSet=full's ENABLE step used to live here.
@@ -5558,7 +5548,7 @@ function applyHimmelctlPathShim(args) {
 // install/uninstall's own --dry-run.
 
 function deriveUpdateCommand() {
-  const script = toBashPath(path.join(repoRoot(), 'scripts', 'himmel-update.sh'));
+  const script = path.join(repoRoot(), 'scripts', 'himmel-update.sh');
   return { argv: [resolveBash(), script] };
 }
 
@@ -5600,7 +5590,7 @@ async function cmdUpdateVersioned(args, layout) {
   provStep = 'update';
   const rc = tarballUpdateLib.updateVersioned(layout, {
     bash: resolveBash(),
-    releaseCheck: toBashPath(path.join(repoRoot(), 'scripts', 'lib', 'release-check.sh')),
+    releaseCheck: path.join(repoRoot(), 'scripts', 'lib', 'release-check.sh'),
     log: (m) => console.log(m),
     err: (m) => console.error(m),
   });
@@ -5614,13 +5604,13 @@ async function cmdUpdateVersioned(args, layout) {
 // ── profile ─────────────────────────────────────────────────
 //
 // A THIN passthrough, same shell-out shape as deriveUpdateCommand/cmdUpdate
-// (resolveBash() + toBashPath()): forward
+// (resolveBash()): forward
 // argvRest VERBATIM to plugin-profile.sh and propagate its exit code. The
 // script owns its own verb/flag grammar (list/lean/full/enable/disable,
 // --json, --dry-run, --template PATH, a bare-or-full <spec>) plus every bit
 // of the resolution/refusal logic — none of that is reimplemented here.
 function cmdProfile(argvRest) {
-  const script = toBashPath(path.join(repoRoot(), 'scripts', 'machine-setup', 'plugin-profile.sh'));
+  const script = path.join(repoRoot(), 'scripts', 'machine-setup', 'plugin-profile.sh');
   return runSpawn({ argv: [resolveBash(), script, ...argvRest] });
 }
 
@@ -7665,18 +7655,6 @@ function resolveBash() {
   return process.env.HIMMELCTL_BASH || 'bash';
 }
 
-// Convert a native repo path to the Git-Bash/MSYS-safe form for any path
-// handed to `bash` as a spawn arg. path.join() emits BACKSLASHES on Windows
-// (C:\...); Git-Bash can misresolve a backslashed/drive-letter --env-file
-// target to the wrong file, whereas the forward-slice form (C:/...) resolves
-// reliably — the same convention the test harness's own winpath()/cygpath -m
-// uses at the node/bash boundary. No-op on posix (no backslashes). Applied to
-// every SCRIPT-PATH arg handed to resolveBash() (runPreflight, deriveCommand,
-// deriveExistingVaultPlan, deriveUpdateCommand).
-function toBashPath(p) {
-  return p.replace(/\\/g, '/');
-}
-
 // Read one KEY's raw value from the repo .env FILE ONLY — never process.env.
 // config get/set manage the PERSISTED value; a session's launching-shell env
 // is a different, unrelated thing (same distinction writeHandoverDir's own
@@ -8475,7 +8453,7 @@ async function main() {
     console.log(`describe: ${describe}`);
     console.log(`commit: ${commit}`);
     if (argv.indexOf('--all') === -1) return 0;
-    const script = toBashPath(path.join(root, 'scripts', 'himmel-update.sh'));
+    const script = path.join(root, 'scripts', 'himmel-update.sh');
     return runSpawn({ argv: [resolveBash(), script, '--versions'] });
   }
   // `config` owns its OWN positional grammar (get/set <path> [<value>]) that
