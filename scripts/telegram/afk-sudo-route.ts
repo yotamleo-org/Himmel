@@ -151,15 +151,18 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // inbox is readable by the sessions that can run the helper. Consume it, never
       // pass it on: a reply to a bot message whose prompt is gone (the map is in
       // memory, so a restart forgets it), or any message sent while a prompt waits.
-      // ponytail: a bare code with no reply and no live prompt is still forwarded,
-      // refusing every six-digit message would swallow ordinary numbers; upgrade
-      // path: refuse an operator message that is only a six-digit run.
+      // ponytail: ordinary bare six-digit numbers with no reply are held too;
+      // escape path: prefix them with "text:" to send them as ordinary text.
       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? null;
         if (msg.reply_to_bot === true || waiting) {
           void deps.reply(msg.chat_id, waiting
             ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
+          return true;
+        }
+        if (msg.reply_to_message_id == null && CODE_REPLY.test(msg.text)) {
+          void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => {});
           return true;
         }
       }

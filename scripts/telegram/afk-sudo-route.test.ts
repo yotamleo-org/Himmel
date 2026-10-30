@@ -110,6 +110,40 @@ test("handleInbound: a consumed approve line is never appended to an inbox or ru
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
+test("handleInbound: a bare six-digit message with no reply or live prompt is held, never reaches an inbox or run", async () => {
+  for (const text of ["123456", " 123456 ", "\t123456\n"]) {
+    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+    const { deps, calls, replies, logs } = fake();
+    const ran: string[] = [];
+    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+    await handleInbound(r, dm(text), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
+    await settle();
+    expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+    expect(ran).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("held");
+    expect(replies[0]).toContain("text:");
+    expect([...replies, ...logs].join("\n")).not.toContain("123456");
+  }
+});
+
+test("off by default: a bare six-digit message stays ordinary text without the helper", () => {
+  const { deps, calls, replies, logs } = fake(false);
+  expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(" 123456 "))).toBe(false);
+  expect(calls).toEqual([]);
+  expect(replies).toEqual([]);
+  expect(logs).toEqual([]);
+});
+
+test("bare-code hold does not consume ordinary numbers or numbers sent as text", () => {
+  const { deps } = fake();
+  const gate = makeAfkSudoGate(deps);
+  for (const text of ["12345", "1234567", "123 456", "123-456", "text: 123456", "number 123456"]) {
+    expect(gate(dm(text))).toBe(false);
+  }
+});
+
 test("handleInbound: under lockdown an approve line never reaches the helper", async () => {
   const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
   writeFileSync(join(r, "lockdown"), "locked\n");
@@ -266,14 +300,16 @@ test("button: while a code prompt is live, a code-shaped message sent without re
     expect(b.replies.at(-1)).toContain("abcdefgh");
     expect([...b.replies, ...b.logs].join("\n")).not.toContain("456");
   }
-  // not live: no tap, an expired window, a prompt that failed to send, a stranger, a forward, plain words
+  // Without a live prompt, a bare code is held rather than forwarded.
   const none = buttons();
-  expect(none.gate(dm("123456"))).toBe(false);
+  expect(none.gate(dm("123456"))).toBe(true);
+  expect(none.replies.at(-1)).toContain("held");
   const late = buttons();
   late.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
   late.tick(151_000);
-  expect(late.gate(dm("123456"))).toBe(false);
+  expect(late.gate(dm("123456"))).toBe(true);
+  expect(late.replies.at(-1)).toContain("held");
   const live = buttons();
   live.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
