@@ -37,6 +37,14 @@ it. The waiter keys on the names, so each worker entering the set wakes you once
 (`WAKE tick changed=holds`); the age growing, a worker leaving and the set emptying wake
 nothing. Absent when no worker holds.
 
+`workers=<label>:IDLE-HELD` means a held lock with no session transcript activity
+for `TICK_IDLE_MIN` minutes (default 45), without an armed task/Monitor or an
+unfinished foreground Bash suite. Missing/unreadable activity evidence leaves
+`FRESH`/`STALE` unchanged. Unlike the sweep's heartbeat-only `IDLE-HELD?`, a long
+foreground suite stays `FRESH`. Check the worker for a prompt or tool lockout;
+this is **not** a free/reclaimable lock. The existing `workers` wake key alerts
+once on transition (after its normal debounce), not as the idle age grows.
+
 `focus=<state>` and `sdrift=<n>:<sig8>` are conditional too: both come from the
 `focus-state` file `focus-refresh.sh` writes beside your doc, so the tick makes no
 gh or Jira call for them. `focus=FAILED:<stage>` or `focus=DIRTY:<age>` means the
