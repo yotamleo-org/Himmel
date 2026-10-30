@@ -18,11 +18,7 @@
 #      unchanged back through himmelctl, not just "any" non-zero.
 #   D. `update` rejects options not in its own whitelist (e.g. --items),
 #      same validation posture as every other subcommand.
-#   F. resolveBash() picks a Windows-native Git Bash DETERMINISTICALLY from
-#      %ProgramFiles% instead of trusting PATH order — part 1, the REOPENED
-#  root cause: bare `bash` on the operator's PowerShell PATH is
-#      C:\Windows\System32\bash.exe (WSL), which cannot run a Windows-path
-#      script AT ALL. The s2 fix (toBashPath only) targeted the wrong bash.
+#   F. resolveBash() falls through to bare `bash` when HIMMELCTL_BASH is unset.
 #
 # Cases A–D pin HIMMELCTL_BASH=bash so they exercise the update WRAPPER
 # in isolation — argv[0] stays the bare 'bash' those assertions
