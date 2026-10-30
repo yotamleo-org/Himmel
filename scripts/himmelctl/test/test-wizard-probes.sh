@@ -1250,6 +1250,34 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outSHa" | jq -e '.actual == "absent"' >/dev/null || fail "settings-hooks absent (0/3): (got: $outSHa)"
 echo "ok: settings-hooks (wiring-pretooluse) present/degraded/absent"
 
+# User scope, no user-layer markers, the project layer (the checkout's
+# .claude/settings.json) wires the whole trio -> present (not red), and the detail says
+# wiring the user layer too runs each guard twice (doctor C81). Partial / empty project
+# layers and a partial user layer keep their old verdicts.
+sh_uhome="$work/sh-uhome"; mkdir -p "$sh_uhome/.claude"
+printf '{}' > "$sh_uhome/.claude/settings.json"
+sh_user_probe() { # <repoRoot dir> <user HOME dir>
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'wiring-pretooluse');
+const ctx = { repoRoot: '$(winpath "$1")', targetPath: '$(winpath "$2")', scope: 'user', env: { ...process.env, HOME: '$(winpath "$2")' } };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+outSHu=$(sh_user_probe "$sh_present" "$sh_uhome")
+echo "$outSHu" | jq -e '.actual == "present"' >/dev/null \
+  || fail "HIMMEL-8163: user scope, empty user layer, project layer wires the trio must read present (got: $outSHu)"
+echo "$outSHu" | jq -e '.detail | contains("project") and contains("C81")' >/dev/null \
+  || fail "HIMMEL-8163: the present detail must name the project layer and the C81 double-wiring cost (got: $outSHu)"
+outSHb=$(sh_user_probe "$sh_absent" "$sh_uhome")
+echo "$outSHb" | jq -e '.actual == "absent"' >/dev/null \
+  || fail "HIMMEL-8163: user scope, empty user layer, no project trio must stay absent (got: $outSHb)"
+outSHc=$(sh_user_probe "$sh_present" "$sh_degraded")
+echo "$outSHc" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "HIMMEL-8163: a partial user layer stays degraded even when the project wires the trio (got: $outSHc)"
+echo "ok: HIMMEL-8163 settings-hooks user scope — the project layer owning the trio reads present with the C81 note"
+
 # ── cmd:has_qmd (qmd-binary) ────────────────────────────────────────────────
 hq_present_stub="$work/hq-present-bin"; mkdir -p "$hq_present_stub"
 pathHQpresent=$(build_path "$hq_present_stub" bash git jq -- bun)

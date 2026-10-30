@@ -962,13 +962,33 @@ function collectHookCommands(hooksArray) {
   return commands;
 }
 
+// The checkout's own project layer wires the whole trio (guardrail-mode=project).
+// A user-scope row with no user-layer markers is then correct, not a fault: wiring
+// the user layer too runs each guard twice, which doctor C81 reports.
+function projectLayerOwnsTrio(item, ctx) {
+  try {
+    const projectFile = path.join(ctx.repoRoot, item.probe.file);
+    const data = JSON.parse(fs.readFileSync(projectFile, 'utf8'));
+    const commands = collectHookCommands(getDotPath(data, item.probe.key));
+    return PRETOOLUSE_MARKERS.every((m) => commands.some((c) => c.indexOf(m) !== -1)) ? projectFile : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function probeSettingsHooks(item, ctx) {
   const filePath = resolveConfigFile(item.probe.file, ctx);
+  const ownedByProject = (why) => {
+    const projectFile = ctx.scope === 'user' ? projectLayerOwnsTrio(item, ctx) : null;
+    return projectFile
+      ? { actual: 'present', detail: `guardrail-mode=project: the project layer (${projectFile}) wires the guard hooks, so no user-layer markers are needed (${why}); wiring them in the user settings too would run each guard twice (doctor C81)` }
+      : null;
+  };
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (_e) {
-    return { actual: 'absent', detail: `cannot read/parse ${filePath}` };
+    return ownedByProject(`cannot read/parse ${filePath}`) || { actual: 'absent', detail: `cannot read/parse ${filePath}` };
   }
   const commands = collectHookCommands(getDotPath(data, item.probe.key));
   const found = PRETOOLUSE_MARKERS.filter((m) => commands.some((c) => c.indexOf(m) !== -1));
@@ -985,7 +1005,7 @@ function probeSettingsHooks(item, ctx) {
     return { actual: 'present', detail: `${filePath}; ${allowNote}` };
   }
   if (found.length === 0) {
-    return { actual: 'absent', detail: `no himmel PreToolUse markers found in ${filePath}` };
+    return ownedByProject(`no markers in ${filePath}`) || { actual: 'absent', detail: `no himmel PreToolUse markers found in ${filePath}` };
   }
   const missing = PRETOOLUSE_MARKERS.filter((m) => found.indexOf(m) === -1);
   return { actual: 'degraded', detail: `${found.length}/${PRETOOLUSE_MARKERS.length} himmel PreToolUse markers found in ${filePath} (missing: ${missing.join(', ')})` };

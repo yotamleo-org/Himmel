@@ -2321,6 +2321,7 @@ function loadProfile(p) {
   // question). When present, ids must be known CADENCE_REGISTRY ids and
   // values strictly 'armed'|'off' — a malformed/stale id must fail loud
   // before any side effect, exactly like every other field here.
+  const droppedRetired = [];
   if (obj.cadences !== undefined) {
     if (!obj.cadences || typeof obj.cadences !== 'object' || Array.isArray(obj.cadences)) {
       profileError(p, "field 'cadences' must be an object when present");
@@ -2347,6 +2348,7 @@ function loadProfile(p) {
       // Rows the wizard used to save before these cadences were removed.
       if (RETIRED_CADENCE_IDS.indexOf(id) !== -1) {
         console.error(`himmelctl: profile ${p}: dropping retired cadence '${id}' (no longer shipped)`);
+        droppedRetired.push(id);
         delete obj.cadences[id];
         continue;
       }
@@ -2399,7 +2401,26 @@ function loadProfile(p) {
     obj.devOverlay = obj.role === 'contributor';
     delete obj.role;
   }
+  if (droppedRetired.length > 0) dropRetiredFromProfileFile(p, raw, droppedRetired);
   return obj;
+}
+
+// Remove the retired cadence ids from the saved profile file, so the drop
+// notice prints once. Rewrites the file's own parsed JSON (not the migrated
+// in-memory object) through a temp file + rename; a failed write only warns,
+// the in-memory drop already applies.
+function dropRetiredFromProfileFile(p, raw, ids) {
+  const tmp = `${p}.${process.pid}.tmp`;
+  try {
+    const orig = JSON.parse(raw);
+    for (const id of ids) delete orig.cadences[id];
+    if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
+    fs.writeFileSync(tmp, serialize(orig) + '\n', { mode: fs.statSync(p).mode & 0o777 });
+    fs.renameSync(tmp, p);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_e) { /* no tmp left */ }
+    console.error(`himmelctl: profile ${p}: could not drop the retired cadence from the file (${e.message}); the notice will repeat`);
+  }
 }
 
 // ── save-your-profile — offer to persist the answered profile

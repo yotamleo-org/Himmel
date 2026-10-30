@@ -345,4 +345,42 @@ grepq "$outG" -F -- 'luna cadence — would arm via pipeline-cadence.sh' \
   || fail "case g: with only retired ids dropped, luna.cadenceEnabled=true should still arm pipeline (got: $outG)"
 echo "ok: case g — a cadences section of only retired ids is dropped, so the legacy cadenceEnabled answer applies"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case h: the first run that drops a retired cadence rewrites the profile
+# file without it, so the second run is quiet.
+# ═══════════════════════════════════════════════════════════════════════════
+
+homeH="$work/homeH"; mkdir -p "$homeH"
+profileH="$work/profileH.json"
+cat > "$profileH" <<JSON
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "none", "path": "" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "cadences": { "doctor": "off", "codex-sweep": "armed" }
+}
+JSON
+run_h() {
+  HOME="$homeH" USERPROFILE="$(winpath "$homeH")" HIMMELCTL_INTERACTIVE=0 \
+    HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-h.json")" \
+    HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-h")" \
+    HIMMELCTL_BIN_DIR="$(winpath "$work/bin-h")" \
+    "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$profileH")" </dev/null 2>&1
+}
+set +e
+outH1=$(run_h); rcH1=$?
+outH2=$(run_h); rcH2=$?
+set -e
+[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
+grepq "$outH1" -F -- "dropping retired cadence 'codex-sweep'" \
+  || fail "case h: the first run should announce the drop (got: $outH1)"
+grepq "$outH2" -F -- "dropping retired cadence" \
+  && fail "case h: the second run must be silent about the retired cadence (got: $outH2)"
+grepq "$(cat "$profileH")" -F -- 'codex-sweep' \
+  && fail "case h: the profile file must no longer name codex-sweep (got: $(cat "$profileH"))"
+grepq "$(cat "$profileH")" -F -- '"doctor": "off"' \
+  || fail "case h: the kept cadence rows must survive the rewrite (got: $(cat "$profileH"))"
+echo "ok: case h — a retired cadence is announced once and leaves the profile file"
+
 echo "PASS"
