@@ -30,7 +30,7 @@ Tasks (`ab_tasks.py gen|solve|check|brief`, seeded, a hidden check per task; the
 
 ## Run
 
-```
+```bash
 HIMMEL_BILLED_OK=1 python3 ab.py sweep --out <scratch dir> --ceiling 40000000 \
     --scales docs=1.75,impl=2.7,audit=4.3 [--rerun-invalid]
 HIMMEL_BILLED_OK=1 python3 ab.py judge --out <scratch dir>

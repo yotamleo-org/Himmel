@@ -79,7 +79,7 @@ has "run c: pinned at the 450k ceiling" "$(cat "$AB_STUB_LOG")" '"--autocompact"
 : >"$AB_STUB_LOG"
 
 # b: 450k plus a hand-off at 75 % (337500); the stub hangs past it so the driver must stop it
-O="$TMP/ob"; AB_STUB_HANG=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 timeout 60 python3 "$AB" run --task docs --arm b --rep 1 --out "$O" --scale 0.05 >"$TMP/b.out" 2>&1
+O="$TMP/ob"; AB_STUB_HANG=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 timeout 60 python3 "$AB" run --task docs --arm b --rep 1 --out "$O" --scale 0.05 >"$TMP/b.out" 2>&1   # gnu-ok: local-tier suite, hang guard
 S="$O/docs/b/1/summary.json"
 eq "run b: one hand-off" "$(jget "$S" handoffs)" "1"
 eq "run b: no compaction before the hand-off" "$(jget "$S" compactions)" "0"
