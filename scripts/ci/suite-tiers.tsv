@@ -431,7 +431,7 @@ scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches
 scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned= (HIMMEL-6604)
-scripts/handover/chief-kit/test-tick-rmqueue.sh	localnew, behaviour suite for tick.sh rm-queue= and the auto rm-run (HIMMEL-7641)
+scripts/handover/chief-kit/test-tick-rmqueue.sh	local	new, behaviour suite for tick.sh rm-queue= and the auto rm-run (HIMMEL-7641)
 scripts/handover/chief-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
