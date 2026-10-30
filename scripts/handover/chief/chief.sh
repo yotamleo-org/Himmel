@@ -134,7 +134,7 @@ rolled over since.
 (plugin /chief from any repo); bucket/prefix derive from it instead of
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
-the console doc, and a worker session (worker) for the project is dispatched into it explicitly
+the console doc, and a worker session for the project is dispatched into it explicitly
 with WORKER_SESSION_REPO=<path> (codex-4, pr-check round 2, HIMMEL-3623).
 --bucket/--prefix still override it when given.
 USAGE
