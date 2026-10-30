@@ -2236,8 +2236,8 @@ jobs:
   #    HIMMEL-3132: SUITE_TIER_DEFAULT `extended` suites only run under
   #    SUITE_TIER_MODE=all (every non-PR run, set above at
   #    shell-unit-shard), so a red extended suite can redden THIS job on any
-  #    non-PR run. The steps below report only the nightly, the one tier-all
-  #    run main-sweep-red skips; without them that red is silent.
+  #    non-PR run. The steps below report only the nightly, the one scheduled
+  #    tier-all run main-sweep-red skips; without them that red is silent.
   shell-unit:
     needs: [shell-unit-shard, plan]
     if: ${{ always() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
@@ -2365,11 +2365,9 @@ jobs:
             shard-red-suites.txt
           if-no-files-found: ignore
           retention-days: 90
-      # Scoped to the nightly cron: it is the one SUITE_TIER_MODE=all run
-      # that main-sweep-red skips (see shell-unit-shard above), so only there
-      # does a red here plausibly mean an extended suite broke rather than
-      # double-reporting a per-PR fast-tier failure the PR gate already
-      # surfaced.
+      # Scoped to the nightly cron: main-sweep-red reports the main sweep and a
+      # main dispatch but skips the nightly, so without these steps a red
+      # nightly files nothing.
       - name: Extended-tier nightly issue — clear on green
         if: success() && github.event.schedule == '17 7 * * *'
         env:
