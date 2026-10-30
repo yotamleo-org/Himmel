@@ -1,6 +1,6 @@
 // himmel delta (HIMMEL-4578): write-only port of the v0.9.0 context snapshot writer.
 // Upstream v0.10.0 deleted it, but scripts/context-fill.sh (the console handover
-// trigger, the leg context guard and arm-resume) reads
+// trigger, the worker context guard and arm-resume) reads
 // <config>/plugins/claude-hud/context-cache/<sha256(transcript)>.json, so the
 // path, field names and types below must stay byte-compatible with that reader.
 import * as fs from 'node:fs';

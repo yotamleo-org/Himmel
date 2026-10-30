@@ -27,9 +27,9 @@ chmod +x "$tmp/jira"
 
 mkdir -p "$tmp/store"
 printf '%s\n' \
-  '{"schema":1,"ticket":"HIMMEL-1","totals":{"leg":{"input":10,"output":20,"cache_create":30,"cache_read":40},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":2}}' \
-  '{"schema":1,"ticket":"HIMMEL-2","totals":{"leg":{"input":1,"output":2,"cache_create":3,"cache_read":4},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":4}}' \
-  '{"schema":1,"ticket":"HIMMEL-99","totals":{"leg":{"input":9,"output":9,"cache_create":9,"cache_read":9},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":9}}' \
+  '{"schema":1,"ticket":"HIMMEL-1","totals":{"worker":{"input":10,"output":20,"cache_create":30,"cache_read":40},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":2}}' \
+  '{"schema":1,"ticket":"HIMMEL-2","totals":{"worker":{"input":1,"output":2,"cache_create":3,"cache_read":4},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":4}}' \
+  '{"schema":1,"ticket":"HIMMEL-99","totals":{"worker":{"input":9,"output":9,"cache_create":9,"cache_read":9},"console":{"input":0,"output":0,"cache_create":0,"cache_read":0},"judge":{"input":0,"output":0,"cache_create":0,"cache_read":0}},"cr":{"rounds":9}}' \
   > "$tmp/store/records.jsonl"
 
 out="$(FOLLOWUP_JIRA_CMD="$tmp/jira" bash "$RPT" --version v9.9.9 --store "$tmp/store" 2>&1)"; rc=$?

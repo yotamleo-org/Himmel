@@ -262,7 +262,7 @@ else
 fi
 
 echo "[test-drift-fix-cadence] POSIX dedup: rc=3 when only ONE worker is armed"
-# Simulate an externally-disarmed resync leg: strip its crontab entry so only
+# Simulate an externally-disarmed resync worker: strip its crontab entry so only
 # the drift worker looks armed, then confirm arm still refuses and names only
 # the worker it found (never the worker that is actually free).
 cp "$state/tab" "$state/tab.full"

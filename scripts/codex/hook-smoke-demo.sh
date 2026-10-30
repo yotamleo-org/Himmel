@@ -465,7 +465,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v jq >/dev/null 2>&1 && command -v node >
         _f=0; _n=""
         while IFS= read -r cmd; do
             [ -n "$cmd" ] || continue
-            # bash -c under the same INERT_ENV prefix as the agent legs: these
+            # bash -c under the same INERT_ENV prefix as the agent steps: these
             # are real guardrails, and a replayed hook must not be able to act
             # on live initiative/Jira/arm state inherited from the caller.
             # Bounded, because a hook that HANGS is one of the breaks this
