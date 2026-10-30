@@ -81,7 +81,8 @@ for pkg in "${pkgs[@]}"; do
         # scanner. Its committed lock binds the scanner and transitive versions;
         # installation and execution both use this independent cwd and prefix.
         cp "$SCRIPT_DIR/license-scanner/package.json" "$SCRIPT_DIR/license-scanner/package-lock.json" "$scanner_dir/"
-        if ! (cd "$scanner_dir" && npm ci --ignore-scripts --no-audit --no-fund --prefix "$scanner_dir"); then
+        # Scanner dependencies are tooling, not shipped production dependencies.
+        if ! (cd "$scanner_dir" && npm ci --include=dev --ignore-scripts --no-audit --no-fund --prefix "$scanner_dir"); then
             echo "ERROR: independent license-checker install failed — cannot license-check." >&2
             exit 1
         fi

@@ -242,6 +242,7 @@ case " $* " in *" --ignore-scripts "*) ;; *) exit 94 ;; esac
 case " $* " in
     *" --prefix "*)
         [ "$1" = ci ] || exit 97
+        case " $* " in *" --include=dev "*) ;; *) exit 97 ;; esac
         case "$PWD/" in "$SCAN_REPO/"*) exit 95 ;; esac
         prefix=
         while [ "$#" -gt 0 ]; do
@@ -258,11 +259,12 @@ const fs = require('node:fs');
 const prefix = process.argv[2];
 const pkg = JSON.parse(fs.readFileSync(`${prefix}/package.json`, 'utf8'));
 const lock = JSON.parse(fs.readFileSync(`${prefix}/package-lock.json`, 'utf8'));
-const version = pkg.dependencies['license-checker'];
+const version = pkg.devDependencies['license-checker'];
 const scanner = lock.packages['node_modules/license-checker'];
-if (!/^\d+\.\d+\.\d+$/.test(version) ||
-    lock.packages[''].dependencies['license-checker'] !== version ||
-    scanner.version !== version || !scanner.resolved || !scanner.integrity) process.exit(98);
+if (!/^\d+\.\d+\.\d+$/.test(version) || pkg.dependencies ||
+    lock.packages[''].devDependencies['license-checker'] !== version ||
+    scanner.dev !== true || scanner.version !== version ||
+    !scanner.resolved || !scanner.integrity) process.exit(98);
 JS
         [ "${BOOTSTRAP_FAIL:-0}" = 0 ] || exit 1
         mkdir -p "$prefix/node_modules/.bin"
