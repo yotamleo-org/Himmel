@@ -151,6 +151,11 @@ with tempfile.TemporaryDirectory(prefix="afk-private-proc-") as root:
         if not pid.isdigit():
             raise RuntimeError("private proc fixture failed: " + child.stderr.read())
         path = f"/proc/{pid}/root{proc}/version"
+        with open(path, "rb") as probe:
+            if not probe.read(32):
+                raise RuntimeError("private proc fixture is not readable")
+            if os.readlink(f"/proc/self/fd/{probe.fileno()}") != os.path.join(proc, "version"):
+                raise RuntimeError("private proc fixture has an unexpected fd target")
         try:
             with s.open_regular(path) as f:
                 print("private-proc=opened bytes=" + str(len(f.read(32))))
