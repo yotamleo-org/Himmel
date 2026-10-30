@@ -51,22 +51,22 @@ export type AfkSudoCallbackDeps = AfkSudoDeps & {
 const TOMBSTONE_MS = 3_600_000;
 export type AfkSudoPrompts = {
   add: (chat_id: number, message_id: number, id: string) => void;
-  get: (chat_id: number, message_id: number) => { id: string; expired: boolean } | null;
-  drop: (chat_id: number, message_id: number) => void;
+  get: (chat_id: number, message_id: number) => { id: string; expired: boolean; used: boolean } | null;
+  use: (chat_id: number, message_id: number) => void;
 };
 export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000): AfkSudoPrompts {
-  const m = new Map<string, { id: string; at: number }>();
+  const m = new Map<string, { id: string; at: number; used: boolean }>();
   const key = (c: number, p: number) => `${c}:${p}`;
   return {
     add(c, p, id) {
       for (const [k, v] of m) if (now() - v.at > TOMBSTONE_MS) m.delete(k);
-      m.set(key(c, p), { id, at: now() });
+      m.set(key(c, p), { id, at: now(), used: false });
     },
     get(c, p) {
       const v = m.get(key(c, p));
-      return v ? { id: v.id, expired: now() - v.at > ttlMs } : null;
+      return v ? { id: v.id, expired: now() - v.at > ttlMs, used: v.used } : null;
     },
-    drop(c, p) { m.delete(key(c, p)); },
+    use(c, p) { const v = m.get(key(c, p)); if (v) v.used = true; },
   };
 }
 
@@ -99,14 +99,17 @@ const CODE_REPLY = /^\s*(\d{6})\s*$/;
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
-function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, p: { id: string; expired: boolean }): true {
+function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, p: { id: string; expired: boolean; used: boolean }): true {
   if (!eligible(deps.access(), msg)) {
     deps.log(`[afk-sudo] code reply for ${p.id} refused: not a typed message in the operator's private chat`);
     return true;
   }
   const say = (text: string) => void deps.reply(msg.chat_id, text).catch(() => {});
+  if (p.used) {
+    say(`⚠️ afk-sudo: the prompt for ${p.id} was already used, nothing ran`);
+    return true;
+  }
   if (p.expired) {
-    prompts.drop(msg.chat_id, msg.reply_to_message_id!);
     say(`⚠️ afk-sudo: the prompt for ${p.id} expired, nothing ran`);
     return true;
   }
@@ -115,7 +118,7 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
     say(`⚠️ afk-sudo: reply with the 6-digit code only, nothing ran`);
     return true;
   }
-  prompts.drop(msg.chat_id, msg.reply_to_message_id!);
+  prompts.use(msg.chat_id, msg.reply_to_message_id!);
   runVerb(deps, "approve", p.id, m[1], msg.from, msg.chat_id);
   return true;
 }

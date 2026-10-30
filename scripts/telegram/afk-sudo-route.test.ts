@@ -170,9 +170,11 @@ test("button: a prompt is single use", async () => {
   await settle();
   b.gate(reply("123456", 77));
   await settle();
-  expect(b.gate(reply("654321", 77))).toBe(false);
+  expect(b.gate(reply("654321", 77))).toBe(true);
   await settle();
   expect(b.calls.length).toBe(1);
+  expect(b.replies.at(-1)).toContain("already used");
+  expect([...b.replies, ...b.logs].join("\n")).not.toContain("654321");
 });
 
 test("button: a Deny tap denies at once and asks for no code", async () => {
@@ -244,6 +246,9 @@ test("button: a reply after the prompt window is consumed but never reaches the 
   await settle();
   expect(b.calls).toEqual([]);
   expect(b.replies[0]).toContain("expired");
+  expect(b.gate(reply("654321", 77))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
 });
 
 test("button: a reply that is forwarded, from another chat or from another sender never reaches the helper", async () => {
