@@ -25,6 +25,7 @@
 #   (r0m/n) the bound stays below heartbeat consumers and the header names it
 #   (r0o) silent failure/SIGKILL diagnostics and output-bearing failures retain rc
 #   (r0p) Telegram is serviced between pending slow wraps
+#   (r0q) a standing retry does not starve a later worker's wrap
 #   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
@@ -83,7 +84,12 @@ sed -n 's/^hb=\([0-9]*\) .*/\1/p' "$HB_FILE" > "$STUB/le.hb.$n" 2>/dev/null
 echo "$n" > "$STUB/le.calls"
 printf '%s\n' "$*" > "$STUB/le.args"
 cat > "$STUB/le.stdin"
+cp "$STUB/le.stdin" "$STUB/le.stdin.$n"
 [ -f "$STUB/le.sleep" ] && sleep "$(cat "$STUB/le.sleep")"
+if [ -f "$STUB/le.retry-first" ] && grep -q '^N1 ' "$STUB/le.stdin"; then
+    printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n'
+    exit 10
+fi
 # le.rm: act like wrap-merged, drop N1 from the manifest and from the tick line
 if [ -f "$STUB/le.rm" ]; then
     jq -c '.legs |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
@@ -271,6 +277,23 @@ for relay_mode in handled retry; do
     check "(r0p) the $relay_mode wake is Telegram" "WAKE telegram" "$(head -n 1 "$WORK/r0p-$relay_mode.out")"
     kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 done
+
+# --- (r0q) a standing retry must not starve the next worker ------------------
+reset_stub
+fleet2 r0q
+: > "$STUB/le.retry-first"
+printf 'HANDLED wrap-merged N2\n' > "$STUB/le.out"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
+tick_line "N1:WRAPPED,N2:WRAPPED"
+start "$I" "$WORK/r0q.out" --doc "$D" --workers-from "$M"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.3" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0q) first sample attempts N1" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(r0q) next sample reaches N2 despite N1 retry" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+check "(r0q) later worker completes its wrap" "N2 wrap-merged -" "$(cat "$I.wait.digest" 2>/dev/null)"
+check "(r0q) N1 stays retryable after N2 completes" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then
     if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

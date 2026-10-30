@@ -1097,26 +1097,33 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # marker (labelled with N<k>, else the doc stem; a WRAPPED is preferred, its residual
 # check runs). HANDLED appends `<label> <what> <pr|->` to the digest and sets
 # r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
-# tail not WRAPPED, subtree or subagent alive) is retried next sample; anything else
+# tail not WRAPPED, subtree or subagent alive) stays retryable; anything else
 # prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
-# call the relay yields to the inbox; later workers wait until the next sample.
-# HANDLED and WAKE record
+# call the relay yields to the inbox; the next sample starts after a retryable worker
+# so its standing refusal cannot starve later workers. HANDLED and WAKE record
 # `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
+r0_retry=""
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
+    local cands label marker ldoc bullet sum line stem out rc outf what pr
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
+    # Prefer WRAPPED once per label, then start after the last retryable worker.
     cands="$( { field tails "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):WRAPPED$/\1 WRAPPED/p'
-                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } )"
+                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } |
+        awk -v last="$r0_retry" '
+            !NF || seen[$1]++ { next }
+            past { print; next }
+            { before = before $0 "\n" }
+            $1 == last { past = 1 }
+            END { printf "%s", before }
+        ' )"
     while read -r label marker; do
         [ -n "$label" ] || continue
-        case "$seen" in *" $label "*) continue ;; esac
-        seen="$seen$label "
         ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
@@ -1159,7 +1166,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
-            10:*-failed\ rc=[3467]\ *) break ;;
+            10:*-failed\ rc=[3467]\ *) r0_retry="$label"; break ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
         printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
