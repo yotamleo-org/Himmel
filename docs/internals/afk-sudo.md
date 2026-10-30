@@ -3,7 +3,8 @@
 `scripts/lib/afk-sudo/` is the root helper that runs one privileged command after
 the operator approves it with a TOTP code (HIMMEL-8066). Slice 1a of HIMMEL-8067
 adds a second kind, `run`, which freezes one argv, shows it to the operator and
-runs exactly that once. It changes nothing on the station until slice 1b flips
+runs exactly that once. The helper is Linux-only: safe file validation needs `O_PATH`,
+`/proc/self/fd` and `fstatfs`. It changes nothing on the station until slice 1b flips
 the compiled switch below.
 
 Files: `afk_sudo.py` (the helper, installed as `/usr/local/libexec/himmel/afk-sudo`),
@@ -63,11 +64,16 @@ broker's pending payload, not next to the record.
   passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
   an element whose path the kernel cannot walk are refused, never skipped. Before reading or
   hashing, `open_regular` rejects a path already resolving into `/proc`, `/sys` or `/dev`
-  without opening it (a device can have side effects on open). It then opens the file, resolves
-  `/proc/self/fd/N` and checks that opened object's path against the same prefixes, then
-  requires a regular file with `fstat`.
-  It closes and refuses the descriptor if its target cannot be resolved or either check fails:
-  swapping the caller's path during the open cannot bypass the pseudo-file refusal.
+  without opening it (a device can have side effects on open). It then takes an
+  `O_PATH | O_CLOEXEC` descriptor, which does not invoke a device driver's open operation.
+  Before any read-open it resolves `/proc/self/fd/N`, rejects the same pseudo prefixes,
+  requires a regular file with `fstat`, and checks the descriptor's filesystem type with
+  `fstatfs`: procfs and sysfs are refused even when a private mount reached through another
+  process's root gives the descriptor a non-pseudo path. An unresolved target or failed
+  filesystem query is refused too. Only a validated descriptor is reopened through
+  `/proc/self/fd/N` for reading, never through the caller's path. The path-only descriptor
+  is always closed; failures during the read-open or stream wrapping close any read fd too.
+  Thus a path swap cannot trigger a device/FIFO read-open or bypass pseudo-file validation.
   "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a
   non-directory in the way:
   a walk past PATH_MAX in bytes, a name past 255 bytes (so a `python -c` program with a
