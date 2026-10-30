@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # test-windows-arms-dropped.sh -- the handover scheduling scripts and uninstall
-# carry no Windows arm (schtasks, tasklist, USERPROFILE, MSYS path coercion).
+# carry no Windows arm (schtasks, tasklist, USERPROFILE, cygpath, a `windows)`
+# case arm or PLATFORM=windows seam, MSYS path coercion).
 # Windows is dropped. Pins the Windows-leftover audit grep over those files:
 # only arm-resume.sh's historical `claude.exe` comment (a true comment) may
-# still match.
+# still match. Not pinned: prose mentions of Windows or Git Bash in comments
+# and the drive-letter case arms of the uninstall drive-root guard.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -13,7 +15,7 @@ FILES="scripts/handover/arm-resume.sh scripts/handover/auto-commit.sh scripts/ha
 # shellcheck disable=SC2086  # FILES is a word list on purpose
 FILES_ARGS=$FILES
 AUDIT_RE='\.exe\b|win32|powershell|pwsh|\.ps1\b|cygwin|msys|mingw'
-TOOLS_RE='schtasks|tasklist|USERPROFILE|cygpath'
+TOOLS_RE='schtasks|tasklist|USERPROFILE|cygpath|PLATFORM=windows|:[0-9]+:[[:space:]]*windows\)|win\(\)'
 
 FAILED=0
 pass() { echo "PASS $1"; }
@@ -38,11 +40,11 @@ scan() {
 for f in $FILES; do
     if [ ! -f "$f" ]; then fail "W0 audited file missing: $f"; fi
 done
-ctl=$(printf 'run powershell\nschtasks /create\nplain\n' | grep -c -i -E "$AUDIT_RE|$TOOLS_RE")
-if [ "$ctl" = 2 ]; then
-    pass "W0 the matchers hit a known Windows line and skip a plain one"
+ctl=$(printf 'run powershell\nschtasks /create\nf.sh:12:    windows) x ;;\nf.sh:13: on Windows)\nplain\n' | grep -c -i -E "$AUDIT_RE|$TOOLS_RE")
+if [ "$ctl" = 3 ]; then
+    pass "W0 the matchers hit known Windows lines and skip plain and prose ones"
 else
-    fail "W0 matcher control saw $ctl hit(s), want 2"
+    fail "W0 matcher control saw $ctl hit(s), want 3"
 fi
 
 # 1. The audit grep: nothing but arm-resume.sh's true comment.
@@ -56,12 +58,12 @@ else
     printf '%s\n' "$hits" | sed 's/^/    /'
 fi
 
-# 2. No schtasks / tasklist / USERPROFILE / cygpath in the files (arm-resume.sh
-# keeps two historical comments; handover-path.sh keeps one line that still
-# reaps the legacy `cygpath-avail` cache file name).
+# 2. No schtasks / tasklist / USERPROFILE / cygpath / windows-arm shape in the
+# files (arm-resume.sh keeps one historical comment; handover-path.sh keeps one
+# line that still reaps the legacy `cygpath-avail` cache file name).
 # shellcheck disable=SC2086
 scan "$TOOLS_RE" $FILES_ARGS
-more=$(printf '%s\n' "$SCAN_OUT" | grep -v -F -e 'same reason claude/cygpath are resolved' -e 'A hand-run repro created a real schtasks entry' -e 'legacy cache file, still reaped' | grep . || true)
+more=$(printf '%s\n' "$SCAN_OUT" | grep -v -F -e 'A hand-run repro created a real schtasks entry' -e 'legacy cache file, still reaped' | grep . || true)
 if [ -z "$more" ]; then
     pass "W2 no schtasks, tasklist, USERPROFILE or cygpath remains"
 else

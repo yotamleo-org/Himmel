@@ -2009,7 +2009,7 @@ fi
 HEADROOM_PROXY_PORT=8787
 # resolve curl ONCE at arm time and bake the ABSOLUTE
 # path into the launcher — scheduler contexts fire with a minimal PATH (the
-# same reason claude/cygpath are resolved at arm time above), so a bare
+# same reason claude is resolved at arm time above), so a bare
 # `curl` in the launcher could miss at fire time, fail both livez checks,
 # and silently send the launch bare even with a healthy proxy. No curl at
 # arm time -> one honest WARN and a plain pre-901 launcher (deactivate)

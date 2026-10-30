@@ -32,7 +32,7 @@
 #   WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 #
 # Tooling: jq (JSONL field extraction) + node. node is the ONLY portable
-# ISO-8601-with-offset / sub-second / file-mtime reader across Git Bash (GNU
+# ISO-8601-with-offset / sub-second / file-mtime reader across Linux (GNU
 # date) and macOS bash 3.2 (BSD date): `date -d` is GNU-only, `date -r` means
 # different things on GNU vs BSD, `stat -c/-f` flags differ, and jq's fromdate
 # rejects `+0200` offsets and sub-seconds. node is a hard repo dependency
@@ -82,10 +82,9 @@ fi
 # always wins.
 if [ -z "${WORKER_SESSION_TIMELINE_CR_LEDGER:-}" ]; then
   common_dir=$(git rev-parse --git-common-dir 2>/dev/null || printf '.git')
-  # Treat both POSIX-absolute (/c/...) and Windows-drive-absolute (C:/...) as
-  # already absolute; git-common-dir returns the latter under Git for Windows.
+  # A relative git-common-dir is anchored at $PWD.
   case "$common_dir" in
-    /* | [A-Za-z]:/*) : ;;
+    /*) : ;;
     *) common_dir="$PWD/$common_dir" ;;
   esac
   cr_ledger="$common_dir/cr-critic-scores.jsonl"

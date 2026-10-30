@@ -72,7 +72,7 @@
 #   --keep-telegram-state  Accepted for compatibility; state is already kept by
 #                          default. Contradicts --purge-state (rc=2).
 #   --skip-plugins         Keep Claude plugins + marketplaces installed.
-#   --skip-tasks           Keep HIMMEL-Resume-* / HimmelTelegramBridge jobs.
+#   --skip-tasks           Keep HIMMEL-Resume-* scheduled jobs (at / cron).
 #   --skip-hooks           Keep the repo's pre-commit git hooks.
 #   --skip-settings        Keep user- and current-project settings.json wiring
 #                          (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, hooks).
@@ -324,7 +324,7 @@ m_applies() {
   [ "${M_ID[$1]}" = "aur-package" ] && [ ! -e "$(m_path "$1")" ] && return 1
   return 0
 }
-# m_what <i> — the row's description, minus the Windows-only logon task.
+# m_what <i> — the row's description, minus the manifest's logon-task suffix.
 m_what() {
   local _w="${M_WHAT[$1]}"
   _w="${_w// + the HimmelTelegramBridge logon task/}"

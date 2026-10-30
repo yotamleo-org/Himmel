@@ -418,8 +418,9 @@ _arm_registry_identity_from_canonical() {
     case "$_ho" in
         "$_root"/*)
             # Root-relative keys ARE folded on every platform: this is the
-            # cross-machine dedup key, and a Windows peer can legitimately spell
-            # the same in-root handover with different case. Both sides must
+            # cross-machine dedup key, and a peer on a case-insensitive volume
+            # can legitimately spell the same in-root handover with different
+            # case. Both sides must
             # fold or they disagree. State the cost of that collision at full
             # strength rather than at its mildest (CR round, [glm-2]): across
             # hosts it is a refusal, overridable with --force, but a SAME-HOST
@@ -430,7 +431,7 @@ _arm_registry_identity_from_canonical() {
             # accepted because the line above is a real precondition, not a
             # hope: case-distinct sibling handovers do not legitimately coexist
             # inside one handover root. Folding is still right for the branch
-            # that must survive a Windows peer spelling the same file
+            # that must survive a case-insensitive peer spelling the same file
             # differently; NOT folding here would trade this bounded,
             # out-of-contract collision for the unbounded in-contract failure
             # the ticket exists to prevent (two machines disagreeing on the key
@@ -478,7 +479,7 @@ _arm_registry_identity_path() {
 # returned in globals (_HP_ESC / _HP_FIELD), not on stdout, so hot rewrite
 # loops can call them per line without a command substitution -- the CR
 # round-3 Critical measured the previous printf|grep|head|sed pipelines at
-# ~185-200ms/LINE on Windows/Git-Bash (8+ forks each), which let a ~300-line
+# ~185-200ms/LINE on a slow-fork host (8+ forks each), which let a ~300-line
 # registry rewrite outlive the arms-mutex's own 60s staleness expiry.
 
 # _hp_json_escape <value> -- JSON-escape a string value into $_HP_ESC
