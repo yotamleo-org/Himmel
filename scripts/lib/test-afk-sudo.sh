@@ -4,7 +4,8 @@
 # Usage: bash scripts/lib/test-afk-sudo.sh
 # Hermetic: every case builds its own sandbox root through the helper's
 # AFK_SUDO_ROOT and AFK_SUDO_NOW seams (honoured only when euid != 0) and a fake
-# systemctl that records its argv; nothing privileged runs.
+# systemctl that records its argv; nothing privileged runs on the host. The
+# private-procfs fixture uses disposable unprivileged user/mount/PID namespaces.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -23,6 +24,8 @@ assert_contains() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1" "$3" ;; esac;
 assert_absent() { case "$3" in *"$2"*) fail "$1" "$3" ;; *) pass "$1" ;; esac; }
 assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "$3"; fi; }
 
+[ "$(uname -s)" = Linux ] || { echo "SKIP: afk-sudo requires Linux O_PATH and /proc/self/fd"; exit 0; }
+
 # The helper honours AFK_SUDO_ROOT only for a non-root euid, and refuses a
 # group- or world-writable tree, so neither may come from the caller.
 [ "$(id -u)" -ne 0 ] || { echo "FAIL: run as a non-root user (as root the helper reads the real /etc/himmel)"; exit 1; }
@@ -30,6 +33,167 @@ umask 022
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/afk-sudo-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
+
+open_regular_tests() {
+    echo "== root opens only a regular file outside /proc /sys /dev, links followed =="
+    mkfifo "$tmp/fifo.p"; printf x > "$tmp/reg.p"; ln -s /proc/self/stat "$tmp/lnk.p"; ln -s "$tmp/reg.p" "$tmp/okl.p"
+    # shellcheck disable=SC2016 # python source, not shell
+    OPENR='import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s
+for p in sys.argv[2:]:
+    try:
+        s.open_regular(p).close(); print("opened")
+    except OSError:
+        print("refused")'
+    OPENED=$(timeout 10 python3 -I -c "$OPENR" "$LIB" "$tmp/reg.p" "$tmp/okl.p" "$tmp/lnk.p" "$tmp/fifo.p" | tr '\n' ' ')
+    assert_eq "a regular file and a link to one open, a link into /proc and a FIFO are refused" "opened opened refused refused " "$OPENED"
+
+    # The real open is the seam: swap after the old path check, then restore
+    # the name before returning, so only the opened descriptor exposes /proc.
+    cat > "$tmp/open-regular-race.py" <<'OPENRACE'
+import ctypes, errno, os, stat, sys, types
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+path = sys.argv[2]
+real_open = os.open
+fifo = path + ".fifo"
+os.mkfifo(fifo)
+for mode in ("race", "unresolved", "fs-unresolved", "procfs", "device", "fifo", "directory", "regular-swap"):
+    if os.path.lexists(path):
+        os.unlink(path)
+    with open(path, "wb") as f:
+        f.write(b"regular")
+    fds = []
+    def at_open(name, flags):
+        if name.startswith("/proc/self/fd/") and not flags & os.O_PATH:
+            if not stat.S_ISREG(os.fstat(int(name.rsplit("/", 1)[1])).st_mode):
+                raise AssertionError("unsafe read-open")
+        if name == path and mode in ("race", "device", "fifo", "directory"):
+            os.unlink(path)
+            os.symlink({"race": "/proc/self/stat", "device": "/dev/zero",
+                        "fifo": fifo, "directory": os.path.dirname(path)}[mode], path)
+            # A read-open would reach a driver or FIFO before validation.
+            # Never perform it, even in a broken implementation.
+            if mode in ("device", "fifo") and not flags & os.O_PATH:
+                raise AssertionError("unsafe read-open")
+        fd = real_open(name, flags)
+        fds.append(fd)
+        if name == path and mode in ("race", "regular-swap"):
+            os.unlink(path)
+            with open(path, "wb") as f:
+                f.write(b"restored")
+        return fd
+    def outcome():
+        try:
+            with s.open_regular(path) as f:
+                return "opened:" + f.read().decode() if mode == "regular-swap" else "opened"
+        except OSError:
+            return "refused"
+        except AssertionError:
+            return "unsafe-read-open"
+    with patch.object(s.os, "open", at_open):
+        if mode == "unresolved":
+            with patch.object(s.os, "readlink", side_effect=OSError(errno.ENOENT, "unresolvable fd")):
+                result = outcome()
+        elif mode == "procfs":
+            def procfs_magic(fd, buf):
+                ctypes.cast(buf, ctypes.POINTER(ctypes.c_long))[0] = 0x9FA0
+                return 0
+            with patch.object(ctypes, "CDLL", return_value=types.SimpleNamespace(fstatfs=procfs_magic)):
+                result = outcome()
+        elif mode == "fs-unresolved":
+            ctypes.set_errno(errno.EACCES)
+            with patch.object(ctypes, "CDLL", return_value=types.SimpleNamespace(fstatfs=lambda *args: -1)):
+                result = outcome()
+        else:
+            result = outcome()
+    closed = "closed"
+    for fd in fds:
+        try:
+            os.fstat(fd)
+            closed = "leaked"
+            os.close(fd)
+        except OSError as e:
+            if e.errno != errno.EBADF:
+                closed = "error"
+    print(f"{mode}={result}:{closed}")
+# Never actually open a device: reaching os.open is already a failure.
+with patch.object(s.os, "open", side_effect=AssertionError("pseudo path opened")):
+    try:
+        s.open_regular("/dev/zero").close()
+        result = "opened"
+    except OSError:
+        result = "refused"
+    except AssertionError:
+        result = "opened"
+print(f"prefilter={result}")
+OPENRACE
+    OPENED=$(timeout 10 python3 -I "$tmp/open-regular-race.py" "$LIB" "$tmp/race.p")
+    assert_contains "RED HIMMEL-8277: a path swapped into /proc during open is refused and closed even after the name is restored" "race=refused:closed" "$OPENED"
+    assert_contains "RED HIMMEL-8277: an opened object whose descriptor cannot be resolved is refused and closed" "unresolved=refused:closed" "$OPENED"
+    assert_contains "a known pseudo path is refused without opening it" "prefilter=refused" "$OPENED"
+    assert_contains "an object whose filesystem type cannot be determined is refused and closed" "fs-unresolved=refused:closed" "$OPENED"
+    assert_contains "a procfs filesystem type is refused outside pseudo paths without namespace tools" "procfs=refused:closed" "$OPENED"
+    assert_contains "a swap to a device is refused before any driver read-open" "device=refused:closed" "$OPENED"
+    assert_contains "a swap to a FIFO is refused before any read-open" "fifo=refused:closed" "$OPENED"
+    assert_contains "a directory swapped in during open is refused without leaking a descriptor" "directory=refused:closed" "$OPENED"
+    assert_contains "a regular file replaced during open is read from its validated descriptor, not its new name" "regular-swap=opened:regular:closed" "$OPENED"
+
+    cat > "$tmp/private-proc.py" <<'PRIVATEPROC'
+import os, select, subprocess, sys, tempfile
+if len(sys.argv) > 1 and sys.argv[1] == "--child":
+    subprocess.run(["mount", "-t", "proc", "proc", sys.argv[2]], check=True)
+    print(os.readlink("/proc/self"), flush=True)
+    sys.stdin.read()
+    sys.exit(0)
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+with tempfile.TemporaryDirectory(prefix="afk-private-proc-") as root:
+    proc = os.path.join(os.path.realpath(root), "private-proc")
+    os.mkdir(proc)
+    child = subprocess.Popen(
+        ["unshare", "--mount", "--pid", "--fork", sys.executable, "-I", __file__, "--child", proc],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        if not select.select([child.stdout], [], [], 10)[0]:
+            raise RuntimeError("private proc fixture startup timed out")
+        pid = child.stdout.readline().strip()
+        if not pid.isdigit():
+            raise RuntimeError("private proc fixture failed: " + child.stderr.read())
+        path = f"/proc/{pid}/root{proc}/version"
+        with open(path, "rb") as probe:
+            if not probe.read(32):
+                raise RuntimeError("private proc fixture is not readable")
+            if os.readlink(f"/proc/self/fd/{probe.fileno()}") != os.path.join(proc, "version"):
+                raise RuntimeError("private proc fixture has an unexpected fd target")
+        try:
+            with s.open_regular(path) as f:
+                print("private-proc=opened bytes=" + str(len(f.read(32))))
+        except OSError:
+            print("private-proc=refused")
+    finally:
+        child.stdin.close()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+PRIVATEPROC
+    if command -v unshare >/dev/null 2>&1 && command -v mount >/dev/null 2>&1 && unshare --user --map-root-user --mount --pid --fork true 2>/dev/null; then
+        OPENED=$(timeout 20 unshare --user --map-root-user python3 -I "$tmp/private-proc.py" "$LIB" 2>&1)
+        assert_contains "private procfs reached through another process root is refused even outside a pseudo path" "private-proc=refused" "$OPENED"
+    else
+        echo "  SKIP  private procfs fixture needs unshare, mount and permitted unprivileged user/mount/PID namespaces"
+    fi
+}
+
+# Run only the ticket's file-opening rows locally; the default still runs all rows in CI.
+if [ "${1:-}" = --open-regular ]; then
+    open_regular_tests
+    echo "test summary: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit $?
+fi
 
 # new_root <name> [enabled]: a sandbox station with one class, systemctl-restart
 # of himmel-test.service, served by a fake systemctl (basename systemctl) that appends to ran.log.
@@ -800,17 +964,7 @@ assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
 
-echo "== slice 1a: root opens only a regular file outside /proc /sys /dev, links followed =="
-mkfifo "$tmp/fifo.p"; printf x > "$tmp/reg.p"; ln -s /proc/self/stat "$tmp/lnk.p"; ln -s "$tmp/reg.p" "$tmp/okl.p"
-# shellcheck disable=SC2016 # python source, not shell
-OPENR='import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s
-for p in sys.argv[2:]:
-    try:
-        s.open_regular(p).close(); print("opened")
-    except OSError:
-        print("refused")'
-OPENED=$(timeout 10 python3 -I -c "$OPENR" "$LIB" "$tmp/reg.p" "$tmp/okl.p" "$tmp/lnk.p" "$tmp/fifo.p" | tr '\n' ' ')
-assert_contains "a regular file and a link to one open, a link into /proc and a FIFO are refused" "opened opened refused refused " "$OPENED"
+open_regular_tests
 
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"
