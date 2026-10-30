@@ -31,6 +31,11 @@ bash scripts/handover/chief-kit/headed-arm-worker.sh --context-guard handoff …
 ```
 
 - `--context-guard none` is the default and turns the guard off.
+- A Sonnet launch on a profile that sets `sonnetContextGuard` turns the guard on without a
+  flag: `worker-impl` hands off, `worker-eval` compacts. It applies only to the native lane
+  on a Sonnet 5.5 model, together with that profile's 450000 ceiling (see
+  `docs/internals/lane-calibration.md`, Per-profile ceilings). `WORKER_SESSION_CONTEXT=1m`
+  drops it with the ceiling; an explicit `--context-guard` (including `none`) wins.
 - If no flag is given, a `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name
   `HIMMEL_WORKER_SESSION_CONTEXT_MODE`, still read; a set new name wins unless it is
   `none`) in the launching shell is used. When both are present, the flag wins.

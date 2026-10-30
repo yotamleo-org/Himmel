@@ -1005,6 +1005,36 @@ sonnet_launch impl-flag worker-impl claude-sonnet-5-5 "--context-guard compact"
 contains "sonnet ceiling: an explicit --context-guard wins over the profile's" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
 sonnet_launch impl-none worker-impl claude-sonnet-5-5 "--context-guard none"
 not_contains "sonnet ceiling: --context-guard none turns the profile's guard off" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+# The ceiling is resolved once, in the wrapper, and only for the native lane on a
+# claude-sonnet-5 model. A lane that rewrites MODEL before the renderer (openrouter),
+# another lane, an older Sonnet or the bare alias keep 200000 with no guard - and
+# these are full launches through the real renderer, so its argv check runs.
+for sl in "or-impl:worker-impl:claude-sonnet-5-5:--lane openrouter" \
+          "or-eval:worker-eval:claude-sonnet-5-5:--lane openrouter" \
+          "ds-impl:worker-impl:claude-sonnet-5-5:--lane deepseek" \
+          "s4-impl:worker-impl:claude-sonnet-4-6:" \
+          "bare-impl:worker-impl:sonnet:"; do
+  IFS=: read -r sl_tag sl_prof sl_model sl_args <<< "$sl"
+  sonnet_launch "$sl_tag" "$sl_prof" "$sl_model" "$sl_args"
+  check "sonnet ceiling: $sl_tag launches (exit 0)" "$sa_rc" "0"
+  contains "sonnet ceiling: $sl_tag keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
+  not_contains "sonnet ceiling: $sl_tag has no 450000" "$sa_rec" "450000"
+  not_contains "sonnet ceiling: $sl_tag sets no context guard" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE="
+done
+# WORKER_SESSION_CONTEXT=1m drops the profile's guard together with its ceiling.
+sa_doc_1m="$tmp/sa-1m-doc.md"
+fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: fixture' > "$sa_doc_1m"
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT=1m WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$sa_doc_1m" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "sonnet ceiling: 1m override on worker-impl: exit 0" "$rc" "0"
+contains "sonnet ceiling: 1m override drops the profile's hand-off guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
+# The audited A/B arm needs the plain 200000 ceiling: a Sonnet impl launch is refused
+# with the real reason, a docs launch (no Sonnet ceiling) takes the control arm.
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "A/B arm on a Sonnet worker-impl launch: refused" "$rc" "2"
+contains "A/B arm on a Sonnet worker-impl launch: names the profile's Sonnet ceiling" "$out" "profile's Sonnet ceiling"
+not_contains "A/B arm on a Sonnet worker-impl launch: does not blame 1m" "$out" "never combines with a 1m opt-in"
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-docs HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "A/B arm control on a Sonnet worker-docs launch: exit 0" "$rc" "0"
 
 # a caller passing an ALREADY-SUFFIXED model
 # (claude-sonnet-5[1m]) under the DEFAULT (standard) context must still end

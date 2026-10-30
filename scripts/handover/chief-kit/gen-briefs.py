@@ -25,8 +25,11 @@ the brief gets the `> **Context:** ab-<arm> — operator-ruling: HIMMEL-5193` li
 launcher exports WORKER_SESSION_AUTOCOMPACT_AB, the printed manifest add line passes --arm),
 platform_removal (true: the worker removes Windows/WSL code and its title says remove/drop/delete/retire/sweep/clean; without
 it a title, desc, why or scope naming a dropped platform, per platform-dropped.re, is refused),
-profile (HIMMEL-7935: the --profile the launcher arms; default worker-impl, or worker-e2e when the scope's
-Writes name scripts/config-ui/, which adds the Playwright MCP server and a brief line on running himmelctl ui),
+profile (HIMMEL-7935: the --profile the launcher arms; default worker-impl, worker-e2e when the scope's
+Writes name scripts/config-ui/ (adds the Playwright MCP server and a brief line on running himmelctl ui), or
+worker-docs when every Write is under docs/ or is a *.md file; worker-eval is only ever an explicit key. A profile
+with a sonnetAutocompact ceiling gives a native claude-sonnet-5 launch 450000, so ab_arm needs another profile
+there (worker-docs)),
 model (default claude-sonnet-5-5; a non-native lane with no model key takes its LANE_MODELS default and
 the launcher passes no model argument, so headed-arm-worker.sh's lane default applies; an opus or fable model is
 refused on a non-native lane), effort (low|medium|high|xhigh: the launcher exports WORKER_SESSION_EFFORT),
@@ -100,6 +103,7 @@ VM_LINE = ("> **VM work:** drive the guest only through guest-exec.sh: `bash scr
            "Raw `ssh -p <vm port>` from a worker is denied by the destructive-command hook.\n")
 # worker-e2e is worker-impl plus the Playwright MCP server; a worker that writes the config UI gets it.
 UI_PROFILE = 'worker-e2e'
+DOCS_PROFILE = 'worker-docs'
 UI_PATH_RE = re.compile(r'(?:^|\s)scripts/config-ui(?:/|\s|$)')
 UI_LINE = ("> **UI work:** the chief starts `himmelctl ui` from YOUR worktree and sends you its URL; ask for it, never start it yourself "
            "(it is operator-only and refuses to start inside a worker session). Open the URL with the browser MCP headless "
@@ -466,6 +470,23 @@ def write_paths(scope):
     return ' '.join(out) or ('none named' if scope.strip() == 'none named' else '')
 
 
+def docs_only(scope):
+    # True when the Writes name at least one path and every one is under docs/ or is a *.md file.
+    paths = write_paths(scope).split()
+    return bool(paths) and paths != ['none', 'named'] and all(p.startswith('docs/') or p.endswith('.md') for p in paths)
+
+
+def sonnet_ceiling_profile(profile):
+    # Whether the registry gives this profile a Sonnet ceiling (sonnetAutocompact), as headed-arm-worker.sh reads it.
+    reg = os.environ.get('PLUGIN_PROFILES_REGISTRY') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lanes', 'plugin-profiles.json')
+    try:
+        with open(reg) as f:
+            spec = (json.load(f).get('profiles') or {}).get(profile)
+    except (OSError, ValueError):
+        return False
+    return isinstance(spec, dict) and spec.get('sonnetAutocompact') is not None
+
+
 def completes_line(scope):
     # The LAST completes-ticket value in the scope, as the one line the merge script
     # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); none when the scope states neither.
@@ -733,9 +754,11 @@ def main():
         l['judge'] = bool(l.get('judge'))
         l['model_key'] = bool(l.get('model'))
         if l.get('kind') != 'rm':
-            l['profile'] = l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else 'worker-impl')
+            l['profile'] = l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l.get('writes', '')) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))
+        if l.get('ab_arm') and l.get('lane', 'native') == 'native' and l['model'].startswith('claude-sonnet-5') and sonnet_ceiling_profile(l['profile']):
+            die('worker %s: ab_arm %s needs the plain 200000 ceiling, but profile %s gives a claude-sonnet-5 launch its Sonnet ceiling; set "profile": "worker-docs" for the A/B arm' % (l['label'], l['ab_arm'], l['profile']))
         if rm:
             l['nonce'] = '%s-RM-%s-%s' % (letter, l['release'], secrets.token_hex(4))
             l['stem'] = '%s-%s-rm-%s-%s' % (l['keys'][0], l['label'], l['release'], a.date)

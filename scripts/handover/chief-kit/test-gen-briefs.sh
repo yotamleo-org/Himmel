@@ -258,7 +258,7 @@ python3 "$SUT" "$WORK/lane-nl.json" --base 4ccb59d --chief BZ --bucket "$WORK/b8
 
 # an ab_arm key writes the brief ruling line, exports WORKER_SESSION_AUTOCOMPACT_AB in the launcher
 # and passes --arm on the printed manifest add line; a bad value is refused; no key changes nothing.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-ok.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; l[0]["profile"]="worker-docs"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-ok.json"
 about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f9.json" 2>&1)"
 abdoc="$(cat "$WORK/b9/HIMMEL-9001-N901-plain-fix-"*.md 2>/dev/null)"
 has "ab_arm 400k: the brief carries the ruling line" "$abdoc" "> **Context:** ab-400k — operator-ruling: HIMMEL-5193"
@@ -271,6 +271,14 @@ lacks "no ab_arm: the plain launcher exports no arm" "$l1" "WORKER_SESSION_AUTOC
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="500k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-bad.json"
 python3 "$SUT" "$WORK/ab-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b10" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/ab-bad.err" && [ ! -e "$WORK/b10/launch-N901.sh" ] && pass "an invalid ab_arm is refused before anything is written" || fail "bad ab_arm rc=$rc"
+# an A/B arm on a profile that gives a Sonnet launch its own ceiling is refused here, not printed as a launcher
+# the wrapper would refuse; the same arm on a non-native lane (no Sonnet ceiling there) or on worker-docs is fine.
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="200k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-impl.json"
+python3 "$SUT" "$WORK/ab-impl.json" --base 4ccb59d --chief BZ --bucket "$WORK/b10b" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-impl.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'Sonnet ceiling' "$WORK/ab-impl.err" && [ ! -e "$WORK/b10b/launch-N901.sh" ] && pass "an ab_arm on worker-impl with a Sonnet model is refused naming the Sonnet ceiling" || fail "ab_arm on worker-impl rc=$rc: $(cat "$WORK/ab-impl.err")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="200k"; l[0]["profile"]="worker-eval"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-eval.json"
+python3 "$SUT" "$WORK/ab-eval.json" --base 4ccb59d --chief BZ --bucket "$WORK/b10c" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-eval.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'Sonnet ceiling' "$WORK/ab-eval.err" && pass "an ab_arm on worker-eval with a Sonnet model is refused" || fail "ab_arm on worker-eval rc=$rc"
 
 # an opus (or fable) worker needs a tier {category, reason}; without it nothing is
 # written (exit 1), with it the brief carries the Tier line headed-arm-worker.sh's own gate accepts.
@@ -788,6 +796,21 @@ ui_gen - -
 has "a non-UI worker's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
 has "the non-UI worker's brief was written" "$ui_brief" "> **Writes:**"
 lacks "a non-UI worker's brief has no browser line" "$ui_brief" "UI work:"
+
+# A worker whose Writes are all under docs/ or are *.md defaults to worker-docs; one code path,
+# a missing Writes line, or a config-ui path keeps its profile; worker-eval is only an explicit key.
+ui_gen "Writes docs/internals/a.md and README.md." -
+has "a docs-only worker's launcher arms worker-docs" "$ui_launch" "--profile worker-docs --chief BZ"
+ui_gen "Writes docs/internals/ (a.md)." -
+has "a docs/ dir worker arms worker-docs" "$ui_launch" "--profile worker-docs --chief BZ"
+ui_gen "Writes docs/internals/a.md and scripts/lib/x.sh." -
+has "a worker writing docs and one script stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+ui_gen "Writes docs/internals/a.md and scripts/config-ui/page.ts." -
+has "a docs plus config-ui worker keeps worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
+ui_gen "Writes docs/internals/a.md." worker-eval
+has "an explicit worker-eval key wins over the docs default" "$ui_launch" "--profile worker-eval --chief BZ"
+ui_gen "Writes docs/internals/a.md." worker-impl
+has "an explicit worker-impl key wins over the docs default" "$ui_launch" "--profile worker-impl --chief BZ"
 ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
 ui_mcp_impl="$(ui_mcp "${ui_launch_profile#--profile }")"
 has "the dry-run launch of a non-UI worker reports its MCP servers" "$ui_mcp_impl" 'mcp=["qmd","himmel-bus"]'

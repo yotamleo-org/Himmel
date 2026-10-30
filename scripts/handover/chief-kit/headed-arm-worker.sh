@@ -163,10 +163,13 @@
 #      profile with no mcpServers field changes nothing here (no file, no
 #      flags); an unresolvable name refuses (exit 2) rather than launching
 #      without it.
-# WHY only worker-impl exists: the measured floor is schema-shaped, not
+# WHY the worker profiles are thin: the measured floor is schema-shaped, not
 # roster-shaped (~40k of a 74.3k first-turn floor is tool + MCP schemas), so a
-# second or third "profile by skill set" would resolve to the same manifest -
-# see the _comment in plugin-profiles.json.
+# "profile by skill set" would resolve to the same manifest. worker-eval and
+# worker-docs exist to carry a different context setting, not a different roster:
+# a profile's sonnetAutocompact / sonnetContextGuard apply to the native lane on a
+# claude-sonnet-5 model only (worker-impl 450000 + hand-off, worker-eval 450000 +
+# compaction, worker-docs 200000). See the _comment in plugin-profiles.json.
 # --profile composes with --lane claudex: the shim prepends
 # profile flags, then execs scripts/claude-codex via WORKER_SESSION_CLAUDE_BIN. The
 # backend and its guarded argument screen remain in the launch path.
@@ -230,7 +233,7 @@ export HEADED_ARM_UNAME
 
 usage() {
     echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--chief <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
-    echo "  --context-guard: turn the worker context guard on (default none = off); see docs/internals/worker-context-guard.md" >&2
+    echo "  --context-guard: the worker context guard (default none = off, except a Sonnet launch on a profile that sets one: worker-impl hands off, worker-eval compacts); see docs/internals/worker-context-guard.md" >&2
 }
 
 # worker_propagate_env NAME VALUE - on macOS, `open -a` starts a worker
@@ -357,7 +360,7 @@ PROFILE="${WORKER_SESSION_PROFILE:-}"
 CHIEF_FLAG=""
 # the worker context guard is off unless the caller asks, by
 # --context-guard or a HIMMEL_WORKER_SESSION_CONTEXT_MODE in the launching env
-# (the flag wins).
+# (the flag wins), or a profile sets one for a native-lane claude-sonnet-5 launch.
 CONTEXT_GUARD="${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-}"
 FLEET_MANIFEST=""
 while :; do
@@ -1078,6 +1081,7 @@ RESOLVED_AUTOCOMPACT="200000"
 DESIGN_CONTEXT_REASON=""
 CONTEXT_SOURCE="operator-ruling"
 SONNET_CEILING=0
+GUARD_FROM_PROFILE=0
 if [ -n "$PROFILE" ]; then
     if ! _worker_context_json="$(node "$PROFILES_MJS" "$PROFILE" --context)" \
         || ! CONTEXT="$(printf '%s' "$_worker_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
@@ -1094,17 +1098,21 @@ if [ -n "$PROFILE" ]; then
     fi
     # The operator's per-profile ruling (2026-10-30). A profile may
     # give a Sonnet launch a higher standard ceiling (sonnetAutocompact, up to
-    # 450000) and a default context guard (sonnetContextGuard). Opus and Fable
-    # launches never read either, so they keep the 200000 above; an explicit
-    # --context-guard (including none) still wins over the profile's default.
-    if [ "$CONTEXT" = "standard" ]; then
+    # 450000) and a default context guard (sonnetContextGuard). Only the native
+    # lane on a claude-sonnet-5 model takes either: the 450000 ceiling was measured
+    # there, and another lane, an older Sonnet or the bare alias keeps the 200000
+    # above with no guard. Opus and Fable never read either. An explicit
+    # --context-guard (including none) wins over the profile's default.
+    # This is the one place the ceiling is decided; headed-arm.sh is handed the value.
+    if [ "$CONTEXT" = "standard" ] && [ "$LANE" = "native" ]; then
         case "$MODEL" in
-            claude-sonnet-*)
+            claude-sonnet-5*)
                 if _sonnet_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 450000 and floor == .)')"; then
                     RESOLVED_AUTOCOMPACT="$_sonnet_ceiling"
                     [ "$_sonnet_ceiling" = "200000" ] || SONNET_CEILING=1
                     if [ -z "$CONTEXT_GUARD" ]; then
                         CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextGuard // empty')"
+                        [ -z "$CONTEXT_GUARD" ] || GUARD_FROM_PROFILE=1
                     fi
                 fi ;;
         esac
@@ -1117,6 +1125,8 @@ if [ "${WORKER_SESSION_CONTEXT:-}" = "1m" ]; then
     CONTEXT="1m"
     RESOLVED_AUTOCOMPACT="auto"
     SONNET_CEILING=0
+    # The profile's guard goes with its Sonnet ceiling; an explicit --context-guard stays.
+    [ "$GUARD_FROM_PROFILE" != "1" ] || CONTEXT_GUARD=""
     # An env override needs its own brief ruling, even on a design profile.
     CONTEXT_SOURCE="operator-ruling"
     DESIGN_CONTEXT_REASON="$_CONTEXT_BRIEF_REASON"
@@ -1130,9 +1140,10 @@ fi
 AB_ARM=""
 AB_REASON=""
 _ab_in="${WORKER_SESSION_AUTOCOMPACT_AB:-}"
-unset -v WORKER_SESSION_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT
+unset -v WORKER_SESSION_AUTOCOMPACT_AB HEADED_ARM_AB_AUTOCOMPACT HEADED_ARM_SONNET_AUTOCOMPACT
 worker_env_drop_token WORKER_SESSION_AUTOCOMPACT_AB
 worker_env_drop_token HEADED_ARM_AB_AUTOCOMPACT
+worker_env_drop_token HEADED_ARM_SONNET_AUTOCOMPACT
 case "$_ab_in" in
     '') ;;
     200000) AB_ARM="200k" ;;
@@ -1144,7 +1155,11 @@ esac
 if [ -n "$AB_ARM" ] && { [ "$CONTEXT" != "standard" ] || [ "$RESOLVED_AUTOCOMPACT" != "200000" ]; }; then
     # The control arm is checked too: a 1m worker recorded as the 200k control
     # would contaminate the comparison.
-    echo "headed-arm-worker: refusing worker launch: WORKER_SESSION_AUTOCOMPACT_AB=$_ab_in needs the standard 200000 context (got context=$CONTEXT autocompact=$RESOLVED_AUTOCOMPACT); the A/B arm never combines with a 1m opt-in" >&2
+    if [ "$SONNET_CEILING" = "1" ]; then
+        echo "headed-arm-worker: refusing worker launch: WORKER_SESSION_AUTOCOMPACT_AB=$_ab_in needs the standard 200000 context, but profile $PROFILE gives this Sonnet launch the profile's Sonnet ceiling $RESOLVED_AUTOCOMPACT; run the A/B arm on a profile without one (worker-docs)" >&2
+    else
+        echo "headed-arm-worker: refusing worker launch: WORKER_SESSION_AUTOCOMPACT_AB=$_ab_in needs the standard 200000 context (got context=$CONTEXT autocompact=$RESOLVED_AUTOCOMPACT); the A/B arm never combines with a 1m opt-in" >&2
+    fi
     exit 2
 fi
 if [ "$AB_ARM" = "400k" ]; then
@@ -1331,6 +1346,9 @@ fi
 # the one marker headed-arm.sh honours (paired to its exec PID).
 # A plain export, same channel as CHIEF_CONTEXT above; headed-arm.sh unsets it.
 [ "$AB_ARM" != "400k" ] || export HEADED_ARM_AB_AUTOCOMPACT=400000
+# The Sonnet ceiling this wrapper resolved, handed to the renderer under the same
+# pairing; headed-arm.sh does not derive it again from MODEL.
+[ "$SONNET_CEILING" != "1" ] || export HEADED_ARM_SONNET_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 
 # an Opus or Fable worker costs materially more per turn than the
 # Sonnet default implementor, so it launches only when its brief names one of
