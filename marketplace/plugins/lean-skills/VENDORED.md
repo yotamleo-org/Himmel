@@ -33,9 +33,10 @@ finishing-a-development-branch, requesting-code-review,
 subagent-driven-development, test-driven-development, using-git-worktrees,
 writing-skills. Plus receiving-code-review (HIMMEL-7756), cited by the
 review-finding step of docs/handover/worker-preface.md. DELIBERATELY NOT
-vendored (2 of 14): using-superpowers (its SessionStart injection is the
+vendored (3 of 15): using-superpowers (its SessionStart injection is the
 ~700 tok this change reclaims), dispatching-parallel-agents — nothing
-vendored references it.
+vendored references it, diagnosing-superpowers — transcript analysis for
+filing issues on superpowers itself (HIMMEL-8205).
 
 vendored_from=mattpocock/skills@49dd158d1076134a641b33efb035946536778336 path=skills/productivity/grilling
 
@@ -66,10 +67,11 @@ himmel-authored, no upstream. Lived in ~/.claude/skills (always-on, and
 per-skill enable/disable does not exist in Claude Code settings) — moved
 here so a plugin profile can scope it.
 
-deviation=skills/systematic-debugging/SKILL.md,skills/writing-plans/SKILL.md
+deviation=skills/systematic-debugging/SKILL.md,skills/writing-plans/SKILL.md marker=pstack-principles-digest.md
 
 HIMMEL-5810 (0.2.8): one trailing `See also:` line appended to each of these two
 otherwise-verbatim files, linking docs/tool-adoption/pstack-principles-digest.md.
-A re-vendor copies the upstream file over it, so re-add the line (the
-digest's owning-skill links are checked by that file's PR body, not by a
-suite). This is the only carried delta in this plugin.
+A re-vendor copies the upstream file over it, so re-add the line. The
+HIMMEL-7388 re-vendor dropped it unseen; since HIMMEL-8205,
+hooks/test-note-superpowers-prefix.sh fails while a listed file lacks the
+row's `marker=` text. This is the only carried delta in this plugin.

@@ -17,7 +17,10 @@ stage — you decide when each critic runs and when to advance.
 / "build / design / implement X" / `/minerva` all land here. The grilling
 stance is minerva's Stage 1a, not a second skill: if
 `lean-skills:grilling` fires, run Stage 1a below and continue the
-pipeline rather than stopping at a shared understanding.
+pipeline rather than stopping at a shared understanding. A standalone
+`lean-skills:brainstorming` that sizes the work "a small change", or runs
+outside a himmel-managed repo, finishes on its own without minerva
+(HIMMEL-8205): it has no estimate record, so the Stage-2 gate would refuse it.
 
 ## Mode (gates)
 
@@ -70,6 +73,10 @@ frontier outward and unblock the questions that depended on them. Recompute the
 frontier and ask the next round. A question whose answer depends on another
 question still open in THIS round belongs to a LATER round.
 
+**Round 1 asks why (HIMMEL-8205).** When the request does not state the goal
+behind it, round 1 asks why, open-ended, even when you can guess; the answer
+feeds `effort-assess --goal`. Never re-ask what the request already settled.
+
 **Facts are your job, never the operator's.** When a frontier question needs a
 fact from the environment, go get it — never ask for what you could look up.
 Look it up inline when a handful of tool calls settles it; delegate only a
@@ -114,7 +121,9 @@ reached a shared understanding.
 write the frontier out, but answer each question yourself with the recommended
 answer and carry the whole Q/A list (the eight standing questions included) into
 the spec as an explicit ASSUMPTIONS section — the Stage-2 critic red-teams it
-(charter dimension 1, hidden assumptions).
+(charter dimension 1, hidden assumptions). Write each answer as one ruling line,
+in the subagent-driven-development Ruling format (HIMMEL-8205):
+`<decision> — <why> — <cost if wrong>`.
 
 ### 1b. Brainstorm → spec
 
@@ -123,6 +132,16 @@ the Stage-1a outcome in as settled context — do not re-ask what the grill
 settled. The written spec MUST contain: an `Estimate record: <path>` line (the
 effort-assess JSON from 1a), an `## Alternatives considered` section and a
 `## Definition of done` section. Stage 2 refuses to start without them.
+Brainstorming's **Approaches** part is that alternatives section: tell it to
+title the part `## Alternatives considered` (the gate also accepts
+`## Approaches`), never write both.
+
+**Where the spec goes (HIMMEL-8205).** Brainstorming's "Where it goes" default,
+`docs/superpowers/specs/`, is gitignored in himmel, and CLAUDE.md keeps internal
+specs out of the repo. Tell brainstorming, as your human partner's preference, to
+write the spec to the state repo `specs/<type>/` bucket
+(`$HANDOVER_DIR/<user>/<repo>/specs/design/` for a design spec), with the
+effort-assess JSON beside it.
 
 It also carries, for the terminal lint (HIMMEL-4375):
 - `## Invariants`: `none`, or one `I<n>` line per "one / never / always /
@@ -192,6 +211,12 @@ is approved, return HERE
 instead of letting it invoke writing-plans — minerva runs the spec-critic
 first.
 
+**`autonomous` mode: no human step waits (HIMMEL-8205).** Brainstorming asks
+its human partner three times: to pick an approach, to answer the builder
+check's "theirs" pile, and to approve the document. With no operator, make
+each call yourself and record it as one ASSUMPTIONS ruling line,
+`<decision> — <why> — <cost if wrong>`; the Stage-2 critic is the approval.
+
 ## Stage 2 — spec critic (adversarial)
 
 **Gate first (HIMMEL-3996).** Resolve `$S` with the resolver from the Mode
@@ -202,7 +227,9 @@ only dispatch the critic once it prints `ok`. Never skip it, and in `autonomous`
 mode the gate still applies (the answers go to ASSUMPTIONS, the record path stays
 in the spec). The critic reads the estimate record and may challenge sigma.
 
-Dispatch a fresh subagent (Agent tool) against the written spec file. Loop
+Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
+the written spec file; never let it inherit the parent's tier (CLAUDE.md
+subagent policy). Loop
 fix → re-critic until it returns clean, **cap 2 rounds** (then advance with
 any residual findings noted).
 
@@ -249,11 +276,21 @@ if `autonomous`, proceed.
 ## Stage 3 — plan
 
 Invoke `lean-skills:writing-plans` on the approved spec to produce the
-implementation plan.
+implementation plan. Its "Save plans to" default is gitignored in himmel too:
+tell it to save the plan to the state repo `specs/plans/` bucket, beside the
+spec's bucket.
+
+**HALT it before its writing-plans step "Execution Handoff" (HIMMEL-8205).** When the
+plan is written and self-reviewed, return HERE instead of letting it ask for an
+execution method or invoke subagent-driven-development or executing-plans: the
+plan critic and the terminal lint run first, and the Terminal section makes the
+hand-off. If the operator already supplied an execution method, carry it to the
+Terminal section.
 
 ## Stage 4 — plan critic (adversarial)
 
-Dispatch a fresh subagent (Agent tool) against the written plan file. Loop
+Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
+the written plan file. Loop
 fix → re-critic until clean, **cap 2 rounds**.
 
 CHARTER — the single source is **`plan-charter.md`** in this skill dir; paste its
@@ -305,8 +342,12 @@ Do not hand off until it prints `ok`, in either mode.
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan
   to implement it task-by-task. This is the execute-seam auto-handoff that makes
   the loop continuous. (You remain the parent: own synthesis across the subagents.)
+  When the operator already supplied `lean-skills:executing-plans` as the
+  method, invoke that instead.
 - Otherwise (interactive mode, or `execute` not active): minerva STOPS here — it
-  does not start implementation. Offer the hand-off:
+  does not start implementation. When the operator already supplied an execution
+  method, ask only whether the plan captures what they want, then use that
+  method. Otherwise offer the hand-off:
 
   > Plan ready. Execute with `lean-skills:subagent-driven-development`
   > (recommended) or `lean-skills:executing-plans`?

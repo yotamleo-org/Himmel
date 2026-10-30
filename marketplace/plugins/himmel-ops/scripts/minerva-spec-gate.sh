@@ -4,7 +4,8 @@
 # A spec must carry:
 #   1. `Estimate record: <path>` — an effort-assess record whose
 #      dod.passed is true; the path is absolute or relative to the spec.
-#   2. an `## Alternatives considered` section with at least one line.
+#   2. an `## Alternatives considered` section with at least one line;
+#      `## Approaches`, the name superpowers 7.x brainstorming writes, counts.
 #   3. a `## Definition of done` section with at least one line.
 # Every missing item is named on stderr (all of them, not just the first).
 # bash 3.2-safe; needs python3 (the same dependency as effort-assess).
@@ -48,7 +49,8 @@ else
   fi
 fi
 
-section_has_body 'Alternatives considered' || add "alternatives: no '## Alternatives considered' section with content"
+section_has_body 'Alternatives considered' || section_has_body 'Approaches' \
+  || add "alternatives: no '## Alternatives considered' (or brainstorming's '## Approaches') section with content"
 section_has_body 'Definition of done' || add "definition of done: no '## Definition of done' section with content"
 
 if [ -n "$missing" ]; then
