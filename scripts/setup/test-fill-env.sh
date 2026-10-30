@@ -170,5 +170,14 @@ HOME="$fh" _fe_save USER_SLUG "$fe" newer-slug
 check "save: answer updates the local override" "$(dotenv_get "$fh/.himmel/himmel.conf.local" USER_SLUG)" "newer-slug"
 check "save: himmel.conf keeps its own value" "$(dotenv_get "$fh/.himmel/himmel.conf" USER_SLUG)" "new-slug"
 
+# An env-only key (no himmel.conf reader) is asked for and kept in the env file.
+for k in JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
+  check "store: env-only $k -> env file" "$(HOME="$fh" _fe_store "$k" "$fe")" "$fe"
+  HOME="$fh" _fe_save "$k" "$fe" "val-$k"
+  check "save: env-only $k lands in the env file" "$(dotenv_get "$fe" "$k")" "val-$k"
+  check "save: env-only $k never reaches himmel.conf" "$(grep -c "$k" "$fh/.himmel/himmel.conf")" "0"
+  check "current: env-only $k reads the env file" "$(HOME="$fh" _fe_current "$k" "$fe")" "val-$k"
+done
+
 rm -rf "$td"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

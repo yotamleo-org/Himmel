@@ -203,6 +203,8 @@ printf 'JIRA_BASE_URL=https://fake.example.invalid\nTELEGRAM_CHAT_ID=fake-t\nTEL
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in-conf.env" 2>&1)
 assert_eq "S5c import-env stores none of the 5 config keys" "0" "$(grep -c 'key=\(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) ' "$KSTUB_STORE")"
 assert_eq "S5c import-env names each config key it leaves" "5" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key')"
+assert_eq "S5c import-env says an env-only key stays in .env" "3" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key; it stays in \.env)$')"
+assert_eq "S5c import-env says a chat id belongs in ~/.himmel" "2" "$(printf '%s' "$out" | grep -c '^skipped \(TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\) (config key; it belongs in ~/\.himmel)$')"
 assert_eq "S5c import-env still stores the real secret" "1" "$(grep -c '^service=himmel key=ZAI_API_KEY scope=user' "$KSTUB_STORE")"
 
 # S5d: JIRA_BASE_URL is a credential destination, so a
