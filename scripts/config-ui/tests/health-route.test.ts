@@ -88,6 +88,7 @@ test("brief: the worker name arrives as ?worker= or the old ?leg=, and a missing
   const brief = async (q: string) => (await fetch(`http://127.0.0.1:${port}/api/agui/brief${q}`, { headers: { "X-Himmel-Token": TOKEN } })).status;
   expect(await brief("")).toBe(400);
   expect(await brief("?worker=..%2F..%2Fetc%2Fpasswd")).toBe(400);
+  expect(await brief("?worker=..%2F..%2Fetc%2Fpasswd&leg=HIMMEL-0-N1-none")).toBe(400);
   expect(await brief("?worker=HIMMEL-0-N1-none")).toBe(404);
   expect(await brief("?leg=HIMMEL-0-N1-none")).toBe(404);
 });
