@@ -38,14 +38,14 @@ const CONFIG_KEYS = new Set(['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
 // neither the environment nor .env supplies one, the one resolver is asked.
 const RESOLVED_KEYS = ['JIRA_EMAIL', 'JIRA_API_TOKEN'];
 
-function resolveFromKeyring(): void {
+function resolveFromKeyring(root: string): void {
   const missing = RESOLVED_KEYS.filter((k) => !process.env[k]);
   if (missing.length === 0) return;
   const resolver = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'lib', 'himmel-secrets');
   if (!existsSync(resolver)) return;
   let out = '';
   try {
-    out = execFileSync('bash', [resolver, 'get', '--no-dotenv', ...missing], {
+    out = execFileSync('bash', [resolver, 'get', '--root', root, '--no-dotenv', ...missing], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000,
     });
   } catch (e) {
@@ -74,7 +74,7 @@ export function loadEnvFile(envPath: string): void {
   }
   if (projectRoot) readEnvFile(join(projectRoot, '.env'), new Set(['JIRA_PROJECT_KEY']));
   readEnvFile(envPath, DOTENV_KEYS);
-  resolveFromKeyring();
+  resolveFromKeyring(dirname(envPath));
 }
 
 function stripInlineComment(value: string): string {
