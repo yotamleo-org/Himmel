@@ -89,3 +89,13 @@ test("renderHealth shows the project mode row from the resolver", () => {
     .toContain("project-mode: invalid TRACKER=&#39;x&#39;");
   expect(renderHealth(null, null)).toContain('id="mode"');
 });
+
+// the fail/warn/ok pills in a Health row share one width and centre their text, so the ids line up.
+test("the Health row status pills have one width and centred text", async () => {
+  const css = await Bun.file(new URL("../public/app.css", import.meta.url)).text();
+  const rule = /(?:^|\n)\.hrow \.st,\.alert \.st\{([^}]*)\}/.exec(css);
+  expect(rule).not.toBeNull();
+  expect(rule![1]).toContain("flex:none");
+  expect(rule![1]).toContain("min-width:4.6em");
+  expect(rule![1]).toContain("text-align:center");
+});

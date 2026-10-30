@@ -127,7 +127,11 @@ console.log(r.actual + ' | ' + r.detail);
 " 2>&1
 }
 out="$(probe_run "$WORK/repo-owned")"
-has "probe empty user layer, project wires trio -> absent" "$out" "absent"
+has "probe empty user layer, project wires trio -> present" "$out" "present"
+has "probe empty user layer, project wires trio -> names the C81 double-wiring cost" "$out" "C81"
+printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \"/x/scripts/hooks/auto-approve-safe-bash.sh\""}]}]}}' > "$WORK/uhome/.claude/settings.json"
+out="$(probe_run "$WORK/repo-owned")"
+has "probe partial user layer, project wires trio -> degraded" "$out" "degraded"
 wrapped="$(jq -cn '{hooks:{PreToolUse:[
   {matcher:"Bash",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/auto-approve-safe-bash.sh\""}]},
   {matcher:"Edit",hooks:[{type:"command",command:"node \"/x/scripts/hooks/guardrail-skip-in-himmel.js\" \"/x/scripts/hooks/block-edit-on-main.sh\""}]},
