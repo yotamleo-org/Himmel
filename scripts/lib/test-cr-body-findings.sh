@@ -45,11 +45,13 @@ export RESP_DIR
 # (`.user.id`, `.commit_id`, `.body`).
 mk_json_from_file() {
     jq -n --argjson uid "$2" --arg commit "$3" --rawfile body "$4" \
-        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1"
+        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1" \
+        || { echo "setup failed: $1" >&2; exit 1; }
 }
 mk_json_from_str() {
     jq -n --argjson uid "$2" --arg commit "$3" --arg body "$4" \
-        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1"
+        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1" \
+        || { echo "setup failed: $1" >&2; exit 1; }
 }
 # mk_two_page_reviews <out> <uid> <commit-a> <bodyfile-a> <commit-b> <bodyfile-b>
 # — TWO separate top-level JSON-array documents concatenated in one file, the
@@ -338,10 +340,19 @@ mk_json_from_str "$RESP_DIR/fu-legacy-bare-prior.json" "$UID_OK" "oldsha1" "$DRI
 # a header variant (a count after it) with a Nitpick and an unknown badge
 sed 's/^## Follow-up Comments[ ]*$/## Follow-up Comments (2)/' "$TMP/fu-unk-beside-known.txt" > "$TMP/fu-hdr-variant.txt"
 mk_fu_pair fu-hdr-variant "$TMP/fu-hdr-variant.txt"
-# a finding whose title reads like a legacy section header must not end the section before it
-sed '/<summary><sub><picture>/s/<\/summary>/ comments (1)<\/summary>/' "$TMP/fu-ob-unknown.txt" > "$TMP/fu-ob-unknown-title.txt"
-mk_fu_body "$TMP/fu-title-like-legacy.txt" "$NB" "$TMP/fu-ob-unknown-title.txt"
-mk_fu_pair fu-title-like-legacy "$TMP/fu-title-like-legacy.txt"
+# A body mixing the Follow-up layout with a legacy section is drift: the whole
+# body is censused, so nothing after a legacy summary goes uncounted.
+printf '<details>\n<summary>⚠️ Outside diff range comments (1)</summary>\n</details>\n\n' > "$TMP/fu-legacy-summary.txt"
+# a Nitpick, then a legacy summary, then an unknown badge
+mk_fu_body "$TMP/fu-nit-legacy-unk.txt" "$NB" "$TMP/fu-legacy-summary.txt" "$TMP/fu-ob-unknown.txt"
+mk_fu_pair fu-nit-legacy-unk "$TMP/fu-nit-legacy-unk.txt"
+# a good Outside-diff badge beside an unknown badge past a legacy summary
+mk_fu_body "$TMP/fu-od-legacy-unk.txt" "$OB" "$TMP/fu-legacy-summary.txt" "$TMP/fu-ob-unknown.txt"
+mk_fu_pair fu-od-legacy-unk "$TMP/fu-od-legacy-unk.txt"
+# a plain-summary finding titled like a legacy header, beside a Nitpick
+sed '/alt="Outside diff"/{s/<summary><sub><picture>.*<\/picture><\/sub>/<summary>/;s/<\/summary>/ Nitpick comments (1)<\/summary>/;}' "$OB" > "$TMP/fu-ob-plain-title.txt"
+mk_fu_body "$TMP/fu-plain-title-legacy.txt" "$NB" "$TMP/fu-ob-plain-title.txt"
+mk_fu_pair fu-plain-title-legacy "$TMP/fu-plain-title-legacy.txt"
 # alt="Nitpick" quoted in a title, behind an unknown badge
 sed 's/alt="Nitpick"/alt="Potential issue"/;/<summary><sub><picture>/s/<\/picture><\/sub>/<\/picture><\/sub> alt="Nitpick"/' "$NIT_FOLLOWUP" > "$TMP/fu-nit-in-title.txt"
 mk_fu_pair fu-nit-in-title "$TMP/fu-nit-in-title.txt"
@@ -361,6 +372,19 @@ to() {
         fail=$((fail+1)); echo "FAIL $name (stdout mismatch)"
         echo "  got:  $(printf '%s' "$out" | tr '\n\t' '|~')"
         echo "  want: $(printf '%s' "$want_out" | tr '\n\t' '|~')"
+        return
+    fi
+    pass=$((pass+1)); echo "ok   $name"
+}
+# top <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>: cr_body_outside_findings
+# for a PRIOR head, the way the thread recorder calls it
+top() {
+    local name="$1" mode="$2" want="$3" want_out="$4" rc=0 out
+    export GH_STUB_MODE="$mode"
+    export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
+    out=$(cr_body_outside_findings o r 42 oldsha1 2>"$TMP/err-$name") || rc=$?
+    if [ "$rc" != "$want" ] || [ "$out" != "$want_out" ]; then
+        fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want) out='$out'"
         return
     fi
     pass=$((pass+1)); echo "ok   $name"
@@ -419,8 +443,23 @@ t  followup-legacy-unparse-plus-nit-blocks  fu-legacy-unparse-nit      2
 t  followup-legacy-unparse-plus-nit-prior   fu-legacy-unparse-nit-prior 0 "$FU_PRIOR1"
 t  legacy-unparse-prior-without-header-as-before fu-legacy-bare-prior  0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=0 substantive=0"
 t  followup-header-variant-nit-unk-blocks   fu-hdr-variant             2
-t  followup-title-like-legacy-header-blocks fu-title-like-legacy       2
-t  followup-title-like-legacy-prior-drift   fu-title-like-legacy-prior 0 "$FU_PRIOR1"
+t  followup-nit-legacy-unk-blocks           fu-nit-legacy-unk          2
+to od-followup-nit-legacy-unk-drifts        fu-nit-legacy-unk          2 ""
+t  followup-nit-legacy-unk-prior-drift      fu-nit-legacy-unk-prior    0 "$FU_PRIOR1"
+t  followup-od-legacy-unk-blocks            fu-od-legacy-unk           2
+to od-followup-od-legacy-unk-drifts         fu-od-legacy-unk           2 ""
+t  followup-plain-title-legacy-blocks       fu-plain-title-legacy      2
+to od-followup-plain-title-legacy-drifts    fu-plain-title-legacy      2 ""
+t  followup-plain-title-legacy-prior-drift  fu-plain-title-legacy-prior 0 "$FU_PRIOR1"
+# The recorder reads a PRIOR head through cr_body_outside_findings: drift there
+# must be rc 2, not zero rows.
+top od-prior-followup-nitpick-only-no-rows  fu-nitpick-prior           0 ""
+top od-prior-unk-beside-known-drifts        fu-unk-beside-known-prior  2 ""
+top od-prior-picture-beside-nit-drifts      fu-pic-beside-nit-prior    2 ""
+top od-prior-plain-beside-nit-drifts        fu-plain-beside-nit-prior  2 ""
+top od-prior-legacy-unparse-nit-drifts      fu-legacy-unparse-nit-prior 2 ""
+top od-prior-nit-legacy-unk-drifts          fu-nit-legacy-unk-prior    2 ""
+top od-prior-plain-title-legacy-drifts      fu-plain-title-legacy-prior 2 ""
 t  followup-nit-alt-in-title-blocks        fu-nit-in-title            2
 t  followup-nit-alt-in-title-prior-drift    fu-nit-in-title-prior      0 "$FU_PRIOR1"
 to od-infra-error-rc1         error             1 ""
@@ -508,7 +547,9 @@ tp ph-followup-plain-beside-nit-kept        fu-plain-beside-nit-prior  0 "oldsha
 tp ph-followup-legacy-unparse-nit-kept      fu-legacy-unparse-nit-prior 0 "oldsha1"
 tp ph-legacy-unparse-no-header-omitted      fu-legacy-bare-prior       0 ""
 tp ph-followup-nit-alt-in-title-kept        fu-nit-in-title-prior      0 "oldsha1"
-tp ph-infra-error-rc1                      error                      1 ""
+tp ph-followup-nit-legacy-unk-kept          fu-nit-legacy-unk-prior    0 "oldsha1"
+tp ph-followup-plain-title-legacy-kept      fu-plain-title-legacy-prior 0 "oldsha1"
+tp ph-infra-error-rc1                     error                      1 ""
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
