@@ -220,7 +220,9 @@
 #     main's verdict (a harmless mid-word quote, backslash, brace or glob write in the
 #     scratch folder is refused too). The flag is never set when the payload command, as
 #     given, holds a `$`, a backtick or a byte outside printable ASCII, tab and newline anywhere (`_bwimc_orig_dynamic`, tested once before any
-#     reading is flattened), so `cd scratch && echo "$x" > out.txt` is refused as on main.
+#     reading is flattened) or a heredoc (`<<`), so `cd scratch && echo "$x" > out.txt` and
+#     `cd scratch && cat > f <<EOF` are refused as on main. The cd word must also be absolute and
+#     plain (a relative word may resolve through a CDPATH this hook cannot see).
 #     A candidate holding `$` is not checked at all, as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
@@ -2840,10 +2842,12 @@ _bwimc_ecwd_track() {
                             # above, and a candidate is checked against both $r and $cs.
                             # the raw cd word must be plain too: the shell expands a brace, drops a quote or
                             # a backslash and keeps an edge space the hook trims, so the directory the hook
-                            # found is not the one the shell enters (rows 100d, 104i-104l)
+                            # found is not the one the shell enters (rows 100d, 104i-104l). It must also be
+                            # absolute: CDPATH set in the tool shell is invisible here and can resolve a
+                            # relative word elsewhere (row 104n)
                             [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
                                 && [ "${_bwimc_orig_dynamic:-1}" = 0 ] \
-                                && _bwimc_plain_word "$craw" \
+                                && [ "$cabs" = 1 ] && _bwimc_plain_word "$craw" \
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
                                 && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
@@ -4494,8 +4498,10 @@ _bwimc_exotic_byte() {
     esac
     return 1
 }
+# A heredoc also counts: its walker matches only a prefix of the delimiter word, so it can blank a
+# real cd (row 104m)
 case "$cmd" in
-    *'$'*|*'`'*) _bwimc_orig_dynamic=1 ;;
+    *'$'*|*'`'*|*'<<'*) _bwimc_orig_dynamic=1 ;;
     *) if _bwimc_exotic_byte "$cmd"; then _bwimc_orig_dynamic=1; else _bwimc_orig_dynamic=0; fi ;;
 esac
 

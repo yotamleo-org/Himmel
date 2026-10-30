@@ -963,6 +963,13 @@ check_both "104k fromP: cd \"scratch/sub'8200\" && echo x > out.txt (quote dropp
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd \\\"$FIX/scratch8200/sub'8200\\\" && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 check_both "104l fromP: cd 'scratch/sub\\8200' && echo x > out.txt (backslash dropped by the hook) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd '$FIX/scratch8200/sub\\\\8200' && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104m fromP: cd scratch, heredoc delimiter wider than the walker's match hides a cd denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200\\ncat <<echo-1\\necho-1\\ncd $FIX/primary\\necho\\necho x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if ! { ln -sfn "$FIX/scratch8200" "$FIX/primary/lnk8203" && [ -d "$FIX/primary/lnk8203" ]; }; then
+    bad "104n setup: the primary/lnk8203 symlink was not created"
+fi
+check_both "104n fromP: cd lnk8203 && echo x > out.txt (a relative cd word may resolve through CDPATH) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd lnk8203 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
