@@ -8,6 +8,22 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 GATE="$HERE/check-platform-dropped.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/platform-dropped.XXXXXX") || exit 1
 trap 'rm -rf "$T"' EXIT
+
+# Run the real fixture suite under hostile, throwaway caller settings.
+if [ "${1:-}" != --fixture-child ]; then
+    mkdir -p "$T/foreign-worktree"
+    printf '[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = /nonexistent-fixture-signer\n' > "$T/global"
+    GIT_DIR="$T/foreign.git" GIT_WORK_TREE="$T/foreign-worktree" GIT_INDEX_FILE="$T/foreign-index" \
+        GIT_CONFIG_GLOBAL="$T/global" bash "$0" --fixture-child
+    exit $?
+fi
+
+# The fixture git processes must never target the caller's repository or config.
+# shellcheck source=scripts/lib/git-clean.sh
+. "$HERE/../lib/git-clean.sh"
+git_env_scrub
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'ok - %s\n' "$*"; }
 bad() { fail=$((fail + 1)); printf 'not ok - %s\n' "$*"; }
