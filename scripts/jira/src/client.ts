@@ -76,7 +76,7 @@ function profileFilePath(confDir: string): string | undefined {
 }
 
 export function loadEnvFile(envPath: string): void {
-  const confDir = join(process.env.HOME || homedir(), '.himmel');
+  const confDir = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
   readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
   const profile = profileFilePath(confDir);
   if (profile) readEnvFile(profile, new Set(['JIRA_BASE_URL']));

@@ -1,11 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureEnvKeys, appendEnvKeys, UNSAFE_VALUE_RE, loadEnvIntoProcess, resolveProjects, runInit } from '../lib/init-flow.mjs';
 
 let dir;
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'himmel-init-')); });
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'himmel-init-'));
+  vi.stubEnv('HIMMEL_CONFIG_DIR', join(dir, 'empty-conf'));
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe('resolveProjects (config-driven, no hardcoded HIMMEL)', () => {
   it('uses JIRA_PROJECT_KEY when no flag and no JIRA_PROJECTS', () => {
@@ -38,6 +45,32 @@ describe('resolveProjects (config-driven, no hardcoded HIMMEL)', () => {
     // arg parser maps `--projects` with no value to `true`; must not crash.
     expect(() => resolveProjects({ rawArg: true, env: {} })).not.toThrow();
     expect(resolveProjects({ rawArg: true, env: {} })).toEqual([]);
+  });
+});
+
+describe('Jira URL config layers (HIMMEL-8244)', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('uses a conf-only URL without prompting and never takes a config token', () => {
+    const cfg = join(dir, 'conf');
+    mkdirSync(cfg);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', cfg);
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_API_TOKEN', '');
+    writeFileSync(join(cfg, 'himmel.conf'), 'JIRA_BASE_URL=https://config.example.invalid\nJIRA_API_TOKEN=planted\n');
+    const env = join(dir, '.env');
+    writeFileSync(env, 'JIRA_EMAIL=fixture@example.invalid\nJIRA_API_TOKEN=fixture-token\n');
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://config.example.invalid');
+    expect(process.env.JIRA_API_TOKEN).toBe('fixture-token');
+    expect(ensureEnvKeys(env, ['JIRA_BASE_URL', 'JIRA_API_TOKEN'])).toEqual([]);
+    writeFileSync(join(cfg, 'himmel.conf.local'), 'JIRA_BASE_URL=https://local.example.invalid\n');
+    process.env.JIRA_BASE_URL = '';
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://local.example.invalid');
+    process.env.JIRA_BASE_URL = 'https://process.example.invalid';
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://process.example.invalid');
   });
 });
 

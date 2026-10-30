@@ -78,6 +78,24 @@ test('buildCtx reads a behaviour key from himmel.conf: process env > himmel.conf
   assert.equal(buildCtx(repo, { HOME: home }).env.CR_PROFILE, 'from-conf', 'an empty conf line reads as unset');
   assert.equal(buildCtx(repo, { HOME: home, CR_PROFILE: '' }).env.CR_PROFILE, 'from-conf', 'an empty process value reads as unset, as in load_dotenv');
 });
+test('buildCtx preserves the Jira URL across config migration without serving a config token (HIMMEL-8244)', () => {
+  const repo = makeTmpDir('lanes-jira-repo-');
+  const home = makeTmpDir('lanes-jira-home-');
+  mkdirSync(join(home, '.himmel'));
+  const conf = join(home, '.himmel', 'himmel.conf');
+  writeFileSync(join(repo, '.env'), 'JIRA_BASE_URL=https://legacy.example.invalid\nJIRA_API_TOKEN=fixture-token\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_BASE_URL, 'https://legacy.example.invalid');
+  writeFileSync(conf, 'JIRA_BASE_URL=https://config.example.invalid\nJIRA_API_TOKEN=planted\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_BASE_URL, 'https://config.example.invalid');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_API_TOKEN, 'fixture-token');
+  writeFileSync(join(repo, '.env'), '');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_BASE_URL, 'https://config.example.invalid', 'URL survives removal of legacy line');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_API_TOKEN, undefined, 'config token is ignored');
+  writeFileSync(`${conf}.local`, 'JIRA_BASE_URL=https://local.example.invalid\n');
+  assert.equal(buildCtx(repo, { HOME: home }).env.JIRA_BASE_URL, 'https://local.example.invalid');
+  assert.equal(buildCtx(repo, { HOME: home, JIRA_BASE_URL: 'https://process.example.invalid' }).env.JIRA_BASE_URL,
+    'https://process.example.invalid');
+});
 test('buildCtx reads only the behaviour keys from himmel.conf, as load_dotenv does', () => {
   const repo = makeTmpDir('lanes-repo-');
   const home = makeTmpDir('lanes-home-');

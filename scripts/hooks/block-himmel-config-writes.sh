@@ -46,7 +46,12 @@
 # apply_patch rules apply with `project.conf` (or `project.c*`, `project.*`,
 # `proj*`) as the name; a file-tool or patch path is refused when it is named,
 # or resolves to, any `.himmel/project.conf`, in any repo or worktree.
-# ALLOWS everything else, silently. Reads of either file stay allowed.
+# ALSO GUARDS station himmel.conf, himmel.conf.local and profiles/*.conf,
+# including HIMMEL_CONFIG_DIR and the resolved himmel.conf link target's sibling
+# profiles directory. File-tool and patch paths resolve symlink aliases; Bash
+# retains the text-matching ceiling below. No config values are read here.
+# ALLOWS everything else, silently. Plain reads and himmelctl config set stay
+# allowed; config set is not a prefix bypass for additional shell writes.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
 # scanned as raw text and denied when it names the file; otherwise allowed
@@ -80,9 +85,11 @@ deny() {
         echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
         echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, and a repo's"
         echo "    .himmel/project.conf sets that repo's settings and gate policy, so"
-        echo "    changing either is operator-only. Remedy: the operator edits the"
-        echo "    file by hand at their own prompt (or uses the config UI flow once it"
-        echo "    lands). Reading the file stays allowed. There is no env bypass."
+        echo "    changing them is operator-only. himmel.conf, himmel.conf.local and"
+        echo "    station profiles also choose credential destinations (JIRA_BASE_URL)."
+        echo "    Remedy: use himmelctl config set for its supported settings, or ask"
+        echo "    the operator to edit the file at their own prompt. Plain reads and"
+        echo "    the Read tool stay allowed. There is no env bypass."
     } >&2
     exit 2
 }
@@ -91,17 +98,42 @@ input=$(cat)
 # shellcheck source=lib/resolve-path.sh
 { [ -r "${BASH_SOURCE[0]%/*}/lib/resolve-path.sh" ] && . "${BASH_SOURCE[0]%/*}/lib/resolve-path.sh"; } 2>/dev/null \
     || deny "the portable path resolver (lib/resolve-path.sh) is missing (fail-closed)"
+# Station config now chooses credential destinations too. Resolve paths, never
+# contents: luna links himmel.conf into its station directory, beside profiles/.
+STATION_DIR="${HIMMEL_CONFIG_DIR:-${HOME:-/nonexistent}/.himmel}"
+STATION_CONF=$(hook_resolve_m "$STATION_DIR/himmel.conf") || deny "station config path could not be resolved (fail-closed)"
+STATION_LOCAL=$(hook_resolve_m "$STATION_DIR/himmel.conf.local") || deny "station local path could not be resolved (fail-closed)"
+STATION_PROFILES=$(hook_resolve_m "${STATION_CONF%/*}/profiles") || deny "station profile directory could not be resolved (fail-closed)"
+
+station_path() {
+    case "$1" in
+        */.himmel/himmel.conf|.himmel/himmel.conf|*/.himmel/himmel.conf.local|.himmel/himmel.conf.local|*/.himmel/profiles/*.conf|.himmel/profiles/*.conf) return 0 ;;
+        "$STATION_DIR/himmel.conf"|"$STATION_DIR/himmel.conf.local"|"$STATION_DIR"/profiles/*.conf|"$STATION_CONF"|"$STATION_LOCAL"|"$STATION_PROFILES"/*.conf) return 0 ;;
+    esac
+    return 1
+}
+
+names_guarded_file() {
+    local text="$1"
+    case "$text" in
+        *.himmel*)
+            case "$text" in
+                *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**|*himmel.conf*|*profiles/*.conf*) return 0 ;;
+            esac ;;
+    esac
+    case "$text" in
+        *"$STATION_DIR/himmel.conf"*|*"$STATION_DIR/profiles/"*|*"$STATION_CONF"*|*"$STATION_LOCAL"*|*"$STATION_PROFILES/"*) return 0 ;;
+    esac
+    return 1
+}
+
 if ! command -v jq >/dev/null 2>&1; then
     # No parser: raw-text scan, deny only a mention of the subject.
-    case "$input" in
-        *.himmel*config.json*|*.himmel*project.conf*) deny "jq not found and the payload names a guarded .himmel config file (fail-closed)" ;;
-    esac
+    names_guarded_file "$input" && deny "jq not found and the payload names a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    case "$input" in
-        *.himmel*config.json*|*.himmel*project.conf*) deny "unparseable payload names a guarded .himmel config file (fail-closed)" ;;
-    esac
+    names_guarded_file "$input" && deny "unparseable payload names a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 
@@ -117,10 +149,12 @@ MAX_HEADER_LINE_BYTES=4096
 check_path() {
     local t="$1" p="$2" r cfg_r
     [ -n "$p" ] || return 0
+    station_path "$p" && deny "$t targets station config $p"
     case "$p" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
     esac
     r=$(hook_resolve_m "$p" 2>/dev/null) || deny "$t target $p could not be resolved (fail-closed)"
+    station_path "$r" && deny "$t target $p resolves to station config"
     cfg_r=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || deny "$t: the config path could not be resolved (fail-closed)"
     if [ -n "$r" ] && [ "$r" = "$cfg_r" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
@@ -146,13 +180,9 @@ case "$tool" in
         # name, whatever the headers, whitespace or encoding. Over-denies a
         # patch that only mentions the path in its content, on purpose.
         lp=$(printf '%s' "$patch$input" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-        case "$lp" in
-            *.himmel*)
-                case "$lp" in
-                    *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**) deny "apply_patch payload names .himmel and a config file (whole-patch rule; a patch that only mentions the path in its content is refused too)" ;;
-                esac
-                ;;
-        esac
+        if names_guarded_file "$patch$input" || names_guarded_file "$lp"; then
+            deny "apply_patch payload names a guarded config file (whole-patch rule; a patch that only mentions the path in its content is refused too)"
+        fi
         # Additional deny: a header path that RESOLVES to the config without
         # naming .himmel (a symlinked directory or alias).
         # codex trims Unicode White_Space, bash's
@@ -233,6 +263,7 @@ case "$tool" in
                     /*|"") ;;
                     *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
                 esac
+                station_path "$p" && deny "apply_patch targets station config $p"
                 case "$p" in
                     */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "apply_patch targets $p" ;;
                 esac
@@ -247,6 +278,7 @@ EOF
             # DENY: an empty result would read as "nothing resolves to it".
             resolved=$(hook_resolve_m "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
             while IFS= read -r r; do
+                station_path "$r" && deny "an apply_patch target resolves to station config"
                 [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
                 case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
             done <<EOF
@@ -265,8 +297,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || c
 # CR is stripped ONLY for the substring detection below. The command-word
 # allowlist sees the raw text, so a program named `cat<CR>` is not `cat`.
 lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
-case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
-case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**) ;; *) exit 0 ;; esac
+names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
 
 # The command names the file. Structural allow-list (no shell splitter): ALLOW only when
 #   1. every character is in [A-Za-z0-9 _./~:=,@+-] - no quote, $, backtick,

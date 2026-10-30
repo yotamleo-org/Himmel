@@ -7237,7 +7237,7 @@ cat > "$c75_t/bin/busctl" <<'STUB'
 case "$*" in *" Locked") echo "b ${C75_LOCKED:-false}" ;; esac
 STUB
 chmod +x "$c75_t/bin/secret-tool" "$c75_t/bin/busctl"
-c75_run() { env -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" \
+c75_run() { env -u JIRA_BASE_URL -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" \
     HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" C75_STORE="$c75_t/store" C75_LOG="$c75_t/log" DBUS_SESSION_BUS_ADDRESS="unix:path=$c75_t/bus" \
     HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --root "$REPO_ROOT" --no-color --only C75 2>&1; }
 c75_reset() { rm -f "$c75_t/env" "$c75_t/log"; : > "$c75_t/store"; }

@@ -58,6 +58,62 @@ row('a manifest: every entry has collect/validate/store; Jira keys present with 
   eq(by.FIRECRAWL_API_KEY.collect, 'card');
 });
 
+row('a2 config-only Jira settings are present without exposing their values', () => {
+  const ctx = mk();
+  const conf = path.join(ctx.home, '.himmel');
+  fs.mkdirSync(conf);
+  fs.writeFileSync(path.join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://fixture.atlassian.net\nJIRA_EMAIL=fixture@example.invalid\nJIRA_PROJECT_KEY=DUMMY\nJIRA_API_TOKEN=planted\n');
+  for (const key of ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY']) {
+    eq(store.detect(key, ctx).status, 'set', key + ' config presence');
+    ok(!JSON.stringify(store.detect(key, ctx)).includes('fixture'), 'value not returned');
+  }
+  eq(store.detect('JIRA_API_TOKEN', ctx).status, 'not-set', 'config never serves credentials');
+});
+
+row('a3 config presence honours a custom station directory and selected profile', () => {
+  const ctx = mk();
+  const conf = path.join(ctx.home, 'custom-conf');
+  const station = path.join(ctx.home, 'station');
+  fs.mkdirSync(conf);
+  fs.mkdirSync(path.join(station, 'profiles'), { recursive: true });
+  fs.writeFileSync(path.join(station, 'himmel.conf'), '');
+  fs.symlinkSync(path.join(station, 'himmel.conf'), path.join(conf, 'himmel.conf'));
+  fs.writeFileSync(path.join(station, 'profiles/lab.conf'), 'JIRA_BASE_URL=https://profile.atlassian.net\n');
+  ctx.env = { HIMMEL_CONFIG_DIR: conf, HIMMEL_PROFILE: 'lab' };
+  eq(store.detect('JIRA_BASE_URL', ctx).status, 'set', 'profile-only URL');
+  ctx.env.HIMMEL_PROFILE = '../outside';
+  eq(store.detect('JIRA_BASE_URL', ctx).status, 'not-set', 'traversal rejected');
+  fs.writeFileSync(path.join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=lab\n');
+  delete ctx.env.HIMMEL_PROFILE;
+  eq(store.detect('JIRA_BASE_URL', ctx).status, 'set', 'locally selected profile');
+});
+
+row('a4 Jira URL writes replace the effective station layer and removal clears its fallbacks', () => {
+  const ctx = mk();
+  const conf = path.join(ctx.home, 'custom-conf');
+  const station = path.join(ctx.home, 'station');
+  fs.mkdirSync(conf);
+  fs.mkdirSync(path.join(station, 'profiles'), { recursive: true });
+  fs.writeFileSync(path.join(station, 'himmel.conf'), 'JIRA_BASE_URL=https://default.atlassian.net\n');
+  fs.symlinkSync(path.join(station, 'himmel.conf'), path.join(conf, 'himmel.conf'));
+  const profile = path.join(station, 'profiles/lab.conf');
+  fs.writeFileSync(profile, 'JIRA_BASE_URL=https://profile.atlassian.net\n');
+  const legacy = path.join(ctx.himmelRoot, '.env');
+  fs.writeFileSync(legacy, 'JIRA_BASE_URL=https://legacy.atlassian.net\nJIRA_API_TOKEN=fixture-token\n');
+  ctx.env = { HIMMEL_CONFIG_DIR: conf, HIMMEL_PROFILE: 'lab' };
+  const value = 'https://updated.atlassian.net';
+  eq(store.write('JIRA_BASE_URL', value, ctx).path, profile, 'effective profile target');
+  ok(fs.readFileSync(profile, 'utf8').includes('JIRA_BASE_URL=' + value), 'profile changed');
+  ok(!fs.readFileSync(legacy, 'utf8').includes(value), 'new URL stays out of .env');
+  const local = path.join(conf, 'himmel.conf.local');
+  fs.writeFileSync(local, 'JIRA_BASE_URL=https://local.atlassian.net\n');
+  eq(store.write('JIRA_BASE_URL', value, ctx).path, local, 'local override wins');
+  store.remove('JIRA_BASE_URL', ctx);
+  eq(store.detect('JIRA_BASE_URL', ctx).status, 'not-set', 'no config or legacy URL remains');
+  eq(fs.readFileSync(legacy, 'utf8'), 'JIRA_API_TOKEN=fixture-token\n', 'token retained');
+  ok(fs.lstatSync(path.join(conf, 'himmel.conf')).isSymbolicLink(), 'station link retained');
+});
+
 row('b write: 0600 under a permissive umask, other lines byte-for-byte, no temp/.bak left', () => {
   const ctx = mk(); const v = fake();
   const f = path.join(ctx.himmelRoot, '.env');

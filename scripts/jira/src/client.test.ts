@@ -235,6 +235,8 @@ describe('loadEnvFile', () => {
     dir = mkdtempSync(join(tmpdir(), 'jira-dotenv-'));
     file = join(dir, '.env');
     vi.stubEnv('HOME', dir);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', '');
+    vi.stubEnv('HIMMEL_PROFILE', '');
     mkdirSync(join(dir, '.himmel'));
     writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
   });
@@ -330,6 +332,17 @@ describe('loadEnvFile', () => {
     writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://from-config.example\n');
     loadEnvFile(file);
     expect(baseUrl()).toBe('https://from-config.example');
+  });
+
+  it('honours HIMMEL_CONFIG_DIR instead of the default HOME config directory', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    const conf = join(dir, 'custom-conf');
+    mkdirSync(conf);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://wrong-default.example\n');
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://custom.example\n');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://custom.example');
   });
 
   it('prefers the local Jira site URL to default config and preserves the process value', () => {

@@ -19,7 +19,7 @@ function loadEnvFile(path) {
 // Behaviour keys this reader takes from ~/.himmel/himmel.conf{,.local} (config
 // class in scripts/lib/load-dotenv.sh): the conf files win over a legacy .env
 // line, an empty value reads as unset, and the process env wins over both.
-const CONF_KEYS = ['JIRA_PROJECTS'];
+const CONF_KEYS = ['JIRA_PROJECTS', 'JIRA_BASE_URL'];
 
 function loadConfIntoProcess() {
   const dir = process.env.HIMMEL_CONFIG_DIR || join(homedir(), '.himmel');
@@ -48,8 +48,9 @@ export function loadEnvIntoProcess(envPath) {
 }
 
 export function ensureEnvKeys(envPath, keys) {
+  loadConfIntoProcess();
   const current = loadEnvFile(envPath);
-  return keys.filter((k) => !current[k]);
+  return keys.filter((k) => !current[k] && !(CONF_KEYS.includes(k) && process.env[k]));
 }
 
 // Resolve the project key(s) to discover, in precedence order:
