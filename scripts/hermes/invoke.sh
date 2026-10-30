@@ -4,14 +4,8 @@
 # All himmel entrypoints that need a hermes one-shot funnel through here so
 # interpreter/model/toolset resolution lives in one place. Story 1 of the hermes critic pipeline.
 #
-# Why not the `hermes` chief script: the hermes.exe setuptools wrapper is
-# unreliable under non-TTY shells on Windows (spike 2026-06-12 — wrapper runs
-# >120s with no output where the module entry answers in seconds). We invoke
-# the venv python directly and enter via hermes_cli.main.
-#
-# Why a prompt FILE (not argv, not stdin): argv hits the Windows spawn
-# length limit on large diffs, and
-# hermes one-shot runs hung in the spike when stdin was consumed/closed.
+# Why a prompt FILE (not stdin): hermes one-shot runs hung in the spike when
+# stdin was consumed/closed.
 # The prompt travels via a temp file read inside the python snippet.
 #
 # Toolsets: DEFAULT `todo` — hermes -z sets HERMES_YOLO_MODE=1 (auto-approves
@@ -79,7 +73,7 @@
 #                                by the hermes subprocess this launches).
 #   HIMMEL_FLOW_RUNS_LEDGER     Ledger path override (tests).
 #
-# Bash 3.2 safe (macOS / Git Bash on Windows).
+# Bash 3.2 safe (macOS).
 set -uo pipefail
 
 usage() {

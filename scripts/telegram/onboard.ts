@@ -13,7 +13,7 @@
 import { randomBytes, createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, delimiter } from "node:path";
+import { join } from "node:path";
 import { loadBridgeEnv } from "./poller";
 import { pidfilePath, parsePidfile, type PidRec } from "./supervisor";
 import { getUpdates } from "./telegram-api";
@@ -45,13 +45,10 @@ export function lockPathForToken(token: string): string {
 // --- refuse-to-start check (V4: single-consumer invariant) ---
 
 export const STOP_COMMAND_POSIX = "bash scripts/telegram/restart-bridge.sh stop";
-// `supervisor.ts --kill` is the real stop lever and works on both platforms.
-export const STOP_COMMAND_WIN = "bun scripts/telegram/supervisor.ts --kill";
 
 export function refusalMessage(reason: string): string {
   return `[onboard] refusing to start — ${reason}. Stop the bridge first, then re-run onboarding:\n`
-    + `  POSIX:   ${STOP_COMMAND_POSIX}\n`
-    + `  Windows: ${STOP_COMMAND_WIN}`;
+    + `  POSIX:   ${STOP_COMMAND_POSIX}`;
 }
 
 export type ArmedCheckDeps = {
@@ -79,33 +76,6 @@ export function checkBridgeArmed(deps: ArmedCheckDeps): string | null {
   return null;
 }
 
-// Whether `bin` resolves on PATH — same PATH-scan shape as
-// scripts/himmelctl/lib/helpers.js's `which()` (win32 extension walk
-// included), duplicated locally rather than imported: onboard.ts stays
-// inside scripts/telegram and doesn't reach across into scripts/himmelctl/.
-function commandExists(bin: string): boolean {
-  const exts = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
-  const dirs = String(process.env.PATH ?? process.env.Path ?? "").split(delimiter);
-  for (const dir of dirs) {
-    if (!dir) continue;
-    for (const ext of exts) {
-      if (existsSync(join(dir, bin + ext))) return true;
-    }
-  }
-  return false;
-}
-
-// Same preference order as scripts/himmelctl/lib/helpers.js's
-// resolvePowershell(): prefer `pwsh` (PowerShell 7), fall back
-// to `powershell` (5.1) only when pwsh isn't found — a host with ONLY pwsh
-// installed must not silently fail the armed-check below (its catch turns
-// any spawn failure into "no bridge process found", a fail-open on a safety
-// check). `exists` is injectable so the preference order is testable
-// independent of the actual host platform.
-export function resolvePowershellBin(exists: (bin: string) => boolean = commandExists): string {
-  return exists("pwsh") ? "pwsh" : "powershell";
-}
-
 // ponytail: best-effort OS process scan — the pidfile check above is the
 // primary, race-free signal; this only catches a bridge process running
 // WITHOUT (or ahead of) a valid pidfile. Any failure (missing tool, perms)
@@ -114,12 +84,6 @@ export function resolvePowershellBin(exists: (bin: string) => boolean = commandE
 function defaultBridgeProcessRunning(): boolean {
   const CORE = /(?:^|[\\/\s])(?:supervisor|poller)\.ts(?:\s|$)/;
   try {
-    if (process.platform === "win32") {
-      const r = Bun.spawnSync([resolvePowershellBin(), "-NoProfile", "-Command",
-        "Get-CimInstance Win32_Process -Filter \"Name='bun.exe'\" | Select-Object -ExpandProperty CommandLine"],
-        { stdout: "pipe", stderr: "pipe" });
-      return CORE.test(r.stdout?.toString() ?? "");
-    }
     const r = Bun.spawnSync(["ps", "-eo", "args"], { stdout: "pipe", stderr: "pipe" });
     return CORE.test(r.stdout?.toString() ?? "");
   } catch { return false; }
@@ -216,7 +180,6 @@ It NEVER writes access.json — copy the reported ids into it yourself.
 Refuses to start while the bridge is armed/running (single-getUpdates-consumer
 invariant) — stop it first:
   POSIX:   ${STOP_COMMAND_POSIX}
-  Windows: ${STOP_COMMAND_WIN}
 
 Options:
   --timeout <seconds>   how long to wait for the nonce (default ${DEFAULT_TIMEOUT_SEC})

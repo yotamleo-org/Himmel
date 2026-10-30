@@ -4,31 +4,21 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequire } from "node:module";
 import { formatPidfile } from "./supervisor";
-// BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
-// through PATH and can land on the WSL shim. Asserted by the
-// bare-bash lint in scripts/hooks/run-hook-with-bash.test.mjs.
 import { BASH_BIN } from "./run";
 import {
   lockPathForToken, checkBridgeArmed, refusalMessage, STOP_COMMAND_POSIX,
   generateNonce, matchesNonce, extractIdentity, collectOffers, formatOffer,
-  redactToken, safeGetUpdates, run, resolveTimeoutSec, resolvePowershellBin,
+  redactToken, safeGetUpdates, run, resolveTimeoutSec,
 } from "./onboard";
 
-// never hand a spawn the bare name `bash` — on Windows PATH
-// resolves it to the System32 WSL launcher, which cannot read the Windows-form
-// scriptPath these cross-checks pass it. Reuse the hook launcher's resolver,
-// the one place that policy is tested (same shape as
-// scripts/lanes/tests/lib/resolve-bash.mjs). Falling back to the bare name on
-// a null resolution is correct off Windows, where the WSL-alias trap does not
-// exist — but NOT on win32, where that fallback is the very System32 WSL
-// launcher this resolution avoids (CR [codex-1]). There it stays empty and the
-// two cross-checks below SKIP, the same shape they already use for a missing
-// restart-bridge.sh: a host with no Git Bash cannot run these checks at all,
-// and saying so beats a confusing WSL failure.
-const BASH_BIN: string = createRequire(import.meta.url)("../hooks/run-hook-with-bash.js").resolveBash()
-  || (process.platform === "win32" ? "" : "bash");
+import { composeOutboxWriteHint } from "./spawn-common";
+
+test("outbox prompt offers the literal append command without obsolete platform warnings", () => {
+  const hint = composeOutboxWriteHint("/tmp/bridge/outbox.jsonl");
+  expect(hint).toContain("require('fs').appendFileSync('/tmp/bridge/outbox.jsonl'");
+  expect(hint).not.toMatch(/MSYS|\/c\/\.\.\./i);
+});
 
 const NONCE = "onboard-test1234";
 
@@ -447,19 +437,6 @@ test("lock-path cross-check: an empty BRIDGE_LOCK_DIR agrees with the shell's ${
   } finally {
     rmSync(bridgeRootDir, { recursive: true, force: true });
   }
-});
-
-// --- PowerShell resolution: the win32 armed-check must
-// prefer pwsh over powershell, same order as
-// scripts/himmelctl/lib/helpers.js's resolvePowershell() — a
-// host with ONLY pwsh installed must not silently fail-open the check. ---
-
-test("resolvePowershellBin: prefers pwsh when only pwsh resolves on PATH", () => {
-  expect(resolvePowershellBin((bin) => bin === "pwsh")).toBe("pwsh");
-});
-
-test("resolvePowershellBin: falls back to powershell when pwsh does not resolve", () => {
-  expect(resolvePowershellBin(() => false)).toBe("powershell");
 });
 
 // --- Error backoff: a persistently failing getUpdates
