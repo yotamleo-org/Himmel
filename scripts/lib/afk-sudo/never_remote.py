@@ -7,8 +7,8 @@ may only ADD patterns (`never_remote_extra`).
 One word set per request: every argv element and its whitespace-split words, the words
 of each file argument and stdin, each also in its trimmed, `key=value`, path-normalised,
 realpath'd and basename forms (links resolve before `..`, as the kernel opens a path).
-A word that derives more than MAX_FORMS forms, or whose realpath passes PATH_MAX (realpath cannot follow a link past it),
-is refused as `oversize`. Every rule is a membership test on that set, so
+A word that derives more than MAX_FORMS forms, or whose path the kernel cannot walk (`landing`: a strict realpath that
+fails for any reason but a missing name), is refused as `oversize`. Every rule is a membership test on that set, so
 there is no shell syntax or word order to model and no shape list to keep closing.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
@@ -25,13 +25,25 @@ TRIM = "\"'`;&|(){}<>,"
 HOME_FORMS = ("~", "$HOME", "${HOME}")
 MAX_FORMS = 64
 NAME_MAX = 255
-PATH_MAX = os.pathconf("/", "PC_PATH_MAX")
 
 
 def long_name(w):
     """True when a `/`-separated component is longer than NAME_MAX: the kernel answers ENAMETOOLONG for it,
     so no such name exists and the word is text, not a path (a `python -c` program is one)."""
     return any(len(os.fsencode(c)) > NAME_MAX for c in w.split("/"))
+
+
+def landing(p):
+    """Where the kernel lands for the absolute path p, or None when the walk fails. A strict realpath asks the
+    kernel at every step; non-strict realpath treats a link it cannot lstat (path past PATH_MAX, EACCES)
+    as a plain name (and pops it lexically on a later `..`), so its string is not where the kernel lands.
+    A missing name or a non-directory in the way is a path that is simply not there: the lexical form is its landing."""
+    try:
+        return os.path.realpath(p, strict=True)
+    except (FileNotFoundError, NotADirectoryError):
+        return os.path.realpath(p)
+    except OSError:
+        return None
 
 DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdisk", "parted", "luksFormat", "luksErase")
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",
@@ -47,7 +59,7 @@ GUARD_FLAGS = ("--dangerously-skip-permissions", "bypassPermissions")
 
 def _path_forms(w, cwd, home):
     """The absolute forms of a path-like word: ~ and $HOME expanded, joined to cwd, normalised, realpath'd if it exists.
-    None when the realpath passes PATH_MAX: it is not where the kernel lands, so the caller fails closed."""
+    None when the kernel cannot walk the path (`landing`), so the caller fails closed."""
     p = w
     for pre in HOME_FORMS:
         if p == pre or p.startswith(pre + "/"):
@@ -62,11 +74,10 @@ def _path_forms(w, cwd, home):
     if long_name(p):
         return {n}
     try:
-        r = os.path.realpath(p)  # realpath of the joined path: `link/..` is the link target's parent
+        r = landing(p)  # realpath of the joined path: `link/..` is the link target's parent
     except ValueError:  # a NUL in the word (a binary file's text): it names no path, the lexical form is all there is
         return {n}
-    # realpath leaves a link it cannot lstat (its path passed PATH_MAX) as a plain name, so r may not be where the kernel lands
-    return None if len(r) >= PATH_MAX else {n, r}
+    return None if r is None else {n, r}
 
 
 def _forms(w, pathy, cwd, home):

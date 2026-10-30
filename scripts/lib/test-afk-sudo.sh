@@ -421,27 +421,41 @@ mkdir "$R/d" "$R/e1" "$R/e2"; printf 'job\n' > "$R/job"; ln -s "$R/e1/out" "$R/d
 out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
 ln -sfn "$R/e2/out" "$R/d/out"
 assert_contains "a dangling link that is retargeted reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
-# long_tree: under $R, L leads to a directory whose resolved path passes PATH_MAX, through two links whose
-# targets each fit (L, then L/x). In it: safe, elsewhere, last -> safe, script.sh and sh -> /etc/shadow.
+# long_tree [mb]: under $R, L leads to a directory D whose resolved path passes PATH_MAX in bytes, through two links
+# whose targets each fit (L, then L/x); with `mb` the directory names are 80 three-byte characters, so D passes
+# PATH_MAX in bytes but not in characters. In D: safe, elsewhere, last -> safe, script.sh, sh -> /etc/shadow and
+# lnk -> $R/far/s1/s2/s3/s4. $R/far holds sh -> /etc/shadow and an executable prog; three levels above D holds a
+# decoy prog, which is where four `..` after lnk land in realpath's string but not in the kernel's walk.
 long_tree() {
     python3 -I -c '
 import os, sys
-r, n = sys.argv[1], "a" * 200
-k = os.pathconf("/", "PC_PATH_MAX") // 2 // (len(n) + 1) + 1
+r = sys.argv[1]
+n = "\u3042" * 80 if len(sys.argv) > 2 else "a" * 200
+k = os.pathconf("/", "PC_PATH_MAX") // 2 // (len(os.fsencode(n)) + 1) + 1
+os.makedirs(os.path.join(r, "far", "s1", "s2", "s3", "s4"))
+os.symlink("/etc/shadow", os.path.join(r, "far", "sh"))
+with open(os.path.join(r, "far", "prog"), "w") as f:
+    f.write("#!/bin/sh\ntouch ran-far\n")
+os.chmod(os.path.join(r, "far", "prog"), 0o755)
 os.chdir(r)
-for _ in range(2 * k):
+for i in range(1, 2 * k + 1):
     os.mkdir(n)
     os.chdir(n)
+    if i == 2 * k - 3:
+        with open("prog", "w") as f:
+            f.write("#!/bin/sh\ntouch ran-decoy\n")
+        os.chmod("prog", 0o755)
 os.mkdir("safe")
 os.mkdir("elsewhere")
 os.symlink("safe", "last")
 os.symlink("/etc/shadow", "sh")
+os.symlink(os.path.join(r, "far", "s1", "s2", "s3", "s4"), "lnk")
 with open("script.sh", "w") as f:
     f.write("touch ran-long\n")
 half = "/".join([n] * k)
 os.symlink(half, os.path.join(r, "L"))
 os.symlink(half, os.path.join(r, half, "x"))
-' "$R"
+' "$R" "$@"
 }
 # bt <element>: the target key the helper records for an element in cwd $R, or BadFile when it refuses to bind it.
 bt() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as a
@@ -458,6 +472,22 @@ assert_eq "a script behind a path that passes PATH_MAX is refused, not left unha
 new_root tgtlongfloor; cfg "$ALL" true
 long_tree
 assert_contains "a floor target behind a path that passes PATH_MAX fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/sh)"
+new_root tgtlongmb; cfg "$ALL" true
+long_tree mb
+assert_eq "an absent name behind a path that passes PATH_MAX in bytes but not in characters is refused" "BadFile" "$(bt L/x/last/out)"
+assert_eq "a script behind a path that passes PATH_MAX in bytes but not in characters is refused" "BadFile" "$(bt L/x/script.sh)"
+assert_contains "a floor target behind a path that passes PATH_MAX in bytes but not in characters fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/sh)"
+new_root tgtlongdotdot; cfg "$ALL" true
+long_tree
+assert_eq "a .. after a link realpath could not lstat is refused, not popped as a plain name that falls back under PATH_MAX" "BadFile" "$(bt L/x/lnk/../../../../out)"
+assert_contains "a floor target reached by that .. fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/lnk/../../../../sh)"
+new_root tgtlongargv0; cfg "$ALL" true
+long_tree
+assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
+new_root tgtnosearch; cfg "$ALL" true
+mkdir "$R/closed"; chmod 000 "$R/closed"
+assert_contains "a directory the helper cannot search fails closed in the floor, not read as a name that is not there" "rule=oversize" "$(rr 0 --cwd "$R" -- cat closed/x)"
+chmod 700 "$R/closed"
 new_root tgtglued; cfg "$ALL" true
 mkdir "$R/safe" "$R/elsewhere"; printf 'job\n' > "$R/job"; ln -s "$R/safe" "$R/d"
 out=$(rr 0 --cwd "$R" -- dd if=job of="$R/d/out"); id=$(rid "$out")
@@ -621,7 +651,7 @@ expect_rule none git push origin main
 expect_rule none git push --force origin refs/heads/feat/x:refs/heads/feat/y
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
-expect_rule approval-system tee /etc/sudoers.d/x
+expect_rule approval-system tee /etc/sudoers
 expect_rule approval-system visudo
 expect_rule approval-system bash scripts/lib/afk-sudo/install.sh
 expect_rule none cat /etc/hosts

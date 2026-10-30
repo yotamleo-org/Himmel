@@ -190,25 +190,26 @@ def bind_target(a, cwd):
     is no path (empty, NUL, over 4096 characters, /dev/null). A word with a component over
     NAME_MAX is ("none", path) too: no such name exists, a `python -c` program is one. A pseudo-file
     (under /proc, /sys, /dev; only /dev/null is let through), a FIFO or other non-regular file, an
-    entry that cannot be examined, and a resolved path that passes PATH_MAX (realpath leaves a
-    link it cannot lstat as a plain name, so that path is not where the kernel lands) raise
-    BadFile: a run that is not bound by hash must not go ahead."""
+    entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a strict realpath
+    fails for any reason but a missing name, such as a link past PATH_MAX that plain realpath would
+    leave as a name) raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
         return None
     joined = a if a.startswith("/") else os.path.join(cwd, a)
-    lex, real = os.path.normpath(joined), os.path.realpath(joined)
+    lex, text = os.path.normpath(joined), nr.long_name(a)
+    real = os.path.realpath(joined) if text else nr.landing(joined)
+    if real is None:
+        raise BadFile(a)
     if real == "/dev/null":
         return None
     if lex.startswith(PSEUDO) or real.startswith(PSEUDO):
         raise BadFile(a)
-    if nr.long_name(a):
+    if text:
         return "none", real
-    if len(real) >= nr.PATH_MAX:
-        raise BadFile(a)
     try:
         mode = os.stat(real).st_mode
     except OSError as e:
-        if e.errno in (errno.ENOENT, errno.ENOTDIR, errno.ENAMETOOLONG):
+        if e.errno in (errno.ENOENT, errno.ENOTDIR):
             return "none", real
         raise BadFile(a) from e
     if stat.S_ISDIR(mode):

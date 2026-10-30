@@ -49,7 +49,7 @@ sha256 of its realpath, every argv element that resolves to a regular file (the 
 path, sha256, size, whether its body was kept), what every argv element resolved to (`targets`:
 one `file:<path>`, `dir:<path>` or `none:<path>` entry per element, `none:` holding the path a
 name that does not exist yet would land on, or the text of a word with a component over 255
-characters, which can name nothing (a `python -c` program is one); an empty entry is an element that is no path: empty,
+bytes, which can name nothing (a `python -c` program is one); an empty entry is an element that is no path: empty,
 over 4096 characters, holding a NUL, or `/dev/null`), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
@@ -62,10 +62,13 @@ broker's pending payload, not next to the record.
   `..` (`realpath`). One that resolves to a regular file is hashed. A directory, or a name
   that is no file, is not hashed. An element under `/proc`, `/sys` or `/dev` (only `/dev/null`
   passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
-  an element whose resolved path passes PATH_MAX (`realpath` cannot follow a link past it, so
-  the string it returns is not where the kernel lands) are refused at request
-  (`result=bad-file`, exit 5, no ledger row), never skipped; the floor reads such an
-  element as `oversize`. At exec
+  an element whose path the kernel cannot walk are refused, never skipped. "Cannot walk" is a
+  strict `realpath` that fails for any reason but a missing name or a non-directory in the way:
+  a walk past PATH_MAX in bytes, a loop, a directory that cannot be searched. Plain `realpath`
+  is not enough there: it keeps a link it cannot `lstat` as a plain name and a later `..` pops
+  that name lexically, so the string it returns is not where the kernel lands. Through the CLI
+  the floor reads the element first, so the answer is `result=never-remote rule=oversize` with
+  a ledger row; `bad-file` (exit 5, no ledger row) is what a request the floor passes gets. At exec
   every element, argv[0] included, must resolve to the same target as at request, so a
   link relinked to another file, a directory or nothing, two links swapped between their
   files, a directory link retargeted, and a name that now names a file all report `changed`.
@@ -117,8 +120,8 @@ The code is spent whatever happens next: a refusal after the code still consumed
 it. Five rules, each a membership test on one word set built from every argv element,
 the whitespace-split words of each element, the file copies and the stdin (each word also
 in its trimmed, `key=value`, normalised, realpath and basename forms; links resolve before
-`..`). A word that derives more than 64 forms, or whose realpath passes PATH_MAX, is
-refused as `rule=oversize`:
+`..`). A word that derives more than 64 forms, or whose path the kernel cannot walk (the
+same strict `realpath` test as the binding above), is refused as `rule=oversize`:
 
 | rule | refuses |
 |---|---|
