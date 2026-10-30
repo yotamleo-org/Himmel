@@ -351,7 +351,9 @@ names a ticket key or `PR <n>`: when every named blocker is Done (Jira mirror) o
 (one batched gh read) the line is stale, `?` marks an unreadable target (never stale), and
 the waiter wakes once per newly stale key. The line is never rewritten. residual-unversioned=
 <n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion.
-Both hide when 0 or skip; --pool-stale --doc <doc> prints just these two fields.
+residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
+read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
+on the compact line. --pool-stale --doc <doc> prints just these two fields.
 
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
@@ -3144,7 +3146,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|pool-stale=0|residual-unversioned=skip|residual-unversioned=0|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"

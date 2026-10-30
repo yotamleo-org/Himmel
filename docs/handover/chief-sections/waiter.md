@@ -68,8 +68,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     ticket key or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
     blocker is Done (Jira mirror) or merged (one batched `gh pr list`); `?` in the
     list marks a target it could not read, never a stale one. The waiter wakes once
-    per newly stale key (marker `<inbox>.wait.stale`; an explicit `pool-stale=0`
-    clears it, so a key that leaves and comes back wakes again; an absent or `skip`
+    per newly stale key (marker `<inbox>.wait.stale`; the tick prints `pool-stale=0` on
+    every compact line that read a doc and found nothing stale, and that explicit `0`
+    clears the marker, so a key that leaves and comes back wakes again; an absent or `skip`
     field, `?`-only, or a partial read like `1:KEY,?` keeps it and never shrinks it).
     The line is never rewritten:
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),

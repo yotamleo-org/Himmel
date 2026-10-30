@@ -3088,8 +3088,47 @@ contains 'a disposition whose blocker is Done shows as pool-stale=<n>:<KEY> (HIM
 contains '--verbose labels pool-stale (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc" --verbose)" 'pool-stale: 1:HIMMEL-7120'
 not_contains 'a nothing-unversioned mirror hides residual-unversioned (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" 'residual-unversioned'
 printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-904 then the rest' > "$pc_doc"
-not_contains 'a disposition whose blocker is still open hides pool-stale (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" 'pool-stale'
-not_contains 'no --doc hides pool-stale (HIMMEL-6604)' "$(pc_tick)" 'pool-stale'
+contains 'a disposition whose blocker is still open reads the all-clear pool-stale=0 (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" ' pool-stale=0'
+contains 'no --doc falls back to the exported DOC and reads pool-stale=0 (HIMMEL-6604)' "$(pc_tick)" ' pool-stale=0'
+printf '%s\n' '## Live state' 'priority: 904 901' > "$pc_doc"
+contains 'a doc with no disposition line still reads pool-stale=0, so the waiter can clear a marker whose line was removed (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" ' pool-stale=0'
+# The waiter reads the compact tick line, so the all-clear it needs to clear its marker (an
+# explicit pool-stale=0 after a disposition was read) must be on that line. These rows feed the
+# REAL tick to the REAL waiter: no injected field.
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-904 then the rest' > "$pc_doc"
+contains 'a read disposition with no stale blocker prints the all-clear pool-stale=0 (HIMMEL-6604)' "$(pc_tick --doc "$pc_doc")" ' pool-stale=0'
+wt_dir="$W/wt-stale"; mkdir -p "$wt_dir/consoles" "$wt_dir/stub"
+: > "$wt_dir/consoles/c.md"; wt_inbox="$wt_dir/consoles/c.md"
+printf '#!/usr/bin/env bash\nexec env NEXT_DISPATCH_MIRROR=%q NEXT_DISPATCH_GH_CMD=%q TOKEN= bash %q --doc %q\n' "$OW" "$W/ow-gh" "$SUT" "$pc_doc" > "$wt_dir/stub/tick.sh"
+printf '#!/usr/bin/env bash\nprintf "PROCEED\\n"\n' > "$wt_dir/stub/bank.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$wt_dir/stub/off.sh"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$wt_dir/stub/budget-off.sh"
+printf '#!/usr/bin/env bash\nprintf "# pool=0/7,LOW\\nPOOL-EMPTY\\n"\n' > "$wt_dir/stub/dispatch.sh"
+chmod +x "$wt_dir/stub/"*.sh
+wt_arm() { # <outfile> [seconds]: one foreground waiter arm over the real tick; wt_rc is 124 when nothing woke it
+    CHIEF_WAIT_TICK="$wt_dir/stub/tick.sh" CHIEF_WAIT_USAGE="$wt_dir/stub/bank.sh" CHIEF_WAIT_DISPATCH="$wt_dir/stub/dispatch.sh" \
+    CHIEF_WAIT_PAGE_CMD="$wt_dir/stub/off.sh" CHIEF_WAIT_BUDGET="$wt_dir/stub/budget-off.sh" WAIT_SWEEP_CMD="$wt_dir/stub/off.sh" WAIT_FOCUS_CMD="$wt_dir/stub/off.sh" \
+    CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 HIMMEL_DENIAL_ACK_DIR="$wt_dir/acks" \
+        timeout "${2:-40}" bash "$HERE/chief-wait.sh" "$wt_inbox" --workers "N1.md" > "$1" 2>/dev/null  # gnu-ok: Linux-only kit
+    wt_rc=$?
+}
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-904 then the rest' > "$pc_doc"
+# The fixture's own state (underfilled, unwatched) wakes the waiter first. wt_quiet arms until a
+# sample wakes nobody (rc 124); wt_stale arms until the pool-stale wake shows up. Both bound the loop.
+wt_quiet() { local i; : > "$1"; for i in 1 2 3 4 5; do wt_arm "$1.arm" 8; cat "$1.arm" >> "$1"; [ "$wt_rc" -eq 124 ] && break; done; }
+wt_stale() { local i; : > "$1"; for i in 1 2 3 4; do wt_arm "$1.arm" 20; cat "$1.arm" >> "$1"; grep -q '^WAKE pool-stale' "$1.arm" && break; done; }
+wt_quiet "$W/wt0.out"
+[ "$wt_rc" -eq 124 ] && pass 'the warm-up drains every non-stale wake (HIMMEL-6604)' || fail 'the warm-up drains every non-stale wake (HIMMEL-6604)'
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-911 then the rest' > "$pc_doc"
+wt_stale "$W/wt1.out"
+contains 'the real tick makes the waiter wake for a stale disposition (HIMMEL-6604)' "$(cat "$W/wt1.out")" 'WAKE pool-stale HIMMEL-7120'
+[ -e "$wt_inbox.wait.stale" ] && pass 'the stale key is in the waiter marker (HIMMEL-6604)' || fail 'the stale key is in the waiter marker (HIMMEL-6604)'
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-904 then the rest' > "$pc_doc"
+wt_quiet "$W/wt2.out"
+[ ! -e "$wt_inbox.wait.stale" ] && pass 'a real all-clear from the tick clears the waiter marker (HIMMEL-6604)' || fail 'a real all-clear from the tick clears the waiter marker (HIMMEL-6604)'
+printf '%s\n' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-911 then the rest' > "$pc_doc"
+wt_stale "$W/wt3.out"
+contains 'a key that went stale again after an all-clear wakes again (HIMMEL-6604)' "$(cat "$W/wt3.out")" 'WAKE pool-stale HIMMEL-7120'
 rm -f "$pc_doc"
 
 # --- ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] ---
