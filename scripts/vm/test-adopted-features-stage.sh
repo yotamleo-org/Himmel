@@ -140,7 +140,8 @@ env -i PATH="$PATH" HOME="$WORK/hhome" HIMMEL_VM_LOCK_DIR="$WORK/locks" \
 HOLDER=$!
 for _i in 1 2 3 4 5 6 7 8 9 10; do [ -d "$WORK/locks/himmel-vm-lock-himmel-ar-1" ] && break; sleep 0.5; done
 run_driver 0 "$GOOD_OUT" himmel-ar-1
-if [ "$DRV_RC" -ne 0 ]; then pass "driver refuses while the vm-lock is held by another run (rc=$DRV_RC)"; else fail_case "driver refuses while the vm-lock is held"; fi
+expect_rc "driver refuses while the vm-lock is held by another run" 3 "$DRV_RC"
+expect_has "...and names the held lock" "is held; refusing" "$(cat "$WORK/driver.out")"
 expect_lacks "...and issues no restore" "restore" "$(cat "$LOG")"
 kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf "$WORK/locks/himmel-vm-lock-himmel-ar-1"
@@ -150,7 +151,8 @@ red_out() { # <failing-row>... -- ten rows, the listed ones FAIL, then the RESUL
   local n k=0 f
   for n in 1 2 3 4 5 6 7 8 9 10; do
     f=PASS; for _r in "$@"; do [ "$_r" = "$n" ] && f=FAIL && k=$((k+1)); done
-    printf 'ROW %s %s r%s: x\n' "$n" "$f" "$n"
+    if [ "$n" = 3 ] && [ "$f" = FAIL ]; then printf 'ROW 3 FAIL r3: %s\n' "${RED3_MSG:-check-no-force-push.sh was not copied into the project}"
+    else printf 'ROW %s %s r%s: x\n' "$n" "$f" "$n"; fi
   done
   printf 'RESULT: %s failure(s), 0 finding(s)\n' "$#"
 }
@@ -159,6 +161,8 @@ expect_rc "--expect-red passes when row 3 alone fails and all ten rows ran" 0 "$
 expect_has "--expect-red tells the guest to sabotage row 3" "ADOPTED_E2E_RED=1" "$(cat "$LOG")"
 run_driver 0 "$GOOD_OUT" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when the sabotage did not fail the stage" 1 "$DRV_RC"
+run_driver 1 "$(RED3_MSG='the gate was missing before the RED removal' red_out 3)" --expect-red himmel-ar-1
+expect_rc "--expect-red FAILS when row 3 failed for a reason other than the gate removal" 1 "$DRV_RC"
 run_driver 1 "$(red_out 7)" --expect-red himmel-ar-1
 expect_rc "--expect-red FAILS when another row failed instead of row 3" 1 "$DRV_RC"
 run_driver 1 "$(red_out 3 7)" --expect-red himmel-ar-1

@@ -103,7 +103,7 @@ fi
 
 if [ "$EXPECT_RED" = 1 ]; then
   rows_seen=$(grep -o '^ROW [0-9]*' "$OUT" | sort -u | wc -l)
-  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL' "$OUT" && grep -q '^RESULT: 1 failure(s)' "$OUT" && [ "$rows_seen" -eq 10 ]; then
+  if [ "$rc" -ne 0 ] && grep -q '^ROW 3 FAIL .*check-no-force-push.sh was not copied' "$OUT" && grep -q '^RESULT: 1 failure(s)' "$OUT" && [ "$rows_seen" -eq 10 ]; then
     echo "==> RED control PASSED: the stage failed on row 3 only (rc=$rc)"
     exit 0
   fi

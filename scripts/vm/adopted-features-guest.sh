@@ -106,7 +106,10 @@ row_2() {
 
 row_3() {
   local nm="no force push" p="$P3" remote="$WORK/remote-3.git" seed="$WORK/seed-3" out rc
-  [ "${ADOPTED_E2E_RED:-0}" != 1 ] || rm -f "$p/scripts/hooks/check-no-force-push.sh"
+  if [ "${ADOPTED_E2E_RED:-0}" = 1 ]; then
+    [ -f "$p/scripts/hooks/check-no-force-push.sh" ] || { _fail 3 "$nm" "the gate was missing before the RED removal"; return 0; }
+    rm -f "$p/scripts/hooks/check-no-force-push.sh"
+  fi
   [ -f "$p/scripts/hooks/check-no-force-push.sh" ] || { _fail 3 "$nm" "check-no-force-push.sh was not copied into the project"; return 0; }
   git init -q --bare "$remote"; git init -q -b main "$seed"
   git -C "$seed" config user.name stage; git -C "$seed" config user.email stage@vm.invalid
@@ -278,8 +281,8 @@ row_7() {
   now=$(date +%s)
   _r7_cache() {
     jq -n --argjson five "$1" --argjson seven "$2" --arg acct "$acct" --argjson now "$now" '{
-      five_hour: {utilization: $five, resets_at: "2026-10-22T05:39:59.541164+00:00"},
-      seven_day: {utilization: $seven, resets_at: "2026-10-24T08:59:59.541212+00:00"},
+      five_hour: {utilization: $five, resets_at: (($now + 3600) | todate)},
+      seven_day: {utilization: $seven, resets_at: (($now + 172800) | todate)},
       extra_usage: {is_enabled: false, utilization: null},
       oauth_checked_at: $now, derived_at: $now, primaries_refreshed_at: $now, account: $acct}' > "$cache"
   }
