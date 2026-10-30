@@ -2,7 +2,7 @@
 // worker and chief chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
-import { chainKey, cloudPhase, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
+import { chainKey, chiefOf, cloudPhase, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
 
 const row = (name: string, role: string, console: string | null, extra: any = {}) => ({
   name, role, console, parent: console, live: true, lock: "unknown", lane: "native",
@@ -144,6 +144,16 @@ test("HIMMEL-8161: a worker whose recorded chief wrapped sits under the live suc
   expect(fleetSections(alone).orphans.map((o) => o.row.name)).toEqual(["N4102"]);
   // scoping to the live chief keeps the inherited worker
   expect(fleetSections(inherited, KB).running[0].rows.map((r) => r.name)).toEqual(["N4102"]);
+  // a chief with two wrapped successors is handed on through whichever one leads to a live chief
+  const K1 = "k1-chief", K2 = "k2-chief", K3 = "k3-chief";
+  const forked: any[] = [
+    row(KA, "console", KA, { state: "wrapped", live: false, lock: "released" }),
+    row(K1, "console", K1, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
+    row(K2, "console", K2, { state: "wrapped", live: false, lock: "released", predecessor: KA }),
+    row(K3, "console", K3, { state: "running", predecessor: K2, ...at(9) }),
+    row("N4103", "leg", KA, { state: "running", ...at(8) }),
+  ];
+  expect(chiefOf(forked[4], forked)).toBe(K3);
 });
 
 test("HIMMEL-8161: a cadence session is a Cadences row with its id, never in Other sessions", () => {

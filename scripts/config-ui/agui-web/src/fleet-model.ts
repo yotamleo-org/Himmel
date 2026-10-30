@@ -31,18 +31,19 @@ export function fleetToken(hash: string): string | null {
 export const consoleName = (r: Row) => r.console === undefined ? r.parent : r.console;
 export const isLive = (r: Row) => r.live !== false && r.state !== "wrapped" && r.lock !== "released";
 // A worker's recorded chief is the one that launched it; a succession never rewrites that. Follow the chiefs' predecessor
-// links (a live successor first) to the live chief now watching it; with none, the recorded name stands. A cloud
+// links (every branch, nearest first) to the live chief now watching it; with none, the recorded name stands. A cloud
 // session stays with the chief that routed it: only a local session is handed on.
 export function chiefOf(r: Row, rows: Row[]): string | null {
   const recorded = consoleName(r);
   if (r.role === "cloud") return recorded;
   const seen = new Set<string>();
-  for (let name = recorded; name && !seen.has(name); ) {
+  const queue = [recorded];
+  for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
+    if (!name || seen.has(name)) continue;
     seen.add(name);
     const here = rows.find((c) => c.role === "console" && c.name === name);
     if (here && isLive(here)) return name;
-    const next = rows.filter((c) => c.role === "console" && c.predecessor === name && !seen.has(c.name)).sort((a, b) => Number(isLive(b)) - Number(isLive(a)))[0];
-    name = next?.name ?? null;
+    queue.push(...rows.filter((c) => c.role === "console" && c.predecessor === name).map((c) => c.name));
   }
   return recorded;
 }
