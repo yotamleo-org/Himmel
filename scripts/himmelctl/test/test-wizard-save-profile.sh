@@ -171,7 +171,7 @@ stage() {
 # pluginSet is no longer asked (-1); the Commit rules step adds
 # tracker=none and its consent=no (+2).
 BASE_ANSWERS=(starter project none inline none no none no "" none no)
-config_questions=$("$node_bin" -e 'const rows = require(process.argv[1]).keys; console.log(rows.filter(r => r.class === "config" && !["TRACKER", "TICKET_ID_REQUIRED", "TICKET_ID_PATTERN"].includes(r.name)).length)' "$(winpath "$repo_root/scripts/himmelctl/lib/config-keys.json")")
+config_questions=$("$node_bin" -e 'const rows = require(process.argv[1]).keys; console.log(rows.filter(r => r.class === "config" && !r.envOnly && !["TRACKER", "TICKET_ID_REQUIRED", "TICKET_ID_PATTERN"].includes(r.name)).length)' "$(winpath "$repo_root/scripts/himmelctl/lib/config-keys.json")")
 for ((i=0; i<config_questions; i++)); do BASE_ANSWERS+=(""); done
 
 # ── Case 1: interactive install, save accepted -> byte-identical file ───────

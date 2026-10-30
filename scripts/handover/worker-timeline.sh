@@ -32,7 +32,7 @@
 #   WORKER_SESSION_TIMELINE_CR_LEDGER, WORKER_SESSION_TIMELINE_CHAIN_LEDGER.
 #
 # Tooling: jq (JSONL field extraction) + node. node is the ONLY portable
-# ISO-8601-with-offset / sub-second / file-mtime reader across Git Bash (GNU
+# ISO-8601-with-offset / sub-second / file-mtime reader across Linux (GNU
 # date) and macOS bash 3.2 (BSD date): `date -d` is GNU-only, `date -r` means
 # different things on GNU vs BSD, `stat -c/-f` flags differ, and jq's fromdate
 # rejects `+0200` offsets and sub-seconds. node is a hard repo dependency
@@ -42,8 +42,7 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# Defaults. $HOME is MSYS form (/c/Users/...) under Git Bash; the node helpers
-# normalize MSYS paths to Windows form because Node's fs rejects '/c/...'.
+# Defaults.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/load-dotenv.sh
@@ -83,10 +82,9 @@ fi
 # always wins.
 if [ -z "${WORKER_SESSION_TIMELINE_CR_LEDGER:-}" ]; then
   common_dir=$(git rev-parse --git-common-dir 2>/dev/null || printf '.git')
-  # Treat both POSIX-absolute (/c/...) and Windows-drive-absolute (C:/...) as
-  # already absolute; git-common-dir returns the latter under Git for Windows.
+  # A relative git-common-dir is anchored at $PWD.
   case "$common_dir" in
-    /* | [A-Za-z]:/*) : ;;
+    /*) : ;;
     *) common_dir="$PWD/$common_dir" ;;
   esac
   cr_ledger="$common_dir/cr-critic-scores.jsonl"
@@ -157,25 +155,15 @@ events="$tmp/events.tsv"    # normalized + since-filtered: the displayed table r
 
 # --- source 1: worker dispatches (node; needs meta.json parse + file mtime) ---
 # Emits a dispatch row per session (started_at) and, for terminal statuses, a
-# land row whose ts is the meta.json mtime (the status-flip instant). Paths are
-# MSYS-normalized because Git Bash hands node '/c/...' which Node fs rejects.
+# land row whose ts is the meta.json mtime (the status-flip instant).
 gather_workers() {
   node -e '
     const fs = require("fs");
-    // win(): coerce any path form Git Bash may hand us into forward-slash Windows
-    // form, the one Node fs reliably accepts on Windows: MSYS '/c/...' -> 'C:/...',
-    // backslashes -> forward slashes, already-Windows passes through. Node fs
-    // rejects MSYS paths outright, so this normalization is load-bearing.
-    function win(p){
-      let q = p.replace(/\\/g, "/");
-      const m = q.match(/^\/([a-zA-Z])\/(.*)$/);
-      return m ? (m[1].toUpperCase() + ":/" + m[2]) : q;
-    }
     // "blocked" is a real terminal status (content-filter) emitted by
     // spawn-common.ts finalMeta alongside done/timeout/failed/capped; without it a
     // blocked session never gets a land row. "aborted" is NOT a finalMeta status.
     const TERM = new Set(["done","timeout","failed","capped","blocked"]);
-    const dirs = process.argv.slice(1).map(win);
+    const dirs = process.argv.slice(1);
     for (const d of dirs){
       let names = [];
       try { names = fs.readdirSync(d); } catch (e) { continue; }   // missing dir -> skip
@@ -225,12 +213,7 @@ gather_ledger() {
   [ -f "$chain_ledger" ] || return 0
   node -e '
     const fs = require("fs");
-    function win(p){
-      let q = p.replace(/\\/g, "/");
-      const m = q.match(/^\/([a-zA-Z])\/(.*)$/);
-      return m ? (m[1].toUpperCase() + ":/" + m[2]) : q;
-    }
-    const p = win(process.argv[1]);
+    const p = process.argv[1];
     let buf;
     try { buf = fs.readFileSync(p); } catch (e) { process.exit(0); }   // missing -> skip
     const text = buf.toString("utf8");                 // bad bytes -> replacement chars, ignored

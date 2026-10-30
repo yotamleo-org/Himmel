@@ -2009,7 +2009,7 @@ fi
 HEADROOM_PROXY_PORT=8787
 # resolve curl ONCE at arm time and bake the ABSOLUTE
 # path into the launcher — scheduler contexts fire with a minimal PATH (the
-# same reason claude/cygpath are resolved at arm time above), so a bare
+# same reason claude is resolved at arm time above), so a bare
 # `curl` in the launcher could miss at fire time, fail both livez checks,
 # and silently send the launch bare even with a healthy proxy. No curl at
 # arm time -> one honest WARN and a plain pre-901 launcher (deactivate)
@@ -4149,10 +4149,8 @@ _arm_shipped_preflight() {
     # signal, and an OPEN+MERGEABLE one means the work is finished and waiting
     # on a human, which is the shape.
     # GH_CMD is the house seam for this (scripts/graphify/graph-publish.sh,
-    # scripts/cr/*): invoked DIRECTLY rather than found on PATH, because a
-    # PATH-shadowing stub does not work on Windows -- an extensionless `gh`
-    # script loses to gh.exe even when its directory comes first, so a test
-    # that stubs via PATH silently exercises the REAL gh. Verified here.
+    # scripts/cr/*): invoked DIRECTLY rather than found on PATH, so a test
+    # seam cannot silently exercise the REAL gh.
     _branch=$(_arm_branch_for_preflight)
     if [ -n "$_branch" ] && [ -n "${RESUME_CWD:-}" ] && [ -d "${RESUME_CWD:-}" ] \
        && command -v "${GH_CMD:-gh}" >/dev/null 2>&1; then

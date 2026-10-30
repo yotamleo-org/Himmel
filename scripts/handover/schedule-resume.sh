@@ -15,14 +15,12 @@
 # relaunch of `claude` with a self-contained resume prompt. Does NOT execute
 # the command - the operator copies, eyeballs, and runs it themselves. This
 # is deliberate: scheduled-task creation touches the OS task scheduler
-# (schtasks on Windows, `at` or crontab on POSIX) and the operator should
-# see exactly what is being installed.
+# (`at` or crontab) and the operator should see exactly what is being
+# installed.
 #
 # Platforms:
-#   - Windows (Git Bash / MSYS / CYGWIN / WSL): emits `schtasks /create ...`
-#   - macOS / Linux:                            emits `at <time> <<< ...`
-#                                               (or crontab fallback if `at`
-#                                               is unavailable)
+#   - macOS / Linux: emits `at <time> <<< ...` (or crontab fallback if `at`
+#                    is unavailable)
 #
 # Cooldown context (Anthropic):
 # - Usage quota window is rolling 5 hours (verify per current docs).
@@ -57,8 +55,8 @@ if [ ! -f "$HANDOVER_PATH" ]; then
     exit 2
 fi
 
-# Self-contained resume prompt. Single line so it survives both schtasks
-# (CMD quoting) and `at` (heredoc). Avoid backticks and $() so the operator's
+# Self-contained resume prompt. Single line so it survives `at` (heredoc)
+# and the crontab fallback. Avoid backticks and $() so the operator's
 # shell does not pre-interpolate anything before scheduling.
 # the pointer clause names § Launch preamble (docs/handover/afk-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
 RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
@@ -66,10 +64,9 @@ RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble sta
 # Platform detection. Prefer OSTYPE (set by bash); fall back to uname.
 detect_platform() {
     case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*) echo "windows" ;;
-        linux*|Linux*)               echo "linux" ;;
-        darwin*|Darwin*)             echo "macos" ;;
-        *)                           echo "unknown" ;;
+        linux*|Linux*)   echo "linux" ;;
+        darwin*|Darwin*) echo "macos" ;;
+        *)               echo "unknown" ;;
     esac
 }
 
@@ -84,36 +81,8 @@ SR_SETTINGS=$(bash "$SR_LANES/profile-settings.sh" "$SR_PROFILE") || {
     echo "ERROR: plugin profile '$SR_PROFILE' did not resolve; refusing to emit a full-plugin-set resume" >&2
     exit 2
 }
-# A Windows claude needs a Windows path in the .bat.
-if [ "$platform" = "windows" ] && command -v cygpath >/dev/null 2>&1; then
-    SR_SETTINGS=$(cygpath -m "$SR_SETTINGS")
-fi
 
 case "$platform" in
-    windows)
-        # schtasks /create: ONETIME at the given /st HH:MM. We tag with a
-        # unique task name keyed off the handover path so multiple pending
-        # resumes don't collide. /F overwrites silently if the operator
-        # re-schedules the same handover.
-        # Resume artifact: a tiny .bat in %TEMP% that runs `claude` with
-        # the prompt. schtasks /tr requires a quoted command and CMD has its
-        # own quoting rules, so the .bat indirection keeps the schtasks
-        # invocation human-readable.
-        # shellcheck disable=SC1003  # the `\\` in tr SET1 is two backslashes (single quotes), which tr collapses to one literal `\` - intentional, NOT a quoting error.
-        task_name="HIMMEL-Resume-$(printf '%s' "$HANDOVER_PATH" | tr '/\\' '__' | tr -cd '[:alnum:]_-')"
-        bat_path="%TEMP%\\himmel-resume-$task_name.bat"
-        cat <<EOF
-# Step 1 - write the resume launcher (one line, CMD syntax):
-echo claude --settings "$SR_SETTINGS" "$RESUME_PROMPT" > "$bat_path"
-
-# Step 2 - register the one-shot Task Scheduler entry:
-schtasks /create /tn "$task_name" /tr "$bat_path" /sc ONCE /st $RESUME_TIME /f
-
-# To inspect / cancel:
-#   schtasks /query /tn "$task_name"
-#   schtasks /delete /tn "$task_name" /f
-EOF
-        ;;
     linux|macos)
         # Prefer `at` (one-shot, exactly the semantics we want). Falls back
         # to crontab if `at` is unavailable - but crontab is recurring, so
@@ -152,7 +121,7 @@ EOF
         ;;
     *)
         echo "ERROR: unknown platform (OSTYPE=$OSTYPE) - cannot emit scheduler command" >&2
-        echo "Supported: Windows (Git Bash/MSYS/Cygwin/WSL), Linux, macOS." >&2
+        echo "Supported: Linux, macOS." >&2
         exit 2
         ;;
 esac

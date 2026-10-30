@@ -78,7 +78,7 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr
 // client-side classifier claudex runs denies it.
 const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
-const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'worker-impl', 'worker-bus', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
+const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'worker-impl', 'worker-bus', 'worker-eval', 'worker-docs', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
 
 // A bare tool name in permissions.deny removes the tool's definition from the
 // request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
@@ -311,6 +311,16 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     || spec.autocompact < 200000 || spec.autocompact > 1000000
     || (spec.contextMode !== '1m' && spec.autocompact !== 200000))) {
     errors.push(`profile "${name}" autocompact must be an integer from 200000 to 1000000; only contextMode 1m may exceed 200000`);
+  }
+  // The one way a standard profile exceeds 200000 - a ceiling and a
+  // context guard that apply only to a claude-sonnet-* launch (the Phase 2 sample was
+  // Sonnet only); any other model keeps `autocompact` and no guard.
+  if (spec.sonnetAutocompact !== undefined && (!Number.isSafeInteger(spec.sonnetAutocompact)
+    || spec.sonnetAutocompact < 200000 || spec.sonnetAutocompact > 450000)) {
+    errors.push(`profile "${name}" sonnetAutocompact must be an integer from 200000 to 450000`);
+  }
+  if (spec.sonnetContextGuard !== undefined && !['compact', 'handoff'].includes(spec.sonnetContextGuard)) {
+    errors.push(`profile "${name}" sonnetContextGuard must be compact or handoff`);
   }
   // contextBudget — the first-turn token ceiling the measured
   // probe asserts against, so it is REQUIRED on every non-operator profile
@@ -573,9 +583,13 @@ export function contextForProfile(registry, name) {
   if (errors.length) throw new Error(`plugin-profiles: registry invalid:\n  - ${errors.join('\n  - ')}`);
   resolveProfile(registry, name);
   const specs = name.split(',').map((member) => registry.profiles[member]);
+  const sonnetCeilings = specs.map((spec) => spec?.sonnetAutocompact).filter((v) => v !== undefined);
+  const sonnetGuards = specs.map((spec) => spec?.sonnetContextGuard).filter((v) => v !== undefined);
   return {
     contextMode: specs.some((spec) => spec?.contextMode === '1m') ? '1m' : 'standard',
     autocompact: Math.max(...specs.map((spec) => spec?.autocompact ?? 200000)),
+    ...(sonnetCeilings.length ? { sonnetAutocompact: Math.max(...sonnetCeilings) } : {}),
+    ...(sonnetGuards.length ? { sonnetContextGuard: sonnetGuards.includes('handoff') ? 'handoff' : 'compact' } : {}),
   };
 }
 

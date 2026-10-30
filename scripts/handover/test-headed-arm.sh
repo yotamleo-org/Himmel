@@ -420,23 +420,53 @@ done
 # honoured only when paired to this exec's PID (the wrapper's `export
 # HEADED_ARM_CONTEXT_PID=$$; exec` shape), the context is standard and the
 # value is exactly 400000. A wrong pid is ignored; 1m or another value refuses.
-ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag>
-  local mode="$1" ctx="$2" val="$3" tag="$4" pidx
+ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag> [profile] [model] [sonnet-marker]
+  local mode="$1" ctx="$2" val="$3" tag="$4" prof="${5:-worker-impl}" model="${6:-claude-sonnet-5}" sonnet="${7:-}" pidx
   case "$mode" in
     paired) pidx='export HEADED_ARM_CONTEXT_PID="$$"' ;;
     stale)  pidx='export HEADED_ARM_CONTEXT_PID=1' ;;
     *)      pidx=':' ;;
   esac
-  env -u CHIEF_CONTEXT HEADED_ARM_CONTEXT_PROFILE=worker-impl HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
-    HEADED_ARM_AB_AUTOCOMPACT="$val" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
+  env -u CHIEF_CONTEXT HEADED_ARM_CONTEXT_PROFILE="$prof" HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
+    HEADED_ARM_AB_AUTOCOMPACT="$val" HEADED_ARM_SONNET_AUTOCOMPACT="$sonnet" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
+    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" "$model" "$ctx" 2>&1
 }
 rc=0; out="$(ab_run paired standard 400000 ok)" || rc=$?
 check "A/B arm (paired pid, standard, 400000): exit 0" "$rc" "0"
 contains "A/B arm (paired pid, standard, 400000): argv carries --autocompact 400000" "$out" "--autocompact 400000"
-rc=0; out="$(ab_run paired standard "" none)" || rc=$?
-check "A/B arm control (paired, no marker): exit 0" "$rc" "0"
-contains "A/B arm control (paired, no marker): stays 200000" "$out" "--autocompact 200000"
+rc=0; out="$(ab_run paired standard "" none worker-docs)" || rc=$?
+check "A/B arm control (paired, no marker, worker-docs): exit 0" "$rc" "0"
+contains "A/B arm control (paired, no marker, worker-docs): stays 200000" "$out" "--autocompact 200000"
+# The wrapper resolves the per-profile Sonnet ceiling once and hands the renderer the
+# value in HEADED_ARM_SONNET_AUTOCOMPACT; the renderer never re-derives it from MODEL.
+rc=0; out="$(ab_run paired standard "" implsonnet worker-impl claude-sonnet-5 450000)" || rc=$?
+check "Sonnet ceiling marker (paired, standard): exit 0" "$rc" "0"
+contains "Sonnet ceiling marker (paired, standard): argv carries --autocompact 450000" "$out" "--autocompact 450000"
+rc=0; out="$(ab_run paired standard "" implrewritten worker-impl sonnet 450000)" || rc=$?
+contains "Sonnet ceiling marker: honoured whatever the model string (the wrapper decided)" "$out" "--autocompact 450000"
+rc=0; out="$(ab_run paired standard "" implnomarker worker-impl claude-sonnet-5)" || rc=$?
+check "worker-impl on Sonnet, no marker: exit 0" "$rc" "0"
+contains "worker-impl on Sonnet, no marker: stays 200000 (no second resolution from MODEL)" "$out" "--autocompact 200000"
+not_contains "worker-impl on Sonnet, no marker: no 450000" "$out" "--autocompact 450000"
+rc=0; out="$(ab_run paired standard "" implopus worker-impl claude-opus-5-5)" || rc=$?
+check "worker-impl on Opus (paired, no marker): exit 0" "$rc" "0"
+contains "worker-impl on Opus: argv stays --autocompact 200000" "$out" "--autocompact 200000"
+not_contains "worker-impl on Opus: no 450000" "$out" "--autocompact 450000"
+rc=0; out="$(ab_run stale standard "" stalesonnet worker-impl claude-sonnet-5 450000)" || rc=$?
+contains "Sonnet ceiling marker (stale pid): ignored, stays 200000" "$out" "--autocompact 200000"
+not_contains "Sonnet ceiling marker (stale pid): no 450000" "$out" "--autocompact 450000"
+for bad in 500000 199999 400000.5 abc; do
+  rc=0; out="$(ab_run paired standard "" "badson$bad" worker-impl claude-sonnet-5 "$bad")" || rc=$?
+  check "Sonnet ceiling marker ($bad): refused exit 2" "$rc" "2"
+  not_contains "Sonnet ceiling marker ($bad): no launch argv" "$out" "--autocompact $bad"
+done
+# design is the one profile whose 1m context passes the worker-context gate, so this row
+# reaches the marker's own 1m check; on worker-impl the earlier gate would refuse it first.
+rc=0; out="$(ab_run paired 1m "" sonnet1m design claude-sonnet-5 450000)" || rc=$?
+check "Sonnet ceiling marker (1m context): refused exit 2" "$rc" "2"
+contains "Sonnet ceiling marker (1m context): refused by the marker's own check" "$out" "refusing HEADED_ARM_SONNET_AUTOCOMPACT=450000"
+rc=0; out="$(ab_run paired standard "" sonnetchief chief claude-sonnet-5 450000)" || rc=$?
+check "Sonnet ceiling marker (chief profile): refused exit 2" "$rc" "2"
 rc=0; out="$(ab_run stale standard 400000 stale)" || rc=$?
 check "A/B arm (stale pid): ignored, exit 0" "$rc" "0"
 contains "A/B arm (stale pid): stays 200000" "$out" "--autocompact 200000"

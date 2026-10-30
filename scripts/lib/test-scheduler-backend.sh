@@ -11,33 +11,18 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
 # BASE_PATH must carry the coreutils the lib/test need but NOT at/atq/crontab/
-# systemctl/schtasks/pgrep, so each case adds exactly the tools it simulates and
+# systemctl/pgrep, so each case adds exactly the tools it simulates and
 # the "tool absent" cases are genuinely absent.
 #
-# On Windows Git-Bash those scheduler tools don't live in the coreutils dir at
-# all (schtasks is in System32, not /usr/bin; at/crontab/systemctl don't exist),
-# so the real coreutils dir is already a clean base — and a symlink farm is flaky
-# there (no dev-mode symlinks → broken links → even bash won't resolve). On
-# Linux/macOS the coreutils SHARE /usr/bin with the real at/crontab/systemctl, so
-# the real dir leaks them (the VM e2e caught this); use a native-symlink farm to
-# keep them absent. (ln -s is native on Linux/macOS.)
-case "$(uname -s 2>/dev/null || echo unknown)" in
-    MINGW*|MSYS*|CYGWIN*)
-        base_dir() {
-            local t d; for t in bash sh sed grep tr head sort uname; do
-                d="$(command -v "$t" 2>/dev/null)" && dirname "$d"
-            done | sort -u | tr '\n' ':'
-        }
-        BASE_PATH="$(base_dir)"
-        ;;
-    *)
-        CLEAN_BIN="$(mktemp -d)/clean-bin"; mkdir -p "$CLEAN_BIN"
-        for t in bash sh sed grep tr head sort uname; do
-            p="$(command -v "$t" 2>/dev/null)" && ln -sf "$p" "$CLEAN_BIN/$t"
-        done
-        BASE_PATH="$CLEAN_BIN"
-        ;;
-esac
+# On Linux/macOS the coreutils SHARE /usr/bin with the real at/crontab/systemctl,
+# so the real dir leaks them (the VM e2e caught this); use a symlink farm to
+# keep them absent.
+CLEAN_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/sched-backend.XXXXXX")" || exit 1
+CLEAN_BIN="$CLEAN_ROOT/clean-bin"; mkdir -p "$CLEAN_BIN"
+for t in bash sh sed grep tr head sort uname; do
+    p="$(command -v "$t" 2>/dev/null)" && ln -sf "$p" "$CLEAN_BIN/$t"
+done
+BASE_PATH="$CLEAN_BIN"
 
 # shim <dir> <name> — create an executable stub that exits 0.
 shim() { mkdir -p "$1"; printf '#!/bin/sh\nexit 0\n' > "$1/$2"; chmod +x "$1/$2"; }
@@ -49,10 +34,10 @@ run_status() { # $1=bindir, rest=VAR=val
         bash -c "source '$LIB'; scheduler_backend_status"
 }
 
-# --- windows: schtasks present -> ok ---
+# --- a Windows OSTYPE is no longer a backend: unknown OS -> missing ---
 d="$(mktemp -d)"; shim "$d/bin" schtasks
-s="$(run_status "$d/bin" SCHEDULER_BACKEND_OS=windows)"
-if [ "$s" = ok ]; then pass "windows+schtasks -> ok"; else fail "windows -> $s"; fi
+s="$(env -i HOME="$HOME" PATH="$d/bin:$BASE_PATH" OSTYPE=msys bash -c "source '$LIB'; scheduler_backend_os; scheduler_backend_status" | tr '\n' ' ')"
+if [ "$s" = "unknown missing " ]; then pass "OSTYPE=msys -> unknown, missing (schtasks ignored)"; else fail "msys -> $s"; fi
 rm -rf "$d"
 
 # --- linux: at present + atd live -> ok ---

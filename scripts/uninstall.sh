@@ -5,8 +5,7 @@
 #   [1/8] stop the telegram bun bridge      (bun supervisor.ts --kill)
 #   [2/8] remove telegram pairing + bridge state
 #         (channel dir incl. access.json + bot-token .env; bridge root)
-#   [3/8] remove HIMMEL-Resume-* scheduled jobs (+ HimmelTelegramBridge
-#         logon task on Windows)
+#   [3/8] remove HIMMEL-Resume-* scheduled jobs
 #   [4/8] uninstall installed Claude plugins at their own scope
 #         (machine-setup/uninstall-plugins.sh --plugins-only; the install
 #         profile supplies only the fallback scope)
@@ -73,7 +72,7 @@
 #   --keep-telegram-state  Accepted for compatibility; state is already kept by
 #                          default. Contradicts --purge-state (rc=2).
 #   --skip-plugins         Keep Claude plugins + marketplaces installed.
-#   --skip-tasks           Keep HIMMEL-Resume-* / HimmelTelegramBridge jobs.
+#   --skip-tasks           Keep HIMMEL-Resume-* scheduled jobs (at / cron).
 #   --skip-hooks           Keep the repo's pre-commit git hooks.
 #   --skip-settings        Keep user- and current-project settings.json wiring
 #                          (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, hooks).
@@ -318,19 +317,17 @@ m_path() {
   printf '%s\n' "$_p"
 }
 
-# The preview names only what can exist on this host: the Windows logon task
-# needs schtasks, and the AUR payload needs /opt/himmel.
-if command -v schtasks >/dev/null 2>&1; then _LOGON_TASK_TXT=" (+ HimmelTelegramBridge logon task)"; _LOGON_TASK_TXT_BARE=", HimmelTelegramBridge"
-else _LOGON_TASK_TXT=""; _LOGON_TASK_TXT_BARE=""; fi
+# The preview names only what can exist on this host: the AUR payload needs
+# /opt/himmel.
 # m_applies <i> — 1 for a row whose item cannot exist on this host.
 m_applies() {
   [ "${M_ID[$1]}" = "aur-package" ] && [ ! -e "$(m_path "$1")" ] && return 1
   return 0
 }
-# m_what <i> — the row's description, minus the logon task off Windows.
+# m_what <i> — the row's description, minus the manifest's logon-task suffix.
 m_what() {
   local _w="${M_WHAT[$1]}"
-  [ -n "$_LOGON_TASK_TXT" ] || _w="${_w// + the HimmelTelegramBridge logon task/}"
+  _w="${_w// + the HimmelTelegramBridge logon task/}"
   printf '%s\n' "$_w"
 }
 
@@ -740,13 +737,13 @@ suspicious_rm_path() {
   protected_path "$1" && return 0
   case "$1" in
     ""|"/"|"$HOME"|"$HOME/") return 0 ;;
-    # A Windows drive root, checked on the RAW argument before any `cd`. The
+    # A drive-root spelling, checked on the RAW argument before any `cd`. The
     # post-canonicalization arm below only fires on a shell where
-    # `cd -- "C:/"` actually succeeds and resolves to `/c` (Git Bash/MSYS,
-    # verified on this box) — a shell that canonicalizes a drive root some
-    # OTHER way would fall through it undetected. Checking the literal
-    # spelling first makes the refusal independent of canonicalization
-    # behaviour, which is the whole point of a destructive-removal guard.
+    # `cd -- "C:/"` actually succeeds and resolves to `/c` — a shell that
+    # canonicalizes a drive root some OTHER way would fall through it
+    # undetected. Checking the literal spelling first makes the refusal
+    # independent of canonicalization behaviour, which is the whole point of
+    # a destructive-removal guard.
     # Exact drive-root spellings only (`C:`, `C:/`, `C:\`) — a real subpath
     # like `C:/Users/x` is not a root and must still reach the checks below.
     [A-Za-z]:|[A-Za-z]:/|[A-Za-z]:\\) return 0 ;;
@@ -758,7 +755,7 @@ suspicious_rm_path() {
     [ -n "$_resolved" ] || return 0
     # Refuse anything that IS a filesystem root: `/`, a UNC share root
     # (`//server/share` — long and not $HOME, so only an explicit shape check
-    # catches it), and a Windows drive root. MSYS/Git Bash canonicalizes
+    # catches it), and a drive root. A shell may canonicalize
     # `C:/` (and `D:/`, …) to a bare one-letter top-level path — `/c`, `/d` —
     # not `/`, so the `/` arm above cannot see it; a caller that passes
     # HIMMELCTL_CACHE_DIR=C:/ would otherwise sail past every check here and
@@ -1195,9 +1192,7 @@ real_home_resolve() {
 
 # real_home_protected_homes — every home a fence-lifted run must not resolve
 # into, one per line. Each source only ADDS: the passwd home (required; rc=1
-# when unresolved), the MSYS USERPROFILE (Git-Bash, whose getpwnam home is
-# /home/<user> while $HOME is /c/Users/<user>), and the test seam
-# HIMMEL_UNINSTALL_TEST_REAL_HOME, which fixtures point at a FAKE real home.
+# when unresolved) and the test seam HIMMEL_UNINSTALL_TEST_REAL_HOME, which fixtures point at a FAKE real home.
 # The seam can never replace or drop the passwd home; set to "/" it protects
 # the root, so a HOME resolving to "/" or an override target outside $HOME is
 # refused and nothing else changes.
@@ -1205,13 +1200,6 @@ real_home_protected_homes() {
   local _h
   _h=$(real_home_resolve) || return 1
   strip_trailing_slash "$_h"
-  case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*|CYGWIN*)
-      if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        _h=$(cygpath -u "$USERPROFILE" 2>/dev/null) && [ -n "$_h" ] && strip_trailing_slash "$_h"
-      fi
-      ;;
-  esac
   if [ -n "${HIMMEL_UNINSTALL_TEST_REAL_HOME:-}" ]; then
     strip_trailing_slash "$HIMMEL_UNINSTALL_TEST_REAL_HOME"
   fi
@@ -1699,7 +1687,7 @@ if [ "$SKIP_TASKS" -eq 1 ]; then
 elif ! class_removes "$_ix_jobs"; then
   echo "  3. keep scheduled jobs (manifest class ${M_CLASS[$_ix_jobs]})"
 else
-  echo "  3. remove HIMMEL-Resume-* scheduled jobs${_LOGON_TASK_TXT}"
+  echo "  3. remove HIMMEL-Resume-* scheduled jobs"
   if [ "$LEDGER_OK" -eq 1 ]; then
     echo "     and the cron/at jobs the ledger recorded a cadence arm adding (exact recorded names only)"
   fi
@@ -2360,9 +2348,9 @@ fi
 echo ""
 
 # --- [3/8] remove scheduled jobs ---------------------------------------------
-# Mirrors scripts/handover/arm-resume.sh job discovery: schtasks task names
-# on Windows; at-job body marker / crontab line marker on Linux/macOS.
-echo "[3/8] Removing scheduled jobs (HIMMEL-Resume-*${_LOGON_TASK_TXT_BARE})..."
+# Mirrors scripts/handover/arm-resume.sh job discovery: at-job body marker /
+# crontab line marker.
+echo "[3/8] Removing scheduled jobs (HIMMEL-Resume-*)..."
 if [ "$HALTED" -eq 1 ]; then
   echo "  skipped (halted after an earlier failure)"
   STEPS_INCOMPLETE+=("[3/8] scheduled jobs: skipped — halted after an earlier failure")
@@ -2370,42 +2358,6 @@ elif [ "$SKIP_TASKS" -eq 1 ]; then
   echo "  kept (--skip-tasks)."
 elif ! class_removes "$_ix_jobs"; then
   echo "  kept (manifest class ${M_CLASS[$_ix_jobs]})."
-elif command -v schtasks >/dev/null 2>&1; then
-  # MSYS_NO_PATHCONV=1 per call: gitbash otherwise mangles
-  # /query-style flags into Windows paths before schtasks sees them.
-  # Capture the /query rc separately (setup.sh qmd-list precedent): piping
-  # straight through grep would mask an enumeration failure as "no tasks".
-  _query_out=$(MSYS_NO_PATHCONV=1 schtasks /query /fo CSV /nh 2>&1)
-  _query_rc=$?
-  if [ "$_query_rc" -ne 0 ]; then
-    echo "  WARN: schtasks /query failed (rc=$_query_rc) — cannot enumerate;" >&2
-    echo "  HIMMEL-Resume-* / HimmelTelegramBridge tasks may remain." >&2
-    fail_step "[3/8] scheduled jobs: could not enumerate schtasks"
-  else
-    # shellcheck disable=SC1003  # `"\\'` strips both quote and literal backslash from schtasks's path-prefixed task names
-    _tasks=$(printf '%s\n' "$_query_out" \
-      | grep -o '"\\\?HIMMEL-Resume-[^"]*"' 2>/dev/null \
-      | tr -d '"\\' | sort -u || true)
-    if MSYS_NO_PATHCONV=1 schtasks /query /tn "HimmelTelegramBridge" >/dev/null 2>&1; then
-      _tasks=$(printf '%s\nHimmelTelegramBridge' "$_tasks")
-    fi
-    _found=0
-    while IFS= read -r _task; do
-      [ -z "$_task" ] && continue
-      _found=1
-      if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY: schtasks /delete /tn $_task /f"
-      elif MSYS_NO_PATHCONV=1 schtasks /delete /tn "$_task" /f >/dev/null 2>&1; then
-        echo "  deleted scheduled task: $_task"
-      else
-        echo "  WARN: failed to delete scheduled task: $_task" >&2
-        fail_step "[3/8] scheduled jobs: could not delete $_task"
-      fi
-    done <<EOF
-$_tasks
-EOF
-    [ "$_found" -eq 0 ] && echo "  no matching scheduled tasks found."
-  fi
 else
   _found=0
   _query_failed=0
@@ -2535,7 +2487,7 @@ EOF
   fi
   [ "$_found" -eq 0 ] && [ "$_query_failed" -eq 0 ] && echo "  no matching scheduled jobs found."
 fi
-# cadence-jobs above only strips the crontab/schtasks entry — the
+# cadence-jobs above only strips the crontab entry — the
 # runner scripts + settings fragment an arm writes into these dirs are never
 # touched by that, and each cadence script's own disarm only clears files
 # inside its BAT_DIR, never the directory itself.

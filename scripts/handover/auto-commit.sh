@@ -192,25 +192,16 @@ himmel_repo=$(git rev-parse --show-toplevel)
 canon() {
     local p="$1"
     p=$(canon_path "$p" 2>/dev/null || printf '%s' "$p")
-    # On Git Bash / Cygwin, coerce to mixed-Windows style (C:/...) so paths
-    # that arrived in msys form (/tmp/..., /c/...) line up with paths git
-    # reports via `rev-parse --show-toplevel` (which resolves /tmp symlinks
-    # to the real Windows path). Without this, `git -C $repo -- $root`
-    # pathspec matching silently misses.
-    if command -v cygpath >/dev/null 2>&1; then
-        p=$(cygpath -m "$p" 2>/dev/null || printf '%s' "$p")
-    fi
     printf '%s\n' "$p"
 }
 handover_canon=$(canon "$handover_repo")
 himmel_canon=$(canon "$himmel_repo")
-# On Windows / case-insensitive filesystems, lowercase both before
-# comparing. Detect via OSTYPE — `msys`/`cygwin` cover gitbash + cygwin;
-# `darwin` is also case-insensitive by default on most installs but
-# users running case-sensitive APFS would over-match — accepting that
-# small false-positive risk in exchange for catching the common case.
+# On macOS (case-insensitive by default on most installs), lowercase both
+# before comparing. Users running case-sensitive APFS would over-match —
+# accepting that small false-positive risk in exchange for catching the
+# common case.
 case "$OSTYPE" in
-    msys*|cygwin*|win32*|darwin*)
+    darwin*)
         handover_canon=$(printf '%s' "$handover_canon" | tr '[:upper:]' '[:lower:]')
         himmel_canon=$(printf '%s' "$himmel_canon" | tr '[:upper:]' '[:lower:]')
         ;;

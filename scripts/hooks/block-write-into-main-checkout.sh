@@ -198,11 +198,36 @@
 #     real payload cwd, and denied if THAT resolves inside the primary — so
 #     cd tracking can only ADD denies relative to a payload-cwd-only check,
 #     never remove one, regardless of how wrong its own clause-connective
-#     modelling turns out to be (the "strict superset rule"; one documented,
+#     modelling turns out to be, bar the narrow scratch relaxation below
+#     (the "strict superset rule"; one documented,
 #     deliberate exception: a genuine, unconditional `cd <worktree> &&
 #     <relative write>` issued from a primary cwd also denies under this rule,
 #     even though it is runtime-safe — the rule does not distinguish "safe"
-#     divergence from "unsafe" divergence). The fallback re-checks only the
+#     divergence from "unsafe" divergence). One narrow relaxation:
+#     when the cd is a plain, unpiped cd/pushd that is the FIRST command of the
+#     line, its word proven plain by _bwimc_plain_word (a `~`, brace, quote inside the
+#     word, backslash, edge space or `..` cd word gets main's verdict), onto an existing directory that, symlinks resolved, lies in no git
+#     repo at all (a scratch folder), `_bwimc_ecwd_sure` is set and the fallback
+#     is skipped for the redirect/verb candidates that call `_bwimc_cd_guard`
+#     (a worktree, the primary or any other checkout keeps the re-check; the
+#     cp/mv/ln destination-type union below is untouched). The flag survives only
+#     while every later clause's command word is a literal echo, printf, cat, tee or
+#     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
+#     wrapper, a group) clears it. While it holds, a candidate proven plain by
+#     _bwimc_plain_word (only letters, digits and . _ - / + , @ :, optionally in one
+#     whole-word quote pair, no `..` component) is checked against the cd target and its
+#     symlink-resolved form; every other word keeps the payload-cwd re-check and so gets
+#     main's verdict (a harmless mid-word quote, backslash, brace or glob write in the
+#     scratch folder is refused too). The flag is never set when the payload command, as
+#     given, holds a `$`, a backtick or a byte outside printable ASCII, tab and newline anywhere (`_bwimc_orig_dynamic`, tested once before any
+#     reading is flattened) or a heredoc (`<<`), so `cd scratch && echo "$x" > out.txt` and
+#     `cd scratch && cat > f <<EOF` are refused as on main. The cd word must also be absolute and
+#     plain, spelled with a leading `/` (a relative word may resolve through a CDPATH this hook cannot
+#     see, and a drive spelling is relative here), and the cd or pushd carries no option (-P, -L, -e, -@, --).
+#     A candidate holding `$` is not checked at all, as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
+#     that fails at runtime leaves the cwd unchanged although the write is allowed,
+#     and a directory made a repo by a `.git` created after the check is not seen.
+#     The fallback re-checks only the
 #     raw operand, so the cp/mv/ln destination-TYPE decisions (dest is a dir
 #     vs an entry, entry vs follow) and the `<dest>/<basename(src)>` child
 #     check (incl. `-t`) get the same rule separately: each destination block
@@ -2515,6 +2540,7 @@ _bwimc_unq_eq() {
 # have failed or never run, so the modelled cwd is not where the shell is.
 _bwimc_chdir_model() {
     local raw="$1" carg r q="${1//[!\"]/}" a="${1//[!\']/}"
+    _bwimc_ecwd_sure=0
     case "$raw" in
         ''|*'$'*|*'`'*|*[*?[]*|*\\*) _bwimc_ecwd_unres=1; return 0 ;;
     esac
@@ -2674,7 +2700,8 @@ _bwimc_fsmut_hit() {
     return 1
 }
 _bwimc_ecwd_track() {
-    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0
+    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs first="${_bwimc_ecwd_first:-0}"
+    _bwimc_ecwd_first=0
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
     n=${#toks[@]}
     # a cd/pushd/popd that is not the clause's first command word
@@ -2690,6 +2717,14 @@ _bwimc_ecwd_track() {
     [ "$i" -lt "$n" ] || return 0
     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
+    # A sure cd (set at the end of this function) survives only a later clause whose command
+    # word is a literal from this closed set of commands that cannot move the shell's cwd.
+    # Anything else (a cd/pushd/popd, eval, `.`/source, a variable or brace-expanded command word,
+    # a wrapper, a group) clears it, so the write is re-checked against the payload cwd.
+    case "$tu" in
+        echo|printf|cat|tee|touch) ;;
+        *) _bwimc_ecwd_sure=0 ;;
+    esac
     case "$tu" in
         cd|pushd)
             i=$((i+1))
@@ -2794,6 +2829,32 @@ _bwimc_ecwd_track() {
                             _bwimc_ecwd_unres=1
                         elif r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
                             _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
+                            # A plain cd that is the FIRST command
+                            # of the line, unpiped, onto a directory that exists
+                            # and is enterable runs (and a `&&` chain stops if it fails;
+                            # after a `;` a failing cd leaves the cwd unchanged, a race this
+                            # does not close), so a plain relative write that follows lands in
+                            # $r, or in its symlink-resolved form $cs (only a candidate proven
+                            # plain by _bwimc_plain_word skips the payload-cwd re-check in
+                            # _bwimc_cd_guard). Trusted only when $cs lies in no
+                            # git repo at all (a scratch folder): the primary, a worktree or
+                            # any other checkout keeps the re-check. The trust ends at the
+                            # first later clause whose command word is not in the closed set
+                            # above, and a candidate is checked against both $r and $cs.
+                            # the raw cd word must be plain too: the shell expands a brace, drops a quote or
+                            # a backslash and keeps an edge space the hook trims, so the directory the hook
+                            # found is not the one the shell enters (rows 100d, 104i-104l). It must also be
+                            # absolute: CDPATH set in the tool shell is invisible here and can resolve a
+                            # relative word elsewhere (row 104n), spelled with a leading `/` (a drive
+                            # spelling is relative here, row 104r), and carry no option the shell may
+                            # refuse (rows 104o-104q)
+                            [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
+                                && [ "${_bwimc_orig_dynamic:-1}" = 0 ] \
+                                && [ "$i" = 1 ] && case "$carg" in /*) true ;; *) false ;; esac \
+                                && _bwimc_plain_word "$craw" \
+                                && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
+                                && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
+                                && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
                         else
                             # also reached when an earlier clause
                             # of this command removed/moved/chmod-ed the target.
@@ -2838,7 +2899,8 @@ _bwimc_ecwd_track() {
 # candidate against the real payload cwd and deny if THAT resolves inside
 # the primary — cd tracking may only ADD denies relative to a
 # payload-cwd-only check, never remove one, regardless of how wrong its
-# own clause-connective modelling turns out to be. _bwimc_check_target
+# own clause-connective modelling turns out to be (the one exception is a
+# sure cd, see the end of this function). _bwimc_check_target
 # itself calls _bwimc_deny (which exits) on a DENY verdict, so this runs
 # before the call site's own _bwimc_ecwd-based check ever gets a chance to
 # allow.
@@ -2886,7 +2948,47 @@ _bwimc_cd_guard() {
         esac ;;
     esac
     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
-    [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+    # A sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check for a candidate proven
+    # plain by _bwimc_plain_word (a fixed allowlist of ordinary path characters), which is also
+    # resolved against the symlink-resolved cd target, where the write physically lands. Every
+    # other word keeps the payload-cwd re-check, so it gets main's verdict by construction. The
+    # flag is never set when the payload command holds a `$`, a backtick or a byte outside printable ASCII, tab and newline
+    # (_bwimc_orig_dynamic), so no word derived from a substitution, stub, flattened reading or
+    # a tokenizer split at one of those bytes reaches this test.
+    if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
+        if ! _bwimc_plain_word "$1"; then
+            [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+        fi
+        # second layer for a symlink-free prefix: the kernel resolves a `..` after a symlink physically but the check below collapses it logically, so a `..` word is never plain and takes the re-check above; no shape was found where only this line decides (row 99f)
+        [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
+    elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
+        _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
+    fi
+    return 0
+}
+
+# _bwimc_plain_word WORD: succeeds only for a candidate whose raw text the shell and the later
+# resolver (the sed in _bwimc_expand_token_raw_set) read the same way. Plain means: only the
+# characters letters, digits and . _ - / + , @ : (spelled out, no range, so the locale cannot
+# widen them), optionally wrapped in exactly ONE whole-word pair of quotes whose inner text may
+# also hold a space, but never at its edge or beside a `/`; no component equal to `..`; not empty.
+# Anything else (a mid-word quote, a backslash, ~, a brace, a glob character, $) is not plain.
+# The word must be the raw operand token; the sure flag is never set for a payload command
+# holding `$`, a backtick or such a byte, so no derived word reaches this test.
+_bwimc_plain_word() {
+    local w="$1"
+    case "$w" in
+        '"'?*'"'|"'"?*"'")
+            w=${w#?}; w=${w%?}
+            case "$w" in
+                ' '*|*' '|*' /'*|*'/ '*) return 1 ;;
+                *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/+,@:\ -]*) return 1 ;;
+            esac ;;
+        *) case "$w" in
+            ''|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/+,@:-]*) return 1 ;;
+        esac ;;
+    esac
+    case "$w" in ..|../*|*/../*|*/..) return 1 ;; esac
     return 0
 }
 
@@ -4388,6 +4490,25 @@ model($E) | go($E.st) | .r[] | map(tostring)
 BWIMC_AST_EOF
 # <<< END bash-ast <<<
 
+# tested once on the command as the payload gave it, before any reading is flattened: a `$` or a
+# backtick anywhere means no cd is ever sure (a flattened reading turns `lnk$((8))` into the plain
+# `lnk0`, a stub into its prefix), so a dynamic command gets main's verdict whole (row 104a).
+# Any byte outside printable ASCII, tab and newline counts too (a CR, VT, FF or a non-ASCII
+# space): _bwimc_tokenize splits a word there, the shell does not (rows 104d-104h)
+_bwimc_exotic_byte() {
+    local LC_ALL=C
+    case "$1" in
+        *[!$' \t\n'!-~]*) return 0 ;;
+    esac
+    return 1
+}
+# A heredoc also counts: its walker matches only a prefix of the delimiter word, so it can blank a
+# real cd (row 104m)
+case "$cmd" in
+    *'$'*|*'`'*|*'<<'*) _bwimc_orig_dynamic=1 ;;
+    *) if _bwimc_exotic_byte "$cmd"; then _bwimc_orig_dynamic=1; else _bwimc_orig_dynamic=0; fi ;;
+esac
+
 if [ "$_bwimc_engine" != regex ]; then
     _bwimc_ast_run "$cmd" "$(jq -nc --arg c "$_bwimc_cwd" '{cwds: [$c], unres: false, stack: []}')" 0
 fi
@@ -4715,6 +4836,8 @@ _bwimc_check_interp_body() {
     _bwimc_ibody_saved_ecwd="$_bwimc_ecwd"
     _bwimc_ibody_saved_unres="$_bwimc_ecwd_unres"
     _bwimc_ibody_saved_pushn="$_bwimc_ecwd_pushn"
+    _bwimc_ibody_saved_first="${_bwimc_ecwd_first:-0}"; _bwimc_ibody_saved_sure="${_bwimc_ecwd_sure:-0}"
+    _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
     # the body once as written, once with its comments removed.
     _bwimc_strip_comments "$body"
     _bwimc_ib_texts=("$body")
@@ -4831,6 +4954,7 @@ _bwimc_check_interp_body() {
     _bwimc_ecwd="$_bwimc_ibody_saved_ecwd"
     _bwimc_ecwd_unres="$_bwimc_ibody_saved_unres"
     _bwimc_ecwd_pushn="$_bwimc_ibody_saved_pushn"
+    _bwimc_ecwd_first="$_bwimc_ibody_saved_first"; _bwimc_ecwd_sure="$_bwimc_ibody_saved_sure"
 }
 
 # _bwimc_subst_paren_end TEXT START: Sets _BWIMC_PEND to the index
@@ -5193,6 +5317,8 @@ _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
+_bwimc_ecwd_first=1
+_bwimc_ecwd_sure=0
 _bwimc_fsmut=""
 [ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
 
@@ -6961,6 +7087,8 @@ _bwimc_ecwd="$_bwimc_cwd"
 _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
+_bwimc_ecwd_first=1
+_bwimc_ecwd_sure=0
 _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
@@ -6974,12 +7102,14 @@ while IFS= read -r _bwimc_clause; do
     fi
     case "$_bwimc_clause" in
         "$_BWIMC_SUBOPEN")
+            _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
             _bwimc_sub_ecwd[_bwimc_sub_d]="$_bwimc_ecwd"
             _bwimc_sub_unres[_bwimc_sub_d]="$_bwimc_ecwd_unres"
             _bwimc_sub_pushn[_bwimc_sub_d]="$_bwimc_ecwd_pushn"
             _bwimc_sub_d=$((_bwimc_sub_d+1))
             continue ;;
         "$_BWIMC_SUBCLOSE")
+            _bwimc_ecwd_sure=0
             if [ "$_bwimc_sub_d" -gt 0 ]; then
                 _bwimc_sub_d=$((_bwimc_sub_d-1))
                 _bwimc_ecwd="${_bwimc_sub_ecwd[_bwimc_sub_d]}"

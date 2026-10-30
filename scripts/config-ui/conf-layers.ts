@@ -7,7 +7,7 @@ import { parseDotEnv } from "../himmelctl/lib/probes.js";
 
 type Env = Record<string, string | undefined>;
 
-// the keys scripts/lib/load-dotenv.sh serves from himmel.conf (_himmel_key_class "config"); any other key there is not read.
+// the himmel.conf keys this UI reads: a subset of what scripts/lib/load-dotenv.sh serves (_himmel_key_class "config"), not the full list.
 const CONF_KEYS = new Set([
   "HANDOVER_DIR", "USER_SLUG", "LUNA_VAULT_PATH", "HIMMEL_DOC_FRESHNESS", "HIMMEL_INITIATIVE", "HIMMEL_INITIATIVE_AFK",
   "HIMMEL_AFK", "HIMMEL_WHERE_ARE_WE", "HIMMEL_WHERE_ARE_WE_STALE_HOURS",

@@ -5,7 +5,7 @@ on:
   # non-conventional commit, a secret, a shellcheck warning, or a failing shell
   # suite blocks merge. Every job here is ubuntu only: Windows support is
   # dropped (HIMMEL-5729) and there is no dispatch input that widens a matrix
-  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a paid leg. macOS is not in
+  # (HIMMEL-3853), so neither a PR nor a manual dispatch can occupy a 10x-billed runner. macOS is not in
   # this file at all (HIMMEL-3902): it runs on its own twice-weekly workflow,
   # macos-cadence.yml, so a macOS red can never turn this run -- or main -- red.
   # `shell-unit` itself (HIMMEL-2872) is the aggregating gate over that
@@ -84,7 +84,7 @@ permissions:
   contents: read
 
 # HIMMEL-3217 / HIMMEL-3226: a newer run cancels the run it supersedes -- on
-# 2026-09-19 stale runs kept the Actions queue at 5+ and leg PR runs waited
+# 2026-09-19 stale runs kept the Actions queue at 5+ and worker PR runs waited
 # 25-40 min. Two DISJOINT groups (a workflow has one top-level block):
 #   pull_request -> ci-pr-<PR number>: a PR's newer push cancels that PR's
 #                   older run, and never another PR's;
@@ -193,7 +193,7 @@ jobs:
           cat "$RUNNER_TEMP/shards.out"
           cat "$RUNNER_TEMP/shards.out" >> "$GITHUB_OUTPUT"
 
-  # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling legs of one
+  # HIMMEL-6121 / HIMMEL-6494: matrix fail-fast only stops sibling shards of one
   # matrix; the other jobs keep their runners after the run is already red. Each
   # job has a fail-fast-<job> twin that needs only that job, starts only when it
   # failed on a pull_request, and cancels the whole run. A green run starts no
@@ -932,7 +932,7 @@ jobs:
   # (one-true-awk) — `gawk --posix`/`--lint=fatal` both accept the broken
   # regex (J1288O), so a lint substitute would not catch this class of
   # regression, and Ubuntu PR CI runs everything else under gawk. The only
-  # prior BWK coverage was the nightly macOS shell-unit-shard leg (now the
+  # prior BWK coverage was the nightly macOS shell-unit-shard job (now the
   # os:macos cadence, macos-cadence.yml), which is advisory to main, so a
   # regression here previously reached main unnoticed. This job builds a pinned one-true-awk commit from source
   # (never a branch) and runs the gate's own suite under it, gating every PR.
@@ -1602,7 +1602,7 @@ jobs:
       group: bun-suites-${{ matrix.os }}-${{ github.ref }}
       cancel-in-progress: false
     strategy:
-      # HIMMEL-5036: a PR stops at its first red leg.
+      # HIMMEL-5036: a PR stops at its first red matrix entry.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         os: [ubuntu-latest]
@@ -1642,7 +1642,7 @@ jobs:
       # "The bun test cwd is per-suite"). No `bun install` needed: scripts/telegram
       # has no package.json of its own and the suites run against the repo tree.
       # This is the largest bun test surface in the repo (971 tests) and had no
-      # CI step at all until HIMMEL-2620. It runs on both matrix legs because
+      # CI step at all until HIMMEL-2620. It runs on every matrix entry because
       # three of its cases are platform-sensitive by construction.
       - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
       # HIMMEL-3215: the luna source-identity suites (source-identity +
@@ -1669,7 +1669,7 @@ jobs:
       - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
       # HIMMEL-3813: telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
-      # POSIX-shaped and a red non-gating Windows leg would file a spurious issue.
+      # POSIX-shaped, so a Windows run would be red and file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
@@ -1851,12 +1851,12 @@ jobs:
         if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_deps_audit == 'false') }}
         run: bash scripts/hooks/check-npm-audit-signatures.sh
 
-  # Ubuntu only (HIMMEL-5729 dropped the nightly Windows leg). macOS (10x) is
+  # Ubuntu only (HIMMEL-5729 dropped the nightly Windows job). macOS (10x) is
   # NOT here (HIMMEL-3902): it is the os:macos cadence, macos-cadence.yml. A red
-  # nightly leg becomes its own split slice — docs/internals/testing.md.
+  # nightly job becomes its own split slice — docs/internals/testing.md.
   #
   # This is the working matrix — sharded per OS (HIMMEL-2872) so the ubuntu
-  # legs finish in parallel instead of serially. The shard COUNT is spelled in
+  # shards finish in parallel instead of serially. The shard COUNT is spelled in
   # exactly two places, both below and both of which must agree: the `shard:`
   # matrix list and the `--shard …/<n>` run argument. Deliberately not repeated
   # here — a third copy is a third thing to forget. `shell-unit` below is
@@ -1929,7 +1929,7 @@ jobs:
     # The VM image carries the tools the github-hosted-gated steps below install.
     # HIMMEL-3919: bound the job (default is 6 h; main-push runs share one
     # non-cancelling concurrency group, so one hung shard queued every later
-    # main run). The nightly SUITE_TIER_MODE=all legs are far slower than the
+    # main run). The nightly SUITE_TIER_MODE=all runs are far slower than the
     # fast-tier push/PR runs: ubuntu shard 8 took 35-38 min.
     # suite-durations.tsv is the fast tier only (~18 min slowest
     # shard). 60 is ~1.7x the slowest nightly shard. There are no macos rows in
@@ -2035,7 +2035,7 @@ jobs:
       # SKIPs without ffmpeg, so this step pins the noble 6.1 build and then
       # sets HIMMEL_REQUIRE_FFMPEG=1, turning that SKIP into a FAIL here. A
       # runner image that drops the 6.1 package fails this step loudly; re-pin
-      # deliberately. Linux only: the nightly windows leg keeps the SKIP.
+      # deliberately. Linux only: no Windows nightly job remains to keep the SKIP.
       - name: Record runner image (apt cache key)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: echo "APT_IMAGE=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
@@ -2214,7 +2214,7 @@ jobs:
   #    context byte-for-byte identical to what it was before the work above
   #    was sharded. Sharding the work must not rename the gate.
   # 2. `needs.shell-unit-shard.result` is the matrix ROLLUP, `success` only
-  #    when every leg that CAN fail the matrix succeeded. A job-level
+  #    when every shard that CAN fail the matrix succeeded. A job-level
   #    `continue-on-error` failure is NOT counted against that rollup — this
   #    job never has to name any OS itself.
   # 3. `if: always()` plus the explicit `!= success` test below is the
@@ -2227,17 +2227,17 @@ jobs:
   #    `bash scripts/ci/shell-extended-nightly-issue.sh` died with rc=127 on
   #    the 2026-09-18 nightly, so the alert never fired. A plain checkout
   #    rather than a sparse `scripts/ci` one: the script sources nothing today,
-  #    but this leg only runs unwatched, so a future `source` of a sibling lib
+  #    but the report steps only run unwatched, on the nightly, so a future `source` of a sibling lib
   #    would re-break it silently.
   #
   # 5. issues:write (beyond the workflow-level contents:read) is needed only
   #    by the shell-extended-nightly-issue.sh steps below — scoped to this
   #    job alone.
   #    HIMMEL-3132: SUITE_TIER_DEFAULT `extended` suites only run under
-  #    SUITE_TIER_MODE=all (the schedule leg, set above at
-  #    shell-unit-shard), so a red extended suite only ever reddens THIS
-  #    job on that leg — a run nobody watches interactively. Without these
-  #    steps that failure is silent even though the job itself goes red.
+  #    SUITE_TIER_MODE=all (every non-PR run, set above at
+  #    shell-unit-shard), so a red extended suite can redden THIS job on any
+  #    non-PR run. The steps below report only the nightly, the one scheduled
+  #    tier-all run main-sweep-red skips; without them that red is silent.
   shell-unit:
     needs: [shell-unit-shard, plan]
     if: ${{ always() && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on') || (github.event.action != 'labeled' && vars.CI_GO_GATE != 'on')) }}
@@ -2365,11 +2365,9 @@ jobs:
             shard-red-suites.txt
           if-no-files-found: ignore
           retention-days: 90
-      # Scoped to the schedule leg: that is the only leg where
-      # SUITE_TIER_MODE=all actually exercises the extended tier (see
-      # shell-unit-shard above), so only there does a red here plausibly mean
-      # an extended suite broke rather than double-reporting a per-PR fast-
-      # tier failure the PR gate already surfaced.
+      # Scoped to the nightly cron: main-sweep-red reports the main sweep and a
+      # main dispatch but skips the nightly, so without these steps a red
+      # nightly files nothing.
       - name: Extended-tier nightly issue — clear on green
         if: success() && github.event.schedule == '17 7 * * *'
         env:

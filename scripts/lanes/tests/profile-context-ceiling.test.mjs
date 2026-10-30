@@ -61,6 +61,29 @@ for (const [field, value] of [['autocompact', '400000'], ['autocompact', 200001]
     assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid context field was accepted');
   });
 }
+test('a standard profile may declare a Sonnet-only ceiling up to 450000 and a context guard', () => {
+  const r = registry();
+  Object.assign(r.profiles['worker-impl'], { sonnetAutocompact: 450000, sonnetContextGuard: 'handoff' });
+  assert.deepEqual(PP.validateRegistry(r), []);
+  assert.deepEqual(PP.contextForProfile(r, 'worker-impl'),
+    { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff' });
+  assert.deepEqual(PP.contextForProfile(registry(), 'worker-impl'), { contextMode: 'standard', autocompact: 200000 });
+});
+for (const [field, value] of [['sonnetAutocompact', 450001], ['sonnetAutocompact', 199999], ['sonnetAutocompact', '450000'],
+  ['sonnetAutocompact', 300000.5], ['sonnetContextGuard', 'none'], ['sonnetContextGuard', 'bogus'], ['sonnetContextGuard', null]]) {
+  test(`validator refuses ${field}=${JSON.stringify(value)}`, () => {
+    const r = registry(); r.profiles['worker-impl'][field] = value;
+    assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid Sonnet field was accepted');
+  });
+}
+test('the shipped registry sets 450k per profile: impl hands off, eval compacts, docs stays at 200k', () => {
+  const real = PP.loadRegistry();
+  assert.deepEqual(PP.validateRegistry(real), []);
+  const ctx = (name) => PP.contextForProfile(real, name);
+  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff' });
+  assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'compact' });
+  assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000 });
+});
 test('worker launcher reads standard ceiling from the profile', (t) => {
   const result = launch(fixture(t), 'worker-impl');
   assert.equal(result.status, 0, result.stderr);

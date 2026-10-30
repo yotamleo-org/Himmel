@@ -5,7 +5,9 @@
 # auto-compaction is refused, until it has checkpointed or handed off
 #. Its job: a pushed checkpoint before a lossy compaction.
 # OFF BY DEFAULT (operator ruling 2026-10-07): workers auto-compact
-# anyway, so the guard runs only when the launch turned it on. Reference:
+# anyway, so the guard runs only when the launch turned it on - by flag, env, or
+# a worker profile that sets one for a native-lane claude-sonnet-5 launch
+# (worker-impl hands off, worker-eval compacts). Reference:
 # docs/internals/worker-context-guard.md.
 #
 # Scope: a chief-spawned worker only — HIMMEL_CONSOLE_LEG=1 AND a non-empty

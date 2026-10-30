@@ -84,7 +84,7 @@ ordinary Bash call.
 
 **Handover budget.** `<kit>/chief-budget.sh --title <your session name>` prints
 `budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER` (exit 3 on HANDOVER,
-2 when the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M
+2 when the transcript is unreadable). Hand over at `HANDOVER`: 110 turns or 30M
 cumulative cache-read (`CHIEF_TURN_BUDGET`, `CHIEF_CACHE_READ_BUDGET_M`), or a context
 fill of 45 % (`CHIEF_FILL_HANDOVER_PCT`; read from `context-fill.sh --percent`, so a
 stale, unknown or estimated fill adds no `fill=` and trips nothing; the `~NN% (est)` of

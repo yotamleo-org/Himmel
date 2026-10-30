@@ -82,11 +82,11 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Waiter",
-      "summary": "chief-wait.sh stays silent until the first real event, then prints one WAKE block",
+      "summary": "chief-wait.sh stays silent until an urgent event or a due housekeeping digest, then prints one WAKE block",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/chief-wait.sh",
-          "anchor": "printing one WAKE block, on the first real event"
+          "anchor": "printing one WAKE block, on an urgent event or when the"
         }
       ],
       "pos": {
@@ -2171,7 +2171,8 @@
         "tick": "generic action-key change: shown as the tick node",
         "tick-fail": "monitor health: operational",
         "tracker-stale": "tracker housekeeping: operational",
-        "board-stale": "board housekeeping: operational",
+        "board-stale": "board housekeeping: operational, immediate in zero-batching mode",
+        "housekeeping": "due digest of buffered board, status-sweep and informational marker changes: operational",
         "predecessor-open": "succession housekeeping: operational",
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",

@@ -148,10 +148,11 @@ fillable_keys() {
 }
 
 # _fe_store <key> <env-file> -- the file KEY's answer is written to: the tracked
-# config file for a behaviour-config key, the env file for everything else.
+# config file for a behaviour-config key, the env file for everything else (an
+# env-only config key too: no himmel.conf layer serves it).
 _fe_store() {
   local conf
-  if [ "$(_himmel_key_class "$1")" = config ]; then
+  if [ "$(_himmel_key_class "$1")" = config ] && ! _himmel_env_only_key "$1"; then
     conf="$(_himmel_config_dir)/himmel.conf"
     # A himmel.conf.local value outranks himmel.conf, so the answer goes there.
     if [ -f "$conf.local" ] && [ -n "$(dotenv_get "$conf.local" "$1")" ]; then
@@ -170,7 +171,7 @@ _fe_store() {
 _fe_current() {
   local v conf
   v="$(dotenv_get "$(_fe_store "$1" "$2")" "$1")"
-  if [ -z "$v" ] && [ "$(_himmel_key_class "$1")" = config ]; then
+  if [ -z "$v" ] && [ "$(_himmel_key_class "$1")" = config ] && ! _himmel_env_only_key "$1"; then
     conf="$(_himmel_config_dir)/himmel.conf"
     v="$(dotenv_get "$conf" "$1")"
   fi

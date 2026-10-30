@@ -527,7 +527,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # --- (u) a board class move to STALE wakes, naming board -------------------
 reset_stub
 I="$(new_inbox u)"
-start "$I" "$WORK/u.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/u.out" --workers "N1.md"
 wait_hb "$I" || fail "(u) no baseline heartbeat"
 tick_line "N1:FRESH" "STALE:3m"
 wait_exit "$WPID"

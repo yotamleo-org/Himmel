@@ -1192,3 +1192,4 @@ scripts/test-check-ci.sh	134
 scripts/test-worktree-orphans.sh	22
 scripts/eval/routing/test-score.sh	9
 scripts/test-himmel-doctor-mcp-sources.sh	1
+scripts/handover/test-windows-arms-dropped.sh	1

@@ -971,6 +971,7 @@ function validateBehaviourConfig(values) {
     const key = keys[i];
     const value = values[key];
     if (classes[i] !== 'config') throw new Error(`${key} is not a behaviour config key`);
+    if (CONFIG_KEYS.some(r => r.name === key && r.envOnly)) throw new Error(`${key} is read from .env only; it is not a himmel.conf key`);
     if (typeof value !== 'string' || /[\r\n\0]/.test(value) || value !== value.trim()) {
       throw new Error(`${key} must be a single-line config value`);
     }
@@ -999,10 +1000,10 @@ async function askBehaviourConfig(ask, opts = {}) {
   const log = opts.log || console.log;
   const values = {};
   log('Behaviour config: Enter keeps the persisted value or the consumer default. Persisted values are not displayed.');
-  validateBehaviourConfig(Object.fromEntries(CONFIG_KEYS.filter(r => r.class === 'config').map(r => [r.name, ''])));
+  validateBehaviourConfig(Object.fromEntries(CONFIG_KEYS.filter(r => r.class === 'config' && !r.envOnly).map(r => [r.name, ''])));
   for (const row of CONFIG_KEYS) {
     const help = `${row.name}: ${row.explanation} Effect: ${row.effect}`;
-    if (row.class === 'policy' || (opts.handledKeys || []).includes(row.name)) { log(help); continue; }
+    if (row.class === 'policy' || row.envOnly || (opts.handledKeys || []).includes(row.name)) { log(help); continue; }
     for (;;) {
       const value = (await ask(`? ${help}\n  value (Enter keeps existing/default):\n> `)).trim();
       if (!value) break;
@@ -1022,7 +1023,7 @@ function applyBehaviourConfig(values, opts = {}) {
   const conf = opts.conf || behaviourConfig.confPath();
   const envFile = opts.envFile;
   const log = opts.log || console.log;
-  const keys = CONFIG_KEYS.filter(r => r.class === 'config').map(r => r.name);
+  const keys = CONFIG_KEYS.filter(r => r.class === 'config' && !r.envOnly).map(r => r.name);
   let original;
   if (envFile) {
     try { original = fs.readFileSync(envFile, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }

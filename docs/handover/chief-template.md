@@ -8,7 +8,7 @@
 > `{{STATE_DIR}}`); you ship from and always run in
 > **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a
 > worker into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
-> tokens per turn, or 150 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
+> tokens per turn, or 110 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
 
 ## ACTION ZERO — before anything else
 
@@ -233,15 +233,16 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    head, rulings made today, what wrapped. **The HANDOFF wins over this file's
    Results tail.** The waiter mutes while you hand over: `chief-sections/waiter.md`.
 3. `touch` the signal path from step 1.
-4. **Re-brief every live worker before you release, never by hand.** On
-   `WAKE relay-on-live` (set by `next` for a bus chief) or running
-   `relay-batch.sh <this doc> --successor <it>`: a bus record relays each native
+4. **Re-brief every live worker before you release, never by hand.**
+   `ListAgents` finds the successor; `WAKE relay-on-live` (set by `next` unless
+   `--no-relay-on-live`) is the waiter's batch, else run
+   `relay-batch.sh <this doc> --successor <it>` once: a bus record relays each native
    worker, an inbox relay plus a bus notice each claudex one. A failed or absent
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
    `FAILED-INBOX` and `UNRESOLVED` too; on `relay-failed`, any undelivered.
    Never re-run it (it resends). It carries no fresh token: native and claudex
-   workers are not rotated on bus succession; `--fresh` hands one. Then send the successor
+   workers are not rotated; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any workers that

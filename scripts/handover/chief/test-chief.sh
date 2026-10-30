@@ -19,7 +19,7 @@
 # macOS (see chief.sh's own header) — same platform scope.
 set -uo pipefail
 
-# a bus-identified chief's `next` leaves the relay-on-live marker unasked; only 6e sets it
+# `next` leaves the relay-on-live marker by default; unsetting the bus name keeps 6e the one bus-identity row
 unset HIMMEL_BUS_NAME
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_REAL="$(cd "$HERE/../../.." && pwd)"
@@ -347,20 +347,33 @@ check "6c HANDOFF says a relay MAY keep the worker's token" \
     "$(tr '\n' ' ' < "$handoff6A" | tr -s ' ' | grep -c 'MAY keep')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6A" "$token6a" >/dev/null 2>&1
 
-# --- 6d: --relay-on-live leaves a marker (line 1 successor, line 2 its doc) beside the
-# predecessor's inbox; a plain `next` leaves none; the flag is next-only.
+# --- 6d: a plain `next` leaves the marker (line 1 successor, line 2 its doc) beside the
+# predecessor's inbox; --no-relay-on-live leaves none; both flags are next-only.
 out6da="$(chief new --bucket reldemo)"
 token6da="$(token_of "$out6da")"
 doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-chief.md"
 doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-chief.md"
 mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.relay-on-live"
-chief next --bucket reldemo >/dev/null
-check "6d plain next leaves no relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
+chief next --bucket reldemo --doc "$doc6dA" >/dev/null
+chief next --bucket reldemo --doc "$doc6dA" --no-relay-on-live >/dev/null 2>&1  # stops at the successor doc the first call made
+check "6d next --no-relay-on-live disarms an earlier marker even when it stops at the existing successor doc" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+check "6d that opt-out retry leaves the successor doc alone" "$([ -f "$doc6dB" ] && echo yes || echo no)" "yes"
 rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
+printf 'STALE\n' > "$mark6d"
+mkdir "$mark6d.tmp"  # a directory at the temp name makes the marker write fail
+chief next --bucket reldemo --doc "$doc6dA" >/dev/null 2>&1
+check "6d a failed marker write removes an earlier attempt's marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+rmdir "$mark6d.tmp"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
+chief next --bucket reldemo >/dev/null
+check "6d plain next writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
+check "6d plain next writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
 chief next --bucket reldemo --relay-on-live >/dev/null
-check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
-check "6d next --relay-on-live writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
+check "6d next --relay-on-live is still accepted and writes the marker" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 check "6d --relay-on-live is next-only" "$(chief new --bucket reldemo2 --relay-on-live >/dev/null 2>&1; echo $?)" "1"
+check "6d --no-relay-on-live is next-only" "$(chief new --bucket reldemo2 --no-relay-on-live >/dev/null 2>&1; echo $?)" "1"
 # 6e: a chief with a bus identity gets the marker without the flag, so its waiter runs
 # relay-batch.sh (bus record + SendMessage lines) instead of a hand relay that leaves the
 # workers with no bus edge to the successor.
@@ -369,6 +382,9 @@ rc6e=0
 HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-chief" chief next --bucket reldemo >/dev/null || rc6e=$?
 check "6e bus-identified next succeeds" "$rc6e" "0"
 check "6e next from a bus-identified chief writes the relay-on-live marker unasked" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
+HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-chief" chief next --bucket reldemo --no-relay-on-live >/dev/null
+check "6e --no-relay-on-live wins over a bus identity" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
 
 # --- 6b: --doc outside the successor's own state dir --------------------

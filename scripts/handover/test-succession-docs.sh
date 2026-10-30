@@ -438,6 +438,18 @@ contains 'running-a-chief Handing over: on relay-failed every worker with no del
 contains 'running-a-chief Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
 before 'running-a-chief Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
 
+# relay on live is the default: `next` always leaves the marker, --no-relay-on-live opts out
+contains 'Handing over step 4: ListAgents confirms the successor before the relay' "$step4" 'ListAgents'
+contains 'Handing over step 4: the relay ends with the RELAYED message' "$step4" 'RELAYED'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: next relays on live by default' "$(flat "$step4")" 'set by `next` unless `--no-relay-on-live`'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-chief Handing over: next relays on live by default' "$(flat "$running")" '`next` leaves every chief a `WAKE relay-on-live` unless it passed `--no-relay-on-live`'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'retask-channel Order: the outgoing chief relays on live by default' "$(flat "$retask")" '`chief.sh next` relays on live by default (`--no-relay-on-live` opts out)'
+absent 'handoff "How starts": no wake-only LIVE condition' "$(flat "$starts")" 'Only on WAKE succession complete'
+absent 'ACTION ZERO step 9 carries no EXPANSION or REDIRECT gate' "$(flat "$step9")" 'EXPANSION or REDIRECT'
+
 # --- 9. ACTION ZERO is one batched turn --------------------------------------
 step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CHIEF")"
 step1flat="$(flat "$step1")"
