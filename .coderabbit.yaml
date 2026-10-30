@@ -7,9 +7,47 @@
 #   - profile chill: CodeRabbit is one finding source in a multi-critic panel;
 #     the trial question is uniques, not volume — assertive nitpicks add
 #     adjudication cost without answering it.
-#   - request_changes_workflow off: the merge gate is a clean /pr-check
+#   - auto_approvals off: the merge gate is a clean /pr-check
 #     (CR-marker hook); a bot "request changes" state adds a second,
-#     unenforced gate on a repo merged via --admin.
+#     unenforced gate on a repo merged via --admin, and check-ci exits 3 on
+#     CHANGES_REQUESTED. The canonical key replaces request_changes_workflow
+#     (HIMMEL-8214): the old key is now a deprecated alias, and setting both
+#     with different values is a config error.
+#     allow_author_approval off (HIMMEL-8214, deliberate behaviour change):
+#     every himmel PR is opened under one identity, so with the default an
+#     agent could post `@coderabbitai approve` on its own PR and get a bot
+#     approval. With this off, another reviewer must run that command.
+#
+# HIMMEL-8214 pins (research: HIMMEL-8210). This file has no `inheritance`, so
+# every unset key resolves to the schema DEFAULT, never to the org UI. A
+# default CodeRabbit changes therefore lands here silently, as the 2026-10-27
+# review_progress change did. These keys are pinned so that the values our
+# gate depends on survive the next default change or org move:
+#   - review_progress false + commit_status true: post the `CodeRabbit`
+#     COMMIT STATUS, not a check run. scripts/lib/coderabbit-signal.sh reads
+#     /commits/<sha>/statuses only. Since review_progress defaulted to true,
+#     every head read `absent`, which blinded the check-ci NOTE, the
+#     rate-limit re-trigger and the stuck-review release.
+#   - fail_commit_status false: an errored review stays green with the error
+#     in its description. The CR status is advisory (HIMMEL-3360), so it must
+#     not show as a red check.
+#   - enable_prompt_for_ai_agents true: the outside-diff extractor ends a
+#     finding region at the "Prompt for AI Agents" block. Removing that block
+#     changes the review-body boundaries the parser expects.
+#   - review_info true: keeps the "Configuration used" section, which shows
+#     that this file (not the org UI) drove the review.
+#   - finishing_touches all off: each one pushes a bot commit or opens a
+#     stacked PR when someone clicks a checkbox or posts an @coderabbitai
+#     command. A bot commit moves the head: it discards the CR round and the
+#     judge GO, and it breaks single-writer.
+#   - Jira/Linear/MCP usage disabled (knowledge base and chat): the jira CLI
+#     owns the ticket loop. `auto` already disables them on a public repo;
+#     this pin keeps them off if the repo goes private or an org-level
+#     connection appears.
+#   - chat.allow_non_org_members false: on a public repo, a non-member could
+#     otherwise chat with the bot, request reviews and teach it learnings.
+#   - issue_enrichment.planning off: Jira is the tracker, so a plan comment
+#     on a GitHub issue is noise.
 #   - auto_review off (HIMMEL-1252): the App reviews ONLY on an explicit
 #     `@coderabbitai review` comment, not on every push — a per-push
 #     auto-review would burn the shared CR rate limit on every commit,
@@ -31,6 +69,15 @@
 #     applies, so cr-learnings-refresh can prune it in that window.
 language: "en-US"
 knowledge_base:
+  opt_out: false        # true deletes the stored learnings
+  web_search:
+    enabled: true
+  jira:
+    usage: "disabled"
+  linear:
+    usage: "disabled"
+  mcp:
+    usage: "disabled"
   learnings:
     scope: "local"
     approval_delay: 3
@@ -42,7 +89,27 @@ knowledge_base:
       - "docs/internals/ponytail-convention.md"
 reviews:
   profile: "chill"
-  request_changes_workflow: false
+  auto_approvals:
+    enabled: false
+    allow_author_approval: false
+  review_progress: false
+  commit_status: true
+  fail_commit_status: false
+  enable_prompt_for_ai_agents: true
+  review_info: true
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
   high_level_summary: true
   poem: false
   collapse_walkthrough: true
@@ -224,3 +291,12 @@ reviews:
         genuine leaks (precedent: HIMMEL-1352 scrubbed one from fixtures).
 chat:
   auto_reply: true
+  allow_non_org_members: false
+  integrations:
+    jira:
+      usage: "disabled"
+    linear:
+      usage: "disabled"
+issue_enrichment:
+  planning:
+    enabled: false

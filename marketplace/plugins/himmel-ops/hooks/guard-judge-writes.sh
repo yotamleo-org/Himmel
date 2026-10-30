@@ -13,9 +13,8 @@
 # load there. The plugin copy is byte-identical to this file and sources
 # nothing, for the same reason.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the judge lane (headed-arm-worker.sh --judge)
-# is Linux-only.
+# Platform guard: any POSIX bash 3.2+. The judge lane
+# (headed-arm-worker.sh --judge) is Linux-only.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_JUDGE=1 in this process's environment AND one
 # of:

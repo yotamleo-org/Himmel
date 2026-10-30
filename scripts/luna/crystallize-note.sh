@@ -195,9 +195,8 @@ fi
 
 # Operator rules/context injection: when a readable rules file was supplied,
 # append its content as a clearly delimited block. Unreadable / missing / empty
-# -> append nothing (fail-open). Trim whitespace before the emptiness guard to
-# ensure parity with PowerShell (Get-Content -Raw keeps trailing newline, but
-# bash `$(cat)` strips it; both must skip on whitespace-only files).
+# -> append nothing (fail-open). Trim whitespace before the emptiness guard
+# so whitespace-only files are skipped.
 if [ -n "$RULES_FILE" ] && [ -r "$RULES_FILE" ]; then
     _rules_content="$(cat "$RULES_FILE" 2>/dev/null)"
     # Trim whitespace (spaces, tabs, newlines) before the emptiness check

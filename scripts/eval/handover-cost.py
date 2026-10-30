@@ -161,7 +161,7 @@ def handover(p, s, workers, workers_after):
         "relay": piece([t for t in p["turns"] if t[0] >= s_first]),
         "az": piece([t for t in s["turns"] if t[0] <= p_last]),
     }
-    worker_turns, nlegs, skipped = [], 0, 0
+    worker_turns, nworkers, skipped = [], 0, 0
     for lg in workers:
         got = [x[0] for x in lg["deliveries"] if nxt <= x[0] and p["name"] in x[1]]
         if not got:
@@ -176,12 +176,12 @@ def handover(p, s, workers, workers_after):
             if t[4]:
                 break
         worker_turns.extend(taken)
-        nlegs += 1
+        nworkers += 1
     marked = [i for i, t in enumerate(s["turns"]) if t[5]]
     out["p_after_s"] = out["relay"][0]
     out["s_to_marker"] = marked[0] + 1 if marked else None
     out["worker"] = piece(worker_turns)
-    out["legs"] = nlegs
+    out["workers"] = nworkers
     out["skipped"] = skipped
     return out
 
@@ -220,7 +220,7 @@ def main(argv=None):
         rows.append((h, gross, net))
         print("HANDOVER %s->%s %s workers=%d p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             p["name"], s["name"],
-            " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], h["p_after_s"],
+            " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["workers"], h["p_after_s"],
             "-" if h["s_to_marker"] is None else h["s_to_marker"], round(gross), round(net)))
     n = len(rows)
     if not n:
@@ -233,7 +233,7 @@ def main(argv=None):
         print("MEAN n=%d %s workers=%.1f p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             n, " ".join("%s=%d/%d" % (k, mean([r[0][k][0] for r in rows]), mean([r[0][k][1] for r in rows]))
                         for k in PIECES),
-            sum(r[0]["legs"] for r in rows) / n, mean([r[0]["p_after_s"] for r in rows]), round(sum(marked) / len(marked)) if marked else "-",
+            sum(r[0]["workers"] for r in rows) / n, mean([r[0]["p_after_s"] for r in rows]), round(sum(marked) / len(marked)) if marked else "-",
             mean([r[1] for r in rows]), mean([r[2] for r in rows])))
     print("workers_skipped_before_cutoff=%d" % sum(r[0]["skipped"] for r in rows))
     return 0

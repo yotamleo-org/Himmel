@@ -14,6 +14,9 @@ const READ_ONLY = {
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// One compact command control; the full command is available on hover and to the existing copy handler.
+export const copyCommand = (command, label = "copy command") => `<button class="btn" type="button" data-act="copy" data-cmd="${esc(command)}" title="${esc(command)}">${esc(label)}</button>`;
+
 const kindOf = (r) => ({ doctor: "check", item: "item" }[r.source] || r.source);
 const remedyOf = (r) => (r.fix && r.fix.remedy) || "";
 const isTriage = (r) => r.health === "fail" || r.health === "warn";
@@ -30,7 +33,7 @@ function slot(r, where) {
     const v = c.action === "config.initiative" ? (on ? "off" : "on") : "";
     return `<button class="sw" role="switch" aria-checked="${on}" ${a(v)}>${on ? "on" : "off"} <span class="t"></span></button>`;
   }
-  if (isCopy(r)) return `<button class="btn" data-act="copy" data-cmd="${esc(remedyOf(r))}">copy · runs in your terminal</button>`;
+  if (isCopy(r)) return copyCommand(remedyOf(r), "copy · runs in your terminal");
   return `<span class="ro">⊘ read-only · ${esc(READ_ONLY[c.reason] || c.reason || "probe")}</span>`;
 }
 
@@ -43,12 +46,12 @@ export function planHtml(k, p) {
   const dk = `data-k="${esc(k)}"`;
   const cancel = `<button class="btn" data-act="close" ${dk}>${p.stage === "done" || p.stage === "error" ? "close" : "cancel"}</button>`;
   if (p.stage === "loading") return `<div class="plan"><span class="ro">running dry-run…</span></div>`;
-  if (p.stage === "running") return `<div class="plan"><span class="ro">running ${esc(p.command)}…</span></div>`;
+  if (p.stage === "running") return `<div class="plan"><span class="ro">running…</span> ${copyCommand(p.command)}</div>`;
   if (p.stage === "error") return `<div class="plan"><b>${esc(p.error)}</b>${p.output ? `<pre>${esc(p.output)}</pre>` : ""}${cancel}</div>`;
   if (p.stage === "plan") {
     const typed = p.consent && p.consent.kind === "typed";
     const ok = !typed || p.typed === p.consent.expect;
-    return `<div class="plan"><div class="ro">dry-run · nothing has changed</div><pre>$ ${esc(p.command)}\n${esc(p.output)}</pre>
+    return `<div class="plan"><div class="ro">dry-run · nothing has changed</div>${copyCommand(p.command)}<pre>${esc(p.output)}</pre>
       ${p.bank && p.bank !== "none" ? `<div class="ro">usage budget: ${esc(p.bank)}</div>` : ""}<div class="ro">takes effect: ${esc(p.effect)}</div>
       ${typed ? `<label>type <b>${esc(p.consent.expect)}</b> to confirm <input data-act="consent" ${dk} value="${esc(p.typed)}" autocomplete="off"></label>` : ""}
       <button class="btn primary" data-act="run" ${dk}${ok ? "" : " disabled"}>confirm</button>${cancel}
@@ -59,7 +62,7 @@ export function planHtml(k, p) {
     const b = (p.before || {})[id] || {}, a = (p.after || {})[id] || {};
     return `<div class="ba"><b>${esc(id)}</b><span>installed ${esc(b.installed)} → ${esc(a.installed)}</span><span>health ${esc(b.health)} → ${esc(a.health)}</span></div>`;
   }).join("");
-  return `<div class="plan"><div>${p.rc === 0 ? "✓" : "✕"} ran ${esc(p.command)} · rc=${esc(p.rc)}${p.timedOut ? " · timed out" : ""}</div>${ba}
+  return `<div class="plan"><div>${p.rc === 0 ? "✓" : "✕"} ran ${copyCommand(p.command)} · rc=${esc(p.rc)}${p.timedOut ? " · timed out" : ""}</div>${ba}
     ${p.output ? `<pre>${esc(p.output)}</pre>` : ""}<div class="ro">${p.reprobe === "ok" ? "re-probed" : esc(p.reprobe)} · ${p.audit === "failed" ? "<b>audit log append FAILED</b>" : "logged to actions.jsonl"}</div>${cancel}</div>`;
 }
 
@@ -209,6 +212,18 @@ export const reviewGateDraft = (d) => [
   ...d.reviewers.map((r) => ({ slug: r.slug, mode: r.mode, required: r.required, enabled: true, ...(r.hasModel ? { model: r.model } : {}), ...(r.hasEffort ? { effort: r.effort } : {}) })),
   ...(d.dropped || []).map((slug) => ({ slug, mode: (d.droppedBase?.[slug]?.mode) || "best-effort", required: d.droppedBase?.[slug]?.required === true, enabled: false })),
 ];
+const PROVIDER_SAYS = {
+  "claude-api": "runs on your Anthropic API key and bills API credit, separate from your plan",
+  "claude-subscription": "runs through the Claude CLI on your Claude plan and uses the same 5-hour and weekly limits as your own sessions",
+};
+const ENV_HOME = {
+  CR_PROFILE: "Set in ~/.himmel/himmel.conf (machine), ~/.himmel/himmel.conf.local (local override), or .himmel/himmel.conf in your project. This selects the /pr-check panel, not the reviewer definitions in critics.json.",
+  CR_REQUIRE_CROSS_MODEL: "Edit policy.CR_REQUIRE_CROSS_MODEL in ~/.himmel/config.json by hand. This is operator-owned gate policy, so the UI cannot change it and the launching shell does not override it.",
+  CR_FLOOR_FALLBACK: "Edit policy.CR_FLOOR_FALLBACK in ~/.himmel/config.json by hand. This is operator-owned gate policy, so the UI cannot change it and the launching shell does not override it.",
+  CRITIC_PANEL_TIERS: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; CR_PROFILE takes precedence when set.",
+  CRITIC_TIMEOUT_SECS: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; it bounds one reviewer, not the whole panel.",
+  CRITIC_PARALLEL: "Export in the shell that starts Claude Code, before launching it. critic-panel.sh reads this process variable, not himmel.conf; 1 runs reviewers concurrently, 0 sequentially.",
+};
 const MODE_SAYS = { hard: "must pass at the head, anything else holds the merge", "best-effort": "holds the merge only on an open finding; any other state is a note", advisory: "critic findings are notes until precision reaches the floor; review threads still hold" };
 // extra: html drawn under the reviewers (the Configure page folds CodeRabbit's install state in there).
 export function renderReviewGate(rg, extra = "") {
@@ -230,17 +245,17 @@ export function renderReviewGate(rg, extra = "") {
       <span class="slot">${model}${effort}<label>mode <select data-rg="mode" data-slug="${esc(x.slug)}" aria-label="${esc(x.slug)} mode">${modes}</select></label>
       <label><input type="checkbox" data-rg="required" data-slug="${esc(x.slug)}"${x.required ? " checked" : ""}> required</label>
       <label><input type="checkbox" data-rg="enabled" data-slug="${esc(x.slug)}"${x.enabled ? " checked" : ""}> on</label></span></div>
-      <div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
+      ${r && PROVIDER_SAYS[r.provider] ? `<div class="ro">${esc(PROVIDER_SAYS[r.provider])}</div>` : ""}<div class="ro">${x.required ? "required: kept in the set even when absent here" : "optional: leaves the set when absent here"}${rec ? ` · ${isRec ? "recommended" : `recommended: ${esc(rec.mode)}, ${rec.required ? "required" : "optional"}, ${rec.enabled ? "on" : "off"}`}` : ""}</div></div>`;
   }).join("");
   const env = d.env.map((e) => `<div class="setrow"><div class="sethead"><span class="id">${esc(e.name)}</span><span class="det">${esc(e.means)}</span></div>
-    <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · set in .env or the launching shell, read-only here</div></div>`).join("");
+    <div class="ro">now: ${e.value === null ? "not set" : esc(e.value)} · default: ${esc(e.default)} · ${esc(ENV_HOME[e.name])}</div></div>`).join("");
   const msg = rg.msg ? `<div class="${rg.msg.ok ? "ro" : "nodata"}" role="status">${esc(rg.msg.text)}</div>` : "";
   return `<section id="review-gate" aria-labelledby="h-review-gate">${head}<div class="card">
     <p class="sub">Reviewers run in this order. Changes are saved to <code>${esc(d.overlay)}</code> on this machine; the shared critics.json is never written.</p>
     ${rows}${extra}
     <p class="sub">${esc(d.rateLimit)}</p>
     <button class="btn" data-act="review-gate-save">save</button>${msg}</div>
-    <div class="card"><h3>Timeouts and tiers</h3>${env}</div></section>`;
+    <div class="card"><h3>Timeouts and tiers</h3><p class="sub">These are review-run settings, not critics.json reviewer definitions. Read-only here; each row says where to change it and why.</p>${env}</div></section>`;
 }
 
 // Settings: what can be changed and where it lives. Each row shows the himmelctl command it runs, when it takes
@@ -324,7 +339,7 @@ function setRow(g, state, { id, title, detail, cmd, effect, slot, health, keys }
   const ks = keys || [`settings|${id}`];
   const open = ks.filter((k) => state.plans && state.plans[k]);
   return `<div class="setrow"><div class="sethead">${health ? `<span class="st ${esc(health)}">${ST[health] || esc(health)}</span>` : ""}<span class="id">${esc(title)}</span><span class="det">${esc(detail)}</span><span class="slot">${slot}</span></div>
-    <pre><code>${esc(cmd)}</code></pre>
+    ${open.length ? "" : cmd.includes(" ") || cmd.includes("=") ? [...new Set(cmd.split("\n"))].map((c, i, all) => copyCommand(c, all.length > 1 ? `copy command ${i + 1}` : "copy command")).join(" ") : `<code>${esc(cmd)}</code>`}
     <div class="ro">takes effect: ${esc(effect)} · <a class="learn" href="${docsHref(g.learn)}" target="_blank" rel="noopener">Learn more</a></div>${open.map((k) => planHtml(k, state.plans[k])).join("")}</div>`;
 }
 

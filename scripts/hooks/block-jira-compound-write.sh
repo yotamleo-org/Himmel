@@ -143,10 +143,9 @@ is_write_verb() {
 # Reads hd / hd_dash from the caller's scope.
 hd_is_close() {
     local ln="$1"
-    # Strip EVERY trailing CR: line-ending artifact, not content. (One is the
-    # usual CRLF; an MSYS text-mode redirect of already-CRLF text yields \r\r\n.
+    # Strip EVERY trailing CR as a line-ending artifact, including repeated CRs.
     # Leaving any behind means the delimiter never matches and the body silently
-    # swallows the rest of the command — including a real write.)
+    # swallows the rest of the command — including a real write.
     while [ "${ln%$'\r'}" != "$ln" ]; do ln="${ln%$'\r'}"; done
     [ "$hd_dash" = 1 ] && ln="${ln#"${ln%%[!$'\t']*}"}"
     [ "$ln" = "$hd" ]
@@ -1233,8 +1232,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 # operand collapsing to `empty` zeroes out the WHOLE expression, not just
 # that field. Use jq's output only when jq SUCCEEDS: a partial parse
 # (malformed input, trailing garbage) must not reach the block path on
-# half-read values. Windows jq.exe writes CRLF, so strip the stray CR off
-# $tool (same shape as require-quiet-run.sh).
+# half-read values. Strip a stray CR off $tool defensively (same shape as
+# require-quiet-run.sh).
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0
 tool="${result%%$'\n'*}"
 tool="${tool%$'\r'}"

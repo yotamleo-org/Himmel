@@ -17,7 +17,7 @@
 # scripts/handover/test-arm-resume-tier.sh (do not invent a new hermetic
 # pattern) — this suite is that one's --context sibling, not a replacement.
 #
-# Platform guard (gitbash-only): the SUITE ITSELF runs under any POSIX bash
+# Platform guard: the SUITE ITSELF runs under any POSIX bash
 # 3.2+, Git Bash on Windows included -- pure `case`/`[ ]`, mktemp, and
 # PATH-stubbed schtasks/at/atq binaries it writes itself. But cases (c),
 # (d), and (f)'s command-rendering assertions ('opus\[1m\]', '--autocompact

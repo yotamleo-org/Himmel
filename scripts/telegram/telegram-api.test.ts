@@ -1,5 +1,5 @@
 import { expect, test, spyOn, mock } from "bun:test";
-import { getUpdates, sendMessage, sendChatAction } from "./telegram-api";
+import { answerCallbackQuery, getUpdates, sendMessage, sendChatAction } from "./telegram-api";
 
 test("sendMessage exposes the accepted message id for console reply threading only on success", async () => {
   const ids: number[] = [];
@@ -170,4 +170,25 @@ test("downloadFile returns false on a non-ok response", async () => {
   const dest = join(mkdtempSync(join(tmpdir(), "tg-dl-")), "img.jpg");
   const fakeFetch = async () => new Response("nope", { status: 404 });
   expect(await downloadFile("TOKEN", "p.jpg", dest, fakeFetch as any)).toBe(false);
+});
+
+test("sendMessage carries a reply_markup (the ForceReply prompt) and still reports the message id", async () => {
+  let body: any;
+  const f = async (_u: string, init: any) => { body = JSON.parse(init.body); return new Response(JSON.stringify({ ok: true, result: { message_id: 55 } })); };
+  const ids: number[] = [];
+  const markup = { force_reply: true, input_field_placeholder: "6-digit code" };
+  expect(await sendMessage("T", 1, "Code for abcdefgh:", f as any, async () => {}, id => { ids.push(id); }, undefined, markup)).toBe(true);
+  expect(body.reply_markup).toEqual(markup);
+  expect(ids).toEqual([55]);
+  let plain: any;
+  await sendMessage("T", 1, "x", (async (_u: string, init: any) => { plain = JSON.parse(init.body); return new Response(JSON.stringify({ ok: true, result: {} })); }) as any);
+  expect("reply_markup" in plain).toBe(false);
+});
+
+test("answerCallbackQuery posts the id and text, and never throws", async () => {
+  let url = ""; let body: any;
+  await answerCallbackQuery("T", "cb9", "Not authorized.", (async (u: string, init: any) => { url = u; body = JSON.parse(init.body); return new Response("{}"); }) as any);
+  expect(url).toContain("/answerCallbackQuery");
+  expect(body).toEqual({ callback_query_id: "cb9", text: "Not authorized." });
+  await answerCallbackQuery("T", "cb9", "x", (async () => { throw new Error("down"); }) as any);
 });

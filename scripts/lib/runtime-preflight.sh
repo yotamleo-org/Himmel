@@ -3,13 +3,9 @@
 # check every supported production/test entry point runs before it commits to a
 # long or unattended piece of work (RAM program P1-5).
 #
-# WHY: measured on OVERLORD8 2026-08-20/21 — .nvmrc pins Node 24 while the live
-# shell runs 26.7.0, no nvm anywhere on PATH (C:\Program Files\nodejs is a plain
-# directory, not an NVM link), Bun 1.4.0 from a canary build, and a bare `bash`
-# from a Windows process resolves to C:\Windows\System32\bash.exe (the WSL
-# launcher) before Git Bash. None of that is proof any runtime leaks kernel
-# objects — it is a retry/churn amplifier, and it was rediscovered by hand every
-# session because nothing on the way in ever said it out loud.
+# WHY: a Node major that differs from .nvmrc, a missing version manager, or a
+# canary Bun build amplifies retry/churn. Report runtime drift at entry rather
+# than rediscovering it by hand each session.
 #
 # RUNTIME POLICY (change it HERE; entry points never restate it):
 #   node — the running major MUST equal the .nvmrc pin.
@@ -17,10 +13,6 @@
 #          preflight-adopter.sh; only the wording differs).
 #   bun  — release builds only. A canary build is not reproducible and is not
 #          what any lockfile or CI run was validated against.
-#   bash — must NOT resolve, in WINDOWS PATH order, to the WSL launcher or a
-#          WindowsApps 0-byte alias. Same known-bad set as
-#          scripts/hooks/run-hook-with-bash.js; this file never
-#          SPAWNS a bare bash, it only asks what one would resolve to.
 #
 # SEVERITY (deliberate, and the reason this is not a hard gate on day one):
 #   default              advisory — print the findings LOUDLY, return 0.
@@ -45,15 +37,10 @@
 #   RUNTIME-DRIFT npm-uncheckable <detector path>
 #   RUNTIME-DRIFT bun-canary <version>
 #   RUNTIME-DRIFT bun-unreadable <what the version probe said>
-#   RUNTIME-DRIFT bash-wsl-first <path>
-#   RUNTIME-DRIFT bash-uncheckable <probe>
 #   RUNTIME-GUIDANCE nvm-absent          (never a refusal on its own)
 #
 # Test seams:
 #   RUNTIME_PREFLIGHT_NVMRC   pin file (default: <repo>/.nvmrc)
-#   RUNTIME_PREFLIGHT_WHERE   the Windows PATH-order probe (default: where.exe)
-#   RUNTIME_PREFLIGHT_OS      uname override, so the Windows-only bash check is
-#                             exercisable from any host
 
 _runtime_preflight_dir() {
     cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd
@@ -87,13 +74,8 @@ runtime_preflight_pin() {
     _runtime_preflight_major "$(sed -n '1p' "$nvmrc" | tr -d '\r')"
 }
 
-# The known-bad Windows bash targets, kept byte-identical to
-# isKnownBadWindowsBash() in scripts/hooks/run-hook-with-bash.js. The suite pins
-# that coupling with a canary case rather than trusting this comment.
-RUNTIME_PREFLIGHT_BAD_BASH='/windows/system32/bash.exe /windows/sysnative/bash.exe /windowsapps/bash.exe'
-
 runtime_preflight_scan() {
-    local drift=0 pin cur cur_major node_bin bun_ver where_bin first_bash low bad
+    local drift=0 pin cur cur_major node_bin bun_ver
 
     # --- node ---------------------------------------------------------------
     node_bin="$(command -v node 2>/dev/null || true)"
@@ -164,40 +146,6 @@ runtime_preflight_scan() {
         esac
     fi
 
-    # --- bash (Windows only) ------------------------------------------------
-    # Asking `command -v bash` from inside Git Bash always answers Git Bash and
-    # would sweep clean: the resolution that bites is the one a WINDOWS process
-    # (a cadence .bat, a scheduler runner) performs, so probe Windows PATH order.
-    # SCOPE: this answers for the process tree THIS entry point will spawn — its
-    # own inherited Windows PATH. A scheduler-launched .bat starts from the
-    # machine PATH, where the order can differ; that path is already covered
-    # structurally by run-hook-with-bash.js, which RESOLVES a concrete bash
-    # instead of trusting order. This check is the belt to that
-    # brace, not a replacement for it.
-    case "${RUNTIME_PREFLIGHT_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
-        MINGW*|MSYS*|CYGWIN*|Windows*)
-            where_bin="${RUNTIME_PREFLIGHT_WHERE:-where.exe}"
-            first_bash="$("$where_bin" bash 2>/dev/null | head -1 | tr -d '\r')"
-            if [ -z "$first_bash" ]; then
-                # The probe is missing, errored, or found no bash on the Windows
-                # PATH at all. Either way the ORDER is unknown, and treating
-                # unknown as clean is the same silent pass r1 closed for npm
-                # (panel r3 codex-1).
-                echo "RUNTIME-DRIFT bash-uncheckable $where_bin"
-                drift=1
-            else
-                # tr '\134': the octal escape for a backslash. A literal '\\'
-                # here reads to shellcheck as an attempted quote escape (SC1003).
-                low="$(printf '%s' "$first_bash" | tr '\134' '/' | tr '[:upper:]' '[:lower:]')"
-                for bad in $RUNTIME_PREFLIGHT_BAD_BASH; do
-                    case "$low" in
-                        *"$bad") echo "RUNTIME-DRIFT bash-wsl-first $first_bash"; drift=1; break ;;
-                    esac
-                done
-            fi
-            ;;
-    esac
-
     [ "$drift" -eq 0 ]
 }
 
@@ -215,7 +163,7 @@ runtime_preflight() {
         printf '\n'
         printf '=== runtime preflight: %s ===\n' "$label"
         # Two fields, then THE REST (panel r3 codex-2): a detector path or a
-        # version string can contain spaces (`C:\Program Files\...`), and
+        # version string can contain spaces, and
         # splitting into fixed fields printed only its first token. node-major
         # is the one line with two space-free values, so it splits $_rest itself.
         printf '%s\n' "$findings" | while IFS=' ' read -r _kind _what _rest; do
@@ -227,9 +175,7 @@ runtime_preflight() {
                 npm-missing)   printf '  node is present but npm is not — lockfile/audit gates and dist builds cannot run\n' ;;
                 npm-uncheckable) printf '  the npm rule could not be evaluated: %s is missing or unreadable\n' "$_rest" ;;
                 bun-canary)    printf '  bun %s is a canary build — not reproducible, and not what any lockfile was validated against\n' "$_rest" ;;
-                bash-wsl-first) printf '  a bare bash resolves to %s (the WSL launcher/alias) before Git Bash — a Windows-launched hook or cadence runner gets the wrong shell\n' "$_rest" ;;
                 bun-unreadable) printf '  bun answered %s — not a version this policy can confirm as a release build\n' "$_rest" ;;
-                bash-uncheckable) printf '  the bash-order rule could not be evaluated: the probe %s is missing or answered nothing\n' "$_rest" ;;
                 nvm-absent)    printf '  no nvm/volta/fnm on this box — install one to align in place, or bump the pin after a suite pass\n' ;;
                 *)             printf '  %s %s %s\n' "$_kind" "$_what" "$_rest" ;;
             esac

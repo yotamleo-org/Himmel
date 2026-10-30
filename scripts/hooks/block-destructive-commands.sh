@@ -35,9 +35,8 @@ fi
 # each) are collapsed into ONE jq call via `<<<` (no printf fork) that
 # validates AND extracts both fields together: a malformed/non-parseable
 # payload makes the whole call fail exactly like the old standalone
-# `jq -e .` did, so the fail-closed branch is unchanged. Windows jq.exe
-# writes CRLF, so the embedded "\n" field separator can arrive as "\r\n" —
-# strip the stray CR off $tool (same shape as require-quiet-run.sh and
+# `jq -e .` did, so the fail-closed branch is unchanged. Strip a stray CR
+# off $tool defensively (same shape as require-quiet-run.sh and
 # block-tail-pipe-on-gates.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
@@ -210,10 +209,7 @@ fi
 #
 # This was `printf '%s' "$cmd_lc" | grep -Eq "$1"` — a fork PAIR
 # (subshell + grep) per call, and the deny floor below calls it 18 times, so
-# every Bash/PowerShell tool call paid 36 process spawns. On Windows with
-# Defender real-time scanning a spawn costs ~667 ms (~10x a normal Git-Bash
-# spawn), which made this single function ~24 s of the ~66 s PreToolUse chain
-# and shrank a 45-minute worker budget to ~20 tool calls.
+# every matching tool call paid 36 process spawns.
 #
 # `[[ =~ ]]` is the same POSIX ERE, evaluated in-process with zero spawns, and
 # every pattern below is passed through UNCHANGED. Two invariants make the

@@ -47,6 +47,11 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
+# Held RESUME rows: an in-work ticket a file collision keeps off the list prints
+# `RESUME-HELD <KEY> by <holder>` (a live worker, the --held list, an open PR, or `listed <KEY>`
+# for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
+# A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
+#
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
 # $TICKET_STATUS_STATE_DIR/workers or ~/.himmel/state/workers) is in state wrapped
 # with a resume_brief is a RESUME row carrying `brief=<path>`, filtered like the
@@ -804,6 +809,7 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
 
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
 resume = []
+resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
 for i in issues.values():
     if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
         continue
@@ -830,7 +836,9 @@ for i in issues.values():
         continue
     if any(blocker_state(b) for b in i['blocked_by']):
         continue
-    if held_hit(i):
+    hit = held_hit(i)
+    if hit:
+        resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -879,6 +887,8 @@ def classify(batch):
     return cls
 
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+for k, who in resume_held:
+    print('RESUME-HELD %s by %s' % (k, who))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
@@ -955,8 +965,11 @@ def emit_resume(rows):
             print('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
-        if not resume_only and picked_hit(i):
-            continue
+        if not resume_only:
+            hit = picked_hit(i)
+            if hit:
+                print('RESUME-HELD %s by listed %s' % (i['key'], hit[1]))
+                continue
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'

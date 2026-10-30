@@ -5,12 +5,12 @@ launches instead of N hand-written briefs. It NEVER launches: it prints one
 `fleet-manifest.sh add` line per worker and writes launcher scripts the chief
 runs itself. Ported from the BX/BY session-scratchpad generators.
 
-  gen-briefs.py <legs.json> --base <sha> --chief <session> --bucket <name|dir>
+  gen-briefs.py <workers.json> --base <sha> --chief <session> --bucket <name|dir>
                 [--date YYYY-MM-DD] [--repo <primary checkout>] [--letter BY]
                 [--handover-root <dir>] [--work-dir <dir>] [--deadline <epoch>]
                 [--manifest <fleet.json>] [--no-worktree] [--also-live <text>]
 
-legs.json is a list of objects. Required keys per leg: label (N<k>), keys
+workers.json is a list of objects. Required keys per worker: label (N<k>), keys
 (ticket keys, first is the doc's), slug, branch (type/slug), title, desc, why,
 prior, scope, scope_short, commit. Optional: writes (a string copied from the ticket's Writes text;
 ONLY this field supplies the brief's Writes paths, never scope or prior. Missing writes leaves an
@@ -54,7 +54,7 @@ No inherited key, no block.
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
-kind "rm" (HIMMEL-6796) is a release-manager session, not a leg: the brief is the fenced block of
+kind "rm" (HIMMEL-6796) is a release-manager session, not a worker: the brief is the fenced block of
 docs/handover/rm-brief-template.md filled in, and the launcher arms `--profile release-manager`.
 Required: kind, label, keys, slug, release (letters, digits, `.`, `_`, `-`), versions (current
 first), epoch (the lease epoch the RM must find, an integer from 0), state_dir (the absolute
@@ -98,7 +98,7 @@ ENV_LINE = ("This ticket touches CI, infra or the environment: one test row's fi
 VM_RE = re.compile(r'\b(?:VMs?|vmsdk|launch-guest)\b', re.I)
 VM_LINE = ("> **VM work:** drive the guest only through guest-exec.sh: `bash scripts/vm/guest-exec.sh <vm> -- '<cmd>'`. "
            "Raw `ssh -p <vm port>` from a worker is denied by the destructive-command hook.\n")
-# worker-e2e is worker-impl plus the Playwright MCP server; a leg that writes the config UI gets it.
+# worker-e2e is worker-impl plus the Playwright MCP server; a worker that writes the config UI gets it.
 UI_PROFILE = 'worker-e2e'
 UI_PATH_RE = re.compile(r'(?:^|\s)scripts/config-ui(?:/|\s|$)')
 UI_LINE = ("> **UI work:** the chief starts `himmelctl ui` from YOUR worktree and sends you its URL; ask for it, never start it yourself "
@@ -666,7 +666,7 @@ def render_launcher(l, ctx, doc):
 
 def main():
     ap = argparse.ArgumentParser(add_help=True)
-    ap.add_argument('legs')
+    ap.add_argument('workers')
     ap.add_argument('--base', required=True)
     ap.add_argument('--chief')
     ap.add_argument('--bucket', required=True)
@@ -700,11 +700,11 @@ def main():
     if not a.handover_root:
         die('--handover-root (or HANDOVER_DIR) is required', 2)
     try:
-        workers = json.load(open(a.legs))
+        workers = json.load(open(a.workers))
     except (OSError, ValueError) as e:
-        die('cannot read %s: %s' % (a.legs, e), 2)
+        die('cannot read %s: %s' % (a.workers, e), 2)
     if not isinstance(workers, list) or not workers:
-        die('%s must be a non-empty JSON list' % a.legs, 2)
+        die('%s must be a non-empty JSON list' % a.workers, 2)
     for i, l in enumerate(workers):
         validate(l, i, a.repo)
     labels = [l['label'] for l in workers]
@@ -783,7 +783,7 @@ def main():
             with open(re.sub(r'\.json$', '', a.manifest) + '.launchers.sha256', 'a') as f:
                 f.write('%s  %s\n' % (digest, os.path.abspath(launcher)))
 
-    with open(a.legs + '.out', 'w') as f:
+    with open(a.workers + '.out', 'w') as f:
         json.dump(workers, f, indent=1)
         f.write('\n')
     for l in workers:

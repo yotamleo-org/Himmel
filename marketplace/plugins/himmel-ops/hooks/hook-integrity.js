@@ -267,12 +267,10 @@ function gitStdout(result) {
 const LOCK_MAX_WAIT_MS = 200;
 const LOCK_POLL_MS = 10;
 
-// A pid is only meaningful inside the namespace that minted it. Under Git-Bash
-// on Windows, bash's $$ is an MSYS pid ("msys") — a DIFFERENT numbering from
-// the win32 pids node sees — so neither side may interpret the other's pid.
-// A foreign namespace is therefore never reclaimed, only waited out.
+// Both writers use the POSIX pid namespace. Unknown namespaces in existing
+// owner files are still never reclaimed, only waited out.
 function lockNamespace() {
-  return process.platform === 'win32' ? 'win32' : 'posix';
+  return 'posix';
 }
 
 // Field 22 of /proc/<pid>/stat (starttime). Everything up to and including the
@@ -478,11 +476,9 @@ function releaseRecordLock(lockDir) {
   }
 }
 
-// Atomic-as-we-can publish: temp file BESIDE the destination (a mkdtemp temp
-// dir can land on another filesystem, where rename() is EXDEV), rename over it,
-// restore 0400. The destination is 0400 by design, and Windows refuses to
-// rename over a read-only file — chmod 0600 first, and on win32 fall back to
-// unlink+rename (record-hook-integrity.sh's `attrib -R` is a bash-only path).
+// Atomic publish: temp file BESIDE the destination (a mkdtemp temp dir can
+// land on another filesystem, where rename() is EXDEV), rename over it,
+// restore 0400.
 function persistIntegrityRecord(recordPath, record) {
   const tmp = `${recordPath}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
   fs.writeFileSync(tmp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
@@ -492,43 +488,7 @@ function persistIntegrityRecord(recordPath, record) {
     } catch (_e) {
       // Destination may not exist yet, or chmod may be a no-op on this host.
     }
-    try {
-      fs.renameSync(tmp, recordPath);
-    } catch (e) {
-      if (process.platform !== 'win32') throw e;
-      // win32 fallback. It used to unlink the incumbent record and then rename
-      // the replacement in, which is fail-OPEN twice over: readers take the
-      // fast path WITHOUT the lock, and loadIntegrityRecord treats an absent
-      // record as "no opinion" (allow), so any reader landing between the two
-      // calls skips verification entirely — and if the second rename also
-      // failed, the record was gone for good and verification stayed disabled
-      // for the rest of the session. Move the incumbent ASIDE instead: the
-      // window shrinks to one rename, and a failed publish can put the old
-      // record back rather than leaving nothing.
-      const aside = `${recordPath}.old-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
-      fs.renameSync(recordPath, aside);
-      try {
-        fs.renameSync(tmp, recordPath);
-      } catch (e2) {
-        try {
-          fs.renameSync(aside, recordPath); // restore: never publish an absence
-        } catch (_e) { /* best effort — the aside copy is still on disk to recover by hand */ }
-        throw e2;
-      }
-      try {
-        fs.unlinkSync(aside);
-      } catch (_e) { /* best effort — a stale aside copy is inert */ }
-      // Between those two renames the record still does not exist, and rename
-      // semantics on win32 cannot close that — there is no atomic replace here,
-      // which is why this fallback exists at all. What used to make it a hole
-      // was the READER side: a lock-free fast-path reader in that window read
-      // an absent record as "no opinion" and allowed. loadRecordAcrossPublish
-      // below closes that, using the lock plus the `aside` file this line
-      // creates as the two markers of a publication in flight — so the aside is
-      // load-bearing beyond its own restore, and this name must keep matching
-      // PUBLISH_ASIDE_SUFFIX. Concurrent WRITERS were never at risk:
-      // persistIntegrityRecord only ever runs under the record lock.
-    }
+    fs.renameSync(tmp, recordPath);
   } catch (e) {
     try {
       fs.unlinkSync(tmp);
@@ -542,17 +502,15 @@ function persistIntegrityRecord(recordPath, record) {
 
 // ------------------------------------------- reading across a publish window
 //
-// The win32 fallback above has no atomic replace, so between its two renames
-// there is NO record on disk. Readers take the fast path without the lock and
-// treat an absent record as "no opinion" → allow, so a reader landing in that
-// window skips verification altogether; and a publisher killed inside the
-// window leaves that state on disk permanently, silently disabling
-// verification for the rest of the session.
+// Legacy non-atomic publishers could leave NO record between two renames.
+// Keep handling their debris: readers take the fast path without the lock and
+// treat an absent record as "no opinion" → allow, so ignoring that interrupted
+// publication would silently disable verification for the rest of the session.
 //
 // TWO markers together say "a publication is in flight", and neither alone
 // does:
 //   * the record LOCK — persistIntegrityRecord only ever runs while holding it;
-//   * an `<record>.old-…` ASIDE — nothing but that fallback ever creates one.
+//   * an `<record>.old-…` ASIDE — left by the retired publish fallback.
 // The lock alone would be wrong: record-hook-integrity.sh holds this same lock
 // while it builds the session's FIRST record, and there is legitimately no
 // record on disk then. Requiring the aside too leaves that ordinary
@@ -1750,7 +1708,7 @@ function denyIntegrityMismatch(scriptPath, relPath, reason) {
 // are exported for the suite only — the launcher uses none of them. They are the
 // three failure modes that cannot be provoked through verifyProjectHookIntegrity
 // from the outside (a lost reclaim race, an owner file that will not write, and
-// the win32 publish fallback), and a race whose fix is not tested is a fix that
+// a failed record publish), and a race whose fix is not tested is a fix that
 // silently regresses.
 module.exports = {
   LOCK_MAX_WAIT_MS,

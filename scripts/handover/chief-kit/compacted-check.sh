@@ -29,7 +29,7 @@
 # `lock:` to the bullet would need a chief-template.md edit plus a one-line
 # addition to FIELDS below.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, sha256sum or shasum.
+# Platform guard: POSIX bash 3.2+, sha256sum or shasum.
 set -uo pipefail
 
 if [ "$#" -ne 2 ]; then

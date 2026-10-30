@@ -33,6 +33,7 @@ cp "$FIX/new-hook.sh" "$repo/scripts/hooks/new-hook.sh"
 
 out="$(cd "$repo" && bash "$SCRIPT" --diff "$base...HEAD" 2>&1)"; rc=$?
 check "diff: exit 0 (advisory)" "$rc" "0"
+not_contains "diff: lone .sh change needs no retired platform twin" "$out" "[sh-ps1-twin-drift]"
 contains "diff: mktemp-no-template fires"      "$out" "[mktemp-no-template]"
 contains "diff: mktemp cites file:line"        "$out" "scripts/foo.sh:4"
 not_contains "diff: templated mktemp excluded" "$out" "scripts/foo.sh:5"
@@ -89,7 +90,7 @@ contains "diff: mktemp with a redirect cites line 34" "$out" "scripts/foo.sh:34"
 jout="$(cd "$repo" && bash "$SCRIPT" --diff "$base...HEAD" --json 2>&1)"
 printf '%s' "$jout" > "$tmp/out.json"
 jids="$(node -e 'const j=require(process.argv[1]);console.log(j.hits.map(h=>h.id).sort().join(","));console.log("files="+j.files)' "$tmp/out.json" 2>&1)"
-contains "json: ids include mktemp + twin" "$jids" "mktemp-no-template"
+contains "json: ids include mktemp" "$jids" "mktemp-no-template"
 contains "json: files count present"      "$jids" "files=3"
 
 # Change 2: a test file changes alongside a hook edit that states its direction → no coverage gap, no hook flag.
@@ -162,6 +163,17 @@ not_contains "diff6: a ROOT-level bin.js (dir \".\") is paired by any changed te
 out3="$(cd "$repo" && bash "$SCRIPT" --diff "HEAD...HEAD" 2>&1)"; rc3=$?
 check "clean diff exits 0" "$rc3" "0"
 contains "clean diff says so" "$out3" "no known class matches"
+
+# Unknown detector types must not turn stale catalog data into a clean review.
+cat > "$tmp/unknown-detector.json" <<'KFJSON'
+{"classes":[{"id":"old-twin","kind":"checklist","rung":"advisory","title":"t","globs":["scripts/**/*.sh"],"detector":{"type":"twin-missing"}}]}
+KFJSON
+for diff_range in "$base...HEAD" "HEAD...HEAD"; do
+  unknown="$(cd "$repo" && KNOWN_FINDINGS_FILE="$tmp/unknown-detector.json" bash "$SCRIPT" --diff "$diff_range" 2>&1)"; unknown_rc=$?
+  check "unknown detector: $diff_range refuses stale catalog" "$unknown_rc" "2"
+  contains "unknown detector: names the type and class" "$unknown" "unknown detector type twin-missing in class old-twin"
+  not_contains "unknown detector: never claims a clean review" "$unknown" "no known class matches"
+done
 
 # --prompt: rebuttal classes only, with the do-not-re-raise framing
 p="$(bash "$SCRIPT" --prompt 2>&1)"

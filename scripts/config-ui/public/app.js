@@ -486,6 +486,16 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
+  if (b.dataset.act === "reveal") {
+    e.stopPropagation();
+    const field = b.closest("form").querySelector(`input[data-secret="${b.dataset.reveal}"],input[data-account="${b.dataset.reveal}"]`);
+    field.type = field.type === "password" ? "text" : "password";
+    const shown = field.type === "text";
+    b.textContent = shown ? "hide" : "show";
+    b.setAttribute("aria-pressed", String(shown));
+    b.setAttribute("aria-label", `${shown ? "Hide" : "Show"} ${b.dataset.reveal}`);
+    return;
+  }
   if (b.dataset.act === "setup-remove") {
     const field = b.closest("[data-setup-form]")?.querySelector("input");
     if (field) field.value = ""; // remove sends no value, so the typed text must not be put back by the repaint

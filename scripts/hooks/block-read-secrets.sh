@@ -256,18 +256,12 @@ fi
 # (a literal escape sequence there kept getting silently decoded back into
 # a raw embedded control byte by this editing pipeline — passing it as a
 # runtime arg sidesteps that entirely).
-# NOT `\n`: two independent bugs with a `\n` separator, both closed by this:
-#   * Windows jq.exe writes CRLF for every "\n" a multi-field filter emits,
-#     so every field but the last comes back with an embedded trailing \r
-#     that needed an explicit strip (the shape require-quiet-run.sh,
-#     still uses for its one non-final field).
-#   * a `\n` INSIDE file_path/path (a path component containing a literal
-#     newline — POSIX-legal, if rare) truncated that field early at the
-#     split, so is_secret_path never saw the real basename. SOH cannot
-#     legitimately appear in a path OR get CRLF-translated, so no field
-#     needs stripping and the split is exact regardless of field content.
-#     `command` is still read out LAST (the tail past the third separator),
-#     so its own legitimate embedded "\n"s (a heredoc body) stay intact.
+# NOT `\n`: a newline INSIDE file_path/path (a path component containing a
+# literal newline — POSIX-legal, if rare) truncated that field early at the
+# split, so is_secret_path never saw the real basename. SOH keeps the split
+# exact when a path contains a newline. `command` is still read out LAST
+# (the tail past the third separator), so its own legitimate embedded
+# "\n"s (a heredoc body) stay intact.
 #
 # NOTE: each fallback is `// ""` (an empty STRING), not `// empty` (a
 # zero-output jq GENERATOR) — a `+`-concatenation is the cross product of

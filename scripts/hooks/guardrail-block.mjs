@@ -1288,7 +1288,7 @@ function resolvedPath(p) {
 function pathsMatchAnchor(configuredPath, anchorPath) {
   const a = resolvedPath(configuredPath);
   const b = resolvedPath(anchorPath);
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  return a === b;
 }
 
 // Resolves ONE owned entry ({ hook, matcher, parsed } from

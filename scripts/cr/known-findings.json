@@ -1,5 +1,5 @@
 {
-  "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; twin-missing = a .sh/.ps1 twin exists but is not in the diff; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). `rung` (required, HIMMEL-4426) is the TOP rung of the correction ladder the class has reached, highest first: design = the defect cannot be written (structure removes it); gate = a hook / pre-commit / CI check blocks it; advisory = a deterministic detector or lint advisory reports it but nothing blocks; prompt = only critic-prompt / reviewer-instruction text holds it; human = judgment with no automation. A class with a `detector` and no gate is advisory; no detector but `prompt: true` is prompt. Promote a class up the ladder when `known-findings.sh --ladder` queues it (real recurrences: agreed, confirmed or fixed). Optional `match` = a case-insensitive JS regex over the ledger finding text; --ladder attributes a finding to a class only when its file hits `globs` AND its text hits `match`, and skips a class with no `match`. Optional `platform: \"windows\"` = never proposed. A `rebuttal` class is never proposed above prompt (retire instead). Keep the gate-vs-advisory rationale in `coverage`. A missing or unknown rung exits 2 in --list, --ladder and --refresh. Hand-edit everything else; keep ids stable (they are cited in PR comments).",
+  "_schema": "known-findings v1 (HIMMEL-2058). One entry per recurring CR finding CLASS. `kind`: fix = a real defect class with a canonical fix; rebuttal = a false-premise class with a canonical rebuttal (critics are told not to re-raise it unless the code regressed); checklist = a judgment class the self-review asks about. `detector` runs in scripts/cr/known-findings.sh --diff (deterministic, no LLM): added-line-regex = POSIX-ERE over ADDED lines of files matching `globs`; no-test-change = non-test sources under `globs` changed and no test-*.sh/*.test.* file did; removed-flag-in-docs = a `--flag` token deleted from source still appears in a doc that also names that source file; md-fence-no-lang = an added ``` fence with no language in a .md; hook-header-no-fail-direction = a NEW scripts/hooks/*.sh whose header never states fail-open/fail-closed; files under a testdata/ dir are fixture data and never scanned. `learning_match` is the regex --refresh uses to attribute CodeRabbit learnings-export rows (sums their Usage into evidence.learnings_uses). `evidence.ledger` is rewritten by --refresh from the CR ledger (findings whose file matches `globs`, verdicts resolved through amends). `rung` (required, HIMMEL-4426) is the TOP rung of the correction ladder the class has reached, highest first: design = the defect cannot be written (structure removes it); gate = a hook / pre-commit / CI check blocks it; advisory = a deterministic detector or lint advisory reports it but nothing blocks; prompt = only critic-prompt / reviewer-instruction text holds it; human = judgment with no automation. A class with a `detector` and no gate is advisory; no detector but `prompt: true` is prompt. Promote a class up the ladder when `known-findings.sh --ladder` queues it (real recurrences: agreed, confirmed or fixed). Optional `match` = a case-insensitive JS regex over the ledger finding text; --ladder attributes a finding to a class only when its file hits `globs` AND its text hits `match`, and skips a class with no `match`. Optional `platform: \"windows\"` = never proposed. A `rebuttal` class is never proposed above prompt (retire instead). Keep the gate-vs-advisory rationale in `coverage`. A missing or unknown rung exits 2 in --list, --ladder and --refresh. Hand-edit everything else; keep ids stable (they are cited in PR comments).",
   "refreshed_at": "2026-10-29",
   "classes": [
     {
@@ -288,7 +288,6 @@
         "scripts/**/*.js",
         "scripts/**/*.ts",
         "scripts/**/*.py",
-        "scripts/**/*.ps1",
         "marketplace/**/*.sh",
         "marketplace/**/*.mjs"
       ],
@@ -833,7 +832,6 @@
       "source": "cr-app-comments",
       "globs": [
         "scripts/**/*.sh",
-        "scripts/**/*.ps1",
         "docs/**/*.md",
         ".agents/**/*.md"
       ],
@@ -1085,43 +1083,6 @@
         },
         "learnings_uses": 3,
         "learnings_rows": 4
-      }
-    },
-    {
-      "id": "sh-ps1-twin-drift",
-      "kind": "checklist",
-      "rung": "advisory",
-      "title": "a .sh changed while its .ps1 twin (or the reverse) did not",
-      "source": "ledger",
-      "globs": [
-        "scripts/**/*.sh",
-        "scripts/**/*.ps1"
-      ],
-      "detector": {
-        "type": "twin-missing"
-      },
-      "learning_match": "ps1|powershell|twin|parity",
-      "match": "ps1|powershell|twin|parity",
-      "canonical": "Change both halves of a .sh/.ps1 pair in one commit, or state in the PR why the twin does not apply (windows is dropped for this repo: say so and waive).",
-      "coverage": "Detector: twin-missing (advisory).",
-      "prompt": false,
-      "evidence": {
-        "ledger": {
-          "findings": 165,
-          "agreed": 74,
-          "disproved": 16,
-          "deferred": 65,
-          "other": 0,
-          "unadjudicated": 10,
-          "models": {
-            "codex": 158,
-            "claude": 6,
-            "coderabbit-outside": 1
-          },
-          "disproved_pct": 10
-        },
-        "learnings_uses": 32,
-        "learnings_rows": 10
       }
     },
     {

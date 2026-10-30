@@ -1019,8 +1019,7 @@ outdir=""
 # FILES instead survives the member boundary in BOTH sequential and parallel
 # modes, and _append_panel_ledger reads them at the end.
 # r4: ONE spool file PER MEMBER (avail.<slug> / finding.<slug>), not a single
-# shared file. A single-printf O_APPEND row is atomic-ish on POSIX but NOT
-# guaranteed on Windows/MSYS, so no two members ever append to the same file.
+# shared file, so no two members ever append to the same file.
 # Each member writes only its own file (a member is processed once, so its own
 # file is never written concurrently); _append_panel_ledger globs them all, and
 # bash sorts pathname expansion so the read order is deterministic.
@@ -1193,15 +1192,7 @@ _append_panel_ledger() {
             cp "$PANEL_SPOOL_DIR/.finding-enriched.jsonl" "$_apl_batch_file" || _apl_failed=1
         fi
         # Hand node the spool CONTENT on stdin and take the JSONL back on
-        # stdout - never a PATH through the environment. Git-Bash rewrites
-        # POSIX-looking paths in env vars when it spawns a native node.exe; it
-        # does that correctly for ONE path, but a newline-separated LIST is not
-        # a shape it recognises, so on a 2+-critic panel the value arrived as
-        # `C:\tmp\...` -> ENOENT -> _apl_failed -> panel exit 5 with EVERY
-        # finding missing from the ledger. A single-critic run happened to
-        # survive the rewrite, which is exactly why the one-member tests passed
-        # while every real multi-critic run was uncertified. Nothing crosses the
-        # boundary as a path now, so there is nothing left to rewrite.
+        # stdout, keeping paths out of the environment.
         if { for _apl_spool in "$PANEL_SPOOL_DIR"/finding.*; do
                  if [ -f "$_apl_spool" ]; then cat "$_apl_spool"; fi
              done; } | REVIEW_BRANCH="$REVIEW_BRANCH" REVIEW_HEAD="$REVIEW_HEAD" CR_REVIEW_ROUND="${CR_REVIEW_ROUND:-}" node -e '
@@ -1845,10 +1836,9 @@ if [ "$CRITIC_PARALLEL" = "0" ]; then
         # TOTAL-PANEL DEADLINE. CRITIC_TIMEOUT_SECS bounds ONE
         # member; nothing bounded the panel as a whole, so N members each
         # clipping their own budget could still hold a caller for N*240s.
-        # Checked BETWEEN members — no signals, no self-kill: a watchdog that
-        # kills its own process group is a worse hazard on msys than the stall
-        # it fixes, and an in-flight member is already bounded by its own
-        # timeout. Remaining members are reported unavailable so the caller's
+        # Checked BETWEEN members — no signals, no self-kill: an in-flight
+        # member is already bounded by its own timeout. Remaining members are
+        # reported unavailable so the caller's
         # ledger records a MISSING signal rather than silently fewer critics.
         if _panel_deadline_passed; then
             echo "critic-panel.sh: TOTAL panel deadline ${CRITIC_PANEL_TOTAL_TIMEOUT_SECS}s exceeded after ${total} member(s) — skipping the rest (raise CRITIC_PANEL_TOTAL_TIMEOUT_SECS)" >&2

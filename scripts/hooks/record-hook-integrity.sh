@@ -452,21 +452,15 @@ printf '%s\n' "$record" > "$tmp" 2>/dev/null || exit 0
 # having run this pass.
 jq -e . "$tmp" >/dev/null 2>&1 || exit 0
 
-# chmod-before-rename: the published record is mode 0400 (below); a rename
-# OVER an existing read-only file is refused on Windows, where rename target
-# permissions (not just the source) gate the operation.
 if [ -e "$dest" ]; then
     chmod 600 "$dest" 2>/dev/null || true
-    command -v attrib >/dev/null 2>&1 && attrib -R "$dest" >/dev/null 2>&1
 fi
 # prim-ok: the pin writer publishes a jq-validated same-directory temp after a chmod-before-rename, and must not depend on sourcing prim.sh
 mv -f "$tmp" "$dest" 2>/dev/null || exit 0
 # Read-only best-effort (see the residual note above — deterrent, not a
-# defense). chmod is the POSIX/Git-Bash path; attrib covers a native cmd.exe
-# HOME on Windows where chmod may be a no-op. Failure here is not fatal — the
-# pin file still exists and still protects the accidental/careless case.
+# defense). Failure here is not fatal — the pin file still exists and still
+# protects the accidental/careless case.
 chmod 400 "$dest" 2>/dev/null || true
-command -v attrib >/dev/null 2>&1 && attrib +R "$dest" >/dev/null 2>&1
 
 # Re-read what actually landed; if it is somehow not valid JSON, leave things
 # as they are rather than treat a corrupt publish as success.

@@ -4,7 +4,7 @@
 # tags) and none of the open-model markers (a "Context budget:" line or a
 # fenced JSON contract block).
 #
-# Platform guard (gitbash-only): the hermes asset layout this script
+# Platform guard: the hermes asset layout this script
 # resolves against is exercised under MSYS / Git Bash. On any non-MINGW /
 # non-MSYS shell the script SKIPs (exit 0) so a POSIX-only CI runner does
 # not false-fail; the header comment is the durable "gitbash-only" note.

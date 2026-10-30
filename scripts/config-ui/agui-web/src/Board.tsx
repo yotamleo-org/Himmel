@@ -2,7 +2,7 @@
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Rollup, type RollupCard, type Stage } from "./board-model";
+import { applyKey, BOARD_URL, BRIEF_IDLE, BRIEF_URL, briefNext, normalizeBoard, openAt, ROLLUP_URL, stageSegments, STAGES, type Board, type BoardWorker, type Drawer, type Joined, type Rollup, type RollupCard, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
 const POLL_MS = 5_000;
@@ -24,7 +24,7 @@ export function useBoard(token: string, console: string | null): BoardState {
       try {
         const r = await fetch(BOARD_URL(console), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
         if (!r.ok) throw new Error(r.status === 404 ? `no handover doc for ${console}` : `the board answered ${r.status}`);
-        const board = (await r.json()) as Board;
+        const board = normalizeBoard(await r.json());
         if (live) setSt({ board, error: null });
       } catch (e) { if (live) setSt((s) => ({ ...s, error: String((e as Error).message ?? e) })); }
       if (live) timer = setTimeout(poll, POLL_MS);
@@ -50,7 +50,7 @@ export function useRollup(token: string): Rollup | null {
 }
 
 // The page hands the board and the drawer opener down by context, so the fleet rows need no new props.
-export type BoardCtx = { board: Board | null; cards: Map<string, Joined>; open: (leg: string, stage?: Stage) => void };
+export type BoardCtx = { board: Board | null; cards: Map<string, Joined>; open: (worker: string, stage?: Stage) => void };
 export const BoardContext = createContext<BoardCtx>({ board: null, cards: new Map(), open: () => undefined });
 export const useBoardCtx = () => useContext(BoardContext);
 export const cardOf = (c: BoardCtx, rowName: string): Joined | undefined => c.cards.get(rowName);
@@ -67,11 +67,11 @@ export function Legend({ board, groups }: { board: Board; groups: string[] }) {
   </details>;
 }
 
-export function StageDots({ leg, board, onPick }: { leg: BoardLeg; board: Board; onPick?: (s: Stage) => void }) {
+export function StageDots({ worker, board, onPick }: { worker: BoardWorker; board: Board; onPick?: (s: Stage) => void }) {
   return <span className="bd-dots" role="group" aria-label="stages">{STAGES.map((s) => {
-    const reached = leg.stages[s] !== null;
-    return <button key={s} type="button" disabled={!onPick} className={`bd-dot${reached ? " on" : ""}${leg.stage === s ? " cur" : ""}`}
-      style={{ ["--c" as string]: tone(board, "stage", s) }} title={`${label(board, "stage", s)}${reached ? ` ${hm(leg.stages[s])}` : ""}`} aria-label={`${label(board, "stage", s)}${reached ? ", reached" : ""}`}
+    const reached = worker.stages[s] !== null;
+    return <button key={s} type="button" disabled={!onPick} className={`bd-dot${reached ? " on" : ""}${worker.stage === s ? " cur" : ""}`}
+      style={{ ["--c" as string]: tone(board, "stage", s) }} title={`${label(board, "stage", s)}${reached ? ` ${hm(worker.stages[s])}` : ""}`} aria-label={`${label(board, "stage", s)}${reached ? ", reached" : ""}`}
       onClick={() => onPick?.(s)} />;
   })}</span>;
 }
@@ -85,14 +85,14 @@ const k1 = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$
 const failKind = (cls: string) => (cls.startsWith("denied/") ? "denial" : "error");
 
 function Gantt({ board }: { board: Board }) {
-  const today = board.trends.leg_time.today.filter((l) => l.live_at && l.merged_at);
+  const today = board.trends.worker_time.today.filter((l) => l.live_at && l.merged_at);
   if (!today.length) return <p className="quiet">No worker merged today yet.</p>;
   const t0 = Math.min(...today.map((l) => Date.parse(l.live_at!))), t1 = Math.max(...today.map((l) => Date.parse(l.merged_at!)));
   const x = (t: number) => `${((t - t0) / Math.max(1, t1 - t0)) * 100}%`;
   return <div className="bd-gantt" role="img" aria-label="today's merged workers on a clock axis">
     {today.map((l) => {
       const a = Date.parse(l.live_at!), z = Date.parse(l.merged_at!), pr = a + (l.to_pr_min ?? 0) * 60000, rd = z - (l.ready_to_merged_min ?? 0) * 60000;
-      return <div key={l.leg} className="bd-grow"><span>{l.leg}</span><div className="bd-gtrack">
+      return <div key={l.worker} className="bd-grow"><span>{l.worker}</span><div className="bd-gtrack">
         {([["live", a, pr], ["pr", pr, rd], ["ready", rd, z]] as const).map(([s, from, to]) => to > from &&
           <i key={s} style={{ left: x(from), width: `calc(${x(to)} - ${x(from)})`, background: tone(board, "stage", s) }} title={`${label(board, "stage", s)} ${dur(from, to)}`} />)}
       </div></div>;
@@ -132,7 +132,7 @@ export function RollupCards({ rollup }: { rollup: Rollup | null }) {
 
 export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup | null; onCard: (c: CardId) => void }) {
   const t = board.trends, cc = t.console_cost;
-  const states = [...new Set(board.legs.map((l) => l.state))].map((s) => ({ s, n: board.legs.filter((l) => l.state === s).length }));
+  const states = [...new Set(board.workers.map((l) => l.state))].map((s) => ({ s, n: board.workers.filter((l) => l.state === s).length }));
   const budget = (pct: number | null) => (pct === null ? "ok" : pct >= 85 ? "critical" : pct >= 70 ? "high" : "ok");
   const sess = t.tools.find((x) => x.tool === "chief-succession");
   const classes = t.failures?.classes ?? [];
@@ -182,8 +182,8 @@ function Spark({ values }: { values: number[] }) {
 
 function CardTable({ board, card }: { board: Board; card: CardId }) {
   const t = board.trends;
-  const rows: [string, string][] = card === "velocity" ? t.leg_time.today.map((l) => [l.leg, `LIVE→PR ${l.to_pr_min ?? "–"}m · READY→merged ${l.ready_to_merged_min ?? "–"}m · total ${l.live_to_merged_min ?? "–"}m`])
-    : card === "health" ? [...board.legs.map((l): [string, string] => [l.leg, `${label(board, "state", l.state)} · ${label(board, "stage", l.stage)}`]), ["CI", (["green", "pending", "no_checks", "red"] as const).map((c) => `${label(board, "ci", c)} ${board.ci[c]}`).join(" · ")], ["Budget", `week ${board.bank.week_pct ?? "n/a"}% · 5 h ${board.bank.five_hour_pct ?? "n/a"}%`]]
+  const rows: [string, string][] = card === "velocity" ? t.worker_time.today.map((l) => [l.worker, `LIVE→PR ${l.to_pr_min ?? "–"}m · READY→merged ${l.ready_to_merged_min ?? "–"}m · total ${l.live_to_merged_min ?? "–"}m`])
+    : card === "health" ? [...board.workers.map((l): [string, string] => [l.worker, `${label(board, "state", l.state)} · ${label(board, "stage", l.stage)}`]), ["CI", (["green", "pending", "no_checks", "red"] as const).map((c) => `${label(board, "ci", c)} ${board.ci[c]}`).join(" · ")], ["Budget", `week ${board.bank.week_pct ?? "n/a"}% · 5 h ${board.bank.five_hour_pct ?? "n/a"}%`]]
       : card === "tools" ? [...(t.failures?.classes ?? []).map((c): [string, string] => [c.class, `${c.sessions} session${c.sessions === 1 ? "" : "s"} · route ${c.route}`]), ...t.tools.map((x): [string, string] => [x.tool, x.recommendation])]
         : board.milestones.map((m): [string, string] => [m.version, m.unavailable ? "unavailable" : `${m.done}/${m.total} done${m.open_blockers?.length ? ` · blockers ${m.open_blockers.join(", ")}` : ""}`]);
   return <><h3>{TITLE[card]}</h3><p className="bd-rec">{board.cards[card]?.recommendation}</p>
@@ -191,19 +191,19 @@ function CardTable({ board, card }: { board: Board; card: CardId }) {
 }
 
 // ---------------------------------------------------------------- the drawer
-export type Panel = { kind: "leg" } | { kind: "card"; card: CardId } | { kind: "brief"; leg: string; row: string };
-export function useDrawerKeys(drawer: Drawer | null, panel: Panel | null, legs: string[], set: (d: Drawer | null) => void, close: () => void) {
+export type Panel = { kind: "worker" } | { kind: "card"; card: CardId } | { kind: "brief"; worker: string; row: string };
+export function useDrawerKeys(drawer: Drawer | null, panel: Panel | null, workers: string[], set: (d: Drawer | null) => void, close: () => void) {
   useEffect(() => {
     if (!drawer && !panel) return;
     const on = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLElement && /^(input|textarea|select)$/i.test(e.target.tagName)) return;
       if (e.key === "Escape") { close(); return; }
-      if (!drawer || panel?.kind !== "leg") return;
-      if (/^Arrow|^Backspace$/.test(e.key)) { e.preventDefault(); set(applyKey(drawer, e.key, legs)); }
+      if (!drawer || panel?.kind !== "worker") return;
+      if (/^Arrow|^Backspace$/.test(e.key)) { e.preventDefault(); set(applyKey(drawer, e.key, workers)); }
     };
     addEventListener("keydown", on);
     return () => removeEventListener("keydown", on);
-  }, [drawer, panel, legs, set, close]);
+  }, [drawer, panel, workers, set, close]);
 }
 
 function Brief({ token, row }: { token: string; row: string }) {
@@ -223,55 +223,55 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
   token: string; board: Board; joined: Joined[]; drawer: Drawer | null; panel: Panel | null; now: number;
   set: (d: Drawer | null) => void; setPanel: (p: Panel | null) => void; close: () => void;
 }) {
-  const legs = joined.map((j) => j.leg.leg);
-  const cur = drawer ? joined.find((j) => j.leg.leg === drawer.leg) : undefined;
-  const segs = useMemo(() => (cur ? stageSegments(cur.leg, now) : []), [cur, now]);
+  const workers = joined.map((j) => j.worker.worker);
+  const cur = drawer ? joined.find((j) => j.worker.worker === drawer.worker) : undefined;
+  const segs = useMemo(() => (cur ? stageSegments(cur.worker, now) : []), [cur, now]);
   if (!panel) return null;
-  const back = drawer && drawer.back.length > 0 && panel.kind === "leg";
-  const idx = cur ? legs.indexOf(cur.leg.leg) : -1;
-  const go = (leg: string) => drawer && set(openAt(drawer, leg, drawer.stage));
+  const back = drawer && drawer.back.length > 0 && panel.kind === "worker";
+  const idx = cur ? workers.indexOf(cur.worker.worker) : -1;
+  const go = (worker: string) => drawer && set(openAt(drawer, worker, drawer.stage));
   return <aside className="bd-drawer" role="dialog" aria-label="Worker detail" aria-modal="false">
     <div className="bd-dhead">
-      {panel.kind !== "leg" && drawer ? <button type="button" className="btn" onClick={() => setPanel({ kind: "leg" })}>← Back</button>
-        : back ? <button type="button" className="btn" onClick={() => set(applyKey(drawer!, "Backspace", legs))}>← Back</button> : <span />}
+      {panel.kind !== "worker" && drawer ? <button type="button" className="btn" onClick={() => setPanel({ kind: "worker" })}>← Back</button>
+        : back ? <button type="button" className="btn" onClick={() => set(applyKey(drawer!, "Backspace", workers))}>← Back</button> : <span />}
       <button type="button" className="btn" onClick={close} aria-label="Close (Esc)">✕</button>
     </div>
     {panel.kind === "card" && <CardTable board={board} card={panel.card} />}
-    {panel.kind === "brief" && <><h3>Brief · {panel.leg}</h3><Brief key={`${token}|${panel.row}`} token={token} row={panel.row} /></>}
-    {panel.kind === "leg" && cur && drawer && <>
-      <h3>{cur.leg.leg} <small>{cur.leg.ticket}</small></h3>
-      <p className="bd-goal">{cur.leg.goal}</p>
-      <p className="bd-row"><StateChip board={board} state={cur.leg.state} />
-        {cur.leg.pr && <button type="button" className="bd-link" onClick={() => set(openAt(drawer, cur.leg.leg, "pr"))}>{`PR ${cur.leg.pr.number}`}</button>}
-        {cur.leg.pr?.url?.startsWith("https://") && <a className="bd-link" href={cur.leg.pr.url} target="_blank" rel="noreferrer">GitHub ↗</a>}
-        {cur.row?.run ? <button type="button" className="bd-link" onClick={() => setPanel({ kind: "brief", leg: cur.leg.leg, row: cur.row!.name })}>brief</button>
-          : cur.leg.links.brief?.startsWith("https://") && <a className="bd-link" href={cur.leg.links.brief} target="_blank" rel="noreferrer">brief ↗</a>}
+    {panel.kind === "brief" && <><h3>Brief · {panel.worker}</h3><Brief key={`${token}|${panel.row}`} token={token} row={panel.row} /></>}
+    {panel.kind === "worker" && cur && drawer && <>
+      <h3>{cur.worker.worker} <small>{cur.worker.ticket}</small></h3>
+      <p className="bd-goal">{cur.worker.goal}</p>
+      <p className="bd-row"><StateChip board={board} state={cur.worker.state} />
+        {cur.worker.pr && <button type="button" className="bd-link" onClick={() => set(openAt(drawer, cur.worker.worker, "pr"))}>{`PR ${cur.worker.pr.number}`}</button>}
+        {cur.worker.pr?.url?.startsWith("https://") && <a className="bd-link" href={cur.worker.pr.url} target="_blank" rel="noreferrer">GitHub ↗</a>}
+        {cur.row?.run ? <button type="button" className="bd-link" onClick={() => setPanel({ kind: "brief", worker: cur.worker.worker, row: cur.row!.name })}>brief</button>
+          : cur.worker.links.brief?.startsWith("https://") && <a className="bd-link" href={cur.worker.links.brief} target="_blank" rel="noreferrer">brief ↗</a>}
         {cur.row?.run && <a className="bd-link" href={runHash(token, cur.row.run)}>open run page →</a>}
       </p>
-      <div className="bd-nav"><button type="button" className="btn" disabled={idx <= 0} onClick={() => go(legs[idx - 1])}>↑ previous worker</button>
-        <button type="button" className="btn" disabled={idx < 0 || idx >= legs.length - 1} onClick={() => go(legs[idx + 1])}>next worker ↓</button></div>
+      <div className="bd-nav"><button type="button" className="btn" disabled={idx <= 0} onClick={() => go(workers[idx - 1])}>↑ previous worker</button>
+        <button type="button" className="btn" disabled={idx < 0 || idx >= workers.length - 1} onClick={() => go(workers[idx + 1])}>next worker ↓</button></div>
       {cur.need && <div className="bd-need"><b>{cur.need.action}</b><p>{cur.need.detail}</p>{cur.need.command && <code>{cur.need.command}</code>}</div>}
       <div className="bd-strip" aria-label="Stage strip">
         {segs.length === 0 ? <span className="quiet">no stage reached yet</span> : segs.map((s) => {
           const t0 = segs[0].from, span = Math.max(1, segs[segs.length - 1].to - t0);
-          return <button key={s.stage} type="button" className={`bd-band${drawer.stage === s.stage ? " sel" : ""}`} onClick={() => set(openAt(drawer, drawer.leg, s.stage))}
+          return <button key={s.stage} type="button" className={`bd-band${drawer.stage === s.stage ? " sel" : ""}`} onClick={() => set(openAt(drawer, drawer.worker, s.stage))}
             style={{ left: `${((s.from - t0) / span) * 100}%`, width: `${Math.max(2, ((s.to - s.from) / span) * 100)}%`, background: tone(board, "stage", s.stage) }} title={`${label(board, "stage", s.stage)} ${dur(s.from, s.to)}`} />;
         })}
       </div>
-      <StageDots leg={cur.leg} board={board} onPick={(s) => set(openAt(drawer, drawer.leg, s))} />
-      <Transcript board={board} leg={cur.leg} stage={drawer.stage} segs={segs} />
+      <StageDots worker={cur.worker} board={board} onPick={(s) => set(openAt(drawer, drawer.worker, s))} />
+      <Transcript board={board} worker={cur.worker} stage={drawer.stage} segs={segs} />
     </>}
-    {panel.kind === "leg" && !cur && <p className="quiet">This worker is not on the board any more.</p>}
+    {panel.kind === "worker" && !cur && <p className="quiet">This worker is not on the board any more.</p>}
   </aside>;
 }
 
-function Transcript({ board, leg, stage, segs }: { board: Board; leg: BoardLeg; stage: Stage; segs: { stage: Stage; from: number; to: number }[] }) {
-  const groups = STAGES.filter((s) => leg.timeline.some((b) => b.stage === s) || leg.stages[s]);
+function Transcript({ board, worker, stage, segs }: { board: Board; worker: BoardWorker; stage: Stage; segs: { stage: Stage; from: number; to: number }[] }) {
+  const groups = STAGES.filter((s) => worker.timeline.some((b) => b.stage === s) || worker.stages[s]);
   const root = useRef<HTMLDivElement>(null);
   // scroll only when the stage or the worker changes, not on every poll or clock render
-  useEffect(() => { root.current?.querySelector(".sel")?.scrollIntoView?.({ block: "nearest" }); }, [leg.leg, stage]);
+  useEffect(() => { root.current?.querySelector(".sel")?.scrollIntoView?.({ block: "nearest" }); }, [worker.worker, stage]);
   return <div className="bd-transcript" ref={root}>{groups.map((s) => {
-    const at = leg.stages[s], bullets = leg.timeline.filter((b) => b.stage === s), seg = segs.find((g) => g.stage === s);
+    const at = worker.stages[s], bullets = worker.timeline.filter((b) => b.stage === s), seg = segs.find((g) => g.stage === s);
     return <section key={s} className={s === stage ? "sel" : ""}>
       <h4 style={{ ["--c" as string]: tone(board, "stage", s) }}>{label(board, "stage", s)}<small>{` ${hm(at)}${seg ? ` · ${dur(seg.from, seg.to)}` : ""}`}</small></h4>
       {bullets.map((b, i) => <p key={i} className="bd-bullet"><span className="bd-chip" style={{ ["--c" as string]: tone(board, "marker", b.marker) }}>{label(board, "marker", b.marker)}</span>{` ${b.text}`}</p>)}

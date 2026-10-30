@@ -31,7 +31,7 @@ mk_chief_doc() {
 
 ## Live state
 
-legs: `N1:nonce-abc:lock-tok-1:1234`, `N2:nonce-def:lock-tok-2:5678`
+workers: `N1:nonce-abc:lock-tok-1:1234`, `N2:nonce-def:lock-tok-2:5678`
 queue: N1
 last GO: `#780:21b77d1`
 acked: none
@@ -64,8 +64,8 @@ case "$out" in
 esac
 # shellcheck disable=SC2016  # backtick worker span, literal fixture text
 case "$out" in
-    *'legs: `N1:nonce-abc:lock-tok-1:1234`'*) ok "output contains the legs: line verbatim" ;;
-    *) bad "output missing verbatim legs: line - got: $out" ;;
+    *'workers: `N1:nonce-abc:lock-tok-1:1234`'*) ok "output contains the workers: line verbatim" ;;
+    *) bad "output missing verbatim workers: line - got: $out" ;;
 esac
 case "$out" in
     *'## Compact instructions'*'Carry the queue and last GO forward verbatim.'*) ok "output contains Compact instructions verbatim" ;;
@@ -84,7 +84,7 @@ echo "== a ### subheading appended after ## Live state is NOT re-injected (only 
 DOC1B="$TMP/some-chief.md"
 # shellcheck disable=SC2016  # backtick worker span, literal fixture text
 printf '%s\n' "# Some Chief" "" "## Live state" "" \
-    'legs: `N1:nonce-abc:lock-tok-1:1234`' "" \
+    'workers: `N1:nonce-abc:lock-tok-1:1234`' "" \
     "### MILESTONE 1 -- appended after Live state, must not leak" "" \
     "## Results" "" "- LIVE 09:00" > "$DOC1B"
 out="$(sc_env env HIMMEL_CONSOLE_DOC="$DOC1B" bash "$HOOK")"; rc=$?
@@ -97,7 +97,7 @@ esac
 echo "== a fenced code block inside ## Live state containing its own ## line does not truncate the section (fence-aware terminator) =="
 DOC1C="$TMP/some-chief.md"
 printf '%s\n' "# Some Chief" "" "## Live state" "" \
-    "legs: N1 token-abc" "" \
+    "workers: N1 token-abc" "" \
     '```markdown' "## Something else entirely" "example body" '```' "" \
     "CRITICAL: lock token lock-tok-XYZ" "" \
     "## Results" "" "- LIVE 09:00" > "$DOC1C"
@@ -115,7 +115,7 @@ esac
 echo "== an UNTERMINATED fence inside ## Live state does not leak the doc tail to EOF (HIMMEL-3137) =="
 DOC1D="$TMP/some-chief.md"
 printf '%s\n' "# Some Chief" "" "## Live state" "" \
-    "legs: N1 token-abc" "" \
+    "workers: N1 token-abc" "" \
     '```unterminated' "fence never closes" "" \
     "## Results" "" "- LIVE 09:00" "" \
     "SECRET-TAIL-SHOULD-NOT-APPEAR" > "$DOC1D"
@@ -141,7 +141,7 @@ esac
 echo "== an INDENTED fence inside ## Live state containing a ## line still toggles (HIMMEL-3137) =="
 DOC1E="$TMP/some-chief.md"
 printf '%s\n' "# Some Chief" "" "## Live state" "" \
-    "legs: N1 token-abc" "" \
+    "workers: N1 token-abc" "" \
     '  ```markdown' "## Something else entirely" "example body" '  ```' "" \
     "CRITICAL: lock token lock-tok-ABC" "" \
     "## Results" "" "- LIVE 09:00" > "$DOC1E"
@@ -159,7 +159,7 @@ esac
 echo "== a 4-backtick fence containing a nested 3-backtick line is NOT closed by the shorter marker (HIMMEL-3137) =="
 DOC1F="$TMP/some-chief.md"
 printf '%s\n' "# Some Chief" "" "## Live state" "" \
-    "legs: N1 token-abc" "" \
+    "workers: N1 token-abc" "" \
     '````markdown' '```' "## Nested example heading, inside the 3-backtick inner fence" '```' '````' "" \
     "CRITICAL: lock token lock-tok-NESTED" "" \
     "## Results" "" "- LIVE 09:00" > "$DOC1F"
@@ -264,7 +264,7 @@ out="$(env -u HIMMEL_CONSOLE_DOC CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLIN
 if [ "$rc" -eq 0 ]; then ok "fallback-resolved chief exits 0"; else bad "expected rc 0, got $rc"; fi
 # shellcheck disable=SC2016  # backtick worker span, literal fixture text
 case "$out" in
-    *'legs: `N1:nonce-abc:lock-tok-1:1234`'*) ok "fallback path finds the doc under HANDOVER_DIR and emits it" ;;
+    *'workers: `N1:nonce-abc:lock-tok-1:1234`'*) ok "fallback path finds the doc under HANDOVER_DIR and emits it" ;;
     *) bad "fallback path did not emit the fixture doc's Live state - got: $out" ;;
 esac
 
@@ -300,7 +300,7 @@ reg_after="$(sha256_hex "$N3160_HOME/.claude/handover/registry.json")"
 if [ "$rc" -eq 0 ]; then ok "registry-root fallback exits 0"; else bad "expected rc 0, got $rc"; fi
 # shellcheck disable=SC2016  # backtick worker span, literal fixture text
 case "$out" in
-    *'legs: `N1:nonce-abc:lock-tok-1:1234`'*) ok "registry-root fallback finds the doc under the sandboxed state repo and emits Live state" ;;
+    *'workers: `N1:nonce-abc:lock-tok-1:1234`'*) ok "registry-root fallback finds the doc under the sandboxed state repo and emits Live state" ;;
     *) bad "registry-root fallback did not emit the fixture doc's Live state (HIMMEL-3160) - got: $out" ;;
 esac
 if [ "$reg_before" = "$reg_after" ]; then ok "the sandboxed default-path registry was untouched by the run"; else bad "the sandboxed default-path registry CHANGED during the run"; fi

@@ -52,9 +52,8 @@ fi
 # top-level null/false or unparsable JSON -> jq exits non-zero -> fail-closed;
 # anything else -> field access wrapped in `try/catch empty` so a non-object
 # top-level value yields empty tool/cmd exactly like the old per-field
-# `|| true` fallbacks did. Windows jq.exe writes CRLF, so the embedded "\n"
-# separator can arrive as "\r\n" -- strip the stray CR off $tool (same shape
-# as require-quiet-run.sh).
+# `|| true` fallbacks did. Strip a stray CR off $tool defensively (same
+# shape as require-quiet-run.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 # Empty/whitespace-only stdin must fail CLOSED,

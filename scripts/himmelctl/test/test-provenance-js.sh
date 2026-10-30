@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): bash + node + jq + (sha256sum|shasum).
+# Platform guard: bash + node + jq + (sha256sum|shasum).
 # test-provenance-js.sh -- scripts/himmelctl/lib/provenance.js,
 # and the bash<->node BYTE-IDENTITY cross-check: the same scenario is run
 # through scripts/lib/provenance.sh and through provenance.js into two scratch

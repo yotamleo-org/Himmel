@@ -294,31 +294,31 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(live.nth(0).locator(".fleet-name")).toHaveText(shortName(FLEET.console.name));
   await expect(live.nth(0).locator(".fleet-name")).toHaveAttribute("title", FLEET.console.name);
   await expect(live.nth(0)).toContainText("chief");
-  const leg = card(page, FLEET.leg.name);
-  await expect(leg.locator(".fleet-chip")).toHaveText("HIMMEL-901");
+  const worker = card(page, FLEET.worker.name);
+  await expect(worker.locator(".fleet-chip")).toHaveText("HIMMEL-901");
   // a card is one line; its chevron, not its name, opens the detail, and the detail names the run page.
-  await expect(leg.locator(".fleet-detail")).toHaveCount(0);
-  await expand(page, FLEET.leg.name);
-  await expect(leg.locator(".fleet-chev")).toHaveAttribute("aria-expanded", "true");
-  await expect(leg.locator("a.fleet-runlink")).toHaveAttribute("href", new RegExp(`&run=${FLEET.leg.run}$`));
+  await expect(worker.locator(".fleet-detail")).toHaveCount(0);
+  await expand(page, FLEET.worker.name);
+  await expect(worker.locator(".fleet-chev")).toHaveAttribute("aria-expanded", "true");
+  await expect(worker.locator("a.fleet-runlink")).toHaveAttribute("href", new RegExp(`&run=${FLEET.worker.run}$`));
   await expand(page, FLEET.console.name);
   await expand(page, FLEET.idle.name);
   // the status column (activity, then facts) and the lineage column are separate blocks.
-  await expect(leg.locator(".fleet-status .fleet-meta")).toContainText("PR 1901 · 1 of 1 subagents running · 1 tool error");
-  await expect(leg.locator(".fleet-status .fleet-fails")).toHaveCount(0);
-  await expect(leg.locator(".state")).toHaveText("running");
+  await expect(worker.locator(".fleet-status .fleet-meta")).toContainText("PR 1901 · 1 of 1 subagents running · 1 tool error");
+  await expect(worker.locator(".fleet-status .fleet-fails")).toHaveCount(0);
+  await expect(worker.locator(".state")).toHaveText("running");
   await expect(card(page, FLEET.idle.name).locator(".state")).toHaveText("idle");
   await expect(live.filter({ has: page.locator(`[title="${FLEET.wrapped.name}"]`) })).toHaveCount(0);
   // the worker sits in its chief's subtree; each row says where it hangs and what it has spent.
-  await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator(".fleet-row")).toHaveText([new RegExp(shortName(FLEET.leg.name))]);
-  await expect(leg.locator(".fleet-lineage .fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(FLEET.leg.name)}`);
+  await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator(".fleet-row")).toHaveText([new RegExp(shortName(FLEET.worker.name))]);
+  await expect(worker.locator(".fleet-lineage .fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(FLEET.worker.name)}`);
   await expect(live.nth(0).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)}`);
   await expect(live.nth(0).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CHIEF)} (not live)`);
-  await expect(leg.locator(".fleet-context")).toHaveText("context 20% of 200.0k");
-  await expect(leg.locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq 13.5k");
-  await expect(leg.locator(".fleet-agent")).toHaveCount(1);
+  await expect(worker.locator(".fleet-context")).toHaveText("context 20% of 200.0k");
+  await expect(worker.locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq 13.5k");
+  await expect(worker.locator(".fleet-agent")).toHaveCount(1);
   await expect(card(page, FLEET.idle.name).locator(".fleet-usage")).toHaveText(/not measured/);
-  await leg.locator(".fleet-rel").click();
+  await worker.locator(".fleet-rel").click();
   await expect(live.nth(0)).toBeFocused();
 
   const closed = page.locator("details.fleet-closed");
@@ -329,9 +329,9 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(wrapped).toHaveCount(1);
   await expect(wrapped.locator(".fleet-meta")).toHaveText(/^wrapped/);
 
-  await leg.locator("a.fleet-head").click();
-  await expect(page).toHaveURL(new RegExp(`&run=${FLEET.leg.run}$`));
-  await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.leg.run}`);
+  await worker.locator("a.fleet-head").click();
+  await expect(page).toHaveURL(new RegExp(`&run=${FLEET.worker.run}$`));
+  await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.worker.run}`);
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
 });
 
@@ -353,12 +353,12 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
   await expect(page).toHaveURL(new RegExp(`/agui/#t=${tok}$`));
   await expect(rail).toHaveText(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Fleet");
-  const leg = card(page, FLEET.leg.name);
-  await expand(page, FLEET.leg.name);
-  await expect(leg.locator("a.fleet-link")).toHaveAttribute("href", `/#t=${tok}&page=health`);
+  const worker = card(page, FLEET.worker.name);
+  await expand(page, FLEET.worker.name);
+  await expect(worker.locator("a.fleet-link")).toHaveAttribute("href", `/#t=${tok}&page=health`);
 
-  await leg.locator("a.fleet-head").click();
-  await expect(page).toHaveURL(new RegExp(`&run=${FLEET.leg.run}$`));
+  await worker.locator("a.fleet-head").click();
+  await expect(page).toHaveURL(new RegExp(`&run=${FLEET.worker.run}$`));
   await expect(rail).toHaveText(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Run", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Run");
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
@@ -371,7 +371,7 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
 
   await page.goto(h.url);
   // The open card stays open across the reload (kept per viewer).
-  await card(page, FLEET.leg.name).locator("a.fleet-link").click();
+  await card(page, FLEET.worker.name).locator("a.fleet-link").click();
   await expect(page).toHaveURL(/\/#\/health$/);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
 
@@ -407,18 +407,18 @@ test("orphans section, and a lane filter that narrows the page and is kept", asy
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
-    Object.assign(body.sessions.find((r: any) => r.name === FLEET.leg.name), { console: "gone-chief", parent: "gone-chief" });
+    Object.assign(body.sessions.find((r: any) => r.name === FLEET.worker.name), { console: "gone-chief", parent: "gone-chief" });
     body.processOrphans = [{ pid: 4242, owner: "orphan", ageMin: 95 }];
     await route.fulfill({ response, json: body });
   });
   await page.goto(h.url);
   const orphans = page.locator("#fleet-sec-orphans");
-  await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText(`${shortName(FLEET.leg.name)}`);
+  await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText(`${shortName(FLEET.worker.name)}`);
   await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText("chief process gone");
   await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText("adopt via relay / close");
   await expect(orphans.getByRole("table", { name: "Orphan processes" })).toContainText("close: kill 4242");
   await expect(page.locator(".top .meta")).toContainText("2 orphaned");
-  await expect(page.locator("#fleet-sec-running")).not.toContainText(shortName(FLEET.leg.name));
+  await expect(page.locator("#fleet-sec-running")).not.toContainText(shortName(FLEET.worker.name));
 
   const lane = page.getByRole("group", { name: "Filters" }).getByRole("button", { name: /^claudex/ });
   await lane.click();
@@ -440,24 +440,24 @@ test("12. two-chief side menu, deep-linked page, and identical menu/row drill-in
     const console = body.sessions.find((r: any) => r.name === FLEET.console.name);
     body.sessions.push({ ...console, name: other, console: other, predecessor: null });
     const child = body.sessions.find((r: any) => r.name === FLEET.idle.name);
-    Object.assign(child, { role: "leg", parent: other, console: other, lane: "claudex" });
+    Object.assign(child, { role: "worker", parent: other, console: other, lane: "claudex" });
     await route.fulfill({ response, json: body });
   });
   await page.goto(`${h.url}&console=${other}`);
   await expect(page.locator(".top .run")).toHaveText(other);
   await expect(page.locator(".fleet-chief h2")).toHaveText(other);
   await expect(page.locator(".fleet")).toContainText(FLEET.idle.name);
-  await expect(page.locator(".fleet")).not.toContainText(FLEET.leg.name);
+  await expect(page.locator(".fleet")).not.toContainText(FLEET.worker.name);
   const menu = page.getByRole("navigation", { name: "Supervisor sessions" });
   await expect(menu.locator("a.chief-page")).toHaveCount(2);
   await menu.locator("a.chief-page", { hasText: FLEET.console.name }).click();
   await expect(page.locator(".fleet-chief h2")).toHaveText(FLEET.console.name);
-  const leg = card(page, FLEET.leg.name);
-  const rowHref = await leg.locator("a.fleet-head").getAttribute("href");
-  const menuLeg = menu.getByRole("link", { name: FLEET.leg.name, exact: true });
+  const worker = card(page, FLEET.worker.name);
+  const rowHref = await worker.locator("a.fleet-head").getAttribute("href");
+  const menuLeg = menu.getByRole("link", { name: FLEET.worker.name, exact: true });
   await expect(menuLeg).toHaveAttribute("href", rowHref!);
   await menuLeg.click();
-  await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.leg.run}`);
+  await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.worker.run}`);
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
   await menu.getByRole("link", { name: FLEET.console.name, exact: true }).last().click();
   await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.console.run}`);
@@ -495,11 +495,11 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
 
 // the chief board: the worker card's goal cell, the Trends cost chart and the stage-dot drawer, measured in a real render.
 for (const [width, tallest] of [[1280, 120], [390, 180]] as const) {
-  test(`13. the leg card's goal cell is wide, whole and inside its card at ${width}px`, async ({ page }) => {
+  test(`13. the worker card's goal cell is wide, whole and inside its card at ${width}px`, async ({ page }) => {
     h = await bootAgui("", { fleet: true });
     await page.setViewportSize({ width, height: 800 });
     await page.goto(h.url);
-    const row = card(page, FLEET.leg.name);
+    const row = card(page, FLEET.worker.name);
     await expect(row.locator(".bd-goalcell")).toBeVisible();
     const box = (await row.boundingBox())!, cell = (await row.locator(".bd-goalcell").boundingBox())!;
     expect(cell.width).toBeGreaterThanOrEqual(200);
@@ -522,7 +522,7 @@ test("14. the Trends cost chart keeps its bars a bar's width, and a stage dot op
   await expect(bars).toHaveCount(2);
   expect((await bars.first().boundingBox())!.width).toBeLessThanOrEqual(24);
   await page.getByRole("navigation", { name: "Fleet views" }).getByRole("button", { name: "Fleet" }).click();
-  await card(page, FLEET.leg.name).locator(".bd-dot").first().click();
+  await card(page, FLEET.worker.name).locator(".bd-dot").first().click();
   await expect(page.locator(".bd-drawer")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".bd-drawer")).toHaveCount(0);
@@ -590,13 +590,13 @@ async function withTeam(page: Page) {
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
-    const leg = body.sessions.find((r: any) => r.name === FLEET.leg.name);
+    const worker = body.sessions.find((r: any) => r.name === FLEET.worker.name);
     const under = { parent: FLEET.console.name, console: FLEET.console.name, run: null, pr: null, activity: null, failures: 0, runtime: null };
     body.sessions.push(
-      { ...leg, ...under, name: WORKER2, pid: 4106, ticket: "HIMMEL-902", state: "waiting for GO", marker: "READY",
+      { ...worker, ...under, name: WORKER2, pid: 4106, ticket: "HIMMEL-902", state: "waiting for GO", marker: "READY",
         agents: [{ name: "correctness critic", role: "judge", state: "done" }, { name: "diff reader", role: "Explore", state: "running" }],
         subagents: { total: 2, running: 1 }, usage: usage(7, 1200, 3400, 250_000, 18_000, 400_000, "autocompact", 62.5, 65_700) },
-      { ...leg, ...under, name: JUDGE, pid: 4107, role: "judge", ticket: "HIMMEL-901", state: "idle", marker: null,
+      { ...worker, ...under, name: JUDGE, pid: 4107, role: "judge", ticket: "HIMMEL-901", state: "idle", marker: null,
         agents: [], subagents: { total: 0, running: 0 }, usage: usage(2, 400, 900, 60_000, 4000, 200_000, "window", 81, 15_900) },
     );
     await route.fulfill({ response, json: body });
@@ -611,15 +611,15 @@ test("16. the tree under the operator: the chief, its two workers and its judge,
   await expect(tree.locator("> li > .fleet-row .fleet-line .fleet-name")).toHaveText(shortName(FLEET.console.name));
   // siblings by state: running, then waiting for GO, then idle.
   await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator("> li > .fleet-row > .fleet-line .fleet-name"))
-    .toHaveText([shortName(FLEET.leg.name), shortName(WORKER2), shortName(JUDGE)]);
-  for (const name of [FLEET.console.name, FLEET.leg.name, WORKER2, JUDGE]) await expand(page, name);
-  for (const name of [FLEET.leg.name, WORKER2, JUDGE])
+    .toHaveText([shortName(FLEET.worker.name), shortName(WORKER2), shortName(JUDGE)]);
+  for (const name of [FLEET.console.name, FLEET.worker.name, WORKER2, JUDGE]) await expand(page, name);
+  for (const name of [FLEET.worker.name, WORKER2, JUDGE])
     await expect(card(page, name).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(name)}`);
   await expect(card(page, JUDGE).locator(".fleet-role")).toHaveText("judge · opus · native usage budget");
 
   // a subagent is an entry in its session's row; its calls count in that row (the worker's two main-thread calls and its subagent's one).
-  await expect(card(page, FLEET.leg.name).locator(".fleet-agent")).toHaveText(["subagent: census critic (running)"]);
-  await expect(card(page, FLEET.leg.name).locator(".fleet-usage")).toContainText(" · 3 calls · ");
+  await expect(card(page, FLEET.worker.name).locator(".fleet-agent")).toHaveText(["subagent: census critic (running)"]);
+  await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toContainText(" · 3 calls · ");
   await expect(card(page, WORKER2).locator(".fleet-agent")).toHaveText(["judge: correctness critic (done)", "Explore: diff reader (running)"]);
   await expect(card(page, WORKER2).locator(".fleet-status .fleet-meta")).toContainText("1 of 2 subagents running");
 
@@ -664,11 +664,11 @@ test("18. a claudex worker's cost-eq reads not priced", async ({ page }) => {
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
-    const leg = body.sessions.find((r: any) => r.name === FLEET.leg.name);
-    Object.assign(leg, { lane: "claudex", usage: { ...leg.usage, costEq: null } });
+    const worker = body.sessions.find((r: any) => r.name === FLEET.worker.name);
+    Object.assign(worker, { lane: "claudex", usage: { ...worker.usage, costEq: null } });
     await route.fulfill({ response, json: body });
   });
   await page.goto(h.url);
-  await expand(page, FLEET.leg.name);
-  await expect(card(page, FLEET.leg.name).locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
+  await expand(page, FLEET.worker.name);
+  await expect(card(page, FLEET.worker.name).locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq not priced");
 });

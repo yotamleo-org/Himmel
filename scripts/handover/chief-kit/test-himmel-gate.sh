@@ -10,7 +10,7 @@
 #   6. a relative entry from a linked worktree runs the anchor's gate, not the
 #      branch's.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

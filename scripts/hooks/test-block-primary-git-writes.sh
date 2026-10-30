@@ -67,15 +67,23 @@ _rc() {  # _rc <script> <json> -> allow|block|?(rc=N)
     case "$rc" in 0) echo allow ;; 2) echo block ;; *) echo "?(rc=$rc)" ;; esac
 }
 
+# _rc_err <script> <json> -> sets _GOT (allow|block|?(rc=N)) and _ERR (stderr)
+# from ONE hook run; a deny row needs both, and two runs of the same call per
+# entry mode doubled the suite's cost for no extra verdict.
+_rc_err() {
+    local rc=0
+    _ERR=$(printf '%s' "$2" | bash "$1" 2>&1 >/dev/null) || rc=$?
+    case "$rc" in 0) _GOT=allow ;; 2) _GOT=block ;; *) _GOT="?(rc=$rc)" ;; esac
+}
+
 # deny <label> <cwd> <command> — both modes block, and the deny names the
 # git arm (a deny from some OTHER arm would be coverage by accident).
 deny() {
     local label="$1" j s got err
     j=$(payload "$3" "$2")
     for s in "$DIRECT" "$FENCE"; do
-        got=$(_rc "$s" "$j")
+        _rc_err "$s" "$j"; got=$_GOT; err=$_ERR
         if [ "$got" != block ]; then bad "$label [${s##*/}] — expected block got $got"; continue; fi
-        err=$({ printf '%s' "$j" | bash "$s" >/dev/null; } 2>&1)
         case "$err" in
             *"git subcommand:"*) ok "$label [${s##*/}]" ;;
             *) bad "$label [${s##*/}] — denied, but not by the git arm: $(printf '%s' "$err" | head -2 | tr '\n' '|')" ;;
@@ -112,9 +120,8 @@ allow() {
 deny_direct() {
     local j got err
     j=$(payload "$3" "$2")
-    got=$(_rc "$DIRECT" "$j")
+    _rc_err "$DIRECT" "$j"; got=$_GOT; err=$_ERR
     if [ "$got" != block ]; then bad "$1 [direct] — expected block got $got"; return; fi
-    err=$({ printf '%s' "$j" | bash "$DIRECT" >/dev/null; } 2>&1)
     case "$err" in
         *"git subcommand:"*) ok "$1 [direct]" ;;
         *) bad "$1 [direct] — denied, but not by the git arm: $(printf '%s' "$err" | head -2 | tr '\n' '|')" ;;

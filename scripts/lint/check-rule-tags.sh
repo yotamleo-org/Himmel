@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
 #
 # check-rule-tags.sh — every rule line of the always-loaded prose says whether the
 # harness enforces it. A rule line is a column-0 bullet (`- `, `* `; numbered items are procedure steps) outside

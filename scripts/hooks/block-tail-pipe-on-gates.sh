@@ -152,10 +152,8 @@ set -fuo pipefail   # -f: the token walk word-splits, and must not glob `*.sh`
 # external-process spawn per call, and pull tool_name + command in ONE jq
 # call (not two) so a non-matching call pays a single jq fork instead of
 # two `printf | jq` pipelines (four forks). `<<<"$input"` feeds jq directly,
-# skipping the `printf` fork each pipeline used to pay. Windows jq.exe
-# writes CRLF, so the embedded "\n" separator between the two fields can
-# arrive as "\r\n" — strip the stray CR off $tool the same way
-# require-quiet-run.sh already does for the identical shape.
+# skipping the `printf` fork each pipeline used to pay. Strip a stray CR
+# off $tool defensively, as require-quiet-run.sh does for the same shape.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 command -v jq >/dev/null 2>&1 || exit 0

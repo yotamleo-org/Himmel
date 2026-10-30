@@ -8,7 +8,7 @@
 # SCRIPT_DIR, and resolves the repo-to-check via `git rev-parse
 # --show-toplevel`, which is CWD-relative).
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: any POSIX bash 3.2+.
 #
 # Usage: bash scripts/hooks/test-check-doctor-check-ids.sh
 # Exit 0 if all cases pass, 1 otherwise.

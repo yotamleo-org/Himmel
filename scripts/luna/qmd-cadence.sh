@@ -420,8 +420,7 @@ validate_arm_inputs() {
     # on. qmd opens a SQLite index that another process may hold, so a stall is
     # a live possibility, not a hypothetical. The bound is qmd_bounded, not timeout(1):
     # timeout returns when qmd's node launcher
-    # dies and orphans its bun child, and on Git Bash PATH can resolve Windows'
-    # timeout.exe, which is a sleep, not a command runner.
+    # dies and orphans its bun child.
     # Build the probe as ONE argv rather than branching on QMD_JS — two copies
     # of the same command line is two places for a future change to half-land.
     local probe_out probe_rc=0 probe_timeout="${QMD_PROBE_TIMEOUT_SECS:-60}"

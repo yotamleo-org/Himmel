@@ -55,6 +55,15 @@ rule and project scope are kept, every settings hook appears once, and a second
 install changes nothing. `--expect-red` duplicates a hook entry and passes only when
 the stage fails on that assertion. Run it on a disposable `himmel-ar-N` clone and
 restore `suite-ready-v4` + power off after.
+**Adopted-features stage (opt-in).** `bash scripts/vm/adopted-features-e2e.sh <vm>`
+takes the vm-lock, restores `suite-ready-v4`, stages this tree on the clone, adopts
+himmel into ten scratch git projects and checks one clone-only feature per row from the
+project, with the staged tree hidden. Rows 6 (merge-on-green) and 9 (the SessionStart
+hook) are anchored on the clone by design and get it back for their row only; row 1
+(`/pr-check`) is reported as a FINDING because `adopt.sh` does not ship it. `gh` is a
+stub, so a live authenticated verdict is not proven. `--expect-red` deletes the adopted
+no-force-push gate and passes only when row 3 alone fails. The VM is restored and powered
+off afterwards.
 **Record-once model check (opt-in).** `scripts/vm/replay-poc-check.sh` runs the
 trivial headless `claude -p` dispatch through `scripts/vm/lib/model-replay.sh`:
 the first run records the model's artifact (one call), later runs with the same

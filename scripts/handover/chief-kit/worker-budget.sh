@@ -17,7 +17,7 @@
 # no scratch file. Never prints verdict=OK for input it could not measure.
 #
 # Run it in an ordinary Bash call, not inside a Monitor (same as context-fill.sh).
-# Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
+# Platform guard: POSIX bash 3.2+, no mapfile.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

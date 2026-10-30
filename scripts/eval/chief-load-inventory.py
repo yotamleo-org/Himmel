@@ -33,9 +33,9 @@ import sys
 
 SCRIPTS = [
     "wrap-merged.sh", "verdict-go.sh", "relay-batch.sh", "succession-tracker.sh",
-    "close-wrapped-leg.sh", "close-wrapped-worker.sh", "live-state.sh", "write-verdict.sh", "go.sh", # old-term-ok
+    "close-wrapped-leg.sh", "close-wrapped-worker.sh", "live-state.sh", "write-verdict.sh", "go.sh",
     "fleet-manifest.sh", "append-results.sh", "board.mjs", "chief-wait.sh",
-    "tick.sh", "headed-arm-leg.sh", "headed-arm-worker.sh", "ready-check.sh", "merge-on-green.sh", # old-term-ok
+    "tick.sh", "headed-arm-leg.sh", "headed-arm-worker.sh", "ready-check.sh", "merge-on-green.sh",
 ]
 
 TRIGGERS = [
@@ -154,7 +154,7 @@ def parse(path):
                     for s in SCRIPTS:
                         if re.search(r"(?<![\w-])" + re.escape(s), cmd):
                             script_calls[s] += 1
-                    if ("close-wrapped-leg.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd: # old-term-ok
+                    if ("close-wrapped-leg.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd:
                         hand_wraps += 1
                 elif x["name"] == "SendMessage":
                     r["cmds"].append("SendMessage")

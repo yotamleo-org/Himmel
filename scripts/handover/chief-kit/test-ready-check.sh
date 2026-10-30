@@ -6,7 +6,7 @@
 # Covers: usage (arg count / bad PR / bad sha), one all-green PR, and one
 # failing case per check (1..6).
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 set -uo pipefail
 

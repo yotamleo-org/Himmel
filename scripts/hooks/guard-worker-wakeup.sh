@@ -8,7 +8,7 @@
 # command anyway (docs/handover/worker-preface.md). Same shape as
 # block-worker-askuserquestion.sh, which is the template for this file.
 #
-# Zero context cost when not a leg: the marker check is the first statement and
+# Zero context cost when not a worker: the marker check is the first statement and
 # an allow prints NOTHING (no stdout, no stderr) — an operator or chief session
 # never sees this hook at all.
 #

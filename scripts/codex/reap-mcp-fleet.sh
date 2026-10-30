@@ -22,13 +22,6 @@ set -uo pipefail
 
 JOBS_DIR="${CODEX_JOBS_DIR:-$HOME/.himmel/state/codex-exec-jobs}"
 
-_reap_platform() {
-    case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*|MSYS*) echo windows ;;
-        *) echo other ;;
-    esac
-}
-
 # --- pure descendant walk (bash 3.2-safe; the hermetic test calls this
 # directly via the sourcing seam) ---------------------------------------
 # _reap_descendants <table> <root-pid> [<started-at-epoch>]
@@ -74,7 +67,7 @@ EOF
 }
 
 # _reap_ps_table - print the live "<pid> <ppid> <start-epoch-or-dash>" table
-# from the real process list (non-Windows production path only; not used by
+# from the real process list (not used by
 # the hermetic test, which feeds _reap_descendants a fixture directly).
 _reap_ps_table() {
     _rpt_now="$(date +%s)"
@@ -100,9 +93,7 @@ _reap_registry_scan() {
         return 0
     fi
     _rrs_node=""
-    for c in node node.exe; do
-        if command -v "$c" >/dev/null 2>&1; then _rrs_node="$c"; break; fi
-    done
+    if command -v node >/dev/null 2>&1; then _rrs_node=node; fi
     if [ -z "$_rrs_node" ]; then
         echo "[reap-mcp-fleet] registry: cannot scan (node not found on PATH)." >&2
         return 0
@@ -145,8 +136,6 @@ _reap_registry_scan() {
 }
 
 _reap_main() {
-    _platform="$(_reap_platform)"
-
     _kill=0
     _root_pid=""
     _started_at=""
@@ -162,13 +151,7 @@ _reap_main() {
         esac
     done
 
-    if [ "$_platform" = "windows" ]; then
-        echo "ERR: Windows is not supported; run reap-mcp-fleet.sh on Linux or macOS." >&2
-        return 2
-    fi
-
-    # --- non-Windows: real descendant-reap + registry scan (no app-server
-    # fingerprint - that fingerprint is Win32_Process-specific).
+    # --- descendant-reap + registry scan ----------------------------------
     if [ -n "$_root_pid" ]; then
         _table="$(_reap_ps_table)"
         # Entry-point safety parity with the registry-scan path (which skips a
@@ -200,7 +183,7 @@ _reap_main() {
         return 0
     fi
 
-    echo "[reap-mcp-fleet] non-Windows platform - the app-server MCP-fleet fingerprint is Windows-only; running the registry-driven job scan only."
+    echo "[reap-mcp-fleet] running the registry-driven job scan."
     _reap_registry_scan
 }
 

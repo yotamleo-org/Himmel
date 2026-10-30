@@ -5,9 +5,8 @@
 // user-level ~/.claude/settings.json declares to protect NON-himmel repos
 // (auto-approve-safe-bash, block-edit-on-main, block-read-secrets). A repo that
 // ALSO declares the same guardrail at the project level (himmel does, via
-// $CLAUDE_PROJECT_DIR) would otherwise fire it TWICE per matching tool call — a
-// doubled MSYS2 bash-spawn (bash -c 'exit 0' ~= 1.7-3.3s on Windows). This
-// wrapper removes the duplicate WORK where the project layer already covers the
+// $CLAUDE_PROJECT_DIR) would otherwise fire it TWICE per matching tool call.
+// This wrapper removes the duplicate WORK where the project layer already covers the
 // guardrail, while keeping it live everywhere else.
 //
 //   PROJECT ALREADY DECLARES IT  -> exit 0 immediately (cost: one cheap node

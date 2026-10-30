@@ -178,6 +178,64 @@ assert_contains "a symlinked seed is refused" "result=unsafe-perms" "$(req 0)"
 out=$(python3 -I "$HELPER" status abcdefgh 2>&1)
 assert_contains "outside the sandbox seam a non-root run is refused" "result=not-root" "$out"
 
+echo "== the request DM carries Approve and Deny buttons =="
+FAKE="$tmp/fakebin"; mkdir -p "$FAKE"
+cat > "$FAKE/sudo" <<'FAKESUDO'
+#!/bin/sh
+case "$3" in
+    request) echo "result=pending id=abcdefgh expires=$(( $(date +%s) + 120 )) operator=4242"; echo "text=AFK sudo request abcdefgh" ;;
+    status) echo "result=ran:0" ;;
+esac
+FAKESUDO
+cat > "$FAKE/curl" <<'FAKECURL'
+#!/bin/sh
+printf '%s\n' "$@" > "$CURL_ARGS"
+cat > "$CURL_STDIN"
+FAKECURL
+chmod +x "$FAKE/sudo" "$FAKE/curl"
+printf 'TELEGRAM_BOT_TOKEN=123:SECRETTOKEN\n' > "$tmp/bridge.env"
+req_out=$(PATH="$FAKE:$PATH" TELEGRAM_ENV="$tmp/bridge.env" CURL_ARGS="$tmp/curl.args" CURL_STDIN="$tmp/curl.stdin" \
+    bash "$REPO_ROOT/scripts/lib/afk-sudo-request" --session s --ticket T -- /usr/bin/true 2>&1)
+assert_contains "the request still waits and reports the run" "request abcdefgh ran, exit 0" "$req_out"
+args=$(cat "$tmp/curl.args" 2>/dev/null)
+assert_contains "the notice carries an inline keyboard" "reply_markup=" "$args"
+assert_contains "the Approve button's callback data names the request" "afk:approve:abcdefgh" "$args"
+assert_contains "the Deny button's callback data names the request" "afk:deny:abcdefgh" "$args"
+assert_absent "the bot token never appears in curl's argv" "SECRETTOKEN" "$args"
+assert_contains "the token reaches curl on stdin" "SECRETTOKEN" "$(cat "$tmp/curl.stdin" 2>/dev/null)"
+
+echo "== install.sh prints hints that work on this platform =="
+INSTALL="$LIB/install.sh"
+STUBS="$tmp/stubs"; mkdir -p "$STUBS/linux" "$STUBS/mac" "$STUBS/linux-nano" "$STUBS/linux-micro" "$STUBS/linux-vi"
+printf '#!/bin/sh\necho Linux\n' > "$STUBS/linux/uname"; printf '#!/bin/sh\necho Darwin\n' > "$STUBS/mac/uname"
+for d in linux-nano linux-micro linux-vi; do cp "$STUBS/linux/uname" "$STUBS/$d/uname"; done
+printf '#!/bin/sh\n' > "$STUBS/linux-nano/nano"; printf '#!/bin/sh\n' > "$STUBS/linux-micro/micro"; printf '#!/bin/sh\n' > "$STUBS/linux-vi/vi"
+chmod +x "$STUBS"/*/*
+printf 'NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\n' > "$tmp/os-arch"
+printf 'NAME="Ubuntu"\nID=ubuntu\nID_LIKE=debian\n' > "$tmp/os-ubuntu"
+printf 'NAME="Debian GNU/Linux"\nID=debian\n' > "$tmp/os-debian"
+# hint <os-release> <stub dir> <fn...>: source install.sh with PATH holding only the stubs.
+# PATH is narrowed to the stub dir on purpose, so a real vi/nano/qrencode cannot leak in.
+# shellcheck disable=SC2123,SC2030,SC2031,SC1090
+hint() { local osr=$1 stubs=$2; shift 2; ( PATH="$STUBS/$stubs"; export AFK_OS_RELEASE="$osr"; unset SUDO_EDITOR VISUAL EDITOR; source "$INSTALL" && "$@" ); }
+assert_contains "arch (CachyOS) installs with pacman" "sudo pacman -S nano qrencode" "$(hint "$tmp/os-arch" linux pkg_hint nano qrencode)"
+assert_contains "ubuntu installs with apt" "sudo apt install nano qrencode" "$(hint "$tmp/os-ubuntu" linux pkg_hint nano qrencode)"
+assert_contains "debian installs with apt" "sudo apt install nano" "$(hint "$tmp/os-debian" linux pkg_hint nano)"
+assert_contains "macOS installs with brew" "brew install nano qrencode" "$(hint "$tmp/os-arch" mac pkg_hint nano qrencode)"
+assert_contains "with no editor and no nano/vim/micro the hint names SUDO_EDITOR and the package" "SUDO_EDITOR=nano sudoedit /etc/himmel/afk-sudo.json" "$(hint "$tmp/os-arch" linux enable_cmd)"
+assert_contains "the no-editor hint says how to install one on arch" "sudo pacman -S nano" "$(hint "$tmp/os-arch" linux enable_cmd)"
+assert_contains "with only micro installed SUDO_EDITOR picks micro" "SUDO_EDITOR=micro sudoedit" "$(hint "$tmp/os-arch" linux-micro enable_cmd)"
+assert_contains "with nano installed SUDO_EDITOR picks nano" "SUDO_EDITOR=nano sudoedit" "$(hint "$tmp/os-arch" linux-nano enable_cmd)"
+out=$(hint "$tmp/os-arch" linux-vi enable_cmd)
+assert_absent "with vi present no SUDO_EDITOR override is printed" "SUDO_EDITOR" "$out"
+assert_contains "with vi present plain sudoedit is printed" "sudoedit /etc/himmel/afk-sudo.json" "$out"
+# shellcheck disable=SC2123,SC2030,SC2031,SC1090
+out=$( ( PATH="$STUBS/linux"; export AFK_OS_RELEASE="$tmp/os-arch"; export EDITOR=nano; unset SUDO_EDITOR VISUAL; source "$INSTALL" && enable_cmd ) )
+assert_absent "a set EDITOR keeps plain sudoedit" "SUDO_EDITOR" "$out"
+assert_contains "a missing qrencode prints its install hint" "sudo pacman -S qrencode" "$(hint "$tmp/os-arch" linux qr_hint)"
+printf '#!/bin/sh\n' > "$STUBS/linux-nano/qrencode"; chmod +x "$STUBS/linux-nano/qrencode"
+assert_absent "a present qrencode prints nothing" "pacman" "$(hint "$tmp/os-arch" linux-nano qr_hint)"
+
 echo
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

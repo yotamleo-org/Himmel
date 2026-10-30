@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
 #
 # Smoke test for scripts/ci/check-vacuous-path-assert.sh.
 #

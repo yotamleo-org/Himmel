@@ -326,14 +326,10 @@ const LEGACY_LAUNCHER = 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-b
 // it fixes this: a child process always receives its own argv regardless of
 // which shell launches it.
 //
-// WHY `sh` and not `bash`: the bare `bash` token is banned from this
-// inventory because of Windows PATH roulette (the WSL stub, the 0-byte Store
-// alias, the "Select an app to open 'bash'" modal). `sh` is not that: Claude
-// Code already runs the whole hook command through `sh -c`, so `sh` is
-// exactly as resolvable as the command line carrying it, and there is no
-// System32 `sh.exe` decoy to land on. run-node.sh already supports direct
-// execution — the `$0` case in scripts/lib/run-node.sh — so no library change
-// was needed for path resolution.
+// WHY `sh` and not `bash`: Claude Code already runs the whole hook command
+// through `sh -c`, so the launcher uses the same shell. run-node.sh supports
+// direct execution — the `$0` case in scripts/lib/run-node.sh — so no library
+// change was needed for path resolution.
 //
 // WHY `command -p sh` and not a bare `sh`: replacing the `.` BUILTIN with an
 // external launcher introduces a PATH lookup the dot form never needed, and

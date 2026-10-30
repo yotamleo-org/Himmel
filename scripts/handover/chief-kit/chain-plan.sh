@@ -21,7 +21,7 @@
 # merge-forward-check.sh execs the core, not this file.
 #
 # Exit: 0 plan (or flag off)  1 cycle among the hard edges, or a --go-check REFUSE  2 usage, unreadable graph or flag registry
-# Platform guard (gitbash-only): bash, jq, awk.
+# Platform guard: bash, jq, awk.
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 for a in "$@"; do case "$a" in --evidence|--go-check) exec bash "$SCRIPT_DIR/chain-plan-core.sh" "$@" ;; esac; done

@@ -217,24 +217,10 @@ real_val="${real_val%/}"
 real_top="${real_top%/}"
 real_gcd="${real_gcd%/}"
 
-# On Windows, NTFS is case-insensitive: `C:/users/...` and `C:/Users/...`
-# refer to the same directory, but shell `case` glob matching is byte-exact.
-# If the operator types core.hooksPath with different casing than the
-# canonical worktree path (e.g. `c:/users/<user>/...` typed but
-# `C:/Users/<user>/...` returned by realpath -m), the prefix check would
-# falsely fail. Downcase both sides on Windows before compare. POSIX
-# filesystems are case-sensitive, so we don't downcase elsewhere (it would
-# mask a real case-mismatch bug).
+# Compare paths byte-for-byte so case mismatches remain visible.
 cmp_val="$real_val"
 cmp_top="$real_top"
 cmp_gcd="$real_gcd"
-case "${OS-}:$(uname -s 2>/dev/null)" in
-    Windows_NT:*|*:MINGW*|*:MSYS*|*:CYGWIN*)
-        cmp_val=$(printf '%s' "$real_val" | tr '[:upper:]' '[:lower:]')
-        cmp_top=$(printf '%s' "$real_top" | tr '[:upper:]' '[:lower:]')
-        cmp_gcd=$(printf '%s' "$real_gcd" | tr '[:upper:]' '[:lower:]')
-        ;;
-esac
 
 # Inside check: real_val == real_top OR real_val starts with real_top + "/"
 # OR real_val is inside the primary repo's `.git` (git-common-dir).

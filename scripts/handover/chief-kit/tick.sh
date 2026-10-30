@@ -346,6 +346,14 @@ Live-state pool-disposition: KEY slice|close|question <named target> lines recor
 explicit chief decisions. Malformed, duplicate or unknown decisions stay unresolved.
 --pool-dispositions reads a dispatcher snapshot on stdin and prints these counts
 and unresolved keys by class; it does not take a tick or perform network reads.
+pool-stale=<n>:<KEY>,... (HIMMEL-6604) re-checks each pool-disposition: line whose target
+names a ticket key or `PR <n>`: when every named blocker is Done (Jira mirror) or merged
+(one batched gh read) the line is stale, `?` marks an unreadable target (never stale), and
+the waiter wakes once per newly stale key. The line is never rewritten. residual-unversioned=
+<n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion.
+residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
+read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
+on the compact line. --pool-stale --doc <doc> prints just these two fields.
 
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
@@ -430,9 +438,123 @@ for key, reason in sorted(invalid.items()):
 PY
 }
 
+# Two read-only re-checks on the Jira mirror, printed as `pool-stale=` and
+# `residual-unversioned=` lines. pool-stale re-reads every Live-state pool-disposition: line
+# whose target names a ticket key or `PR <n>`; a line is stale only when every named blocker
+# is Done or merged, and an unreadable blocker prints `?`, never stale. The PR states come
+# from ONE batched gh read, made only when some target names a PR. residual-unversioned lists
+# open residual tickets of an open focus-version ticket that carry no fixVersion. It never
+# rewrites the doc.
+pool_stale() { # <doc> <mirror> <gh command> <repo dir>
+    python3 -I - "$@" <<'PY'
+import os, re, subprocess, sys
+doc, mirror, gh, repo = sys.argv[1:5]
+
+def front(key):
+    try:
+        text = open(os.path.join(mirror, key + ".md")).read()
+    except OSError:
+        return None
+    head = text.split("\n---", 1)[0]
+    out = {}
+    for line in head.splitlines():
+        m = re.match(r"\s*([A-Za-z_]+):\s*(.*)$", line)
+        if m:
+            out[m[1]] = m[2].strip()
+    return out
+
+if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
+    print("pool-stale=skip")
+    print("residual-unversioned=skip")
+    sys.exit(0)
+
+latest = {}
+live = False
+for line in open(doc).read().splitlines():
+    if line.startswith("## "):
+        live = line == "## Live state"
+    if live and line.startswith("pool-disposition:"):
+        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question) (\S.*)", line.split(":", 1)[1].strip())
+        if m:
+            refs = {k for k in re.findall(r"\b[A-Z]+-\d+\b", m[2]) if k != m[1]}
+            prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
+            latest[m[1]] = (refs, prs)
+lines = [(k, refs, prs) for k, (refs, prs) in latest.items() if refs or prs]
+
+prstate = None
+if any(prs for _, _, prs in lines):
+    try:
+        r = subprocess.run([gh, "pr", "list", "--state", "all", "--limit", "300", "--json", "number,state",
+                            "--jq", ".[] | [.number, .state] | @tsv"],
+                           cwd=repo if os.path.isdir(repo) else None, capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            prstate = {}
+            for row in r.stdout.splitlines():
+                n, _, s = row.partition("\t")
+                prstate[n.strip()] = s.strip()
+    except (OSError, subprocess.SubprocessError):
+        prstate = None
+
+def state(kind, ref):
+    if kind == "key":
+        f = front(ref)
+        if f is None:
+            return "?"
+        return "done" if f.get("statusCategory", "").strip('"') == "Done" else "open"
+    s = (prstate or {}).get(ref)
+    return "?" if s is None else ("done" if s == "MERGED" else "open")
+
+stale, unreadable = [], False
+for key, refs, prs in lines:
+    states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
+    if "open" in states:
+        continue
+    if "?" in states:
+        unreadable = True
+    elif key not in stale:
+        stale.append(key)
+tail = stale + (["?"] if unreadable else [])
+print("pool-stale=" + (("%d:%s" % (len(stale), ",".join(tail))) if stale else ("?" if unreadable else "0")))
+
+focus = ""
+for line in open(doc).read().splitlines():
+    m = re.match(r"focus-version:\s*(\S+)", line)
+    if m:
+        focus = m[1]
+        break
+if not re.match(r"v\d", focus):
+    focus = ""
+    try:
+        for row in open(mirror.rstrip("/") + ".versions.tsv").read().splitlines():
+            c = row.split("\t")
+            if len(c) > 1 and c[1] == "false":
+                focus = c[0]
+                break
+    except OSError:
+        pass
+found = []
+if focus:
+    for name in sorted(os.listdir(mirror)):
+        if not name.endswith(".md"):
+            continue
+        f = front(name[:-3])
+        if not f or f.get("statusCategory", "").strip('"') == "Done" or f.get("fixVersions", "[]") != "[]":
+            continue
+        if not any(l == '"residual"' or re.fullmatch(r'"residual-depth-[1-9]\d*"', l) for l in (x.strip() for x in f.get("labels", "").strip("[]").split(","))):
+            continue
+        for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
+            p = front(target)
+            if p and p.get("statusCategory", "").strip('"') != "Done" and ('"%s"' % focus) in p.get("fixVersions", ""):
+                found.append(name[:-3])
+                break
+print("residual-unversioned=" + (("%d:%s" % (len(found), ",".join(found))) if found else "0"))
+PY
+}
+
 verbose=0
 burn=0
 pool_mode=0
+stale_mode=0
 emit_fp=0
 ready_mode=0
 ready_dir=""
@@ -449,6 +571,7 @@ while [ "$#" -gt 0 ]; do
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
         --pool-dispositions) pool_mode=1; shift ;;
+        --pool-stale) stale_mode=1; shift ;;
         --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
@@ -488,6 +611,12 @@ resolve_doc() {
 if [ "$pool_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
     pool_dispositions "$DOC"
+    exit $?
+fi
+
+if [ "$stale_mode" -eq 1 ]; then
+    [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
+    pool_stale "$DOC" "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO"
     exit $?
 fi
 
@@ -1975,6 +2104,16 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
 fi
 
+# pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
+# plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
+pool_stale=skip
+residual_unversioned=skip
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    ps_out="$(timeout -k 2 40 bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+    pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
+    residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
+fi
+
 # The tick already owns the worktree census: reuse the existing reclaiming
 # sweep once an hour, under a lock shared by all checkouts of this repository.
 # Stamp attempts before running so a failing sweep cannot storm on every tick.
@@ -2988,6 +3127,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans-wip: %s\n' "$orphans_wip"
     printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
+    printf 'pool-stale: %s\n' "$pool_stale"
+    printf 'residual-unversioned: %s\n' "$residual_unversioned"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
@@ -3005,7 +3146,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
@@ -3048,6 +3189,8 @@ else
     compact_field orphans-wip "$orphans_wip"
     compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
+    compact_field pool-stale "$pool_stale"
+    compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
     compact_field ciguard "$ciguard_summary"

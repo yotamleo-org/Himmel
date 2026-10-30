@@ -30,7 +30,7 @@
 # Skips (with an explicit SKIP verdict, never a silent pass) if gitleaks is
 # not on PATH.
 #
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
 #
 # Usage: bash scripts/test-template-graphify-ignore.sh
 set -uo pipefail

@@ -38,14 +38,14 @@ export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export GEN_BRIEFS_NO_WT_CHECK=1  # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 
-cat > "$WORK/legs.json" <<'EOF'
+cat > "$WORK/workers.json" <<'EOF'
 [
  {"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"},
  {"label":"N902","keys":["HIMMEL-9002","HIMMEL-9003"],"slug":"hook-fix","branch":"fix/himmel-9002-hook-fix","title":"a hook fix","desc":"fix the hook thing","why":"the hook is broken","prior":"none found (qmd jira-himmel hook thing)","writes":"scripts/hooks/h.sh","scope":"`scripts/hooks/h.sh`","scope_short":"h.sh","hook":true,"judge":true,"env":true,"commit":"fix(hooks): [HIMMEL-9002] fix the hook","extra":"GREEN controls stay."}
 ]
 EOF
 
-run() { python3 "$SUT" "$WORK/legs.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$BUCKET" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 "$@"; }
+run() { python3 "$SUT" "$WORK/workers.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$BUCKET" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 "$@"; }
 
 out="$(run --manifest "$WORK/fleet.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "a valid workers file generates (rc 0)" || fail "rc=$rc: $out"
@@ -145,7 +145,7 @@ sha_of() { python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1
 has "the sha256 sidecar records launcher 1 at write time" "$side" "$(sha_of "$BUCKET/launch-N901.sh")  $BUCKET/launch-N901.sh"
 has "and launcher 2" "$side" "$(sha_of "$BUCKET/launch-N902.sh")  $BUCKET/launch-N902.sh"
 has "it created both worktrees via the seam" "$(paste -sd, "$WORK/wt.log")" "fix/himmel-9001-plain-fix,fix/himmel-9002-hook-fix"
-[ -f "$WORK/legs.json.out" ] && pass "the .out file records the nonces" || fail "no .out file"
+[ -f "$WORK/workers.json.out" ] && pass "the .out file records the nonces" || fail "no .out file"
 has "nothing was launched (no signal files)" "$(ls "$WORK/w" 2>&1)" "No such file"
 
 # A chief that runs only the launcher must still leave the worker in the manifest,
@@ -157,7 +157,7 @@ cp -R "$REPO_ROOT/scripts/lib" "$R7811/scripts/lib"
 cp "$HERE/fleet-manifest.sh" "$R7811/scripts/handover/chief-kit/fleet-manifest.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811.log" > "$R7811/scripts/handover/chief-kit/headed-arm-worker.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin7811/sleep"; chmod +x "$WORK/bin7811/sleep"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root /h --no-worktree --manifest "$WORK/f7811.fleet.json" >/dev/null 2>&1
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root /h --no-worktree --manifest "$WORK/f7811.fleet.json" >/dev/null 2>&1
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
 [ "$rc7811" -eq 0 ] && pass "the generated launcher exits 0 (HIMMEL-7811)" || fail "the generated launcher exited $rc7811"
 d7811="$(find "$WORK/b7811" -maxdepth 1 -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n1)"
@@ -173,12 +173,12 @@ R7811f="$WORK/repo7811f"; mkdir -p "$R7811f/scripts/handover/chief-kit"
 cp -R "$REPO_ROOT/scripts/lib" "$R7811f/scripts/lib"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$R7811f/scripts/handover/chief-kit/fleet-manifest.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811f.log" > "$R7811f/scripts/handover/chief-kit/headed-arm-worker.sh"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root /h --no-worktree --manifest "$WORK/f7811f.fleet.json" >/dev/null 2>&1
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root /h --no-worktree --manifest "$WORK/f7811f.fleet.json" >/dev/null 2>&1
 has "the launcher for the failed-add check carries the manifest add (HIMMEL-7811)" "$(cat "$WORK/b7811f/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811f/launch-N901.sh" >/dev/null 2>&1; rc7811f=$?
 [ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero (HIMMEL-7811)" || fail "launcher exited 0 after a failed manifest add"
 [ ! -s "$WORK/arm7811f.log" ] && pass "a failed manifest add stops the launch before the arm (HIMMEL-7811)" || fail "the arm ran after a failed manifest add"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1; rc7811n=$?
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1; rc7811n=$?
 [ "$rc7811n" -eq 0 ] && pass "generation without --manifest succeeds (HIMMEL-7811)" || fail "generation without --manifest exited $rc7811n"
 has "the launcher generated without --manifest still arms (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
 lacks "a launcher generated without --manifest adds nothing (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
@@ -191,7 +191,7 @@ run >/dev/null 2>"$WORK/again.err"; rc=$?
 [ "$rc" = 1 ] && pass "re-running over existing briefs refuses (rc 1)" || fail "overwrite rc=$rc"
 
 rm -rf "$BUCKET"
-sed 's/"prior":"HIMMEL-9000[^"]*"/"prior":"none"/' "$WORK/legs.json" > "$WORK/bare.json"
+sed 's/"prior":"HIMMEL-9000[^"]*"/"prior":"none"/' "$WORK/workers.json" > "$WORK/bare.json"
 python3 "$SUT" "$WORK/bare.json" --base 4ccb59d --chief BZ --bucket "$BUCKET" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/bare.err"; rc=$?
 [ "$rc" = 1 ] && pass "a bare 'none' prior art is refused (rc 1)" || fail "bare none rc=$rc"
 [ ! -e "$BUCKET/launch-N901.sh" ] && pass "and nothing is written for it" || fail "wrote files for an invalid worker"
@@ -200,18 +200,18 @@ printf '[{"label":"N903","keys":["HIMMEL-1"]}]\n' > "$WORK/short.json"
 python3 "$SUT" "$WORK/short.json" --base 4ccb59d --chief BZ --bucket "$BUCKET" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/short.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'missing' "$WORK/short.err" && pass "a worker missing required keys is refused" || fail "missing keys rc=$rc"
 
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --console BZ --bucket "$WORK/b-oldflag" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/oldflag.err"; rc=$?
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --console BZ --bucket "$WORK/b-oldflag" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/oldflag.err"; rc=$?
 [ "$rc" = 2 ] && grep -q 'unrecognized arguments: --console' "$WORK/oldflag.err" && [ ! -e "$WORK/b-oldflag/launch-N901.sh" ] && pass "the retired --console flag is refused (rc 2, nothing written)" || fail "--console rc=$rc"
 
-sed 's#fix/himmel-9001-plain-fix#fix/fail-me#' "$WORK/legs.json" > "$WORK/wtfail.json"
+sed 's#fix/himmel-9001-plain-fix#fix/fail-me#' "$WORK/workers.json" > "$WORK/wtfail.json"
 python3 "$SUT" "$WORK/wtfail.json" --base 4ccb59d --chief BZ --bucket "$WORK/b2" --repo "$REPO" --handover-root /h >/dev/null 2>"$WORK/wtfail.err"; rc=$?
 [ "$rc" = 1 ] && [ ! -e "$WORK/b2/launch-N901.sh" ] && pass "a failed worktree writes no brief for that worker" || fail "worktree failure rc=$rc"
 
 mkdir -p "$WORK/b3"; : > "$WORK/b3/launch-N901.sh"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/coll.err"; rc=$?
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/coll.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'launch-N901.sh already exists' "$WORK/coll.err" && [ ! -s "$WORK/b3/launch-N901.sh" ] && ! ls "$WORK/b3"/*.md >/dev/null 2>&1 && pass "an existing launcher is refused before anything is written" || fail "launcher collision rc=$rc"
 
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); d=dict(l[0]); d["label"]="N999"; d["keys"]=["HIMMEL-9999"]; l.append(d); json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/dupbr.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); d=dict(l[0]); d["label"]="N999"; d["keys"]=["HIMMEL-9999"]; l.append(d); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/dupbr.json"
 python3 "$SUT" "$WORK/dupbr.json" --base 4ccb59d --chief BZ --bucket "$WORK/b4" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/dupbr.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'duplicate worker branches' "$WORK/dupbr.err" && pass "two workers sharing a branch are refused" || fail "dup branch rc=$rc"
 
@@ -219,46 +219,46 @@ python3 "$SUT" "$WORK/dupbr.json" --base 4ccb59d --chief BZ --bucket "$WORK/b4" 
 tok() { # <name> <stderr fragment> <gen-briefs args...>: refused, rc 1, nothing written
     local n="$1" frag="$2"; shift 2
     rm -rf "$WORK/bt-tok"
-    python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --bucket "$WORK/bt-tok" --repo "$REPO" --handover-root /h --no-worktree "$@" >/dev/null 2>"$WORK/tok.err"; rc=$?
+    python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --bucket "$WORK/bt-tok" --repo "$REPO" --handover-root /h --no-worktree "$@" >/dev/null 2>"$WORK/tok.err"; rc=$?
     if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/tok.err" && ! ls "$WORK/bt-tok"/* >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/tok.err"))"; fi
 }
 tok "a 4-letter --letter is refused" "letter" --chief BZ --letter ABCD
 tok "a lower-case --letter is refused" "letter" --chief BZ --letter bz
 tok "an explicitly empty --letter is refused" "letter" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --letter ""
 tok "a letter derived from the chief name that is 4 letters long is refused" "letter" --chief HIMMEL-nextleg-2026-10-08ABCD-roadmap-chief
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --letter ABC --bucket "$WORK/bt-ok" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --letter ABC --bucket "$WORK/bt-ok" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-N901-' "$WORK/bt-ok"/HIMMEL-9001-N901-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["label"]="N123456"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lbl6.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["label"]="N123456"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lbl6.json"
 python3 "$SUT" "$WORK/lbl6.json" --base 4ccb59d --chief BZ --bucket "$WORK/bt-lbl" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lbl6.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'label' "$WORK/lbl6.err" && pass "a 6-digit worker label is refused" || fail "6-digit label rc=$rc"
 
 # A per-worker lane key is carried through and validated.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-ok.json"
 lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5.json" 2>&1)"
 has "a worker's lane key is printed as --lane" "$lout" "--lane claudex"
 # The launcher itself carries the lane, so a claudex worker needs no hand edit that breaks the sidecar sha.
 has "a claudex worker's launcher passes --lane claudex" "$(cat "$WORK/b5/launch-N901.sh")" "--lane claudex "
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1; rc5n=$?
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1; rc5n=$?
 [ "$rc5n" -eq 0 ] && pass "a native worker's generation succeeds (HIMMEL-7811)" || fail "native worker generation exited $rc5n"
 has "a native worker's launcher has an arm line to check" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
 lacks "a native worker's arm line has no --lane (its manifest add line carries --lane native, HIMMEL-7811)" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh")" "--lane"
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-bad.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-bad.json"
 python3 "$SUT" "$WORK/lane-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b6" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-bad.err" && [ ! -e "$WORK/b6/launch-N901.sh" ] && pass "an invalid lane is refused before anything is written" || fail "bad lane rc=$rc"
 # A non-string lane (a JSON number) is refused too, not a TypeError after the artifacts are written.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]=123; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-num.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]=123; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-num.json"
 python3 "$SUT" "$WORK/lane-num.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-num.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-num.err" && [ ! -e "$WORK/b7/launch-N901.sh" ] && pass "a numeric lane is refused before anything is written" || fail "numeric lane rc=$rc"
 # A trailing newline is not a lowercase word: the whole value must match.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="native\n"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-nl.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="native\n"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-nl.json"
 python3 "$SUT" "$WORK/lane-nl.json" --base 4ccb59d --chief BZ --bucket "$WORK/b8" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/lane-nl.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-nl.err" && [ ! -e "$WORK/b8/launch-N901.sh" ] && pass "a lane with a trailing newline is refused" || fail "newline lane rc=$rc"
 
 # an ab_arm key writes the brief ruling line, exports WORKER_SESSION_AUTOCOMPACT_AB in the launcher
 # and passes --arm on the printed manifest add line; a bad value is refused; no key changes nothing.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ab-ok.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-ok.json"
 about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f9.json" 2>&1)"
 abdoc="$(cat "$WORK/b9/HIMMEL-9001-N901-plain-fix-"*.md 2>/dev/null)"
 has "ab_arm 400k: the brief carries the ruling line" "$abdoc" "> **Context:** ab-400k — operator-ruling: HIMMEL-5193"
@@ -268,16 +268,16 @@ bash "$HERE/brief-lint.sh" "$WORK/b9/HIMMEL-9001-N901-plain-fix-"*.md 2>"$WORK/l
 [ "$rc" = 0 ] && pass "ab_arm brief passes brief-lint.sh" || fail "ab_arm brief-lint rc=$rc: $(cat "$WORK/lint-ab.err")"
 lacks "no ab_arm: the plain brief has no Context line" "$b1" "operator-ruling: HIMMEL-5193"
 lacks "no ab_arm: the plain launcher exports no arm" "$l1" "WORKER_SESSION_AUTOCOMPACT_AB"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="500k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ab-bad.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="500k"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-bad.json"
 python3 "$SUT" "$WORK/ab-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b10" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ab-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/ab-bad.err" && [ ! -e "$WORK/b10/launch-N901.sh" ] && pass "an invalid ab_arm is refused before anything is written" || fail "bad ab_arm rc=$rc"
 
 # an opus (or fable) worker needs a tier {category, reason}; without it nothing is
 # written (exit 1), with it the brief carries the Tier line headed-arm-worker.sh's own gate accepts.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/opus-no.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/opus-no.json"
 python3 "$SUT" "$WORK/opus-no.json" --base 4ccb59d --chief BZ --bucket "$WORK/b11" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-no.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier' "$WORK/opus-no.err" && [ ! -e "$WORK/b11/launch-N901.sh" ] && ! ls "$WORK/b11"/*.md >/dev/null 2>&1 && pass "an opus worker without a tier is refused and nothing is written" || fail "opus without tier rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design: the gate shape is open"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/opus-ok.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design: the gate shape is open"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/opus-ok.json"
 python3 "$SUT" "$WORK/opus-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b12" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/opus-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "an opus worker with a tier generates (rc 0)" || fail "opus with tier rc=$rc: $(cat "$WORK/opus-ok.err")"
 TD="$(find "$WORK/b12" -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n 1)"
@@ -286,10 +286,10 @@ has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:
 mkdir -p "$WORK/tier-arm"; grep -v '^resume_cwd:' "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
 rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "headed-arm-worker.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-worker.sh rc=$rc: $tier_out"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/tier-badcat.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/tier-badcat.json"
 python3 "$SUT" "$WORK/tier-badcat.json" --base 4ccb59d --chief BZ --bucket "$WORK/b13" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-badcat.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier.category' "$WORK/tier-badcat.err" && pass "a tier category outside the four tags is refused" || fail "bad tier category rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"  "}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/tier-blank.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"  "}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/tier-blank.json"
 python3 "$SUT" "$WORK/tier-blank.json" --base 4ccb59d --chief BZ --bucket "$WORK/b14" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-blank.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/tier-blank.err" && pass "a blank tier reason is refused" || fail "blank tier reason rc=$rc"
 lacks "a sonnet worker's brief has no Tier line" "$b1" "**Tier:**"
@@ -297,27 +297,27 @@ lacks "a sonnet worker's brief has no Tier line" "$b1" "**Tier:**"
 # A lane worker (lane other than native or claudex) cannot read the state repo, so a worker whose
 # text points at a path under the handover root is refused and nothing is written; a native or claudex worker may.
 SPEC="$WORK/handovers/yotamleo/himmel/specs/plan/2026-08-10-plan.md"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-spec.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-spec.json" "$SPEC"
 python3 "$SUT" "$WORK/lane-spec.json" --base 4ccb59d --chief BZ --bucket "$WORK/b15" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-spec.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'handover root' "$WORK/lane-spec.err" && [ ! -e "$WORK/b15/launch-N901.sh" ] && ! ls "$WORK/b15"/*.md >/dev/null 2>&1 && pass "a lane worker pointing at a handover-root path is refused and nothing is written" || fail "lane worker spec path rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["tier"]={"category":"design","reason":"spec at "+sys.argv[3]}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-tier.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["tier"]={"category":"design","reason":"spec at "+sys.argv[3]}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-tier.json" "$SPEC"
 python3 "$SUT" "$WORK/lane-tier.json" --base 4ccb59d --chief BZ --bucket "$WORK/b18" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-tier.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/lane-tier.err" && pass "a lane-worker tier.reason naming a handover-root path is refused" || fail "lane worker tier reason rc=$rc"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/native-spec.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/native-spec.json" "$SPEC"
 python3 "$SUT" "$WORK/native-spec.json" --base 4ccb59d --chief BZ --bucket "$WORK/b16" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/native-spec.err"; rc=$?
 [ "$rc" = 0 ] && pass "a native worker may point at a handover-root path (rc 0)" || fail "native spec path rc=$rc: $(cat "$WORK/native-spec.err")"
 # A claudex worker runs with the native worker-impl settings, the project's additionalDirectories and the qmd MCP config, so it reads the handover root too.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/claudex-spec.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/claudex-spec.json" "$SPEC"
 python3 "$SUT" "$WORK/claudex-spec.json" --base 4ccb59d --chief BZ --bucket "$WORK/b19" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/claudex-spec.err"; rc=$?
 [ "$rc" = 0 ] && grep -q -- "$SPEC" "$WORK/b19"/*.md 2>/dev/null && pass "a claudex worker may point at a handover-root path (rc 0, path kept in the brief)" || fail "claudex spec path rc=$rc: $(cat "$WORK/claudex-spec.err")"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-ok.json"
 python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "a lane worker with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["writes"]=sys.argv[3]; json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-writes.json" "$SPEC"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["lane"]="openrouter"; l[0]["model"]="claude-sonnet-5-5"; l[0]["writes"]=sys.argv[3]; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-writes.json" "$SPEC"
 python3 "$SUT" "$WORK/lane-writes.json" --base 4ccb59d --chief BZ --bucket "$WORK/lane-writes" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-writes.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'handover root' "$WORK/lane-writes.err" && [ ! -e "$WORK/lane-writes/launch-N901.sh" ] && pass "the new writes field preserves the lane handover-root restriction" || fail "lane writes restriction rc=$rc"
 # A non-native worker with no model key takes the lane's model: no native model argument in the launcher, the lane model in the brief header.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-nomodel.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-nomodel.json"
 python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"; rc=$?
 [ "$rc" = 0 ] && [ -s "$WORK/b20/launch-N901.sh" ] && [ -n "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md')" ] && pass "a claudex worker with no model key generates its brief and launcher (rc 0)" || fail "claudex no-model rc=$rc: $(cat "$WORK/lane-nomodel.err")"
 # claudex is a live lane: nothing the generator writes or prints calls it dormant.
@@ -329,7 +329,7 @@ lacks "a claudex worker with no model key leaves the lane default to headed-arm-
 has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
 # A claudex worker's named model is the launcher's trailing model argument, and headed-arm-worker.sh hands it to
 # scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-astra.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-astra.json"
 python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
 has "a claudex worker with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-worker.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
 mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
@@ -338,22 +338,22 @@ rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSI
 has "and the named model reaches the worker as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 lacks "and the claudex launch prints no dormant warning" "$(printf '%s' "$astra_out" | tr '[:upper:]' '[:lower:]')" "dormant"
 # An effort key exports WORKER_SESSION_EFFORT in the launcher.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-effort.json"
 python3 "$SUT" "$WORK/lane-effort.json" --base 4ccb59d --chief BZ --bucket "$WORK/b21" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
 has "an effort key exports WORKER_SESSION_EFFORT in the launcher" "$(cat "$WORK/b21/launch-N901.sh")" "export WORKER_SESSION_EFFORT=high"
 # An opus model on a non-native lane is refused before anything is written.
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-opus.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"design","reason":"multi-step design"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-opus.json"
 python3 "$SUT" "$WORK/lane-opus.json" --base 4ccb59d --chief BZ --bucket "$WORK/b22" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-opus.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-opus.err" && [ ! -e "$WORK/b22/launch-N901.sh" ] && pass "an opus model on a non-native lane is refused before anything is written" || fail "opus on claudex rc=$rc"
 
 # The scope's LAST completes-ticket value becomes one dedicated machine-readable
 # line (merge-on-green.sh reads it from the worker doc); a scope stating neither writes no line.
 ct_brief() { # <scope text> <bucket>
-    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]=sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ct.json" "$1" || { fail "completes-ticket fixture setup failed"; return 1; }
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]=sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ct.json" "$1" || { fail "completes-ticket fixture setup failed"; return 1; }
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="scripts/wr/a.sh docs/writes-only.md"; l[0]["scope"]="scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"; l[0]["prior"]="HIMMEL-9000: docs/prior.md"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/wr.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="scripts/wr/a.sh docs/writes-only.md"; l[0]["scope"]="scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"; l[0]["prior"]="HIMMEL-9000: docs/prior.md"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr.json"
 python3 "$SUT" "$WORK/wr.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr1" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr.err"; wr_rc=$?
 [ "$wr_rc" = 0 ] && pass "explicit ticket Writes text generates" || fail "explicit Writes generation rc=$wr_rc: $(cat "$WORK/wr.err")"
 wr_brief="$(cat "$WORK/wr1"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
@@ -365,7 +365,7 @@ has "Writes note retains stay-off paths" "$wr_note" "Stay off scripts/lib/"
 has "Writes note retains prior art paths" "$wr_note" "docs/prior.md"
 has "the original prior art field stays" "$wr_brief" "> **Prior art:** HIMMEL-9000: docs/prior.md"
 has "the original scope field stays" "$wr_brief" "> **Scope / do not:** writes confined to scripts/wr-context/read.sh. Stay off scripts/lib/. completes-ticket: no"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/wr-empty.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0].pop("writes",None); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/wr-empty.json"
 python3 "$SUT" "$WORK/wr-empty.json" --base 4ccb59d --chief BZ --bucket "$WORK/wr-empty" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/wr-empty.err"; wr_rc=$?
 [ "$wr_rc" = 0 ] && pass "missing optional writes still generates a draft" || fail "missing writes generation rc=$wr_rc"
 wr_empty_doc="$(find "$WORK/wr-empty" -name '*.md' 2>/dev/null)"
@@ -410,7 +410,7 @@ has "the no Ship step ends the merge with the --go GO file" "$ship_no" 'then `--
 # merge command anywhere in the brief, the chief is named as the merger, and the worker waits
 # for MERGED. A native worker of the same scope keeps the merge step (asserted above).
 cx_brief() { # <completes value> <bucket>
-    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/cx.json" "$1" || { fail "claudex ship fixture setup failed"; return 1; }
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/cx.json" "$1" || { fail "claudex ship fixture setup failed"; return 1; }
     python3 "$SUT" "$WORK/cx.json" --base 4ccb59d --chief BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/cx.err" || fail "claudex ship generation rc=$?: $(cat "$WORK/cx.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
@@ -437,7 +437,7 @@ bash "$HERE/brief-lint.sh" "$WORK"/ct1/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/
 # shellcheck disable=SC2016  # the backticks are literal characters in the value under test
 for bad in partial maybe yess '"no"' '`yes`'; do
     rm -rf "$WORK/ctb-out"
-    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json" "$bad"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="one PR. completes-ticket: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ctb.json" "$bad"
     python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --chief BZ --bucket "$WORK/ctb-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
     [ "$rc" = 1 ] && grep -q "N901" "$WORK/ctb.err" && grep -qF -- "$bad" "$WORK/ctb.err" && pass "completes-ticket: $bad is refused naming the worker and the value" || fail "completes-ticket: $bad rc=$rc: $(cat "$WORK/ctb.err")"
     [ ! -e "$WORK/ctb-out/launch-N901.sh" ] && ! ls "$WORK/ctb-out"/*.md >/dev/null 2>&1 && pass "and nothing is written for $bad" || fail "files written for completes-ticket: $bad"
@@ -451,7 +451,7 @@ no" "$WORK/ct7")"
 has "a value on the next line is read, not refused as empty" "$ct_nl" "> **Completes ticket:** no"
 # A bad value earlier in the scope is refused even when a good one comes last.
 rm -rf "$WORK/ctb-early"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="completes-ticket: partial, later completes-ticket: no"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ctb.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="completes-ticket: partial, later completes-ticket: no"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ctb.json"
 python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --chief BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
 [ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
 
@@ -462,7 +462,7 @@ pl_gen() {
     rm -rf "$WORK/pl-out"
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0][sys.argv[3]]=sys.argv[4]
 if len(sys.argv)>5: l[0]["platform_removal"]=True if sys.argv[5]=="yes" else sys.argv[5]
-json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/pl.json" "$@"
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/pl.json" "$@"
     python3 "$SUT" "$WORK/pl.json" --base 4ccb59d --chief BZ --bucket "$WORK/pl-out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pl.err"
 }
 pl_written() { [ -n "$(find "$WORK/pl-out" -type f -print -quit 2>/dev/null)" ]; }
@@ -500,7 +500,7 @@ for ok in 'Close WRAPPED chief windows' 'Stop worker windows piling up' 'Spread 
 done
 # Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"
-python3 "$NF/gen-briefs.py" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
+python3 "$NF/gen-briefs.py" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
 [ "$rc" = 1 ] && ! pl_written && pass "'runtime Windows' is not excused by the time-window qualifier" || fail "runtime Windows rc=$rc"
@@ -524,10 +524,10 @@ tr '\n' ' ' < "$HANDOVER_DOCS/worker-preface.md" | grep -Eq 'ONE +turn.*text-onl
     || fail "worker-preface.md lacks the batch-tool-calls / no text-only turn rule"
 
 # The renamed templates are regular files and the old paths are gone.
-for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do # old-term-ok
+for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do
     old="${pair%%:*}"; new="${pair##*:}"
     [ -f "$HANDOVER_DOCS/$new" ] && [ ! -L "$HANDOVER_DOCS/$new" ] && pass "$new is a regular file" || fail "$new is missing or not a regular file"
-    [ ! -e "$HANDOVER_DOCS/$old" ] && [ ! -L "$HANDOVER_DOCS/$old" ] && pass "$old is gone" || fail "$old still exists" # old-term-ok
+    [ ! -e "$HANDOVER_DOCS/$old" ] && [ ! -L "$HANDOVER_DOCS/$old" ] && pass "$old is gone" || fail "$old still exists"
 done
 # A worker launched through the launcher's default preface path (the plain
 # worker branch, last of the role defaults) gets the worker preface.
@@ -541,24 +541,24 @@ launch_preface="$(sed -n 's#.*PREFACE:-\$HERE/../../../\(docs/handover/[a-z-]*\.
 # (the rows above stub the worktree step, so they skip the existing-worktree check)
 mkdir -p "$WORK/hr/tester" "$WORK/gitcwd"
 git -C "$WORK/gitcwd" init -q 2>/dev/null
-rc=0; (cd "$WORK/gitcwd" && USER_SLUG=tester python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket himmel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree --manifest "$WORK/fb.json" >"$WORK/bb.out" 2>"$WORK/bb.err") || rc=$?
+rc=0; (cd "$WORK/gitcwd" && USER_SLUG=tester python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket himmel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree --manifest "$WORK/fb.json" >"$WORK/bb.out" 2>"$WORK/bb.err") || rc=$?
 [ "$rc" = 0 ] && [ -f "$WORK/hr/tester/himmel/launch-N901.sh" ] && pass "a bare --bucket resolves to <handover-root>/<user>/<bucket>" || fail "bare bucket rc=$rc: $(cat "$WORK/bb.err")"
 [ ! -e "$WORK/gitcwd/himmel" ] && pass "and writes no stray dir under the cwd" || fail "stray himmel/ dir under the cwd"
 grep -q -- "$WORK/hr/tester/himmel/HIMMEL-9001-N901" "$WORK/hr/tester/himmel/launch-N901.sh" 2>/dev/null && pass "the launcher passes an absolute doc path" || fail "launcher doc path not absolute"
-rc=0; (cd "$WORK" && python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket ./gitcwd/rel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >"$WORK/rel.out" 2>"$WORK/rel.err") || rc=$?
+rc=0; (cd "$WORK" && python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket ./gitcwd/rel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >"$WORK/rel.out" 2>"$WORK/rel.err") || rc=$?
 [ "$rc" = 1 ] && grep -q 'inside a git checkout' "$WORK/rel.err" && [ ! -e "$WORK/gitcwd/rel" ] && pass "a path --bucket inside a git checkout (outside the handover root) is refused" || fail "git-checkout bucket rc=$rc: $(cat "$WORK/rel.err")"
 ln -s "$WORK/gitcwd" "$WORK/hr/tester/link"
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/link/sub" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/lnk.err" || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/link/sub" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/lnk.err" || rc=$?
 [ "$rc" = 1 ] && grep -q 'inside a git checkout' "$WORK/lnk.err" && [ ! -e "$WORK/gitcwd/sub" ] && pass "a bucket under a handover-root symlink into a git checkout is refused" || fail "symlink bucket rc=$rc: $(cat "$WORK/lnk.err")"
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/abs" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>&1 || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/abs" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>&1 || rc=$?
 [ "$rc" = 0 ] && pass "RED control: an absolute --bucket works unchanged" || fail "absolute bucket rc=$rc"
-rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/nw" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >"$WORK/nw.out" 2>"$WORK/nw.err") || rc=$?
+rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/nw" --repo "$REPO" --handover-root "$WORK/hr" --no-worktree >"$WORK/nw.out" 2>"$WORK/nw.err") || rc=$?
 [ "$rc" = 1 ] && [ ! -e "$WORK/nw/launch-N901.sh" ] && pass "--no-worktree with a missing worktree exits 1 and writes nothing" || fail "no-worktree rc=$rc"
 has "and prints the exact worktree.sh line" "$(cat "$WORK/nw.err")" "bash scripts/worktree.sh new fix/himmel-9001-plain-fix --no-prune"
 NWREPO="$WORK/nwrepo"; git init -q "$NWREPO" && git -C "$NWREPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9001-plain-fix" -b fix/himmel-9001-plain-fix 2>/dev/null
 git -C "$NWREPO" worktree add -q "$NWREPO/.claude/worktrees/fix+himmel-9002-hook-fix" -b fix/himmel-9002-hook-fix 2>/dev/null
-rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/nw2" --repo "$NWREPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/nw2.err") || rc=$?
+rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/hr/tester/nw2" --repo "$NWREPO" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/nw2.err") || rc=$?
 [ "$rc" = 0 ] && pass "RED control: --no-worktree with existing worktrees works unchanged" || fail "existing worktrees rc=$rc: $(cat "$WORK/nw2.err")"
 
 # --- an adopted repo (a git checkout with no chief-kit of its own): the worktree is made by
@@ -577,7 +577,7 @@ git worktree add -q "$PWD/.claude/worktrees/${1//\//+}" -b "$1"
 EOF
 ADP="$WORK/adapter"; git init -q "$ADP" && git -C "$ADP" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 ADPBASE="$(git -C "$ADP" rev-parse HEAD)"
-rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/adp.fleet.json" >"$WORK/adp.out" 2>"$WORK/adp.err" || rc=$?
+rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/adp.fleet.json" >"$WORK/adp.out" 2>"$WORK/adp.err" || rc=$?
 [ "$rc" = 0 ] && pass "an adopted repo generates (rc 0)" || fail "adopted repo rc=$rc: $(cat "$WORK/adp.err") $(cat "$WORK/adp.out")"
 has "the adopter worktree is made by himmel's _new-worktree.sh run inside the adopter, without the install step" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9001-plain-fix|--no-install"
 has "and so is the second worker's" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9002-hook-fix|--no-install"
@@ -589,10 +589,10 @@ has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" 
 has "the adopter brief's ticket-read line uses himmel's jira CLI" "$(cat "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "node $KIT/scripts/jira/dist/index.js get HIMMEL-9001"
 lacks "RED control: a himmel-repo launcher exports no WORKER_SESSION_REPO" "$l1" "WORKER_SESSION_REPO"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
-rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
+rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
 has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"
 [ "$rc" = 1 ] && [ ! -e "$WORK/hr/tester/adp2/launch-N901.sh" ] && pass "and exits 1 writing no launcher" || fail "adopter no-worktree refusal rc=$rc"
-rc=0; (cd "$WORK" && unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/legs.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp3" --repo adapter --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp3.err") || rc=$?
+rc=0; (cd "$WORK" && unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp3" --repo adapter --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp3.err") || rc=$?
 has "a relative --repo still exports an absolute worktree path" "$(cat "$WORK/hr/tester/adp3/launch-N901.sh" 2>/dev/null)" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
 
 # --- the rm kind: a release-manager brief filled from docs/handover/rm-brief-template.md ---
@@ -641,7 +641,7 @@ rmbad "an rm worker whose state_dir is not under a release directory is refused"
 rmbad "an rm worker on a non-opus model is refused" 'd["model"]="claude-sonnet-5-5"' "opus"
 
 # --- a brief naming VM work carries the guest-exec line; one that does not stays without it ---
-python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/legs.json" "$WORK/vmlegs.json"
+python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); l[0]['why']='the install must be proven on a test VM first'; json.dump(l,open(sys.argv[2],'w'))" "$WORK/workers.json" "$WORK/vmlegs.json"
 rc=0; python3 "$SUT" "$WORK/vmlegs.json" --base 4ccb59d --chief BZ --bucket "$WORK/vmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/vm.out" 2>&1 || rc=$?
 [ "$rc" = 0 ] && pass "a workers file naming VM work generates (rc 0)" || fail "vm workers rc=$rc: $(cat "$WORK/vm.out")"
 VMB1="$(tr '\n' ' ' < "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
@@ -652,7 +652,7 @@ bash "$HERE/brief-lint.sh" "$WORK/vmb/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 
 [ "$rc" = 0 ] && pass "the VM brief passes brief-lint.sh" || fail "vm brief brief-lint rc=$rc: $(cat "$WORK/vmlint.err")"
 
 # --- a grants list renders a Pre-granted follow-ups block; a grant reaching a forbidden path or a bypass is refused ---
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["grants"]=[{"text":"add the RED row to the harness suite","paths":["scripts/handover/chief-kit/test-gen-briefs.sh"]},{"text":"mirror the change in the twin","paths":["scripts/a.sh","scripts/b.sh"]}]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/gr.json" || fail "grants fixture setup failed"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["grants"]=[{"text":"add the RED row to the harness suite","paths":["scripts/handover/chief-kit/test-gen-briefs.sh"]},{"text":"mirror the change in the twin","paths":["scripts/a.sh","scripts/b.sh"]}]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/gr.json" || fail "grants fixture setup failed"
 python3 "$SUT" "$WORK/gr.json" --base 4ccb59d --chief BZ --bucket "$WORK/gr" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/gr.err"; rc=$?
 [ "$rc" = 0 ] && pass "a worker with grants generates (rc 0)" || fail "grants rc=$rc: $(cat "$WORK/gr.err")"
 GR="$(cat "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
@@ -670,7 +670,7 @@ bash "$HERE/brief-lint.sh" "$WORK"/gr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/g
 lacks "a worker without grants carries no grants block" "$ct_no" "Pre-granted follow-ups"
 grbad() { # <name> <python edit of the grant g> <stderr fragment>
     rm -rf "$WORK/grbad" "$WORK/grbad.json"
-    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); g={'text':'fix the twin','paths':['scripts/a.sh']}; $2; l[0]['grants']=[g]; json.dump(l[:1],open(sys.argv[2],'w'))" "$WORK/legs.json" "$WORK/grbad.json" || { fail "$1 (fixture setup failed)"; return; }
+    python3 -I -c "import json,sys; l=json.load(open(sys.argv[1])); g={'text':'fix the twin','paths':['scripts/a.sh']}; $2; l[0]['grants']=[g]; json.dump(l[:1],open(sys.argv[2],'w'))" "$WORK/workers.json" "$WORK/grbad.json" || { fail "$1 (fixture setup failed)"; return; }
     python3 "$SUT" "$WORK/grbad.json" --base 4ccb59d --chief BZ --bucket "$WORK/grbad" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/grbad.err"; rc=$?
     if [ "$rc" = 1 ] && grep -q -- "$3" "$WORK/grbad.err" && ! ls "$WORK/grbad"/* >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$rc, err: $(cat "$WORK/grbad.err"))"; fi
 }
@@ -707,20 +707,20 @@ PROOF_TAIL=$'\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before
 pm HIMMEL-9001 $'Edit scripts/x.\n\nDoD\n- the row is green\n'
 pm HIMMEL-9002 "Edit scripts/hooks/h.sh.$PROOF_TAIL"
 pm HIMMEL-9003 "Edit the hook.$PROOF_TAIL"
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
 [ "$rc" = 1 ] && pass "proof: a ticket with a DoD but no Proof is refused (rc 1)" || fail "proof: no-Proof rc=$rc"
 has "proof: the refusal names the ticket and the missing section" "$(cat "$WORK/pb.err")" "HIMMEL-9001 lacks Proof"
 has "proof: the refusal prints the ticket body for the chief to fix" "$(cat "$WORK/pb.err")" "Edit scripts/x."
 lacks "proof: a ticket that has both is not named" "$(cat "$WORK/pb.err")" "HIMMEL-9002 lacks"
 [ ! -e "$WORK/pb/launch-N901.sh" ] && pass "proof: nothing is written for a refused ticket" || fail "proof: wrote files for a refused ticket"
 pm HIMMEL-9001 "Edit scripts/x.$PROOF_TAIL"
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
 [ "$rc" = 0 ] && pass "proof: tickets that all have DoD and Proof generate" || fail "proof: complete tickets rc=$rc: $(cat "$WORK/pb.err")"
 pm HIMMEL-9003 $'Edit the hook.\n\nDoD\n- the row is green\n\nProof\nTBD\n'
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb2.err" || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb2.err" || rc=$?
 [ "$rc" = 1 ] && has "proof: a placeholder Proof on the second key of a worker is refused" "$(cat "$WORK/pb2.err")" "HIMMEL-9003 lacks Proof" || fail "proof: placeholder rc=$rc"
 rm -f "$GEN_BRIEFS_MIRROR/HIMMEL-9003.md"
-rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb3.err" || rc=$?
+rc=0; python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb3.err" || rc=$?
 [ "$rc" = 0 ] && has "proof: a ticket missing from the mirror warns and does not refuse (mirror lag)" "$(cat "$WORK/pb3.err")" "HIMMEL-9003" || fail "proof: absent mirror rc=$rc"
 
 # --- an optional inherited key renders the Inherited PR block; a bad value is refused ---
@@ -729,20 +729,20 @@ inh_gen() { # <python expr for the inherited value, or -: writes N901 alone into
     inh_rc=1
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
 if sys.argv[3] != "-": l[0]["inherited"]=eval(sys.argv[3])
-json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/inh.json" "$1" || return 1
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/inh.json" "$1" || return 1
     python3 "$SUT" "$WORK/inh.json" --base 4ccb59d --chief BZ --bucket "$WORK/inh" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/inh.err"; inh_rc=$?
 }
 inh_gen "{'pr': 4033, 'authors': ['Ada Lovelace', 'Alan Turing'], 'mode': 'takeover'}"
 inh_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
-[ "$inh_rc" = 0 ] && pass "a leg with a valid inherited key generates (rc 0)" || fail "inherited leg rc=$inh_rc: $(cat "$WORK/inh.err")"
-has "a leg with inherited renders the Inherited PR block" "$inh_brief" "> **Inherited PR (the resume of an \`ORPHAN PR\`"
+[ "$inh_rc" = 0 ] && pass "a worker with a valid inherited key generates (rc 0)" || fail "inherited worker rc=$inh_rc: $(cat "$WORK/inh.err")"
+has "a worker with inherited renders the Inherited PR block" "$inh_brief" "> **Inherited PR (the resume of an \`ORPHAN PR\`"
 has "the Inherited PR block names the PR number" "$inh_brief" "PR \`4033\`"
 has "the Inherited PR block names every original author" "$inh_brief" "by \`Ada Lovelace, Alan Turing\`"
 has "the Inherited PR block carries the mode" "$inh_brief" "Mode: \`takeover\`"
 has "the Inherited PR block keeps the disposition rule" "$inh_brief" "**Before the first push, decide a disposition**"
 inh_gen -
 plain_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
-[ "$inh_rc" = 0 ] && [ -n "$plain_brief" ] && lacks "a leg without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain leg rc=$inh_rc or no brief written"
+[ "$inh_rc" = 0 ] && [ -n "$plain_brief" ] && lacks "a worker without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain worker rc=$inh_rc or no brief written"
 inhbad() { # <name> <python expr for the inherited value>: refused, rc 1, nothing written
     inh_gen "$2"
     if [ "$inh_rc" = 1 ] && grep -q "inherited" "$WORK/inh.err" && ! ls "$WORK/inh"/*.md >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$inh_rc, err: $(cat "$WORK/inh.err"))"; fi
@@ -754,14 +754,14 @@ inhbad "an inherited key with a pr that is not an integer is refused" "{'pr': '4
 inhbad "an inherited key with a mode other than resume or takeover is refused" "{'pr': 4033, 'authors': ['Ada'], 'mode': 'fork'}"
 inhbad "an inherited key with no mode is refused" "{'pr': 4033, 'authors': ['Ada']}"
 
-# A leg whose scope Writes name scripts/config-ui/ launches with worker-e2e (worker-impl plus the
-# Playwright MCP server) and its brief says how to look at the page; any other leg stays on worker-impl.
-ui_gen() { # <scope prefix or -> <profile key or ->: one leg generated into $WORK/ui
+# A worker whose scope Writes name scripts/config-ui/ launches with worker-e2e (worker-impl plus the
+# Playwright MCP server) and its brief says how to look at the page; any other worker stays on worker-impl.
+ui_gen() { # <scope prefix or -> <profile key or ->: one worker generated into $WORK/ui
     rm -rf "$WORK/ui"; ui_rc=1
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
 if sys.argv[3] != "-": l[0]["writes"]=sys.argv[3]
 if sys.argv[4] != "-": l[0]["profile"]=sys.argv[4]
-json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/ui.json" "$1" "$2" || return 1
+json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ui.json" "$1" "$2" || return 1
     python3 "$SUT" "$WORK/ui.json" --base 4ccb59d --chief BZ --bucket "$WORK/ui" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ui.err"; ui_rc=$?
     ui_launch="$(cat "$WORK/ui"/launch-N901.sh 2>/dev/null)"; ui_brief="$(cat "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
 }
@@ -770,30 +770,30 @@ ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the gene
     HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile "$1" HIMMEL-9001-N901 "$WORK/uiarm/HIMMEL-9001-N901-copy.md" "$WORK/uiarm/signal" 9999999999 "$WORK/uiarm/log" claude-sonnet-5-5 2>&1 | grep -o ' mcp=[^ ]*'
 }
 ui_gen "Writes scripts/config-ui/page.ts." -
-[ "$ui_rc" = 0 ] && pass "a config-ui leg generates (rc 0)" || fail "config-ui leg rc=$ui_rc: $(cat "$WORK/ui.err")"
-has "a config-ui leg's launcher arms worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
-has "a config-ui leg's brief says the chief starts himmelctl ui from the worker's own worktree" "$ui_brief" "from YOUR worktree"
-has "a config-ui leg's brief tells the worker to ask for the URL and never start the UI itself" "$ui_brief" "ask for it, never start it yourself"
-lacks "a config-ui leg's brief hands out no standing agent-session bypass" "$ui_brief" "allow-agent-session"
-has "a config-ui leg's brief says to open the URL with the browser MCP headless" "$ui_brief" "browser MCP headless"
-has "a config-ui leg's brief says to save screenshots to the scratch dir" "$ui_brief" "save screenshots to your scratch dir"
+[ "$ui_rc" = 0 ] && pass "a config-ui worker generates (rc 0)" || fail "config-ui worker rc=$ui_rc: $(cat "$WORK/ui.err")"
+has "a config-ui worker's launcher arms worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
+has "a config-ui worker's brief says the chief starts himmelctl ui from the worker's own worktree" "$ui_brief" "from YOUR worktree"
+has "a config-ui worker's brief tells the worker to ask for the URL and never start the UI itself" "$ui_brief" "ask for it, never start it yourself"
+lacks "a config-ui worker's brief hands out no standing agent-session bypass" "$ui_brief" "allow-agent-session"
+has "a config-ui worker's brief says to open the URL with the browser MCP headless" "$ui_brief" "browser MCP headless"
+has "a config-ui worker's brief says to save screenshots to the scratch dir" "$ui_brief" "save screenshots to your scratch dir"
 ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
-has "the dry-run launch of a config-ui leg lists playwright among its MCP servers" "$(ui_mcp "${ui_launch_profile#--profile }")" "playwright"
+has "the dry-run launch of a config-ui worker lists playwright among its MCP servers" "$(ui_mcp "${ui_launch_profile#--profile }")" "playwright"
 ui_gen "Writes scripts/config-ui/page.ts." worker-bus
-has "an explicit leg profile key wins over the config-ui choice" "$ui_launch" "--profile worker-bus --chief BZ"
-has "the explicit-profile leg's brief was written" "$ui_brief" "> **Writes:**"
-lacks "and a leg off the browser profile gets no browser line" "$ui_brief" "UI work:"
+has "an explicit worker profile key wins over the config-ui choice" "$ui_launch" "--profile worker-bus --chief BZ"
+has "the explicit-profile worker's brief was written" "$ui_brief" "> **Writes:**"
+lacks "and a worker off the browser profile gets no browser line" "$ui_brief" "UI work:"
 ui_gen - -
-[ "$ui_rc" = 0 ] && pass "a non-UI leg generates (rc 0)" || fail "non-UI leg rc=$ui_rc: $(cat "$WORK/ui.err")"
-has "a non-UI leg's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
-has "the non-UI leg's brief was written" "$ui_brief" "> **Writes:**"
-lacks "a non-UI leg's brief has no browser line" "$ui_brief" "UI work:"
+[ "$ui_rc" = 0 ] && pass "a non-UI worker generates (rc 0)" || fail "non-UI worker rc=$ui_rc: $(cat "$WORK/ui.err")"
+has "a non-UI worker's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+has "the non-UI worker's brief was written" "$ui_brief" "> **Writes:**"
+lacks "a non-UI worker's brief has no browser line" "$ui_brief" "UI work:"
 ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
 ui_mcp_impl="$(ui_mcp "${ui_launch_profile#--profile }")"
-has "the dry-run launch of a non-UI leg reports its MCP servers" "$ui_mcp_impl" 'mcp=["qmd","himmel-bus"]'
-lacks "the dry-run launch of a non-UI leg lists no playwright" "$ui_mcp_impl" "playwright"
+has "the dry-run launch of a non-UI worker reports its MCP servers" "$ui_mcp_impl" 'mcp=["qmd","himmel-bus"]'
+lacks "the dry-run launch of a non-UI worker lists no playwright" "$ui_mcp_impl" "playwright"
 ui_gen - 'Bad;x'
-[ "$ui_rc" = 1 ] && grep -q 'profile' "$WORK/ui.err" && [ ! -e "$WORK/ui/launch-N901.sh" ] && pass "an invalid leg profile is refused before anything is written" || fail "bad profile rc=$ui_rc"
+[ "$ui_rc" = 1 ] && grep -q 'profile' "$WORK/ui.err" && [ ! -e "$WORK/ui/launch-N901.sh" ] && pass "an invalid worker profile is refused before anything is written" || fail "bad profile rc=$ui_rc"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

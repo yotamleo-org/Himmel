@@ -12,4 +12,9 @@ dimensions and return findings as a list (or "PLAN CLEAN" if none):
    convergence argument (why the shapes are finite and covered, or why the check
    does not rest on the text), or land with a `ponytail:` ceiling and a filed
    structural fix. Refuse the plan if it has neither.
+8. Hollow plan header: the writing-plans header sections are missing or empty
+   (a Spec link, Global Constraints, Review Focus with a named test per line,
+   an Interfaces block per task), or the plan fails Proportion (it is longer
+   than the code it describes). An empty Review Focus passes when the plan says
+   the author checked and found no uncovered case.
 For each finding: the task/step + the problem + a concrete fix.

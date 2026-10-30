@@ -149,11 +149,6 @@
 # position-0 path-like token (classified, not swallowed as the subcommand).
 #
 # Handled:
-#   - MSYS drive-path normalization: `_normalize` translates a leading MSYS-form
-#     `/c/...` (or bare `/c`) into drive-lettered `c:/...` so an MSYS candidate
-#     and the Bash tool's always-MSYS $PWD match the drive-lettered corpus roots
-#     (git prints `C:/...`). Before this, even `graphify --version` in the himmel
-#     checkout was denied via the unclassifiable-cwd fallback.
 #   - Staged-copy corpus declaration: a `.graphify-corpus` marker file at or above
 #     an otherwise-unclassifiable target path declares the ORIGIN corpus of the
 #     staged scratchpad COPIES the 621/622 plan runs extraction on (a copy
@@ -291,15 +286,6 @@
 #       parsed with POSIX word-splitting; a PowerShell-only quoting/escaping
 #       form can mis-parse. Mis-parses land safe-direction (a mis-split path-like
 #       token is unclassifiable -> DENY, not a silent allow).
-#   (d) MSYS translation is unconditional (no OS sniff) and applies to the
-#       LEXICAL comparison form only: on Linux a genuine `/x/...` single-letter
-#       -rooted path translates to `x:/...` on BOTH sides of a root comparison
-#       (candidate and configured root normalize identically), so root matching
-#       still works; a translated candidate against a non-single-letter POSIX
-#       root simply fails to match -> DENY. Filesystem stat-walks (.salus /
-#       .graphify-corpus markers) deliberately use the ORIGINAL untranslated
-#       path (see classify()), so a PHI marker on a real POSIX `/x/...` root is
-#       still found.
 #   (e) `.graphify-corpus` is origin-BLIND: a scratchpad copy carries no proof of
 #       where it came from, so a marker mis-declaration is possible and accepted.
 #       The load-bearing PHI guard is parity_guard / the file-tool fence, not this
@@ -687,17 +673,6 @@ _exists_under_cwd() {
 _normalize() {
     local p="$1"
     p="${p//\\//}"   # backslashes -> forward slashes (Windows paths)
-    # MSYS drive-path form -> drive-lettered form: `/c/Users` -> `c:/Users`,
-    # bare `/c` -> `c:/`. Corpus roots resolve drive-lettered (git prints
-    # `C:/...`) and the Bash tool's $PWD is always MSYS-form on Windows, so an
-    # untranslated MSYS candidate never matches a root. Unconditional (no OS
-    # sniff): on Linux a genuine `/x/...` path is translated then simply fails
-    # to match POSIX roots -> deny, the same fail-closed outcome as today
-    # (accepted limitation, see header). bash 3.2-safe substring ops.
-    case "$p" in
-        /[A-Za-z]/*) p="${p:1:1}:/${p:3}" ;;
-        /[A-Za-z])   p="${p:1:1}:/" ;;
-    esac
     local prefix=""
     case "$p" in
         [A-Za-z]:/*) prefix="${p%%:*}:"; p="${p#[A-Za-z]:}" ;;
@@ -718,9 +693,7 @@ _normalize() {
 }
 
 # _drive_of <path> -> echoes the LOWER-CASE drive letter of a path that is (or
-# lexically normalizes to) drive-rooted (`C:/x`, MSYS `/c/x`), or "" when the
-# path carries no determinable drive (a genuine POSIX root, or an MSYS MOUNT
-# form like `/tmp/...` whose backing drive is not lexically derivable).
+# lexically normalizes to) drive-rooted (`C:/x`), or "" for a POSIX root.
 _drive_of() {
     local p; p="$(_normalize "$1")"
     case "$p" in

@@ -36,7 +36,7 @@
 # Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate,
 #             3 record from a chief worker or relay.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+.
 set -u
 
 usage() {

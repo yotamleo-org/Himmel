@@ -98,15 +98,15 @@ function customRoot() {
 
 test("a custom config run streams only after the live census discovers its root", async () => {
   const s = customRoot();
-  expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+  expect((await get(s.port, FLEET.worker.run)).status).toBe(404);
   for (const query of [`?root=${encodeURIComponent(s.config)}`, ""]) {
-    expect((await get(s.port, FLEET.leg.run + query, { "X-Himmel-Token": TOKEN, "X-Claude-Config-Dir": s.config })).status).toBe(404);
+    expect((await get(s.port, FLEET.worker.run + query, { "X-Himmel-Token": TOKEN, "X-Claude-Config-Dir": s.config })).status).toBe(404);
   }
-  expect((await get(s.port, encodeURIComponent(join(s.config, FLEET.leg.run)))).status).toBe(400);
-  expect((await get(s.port, `..%2f${FLEET.leg.run}`)).status).toBe(400);
+  expect((await get(s.port, encodeURIComponent(join(s.config, FLEET.worker.run)))).status).toBe(400);
+  expect((await get(s.port, `..%2f${FLEET.worker.run}`)).status).toBe(400);
   await s.census();
-  expect((await get(s.port, FLEET.leg.run, {})).status).toBe(401);
-  const r = await get(s.port, FLEET.leg.run);
+  expect((await get(s.port, FLEET.worker.run, {})).status).toBe(401);
+  const r = await get(s.port, FLEET.worker.run);
   expect(r.status).toBe(200);
   expect(r.headers.get("content-type")).toBe("text/event-stream");
   const { reader, events } = await readUntil(r, (ev) => ev.some((e) => e.type === "TOOL_CALL_START"));
@@ -116,23 +116,23 @@ test("a custom config run streams only after the live census discovers its root"
 
 test("a custom config UUID colliding with the native root is ambiguous", async () => {
   const s = customRoot();
-  journal(s.home, "-collision", FLEET.leg.run, "");
+  journal(s.home, "-collision", FLEET.worker.run, "");
   await s.census();
-  expect((await get(s.port, FLEET.leg.run)).status).toBe(409);
+  expect((await get(s.port, FLEET.worker.run)).status).toBe(409);
 });
 
 for (const target of ["journal", "project", "projects"]) {
   test(`a custom config ${target} symlink escaping projects is not served`, async () => {
     const s = customRoot();
     await s.census();
-    const r = await get(s.port, FLEET.leg.run);
+    const r = await get(s.port, FLEET.worker.run);
     expect(r.status).toBe(200);
     await r.body?.cancel();
-    const path = join(s.config, "projects", ...(target === "projects" ? [] : ["fleet-project"]), ...(target === "journal" ? [`${FLEET.leg.run}.jsonl`] : []));
+    const path = join(s.config, "projects", ...(target === "projects" ? [] : ["fleet-project"]), ...(target === "journal" ? [`${FLEET.worker.run}.jsonl`] : []));
     const outside = join(s.dir, "outside");
     renameSync(path, outside);
     symlinkSync(outside, path);
-    expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+    expect((await get(s.port, FLEET.worker.run)).status).toBe(404);
   });
 }
 
@@ -141,10 +141,10 @@ for (const kind of ["relative", "empty", "dotdot", "missing-projects"]) {
     const s = customRoot();
     const config = kind === "relative" ? "custom-config" : kind === "empty" ? "" : kind === "dotdot" ? `${s.config}/../custom-config` : s.config;
     if (kind === "missing-projects") renameSync(join(s.config, "projects"), join(s.dir, "saved-projects"));
-    writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
+    writeFileSync(join(s.dir, "proc", String(FLEET.worker.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
     await s.census();
     if (kind === "missing-projects") renameSync(join(s.dir, "saved-projects"), join(s.config, "projects"));
-    expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+    expect((await get(s.port, FLEET.worker.run)).status).toBe(404);
   });
 }
 
@@ -495,7 +495,7 @@ test("a long agent name is an identifier, not a secret: it is not redacted", asy
   journal(h, "-proj", RUN, readFileSync(join(FIX, "agents.jsonl"), "utf8").replace("HIMMEL-4669-roadmap-console", name));
   const { port } = boot(h);
   const events = parse(await (await get(port, RUN)).text());
-  expect((events.find((e) => e.type === "TOOL_CALL_START") as any).agent).toMatchObject({ name, role: "leg" });
+  expect((events.find((e) => e.type === "TOOL_CALL_START") as any).agent).toMatchObject({ name, role: "worker" });
 });
 
 test("a cancel that lands while the journal is still opening closes the handle once it opens", async () => {
@@ -536,7 +536,7 @@ test("the stream merges only the bus events of the run's own session", async () 
   await append(root, "worker-a", rec({ i: "S1", f: "chief-x", r: "worker-a", c: 1, b: "GO 1 abc", t: t + 1 }));
   await append(root, "chief-x", rec({ i: "S2", f: "worker-b", r: "chief-x", t: t + 2 }));
   await append(root, "chief-x", rec({ i: "S3", f: "worker-a", r: "chief-x", t: t + 3 }));
-  writeFileSync(join(root, "ack", "leg-a.jsonl"), JSON.stringify({ i: "S1", re: "Z", t: t + 4 }) + "\n");
+  writeFileSync(join(root, "ack", "worker-a.jsonl"), JSON.stringify({ i: "S1", re: "Z", t: t + 4 }) + "\n");
   writeFileSync(join(root, "ack", "console-x.jsonl"), JSON.stringify({ i: "S2", re: "Z", t: t + 5 }) + "\n");
   const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "worker-a", sessionId: RUN }) + "\n");
   const stream = new Response(journalStream(p, { ...direct, idleMs: 800, busRoot: root })).text();
@@ -565,7 +565,7 @@ test("a session rename mid-stream restarts the bus merge for the new name", asyn
   await sleep(150);
   appendFileSync(p, JSON.stringify({ type: "agent-name", agentName: "worker-c", sessionId: RUN }) + "\n");
   await sleep(100);
-  writeFileSync(join(root, "ack", "leg-a.jsonl"), JSON.stringify({ i: "R1", re: "Z", t: Date.now() }) + "\n"); // old name's follow-up
+  writeFileSync(join(root, "ack", "worker-a.jsonl"), JSON.stringify({ i: "R1", re: "Z", t: Date.now() }) + "\n"); // old name's follow-up
   const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
   expect(paths).toContain("/bus/msgs/R1");
   expect(paths).toContain("/bus/msgs/R2");
