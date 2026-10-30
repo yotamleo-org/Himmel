@@ -42,6 +42,35 @@ proc_tree_process_identity_matches() {
 export RENDER_LEASE_LOCK_ATTEMPTS=2
 export RENDER_LEASE_LOCK_DELAY_SECS=0
 
+# --- POSIX registry owner tags ----------------------------------------------
+export RENDER_LEASE_DIR="$tmp/reg-posix-owner"
+rc=0; render_lease_lock_acquire || rc=$?
+check "registry lock acquires" "$rc" "0"
+check "registry owner uses the POSIX pid tag" "$(cat "$RENDER_LEASE_DIR/.registry.lock/owner.pid")" "pid:$$"
+render_lease_lock_release
+check "registry lock releases" "$(test -e "$RENDER_LEASE_DIR/.registry.lock" && echo held || echo released)" "released"
+
+mkdir -p "$RENDER_LEASE_DIR/.registry.lock"
+printf 'msys:999999\n' > "$RENDER_LEASE_DIR/.registry.lock/owner.pid"
+rc=0; render_lease_lock_acquire 2>"$tmp/legacy-dead.stderr" || rc=$?
+check "legacy dead-owner lock still breaks" "$rc" "0"
+check "legacy dead-owner break is confirmed" "$(grep -Fc 'confirmed-dead owner' "$tmp/legacy-dead.stderr")" "1"
+render_lease_lock_release
+
+mkdir -p "$RENDER_LEASE_DIR/.registry.lock"
+printf 'pid:%s\n' "$$" > "$RENDER_LEASE_DIR/.registry.lock/owner.pid"
+touch -t 202001010000 "$RENDER_LEASE_DIR/.registry.lock"
+rc=0; render_lease_lock_acquire 2>/dev/null || rc=$?
+check "aged POSIX live-owner lock is never broken" "$rc" "1"
+render_lease_lock_release
+check "POSIX owner can release its lock" "$(test -e "$RENDER_LEASE_DIR/.registry.lock" && echo held || echo released)" "released"
+
+if [ "${1:-}" = --posix-defaults-only ]; then
+    [ "$fails" -eq 0 ] || exit 1
+    echo "ALL PASS (POSIX defaults)"
+    exit 0
+fi
+
 # --- slug + dir mapping (r6: INJECTIVE +HH byte encoding) ---------------------
 check "slash branch slugs to +2F" "$(render_lease_slug 'feat/himmel-1509-x')" "feat+2Fhimmel-1509-x"
 check "hostile chars hex-encode per byte" "$(render_lease_slug 'a b!c')" "a+20b+21c"

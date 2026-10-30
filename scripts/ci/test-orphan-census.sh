@@ -3,9 +3,9 @@
 #
 # Drives the CLASSIFIER against a canned process table via the
 # ORPHAN_CENSUS_INPUT seam — no process is spawned, nothing is signalled. The
-# platform enumerators (Win32_Process / ps) are not re-proved here; what is
-# pinned is our rule: dead parent + himmel command line + old enough + not a
-# merge-gate watcher.
+# ps enumerator is also exercised with stubbed tools. Nothing is signalled.
+# The classifier rule is dead parent + himmel command line + old enough + not
+# a merge-gate watcher.
 #
 # Usage: bash scripts/ci/test-orphan-census.sh
 #
@@ -36,9 +36,47 @@ HIM_ROOT=$(cd "$(dirname "$CENSUS")/../.." && pwd -P)
 # the two cases that turn on the root's own boundaries rather than on a path
 # under it, which a worktree path cannot exercise.
 HIM_PRIMARY="${HIM_ROOT%/.claude/worktrees/*}"
-# Same tree as Win32_Process spells it: `c:/Users/...` with backslashes. The
-# drive letter stays lower-case on purpose — the classifier folds case, and a
-# GNU-only `sed \U` would not run on BSD.
+# Live enumeration must use ps even when PowerShell is installed.
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/ps" <<'EOF'
+#!/bin/sh
+case "$*" in
+    '-ww -eo pid=,ppid=,etime=,lstart=,args='|'-eo pid=,ppid=,etime=,lstart=,args=') ;;
+    *) exit 2 ;;
+esac
+printf 'ps\n' >> "$CENSUS_ENUM_TRACE"
+printf '920001 1 40:00 Fri Oct 30 12:00:00 2026 /usr/bin/bash %s/scripts/ci/test-posix-enumeration.sh\n' "$CENSUS_TEST_ROOT"
+EOF
+cat > "$WORK/bin/powershell" <<'EOF'
+#!/bin/sh
+printf 'powershell\n' >> "$CENSUS_ENUM_TRACE"
+printf '920002|1|2400|20261030120000|/usr/bin/bash %s/scripts/ci/test-wrong-enumerator.sh\n' "$CENSUS_TEST_ROOT"
+EOF
+chmod +x "$WORK/bin/ps" "$WORK/bin/powershell"
+ln -s powershell "$WORK/bin/powershell.exe"
+ln -s powershell "$WORK/bin/pwsh"
+out=$(
+    unset ORPHAN_CENSUS_INPUT
+    PATH="$WORK/bin:$PATH" CENSUS_ENUM_TRACE="$WORK/enumeration.trace" CENSUS_TEST_ROOT="$HIM_ROOT" bash "$CENSUS" --min-age 10 2>&1
+); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -E '^ +920001 +1 +2400s +ORPHAN'; then
+    pass "ps enumerates with powershell on PATH"
+else
+    fail "ps not used with powershell on PATH: rc=$rc $out"
+fi
+if grep -qx ps "$WORK/enumeration.trace" && ! grep -q powershell "$WORK/enumeration.trace"; then
+    pass "only ps was invoked"
+else
+    fail "PowerShell enumeration was invoked instead of ps"
+fi
+if [ "${1:-}" = --posix-defaults-only ]; then
+    [ "$failures" -eq 0 ] || exit 1
+    echo "ALL PASS (POSIX defaults)"
+    exit 0
+fi
+
+# A former Windows command line remains as a negative fixture. Keep its
+# backslashes literal; the POSIX classifier must not normalise them.
 # shellcheck disable=SC1003  # '\\' is tr's escape for one backslash, not a quote
 HIM_WIN=$(printf '%s' "$HIM_ROOT" | sed -E 's#^/([a-zA-Z])/#\1:/#' | tr '/' '\\')
 
@@ -51,7 +89,7 @@ HIM_WIN=$(printf '%s' "$HIM_ROOT" | sed -E 's#^/([a-zA-Z])/#\1:/#' | tr '/' '\\'
 #  204 — himmel suite, parent dead, 2 min        -> too young, skipped
 #  205 — unrelated program, parent dead, 40 min  -> not ours, not listed
 #  206 — himmel suite reparented to init (POSIX orphan), 40 min -> ORPHAN
-#  207 — himmel suite spelled with BACKSLASHES (Windows shape), 40 min -> ORPHAN
+#  207 — backslash Windows command line -> not a POSIX invocation
 #  208 — a FOREIGN repo with the same scripts/**/test-*.sh layout -> not ours
 #  209 — a FOREIGN suite that merely NAMES this checkout in an argument -> not ours
 #  210 — this checkout's path in the wrong CASE (fixture/POSIX shape) -> not ours
@@ -66,7 +104,7 @@ HIM_WIN=$(printf '%s' "$HIM_ROOT" | sed -E 's#^/([a-zA-Z])/#\1:/#' | tr '/' '\\'
 #  219 — an EDITOR holding one of our suite files open -> not ours
 #  220 — `bash -x <root>/scripts/ci/test-y.sh` -> ORPHAN
 #  221 — a supervisor whose ARGUMENT reads like the invocation -> not ours
-#  222 — the quoted Windows shape (space in the interpreter path) -> ORPHAN
+#  222 — quoted POSIX interpreter with a space in its path -> ORPHAN
 #  223 — cd here, then ECHO the invocation instead of running it -> not ours
 #  224 — `bash --noprofile -o pipefail <root>/scripts/...` -> ORPHAN
 #  225 — a suite whose ARGUMENTS name a watcher script -> ORPHAN, not WATCHER
@@ -101,9 +139,8 @@ HIM_UPPER=$(printf '%s' "$HIM_ROOT" | tr '[:lower:]' '[:upper:]')
     # 209: root and script pattern both present, but the script is NOT under the
     # root — anchoring them independently would have claimed this one.
     printf '209|992|2400|20260821032200|/usr/bin/bash /c/elsewhere/not-himmel/scripts/ci/test-x.sh --repo %s\n' "$HIM_ROOT"
-    # 210: this checkout, upper-cased. The fixture seam never sets PS_BIN, so
-    # the classifier is in its case-SENSITIVE (POSIX) mode and must not fold
-    # these into the same checkout.
+    # 210: this checkout, upper-cased. A case-sensitive root match must not
+    # fold these into the same checkout.
     printf '210|991|2400|20260821032300|/usr/bin/bash %s/scripts/cr/test-critic-panel.sh\n' "$HIM_UPPER"
     # 211: the foreign absolute script comes AFTER this checkout's path, so mere
     # ordering is not the guard — the script has to be root-prefixed or relative.
@@ -115,12 +152,8 @@ HIM_UPPER=$(printf '%s' "$HIM_ROOT" | tr '[:lower:]' '[:upper:]')
     # names a relative scripts/... path. Both halves of the relative branch are
     # present; the `cd` that would mean "running here" is not.
     printf '213|988|2400|20260821032600|/usr/bin/foreign-tool --repo %s --script scripts/ci/test-x.sh\n' "$HIM_ROOT"
-    # 214: a watcher script spelled in a different CASE. Off Windows the
-    # classifier is case-sensitive, so it is not claimed at all and cannot be
-    # reaped — which is all this seam can prove. The Windows pairing (claim
-    # folds case, so the watcher test must read the same folded string, panel r2
-    # codex-2) is NOT reachable here: the fixture never sets PS_BIN. Reviewed by
-    # reading, not pinned.
+    # 214: a watcher script spelled in a different CASE is not claimed on
+    # a case-sensitive filesystem and cannot be reaped.
     printf '214|987|2400|20260821032700|/usr/bin/bash %s/scripts/Check-CI.sh --watch 1779\n' "$HIM_ROOT"
     # 215: the root appears MID-PATH inside a foreign one. index() alone
     # accepted that; the root has to start a path token.
@@ -144,9 +177,9 @@ HIM_UPPER=$(printf '%s' "$HIM_ROOT" | tr '[:lower:]' '[:upper:]')
     # 221: a supervisor whose ARGUMENT string reads like the invocation. Its
     # argv[0] is not an interpreter, so it is a description, not an execution.
     printf '221|980|2400|20260821033400|/usr/bin/supervisor --cmd bash %s/scripts/ci/test-x.sh\n' "$HIM_PRIMARY"
-    # 222: the real Windows shape — a quoted interpreter whose own path
-    # contains a space, and a quoted script argument.
-    printf '222|979|2400|20260821033500|"C:/Program Files/Git/bin/bash.exe" "%s/scripts/ci/test-q.sh"\n' "$HIM_PRIMARY"
+    # 222: a quoted POSIX interpreter whose own path contains a space,
+    # and a quoted script argument.
+    printf '222|979|2400|20260821033500|"/opt/Shell Tools/bin/bash" "%s/scripts/ci/test-q.sh"\n' "$HIM_PRIMARY"
     # 223: cd here, then PRINT the invocation instead of running it. Only shell
     # glue may sit between the cd target and the interpreter.
     printf '223|978|2400|20260821033600|/usr/bin/bash -c cd %s && echo bash scripts/ci/test-x.sh\n' "$HIM_PRIMARY"
@@ -188,10 +221,10 @@ if grepq "$out" -E '^ +206 +1 +2400s +ORPHAN'; then
 else
     fail "206 not ORPHAN — the live-ppid check swallowed the POSIX orphan: $out"
 fi
-if grepq "$out" -E '^ +207 +994 +2400s +ORPHAN'; then
-    pass "207 with a backslash script path is classified (Windows shape)"
+if grepq "$out" -E '^ +207 '; then
+    fail "207 listed — a Windows command line is not a POSIX invocation: $out"
 else
-    fail "207 not ORPHAN — backslash paths are not normalised: $out"
+    pass "207 excluded — Windows paths are not normalised"
 fi
 if grepq "$out" -E '^ +208 '; then
     fail "208 listed — a same-layout FOREIGN repo was claimed as ours: $out"
@@ -266,7 +299,7 @@ fi
 if grepq "$out" -E '^ +222 +979 +2400s +ORPHAN'; then
     pass "222 claimed — quoted interpreter with a space in its path, quoted script"
 else
-    fail "222 not ORPHAN — the real Windows quoted shape is missed: $out"
+    fail "222 not ORPHAN — the quoted POSIX interpreter is missed: $out"
 fi
 if grepq "$out" -E '^ +223 '; then
     fail "223 listed — an ECHOED invocation was taken for a real one: $out"
@@ -310,7 +343,7 @@ if grepq "$out" -E '^ +231 '; then
 else
     pass "231 excluded — the script name must end at a token boundary"
 fi
-if grepq "$out" -F 'SUMMARY orphans=11 watchers=1 young-skipped=1 scanned=34'; then
+if grepq "$out" -F 'SUMMARY orphans=10 watchers=1 young-skipped=1 scanned=34'; then
     pass "summary counts match"
 else
     fail "summary wrong: $out"
