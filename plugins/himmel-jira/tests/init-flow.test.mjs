@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureEnvKeys, appendEnvKeys, UNSAFE_VALUE_RE, loadEnvIntoProcess, resolveProjects, runInit } from '../lib/init-flow.mjs';
@@ -71,6 +71,41 @@ describe('Jira URL config layers (HIMMEL-8244)', () => {
     process.env.JIRA_BASE_URL = 'https://process.example.invalid';
     loadEnvIntoProcess(env);
     expect(process.env.JIRA_BASE_URL).toBe('https://process.example.invalid');
+  });
+});
+
+describe('station profile URL', () => {
+  it('uses the selected linked station profile for URL only, between local and default', () => {
+    const cfg = join(dir, 'conf');
+    const station = join(dir, 'station');
+    mkdirSync(cfg);
+    mkdirSync(join(station, 'profiles'), { recursive: true });
+    writeFileSync(join(station, 'himmel.conf'), 'JIRA_BASE_URL=https://default.example.invalid\n');
+    symlinkSync(join(station, 'himmel.conf'), join(cfg, 'himmel.conf'));
+    writeFileSync(join(station, 'profiles', 'lab.conf'), 'JIRA_BASE_URL=https://profile.example.invalid\nJIRA_PROJECTS=PLANTED\nJIRA_API_TOKEN=planted\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', cfg);
+    vi.stubEnv('HIMMEL_PROFILE', 'lab');
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_PROJECTS', '');
+    vi.stubEnv('JIRA_API_TOKEN', '');
+    const env = join(dir, '.env');
+    expect(ensureEnvKeys(env, ['JIRA_BASE_URL'])).toEqual([]);
+    expect(process.env.JIRA_BASE_URL).toBe('https://profile.example.invalid');
+    expect(process.env.JIRA_PROJECTS).toBe('');
+    expect(process.env.JIRA_API_TOKEN).toBe('');
+    process.env.JIRA_BASE_URL = '';
+    writeFileSync(join(cfg, 'himmel.conf.local'), 'JIRA_BASE_URL=https://local.example.invalid\n');
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://local.example.invalid');
+    process.env.JIRA_BASE_URL = '';
+    process.env.HIMMEL_PROFILE = '';
+    writeFileSync(join(cfg, 'himmel.conf.local'), 'HIMMEL_PROFILE=lab\n');
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://profile.example.invalid');
+    process.env.JIRA_BASE_URL = '';
+    process.env.HIMMEL_PROFILE = '../outside';
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_BASE_URL).toBe('https://default.example.invalid');
   });
 });
 

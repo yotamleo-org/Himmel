@@ -78,9 +78,11 @@ row('a3 config presence honours a custom station directory and selected profile'
   fs.mkdirSync(path.join(station, 'profiles'), { recursive: true });
   fs.writeFileSync(path.join(station, 'himmel.conf'), '');
   fs.symlinkSync(path.join(station, 'himmel.conf'), path.join(conf, 'himmel.conf'));
-  fs.writeFileSync(path.join(station, 'profiles/lab.conf'), 'JIRA_BASE_URL=https://profile.atlassian.net\n');
+  fs.writeFileSync(path.join(station, 'profiles/lab.conf'), 'JIRA_BASE_URL=https://profile.atlassian.net\nJIRA_EMAIL=fixture@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n');
   ctx.env = { HIMMEL_CONFIG_DIR: conf, HIMMEL_PROFILE: 'lab' };
   eq(store.detect('JIRA_BASE_URL', ctx).status, 'set', 'profile-only URL');
+  eq(store.detect('JIRA_EMAIL', ctx).status, 'not-set', 'CLI ignores profile-only email');
+  eq(store.detect('JIRA_PROJECT_KEY', ctx).status, 'not-set', 'CLI ignores profile-only project key');
   ctx.env.HIMMEL_PROFILE = '../outside';
   eq(store.detect('JIRA_BASE_URL', ctx).status, 'not-set', 'traversal rejected');
   fs.writeFileSync(path.join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=lab\n');

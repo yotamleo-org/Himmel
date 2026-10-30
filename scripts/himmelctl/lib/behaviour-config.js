@@ -2,8 +2,8 @@
 // scripts/himmelctl/lib/behaviour-config.js — behaviour-config keys
 // (HIMMEL_INITIATIVE, HANDOVER_DIR, commit rules) live in the tracked config
 // file ~/.himmel/himmel.conf, not the clone .env. Reads layer the same way
-// scripts/lib/load-dotenv.sh does: himmel.conf.local, selected station profile,
-// himmel.conf, then the legacy clone .env (still honoured until scripts/setup/migrate-env-config.sh
+// scripts/lib/load-dotenv.sh does: himmel.conf.local, selected station profile
+// (JIRA_BASE_URL only), himmel.conf, then the legacy clone .env (still honoured until scripts/setup/migrate-env-config.sh
 // has moved the key). Writes go to himmel.conf only.
 
 const fs = require('fs');
@@ -19,13 +19,13 @@ function confLocalPath(options) {
   return `${confPath(options)}.local`;
 }
 
-function configFiles(options = {}) {
+function configFiles(options = {}, key) {
   const conf = confPath(options);
   const local = confLocalPath(options);
   const env = options.env || process.env;
   const name = env.HIMMEL_PROFILE || (readParsed(local) || {}).HIMMEL_PROFILE;
   let profile;
-  if (name && !name.startsWith('.') && /^[A-Za-z0-9._-]+$/.test(name)) {
+  if (key === 'JIRA_BASE_URL' && name && !name.startsWith('.') && /^[A-Za-z0-9._-]+$/.test(name)) {
     try {
       const target = path.resolve(path.dirname(conf), fs.readlinkSync(conf));
       profile = path.join(path.dirname(target), 'profiles', `${name}.conf`);
@@ -51,7 +51,7 @@ function readParsed(file) {
 // { value, file } for KEY from the first layer that sets it non-empty;
 // { value: '', file: confPath() } when none does (file = where a set lands).
 function readConfigVar(key, legacyEnvFile, options) {
-  for (const file of [...configFiles(options), legacyEnvFile]) {
+  for (const file of [...configFiles(options, key), legacyEnvFile]) {
     if (!file) continue;
     const parsed = readParsed(file);
     if (parsed && parsed[key]) return { value: parsed[key], file };
@@ -63,7 +63,7 @@ function readConfigVar(key, legacyEnvFile, options) {
 // value reads as unset, so clearing a key means blanking it in each of these.
 function layersSetting(key, legacyEnvFile, options) {
   const files = [];
-  for (const file of [...configFiles(options), legacyEnvFile]) {
+  for (const file of [...configFiles(options, key), legacyEnvFile]) {
     if (!file) continue;
     const parsed = readParsed(file);
     if (parsed && parsed[key]) files.push(file);
