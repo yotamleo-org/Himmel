@@ -26,8 +26,10 @@ done
 
 allow="$here/leg-term-allow.tsv"
 [ -r "$allow" ] || { echo "check-leg-term: cannot read $allow" >&2; exit 2; }
-git -C "$root" rev-parse --git-dir >/dev/null 2>&1 \
-  || { echo "check-leg-term: not a git repo: $root" >&2; exit 2; }
+# a subdirectory root would scan only that subtree and read clean
+top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" \
+  || { echo "check-leg-term: not a git work tree: $root" >&2; exit 2; }
+root="$top"
 
 specs=()
 if [ -n "$paths_file" ]; then
