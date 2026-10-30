@@ -219,6 +219,7 @@ scripts/codex/test-install-himmel-codex.sh	1
 scripts/codex/test-reap-mcp-fleet.sh	0
 scripts/codex/test-sanitize-plugin-hooks.sh	0
 scripts/codex/test-startup-health.sh	2
+scripts/config-ui/tests/test-configure-controls.sh	2
 scripts/config-ui/tests/test-workers.sh	1
 scripts/chief/test-base-status.sh	16
 scripts/chief/test-sweep-cr-threads.sh	1

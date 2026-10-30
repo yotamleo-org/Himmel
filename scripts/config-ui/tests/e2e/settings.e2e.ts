@@ -47,7 +47,11 @@ test("J3. every Project scope row shows its command, when it takes effect and a 
   const rows = page.locator('#tile-scope .setgroup:has(h3[id^="sg-"]) .setrow'); // the Fleet cap and VM rows are machine settings, with no command or Learn more link
   await expect.poll(() => rows.count(), SETUP_WAIT).toBeGreaterThanOrEqual(5);
   for (const r of await rows.all()) {
-    await expect(r.locator("pre code")).not.toBeEmpty();
+    await expect(r.locator('button[data-act="copy"], code').first()).not.toBeEmpty();
+    await expect(r.locator("pre code")).toHaveCount(0);
+    for (const copy of await r.locator('button[data-act="copy"]').all()) {
+      expect(await copy.getAttribute("data-cmd")).toBe(await copy.getAttribute("title"));
+    }
     await expect(r).toContainText("takes effect: ");
     await expect(r.locator("a.learn")).toHaveAttribute("href", /^https:\/\/yotamleo-org\.github\.io\/Himmel\/[a-z/-]+$/);
     await expect(r.locator("a.learn")).toHaveAttribute("target", "_blank");

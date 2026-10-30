@@ -198,6 +198,7 @@ scripts/codex/test-install-himmel-codex.sh	local	behaviour suite, 0 catches in t
 scripts/codex/test-reap-mcp-fleet.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/codex/test-sanitize-plugin-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/codex/test-startup-health.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/config-ui/tests/test-configure-controls.sh	local	Configure command and password controls regression
 scripts/config-ui/tests/test-workers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/chief/test-base-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/chief/test-sweep-cr-threads.sh	local	behaviour suite, 0 catches in the 400-PR audit window
