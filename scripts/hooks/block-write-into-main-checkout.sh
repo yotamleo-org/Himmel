@@ -205,7 +205,8 @@
 #     even though it is runtime-safe — the rule does not distinguish "safe"
 #     divergence from "unsafe" divergence). One narrow relaxation:
 #     when the cd is a plain, unpiped cd/pushd that is the FIRST command of the
-#     line, onto an existing directory that, symlinks resolved, lies in no git
+#     line, its word proven plain by _bwimc_plain_word (a `~`, brace, quote inside the
+#     word, backslash, edge space or `..` cd word gets main's verdict), onto an existing directory that, symlinks resolved, lies in no git
 #     repo at all (a scratch folder), `_bwimc_ecwd_sure` is set and the fallback
 #     is skipped for the redirect/verb candidates that call `_bwimc_cd_guard`
 #     (a worktree, the primary or any other checkout keeps the re-check; the
@@ -2837,11 +2838,12 @@ _bwimc_ecwd_track() {
                             # any other checkout keeps the re-check. The trust ends at the
                             # first later clause whose command word is not in the closed set
                             # above, and a candidate is checked against both $r and $cs.
-                            # a `{` in the raw cd word is expanded by the shell (`{1..1}` becomes `1`), so the
-                            # directory the hook found is not the one the shell enters: never sure (row 100d)
+                            # the raw cd word must be plain too: the shell expands a brace, drops a quote or
+                            # a backslash and keeps an edge space the hook trims, so the directory the hook
+                            # found is not the one the shell enters (rows 100d, 104i-104l)
                             [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
                                 && [ "${_bwimc_orig_dynamic:-1}" = 0 ] \
-                                && case "$craw" in *'{'*) false ;; *) true ;; esac \
+                                && _bwimc_plain_word "$craw" \
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
                                 && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"

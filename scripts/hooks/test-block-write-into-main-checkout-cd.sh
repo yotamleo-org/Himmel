@@ -938,8 +938,31 @@ check_both "104g fromP: cd scratch && echo x > lnk<FF>/out.txt denies" block \
 if ! { ln -sfn "$FIX/primary/scripts" "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' && [ -d "$FIX/scratch8200/lnk8202"$'\xe2\x80\x83' ]; }; then
     bad "104h setup: the scratch8200/lnk8202+EM SPACE symlink was not created"
 fi
+# the tokenizer splits at U+2003 only under a UTF-8 locale, so pin one for this row
+_lc_save=${LC_ALL-unset}
+for _lc in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+    if locale -a 2>/dev/null | grep -qix "$_lc"; then LC_ALL=$_lc; export LC_ALL; break; fi
+done
+case "${LC_ALL:-}" in
+    *[Uu][Tt][Ff]*) ;;
+    *) bad "104h setup: no UTF-8 locale is installed, the row would pass vacuously" ;;
+esac
 check_both "104h fromP: cd scratch && echo x > lnk<U+2003>/out.txt (non-ASCII space is a word byte for the shell) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8202\\u2003/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+if [ "$_lc_save" = unset ]; then unset LC_ALL; else LC_ALL=$_lc_save; export LC_ALL; fi
+for _wl in ' ' "sub'8200" 'sub\8200'; do
+    if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/$_wl" && [ -d "$FIX/scratch8200/$_wl" ]; }; then
+        bad "104i setup: the scratch8200/$_wl symlink was not created"
+    fi
+done
+check_both "104i fromP: cd \"scratch/ \" && echo x > out.txt (edge space trimmed by the hook, kept by the shell) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd \\\"$FIX/scratch8200/ \\\" && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104j fromP: cd scratch/\\ (backslash space) && echo x > out.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/\\\\ && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104k fromP: cd \"scratch/sub'8200\" && echo x > out.txt (quote dropped by the hook) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd \\\"$FIX/scratch8200/sub'8200\\\" && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104l fromP: cd 'scratch/sub\\8200' && echo x > out.txt (backslash dropped by the hook) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd '$FIX/scratch8200/sub\\\\8200' && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
