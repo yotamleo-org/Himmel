@@ -131,9 +131,11 @@ GLOBROOT_RE='(^|[^A-Za-z0-9_-])himmel/[^/[:space:]]*[?*[{$]'
 # The luna vault keeps its handover notes in a bucket dir named himmel
 # (handovers/<owner>/himmel/): not the state dir, so a glob there is a read of
 # notes. The glob rule sees that dir under another name; ROOT_RE still sees it.
-# The owner is a real name (not . or ..), and a command with a .. segment gets no
-# carve-out: the glob rule does not fold .., so handovers/../himmel/ is the state dir.
-LUNABUCKET_RE='handovers/[^/.[:space:]][^/[:space:]]*/himmel/'
+# The owner is spelled in literal name characters only (no . lead, no {, $ or glob
+# that could expand to ..), and a command with .. anywhere, or a state dir under
+# handovers/, gets no carve-out: the glob rule does not fold .., so
+# handovers/../himmel/ is the state dir.
+LUNABUCKET_RE='handovers/[A-Za-z0-9_@-][A-Za-z0-9_.@-]*/himmel/'
 
 # state_view <text>: $HOME and $XDG_STATE_HOME are the state dir's own spelling,
 # so they must not count as a word that could expand to `bus`.
@@ -471,7 +473,7 @@ case "$tool" in
         [[ "$cmd_qn" =~ $ROOT_RE ]] && deny "the command names the himmel-bus store (reads and writes under the bus root are off-limits)"
         # A glob or expansion in the component right under himmel/ can spell bus.
         cmd_gl=$cmd_qn
-        if [[ "$cmd_qn" != *"/../"* ]]; then
+        if [[ "$cmd_qn" != *..* && "$xdg_state" != */handovers/* ]]; then
             while [[ "$cmd_gl" =~ $LUNABUCKET_RE ]]; do cmd_gl=${cmd_gl/"${BASH_REMATCH[0]}"/handovers/bucket/}; done
         fi
         [[ "$cmd_gl" =~ $GLOBROOT_RE ]] && deny "the command reaches under himmel/ through a glob or expansion that can spell the bus root"

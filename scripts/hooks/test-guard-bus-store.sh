@@ -185,7 +185,10 @@ deny "bus-store path with a glob still refuses" "$(bash_json 'ls /var/tmp/fixtur
 deny "a bus dir inside the luna bucket path still refuses" "$(bash_json "ls $LUNA/bus/*")"
 deny "owner segment .. does not carve out a state-dir glob" "$(bash_json 'ls /home/u/.local/state/handovers/../himmel/b?s')"
 deny "owner segment .. does not carve out a bare state-dir glob" "$(bash_json 'ls /home/u/.local/state/handovers/../himmel/*')"
-deny "a .. after the bucket prefix does not hide a state-dir glob" "$(bash_json "ls $LUNA/../../../state/himmel/b?s/log")"
+deny "a brace owner {.,}. spells .. and does not carve out" "$(bash_json 'ls ~/.local/state/handovers/{.,}./himmel/b?s/log')"
+deny "a \${x:-..} owner does not carve out" "$(bash_json 'ls /home/u/.local/state/handovers/${x:-..}/himmel/b?s')"
+deny "a \$x owner set to .. does not carve out" "$(bash_json 'x=..; ls /home/u/.local/state/handovers/$x/himmel/*')"
+deny "XDG state dir under handovers/<owner>, relative glob" "$(cwd_json 'ls handovers/o/himmel/b?s' '/home/u/p')" XDG_STATE_HOME=/home/u/p/handovers/o
 deny "a .. before the bucket prefix does not carve out" "$(bash_json 'ls /home/u/.local/state/../handovers/x/himmel/b?s')"
 deny "cwd state dir + grep -rh . bus" "$(cwd_json 'grep -rh . bus' "$STATE_DIR")"
 deny "cwd state dir + cp -r bus" "$(cwd_json 'cp -r bus /tmp/b' "$STATE_DIR")"
