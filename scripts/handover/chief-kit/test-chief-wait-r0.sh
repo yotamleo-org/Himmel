@@ -96,6 +96,9 @@ export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_WORKER_EVENT="$STUB/worker-event.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
+# No row here reads the pool (test-chief-wait-pool.sh does): an absent dispatcher makes the
+# probe a no-op, never a next-dispatchable.sh run over the real mirror inside the first sample.
+export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
