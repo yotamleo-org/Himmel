@@ -19,7 +19,7 @@ def in_scope(path):
     parts = pathlib.PurePosixPath(path).parts
     if not (path.startswith('scripts/') or path.startswith('marketplace/plugins/himmel-ops/')):
         return False
-    if path.endswith('.md') or path == 'scripts/lint/platform-dropped-allow.json':
+    if path.endswith(('.md', '.lock')) or parts[-1] == 'package-lock.json' or path == 'scripts/lint/platform-dropped-allow.json':
         return False
     if any(p in ('test', 'tests', '__tests__', 'fixtures', 'node_modules', 'claude-hud') for p in parts):
         return False

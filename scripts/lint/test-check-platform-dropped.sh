@@ -56,7 +56,11 @@ expect 0 'same diff with POSIX default passes'
 mkdiff scripts/new-command.ps1 'Get-Content input.txt'
 run
 expect 1 'new dropped-platform filename refused without a keyword in its content'
-for text in 'case "$host" in CYGWIN*) exit 0 ;; esac' 'MSYS_NO_PATHCONV=1 run' "if (process.platform === 'win32') run();" 'pwsh -Command run'; do
+for text in \
+    'case "$host" in CYGWIN*) exit 0 ;; esac' \
+    'MSYS_NO_PATHCONV=1 run' \
+    "if (process.platform === 'win32') run();" \
+    'pwsh'' -Command run'; do
     mkdiff scripts/new-code.sh "$text"
     run
     expect 1 "dropped shape refused: $text"
@@ -69,6 +73,12 @@ expect 0 'audited detector passes'
 mkdiff marketplace/plugins/himmel-ops/hooks/hooks.json 'WHISPER_CLI="${WHISPER_DIR}/whisper-cli.exe"'
 run
 expect 1 'default in an allowlisted file is still refused'
+
+for path in scripts/bitbucket/package-lock.json scripts/pnpm.lock marketplace/plugins/himmel-ops/package-lock.json marketplace/plugins/himmel-ops/yarn.lock; do
+    mkdiff "$path" '"binding-win32-x64-msvc": "9.9.9"'
+    run
+    expect 0 "generated lockfile platform metadata ignored: $path"
+done
 
 for path in scripts/readme.md scripts/test-probe.sh scripts/tests/probe.js scripts/test/probe.js scripts/__tests__/probe.js scripts/fixtures/probe.sh scripts/node_modules/probe.js scripts/probe.test.ts marketplace/plugins/claude-hud/probe.js other/probe.sh; do
     mkdiff "$path" 'tool.exe'

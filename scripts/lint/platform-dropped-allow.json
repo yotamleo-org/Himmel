@@ -19,54 +19,6 @@
       "// still lets any future chain (PreToolUse Bash *and* PowerShell both wire"
     ]
   },
-  "scripts/bitbucket/package-lock.json": {
-    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
-    "lines": [
-      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
-      "        \"win32\"",
-      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-x64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
-      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
-      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
-      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
-      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
-      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
-      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
-      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
-      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
-    ]
-  },
-  "scripts/ci-orchestrator/package-lock.json": {
-    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
-    "lines": [
-      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
-      "        \"win32\"",
-      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-x64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
-      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
-      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
-      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
-      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
-      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
-      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
-      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
-      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
-    ]
-  },
   "scripts/ci/suite-durations.tsv": {
     "reason": "registry row for the cadence-deny-powershell detector suite",
     "lines": [
@@ -275,30 +227,6 @@
     "reason": "fixture / eval / probe data for a detector",
     "lines": [
       "    (\"rogue-scheduler-arm\", \"block-rogue-claude-schedule\", \"scheduler\", \"Bash\", {\"command\": \"schtasks /create /tn X /tr \\\"claude.exe go\\\" /sc ONCE /st 03:00\"}, \"feat\"),"
-    ]
-  },
-  "scripts/himmel-run/package-lock.json": {
-    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
-    "lines": [
-      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
-      "        \"win32\"",
-      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-x64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
-      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
-      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
-      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
-      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
-      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
-      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
-      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
-      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
     ]
   },
   "scripts/himmelctl/lib/bypass-flags.json": {
@@ -831,30 +759,6 @@
     "lines": [
       "    /^TOOL:PowerShell/  { bash++; next }",
       "    printf '| Bash/PowerShell   | %d |\\n' \"$TOOL_BASH\""
-    ]
-  },
-  "scripts/jira/package-lock.json": {
-    "reason": "npm lockfile optional per-platform binary entry (npm-generated, every OS)",
-    "lines": [
-      "    \"node_modules/@rolldown/binding-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.14.tgz\",",
-      "        \"win32\"",
-      "    \"node_modules/@rolldown/binding-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.14.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-arm64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz\",",
-      "    \"node_modules/@typescript/typescript-win32-x64\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz\",",
-      "        \"lightningcss-win32-arm64-msvc\": \"1.33.0\",",
-      "        \"lightningcss-win32-x64-msvc\": \"1.33.0\"",
-      "    \"node_modules/lightningcss-win32-arm64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz\",",
-      "    \"node_modules/lightningcss-win32-x64-msvc\": {",
-      "      \"resolved\": \"https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz\",",
-      "        \"@rolldown/binding-win32-arm64-msvc\": \"1.2.14\",",
-      "        \"@rolldown/binding-win32-x64-msvc\": \"1.2.14\"",
-      "        \"@typescript/typescript-win32-arm64\": \"7.0.2\",",
-      "        \"@typescript/typescript-win32-x64\": \"7.0.2\""
     ]
   },
   "scripts/lanes/skill-cost.mjs": {
