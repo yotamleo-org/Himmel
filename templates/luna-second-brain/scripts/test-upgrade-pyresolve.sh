@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Hermetic test for upgrade.sh's _resolve_python. Proves the engine
-# picks a WORKING python and SKIPS the Microsoft Store stub (`python3` on PATH
-# but emits no stdout / exits nonzero) that breaks the engine on stock Windows.
+# Hermetic test for upgrade.sh's _resolve_python. Proves the engine picks a
+# working python3/python, skips broken executables and rejects other launchers.
 #
 # It extracts the REAL _resolve_python from upgrade.sh (no logic duplication),
 # then exercises it against shimmed PATHs. bash 3.2-safe; fully hermetic (own
@@ -17,7 +16,7 @@ fail() { echo "FAIL $1 — $2"; FAILED=$((FAILED + 1)); }
 # --- extract the real function (guarded so a broken extraction can't pass) ---
 FN="$(sed -n '/^_resolve_python()/,/^}/p' "$UPGRADE")"
 case "$FN" in
-    *"_resolve_python()"*"for c in python3 python py"*) : ;;
+    *"_resolve_python()"*"for c in python3 python; do"*) : ;;
     *) echo "FAIL extraction — _resolve_python not captured from $UPGRADE"; exit 1 ;;
 esac
 eval "$FN"
@@ -25,12 +24,12 @@ eval "$FN"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# A Store-stub shape: on PATH, emits NOTHING, exits 49.
+# A broken executable: on PATH, emits nothing, exits 49.
 mk_stub() { printf '#!/bin/sh\nexit 49\n' > "$1"; chmod +x "$1"; }
 # A working interpreter shim: answers `-c 'print(1)'` with `1`.
 mk_real() { printf '#!/bin/sh\necho 1\n' > "$1"; chmod +x "$1"; }
-# A nastier stub: exits 0 but prints noise (the Store stub emits a "not found"
-# line on some builds) -- proves the gate is on stdout=="1", NOT exit status.
+# A nastier stub: exits 0 but prints noise -- proves the gate is on
+# stdout=="1", not exit status.
 mk_noise() { printf '#!/bin/sh\necho "Python was not found"\nexit 0\n' > "$1"; chmod +x "$1"; }
 
 # --- positive: stub python3 + working python -> picks python ---
@@ -67,15 +66,14 @@ else
     fail "resolver happy path" "expected 'python3', got '$got'"
 fi
 
-# --- py fallthrough: stub python3 + stub python + working py -> picks py
-#     (the named Windows launcher scenario) ---
+# --- unsupported launcher: working py cannot replace python3/python ---
 Y="$TMP/pyonly"; mkdir -p "$Y"
 mk_stub "$Y/python3"; mk_stub "$Y/python"; mk_real "$Y/py"
-got="$(PATH="$Y:$PATH" _resolve_python || true)"
-if [ "$got" = "py" ]; then
-    pass "resolver falls through to the py launcher when python3/python are stubs"
+got="$(PATH="$Y:$PATH" _resolve_python)"; rc=$?
+if [ "$rc" -ne 0 ] && [ -z "$got" ]; then
+    pass "resolver rejects the unsupported py launcher"
 else
-    fail "resolver py fallthrough" "expected 'py', got '$got'"
+    fail "resolver unsupported launcher" "expected nonzero rc and no interpreter, got rc=$rc '$got'"
 fi
 
 # --- noise stub exits 0: gate is stdout=='1', not exit status -> still skipped ---

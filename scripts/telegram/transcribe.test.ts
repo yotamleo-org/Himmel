@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { transcribe, realExec, type ExecFn, type ExecResult } from "./transcribe";
 
 const ok = (stdout = ""): ExecResult => ({ code: 0, stdout, stderr: "" });
@@ -12,11 +15,11 @@ test("transcribe happy path: ffmpeg converts to 16kHz mono wav, whisper runs -l 
   };
   expect(await transcribe("/att/20.oga", exec)).toBe("hello world");
   expect(calls.length).toBe(2);
-  // ffmpeg leg: source in, 16kHz mono wav out
+  // ffmpeg step: source in, 16kHz mono wav out
   expect(calls[0]).toContain("/att/20.oga");
   expect(calls[0]).toContain("16000");
   expect(calls[0]).toContain("/att/20.oga.wav");
-  // whisper leg: wav in, auto language (multi-language requirement)
+  // whisper step: wav in, auto language (multi-language requirement)
   expect(calls[1]).toContain("/att/20.oga.wav");
   expect(calls[1]).toContain("auto");
 });
@@ -119,4 +122,49 @@ test("transcribe: wav cleanup ENOENT is silently swallowed", async () => {
   } finally {
     console.error = orig;
   }
+});
+
+// Default whisper binary resolution. WHISPER_CLI is read at module load, so each
+// case runs transcribe() in a fresh bun child with a temp HOME and a controlled
+// PATH, and prints argv[0] of the whisper step.
+async function whisperBinFor(env: Record<string, string>): Promise<string> {
+  const home = mkdtempSync(join(tmpdir(), "whisper-home-"));
+  try {
+    const code = [
+      `const { transcribe } = await import(${JSON.stringify(join(import.meta.dir, "transcribe.ts"))});`,
+      `const calls = [];`,
+      `await transcribe("/att/x.oga", async (cmd) => { calls.push(cmd); return { code: 0, stdout: "hi", stderr: "" }; });`,
+      `console.log(calls[1][0]);`,
+    ].join("\n");
+    const p = Bun.spawn([process.execPath, "-e", code], {
+      env: { PATH: "/nonexistent-path", HOME: home, ...env },
+      stdout: "pipe", stderr: "pipe", stdin: "ignore",
+    });
+    const out = (await new Response(p.stdout).text()).trim();
+    await p.exited;
+    return out;
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}
+
+test("transcribe: with no WHISPER_CLI, a whisper-cli on PATH is the default binary", async () => {
+  const bin = mkdtempSync(join(tmpdir(), "whisper-path-"));
+  try {
+    writeFileSync(join(bin, "whisper-cli"), "#!/bin/sh\n");
+    chmodSync(join(bin, "whisper-cli"), 0o755);
+    expect(await whisperBinFor({ PATH: bin })).toBe(join(bin, "whisper-cli"));
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test("transcribe: with no WHISPER_CLI and none on PATH, falls back to WHISPER_DIR/whisper-cli (never .exe)", async () => {
+  const out = await whisperBinFor({ WHISPER_DIR: "/opt/w" });
+  expect(out).toBe("/opt/w/whisper-cli");
+  expect(out).not.toContain(".exe");
+});
+
+test("transcribe: an explicit WHISPER_CLI still wins over PATH", async () => {
+  expect(await whisperBinFor({ WHISPER_CLI: "/custom/whisper-cli" })).toBe("/custom/whisper-cli");
 });

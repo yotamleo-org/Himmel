@@ -9,7 +9,7 @@ const data = {
   state: "ok", mirror: { count: 1, newest: "2026-10-29" }, cur: 0, next: -1,
   versions: [{ n: "v1.1.3", rel: false, open: [], counts: { todo: 0, prog: 1, rev: 0, ci: 0, done: 0, wont: 0 } }],
   themes: ["Visibility"], themeSlugs: ["visibility"],
-  tickets: [{ k: 8141, t: "Shared design layer", s: "In Progress", b: "prog", v: 0, theme: 0, drift: 1, pv: "v1.1.2", leg: null }],
+  tickets: [{ k: 8141, t: "Shared design layer", s: "In Progress", b: "prog", v: 0, theme: 0, drift: 1, pv: "v1.1.2", worker: null }],
   drift: { now: { drift: 1, unplanned: 0, unthemed: 0 }, trend: [] }, plan: { state: "ok" },
   sync: [{ k: 8141, marker: "LIVE", why: "Worker active", argv: ["comment", "HIMMEL-8141", "LIVE"] }],
   librarian: { staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] },

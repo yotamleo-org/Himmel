@@ -1258,7 +1258,7 @@ echo "claude-stub-ran"
 echo "PIPELINE-WORKER-DONE"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude"
-# A python3 stub for the no-LLM FetchHealth leg: arm resolves
+# A python3 stub for the no-LLM FetchHealth task: arm resolves
 # `python3` first, so this is what gets baked into that runner — the fire below
 # can then never reach the real fetch-health.py, which makes live network
 # probes. Same fail-fast guard as the claude stub before it is executed.

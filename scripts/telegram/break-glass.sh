@@ -71,6 +71,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/git-clean.sh
 . "$SCRIPT_DIR/../lib/git-clean.sh"
 git_env_scrub
+# shellcheck source=../lib/legacy-names.sh
+. "$SCRIPT_DIR/../lib/legacy-names.sh"
+# the fleet manifest worker array is `workers`; a manifest not yet rewritten by
+# fleet-manifest.sh still holds the pre-rename array, read only while legacy names are on
+if legacy_names_on; then FLEET_WORKERS='(.workers // .legs)'; else FLEET_WORKERS='.workers'; fi
 
 OP="${1:-}"; ARG="${2:-}"; TIME="${3:-}"
 if [ -z "$OP" ] || [ -z "$ARG" ] || [ -z "$TIME" ]; then
@@ -342,7 +347,7 @@ op_launch_worker() {
     valid_label "$label" || { echo "ERR break-glass: bad worker label: '$label'" >&2; return 1; }
     case "$bypass" in bypass|-) ;; *) echo "ERR break-glass: bad bypass flag: '$bypass'" >&2; return 1 ;; esac
     fleet="$(fleet_manifest)" || return 23
-    docs="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$fleet" 2>/dev/null)" \
+    docs="$(jq -r --arg l "$label" "$FLEET_WORKERS"'[]? | select(.label == $l) | .doc' "$fleet" 2>/dev/null)" \
         || { echo "ERR break-glass: cannot read $(basename "$fleet")" >&2; return 23; }
     n="$(printf '%s' "$docs" | grep -c .)"
     if [ "$n" -eq 0 ]; then
@@ -408,10 +413,10 @@ op_close_wrapped() {
     fi
     fleet="$(fleet_manifest)" || return 23
     if [ "$label" = "-" ]; then
-        docs="$(jq -r '.legs[]?.doc' "$fleet" 2>/dev/null)" \
+        docs="$(jq -r "$FLEET_WORKERS"'[]?.doc' "$fleet" 2>/dev/null)" \
             || { echo "ERR break-glass: cannot read $(basename "$fleet")" >&2; return 23; }
     else
-        docs="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$fleet" 2>/dev/null)" \
+        docs="$(jq -r --arg l "$label" "$FLEET_WORKERS"'[]? | select(.label == $l) | .doc' "$fleet" 2>/dev/null)" \
             || { echo "ERR break-glass: cannot read $(basename "$fleet")" >&2; return 23; }
         if [ "$(printf '%s' "$docs" | grep -c .)" -ne 1 ]; then
             echo "ERR break-glass: $label does not name exactly one worker in $(basename "$fleet")" >&2

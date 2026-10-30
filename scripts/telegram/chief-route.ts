@@ -145,7 +145,7 @@ export async function routeFleetCommand(
     await reply(msg.chat_id, pinned ? `⚠️ chief ${pinned} is stale or not live — nothing was queued.` : live.length > 1 ? `More than one chief is live; reply to its announcement or answer:\n${describeConsoles(live)}` : "⚠️ no live chief — nothing was queued.");
     return;
   }
-  const text = route.verb === "status" ? "fleet status" : `${route.verb}${route.leg ? ` ${route.leg}` : ""}`;
+  const text = route.verb === "status" ? "fleet status" : `${route.verb}${route.worker ? ` ${route.worker}` : ""}`;
   await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → chief ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
 }
 

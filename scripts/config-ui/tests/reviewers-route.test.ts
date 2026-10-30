@@ -57,7 +57,7 @@ test("reviewers: an absent file is state absent; the route is token-gated and re
 test("Health page: the Reviewers section shows headings, the bullets and the numbers as written", async () => {
   const s = boot(PAGE);
   const reviewers = await (await get(s.port)).json();
-  const html = renderHealth(null, { bank: { state: "absent" }, legs: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers });
+  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers });
   expect(html).toContain('id="reviewers"');
   expect(html).toContain("<h4>The judges</h4>");
   expect(html).toContain("<li>A bug got past a GO on 2 of 100 merged PRs: 2 % (likely between 1 % and 7 %).</li>");
@@ -66,6 +66,6 @@ test("Health page: the Reviewers section shows headings, the bullets and the num
 test("Health page: no page shows 'no data yet'; the page text is escaped", () => {
   expect(renderHealth(null, null)).toContain("No data: no review page yet");
   const evil = `<img src=x onerror=alert(1)>`;
-  const html = renderHealth(null, { bank: { state: "absent" }, legs: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers: { state: "ok", text: `## ${evil}\n\n- ${evil}\n`, writtenAt: "2026-10-24T00:00:00Z" } });
+  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers: { state: "ok", text: `## ${evil}\n\n- ${evil}\n`, writtenAt: "2026-10-24T00:00:00Z" } });
   expect(html).not.toContain("<img");
 });

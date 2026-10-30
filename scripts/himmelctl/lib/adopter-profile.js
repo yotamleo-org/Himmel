@@ -488,7 +488,7 @@ function readLaneRegistries(repoRoot) {
 // Load the CANONICAL lane probe machinery: the pure evaluator
 // (scripts/lanes/probe.mjs) plus the context builder that supplies it with
 // real machine state (scripts/lanes/resolve.mjs `buildCtx` — merged repo
-// .env, a PATHEXT-aware PATH scan, and the hermes install probe).
+// .env, a PATH scan, and the hermes install probe).
 //
 // this used to be a hand-rolled switch that read
 // the registry's `installed` kind as a bare PATH lookup. That is NOT what

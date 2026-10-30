@@ -2571,13 +2571,17 @@ echo "ok: cmd:telegram_getme — an import-stage (wiring) failure still reads as
 # real file. A nonexistent path makes loadConfigIfPresent() skip load()
 # entirely, matching this whole block's pre-existing, unaffected behavior.
 wr_no_config="$work/wr-no-config.json"
+# An empty PATH dir for every fixture that exercises the WHISPER_DIR fallback:
+# the default binary is looked up on PATH first, so a host whisper-cli must not
+# leak into the unpinned cases.
+wr_emptypath="$work/wr-emptypath"; mkdir -p "$wr_emptypath"
 
 wr_absent="$work/wr-absent-dir"; mkdir -p "$wr_absent"
 outWRabsent=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_absent")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_absent")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRabsent" | jq -e '.actual == "absent"' >/dev/null \
@@ -2585,6 +2589,55 @@ echo "$outWRabsent" | jq -e '.actual == "absent"' >/dev/null \
 echo "$outWRabsent" | jq -e '.detail | contains("whisper-cli") and (contains("whisper-cli.exe") | not)' >/dev/null \
   || fail "cmd:whisper_ready: absent detail on a simulated POSIX platform should name the POSIX default binary name 'whisper-cli' (not .exe): (got: $outWRabsent)"
 echo "ok: cmd:whisper_ready — no binary reads absent, POSIX default binary name has no .exe"
+echo "$outWRabsent" | jq -e '.detail | contains("not on PATH either") and contains("pacman -S whisper-cpp") and contains("brew install whisper-cpp")' >/dev/null \
+  || fail "cmd:whisper_ready: absent detail should say it is not on PATH and carry an install hint (got: $outWRabsent)"
+echo "ok: cmd:whisper_ready — absent detail carries the whisper-cpp install hint"
+
+# a PINNED binary (WHISPER_CLI) that is missing never claims "not on PATH either":
+# the PATH lookup was bypassed, so the claim would be untrue.
+outWRpinned=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_absent")', WHISPER_CLI: '$(winpath "$wr_absent")/pinned-whisper-cli', WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRpinned" | jq -e '.actual == "absent" and (.detail | contains("pinned-whisper-cli") and (contains("not on PATH") | not))' >/dev/null \
+  || fail "cmd:whisper_ready: a missing pinned WHISPER_CLI must read absent without the 'not on PATH either' claim (got: $outWRpinned)"
+echo "ok: cmd:whisper_ready — a missing pinned binary reads absent without the PATH claim"
+
+# whisper-cli on PATH (no WHISPER_CLI, an EMPTY WHISPER_DIR) is the default
+# binary, found before the WHISPER_DIR fallback.
+wr_pathbin="$work/wr-pathbin"; mkdir -p "$wr_pathbin"
+printf 'stub-binary' > "$wr_pathbin/whisper-cli"; chmod +x "$wr_pathbin/whisper-cli"
+wr_pathdir="$work/wr-pathdir"; mkdir -p "$wr_pathdir"
+printf 'stub-model' > "$wr_pathdir/ggml-small.bin"
+printf 'stub-binary' > "$wr_pathdir/whisper-cli"; chmod +x "$wr_pathdir/whisper-cli"
+outWRpath=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_pathbin")', WHISPER_DIR: '$(winpath "$wr_pathdir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRpath" | jq -e '.actual == "present" and (.detail | contains("wr-pathbin/whisper-cli"))' >/dev/null \
+  || fail "cmd:whisper_ready: a whisper-cli on PATH should be the resolved binary and read present: (got: $outWRpath)"
+echo "ok: cmd:whisper_ready — a whisper-cli on PATH resolves before the WHISPER_DIR fallback"
+
+# a NON-executable whisper-cli earlier on PATH is skipped for the executable one
+# behind it (Bun.which in transcribe.ts does the same).
+wr_pathnox="$work/wr-pathnox"; mkdir -p "$wr_pathnox"
+printf 'stub-binary' > "$wr_pathnox/whisper-cli"; chmod -x "$wr_pathnox/whisper-cli"
+outWRnox=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
+const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_pathnox"):$(winpath "$wr_pathbin")', WHISPER_DIR: '$(winpath "$wr_pathdir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+echo "$outWRnox" | jq -e '.actual == "present" and (.detail | contains("wr-pathbin/whisper-cli"))' >/dev/null \
+  || fail "cmd:whisper_ready: a non-executable whisper-cli earlier on PATH must be skipped for the executable one behind it: (got: $outWRnox)"
+echo "ok: cmd:whisper_ready — a non-executable whisper-cli on PATH is skipped for a later executable one"
 
 wr_degraded="$work/wr-degraded-dir"; mkdir -p "$wr_degraded"
 printf 'stub-binary' > "$wr_degraded/whisper-cli"; chmod +x "$wr_degraded/whisper-cli"
@@ -2592,7 +2645,7 @@ outWRdegraded=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin"
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_degraded")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_degraded")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRdegraded" | jq -e '.actual == "degraded"' >/dev/null \
@@ -2608,7 +2661,7 @@ outWRpresent=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin" 
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_present")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_present")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRpresent" | jq -e '.actual == "present"' >/dev/null \
@@ -2626,7 +2679,7 @@ outWRdirBinary=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bin
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_dir_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_dir_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRdirBinary" | jq -e '.actual == "absent"' >/dev/null \
@@ -2643,7 +2696,7 @@ outWRemptyBinary=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_b
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_empty_binary")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRemptyBinary" | jq -e '.actual == "absent"' >/dev/null \
@@ -2662,7 +2715,7 @@ outWRemptyModel=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$wr_no_config")" "$node_bi
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$wr_empty_model")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$wr_empty_model")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outWRemptyModel" | jq -e '.actual == "degraded"' >/dev/null \
@@ -6278,7 +6331,7 @@ outPBnoConfig=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$pb_no_config")" "$node_bin"
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outPBnoConfig" | jq -e '.actual == "present"' >/dev/null \
@@ -6290,7 +6343,7 @@ outPBwhisperMalformed=$(HIMMEL_LUNA_CONFIG_PATH="$(winpath "$bp_cfg_malformed")"
 const { runProbe } = require('$probes_lib_w');
 const item = { id: 'whisper-transcription', probe: { type: 'cmd:whisper_ready' } };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
+  env: Object.assign({}, process.env, { PATH: '$(winpath "$wr_emptypath")', WHISPER_DIR: '$(winpath "$pb_whisper_dir")', WHISPER_CLI: undefined, WHISPER_MODEL: undefined }), platform: 'linux' };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outPBwhisperMalformed" | jq -e '.actual == "degraded" and (.detail | test("luna config"; "i"))' >/dev/null \

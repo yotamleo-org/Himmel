@@ -29,7 +29,7 @@ extract_fn() { sed -n "/^$1() {/,/^}/p" "$2"; }
 extract_var() { sed -n "/^$1='/,/^'\$/p" "$2"; }
 
 # ── Case 1: resolve_window byte-identical between lib and legacy ─────────────
-lib_rw="$TMP/lib-rw"; leg_rw="$TMP/leg-rw"
+lib_rw="$TMP/lib-rw"; leg_rw="$TMP/legacy-rw"
 extract_fn resolve_window "$LIB"    > "$lib_rw"
 extract_fn resolve_window "$LEGACY" > "$leg_rw"
 if [ -s "$lib_rw" ] && [ -s "$leg_rw" ] && diff -u "$leg_rw" "$lib_rw" >/dev/null 2>&1; then
@@ -40,7 +40,7 @@ else
 fi
 
 # ── Case 2: rebuild_all_sessions_index byte-identical ───────────────────────
-lib_rb="$TMP/lib-rb"; leg_rb="$TMP/leg-rb"
+lib_rb="$TMP/lib-rb"; leg_rb="$TMP/legacy-rb"
 extract_fn rebuild_all_sessions_index "$LIB"    > "$lib_rb"
 extract_fn rebuild_all_sessions_index "$LEGACY" > "$leg_rb"
 if [ -s "$lib_rb" ] && [ -s "$leg_rb" ] && diff -u "$leg_rb" "$lib_rb" >/dev/null 2>&1; then
@@ -59,7 +59,7 @@ fi
 # reaper is the kill-path cleanup the periodic hook calls by name. Same
 # structural enforcement, one case each.
 for _fn in _hud_write_index_checkpoint _hud_rb_rmtemps; do
-    _lib_h="$TMP/lib-$_fn"; _leg_h="$TMP/leg-$_fn"
+    _lib_h="$TMP/lib-$_fn"; _leg_h="$TMP/legacy-$_fn"
     extract_fn "$_fn" "$LIB"    > "$_lib_h"
     extract_fn "$_fn" "$LEGACY" > "$_leg_h"
     if [ -s "$_lib_h" ] && [ -s "$_leg_h" ] && diff -u "$_leg_h" "$_lib_h" >/dev/null 2>&1; then

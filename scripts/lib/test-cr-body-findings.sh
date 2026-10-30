@@ -45,11 +45,13 @@ export RESP_DIR
 # (`.user.id`, `.commit_id`, `.body`).
 mk_json_from_file() {
     jq -n --argjson uid "$2" --arg commit "$3" --rawfile body "$4" \
-        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1"
+        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1" \
+        || { echo "setup failed: $1" >&2; exit 1; }
 }
 mk_json_from_str() {
     jq -n --argjson uid "$2" --arg commit "$3" --arg body "$4" \
-        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1"
+        '[{user:{id:$uid,login:"coderabbitai[bot]"}, commit_id:$commit, body:$body}]' > "$1" \
+        || { echo "setup failed: $1" >&2; exit 1; }
 }
 # mk_two_page_reviews <out> <uid> <commit-a> <bodyfile-a> <commit-b> <bodyfile-b>
 # — TWO separate top-level JSON-array documents concatenated in one file, the
@@ -280,6 +282,81 @@ mk_json_from_file "$RESP_DIR/od-followup-other-badge-prior.json" "$UID_OK" "olds
 sed '/^\[Open the source location\]/d' "$OD_FOLLOWUP" > "$TMP/od-followup-no-link.txt"
 printf '\n[elsewhere](https://github.com/o/r/blob/abc/other.sh#L1)\n' >> "$TMP/od-followup-no-link.txt"
 mk_json_from_file "$RESP_DIR/od-followup-no-link.json" "$UID_OK" "$HEAD" "$TMP/od-followup-no-link.txt"
+# A Follow-up section holding only a Nitpick badge (real PR #4291 review
+# 5709661095 at 74a82fc8) is a non-blocking nit, not drift.
+NIT_FOLLOWUP="$FIXDIR/pr-4291-followup-nitpick.body.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick.json" "$UID_OK" "$HEAD" "$NIT_FOLLOWUP"
+mk_json_from_file "$RESP_DIR/fu-nitpick-prior.json" "$UID_OK" "oldsha1" "$NIT_FOLLOWUP"
+# The same body with its badge of a kind this reader does not know, at head and on a prior head.
+sed 's/alt="Nitpick"/alt="Potential issue"/' "$NIT_FOLLOWUP" > "$TMP/fu-nitpick-other-badge.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge.json" "$UID_OK" "$HEAD" "$TMP/fu-nitpick-other-badge.txt"
+mk_json_from_file "$RESP_DIR/fu-nitpick-other-badge-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-nitpick-other-badge.txt"
+# One Outside-diff finding (the 4269 body) plus the 4291 Nitpick finding in one Follow-up section.
+sed -n '/^<details>$/,/^<\/blockquote><\/details>$/{p;/^<\/blockquote><\/details>$/q}' "$NIT_FOLLOWUP" > "$TMP/fu-nit-block.txt"
+sed '/^## Follow-up Comments[ ]*$/r '"$TMP/fu-nit-block.txt" "$OD_FOLLOWUP" > "$TMP/fu-mixed.txt"
+mk_json_from_file "$RESP_DIR/fu-mixed.json" "$UID_OK" "$HEAD" "$TMP/fu-mixed.txt"
+mk_json_from_file "$RESP_DIR/fu-mixed-prior.json" "$UID_OK" "oldsha1" "$TMP/fu-mixed.txt"
+# A finding in any shape other than the two known badges must still block a
+# Follow-up section that holds a Nitpick. CodeRabbit's one-marker-per-finding
+# count (cr-comment:v1:) is the shape-independent census.
+NB="$TMP/fu-nit-block.txt"
+sed -n '/^<details>$/,/^<\/blockquote><\/details>$/{p;/^<\/blockquote><\/details>$/q}' "$OD_FOLLOWUP" > "$TMP/fu-od-block.txt"
+OB="$TMP/fu-od-block.txt"
+# mk_fu_pair <name> <body-file>: head and prior-head payloads of one body
+mk_fu_pair() {
+    mk_json_from_file "$RESP_DIR/$1.json" "$UID_OK" "$HEAD" "$2"
+    mk_json_from_file "$RESP_DIR/$1-prior.json" "$UID_OK" "oldsha1" "$2"
+}
+# mk_fu_body <out> <block-file>...: the Follow-up header, then the blocks
+mk_fu_body() {
+    local out="$1"; shift
+    # read-sink-ok: the blocks are this suite's own fixture files under its mktemp dir
+    { printf '## Follow-up Comments\n\n'; cat "$@"; } > "$out"
+}
+# an unknown badge beside a known Nitpick
+sed 's/alt="Outside diff"/alt="Potential issue"/' "$OB" > "$TMP/fu-ob-unknown.txt"
+mk_fu_body "$TMP/fu-unk-beside-known.txt" "$NB" "$TMP/fu-ob-unknown.txt"
+mk_fu_pair fu-unk-beside-known "$TMP/fu-unk-beside-known.txt"
+# a finding block whose summary badge is a bare <picture>, and one with a plain <summary>
+sed '/alt="Outside diff"/{s/<summary><sub><picture>/<summary><picture>/;s/alt="Outside diff"/alt="Potential issue"/;}' "$OB" > "$TMP/fu-ob-pic.txt"
+mk_fu_body "$TMP/fu-pic-beside-nit.txt" "$NB" "$TMP/fu-ob-pic.txt"
+mk_fu_pair fu-pic-beside-nit "$TMP/fu-pic-beside-nit.txt"
+sed '/alt="Outside diff"/s/<summary><sub><picture>.*<\/picture><\/sub>/<summary>/' "$OB" > "$TMP/fu-ob-plain.txt"
+mk_fu_body "$TMP/fu-plain-beside-nit.txt" "$NB" "$TMP/fu-ob-plain.txt"
+mk_fu_pair fu-plain-beside-nit "$TMP/fu-plain-beside-nit.txt"
+# a malformed (no source link) Outside-diff block beside a Nitpick, and a Nitpick after it
+sed '/^\[Open the source location\]/d' "$OB" > "$TMP/fu-ob-nolink.txt"
+mk_fu_body "$TMP/fu-od-malformed-nit.txt" "$NB" "$TMP/fu-ob-nolink.txt"
+mk_fu_pair fu-od-malformed-nit "$TMP/fu-od-malformed-nit.txt"
+mk_fu_body "$TMP/fu-nit-after-incomplete.txt" "$TMP/fu-ob-nolink.txt" "$NB"
+mk_fu_pair fu-nit-after-incomplete "$TMP/fu-nit-after-incomplete.txt"
+# a Nitpick between two Outside-diff blocks
+mk_fu_body "$TMP/fu-sandwich.txt" "$OB" "$NB" "$OB"
+mk_fu_pair fu-sandwich "$TMP/fu-sandwich.txt"
+# unparseable legacy Outside-diff text beside a Nitpick-only Follow-up section
+{ cat "$NIT_FOLLOWUP"; printf '\nOutside diff range comments were noted but lost their count.\n'; } > "$TMP/fu-legacy-unparse-nit.txt"
+mk_fu_pair fu-legacy-unparse-nit "$TMP/fu-legacy-unparse-nit.txt"
+# the same legacy text with NO Follow-up header: a prior body that reads as on main
+mk_json_from_str "$RESP_DIR/fu-legacy-bare-prior.json" "$UID_OK" "oldsha1" "$DRIFT_BODY"
+# a header variant (a count after it) with a Nitpick and an unknown badge
+sed 's/^## Follow-up Comments[ ]*$/## Follow-up Comments (2)/' "$TMP/fu-unk-beside-known.txt" > "$TMP/fu-hdr-variant.txt"
+mk_fu_pair fu-hdr-variant "$TMP/fu-hdr-variant.txt"
+# A body mixing the Follow-up layout with a legacy section is drift: the whole
+# body is censused, so nothing after a legacy summary goes uncounted.
+printf '<details>\n<summary>⚠️ Outside diff range comments (1)</summary>\n</details>\n\n' > "$TMP/fu-legacy-summary.txt"
+# a Nitpick, then a legacy summary, then an unknown badge
+mk_fu_body "$TMP/fu-nit-legacy-unk.txt" "$NB" "$TMP/fu-legacy-summary.txt" "$TMP/fu-ob-unknown.txt"
+mk_fu_pair fu-nit-legacy-unk "$TMP/fu-nit-legacy-unk.txt"
+# a good Outside-diff badge beside an unknown badge past a legacy summary
+mk_fu_body "$TMP/fu-od-legacy-unk.txt" "$OB" "$TMP/fu-legacy-summary.txt" "$TMP/fu-ob-unknown.txt"
+mk_fu_pair fu-od-legacy-unk "$TMP/fu-od-legacy-unk.txt"
+# a plain-summary finding titled like a legacy header, beside a Nitpick
+sed '/alt="Outside diff"/{s/<summary><sub><picture>.*<\/picture><\/sub>/<summary>/;s/<\/summary>/ Nitpick comments (1)<\/summary>/;}' "$OB" > "$TMP/fu-ob-plain-title.txt"
+mk_fu_body "$TMP/fu-plain-title-legacy.txt" "$NB" "$TMP/fu-ob-plain-title.txt"
+mk_fu_pair fu-plain-title-legacy "$TMP/fu-plain-title-legacy.txt"
+# alt="Nitpick" quoted in a title, behind an unknown badge
+sed 's/alt="Nitpick"/alt="Potential issue"/;/<summary><sub><picture>/s/<\/picture><\/sub>/<\/picture><\/sub> alt="Nitpick"/' "$NIT_FOLLOWUP" > "$TMP/fu-nit-in-title.txt"
+mk_fu_pair fu-nit-in-title "$TMP/fu-nit-in-title.txt"
 
 # to <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>
 to() {
@@ -296,6 +373,19 @@ to() {
         fail=$((fail+1)); echo "FAIL $name (stdout mismatch)"
         echo "  got:  $(printf '%s' "$out" | tr '\n\t' '|~')"
         echo "  want: $(printf '%s' "$want_out" | tr '\n\t' '|~')"
+        return
+    fi
+    pass=$((pass+1)); echo "ok   $name"
+}
+# top <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>: cr_body_outside_findings
+# for a PRIOR head, the way the thread recorder calls it
+top() {
+    local name="$1" mode="$2" want="$3" want_out="$4" rc=0 out
+    export GH_STUB_MODE="$mode"
+    export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
+    out=$(cr_body_outside_findings o r 42 oldsha1 2>"$TMP/err-$name") || rc=$?
+    if [ "$rc" != "$want" ] || [ "$out" != "$want_out" ]; then
+        fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want) out='$out'"
         return
     fi
     pass=$((pass+1)); echo "ok   $name"
@@ -326,6 +416,53 @@ t followup-header-without-finding-blocks    od-followup-header-only    2
 t followup-unknown-badge-blocks             od-followup-other-badge    2
 t followup-prior-head-counted               od-followup-prior          0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 t followup-prior-drift-not-clean            od-followup-other-badge-prior 0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+to od-followup-nitpick-only-no-rows         fu-nitpick                 0 ""
+to od-followup-mixed-keeps-outside-row      fu-mixed                   0 "$OD_FOLLOWUP_ROW"
+to od-followup-nitpick-unknown-badge-drifts fu-nitpick-other-badge     2 ""
+t followup-nitpick-only-counted             fu-nitpick                 0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t followup-nitpick-prior-not-outside        fu-nitpick-prior           0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=0 substantive=0"
+t followup-mixed-outside-still-counted      fu-mixed                   0 "outside=1 nitpick=1 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
+t followup-mixed-prior-outside-counted      fu-mixed-prior             0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+t followup-nitpick-unknown-badge-blocks     fu-nitpick-other-badge     2
+t followup-nitpick-unknown-badge-prior-drift fu-nitpick-other-badge-prior 0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+FU_PRIOR1="outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+t  followup-unk-beside-known-blocks         fu-unk-beside-known        2
+to od-followup-unk-beside-known-drifts      fu-unk-beside-known        2 ""
+t  followup-unk-beside-known-prior-drift    fu-unk-beside-known-prior  0 "$FU_PRIOR1"
+t  followup-picture-badge-beside-nit-blocks fu-pic-beside-nit          2
+to od-followup-picture-beside-nit-drifts    fu-pic-beside-nit          2 ""
+t  followup-picture-badge-prior-drift       fu-pic-beside-nit-prior    0 "$FU_PRIOR1"
+t  followup-plain-summary-beside-nit-blocks fu-plain-beside-nit        2
+to od-followup-plain-beside-nit-drifts      fu-plain-beside-nit        2 ""
+t  followup-plain-summary-prior-drift       fu-plain-beside-nit-prior  0 "$FU_PRIOR1"
+to od-followup-malformed-od-beside-nit      fu-od-malformed-nit        2 ""
+to od-followup-nit-after-incomplete-od      fu-nit-after-incomplete    2 ""
+to od-followup-nit-between-two-od           fu-sandwich                0 "$OD_FOLLOWUP_ROW
+$OD_FOLLOWUP_ROW"
+t  followup-nit-between-two-od-counted      fu-sandwich                0 "outside=2 nitpick=1 additional=0 prior_outside=0 markers=3 head_reviews=1 substantive=1"
+t  followup-legacy-unparse-plus-nit-blocks  fu-legacy-unparse-nit      2
+t  followup-legacy-unparse-plus-nit-prior   fu-legacy-unparse-nit-prior 0 "$FU_PRIOR1"
+t  legacy-unparse-prior-without-header-as-before fu-legacy-bare-prior  0 "outside=0 nitpick=0 additional=0 prior_outside=0 markers=0 head_reviews=0 substantive=0"
+t  followup-header-variant-nit-unk-blocks   fu-hdr-variant             2
+t  followup-nit-legacy-unk-blocks           fu-nit-legacy-unk          2
+to od-followup-nit-legacy-unk-drifts        fu-nit-legacy-unk          2 ""
+t  followup-nit-legacy-unk-prior-drift      fu-nit-legacy-unk-prior    0 "$FU_PRIOR1"
+t  followup-od-legacy-unk-blocks            fu-od-legacy-unk           2
+to od-followup-od-legacy-unk-drifts         fu-od-legacy-unk           2 ""
+t  followup-plain-title-legacy-blocks       fu-plain-title-legacy      2
+to od-followup-plain-title-legacy-drifts    fu-plain-title-legacy      2 ""
+t  followup-plain-title-legacy-prior-drift  fu-plain-title-legacy-prior 0 "$FU_PRIOR1"
+# The recorder reads a PRIOR head through cr_body_outside_findings: drift there
+# must be rc 2, not zero rows.
+top od-prior-followup-nitpick-only-no-rows  fu-nitpick-prior           0 ""
+top od-prior-unk-beside-known-drifts        fu-unk-beside-known-prior  2 ""
+top od-prior-picture-beside-nit-drifts      fu-pic-beside-nit-prior    2 ""
+top od-prior-plain-beside-nit-drifts        fu-plain-beside-nit-prior  2 ""
+top od-prior-legacy-unparse-nit-drifts      fu-legacy-unparse-nit-prior 2 ""
+top od-prior-nit-legacy-unk-drifts          fu-nit-legacy-unk-prior    2 ""
+top od-prior-plain-title-legacy-drifts      fu-plain-title-legacy-prior 2 ""
+t  followup-nit-alt-in-title-blocks        fu-nit-in-title            2
+t  followup-nit-alt-in-title-prior-drift    fu-nit-in-title-prior      0 "$FU_PRIOR1"
 to od-infra-error-rc1         error             1 ""
 # cr_body_findings itself: the header variant "Outside the diff (N)" is now
 # COUNTED (before, outside read 0 and only the markers canary caught it).
@@ -402,7 +539,18 @@ tp ph-empty-later-review-keeps-head         ph-empty-later-keeps       0 "shaA"
 tp ph-current-head-is-not-prior             ph-head-only               0 ""
 tp ph-wrong-user-id-no-heads                ph-wrong-id                0 ""
 tp ph-followup-drift-head-kept              ph-followup-drift          0 "shaA"
-tp ph-infra-error-rc1                       error                      1 ""
+tp ph-followup-nitpick-only-omitted         fu-nitpick-prior           0 ""
+tp ph-followup-mixed-keeps-head             fu-mixed-prior             0 "oldsha1"
+tp ph-followup-nitpick-unknown-badge-kept   fu-nitpick-other-badge-prior 0 "oldsha1"
+tp ph-followup-unk-beside-known-kept        fu-unk-beside-known-prior  0 "oldsha1"
+tp ph-followup-picture-beside-nit-kept      fu-pic-beside-nit-prior    0 "oldsha1"
+tp ph-followup-plain-beside-nit-kept        fu-plain-beside-nit-prior  0 "oldsha1"
+tp ph-followup-legacy-unparse-nit-kept      fu-legacy-unparse-nit-prior 0 "oldsha1"
+tp ph-legacy-unparse-no-header-omitted      fu-legacy-bare-prior       0 ""
+tp ph-followup-nit-alt-in-title-kept        fu-nit-in-title-prior      0 "oldsha1"
+tp ph-followup-nit-legacy-unk-kept          fu-nit-legacy-unk-prior    0 "oldsha1"
+tp ph-followup-plain-title-legacy-kept      fu-plain-title-legacy-prior 0 "oldsha1"
+tp ph-infra-error-rc1                     error                      1 ""
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

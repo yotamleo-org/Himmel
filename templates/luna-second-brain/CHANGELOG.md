@@ -8,6 +8,14 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.94] — 2026-10-30
+
+### Changed
+- `README.md` and `docs/setup/new-machine.md` drop the Windows (Git Bash)
+  setup instructions. Windows is not supported.
+- `scripts/upgrade.sh` drops the `py` launcher fallback; interpreter resolution
+  tries `python3`, then `python`.
+
 ## [0.4.93] — 2026-10-29
 
 ### Added

@@ -59,7 +59,7 @@ for pr in "$@"; do
         jq '.value' "$file" > "$work/$pr.json" || exit 1
     else
         misses="$misses $pr"
-        query="$query p$pr:pullRequest(number:$pr){number headRefOid mergeStateStatus reviewDecision body state title headRefName isDraft mergedAt commits(first:100){nodes{commit{oid messageHeadline messageBody parents{totalCount}}} pageInfo{hasNextPage endCursor}} reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage endCursor}} statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}} pageInfo{hasNextPage endCursor}}}}"
+        query="$query p$pr:pullRequest(number:$pr){number headRefOid mergeStateStatus reviewDecision body state title headRefName isDraft mergedAt commits(first:100){nodes{commit{oid messageHeadline messageBody parents{totalCount}}} pageInfo{hasNextPage endCursor}} reviewThreads(first:100){nodes{isResolved} pageInfo{hasNextPage endCursor}} statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}} pageInfo{hasNextPage endCursor}}}}"
     fi
 done
 query="$query }}"
@@ -86,7 +86,7 @@ if [ -n "$misses" ]; then
             case "$field" in
                 commits) path='.commits'; selection='nodes{commit{oid messageHeadline messageBody parents{totalCount}}}'; connection='commits' ;;
                 reviewThreads) path='.reviewThreads'; selection='nodes{isResolved}'; connection='reviewThreads' ;;
-                statusCheckRollup) path='.statusCheckRollup.contexts'; selection='nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}}'; connection='contexts' ;;
+                statusCheckRollup) path='.statusCheckRollup.contexts'; selection='nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ...on StatusContext{context state createdAt}}'; connection='contexts' ;;
             esac
             [ "$field" != statusCheckRollup ] || ! jq -e '.statusCheckRollup == null' "$work/$pr.raw" >/dev/null || continue
             pages=1; seen='|'

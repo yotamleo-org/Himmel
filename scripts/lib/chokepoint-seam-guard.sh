@@ -52,7 +52,7 @@
 # step of their own: they are read only when the cwd IS the anchor, which the
 # cwd step already yields.
 #
-# Headless (--bg) legs: the outermost claude ancestor is the `claude daemon
+# Headless (--bg) workers: the outermost claude ancestor is the `claude daemon
 # run` service, whose environ is the daemon spawner's, and the worker's own env
 # rides only in the excluded --settings file. So a seam a headless worker passes
 # to a chokepoint always differs, and the guard refuses with a headless-specific
