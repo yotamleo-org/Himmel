@@ -970,6 +970,15 @@ if ! { ln -sfn "$FIX/scratch8200" "$FIX/primary/lnk8203" && [ -d "$FIX/primary/l
 fi
 check_both "104n fromP: cd lnk8203 && echo x > out.txt (a relative cd word may resolve through CDPATH) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd lnk8203 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104o fromP: pushd -P scratch; echo x > out.txt (bash refuses the option, the cwd stays) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd -P $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104p fromP: cd -@ scratch; echo x > out.txt (no O_XATTR, the cd is refused) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd -@ $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104q fromP: cd -e scratch; echo x > out.txt (zsh refuses the option) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd -e $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
+mkdir -p "$FIX/scratch8200/c:/sub"
+check_both "104r fromP: cd c:/sub; echo x > out.txt (a drive spelling is relative here) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd c:/sub; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}" "$FIX/scratch8200"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

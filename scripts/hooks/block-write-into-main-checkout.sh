@@ -222,7 +222,8 @@
 #     given, holds a `$`, a backtick or a byte outside printable ASCII, tab and newline anywhere (`_bwimc_orig_dynamic`, tested once before any
 #     reading is flattened) or a heredoc (`<<`), so `cd scratch && echo "$x" > out.txt` and
 #     `cd scratch && cat > f <<EOF` are refused as on main. The cd word must also be absolute and
-#     plain (a relative word may resolve through a CDPATH this hook cannot see).
+#     plain, spelled with a leading `/` (a relative word may resolve through a CDPATH this hook cannot
+#     see, and a drive spelling is relative here), and the cd or pushd carries no option (-P, -L, -e, -@, --).
 #     A candidate holding `$` is not checked at all, as before (e.g. `$OLDPWD`). Exposure left: after a `;` a cd
 #     that fails at runtime leaves the cwd unchanged although the write is allowed,
 #     and a directory made a repo by a `.git` created after the check is not seen.
@@ -2844,10 +2845,13 @@ _bwimc_ecwd_track() {
                             # a backslash and keeps an edge space the hook trims, so the directory the hook
                             # found is not the one the shell enters (rows 100d, 104i-104l). It must also be
                             # absolute: CDPATH set in the tool shell is invisible here and can resolve a
-                            # relative word elsewhere (row 104n)
+                            # relative word elsewhere (row 104n), spelled with a leading `/` (a drive
+                            # spelling is relative here, row 104r), and carry no option the shell may
+                            # refuse (rows 104o-104q)
                             [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
                                 && [ "${_bwimc_orig_dynamic:-1}" = 0 ] \
-                                && [ "$cabs" = 1 ] && _bwimc_plain_word "$craw" \
+                                && [ "$i" = 1 ] && case "$carg" in /*) true ;; *) false ;; esac \
+                                && _bwimc_plain_word "$craw" \
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
                                 && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
