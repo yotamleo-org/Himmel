@@ -462,28 +462,37 @@ done
 # such a line on purpose: negative fixtures that feed the string to a guard
 # and this file's own samples. An entry whose
 # file no longer carries a call fails, so the list only shrinks.
-# shellcheck disable=SC2016
-PWSH_CALL='(^|[^A-Za-z0-9_./-])(pwsh|powershell)(\.exe)?[[:space:]]+-(File|Command|NoProfile|NonInteractive|ExecutionPolicy|EncodedCommand|c)([[:space:]]|$)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\([[:space:]]*.(pwsh|powershell)(\.exe)?.[,)]'
+PWSH_CALL=$'(^|[^A-Za-z0-9_.-])["\']?(pwsh|powershell)(\\.exe)?["\']?[[:space:]]+(-(File|Command|NoProfile|NonInteractive|ExecutionPolicy|EncodedCommand|c)([[:space:]]|$)|[^[:space:]]*\\.ps1)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\\([[:space:]]*.(pwsh|powershell)(\\.exe)?.[,)]'
+# The last three entries are Windows-only test branches kept until the win32
+# branch sweep removes them.
 PWSH_ALLOW='scripts/cr/test-cr-guarded-closure.sh
 scripts/docs/test-docs-dropped-terms.sh
 scripts/hermes/test-parity-guard.sh
 scripts/hooks/test-block-bare-qmd-query.sh
 scripts/hooks/test-block-destructive-commands-a.sh
-scripts/hooks/test-block-edit-live-settings.sh'
+scripts/hooks/test-block-edit-live-settings.sh
+scripts/handover/test-merge-on-green.sh
+scripts/lib/test-worktree-inuse.sh
+scripts/test-clean-garden-accounting.sh'
 
-# pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call.
+# pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call;
+# a file grep cannot read is printed as path:0 so it fails the check, not passes it.
 pwsh_calls() {
   while IFS= read -r f; do
-    grep -n -i -E "$PWSH_CALL" "$1/$f" 2> /dev/null | grep -v -E '^[0-9]+:[[:space:]]*(#|//)' | sed "s#^#$f:#"
+    hits=$(grep -n -i -E "$PWSH_CALL" "$1/$f" 2> /dev/null)
+    [ $? -le 1 ] || echo "$f:0:unreadable or matcher error"
+    [ -z "$hits" ] || printf '%s\n' "$hits" | grep -v -E '^[0-9]+:[[:space:]]*(#|//)' | sed "s#^#$f:#"
   done
 }
 
 mkdir "$tmp/fx"
-printf '#!/usr/bin/env bash\npwsh -File ./install.ps1\n' > "$tmp/fx/launch.sh"
+printf '#!/usr/bin/env bash\npwsh -File ./install.ps1\n/usr/bin/pwsh -File x\n"pwsh" -File x\npwsh install.ps1\n' > "$tmp/fx/launch.sh"
 printf "spawn('powershell.exe', ['-File', 'x.ps1']);\n" > "$tmp/fx/launch.mjs"
 printf '# pwsh -File old.ps1\nPowerShell is dropped.\n' > "$tmp/fx/clean.sh"
-fx_hits=$(printf '%s\n' launch.sh launch.mjs clean.sh | pwsh_calls "$tmp/fx")
+fx_hits=$(printf '%s\n' launch.sh launch.mjs clean.sh missing.sh | pwsh_calls "$tmp/fx")
 case $fx_hits in *launch.sh:2:*) ok "no-pwsh-invocation flags a launcher running pwsh -File" ;; *) bad "no-pwsh-invocation misses pwsh -File in a launcher" ;; esac
+case $fx_hits in *launch.sh:3:*launch.sh:4:*launch.sh:5:*) ok "no-pwsh-invocation flags a pathed, a quoted and a script-argument pwsh call" ;; *) bad "no-pwsh-invocation misses a pathed, quoted or script-argument pwsh call" ;; esac
+case $fx_hits in *missing.sh:0:*) ok "no-pwsh-invocation fails on a file it cannot read" ;; *) bad "no-pwsh-invocation passes a file it cannot read" ;; esac
 case $fx_hits in *launch.mjs:1:*) ok "no-pwsh-invocation flags a spawn of powershell" ;; *) bad "no-pwsh-invocation misses a spawn of powershell" ;; esac
 case $fx_hits in *clean.sh*) bad "no-pwsh-invocation flags a comment or prose mention" ;; *) ok "no-pwsh-invocation ignores comments and prose" ;; esac
 
