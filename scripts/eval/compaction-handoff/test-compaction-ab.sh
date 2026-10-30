@@ -163,6 +163,17 @@ import importlib.util, sys
 sp = importlib.util.spec_from_file_location("ab", sys.argv[1]); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
 rows = [{"arm": "a", "check": 1.0, "judge": 5, "cost_eq": 3}, {"arm": "b", "check": 0.5, "judge": 9, "cost_eq": 1}]
 print(m.recommend(rows)["arm"])' "$AB" 2>&1)" "a"
+# an arm no judge scored cannot win; with no judged arm there is no recommendation
+eq "score: recommend never lets an unjudged arm win" "$(python3 -I -c '
+import importlib.util, sys
+sp = importlib.util.spec_from_file_location("ab", sys.argv[1]); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+rows = [{"arm": "a", "check": 0.5, "judge": 9, "cost_eq": 3}, {"arm": "b", "check": 1.0, "judge": None, "cost_eq": 1}]
+print(m.recommend(rows)["arm"])' "$AB" 2>&1)" "a"
+eq "score: recommend with no judged arm names none" "$(python3 -I -c '
+import importlib.util, sys
+sp = importlib.util.spec_from_file_location("ab", sys.argv[1]); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+rows = [{"arm": "a", "check": 1.0, "judge": None, "cost_eq": 3}, {"arm": "b", "check": 1.0, "judge": None, "cost_eq": 1}]
+print(m.recommend(rows))' "$AB" 2>&1)" "None"
 
 # --- the billed opt-in ---
 eq "run: refuses without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK python3 "$AB" run --task docs --arm a --rep 1 --out "$TMP/ox" --scale 0.05 >/dev/null 2>&1; echo $?)" "2"
@@ -227,6 +238,15 @@ eq "judge: and still counts the attempt's cost" "$([ "$c1" -gt 0 ] && echo yes)"
 python3 "$AB" judge --out "$O3" --ceiling 1000000000 >/dev/null 2>&1
 eq "judge: the next judge pass retries it" "$(jget "$O3/docs/a/1/judge.json" score)" "8"
 eq "judge: and adds to the cost already spent" "$([ "$(jget "$O3/docs/a/1/judge.json" cost_eq)" -gt "$c1" ] && echo yes)" "yes"
+
+# a SCORE counts only as a whole number from 1 to 10 on a clean result; anything else leaves the run unscored for a retry
+OJ="$TMP/ojs"; run docs a "$OJ" >/dev/null
+for sv in 42 0 error; do
+    AB_STUB_SCORE=$sv python3 "$AB" judge --out "$OJ" --ceiling 1000000000 >/dev/null 2>&1
+    eq "judge: SCORE '$sv' leaves the run unscored" "$(jget "$OJ/docs/a/1/judge.json" score)" "null"
+done
+python3 "$AB" judge --out "$OJ" --ceiling 1000000000 >/dev/null 2>&1
+eq "judge: a clean in-range SCORE then scores it" "$(jget "$OJ/docs/a/1/judge.json" score)" "8"
 
 # --- the whole diff reaches the judge; a failing diff is an invalid run ---
 OB="$TMP/obig"; : >"$AB_STUB_LOG"

@@ -318,7 +318,36 @@
       "contextBudget": 55000,
       "contextMode": "standard",
       "autocompact": 200000,
-      "_comment_contextBudget": "HIMMEL-7132 2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (HIMMEL-4021: n=0 attributable merged workers, kept under n<3)."
+      "sonnetAutocompact": 450000,
+      "sonnetContextGuard": "handoff",
+      "_comment_contextBudget": "HIMMEL-7132 2026-10-25: set from measured openings (scripts/eval/profile-openings.py, 14 days to 2026-10-25): n=1745, median first-request size 54149, range 26377-66366, rounded up to 55000. Was 35000 (HIMMEL-4021: n=0 attributable merged workers, kept under n<3).",
+      "_comment_sonnet": "HIMMEL-7667 operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a 450000 ceiling plus a hand-off at 75 percent. Opus and Fable keep autocompact 200000 with no guard, because the A/B sample was Sonnet only and Phase 1 shows Opus differs after compaction."
+    },
+    "worker-eval": {
+      "gateAllow": true,
+      "denyTools": ["NotebookEdit", "DesignSync", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "ReportFindings", "RemoteTrigger", "Artifact"],
+      "disableWorkflows": true,
+      "_comment": "HIMMEL-7667: worker-impl for eval legs, so the operator's per-profile context ruling (2026-10-30) has a name to attach to: eval runs a 450000 ceiling plus compaction on Sonnet. Same plugins, drops and MCP servers as worker-impl; see its _comment.",
+      "enable": [],
+      "drop": ["i-have-adhd@himmel"],
+      "mcpServers": ["qmd", "himmel-bus"],
+      "contextBudget": 55000,
+      "contextMode": "standard",
+      "autocompact": 200000,
+      "sonnetAutocompact": 450000,
+      "sonnetContextGuard": "compact"
+    },
+    "worker-docs": {
+      "gateAllow": true,
+      "denyTools": ["NotebookEdit", "DesignSync", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "ReportFindings", "RemoteTrigger", "Artifact"],
+      "disableWorkflows": true,
+      "_comment": "HIMMEL-7667: worker-impl for docs legs, so the operator's per-profile context ruling (2026-10-30) has a name to attach to: docs stays at the 200000 loop on every model. Same plugins, drops and MCP servers as worker-impl; see its _comment.",
+      "enable": [],
+      "drop": ["i-have-adhd@himmel"],
+      "mcpServers": ["qmd", "himmel-bus"],
+      "contextBudget": 55000,
+      "contextMode": "standard",
+      "autocompact": 200000
     },
     "worker-bus": {
       "gateAllow": true,

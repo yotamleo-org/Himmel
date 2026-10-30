@@ -416,6 +416,13 @@ fi
 AUTOCOMPACT="$_profile_autocompact"
 if [ "$CONTEXT" = "standard" ]; then
     AUTOCOMPACT="200000"
+    # A profile may give a Sonnet launch its own standard ceiling
+    # (sonnetAutocompact, 200000 to 450000); any other model keeps 200000. Absent = 200000.
+    case "$MODEL" in
+        claude-sonnet-*)
+            _sonnet_autocompact="$(printf '%s' "$_context_json" | jq -r '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 450000 and floor == .)')"
+            [ -z "$_sonnet_autocompact" ] || AUTOCOMPACT="$_sonnet_autocompact" ;;
+    esac
     [ "$_ab_autocompact" != "400000" ] || AUTOCOMPACT="400000"
 elif [ "$_context_profile" = "chief" ] || [ "${CHIEF_CONTEXT:-}" = "1m" ]; then
     AUTOCOMPACT="auto"

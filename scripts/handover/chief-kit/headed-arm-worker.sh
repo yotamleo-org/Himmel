@@ -1077,6 +1077,7 @@ CONTEXT="standard"
 RESOLVED_AUTOCOMPACT="200000"
 DESIGN_CONTEXT_REASON=""
 CONTEXT_SOURCE="operator-ruling"
+SONNET_CEILING=0
 if [ -n "$PROFILE" ]; then
     if ! _worker_context_json="$(node "$PROFILES_MJS" "$PROFILE" --context)" \
         || ! CONTEXT="$(printf '%s' "$_worker_context_json" | jq -er '.contextMode | select(. == "standard" or . == "1m")')" \
@@ -1091,6 +1092,23 @@ if [ -n "$PROFILE" ]; then
         echo "headed-arm-worker: standard profile must resolve autocompact 200000" >&2
         exit 2
     fi
+    # The operator's per-profile ruling (2026-10-30). A profile may
+    # give a Sonnet launch a higher standard ceiling (sonnetAutocompact, up to
+    # 450000) and a default context guard (sonnetContextGuard). Opus and Fable
+    # launches never read either, so they keep the 200000 above; an explicit
+    # --context-guard (including none) still wins over the profile's default.
+    if [ "$CONTEXT" = "standard" ]; then
+        case "$MODEL" in
+            claude-sonnet-*)
+                if _sonnet_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 450000 and floor == .)')"; then
+                    RESOLVED_AUTOCOMPACT="$_sonnet_ceiling"
+                    [ "$_sonnet_ceiling" = "200000" ] || SONNET_CEILING=1
+                    if [ -z "$CONTEXT_GUARD" ]; then
+                        CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextGuard // empty')"
+                    fi
+                fi ;;
+        esac
+    fi
 fi
 # Only the immediate headed-arm renderer reads these; never child launcher-env.
 export HEADED_ARM_CONTEXT_PROFILE="$PROFILE"
@@ -1098,6 +1116,7 @@ _CONTEXT_BRIEF_REASON="$(grep -m1 -E '^> \*\*Context:\*\* 1m — operator-ruling
 if [ "${WORKER_SESSION_CONTEXT:-}" = "1m" ]; then
     CONTEXT="1m"
     RESOLVED_AUTOCOMPACT="auto"
+    SONNET_CEILING=0
     # An env override needs its own brief ruling, even on a design profile.
     CONTEXT_SOURCE="operator-ruling"
     DESIGN_CONTEXT_REASON="$_CONTEXT_BRIEF_REASON"
@@ -1290,7 +1309,7 @@ worker_env_drop_token HEADED_ARM_WORKER_CLAUDE_BIN
 # RESOLVED_AUTOCOMPACT to anything but 200000 there), so this block is a
 # no-op for every existing caller.
 CONTEXT_REASON=""
-if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
+if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ] && [ "$SONNET_CEILING" != "1" ]; then
     CONTEXT_REASON="$DESIGN_CONTEXT_REASON"
     CONTEXT_REASON="$(printf '%s' "$CONTEXT_REASON" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     if [ -z "$CONTEXT_REASON" ]; then

@@ -420,23 +420,31 @@ done
 # honoured only when paired to this exec's PID (the wrapper's `export
 # HEADED_ARM_CONTEXT_PID=$$; exec` shape), the context is standard and the
 # value is exactly 400000. A wrong pid is ignored; 1m or another value refuses.
-ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag>
-  local mode="$1" ctx="$2" val="$3" tag="$4" pidx
+ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag> [profile] [model]
+  local mode="$1" ctx="$2" val="$3" tag="$4" prof="${5:-worker-impl}" model="${6:-claude-sonnet-5}" pidx
   case "$mode" in
     paired) pidx='export HEADED_ARM_CONTEXT_PID="$$"' ;;
     stale)  pidx='export HEADED_ARM_CONTEXT_PID=1' ;;
     *)      pidx=':' ;;
   esac
-  env -u CHIEF_CONTEXT HEADED_ARM_CONTEXT_PROFILE=worker-impl HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
+  env -u CHIEF_CONTEXT HEADED_ARM_CONTEXT_PROFILE="$prof" HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
     HEADED_ARM_AB_AUTOCOMPACT="$val" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
+    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" "$model" "$ctx" 2>&1
 }
 rc=0; out="$(ab_run paired standard 400000 ok)" || rc=$?
 check "A/B arm (paired pid, standard, 400000): exit 0" "$rc" "0"
 contains "A/B arm (paired pid, standard, 400000): argv carries --autocompact 400000" "$out" "--autocompact 400000"
-rc=0; out="$(ab_run paired standard "" none)" || rc=$?
-check "A/B arm control (paired, no marker): exit 0" "$rc" "0"
-contains "A/B arm control (paired, no marker): stays 200000" "$out" "--autocompact 200000"
+rc=0; out="$(ab_run paired standard "" none worker-docs)" || rc=$?
+check "A/B arm control (paired, no marker, worker-docs): exit 0" "$rc" "0"
+contains "A/B arm control (paired, no marker, worker-docs): stays 200000" "$out" "--autocompact 200000"
+# The per-profile Sonnet ceiling; Opus on the same profile is unchanged.
+rc=0; out="$(ab_run paired standard "" implsonnet worker-impl claude-sonnet-5)" || rc=$?
+check "worker-impl on Sonnet (paired, no marker): exit 0" "$rc" "0"
+contains "worker-impl on Sonnet: argv carries --autocompact 450000" "$out" "--autocompact 450000"
+rc=0; out="$(ab_run paired standard "" implopus worker-impl claude-opus-5-5)" || rc=$?
+check "worker-impl on Opus (paired, no marker): exit 0" "$rc" "0"
+contains "worker-impl on Opus: argv stays --autocompact 200000" "$out" "--autocompact 200000"
+not_contains "worker-impl on Opus: no 450000" "$out" "--autocompact 450000"
 rc=0; out="$(ab_run stale standard 400000 stale)" || rc=$?
 check "A/B arm (stale pid): ignored, exit 0" "$rc" "0"
 contains "A/B arm (stale pid): stays 200000" "$out" "--autocompact 200000"
