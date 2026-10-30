@@ -399,6 +399,28 @@ mkdir "$R/d1" "$R/d2"; ln -s "$R/d1" "$R/d"
 out=$(rr 0 --cwd "$R" -- ls d); id=$(rid "$out")
 ln -sfn "$R/d2" "$R/d"
 assert_contains "a link to a directory retargeted to another directory reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtabsctl; cfg "$ALL" true
+mkdir "$R/safe"; printf 'job\n' > "$R/job"; ln -s "$R/safe" "$R/d"
+out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
+assert_contains "control: an absent output name that stays absent under an untouched link still runs" "result=ran" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtabs; cfg "$ALL" true
+mkdir "$R/safe" "$R/elsewhere"; printf 'job\n' > "$R/job"; ln -s "$R/safe" "$R/d"
+out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
+ln -sfn "$R/elsewhere" "$R/d"
+assert_contains "an absent name under a directory link that is retargeted reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+landed=no
+if [ -e "$R/elsewhere/out" ]; then landed=yes; fi
+assert_eq "nothing was written through the retargeted link" "no" "$landed"
+new_root tgtdangle; cfg "$ALL" true
+mkdir "$R/d" "$R/elsewhere"; printf 'job\n' > "$R/job"
+out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
+ln -s "$R/elsewhere/out" "$R/d/out"
+assert_contains "an absent name that becomes a dangling link reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root tgtdangle2; cfg "$ALL" true
+mkdir "$R/d" "$R/e1" "$R/e2"; printf 'job\n' > "$R/job"; ln -s "$R/e1/out" "$R/d/out"
+out=$(rr 0 --cwd "$R" -- cp job d/out); id=$(rid "$out")
+ln -sfn "$R/e2/out" "$R/d/out"
+assert_contains "a dangling link that is retargeted reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 
 echo "== slice 1a (judge KS-j4307-1): a partial config never falls back to root's home =="
 new_root opghost; me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real

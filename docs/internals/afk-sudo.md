@@ -47,7 +47,9 @@ A `run-request` writes a root-owned record `STATE/records/<id>.json` (0600, dirs
 created lazily): argv, `run_as` and its uid/gid, the absolute path of argv[0] and the
 sha256 of its realpath, every argv element that resolves to a regular file (the resolved
 path, sha256, size, whether its body was kept), what every argv element resolved to (`targets`:
-one `file:<path>`, `dir:<path>` or empty entry per element), cwd and its device/inode, the env names, the stdin
+one `file:<path>`, `dir:<path>` or `none:<path>` entry per element, `none:` holding the path a
+name that does not exist yet would land on; an empty entry is an element that is no path: empty,
+over 4096 characters, holding a NUL, or `/dev/null`), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
 broker's pending payload, not next to the record.
@@ -63,6 +65,12 @@ broker's pending payload, not next to the record.
   every element, argv[0] included, must resolve to the same target as at request, so a
   link relinked to another file, a directory or nothing, two links swapped between their
   files, a directory link retargeted, and a name that now names a file all report `changed`.
+  A name that did not exist is held by the path it would land on, so a link above it that is
+  retargeted, and an absent name that becomes a dangling link or a dangling link that is
+  retargeted, report `changed` too: the command would write somewhere the operator never saw.
+- A directory element is bound by the path it resolves to, not by its contents: a directory
+  changed in place compares equal. The slice 1b notice must not present a directory argument
+  as bound.
 - The run is of the file in place, not of the copy, and a file a command loads itself (a
   script it sources, an interpreter's imports, a config it reads) is not bound. The instant
   between the exec-time check and the exec is an accepted residual (HIMMEL-8250).
@@ -80,7 +88,7 @@ broker's pending payload, not next to the record.
 
 The executor re-checks, in this order, and writes a ledger row on the first mismatch:
 record hash (`hash-mismatch`); argv[0] sha256, each file sha256, the cwd identity and that
-every argv element resolves to the same file, directory or nothing as at request
+every argv element resolves to the same file, directory or not-yet-existing path as at request
 (`changed`, also when one is gone or no longer a regular file); `run-not-shipped`;
 `run-disabled`; that the run-as user and `operator_user` both resolve (`bad-user`; a missing
 or unknown `operator_user` never falls back to root's home); the floor again with the

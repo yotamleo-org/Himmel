@@ -185,9 +185,11 @@ class BadFile(Exception):
 
 def bind_target(a, cwd):
     """What an argv element names, as the kernel resolves it (links first, then ..): ("file", path),
-    ("dir", path), or None when it names nothing. A pseudo-file (under /proc, /sys, /dev; only
-    /dev/null is let through), a FIFO or other non-regular file, and an entry that cannot be
-    examined raise BadFile: a run that is not bound by hash must not go ahead."""
+    ("dir", path), ("none", path) when nothing is there yet (path is where it would land, so a
+    link moved above it or a dangling link retargeted changes it), or None for an element that
+    is no path (empty, NUL, over 4096 characters, /dev/null). A pseudo-file (under /proc, /sys,
+    /dev; only /dev/null is let through), a FIFO or other non-regular file, and an entry that
+    cannot be examined raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
         return None
     joined = a if a.startswith("/") else os.path.join(cwd, a)
@@ -200,7 +202,7 @@ def bind_target(a, cwd):
         mode = os.stat(real).st_mode
     except OSError as e:
         if e.errno in (errno.ENOENT, errno.ENOTDIR, errno.ENAMETOOLONG):
-            return None
+            return "none", real
         raise BadFile(a) from e
     if stat.S_ISDIR(mode):
         return "dir", real
@@ -210,7 +212,8 @@ def bind_target(a, cwd):
 
 
 def target_key(t):
-    """The comparable form of a bind_target result: "file:/p", "dir:/p" or "" for nothing."""
+    """The comparable form of a bind_target result: "file:/p", "dir:/p", "none:/p" or "" for an
+    element that is no path."""
     return f"{t[0]}:{t[1]}" if t else ""
 
 
