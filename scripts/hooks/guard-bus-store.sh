@@ -121,7 +121,7 @@ esac
 ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 # The identity verbs are matched word by word (verb_after_bus below), not by a
 # regex: a `bus` word, then later in the SAME segment a word that is exactly
-# register|bind|rebind. Options may sit between (`bus --role leg register x`),
+# register|bind|rebind. Options may sit between (`bus --role worker register x`),
 # quotes are dropped (`bus 'register' x`, `b''us register x`), and a path such as
 # /tmp/register.txt is not a verb.
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='

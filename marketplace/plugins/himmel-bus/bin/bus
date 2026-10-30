@@ -14,7 +14,7 @@ import * as identity from '../lib/identity.mjs';
 import * as edges from '../lib/edges.mjs';
 import { formatRecord } from '../lib/deliver.mjs';
 
-const USAGE = `usage: bus register <name> --role leg|console|judge|consult [--console <c>] [--pair <leg>] [--predecessor <old>]
+const USAGE = `usage: bus register <name> --role worker|console|judge|consult [--console <c>] [--pair <worker>] [--predecessor <old>]
        bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | succeed <new-console> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
@@ -50,7 +50,7 @@ async function writeAck(root, acker, row) {
   });
 }
 
-// Mirrors the ruling under the leg doc's "## Console Rulings" section by running
+// Mirrors the ruling under the worker doc's "## Console Rulings" section by running
 // inbox-send.sh itself (its writer and doc hash-lock), with its own inbox
 // pointed at a scratch dir (delivery is the bus's job) and its author set to
 // the bus identity instead of the CLAUDE_PID/-n recovery.

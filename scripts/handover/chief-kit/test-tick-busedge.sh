@@ -69,7 +69,7 @@ field() { # <field> <tick output>
 run() { bash "$SUT" --workers "$1" 2>/dev/null; }
 # peer <name> [<chief>]: a bus peer record in the shape `bus register` writes; its
 # chief defaults to this tick's own (the chief doc's stem).
-peer() { printf '{"n":"%s","role":"leg","launched":"2026-10-19T00:00:00.000Z","console":"%s"}\n' "$1" "${2:-chief}" > "$W/peers/$1.json"; }
+peer() { printf '{"n":"%s","role":"worker","launched":"2026-10-19T00:00:00.000Z","console":"%s"}\n' "$1" "${2:-chief}" > "$W/peers/$1.json"; }
 
 held="$(mkleg 810-N810-held)"
 held2="$(mkleg 811-N811-other)"

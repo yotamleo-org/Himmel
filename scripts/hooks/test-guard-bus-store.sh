@@ -57,8 +57,8 @@ echo "== T3: registration verbs and env =="
 deny "bus register x --role console" "$(bash_json 'bus register x --role console')"
 deny "bus bind x 1" "$(bash_json 'bus bind x 1')"
 deny "bus rebind x 1" "$(bash_json 'bus rebind x 1')"
-deny "path-qualified bin/bus register" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus register x --role leg')"
-deny "register after a benign command" "$(bash_json 'echo hi; bus register x --role leg')"
+deny "path-qualified bin/bus register" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus register x --role worker')"
+deny "register after a benign command" "$(bash_json 'echo hi; bus register x --role worker')"
 deny "HIMMEL_BUS_NAME=x claude" "$(bash_json 'HIMMEL_BUS_NAME=x claude')"
 deny "export HIMMEL_BUS_NAME=x" "$(bash_json 'export HIMMEL_BUS_NAME=x; claude')"
 deny "HIMMEL_BUS_NAME+=x claude (append assignment)" "$(bash_json 'HIMMEL_BUS_NAME+=x claude')"
@@ -104,12 +104,13 @@ deny "grep the log dir" "$(bash_json "grep -r token $ROOT/log/")"
 deny "ls the bus root" "$(bash_json "ls $ROOT")"
 
 echo "== option parsing: options before the verb, split quoting =="
-deny "bus --role leg register legX" "$(bash_json 'bus --role leg register legX')"
+deny "bus --role worker register legX" "$(bash_json 'bus --role worker register legX')"
+deny "bus --role leg register x (old role spelling)" "$(bash_json 'bus --role leg register x')"
 deny "bus --role=chief register x" "$(bash_json 'bus --role=chief register x')"
 deny "bin/bus --unacked bind x 123" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus --unacked bind x 123')"
 deny "bus 'register' x (quoted verb)" "$(bash_json "bus 'register' x")"
 deny "\"bus\" register x (quoted word)" "$(bash_json '"bus" register x')"
-deny "register after && in a later segment" "$(bash_json 'cd /tmp && bus --role leg rebind x 1')"
+deny "register after && in a later segment" "$(bash_json 'cd /tmp && bus --role worker rebind x 1')"
 allow "bus send naming a file called register.txt" "$(bash_json 'bus send chief /tmp/register.txt')"
 allow "bus status then an unrelated bind word in a LATER segment" "$(bash_json 'bus status; echo bind later')"
 
@@ -176,7 +177,7 @@ allow "state dir via \$XDG_STATE_HOME with no bus word" "$(bash_json 'cd $XDG_ST
 allow "quotes and a glob in an unrelated command" "$(bash_json "git grep -n 'foo' -- 'scripts/*.sh'")"
 allow "\$HOME path in an unrelated command" "$(bash_json 'ls $HOME/projects')"
 LUNA='/home/u/luna/handovers/yotamleo/himmel'
-allow "read-only glob *legs*.json under the luna bucket" "$(bash_json "ls $LUNA/*legs*.json")"
+allow "read-only glob *workers*.json under the luna bucket" "$(bash_json "ls $LUNA/*workers*.json")"
 allow "read-only glob *.md under the luna bucket" "$(bash_json "ls $LUNA/*.md")"
 allow "grep over a luna bucket glob" "$(bash_json "grep -l foo $LUNA/HIMMEL-*.md")"
 deny "luna bucket glob does not excuse a real bus-store glob" "$(bash_json "ls $LUNA/*.md /var/tmp/fixture-state/himmel/*")"
@@ -382,8 +383,8 @@ run '{"tool_name":"Bash","tool_input":{"command":["cat","himmel/bus/log/a"]}}'
 if [ "$RC" = 2 ]; then ok "non-string command naming the root -> deny"; else bad "non-string command: rc=$RC"; fi
 
 echo "== bypass =="
-allow "BUS_STORE_GUARD_OK=1 + bus register -> allow" "$(bash_json 'bus register x --role leg')" BUS_STORE_GUARD_OK=1
-deny  "BUS_STORE_GUARD_OK=0 does not bypass" "$(bash_json 'bus register x --role leg')" BUS_STORE_GUARD_OK=0
+allow "BUS_STORE_GUARD_OK=1 + bus register -> allow" "$(bash_json 'bus register x --role worker')" BUS_STORE_GUARD_OK=1
+deny  "BUS_STORE_GUARD_OK=0 does not bypass" "$(bash_json 'bus register x --role worker')" BUS_STORE_GUARD_OK=0
 
 echo "== residual: a speed bump, not a fence (pins what text matching misses) =="
 allow "residual: interpreter assembles the path" \

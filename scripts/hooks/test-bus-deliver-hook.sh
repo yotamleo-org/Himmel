@@ -92,7 +92,7 @@ post() { printf '{"hook_event_name":"PostToolUse","session_id":"s1","tool_name":
 ctx() { printf '%s' "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).hookSpecificOutput.additionalContext)}catch{}})'; }
 
 h register con console
-h register leg1 leg con
+h register leg1 worker con
 h register judge1 judge con leg1
 WORKER_SESSION_PID="$(start_session leg1)"; h bind leg1 "$WORKER_SESSION_PID"
 CON_PID="$(start_session con)"; h bind con "$CON_PID"
@@ -159,7 +159,7 @@ if [ -n "$first" ] && [ "$first" = "$(ctx)" ] && printf '%s' "$first" | grep -q 
 else fail "T2.3 (first='$first' second='$(ctx)')"; fi
 
 # --- 20 x 1,400-byte records: first batch <= 8,000 chars, rest next call, none lost
-h register leg2 leg con; L2="$(start_session leg2)"; h bind leg2 "$L2"
+h register leg2 worker con; L2="$(start_session leg2)"; h bind leg2 "$L2"
 n=0; while [ "$n" -lt 20 ]; do h append leg2 "$(node -e 'console.log(JSON.stringify({f:"con",c:1,b:"y".repeat(1400)}))')"; n=$((n + 1)); done
 seen=""; calls=0; maxlen=0
 while [ "$calls" -lt 12 ]; do
@@ -174,7 +174,7 @@ if [ "$maxlen" -le 8000 ] && [ "$got" = "$want" ] && [ "$calls" -ge 3 ]; then
 else fail "batch cap (max=$maxlen calls=$calls got='$got')"; fi
 
 # --- T2 2: a byte-copied record -> chain-break notice, body not emitted, halted, console told
-h register leg3 leg con; L3="$(start_session leg3)"; h bind leg3 "$L3"
+h register leg3 worker con; L3="$(start_session leg3)"; h bind leg3 "$L3"
 h append leg3 '{"f":"con","c":1,"b":"genuine"}'
 run_as leg3 "$(post)"
 dup="$(tail -n 1 "$ROOT/log/leg3.jsonl")"
@@ -189,7 +189,7 @@ if [ -z "$out" ]; then pass "halted log: later runs are silent (one notice only)
 if grep -q '"f":"bus"' "$ROOT/log/con.jsonl" && grep -q 'leg3' "$ROOT/log/con.jsonl"; then pass "console log carries the 'bus' notification about leg3"; else fail "console not notified"; fi
 
 # --- T6 1: a flipped byte in an undelivered record is not delivered
-h register leg4 leg con; L4="$(start_session leg4)"; h bind leg4 "$L4"
+h register leg4 worker con; L4="$(start_session leg4)"; h bind leg4 "$L4"
 h append leg4 '{"f":"con","c":1,"b":"untouched"}'
 h append leg4 '{"f":"con","c":1,"b":"to be flipped"}'
 sed -i 's/to be flipped/to be flippeD/' "$ROOT/log/leg4.jsonl"
@@ -199,7 +199,7 @@ if printf '%s' "$text" | grep -q 'chain broken at #2' && ! printf '%s' "$text" |
 else fail "T6.1 (out='$out')"; fi
 
 # --- SessionStart mirror: plain text, no JSON envelope
-h register leg5 leg con; L5="$(start_session leg5)"; h bind leg5 "$L5"
+h register leg5 worker con; L5="$(start_session leg5)"; h bind leg5 "$L5"
 h append leg5 '{"f":"con","c":1,"b":"on resume"}'
 printf '{"hook_event_name":"SessionStart","session_id":"s1","source":"resume"}' > "$WORK/in.start"
 RUN_HOOK="$REPO_ROOT/scripts/hooks/bus-deliver-sessionstart.sh" run_as leg5 "$WORK/in.start"
@@ -208,14 +208,14 @@ if printf '%s' "$out" | grep -q '^bus #1 from con:$' && printf '%s' "$out" | gre
 else fail "SessionStart (out='$out')"; fi
 
 # --- unbound claude (and an env name it does not own) gets nothing
-h register stranger leg con   # registered, never bound to a claude pid
+h register stranger worker con   # registered, never bound to a claude pid
 if h append stranger '{"f":"con","c":1,"b":"not yours"}'; then
     run_as stranger "$(post)"
     if [ -z "$out" ]; then pass "unbound session: silent"; else fail "unbound delivered (out='$out')"; fi
 else fail "unbound session: mail could not be queued, row proves nothing"; fi
 
 # --- lib pin: a pinned lib file whose bytes differ delivers nothing (fail closed)
-h register leg6 leg con; L6="$(start_session leg6)"; h bind leg6 "$L6"
+h register leg6 worker con; L6="$(start_session leg6)"; h bind leg6 "$L6"
 h append leg6 '{"f":"con","c":1,"b":"pinned"}'
 printf '{"session_id":"s1","pins":{"marketplace/plugins/himmel-bus/lib/store.mjs":"0000000000000000000000000000000000000000"}}' > "$WORK/integ/s1.json"
 run_as leg6 "$(post)"
@@ -225,7 +225,7 @@ run_as leg6 "$(post)"
 if ctx | grep -qF '| pinned'; then pass "lib integrity: no pin record -> fails open and delivers"; else fail "no-pin delivery (out='$out')"; fi
 
 # --- a many-line record is clipped to its own line cap, so one record cannot bust 200 lines
-h register leg8 leg con; L8="$(start_session leg8)"; h bind leg8 "$L8"
+h register leg8 worker con; L8="$(start_session leg8)"; h bind leg8 "$L8"
 h append leg8 "$(node -e 'console.log(JSON.stringify({f:"con",c:1,b:"a\n".repeat(700)}))')"
 h append leg8 '{"f":"con","c":1,"b":"after the long one"}'
 run_as leg8 "$(post)"; text="$(ctx)"
@@ -235,7 +235,7 @@ if [ "$nl" -le 200 ] && printf '%s' "$text" | grep -qF '[clipped; full: read 1]'
 else fail "many-line record (lines=$nl)"; fi
 
 # --- closed segments with an empty active log still deliver (fast path must not stop at size 0)
-h register leg9 leg con; L9="$(start_session leg9)"; h bind leg9 "$L9"
+h register leg9 worker con; L9="$(start_session leg9)"; h bind leg9 "$L9"
 h fill leg9 230 1200
 if ls "$ROOT/log/leg9".[0-9]* >/dev/null 2>&1; then : > "$ROOT/log/leg9.jsonl"; fi
 run_as leg9 "$(post)"; text="$(ctx)"
