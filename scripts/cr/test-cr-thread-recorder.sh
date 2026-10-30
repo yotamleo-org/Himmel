@@ -156,6 +156,16 @@ jq -n '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"111111111
 bash "$SUT" 21 >/dev/null 2>&1; rc=$?
 check "21: an unparseable outside-diff list exits 3" "$rc" "3"
 
+# ── the "## Follow-up Comments" review layout (real PR #4269 body) is recorded like the old list ──
+mkpr 26 feat/x26 MERGED 4000 "$FAR" "$T_OPEN"
+jq -n --rawfile body "$FIXB/pr-4269-followup-comments.body.txt" \
+  '[{id:1,user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"1111111111111111111111111111111111111111",submitted_at:"2026-10-20T09:50:00Z",body:$body}]' > "$FIX/reviews-26.json"
+bash "$SUT" 26 >/dev/null 2>&1; rc=$?
+check "26: a Follow-up Comments review exits 0" "$rc" "0"
+check "26: the Follow-up finding is a coderabbit-outside row" \
+  "$(grep '"pr":26,' "$LEDGER" | jq -r 'select(.model=="coderabbit-outside")|[.finding_id,.severity,.file,.line]|join(" ")')" \
+  "cr-od-4bf4bd0d34fe sug scripts/guardrails/test-guardrail-posix-paths.sh 18-35"
+
 # ── CodeRabbit's real comment format: a bold severity header line, then the bold title ──
 REAL_BODY="$(printf '_⚠️ Potential issue_ | _🟡 Minor_\n\n**<picture><img alt="Minor" src="x"/></picture> Minor** · **Stability & Availability** · **Quick win**\n\n**Select the finding title, not the header.**\n\nbecause reasons.')"
 mkpr 22 feat/x22 MERGED 4000 "$FAR" "$(thread T22 false 2026-10-20T08:30:00Z 2222222222222222222222222222222222222222 50 coderabbitai 'unused' "$REAL_BODY")"

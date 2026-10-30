@@ -256,6 +256,24 @@ nothing else survived a format change'
 # outside finding is superseded by a later substantive clean review.
 mk_two_head_reviews "$RESP_DIR/od-two-head-clean-latest.json" "$UID_OK" "$HEAD" "$(cat "$OD_BQ")" "$CLEAN_BODY"
 mk_json_from_str "$RESP_DIR/od-clean.json" "$UID_OK" "$HEAD" "$CLEAN_BODY"
+# CodeRabbit's "## Follow-up Comments" layout (real PR #4269 46aec573):
+# findings are <details> blocks with an "Outside diff" badge, no (N) header.
+OD_FOLLOWUP="$FIXDIR/pr-4269-followup-comments.body.txt"
+mk_json_from_file "$RESP_DIR/od-followup.json" "$UID_OK" "$HEAD" "$OD_FOLLOWUP"
+# A Follow-up Comments header with no parseable finding stays format drift.
+mk_json_from_str "$RESP_DIR/od-followup-header-only.json" "$UID_OK" "$HEAD" '## Follow-up Comments
+
+nothing else survived a format change'
+# A badge with no path/line/title lines under it: the count says 1, nothing parses out.
+mk_json_from_str "$RESP_DIR/od-followup-badge-only.json" "$UID_OK" "$HEAD" '## Follow-up Comments
+
+<details>
+<summary><sub><picture><img alt="Outside diff" src="x" /></picture></sub> Something.</summary>
+</details>'
+# A Follow-up badge of a kind this reader does not know: not silently ignored.
+sed 's/alt="Outside diff" src="https:\/\/storage.googleapis.com\/coderabbit_public_assets\/review-finding-badges-v1\/outside-diff.svg"/alt="Potential issue" src="x"/' "$OD_FOLLOWUP" > "$TMP/od-followup-other-badge.txt"
+mk_json_from_file "$RESP_DIR/od-followup-other-badge.json" "$UID_OK" "$HEAD" "$TMP/od-followup-other-badge.txt"
+mk_json_from_file "$RESP_DIR/od-followup-prior.json" "$UID_OK" "oldsha1" "$OD_FOLLOWUP"
 
 # to <name> <GH_STUB_MODE> <expected-rc> <expected-stdout>
 to() {
@@ -291,7 +309,16 @@ to od-header-without-finding   od-header-only    2 ""
 to od-clean-body-no-rows       od-clean          0 ""
 to od-shared-selector-later-clean-wins od-two-head-clean-latest 0 ""
 to od-wrong-user-id-no-rows    od-wrong-id       0 ""
-to od-infra-error-rc1          error             1 ""
+OD_FOLLOWUP_ROW="cr-od-4bf4bd0d34fe${TAB}sug${TAB}scripts/guardrails/test-guardrail-posix-paths.sh${TAB}18-35${TAB}Make the expected-deny graphify checks fail on the fence's abnormal-exit deny."
+to od-followup-comments-layout              od-followup                0 "$OD_FOLLOWUP_ROW"
+to od-followup-header-without-finding       od-followup-header-only    2 ""
+to od-followup-badge-without-fields         od-followup-badge-only     2 ""
+to od-followup-unknown-badge-drifts         od-followup-other-badge    2 ""
+t followup-comments-counted                 od-followup                0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t followup-header-without-finding-blocks    od-followup-header-only    2
+t followup-unknown-badge-blocks             od-followup-other-badge    2
+t followup-prior-head-counted               od-followup-prior          0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
+to od-infra-error-rc1         error             1 ""
 # cr_body_findings itself: the header variant "Outside the diff (N)" is now
 # COUNTED (before, outside read 0 and only the markers canary caught it).
 t the-diff-header-counted      od-range          0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"

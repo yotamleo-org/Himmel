@@ -161,6 +161,16 @@ def sum_matches(re):
   ( [ scan(re) ] | map( (if type=="array" then .[0] else . end) | tonumber ) | add ) // 0;
 def count_matches(re):
   ( [ scan(re) ] | length );
+# The "## Follow-up Comments" layout has no (N) header: each finding is a
+# <details> whose <summary> opens with a badge image, an "Outside diff" badge
+# for an outside-diff finding. One such badge = one finding. A Follow-up header
+# with no Outside-diff badge, or with a badge of any other kind, is drift.
+def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
+def fu_badge_re: "<summary><sub><picture>";
+def fu_od_re: "<summary><sub><picture>[^\n]*alt=\"Outside diff\"";
+def fu_drift:
+  test(fu_hdr_re) and ( count_matches(fu_od_re) == 0 or count_matches(fu_badge_re) != count_matches(fu_od_re) );
+def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
 def has_content: test("\\S");
 # CodeRabbit now writes counts as "comments: N" and
 # "<summary>path: N</summary>" beside the old "(N)". Rewrite the colon form to
@@ -190,12 +200,12 @@ _CBF_JQ_SELECT='
 _CBF_JQ_COUNTS='
 | ( [ $priorr[] | (.body // "" | norm) ] ) as $pb
 | {
-    outside:       ( $chosen | sum_matches(outside_re) ),
+    outside:       ( $chosen | outside_n ),
     nitpick:       ( $chosen | sum_matches(nitpick_re) ),
     additional:    ( $chosen | sum_matches(additional_re) ),
-    prior_outside: ( [ $pb[] | sum_matches(outside_re) ]    | add // 0 ),
+    prior_outside: ( [ $pb[] | outside_n ]    | add // 0 ),
     markers:       ( $chosen | count_matches(marker_re) ),
-    outside_drift:    ( $chosen | (test(loose_outside_re)    and (test(outside_re)|not)) ),
+    outside_drift:    ( $chosen | fu_drift or ((test(loose_outside_re) and (test(outside_re)|not)) and (count_matches(fu_od_re) == 0)) ),
     nitpick_drift:    ( $chosen | (test(loose_nitpick_re)    and (test(nitpick_re)|not)) ),
     additional_drift: ( $chosen | (test(loose_additional_re) and (test(additional_re)|not)) ),
     head_count:  ($headr | length),
@@ -240,7 +250,25 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
     elif (.cur != null and ($l | test("^\\*\\*.+\\*\\*[ ]*$"))) then
         .items += [ .cur + {title: ($l | capture("^\\*\\*(?<t>.+)\\*\\*[ ]*$").t | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))} ] | .cur = null
     else . end )
-| { hdr: .hdr, items: [ .items[] | select(.file != null) | {file, line, sev: sev_of(.sev // ""), title} ] }
+| { hdr: .hdr, items: [ .items[] | select(.file != null) | {file, line, sev: sev_of(.sev // ""), title} ] } as $old
+# "## Follow-up Comments": one finding per Outside-diff badge, then a
+# `<lines>`: severity line, a **bold title**, and an "Open the source location"
+# link whose blob URL carries the path. A finding lacking any of them is not
+# recorded, so the header count (the badges) then differs from the items.
+| ( reduce $L[] as $l ({hdr:0, cur:null, items:[]};
+    if ($l | test(fu_od_re)) then
+        .hdr += 1 | .cur = {file: null, line: null, sev: null, title: null}
+    elif (.cur != null and .cur.line == null and ($l | test("^`[0-9]+(?:-[0-9]+)?`:"))) then
+        .cur.line = ($l | capture("^`(?<l>[0-9]+(?:-[0-9]+)?)`:").l)
+        | .cur.sev = (($l | capture("(?<s>Critical|Major|Minor|Trivial)\\*\\*") // {s: ""}).s)
+    elif (.cur != null and .cur.line != null and .cur.title == null and ($l | test("^\\*\\*[^*<].*\\*\\*[ ]*$"))) then
+        .cur.title = ($l | capture("^\\*\\*(?<t>.+)\\*\\*[ ]*$").t | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))
+    elif (.cur != null and .cur.title != null and ($l | test("\\]\\(https://[^)/]+/[^)/]+/[^)/]+/blob/[^)/]+/[^)#]+#L"))) then
+        .items += [ .cur + {file: ($l | capture("/blob/[^/)]+/(?<f>[^)#]+)#L").f)} ] | .cur = null
+    else . end ) ) as $fu
+| { hdr: ($old.hdr + $fu.hdr),
+    items: ($old.items + [ $fu.items[] | {file, line, sev: sev_of(.sev // ""), title} ]),
+    drift: ($chosen | fu_drift) }
 '
 
 # the prior heads that still carry outside-diff findings. Groups the
@@ -253,7 +281,7 @@ _CBF_JQ_PRIOR_HEADS='
 | ( [ $priorr[] | select((.body // "") | has_content) ]
     | group_by(.commit_id)
     | map( sort_by(.submitted_at, .id) | .[-1] )
-    | map( select((.body // "" | norm) | sum_matches(outside_re) > 0) )
+    | map( select((.body // "" | norm) | outside_n > 0) )
     | sort_by(.submitted_at, .id)
     | map(.commit_id) ) as $heads
 | $heads[]
@@ -387,10 +415,15 @@ cr_body_outside_findings() {
         "$_CBF_JQ_DEFS$_CBF_JQ_SELECT$_CBF_JQ_OUTSIDE" 2>/dev/null || true)
     [ -n "$result" ] || return 1
 
-    local hdr n rows
+    local hdr n rows drift
     hdr=$(printf '%s' "$result" | jq -r '.hdr' 2>/dev/null || true)
     n=$(printf '%s' "$result" | jq -r '.items | length' 2>/dev/null || true)
+    drift=$(printf '%s' "$result" | jq -r '.drift' 2>/dev/null || true)
     case "$hdr$n" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$drift" = "true" ]; then
+        echo "cr-body-findings: a Follow-up Comments section has no parseable Outside-diff finding (or an unknown badge) for PR #$num at head $head (format drift)" >&2
+        return 2
+    fi
     if [ "$hdr" -ne "$n" ]; then
         echo "cr-body-findings: outside-diff header says $hdr finding(s) but $n parsed out for PR #$num at head $head (format drift)" >&2
         return 2
