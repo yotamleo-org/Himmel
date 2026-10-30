@@ -3352,8 +3352,8 @@ check_c74_config_split() {
         }' "$envfile")"
         for key in $names; do
             case "$(_himmel_key_class "$key")" in
-                # JIRA_BASE_URL is never moved: only .env serves it.
-                config) [ "$key" = JIRA_BASE_URL ] || cfg="${cfg:+$cfg, }$key" ;;
+                # An env-only key is never moved: only .env serves it.
+                config) ! _himmel_env_only_key "$key" || continue; cfg="${cfg:+$cfg, }$key" ;;
                 policy) present="$present $key" ;;
             esac
         done
@@ -3457,11 +3457,12 @@ check_c75_keyring() {
         emit OK C75-secrets "no secret comes from .env ($kr from the keyring, $other from the environment, $unset_n unset)"
     fi
     # A served credential whose paired setting resolves nowhere is a consumer that
-    # fails at its first call. JIRA_BASE_URL is read from the
-    # environment or .env only; the chat id also from himmel.conf.
+    # fails at its first call. An env-only setting is read from the
+    # environment or .env only; the chat ids also from himmel.conf (any layer).
+    # Optional defaulted keys (WHISPER_MODEL, FIRECRAWL_BASE_URL) are not paired.
     local pair secret setting miss="" confdir
     confdir="$(_himmel_config_dir)"
-    for pair in JIRA_API_TOKEN:JIRA_BASE_URL TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID; do
+    for pair in JIRA_API_TOKEN:JIRA_BASE_URL TELEGRAM_BOT_TOKEN:TELEGRAM_CHAT_ID TELEGRAM_BOT_TOKEN:TELEGRAM_GROUP_CHAT_ID; do
         secret="${pair%%:*}"; setting="${pair##*:}"
         layer="$(printf '%s\n' "$status_out" | sed -n "s/^$secret: //p")"
         case "$layer" in
@@ -3470,8 +3471,8 @@ check_c75_keyring() {
         esac
         [ -z "${!setting:-}" ] || continue
         case "$envnames" in *" $setting "*) continue ;; esac
-        if [ "$setting" != JIRA_BASE_URL ] \
-            && grep -qsE "^[[:space:]]*${setting}[[:space:]]*=[[:space:]]*[^[:space:]#]" "$confdir/himmel.conf.local" "$confdir/himmel.conf"; then
+        if ! _himmel_env_only_key "$setting" \
+            && grep -qsE "^[[:space:]]*${setting}[[:space:]]*=[[:space:]]*[^[:space:]#]" "$confdir/himmel.conf.local" "$(_himmel_profile_conf)" "$confdir/himmel.conf"; then
             continue
         fi
         miss="${miss:+$miss, }$setting"

@@ -254,7 +254,7 @@ EOF
         _ld_key="${_ld_line%%=*}"
         _ld_val=$(_load_dotenv_trim "${_ld_line#*=}")
         if declare -F _himmel_key_class >/dev/null 2>&1 \
-            && [ "$(_himmel_key_class "$_ld_key")" = secret ]; then
+            && { [ "$(_himmel_key_class "$_ld_key")" = secret ] || _himmel_chat_key "$_ld_key"; }; then
             if [ -z "$_ld_tracked" ]; then
                 _ld_tracked=0
                 if _load_dotenv_tracked "$_ld_envfile"; then
@@ -263,8 +263,12 @@ EOF
                 fi
             fi
             [ "$_ld_tracked" = 0 ] || continue
-            _ld_dotsecret[${#_ld_dotsecret[@]}]="$_ld_key"
-        elif declare -F _himmel_key_class >/dev/null 2>&1; then
+            if _himmel_chat_key "$_ld_key"; then
+                _ld_legacy[${#_ld_legacy[@]}]="$_ld_key"
+            else
+                _ld_dotsecret[${#_ld_dotsecret[@]}]="$_ld_key"
+            fi
+        elif declare -F _himmel_key_class >/dev/null 2>&1 && ! _himmel_env_only_key "$_ld_key"; then
             _ld_legacy[${#_ld_legacy[@]}]="$_ld_key"
         fi
         export "$_ld_key=$_ld_val"
@@ -414,6 +418,24 @@ _himmel_key_class() {
         *)
             printf 'secret' ;;
     esac
+}
+
+# Config keys no himmel.conf layer serves and import-env never moves: their
+# readers take the process env or the checkout .env only. JIRA_BASE_URL is a
+# credential destination, so a planted config must not redirect the token.
+_himmel_env_only_key() {
+    case "$1" in
+        JIRA_BASE_URL|FIRECRAWL_BASE_URL|WHISPER_MODEL) return 0 ;;
+    esac
+    return 1
+}
+
+# Chat ids pick where messages go, so a git-tracked .env must not serve them.
+_himmel_chat_key() {
+    case "$1" in
+        TELEGRAM_CHAT_ID|TELEGRAM_GROUP_CHAT_ID) return 0 ;;
+    esac
+    return 1
 }
 
 # Behaviour keys a repo's project file may set. Station-scope keys (paths,
@@ -580,7 +602,7 @@ _himmel_secret_dotenv_notice() {
 # _himmel_tracked_dotenv_notice <file> — one stderr line refusing a .env that
 # git tracks: a committed secret is already leaked, so none is served from it.
 _himmel_tracked_dotenv_notice() {
-    printf 'himmel: refusing secret keys from %s: the file is tracked by git. Rotate any secret it held and remove it from the index (git rm --cached).\n' "$1" >&2
+    printf 'himmel: refusing secret and chat-id keys from %s: the file is tracked by git. Rotate any secret it held and remove it from the index (git rm --cached).\n' "$1" >&2
 }
 
 # _himmel_policy_json <config.json> KEY... — print KEY=value for each key
@@ -619,9 +641,7 @@ _himmel_config_layers() {
     for _hc_key in "$@"; do
         case "$(_himmel_key_class "$_hc_key")" in
             config)
-                # A credential destination: a planted himmel.conf must not
-                # redirect the Jira token; .env alone serves it.
-                [ "$_hc_key" != JIRA_BASE_URL ] || continue
+                ! _himmel_env_only_key "$_hc_key" || continue
                 _hc_cfg[${#_hc_cfg[@]}]="$_hc_key"
                 if _himmel_project_scope "$_hc_key"; then
                     _hc_proj[${#_hc_proj[@]}]="$_hc_key"

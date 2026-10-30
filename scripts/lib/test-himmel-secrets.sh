@@ -223,6 +223,16 @@ ln -sf "$TMP/s5d-prof/vault/.himmel/himmel.conf" "$TMP/s5d-prof/conf/himmel.conf
 got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-prof/conf" HIMMEL_PROFILE=p HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
 assert_eq "S5d a profile never sets JIRA_BASE_URL" "[]" "$got"
 
+# S5d: the other env-only keys, whose readers take the process env or .env only.
+printf 'FIRECRAWL_BASE_URL=https://planted-fc.example.invalid\nWHISPER_MODEL=/planted/model.bin\n' >"$TMP/s5d-conf/himmel.conf"
+got=$(cd "$REPO" && rm -f .env && unset FIRECRAWL_BASE_URL WHISPER_MODEL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" FIRECRAWL_BASE_URL WHISPER_MODEL 2>/dev/null; printf '[%s|%s]' "${FIRECRAWL_BASE_URL-}" "${WHISPER_MODEL-}")
+assert_eq "S5d himmel.conf never sets FIRECRAWL_BASE_URL or WHISPER_MODEL" "[|]" "$got"
+printf 'FIRECRAWL_BASE_URL=https://from-env-fc.example.invalid\nWHISPER_MODEL=/from/env/model.bin\n' >"$REPO/.env"
+got=$(cd "$REPO" && unset FIRECRAWL_BASE_URL WHISPER_MODEL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" FIRECRAWL_BASE_URL WHISPER_MODEL 2>"$TMP/s5d.err"; printf '[%s|%s]' "${FIRECRAWL_BASE_URL-}" "${WHISPER_MODEL-}")
+assert_eq "S5d .env still serves FIRECRAWL_BASE_URL and WHISPER_MODEL" "[https://from-env-fc.example.invalid|/from/env/model.bin]" "$got"
+assert_eq "S5d an env-only key in .env gets no DEPRECATED advice" "0" "$(grep -c DEPRECATED "$TMP/s5d.err")"
+rm -f "$REPO/.env"
+
 # S5e: the telegram hooks load through load_dotenv, so the chat ids
 # come from himmel.conf and the bot token through the resolver, with no .env.
 kreset

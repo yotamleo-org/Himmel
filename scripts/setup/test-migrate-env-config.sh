@@ -140,7 +140,7 @@ VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
 for key in $identifiers; do
     printf '%s=dummy-identifier\n' "$key" >> "$ENVF"
 done
-printf 'JIRA_API_TOKEN=dummy-secret\nJIRA_BASE_URL=https://dummy.example\nTELEGRAM_GROUP_CHAT_ID=dummy-chat\n' >> "$ENVF"
+printf 'JIRA_API_TOKEN=dummy-secret\nJIRA_BASE_URL=https://dummy.example\nFIRECRAWL_BASE_URL=https://dummy-fc.example\nWHISPER_MODEL=/dummy/model.bin\nTELEGRAM_GROUP_CHAT_ID=dummy-chat\n' >> "$ENVF"
 before=$(cat "$ENVF")
 out=$(bash "$SCRIPT" --env "$ENVF" --dry-run 2>&1)
 rc=$?
@@ -163,7 +163,7 @@ for key in $identifiers; do
         fail "migration did not copy an active $key assignment"
     fi
 done
-for key in JIRA_API_TOKEN JIRA_BASE_URL; do
+for key in JIRA_API_TOKEN JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
     lacks "dry run excludes $key" "$key" "$preview"
     lacks "identifier migration leaves $key behind" "$key" "$conf"
 done

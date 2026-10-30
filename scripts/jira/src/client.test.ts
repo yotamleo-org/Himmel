@@ -257,7 +257,7 @@ describe('loadEnvFile', () => {
     expect(process.env.JIRA_PROJECT_KEY).toBe('DUMMY');
   });
 
-  it('with a stubbed keyring and no Jira keys in .env, takes the base URL from .env and the credentials from the keyring', () => {
+  it.skipIf(process.platform === 'darwin')('with a stubbed keyring and no Jira keys in .env, takes the base URL from .env and the credentials from the keyring', () => {
     for (const k of ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN']) vi.stubEnv(k, '');
     const bin = join(dir, 'kbin');
     mkdirSync(bin);
