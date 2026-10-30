@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Resolve the Bash interpreter for Claude Code hooks before running the hook.
-// On Windows, bare `bash` can resolve to the WSL launcher or the 0-byte
-// WindowsApps alias instead of Git Bash. This launcher selects a concrete,
-// usable executable and fails closed when none exists. Node is intentionally
+// This launcher selects a concrete, usable executable and fails closed when
+// none exists. Node is intentionally
 // required before the hook starts: if Node is missing, the launcher blocks the
 // action rather than risking a guard script failing open under another shell.
 'use strict';
@@ -63,59 +62,16 @@ function normalize(candidate) {
   return String(candidate || '').replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
-function isKnownBadWindowsBash(candidate) {
-  const low = normalize(candidate).toLowerCase();
-  return low.includes('/windows/system32/bash.exe') ||
-    low.includes('/windows/sysnative/bash.exe') ||
-    low.includes('/windowsapps/bash.exe');
-}
-
-function isUsable(candidate, platform = process.platform) {
-  if (!candidate || (platform === 'win32' && isKnownBadWindowsBash(candidate))) return false;
+function isUsable(candidate) {
+  if (!candidate) return false;
   try {
     const stat = fs.statSync(candidate);
     if (!stat.isFile()) return false;
-    // Windows App Execution Aliases are 0-byte reparse points. Refuse any
-    // zero-byte candidate even if it appears outside the usual WindowsApps dir.
-    if (platform === 'win32' && stat.size === 0) return false;
-    if (platform !== 'win32') fs.accessSync(candidate, fs.constants.X_OK);
+    fs.accessSync(candidate, fs.constants.X_OK);
     return true;
   } catch (_e) {
     return false;
   }
-}
-
-function windowsCandidates(env) {
-  const p = path.win32;
-  const candidates = [];
-  const addRoot = (root) => {
-    if (!root) return;
-    candidates.push(p.join(root, 'Git', 'bin', 'bash.exe'));
-    candidates.push(p.join(root, 'Git', 'usr', 'bin', 'bash.exe'));
-  };
-
-  addRoot(env.ProgramFiles);
-  addRoot(env['ProgramFiles(x86)']);
-  if (env.LOCALAPPDATA) addRoot(p.join(env.LOCALAPPDATA, 'Programs'));
-  // Keep canonical locations even when a non-Windows test or stripped process
-  // environment omits ProgramFiles.
-  addRoot('C:\\Program Files');
-  addRoot('C:\\Program Files (x86)');
-
-  const pathDirs = String(env.PATH || env.Path || '').split(';').filter(Boolean);
-  for (const dir of pathDirs) {
-    const base = p.basename(dir).toLowerCase();
-    let gitRoot = null;
-    if (base === 'bin' && p.basename(p.dirname(dir)).toLowerCase() === 'usr') gitRoot = p.dirname(p.dirname(dir));
-    else if (base === 'cmd' || base === 'bin') gitRoot = p.dirname(dir);
-    if (gitRoot) {
-      candidates.push(p.join(gitRoot, 'bin', 'bash.exe'));
-      candidates.push(p.join(gitRoot, 'usr', 'bin', 'bash.exe'));
-    }
-    candidates.push(p.join(dir, 'bash.exe'));
-    candidates.push(p.join(dir, 'bash'));
-  }
-  return candidates;
 }
 
 function posixCandidates(env) {
@@ -128,10 +84,9 @@ function posixCandidates(env) {
 }
 
 function resolveBash(options = {}) {
-  const platform = options.platform || process.platform;
   const env = options.env || process.env;
-  const usable = options.isUsable || ((candidate) => isUsable(candidate, platform));
-  const candidates = platform === 'win32' ? windowsCandidates(env) : posixCandidates(env);
+  const usable = options.isUsable || isUsable;
+  const candidates = posixCandidates(env);
   const seen = new Set();
   for (const candidate of candidates) {
     const key = normalize(candidate).toLowerCase();
@@ -587,7 +542,6 @@ function chainRefusal(members) {
 // On POSIX each member leads its own process group, so a member killed for
 // its bound takes its children (a jq it waits on) with it.
 function spawnMember(bash, member, input, bound) {
-  const group = process.platform !== 'win32';
   const result = spawnSync(bash, [member], {
     input,
     env: process.env,
@@ -595,10 +549,9 @@ function spawnMember(bash, member, input, bound) {
     timeout: bound,
     killSignal: 'SIGKILL',
     maxBuffer: MEMBER_MAX_BUFFER,
-    windowsHide: true,   // HIMMEL-2043: no console flash per hook call
-    detached: group,
+    detached: true,
   });
-  if (group && result.pid && result.error && (result.error.code === 'ETIMEDOUT' || result.error.code === 'ENOBUFS')) {
+  if (result.pid && result.error && (result.error.code === 'ETIMEDOUT' || result.error.code === 'ENOBUFS')) {
     try { process.kill(-result.pid, 'SIGKILL'); } catch (_e) { /* the group already ended */ }
   }
   return result;
@@ -1005,7 +958,6 @@ function shfmt(args, input, deadline) {
     timeout: remaining,
     killSignal: 'SIGKILL',
     maxBuffer: MEMBER_MAX_BUFFER,
-    windowsHide: true,
   });
   return !result.error && result.status === 0 ? result.stdout : null;
 }
@@ -1319,7 +1271,6 @@ function main() {
     input,
     stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
     env: process.env,
-    windowsHide: true,   // HIMMEL-2043
     ...(capture ? { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 } : {}),
   });
   if (result.error && !isRecoverableEpipe(result)) {
@@ -1351,13 +1302,11 @@ module.exports = {
   MIN_MEMBER_TIMEOUT_MS,
   MUST_RUN_CHAIN_MEMBERS,
   memberTimeoutMs,
-  isKnownBadWindowsBash,
   isRecoverableEpipe,
   isUsable,
   mergeHookOutputs,
   resolveBash,
   unrollCommand,
-  windowsCandidates,
   // Re-exported from ./hook-integrity.js so the launcher's test surface is
   // unchanged by the module split.
   gitBlobSha1,

@@ -1700,12 +1700,13 @@ test('a gate the enqueuing session did not set is not inherited from the worker'
 // job an environment with no PATH and no HOME — far worse than inheriting.
 test('a snapshot-less entry falls back to inheriting rather than starving', () => {
   const env = jobEnv({}, {
-    PATH: '/a/bin', HOME: '/a', SYSTEMROOT: 'C:\\Windows',
+    PATH: '/a/bin', HOME: '/a', LANG: 'en_US.UTF-8', SYSTEMROOT: 'C:\\Windows',
     HIMMEL_JIRA_NUDGE: '1', HIMMEL_MQTT_PASS: 'shibboleth',
   });
   assert.equal(env.PATH, '/a/bin');
   assert.equal(env.HOME, '/a');
-  assert.equal(env.SYSTEMROOT, 'C:\\Windows');
+  assert.equal(env.LANG, 'en_US.UTF-8');
+  assert.equal(env.SYSTEMROOT, undefined);
   // Enough environment to RUN, and no more. This
   // branch used to take snapshotOwns, whose ENV_PREFIXES half is a wildcard —
   // `^HIMMEL_` also admits HIMMEL_MQTT_PASS, and PASS is not a denylist shape.
@@ -1920,12 +1921,12 @@ test('the allowlist base carries the system names and drops everything unnamed',
     // On the allowlist by shape, but the denylist fence runs after it.
     SSH_AUTH_SOCK: '/tmp/agent',
   });
-  for (const name of ['SYSTEMROOT', 'ComSpec', 'PATHEXT', 'ProgramFiles(x86)', 'windir',
-    'MSYSTEM', 'LANG', 'LC_ALL', 'TZ', 'NVM_DIR', 'XDG_CONFIG_HOME']) {
+  for (const name of ['LANG', 'LC_ALL', 'TZ', 'NVM_DIR', 'XDG_CONFIG_HOME']) {
     assert.ok(name in env, `${name} must reach the job — the interpreter half of the base`);
   }
   for (const name of ['GGS_MQTT_PASS', 'LUNA_VAULT_PATH', 'JAVA_HOME', 'SSH_AUTH_SOCK',
-    'XDG_MQTT_PASS', 'NVM_MQTT_PASS']) {
+    'XDG_MQTT_PASS', 'NVM_MQTT_PASS', 'SYSTEMROOT', 'ComSpec', 'PATHEXT',
+    'ProgramFiles(x86)', 'windir', 'MSYSTEM']) {
     assert.equal(env[name], undefined, `${name} crossed from the worker's session`);
   }
 });
@@ -1951,7 +1952,7 @@ test('the allowlist admits no name it does not spell out', () => {
     'FNM_MQTT_PASS', 'VOLTA_MQTT_PASS', 'ASDF_MQTT_PASS']) {
     assert.equal(snapshotOwns(name), false, `${name} is admitted by a wildcard, not by name`);
   }
-  for (const name of ['XDG_CONFIG_HOME', 'LC_ALL', 'MSYSTEM', 'NVM_DIR', 'VOLTA_HOME']) {
+  for (const name of ['XDG_CONFIG_HOME', 'LC_ALL', 'NVM_DIR', 'VOLTA_HOME']) {
     assert.equal(snapshotOwns(name), true, `${name} must still be inheritable by name`);
   }
   // [codex-1 r6] ENV_ALWAYS was matched case-sensitively while everything else
