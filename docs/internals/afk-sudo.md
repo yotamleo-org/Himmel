@@ -48,8 +48,7 @@ created lazily): argv, `run_as` and its uid/gid, the absolute path of argv[0] an
 sha256 of its realpath, every argv element that resolves to a regular file (the resolved
 path, sha256, size, whether its body was kept), what every argv element resolved to (`targets`:
 one `file:<path>`, `dir:<path>` or `none:<path>` entry per element, `none:` holding the path a
-name that does not exist yet would land on, or the text of a word with a component over 255
-bytes, which can name nothing (a `python -c` program is one); an empty entry is an element that is no path: empty,
+name that does not exist yet would land on; an empty entry is an element that is no path: empty,
 over 4096 characters, holding a NUL, or `/dev/null`), cwd and its device/inode, the env names, the stdin
 size and sha256, session, ticket, `blocked_by`, why, created and expires. Its
 canonical-JSON hash (sorted keys, no spaces, all fields except `id`) is stored in the
@@ -64,9 +63,15 @@ broker's pending payload, not next to the record.
   passes), a FIFO, socket or device, an existing file that cannot be opened and hashed, and
   an element whose path the kernel cannot walk are refused, never skipped. "Cannot walk" is a
   strict `realpath` that fails for any reason but a missing name or a non-directory in the way:
-  a walk past PATH_MAX in bytes, a loop, a directory that cannot be searched. Plain `realpath`
-  is not enough there: it keeps a link it cannot `lstat` as a plain name and a later `..` pops
-  that name lexically, so the string it returns is not where the kernel lands. Through the CLI
+  a walk past PATH_MAX in bytes, a name past 255 bytes (so a `python -c` program with a
+  slash-bearing run that long is refused too; put it in a file), a loop, a directory that cannot
+  be searched. Plain `realpath` is not enough there: it keeps a link it cannot `lstat` as a plain
+  name and a later `..` pops that name lexically, so the string it returns is not where the
+  kernel lands. That holds behind a missing name too (`install -D` creates it, then walks on
+  through the link), so the walk goes on past a missing name with `os.path.ALLOW_MISSING`, which
+  tolerates only a missing name, in link targets as well. A Python without it (before 3.14,
+  unless the tarfile CVE-2025-4517 fix was backported; Ubuntu's `python3.12` has it from
+  3.12.3-1ubuntu0.7) refuses a `..` after a missing name instead. Through the CLI
   the floor reads the element first, so the answer is `result=never-remote rule=oversize` with
   a ledger row; `bad-file` (exit 5, no ledger row) is what a request the floor passes gets. At exec
   every element, argv[0] included, must resolve to the same target as at request, so a

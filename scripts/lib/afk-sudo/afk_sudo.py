@@ -187,25 +187,23 @@ def bind_target(a, cwd):
     """What an argv element names, as the kernel resolves it (links first, then ..): ("file", path),
     ("dir", path), ("none", path) when nothing is there yet (path is where it would land, so a
     link moved above it or a dangling link retargeted changes it), or None for an element that
-    is no path (empty, NUL, over 4096 characters, /dev/null). A word with a component over
-    NAME_MAX is ("none", path) too: no such name exists, a `python -c` program is one. A pseudo-file
+    is no path (empty, NUL, over 4096 characters, /dev/null). A pseudo-file
     (under /proc, /sys, /dev; only /dev/null is let through), a FIFO or other non-regular file, an
     entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a strict realpath
     fails for any reason but a missing name, such as a link past PATH_MAX that plain realpath would
-    leave as a name) raise BadFile: a run that is not bound by hash must not go ahead."""
+    leave as a name, or a name past NAME_MAX, a `python -c` program with a long run among them)
+    raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
         return None
     joined = a if a.startswith("/") else os.path.join(cwd, a)
-    lex, text = os.path.normpath(joined), nr.long_name(a)
-    real = os.path.realpath(joined) if text else nr.landing(joined)
+    lex = os.path.normpath(joined)
+    real = nr.landing(joined)
     if real is None:
         raise BadFile(a)
     if real == "/dev/null":
         return None
     if lex.startswith(PSEUDO) or real.startswith(PSEUDO):
         raise BadFile(a)
-    if text:
-        return "none", real
     try:
         mode = os.stat(real).st_mode
     except OSError as e:

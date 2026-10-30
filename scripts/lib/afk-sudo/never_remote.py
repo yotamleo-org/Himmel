@@ -24,23 +24,28 @@ import re
 TRIM = "\"'`;&|(){}<>,"
 HOME_FORMS = ("~", "$HOME", "${HOME}")
 MAX_FORMS = 64
-NAME_MAX = 255
-
-
-def long_name(w):
-    """True when a `/`-separated component is longer than NAME_MAX: the kernel answers ENAMETOOLONG for it,
-    so no such name exists and the word is text, not a path (a `python -c` program is one)."""
-    return any(len(os.fsencode(c)) > NAME_MAX for c in w.split("/"))
 
 
 def landing(p):
     """Where the kernel lands for the absolute path p, or None when the walk fails. A strict realpath asks the
-    kernel at every step; non-strict realpath treats a link it cannot lstat (path past PATH_MAX, EACCES)
-    as a plain name (and pops it lexically on a later `..`), so its string is not where the kernel lands.
-    A missing name or a non-directory in the way is a path that is simply not there: the lexical form is its landing."""
+    kernel at every step; non-strict realpath treats a link it cannot lstat (path past PATH_MAX, a name past
+    NAME_MAX, EACCES) as a plain name (and pops it lexically on a later `..`), so its string is not where the
+    kernel lands. A non-directory in the way is a path that is simply not there: its lexical form is its landing.
+    A missing name is not: a later link that fails would be skipped by a plain realpath (`install -D` creates the
+    missing name, then walks on), so the walk goes on past it with ALLOW_MISSING, which tolerates a missing name
+    and fails on every other error, link targets included. A Python without ALLOW_MISSING (before 3.14, unless
+    the tarfile CVE-2025-4517 fix was backported) cannot do that: it refuses a `..` after a missing name."""
     try:
         return os.path.realpath(p, strict=True)
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError:
+        allow = getattr(os.path, "ALLOW_MISSING", None)
+        if allow is not None:
+            try:
+                return os.path.realpath(p, strict=allow)
+            except OSError:
+                return None
+        return None if ".." in p.split("/") else os.path.realpath(p)
+    except NotADirectoryError:
         return os.path.realpath(p)
     except OSError:
         return None
@@ -71,8 +76,6 @@ def _path_forms(w, cwd, home):
     # A bare word (`rm`) only names a path under cwd if that path exists; else cwd `/` makes `/rm`.
     if "/" not in w and not w.startswith(HOME_FORMS) and not os.path.lexists(n):
         return set()
-    if long_name(p):
-        return {n}
     try:
         r = landing(p)  # realpath of the joined path: `link/..` is the link target's parent
     except ValueError:  # a NUL in the word (a binary file's text): it names no path, the lexical form is all there is

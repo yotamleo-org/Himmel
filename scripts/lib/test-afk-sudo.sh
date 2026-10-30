@@ -488,14 +488,41 @@ new_root tgtnosearch; cfg "$ALL" true
 mkdir "$R/closed"; chmod 000 "$R/closed"
 assert_contains "a directory the helper cannot search fails closed in the floor, not read as a name that is not there" "rule=oversize" "$(rr 0 --cwd "$R" -- cat closed/x)"
 chmod 700 "$R/closed"
+new_root tgtlongmissing; cfg "$ALL" true
+long_tree
+assert_eq "a .. behind a missing name is refused" "BadFile" "$(bt m/../L/x/lnk/../../../../out)"
+assert_contains "a floor target behind a missing name fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat m/../L/x/lnk/../../../../sh)"
+new_root tgtmissingdeep; cfg "$ALL" true
+deep=$(python3 -I -c 'print(("m/" + ("b" * 99 + "/") * 41)[:4090])')
+assert_eq "a missing name then components, joined past PATH_MAX, is refused, not keyed none" "BadFile" "$(bt "$deep")"
+printf 'x\n' > "$R/f"
+assert_contains "a non-directory in the way is a name that is not there, filed as none" "none:" "$(bt f/x)"
+assert_eq "a non-directory then components, joined past PATH_MAX, is refused, not keyed none" "BadFile" "$(bt "f${deep#m}")"
+new_root tgtnoallow
+assert_eq "without ALLOW_MISSING a .. after a missing name is refused and a plain missing name still lands" "None ok" "$(python3 -I -c '
+import os, sys, types
+sys.path.insert(0, sys.argv[1])
+import never_remote as n
+class NoAllow:
+    def __getattr__(self, k):
+        if k == "ALLOW_MISSING":
+            raise AttributeError(k)
+        return getattr(os.path, k)
+n.os = types.SimpleNamespace(path=NoAllow())
+base = os.path.realpath(sys.argv[2])
+print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+new_root tgtlongname; cfg "$ALL" true
+name=$(python3 -I -c 'print("a" * 300)')
+assert_eq "a name over 255 bytes is refused, not keyed none" "BadFile" "$(bt "$name")"
+assert_contains "a name over 255 bytes is refused as bad-file, a bare word the floor does not read as a path" "result=bad-file" "$(rr 0 --cwd "$R" -- cat "$name")"
+new_root tgtlongtext; cfg "$ALL" true
+prog=$(python3 -I -c 'print("x" * 4000 + "/" + "y" * 85)')
+assert_contains "a python -c program with a component over 255 bytes is refused, not filed" "rule=oversize" "$(rr 0 --cwd "$R" -- python3 -c "$prog")"
 new_root tgtglued; cfg "$ALL" true
 mkdir "$R/safe" "$R/elsewhere"; printf 'job\n' > "$R/job"; ln -s "$R/safe" "$R/d"
 out=$(rr 0 --cwd "$R" -- dd if=job of="$R/d/out"); id=$(rid "$out")
 ln -sfn "$R/elsewhere" "$R/d"
 assert_contains "pin, documented: a glued of=path element is keyed by its lexical string, so a link above it moved after the request is not seen" "result=ran" "$(approve_r 3 "$id" "$(code 3)")"
-new_root tgtlongtext; cfg "$ALL" true
-prog=$(python3 -I -c 'print("x" * 4000 + "/" + "y" * 85)')
-assert_contains "control: a word with a component over 255 characters (a python -c program) is filed, not refused" "result=pending" "$(rr 0 --cwd "$R" -- python3 -c "$prog")"
 
 echo "== slice 1a (judge KS-j4307-1): a partial config never falls back to root's home =="
 new_root opghost; me_real=$me; me=ghost-operator; cfg "$ALL" true; me=$me_real
@@ -654,6 +681,7 @@ expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
 expect_rule approval-system tee /etc/sudoers
 expect_rule approval-system visudo
 expect_rule approval-system bash scripts/lib/afk-sudo/install.sh
+assert_eq "the floor holds a file under /etc/sudoers.d, which install.sh writes" "True" "$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import never_remote as n; print(n._approval_system({"/etc/sudoers.d/x"}, "/home/op"))' "$LIB")"
 expect_rule none cat /etc/hosts
 expect_rule none ls /var/lib/dpkg
 expect_rule guards-off sed -i s/a/b/ /home/op/.claude/settings.local.json # gnu-ok: a fixture argv for the floor, never run
