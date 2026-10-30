@@ -354,9 +354,9 @@ token6da="$(token_of "$out6da")"
 doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-chief.md"
 doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-chief.md"
 mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.relay-on-live"
-rm -f "$mark6d"  # earlier rows' plain `next` calls share this session name and now leave the marker
+printf 'STALE\n' > "$mark6d"  # earlier rows' plain `next` calls share this session name and leave a marker
 chief next --bucket reldemo --no-relay-on-live >/dev/null
-check "6d next --no-relay-on-live leaves no relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+check "6d next --no-relay-on-live removes an existing relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
 rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
 chief next --bucket reldemo >/dev/null
 check "6d plain next writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"

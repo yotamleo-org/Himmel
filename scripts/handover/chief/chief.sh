@@ -2178,6 +2178,9 @@ cmd_next() {
         if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
             && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
             echo "relay-on-live: $pred_inbox.relay-on-live"
+        elif [ "$RELAY_ON_LIVE" -eq 0 ]; then
+            # an opt-out retry must not leave an earlier attempt's marker armed for the old successor
+            rm -f "$pred_inbox.relay-on-live"
         fi
     fi
 
