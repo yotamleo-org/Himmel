@@ -915,6 +915,12 @@ check_both "103g fromP: cd scratch && echo x > lnk/out.txt (plain symlink name i
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200/out.txt\",\"cwd\":\"$FIX/primary\"}}"
 check_both "103h fromP: cd scratch && echo x > f\$(date) denies, as on main (accepted over-deny)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > f\$(date)\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104a fromP: cd scratch && echo x > lnk\$((8))/out.txt (arithmetic flattened to a plain word) denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > lnk8200\$((8))/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104b fromP: cd scratch && echo x > \$(pwd)/out.txt (pwd stub) denies, as on main" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > \$(pwd)/out.txt\",\"cwd\":\"$FIX/primary\"}}"
+check_both "104c fromP: cd scratch && echo x > out.txt still allows (no dynamic text)" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
