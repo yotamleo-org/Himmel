@@ -53,7 +53,8 @@ print(" ".join(c["id"] for c in cases if c["request"] in text))' "$HERE/cases/se
 has "dry run: lists a sealed case by id" "$dry" "$first_sealed sealed (sealed)"
 eq "dry run: never prints a sealed request" "$(leaks <<<"$dry")" ""
 has "dry run: the leak check catches a planted sealed request" "$(leaks --plant <<<"$dry")" "$first_sealed"
-eq "dry run: one line per case" "$(grep -cE '^[os][0-9]+ ' <<<"$dry")" "$(cat "$HERE/cases/open.jsonl" "$HERE/cases/sealed.jsonl" | grep -c .)"
+eq "dry run: one line per case, each case once" "$(grep -oE '^[os][0-9]+ ' <<<"$dry" | tr -d ' ' | sort)" \
+    "$(python3 -c 'import json,sys; [print(json.loads(l)["id"]) for f in sys.argv[1:] for l in open(f, encoding="utf-8") if l.strip()]' "$HERE/cases/open.jsonl" "$HERE/cases/sealed.jsonl" | sort)"
 eq "billed run: refused without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK bash "$RUN" --model haiku --out "$TMP/x" >/dev/null 2>&1; echo $?)" "2"
 
 # --- fixture listing, cases, stub claude and stub preflight ---
