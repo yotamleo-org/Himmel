@@ -18,6 +18,7 @@ setting, but never looser.
 | Project override | `<repo>/.himmel/project.conf` | the repo's maintainers (a hook refuses agent writes) | yes, in the adopted repo | project-scope behaviour keys (never station paths or identity), and gate-policy keys that may only tighten |
 | Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
+| Station profile | `<vault>/.himmel/profiles/<name>.conf`, found beside the link target of `~/.himmel/himmel.conf` | operator, reviewable | yes, in the vault | the same behaviour keys, for one named station; `himmel.conf` is the DEFAULT profile |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
 | Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`, `ENV_MIGRATION_CONSENT`, `HIMMEL_FLEET_CAP` |
 | Adopter config | `~/.himmel/config.json`, other fields | `himmelctl install`; `jira.sectorField` by the operator | no | luna cadence, bridge, PHI declarations, the Jira Sector field id (`jira.sectorField`) |
@@ -37,9 +38,10 @@ Behaviour keys, read by `load_dotenv` in `scripts/lib/load-dotenv.sh`:
 1. the process environment (a non-empty value)
 2. `<repo>/.himmel/project.conf`, project-scope keys only
 3. `~/.himmel/himmel.conf.local`
-4. `~/.himmel/himmel.conf`
-5. legacy `.env`, with a `DEPRECATED` notice on stderr
-6. the consumer's own default
+4. the active station profile (next section), when one is named
+5. `~/.himmel/himmel.conf`, the DEFAULT profile
+6. legacy `.env`, with a `DEPRECATED` notice on stderr
+7. the consumer's own default
 
 Gate-policy keys, read by `load_policy` in `scripts/lib/load-dotenv.sh`:
 
@@ -129,6 +131,35 @@ never the project file. Outside a git repo there is no project file.
 - A project file that exists but cannot be read or parsed, including a
   symlink whose target is gone or a directory, makes `load_policy` return
   non-zero, so the gate refuses instead of guessing.
+
+### Station profiles
+
+`~/.himmel/himmel.conf` is the DEFAULT profile. A named profile is
+`<vault>/.himmel/profiles/<name>.conf`, in the same `KEY=value` form, parsed
+and never executed. It sits in the vault beside the file `himmel.conf` links
+to, so it is tracked with DEFAULT; a plain `himmel.conf` (no vault link) has no
+profiles.
+
+- **Selecting one**: `HIMMEL_PROFILE=<name>` in the process environment, else
+  a `HIMMEL_PROFILE=<name>` line in `~/.himmel/himmel.conf.local`, which is
+  per machine and never tracked. The tracked files cannot select a profile. A
+  name that is not a plain file stem (letters, digits, `.`, `_`, `-`; no
+  leading dot) selects nothing, so a name cannot walk out of `profiles/`.
+- **Layering**: a profile key beats DEFAULT, and loses to the process env,
+  the project file and `himmel.conf.local`. A key the profile lacks falls
+  through to DEFAULT.
+- **Behaviour keys only**: the profile is read by the same class filter as
+  `himmel.conf`, so a gate-policy or secret key in it is never honoured.
+  Policy still comes only from `config.json`, read by `load_policy`, which
+  never opens a profile.
+- **Creating one**: `bash scripts/setup/migrate-env-config.sh --vault <dir>
+  --profile <name>` makes `<dir>/.himmel/`, links `himmel.conf` into it, and
+  creates an empty `profiles/<name>.conf`. Re-run it with only `--profile
+  <name>` on a linked vault. It needs no `.env`, and never overwrites an
+  existing profile.
+- **Uninstall**: profiles live in the vault, behind the `himmel-conf` link,
+  so `--purge-state` unlinks `himmel.conf` and never touches them; no manifest
+  row is added.
 
 ### Failure behaviour
 
