@@ -77,6 +77,71 @@ new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf
 # arm <inbox> <outfile> <seconds>: one foreground arm that exits on a wake or after <seconds> (rc 124)
 arm() { timeout "$3" bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
 
+# --- (8197) digest and urgent worker changes -------------------------------------------
+# Removing the buffer splits three housekeeping events; putting BLOCKED in that
+# buffer delays a worker who needs a ruling. Keep setup isolated from pool rows.
+housekeeping_cases() (
+    local digest_rc
+    export HOUSEKEEPING_DIGEST_SECS=2 WAIT_SWEEP_SEC=1 CHIEF_WAIT_BOARD_STALE_MIN=0
+    cat > "$STUB/digest-tick.sh" <<'EOF'
+#!/usr/bin/env bash
+n=0; [ ! -f "$STUB/samples" ] || read -r n < "$STUB/samples"
+n=$((n + 1)); printf '%s\n' "$n" > "$STUB/samples"
+if [ -f "$STUB/urgent" ]; then
+    [ "$n" -le 2 ] || exit 1
+    if [ "$n" -eq 2 ]; then sed 's/tails=N1:ACK/tails=N1:BLOCKED/' "$STUB/digest.line"; exit 0; fi
+elif [ "$n" -ge 2 ]; then
+    sed 's/tails=N1:ACK/tails=N1:LIVE/' "$STUB/digest.line"; exit 0
+fi
+cat "$STUB/digest.line"
+EOF
+    cat > "$STUB/digest-sweep.sh" <<'EOF'
+#!/usr/bin/env bash
+[ ! -f "$STUB/swept" ] || exit 0
+: > "$STUB/swept"
+printf 'status-sweep moved=1 wake=1\n'
+EOF
+    sed 's/capacity=UNDERFILLED:7/capacity=ok/;s/board=ok/board=STALE:2h/;s/tails=N1:LIVE/tails=N1:ACK/' "$STUB/tick.line" > "$STUB/digest.line"
+    export CHIEF_WAIT_TICK="$STUB/digest-tick.sh" WAIT_SWEEP_CMD="$STUB/digest-sweep.sh"
+    printf '# chief\n\n## Results\n' > "$WORK/digest-chief.md"
+    I="$(new_inbox digest)"
+    timeout 9 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/digest.out" 2> "$WORK/digest.err"; digest_rc=$?
+    check '(8197) three housekeeping events inside one window give one wake' '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/digest.out"):$(grep -c '^WAKE housekeeping .*board-stale.*status-sweep.*tick' "$WORK/digest.out")"
+    check '(8197) the digest includes all three event payloads' '1:1:1' "$(grep -c '^board-stale board=STALE:2h' "$WORK/digest.out"):$(grep -c '^status-sweep status-sweep moved=1 wake=1' "$WORK/digest.out"):$(grep -c '^tick changed=tails ' "$WORK/digest.out")"
+
+    export HOUSEKEEPING_DIGEST_SECS=30 WAIT_SWEEP_CMD="$STUB/off.sh"
+    : > "$STUB/urgent"; rm -f "$STUB/samples"
+    I="$(new_inbox urgent)"
+    timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/urgent.out" 2> "$WORK/urgent.err"; digest_rc=$?
+    check '(8197) a BLOCKED event wakes on its first changed sample, not after the housekeeping window' '0:1' "$digest_rc:$(grep -c '^WAKE tick .*tails' "$WORK/urgent.out")"
+    check '(8197) an urgent exit retains the queued housekeeping' yes "$([ -s "$I.wait.housekeeping" ] && echo yes)"
+    printf '%s\n' "$(( $(date +%s) - 31 ))" > "$I.wait.housekeeping.since"
+    timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/resume.out" 2> "$WORK/resume.err"; digest_rc=$?
+    check '(8197) a re-arm emits the due retained digest even when the tick fails' '0:1:1' "$digest_rc:$(grep -c '^WAKE housekeeping' "$WORK/resume.out"):$(grep -c '^board-stale board=STALE:2h' "$WORK/resume.out")"
+
+    unset HOUSEKEEPING_DIGEST_SECS
+    rm -f "$STUB/urgent" "$STUB/samples"
+    I="$(new_inbox defaultwindow)"
+    timeout 3 bash "$WAIT" "$I" --workers N1.md > "$WORK/default.out" 2> "$WORK/default.err"; digest_rc=$?
+    check '(8197) the default window buffers housekeeping instead of waking at once' '124:0:yes' "$digest_rc:$(grep -c '^WAKE ' "$WORK/default.out"):$([ -s "$I.wait.housekeeping" ] && echo yes)"
+    printf '%s\n' "$(( $(date +%s) - 901 ))" > "$I.wait.housekeeping.since"
+    timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/defaultdue.out" 2> "$WORK/defaultdue.err"; digest_rc=$?
+    check '(8197) the default window expires after 900 seconds' '0:1' "$digest_rc:$(grep -c '^WAKE housekeeping' "$WORK/defaultdue.out")"
+
+    export HOUSEKEEPING_DIGEST_SECS=0
+    rm -f "$STUB/urgent" "$STUB/samples"
+    I="$(new_inbox unbatched)"
+    timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/unbatched.out" 2> "$WORK/unbatched.err"; digest_rc=$?
+    check '(8197) zero disables batching and preserves the original wake line' '0:WAKE board-stale board=STALE:2h' "$digest_rc:$(head -n1 "$WORK/unbatched.out")"
+    [ "$fails" -eq 0 ]
+)
+if ! housekeeping_cases; then fails=$((fails + 1)); fi
+if [ "${1:-}" = housekeeping ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]
+    exit "$?"
+fi
+
 # --- (rp) the pool grows from empty during one streak ------------------------------------
 I="$(new_inbox rp)"
 arm "$I" "$WORK/rp1.out" 6

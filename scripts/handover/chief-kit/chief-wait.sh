@@ -10,7 +10,16 @@
 # required: the default background limit is also 30 min and killed a waiter
 # once); the harness re-invokes the session when the command
 # exits. It stays silent while nothing
-# happens and exits, printing one WAKE block, on the first real event:
+# happens and exits, printing one WAKE block, on an urgent event or when the
+# housekeeping window ends. HOUSEKEEPING_DIGEST_SECS defaults to 900; 0 keeps
+# the original unbatched output. Board changes, status sweeps and informational
+# LIVE/ACK/WRAPPED/MERGED marker changes share a persisted housekeeping buffer.
+# Telegram, actionable worker events, succession and handover-budget stay urgent.
+# Exit-on-WAKE and re-arming remain; this does not provide persistent delivery.
+#
+#   WAKE housekeeping kinds=<sorted kinds>  one window of buffered housekeeping,
+#   <kind> <detail>...                       no additional WAKE lines in its body.
+#
 #
 #   WAKE telegram               unread lines in <inbox-file> (the bridge's
 #   <line>...                   `/chief <name>` appends), via inbox-follow.sh
@@ -338,6 +347,33 @@ digest_flush() {
          END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)\n", n, l, m, p }' "$digest_file"
     : > "$digest_file"
 }
+# Housekeeping has its own persisted buffer: an urgent wake must not discard
+# events already waiting for their window. Zero retains the pre-digest output.
+housekeeping_file="$inbox.wait.housekeeping"
+housekeeping_secs="${HOUSEKEEPING_DIGEST_SECS:-900}"
+case "$housekeeping_secs" in ''|*[!0-9]*|??????????*) housekeeping_secs=900 ;; esac
+housekeeping_secs=$((10#$housekeeping_secs))
+housekeeping_add() { # <kind> <detail>; success means an unbatched wake was printed
+    if [ "$housekeeping_secs" -eq 0 ]; then
+        printf 'WAKE %s %s\n' "$1" "$2"
+        return 0
+    fi
+    [ -e "$housekeeping_file.since" ] || date +%s > "$housekeeping_file.since"
+    printf '%s %s\n' "$1" "$2" >> "$housekeeping_file"
+    return 1
+}
+housekeeping_flush() {
+    local since kinds
+    [ -s "$housekeeping_file" ] || return 1
+    since="$(cat "$housekeeping_file.since" 2>/dev/null)"  # swallow-ok: a torn first write restarts the window
+    case "$since" in ''|*[!0-9]*) date +%s > "$housekeeping_file.since"; return 1 ;; esac
+    [ $(( $(date +%s) - since )) -ge "$housekeeping_secs" ] || return 1
+    kinds="$(cut -d' ' -f1 "$housekeeping_file" | LC_ALL=C sort -u | paste -sd, -)"
+    printf 'WAKE housekeeping kinds=%s\n' "$kinds"
+    cat "$housekeeping_file"
+    rm -f "$housekeeping_file" "$housekeeping_file.since"
+    return 0
+}
 trap 'digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
@@ -503,6 +539,33 @@ changed_fields() { # <old key> <new key>
         fi
     } | paste -sd, -
     rm -f "$hb_file.old"
+}
+
+# Only the closed informational marker list may wait. A new READY, BLOCKED,
+# FINDING or unknown marker is an immediate worker event, even on one sample.
+worker_changes_routine() { # <old key> <new key>
+    awk -v old="$1" -v new="$2" '
+    function collect(k, before,   n,a,i,f,v,m,t,j) {
+        n = split(k, a, "|")
+        for (i = 1; i <= n; i++) {
+            f = a[i]; sub(/=.*/, "", f)
+            if (f != "tails" && f != "acts") continue
+            v = substr(a[i], length(f) + 2); m = split(v, t, ",")
+            for (j = 1; j <= m; j++) {
+                if (before) seen[f SUBSEP t[j]] = 1
+                else if (t[j] != "none" && !((f SUBSEP t[j]) in seen) &&
+                         t[j] !~ /:(MERGED|WRAPPED|LIVE|ACK)(#[0-9]+)?$/) urgent = 1
+            }
+        }
+    }
+    BEGIN { collect(old, 1); collect(new, 0); exit urgent ? 1 : 0 }'
+}
+tick_housekeeping() { # <changed fields> <old key> <new key>
+    local f
+    for f in $(printf '%s' "$1" | tr ',' ' '); do
+        case "$f" in board|tails|acts) ;; *) return 1 ;; esac
+    done
+    worker_changes_routine "$2" "$3"
 }
 
 # key_field: <name> <key> — the value of one field inside a pipe-joined key
@@ -1339,19 +1402,31 @@ while :; do
                 exit_reason='wake-tracker-stale'; exit 0
             fi
             if board_stale_wake "$(field board "$tick_line")"; then
-                printf 'WAKE board-stale board=%s\n%s\n' "$(field board "$tick_line")" "$tick_line"
-                exit_reason='wake-board-stale'; exit 0
+                if housekeeping_add board-stale "board=$(field board "$tick_line")"; then
+                    printf '%s\n' "$tick_line"
+                    exit_reason='wake-board-stale'; exit 0
+                fi
             fi
             if predecessor_close; then exit_reason='wake-predecessor-open'; exit 0; fi
             if budget_wake; then exit_reason='wake-handover-budget'; exit 0; fi
-            if sweep_wake; then exit_reason='wake-status-sweep'; exit 0; fi
+            if sweep_out="$(sweep_wake)"; then
+                sweep_out="${sweep_out#WAKE }"
+                case "$sweep_out" in
+                    status-sweep\ *)
+                        if housekeeping_add status-sweep "${sweep_out#status-sweep }"; then
+                            exit_reason='wake-status-sweep'; exit 0
+                        fi ;;
+                    *) printf 'WAKE %s\n' "$sweep_out"; exit_reason='wake-focus'; exit 0 ;;
+                esac
+            fi
             cur_hash="$(printf '%s' "$key" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit
             if [ -z "$saved" ]; then
                 saved="$key"; save_key "$key"
             elif [ "$key" = "$saved" ]; then
                 pending=""
-            elif [ -n "$pending" ]; then
-                # Two consecutive samples off the saved key, equal or not: a
+            elif [ -n "$pending" ] || ! worker_changes_routine "$saved" "$key"; then
+                # Worker requests bypass debounce; other changes require
+                # two consecutive samples off the saved key, equal or not: a
                 # key that moves on every sample (a busy repo's PR set) is
                 # still a change, not a blip. A board class move TO ok is
                 # never itself a wake (only a move to STALE/MISSING is), so
@@ -1362,6 +1437,9 @@ while :; do
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key" dispatch)"
                 if [ -z "$real_changed" ]; then
+                    saved="$key"; save_key "$key"; pending=""
+                elif [ "$housekeeping_secs" -gt 0 ] && tick_housekeeping "$real_changed" "$saved" "$key"; then
+                    housekeeping_add tick "changed=$real_changed usage=${key##*|usage=} $tick_line"
                     saved="$key"; save_key "$key"; pending=""
                 else
                     page_denials "$saved" "$key"
@@ -1392,6 +1470,9 @@ while :; do
                 exit_reason='wake-tick-fail'; exit 0
             fi
         fi
+    fi
+    if [ -z "$handover_live" ] && housekeeping_flush; then
+        exit_reason='wake-housekeeping'; exit 0
     fi
     heartbeat waiting
     sleep "$poll" 9>&-
