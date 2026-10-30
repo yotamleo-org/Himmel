@@ -448,11 +448,13 @@ def cmd_judge(a):
                     "Bash", "Read", "Edit", "Write", "Grep", "Glob", "Agent", "WebFetch", "WebSearch"]
             run_segment(argv, scratch, stream, 900, stdin_text=judge_prompt(rd))
             j = summarize_streams([stream], 200000)
-            m = re.findall(r"SCORE:\s*(\d+)", j["reply"])
-            if not m:   # a null score is retried by the next `judge`; its cost stays counted
-                print("ab.py: judge gave no SCORE for %s" % rd, file=sys.stderr)
+            lines = [ln for ln in j["reply"].splitlines() if re.match(r"[\s*_#>-]*SCORE:", ln)]   # the last line that starts with the SCORE label is the verdict; an earlier one never stands in for it, and SUBSCORE is not one
+            m = re.match(r"[\s*_#>-]*SCORE:\s*(\d+)[\s.*]*$", lines[-1]) if lines else None
+            score = int(m.group(1)) if m and j["result_ok"] and 1 <= int(m.group(1)) <= 10 else None
+            if score is None:   # a null score is retried by the next `judge`; its cost stays counted
+                print("ab.py: judge gave no usable SCORE (1 to 10 on a clean result) for %s" % rd, file=sys.stderr)
             with open(os.path.join(rd, "judge.json"), "w") as fh:
-                json.dump({"score": int(m[-1]) if m else None, "cost_eq": prev_cost + j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
+                json.dump({"score": score, "cost_eq": prev_cost + j["cost_eq"], "reply": j["reply"][-300:]}, fh, indent=1)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
     return 0
@@ -489,13 +491,15 @@ def cell_row(task, arm, runs):
 
 def recommend(rows):
     """Best quality wins; arms within 0.05 of the best check share and 1 judge point of the best judge score
-    are level on quality, and the cheapest of those wins."""
+    are level on quality, and the cheapest of those wins. An arm no judge scored cannot win; with none
+    judged there is no recommendation."""
+    rows = [r for r in rows if r["judge"] is not None]
     if not rows:
         return None
     best_c = max(r["check"] or 0 for r in rows)
     band = [r for r in rows if (r["check"] or 0) >= best_c - 0.05]
-    best_j = max(r["judge"] or 0 for r in band)
-    level = [r for r in band if (r["judge"] or 0) >= best_j - 1]
+    best_j = max(r["judge"] for r in band)
+    level = [r for r in band if r["judge"] >= best_j - 1]
     return min(level, key=lambda r: r["cost_eq"] or 0)
 
 

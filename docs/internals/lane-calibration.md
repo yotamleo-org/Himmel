@@ -88,12 +88,14 @@ line in `launch-logs/<session>.log` carries `role=consult` and `console=` (the c
 cost is joined later from the session transcript, not written at launch.
 
 `worker-impl` is the profile a worker gets from
-`headed-arm-worker.sh --profile worker-impl`. **There is exactly one worker profile, and
-that is deliberate:** it is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — HIMMEL-4017
+`headed-arm-worker.sh --profile worker-impl`. **The worker profiles are thin on purpose:** `worker-impl`
+is `lane-impl` minus `i-have-adhd` (the operator reads chief windows, not worker windows) — HIMMEL-4017
 audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
-sibling profiles for docs or upstream work would either resolve to `bare` and
-lose the floor's guards and skills or duplicate `worker-impl` exactly. What
+a profile by skill set would either resolve to `bare` and
+lose the floor's guards and skills or duplicate `worker-impl` exactly. `worker-eval` and
+`worker-docs` exist to carry a different context setting, not a different roster (see
+**Per-profile ceilings** below). What
 distinguishes it is the legacy `contextBudget: 35000` target, **not a
 measured attainable floor**. The context-budget audit below retains it for lack of
 three attributable workers; measure a real worker with `scripts/lanes/worker-burn.sh`.
@@ -646,8 +648,24 @@ member ceiling, and `1m` only when a member explicitly declares it.
 design worker needs no env or brief override. All other profiles, including design
 kit add-ons launched alone, remain `standard` / `200000`. Integer ceilings below
 200000 or above 1000000, malformed fields and unknown profiles refuse; a
-standard profile cannot declare a ceiling above 200000. Child autocompact
+standard profile cannot declare a ceiling above 200000 in `autocompact`. Child autocompact
 inheritance remains **UNMEASURED**: no real session was launched for this audit.
+
+A standard profile may add two Sonnet-only fields, `sonnetAutocompact` (200000 to
+450000) and `sonnetContextGuard` (`compact` or `handoff`). `headed-arm-worker.sh`
+resolves them **once**, and only for the **native lane on a Sonnet 5.5 model** (the `claude-sonnet-5-5` family):
+`worker-impl` gets 450000 with the hand-off guard, `worker-eval` 450000 with the
+compaction guard (stricter than the measured arm c), `worker-docs` stays 200000. Every
+other lane, an older Sonnet, the bare `sonnet` alias, Opus and Fable keep 200000 with
+no guard. The wrapper hands the value to `headed-arm.sh` in `HEADED_ARM_SONNET_AUTOCOMPACT`
+(same PID pairing as the A/B marker); the renderer never re-derives it from a model string
+the wrapper may have rewritten. `WORKER_SESSION_CONTEXT=1m` drops the profile's ceiling
+and its guard together; an explicit `--context-guard` (including `none`) wins over the
+profile's. The A/B arm needs the plain 200000 ceiling, so it runs on `worker-docs`;
+`gen-briefs.py` refuses an `ab_arm` on a profile that has a Sonnet ceiling, and defaults a
+worker whose Writes are all under `docs/` or `*.md` to `worker-docs`. The `arm-resume.sh`
+successor path does not apply these fields: `arm-resume.sh --tier worker` pins
+`--autocompact 200000` with no guard, so a Sonnet successor runs at 200000.
 
 `WORKER_SESSION_CONTEXT=1m` plus the sanctioned brief line
 `> **Context:** 1m — operator-ruling: <reason>` remains a per-worker override to
@@ -772,7 +790,7 @@ measured** — do not assume a `standard` worker makes its children compact earl
 | lane | default mode | override |
 |---|---|---|
 | chief arm (`*-chief.md`) | `standard` | `CHIEF_CONTEXT=1m` |
-| headed worker / worker arm | profile default (`design`: `1m` / 1000000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| headed worker / worker arm | profile default (`design`: `1m` / 1000000; Sonnet 5.5 `worker-impl` and `worker-eval` on the native lane: `standard` / 450000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
 Given that, the chief-side mitigation is a lean parent (the

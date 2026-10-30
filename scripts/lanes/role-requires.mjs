@@ -27,6 +27,8 @@ export const ROLE_REQUIRES = {
   'code-ui': ['playwright@claude-plugins-official'],
   'lane-impl': ['lean-skills@himmel'],
   'worker-impl': ['himmel-ops@himmel'],
+  'worker-eval': ['himmel-ops@himmel'],
+  'worker-docs': ['himmel-ops@himmel'],
   'worker-bus': ['himmel-ops@himmel'],
   'worker-e2e': ['himmel-ops@himmel'],
   'worker-vm': ['himmel-ops@himmel'],

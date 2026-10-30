@@ -2,7 +2,7 @@ name: codeowner-review-gate
 
 # HIMMEL-3372. Produces the status check `codeowner-review-gate`: code-owner
 # review is mandatory for OUTSIDE pull requests only; the owner's own PRs (every
-# console leg PR) pass on author permission and keep merging through
+# console worker PR) pass on author permission and keep merging through
 # merge-on-green.sh. A ruleset cannot scope a review rule by author (a direct
 # attempt blocked owner PR #1039 and was reverted), hence a check. Decision
 # logic + tests: scripts/ci/codeowner-review-gate.mjs,

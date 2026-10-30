@@ -15,7 +15,8 @@
 #
 # Verdict rule, per live `-n <name>` claude session:
 #   - a worker (the real -n name contains -worker and does not end -console or -chief) must
-#     carry --autocompact 200000; anything else is DRIFT.
+#     carry --autocompact 200000, or 450000 on a claude-sonnet-5 model (a profile's
+#     sonnetAutocompact); anything else is DRIFT.
 #   - a chief (-n name ends -console or -chief) is exempt -- 1m/auto is its design.
 #   - anything else (an operator relaunch, any other -n name) is DRIFT if
 #     its ceiling is auto or unset.
@@ -73,7 +74,8 @@ NF < 4 { next }
     is_chief = (name ~ /-(console|chief)$/)
     is_worker = (name ~ /-worker/) && !is_chief
 
-    if (is_worker)          { drift = (ceiling != "200000") }
+    # A profile may give a claude-sonnet-5 worker 450000; any other worker is 200000.
+    if (is_worker)          { drift = (ceiling != "200000" && !(ceiling == "450000" && $3 ~ /^claude-sonnet-5/)) }
     else if (is_chief) { drift = 0 }
     else                 { drift = (ceiling == "auto" || ceiling == "unset") }
 

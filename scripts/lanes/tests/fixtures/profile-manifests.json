@@ -152,6 +152,24 @@
     ],
     "contextBudget": 55000
   },
+  "worker-eval": {
+    "enabled": [
+      "handover@himmel",
+      "himmel-ops@himmel",
+      "lean-skills@himmel",
+      "qmd@himmel"
+    ],
+    "contextBudget": 55000
+  },
+  "worker-docs": {
+    "enabled": [
+      "handover@himmel",
+      "himmel-ops@himmel",
+      "lean-skills@himmel",
+      "qmd@himmel"
+    ],
+    "contextBudget": 55000
+  },
   "worker-bus": {
     "enabled": [
       "handover@himmel",

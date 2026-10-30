@@ -795,6 +795,13 @@
       "CADENCE_POWERSHELL_OK AGENTS_MD_OK PUSH_FOREIGN_REF_OK DOC_GUARD_OK"
     ]
   },
+  "scripts/lib/render-lease.sh": {
+    "reason": "one-release compatibility reader for existing msys registry-lock owners; new locks write POSIX pid tags",
+    "lines": [
+      "            pid:*|msys:*) # Read legacy tags for one release.",
+      "    if [ \"$owner\" = \"pid:$$\" ] || [ \"$owner\" = \"msys:$$\" ]; then # Legacy reader."
+    ]
+  },
   "scripts/lib/session-transcript.sh": {
     "reason": "names the PowerShell tool for guard coverage or transcript parsing",
     "lines": [
