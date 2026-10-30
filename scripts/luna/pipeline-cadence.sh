@@ -429,9 +429,8 @@ status_log() {
 emit_settings_fragment() {
     local hook_path="$1"
     # Two cadence-scoped controls live beside
-    # auto-approve-safe-bash.sh. Derive their paths in the SAME form the caller
-    # already resolved for hook_path (cygpath -m on Windows, POSIX elsewhere),
-    # so no new path plumbing or signature change is needed. The deny wires
+    # auto-approve-safe-bash.sh. Derive their paths beside hook_path.
+    # The deny wires
     # FIRST so a run_in_background deny is evaluated before any allow (an exit-2
     # deny wins over a hook allow regardless, but deny-first is unambiguous);
     # the enumerated-engine allow follows; auto-approve stays last. These three
@@ -446,65 +445,10 @@ emit_settings_fragment() {
     local deny_bg_hook="$hooks_dir/cadence-deny-background.sh"
     local approve_engines_hook="$hooks_dir/cadence-approve-engines.sh"
     local deny_pwsh_hook="$hooks_dir/cadence-deny-powershell.sh"
-    # Emit an ABSOLUTE interpreter path, never a bare `bash`.
-    # Under raw CreateProcess order a bare `bash` resolves to
-    # C:\Windows\System32\bash.exe — the WSL stub, which cannot read a
-    # C:/Users/... Windows path (the recurring WSL trap). The
-    # fragment works today only because the v8 runner format prepends a GNU
-    # PATH (1b34a070); that is one PATH change away from silently breaking
-    # every cadence hook, and this function emits three such commands. Resolve
-    # ONCE here. Mixed (forward-slash) form to match hook_path and stay
-    # JSON-safe — `cygpath -m`, never `-w`. Prefer $BASH (the interpreter
-    # actually running this script) over a PATH lookup, which a hermetic-PATH
-    # stub can shadow.
+    # Pin the running interpreter rather than depending on the scheduler's PATH.
     local bash_cmd="${BASH:-}"
     [ -n "$bash_cmd" ] || bash_cmd=$(command -v bash 2>/dev/null) || bash_cmd="/usr/bin/bash"
-    if command -v cygpath >/dev/null 2>&1; then
-        bash_cmd=$(cygpath -m "$bash_cmd" 2>/dev/null || printf '%s' "$bash_cmd")
-    fi
-    # A System32 resolution IS the WSL stub — reject it outright rather than
-    # emitting a fragment that is broken in exactly the way this fix prevents.
-    # Probe the common Git-for-Windows prefixes before retaining the canonical
-    # path as a legible last-resort value when no installation is executable.
-    local git_bash_candidate local_appdata_fs
-    # LOCALAPPDATA is Windows-form with backslashes under Git Bash. Fold to
-    # forward slashes before building a candidate from it — an un-folded
-    # backslash path both fails the `-x` test unreliably AND, if it somehow
-    # resolved, would land in bash_cmd and get interpolated raw into the JSON
-    # fragment below, where backslashes are invalid JSON escaping.
-    # shellcheck disable=SC1003
-    local_appdata_fs=$(printf '%s' "${LOCALAPPDATA:-}" | tr '\\' '/')
-    case "$bash_cmd" in
-        *[Ss]ystem32*)
-            bash_cmd=""
-            for git_bash_candidate in \
-                "C:/Program Files/Git/bin/bash.exe" \
-                "C:/Program Files (x86)/Git/bin/bash.exe" \
-                "${local_appdata_fs:+${local_appdata_fs}/Programs/Git/bin/bash.exe}"
-            do
-                [ -n "$git_bash_candidate" ] || continue
-                if [ -x "$git_bash_candidate" ]; then
-                    bash_cmd="$git_bash_candidate"
-                    break
-                fi
-            done
-            # No candidate above was executable — the
-            # canonical last-resort assignment below names an interpreter
-            # that does NOT exist on this machine. The emitted hook commands
-            # will reference it anyway, and hooks fail non-blocking (exit !=
-            # 2), so this loses cadence protections SILENTLY. Warn loudly on
-            # stderr before falling back (stdout is the JSON fragment the
-            # caller consumes — never write this there).
-            [ -n "$bash_cmd" ] || echo "WARNING: no usable Git Bash interpreter detected at any candidate prefix; hooks will reference C:/Program Files/Git/bin/bash.exe, which does not exist — cadence hooks will silently fail non-blocking until Git for Windows is installed at a probed prefix." >&2
-            [ -n "$bash_cmd" ] || bash_cmd="C:/Program Files/Git/bin/bash.exe"
-            ;;
-    esac
-    # The Git-Bash path contains a space ("C:/Program Files/..."), so the
-    # interpreter is quoted in the emitted command — \" in the JSON source,
-    # a literal quote in the decoded string. The hook paths are quoted for the
-    # same reason (a checkout under a spaced path would otherwise split), which
-    # is the convention himmel's own .claude/settings.json hook wiring uses for
-    # every argument.
+    # Quote both interpreter and hook paths so a spaced checkout stays intact.
     # A headless cadence session cannot answer a permission ask,
     # so the 2026-10-03 harvest's Skill call came back user-rejected and the
     # whole chain no-oped. Allow exactly the obsidian-triage commands the worker
