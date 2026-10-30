@@ -163,27 +163,31 @@ eq "sweep: one cell ran before the ceiling" "$(find "$O" -name summary.json | wc
 python3 "$AB" sweep --out "$O" --tasks docs --arms a,c --reps 1 --ceiling 1000000000 --scales docs=0.05 >"$TMP/sw2.out" 2>&1; rc=$?
 eq "sweep: a rerun resumes and finishes" "$rc" "0"
 eq "sweep: two cells in all, none redone" "$(find "$O" -name summary.json | wc -l | tr -d ' ')" "2"
-eq "sweep: a bad --scales is a usage error" "$(python3 "$AB" sweep --out "$TMP/ob2" --tasks docs --scales nope=1 >/dev/null 2>&1; echo $?)" "2"
+eq "sweep: a bad --scales is a usage error" "$(python3 "$AB" sweep --out "$TMP/ob2" --tasks docs --ceiling 1000000000 --scales nope=1 >/dev/null 2>&1; echo $?)" "2"
 
 # an invalid cell is priced, kept, reported and re-run on request
 O3="$TMP/oi"
-AB_STUB_MSGS=1 AB_STUB_STEP=100000 python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --scale 0.05 >/dev/null 2>&1
+AB_STUB_MSGS=1 AB_STUB_STEP=100000 python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --ceiling 1000000000 --scale 0.05 >/dev/null 2>&1
 eq "sweep: a cell that never compacted is recorded invalid" "$(jget "$O3/docs/a/1/summary.json" invalid_reason)" "no-compaction"
 python3 "$AB" score --out "$O3" >"$TMP/score3.out" 2>&1
 has "score: names the invalid run and does not score it" "$(cat "$TMP/score3.out")" "INVALID docs a rep 1: no-compaction"
-python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --scale 0.05 >/dev/null 2>&1
+python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --ceiling 1000000000 --scale 0.05 >/dev/null 2>&1
 eq "sweep: without --rerun-invalid the invalid cell stays" "$(jget "$O3/docs/a/1/summary.json" valid)" "false"
-python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --scale 0.05 --rerun-invalid >/dev/null 2>&1
+python3 "$AB" sweep --out "$O3" --tasks docs --arms a --reps 1 --ceiling 1000000000 --scale 0.05 --rerun-invalid >/dev/null 2>&1
 eq "sweep --rerun-invalid: the cell is re-run to a valid result" "$(jget "$O3/docs/a/1/summary.json" valid)" "true"
 eq "sweep --rerun-invalid: the invalid run is kept for the spend" "$(find "$O3/docs/a" -maxdepth 1 -name '1.invalid-1' | wc -l | tr -d ' ')" "1"
 O2="$TMP/os2"
-AB_PREFLIGHT="$TMP/pf-hold.sh" python3 "$AB" sweep --out "$O2" --tasks docs --arms a --reps 1 --scale 0.05 >/dev/null 2>&1; rc=$?
+AB_PREFLIGHT="$TMP/pf-hold.sh" python3 "$AB" sweep --out "$O2" --tasks docs --arms a --reps 1 --ceiling 1000000000 --scale 0.05 >/dev/null 2>&1; rc=$?
 eq "sweep: a bank preflight that does not PROCEED stops it" "$rc" "3"
 eq "sweep: and runs nothing" "$(find "$O2" -name summary.json 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 # --- judge: blind, one score per run ---
 : >"$AB_STUB_LOG"
-python3 "$AB" judge --out "$O" >/dev/null 2>&1
+python3 "$AB" judge --out "$O" --ceiling 1 >/dev/null 2>&1; rc=$?
+eq "judge: stops at the ceiling before any call" "$rc/$(find "$O" -name judge.json | wc -l | tr -d ' ')/$(wc -l <"$AB_STUB_LOG" | tr -d ' ')" "3/0/0"
+AB_PREFLIGHT="$TMP/pf-hold.sh" python3 "$AB" judge --out "$O" --ceiling 1000000000 >/dev/null 2>&1; rc=$?
+eq "judge: a bank preflight that does not PROCEED stops it before any call" "$rc/$(find "$O" -name judge.json | wc -l | tr -d ' ')/$(wc -l <"$AB_STUB_LOG" | tr -d ' ')" "3/0/0"
+python3 "$AB" judge --out "$O" --ceiling 1000000000 >/dev/null 2>&1
 eq "judge: a score per run" "$(jget "$O/docs/a/1/judge.json" score)" "8"
 eq "judge: both valid runs scored" "$(find "$O" -name judge.json | wc -l | tr -d ' ')" "2"
 jp="$(python3 -c 'import json,sys
@@ -196,13 +200,57 @@ hasnt "judge: the prompt does not name the arm or the ceiling" "$jp" "autocompac
 hasnt "judge: nor the hand-off" "$jp" "HANDOFF"
 has "judge: it asks for a SCORE" "$jp" "SCORE:"
 hasnt "judge: the prompt goes on stdin, not in argv (a long diff would pass the per-argument limit)" "$ja" "Rate the work"
-AB_STUB_NOSCORE=1 python3 "$AB" judge --out "$O3" >/dev/null 2>&1
+AB_STUB_NOSCORE=1 python3 "$AB" judge --out "$O3" --ceiling 1000000000 >/dev/null 2>&1
 eq "judge: a reply with no SCORE leaves the run unscored" "$(jget "$O3/docs/a/1/judge.json" score)" "null"
 c1="$(jget "$O3/docs/a/1/judge.json" cost_eq)"
 eq "judge: and still counts the attempt's cost" "$([ "$c1" -gt 0 ] && echo yes)" "yes"
-python3 "$AB" judge --out "$O3" >/dev/null 2>&1
+python3 "$AB" judge --out "$O3" --ceiling 1000000000 >/dev/null 2>&1
 eq "judge: the next judge pass retries it" "$(jget "$O3/docs/a/1/judge.json" score)" "8"
 eq "judge: and adds to the cost already spent" "$([ "$(jget "$O3/docs/a/1/judge.json" cost_eq)" -gt "$c1" ] && echo yes)" "yes"
+
+# --- the whole diff reaches the judge; a failing diff is an invalid run ---
+OB="$TMP/obig"; : >"$AB_STUB_LOG"
+AB_STUB_BIGDIFF=250000 run docs a "$OB" >/dev/null
+eq "run: final.diff is not cut at 200000 chars" "$([ "$(jget "$OB/docs/a/1/summary.json" diff_chars)" -gt 200000 ] && echo whole)" "whole"
+eq "run: and diff_chars is the size of the file" "$(jget "$OB/docs/a/1/summary.json" diff_chars)" "$(python3 -c 'import sys; print(len(open(sys.argv[1]).read()))' "$OB/docs/a/1/final.diff")"
+: >"$AB_STUB_LOG"
+python3 "$AB" judge --out "$OB" --ceiling 1000000000 >/dev/null 2>&1
+bp="$(python3 -c 'import json,sys
+for l in open(sys.argv[1]):
+    print(json.loads(l)["prompt"])' "$AB_STUB_LOG")"
+has "judge: the end of a long diff reaches the judge" "$bp" "BIGDIFF-END-MARKER"
+hasnt "judge: and it is not labelled truncated" "$bp" "truncated"
+mkdir "$TMP/badbin"; printf '#!/usr/bin/env bash\nexit 2\n' >"$TMP/badbin/diff"; chmod +x "$TMP/badbin/diff"
+PATH="$TMP/badbin:$PATH" run docs a "$TMP/odiff" >/dev/null
+eq "run: a diff that fails is an invalid run, not an empty change" "$(jget "$TMP/odiff/docs/a/1/summary.json" valid)/$(jget "$TMP/odiff/docs/a/1/summary.json" invalid_reason)" "false/diff-error"
+
+# --- the run timer stops a stuck session ---
+AB_STUB_HANG=1 AB_STUB_MSGS=8 AB_STUB_STEP=60000 timeout 60 python3 "$AB" run --task docs --arm c --rep 1 --scale 0.05 --timeout 3 --out "$TMP/otm" >/dev/null 2>&1   # gnu-ok: local-tier suite, hang guard
+eq "run: a session still going at --timeout is stopped and invalid" "$(jget "$TMP/otm/docs/c/1/summary.json" valid)/$(jget "$TMP/otm/docs/c/1/summary.json" invalid_reason)" "false/timeout"
+
+# --- sweep and judge need the billed opt-in and a positive ceiling ---
+eq "sweep: refuses without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK python3 "$AB" sweep --out "$TMP/ox2" --ceiling 1000000000 >/dev/null 2>&1; echo $?)" "2"
+eq "judge: refuses without HIMMEL_BILLED_OK" "$(env -u HIMMEL_BILLED_OK python3 "$AB" judge --out "$O" --ceiling 1000000000 >/dev/null 2>&1; echo $?)" "2"
+eq "sweep: refuses without --ceiling" "$(python3 "$AB" sweep --out "$TMP/ox3" >/dev/null 2>&1; echo $?)" "2"
+eq "sweep: refuses --ceiling 0 (no ceiling is not allowed)" "$(python3 "$AB" sweep --out "$TMP/ox3" --ceiling 0 >/dev/null 2>&1; echo $?)" "2"
+eq "judge: refuses without --ceiling" "$(python3 "$AB" judge --out "$O" >/dev/null 2>&1; echo $?)" "2"
+eq "judge: refuses --ceiling 0" "$(python3 "$AB" judge --out "$O" --ceiling 0 >/dev/null 2>&1; echo $?)" "2"
+eq "sweep: and runs nothing" "$(find "$TMP/ox3" 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+# --- --out must be outside the checkout, also through a symlink to it ---
+ROOT="$(cd "$HERE/../../.." && pwd -P)"
+ln -s "$ROOT" "$TMP/rootlink"
+for c in run sweep judge; do
+    case $c in
+        run) xa=(--task docs --arm a --rep 1 --scale 0.05) ;;
+        sweep) xa=(--tasks docs --ceiling 1000000000) ;;
+        judge) xa=(--ceiling 1000000000) ;;
+    esac
+    eq "$c: --out inside the checkout is refused" "$(python3 "$AB" "$c" "${xa[@]}" --out "$ROOT/ab-guard-test" >/dev/null 2>&1; echo $?)" "2"
+    eq "$c: and so is the checkout root itself" "$(python3 "$AB" "$c" "${xa[@]}" --out "$ROOT" >/dev/null 2>&1; echo $?)" "2"
+    eq "$c: and --out inside the checkout is refused when ab.py runs through a symlink to it" "$(python3 "$TMP/rootlink/scripts/eval/compaction-handoff/ab.py" "$c" "${xa[@]}" --out "$ROOT/ab-guard-test" >/dev/null 2>&1; echo $?)" "2"
+done
+eq "the guard created nothing in the checkout" "$([ -e "$ROOT/ab-guard-test" ] && echo created || echo clean)" "clean"
 
 # --- score: the table and a recommendation per profile ---
 python3 "$AB" score --out "$O" >"$TMP/score.out" 2>&1

@@ -10,6 +10,7 @@
 #   AB_STUB_RESUME_FAIL=1 / AB_STUB_NOWRITE=1  the --resume segment errors / writes no HANDOFF.md
 #   AB_STUB_STALE=1  the first segment leaves a HANDOFF.md behind
 #   AB_STUB_NOSCORE=1  the judge replies without a SCORE line
+#   AB_STUB_BIGDIFF=N  the solving run also leaves a file of about N chars ending in BIGDIFF-END-MARKER
 # The judge sends its prompt on stdin (no argument after -p); the log entry carries "prompt".
 # A compaction fires when the next context would pass 85 % of --autocompact; the
 # context then restarts at 20000. --resume writes HANDOFF.md; a prompt starting
@@ -54,6 +55,11 @@ def solve():
         subprocess.run([sys.executable, os.path.join(here, "ab_tasks.py"), "solve", os.environ["AB_STUB_TASK"], ".",
                         "--seed", os.environ.get("AB_STUB_SEED", "1"), "--scale", os.environ.get("AB_STUB_SCALE", "1")],
                        check=True)
+    big = int(os.environ.get("AB_STUB_BIGDIFF", "0"))
+    if big:
+        with open("big.txt", "w") as fh:
+            fh.write(("x" * 99 + "\n") * (big // 100))
+            fh.write("BIGDIFF-END-MARKER\n")
 
 
 if "Rate the work" in prompt:

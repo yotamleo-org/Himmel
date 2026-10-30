@@ -4,9 +4,10 @@ against a 450k ceiling with a succession hand-off.
 
   ab.py run   --task T --arm a|b|c --rep N --out DIR [--model M] [--effort E] [--max-usd X]
               [--timeout S] [--seed N] [--scale F]       one cell: build, run, check, summarize
-  ab.py sweep --out DIR [--tasks docs,impl,audit] [--arms a,b,c] [--reps N] [--scales docs=1,impl=0.8]
-              [--ceiling COST_EQ] [--rerun-invalid] ...   cells in order, resumable, bank-preflighted
-  ab.py judge --out DIR [--model opus]                    a blind judge score per run (judge.json)
+  ab.py sweep --out DIR --ceiling COST_EQ [--tasks docs,impl,audit] [--arms a,b,c] [--reps N]
+              [--scales docs=1,impl=0.8] [--rerun-invalid] ...   cells in order, resumable, bank-preflighted
+  ab.py judge --out DIR --ceiling COST_EQ [--model opus]  a blind judge score per run (judge.json),
+                                                          bank-preflighted, counted against the ceiling
   ab.py score --out DIR [--json]                          the table and a recommendation per profile
 
 Arms (all on a scratch copy of a generated workspace, the Agent tool denied):
@@ -45,8 +46,9 @@ import threading
 import time
 import uuid
 
+# billed-opt-in: HIMMEL_BILLED_OK
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+REPO = os.path.realpath(os.path.join(HERE, "..", "..", ".."))
 W_IN, W_CC, W_CR, W_OUT = 1.0, 1.25, 0.1, 5.0
 CEIL = {"a": 200000, "b": 450000, "c": 450000}
 HANDOFF_SHARE = 0.75
@@ -292,11 +294,16 @@ def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, tim
     s.update(task=task, arm=arm, rep=rep, model=model, seed=seed, scale=scale, wall_s=wall, handoffs=handoffs,
              segments=len(segs), timed_out=timed_out)
     s["check"] = tasks.check(task, ws, seed, scale)
+    dr = subprocess.run(["diff", "-ruN", "-x", "HANDOFF.md", "base", "ws"], cwd=rd, capture_output=True,
+                        text=True, errors="replace", env=dict(os.environ, LC_ALL="C"))
+    # diff echoes its own command line (-x HANDOFF.md) into every header; the blind judge must not see it
+    body = "".join(l for l in dr.stdout.splitlines(True) if not l.startswith("diff "))
     with open(os.path.join(rd, "final.diff"), "w") as fh:
-        out = subprocess.run(["diff", "-ruN", "-x", "HANDOFF.md", "base", "ws"], cwd=rd, capture_output=True,
-                             text=True, errors="replace").stdout
-        # diff echoes its own command line (-x HANDOFF.md) into every header; the blind judge must not see it
-        fh.write("".join(l for l in out.splitlines(True) if not l.startswith("diff "))[:200000])
+        fh.write(body)   # whole: the judge scores what the worker did after its compactions, so nothing is cut
+    s["diff_chars"] = len(body)
+    diff_ok = dr.returncode in (0, 1)   # 1 = the trees differ; 2 = diff itself failed
+    if not diff_ok:
+        s["diff_error"] = dr.stderr[:200]
     try:
         s["defects"] = defect_counts(segs)
     except Exception as e:   # a classifier fault must not lose a priced run
@@ -305,6 +312,8 @@ def run_cell(task, arm, rep, out, model="sonnet", effort="high", max_usd=20, tim
     s["error"] = timed_out or not s["result_ok"]
     if s["error"]:
         reason = reason or ("timeout" if timed_out else "error")
+    elif not diff_ok:
+        reason = reason or "diff-error"
     elif arm == "b" and (handoffs < 1 or stopped):
         reason = reason or ("no-handoff" if handoffs < 1 else "handoff-loop")
     elif arm != "b" and s["compactions"] < 1:
@@ -372,7 +381,7 @@ def cmd_sweep(a):
                 print("ab.py: bank-preflight did not PROCEED before %s/%s/%d - stopped\n%s" % (t, x, r, text), file=sys.stderr)
                 return 3
             s = spent(a.out)
-            if a.ceiling and s >= a.ceiling:
+            if s >= a.ceiling:
                 print("ab.py: spent %d cost-eq, ceiling %d reached before %s/%s/%d - stopped" % (s, a.ceiling, t, x, r), file=sys.stderr)
                 return 3
             if (x, r) in redo:   # keep the invalid run's priced summary: it counts against the ceiling
@@ -392,11 +401,11 @@ def cmd_sweep(a):
 # ------------------------------------------------------------------ judge
 def judge_prompt(rd):
     brief = open(os.path.join(rd, "brief.txt")).read()
-    diff = open(os.path.join(rd, "final.diff"), errors="replace").read()   # final.diff is already capped at 200000 chars
+    diff = open(os.path.join(rd, "final.diff"), errors="replace").read()   # whole; a diff past the judge's window gets no SCORE and stays unscored
     s = json.load(open(os.path.join(rd, "summary.json")))
     reply = "\n".join(l for l in (s.get("reply") or "").splitlines() if not re.search(r"hand-?off", l, re.I))[:600]
     return ("Rate the work. A worker was given the brief below and changed a workspace. Its rulings are part of the brief.\n\n"
-            "=== BRIEF ===\n%s\n\n=== FINAL REPLY ===\n%s\n\n=== CHANGE (diff against the starting workspace, truncated) ===\n%s\n\n"
+            "=== BRIEF ===\n%s\n\n=== FINAL REPLY ===\n%s\n\n=== CHANGE (diff against the starting workspace) ===\n%s\n\n"
             "Score 1 to 10 how completely and correctly the change carries out the brief, every ruling included. "
             "End your reply with one line: SCORE: <n>." % (brief, reply, diff))
 
@@ -417,6 +426,14 @@ def cmd_judge(a):
         prev_score, prev_cost = judge_state(rd)
         if prev_score is not None or not json.load(open(sp)).get("valid"):
             continue
+        ok, text = preflight()
+        if not ok:
+            print("ab.py: bank-preflight did not PROCEED before judging %s - stopped\n%s" % (rd, text), file=sys.stderr)
+            return 3
+        s = spent(a.out)
+        if s >= a.ceiling:
+            print("ab.py: spent %d cost-eq, ceiling %d reached before judging %s - stopped" % (s, a.ceiling, rd), file=sys.stderr)
+            return 3
         scratch = tempfile.mkdtemp(prefix="ab-judge-")
         try:
             stream = os.path.join(scratch, "judge.stream.jsonl")
@@ -527,19 +544,23 @@ def main(argv=None):
     s.add_argument("--arms", default="a,b,c")
     s.add_argument("--reps", type=int, default=1)
     s.add_argument("--scales", default="")
-    s.add_argument("--ceiling", type=int, default=0)
+    s.add_argument("--ceiling", type=int, required=True)
     s.add_argument("--rerun-invalid", action="store_true")
     j = sub.add_parser("judge")
     j.add_argument("--out", required=True)
     j.add_argument("--model", default="opus")
+    j.add_argument("--ceiling", type=int, required=True)
     c = sub.add_parser("score")
     c.add_argument("--out", required=True)
     c.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
-    if a.cmd in ("run", "sweep"):
-        if os.path.realpath(a.out).startswith(REPO + os.sep):
+    if a.cmd in ("run", "sweep", "judge"):
+        out = os.path.realpath(a.out)
+        if out == REPO or out.startswith(REPO + os.sep):
             die("--out must be outside the checkout: runs go on scratch copies")
+    if a.cmd in ("sweep", "judge") and a.ceiling <= 0:
+        die("--ceiling must be a positive cost-eq total: the hard stop is not optional")
     if a.cmd == "run":
         need_billed()
         s = run_cell(a.task, a.arm, a.rep, a.out, a.model, a.effort, a.max_usd, a.timeout, a.seed, a.scale)

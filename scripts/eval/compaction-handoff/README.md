@@ -24,16 +24,16 @@ Tasks (`ab_tasks.py gen|solve|check|brief`, seeded, a hidden check per task; the
 - cost-eq = input + 1.25 x cache-write + 0.1 x cache-read + 5 x output, deduped by message id; each compaction is added as pre_tokens x 0.1 + 5000 x 5 (the compaction call is not in the stream).
 - **A run is valid only if it reached its trigger, counted from the stream-json:** a and c need a `compact_boundary` that starts at 0.75 of the setting or later (`--autocompact` fires below its value: three real arm a compactions at 200000 started at 170369, 167937 and 164367 tokens, 0.82 to 0.85); b needs a hand-off with `HANDOFF.md` written and a fresh session after it. A run that errored, timed out or ended early is INVALID: it is priced and kept (`<rep>.invalid-N`), never scored, and re-run with `sweep --rerun-invalid`.
 - Contamination: the Phase 1 classifier over a 40-turn window after every compaction and every hand-off.
-- Quality: the check fraction from the hidden check, and a blind opus judge (`ab.py judge`; the prompt names neither the arm nor the ceiling and drops hand-off lines).
+- Quality: the check fraction from the hidden check, and a blind opus judge (`ab.py judge`; the prompt names neither the arm nor the ceiling and drops hand-off lines; it gets the whole diff: `final.diff` is never cut and `summary.json` records `diff_chars`).
 - `ab.py score` prints one row per task and arm (n, check, judge, cost_eq, wall, turns, compactions, hand-offs, peak context, defects), the invalid runs, and a recommended arm per profile: among arms within 0.05 check share and 1 judge point of the best, the cheapest.
-- The sweep resumes (a cell with a `summary.json` is skipped), runs `usage-preflight.sh` before each task (must print PROCEED, else exit 3; `ab.py run` does not run it, only `sweep` does) and stops before the first cell it starts once the spend already priced reaches `--ceiling`; one run can still add up to `--max-usd` (shared by all of a hand-off run's segments) beyond it.
+- `sweep` and `judge` both require a positive `--ceiling` (no ceiling is refused) and run `usage-preflight.sh` before each cell or judge call (must print PROCEED, else exit 3; `ab.py run` does not run it). The sweep resumes (a cell with a `summary.json` is skipped); both stop before the next call once the spend already priced (runs and judge calls) reaches `--ceiling`; one run can still add up to `--max-usd` (shared by all of a hand-off run's segments) beyond it.
 
 ## Run
 
 ```bash
 HIMMEL_BILLED_OK=1 python3 ab.py sweep --out <scratch dir> --ceiling 40000000 \
     --scales docs=1.75,impl=2.7,audit=4.3 [--rerun-invalid]
-HIMMEL_BILLED_OK=1 python3 ab.py judge --out <scratch dir>
+HIMMEL_BILLED_OK=1 python3 ab.py judge --out <scratch dir> --ceiling 40000000
 python3 ab.py score --out <scratch dir>
 ```
 
