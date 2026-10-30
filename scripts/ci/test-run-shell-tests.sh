@@ -2771,10 +2771,16 @@ nfix22w=$(grep -c . "$fix22w")
 skip22w=$(awk '/^SKIP_LIST="$/{f=1; next} f && /^"$/{exit} f && /^scripts\//{print $1}' "$RUNNER")
 nonlinux22w=$(awk '/^SKIP_LIST_NON_LINUX="$/{f=1; next} f && /^"$/{exit} f && /^scripts\//{print $1}' "$RUNNER")
 # The real pass uses the host's own uname; the Darwin pass stubs it so every
-# host covers the off-Linux plan.
-for os22w in "" Darwin; do
-tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0
-_uname22w="${os22w:-$(uname -s)}"
+# host covers the off-Linux plan. Darwin+notool also gives a fixture suite a
+# required tool the host lacks: on a real macOS runner flock is absent, so
+# test-worker-doc-lock.sh is a capability [SKIP] there (run 41010394001) and is
+# expected unplaced, which no Linux host would otherwise show.
+for os22w in "" Darwin Darwin+notool; do
+tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0; capl22w=""
+_pass22w="${os22w:-$(uname -s)}"
+_uname22w="${_pass22w%%+*}"
+_req22w=""
+[ "$os22w" != "Darwin+notool" ] || _req22w="scripts/handover/chief-kit/test-worker-doc-lock.sh  no-such-tool-22w  # HIMMEL-8148: a required tool the host lacks"
 _skips22w="$skip22w"
 [ "$_uname22w" = "Linux" ] || _skips22w="$skip22w
 $nonlinux22w"
@@ -2782,7 +2788,9 @@ nskip22w=$(S22W="$_skips22w" awk -F'\t' 'BEGIN{n=split(ENVIRON["S22W"],a,"\n"); 
 nexp22w=$((nfix22w - nskip22w))
 _path22w="$PATH"; [ -z "$os22w" ] || _path22w="$fakebin22w:$PATH"
 for _i in 1 2 3 4 5 6 7 8; do
-  _out=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$_path22w" SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
+  _out=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$_path22w" SUITE_DURATIONS="$sb22w/ledger.tsv" SUITE_REQUIRE_TOOL="$_req22w" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
+  capl22w="$capl22w$_out
+"
   _t=0
   while IFS= read -r _p; do
     [ -n "$_p" ] || continue
@@ -2794,12 +2802,26 @@ for _i in 1 2 3 4 5 6 7 8; do
   tot22w=$((tot22w + _t))
   [ "$_t" -gt "$slow22w" ] && slow22w=$_t
 done
+# A fixture suite the runner loud-[SKIP]s as "capability: <tool> not on PATH" is
+# expected unplaced, but only when the tool is really absent from this pass's
+# PATH: a skip the host's tools do not explain still counts as dropped.
+ncap22w=0
+while IFS= read -r _l; do
+  _l="${_l#"[SKIP] $sb22w/stubs/"}"
+  _p="${_l%% — capability: *}"
+  _tool="${_l#* — capability: }"; _tool="${_tool%% not on PATH*}"
+  cut -f1 "$fix22w" | grep -qxF "$_p" || continue
+  grep -qxF "$_p" <<< "$_skips22w" && continue
+  ( PATH="$_path22w"; command -v "$_tool" >/dev/null 2>&1 ) && continue
+  ncap22w=$((ncap22w + 1))
+done <<< "$(grep -F "[SKIP] $sb22w/stubs/" <<< "$capl22w" | grep -F ' — capability: ' | sort -u)"
+nexp22w=$((nexp22w - ncap22w))
 floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
 bound22w=$(( floor22w * 105 / 100 ))
 if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nexp22w" ] && [ "$slow22w" -le "$bound22w" ]; then
-  pass "22w (uname=$_uname22w): slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w skip-listed)"
+  pass "22w (uname=$_pass22w): slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w skip-listed, $ncap22w tool-absent)"
 else
-  fail "22w (uname=$_uname22w): slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w skip-listed), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
+  fail "22w (uname=$_pass22w): slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w skip-listed, $ncap22w tool-absent), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
 done
 rm -rf "$sb22w" "$fakebin22w"
