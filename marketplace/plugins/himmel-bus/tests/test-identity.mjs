@@ -455,6 +455,19 @@ test('M2: edges.check treats a raw role leg peer as worker under the switch only
   await withSwitch('0', () => assert.equal(edges.check(peers, 'j', 'a').ok, false));
 });
 
+test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer', async () => {
+  const peers = {
+    con: { n: 'con', role: 'console' },
+    a: { n: 'a', role: 'leg', console: 'con' },
+    w: { n: 'w', role: 'worker', console: 'con', pair: 'a' },
+  };
+  await withSwitch(undefined, () => assert.equal(edges.check(peers, 'w', 'a').ok, true));
+  await withSwitch('0', () => {
+    assert.equal(edges.check(peers, 'w', 'a').ok, false);
+    assert.equal(edges.check(peers, 'a', 'w').ok, false);
+  });
+});
+
 test('M2: with the switch off, --role leg is refused and a stored leg record is not read', async t => {
   const { root } = await fixture(t);
   await identity.register(root, 'con', { role: 'console' });

@@ -12,6 +12,7 @@ import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 // edge) when it is off.
 export const canonRole = value => (value === 'leg' && legacyNamesOn() ? 'worker' : value);
 const role = (peers, name) => canonRole(peers[name]?.role);
+const PAIRED = ['worker', 'judge', 'consult'];
 
 function declared(peers, name) {
   const me = peers[name];
@@ -19,7 +20,7 @@ function declared(peers, name) {
   const out = [];
   if (me.console && mine !== 'console' && role(peers, me.console) === 'console') out.push(me.console);
   const mate = role(peers, me.pair);
-  if (me.pair && mate && mine !== 'console' && mate !== 'console' && (mine === 'worker' || mate === 'worker')) out.push(me.pair);
+  if (me.pair && PAIRED.includes(mine) && PAIRED.includes(mate) && (mine === 'worker' || mate === 'worker')) out.push(me.pair);
   if (me.predecessor && mine === 'console' && role(peers, me.predecessor) === 'console') out.push(me.predecessor);
   return out.filter(other => other !== name);
 }
