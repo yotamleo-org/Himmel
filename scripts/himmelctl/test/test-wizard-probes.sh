@@ -1281,6 +1281,13 @@ printf '{not json' > "$sh_corrupt/.claude/settings.json"
 outSHd=$(sh_user_probe "$sh_present" "$sh_corrupt")
 echo "$outSHd" | jq -e '.actual == "absent"' >/dev/null \
   || fail "HIMMEL-8163: an unparseable user layer is a fault, never hidden by the project layer (got: $outSHd)"
+sh_nofile="$work/sh-nofile"; mkdir -p "$sh_nofile"
+outSHe=$(sh_user_probe "$sh_present" "$sh_nofile")
+echo "$outSHe" | jq -e '.actual == "present" and (.detail | contains("C81"))' >/dev/null \
+  || fail "HIMMEL-8163: a missing user settings file with the project layer wiring the trio must read present (got: $outSHe)"
+outSHf=$(sh_user_probe "$sh_absent" "$sh_nofile")
+echo "$outSHf" | jq -e '.actual == "absent"' >/dev/null \
+  || fail "HIMMEL-8163: a missing user settings file with no project trio must stay absent (got: $outSHf)"
 echo "ok: HIMMEL-8163 settings-hooks user scope — the project layer owning the trio reads present with the C81 note"
 
 # ── cmd:has_qmd (qmd-binary) ────────────────────────────────────────────────

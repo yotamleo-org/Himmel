@@ -2026,7 +2026,7 @@ function profileError(p, msg) {
 // role-only check let e.g. a bogus vault.mode fall back to --profile core
 // and a missing scope fall back to project). A missing/unreadable/non-JSON
 // file surfaces as a normal error (throw -> main()'s catch, exit 1).
-function loadProfile(p, persist = true) {
+function loadProfile(p, persist = false) {
   const raw = fs.readFileSync(p, 'utf8');
   let obj;
   try {
@@ -2413,6 +2413,9 @@ function loadProfile(p, persist = true) {
 function dropRetiredFromProfileFile(p, raw, ids) {
   const tmp = `${p}.${process.pid}.tmp`;
   try {
+    // Same policy as saveProfile: a symlink an operator placed at this path is
+    // not silently replaced by a regular file.
+    if (fs.lstatSync(p).isSymbolicLink()) throw new Error('the profile is a symlink');
     const orig = JSON.parse(raw);
     for (const id of ids) delete orig.cadences[id];
     if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
@@ -6123,7 +6126,7 @@ async function cmdEnsure(args) {
     console.error('himmelctl: no himmelctl install profile found — run himmelctl install first');
     return 2;
   }
-  const cachedAnswers = loadProfile(profilePath);
+  const cachedAnswers = loadProfile(profilePath, !args.dryRun);
   // install-profile.json carries no "recorded at" field of its
   // own (writeCache() just serializes the answers) — the file's own mtime is
   // the best available "when" for the per-item disable-evidence lines below.

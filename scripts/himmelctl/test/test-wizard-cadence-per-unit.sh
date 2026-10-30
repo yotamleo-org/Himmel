@@ -380,12 +380,33 @@ grepq "$outH0" -F -- "dropping retired cadence 'codex-sweep'" \
   || fail "case h: the dry-run preview should announce the drop (got: $outH0)"
 grepq "$(cat "$profileH")" -F -- 'codex-sweep' \
   || fail "case h: a dry-run preview must not rewrite the profile (got: $(cat "$profileH"))"
-# the saved profile is read by status: the first run drops, the second is quiet
+# read-only verbs and an ensure dry run read the saved profile and never rewrite it
 set +e
-outH1=$(run_h status --json); rcH1=$?
-outH2=$(run_h status --json); rcH2=$?
+outHs=$(run_h status --json); rcHs=$?
+outHd=$(run_h ensure --dry-run --no-network --items wiring-pretooluse); rcHd=$?
 set -e
-[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both status runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
+[ "$rcHs" -eq 0 ] || fail "case h: status should load (rc=$rcHs): $outHs"
+[ "$rcHd" -eq 0 ] || fail "case h: ensure --dry-run should load (rc=$rcHd): $outHd"
+cmp -s "$profileH" "$saved" \
+  || fail "case h: status and ensure --dry-run must leave the saved profile byte-identical (got: $(cat "$saved"))"
+# a symlinked saved profile is never replaced by a regular file
+realH="$work/profileH-real.json"
+mv "$saved" "$realH"; ln -s "$realH" "$saved"
+set +e
+outHl=$(run_h ensure --no-network --items wiring-pretooluse); rcHl=$?
+set -e
+[ -L "$saved" ] || fail "case h: a symlinked saved profile must stay a symlink (rc=$rcHl): $outHl"
+cmp -s "$profileH" "$realH" \
+  || fail "case h: a symlinked saved profile must not be rewritten (got: $(cat "$realH"))"
+grepq "$outHl" -F -- 'is a symlink' \
+  || fail "case h: the symlink refusal should be said (got: $outHl)"
+rm "$saved"; cp "$profileH" "$saved"
+# a real ensure drops the retired cadence from the saved profile: the first run announces, the second is quiet
+set +e
+outH1=$(run_h ensure --no-network --items wiring-pretooluse); rcH1=$?
+outH2=$(run_h ensure --no-network --items wiring-pretooluse); rcH2=$?
+set -e
+[ "$rcH1" -eq 0 ] && [ "$rcH2" -eq 0 ] || fail "case h: both ensure runs should load (rc=$rcH1/$rcH2): $outH1 / $outH2"
 grepq "$outH1" -F -- "dropping retired cadence 'codex-sweep'" \
   || fail "case h: the first run should announce the drop (got: $outH1)"
 grepq "$outH2" -F -- "dropping retired cadence" \
@@ -394,6 +415,6 @@ grepq "$(cat "$saved")" -F -- 'codex-sweep' \
   && fail "case h: the saved profile must no longer name codex-sweep (got: $(cat "$saved"))"
 grepq "$(cat "$saved")" -F -- '"doctor": "off"' \
   || fail "case h: the kept cadence rows must survive the rewrite (got: $(cat "$saved"))"
-echo "ok: case h — a retired cadence is announced once and leaves the saved profile; a dry run leaves it alone"
+echo "ok: case h — a retired cadence is announced once and leaves the saved profile on a real ensure; status, a dry run and a symlinked profile are left alone"
 
 echo "PASS"
