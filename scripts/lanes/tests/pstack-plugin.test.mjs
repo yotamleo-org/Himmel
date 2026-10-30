@@ -119,7 +119,13 @@ test('every vendored file matches the byte-verified pinned inventory', () => {
   }
   assert.deepEqual(files.sort(), Object.keys(manifest.files).sort());
   for (const [path, hashes] of Object.entries(manifest.files)) {
-    assert.match(hashes.upstream, /^[a-f0-9]{64}$/);
+    if (path === 'skills/statechart/scripts/package-lock.json') {
+      assert.equal(hashes.upstream, null);
+      assert.equal(hashes.upstreamExecutable, null);
+      assert.equal(hashes.origin, 'himmel-generated');
+    } else {
+      assert.match(hashes.upstream, /^[a-f0-9]{64}$/);
+    }
     if (process.platform !== 'win32')
       assert.equal(Boolean(lstatSync(join(PLUGIN, path)).mode & 0o111), hashes.executable,
         `${path}: executable mode drift`);

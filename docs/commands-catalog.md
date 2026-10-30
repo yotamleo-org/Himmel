@@ -99,7 +99,8 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > `/create-formal-verification-skill`, `/maintain-formal-verification-skill`):
 > typed by the operator, no `commands/` directory, on in the interactive `user`
 > profile only (HIMMEL-6690, HIMMEL-8218). Statechart includes its runtime and
-> optional Java/TLC prerequisites; missing prerequisites stop the check. See
+> optional Java/TLC prerequisites; missing prerequisites stop the check. A himmel-generated
+> lockfile pins its test-only npm dependencies for repository audit, not runtime installation. See
 > [marketplace/plugins/pstack/README.md](../marketplace/plugins/pstack/README.md).
 
 > **Not itemized: `marketplace/plugins/humanizer/skills/`**.

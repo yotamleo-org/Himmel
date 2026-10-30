@@ -181,6 +181,13 @@
       "upstreamExecutable": false,
       "executable": false
     },
+    "skills/statechart/scripts/package-lock.json": {
+      "upstream": null,
+      "vendored": "5ce8061f0923d5e45c5b4f53e44da2d76db40fd433f5ccc19a98d4f061a7d7b1",
+      "upstreamExecutable": null,
+      "executable": false,
+      "origin": "himmel-generated"
+    },
     "skills/statechart/scripts/package.json": {
       "upstream": "2c36842f391275b0f343a38947560adee155fab4a744eacef1e595e9f07c4e3d",
       "vendored": "2c36842f391275b0f343a38947560adee155fab4a744eacef1e595e9f07c4e3d",
