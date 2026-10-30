@@ -177,24 +177,66 @@ cp "$HERE/../handover/chief-kit/platform-dropped.re" "$S/scripts/handover/chief-
 git -C "$S" add .
 git -C "$S" commit -qm base
 bootstrap_base=$(git -C "$S" rev-parse HEAD)
+# A pull_request job checks out the merge commit: HEAD^1 is the current base tip.
+mergepr() { git -C "$1" checkout -q "$2" && git -C "$1" merge --no-ff -q -m merge pr; }
+git -C "$S" checkout -q -b pr
 cp "$GATE" "$HERE/platform-dropped-allow.json" "$S/scripts/lint/"
 cp "$HERE/../handover/chief-kit/platform-dropped.re" "$S/scripts/handover/chief-kit/"
 git -C "$S" add .
 git -C "$S" commit -qm policy
+mergepr "$S" "$bootstrap_base"
 ci_base=$(git -C "$S" rev-parse HEAD)
 OUT=$(cd "$S" && BASE_SHA="$bootstrap_base" GITHUB_WORKSPACE="$S" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
 expect 0 'CI bootstrap checks its own clean diff'
+git -C "$S" checkout -q -B pr "$ci_base"
 printf 'new.exe\n' >> "$S/scripts/a.sh"
 printf 'exit 0\n' > "$S/scripts/lint/check-platform-dropped.sh"
 printf '{}\n' > "$S/scripts/lint/platform-dropped-allow.json"
 printf 'never-match-this\n' > "$S/scripts/handover/chief-kit/platform-dropped.re"
 git -C "$S" add .
 git -C "$S" commit -qm tamper
+mergepr "$S" "$ci_base"
 OUT=$(cd "$S" && BASE_SHA="$ci_base" GITHUB_WORKSPACE="$S" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
 expect 1 'CI uses base script, allowlist and pattern despite head tampering'
 case "$OUT" in *scripts/a.sh:2:*) ok 'CI reports the new runtime default' ;; *) bad "CI default location: $OUT" ;; esac
 OUT=$(cd "$S" && BASE_SHA='' GITHUB_WORKSPACE="$S" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
 expect 2 'CI missing base fails closed'
+
+# Main moves after the PR base: its new lines belong to main, not to the PR.
+D="$T/stale"
+mkdir -p "$D/scripts/lint" "$D/scripts/handover/chief-kit"
+git -C "$D" init -q
+git -C "$D" config user.name fixture
+git -C "$D" config user.email fixture@example.invalid
+cp "$GATE" "$HERE/platform-dropped-allow.json" "$D/scripts/lint/"
+cp "$HERE/../handover/chief-kit/platform-dropped.re" "$D/scripts/handover/chief-kit/"
+printf 'echo clean\n' > "$D/scripts/a.sh"
+git -C "$D" add .
+git -C "$D" commit -qm stale-base
+stale_base=$(git -C "$D" rev-parse HEAD)
+printf 'main.exe\n' > "$D/scripts/main-moved.sh"
+git -C "$D" add .
+git -C "$D" commit -qm main-moves
+main_tip=$(git -C "$D" rev-parse HEAD)
+git -C "$D" checkout -q -b pr "$stale_base"
+printf 'echo clean\n' > "$D/scripts/pr-own.sh"
+git -C "$D" add .
+git -C "$D" commit -qm pr-clean
+mergepr "$D" "$main_tip"
+OUT=$(cd "$D" && BASE_SHA="$stale_base" GITHUB_WORKSPACE="$D" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
+expect 0 'CI ignores a dropped-platform line that main added after the stale PR base'
+git -C "$D" checkout -q -B pr "$stale_base"
+printf 'pr.exe\n' > "$D/scripts/pr-own.sh"
+git -C "$D" add .
+git -C "$D" commit -qm pr-dirty
+mergepr "$D" "$main_tip"
+OUT=$(cd "$D" && BASE_SHA="$stale_base" GITHUB_WORKSPACE="$D" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
+expect 1 'CI still refuses a dropped-platform line the PR itself adds on a stale base'
+case "$OUT" in *scripts/pr-own.sh:1:*) ok 'CI names the PR line' ;; *) bad "CI PR line location: $OUT" ;; esac
+case "$OUT" in *main-moved.sh*) bad "CI blamed the PR for main's line: $OUT" ;; *) ok 'CI does not name main line' ;; esac
+# A checkout that is not a merge commit cannot say which lines are the PR's own.
+OUT=$(cd "$R" && BASE_SHA="$base" GITHUB_WORKSPACE="$R" RUNNER_TEMP="$T/runner" bash -e "$T/step.sh" 2>&1); RC=$?
+expect 2 'CI non-merge checkout fails closed'
 
 printf '# pass=%s fail=%s\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
