@@ -155,6 +155,24 @@ EOF
             check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")" ;;
         esac
     done
+
+    I="$(new_inbox readfailure)"
+    printf 'tick changed=tails usage=PROCEED retained-payload\n' > "$I.wait.housekeeping"
+    printf '%s\n' "$(( $(date +%s) - 31 ))" > "$I.wait.housekeeping.since"
+    mkdir "$STUB/readfail"
+    DIGEST_REAL_CAT="$(command -v cat)"
+    export DIGEST_REAL_CAT DIGEST_READ_FAIL_PATH="$I.wait.housekeeping"
+    cat > "$STUB/readfail/cat" <<'EOF'
+#!/usr/bin/env bash
+if [ "$#" -eq 1 ] && [ "$1" = "$DIGEST_READ_FAIL_PATH" ]; then exit 1; fi
+exec "$DIGEST_REAL_CAT" "$@"
+EOF
+    chmod +x "$STUB/readfail/cat"
+    export CHIEF_WAIT_TICK="$STUB/off.sh"
+    PATH="$STUB/readfail:$PATH" timeout 2 bash "$WAIT" "$I" --workers N1.md > "$WORK/readfailure.out" 2> "$WORK/readfailure.err"; digest_rc=$?
+    check '(8197) a failed payload read emits no wake and retains the queue' '124:0:yes' "$digest_rc:$(grep -c '^WAKE ' "$WORK/readfailure.out"):$([ -s "$I.wait.housekeeping" ] && echo yes)"
+    timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/readrecover.out" 2> "$WORK/readrecover.err"; digest_rc=$?
+    check '(8197) the next arm delivers the retained payload after reads recover' '0:1:1' "$digest_rc:$(grep -c '^WAKE housekeeping' "$WORK/readrecover.out"):$(grep -c '^tick .*retained-payload' "$WORK/readrecover.out")"
     [ "$fails" -eq 0 ]
 )
 if ! housekeeping_cases; then fails=$((fails + 1)); fi

@@ -363,14 +363,15 @@ housekeeping_add() { # <kind> <detail>; success means an immediate wake was prin
     return 0
 }
 housekeeping_flush() {
-    local since kinds
+    local since kinds payload
     [ -s "$housekeeping_file" ] || return 1
     since="$(cat "$housekeeping_file.since" 2>/dev/null)"  # swallow-ok: a torn first write restarts the window
     case "$since" in ''|*[!0-9]*) date +%s > "$housekeeping_file.since"; return 1 ;; esac
     [ $(( $(date +%s) - since )) -ge "$housekeeping_secs" ] || return 1
-    kinds="$(cut -d' ' -f1 "$housekeeping_file" | LC_ALL=C sort -u | paste -sd, -)"
-    printf 'WAKE housekeeping kinds=%s\n' "$kinds"
-    cat "$housekeeping_file"
+    payload="$(cat "$housekeeping_file")" || return 1
+    kinds="$(printf '%s\n' "$payload" | cut -d' ' -f1 | LC_ALL=C sort -u | paste -sd, -)"
+    printf 'WAKE housekeeping kinds=%s\n' "$kinds" || return 1
+    printf '%s\n' "$payload" || return 1
     rm -f "$housekeeping_file" "$housekeeping_file.since"
     return 0
 }
