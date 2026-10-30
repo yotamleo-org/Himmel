@@ -42,11 +42,7 @@
 #                                                   -> record "a worker completed"
 #
 # The runner calls it as `synth-input-check.sh .` because it has already cd'd
-# into the vault: the cadence crosses a cmd.exe -> bash boundary on Windows,
-# where a Windows-form path (C:\...) reaching a bash argument has its
-# backslashes eaten as escapes. `.` is the one spelling that is correct in both
-# shells. The stamp defaults inside the vault for the same reason -- no second
-# path form has to be plumbed through the emitters.
+# into the vault. The stamp defaults inside the vault too.
 set -u
 
 STAMP_MODE=0

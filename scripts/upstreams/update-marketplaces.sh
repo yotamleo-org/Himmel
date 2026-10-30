@@ -60,15 +60,8 @@ set -uo pipefail
 
 CLAUDE_BIN="${HIMMEL_UPDATE_CLAUDE_BIN:-claude}"
 
-# Cross-platform user-home resolution: on Windows Git-Bash the MSYS
-# $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
-# Same resolution check-plugin-drift.sh's own consumers use.
 _user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
 KNOWN_MKTS="${DRIFT_KNOWN_MARKETPLACES:-$(_user_home)/.claude/plugins/known_marketplaces.json}"
@@ -147,15 +140,7 @@ if [ -z "$rows" ]; then
     exit 0
 fi
 
-# CRLF strip. On Windows the python3 that MSYS resolves is a
-# NATIVE python whose text-mode stdout writes "\r\n" — so every name read below
-# would carry a trailing CR. That is not cosmetic: `claude plugin marketplace
-# update "obsidian-skills\r"` is a lookup for a marketplace that does not
-# exist, and it would fail EVERY row on Windows while looking correct in the
-# echoed output (the CR just returns the cursor). Caught by
-# test-update-marketplaces.sh's failure-isolation case, which could not match
-# its own row name. Stripped here rather than in the emitter so the fix holds
-# for any python build.
+# Strip a trailing CR from row names before marketplace lookup.
 _strip_cr() { printf '%s' "${1%$'\r'}"; }
 
 if [ "$mode" = "check" ]; then

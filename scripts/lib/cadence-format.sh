@@ -2,7 +2,7 @@
 # cadence-format.sh — shared runner-format version + staleness probe for
 # generated cadence runners.
 #
-# Cadence runners (.bat/.sh) are GENERATED artifacts, baked at arm time by the
+# Cadence runners (.sh) are GENERATED artifacts, baked at arm time by the
 # cadence emitters. They hard-code paths/payload config and are NOT regenerated
 # when the himmel code changes. So an operator who armed BEFORE a runner-format
 # change keeps firing stale runners with no nudge (this is exactly what bit
@@ -33,18 +33,6 @@
 # interactive disable lands the pipeline runs with the plugin OFF — nudge
 # `arm --force` to regenerate the fragment. Same class as the bug
 # noted at the top of this file.
-# v5: cadence_cmd_escape replaces the four per-emitter cmd_escape
-# copies and drops their caret escaping of ^ & < > | (the " and % rules stay).
-# Inside the double quotes every interpolated value sits in, `^` is LITERAL, so
-# those carets corrupted the value instead of protecting it. An armed v4 runner
-# keeps firing the corrupted form, so an operator whose bat dir / repo root /
-# vault path carries one of those characters must `arm --force` to pick the fix
-# up. Everyone else's regenerated runner is byte-identical bar the stamp.
-# v6: a legacy pwsh runner gained a THIRD payload worker
-# (reap-superseded-fleets -Kill, the duplicate-fleet-under-a-LIVE-broker
-# check) and its trigger gained an intra-day <Repetition>. An armed v5 cadence
-# still fires, but only the two old workers and only once a day — so the leak class
-# this version exists to cover keeps accumulating unswept. Nudge `arm --force`.
 # v7: the generated cron runner takes a self-overlap lock before
 # rotating its log and firing the payload. cron has no MultipleInstancesPolicy,
 # so the POSIX worker was the unguarded one — and once `qmd-cadence.sh arm
@@ -52,62 +40,11 @@
 # on the receiver's single `<target>.preship` rollback copy and can leave no
 # recoverable index. An armed v6 cron runner keeps firing WITHOUT the lock, so
 # an operator running the cadence on POSIX must `arm --force` to pick it up.
-# Windows runners are unaffected (the scheduler already serialized them) but
-# stamp v7 too, so one version answers "is this runner current".
-# v8: every emitted .bat prepends Git's usr\bin + bin to PATH so a
-# NON-LOGIN bash.exe (the interpreter the Windows runners bake in) resolves GNU
-# coreutils ahead of their System32 namesakes. A non-login Git-Bash does not
-# source the MSYS profile that prepends /usr/bin, so it inherits the bare Windows
-# PATH: unqualified `find` hits System32 find.exe (a string search), `timeout`
-# hits timeout.exe (no GNU -k), and `sed`/`grep`/`date` are missing entirely —
-# which silently broke the graphify refresh cadence for days. The Git root is
-# DERIVED from the baked-in bash.exe path (cadence_git_bin_path_win), never
-# hardcoded, so adopters who install Git outside C:\Program Files get the right
-# path. An armed v7 runner keeps firing under the bare Windows PATH, so an
-# operator must `arm --force` to pick up the prepend. Affects the bash-emitters
-# (graphmap/qmd/pipeline); drift-fix (claude-direct) and the legacy pwsh runner bake
-# no bash.exe into their runner and are unaffected. POSIX cron runners unaffected.
-# v9: the legacy pwsh .bat preserves every payload rc and exits
-# non-zero after all three workers when any worker failed. An armed v8 runner logs a
-# refusing sweep but returns the final successful worker's rc to Task Scheduler,
-# leaving LastTaskResult=0 while the primary sweep accomplished nothing. Re-arm
-# with `<cadence>.sh arm --force` to regenerate the runner.
-# v10: every generated task's Exec is now a hidden powershell.exe
-# wrapper (`-WindowStyle Hidden -Command "& '<bat>'; exit $LASTEXITCODE"`)
-# around the .bat, not the bare .bat. A bare .bat Exec pops a visible conhost
-# window on every fire — an operator repro caught it flashing on top of a
-# fullscreen game, and an uncontrolled chief flash would contaminate the
-# upcoming LUNA-131 focus soak. This is a REGISTERED-TASK-shape change, not a
-# runner-content change: the .bat emitters and their rc logic are untouched, so
-# an armed v9 task keeps firing its OLD bare-.bat Exec (still correct, still
-# visible) until re-armed. `; exit $LASTEXITCODE` in the new wrapper preserves
-# the v9 exit-code fidelity — re-arming does not regress it. Re-arm with
-# `<cadence>.sh arm --force` to pick up the hidden-window Exec.
-# v11: the v10 hidden-powershell wrapper was MEASURED to still
-# allocate visible chiefs despite -WindowStyle Hidden, so the Exec shape moves
-# again — now a `wscript.exe //B <shim>.vbs` whose .vbs runs the .bat hidden via
-# WScript.Shell.Run(..., 0, True) and forwards its exit code through WScript.Quit
-# (zero chief allocation; rc=42 re-arm passthrough proven by an execution test
-# in test-cadence-format.sh). The emitted .bat ALSO gained non-interactive-editor
-# `set` lines (GIT_EDITOR/EDITOR/VISUAL=true, GH_PROMPT_DISABLED=1) so a cadence
-# child can never block on an editor prompt — a runner-CONTENT change as well as
-# a task-shape one. An armed v10 task keeps firing its powershell-Hidden Exec
-# (still correct, still pops the measured-hidden chiefs) until re-armed; the
-# .bat rc logic is again untouched, and WScript.Quit preserves the v9/v10
-# exit-code fidelity. Re-arm with `<cadence>.sh arm --force` to pick up the
-# wscript shim + the editor-hardened .bat.
-# v13: two runner-CONTENT changes. (a) the
-# pipeline FetchHealth worker (.bat and cron runner) now writes flow-run ledger
+# v13: the pipeline FetchHealth cron runner now writes flow-run ledger
 # start/end rows like every other worker — an armed v12 runner keeps firing with
 # NO ledger row, so that worker stays invisible to stall / never-started
 # detection and "stopped firing" is indistinguishable from "never armed".
-# (b) every emitter prefixes its shim-resolvable payload invocation with
-# `call` (the #1454 fix, carried to the pipeline claude line, the fetch-health
-# python line, the legacy pwsh runner's three workers and graphmap's payload): without
-# it, a payload that resolves to a .cmd/.bat shim makes cmd.exe transfer
-# control away for good, so the rc stamp, the ledger end row and the `exit /b`
-# after it never run. Re-arm each cadence with `arm --force` to pick both up.
-# v14: the three pipeline CLAUDE workers (.bat and cron runner) wrap
+# v14: the three pipeline CLAUDE workers wrap
 # their claude invocation in a bounded retry/resume loop — up to 3 attempts,
 # 60s then 180s backoff, and ONLY when the attempt's own log carries the
 # transient upstream signature (`API Error: … Server error / overloaded / 5xx /
@@ -176,7 +113,7 @@
 # An armed v21 runner of those kinds fails silently and leaves no ledger row.
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
 # its own rows). The alert call pins the arm-time PATH so the sender finds bun
-# under cron. NOT covered: every graphmap/qmd/upstream-watch .bat twin (the pipeline .bat twins are tracked separately).
+# under cron.
 # Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # v23: the qmd-reindex runner also refreshes the salus named index
@@ -185,12 +122,11 @@
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
 CADENCE_RUNNER_FORMAT_VERSION=23
 
-# Marker line stamped into each generated runner
-# (.bat: `rem <marker> N`; .sh: `# <marker> N`).
+# Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 
 # Basename registry for generated cadence runners. Keep explicit: a stray
-# foreign *.bat/*.sh in a runner dir must not poison the staleness probe.
+# foreign *.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
 CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
 
@@ -231,345 +167,23 @@ cadence_posix_worker_end() {
     printf '    esac\n'
 }
 
-# cadence_user_home
-# The runner homes the EMITTERS write under key off resolve_user_home
-# (on Windows Git-Bash $HOME can be the MSYS home while
-# ~/.claude lives under the Windows profile — prefer USERPROFILE via
-# cygpath). READERS must resolve the same way or they probe an empty MSYS
-# dir and report "no armed cadence" on exactly the Windows machines the .bat
-# runners run on (codex-adv finding). Same body as
-# the emitters' resolve_user_home; kept here so the readers share one copy.
+# Shared home resolution for cadence emitters and staleness readers.
 cadence_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
-# cadence_cmd_escape <value>
-# Escape a value for interpolation into a generated .bat, INSIDE DOUBLE QUOTES.
-# That context is the whole contract — every call site must emit
-# the result as "%s", never bare. Two rules, and only two:
-#
-#   %  ->  %%   percent expansion DOES happen inside double quotes in a .bat,
-#               so a literal % must be doubled or cmd eats `%X%` as a variable.
-#               This one is complete: it makes any % safe.
-#   "  ->  \"   carried over from the four copies this replaces. It is a
-#               BEST EFFORT, not a guarantee: the receiving .exe parses \" as a
-#               literal quote under MSVCRT argv rules, but cmd.exe itself
-#               toggles quoting on every " regardless of backslashes, so an
-#               embedded quote still shifts where cmd sees the quoted run end.
-#               arm-resume.sh reaches the same conclusion and REFUSES such a
-#               payload outright. It does not bite here because the values are
-#               Windows paths (" is illegal in a path component) plus the
-#               operator's own cadence prompts. Do not extend this function to
-#               a value that can carry an arbitrary quote — refuse instead.
-#
-# What is deliberately NOT escaped: ^ & < > |. Inside double quotes cmd.exe
-# already treats & < > | as literal data, and `^` is not an escape character
-# there at all — it is literal. Caret-escaping them does not protect anything;
-# it CORRUPTS the value. `C:\some&dir\bash.exe` emitted as "C:\some^&dir\..."
-# hands the child a path that does not exist. (The four per-emitter copies this
-# replaces all made exactly that mistake.)
-#
-# The quoting itself is what makes the value safe: a path can carry & < > | and
-# still not inject, because cmd never re-parses inside the quotes.
-cadence_cmd_escape() {
-    local s="$1"
-    s="${s//\"/\\\"}"
-    s="${s//%/%%}"
-    printf '%s' "$s"
-}
-
-# cadence_git_bin_path_win <bash_win>
-# Derive the cmd-PATH fragment that puts Git's GNU coreutils ahead of System32
-# for a NON-LOGIN bash.exe. A non-login Git-Bash does NOT source
-# the MSYS profile that prepends /usr/bin, so it inherits the bare Windows PATH
-# and unqualified `find`/`timeout`/`sed`/`grep` resolve to System32 namesakes
-# (find.exe is a string search; timeout.exe lacks -k) or are missing entirely.
-#
-# <bash_win> is the Windows bash.exe path a runner already bakes in (resolved by
-# the emitters as `cygpath -w "$(command -v bash)"`). The Git install root is
-# DERIVED from it — never hardcoded — so adopters who install Git outside
-# C:\Program Files get the right path. `command -v bash` under Git-Bash resolves
-# to /usr/bin/bash -> <root>\usr\bin\bash.exe; Git for Windows also ships a
-# wrapper at <root>\bin\bash.exe. Both layouts are handled (the usr arm is tested
-# first so the bin arm never mis-trims it).
-#
-# Echoes "<root>\usr\bin;<root>\bin" (usr\bin FIRST) and returns 0. Echoes
-# nothing for a path that is not a recognized Git-Bash layout (e.g. the WSL
-# System32 stub) — the caller then emits no PATH line and the runner is no worse
-# than before. bash 3.2-safe; the backslash idiom mirrors the trailing-separator
-# strip in graphmap-cadence.sh's cmd_arm (`${var%\\}`).
-cadence_git_bin_path_win() {
-    local bash_win="$1" root
-    case "$bash_win" in
-        *\\usr\\bin\\bash.exe) root="${bash_win%\\usr\\bin\\bash.exe}" ;;
-        *\\bin\\bash.exe)      root="${bash_win%\\bin\\bash.exe}" ;;
-        *)                     return 0 ;;
-    esac
-    printf '%s\\usr\\bin;%s\\bin' "$root" "$root"
-}
-
-# cadence_vbs_path <bat_win>
-# Derive the .vbs shim path from a .bat runner path: same directory + basename,
-# .vbs extension. The wscript //B shim lives BESIDE its .bat so a
-# disarm that removes the .bat removes its shim too, and so the writer (cmd_arm)
-# and the referencer (emit_task_xml) — both deriving through this helper — can
-# never disagree about where the shim lives. <bat_win> is a Windows path.
-cadence_vbs_path() {
-    printf '%s' "${1%.bat}.vbs"
-}
-
-# cadence_vbs_wrapper <bat_win>
-# Emit the body of the .vbs shim that hosts the .bat under wscript //B.
-# This replaces the superseded pwsh -WindowStyle Hidden wrapper:
-# that shape was MEASURED to still allocate visible chiefs despite Hidden,
-# while wscript //B hosting this shim allocates zero (wscript.exe is a
-# windowless host; the .bat's cmd.exe console is launched with SW_HIDE).
-#
-# WScript.Shell.Run(cmd, 0, True) launches <bat_win> with a HIDDEN window
-# (intWindowStyle=0), WAITS for it, and RETURNS its exit code; WScript.Quit
-# propagates that code as the wscript.exe process exit code, preserving the
-# exit-code fidelity contract. The command string includes literal
-# quotes around <bat_win>, so runner paths with spaces execute as one command.
-# rc=42 (the harness re-arm signal) survives — proven by an execution test in
-# test-cadence-format.sh that runs a 42-exit .bat through this exact shim and
-# asserts cscript's exit code.
-#
-# <bat_win> is a Windows path; a literal " in it (illegal in a path component,
-# but defended anyway) is doubled per VBScript string-literal rules. ASCII-only:
-# VBScript source is parsed under the OEM codepage where UTF-8 punctuation
-# mojibakes (same constraint as the .bat emitter).
-cadence_vbs_wrapper() {
-    local bat_win="$1" bat_quoted
-    bat_quoted="${bat_win//\"/\"\"}"
-    printf '%s\r\n' "' himmel cadence wrapper - generated DO NOT EDIT; runs the .bat hidden, returns its exit code."
-    printf '%s\r\n' 'Set sh = CreateObject("WScript.Shell")'
-    printf 'WScript.Quit sh.Run("""%s""", 0, True)\r\n' "$bat_quoted"
-}
-
-# Shared Windows Script Host availability predicate. Every
-# Windows cadence Exec is `wscript.exe //B <shim>.vbs`, so a registered task is
-# dead when wscript is missing, policy-disabled, or unable to execute even a
-# zero-exit script. Keep the predicate here: five emitters share the dependency
-# and must not grow five policy readers that drift.
-#
-# Policy precedence follows Windows Script Host: HKCU overrides HKLM; an absent
-# Enabled value means no override at that scope (and both absent means enabled).
-# Both hives are read through PowerShell PSDrive paths, never raw
-# HKEY_LOCAL_MACHINE strings. The final smoke probe runs the exact windowless
-# host the tasks use. Results are cached for the process so multi-task status
-# commands probe once, not once per task.
-#
-# Test seams:
-#   CADENCE_WSCRIPT_BIN       executable to smoke-probe (default wscript.exe)
-#   CADENCE_WSH_POWERSHELL    PowerShell executable used for registry reads
-CADENCE_WSH_CHECKED=0
-CADENCE_WSH_AVAILABLE=0
-CADENCE_WSH_DETAIL=""
-
-_cadence_wsh_policy_value() {
-    local powershell_bin="$1" hive="$2" registry_path out rc=0
-    registry_path="${hive}:\\SOFTWARE\\Microsoft\\Windows Script Host\\Settings"
-    out=$("$powershell_bin" -NoProfile -NonInteractive -Command "
-        try {
-            \$value = (Get-ItemProperty -LiteralPath '$registry_path' -Name Enabled -ErrorAction Stop).Enabled
-            Write-Output ('VALUE:' + [string]\$value)
-        } catch [System.Management.Automation.ItemNotFoundException] {
-            Write-Output 'ABSENT'
-        } catch [System.Management.Automation.PSArgumentException] {
-            Write-Output 'ABSENT'
-        } catch {
-            Write-Error \$_
-            exit 2
-        }
-    " 2>&1) || rc=$?
-    if [ "$rc" -ne 0 ]; then
-        printf '%s' "$out"
-        return 2
-    fi
-    printf '%s' "$out" | tr -d '\r\n '
-}
-
-cadence_wsh_probe() {
-    if [ "$CADENCE_WSH_CHECKED" -eq 1 ]; then
-        [ "$CADENCE_WSH_AVAILABLE" -eq 1 ]
-        return
-    fi
-    CADENCE_WSH_CHECKED=1
-
-    local wscript_name="${CADENCE_WSCRIPT_BIN:-wscript.exe}" wscript_bin
-    local powershell_name="${CADENCE_WSH_POWERSHELL:-}" powershell_bin
-    local hklm hkcu effective source value
-    local probe_file probe_arg probe_rc=0
-
-    if ! wscript_bin=$(command -v "$wscript_name" 2>/dev/null); then
-        CADENCE_WSH_DETAIL="'$wscript_name' is not on PATH"
-        return 1
-    fi
-
-    if [ -n "$powershell_name" ]; then
-        if ! powershell_bin=$(command -v "$powershell_name" 2>/dev/null); then
-            CADENCE_WSH_DETAIL="registry probe executable '$powershell_name' is not available"
-            return 1
-        fi
-    elif powershell_bin=$(command -v pwsh 2>/dev/null); then
-        :
-    elif powershell_bin=$(command -v pwsh.exe 2>/dev/null); then
-        :
-    elif powershell_bin=$(command -v powershell.exe 2>/dev/null); then
-        # pwsh is unavailable — loud, named 5.1 fallback, never silent.
-        echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
-    else
-        CADENCE_WSH_DETAIL="PowerShell is unavailable, so WSH policy cannot be verified"
-        return 1
-    fi
-
-    if ! hklm=$(_cadence_wsh_policy_value "$powershell_bin" HKLM); then
-        CADENCE_WSH_DETAIL="HKLM WSH policy read failed: ${hklm:-no diagnostic}"
-        return 1
-    fi
-    if ! hkcu=$(_cadence_wsh_policy_value "$powershell_bin" HKCU); then
-        CADENCE_WSH_DETAIL="HKCU WSH policy read failed: ${hkcu:-no diagnostic}"
-        return 1
-    fi
-    case "$hklm:$hkcu" in
-        ABSENT:ABSENT|ABSENT:VALUE:*|VALUE:*:ABSENT|VALUE:*:VALUE:*) : ;;
-        *)
-            CADENCE_WSH_DETAIL="WSH policy probe returned an unrecognized answer (HKLM=$hklm, HKCU=$hkcu)"
-            return 1
-            ;;
-    esac
-
-    effective="$hkcu"
-    source="HKCU"
-    if [ "$effective" = "ABSENT" ]; then
-        effective="$hklm"
-        source="HKLM"
-    fi
-    if [ "$effective" != "ABSENT" ]; then
-        value="${effective#VALUE:}"
-        case "$value" in
-            ""|*[!0-9]*)
-                CADENCE_WSH_DETAIL="$source WSH Enabled value is not numeric: $value"
-                return 1
-                ;;
-        esac
-        if [ "$value" -eq 0 ]; then
-            CADENCE_WSH_DETAIL="Windows Script Host is disabled by $source policy (Enabled=0)"
-            return 1
-        fi
-    fi
-
-    if ! probe_file=$(mktemp -t himmel-wsh-preflight.XXXXXX.vbs); then
-        CADENCE_WSH_DETAIL="could not create the temporary WSH smoke probe"
-        return 1
-    fi
-    if ! printf 'WScript.Quit 0\r\n' > "$probe_file"; then
-        rm -f "$probe_file"
-        CADENCE_WSH_DETAIL="could not write the temporary WSH smoke probe"
-        return 1
-    fi
-    probe_arg="$probe_file"
-    if command -v cygpath >/dev/null 2>&1; then
-        if ! probe_arg=$(cygpath -w "$probe_file" 2>/dev/null); then
-            rm -f "$probe_file"
-            CADENCE_WSH_DETAIL="cygpath could not convert the temporary WSH smoke probe path"
-            return 1
-        fi
-    fi
-    MSYS_NO_PATHCONV=1 "$wscript_bin" //B //NoLogo "$probe_arg" >/dev/null 2>&1 || probe_rc=$?
-    rm -f "$probe_file"
-    if [ "$probe_rc" -ne 0 ]; then
-        CADENCE_WSH_DETAIL="'$wscript_name //B' could not execute a zero-exit .vbs (rc=$probe_rc)"
-        return 1
-    fi
-
-    CADENCE_WSH_AVAILABLE=1
-    CADENCE_WSH_DETAIL="available"
-    return 0
-}
-
-cadence_require_wsh() {
-    local caller="$1"
-    if cadence_wsh_probe; then
-        return 0
-    fi
-    echo "ERR $caller: Windows Script Host runner is unavailable — $CADENCE_WSH_DETAIL." >&2
-    echo "    Refusing to arm scheduled tasks whose wscript.exe //B runner cannot execute." >&2
-    return 2
-}
-
-# cadence_registered_status <task-name> <suffix>
-# Report a registered Windows task as ARMED only when its shared wscript runner
-# passes the executable preflight. rc 2 marks registered-but-unexecutable as a
-# health failure while preserving the caller's task-specific suffix.
-cadence_registered_status() {
-    local name="$1" suffix="${2:-}"
-    if cadence_wsh_probe; then
-        printf 'ARMED      %s%s\n' "$name" "$suffix"
-        return 0
-    fi
-    printf 'UNHEALTHY  %s (registered; runner unavailable: %s)%s\n' "$name" "$CADENCE_WSH_DETAIL" "$suffix"
-    return 2
-}
-
-# cadence_bat_editor_set
-# Emit the non-interactive-editor `set` lines every generated .bat stamps near
-# its top. A cadence child runs under schtasks with stdin closed,
-# so it can never answer an interactive editor/prompt; any tool falling back to
-# $EDITOR would otherwise open a window on the operator's desktop and block
-# forever behind it. Pinning every editor hook to the no-op `true` (and
-# disabling gh's prompt) turns that silent hang into a fast, loud failure.
-# Mirrors scripts/telegram/run.ts NON_INTERACTIVE_EDITOR_ENV, but in the raw
-# .bat so the hardening holds even without the sessionEnv merge. ASCII-only,
-# CRLF-terminated, quoted `set` form (quoted-context safe per cadence_cmd_escape).
-cadence_bat_editor_set() {
-    printf 'set "GIT_EDITOR=true"\r\n'
-    printf 'set "EDITOR=true"\r\n'
-    printf 'set "VISUAL=true"\r\n'
-    printf 'set "GH_PROMPT_DISABLED=1"\r\n'
-}
-
-# cadence_runner_platform_ext
-# Echo the runner file extension the CURRENT platform actually executes:
-# "bat" on Windows, "sh" everywhere else, from the usual OSTYPE case arms.
-# CADENCE_RUNNER_PLATFORM_OS is a test seam (mirrors scheduler_backend_os's
-# SCHEDULER_BACKEND_OS override): set it to "windows" to force the Windows
-# branch, or anything else to force POSIX, without an actual Windows host.
-cadence_runner_platform_ext() {
-    if [ -n "${CADENCE_RUNNER_PLATFORM_OS:-}" ]; then
-        case "$CADENCE_RUNNER_PLATFORM_OS" in
-            windows) printf 'bat' ;;
-            *)       printf 'sh' ;;
-        esac
-        return 0
-    fi
-    case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*) printf 'bat' ;;
-        *)                           printf 'sh' ;;
-    esac
-}
-
-# cadence_runner_stamp <bat_dir>
-# Echo the MINIMUM format version stamped across the CURRENT platform's
-# runners under <bat_dir> (an unstamped runner reads as 0 — i.e. armed
-# before stamping). Minimum, not first-found: a multi-runner re-arm
-# interrupted between writes leaves a mixed set, and one current runner must
-# not mask a stale sibling (codex-adv finding). Reads only
-# cadence_runner_platform_ext's extension — a dormant twin copied over from
-# another platform (e.g. a Windows .bat left behind on a Linux station) is
-# never regenerated by that platform's emitters and must not pin the
-# minimum below what this platform actually runs. Return:
+# cadence_runner_stamp <runner_dir>
+# Echo the MINIMUM format version stamped across the .sh runners under
+# <runner_dir> (an unstamped runner reads as 0 — i.e. armed before stamping).
+# Minimum, not first-found: a multi-runner re-arm interrupted between writes
+# leaves a mixed set, and one current runner must not mask a stale sibling.
+# Return:
 #   0 — at least one runner present (version echoed on stdout)
 #   1 — no runners present (cadence not armed via this dir, on this platform)
 cadence_runner_stamp() {
-    local dir="$1" name f ver min="" ext
-    ext="$(cadence_runner_platform_ext)"
+    local dir="$1" name f ver min=""
     for name in $CADENCE_RUNNER_BASENAMES; do
-        f="$dir/$name.$ext"
+        f="$dir/$name.sh"
         [ -f "$f" ] || continue
         ver="$(grep -oE "${CADENCE_FORMAT_MARKER}[[:space:]]*[0-9]+" "$f" 2>/dev/null \
             | head -1 | grep -oE '[0-9]+$' || true)"

@@ -3,8 +3,8 @@
 # upstream-drift repair cadence: two workers, HIMMEL-DriftFix
 # (/drift-fix) and HIMMEL-ForkResync (/fork-resync).
 #
-# Never touches the real scheduler: schtasks/crontab are replaced by fakes via
-# DRIFTFIX_SCHTASKS / DRIFTFIX_CRONTAB, the runner dir by DRIFTFIX_BAT_DIR, and
+# Never touches the real scheduler: crontab is replaced by a fake via
+# DRIFTFIX_CRONTAB, the runner dir by DRIFTFIX_BAT_DIR, and
 # the himmel root by DRIFTFIX_HIMMEL_ROOT pointing at a stub tree. The stub tree
 # deliberately omits scripts/lib/ensure-workspace-trust.sh so the arm path's
 # workspace pre-seed short-circuits instead of writing to the real ~/.claude.json.
@@ -67,51 +67,6 @@ make_root() {
   printf '%s' "$root"
 }
 
-# Fake schtasks. Per-task-name aware (armed_<name> sentinel files instead of a
-# single global one) so the two workers can be independently armed/not-armed —
-# required to exercise "only one worker armed" dedup and rollback scenarios.
-# Behaviour driven by files in $FAKE_STATE:
-#   armed_<name>       -> /query /tn <name> succeeds and reports a Next Run Time
-#   no_next_run_<name> -> /query /tn <name> succeeds but omits Next Run Time
-#                         (simulates a post-arm verify failure)
-#   query_fail         -> /query exits 1 with UNRECOGNIZED stderr (fail-closed probe)
-# Records each invocation to $FAKE_STATE/calls.
-make_fake_schtasks() {
-  local state="$1" f="$1/schtasks"
-  cat > "$f" <<'FAKE'
-#!/usr/bin/env bash
-state="$(dirname "$0")"
-echo "$*" >> "$state/calls"
-tn=""
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "/tn" ]; then tn="$a"; fi
-  prev="$a"
-done
-armed_file="$state/armed_${tn:-_none_}"
-case "$1" in
-  /query)
-    if [ -f "$state/query_fail" ]; then
-      echo "some unrecognized localized failure" >&2; exit 1
-    fi
-    if [ -f "$armed_file" ]; then
-      echo "TaskName: \\$tn"
-      if [ ! -f "$state/no_next_run_$tn" ]; then
-        echo "Next Run Time: 1/1/2027 5:00:00 AM"
-      fi
-      echo "Status: Ready"
-      exit 0
-    fi
-    echo "ERROR: The system cannot find the file specified." >&2; exit 1 ;;
-  /create) touch "$armed_file"; echo "SUCCESS: created"; exit 0 ;;
-  /delete) rm -f "$armed_file"; echo "SUCCESS: deleted"; exit 0 ;;
-esac
-exit 0
-FAKE
-  chmod +x "$f"
-  printf '%s' "$f"
-}
-
 # Fake crontab backed by $FAKE_STATE/tab. `-l` prints it (rc 1 + "no crontab"
 # when absent, the trusted-empty signature); `-` installs from stdin.
 # $FAKE_STATE/install_fail fails ONLY the `-` (install) path, leaving `-l`
@@ -143,19 +98,20 @@ FAKE
   printf '%s' "$f"
 }
 
-# A real executable standing in for the claude binary. resolve_claude now
-# existence-checks the DRIFTFIX_CLAUDE override, so a bare /usr/bin/claude
-# (absent on Windows Git-Bash) would trip that guard instead of the case under
-# test. The optional 2nd arg is a filename suffix: the Windows arm path requires
-# a cmd-launchable extension, so the Windows block passes ".exe" (a real armbale
-# target) while the POSIX block — which has no extension check — keeps the bare
-# extensionless stub.
+# A real executable for resolve_claude's override check.
 make_stub_claude() {
-  local f="$1/claude${2:-}"
+  local f="$1/claude"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$f"
   chmod +x "$f"
   printf '%s' "$f"
 }
+
+echo "[test-drift-fix-cadence] dropped Windows scheduler is refused before probing tools"
+for platform in windows msys cygwin win32 MINGW64_NT; do
+  out=$(DRIFTFIX_PLATFORM="$platform" bash "$CADENCE" status 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then pass "$platform status is rc=2"; else fail "$platform status rc=$rc: $out"; fi
+  assert_has "$out" "unsupported platform" "$platform is rejected at the platform gate"
+done
 
 echo "[test-drift-fix-cadence] usage + arg validation"
 assert_rc 1 "no subcommand is rc=1" bash "$CADENCE"
@@ -457,239 +413,6 @@ assert_rc 2 "crontab -l failure is fail-closed rc=2 on disarm" \
       DRIFTFIX_CRONTAB="$fake_cron" DRIFTFIX_BAT_DIR="$state/bat" \
       DRIFTFIX_CLAUDE="$fake_claude" bash "$CADENCE" disarm
 rm -rf "$root" "$state"
-
-# --------------------------------------------------------------------------
-if command -v cygpath >/dev/null 2>&1; then
-  # Hermetic shared WSH preflight: both policy values are absent and the fake
-  # windowless host accepts the zero-exit smoke .vbs.
-  wsh_state=$(mktemp -d -t drift-wsh.XXXXXX)
-  fake_wscript="$wsh_state/wscript-fake.exe"
-  printf '#!/bin/sh\nexit 0\n' > "$fake_wscript"
-  chmod +x "$fake_wscript"
-  fake_wsh_powershell="$wsh_state/powershell-wsh-fake.sh"
-  printf '#!/bin/sh\necho ABSENT\n' > "$fake_wsh_powershell"
-  chmod +x "$fake_wsh_powershell"
-  export CADENCE_WSCRIPT_BIN="$fake_wscript"
-  export CADENCE_WSH_POWERSHELL="$fake_wsh_powershell"
-
-  echo "[test-drift-fix-cadence] Windows (schtasks) arm — both workers"
-  root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  win_env() {
-    env DRIFTFIX_PLATFORM=windows DRIFTFIX_HIMMEL_ROOT="$root" \
-        DRIFTFIX_SCHTASKS="$fake_st" DRIFTFIX_BAT_DIR="$state/bat" \
-        DRIFTFIX_CLAUDE="$fake_claude" "$@"
-  }
-  out=$(win_env bash "$CADENCE" arm --dry-run 2>&1); rc=$?
-  if [ "$rc" -eq 0 ]; then pass "windows dry-run arm exits 0"; else fail "windows dry-run rc=$rc: $out"; fi
-  assert_has "$out" "StartWhenAvailable" "task XML sets StartWhenAvailable (missed fires catch up)"
-  assert_has "$out" "InteractiveToken" "task XML runs as the interactive user"
-  assert_has "$out" "2020-01-01T05:00:00" "default 05:00 lands in the drift trigger"
-  assert_has "$out" "2020-01-01T05:30:00" "default 05:30 lands in the resync trigger"
-  assert_has "$out" "< NUL" "runner gives the session stdin EOF"
-  assert_lacks "$out" "--print" "runner never uses --print (HIMMEL-128 billing)"
-  assert_has "$out" "himmel-cadence-runner-format:" "runner carries the format stamp"
-  assert_has "$out" "/drift-fix" "drift runner fires the /drift-fix runbook"
-  assert_has "$out" "/fork-resync" "resync runner fires the /fork-resync runbook"
-  # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-  # The hidden-powershell shape still allocated consoles; wscript allocates zero.
-  assert_has "$out" "<Command>wscript.exe</Command>" "task XML Exec Command is wscript.exe, not the bare .bat"
-  assert_has "$out" "//B" "task XML Exec Arguments carries //B batch mode"
-  assert_has "$out" "drift-fix.vbs" "drift task XML Exec Arguments references the runner shim"
-  assert_has "$out" "fork-resync.vbs" "resync task XML Exec Arguments references the runner shim"
-  if [ ! -f "$state/bat/drift-fix.bat" ] && [ ! -f "$state/bat/fork-resync.bat" ]; then
-    pass "dry-run wrote no .bat"
-  else
-    fail "dry-run wrote a .bat"
-  fi
-  if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "dry-run created no task"
-  else
-    fail "dry-run created a task"
-  fi
-
-  out=$(win_env bash "$CADENCE" arm --time 06:45 --resync-time 07:20 2>&1); rc=$?
-  if [ "$rc" -eq 0 ]; then pass "windows arm exits 0"; else fail "windows arm rc=$rc: $out"; fi
-  assert_has "$out" "drift-fix-cadence ARMED" "arm prints the summary banner"
-  if [ -f "$state/bat/drift-fix.bat" ]; then
-    bat=$(cat "$state/bat/drift-fix.bat")
-    assert_has "$bat" '--model "sonnet"' "drift runner pins the model"
-    assert_has "$bat" "move /y" "drift runner rotates its log"
-    assert_has "$bat" "exit rc=" "drift runner stamps its exit rc for status"
-    assert_has "$bat" "/drift-fix" "drift .bat carries the drift prompt"
-    pass "drift .bat runner written"
-  else
-    fail "drift .bat runner was not written"
-  fi
-  if [ -f "$state/bat/fork-resync.bat" ]; then
-    bat=$(cat "$state/bat/fork-resync.bat")
-    assert_has "$bat" "/fork-resync" "resync .bat fires /fork-resync, not /drift-fix"
-    assert_lacks "$bat" "/drift-fix" "resync .bat does not carry the drift prompt"
-    assert_has "$bat" "fork-resync.log" "resync .bat carries its own log path"
-    pass "resync .bat runner written"
-  else
-    fail "resync .bat runner was not written"
-  fi
-  if grep -q '/create /tn HIMMEL-DriftFix' "$state/calls"; then
-    pass "schtasks /create was invoked for the drift worker"
-  else
-    fail "schtasks /create was never invoked for the drift worker"
-  fi
-  if grep -q '/create /tn HIMMEL-ForkResync' "$state/calls"; then
-    pass "schtasks /create was invoked for the resync worker"
-  else
-    fail "schtasks /create was never invoked for the resync worker"
-  fi
-
-  echo "[test-drift-fix-cadence] Windows dedup: rc=3 when only ONE worker is armed"
-  # Simulate an externally-disarmed resync worker (delete just its armed sentinel)
-  # and confirm arm still refuses, naming only the worker it actually found.
-  rm -f "$state/armed_HIMMEL-ForkResync"
-  out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 3 ]; then pass "dedup refuses when only the drift worker is armed (rc=3)"; else fail "expected rc=3, got rc=$rc: $out"; fi
-  assert_has "$out" "already armed: HIMMEL-DriftFix." "dedup message names the armed worker"
-  assert_lacks "$out" "HIMMEL-ForkResync" "dedup message does not mention the unarmed worker"
-  touch "$state/armed_HIMMEL-ForkResync"
-
-  echo "[test-drift-fix-cadence] Windows dedup + force (both workers armed)"
-  assert_rc 3 "second arm is refused (dedup, both workers armed)" win_env bash "$CADENCE" arm
-  out=$(win_env bash "$CADENCE" arm --force 2>&1); rc=$?
-  if [ "$rc" -eq 0 ]; then pass "--force replaces"; else fail "--force rc=$rc: $out"; fi
-  # /create /f overwrites in place — a pre-emptive /delete would leave no
-  # cadence at all if a later prep step failed.
-  if grep -q '/delete' "$state/calls"; then fail "--force pre-deleted a task instead of /create /f"; else pass "--force replaced via /create /f, never a pre-emptive /delete"; fi
-
-  out=$(win_env bash "$CADENCE" status 2>&1)
-  assert_has "$out" "ARMED" "status reports ARMED"
-  assert_has "$out" "HIMMEL-DriftFix" "status names the drift worker"
-  assert_has "$out" "HIMMEL-ForkResync" "status names the resync worker"
-  assert_has "$out" "next run:" "status surfaces the next run time"
-  out=$(win_env bash "$CADENCE" disarm 2>&1); rc=$?
-  if [ "$rc" -eq 0 ]; then pass "disarm exits 0"; else fail "disarm rc=$rc: $out"; fi
-  if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "disarm deleted both tasks"
-  else
-    fail "disarm left a task armed"
-  fi
-  if [ ! -f "$state/bat/drift-fix.bat" ] && [ ! -f "$state/bat/fork-resync.bat" ]; then
-    pass "disarm removed both .bats"
-  else
-    fail "disarm left a .bat behind"
-  fi
-
-  echo "[test-drift-fix-cadence] Windows: an unrecognized query failure is fail-closed"
-  touch "$state/query_fail"
-  assert_rc 2 "unrecognized /query stderr is rc=2 on arm, never 'not armed'" \
-    win_env bash "$CADENCE" arm
-  assert_rc 2 "unrecognized /query stderr is rc=2 on status" win_env bash "$CADENCE" status
-  assert_rc 2 "unrecognized /query stderr is rc=2 on disarm" win_env bash "$CADENCE" disarm
-  rm -rf "$root" "$state"
-
-  echo "[test-drift-fix-cadence] Windows: post-arm verify failure rolls back BOTH workers (all-or-nothing)"
-  root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  # The resync worker's /query will report success but with no Next Run Time —
-  # the fake's way of simulating a task that "created" but never really armed.
-  touch "$state/no_next_run_HIMMEL-ForkResync"
-  out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 4 ]; then pass "post-arm verify failure is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
-  assert_has "$out" "rolling back both workers" "verify failure message says it rolls back both workers"
-  if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "post-arm verify failure leaves NEITHER worker armed (all-or-nothing)"
-  else
-    fail "post-arm verify failure left a worker armed"
-  fi
-  # The drift worker's shim WAS published before the
-  # resync worker failed the verify — rollback must remove it too, not orphan it.
-  if [ ! -f "$state/bat/drift-fix.vbs" ] && [ ! -f "$state/bat/fork-resync.vbs" ]; then
-    pass "failed arm leaves no orphan .vbs shim (rollback removed both)"
-  else
-    fail "failed arm orphaned a .vbs shim until a later disarm"
-  fi
-  rm -rf "$root" "$state"
-
-  echo "[test-drift-fix-cadence] Windows: mid-loop cygpath failure rolls back BOTH workers (CR)"
-  root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  # A fake cygpath that delegates to the real one for every path except the
-  # resync worker's — simulating the exact failure the drift worker's task has
-  # ALREADY been created by the time it hits (arm is all-or-nothing).
-  real_cygpath="$(command -v cygpath)"
-  fake_cyg="$state/cygpath"
-  cat > "$fake_cyg" <<FAKE
-#!/usr/bin/env bash
-case "\$*" in
-  *fork-resync*) echo "fake cygpath: simulated failure" >&2; exit 1 ;;
-esac
-exec "$real_cygpath" "\$@"
-FAKE
-  chmod +x "$fake_cyg"
-  out=$(env DRIFTFIX_PLATFORM=windows DRIFTFIX_HIMMEL_ROOT="$root" \
-      DRIFTFIX_SCHTASKS="$fake_st" DRIFTFIX_BAT_DIR="$state/bat" \
-      DRIFTFIX_CLAUDE="$fake_claude" PATH="$state:$PATH" bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 4 ]; then pass "mid-loop cygpath failure is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
-  if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "mid-loop cygpath failure leaves NEITHER worker armed (all-or-nothing)"
-  else
-    fail "mid-loop cygpath failure left a worker armed (half-armed cadence)"
-  fi
-  # Worker 1 published its shim before worker 2's cygpath
-  # failed — rollback removes it instead of orphaning it.
-  if [ ! -f "$state/bat/drift-fix.vbs" ]; then
-    pass "mid-loop cygpath rollback removed the published shim too"
-  else
-    fail "mid-loop cygpath rollback orphaned the drift worker's .vbs shim"
-  fi
-  rm -rf "$root" "$state"
-
-  echo "[test-drift-fix-cadence] Windows: publication onto a non-regular final path rolls back BOTH workers (CR + HIMMEL-1753 r2)"
-  root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  # A directory sitting where the drift worker's .bat should be a file. Staging
-  # means the emitter's redirect no longer fails — the staged
-  # temp path is free — so this sabotage must be caught by the pre-promotion
-  # guard: `mv` onto a directory would "succeed" by moving the staged file
-  # INSIDE it, arming a task at a path that is not a file. The refusal must
-  # roll back both workers and leave no shim or staged temp behind.
-  mkdir -p "$state/bat/drift-fix.bat"
-  out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 4 ]; then pass "non-regular final path refusal is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
-  assert_has "$out" "not a regular file" "refusal message names the squatting path"
-  if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "publication refusal leaves NEITHER worker armed (all-or-nothing)"
-  else
-    fail "publication refusal left a worker armed (half-armed cadence)"
-  fi
-  if [ ! -f "$state/bat/drift-fix.vbs" ] && [ ! -f "$state/bat/fork-resync.vbs" ]; then
-    pass "publication refusal leaves no orphan .vbs shim"
-  else
-    fail "publication refusal left an orphan .vbs shim"
-  fi
-  if ! compgen -G "$state/bat/".?.* >/dev/null; then
-    pass "publication refusal cleans its staged temps"
-  else
-    fail "staged temp litter left after publication refusal" "$(ls -A "$state/bat")"
-  fi
-  rm -rf "$root" "$state"
-
-  echo "[test-drift-fix-cadence] Windows: an extensionless claude shim is refused at arm time"
-  # A literal extensionless shell shim (npm-style `claude`, no .exe sibling)
-  # exists on disk, so an existence-only check accepts it — but the .bat then
-  # invokes an extensionless path cmd.exe cannot run, and every 05:00 fire dies
-  # in a log nobody reads. The arm path must refuse it at ARM time, when someone
-  # is present to act on it, instead. (CR round-9)
-  root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_shim=$(make_stub_claude "$state")
-  out=$(env DRIFTFIX_PLATFORM=windows DRIFTFIX_HIMMEL_ROOT="$root" \
-      DRIFTFIX_SCHTASKS="$fake_st" DRIFTFIX_BAT_DIR="$state/bat" \
-      DRIFTFIX_CLAUDE="$fake_shim" bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 2 ]; then pass "extensionless claude shim refused at arm time (rc=2)"; else fail "expected rc=2 for extensionless shim, got rc=$rc: $out"; fi
-  assert_has "$out" "cmd.exe can run" "refusal explains cmd.exe cannot run it"
-  assert_has "$out" "DRIFTFIX_CLAUDE" "refusal points the operator at DRIFTFIX_CLAUDE"
-  if [ ! -f "$state/bat/drift-fix.bat" ] && [ ! -f "$state/armed_HIMMEL-DriftFix" ]; then
-    pass "extensionless shim armed nothing (no .bat, no task)"
-  else
-    fail "extensionless shim armed despite being unrunnable by cmd.exe"
-  fi
-  rm -rf "$root" "$state" "$wsh_state"
-else
-  echo "[test-drift-fix-cadence] Windows (schtasks) — skipped: no cygpath on this host"
-fi
 
 echo "[test-drift-fix-cadence] the runner basenames are registered for staleness probes"
 # shellcheck disable=SC1091
