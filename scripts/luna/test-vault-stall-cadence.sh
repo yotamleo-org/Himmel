@@ -624,16 +624,16 @@ assert_eq "T30 the working tree is left as it was" "echo fixed" "$(sed -n 2p "$V
 # --- T31 a fixer refusal on a staged blob is named, never run on the vault ----
 mkvault
 before="$(head_sha)"
-printf '{"legs": []}' >"$V/handovers/legs.json"
-git -C "$V" add handovers/legs.json
+printf '{"workers": []}' >"$V/handovers/workers.json"
+git -C "$V" add handovers/workers.json
 out="$(run_sut)"; rc=$?
 assert_eq "T31 run exits 0" "0" "$rc"
 assert_eq "T31 no commit" "$before" "$(head_sha)"
-assert_has "T31 alert names the fixer and file" "end-of-file-fixer handovers/legs.json" "$(sent)"
+assert_has "T31 alert names the fixer and file" "end-of-file-fixer handovers/workers.json" "$(sent)"
 assert_not_has "T31 not reported as passing" "stall-but-pre-commit-passes" "$(sent)"
-assert_has "T31 last-run.log keeps the fixer's output" "Fixing handovers/legs.json" "$(cat "$S/last-run.log" 2>/dev/null)"
-assert_eq "T31 the vault file is not rewritten" '{"legs": []}' "$(cat "$V/handovers/legs.json")"
-assert_eq "T31 the backlog is untouched" "handovers/legs.json " "$(staged)"
+assert_has "T31 last-run.log keeps the fixer's output" "Fixing handovers/workers.json" "$(cat "$S/last-run.log" 2>/dev/null)"
+assert_eq "T31 the vault file is not rewritten" '{"workers": []}' "$(cat "$V/handovers/workers.json")"
+assert_eq "T31 the backlog is untouched" "handovers/workers.json " "$(staged)"
 
 # --- T32 a staged gitleaks hit the working tree no longer has ----------------
 mkvault

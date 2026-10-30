@@ -49,10 +49,10 @@ unset AUTO_ARM_STALE_ESCALATE_AGE AUTO_ARM_STALE_MIN_CHECKS AUTO_ARM_BIN
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # mk_empty_fleet_stub <dir> — hermetic FLEET_PS_CMD/FLEET_PROC fixture with
-# ZERO candidate legs, so the usage-preflight.sh fleet-cap census below reads
+# ZERO candidate workers, so the usage-preflight.sh fleet-cap census below reads
 # a deterministic empty fleet instead of the real ambient process table
 # (these cases test the BANK threshold, not the
-# fleet cap, and must not depend on how many legs happen to be running on
+# fleet cap, and must not depend on how many workers happen to be running on
 # the station at test time). The cap is gate policy, read from
 # $HOME/.himmel/config.json under HIMMEL_POLICY_FOLLOWS_HOME=1, never the env,
 # so the stub pins it to 4 there.

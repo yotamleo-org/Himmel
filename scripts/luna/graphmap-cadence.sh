@@ -120,7 +120,7 @@ TASK_HIMMEL="${TASK_PREFIX}Himmel"
 TASK_AST_PREFIX="HIMMEL-GraphMapAst-"
 TASK_AST_LUNA="${TASK_AST_PREFIX}Luna"
 TASK_AST_HIMMEL="${TASK_AST_PREFIX}Himmel"
-# Publish leg: a FIFTH, standalone task -- refresh+publish+
+# Publish task: a FIFTH, standalone task -- refresh+publish+
 # auto-merge himmel's own graphify graph via scripts/graphify/graph-cadence.sh.
 # Distinct prefix from both the semantic and structural pairs above, same
 # rationale as TASK_AST_PREFIX: it must never collide with an operator's own
@@ -130,7 +130,7 @@ TASK_AST_HIMMEL="${TASK_AST_PREFIX}Himmel"
 # touch the --ast-only semantics of the other two pairs).
 TASK_PUBLISH_PREFIX="HIMMEL-GraphPublish-"
 TASK_PUBLISH_HIMMEL="${TASK_PUBLISH_PREFIX}Himmel"
-# Luna semantic leg: batch-capped claude-api semantic-update.sh over the vault.
+# Luna semantic task: batch-capped claude-api semantic-update.sh over the vault.
 # Opt-in (--with-luna-semantic), cron-only, arms PAUSED. Own prefix, same exact-name rule as above.
 TASK_SEMANTIC_LUNA="HIMMEL-GraphSemantic-Luna"
 # Exact-name match for "does this task/cron-entry belong to THIS cadence"
@@ -174,10 +174,10 @@ REFRESH_SCRIPT="$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh"
 # wrapper, by absolute path, same rationale as REFRESH_SCRIPT above -- see
 # ast-update.sh's own header for why (promote lock, shared graphify-out).
 AST_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/ast-update.sh"
-# Publish leg: fires by absolute path, same rationale as
+# Publish task: fires by absolute path, same rationale as
 # AST_UPDATE_SCRIPT/REFRESH_SCRIPT above.
 PUBLISH_CADENCE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/graph-cadence.sh"
-# Luna semantic leg: graph-cadence.sh only wires himmel, so this worker calls semantic-update.sh directly.
+# Luna semantic task: graph-cadence.sh only wires himmel, so this worker calls semantic-update.sh directly.
 SEMANTIC_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/semantic-update.sh"
 # The observability-registry FLOW NAME must be DERIVED from the same
 # corpus-slug computation graph-cadence.sh itself uses (basename(HIMMEL_ROOT),
@@ -216,7 +216,7 @@ HIMMEL_TIME="13:20"
 # (the 20-min stagger still separates them within that day).
 WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 
-# Structural (AST) legs: free, no bank, no claude session.
+# Structural (AST) tasks: free, no bank, no claude session.
 # Fixed offsets, not operator flags — there's no cost/off-peak reason to make
 # these configurable (see the header's WHY :05/:15); 10 minutes apart so the two
 # corpora's `graphify update` calls never start in the same instant.
@@ -232,7 +232,7 @@ WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 AST_LUNA_TIME="00:05"
 AST_HIMMEL_TIME="00:15"
 
-# Publish leg: every 6 hours, anchored at :35 past. Stagger
+# Publish task: every 6 hours, anchored at :35 past. Stagger
 # rationale, extending the header's WHY :05/:15-PAST-THE-HOUR note: this worker
 # is NOT free like the AST pair -- it can run ast-update.sh, open/refresh a
 # PR, and drive merge-on-green.sh's own check-ci watch, all in one fire, so
@@ -246,7 +246,7 @@ AST_HIMMEL_TIME="00:15"
 # the same hour as the other himmel workers (readable in `status`) without
 # landing on either one's own minute.
 GRAPH_PUBLISH_TIME="00:35"
-# Luna semantic leg: every 2h at :50 (publish is :35), capped per fire. ponytail: the cap and the 2.00 USD run
+# Luna semantic task: every 2h at :50 (publish is :35), capped per fire. ponytail: the cap and the 2.00 USD run
 # cap are the proposed defaults awaiting the operator's spend ruling; make them flags if the ruling differs.
 LUNA_SEMANTIC_MINUTE="50"
 LUNA_SEMANTIC_EVERY_HOURS=2
@@ -1193,9 +1193,9 @@ cmd_arm() {
     # semantic pair (luna = vault, himmel = repo).
     payload_ast_luna=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_vault" "$q_out_dir_ast_luna")
     payload_ast_himmel=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_himmel")
-    # Publish leg: himmel repo only (v1).
+    # Publish task: himmel repo only (v1).
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
-    # Luna semantic leg: writes the same out dir the luna AST worker does.
+    # Luna semantic task: writes the same out dir the luna AST worker does.
     payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna")
 
     local luna_hh luna_mm himmel_hh himmel_mm
@@ -1222,7 +1222,7 @@ cmd_arm() {
     # hour); luna DAILY at its full HH:MM.
     entry_ast_luna="$ast_luna_mm $ast_luna_hh * * * $q_runner_ast_luna # $TASK_AST_LUNA"
     entry_ast_himmel="$ast_himmel_mm * * * * $q_runner_ast_himmel # $TASK_AST_HIMMEL"
-    # Publish leg: every 6h at its fixed minute (cron's
+    # Publish task: every 6h at its fixed minute (cron's
     # `*/6` hour-field step, standard vixie-cron syntax).
     entry_publish_himmel="$publish_himmel_mm */$PUBLISH_EVERY_HOURS * * * $q_runner_publish_himmel # $TASK_PUBLISH_HIMMEL"
     entry_semantic_luna="$LUNA_SEMANTIC_MINUTE */$LUNA_SEMANTIC_EVERY_HOURS * * * $q_runner_semantic_luna # $TASK_SEMANTIC_LUNA"
@@ -1363,7 +1363,7 @@ cmd_arm() {
     observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
     cadence_prov_record "$TASK_AST_LUNA"
     cadence_prov_record "$TASK_AST_HIMMEL"
-    # Publish leg: opt-in via --with-publish.
+    # Publish task: opt-in via --with-publish.
     # $PUBLISH_FLOW_NAME ("graph-publish-<slug>"), NOT the
     # "graphmap-*.sh/.log" runner-file naming this file's OTHER workers use --
     # it must match graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the

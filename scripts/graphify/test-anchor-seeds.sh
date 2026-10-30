@@ -143,14 +143,14 @@ if grep -q -- "--seed other_go " <<<"$calls" && ! grep -q -- "--seed go_sh " <<<
 else fail "A10 calls='$calls'"; fi
 
 # A11-A13: a file named in the other fleet vocabulary resolves through the rename registry
-# (headed-arm-worker.sh is headed-arm-leg.sh, console-relay.sh is chief-relay.sh), never onto a # old-term-ok
+# (headed-arm-worker.sh is headed-arm-leg.sh, console-relay.sh is chief-relay.sh), never onto a
 # lane-worker file the registry marks other-sense, and a name as written still wins.
 python3 -I - "$T/alias.json" <<'PY'
 import json, sys
 def node(i, label, src):
     return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"), # old-term-ok
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
     node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
 ]

@@ -92,22 +92,22 @@ check "python restrict ignores OFF" "0" \
 # off = rc 1 and the renamed line
 sh_flag() {
   # read-sink-ok: sources the lib under test, a repo path
-  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" bash -c 'set -euo pipefail; . "$1"; rc=0; legacy_flag --legs --workers || rc=$?; legacy_flag --legs --workers || rc=$?; echo "rc=$rc"' \
+  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" bash -c 'set -euo pipefail; . "$1"; rc=0; legacy_flag --old-flag --new-flag || rc=$?; legacy_flag --old-flag --new-flag || rc=$?; echo "rc=$rc"' \
     _ "$LIB" 2>&1 | tr '\n' '|'
 }
 js_flag() {
   env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" node --input-type=module -e \
-    'const m = await import(process.argv[2]); const a = m.legacyFlag("--legs", "--workers"); const b = m.legacyFlag("--legs", "--workers"); console.log("rc=" + (a && b ? 0 : 1));' \
+    'const m = await import(process.argv[2]); const a = m.legacyFlag("--old-flag", "--new-flag"); const b = m.legacyFlag("--old-flag", "--new-flag"); console.log("rc=" + (a && b ? 0 : 1));' \
     _ "$HERE/env-alias.mjs" 2>&1 | tr '\n' '|'
 }
 py_flag() {
   env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" python3 -I -c \
-    'import sys; sys.path.insert(0, sys.argv[1]); import env_alias; a = env_alias.legacy_flag("--legs", "--workers"); b = env_alias.legacy_flag("--legs", "--workers"); print("rc=%d" % (0 if a and b else 1))' \
+    'import sys; sys.path.insert(0, sys.argv[1]); import env_alias; a = env_alias.legacy_flag("--old-flag", "--new-flag"); b = env_alias.legacy_flag("--old-flag", "--new-flag"); print("rc=%d" % (0 if a and b else 1))' \
     "$HERE" 2>&1 | tr '\n' '|'
 }
 for impl in sh js py; do
-  check "$impl legacy_flag on: one deprecation line, rc 0" "--legs is deprecated: use --workers|rc=0|" "$("${impl}_flag" 1)"
-  check "$impl legacy_flag off: renamed line, rc 1" "--legs was renamed to --workers; legacy names are off|--legs was renamed to --workers; legacy names are off|rc=1|" "$("${impl}_flag" 0)"
+  check "$impl legacy_flag on: one deprecation line, rc 0" "--old-flag is deprecated: use --new-flag|rc=0|" "$("${impl}_flag" 1)"
+  check "$impl legacy_flag off: renamed line, rc 1" "--old-flag was renamed to --new-flag; legacy names are off|--old-flag was renamed to --new-flag; legacy names are off|rc=1|" "$("${impl}_flag" 0)"
 done
 
 # every forwarder that obeys the switch spells the predicate as legacy-names.sh does

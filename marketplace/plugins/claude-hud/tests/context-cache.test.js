@@ -28,7 +28,7 @@ async function session(stdinOverrides) {
       model: { display_name: 'Opus' },
       cwd: home,
       transcript_path: transcript,
-      session_name: 'leg-fixture',
+      session_name: 'worker-fixture',
       context_window: { context_window_size: 200000, used_percentage: 42, remaining_percentage: 58, ...stdinOverrides },
     }),
     encoding: 'utf8',
@@ -50,7 +50,7 @@ test('the HUD writes the snapshot context-fill.sh reads, and --percent returns i
     assert.equal(snapshot.remaining_percentage, 58);
     assert.equal(snapshot.context_window_size, 200000);
     assert.equal(typeof snapshot.saved_at, 'number');
-    assert.equal(snapshot.session_name, 'leg-fixture');
+    assert.equal(snapshot.session_name, 'worker-fixture');
 
     const fill = spawnSync(BASH_BIN, [contextFill, '--percent'], { encoding: 'utf8', env });
     assert.equal(fill.status, 0, fill.stderr);

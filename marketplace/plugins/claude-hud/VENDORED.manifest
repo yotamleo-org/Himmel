@@ -41,8 +41,8 @@ c39e749a8642eaa5ded9f6f5b68ccfd8bcfda4a6  dist/config.d.ts
 c43a724974354ab5bf844635400df6b581b96fb8  dist/config.js.map
 1bc3cc1503663560aa321638224d6cace684d58a  dist/context-cache.d.ts
 4483a432808c7e0ff6294c727ea6e1ed8c6e9e3b  dist/context-cache.d.ts.map
-219eb360cd2f4c105bc1327538b637f89f01474f  dist/context-cache.js
-538fc2c5a4c7d42ed55f7b4327748d7d8d67ba46  dist/context-cache.js.map
+f49ae08e680c40e4a8437bc1c72994c35e742cb4  dist/context-cache.js
+3ef89c41bd862fa4a23e9f7f23da80c06354f152  dist/context-cache.js.map
 fab39be8ceefc04cbcd528b3bfbdebf618155b31  dist/cost.d.ts
 6f91a368db98e962cca011342a3b465f9fe5f59c  dist/cost.d.ts.map
 7e419f34932141d20845f597fd431524e0cef946  dist/cost.js
@@ -232,7 +232,7 @@ ae323f37c223573fbbe914b4713a349400dfe1e5  scripts/clean-dist.mjs
 3cd4b922262b4ac0b3a3bec0b6b02c844208cb88  src/claude-config-dir.ts
 a80e53b9c1bba490285110948e394438bab85361  src/config-reader.ts
 575c4af0f4ea6078e2d45343d7becf83e454233e  src/config.ts
-977854db77ab37efc750dc29df0987bb25a14a80  src/context-cache.ts
+460ae2be6d490367fd07bde25178f95979b6fde5  src/context-cache.ts
 b8e1ab876d7b7692e09de356ad55377d45d4ce71  src/cost.ts
 94879b142ee29f44e1258385de9e247c1e792b56  src/custom-line-cmd.ts
 6e53ea2671a20982104d951e6350b07814acd86f  src/daily-cost.ts
@@ -285,7 +285,7 @@ eb3c8277d2e11ce2eed7f87e20801d893670cc5a  src/usage-pace.ts
 9b5b3607c611773804f240f01073f2c0aae13df5  tests/claudex-lane.test.js
 9c9cb381ced6c61b593443e13aa904f5df869f24  tests/config-reader.test.js
 0ddcb20683ac8a5c4bd73687e95fd4f1dca4e463  tests/config.test.js
-b8c03a109a759e12e145b9df30b71b86b95971b9  tests/context-cache.test.js
+1143065a3616d3c694d3c8676fd5022dd3b2049e  tests/context-cache.test.js
 57e563f59d5d435d4bd00e239b45f219c054627f  tests/custom-line-cmd.test.js
 7fac579d8719edbeed5ff1749388b17466216f56  tests/daily-cost.test.js
 6932499eccb44d5778ca12a62809744dec6630ac  tests/effort.test.js
