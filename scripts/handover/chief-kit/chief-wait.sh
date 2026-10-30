@@ -1106,6 +1106,9 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
 r0_retry=""
+if [ -r "$inbox.wait.r0-next" ]; then
+    IFS= read -r r0_retry 2>/dev/null < "$inbox.wait.r0-next" || r0_retry=""  # swallow-ok: an unreadable cursor falls back to plain candidate order
+fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
@@ -1166,7 +1169,10 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
-            10:*-failed\ rc=[3467]\ *) r0_retry="$label"; break ;;
+            10:*-failed\ rc=[3467]\ *)
+                r0_retry="$label"
+                printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+                break ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
         printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"

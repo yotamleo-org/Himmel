@@ -26,6 +26,7 @@
 #   (r0o) silent failure/SIGKILL diagnostics and output-bearing failures retain rc
 #   (r0p) Telegram is serviced between pending slow wraps
 #   (r0q) a standing retry does not starve a later worker's wrap
+#   (r0r) retry rotation survives a Telegram wake and waiter re-arm
 #   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
@@ -293,6 +294,33 @@ check "(r0q) first sample attempts N1" "N1 WRAPPED — done" "$(cat "$STUB/le.st
 check "(r0q) next sample reaches N2 despite N1 retry" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
 check "(r0q) later worker completes its wrap" "N2 wrap-merged -" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0q) N1 stays retryable after N2 completes" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0r) retry rotation survives a Telegram wake and waiter re-arm --------
+reset_stub
+fleet2 r0r
+: > "$STUB/le.retry-first"
+echo 1.2 > "$STUB/le.sleep"
+printf 'HANDLED wrap-merged N2\n' > "$STUB/le.out"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
+printf 'N999\n' > "$I.wait.r0-next"
+tick_line "N1:WRAPPED,N2:WRAPPED"
+start "$I" "$WORK/r0r-first.out" --doc "$D" --workers-from "$M"
+n=0
+while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.stdin.1" ]; do sleep 0.1; n=$((n + 1)); done
+printf -- '- 03:45 [telegram from=1 chat=2] first\n' >> "$I"
+wait_exit "$WPID"
+check "(r0r) stale cursor starts in plain order" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(r0r) first waiter yields after one retry" 1 "$(cat "$STUB/le.calls" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+start "$I" "$WORK/r0r-rearm.out" --doc "$D" --workers-from "$M"
+n=0
+while [ "$n" -lt 50 ] && [ ! -s "$STUB/le.stdin.2" ]; do sleep 0.1; n=$((n + 1)); done
+printf -- '- 03:46 [telegram from=1 chat=2] second\n' >> "$I"
+wait_exit "$WPID"
+check "(r0r) re-armed waiter starts with N2" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+contains "(r0r) later worker wraps across re-arm" "$(cat "$WORK/r0r-rearm.out")" "absorbed since last wake: wraps=1 (N2)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then

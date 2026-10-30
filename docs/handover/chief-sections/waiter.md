@@ -171,7 +171,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `HANDLED` lands in `<inbox>.wait.digest`; a
     refusal that only means "not yet" (lock still held, tail not yet `WRAPPED`,
     subtree alive) stays retryable. The next sample starts after that worker,
-    so a standing refusal cannot starve later workers. Anything else wakes you once per
+    using an atomically saved label in `<inbox>.wait.r0-next` even after a
+    waiter re-arm; a missing or stale label leaves plain candidate order.
+    A standing refusal cannot starve later workers. Anything else wakes you once per
     bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
     tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
     limit=240s` to both the wake and the out file; another silent failure names
