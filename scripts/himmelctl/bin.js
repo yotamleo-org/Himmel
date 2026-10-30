@@ -2408,7 +2408,8 @@ function loadProfile(p, persist = true) {
 // Remove the retired cadence ids from the saved profile file, so the drop
 // notice prints once. Rewrites the file's own parsed JSON (not the migrated
 // in-memory object) through a temp file + rename; a failed write only warns,
-// the in-memory drop already applies.
+// the in-memory drop already applies. A file that changed since it was read is
+// left alone, so a concurrent save is never overwritten (the notice repeats).
 function dropRetiredFromProfileFile(p, raw, ids) {
   const tmp = `${p}.${process.pid}.tmp`;
   try {
@@ -2416,6 +2417,7 @@ function dropRetiredFromProfileFile(p, raw, ids) {
     for (const id of ids) delete orig.cadences[id];
     if (Object.keys(orig.cadences).length === 0) delete orig.cadences;
     fs.writeFileSync(tmp, serialize(orig) + '\n', { mode: fs.statSync(p).mode & 0o777 });
+    if (fs.readFileSync(p, 'utf8') !== raw) throw new Error('the profile changed while it was read');
     fs.renameSync(tmp, p);
   } catch (e) {
     try { fs.unlinkSync(tmp); } catch (_e) { /* no tmp left */ }

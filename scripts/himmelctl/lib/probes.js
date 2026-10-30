@@ -987,8 +987,8 @@ function probeSettingsHooks(item, ctx) {
   let data;
   try {
     data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch (_e) {
-    return ownedByProject(`cannot read/parse ${filePath}`) || { actual: 'absent', detail: `cannot read/parse ${filePath}` };
+  } catch (e) {
+    return (e.code === 'ENOENT' && ownedByProject(`no ${filePath}`)) || { actual: 'absent', detail: `cannot read/parse ${filePath}` };
   }
   const commands = collectHookCommands(getDotPath(data, item.probe.key));
   const found = PRETOOLUSE_MARKERS.filter((m) => commands.some((c) => c.indexOf(m) !== -1));

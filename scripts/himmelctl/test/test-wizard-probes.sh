@@ -1276,6 +1276,11 @@ echo "$outSHb" | jq -e '.actual == "absent"' >/dev/null \
 outSHc=$(sh_user_probe "$sh_present" "$sh_degraded")
 echo "$outSHc" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "HIMMEL-8163: a partial user layer stays degraded even when the project wires the trio (got: $outSHc)"
+sh_corrupt="$work/sh-corrupt"; mkdir -p "$sh_corrupt/.claude"
+printf '{not json' > "$sh_corrupt/.claude/settings.json"
+outSHd=$(sh_user_probe "$sh_present" "$sh_corrupt")
+echo "$outSHd" | jq -e '.actual == "absent"' >/dev/null \
+  || fail "HIMMEL-8163: an unparseable user layer is a fault, never hidden by the project layer (got: $outSHd)"
 echo "ok: HIMMEL-8163 settings-hooks user scope — the project layer owning the trio reads present with the C81 note"
 
 # ── cmd:has_qmd (qmd-binary) ────────────────────────────────────────────────
