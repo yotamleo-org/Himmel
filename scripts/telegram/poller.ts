@@ -8,13 +8,13 @@ import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendChatAction, getFile, downloadFile, redactChatId } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
-import { makeAfkSudoGate, helperInstalled, spawnHelper } from "./afk-sudo-route";
+import { makeAfkSudoGate, makeAfkSudoCallback, makeAfkSudoPrompts, dispatchAfkCallbacks, operatorIdFromConfig, helperInstalled, spawnHelper } from "./afk-sudo-route";
 import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./chief-heartbeat-watch";
 // resolve the bridge's own plugin profile per dispatch (lever-b)
 // instead of a hardcoded `undefined` (no --settings
@@ -2389,7 +2389,20 @@ export async function main(): Promise<void> {
   // authorize = operator-identity (global allowFrom) AND chat-allowlisted (makeAllow):
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
-  const afkSudo = makeAfkSudoGate({ access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat, text) => replyViaOutbox(root, chat, text), log: logRedacted });
+  const afkSudoDeps = { access: () => access, installed: helperInstalled, runHelper: spawnHelper, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted };
+  const afkPrompts = makeAfkSudoPrompts();
+  const afkSudo = makeAfkSudoGate(afkSudoDeps, afkPrompts);
+  // Approve / Deny buttons on the request DM. The Approve tap only sends a ForceReply prompt.
+  const afkTap = makeAfkSudoCallback({
+    ...afkSudoDeps,
+    operatorId: () => operatorIdFromConfig(),
+    prompt: async (chat, text) => {
+      let mid: number | null = null;
+      const ok = await sendMessage(token, chat, text, undefined, undefined, (m) => { mid = m; }, undefined, { force_reply: true, input_field_placeholder: "6-digit code" });
+      return ok ? mid : null;
+    },
+    answer: (id, text) => answerCallbackQuery(token, id, text),
+  }, afkPrompts);
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo };
   // Operator -> chief routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
@@ -2479,6 +2492,8 @@ export async function main(): Promise<void> {
       await Bun.sleep(backoffMs);
       continue;
     }
+    // Button taps are not messages: ingest skips them, and they advance the offset like any update.
+    dispatchAfkCallbacks(updates, (tap) => !lockdownEnabled(root) && afkTap(tap));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);
