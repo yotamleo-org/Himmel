@@ -29,7 +29,7 @@ const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
 const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
-export type AfkSudoMsg = { from: number; chat_id: number; text: string; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number };
+export type AfkSudoMsg = { from: number; chat_id: number; text: string; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
 export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
 export type HelperRun = (args: string[], stdin: string) => Promise<{ code: number; stdout: string }>;
 export type AfkSudoDeps = {
@@ -129,6 +129,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (!deps.installed()) return false;
     const prompt = prompts && msg.reply_to_message_id != null ? prompts.get(msg.chat_id, msg.reply_to_message_id) : null;
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
+    // The prompt map is in memory: after a restart or prune a six-digit reply to a bot
+    // message has no prompt, yet is still a code. Consume it, never pass it on.
+    if (msg.reply_to_bot === true && CODE_REPLY.test(msg.text) && eligible(deps.access(), msg)) {
+      void deps.reply(msg.chat_id, "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
+      return true;
+    }
     const line = parseAfkSudo(msg.text);
     if (!line) {
       if (!MALFORMED.test(msg.text)) return false;

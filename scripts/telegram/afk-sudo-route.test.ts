@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
 import { GROUP_ANONYMOUS_BOT_ID } from "./gate";
-import { handleInbound, type AutoGate } from "./poller";
+import { afkTapUnlessLocked, handleInbound, type AutoGate } from "./poller";
 import { sessionDir } from "./bus";
 
 const OP = 4242;
@@ -125,8 +125,9 @@ test("handleInbound: under lockdown an approve line never reaches the helper", a
 
 // --- Approve / Deny buttons, then a ForceReply code prompt ---
 
-function buttons(opts: { operator?: number | null; promptId?: number | null } = {}) {
+function buttons(opts: { operator?: number | null; promptId?: number | null; allowFrom?: string[] } = {}) {
   const base = fake();
+  if (opts.allowFrom) base.deps.access = () => ({ allowFrom: opts.allowFrom! });
   const sent: { chat: number; text: string }[] = [];
   const answers: string[] = [];
   let clock = 1_000_000;
@@ -202,6 +203,28 @@ test("button: a tap from a stranger, a non-operator allowFrom id, or a group cha
   }
 });
 
+test("button: a tap from the helper's operator id is refused when that id is outside allowFrom", async () => {
+  for (const data of ["afk:approve:abcdefgh", "afk:deny:abcdefgh"]) {
+    const b = buttons({ allowFrom: ["999"] });
+    expect(b.tap(tapOf(data))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.sent).toEqual([]);
+    expect(b.answers).toEqual(["Not authorized."]);
+  }
+});
+
+test("poller: a button tap under lockdown never reaches the tap gate", () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const updates = [{ update_id: 1, callback_query: { id: "c1", from: { id: OP }, data: "afk:deny:abcdefgh", message: { chat: { id: OP } } } }];
+  const seen: unknown[] = [];
+  dispatchAfkCallbacks(updates, afkTapUnlessLocked(r, (t) => { seen.push(t); return true; }));
+  expect(seen.length).toBe(1);
+  writeFileSync(join(r, "lockdown"), "locked\n");
+  dispatchAfkCallbacks(updates, afkTapUnlessLocked(r, (t) => { seen.push(t); return true; }));
+  expect(seen.length).toBe(1);
+});
+
 test("button: data that is not an afk button is not consumed", () => {
   const b = buttons();
   for (const data of ["perm:allow:abcde", "afk:approve:abc", "afk:run:abcdefgh", "afk:approve:abcdefgh;x"]) expect(b.tap(tapOf(data))).toBe(false);
@@ -220,6 +243,31 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
   await settle();
   expect(b.gate(reply("123456", 78))).toBe(false);
   expect(b.calls).toEqual([]);
+});
+
+test("button: a six-digit reply to a bot message with no known prompt is consumed and never forwarded", async () => {
+  const b = buttons();
+  expect(b.gate(reply("123456", 99, { reply_to_bot: true }))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  expect(b.logs.join("\n")).not.toContain("123456");
+  // other shapes of a reply to the bot stay ordinary text
+  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99), reply("123456", 99, { reply_to_bot: true, forwarded: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
+    expect(buttons().gate(msg)).toBe(false);
+  }
+});
+
+test("handleInbound: a six-digit reply to a bot message after a restart never lands in an inbox or run", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+  await handleInbound(r, reply("123456", 99, { reply_to_bot: true }), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
+  await settle();
+  expect(calls.length).toBe(0);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
 test("button: a reply that is not exactly six digits is consumed, tells the operator, and keeps the prompt alive", async () => {

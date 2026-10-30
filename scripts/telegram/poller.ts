@@ -53,7 +53,7 @@ const RETRY_MS = Number(process.env.TELEGRAM_RETRY_MS ?? 15 * 60 * 1000);
 // present (the injection-refuse signal). `caption` = the text came from a media caption
 // or voice transcript, NOT a genuinely typed m.text. Both fail toward "not a typed
 // command" so an undefined-deserialized value can never fail OPEN.
-export type Inbound = { from: number; chat_id: number; text: string; ts: number; update_id: number; sender_chat?: number; reply_to_message_id?: number; message_id?: number; forwarded: boolean; caption: boolean; image_path?: string; document_path?: string; document_name?: string };
+export type Inbound = { from: number; chat_id: number; text: string; ts: number; update_id: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; message_id?: number; forwarded: boolean; caption: boolean; image_path?: string; document_path?: string; document_name?: string };
 export type AllowFn = (fromId: number, chatId: number) => boolean;
 // Downloads a photo by file_id, returns the local path (null on failure).
 export type FetchImageFn = (file_id: string, update_id: number) => Promise<string | null>;
@@ -279,6 +279,7 @@ function plainRecord(c: MsgCtx): Inbound {
   return baseRecord(c, text, !!(photo || doc), {}, {
     ...(Number.isSafeInteger(m.message_id) && m.message_id > 0 ? { message_id: m.message_id } : {}),
     ...(Number.isSafeInteger(m.reply_to_message?.message_id) && m.reply_to_message.message_id > 0 ? { reply_to_message_id: m.reply_to_message.message_id } : {}),
+    ...(m.reply_to_message?.from?.is_bot === true ? { reply_to_bot: true } : {}),
   });
 }
 
@@ -356,7 +357,7 @@ export async function repairThenIngest(root: string, updates: any[], allow: Allo
   await ingestUpdates(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail);
 }
 
-export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string; update_id?: number };
+export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; reply_to_bot?: boolean; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string; update_id?: number };
 
 // True when the session inbox already holds a line stamped with this update_id:
 // the record was enqueued before a crash stopped the inbound cursor ack, so the
@@ -494,6 +495,9 @@ function lockdownEnabled(root: string): boolean {
   try { lstatSync(join(root, "lockdown")); return true; }
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
+
+// Under lockdown a button tap is dropped before the AFK sudo gate sees it.
+export const afkTapUnlessLocked = <T>(root: string, tap: (t: T) => boolean) => (t: T): boolean => !lockdownEnabled(root) && tap(t);
 
 // Closed chief verbs never fall through to an agent; lockdown also closes
 // ordinary chat and the auto path. Keep the policy together before dispatch.
@@ -2493,7 +2497,7 @@ export async function main(): Promise<void> {
       continue;
     }
     // Button taps are not messages: ingest skips them, and they advance the offset like any update.
-    dispatchAfkCallbacks(updates, (tap) => !lockdownEnabled(root) && afkTap(tap));
+    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, afkTap));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);
@@ -2515,7 +2519,7 @@ export async function main(): Promise<void> {
     // the rest of the already-consumed batch with it.
     await ingestBatch(
       root,
-      (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
+      (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, reply_to_bot: i.reply_to_bot, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
       // sendMessage, NOT replyViaOutbox: the outbox is
       // written INTO the same session directory whose failure caused the drop,
       // so on an unwritable session it fails too — and the bridge would then eat
