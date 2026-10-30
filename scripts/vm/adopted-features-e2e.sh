@@ -81,7 +81,10 @@ vmsdk up >/dev/null || { echo "adopted-features-e2e: up failed" >&2; exit 3; }
 # vm_stage_tree does not apply).
 TARBALL="$(mktemp "$STAGE_TMP/adopted-features-tree.XXXXXX")" || exit 3
 tar_excl=(); while IFS= read -r _x; do tar_excl+=("$_x"); done < <(vm_guest_tar_excludes)
-git -C "$REPO" ls-files -z --cached --others --exclude-standard -- "${STAGE_PATHS[@]}" | tar -C "$REPO" "${tar_excl[@]}" -czf "$TARBALL" --null -T - \
+# Symlinks stay out of the tarball: a dangling fixture link makes the guest secret scan refuse the tree.
+{ git -C "$REPO" ls-files -z --cached --others --exclude-standard -- "${STAGE_PATHS[@]}" \
+    | while IFS= read -r -d '' _f; do [ -L "$REPO/$_f" ] || printf '%s\0' "$_f"; done; } \
+  | tar -C "$REPO" "${tar_excl[@]}" -czf "$TARBALL" --null -T - \
   || { echo "adopted-features-e2e: could not build the stage tarball" >&2; exit 3; }
 vmsdk push "$TARBALL" /tmp/himmel-adopted-tree.tgz >/dev/null || { echo "adopted-features-e2e: push failed" >&2; exit 3; }
 gx -- "rm -rf $REMOTE_DIR $REMOTE_DIR.away && mkdir -p $REMOTE_DIR && tar -xzf /tmp/himmel-adopted-tree.tgz -C $REMOTE_DIR && rm -f /tmp/himmel-adopted-tree.tgz" >/dev/null \
