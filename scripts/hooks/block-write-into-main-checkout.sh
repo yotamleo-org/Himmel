@@ -2940,6 +2940,7 @@ _bwimc_cd_guard() {
         case "$1" in
             *'~'*|*'{'*) [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}" ;;
         esac
+        # second layer: _bwimc_check_target already resolves symlinks physically, so no shape was found where only this line decides (row 99f)
         [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
     elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
         _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
