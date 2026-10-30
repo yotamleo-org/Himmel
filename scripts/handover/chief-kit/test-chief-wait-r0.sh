@@ -19,6 +19,10 @@
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
 #   (r0j) the heartbeat is refreshed before each worker-event call of a pass
+#   (r0k) a WRAPPED worker with a merged PR finishes beyond the old relay bound
+#         without waking the chief
+#   (r0l) a silent relay timeout names its reason in the wake and a non-empty out file
+#   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
 #
@@ -149,6 +153,62 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+
+# --- (r0k/l) the wrap bound and silent timeout diagnostics -------------------
+# Keep the real timeout/exit status, but scale only worker-event's bound by 100:
+# a 1.2s stub outlasts the old 90s bound (0.90s), not the longer wrap allowance.
+# Other waiter subprocesses keep their real bounds.
+REAL_TIMEOUT="$(command -v timeout)"
+export REAL_TIMEOUT
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+if [ "$#" -ge 5 ] && [ "$4" = bash ] && [ "$5" = "$CHIEF_WAIT_WORKER_EVENT" ]; then
+    bound="$(printf '%d.%02d' "$(($3 / 100))" "$(($3 % 100))")"
+    [ ! -f "$STUB/le.timeout" ] || bound=0.1
+    shift 3
+    exec "$REAL_TIMEOUT" -k 1 "$bound" "$@"
+fi
+exec "$REAL_TIMEOUT" "$@"
+EOF
+chmod +x "$WORK/bin/timeout"
+relay_path="$PATH"
+export PATH="$WORK/bin:$PATH"
+reset_stub
+fleet r0k
+echo 1.2 > "$STUB/le.sleep"
+start "$I" "$WORK/r0k.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0k) no baseline heartbeat"
+printf -- '- 10:00 READY #2566 abcdef GREEN\n- 10:30 MERGED #2566 → abcdef01\n- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED" "N1:MERGED#2566"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$I.wait.digest" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0k) the slow wrap finishes beyond the old bound" "HANDLED wrap-merged N1" "$(cat "$I.wait.le-N1" 2>/dev/null)"
+check "(r0k) WRAPPED is parsed and labelled, not an empty bullet" "N1 WRAPPED — done" "$(cat "$STUB/le.stdin" 2>/dev/null)"
+check "(r0k) the completed wrap is recorded in the digest" "N1 wrap-merged 2566" "$(cat "$I.wait.digest" 2>/dev/null)"
+check "(r0k) no chief wake" "" "$(cat "$WORK/r0k.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+fleet r0l
+echo 10 > "$STUB/le.sleep"
+: > "$STUB/le.timeout"
+start "$I" "$WORK/r0l.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0l) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED"
+wait_exit "$WPID"
+check "(r0l) a silent timeout wakes the chief" "0" "$rc"
+contains "(r0l) the wake explains the timeout" "$(head -n 1 "$WORK/r0l.out")" "WAKE worker-event ESCALATE relay-timeout N1 rc=124"
+contains "(r0l) the wake names the output artifact" "$(head -n 1 "$WORK/r0l.out")" "out=$I.wait.le-N1"
+if test -s "$I.wait.le-N1"; then pass "(r0l) test -s on the out file"; else fail "(r0l) test -s on the out file"; fi
+contains "(r0l) the out file explains the timeout" "$(cat "$I.wait.le-N1" 2>/dev/null)" "ESCALATE relay-timeout N1 rc=124"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+export PATH="$relay_path"
+if [ "${1:-}" = --wrap-relay ]; then
+    if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
+    exit 0
+fi
 
 # --- (r0a) a MERGED worker the relay handles: no wake, a digest line ------------
 reset_stub
@@ -308,7 +368,7 @@ check "(r0i) as a tick wake on closable" "WAKE tick changed=closable usage=PROCE
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0j) the heartbeat is refreshed before each worker-event call -------------
-# One pass over two wraps: each worker-event call is up to 95 s, so the heartbeat
+# One pass over two wraps: each worker-event call is up to 905 s, so the heartbeat
 # the second call starts under must be newer than the first's.
 reset_stub
 fleet2 r0j
