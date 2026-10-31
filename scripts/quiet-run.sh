@@ -127,10 +127,6 @@ fi
 # positional path is data, so neither is checked here.
 if [ "$LABEL" = "suite" ] && [ "${1:-}" != "bash" ] && QR_TOP=$(git rev-parse --show-toplevel 2>/dev/null); then
     QR_REAL_TOP=$(cd "$QR_TOP" 2>/dev/null && pwd -P) || QR_REAL_TOP="$QR_TOP"
-    # Git-Bash prints the toplevel mixed (D:/a/repo); argv paths are POSIX.
-    if command -v cygpath >/dev/null 2>&1; then
-        QR_REAL_TOP=$(cygpath -u "$QR_TOP" 2>/dev/null) || QR_REAL_TOP="$QR_TOP"
-    fi
     qr_prev=""
     for arg in "$@"; do
         qr_path=""
