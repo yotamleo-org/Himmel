@@ -72,7 +72,8 @@ fi
 # Per log, a suite's seconds (the last line wins, a rerun overwrites); across
 # logs, the mean — what the ledger's own refresh does. Only the shell-unit-shard
 # job's lines count: the same log carries other jobs' output. A suite that passed
-# on retry prints [FLAKE] instead of [PASS] and is counted the same.
+# on retry prints [FLAKE] instead of [PASS] and is counted the same; a quarantined
+# suite that still fails prints [QUARANTINE] (seconds of both attempts), also counted.
 LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$ledger" '
   BEGIN {
     while ((getline line < ledger) > 0) {
@@ -86,9 +87,9 @@ LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$le
     if (med < 1) med = 1
   }
   FNR == 1 { nlogs++ }
-  $1 ~ /^shell-unit-shard \(ubuntu-latest, / && (match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) || match($0, /\[FLAKE\] [^ ]+ \(first run rc=[0-9]+, passed on retry, [0-9]+s\)/)) {
+  $1 ~ /^shell-unit-shard \(ubuntu-latest, / && (match($0, /\[(PASS|FAIL)\] [^ ]+ \([0-9]+s\)/) || match($0, /\[FLAKE\] [^ ]+ \(first run rc=[0-9]+, passed on retry, [0-9]+s\)/) || match($0, /\[QUARANTINE\] [^ ]+ \(rc=[0-9]+, [0-9]+s\)/)) {
     s = substr($0, RSTART, RLENGTH)
-    sub(/^\[(PASS|FAIL|FLAKE)\] /, "", s)
+    sub(/^\[(PASS|FAIL|FLAKE|QUARANTINE)\] /, "", s)
     path = s; sub(/ \(.*$/, "", path)
     sec = s; sub(/^.*[ (]/, "", sec); sub(/s\)$/, "", sec)
     seen[FILENAME SUBSEP path] = sec + 0

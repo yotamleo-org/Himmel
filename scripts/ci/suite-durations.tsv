@@ -10,7 +10,7 @@
 #   suite that fails is retried once and its seconds cover both attempts:
 #   scripts/handover/chief-kit/test-chief-wait-b.sh is 509, was 265 while the recipe
 #   skipped it). Timings are a snapshot, not a worst-case bound. Replay on those
-#   three runs (scripts/ci/ledger-drift.sh): slowest/floor 1.047 before (the ledger
+#   three runs (scripts/ci/ledger-drift.sh): slowest/floor 1.176 before (the ledger
 #   of d29ec6e1b), 1.003 after (suite time only, excluding setup/waits).
 #   A row for a suite those runs did not print (skip-listed or off-Linux) keeps its
 #   earlier value; scripts/test-adopt.sh (512) is the quarantined half of the

@@ -18,6 +18,7 @@
 #   LD4  a log dir with no [PASS] lines, or a missing ledger -> exit 2
 #   LD5  lines from other jobs in a log are not counted
 #   LD5d a [FLAKE] line counts like a [PASS] line
+#   LD5q a [QUARANTINE] line counts like a [PASS] line
 #   LD6  the workflow runs it on a schedule, never on pull_request or push
 #
 # Platform guard: bash-only; Linux CI is the caller.
@@ -126,6 +127,20 @@ if [ -n "$n_c" ] && [ -n "$n_f" ] && [ "$n_f" -eq $((n_c + 1)) ]; then
   pass "LD5d: a [FLAKE] line adds its suite ($n_c -> $n_f)"
 else
   fail "LD5d: expected one more suite from a [FLAKE] line; clean=$n_c with-flake=$n_f"
+fi
+
+echo "== LD5q: a failing quarantined suite ([QUARANTINE]) is counted =="
+# The line is copied verbatim from shell-unit-shard (ubuntu-latest, 12) of PR run 41169906564: a quarantine
+# suite that fails is retried once and this line carries the seconds of both attempts.
+mkdir -p "$SUITE_LOCK_SANDBOX/quar" || fail "LD5q: cannot create the quarantine dir"
+cp "$FX"/run-*.log "$SUITE_LOCK_SANDBOX/quar/" || fail "LD5q: cannot copy the fixture logs"
+printf 'shell-unit-shard (ubuntu-latest, 1)\tRun bash scripts/ci/home-canary.sh --shard 12/20 .\t2026-10-31T05:07:48.7271309Z [QUARANTINE] scripts/handover/chief-kit/test-chief-wait-b.sh (rc=1, 499s) — tier quarantine, not failing the run\n' >> "$SUITE_LOCK_SANDBOX/quar/run-39927689757.log" || fail "LD5q: cannot append the QUARANTINE line"
+out_q=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/quar" --ledger "$FX/matching-ledger.tsv" 2>&1)
+n_q=$(sed -n 's/.* suites=\([0-9]*\) .*/\1/p' <<< "$out_q")
+if [ -n "$n_c" ] && [ -n "$n_q" ] && [ "$n_q" -eq $((n_c + 1)) ]; then
+  pass "LD5q: a [QUARANTINE] line adds its suite ($n_c -> $n_q)"
+else
+  fail "LD5q: expected one more suite from a [QUARANTINE] line; clean=$n_c with-quarantine=$n_q"
 fi
 
 echo "== LD6: the workflow is scheduled and never runs on a PR or a push =="
