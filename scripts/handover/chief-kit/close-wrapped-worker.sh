@@ -209,7 +209,16 @@ fi
 # and any repo up to three levels below it. --all counts a detached HEAD too (a
 # rebase in progress leaves its commits there); a scan or git failure refuses.
 sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
-scratch_paths=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
+sc_grep_rc=0
+scratch_raw=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC") || sc_grep_rc=$?
+if [ "$sc_grep_rc" -gt 1 ]; then
+    echo "close-wrapped-worker: refusing - cannot scan $DOC for session-scratchpad clones (grep rc=$sc_grep_rc)" >&2
+    exit 8
+fi
+if ! scratch_paths=$(printf '%s\n' "$scratch_raw" | sort -u); then
+    echo "close-wrapped-worker: refusing - cannot sort the session-scratchpad paths named in $DOC" >&2
+    exit 8
+fi
 scratch_clones=""
 while IFS= read -r sc_path; do
     [ -n "$sc_path" ] || continue
@@ -234,7 +243,10 @@ EOF
 done <<EOF
 $scratch_paths
 EOF
-scratch_clones=$(printf '%s' "$scratch_clones" | sort -u)
+if ! scratch_clones=$(printf '%s' "$scratch_clones" | sort -u); then
+    echo "close-wrapped-worker: refusing - cannot sort the session-scratchpad clones named in $DOC" >&2
+    exit 8
+fi
 while IFS= read -r sc_dir; do
     [ -n "$sc_dir" ] || continue
     if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 --all --not --remotes 2>&1); then
