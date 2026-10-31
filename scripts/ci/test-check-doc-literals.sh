@@ -45,17 +45,17 @@ run_case() {
 # The register row of docs/himmel-bus.md as PR 4288 left it (the (c)1 case).
 BUS_DOC_ROW='| `register <name> --role worker\|chief\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |'
 # The same row in the spellings the parser accepts today.
-BUS_OK_ROW='| `register <name> --role leg\|console\|judge\|consult [--console <c>] [--pair <leg>] [--predecessor <old>]` | Reserve an identity (launcher use) |' # old-term-ok: the parser spelling
+BUS_OK_ROW='| `register <name> --role worker\|console\|judge\|consult [--console <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |' # old-term-ok: the parser spelling
 
 echo "== RED: a doc literal the CLI refuses =="
 run_case "bus register row from docs/himmel-bus.md" 1 docs/himmel-bus.md "$BUS_DOC_ROW"
 case "$LAST_OUT" in *docs/himmel-bus.md:1:*--chief*) pass "finding names the file, line and --chief" ;; *) fail "finding names --chief: $LAST_OUT" ;; esac
-case "$LAST_OUT" in *"role 'worker'"*) pass "finding names the role value" ;; *) fail "finding names the role value: $LAST_OUT" ;; esac
+case "$LAST_OUT" in *"role 'chief'"*) pass "finding names the role value" ;; *) fail "finding names the role value: $LAST_OUT" ;; esac
 run_case "retired tick flag" 1 docs/a.md 'run `bash scripts/handover/chief-kit/tick.sh --legs "a b"` first' # old-term-ok: the retired flag
 run_case "unknown board flag in a fence" 1 docs/a.md 'node scripts/handover/chief-kit/board.mjs --doc d.md --nope x'
 run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me' # old-term-ok: the refused flag
 run_case "bus send with an unknown flag" 1 docs/a.md 'bus send chief body.md --urgent'
-run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=worker'
+run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=chief'
 run_case "flag in a SKILL.md" 1 marketplace/plugins/x/skills/y/SKILL.md 'run chief.sh --nope'
 run_case "flag in a slash command" 1 .claude/commands/z.md 'run gen-briefs --nope'
 run_case "flag on append-results.sh" 1 docs/handover/worker-preface.md 'bash scripts/handover/chief-kit/append-results.sh --force doc text'

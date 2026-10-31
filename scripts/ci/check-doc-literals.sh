@@ -7,8 +7,8 @@
 # For each CLI in the accept table below, every `--flag` on a documented
 # invocation (and every `--role` value) must be in that CLI's declared accept
 # list. This is the gap PR 4288 opened: docs/himmel-bus.md named
-# `--role worker|chief` and `--chief` while the bus parser took
-# `leg|console` and `--console`. # old-term-ok: quotes the parser's spelling
+# `--role worker|chief` and `--chief` while the bus parser took `console`
+# and `--console`. # old-term-ok: quotes the parser's spelling
 #
 # Scanned (tracked files under --root, default the repo): docs/**/*.md,
 # marketplace/**/SKILL.md, .claude/commands/*.md. The worker preface and
@@ -43,7 +43,7 @@ accept_table() {
     # `bus <verb>`, or a table cell opening with a verb only the bus has (adopt, status, send ... also name other tools' verbs)
     local cmd_bus="(((^|[^A-Za-z0-9_-])bus )(register|bind|rebind|adopt|succeed|status|peers|send|wait|unread|gc)|$bt(register|bind|rebind|succeed|unread))([^A-Za-z0-9_.-]|\$)"
     # name | source | command ERE | accepted flags | accepted roles | refused flags
-    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}leg console judge consult${t}-" # old-term-ok: the bus parser's current vocabulary
+    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker console judge consult${t}-" # old-term-ok: the bus parser's current vocabulary
     printf '%s\n' "tick.sh${t}scripts/handover/chief-kit/tick.sh${t}(^|[^A-Za-z0-9_-])tick\\.sh${t}--burn --doc --emit-fp --handover-dir --help --pool-dispositions --pool-stale --ready-dir --ready-mismatch --repo --token --verbose --workers --workers-from${t}-${t}-"
     printf '%s\n' "board.mjs${t}scripts/handover/chief-kit/board.mjs${t}(^|[^A-Za-z0-9_-])board\\.mjs${t}--changed --doc --json --out --repo --view --workers${t}-${t}-"
     printf '%s\n' "chief.sh${t}scripts/handover/chief/chief.sh${t}(^|[^A-Za-z0-9_-])chief\\.sh${t}--arm --bucket --context --date --deadline-min --doc --dry-run --help --model --name --no-relay-on-live --prefix --project --relay-on-live${t}-${t}-"
