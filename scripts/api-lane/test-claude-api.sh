@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # API launcher fixtures, dummy secrets and a stub claude only. Also runs the
-# shift-spend.mjs readers (shift-spend.test.mjs): vendor-doc response fixtures, no live call.
+# shift-spend readers (shift-spend.test.mjs): vendor-doc response fixtures, no live call.
 # Platform guard: bash + node on local files; Linux verified.
 set -uo pipefail
 if [ "$(uname -s)" = Darwin ]; then

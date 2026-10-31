@@ -66,7 +66,8 @@
 # --until closes the window: a counted row is in [--since, --until),
 # the upper bound EXCLUSIVE, so back-to-back shifts never count a row twice. It
 # takes the same canonical UTC form as --since, and a bound at or before --since
-# is refused rather than reported as an empty shift.
+# is refused rather than reported as an empty shift. scripts/api-lane/shift-spend.mjs
+# reads the same [since, until) window for the codex, bank and API spend sources.
 #
 # --since is validated up front to a canonical UTC form
 # (YYYY-MM-DDTHH:MM:SS[.ffffff][Z], no timezone offset) so a genuinely
