@@ -18,6 +18,9 @@
 #     doc is the state, so the new session loads it and continues). Profile and
 #     lane come from the launch record headed-arm-worker.sh appends under
 #     ${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/launch-logs/<name>.log (last line).
+# The relaunched session's working directory is the doc's resume_cwd, resolved by
+# headed-arm-worker.sh as for any launch (never this script's cwd, nor the old pid's,
+# which a worker may have moved). A doc with no resume_cwd launches in the harness cwd.
 # Claudex is ineligible (its proxy endpoint is not a Remote Control endpoint), and
 # an unprofiled launch has no Remote Control seam (the profile shim carries the flag):
 # both exit 4 with nothing touched. signal-file, deadline and log are the arm
@@ -29,8 +32,9 @@
 # the pid re-check; a suite uses it to recycle the pid).
 #
 # Exit codes: 0 enabled/relaunched/already on; 2 usage; 3 no live session by that
-# name; 4 ineligible (claudex, unprofiled, no launch record, or the session's doc
-# and model unreadable from its argv); 5 relaunch needed,
+# name; 4 ineligible (claudex, unprofiled, no launch record, a role other than a plain
+# worker such as a consult, judge or relay, or the session's doc and model unreadable
+# from its argv); 5 relaunch needed,
 # --relaunch not given; 6 the pid no longer names the session (recycled or gone, nothing
 # killed) or the old session did not exit.
 #
@@ -89,6 +93,11 @@ line=""
 [ -r "$rec" ] && line="$(tail -n 1 "$rec")"
 profile="$(printf '%s\n' "$line" | sed -n 's/.* profile=\([^ ]*\).*/\1/p')"
 lane="$(printf '%s\n' "$line" | sed -n 's/.* lane=\([^ ]*\).*/\1/p')"
+role="$(printf '%s\n' "$line" | sed -n 's/.* role=\([^ ]*\).*/\1/p')"
+if [ "$role" != "worker" ]; then
+    echo "enable-remote-control: $NAME was launched as role=${role:-unknown}; a relaunch would make it a plain worker and drop that role's confinement" >&2
+    exit 4
+fi
 if [ -z "$lane" ] || [ "$lane" != "native" ]; then
     echo "enable-remote-control: $NAME is not a recorded native-lane launch (lane=${lane:-unknown}); Remote Control is native-only" >&2
     exit 4

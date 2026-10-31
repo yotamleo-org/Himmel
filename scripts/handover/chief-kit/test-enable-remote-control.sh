@@ -27,8 +27,8 @@ chmod 755 "$WORK/kill-stub" "$WORK/launcher-stub"
 
 # session <pid> <argv...>: a fake /proc/<pid>/cmdline, NUL-separated.
 session() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/cmdline"; }
-record() { # <name> <profile> <lane>
-    printf 'headed-arm-worker: profile=%s lane=%s model=claude-sonnet-5-5 role=worker session=%s launched=2026-10-31T10:00:00Z\n' "$2" "$3" "$1" >> "$CACHE/launch-logs/$1.log"
+record() { # <name> <profile> <lane> [role]
+    printf 'headed-arm-worker: profile=%s lane=%s model=claude-sonnet-5-5 role=%s session=%s launched=2026-10-31T10:00:00Z\n' "$2" "$3" "${4:-worker}" "$1" >> "$CACHE/launch-logs/$1.log"
 }
 run() { # <args...> -> sets out, rc
     rc=0
@@ -103,6 +103,19 @@ out="$(ENABLE_RC_BEFORE_KILL="$WORK/recycle-stub" ENABLE_RC_PROC="$PROC" HIMMELC
     bash "$ERC" --relaunch HIMMEL-7-w /s 99999999999 /l 2>&1)" || rc=$?
 check "i: a recycled pid exits 6" "6" "$rc"
 check "i: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+
+# --- (j) a consult, judge or relay is never relaunched as a plain worker -----------
+for r in consult judge relay; do
+    session 1010 claude --model claude-opus-5-5 -n HIMMEL-8-$r "load /h/HIMMEL-8-$r.md and continue"
+    record HIMMEL-8-$r worker-impl native $r
+    reset; run --relaunch HIMMEL-8-$r /s 99999999999 /l
+    check "j: role=$r exits 4" "4" "$rc"
+    check "j: role=$r nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+done
+session 1011 claude --model claude-sonnet-5-5 -n HIMMEL-9-w "load /h/HIMMEL-9-w.md and continue"
+printf 'headed-arm-worker: profile=worker-impl lane=native model=x session=HIMMEL-9-w launched=2026-10-31T10:00:00Z\n' >> "$CACHE/launch-logs/HIMMEL-9-w.log"
+reset; run --relaunch HIMMEL-9-w /s 99999999999 /l
+check "j: a record with no role exits 4" "4" "$rc"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-enable-remote-control.sh"; exit 0; fi
