@@ -870,11 +870,15 @@ expect_rule disk-wipe env -S 'echo x; mkfs.ext4 /dev/vdb'
 expect_rule none awk 'BEGIN{print 1}'
 expect_rule none rm -rf /tmp/build/x/y
 crafted=$(printf '"a=%.0s' $(seq 1 200))x
+assert_eq "the crafted fixture is 601 characters" "601" "${#crafted}"
 expect_rule oversize true "$crafted"
 banner=$(printf '=%.0s' $(seq 1 66))
+assert_eq "the banner fixture is 66 characters" "66" "${#banner}"
 expect_rule none echo "$banner"
 expect_rule secret-read cat "$banner/etc/shadow"
-expect_rule oversize true "$(printf 'a=%.0s' $(seq 1 65))x"
+deep=$(printf 'a=%.0s' $(seq 1 65))x
+assert_eq "the deep fixture is 131 characters" "131" "${#deep}"
+expect_rule oversize true "$deep"
 
 echo "== slice 1a: limits, the busy row and the retained files =="
 new_root busyrow; cfg "$ALL" true

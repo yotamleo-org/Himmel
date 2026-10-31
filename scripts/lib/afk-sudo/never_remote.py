@@ -56,7 +56,6 @@ DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/de
 SECRETS = ("/etc/shadow", "/etc/gshadow", "*/.ssh/id_*", "*/.gnupg", "*/.gnupg/*", "*/.claude/.credentials.json",
            "*/.claude/channels/*/.env", ".env", "totp.seed")
 FORCE = ("--force*", "--delete", "+*", ":*")
-SHORT_FORCE = re.compile(r"-[A-Za-z0-9]*[fd][A-Za-z0-9]*")  # -f, -d and a cluster carrying one (-fu, -df)
 PROTECTED = ("main", "master", "*/main", "*/master", "*:main", "*:master", "refs/heads/main", "refs/heads/master")
 HIMMEL_DIRS = ("/etc/himmel", "/usr/local/libexec/himmel", "/var/lib/himmel", "/var/log/himmel")
 GUARD_FILES = ("*/.claude/settings*.json", "*/scripts/hooks", "*/scripts/hooks/*")
@@ -158,8 +157,13 @@ def _secret_read(ws, home):
             or {"himmel-secrets", "get"} <= ws)
 
 
+def _short_force(w):
+    """-f, -d and a short-flag cluster carrying one (-fu, -df). No regex: a backtracking one is quadratic on a 64 KiB word."""
+    return w[:1] == "-" and w[1:].isascii() and w[1:].isalnum() and ("f" in w or "d" in w)
+
+
 def _main_history(ws, home):
-    force = _any(ws, FORCE) or any(SHORT_FORCE.fullmatch(w) for w in ws)
+    force = _any(ws, FORCE) or any(_short_force(w) for w in ws)
     if "push" in ws and force and _any(ws, PROTECTED):
         return True
     if "gh" in ws and "DELETE" in ws and any("refs/heads/main" in w for w in ws):
