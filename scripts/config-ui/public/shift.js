@@ -73,7 +73,7 @@ function carriedHtml(v, ui) {
   return `<ul class="sh-list">${v.carried.map((c) => `<li>${ticketLink(c.ticket)} ${esc(c.title)} <span class="pill">${esc(c.stage)}</span> ${prRef(c.pr, ui)}</li>`).join("")}</ul>`;
 }
 
-const links = (ui) => `<p class="sub"><a href="#/shift" data-act="refresh-shift">refresh</a> · See also <a href="#/morning-report">Morning report</a> · <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
+const links = (ui, v) => `<p class="sub"><a href="#/shift${v && v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}" data-act="refresh-shift">refresh</a> · See also <a href="#/morning-report">Morning report</a> · <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 
 export function renderShift(v, ui) {
   const page = pageHeader("Shift", "One shift is the whole fleet between cuts: what is running, what waits on you, what shipped.");
@@ -90,8 +90,8 @@ export function renderShift(v, ui) {
     sec("sh-chiefs", closed ? "Chiefs" : "Chiefs this shift", v.chiefs.length, chiefsHtml(v)),
     closed ? "" : sec("sh-waiting", "Waiting on you", v.waiting.length, waitingHtml(v, ui)),
     closed ? "" : sec("sh-running", "Running now", v.running.length, runningHtml(v, ui)),
-    sec("sh-shipped", closed ? "Shipped" : "Shipped this shift", v.shipped.length, shippedHtml(v, ui)),
+    sec("sh-shipped", closed ? "Shipped" : "Shipped this shift", v.mergedUnread ? null : v.shipped.length, shippedHtml(v, ui)),
     closed ? sec("sh-carried", "Carried to the next shift", v.carried.length, carriedHtml(v, ui)) : "",
   ].join("");
-  return page + head + body + links(ui);
+  return page + head + body + links(ui, v);
 }

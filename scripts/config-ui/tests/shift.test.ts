@@ -378,6 +378,31 @@ test("a merged-PR list that could not be read is said so on the page, never show
   expect(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board] }).mergedUnread).toBe(false);
 });
 
+test("a chief doc that never wrapped and holds no lock ends at its last stamp, so it is not credited with later merges", () => {
+  const d = { name: "A-chief-2026-10-27", bucket: "himmel", text: doc("x", ["- 08:00 LIVE — a", "- 09:00 progress"]) };
+  expect(iso(chiefSpans([d], OFF, new Set())[0].end!, OFF)).toBe("2026-10-27T09:00+01:00");
+  expect(chiefSpans([d], OFF, new Set(["A-chief-2026-10-27"]))[0].end).toBeNull();
+  expect(chiefSpans([d], OFF)[0].end).toBeNull();
+});
+
+test("a closed shift records every PR merged in it, and the last-shift line counts them all", async () => {
+  const dir = tmp(), file = join(dir, "shifts.jsonl");
+  writeState(file, { opened: T("2026-10-27T08:00+01:00"), lastHeld: T("2026-10-27T10:00+01:00") });
+  await tick({ root: dir, file, now: T("2026-10-27T12:00+01:00"), merged: async () => [{ number: 5, title: "t", mergedAt: "2026-10-27T08:30:00Z" }] });
+  const [r] = readShifts(file);
+  expect(r.shipped).toBe(1); // no chief span holds it, so no chief is credited
+  expect(r.chiefs).toEqual([]);
+  expect(viewOf({ now: T("2026-10-27T22:00+01:00"), rows: [r], snap: snap(null), id: null, merged: [], boards: [] }).last?.shipped).toBe(1);
+});
+
+test("refreshing a closed shift stays on that shift, and an unread PR list shows no count", () => {
+  const closedView = viewOf({ now: T("2026-10-29T00:00+01:00"), rows: [row("2026-10-27T08:00+01:00")], snap: snap(null), id: "2026-10-27T08:00+01:00", merged: [], boards: [] });
+  expect(renderShift(closedView, {})).toContain('href="#/shift/2026-10-27T08%3A00%2B01%3A00" data-act="refresh-shift"');
+  expect(renderShift(pageView(), {})).toContain('href="#/shift" data-act="refresh-shift"');
+  const unread = renderShift(pageView({ mergedUnread: true, shipped: [] }), {});
+  expect(unread).not.toContain('Shipped this shift <span class="ro">0</span>');
+});
+
 test("GET /api/shift: a gh failure comes back as an unread PR list, not an empty one", async () => {
   const { s } = boot({ chief: true, ghFails: true });
   const v = await (await getShift(s.port)).json();

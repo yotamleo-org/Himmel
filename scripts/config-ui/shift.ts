@@ -28,7 +28,7 @@ export type State = { open: Open | null; closedAt: number | null; at?: number };
 export type Span = { name: string; bucket: string; start: number; end: number | null; approx: boolean };
 export type Gap = { pr: number; chiefs: [string, string] };
 export type Chief = { name: string; bucket: string; span: { start: string; end: string | null; approx: boolean }; prs: number[] };
-export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[] };
+export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[]; shipped?: number };
 export type Pr = { number: number; mergedAt: string; [k: string]: unknown };
 
 const MIN = 60_000, DAY = 86_400_000;
@@ -98,7 +98,8 @@ type Doc = { name: string; bucket: string; text: string };
 const PRED = /successor to `?([^\s`]+?)(?:\.md)?`?[\s(]/;
 
 // Stamps are HH:MM local with no date: the date comes from the doc name and the day rolls over when a stamp is earlier than the one before.
-export function chiefSpans(docs: Doc[], offMin: number): Span[] {
+// `held` names the chief docs that hold a queue lock now: a doc outside it that never wrapped ended at its last stamp, never "now".
+export function chiefSpans(docs: Doc[], offMin: number, held?: Set<string>): Span[] {
   const stamped = docs.flatMap((d) => {
     const date = /(\d{4})-(\d{2})-(\d{2})/.exec(d.name);
     if (!date) return [];
@@ -114,7 +115,7 @@ export function chiefSpans(docs: Doc[], offMin: number): Span[] {
     return [{ d, marks, pred: PRED.exec(d.text)?.[1] ?? null }];
   });
   const ends = new Map<string, number | null>();
-  for (const s of stamped) ends.set(s.d.name, s.marks.filter((m) => m.mark === "WRAPPED" || m.mark === "HALTED").at(-1)?.at ?? null);
+  for (const s of stamped) ends.set(s.d.name, s.marks.filter((m) => m.mark === "WRAPPED" || m.mark === "HALTED").at(-1)?.at ?? (held && !held.has(s.d.name) ? s.marks.at(-1)?.at ?? null : null));
   const out: Span[] = [];
   for (const s of stamped) {
     const live = s.marks.find((m) => m.mark === "LIVE")?.at;
@@ -149,7 +150,7 @@ export function attribute(spans: Span[], prs: Pr[], now: number): { perChief: Re
 }
 
 // the chiefs of a closed (or running) shift as stored in its row: each span clipped to the shift, with the PRs credited to it
-export function chiefsOf(spans: Span[], prs: Pr[], opened: number, closed: number | null, now: number, offMin: number): { chiefs: Chief[]; gap: Gap[] } {
+export function chiefsOf(spans: Span[], prs: Pr[], opened: number, closed: number | null, now: number, offMin: number): { chiefs: Chief[]; gap: Gap[]; shipped: number } {
   const end = closed ?? now;
   const inShift = spans.filter((s) => s.start < end && (s.end === null || s.end + MIN > opened));
   const a = attribute(inShift, mergedIn(prs, opened, closed, now), now);
@@ -159,6 +160,7 @@ export function chiefsOf(spans: Span[], prs: Pr[], opened: number, closed: numbe
       span: { start: iso(Math.max(s.start, opened), offMin), end: s.end === null || (closed !== null && s.end >= closed) ? null : iso(s.end, offMin), approx: s.approx },
     })),
     gap: a.gap,
+    shipped: a.total,
   };
 }
 
@@ -249,7 +251,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   // the fleet reads and the gh query run before the lock is taken, so the lock is never held across a network call
   const locks = readLocks(t.root);
   const state0 = readState(t.file);
-  const spans = chiefSpans(readChiefDocs(t.root, t.now - 3 * DAY), state0.open?.offsetMin ?? offsetMin);
+  const spans = chiefSpans(readChiefDocs(t.root, t.now - 3 * DAY), state0.open?.offsetMin ?? offsetMin, new Set(locks.filter((l) => l.role === "chief").map((l) => l.doc)));
   const live = liveChiefs(spans, locks).map((s) => s.start);
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };
@@ -372,7 +374,7 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
       chiefs: r.chiefs, buckets: r.buckets, gap: r.gap, shipped: sh, carried: r.carried ?? [], waiting: [], pager: pager(r.id) };
   }
   const lastRow = closedRows.at(-1);
-  const last = lastRow ? { id: lastRow.id, name: lastRow.name, opened: lastRow.opened, closed: lastRow.closed, chiefs: lastRow.chiefs.length, shipped: lastRow.chiefs.length ? new Set(lastRow.chiefs.flatMap((c) => c.prs)).size : null } : null;
+  const last = lastRow ? { id: lastRow.id, name: lastRow.name, opened: lastRow.opened, closed: lastRow.closed, chiefs: lastRow.chiefs.length, shipped: lastRow.shipped ?? (lastRow.chiefs.length ? new Set(lastRow.chiefs.flatMap((c) => c.prs)).size : null) } : null;
   if (!open) return { ...empty, state: "idle", last, pager: pager(null) };
   const off = open.offsetMin;
   const c = chiefsOf(o.snap.spans, o.merged, open.opened, null, o.now, off);
