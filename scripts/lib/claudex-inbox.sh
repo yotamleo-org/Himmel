@@ -39,7 +39,8 @@ inbox_with_lock() (
 # before appending it, on a record naming this session as the recipient. A
 # ledger is trusted only when it, its directory and its base are owned by this
 # uid, none is a symlink, and neither the file nor its directory is group- or
-# world-writable. Exit 1 when a trusted ledger cannot be read. The bases are
+# world-writable. Exit 1 when a trusted ledger, or a directory of ours that
+# may hold one, cannot be read. The bases are
 # HIMMEL_CONSOLE_RUNDIR, $XDG_RUNTIME_DIR/himmel-chief and
 # ${TMPDIR:-/tmp}/himmel-chief-<uid>, so a sender whose environment picked
 # another default (cron has no XDG_RUNTIME_DIR) is still found.
@@ -48,9 +49,12 @@ inbox_ledger_shas() { # <session>
     local base f d rc=0
     for base in "${HIMMEL_CONSOLE_RUNDIR:-}" "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-chief}" "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"; do
         [ -n "$base" ] && [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || continue
-        for f in "$base"/inbox-sent.log "$base"/*/inbox-sent.log; do
-            d="${f%/*}"
-            [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
+        for d in "$base" "$base"/*; do
+            [ -d "$d" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
+            # A directory of ours we cannot search may hide a ledger: hold.
+            if [ ! -r "$d" ] || [ ! -x "$d" ]; then rc=1; continue; fi
+            f="$d/inbox-sent.log"
+            [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ] || continue
             # Both paths must print; a failed probe trusts nothing.
             [ "$(find "$f" "$d" -maxdepth 0 ! -perm /022 2>/dev/null | wc -l)" -eq 2 ] || continue
             INBOX_LEDGER_TO="$1" awk '$5 == ENVIRON["INBOX_LEDGER_TO"] { print $4 }' "$f" 2>/dev/null || rc=1

@@ -427,6 +427,16 @@ else
     else
         fail "gate: an unreadable ledger leaves the line pending, then delivers (out1='$out1' out2='$out2')"
     fi
+    post "$GATE_INBOX" '- sent while the ledger directory was unreadable'
+    chmod 000 "${SENDER_LEDGER%/*}"
+    out1="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+    chmod 700 "${SENDER_LEDGER%/*}"
+    out2="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+    if [ -z "$out1" ] && printf '%s' "$out2" | grep -qF 'sent while the ledger directory was unreadable'; then
+        pass "gate: an unreadable ledger directory leaves the line pending, then delivers"
+    else
+        fail "gate: an unreadable ledger directory leaves the line pending, then delivers (out1='$out1' out2='$out2')"
+    fi
 fi
 
 # A ledger another user can write is not trusted.
