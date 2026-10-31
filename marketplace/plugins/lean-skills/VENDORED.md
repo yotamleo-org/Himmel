@@ -8,7 +8,7 @@ ever check one of the 14 files below). Upstream advance for this plugin is
 detected at the RELEASE level instead, by two scripts/upstreams.json rows:
 
     superpowers-skills   obra/superpowers      synced_base 7.0.1
-    mattpocock-skills    mattpocock/skills     synced_base 1.3.1
+    mattpocock-skills    mattpocock/skills     synced_base 1.3.2
 
 A release-level check is the right grain here because we vendor whole skill
 DIRECTORIES (SKILL.md plus its companion prompts and scripts), not single
@@ -38,12 +38,13 @@ vendored (3 of 15): using-superpowers (its SessionStart injection is the
 vendored references it, diagnosing-superpowers — transcript analysis for
 filing issues on superpowers itself (HIMMEL-8205).
 
-vendored_from=mattpocock/skills@49dd158d1076134a641b33efb035946536778336 path=skills/productivity/grilling
+vendored_from=mattpocock/skills@d1478fcb140db0b93c0c8df17bcfd311844749d0 path=skills/productivity/grilling
 
-HIMMEL-4914 (2026-10-08): grilling re-vendored byte-for-byte at the commit
-above, ahead of the unchanged 1.3.1 release tag. The head-level
-`mattpocock-skills` entry in scripts/plugin-upstreams.json records the same
-commit; the release-level scripts/upstreams.json row stays at 1.3.1.
+HIMMEL-8388 (2026-10-31): grilling re-vendored byte-for-byte at the commit of
+release tag v1.3.2 (HIMMEL-4914 had taken a head commit ahead of 1.3.1). The
+only change to the skill is one phrase in the facts paragraph (the sub-agent
+gets "a fresh context window"). The release-level scripts/upstreams.json row
+moves to 1.3.2.
 
 grilling only. 0 of the plugin's 11 exposed skills were ever invoked in 1628
 local transcripts; grilling reaches us through the minerva hook's

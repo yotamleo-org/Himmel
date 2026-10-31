@@ -167,7 +167,7 @@ fi
 exit 0
 EOF
 
-node_stub_version="24.0.0"
+node_stub_version="$NODE_VERSION"
 cat > "$stub_bin/node" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = "--version" ]; then echo "v${node_stub_version}"; exit 0; fi
