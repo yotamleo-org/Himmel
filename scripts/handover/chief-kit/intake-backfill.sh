@@ -38,7 +38,7 @@ done
 [ -d "$mirror" ] || { echo "intake-backfill: no mirror directory at $mirror" >&2; exit 1; }
 
 IB_MIRROR="$mirror" IB_COMMANDS="$commands" python3 -I - <<'PY'
-import glob, json, os, re, sys
+import glob, json, os, re, shlex, sys
 
 mirror = os.environ['IB_MIRROR'].rstrip('/')
 open_versions = []
@@ -47,8 +47,9 @@ try:
         f = line.rstrip('\n').split('\t')
         if len(f) >= 2 and f[0] and not f[0].startswith('zz-') and f[1] != 'true' and (len(f) < 4 or f[3] != 'true'):
             open_versions.append(f[0])
-except OSError:
-    pass
+except OSError as e:
+    # without the versions there is no current version, and every ticket would be proposed to the backlog
+    sys.exit('intake-backfill: cannot read %s.versions.tsv: %s' % (mirror, e.strerror))
 current = open_versions[0] if open_versions else None
 
 def field(text, name):
@@ -116,6 +117,6 @@ print('# counts by proposed: %s' % (fmt(by_ver) or 'none'))
 print('# counts by basis: %s' % (fmt(by_basis) or 'none'))
 if os.environ['IB_COMMANDS'] == '1':
     for k, v, b in rows:
-        print('jira edit %s --add-labels proposed-%s' % (k, v))
-        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (current or '<release>', k, v, b))
+        print('jira edit %s --add-labels %s' % (k, shlex.quote('proposed-' + v)))
+        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (shlex.quote(current) if current else '<release>', k, shlex.quote(v), b))
 PY

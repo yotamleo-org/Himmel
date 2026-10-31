@@ -71,7 +71,20 @@ check "an unknown flag exits 2" "2" "$rc"
 rc=0; bash "$SUT" --mirror "$WORK/none" >/dev/null 2>&1 || rc=$?
 check "a missing mirror exits 1" "1" "$rc"
 empty="$WORK/empty/HIMMEL"; mkdir -p "$empty"
-has "an empty mirror counts zero" "$(bash "$SUT" --mirror "$empty" 2>&1)" "# counts total=0 already-proposed-skipped=0 current=none"
+rc=0; nover="$(bash "$SUT" --mirror "$empty" 2>&1)" || rc=$?
+check "a mirror with no versions file exits 1 rather than proposing everything to the backlog" "1" "$rc"
+has "and says the versions file could not be read" "$nover" "intake-backfill: cannot read"
+: > "$WORK/empty/HIMMEL.versions.tsv"
+has "an empty mirror with a versions file counts zero" "$(bash "$SUT" --mirror "$empty" 2>&1)" "# counts total=0 already-proposed-skipped=0 current=none"
+
+# a version name with a space is shell-quoted in the commands
+sp="$WORK/sp/HIMMEL"; mkdir -p "$sp"; M_SAVE="$M"; M="$sp"
+mk 801 Task "To Do" Medium '["operator-directed"]' '[]' "Ship loop"
+M="$M_SAVE"
+printf 'v1.2 beta\tfalse\t\tfalse\n' > "$WORK/sp/HIMMEL.versions.tsv"
+spc="$(bash "$SUT" --mirror "$sp" --commands 2>&1)"
+has "a version name with a space is quoted in the label command" "$spc" "jira edit HIMMEL-801 --add-labels 'proposed-v1.2 beta'"
+has "a version name with a space is quoted in the INTAKE request" "$spc" "jira release request 'v1.2 beta' --verb INTAKE --key HIMMEL-801 --to 'v1.2 beta'"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
