@@ -428,6 +428,7 @@ scripts/handover/chief-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-run-suite.sh	pr	trust-path
+scripts/handover/chief-kit/test-series-ledger.sh	local	behaviour suite, new for HIMMEL-8349 (series ledger L0)
 scripts/handover/chief-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path

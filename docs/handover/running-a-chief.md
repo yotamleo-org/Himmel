@@ -405,6 +405,7 @@ itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 Before dispatching a chain of PRs, `python3 scripts/handover/chief-kit/chain-graph.py --prs <n>,<n>,...`
 prints the pairwise hard and soft edges between them (read-only; `--json` for scripts, `--head PR=SHA`
 to pin a PR to an older head).
+`python3 scripts/handover/chief-kit/series-ledger.py` is the one reader/writer of a series ledger under flock; `read|create|set|add-item|pass`.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 
