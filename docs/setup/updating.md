@@ -541,18 +541,23 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
 
 - **Moves.** Behaviour keys (`HANDOVER_DIR`, `USER_SLUG`, `LUNA_VAULT_PATH`,
   `CR_PROFILE`, the `HIMMEL_INITIATIVE` and `HIMMEL_AFK` families, the
-  non-secret Jira identifiers `JIRA_EMAIL`, `JIRA_PROJECT_KEY`,
+  non-secret Jira settings `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_PROJECT_KEY`,
   `JIRA_PROJECTS`, `JIRA_CLOUD_ID`, and the rest of the
   [list](../internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch))
   go to `~/.himmel/himmel.conf`. Gate policy (`CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
   `.policy`. A himmel secret that nothing in himmel reads goes to
   `~/.config/secrets/himmel.env`.
-- **Stays.** Every secret something reads (API tokens, `JIRA_BASE_URL`,
+- **Stays.** Every secret something reads (API tokens,
   Telegram keys), every name in `~/.himmel/env-keep.txt` and every other
   tool's key stay in `.env` until the keyring work (HIMMEL-7147, HIMMEL-7576)
   is complete. The report lists them on a `secrets stay in .env:` line. Never
   empty `.env`: Jira, Telegram and the lanes still read it.
+- **Jira URL.** `JIRA_BASE_URL` now resolves from non-empty process env, station
+  `.local`, the selected profile, then `himmel.conf`; `.env` is a one-release
+  fallback. Station config is a trusted credential destination, guarded against
+  agent writes; repository project config cannot choose it. Verify Jira before
+  deleting the migrated legacy URL line; C74 then stops warning about it.
 - **Mismatch.** When `~/.himmel` already held a different value for a key, the
   apply prints `these keys hold different values in .env and in ~/.himmel
   (values not shown):`, then one `<KEY>: <.env path>  vs  <~/.himmel file>`

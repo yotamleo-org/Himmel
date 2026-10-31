@@ -304,14 +304,23 @@ class has not been decided yet: other account emails, cookie-file
 paths, service URLs and VM user names. Only the explicitly named identifiers
 above are config; tokens and all other unclassified keys remain secrets.
 Five more keys are config, so `import-env` leaves them alone (HIMMEL-8165).
-`TELEGRAM_CHAT_ID` and `TELEGRAM_GROUP_CHAT_ID` are served from `himmel.conf`;
-they decide where messages go, and `himmel.conf` is not guarded against an
-agent's writes. That exposure is accepted: a changed chat id re-routes
-Telegram messages, not credentials. A git-tracked `.env` serves neither id.
-`JIRA_BASE_URL`, `FIRECRAWL_BASE_URL` and `WHISPER_MODEL` are env-only: no
-`himmel.conf` layer serves them, so `JIRA_BASE_URL` (the destination of the
-Jira token, HIMMEL-3111) cannot be redirected by a planted config, and
-`import-env`, `migrate-env.sh` and the setup wizard keep them in `.env`.
+`TELEGRAM_CHAT_ID`, `TELEGRAM_GROUP_CHAT_ID` and `JIRA_BASE_URL` are served from
+station config. A git-tracked `.env` serves neither chat id. `JIRA_BASE_URL`
+is a trusted credential destination: non-empty process env wins, then station
+`himmel.conf.local`, the selected station profile, `himmel.conf`, and the
+legacy `.env` as a one-release fallback (HIMMEL-8244). `HIMMEL_CONFIG_DIR`
+overrides the station config directory. Project config cannot choose this URL.
+Migration and the setup wizard move it into config; after verifying that Jira
+works, remove its legacy `.env` line to clear C74's warning.
+
+Agent writes to `himmel.conf`, `.local`, and station profiles are guarded by
+`block-himmel-config-writes.sh` (HIMMEL-7550): direct file tools, patches and
+Bash mutations naming these paths are refused. Plain reads and supported
+`himmelctl config set` operations remain allowed. This is a speed bump, not a
+sandbox: Bash path assembly and symlink aliases retain the guard's documented
+text-matching ceiling. Only trust operator-controlled station config.
+`FIRECRAWL_BASE_URL` and `WHISPER_MODEL` remain env-only: their readers do not
+serve them from config, so migration and the wizard keep them in `.env`.
 
 The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.

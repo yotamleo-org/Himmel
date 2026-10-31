@@ -133,15 +133,26 @@ async function main() {
     assert.equal(store.validate('JIRA_EMAIL', 'fixture@example.invalid').ok, true);
     assert.equal(store.validate('JIRA_PROJECT_KEY', 'ABC').ok, true);
   });
+  await test('Jira URL moves into config and a profile answer is accepted', () => {
+    const dir = fixture('jira-url');
+    const envFile = path.join(dir, '.env');
+    const conf = path.join(dir, 'himmel.conf');
+    fs.writeFileSync(envFile, 'JIRA_BASE_URL=https://legacy.example.invalid\nJIRA_API_TOKEN=fixture-token\n');
+    adopter.applyBehaviourConfig({}, { conf, envFile, log: () => {} });
+    assert.equal(load(conf, 'JIRA_BASE_URL'), 'JIRA_BASE_URL=https://legacy.example.invalid');
+    assert.equal(read(envFile), 'JIRA_API_TOKEN=fixture-token\n');
+    adopter.applyBehaviourConfig({ JIRA_BASE_URL: 'https://profile.example.invalid' }, { conf, envFile, log: () => {} });
+    assert.equal(load(conf, 'JIRA_BASE_URL'), 'JIRA_BASE_URL=https://profile.example.invalid');
+  });
   await test('env-only keys stay in .env across an install and are refused from a profile', () => {
     const dir = fixture('envonly');
     const envFile = path.join(dir, '.env');
     const conf = path.join(dir, 'himmel.conf');
-    const original = 'JIRA_BASE_URL=https://fixture.example.invalid\nWHISPER_MODEL=/fixture/model.bin\nFIRECRAWL_BASE_URL=https://fixture-fc.example.invalid\nCR_PROFILE=legacy-panel\n';
+    const original = 'WHISPER_MODEL=/fixture/model.bin\nFIRECRAWL_BASE_URL=https://fixture-fc.example.invalid\nCR_PROFILE=legacy-panel\n';
     fs.writeFileSync(envFile, original);
     adopter.applyBehaviourConfig({}, { conf, envFile, log: () => {} });
     assert.equal(read(envFile), original.replace('CR_PROFILE=legacy-panel\n', ''));
-    for (const key of ['JIRA_BASE_URL', 'WHISPER_MODEL', 'FIRECRAWL_BASE_URL']) {
+    for (const key of ['WHISPER_MODEL', 'FIRECRAWL_BASE_URL']) {
       assert.equal(load(conf, key), '');
       assert.throws(() => adopter.validateBehaviourConfig({ [key]: 'https://planted.example.invalid' }), /read from \.env only/);
       assert.throws(() => adopter.applyBehaviourConfig({ [key]: 'https://planted.example.invalid' },

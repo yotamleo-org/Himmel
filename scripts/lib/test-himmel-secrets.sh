@@ -203,27 +203,30 @@ printf 'JIRA_BASE_URL=https://fake.example.invalid\nTELEGRAM_CHAT_ID=fake-t\nTEL
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in-conf.env" 2>&1)
 assert_eq "S5c import-env stores none of the 5 config keys" "0" "$(grep -c 'key=\(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) ' "$KSTUB_STORE")"
 assert_eq "S5c import-env names each config key it leaves" "5" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key')"
-assert_eq "S5c import-env says an env-only key stays in .env" "3" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key; it stays in \.env)$')"
-assert_eq "S5c import-env says a chat id belongs in ~/.himmel" "2" "$(printf '%s' "$out" | grep -c '^skipped \(TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\) (config key; it belongs in ~/\.himmel)$')"
+assert_eq "S5c import-env says an env-only key stays in .env" "2" "$(printf '%s' "$out" | grep -c '^skipped \(FIRECRAWL_BASE_URL\|WHISPER_MODEL\) (config key; it stays in \.env)$')"
+assert_eq "S5c import-env says Jira URL and chat ids belong in ~/.himmel" "3" "$(printf '%s' "$out" | grep -c '^skipped \(JIRA_BASE_URL\|TELEGRAM_CHAT_ID\|TELEGRAM_GROUP_CHAT_ID\) (config key; it belongs in ~/\.himmel)$')"
 assert_eq "S5c import-env still stores the real secret" "1" "$(grep -c '^service=himmel key=ZAI_API_KEY scope=user' "$KSTUB_STORE")"
 
-# S5d: JIRA_BASE_URL is a credential destination, so a
-# planted himmel.conf never reaches the process env; the .env value still does.
+# S5d: the operator's guarded station config chooses the Jira destination;
+# the legacy .env remains a fallback, below config and profiles.
 mkdir -p "$TMP/s5d-conf"
 printf 'JIRA_BASE_URL=https://planted.example.invalid\n' >"$TMP/s5d-conf/himmel.conf"
 got=$(cd "$REPO" && rm -f .env && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
-assert_eq "S5d himmel.conf never sets JIRA_BASE_URL" "[]" "$got"
+assert_eq "S5d himmel.conf serves JIRA_BASE_URL without .env" "[https://planted.example.invalid]" "$got"
 printf 'JIRA_BASE_URL=https://from-env.example.invalid\n' >"$REPO/.env"
 got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
-assert_eq "S5d .env still serves JIRA_BASE_URL" "[https://from-env.example.invalid]" "$got"
+assert_eq "S5d config URL outranks the legacy .env" "[https://planted.example.invalid]" "$got"
+: >"$TMP/s5d-conf/himmel.conf"
+got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-conf" HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
+assert_eq "S5d .env still serves the fallback Jira URL" "[https://from-env.example.invalid]" "$got"
 rm -f "$REPO/.env"
-# A station profile layer is filtered the same way.
+# A selected station profile also serves the URL.
 mkdir -p "$TMP/s5d-prof/vault/.himmel/profiles" "$TMP/s5d-prof/conf"
 printf 'JIRA_BASE_URL=https://planted-profile.example.invalid\n' >"$TMP/s5d-prof/vault/.himmel/profiles/p.conf"
 : >"$TMP/s5d-prof/vault/.himmel/himmel.conf"
 ln -sf "$TMP/s5d-prof/vault/.himmel/himmel.conf" "$TMP/s5d-prof/conf/himmel.conf"
 got=$(cd "$REPO" && unset JIRA_BASE_URL && export HIMMEL_CONFIG_DIR="$TMP/s5d-prof/conf" HIMMEL_PROFILE=p HIMMEL_SECRETS_KEYRING=off && . "$(dirname "$HS")/load-dotenv.sh" && load_dotenv --root "$REPO" JIRA_BASE_URL 2>/dev/null; printf '[%s]' "${JIRA_BASE_URL-}")
-assert_eq "S5d a profile never sets JIRA_BASE_URL" "[]" "$got"
+assert_eq "S5d a profile serves JIRA_BASE_URL" "[https://planted-profile.example.invalid]" "$got"
 
 # S5d: the other env-only keys, whose readers take the process env or .env only.
 printf 'FIRECRAWL_BASE_URL=https://planted-fc.example.invalid\nWHISPER_MODEL=/planted/model.bin\n' >"$TMP/s5d-conf/himmel.conf"
