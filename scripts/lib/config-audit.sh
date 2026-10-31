@@ -451,11 +451,12 @@ _ca_map_forward() {
 _ca_restore() {
     local id="$1" script="$2" out rc n f bid
     case "$id" in [0-9]*T[0-9]*Z-*) ;; *) echo "result=no-backup id=$id"; return 1 ;; esac
-    # The live set first, so the restore itself can be undone.
-    bid="$(_ca_node pre "$(_himmel_config_dir)/config.json" --script "$script")" || bid=""
+    # The live set first, so the restore itself can be undone; no undo backup, no restore.
+    bid="$(_ca_node pre "$(_himmel_config_dir)/config.json" --script "$script")" \
+        || { echo "result=no-undo-backup id=$id (the live set could not be backed up; nothing was written)"; return 1; }
     out="$(_ca_node restore "$id")"; rc=$?
     printf '%s\n' "$out" | grep -v '^restored '
-    [ "$rc" -eq 0 ] || return 1
+    # A write that failed midway still audits the files it already replaced.
     while IFS= read -r n; do
         case "$n" in "restored "*) ;; *) continue ;; esac
         f="${n#restored * }"
@@ -464,7 +465,7 @@ _ca_restore() {
     done <<EOF
 $out
 EOF
-    return 0
+    [ "$rc" -eq 0 ]
 }
 
 config_audit_main() {

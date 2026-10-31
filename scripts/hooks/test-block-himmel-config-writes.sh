@@ -426,6 +426,8 @@ bash_case "session config-restore restore -> block" block "python3 scripts/teleg
 bash_case "session config-restore enroll -> block" block "python3 scripts/telegram/config-restore.py enroll --force"
 bash_case "a quoted restore verb -> block" block "bash scripts/lib/config-audit.sh 'restore' 20261031T120000Z-ab12"
 bash_case "a backslash-split accept verb -> block" block "bash scripts/lib/config-audit.sh acc\\ept"
+bash_case "an accept verb right before a ; -> block" block "bash scripts/lib/config-audit.sh accept; echo done"
+bash_case "an accept verb inside a subshell -> block" block "(bash scripts/lib/config-audit.sh accept)"
 bash_case "config-audit list -> allow" allow "bash scripts/lib/config-audit.sh list"
 bash_case "config-audit check -> allow" allow "bash scripts/lib/config-audit.sh check"
 bash_case "a grep for the restore verb in the source -> allow" allow "git grep -n restore -- scripts/lib/config-audit.sh"

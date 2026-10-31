@@ -128,6 +128,17 @@ eq "4 a corrupt backup is refused" 1 "$rc"
 has "4 the refusal names the corrupt file" "result=corrupt id=$cid file=config.json" "$out"
 eq "4 a refused restore writes no file" "$conf_live" "$(cat "$HIMMEL_CONFIG_DIR/himmel.conf")"
 [ "$conf_before" != "$conf_live" ] || fail "4 RED control: himmel.conf differs from its backup"
+# A restore whose undo backup cannot be written writes nothing (root ignores the mode).
+if [ "$(id -u)" != 0 ]; then
+    printf 'HIMMEL_INITIATIVE=changed-again\n' >> "$HIMMEL_CONFIG_DIR/himmel.conf"
+    cfg_live=$(cat "$HIMMEL_CONFIG_DIR/config.json")
+    chmod 555 "$STATE/backups"
+    out=$(bash "$CA" restore "$good" 2>&1); rc=$?
+    chmod 755 "$STATE/backups"
+    eq "4 a restore with no undo backup is refused" 1 "$rc"
+    has "4 the refusal says why" "result=no-undo-backup" "$out"
+    eq "4 a restore with no undo backup writes no file" "$cfg_live" "$(cat "$HIMMEL_CONFIG_DIR/config.json")"
+fi
 # Two backups in one second: the later one is newest, whatever its suffix.
 for sfx in ffff 0000; do
     mkdir -p "$STATE/backups/20991231T000000Z-$sfx"

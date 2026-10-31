@@ -310,8 +310,8 @@ lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 # never a session's. list and check stay allowed. Quotes and backslashes are
 # stripped first, so 'restore' or acc\ept is still the verb.
 lcv=$(printf '%s' "$lc" | tr -d "\"'\\\\")
-if [[ "$lcv" =~ config-audit[^\|\;\&]*[[:space:]](restore|accept)([[:space:]]|$) ]] \
-   || [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([[:space:]]|$) ]]; then
+if [[ "$lcv" =~ config-audit[^\|\;\&]*[[:space:]](restore|accept)([^a-z0-9_-]|$) ]] \
+   || [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([^a-z0-9_-]|$) ]]; then
     deny "a session runs the config ${BASH_REMATCH[1]} verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
 fi
 names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
