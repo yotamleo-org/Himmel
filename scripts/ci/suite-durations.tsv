@@ -990,6 +990,7 @@ scripts/afk/test-morning-report.sh	7
 scripts/afk/test-per-project.sh	1
 scripts/afk/test-self-heal.sh	8
 scripts/afk/test-stop-marker.sh	1
+scripts/afk/test-suggest-allowlist.sh	1
 scripts/parity/test-guard-conformance.sh	1
 scripts/parity/test-launcher-context-env-parity.sh	0
 scripts/parity/test-t12-no-bloat-lib.sh	0

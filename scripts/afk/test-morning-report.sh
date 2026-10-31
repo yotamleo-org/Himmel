@@ -99,7 +99,7 @@ REVIEW_ROUNDS_EMPTY="$TMP_ROOT/review-rounds-empty.txt"
 : > "$REVIEW_ROUNDS_EMPTY"
 export REVIEW_ROUNDS_TXT="$REVIEW_ROUNDS_EMPTY"
 
-# "## AFK sudo approvals" reads /var/log/himmel by default; every case gets an
+# "## AFK approvals" reads /var/log/himmel by default; every case gets an
 # absent ledger, the dedicated tests below point it at a fixture.
 export AFK_SUDO_LEDGER="$TMP_ROOT/no-afk-sudo-ledger.jsonl"
 
@@ -704,10 +704,10 @@ assert_contains "an empty window renders None" "no merged PR in the window" "$re
 report=$(REVIEW_ROUNDS_TXT="$TMP_ROOT/no-such-review-rounds.txt" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "an unreadable scan renders unavailable, not None" "review-rounds scan unavailable" "$report"
 
-# AFK sudo approvals --------------------------------------------------------
+# AFK approvals --------------------------------------------------------
 
 report=$(bash "$SCRIPT" --rows "$ROWS" --dry-run)
-if grepq "$report" -F "## AFK sudo approvals"; then fail "no ledger rendered an AFK sudo section" "$report"; else pass "no ledger, no AFK sudo section"; fi
+if grepq "$report" -F "## AFK approvals"; then fail "no ledger rendered an AFK approvals section" "$report"; else pass "no ledger, no AFK approvals section"; fi
 AS_LEDGER="$TMP_ROOT/afk-sudo.jsonl"
 now_ts=$(date -u +%FT%TZ)
 {
@@ -723,7 +723,7 @@ now_ts=$(date -u +%FT%TZ)
     printf '{"event": "request", "id": "cccccccc", "result": "pending", "ts": "2020-01-01T00:00:00Z"}\n'
 } > "$AS_LEDGER"
 report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
-assert_contains "the AFK sudo section has its heading" "## AFK sudo approvals" "$report"
+assert_contains "the AFK approvals section has its heading" "## AFK approvals" "$report"
 assert_contains "requests inside 24 h are counted once each, older ones are not" "**3 requests** in the last 24 h: approved 1, expired 1, wrong-code 1." "$report"
 # shellcheck disable=SC2016  # the backticks are literal report text
 assert_contains "a run line carries its argv and exit status" '`aaaaaaaa` /usr/bin/systemctl restart x.service, exit 0 (session S1, ticket HIMMEL-1)' "$report"
@@ -733,7 +733,28 @@ runlines=$(printf '%s\n' "$report" | grep -c '^- .* exit ')
 if [ "$runlines" = 2 ]; then pass "one run line per run event, none for bbbbbbbb"; else fail "one run line per run event, none for bbbbbbbb" "$runlines"; fi
 : > "$AS_LEDGER"
 report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
-assert_contains "an empty window renders None" "no AFK sudo request in the last 24 h" "$report"
+assert_contains "an empty window renders None" "no AFK approval in the last 24 h" "$report"
+
+# AFK approvals: per-kind counts, run lines with run_as + duration, never-remote refusals
+{
+    for i in 1 2 3; do
+        printf '{"argv": ["/usr/bin/crontab", "-l"], "event": "request", "id": "cron000%s", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s"}\n' "$i" "$now_ts"
+        printf '{"argv": ["/usr/bin/crontab", "-l"], "duration_ms": 12, "event": "run", "exit": 0, "id": "cron000%s", "kind": "run", "result": "ran", "run_as": "root", "ts": "%s"}\n' "$i" "$now_ts"
+    done
+    printf '{"argv": ["/usr/bin/pacman", "-Syu"], "event": "request", "id": "pacm0001", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s"}\n' "$now_ts"
+    printf '{"argv": ["/usr/bin/pacman", "-Syu"], "duration_ms": 90500, "event": "run", "exit": 0, "id": "pacm0001", "kind": "run", "result": "ran", "run_as": "root", "ts": "%s"}\n' "$now_ts"
+    printf '{"argv": ["/usr/bin/wipefs", "-a", "/dev/sda"], "event": "request", "id": "", "kind": "run", "result": "never-remote", "rule": "disk-wipe", "run_as": "root", "ts": "%s"}\n' "$now_ts"
+    printf '{"event": "request", "id": "sudo0001", "result": "pending", "ts": "%s"}\n' "$now_ts"
+} > "$AS_LEDGER"
+report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "the section is named AFK approvals" "## AFK approvals" "$report"
+if grepq "$report" -F "## AFK sudo approvals"; then fail "the old AFK sudo heading is gone" "$report"; else pass "the old AFK sudo heading is gone"; fi
+assert_contains "per-kind counts" "By kind: run 5, sudo 1." "$report"
+assert_contains "per-result counts keep never-remote" "never-remote 1" "$report"
+# shellcheck disable=SC2016  # the backticks are literal report text
+assert_contains "a run line carries run_as, argv, exit and duration" '`cron0001` /usr/bin/crontab -l, exit 0, 12 ms, as root' "$report"
+assert_contains "a slow run shows its duration in ms" "exit 0, 90500 ms, as root" "$report"
+assert_contains "the never-remote refusal names its rule and argv" "never-remote disk-wipe: /usr/bin/wipefs -a /dev/sda" "$report"
 
 # Summary --------------------------------------------------------------
 
