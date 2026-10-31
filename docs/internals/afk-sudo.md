@@ -56,8 +56,8 @@ marked `user-writable`; a file argument whose body is not shown (over 64 KiB, or
 operator could not read), and a user-writable argv[0] that is not a shown script, is marked
 `NOT SHOWN`. Text is escaped and each element is
 framed (`⟦…⟧`) with control and non-ASCII characters shown as escapes. When an element (the cwd included) or the message would
-pass its limit it is cut, and the whole request goes as a `<id>.json` document beside
-it. If either send fails the request is withdrawn (`result=notice-failed`, a `notice` ledger
+pass its limit it is cut, and the whole request goes first as a `<id>.json` document, so
+the nonce is never sent while the attachment may still fail. If either send fails the request is withdrawn (`result=notice-failed`, a `notice` ledger
 row, the step spent): the operator never approves what they were not shown.
 
 The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).

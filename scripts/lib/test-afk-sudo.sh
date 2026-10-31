@@ -215,7 +215,8 @@ new_root() {
 
 # The notice bot's token, built at run time so no token-shaped literal sits in this file. The root helper
 # sends through curl; in the seam AFK_SUDO_CURL names this fake, which records every call (the -K - config
-# on stdin, the argv, any attached file) as one JSON file in $TG and answers ok (not ok once $tmp/tg-fail exists).
+# on stdin, the argv, any attached file) as one JSON file in $TG and answers ok (not ok once $tmp/tg-fail exists;
+# when it names a method, only that method fails).
 NTOK="$((7000000000 + RANDOM)):$(python3 -I -c 'import secrets; print(secrets.token_urlsafe(26)[:35])')"
 BTOK="123:SECRETTOKEN"
 TG="$tmp/tg"
@@ -223,7 +224,7 @@ mkdir -p "$tmp/fakecurl"
 cat > "$tmp/fakecurl/curl" <<FAKETG
 #!/usr/bin/env python3
 import json, os, re, sys
-d, fail = "$TG", os.path.exists("$tmp/tg-fail")
+d, failf = "$TG", "$tmp/tg-fail"
 FAKETG
 cat >> "$tmp/fakecurl/curl" <<'FAKETG'
 unq = lambda s: re.sub(r'\\(.)', lambda m: {"n": "\n", "t": "\t", "r": "\r"}.get(m.group(1), m.group(1)), s)
@@ -239,6 +240,7 @@ for k, v in pairs:
     elif k in ("form", "form-string"):
         a, _, b = v.partition("=")
         rec["form"][a] = open(b[1:].split(";")[0]).read() if k == "form" and b.startswith("@") else b
+fail = os.path.exists(failf) and open(failf).read().strip() in rec["url"]
 n = len(os.listdir(d))
 json.dump(rec, open(os.path.join(d, "%03d.json" % n), "w"))
 print(json.dumps({"ok": not fail, "result": {"message_id": 100 + n}}))
@@ -1283,6 +1285,12 @@ assert_contains "a failed notice send refuses the request" "result=notice-failed
 assert_contains "a failed notice send is ledgered" '"result": "notice-failed"' "$(ledger)"
 rm -f "$tmp/tg-fail"
 assert_contains "a failed notice leaves nothing pending" "result=pending" "$(rr 1 -- true)"
+new_root docfail; cfg "$ALL" true
+printf 'sendDocument' > "$tmp/tg-fail"
+out=$(rr 0 -- printf '%s\n' $(seq 30))
+rm -f "$tmp/tg-fail"
+assert_contains "a failed attachment refuses the request" "result=notice-failed" "$out"
+assert_eq "a failed attachment sends no nonce" "" "$(tg notice sendMessage text)"
 new_root nobot; cfg "$ALL" true
 : > "$R/etc/himmel/afk-sudo/notice-bot.env"
 assert_contains "an empty notice-bot.env refuses a run request" "result=no-notice-bot" "$(rr 0 -- true)"

@@ -768,18 +768,20 @@ def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
 
 def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodies=(), stdin_text=""):
     """Send the facts message (and the full request when it was cut) through the notice bot. A notice
-    that cannot be sent withdraws the request: the operator must never approve what they were not shown."""
+    that cannot be sent withdraws the request: the operator must never approve what they were not shown.
+    The full request goes first, so the nonce (in the facts message) is never out while it may still fail."""
     rid = rec["id"]
     text, cut = facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
     op = int(config["operator_id"])
-    ok = tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)])
-    if ok and cut:
+    ok = True
+    if cut:
         doc = os.path.join(FILES, rid, "request.json")
         for d in (FILES, os.path.dirname(doc)):
             private_dir(d)
         full = {"record": rec, "files": {p: b for p, b in bodies}, "stdin": stdin_text}
         write_private(doc, json.dumps(full, indent=1, sort_keys=True).encode())
         ok = tg_send(config, token, "sendDocument", [("chat_id", op)], (doc, f"{rid}.json"))
+    ok = ok and tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)])
     if not ok:
         broker.withdraw(rid, "notice-failed")
     return ok
