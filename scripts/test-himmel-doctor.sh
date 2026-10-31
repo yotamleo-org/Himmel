@@ -7183,7 +7183,7 @@ c74_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c74.XXXXXX")" || { echo "mktem
 mkdir -p "$c74_t/home/.himmel" "$c74_t/claude"
 c74_pol="$c74_t/home/.himmel/config.json"
 c74_conf="$c74_t/home/.himmel/himmel.conf"
-c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --root "$REPO_ROOT" --no-color --only C74 2>&1; }
+c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_DIR="" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --root "$REPO_ROOT" --no-color --only C74 2>&1; }
 c74_reset() { rm -f "$c74_t/env" "$c74_conf" "$c74_conf.local" "$c74_pol"; }
 echo "== C74-config-split: a config-class key still in .env -> WARN naming the key, never the value =="
 c74_reset
@@ -7264,6 +7264,11 @@ mkdir -p "$c74_t/home/.himmel/state/config-audit/backups/20261031T120000Z-ab12"
 printf '{}\n' > "$c74_t/home/.himmel/state/config-audit/backups/20261031T120000Z-ab12/config.json"
 out="$(c74_run)"
 if grepq "$out" -F 'FAIL C74-policy' && grepq "$out" -F 'installed station' && grepq "$out" -F 'config-audit.sh list'; then pass "C74 installed station without config.json -> FAIL naming the restore"; else fail "C74 installed no policy -> $(printf '%s' "$out" | head -6)"; fi
+# No backup, but the last snapshot recorded config.json: it existed, so FAIL.
+rm -rf "$c74_t/home/.himmel/state/config-audit/backups"
+printf '{"config.json":{"present":true,"keys":["policy"]}}\n' > "$c74_t/home/.himmel/state/config-audit/watch.json"
+out="$(c74_run)"
+if grepq "$out" -F 'FAIL C74-policy' && grepq "$out" -F 'installed station'; then pass "C74 installed station whose snapshot recorded config.json -> FAIL"; else fail "C74 watch-recorded policy -> $(printf '%s' "$out" | head -6)"; fi
 rm -rf "$c74_t/home/.claude/himmel" "$c74_t/home/.himmel/state"
 echo "== C74-config-keys: a key lost since the snapshot -> WARN naming the key, never the value (HIMMEL-8401) =="
 c74_reset
