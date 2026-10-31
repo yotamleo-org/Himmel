@@ -50,7 +50,7 @@ Move .claude/commands/luna-ingest.md content to skill location so Skill tool can
 Skill path likely plugins/obsidian-triage/skills/luna-ingest/SKILL.md OR new top-level skill. Preserve /luna-ingest <url> at user prompt (skills are user-invokable).
 
 DoD:
-- Skill exists at chosen path; passes superpowers:writing-skills checklist
+- Skill exists at chosen path; passes lean-skills:writing-skills checklist
 - .claude/commands/luna-ingest.md removed or thinned to wrapper
 - Skill tool invocation skill:"obsidian-triage:luna-ingest" works inside runbook (smoke test)
 - All existing /luna-ingest tests still pass

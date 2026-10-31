@@ -4460,8 +4460,8 @@ counted in the "nine guards" above): it ships in the **himmel-ops plugin**
 himmel-ops install gets it — himmel sessions and external installs alike — with
 no repo wiring.
 
-Closes the no-`/minerva` bypass. When `superpowers:brainstorming` or
-`superpowers:writing-plans` is invoked by ANY path (auto-trigger, direct
+Closes the no-`/minerva` bypass. When `lean-skills:brainstorming` or
+`lean-skills:writing-plans` is invoked by ANY path (auto-trigger, direct
 `/skill`, sub-skill handoff) without going through `/minerva`, it injects a
 scoped `additionalContext` directive so the model still runs the matching
 minerva adversarial critic loop (spec-critic / plan-critic; `himmel-ops:minerva`
