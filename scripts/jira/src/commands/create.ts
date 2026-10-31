@@ -30,11 +30,16 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..',
 /** The text under the "Agent detail" heading of a markdown body, up to the next heading. */
 export function agentDetailOf(md: string): string {
   const lines = md.split('\n');
-  const start = lines.findIndex((l) => /^\s{0,3}#{1,6}\s+agent detail\b/i.test(l));
+  // a heading inside a fenced code block is not a heading (as in lintPlainBlock)
+  let fenced = false;
+  const heading = lines.map((l) => {
+    if (/^\s{0,3}(```|~~~)/.test(l)) fenced = !fenced;
+    return !fenced && /^\s{0,3}#{1,6}\s/.test(l);
+  });
+  const start = lines.findIndex((l, i) => heading[i] && /^\s{0,3}#{1,6}\s+agent detail\b/i.test(l));
   if (start < 0) return '';
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((l) => /^\s{0,3}#{1,6}\s/.test(l));
-  return (end < 0 ? rest : rest.slice(0, end)).join('\n');
+  const end = heading.findIndex((h, i) => i > start && h);
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
 }
 
 /** The Agent detail of an ADF body: the text of every node after its "Agent detail" heading. */
@@ -87,7 +92,7 @@ export function markCore(
 }
 
 function printCore(verdict: CoreVerdict): void {
-  if (verdict) console.log(`${verdict.kind}: ${verdict.path}`);
+  if (verdict) console.error(`${verdict.kind}: ${verdict.path}`);
 }
 
 /**

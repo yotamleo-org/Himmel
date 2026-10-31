@@ -14,7 +14,7 @@ vi.mock('../client.js', () => ({
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { resolveTitle, registerCreate, agentDetailOfAdf, pathsIn } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -1866,8 +1866,8 @@ describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     out = [];
-    vi.spyOn(console, 'log').mockImplementation((s: unknown) => { out.push(String(s)); });
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { out.push(String(s)); });
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
       if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
@@ -1900,6 +1900,13 @@ describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
     await file('Moves scripts/jira/src/release/engine.ts.', '--change-class', 'rename');
     expect(labels()).not.toContain('core');
     expect(out).toContain('core-review: scripts/jira/src/release/engine.ts');
+  });
+
+  it('reads an Agent detail past a fenced heading, and prints the verdict on stderr', async () => {
+    const detail = '```\n## Example\n```\nEdits scripts/jira/src/release/engine.ts.';
+    expect(pathsIn(agentDetailOf(body(detail)))).toEqual(['scripts/jira/src/release/engine.ts']);
+    await file(detail);
+    expect(out).toContain('core: scripts/jira/src/release/engine.ts');
   });
 
   it('keeps the paths of adjacent ADF list items apart', () => {
