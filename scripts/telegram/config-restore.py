@@ -129,9 +129,12 @@ def restore(bid, code, sender, chat):
                                      "result": "not-operator", "kind": "config-restore", "backup": bid,
                                      "sender": int(sender), "chat": int(chat)}, b.owner)
             raise ab.Refused("not-operator")
-        rid, _ = b.request("config-restore", f"restore {bid}", {"backup": bid},
-                           {"backup": bid, "session": f"telegram:{int(chat)}"})
-        _, res = b.approve(rid, code, sender, chat, executor)
+        # The request opens and is approved in this one call, from the operator's own
+        # typed message: no notice is sent that a look-alike could copy, so the nonce
+        # is passed straight back.
+        rid, _, nonce = b.request("config-restore", f"restore {bid}", {"backup": bid},
+                                  {"backup": bid, "session": f"telegram:{int(chat)}"})
+        _, res = b.approve(rid, code, sender, chat, executor, nonce=nonce)
     except ab.Refused as e:
         print(f"result=refused reason={e.result}")
         return 1
