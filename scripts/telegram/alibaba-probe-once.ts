@@ -24,6 +24,7 @@ import {
   alibabaEnv, alibabaEnvReady, parseModelUsage, resolveGrants, buildAlibabaRows,
 } from "./quota-gauge-alibaba";
 import { appendQuotaGauge, ledgerPath } from "./quota-gauge";
+import { resolveSecrets } from "../lib/resolve-secrets.mjs";
 import type { QuotaGaugeRecord } from "./quota-gauge";
 
 export const MIN_PROBE_GAP_S = 60;
@@ -124,7 +125,8 @@ export async function runProbe(opts: {
 }
 
 // ── .env cascade (parity with scripts/lib/load-dotenv.sh) ───────────────────
-// process.env wins; then the worktree/repo .env; then the main-checkout .env
+// process.env wins; then the keyring (the AK/SK pair, through scripts/lib/resolve-secrets.mjs);
+// then the worktree/repo .env; then the main-checkout .env
 // (a worktree's .env is gitignored/absent — the real one lives in the main
 // checkout, resolved via `git rev-parse --git-common-dir`).
 const DOTENV_KEYS = new Set(['ALIBABA_QUOTA_AK', 'ALIBABA_QUOTA_SK', 'ALIBABA_QUOTA_PROM_URL', 'ALIBABA_QUOTA_GRANTS']);
@@ -158,6 +160,8 @@ export function loadAlibabaEnv(repoRoot: string): Record<string, string | undefi
   const mainRoot = mainCheckoutRoot(repoRoot);
   if (mainRoot) Object.assign(merged, parseDotenv(join(mainRoot, ".env")));   // lowest precedence
   Object.assign(merged, parseDotenv(join(repoRoot, ".env")));
+  // The keyring beats .env; process.env, applied last, beats both.
+  Object.assign(merged, resolveSecrets(repoRoot, ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK"]));
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) merged[k] = v; // process.env wins
   return merged;
 }
