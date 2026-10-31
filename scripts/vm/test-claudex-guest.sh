@@ -239,7 +239,7 @@ check "provision hands --install the key (non-empty)" grep -qE 'cli-proxy-lane -
 check "provision registers the lane" grep -q 'cli-proxy-lane --register' "$GUEST_TOOL_LOG"
 check "provision writes the worker-impl settings file" grep -q 'enabledPlugins' "$GH/.config/himmel/worker-settings.json"
 check "provision links the repo path" test "$(readlink "$GH/Documents/github/himmel")" = "$GH/himmel"
-check "provision never touches curl or systemctl" test "$(guest_log_count -e '^curl' -e '^systemctl')" = 0
+check "provision never touches curl or systemctl" test "$(grep -cE '^(curl|systemctl) ' "$GUEST_TOOL_LOG")" = 0
 check "provision runs the clone through vmsdk" grep -q '^VMSDK himmel-claudex clone' "$FAKE_VMSDK_LOG"
 
 has_canary() { # any canary in the given files / trees
