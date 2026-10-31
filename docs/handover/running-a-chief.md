@@ -287,7 +287,7 @@ helper kind.
 | Ticket audit (still open, fixed or partial) | `sonnet` |
 | Per-page docs review | `sonnet` |
 | A specified edit list ending in a machine check | `haiku`, effort medium |
-| The one hard call | `opus` |
+| The one hard call | `fable` |
 
 A native worker launched with no model runs `claude-opus-5-5`, so
 `headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
