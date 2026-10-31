@@ -487,16 +487,18 @@ case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shi
 
 echo "T37b: the lane call is tagged kind=graphify and the fixed addendum sits between graphify's instructions and the chunk (HIMMEL-8403)"
 C37B="$WS/c37b"; new_corpus "$C37B"; : > "$WS/calls.log"; : > "$WS/claude.out"
-out=$(GRAPHIFY_STUB_PROMPT='SCHEMA TEXT\n\n---\nNow extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK BODY' GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37b --corpus-root "$C37B" --corpus-class himmel-code --backend claude-api); rc=$?
+TAIL37B='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK BODY'
+out=$(GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37b --corpus-root "$C37B" --corpus-class himmel-code --backend claude-api); rc=$?
 lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37b exit 0" || fail "T37b exit 0 (got $rc): $out"
 grep -qx 'lane-kind=graphify' "$WS/calls.log" && pass "T37b lane kind is graphify" || fail "T37b kind: $(grep lane-kind "$WS/calls.log")"
 ADD37B="$(sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d' | tr '\n' ' ')"
 [ "${#ADD37B}" -gt 200 ] && pass "T37b positive control: the addendum text was read from the script" || fail "T37b addendum text not read from the script (${#ADD37B} chars)"
-case "$lane" in
-  *"stdin=SCHEMA TEXT "*"$ADD37B"*"Now extract the knowledge graph"*"CHUNK BODY"*) pass "T37b the whole addendum sits between the instructions and the chunk" ;;
-  *) fail "T37b prompt order or addendum text: $lane" ;;
-esac
+# the expected prompt: instructions, "---", the whole addendum, "---", then graphify's own request and the chunk, unchanged
+EXP37B="$( { printf 'SCHEMA TEXT\n\n---\n'; sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } | tr '\n' ' ')"
+GOT37B="${lane#*stdin=}"; GOT37B="${GOT37B% | cwdcorpus=*}"
+if [ "$GOT37B" = "$EXP37B" ]; then pass "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk"
+else fail "T37b forwarded prompt differs from the expected one: got [$GOT37B] want [$EXP37B]"; fi
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"
