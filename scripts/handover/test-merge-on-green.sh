@@ -5165,8 +5165,9 @@ assert_audit_lacks "7323-h: no recheck audited" "MAIN-RECHECK"
 rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL" "$MOG7658_LOG_STEP2" "$MOG7658_LOG_BUDGET" "$MOG7658_LOG_STOPPED"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
-# Plugin versions change only in a release cut (a change to the root VERSION
-# file). Two cuts that raise a plugin to the same version both go green in CI;
+# A PR that changes a plugin bumps its version above the base; a
+# release cut (a change to the root VERSION file) raises every plugin it touches.
+# Two PRs that raise a plugin to the same version both go green in CI;
 # only the merge gate sees the live base. The fixture manifest is copied from the
 # real himmel-ops plugin.json at this checkout, never invented.
 BP_REAL_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
@@ -5202,6 +5203,7 @@ bp_setup() {
             case "${MOG_BUMP_STUBCHK:-}" in
                 silent) printf '\n' > "$a/$bp_b" ;;
                 noise) printf '#!/usr/bin/env bash\necho "all good"\nexit 0\n' > "$a/$bp_b" ;;
+                legacy) printf '#!/usr/bin/env bash\necho "check-plugin-drift --bump-required: no plugin version changed outside a release cut"\nexit 0\n' > "$a/$bp_b" ;;
             esac
         fi
         if [ "${MOG_BUMP_MISSING:-}" = "$bp_b" ]; then rm -f "$a/$bp_b"; else bp_add+=("$bp_b"); fi
@@ -5232,13 +5234,18 @@ BP_FILES='[{"filename":"marketplace/plugins/himmel-ops/a.txt"},{"filename":"mark
 bp_run() {
     MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=bp_setup STUB_PR_FILES_JSON="${STUB_PR_FILES_JSON-$BP_FILES}" run_mog "$@"
 }
-# 7310-a (RED) — the sibling edited the same plugin from the same base and
-# merged first; neither touched the version, so the PR merges with no merge of main.
-bp_run 0 "7310-a: two plugin edits from one base, no version change → merged"
-# 7310-b — a PR that is not a release cut changes a plugin version: refused.
+# 8368-a (RED) — the PR edits a plugin and bumps it above the base tip (the
+# sibling edited it too, without a bump): the checker's "every changed plugin
+# carries a version bump" line is a verdict, so it merges.
 MOG_BUMP_PR="$BP_V1" \
-    bp_run 23 "7310-b: a version change outside a release cut → exit 23"
-assert_err_has "7310-b: stderr says outside a release cut" "outside a release cut"
+    bp_run 0 "8368-a: a plugin edit with a version bump above the base tip → merged"
+assert_audit_has "8368-a: audited as a plugin-bump pass" "PLUGIN-BUMP ok"
+# 8368-b — a base-tip checker that still prints the legacy success line stays a verdict.
+MOG_BUMP_STUBCHK=legacy \
+    bp_run 0 "8368-b: legacy success line from an older base-tip checker → merged"
+# 7310-b — a PR that edits a plugin without raising its version: refused.
+bp_run 23 "7310-b: a plugin edit with no version bump → exit 23"
+assert_err_has "7310-b: stderr names the plugin and the missing bump" "himmel-ops changed but its plugin.json version"
 no_merge_call "7310-b: no merge call"
 # 5188-a (RED) — a sibling release cut landed the SAME version after this cut's
 # CI went green: two contents under one version → refused before any merge call.
