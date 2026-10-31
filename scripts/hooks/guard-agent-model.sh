@@ -19,8 +19,17 @@
 # (`agent-model-escalation: …`, exit 0) so the override is auditable; the reason
 # also stays in the dispatch prompt.
 #
+# TIER WARN (never a deny): a general-purpose (or untyped) dispatch whose
+# `model` matches warn_model_patterns in the policy file (today: Opus) and whose
+# prompt has no `TIER: <reason>` line (same reason-quality test as ESCALATION)
+# gets one additionalContext line naming the cheaper tier per helper kind
+# (chief Opus general-purpose helpers rose from $14 to $41-eq/day). Exit 0, no
+# permissionDecision. It fires for any session, not only a chief: the payload
+# carries no role, and a worker's Opus helper is the same spend.
+# ponytail: any-session scope, chief-only needs a role probe like guard-chief-dispatch.sh.
+#
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
-# deny: zero context cost. A missing `model` is always allowed (the agent's own
+# deny or the WARN above fired: zero context cost. A missing `model` is always allowed (the agent's own
 # frontmatter/default applies). The judge tier is hardcoded to opus;
 # test-guard-agent-model.sh asserts the frontmatter still says so, so a tier
 # change there fails the suite here.
@@ -66,6 +75,7 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
     def norm: ascii_downcase | gsub("[^a-z0-9]+"; " ") | gsub("^ +| +$"; "");
     (($pol[0] // {}) | if type == "object" then . else {} end) as $p
     | [$p.blocked_model_patterns | arrays[] | strings] as $pats
+    | [$p.warn_model_patterns | arrays[] | strings] as $wpats
     | (($p.min_reason_chars | numbers) // 10) as $min
     | [$p.placeholder_reasons | arrays[] | strings | norm] as $ph
     | (.tool_name | s) as $tool
@@ -76,15 +86,26 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
     | [$rs[] | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $good
     | (if ($rs | length) == 0 then "none" elif ($good | length) > 0 then "ok" else "weak" end) as $status
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
+    | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*TIER:[ \\t]*(?<r>.*)$")? | .r | clean
+       | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
+       elif ($t == "" or $t == "general-purpose") and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
        else "allow" end) as $kind
     | if $kind == "allow" then "allow" else [$kind, $status, $m, $reason] | join("\t") end' 2>/dev/null) || exit 0
 
 IFS=$'\t' read -r kind status model reason <<EOF
 $verdict
 EOF
+
+if [ "$kind" = "warn" ]; then
+    # Warn only: additionalContext, NO permissionDecision (that would also skip a
+    # permission prompt), exit 0. Allow stays silent for every other dispatch.
+    warn_msg="agent-model-warn: a general-purpose helper on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
+    exit 0
+fi
 
 case "$kind" in
     blocked) what="model '$model' (blocked by scripts/guardrails/agent-model-policy.json)" ;;
