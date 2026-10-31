@@ -420,7 +420,7 @@ async function loadRoadmap() {
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
-// a drop or a theme select goes to Jira through the server. The board is redrawn from the server's data either way:
+// a drop or a Sector select goes to Jira through the server. The board is redrawn from the server's data either way:
 // on a refusal nothing local changed, so the card is back where it was and the reason is shown above the board.
 let rmWriting = false;
 async function writeRoadmap(body) {
@@ -433,8 +433,8 @@ async function writeRoadmap(body) {
   if (!ok) { roadmapUi.writeError = `${body.key}: ${j.error || "write failed"}${j.output ? " (" + String(j.output).trim().slice(0, 200) + ")" : ""}`; return paint(); }
   if ("status" in j) { const c = COLS_BY_ID[j.status]; t.b = j.status; t.s = j.name || c || t.s; }
   else {
-    let i = roadmap.themeSlugs.indexOf(j.theme || "");
-    if (i < 0) { roadmap.themes.push(j.theme); roadmap.themeSlugs.push(j.theme); i = roadmap.themes.length - 1; }
+    let i = roadmap.themes.indexOf(j.sector);
+    if (i < 0) { roadmap.themes.push(j.sector); i = roadmap.themes.length - 1; }
     t.theme = i;
   }
   paint();
@@ -464,7 +464,7 @@ document.addEventListener("change", (e) => {
     location.hash = v === "*" ?"#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
     return;
   }
-  if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, theme: e.target.value === "" ? null : e.target.value });
+  if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, sector: e.target.value });
   const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
   if (rgf && rgd) {
     const x = rgd.find((y) => y.slug === e.target.dataset.slug);

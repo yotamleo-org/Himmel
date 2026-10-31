@@ -428,7 +428,7 @@ export function createTools(): JiraTool[] {
         properties: {
           key: str('Issue key'),
           readiness: str('Readiness 0-4'),
-          theme: str('Theme option name'),
+          theme: str('Legacy Theme option name; refused when HIMMEL_LEGACY_NAMES is off (set the Sector with edit instead)'),
           goals: str('Comma-separated goals: G1..G7, North Star, off, win'),
           impact: str('Impact 1-5'),
           alignment: str('Alignment 0.2-1.0 (default: derived from goals)'),

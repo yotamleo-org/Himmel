@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   alignmentFromGoals,
   buildRoadmapFields,
@@ -146,6 +146,18 @@ describe('buildRoadmapFields', () => {
     expect(() => buildRoadmapFields(IDS, { closeCandidate: 'maybe' })).toThrow(/yes\|no/);
     expect(() => buildRoadmapFields(IDS, { guard: true })).toThrow(/--guard/);
     expect(() => buildRoadmapFields(IDS, {})).toThrow(/nothing to set/);
+  });
+
+  it('refuses the retired --theme when legacy names are off, and points at --sector', () => {
+    for (const off of ['0', 'false', 'no', 'OFF']) {
+      vi.stubEnv('HIMMEL_LEGACY_NAMES', off);
+      expect(() => buildRoadmapFields(IDS, { theme: 'Guard safety' })).toThrow(/--sector/);
+    }
+    vi.stubEnv('HIMMEL_LEGACY_NAMES', '0');
+    expect(buildRoadmapFields(IDS, { readiness: '3' })).toEqual({ customfield_10171: 3 }); // the other fields are untouched
+    vi.stubEnv('HIMMEL_LEGACY_NAMES', '1');
+    expect(buildRoadmapFields(IDS, { theme: 'Guard safety' })).toEqual({ customfield_10172: { value: 'Guard safety' } });
+    vi.unstubAllEnvs();
   });
 });
 
