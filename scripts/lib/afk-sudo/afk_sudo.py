@@ -594,10 +594,13 @@ def execute_run(payload, config):
 
 # --- the grant kind: one classifier skip for one exact command ---
 def cmd_words(cmd):
-    """The command's words as a POSIX shell splits them (plain whitespace on unbalanced quotes). The hash binds
-    the exact bytes; the words only find the files the command names, for the binding and the floor."""
+    """The command's words as a POSIX shell splits them, with the operators ; & | < > ( ) as words of their own,
+    so `sh s.sh; true` names s.sh (plain whitespace on unbalanced quotes). The hash binds the exact bytes; the
+    words only find the files the command names, for the binding and the floor."""
     try:
-        return shlex.split(cmd)
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex.whitespace_split, lex.commenters = True, ""
+        return list(lex)
     except ValueError:
         return cmd.split()
 

@@ -1386,6 +1386,13 @@ printf 'echo changed\n' > "$GW/s.sh"
 assert_contains "a bound file changed after the code refuses the grant" "result=changed" "$(gspend 10 "sh s.sh")"
 assert_contains "a refused grant is spent all the same" "result=no-grant" "$(gspend 11 "sh s.sh")"
 printf 'echo hi\n' > "$GW/s.sh"
+new_root gops; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(greq 0 "sh s.sh; true"); id=$(rid "$out")
+assert_contains "RED HIMMEL-7686: a file next to a shell operator is bound" "$GW/s.sh" "$(tg notice sendMessage text)"
+approve 3 "$id" "$(code 3)" >/dev/null
+printf 'echo changed\n' > "$GW/s.sh"
+assert_contains "RED HIMMEL-7686: that file changed after the code refuses the grant" "result=changed" "$(gspend 10 "sh s.sh; true")"
+printf 'echo hi\n' > "$GW/s.sh"
 
 new_root gperm; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
 id=$(grant_ok 0 "$GCMD")

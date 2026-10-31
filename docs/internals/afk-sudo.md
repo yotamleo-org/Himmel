@@ -318,6 +318,15 @@ Residuals (ponytail: the grant binds the bytes and the files the command names, 
 it loads at run time, such as a package an `npx` call downloads; the upgrade path is the
 run kind's frozen argv for anything that needs more):
 
+- Files are found by splitting the command into shell words (operators such as `;` and
+  `|` split too) and resolving each word against the request's cwd. A file the command
+  reaches through a variable, a command substitution or a `cd` is not bound; the notice
+  shows the full command for the operator to judge.
+- The worker runs its own command after the spend checks the bound files, as the same
+  user that can write them. A process of that user that rewrites a file between the check
+  and the run is not caught: the binding catches changes made before the retry, not a
+  worker racing its own call (layer decision: accept; the run kind, in which root
+  executes the file it holds open, is the path for a command that needs more).
 - An ask from another chain member on the retry still spends the grant.
 - The worker learns of the approval from the operator or the chief, or by polling
   `sudo -n afk-sudo status <id>`. Nothing tells it directly.
