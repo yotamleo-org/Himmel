@@ -329,6 +329,11 @@ mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/broken\`"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone git cannot inspect: rc 8" "$rc" "8"
 contains "scratchpad-clone git cannot inspect: says so" "$out" "cannot inspect"
+# the doc names a file inside that broken clone: still refused, not missed
+mkdir -p "$SCR/broken/sub"
+mkdoc "- 10:00 WRAPPED - done" "fork file: \`$SCR/broken/sub/notes.txt\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "path inside a broken scratchpad clone: rc 8" "$rc" "8"
 # a subtree find cannot read is refused, not skipped
 mkdir -p "$SCR/unread/sub"
 chmod 000 "$SCR/unread/sub"

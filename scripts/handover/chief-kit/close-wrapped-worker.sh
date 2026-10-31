@@ -204,8 +204,9 @@ fi
 # staging branch or move it under ~/.himmel/scratch). A clone already gone cannot
 # be checked and is skipped.
 # A named path may sit below the clone (a file) or above it (a parent holding
-# clones): walk up to the nearest existing directory, take the repo that contains
-# it and any repo up to three levels below it. --all counts a detached HEAD too (a
+# clones): walk up to the nearest existing directory, take the nearest ancestor
+# holding a .git (git need not work there: a broken clone still refuses below)
+# and any repo up to three levels below it. --all counts a detached HEAD too (a
 # rebase in progress leaves its commits there); a scan or git failure refuses.
 sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
 scratch_paths=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
@@ -216,8 +217,11 @@ while IFS= read -r sc_path; do
     sc_d="$sc_path"
     while [ "$sc_d" != "$sc_root" ] && [ ! -d "$sc_d" ]; do sc_d="${sc_d%/*}"; done
     [ "$sc_d" != "$sc_root" ] || continue
-    sc_top=$(sc_git -C "$sc_d" rev-parse --show-toplevel 2>&1) || sc_top=""
-    case "$sc_top" in "$sc_root"/*) scratch_clones="$scratch_clones$sc_top"$'\n' ;; esac
+    sc_up="$sc_d"
+    while [ "$sc_up" != "$sc_root" ] && [ -n "$sc_up" ]; do
+        if [ -e "$sc_up/.git" ]; then scratch_clones="$scratch_clones$sc_up"$'\n'; break; fi
+        sc_up="${sc_up%/*}"
+    done
     if ! sc_below=$(find "$sc_d" -maxdepth 3 -type d -name .git -prune); then
         echo "close-wrapped-worker: refusing - cannot scan $sc_d, named by the doc, for session-scratchpad clones; fix its permissions or move the clones under ~/.himmel/scratch before the close" >&2
         exit 8
