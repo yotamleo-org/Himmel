@@ -255,7 +255,7 @@ export function renderReviewGate(rg, extra = "") {
     ${rows}${extra}
     <p class="sub">${esc(d.rateLimit)}</p>
     <button class="btn" data-act="review-gate-save">save</button>${msg}</div>
-    <div class="card"><h3>Timeouts and tiers</h3><p class="sub">These are review-run settings, not critics.json reviewer definitions. Read-only here; each row says where to change it and why.</p>${env}</div></section>`;
+    <div class="card"><details class="more"><summary>Timeouts and tiers</summary><p class="sub">These are review-run settings, not critics.json reviewer definitions. Read-only here; each row says where to change it and why.</p>${env}</details></div></section>`;
 }
 
 // Settings: what can be changed and where it lives. Each row shows the himmelctl command it runs, when it takes
