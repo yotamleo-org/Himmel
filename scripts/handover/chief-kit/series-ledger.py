@@ -88,15 +88,19 @@ class Locked:
         os.makedirs(os.path.dirname(os.path.abspath(self.lock_path)), exist_ok=True)
         self.f = open(self.lock_path, "a")
         deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return self
-            except OSError:
-                if time.monotonic() >= deadline:
-                    self.f.close()
-                    raise Refused(3, "lock timeout after %gs: %s" % (timeout, self.lock_path))
-                time.sleep(0.02)
+        while not self._try_lock():
+            if time.monotonic() >= deadline:
+                self.f.close()
+                raise Refused(3, "lock timeout after %gs: %s" % (timeout, self.lock_path))
+            time.sleep(0.02)
+        return self
+
+    def _try_lock(self):
+        try:
+            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        return True
 
     def __exit__(self, *exc):
         self.f.close()  # closing drops the flock
