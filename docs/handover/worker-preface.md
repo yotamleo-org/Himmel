@@ -16,9 +16,9 @@ improvising; confirm the chief's session name in `ListAgents` first.
 - Waiting means **one foreground blocking command** (or `until … done` loop),
   never a background job. [prose]
 
-Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` /
-`READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages **and** doc
-`## Results` bullets. The chief reads your **newest marker-bearing bullet** (`tails=`):
+Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` / `BLOCKED` /
+`WRAPPED` messages **and** doc `## Results` bullets; `READY <pr> <full head> GREEN`
+is a bullet, never a message. The chief reads your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; one not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
@@ -118,7 +118,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
 - **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
-- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (a later push needs a fresh judge and GO) → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY <pr> <full head> GREEN`. [prose]
+- Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (a later push needs a fresh judge and GO) → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
@@ -139,7 +139,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   a reply, nudge once, then wrap. [prose]
 - **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
   (`scripts/guardrails/himmel-adapters.json`) not confirmed PRIVATE,
-  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh` (`--jira-transition` if `completes-ticket: yes`). Send `READY <pr> <full head> GREEN`, hold for
+  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh` (`--jira-transition` if `completes-ticket: yes`). Write the `READY` bullet, hold for
   the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse

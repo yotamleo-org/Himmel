@@ -844,6 +844,83 @@ check "(sec) an inbox swapped for a secret link mid-wait ends the wait" "1" "$rc
 check "(sec) the swapped-in secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-swap.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (rdy) a READY bullet arrives as one pre-checked wake --------------------
+# With --doc and --workers-from, a worker's new `READY <pr> <head40> GREEN` bullet makes
+# the waiter run ready-check, a CI read and cr-disposition check (stubbed here) and wake
+# once per (PR, head) with the verdicts. RED control (chief-wait.sh before this change):
+# the READY is a `WAKE tick changed=tails,acts` with no payload.
+cat > "$STUB/ready-check.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB/rc.calls"
+cat "$STUB/rc.out"; exit "$(cat "$STUB/rc.rc")"
+EOF
+cat > "$STUB/ci.sh" <<'EOF'
+#!/usr/bin/env bash
+cat "$STUB/ci.out"
+EOF
+cat > "$STUB/disposition.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB/disp.calls"
+cat "$STUB/disp.out"; exit "$(cat "$STUB/disp.rc")"
+EOF
+export CHIEF_WAIT_READY_CHECK="$STUB/ready-check.sh" CHIEF_WAIT_CI="$STUB/ci.sh" CHIEF_WAIT_DISPOSITION="$STUB/disposition.sh"
+# auto_go off (its own READY relay is test-chief-wait-r0.sh's): a fixture registry, no shell override
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
+export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
+unset HIMMEL_FLAG_AUTO_GO
+HA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; HB=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+ready_stubs_pass() {
+    rm -f "$STUB/rc.calls" "$STUB/disp.calls"
+    printf '[PASS] 1. head\n[PASS] 7. ticket coverage: every ask is done\nnote MH-N1-0123abcd seen\nTRUST-PATH: no\nREADY-CHECK PASS\n' > "$STUB/rc.out"; echo 0 > "$STUB/rc.rc"
+    printf 'GREEN\n' > "$STUB/ci.out"
+    printf 'DISPOSITION PASS (0 deferred Critical/Important finding(s) on b dispositioned)\n' > "$STUB/disp.out"; echo 0 > "$STUB/disp.rc"
+}
+# ready_tick <tails> [acts]: the standing tick line with these worker fields.
+ready_tick() {
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ tails=N1:LIVE/ tails=$1${2:+ acts=$2}/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+reset_stub
+ready_stubs_pass
+mkdir -p "$WORK/rdy/consoles"; I="$WORK/rdy/consoles/c.md"; : > "$I"
+RD="$WORK/rdy/chief.md"; printf '# chief\n' > "$RD"
+RL="$WORK/rdy/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$RL"
+RM="$WORK/rdy/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$RL" > "$RM"
+ready_tick "N1:LIVE"
+start "$I" "$WORK/rdy.out" --doc "$RD" --workers-from "$RM"
+wait_hb "$I" || fail "(rdy) no baseline heartbeat"
+printf -- '- 10:00 READY 2566 %s GREEN\n' "$HA" >> "$RL"
+ready_tick "N1:READY" "N1:READY#1"
+wait_exit "$WPID"
+check "(rdy) a READY bullet ends the wait" "0" "$rc"
+check "(rdy) one pre-checked WAKE ready" "WAKE ready 2566 $HA ready-check=PASS ci=GREEN coverage=PASS disposition=ok out=$I.wait.ready-2566" "$(head -n 1 "$WORK/rdy.out")"
+check "(rdy) exactly one WAKE line" "1" "$(grep -c '^WAKE ' "$WORK/rdy.out")"
+check "(rdy) ready-check ran once on the PR and head" "2566 $HA" "$(cat "$STUB/rc.calls" 2>/dev/null)"
+check "(rdy) cr-disposition check ran read-only with the computed trust path" "check 2566 $HA --trust-path no" "$(cat "$STUB/disp.calls" 2>/dev/null)"
+check "(rdy) the out file keeps the ready-check output" "yes" "$(grep -q 'READY-CHECK PASS' "$I.wait.ready-2566" 2>/dev/null && echo yes)"
+check "(rdy) no token in the payload or the out file" "0" "$(cat "$WORK/rdy.out" "$I.wait.ready-2566" 2>/dev/null | grep -c 'MH-N1-0123abcd')"
+# the same head written twice: a re-arm neither wakes nor re-checks
+ready_stubs_pass
+printf -- '- 10:05 READY 2566 %s GREEN\n' "$HA" >> "$RL"
+ready_tick "N1:READY" "N1:READY#2"
+start "$I" "$WORK/rdy-same.out" --doc "$RD" --workers-from "$RM"
+wait_hb "$I" || fail "(rdy) no re-arm heartbeat"
+sleep 3
+check "(rdy) the same (PR, head) twice is one wake" "" "$(cat "$WORK/rdy-same.out")"
+check "(rdy) and is not re-checked" "" "$(cat "$STUB/rc.calls" 2>/dev/null)"
+# a new head re-checks, and the verdicts carry each failure
+printf '[FAIL] 7. ticket coverage: no section\nTRUST-PATH: yes\nREADY-CHECK FAIL\n' > "$STUB/rc.out"; echo 1 > "$STUB/rc.rc"
+printf 'RED\n' > "$STUB/ci.out"
+printf '[OPEN] crit f1@x: deferred\n[OPEN] imp f2@x: deferred\nDISPOSITION FAIL (2 of 2 open Critical/Important finding(s) on b)\n' > "$STUB/disp.out"; echo 1 > "$STUB/disp.rc"
+printf -- '- 10:20 READY 2566 %s GREEN\n' "$HB" >> "$RL"
+ready_tick "N1:READY" "N1:READY#3"
+wait_exit "$WPID"
+check "(rdy) a new head wakes again" "0" "$rc"
+check "(rdy) with each failed verdict" "WAKE ready 2566 $HB ready-check=FAIL ci=RED coverage=FAIL disposition=open:2 out=$I.wait.ready-2566" "$(head -n 1 "$WORK/rdy-same.out")"
+check "(rdy) the trust path reaches cr-disposition" "check 2566 $HB --trust-path yes" "$(cat "$STUB/disp.calls" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
+
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
