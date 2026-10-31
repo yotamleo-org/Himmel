@@ -101,7 +101,13 @@ parse_report() {
         name="${rest%%: *}"
         tgt="${BASH_REMATCH[1]}"
         cur="behind=${BASH_REMATCH[2]} ahead=${BASH_REMATCH[3]}"
-        action="${BASH_REMATCH[4]}"
+        # A sync is upkeep, never a PR. No carried commits →
+        # drop the fork for its upstream; carried → the automatic resync.
+        if [ "${BASH_REMATCH[3]}" = 0 ]; then
+          action="use-upstream ${tgt%@*} (no carried commits: point pins and installs at upstream, no sync)"
+        else
+          action="auto-sync: bash scripts/upstreams/resync-fork.sh --sync ${name%@*}"
+        fi
         printf '%s|fork-behind|%s|%s|%s\n' "$name" "$cur" "$tgt" "$action" >> "$wd/behind.tsv"
         continue
       fi

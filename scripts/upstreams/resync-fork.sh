@@ -91,6 +91,21 @@
 #
 # Exit codes:
 #   0  rebase clean, delta strictly additive (report includes the new SHA)
+#
+# --sync <owner/repo> [--dry-run] — the automatic sync of a
+# registered fork (scripts/guardrails/himmel-adapters.json, non-null
+# `upstream`). A sync is upkeep, never a PR, a judge or a review of upstream
+# code: no carried commits → `use-upstream <upstream>` (rc 3, nothing synced);
+# carried → `gh repo sync` of the fork's default branch when it is not the
+# himmel branch, then our commits rebased onto the upstream default branch and
+# pushed straight to the himmel branch (--force-with-lease), the old tip kept
+# as refs/tags/himmel-presync/<branch>-<sha12> so SHA pins stay reachable. A
+# conflict stops, names the paths and pushes nothing (rc 4). Already on
+# upstream → rc 1. Unregistered repo → rc 2. --dry-run audits only.
+# Seams: RESYNC_GIT_BASE (default https://github.com), RESYNC_WORK_DIR
+# (default $HOME/.himmel/fork-resync).
+#
+# Exit codes (<name> mode):
 #   1  nothing to do — the target resolves to the same commit as the
 #      entry's recorded synced_base (upstream hasn't advanced past it)
 #   2  usage / unknown entry / wrong kind+mode / malformed registry or fork
@@ -109,6 +124,7 @@ REGISTRY="${DRIFT_REGISTRY:-$REPO_ROOT/scripts/upstreams.json}"
 
 usage() {
   echo "usage: resync-fork.sh <name> [--target <ref>] [--dry-run] [--push]" >&2
+  echo "       resync-fork.sh --sync <owner/repo> [--dry-run]   (automatic fork sync, never a PR)" >&2
   echo "  <name>     a tag_release/base entry in scripts/upstreams.json that declares a 'fork' block" >&2
   echo "  --target   upstream ref to rebase onto (default: latest stable tag)" >&2
   echo "  --dry-run  run the audit, never push (even with --push)" >&2
@@ -118,6 +134,7 @@ usage() {
 }
 
 NAME=""
+SYNC=0
 TARGET=""
 DRY_RUN=0
 PUSH=0
@@ -132,6 +149,7 @@ while [ $# -gt 0 ]; do
     --target=*) TARGET="${1#--target=}"; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --push)    PUSH=1; shift ;;
+    --sync)    SYNC=1; shift ;;
     -h|--help) usage; exit 2 ;;
     -*) echo "resync-fork: unknown flag '$1'" >&2; usage; exit 2 ;;
     *)
@@ -148,6 +166,71 @@ done
 if [ -z "$NAME" ]; then
   usage
   exit 2
+fi
+
+# sync_fork <owner/repo> — the --sync mode documented in the header.
+sync_fork() {
+  local nwo="$1" reg="$REPO_ROOT/scripts/guardrails/himmel-adapters.json"
+  local row upstream branch base dir def updef ahead behind old conflicted
+  if ! [[ "$nwo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || [[ "$nwo" == *..* ]]; then
+    echo "resync-fork: --sync needs <owner/repo>, got '$nwo'" >&2; return 2
+  fi
+  row=$(jq -r --arg n "$nwo" '.[] | select((.nwo | ascii_downcase) == ($n | ascii_downcase) and .upstream != null) | "\(.upstream) \(.himmel_branch)"' "$reg" 2>/dev/null)
+  if [ -z "$row" ]; then
+    echo "resync-fork: $nwo is not a registered fork with an upstream ($reg)" >&2; return 2
+  fi
+  upstream="${row%% *}"; branch="${row#* }"
+  base="${RESYNC_GIT_BASE:-https://github.com}"
+  dir="${RESYNC_WORK_DIR:-$HOME/.himmel/fork-resync}/sync-${nwo%%/*}--${nwo#*/}"
+  rm -rf "$dir"; mkdir -p "$(dirname "$dir")"
+  git clone -q --origin fork "$base/$nwo.git" "$dir" || { echo "resync-fork: cannot clone $nwo" >&2; return 2; }
+  git -C "$dir" remote add upstream "$base/$upstream.git"
+  git -C "$dir" fetch -q upstream || { echo "resync-fork: cannot fetch $upstream" >&2; return 2; }
+  git -C "$dir" remote set-head fork -a >/dev/null 2>&1
+  git -C "$dir" remote set-head upstream -a >/dev/null 2>&1
+  def=$(git -C "$dir" symbolic-ref --short refs/remotes/fork/HEAD 2>/dev/null); def="${def#fork/}"
+  updef=$(git -C "$dir" symbolic-ref --short refs/remotes/upstream/HEAD 2>/dev/null); updef="${updef#upstream/}"
+  if [ -z "$def" ] || [ -z "$updef" ] || ! git -C "$dir" rev-parse -q --verify "refs/remotes/fork/$branch" >/dev/null; then
+    echo "resync-fork: cannot resolve the default branches or fork/$branch of $nwo" >&2; return 2
+  fi
+  ahead=$(git -C "$dir" rev-list --count "upstream/$updef..fork/$branch")
+  behind=$(git -C "$dir" rev-list --count "fork/$branch..upstream/$updef")
+  if [ "$ahead" = 0 ]; then
+    echo "resync-fork: use-upstream $upstream — $nwo@$branch carries no commits of ours; point pins and installs at upstream, no sync"
+    return 3
+  fi
+  if [ "$behind" = 0 ]; then
+    echo "resync-fork: $nwo@$branch already contains $upstream@$updef (ahead=$ahead)"; return 1
+  fi
+  old=$(git -C "$dir" rev-parse "fork/$branch")
+  git -C "$dir" checkout -q -B "$branch" "fork/$branch"
+  if [ -z "$(git -C "$dir" config user.email)" ]; then
+    git -C "$dir" config user.email "himmel-resync@users.noreply.github.com"
+    git -C "$dir" config user.name "himmel resync"
+  fi
+  if ! git -C "$dir" rebase -q "upstream/$updef" >/dev/null 2>&1; then
+    conflicted=$(git -C "$dir" diff --name-only --diff-filter=U | tr '\n' ' ')
+    git -C "$dir" rebase --abort >/dev/null 2>&1
+    echo "resync-fork: --sync $nwo CONFLICTED rebasing $ahead carried commit(s) onto $upstream@$updef; paths: ${conflicted:-?}"
+    echo "resync-fork: nothing pushed, no PR — resolve the carried commits by hand"
+    return 4
+  fi
+  echo "resync-fork: $nwo@$branch rebased onto $upstream@$updef: $ahead carried, $behind upstream commit(s) absorbed, new tip $(git -C "$dir" rev-parse HEAD)"
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "resync-fork: --dry-run — no gh repo sync, nothing pushed"; return 0
+  fi
+  if [ "$def" != "$branch" ]; then
+    gh repo sync "$nwo" --branch "$def" || { echo "resync-fork: gh repo sync $nwo --branch $def failed" >&2; return 2; }
+  fi
+  git -C "$dir" push -q --atomic --force-with-lease="refs/heads/$branch:$old" fork \
+    "HEAD:refs/heads/$branch" "$old:refs/tags/himmel-presync/$branch-${old:0:12}" \
+    || { echo "resync-fork: push to $nwo@$branch failed; nothing moved" >&2; return 2; }
+  echo "resync-fork: pushed $nwo@$branch; old tip kept as himmel-presync/$branch-${old:0:12}"
+}
+
+if [ "$SYNC" = 1 ]; then
+  sync_fork "$NAME"
+  exit $?
 fi
 
 # NAME is later composed into CLONE_DIR ("$WORK_DIR/$NAME") which gets

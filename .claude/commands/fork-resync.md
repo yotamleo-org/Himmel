@@ -24,6 +24,17 @@ rather than being taught to handle it.
 The real fix is a rebase, and a rebase can conflict. That needs judgment, which
 is why this is a runbook and not a shell script.
 
+**Syncing a fork is upkeep, never a PR (HIMMEL-8334).** A registered fork
+(`scripts/guardrails/himmel-adapters.json`, non-null `upstream`) is synced by
+`bash scripts/upstreams/resync-fork.sh --sync <owner/repo>`: no carried commits
+→ it says `use-upstream` (point pins and installs at upstream, no sync);
+carried commits → `gh repo sync` of the fork's default branch plus a rebase of
+our commits onto upstream, pushed straight to the himmel branch. A conflict
+stops and names the paths. No sync PR, no judge, no CodeRabbit on upstream
+code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. The steps
+below audit the pin of an `upstreams.json` `fork` block; the PR in step 7 is the
+himmel pin move, never a PR into the fork.
+
 **Rules that hold throughout.**
 
 1. **Never bump `synced_base` without a completed rebase.** If you cannot finish
@@ -180,9 +191,9 @@ Same as `/drift-fix` steps 6–9:
   `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
   Never `--admin`, never a branch-protection override. A merge refused for want
   of an approval is the rule working: leave the PR open, report `awaiting
-  approval`, and stop. That is a successful run — the re-sync is captured in a
-  reviewable PR, which matters more here than anywhere else in himmel, because a
-  fork rebase rewrites a dependency every machine installs.
+  approval`, and stop. That is a successful run — the himmel pin move waits in a
+  reviewable himmel PR, which matters more here than anywhere else in himmel,
+  because the pin decides the dependency every machine installs.
 
 The commit body must state plainly: which upstream tag, the fork commits
 rebased, that the delta was audited additive, and that the fork was pushed. A

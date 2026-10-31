@@ -186,11 +186,20 @@ cat > "$forks" <<'RPT'
   yotamleo/held@main: HELD (reviewed compatibility hold)
 RPT
 b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$forks" 2>&1)")"
-has '^| yotamleo/fast@main | fork-behind | behind=5 ahead=0 | owner/fast@main | gh repo sync yotamleo/fast --branch main |' "$b" "fork-behind: zero carried commits keeps gh repo sync action"
-has '^| yotamleo/carried@himmel/pin | fork-behind | behind=3 ahead=2 | owner/carried@main | /fork-resync |' "$b" "fork-behind: pinned branch keeps carried-commit repair and both counts"
-has '^| yotamleo/renamed@main | fork-behind | behind=6 ahead=0 | owner/renamed@trunk | /fork-resync |' "$b" "fork-behind: differing branch names keep manual repair even without carried commits"
+# A fork with no carried commits is not kept as a fork (use
+# upstream); a carried fork auto-syncs by resync-fork.sh --sync. Never a sync PR.
+has '^| yotamleo/fast@main | fork-behind | behind=5 ahead=0 | owner/fast@main | use-upstream owner/fast (no carried commits: point pins and installs at upstream, no sync) |' "$b" "fork-behind: zero carried commits says use-upstream"
+has '^| yotamleo/carried@himmel/pin | fork-behind | behind=3 ahead=2 | owner/carried@main | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo/carried |' "$b" "fork-behind: carried commits auto-sync and keep both counts"
+has '^| yotamleo/renamed@main | fork-behind | behind=6 ahead=0 | owner/renamed@trunk | use-upstream owner/renamed (no carried commits: point pins and installs at upstream, no sync) |' "$b" "fork-behind: differing branch names with zero carried commits still say use-upstream"
+hasnt 'gh repo sync' "$b" "fork-behind: no row asks for a hand sync"
 has '^### Needs update (3)' "$b" "fork-behind: held row is not actionable"
 rm -f "$forks"
+# The graphify row as the nightly reported it (issue #2809, 2026-10-31).
+real="$(mktemp "${TMPDIR:-/tmp}/fork-drift-real.XXXXXX")" || exit 1
+printf '== fork branches (upstream default-branch comparison) ==\n  yotamleo-org/graphify@himmel-main: BEHIND   (fork-behind upstream=Graphify-Labs/graphify@v8 behind=162 ahead=5 action=/fork-resync)\n' > "$real"
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$real" 2>&1)")"
+has '^| yotamleo-org/graphify@himmel-main | fork-behind | behind=162 ahead=5 | Graphify-Labs/graphify@v8 | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo-org/graphify |' "$b" "fork-behind: real graphify row auto-syncs"
+rm -f "$real"
 
 rm -f "$REP"
 echo ""

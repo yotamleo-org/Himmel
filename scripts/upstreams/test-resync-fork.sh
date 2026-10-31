@@ -518,6 +518,99 @@ else
 fi
 rm -rf "$root"
 
+# ---------------------------------------------------------------------------
+# --sync: a carried fork is synced automatically — gh repo sync
+# of the fork's default branch, then a rebase of our commits onto upstream,
+# pushed straight to the fork branch. A conflict stops and reports; a fork
+# with no carried commits says use-upstream. It never opens a PR. Local bare
+# repos stand in for GitHub (RESYNC_GIT_BASE); gh is a logging stub.
+# ---------------------------------------------------------------------------
+echo "== --sync =="
+
+# sync_fixture <root> <carried-file> — Up/fake (main: a.txt) and its fork
+# yotamleo-org/fake with branch himmel-main carrying one commit that writes
+# <carried-file>; upstream then advances by editing a.txt.
+sync_fixture() {
+  local r="$1" carried="$2" w
+  mkdir -p "$r/git/Up" "$r/git/yotamleo-org" "$r/himmel/scripts/guardrails" "$r/bin"
+  w="$r/seed"; git init -q -b main "$w"; git_id "$w"
+  printf 'one\n' > "$w/a.txt"; git -C "$w" add a.txt; git -C "$w" commit -q -m up1
+  git clone -q --bare "$w" "$r/git/Up/fake.git"
+  git clone -q --bare "$w" "$r/git/yotamleo-org/fake.git"
+  git -C "$w" checkout -q -b himmel-main
+  printf 'ours\n' > "$w/$carried"; git -C "$w" add "$carried"; git -C "$w" commit -q -m carried
+  git -C "$w" push -q "$r/git/yotamleo-org/fake.git" himmel-main
+  git -C "$w" checkout -q main
+  printf 'two\n' > "$w/a.txt"; git -C "$w" commit -q -am up2
+  git -C "$w" push -q "$r/git/Up/fake.git" main
+  printf '[{"nwo":"yotamleo-org/fake","upstream":"Up/fake","himmel_branch":"himmel-main","pin_site":null,"role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo-org/bare","upstream":"Up/fake","himmel_branch":"main","pin_site":null,"role":"dormant","merge_allowed":false}]\n' \
+    > "$r/himmel/scripts/guardrails/himmel-adapters.json"
+  git clone -q --bare "$r/git/Up/fake.git" "$r/git/yotamleo-org/bare.git"
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s/gh.log"\n' "$r" > "$r/bin/gh"; chmod +x "$r/bin/gh"
+  : > "$r/gh.log"
+}
+run_sync() {
+  local r="$1"; shift
+  PATH="$r/bin:$PATH" DRIFT_REPO_ROOT="$r/himmel" RESYNC_GIT_BASE="$r/git" \
+    RESYNC_WORK_DIR="$r/work" bash "$RESYNC" --sync "$@"
+}
+
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "--sync carried fork: clean rebase (rc=0)"; else fail "--sync carried fork: rc=$rc; $out"; fi
+up_tip=$(git -C "$root/git/Up/fake.git" rev-parse main)
+new_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+if [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse "$new_tip^")" = "$up_tip" ]; then
+  pass "--sync: our commit now sits on the upstream tip"
+else
+  fail "--sync: himmel-main is not our commit on top of upstream main"
+fi
+if git -C "$root/git/yotamleo-org/fake.git" rev-parse -q --verify "refs/tags/himmel-presync/himmel-main-$(printf '%.12s' "$old_tip")" >/dev/null; then
+  pass "--sync: the old tip stays reachable for SHA pins"
+else
+  fail "--sync: no himmel-presync tag kept the old tip"
+fi
+assert_contains "$(cat "$root/gh.log")" "repo sync yotamleo-org/fake --branch main" "--sync: gh repo sync runs on the fork's default branch"
+case "$(cat "$root/gh.log")" in *"pr create"*) fail "--sync opened a PR" ;; *) pass "--sync never opens a PR" ;; esac
+rm -rf "$root"
+
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" a.txt
+old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
+if [ "$rc" -eq 4 ]; then pass "--sync conflict stops (rc=4)"; else fail "--sync conflict: rc=$rc; $out"; fi
+assert_contains "$out" "CONFLICTED" "--sync conflict is reported"
+assert_contains "$out" "a.txt" "--sync conflict names the path"
+if [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)" = "$old_tip" ]; then
+  pass "--sync conflict pushes nothing"
+else
+  fail "--sync conflict moved himmel-main"
+fi
+case "$(cat "$root/gh.log")" in *"pr create"*) fail "--sync conflict opened a PR" ;; *) pass "--sync conflict never opens a PR" ;; esac
+rm -rf "$root"
+
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+out=$(run_sync "$root" yotamleo-org/bare 2>&1); rc=$?
+if [ "$rc" -eq 3 ]; then pass "--sync zero carried commits (rc=3)"; else fail "--sync zero carried: rc=$rc; $out"; fi
+assert_contains "$out" "use-upstream Up/fake" "--sync zero carried commits says use-upstream"
+if [ ! -s "$root/gh.log" ]; then pass "--sync zero carried commits syncs nothing"; else fail "--sync zero carried called gh: $(cat "$root/gh.log")"; fi
+rm -rf "$root"
+
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+out=$(run_sync "$root" yotamleo-org/fake --dry-run 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)" = "$old_tip" ] && [ ! -s "$root/gh.log" ]; then
+  pass "--sync --dry-run audits, pushes nothing, syncs nothing"
+else
+  fail "--sync --dry-run: rc=$rc or it moved the fork; $out"
+fi
+assert_rc 2 "--sync of an unregistered repo is a usage error" -- run_sync "$root" yotamleo-org/nope
+rm -rf "$root"
+
 echo ""
 if [ "$fails" -eq 0 ]; then
   echo "[test-resync-fork] all checks passed"
