@@ -35,7 +35,8 @@
 # Output, one line on stdout:
 #   WOULD-GO <pr> <head>                  exit 0
 #   ESCALATE auto-go <check#> <reason>    exit 10
-# Exit: 0 would-go; 1 the audit trail cannot be resolved or written (no answer is given); 2 usage;
+# Exit: 0 would-go; 1 a shared library cannot be loaded, or the audit trail cannot be resolved or
+# written (no answer is given); 2 usage;
 # 3 a chief-spawned worker (HIMMEL_CONSOLE_LEG) or a relay (HIMMEL_CONSOLE_RELAY) - checked first,
 # before anything is read; 10 escalate.
 #
