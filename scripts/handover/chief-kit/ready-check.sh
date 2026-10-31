@@ -599,8 +599,7 @@ cov_ledger_keys() {
     if [ -n "$cov_disp_rows" ]; then
         # The mac is the one cr-disposition.sh disp_mac builds, from the same go_msg_mac, so a row passes here only if it passes there.
         cov_gg="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/lib/go-gate.sh"
-        # shellcheck source=scripts/lib/go-gate.sh
-        # shellcheck disable=SC1091
+        # shellcheck source=/dev/null
         if . "$cov_gg" 2>/dev/null && declare -F go_msg_mac >/dev/null 2>&1; then
             while IFS=$'\t' read -r _ cov_fid cov_fh cov_dp cov_src cov_att cov_mac; do
                 [ "$cov_att" = "ci-green,no-data-loss,no-weakened-guard" ] || continue
