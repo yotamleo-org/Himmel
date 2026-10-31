@@ -237,8 +237,12 @@ check_pr_size() {
         return 0
     fi
     local files lines
-    files=$(git diff --name-only -M "$base_ref...HEAD" | wc -l | tr -d ' ')
-    lines=$(git diff --numstat -M "$base_ref...HEAD" | awk '{ if ($1 ~ /^[0-9]+$/) n += $1; if ($2 ~ /^[0-9]+$/) n += $2 } END { print n + 0 }')
+    # A diff that cannot be taken (no merge base, shallow clone) must refuse, never read as zero.
+    if ! files=$(git diff --name-only -M "$base_ref...HEAD" | wc -l | tr -d ' ') \
+        || ! lines=$(git diff --numstat -M "$base_ref...HEAD" | awk '{ if ($1 ~ /^[0-9]+$/) n += $1; if ($2 ~ /^[0-9]+$/) n += $2 } END { print n + 0 }'); then
+        echo "ERR worker-pr-open: could not measure the diff against $base_ref; refusing to open an unmeasured PR" >&2
+        return 1
+    fi
     local band max_lines max_files action over warned=0
     while IFS=$'\t' read -r band max_lines max_files action; do
         case "$band" in ''|'#'*|band) continue ;; esac

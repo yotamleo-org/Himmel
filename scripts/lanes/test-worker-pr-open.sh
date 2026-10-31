@@ -534,6 +534,19 @@ err_s4=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s4=$?
 assert_eq "800 lines: opens (rc=0)" "0" "$rc_s4"
 not_contains "800 lines: no SIZE- line" "$err_s4" "SIZE-"
 
+echo "TEST: a diff that cannot be measured is refused, never read as zero files"
+git -C "$REPO" checkout -q --orphan feat/himmel-3031-nomergebase
+git -C "$REPO" rm -rfq --cached . >/dev/null
+echo orphan > "$REPO/orphan-file"
+git -C "$REPO" add orphan-file
+git -C "$REPO" commit -qm "no merge base with origin/main"
+git -C "$REPO" push -q -u origin feat/himmel-3031-nomergebase
+: > "$ARGV_LOG"
+err_s5=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s5=$?
+assert_eq "no merge base: refused (rc=1)" "1" "$rc_s5"
+contains "no merge base: says the size could not be measured" "$err_s5" "could not measure"
+not_contains "no merge base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
