@@ -1199,3 +1199,4 @@ scripts/handover/chief-kit/test-focus-refresh-chains.sh	local	behaviour suite, s
 scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role, HIMMEL-8336
 scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM guest provisioner (stubbed VBoxManage/vmsdk), no gate role, HIMMEL-8326
 scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard
+scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541

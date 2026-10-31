@@ -10,6 +10,7 @@ sees.
 | path | what |
 |---|---|
 | `fixtures/case-NN.patch` | 24 frozen one-file git diffs: 12 seeded, 12 clean twins. Ids are opaque and shuffled, so a case id says nothing about its class or its twin |
+| `fixtures/real-NNN.patch`, `real-NNN-clean.patch` | 10 real review escapes and their clean twins, frozen from merged history, with `real-NNN*.intent.md` (below) |
 | `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
@@ -139,6 +140,61 @@ checkout); `lint --min-real N` refuses a set with fewer than N real cases.
   caused-by bugs, fix-forwards, judge NO-GOs, `deferred-escape` tickets), one
   JSON line each with the escaped `head`, its `base` and its `fix`. It builds no
   case: curating candidates into fixtures is a human step.
+
+#### The shipped real corpus (HIMMEL-8427, slice 1 of 2)
+
+10 escapes and their 10 clean twins, each pair with an intent file:
+`real-NNN.patch`, `real-NNN-clean.patch`, `real-NNN.intent.md` and
+`real-NNN-clean.intent.md` (the same text in both). Each pair is one `pair` in
+the key; every class has one open and one sealed pair.
+
+| pair | class | split | PR | ticket | seed site |
+|---|---|---|---|---|---|
+| `real-001` | logic | open | 2454 | HIMMEL-5385 | `scripts/hooks/block-destructive-commands.sh:1037` |
+| `real-002` | logic | sealed | 3115 | HIMMEL-6402 | `scripts/handover/console-kit/board.mjs:340` |
+| `real-003` | fail-open | open | 2231 | HIMMEL-5034 | `scripts/hooks/auto-approve-safe-bash.sh:1774` |
+| `real-004` | fail-open | sealed | 2427 | HIMMEL-5350 | `scripts/codex/dispatch-codex-exec.sh:568` |
+| `real-005` | test-cannot-fail | open | 4267 | HIMMEL-8008 | `scripts/hooks/test-block-write-into-main-checkout-evaldata.sh:186` |
+| `real-006` | test-cannot-fail | sealed | 3738 | HIMMEL-7345 | `scripts/cr/test-pr-check-rounds.sh:346` |
+| `real-007` | cross-file | open | 4386 | HIMMEL-8304 | `scripts/handover/chief/chief.sh:376` (judge LT-j4386-1: the bus reader and the chief writers change in one diff) |
+| `real-008` | cross-file | sealed | 3618 | HIMMEL-7061 | `scripts/handover/console-kit/action-zero.sh:127` (the re-render path is documented in `docs/handover/console-sections/live-state.md`) |
+| `real-009` | spec-miss | open | 4364 | HIMMEL-8365 | `scripts/telegram/afk-sudo-route.ts:161` |
+| `real-010` | spec-miss | sealed | 4186 | HIMMEL-8028 | `scripts/handover/chief-kit/next-dispatchable.sh:900` |
+
+How a pair is built. The escaped case is the diff from the PR's merge-base with
+main to the head the judge ruled NO-GO on. Its clean twin is that same diff plus
+the one commit that repaired the finding, so the twin differs from the escape by
+the repair only. Both apply to the merge-base (`base` in the key). The repairing
+commit is the first commit after the NO-GO head that touches the diff's files
+(a PR's merged head can carry later work too, so the harvest `fix` is too wide
+for this); for `real-007` it is the bus fix commit, and its clean twin leaves
+out `scripts/config-ui/tests/agui-fleet-bus.test.ts`, whose context carries the
+hint word `seed` that `lint` refuses.
+
+The shipped key has no `fix`. The repairing commits lived on branches that were
+squash-merged, so they are in no ref a CI checkout fetches, and a `fix` there
+would make `lint` fail with "not a commit". The leak check ran at curation
+against each repairing commit (0 shared lines for `real-001` to `real-010`; for
+`real-007` against the PR's merged head, since the repairing commit's test lines
+recur in the escaped diff). A later pair whose repair is reachable from main
+should carry `fix` again.
+
+Harvest at curation (merged-PR history plus judge verdicts, 2026-10-31): 1378
+candidates: judge NO-GO 913, fix-forward 462, revert 2, `deferred-escape` 1,
+caused-by 0; 1335 carry a `base` and a `fix`. The 10 pairs come from the NO-GO
+and small-diff end of that list (diffs of at most 5 files and about 120 added
+lines, except `real-007`, the required cross-file case, which touches 16 files).
+
+The suite rows cover the corpus shape (10 and 10, two escapes per class, an open
+and a sealed pair per class), `lint --min-real 10`, and, for every shipped case,
+the case-repo isolation row: two commits, nothing under
+`scripts/eval/review-panel/`, no `cr-*` state under `.git`, no key canary, and
+the head commit is exactly the case diff. The integrity, split and sweep rows
+run on the 24 synthetic cases only.
+
+Not shipped yet (the remainder PR, HIMMEL-8427): 20 more pairs to reach 30 and
+30, with at least 4 cross-file and 4 spec-miss pairs in total. The two baseline
+sweeps over the grown corpus are the chief's.
 
 ## The merge gate (HIMMEL-8426)
 
