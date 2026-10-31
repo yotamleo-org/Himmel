@@ -333,11 +333,11 @@ done
 size_err() { # size_err <list file> <ledger> <n> -> the planner's stderr
   { STUB_LIST="$1" STUB_LIST_MODE=ok SUITE_DURATIONS="$2" bash "$PS/plan-shards.sh" "$3" . >/dev/null; } 2>&1
 }
-err=$(size_err "$PS/hand.list" "$PS/hand.tsv" 8)
-if [ "$err" = "plan-shards.sh: predicted longest shard 500s at N=3 of 8" ]; then pass "PS25 the plan reports its predicted longest shard"; else fail "PS25 predicted: got [$err]"; fi
+err=$(size_err "$PS/hand.list" "$PS/hand.tsv" 8); rc=$?
+if [ "$rc" -eq 0 ] && [ "$err" = "plan-shards.sh: predicted longest shard 500s at N=3 of 8" ]; then pass "PS25 the plan reports its predicted longest shard"; else fail "PS25 predicted: rc=$rc got [$err]"; fi
 printf 'a\t500\nb\t800\nc\t300\nd\t200\ne\t100\n' > "$PS/grown.tsv"
-err=$(size_err "$PS/hand.list" "$PS/grown.tsv" 8)
-if [ "$err" = "plan-shards.sh: predicted longest shard 800s at N=3 of 8" ]; then pass "PS25 a suite grown 2x is the longest shard alone, the rest moved off it"; else fail "PS25 grown: got [$err]"; fi
+err=$(size_err "$PS/hand.list" "$PS/grown.tsv" 8); rc=$?
+if [ "$rc" -eq 0 ] && [ "$err" = "plan-shards.sh: predicted longest shard 800s at N=3 of 8" ]; then pass "PS25 a suite grown 2x is the longest shard alone, the rest moved off it"; else fail "PS25 grown: rc=$rc got [$err]"; fi
 
 # PS26: the ledger header's REFRESH recipe harvests a QUARANTINE suite too.
 # Fixture: lines copied verbatim from shell-unit-shard (ubuntu-latest, 12) of PR run

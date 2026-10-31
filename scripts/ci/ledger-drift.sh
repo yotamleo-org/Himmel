@@ -73,7 +73,7 @@ fi
 # logs, the mean — what the ledger's own refresh does. Only the shell-unit-shard
 # job's lines count: the same log carries other jobs' output. A suite that passed
 # on retry prints [FLAKE] instead of [PASS] and is counted the same; a quarantined
-# suite that still fails prints [QUARANTINE] (seconds of both attempts), also counted.
+# suite that still fails prints [QUARANTINE] (seconds of its last attempt), also counted.
 LC_ALL=C awk -F'\t' -v shards="$shards" -v threshold="$threshold" -v ledger="$ledger" '
   BEGIN {
     while ((getline line < ledger) > 0) {
