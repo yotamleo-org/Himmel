@@ -421,7 +421,9 @@ Rules, enforced by `scripts/ci/check-flags.sh` on every CI event:
 - **Registered and read.** A flag the code reads must be in the registry, and a
   registered flag must have a reader.
 
-Current readers: `chain_soft_edges` in `scripts/handover/chief-kit/next-dispatchable.sh`.
+The registry is empty today: the four `chain_*` flags (HIMMEL-7701) came out in
+HIMMEL-7711 and soft edges, the chain render, the merge plan and the push check run
+always. `check-flags.sh` passes on an empty registry (`OK (0 flag(s) registered)`).
 
 ## Why this route
 

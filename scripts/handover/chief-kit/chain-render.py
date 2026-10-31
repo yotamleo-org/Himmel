@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """chain-render.py (HIMMEL-7709, slice 3 of HIMMEL-7701): render focus-chains.json from the chain graph.
 
-Behind the chain_render flag (scripts/lib/flags.tsv; off by default). Off: prints one line and writes nothing,
-so a hand-kept focus-chains.json stays as it is. On: the file is overwritten from the graph, so a hand edit does
-not survive a render.
+The file is overwritten from the graph on every run, so a hand edit does not survive a render (no flag gates
+the render any more).
 
 USAGE
     chain-render.py --graph graph.json --registry chains.json --out focus-chains.json
-        [--mirror DIR] [--state DIR] [--version V] [--now ISO]
+        [--mirror DIR] [--state DIR] [--version V] [--now ISO] [--drain [--dispositions FILE]]
 
 --registry (himmel.chain-registry/1) supplies goal names and members. The registry path,
 sha256 and mirror source_age_min appear in every chain header and on stderr. Readiness is
 shared with chain-state.mjs (requires node); graph PR edges may remove next, never add it.
 An empty registry writes [] and reports chains=0, not a drained version.
-The legacy --chain "NAME=HIMMEL-1,..." path stays until HIMMEL-7711 leg e; it cannot be mixed
-with --registry and retains its original output contract.
+--registry is the only source of chains; the legacy --chain option is gone.
 
---graph is the output of `chain-graph.py --json`. Each legacy --chain names a chain and lists its tickets. A step's
+With --drain (it needs --version V) the file ends with a row {"drain": "V drain: open <n> · in-chain <n> · standalone <n> · unchained <k> <keys>
+[· dispatchable <d> · dropped {<reason> <n>, ...}]"}: the open tickets of V counted once each (a member of two chains
+counts once), so open = in-chain + standalone + unchained holds. Without --drain the file is the chain rows only. --dispositions names the output of
+`next-dispatchable.sh --dispositions` and adds the last two parts. tracker.py prints the row under the page title; the
+file stays a JSON list, so a reader that takes each row's "name" skips it.
+
+--graph is the output of `chain-graph.py --json`. Each registry chain names its tickets. A step's
 `wave` is its depth over the hard edges (H1, H2) among the chain's tickets: wave 0 has no open hard predecessor,
 and every step of one wave can run at once. Soft edges (S1, S2) and independent pairs do not order anything. Steps
 are listed by wave, then ticket number, which is the order tracker.py prints them in. The file is the
@@ -28,7 +32,7 @@ step and does not hold its successors, so a closed ticket is never rendered as n
 and whatever waits on them comes after; they are never dropped.
 A ticket missing from the mirror stays a step (the tracker shows it unknown).
 
---mirror defaults to $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL. Exit 0 rendered or flag off;
+--mirror defaults to $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL. Exit 0 rendered;
 2 on an unreadable graph, mirror, bad arguments or a failed write (nothing is written).
 
 The file is written through tempfile.mkstemp in the --out directory and os.replace, never a fixed <out>.tmp, so a path
@@ -42,9 +46,6 @@ import re
 import subprocess
 import sys
 import tempfile
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-from flags import himmel_flag, FlagError  # noqa: E402
 
 KEY_RE = re.compile(r'HIMMEL-(\d+)$')
 HARD = ('H1', 'H2')
@@ -67,6 +68,48 @@ def is_done(mirror, key):
     except ValueError:
         res = None
     return 'done' if (res if isinstance(res, str) else '').strip().lower() in SHIPPED else 'wont'
+
+
+def open_tickets(mirror, version):
+    """{key: labels} of every ticket in the mirror that is not Done and carries fixVersion `version`."""
+    out = {}
+    for name in os.listdir(mirror):
+        if not re.fullmatch(r'HIMMEL-\d+\.md', name):
+            continue
+        txt = open(os.path.join(mirror, name), encoding='utf-8', errors='replace').read()
+        fm = txt.split('---', 2)[1] if txt.count('---') >= 2 else ''
+        f = dict(l.split(':', 1) for l in fm.splitlines() if ':' in l and not l.startswith(' '))
+        if f.get('statusCategory', '').strip().strip('"') == 'Done':
+            continue
+        try:
+            versions, labels = json.loads(f.get('fixVersions', '[]')), json.loads(f.get('labels', '[]'))
+        except ValueError:
+            raise ValueError('malformed fixVersions or labels in %s' % name)  # totals over a skipped ticket would undercount
+        if version in versions:
+            out[name[:-3]] = labels
+    return out
+
+
+def drain_line(mirror, version, members, dispositions=None):
+    """The drain line of `version`: unique keys, open = in-chain + standalone + unchained."""
+    opened = open_tickets(mirror, version)
+    in_chain = sorted(k for k in opened if k in members)
+    standalone = sorted(k for k in opened if k not in members and 'standalone' in opened[k])
+    unchained = sorted((k for k in opened if k not in members and 'standalone' not in opened[k]), key=lambda k: int(KEY_RE.match(k).group(1)))
+    line = '%s drain: open %d · in-chain %d · standalone %d · unchained %d%s' % (
+        version, len(opened), len(in_chain), len(standalone), len(unchained), ''.join(' ' + k for k in unchained))
+    if dispositions is not None:
+        listed, dropped = 0, {}
+        for l in dispositions.splitlines():
+            m = re.match(r'# disposition (HIMMEL-\d+) (\S+)', l)
+            if not m or m.group(1) not in opened:  # the dispositions cover the earliest unreleased version, not necessarily this one
+                continue
+            if m.group(2) == 'listed':
+                listed += 1
+            else:
+                dropped[m.group(2)] = dropped.get(m.group(2), 0) + 1
+        line += ' · dispatchable %d · dropped {%s}' % (listed, ', '.join('%s %d' % (r, dropped[r]) for r in sorted(dropped)))
+    return line
 
 
 def waves(keys, edges):
@@ -141,32 +184,19 @@ def render(graph, chains, mirror, state=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--graph', required=True)
-    source = ap.add_mutually_exclusive_group(required=True)
-    source.add_argument('--registry', metavar='FILE')
-    source.add_argument('--chain', action='append', metavar='NAME=KEY,KEY,...')
+    ap.add_argument('--registry', required=True, metavar='FILE')
     ap.add_argument('--out', required=True)
     ap.add_argument('--mirror', default=os.environ.get('NEXT_DISPATCH_MIRROR')
                     or os.path.join(os.path.expanduser('~'), '.himmel', 'state', 'jira-mirror', 'HIMMEL'))
     ap.add_argument('--state')
     ap.add_argument('--version')
     ap.add_argument('--now')
+    ap.add_argument('--drain', action='store_true')
+    ap.add_argument('--dispositions', metavar='FILE')
     a = ap.parse_args()
-    try:
-        if not himmel_flag('chain_render'):
-            print('chain-render: chain_render is off; %s left as it is' % a.out)
-            return 0
-    except FlagError as e:
-        print('chain-render: %s' % e, file=sys.stderr)
-        return 2
-    chains = []
+    if (a.drain and not a.version) or (a.dispositions and not a.drain):
+        ap.error('--drain needs --version, and --dispositions needs --drain')
     state = None
-    for c in a.chain or []:
-        name, _, ks = c.partition('=')
-        keys = [k.strip() for k in ks.split(',') if k.strip()]
-        if not name.strip() or not keys or not all(KEY_RE.match(k) for k in keys):
-            print('chain-render: bad --chain %r (want NAME=HIMMEL-n,HIMMEL-m,...)' % c, file=sys.stderr)
-            return 2
-        chains.append((name.strip(), keys))
     if not os.path.isdir(a.mirror):
         print('chain-render: mirror missing: %s is not a directory' % a.mirror, file=sys.stderr)
         return 2
@@ -187,6 +217,10 @@ def main():
                 state['registry']['path'], state['registry']['sha256'], state['source_age_min'], len(chains)), file=sys.stderr)
         graph = json.load(open(a.graph, encoding='utf-8'))
         res = render(graph, chains, a.mirror, state)
+        drain = None
+        if a.drain:
+            dispo = open(a.dispositions, encoding='utf-8').read() if a.dispositions else None
+            drain = drain_line(a.mirror, a.version, {k for _, ks in chains for k in ks}, dispo)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired) as e:
         print('chain-render: cannot read the registry %s, graph %s or mirror %s (%s)' % (a.registry, a.graph, a.mirror, e), file=sys.stderr)
         return 2
@@ -194,7 +228,7 @@ def main():
     try:
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(a.out)), prefix=os.path.basename(a.out) + '.', suffix='.tmp')
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(res, f, indent=1)
+            json.dump(res + [{'drain': drain}] if drain else res, f, indent=1)
             f.write('\n')
         try:
             mode = os.stat(a.out).st_mode & 0o777

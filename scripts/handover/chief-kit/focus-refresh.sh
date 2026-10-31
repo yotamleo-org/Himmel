@@ -24,6 +24,14 @@
 #             with a 60+20 s budget and fails as sweep:<why>: timeout, rc<n>, the
 #             snapshot read it could not finish (gh, jira, ...), unknown
 #   prs       one `gh pr list` snapshot, staged
+#   chains    focus-chains.json regenerated from the chain registry: chains.json at
+#             <handover_root>/<user slug>/himmel/chains.json (no such file: the stage is skipped and a
+#             hand-kept focus-chains.json stays). The registry is validated (chain-state.mjs), the graph
+#             of its members read (chain-graph.py --keys), then chain-render.py --registry --drain writes
+#             the file into the stage, and the publish step moves it into place with the page. The file ends
+#             with the drain row the tracker prints under the page title. A failure is not a FAILED stage: the
+#             run goes on with the last good focus-chains.json, byte for byte, and ends
+#             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr).
 #   render    tracker.py --version, staged
 #   drift    status-drift.sh over the sweep's snapshot, staged (report only). It fails as
 #             drift:<why>: timeout, rc<n>, budget (its own cut-off), gh, jira, no-sdrift, unknown
@@ -38,17 +46,19 @@
 #
 # focus-state (<doc dir>/focus-state, key=value): status (ok|FAILED), stage, gen,
 # dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift, ver (the version the page shows)
-# (the drift line), ts. A refresh marks the state dirty when it starts and clears
+# (the drift line), warn (chains <reason> of the last good run, else empty), drain-unchained (the drain line's
+# unchained count; a WARN on stderr when above 0), ts. A refresh marks the state dirty when it starts and clears
 # that only on success, so a run that dies midway reads as DIRTY.
 # --status prints focus=ok | focus=DIRTY:<minutes>m | focus=FAILED:<stage> |
-# focus=skip; --mark-dirty marks a ship event the refresh has not yet seen.
+# focus=WARN:<warn> (a good run whose chains stage failed); focus=skip; --mark-dirty marks a ship event the refresh
+# has not yet seen.
 # The whole run is cut off at FOCUS_REFRESH_BUDGET seconds (default 240) and reads
 # FAILED:timeout.
 #
 # ponytail: one current-version page and no per-version refresh, upgrade path = a
 # --version loop over the doc's tracker-<version> lines.
 #
-# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_KNOWN_SYNC (each one executable),
+# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_KNOWN_SYNC FR_CHAIN_GRAPH FR_DISPOSITIONS (each one executable),
 # TICK_TRACKER_MIRROR_DIR.
 # Platform guard: POSIX bash 3.2+, flock optional (shell-only harness).
 set -u
@@ -68,6 +78,12 @@ export LC_ALL=C
 # shellcheck source=../../lib/env-value.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/env-value.sh"
+# shellcheck source=../../lib/handover-path.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/handover-path.sh"
+# shellcheck source=../../lib/user-slug.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/user-slug.sh"
 
 usage() {
     echo "usage: focus-refresh.sh --doc <chief doc> [--mirror-fresh <dir>] [--repo <owner/repo>] | --status | --mark-dirty" >&2
@@ -106,15 +122,16 @@ AGAIN="$DIR/focus-state.again"
 OUT="$DIR/roadmap-tracker.html"
 now() { date +%s; }
 
-S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver=""
+S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver="" S_warn="" S_dunch=""
 load_state() {
     local k v
-    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver=""
+    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver="" S_warn="" S_dunch=""
     if [ -f "$STATEF" ]; then
         while IFS='=' read -r k v || [ -n "$k" ]; do
             case "$k" in
                 status) S_status=$v ;; stage) S_stage=$v ;; gen) S_gen=$v ;;
                 dirty) S_dirty=$v ;; sha8) S_sha8=$v ;; sdrift) S_sdrift=$v ;; ver) S_ver=$v ;;
+                warn) S_warn=$v ;; drain-unchained) S_dunch=$v ;;
             esac
         done < "$STATEF"
     fi
@@ -122,8 +139,8 @@ load_state() {
 }
 save_state() {
     local t="$STATEF.tmp.$$"
-    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nver=%s\nts=%s\n' \
-        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$S_ver" "$(now)" > "$t" && mv -f "$t" "$STATEF"
+    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nver=%s\nwarn=%s\ndrain-unchained=%s\nts=%s\n' \
+        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$S_ver" "$S_warn" "$S_dunch" "$(now)" > "$t" && mv -f "$t" "$STATEF"
 }
 load_state
 
@@ -133,6 +150,7 @@ if [ "$MODE" = status ]; then
     elif [ -n "$S_dirty" ]; then echo "focus=DIRTY:$(( ($(now) - S_dirty) / 60 ))m"
     # a request that landed after the last run read it and saved a clean state
     elif [ -f "$AGAIN" ]; then echo "focus=DIRTY:unknown"
+    elif [ "$S_status" = ok ] && [ -n "$S_warn" ]; then echo "focus=WARN:$S_warn"
     elif [ "$S_status" = ok ]; then echo "focus=ok"
     else echo "focus=DIRTY:unknown"; fi
     exit 0
@@ -193,6 +211,8 @@ if [ -n "${FR_SWEEP:-}" ]; then SWEEP=("$FR_SWEEP"); else SWEEP=(bash "$HERE/sta
 if [ -n "${FR_TRACKER:-}" ]; then TRACKER=("$FR_TRACKER"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${FR_DRIFT:-}" ]; then DRIFT=("$FR_DRIFT"); else DRIFT=(bash "$HERE/status-drift.sh"); fi
 if [ -n "${FR_KNOWN_SYNC:-}" ]; then KSYNC=("$FR_KNOWN_SYNC"); else KSYNC=(bash "$HERE/known-bugs-sync.sh"); fi
+if [ -n "${FR_CHAIN_GRAPH:-}" ]; then CGRAPH=("$FR_CHAIN_GRAPH"); else CGRAPH=(python3 -I "$HERE/chain-graph.py"); fi
+if [ -n "${FR_DISPOSITIONS:-}" ]; then DISPO=("$FR_DISPOSITIONS"); else DISPO=(bash "$HERE/next-dispatchable.sh"); fi
 
 bounded() {
     local s=$1
@@ -254,12 +274,59 @@ fi
 
 bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,headRefOid,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
 
+# chains: focus-chains.json regenerated from the chain registry. A registry that is absent (or a handover root or
+# user slug that does not resolve) skips the stage: nothing is configured and a hand-kept file stays. A registry
+# that is there and fails is a WARN, never a FAILED stage: the last good file is read and published as it was.
+CHAINS_NEW="" CHAINS_WARN="" DRAIN_UNCHAINED=""
+chains_registry() { # print the registry path when it resolves
+    local root slug
+    root=$(handover_root 2>/dev/null) || return 1 # swallow-ok: no handover root means no registry configured
+    slug=$(cd "$HERE/../../.." && user_slug 2>/dev/null) || return 1 # swallow-ok: no user slug means no registry configured
+    printf '%s/%s/himmel/chains.json' "$root" "$slug"
+}
+chains_fail() { # <registry|graph|render> <detail file> - the run goes on with the last good file
+    CHAINS_WARN="chains $1"
+    # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set. read-sink-ok: the detail file is one of this script's own stage files
+    echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
+}
+chains_reg=$(chains_registry) || chains_reg=""
+if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
+    if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
+        chains_fail registry "$stage/chains.err"
+    elif ! members=$(python3 -I -c 'import json, sys
+print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err"); then
+        chains_fail registry "$stage/chains.err"
+    elif [ -n "$members" ] && ! bounded 120 "${CGRAPH[@]}" --keys "$members" --json > "$stage/chain-graph.json" 2> "$stage/chains.err"; then
+        chains_fail graph "$stage/chains.err"
+    else
+        # a registry with no chains is valid: the graph of no members is empty and the file holds the drain row alone
+        [ -n "$members" ] || echo '{"nodes":[],"edges":[]}' > "$stage/chain-graph.json"
+        # swallow-ok: the dispositions are best effort; without them the drain line leaves out the dispatchable and dropped parts
+        bounded 60 "${DISPO[@]}" --mirror "$MIR" --doc "$DOC" --dispositions > "$stage/dispositions.txt" 2>/dev/null || rm -f "$stage/dispositions.txt"
+        set -- --graph "$stage/chain-graph.json" --registry "$chains_reg" --mirror "$MIR" --version "$VER" --drain --out "$stage/focus-chains.json"
+        [ ! -s "$stage/dispositions.txt" ] || set -- "$@" --dispositions "$stage/dispositions.txt"
+        if bounded 60 python3 -I "$HERE/chain-render.py" "$@" > /dev/null 2> "$stage/chains.err" && [ -f "$stage/focus-chains.json" ]; then
+            CHAINS_NEW="$stage/focus-chains.json"
+            # swallow-ok: an unreadable drain row leaves the unchained count empty
+            DRAIN_UNCHAINED=$(python3 -I -c 'import json, re, sys
+for c in json.load(open(sys.argv[1])):
+    m = re.search(r"unchained (\d+)", c.get("drain", ""))
+    if m:
+        print(m.group(1))' "$CHAINS_NEW" 2>/dev/null)
+        else
+            chains_fail render "$stage/chains.err"
+        fi
+    fi
+fi
+
 plan=$(sed -n 's/^focus-plan:[[:space:]]*//p' "$DOC" | head -n 1)
 case "$plan" in none*) plan="" ;; esac
+[ -z "$plan" ] || echo "focus-refresh: WARN priority-source plan-differs: the priority line is read from $plan, not derived from the chain registry" >&2
 set -- --version "$VER" --out "$stage/page.html" --mirror-dir "$MIR" --versions-file "$MIR.versions.tsv" \
     --prs-file "$stage/prs.json" --workers-dir "$(ts_state_dir)/workers" --repo "$REPO"
 [ -z "$plan" ] || set -- "$@" --priority-file "$plan"
-[ ! -f "$DIR/focus-chains.json" ] || set -- "$@" --chains-file "$DIR/focus-chains.json"
+if [ -n "$CHAINS_NEW" ]; then set -- "$@" --chains-file "$CHAINS_NEW"
+elif [ -f "$DIR/focus-chains.json" ]; then set -- "$@" --chains-file "$DIR/focus-chains.json"; fi
 bounded 120 "${TRACKER[@]}" "$@" >/dev/null 2>&1 || failed render
 { [ -f "$stage/page.html" ] && [ -f "$stage/page.html.vfp" ]; } || failed render
 vfp=$(cat "$stage/page.html.vfp")
@@ -285,6 +352,7 @@ if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
+[ -z "$CHAINS_NEW" ] || mv -f "$CHAINS_NEW" "$DIR/focus-chains.json" || failed publish
 # Keep the known-checker-bugs file and the checker ticket's Jira links in step. Best effort: a failed sync never fails the refresh.
 ksync_left=$((10#$BUDGET - SECONDS - 5)) # leave the run's own cut-off out of reach, so a slow sync never turns a published refresh into FAILED:timeout
 [ "$ksync_left" -le 60 ] || ksync_left=60
@@ -294,12 +362,15 @@ if [ "$ksync_left" -ge 5 ]; then
 else
     echo "focus-refresh: WARN: known-bugs-sync skipped; too little of the refresh budget is left" >&2
 fi
-S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER"
+S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER" S_warn="$CHAINS_WARN" S_dunch="$DRAIN_UNCHAINED"
+if [ "${DRAIN_UNCHAINED:-0}" -gt 0 ]; then
+    echo "focus-refresh: WARN drain-unchained=$DRAIN_UNCHAINED: open tickets of $VER that sit in no chain and are not labelled standalone" >&2
+fi
 again=""
 [ ! -f "$AGAIN" ] || again=$(cat "$AGAIN")
 if [[ "$again" =~ ^[0-9]+$ ]]; then
     S_dirty=$again # a request arrived while this run held the lock: its snapshot may predate it
 fi
 save_state || failed publish
-echo "focus=ok"
+if [ -n "$CHAINS_WARN" ]; then echo "focus=WARN:$CHAINS_WARN"; else echo "focus=ok"; fi
 exit 0

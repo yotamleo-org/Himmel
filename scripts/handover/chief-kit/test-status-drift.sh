@@ -900,6 +900,7 @@ EOS
 chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync"
 export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
+export HANDOVER_DIR="$tmp/no-handover-root" # the chains stage reads <root>/<user>/himmel/chains.json; none here, so it is skipped (test-focus-refresh-chains.sh covers it)
 fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
     reset "To Do"
     rm -rf "$FR"; mkdir -p "$FR/doc" "$FR/mir"
