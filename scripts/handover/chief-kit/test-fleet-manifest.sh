@@ -163,15 +163,22 @@ check '8. a workers array is held to the same absolute-doc rule (rc 1)' 1 "$rc"
 HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m6" >/dev/null 2>&1; rc=$?
 check '8. with HIMMEL_LEGACY_NAMES=0 an old legs manifest is not a schema-1 manifest (rc 1)' 1 "$rc"
 check '8. with HIMMEL_LEGACY_NAMES=0 a workers manifest still lists' "$l1" "$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m8" 2>/dev/null)"
-# the writer edits `legs` only, so it refuses a manifest holding a workers array rather than edit one the readers ignore
-w8before="$(cat "$m8b")"
-bash "$SCRIPT" add "$m8b" "$l3" >"$tmp/w8.out" 2>&1; rc=$?
-check '8. add to a manifest holding both arrays is refused (rc 1)' 1 "$rc"
-check '8. the refusal names the workers array' 1 "$(grep -c 'holds a workers array' "$tmp/w8.out")"
-check '8. the refused add leaves both arrays alone' "$w8before" "$(cat "$m8b")"
-bash "$SCRIPT" remove "$m8" "$l1" >"$tmp/w8r.out" 2>&1; rc=$?
-check '8. remove from a workers-only manifest is refused (rc 1)' 1 "$rc"
-check '8. that refusal names the workers array too' 1 "$(grep -c 'holds a workers array' "$tmp/w8r.out")"
+# the writer edits the array the readers read: `workers` when the manifest holds one, and a new manifest
+# says `workers` only with legacy names off
+bash "$SCRIPT" add "$m8b" "$l3" >/dev/null 2>&1; rc=$?
+check '8. add to a manifest holding both arrays succeeds (rc 0)' 0 "$rc"
+check '8. the add lands in the workers array the readers read' 2 "$(jq '.workers | length' "$m8b")"
+check '8. the add leaves the legs array alone' 1 "$(jq '.legs | length' "$m8b")"
+bash "$SCRIPT" remove "$m8" "$l1" >/dev/null 2>&1; rc=$?
+check '8. remove from a workers-only manifest succeeds (rc 0)' 0 "$rc"
+check '8. the remove empties the workers array and adds no legs key' "0 false" "$(jq -r '"\(.workers | length) \(has("legs"))"' "$m8")"
+m8n="$tmp/new-off.fleet.json"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" add "$m8n" "$l1" >/dev/null 2>&1; rc=$?
+check '8. with HIMMEL_LEGACY_NAMES=0 a new manifest is created (rc 0)' 0 "$rc"
+check '8. that new manifest says workers and no legs' "true false" "$(jq -r '"\(has("workers")) \(has("legs"))"' "$m8n")"
+check '8. and it lists with HIMMEL_LEGACY_NAMES=0' "$l1" "$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m8n" 2>/dev/null)"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" add "$m6" "$l3" >/dev/null 2>&1; rc=$?
+check '8. with HIMMEL_LEGACY_NAMES=0 an add to an old legs manifest is refused (rc 1)' 1 "$rc"
 
 m7="$tmp/m7.json"
 bash "$SCRIPT" add "$m7" $'/a/x.md\n/b/y.md' >/dev/null 2>&1; rc=$?
