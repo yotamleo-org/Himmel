@@ -320,6 +320,48 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(() => admit(q.req, { authority: { kind: 'operator', ref: o.id } })).toThrow(/does not cover K-2/);
   });
 
+  describe('a newer operator record supersedes an older operator-authority ruling (HIMMEL-8348)', () => {
+    const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
+    const decide = (iso: string, op: string, from_v: string | null, to_v: string | null) =>
+      operatorDecision(at(iso), { decision: '383', keys: ['K-2'], op, from_v, to_v, verbatim: 'pull it in' });
+    const pull = { outcome: 'ADMIT', op: { kind: 'move' as const, from_v: 'v2', to_v: 'v1' } };
+
+    // K-2 sits in v2 under an operator ruling made at 10:00; the pull request into v1 is claimed.
+    async function placedInV2() {
+      await setup();
+      const o = decide('2026-10-21T09:00:00.000Z', 'add', null, 'v2');
+      const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { op: { kind: 'add', from_v: null, to_v: 'v2' }, authority: { kind: 'operator', ref: o.id } });
+      await apply(ctx(rmEnv), r.id);
+      const q2 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'operator pulls it', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      return { prior: r.id, req: q2.req };
+    }
+
+    it('an INTAKE an RM ruling makes is admitted under the newer operator move, and Jira moves', async () => {
+      const { prior, req } = await placedInV2();
+      const o = decide('2026-10-21T11:00:00.000Z', 'move', 'v2', 'v1');
+      const r = admit(req, { ...pull, supersedes: [prior] });
+      expect(r.authority).toEqual({ kind: 'operator', ref: o.id });
+      await apply(ctx(rmEnv), r.id);
+      expect(jira.fv.get('K-2')).toEqual(['v1']);
+    });
+
+    it('with no newer operator record the RM ruling is still refused', async () => {
+      const { prior, req } = await placedInV2();
+      expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(/carries operator authority; only an operator record supersedes it/);
+    });
+
+    it('an older operator record never supersedes a newer ruling, cited or not', async () => {
+      const { prior, req } = await placedInV2();
+      const old = decide('2026-10-21T08:00:00.000Z', 'move', 'v2', 'v1');
+      expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(/carries operator authority/);
+      expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: old.id } }))
+        .toThrow(new RegExp(`${old.id} predates ${prior}`));
+    });
+  });
+
   it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
     expect(() => declare(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { project: 'HIMMEL', versions: ['v1'], decision: '1', verbatim: 'v', mode: 'observe' }))
       .toThrow(/chief-spawned worker/);
@@ -669,7 +711,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
-  it('a decision the engine refuses is reported and its request stays claimed', async () => {
+  it('a decision the engine refuses is reported, its request is closed, and a re-file opens a new qid (HIMMEL-8348)', async () => {
     vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
     declared();
     ask('K-2');
@@ -677,7 +719,8 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
       req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: '', ground: 'regression', reason: 'x',
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
-    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(ask('K-2').req).toBe('Q-R1-0002');
   });
 
   it('with a Sector field configured the opt-out value is not a sector and the ruling refuses', async () => {
@@ -688,7 +731,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
       req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'none', ground: 'regression', reason: 'x',
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
-    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(state(ctx()).requests.claimed).toEqual([]);
   });
 
   it('with no Sector field configured a ruling without a sector carries sector=none and applies', async () => {

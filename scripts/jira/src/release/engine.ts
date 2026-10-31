@@ -486,6 +486,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (!applied.has(id) && !baselineIds.has(id)) throw new Error(`release rule: supersedes names ${id}, which is not an effective ruling`);
     }
     if (o.op.kind === 'none' && o.supersedes.length) throw new Error('release rule: a ruling that changes nothing supersedes nothing');
+    const ops = new Map(l.operator.verified.map((x) => [x.id, x]));
+    let authority = o.authority;
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
       const rec = recordOf(s, req.key, v);
@@ -494,21 +496,29 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (o.op.kind === 'none') continue;
       if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
-      if (prior?.authority.kind === 'operator' && o.authority.kind !== 'operator') {
-        throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
+      if (prior?.authority.kind !== 'operator') continue;
+      // Only an operator decision newer than the ruling supersedes it; the RM rules under the newest that covers the op.
+      const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
+      const cited = authority.kind === 'operator' && authority.ref ? ops.get(authority.ref) : undefined;
+      if (cited?.kind === 'decision' && Date.parse(cited.ts) <= since) {
+        throw new Error(`release rule: ${cited.id} predates ${prior.id}; an older operator record never supersedes a newer ruling`);
       }
+      if (authority.kind === 'operator') continue;
+      const newer = l.operator.verified.filter((x) => x.kind === 'decision' && Date.parse(x.ts) > since
+        && scopeOk({ authority: { kind: 'operator', ref: x.id }, key: req.key, op: o.op }, ops, l.decl.current)).pop();
+      if (!newer) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
+      authority = { kind: 'operator', ref: newer.id };
     }
-    if (o.authority.kind === 'operator') {
-      const ops = new Map(l.operator.verified.map((x) => [x.id, x]));
-      if (!scopeOk({ authority: o.authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${o.authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
+    if (authority.kind === 'operator') {
+      if (!scopeOk({ authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
     }
-    if (o.authority.kind === 'import' && !o.authority.ref) throw new Error('release rule: an import names its source in --ref');
+    if (authority.kind === 'import' && !authority.ref) throw new Error('release rule: an import names its source in --ref');
 
     const id = seq(`R-${ctx.release}`, l.rulings.rows.map((r) => r.id));
     const row = appendChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k, {
       id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op: o.op, outcome: o.outcome,
       class: classOf(l.decl, o.op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
-      authority: o.authority, phase: 'intent',
+      authority, phase: 'intent',
     });
     const { prev: _p, mac: _m, ...rest } = req;
     appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: `ruled:${id}` });
@@ -778,6 +788,17 @@ function unclaim(ctx: Ctx, req: string): void {
   });
 }
 
+// Closes a claimed request the engine refused, so a re-filed request opens a new qid.
+function refuse(ctx: Ctx, req: string, reason: string): void {
+  locked(ctx, (l) => {
+    const lease = rmFence(ctx, l);
+    const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(req);
+    if (!r || r.state !== `claimed:${lease.epoch}`) return;
+    const { prev: _p, mac: _m, ...rest } = r;
+    appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: `refused:${lease.epoch}`, reason });
+  });
+}
+
 export interface RmRunOptions {
   doc?: string;
   session?: string;
@@ -853,8 +874,8 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       }
       for (const q of claimed) {
         let id: string;
+        const d = decisions.find((x) => x?.req === q.req);
         try {
-          const d = decisions.find((x) => x?.req === q.req);
           if (!d) throw new Error('the judge returned no decision');
           if (isHold(d)) {
             lines.push(`HELD ${q.req}: ${d.reason}`);
@@ -872,6 +893,8 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
+          // A request the judge never answered stays claimed for the next run.
+          if (d) refuse(rctx, q.req, (e as Error).message);
           continue;
         }
         try {
