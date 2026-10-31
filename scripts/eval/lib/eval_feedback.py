@@ -38,6 +38,9 @@ CHANGE ROW (v 1): v, ts, host, source, kind "eval-change", id "<baseline run_id>
             test_delta, noise, min_gain and reason, with verdict keep | revert
   inbox     inbox_written (true: the line is in the inbox; false: the write failed and is due again)
 
+MERGE GATE (HIMMEL-8426): gate_verdict() grades a critic change from the tracked review-panel results rows;
+  it is separate from the keep rule, writes nothing and is called by score.py gate.
+
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P]
 Prints one line per record written. Exit 0, 2 on unreadable rules.
 Stdlib only; no network.
@@ -167,6 +170,75 @@ def keep_rule(c, series, base, new, after):
     return ("keep" if reason.startswith("train and test") else "revert",
             {"test_before": test_before, "test_after": test_after, "test_delta": finite(test_delta),
              "noise": finite(noise), "min_gain": min_gain, "reason": reason})
+
+
+GATE_RECALL, GATE_FP = "panel.recall_gating", "panel.fp_rate"
+GATE_EPS = 1e-9  # float slack: two equal means must compare equal
+GATE_STATUS = ("ok",)  # a partial sweep scores fewer cases, so like an inconclusive one it never counts
+
+
+def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
+    """(verdict, info) of the merge gate for a critic change (HIMMEL-8426): keep | no-loss | loss | unmeasured.
+
+    Separate from keep_rule, which judges a change record a threshold rule opened; a critic PR has none.
+    rows are results.jsonl rows (score.py export-row). The baseline is the rows at base_hash, the head the
+    rows at head_hash, both at confighash only: a row of another critic version or another fixture set never
+    counts, so it never widens the noise. A side counts one row per sweep: a repeated run_id or outputs
+    bundle is dropped, and a head row that repeats a baseline sweep does not count when the hashes differ.
+    Under two rows on either side the verdict is unmeasured.
+    noise   per metric, max - min over the baseline rows only.
+    no-loss head mean recall_gating >= baseline mean - noise, and head mean fp_rate <= baseline mean + noise.
+    keep    no-loss, a target class named, and every target class's head mean recall > its baseline max.
+    Otherwise loss. Computed at check time, never stored.
+    ponytail: the noise is the spread (max - min) of the baseline rows at one hash, which only widens as
+    sweeps accrue, upgrade = a dispersion estimate (a standard-error band) once a hash has enough rows (spec P8)."""
+    def side(h, skip_ids=(), skip_bundles=()):
+        out, ids, bundles = [], set(skip_ids), set(skip_bundles)
+        for r in rows:
+            m = r.get("metrics") if isinstance(r, dict) else None
+            if r.get("cbs_hash") != h or r.get("confighash") != confighash or not isinstance(m, dict) \
+                    or r.get("status") not in GATE_STATUS \
+                    or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
+                continue
+            if r.get("run_id") in ids or r.get("outputs_sha256") in bundles:
+                continue
+            ids.add(r.get("run_id"))
+            bundles.add(r.get("outputs_sha256"))
+            out.append(r)
+        return out
+
+    base = side(base_hash)
+    head = side(head_hash) if head_hash == base_hash else \
+        side(head_hash, {r.get("run_id") for r in base}, {r.get("outputs_sha256") for r in base})
+    info = {"baseline_rows": len(base), "head_rows": len(head)}
+    if not base or not head:
+        where = " and ".join(w for w, rs in (("baseline", base), ("head", head)) if not rs)
+        return "unmeasured", dict(info, reason="no eval rows at the %s cbs_hash for confighash %s" % (where, confighash))
+    if len(base) < 2 or len(head) < 2:
+        return "unmeasured", dict(info, reason="%d baseline and %d head rows: each side needs 2 distinct sweeps"
+                                  % (len(base), len(head)))
+
+    def stats(rs, metric):
+        vals = [r["metrics"][metric] for r in rs]
+        return sum(vals) / len(vals), max(vals) - min(vals)
+    (rb, nr), (rh, _) = stats(base, GATE_RECALL), stats(head, GATE_RECALL)
+    (fb, nf), (fh, _) = stats(base, GATE_FP), stats(head, GATE_FP)
+    info.update({GATE_RECALL: {"baseline": round(rb, 6), "head": round(rh, 6), "noise": round(nr, 6)},
+                 GATE_FP: {"baseline": round(fb, 6), "head": round(fh, 6), "noise": round(nf, 6)}})
+    lost = [n for n, ok in ((GATE_RECALL, rh >= rb - nr - GATE_EPS), (GATE_FP, fh <= fb + nf + GATE_EPS)) if not ok]
+    if lost:
+        return "loss", dict(info, reason="worse beyond noise: %s" % ", ".join(lost))
+    if not target_classes:
+        return "no-loss", dict(info, reason="within noise; no target class named")
+    flat = []
+    for cls in target_classes:
+        hv = [(r.get("class_recall") or {}).get(cls) for r in head]
+        bv = [(r.get("class_recall") or {}).get(cls) for r in base]
+        if not all(eval_runs._num(v) for v in hv + bv) or not sum(hv) / len(hv) > max(bv) + GATE_EPS:
+            flat.append(cls)
+    if flat:
+        return "no-loss", dict(info, reason="within noise; target class not above the baseline max: %s" % ", ".join(flat))
+    return "keep", dict(info, reason="within noise and every target class above the baseline max")
 
 
 def inbox_line(c):

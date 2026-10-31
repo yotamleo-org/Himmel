@@ -106,6 +106,7 @@ scripts/ci/test-check-actions-pinned.sh	pr	static-gate
 scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
+scripts/ci/test-check-critic-eval.sh	pr	trust-path
 scripts/ci/test-check-doc-literals.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
 scripts/ci/test-check-flags.sh	pr	trust-path
@@ -221,13 +222,13 @@ scripts/cr/test-cr-round-metrics.sh	local	behaviour suite, 0 catches in the 400-
 scripts/cr/test-cr-scores.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-cr-thread-recorder.sh	pr	trust-path
 scripts/cr/test-cr-tune.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-critic-first-pass-claude.sh	local	new since the audit, behaviour suite
-scripts/cr/test-critic-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-critic-panel-fallback.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-critic-panel-instrumentation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-critic-first-pass-claude.sh	pr	trust-path
+scripts/cr/test-critic-first-pass.sh	pr	trust-path
+scripts/cr/test-critic-panel-fallback.sh	pr	trust-path
+scripts/cr/test-critic-panel-instrumentation.sh	pr	trust-path
 scripts/cr/test-critic-panel-registry.sh	pr	static-gate
-scripts/cr/test-critic-panel-triviality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/cr/test-critic-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-critic-panel-triviality.sh	pr	trust-path
+scripts/cr/test-critic-panel.sh	pr	trust-path
 scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -248,7 +249,7 @@ scripts/cr/test-ledger-append.sh	pr	static-gate
 scripts/cr/test-live-gate-e2e.sh	pr	trust-path
 scripts/cr/test-mark-deferred-escape.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/cr/test-orphan-check.sh	pr	trust-path
-scripts/cr/test-panel-first-pass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-panel-first-pass.sh	pr	trust-path
 scripts/cr/test-pr-check-context.sh	pr	trust-path
 scripts/cr/test-pr-check-env.sh	pr	trust-path
 scripts/cr/test-pr-check-pair.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -304,7 +305,7 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 ca
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/retrieval-eval/test-answer-ab.sh	local	behaviour suite, new eval with no catches yet
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/eval/review-panel/test-review-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/review-panel/test-review-panel.sh	pr	trust-path
 scripts/eval/sandbox-poc/test-probe.sh	pr	guard
 scripts/eval/scrape-bench/test-scrape-bench.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-autocompact-ab.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -531,7 +532,7 @@ scripts/hermes/test-dispatch-trusted.sh	pr	guard
 scripts/hermes/test-egress-gate.sh	pr	guard
 scripts/hermes/test-hook-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hermes/test-install-himmel-profile.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/hermes/test-invoke.sh	local	new since the audit, behaviour suite
+scripts/hermes/test-invoke.sh	pr	trust-path
 scripts/hermes/test-parity-guard.sh	pr	static-gate
 scripts/hermes/test-parity-measure.sh	pr	static-gate
 scripts/hermes/test-soul-markers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
