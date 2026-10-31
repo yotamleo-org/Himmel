@@ -87,6 +87,14 @@ examples:
 [`docs/internals/ponytail-convention.md`](ponytail-convention.md).
 Other code comments: keep list only, never ticket/review history (gate: `check-history-comments`, same doc).
 
+### Renaming a name
+A rename lands as one finished change: alias row first, one shared reader, writers
+and docs and tests in the same PR, stored records migrated or read-aliased, the
+removal ticket filed in the alias PR. CI refuses a retired name on added lines
+(`check-rename-diff.sh`) and a doc flag the CLI does not accept
+(`check-doc-literals.sh`) →
+[`docs/internals/rename-procedure.md`](rename-procedure.md). [prose]
+
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs
   → `plugins/<plugin>/README.md`). `templates/luna-second-brain/` is

@@ -490,15 +490,15 @@ cmd_stage2=$(neutralize_quoted_separators "$cmd_stage1")
 # and drops the printf fork too.
 cmd_norm=$(tr '\n\r' ';;' <<<"$cmd_stage2")
 
-# Refuse two wait shapes that never end. (1) `until ! pgrep -f
+# Refuse a wait shape that never ends: `until ! pgrep -f
 # <pat>` / `while pgrep -f <pat>` where <pat> matches this command's own text:
 # the harness runs every Bash call as `<shell> -c "... eval '<command>'"`, so
 # the wrapper shell's command line contains <pat> and pgrep -f (which excludes
 # only itself) always finds it. A bracketed pattern (`[c]lear-cr-marker.sh`)
 # does not match its own literal text and passes. Only these polarities hang
 # (`until pgrep` / `while ! pgrep` end at once on a self-match), and only the
-# loop head is scanned. (2) a `while`/`until ...; do :; done` /
-# `do true; done` loop with no sleep, which busy-loops a core.
+# loop head is scanned. The sleepless `do :; done` busy loop is refused by the
+# himmel-ops plugin's block-busy-loop.sh, in every repo.
 # ponytail: the loop gate reads quote-neutralized text, so prose that quotes
 # a whole `until pgrep -f x; do ...` loop can false-positive, and a pgrep
 # option that takes a value (`-u user`) is read as the pattern; tighten with
@@ -506,7 +506,6 @@ cmd_norm=$(tr '\n\r' ';;' <<<"$cmd_stage2")
 PGREP_WAIT_RE='(^|[^[:alnum:]_-])(until[[:space:]]+![^;]*|while[[:space:]]+([^![:space:]][^;]*)?)pgrep[[:space:]]'
 PGREP_HEAD_RE='(until[[:space:]]+!|while[[:space:]]+[^![:space:]])[^;]*'
 PGREP_ARG_RE="pgrep[[:space:]]+((-[[:alnum:]]+[[:space:]]+)*)('([^']*)'|\"([^\"]*)\"|([^[:space:];&|)]+))"
-BUSY_LOOP_RE='(^|[^[:alnum:]_-])(while|until)[[:space:]][^;]*[;[:space:]]+do[[:space:]]+(:|true)[[:space:];]*done([^[:alnum:]_]|$)'
 
 if [[ $cmd_stage2 =~ $PGREP_WAIT_RE ]]; then
   heads=$cmd_stage1
@@ -535,16 +534,6 @@ if [[ $cmd_stage2 =~ $PGREP_WAIT_RE ]]; then
         fi
     done
   done
-fi
-
-if [[ $cmd_stage2 =~ $BUSY_LOOP_RE ]]; then
-    {
-        printf 'require-quiet-run: sleepless busy loop refused.\n\n'
-        printf 'A loop whose body is only ":" or "true" spins a core at 100%% CPU. Put a\n'
-        printf '"sleep N" in the body, or wait on a pid: tail --pid=<pid> -f /dev/null\n\n'
-        printf 'Bypass: QUIET_RUN_BYPASS=1 <launching shell>; a per-call prefix does not work.\n'
-    } >&2
-    exit 2
 fi
 
 SUITE='(scripts/([[:alnum:]_/-]*/)?test-[[:alnum:]_.-]+\.sh|scripts/ci/run-shell-tests\.sh)'

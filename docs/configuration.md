@@ -391,7 +391,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-backend-tier` | an MCP (Model Context Protocol plugin-server) call for a service whose CLI ranks higher and has the verb (registry `scripts/backends.json`) | auth-gated | `MCP_ALL_OK=1` or `MCP_<SERVICE>_OK=1` |
 | `block-jira-compound-write` | a Jira CLI write wrapped in `$(…)`/heredoc/chain | auth-gated (blocks the compound shape, prescribes the one literal retry) | `JIRA_COMPOUND_WRITE_OK=1` |
 | `block-tail-pipe-on-gates` | a pipeline whose FIRST stage invokes an exit-code-critical gate (`check-ci.sh`, `clear-review-marker.sh`, `run-shell-tests.sh`, `merge-on-green.sh`, `pr-merge.sh`, `scripts/*/test-*.sh`) and whose LAST stage is `tail`/`head` — `$?` would be tail's, not the gate's | warn-only (fail-open on anything it cannot parse) | a same-line `# tail-pipe-ok: <reason>` marker — deliberately NOT an env var, since a per-call prefix never reaches a hook |
-| `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1` |
+| `guard-memory-capture` | writes to the auto-memory store breaking its form rules | auth-gated | `MEMORY_CAPTURE_OK=1`; `MEMORY_TOPIC_MODE` (default `deny`) picks the topic-cap outcome, `warn` = the HIMMEL-8005 advisory |
 | `block-docker-privesc` | privileged/secret-mounting docker runs | auth-gated | `DOCKER_PRIVESC_OK=1` |
 | `block-merged-pr-commit` | `git commit` onto a branch whose PR already merged | auth-gated (hygiene) | `MERGED_PR_COMMIT_OK=1` |
 | `check-cr-marker-on-pr-create` | `gh pr create` while a review-owed marker exists | auth-gated | clean `/pr-check` (clears the marker) |

@@ -40,7 +40,7 @@
 # ponytail: two sessions appending to one topic file at once can together pass the cap, per-write check only
 # ponytail: a heredoc, sed or script write is unseen by this PreToolUse guard, the Bash re-check and the SessionStart notice catch it
 # ponytail: a store moved by autoMemoryDirectory or named by CLAUDE_CODE_PROJECT_DIR_NAME is outside the scope match, extend the match if adopters use them
-# ponytail: a topic write the guard cannot size passes unchecked, logged as topic-cap-undecidable, tighten when HIMMEL-8006 flips the mode
+# ponytail: a topic write the guard cannot size (no node, a crashing simulator, an unreadable old file under Edit) passes in both modes with a topic-cap-undecidable warn row, deny it in deny mode via HIMMEL-8347
 set -uo pipefail
 
 # Pin the BYTE locale, then count characters explicitly (see the line rule

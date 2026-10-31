@@ -15,6 +15,9 @@ SB="$(mktemp -d)"; trap 'rm -rf "$SB"' EXIT
 export HOME="$SB"                      # hermetic: no real registry / capture log
 MEM="$SB/.claude/projects/proj/memory"; mkdir -p "$MEM"
 export MEMORY_CAPTURE_LOG="$SB/capture.jsonl"
+# The bare rows test the DEFAULT mode; a calling shell holding the rollback
+# lever (MEMORY_TOPIC_MODE=warn) would silently turn them into warn rows.
+unset MEMORY_TOPIC_MODE
 
 assert_rc() {
     if [ "$3" = "$2" ]; then echo "PASS $1 (rc=$3)"
@@ -527,6 +530,7 @@ tc() {
         assert_rc "$1 (default deny mode)" 2 "$rc"
         grep -q 'MEMORY_CAPTURE_OK=1' "$SB/err"; assert_rc "$1 deny text names the bypass" 0 "$?"
         grep -q 'sub-file linked from its hub' "$SB/err"; assert_rc "$1 deny text names the hub procedure" 0 "$?"
+        log_has '"event":"deny","rule":"topic-cap"'; assert_rc "$1 logs a topic-cap deny row" 0 "$?"
         : > "$MEMORY_CAPTURE_LOG"
         out="$(MEMORY_TOPIC_MODE=warn bash "$HOOK" < "$SB/p.json" 2>"$SB/err")"; assert_rc "$1 (warn mode allows)" 0 "$?"
         case "$out" in *additionalContext*"sub-file linked from its hub"*) echo "PASS $1 warn advisory names the hub procedure" ;; *) echo "FAIL $1 warn advisory missing (out: $out)"; FAILED=1 ;; esac
@@ -630,6 +634,7 @@ jq -e 'select(.event=="write" and .session_id=="sess-w")' "$MEMORY_CAPTURE_LOG" 
 rm -f "$M2/t.md"; : > "$MEMORY_CAPTURE_LOG"
 wp Write "$M2/t.md" "$(fill 9216)" sess-t; hook_rc
 log_row sess-t 0 9216; assert_rc "log: topic-cap deny row names the session and old/new bytes" 0 "$?"
+jq -e 'select(.session_id=="sess-t" and .event=="deny" and .rule=="topic-cap")' "$MEMORY_CAPTURE_LOG" >/dev/null; assert_rc "log: topic-cap row is a deny row" 0 "$?"
 : > "$MEMORY_CAPTURE_LOG"
 wp Write "$M2/MEMORY.md" "$(cat "$M2/MEMORY.md")"$'\n- seven'; hook_rc; rc=$?
 assert_rc "log: a payload with no session_id does not crash" 0 "$rc"

@@ -6,7 +6,7 @@
 # Guards the two properties detach_run must hold so a SessionEnd hook never
 # overruns its budget (the recurring "Hook cancelled"):
 #   1. detach_run RETURNS IMMEDIATELY — independent of how long the child runs.
-#      The bug: on MSYS (no setsid) the old ( cmd & ) double-fork let
+#      The bug: without setsid the old ( cmd & ) double-fork let
 #      the shell INTERMITTENTLY wait for the backgrounded child at exit, so a
 #      slow child blocked the caller. `disown` removes the job from the shell's
 #      table so neither the call nor the caller's exit waits for it.
@@ -67,7 +67,7 @@ fi
 # EXITS must terminate FAST — independent of the child's duration. We force the
 # no-setsid fallback (DETACH_NO_SETSID=1) so this exercises the disown branch the
 # fix lives in even on a Linux box that has setsid. (On Linux a non-interactive
-# shell never exit-waits, so this passes either way there; on Windows/macOS it is
+# shell never exit-waits, so this passes either way there; on macOS it is
 # the case that actually distinguishes the fix from the old exit-wait bug.)
 MARKER3="$TMP/exit-child-done"
 RELEASE3="$TMP/exit-release"

@@ -212,8 +212,8 @@ def bind_target(a, cwd):
     link moved above it or a dangling link retargeted changes it), or None for an element that
     is no path (empty, NUL, over 4096 characters, /dev/null). A pseudo-file
     (under /proc, /sys, /dev; only /dev/null is let through), a FIFO or other non-regular file, an
-    entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a strict realpath
-    fails for any reason but a missing name, such as a link past PATH_MAX that plain realpath would
+    entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a walk that
+    fails for any reason but a missing name or a name under a non-directory, such as a link past PATH_MAX that plain realpath would
     leave as a name, or a name past NAME_MAX, a `python -c` program with a long run among them)
     raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
@@ -520,6 +520,9 @@ def run_request(broker, config, args):
         return 5
     if run_block(config).get("enabled") is not True:
         print("result=run-disabled")
+        return 5
+    if getattr(os.path, "ALLOW_MISSING", None) is None:  # older than the CVE-2025-4517 posixpath fixes; untested there
+        print("result=no-allow-missing")
         return 5
     op_pw = user_pw(config.get("operator_user"))
     if op_pw is None:  # a partial config must not point the floor at root's home
