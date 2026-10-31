@@ -76,9 +76,11 @@ test("an unregistered checkout named like a registered project gets its own name
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const reg = join(dir, "registry.json");
   writeFileSync(reg, JSON.stringify({ repos: { himmel: { path: "/elsewhere/himmel" } } }));
-  const { current, list } = readProjects({ HANDOVER_REGISTRY: reg }, "/work/himmel");
-  expect(current).toBe("himmel.here");
-  expect(list.map((p) => p.name).sort()).toEqual(["himmel", "himmel.here"]);
+  const a = readProjects({ HANDOVER_REGISTRY: reg }, "/work/himmel"), b = readProjects({ HANDOVER_REGISTRY: reg }, "/other/himmel");
+  expect(a.current).toMatch(/^himmel\.[0-9a-f]{6}$/);
+  expect(b.current).not.toBe(a.current); // the same basename in another place is another project
+  expect(a.list.map((p) => p.name)).toContain("himmel");
+  expect(a.list.length).toBe(2);
 });
 
 test("/api/feed?project= answers another project from its cache, else not-checked; names never reach the filesystem unchecked", async () => {

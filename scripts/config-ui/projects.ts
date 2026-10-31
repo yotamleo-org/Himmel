@@ -3,6 +3,7 @@
 // from its own last good doctor feed, cached under ~/.himmel/state/config-ui/feeds/<name>.json by the UI that ran in it.
 // Nothing here runs a doctor: a project nobody opened yet is "not checked", never guessed.
 // ponytail: another project's rows are only as fresh as its own last UI run, a cross-project probe is a later step.
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -32,8 +33,10 @@ export function readProjects(env: Env, currentPath: string): { current: string; 
   } catch { /* no registry: only this project */ }
   const at = list.find((p) => p.path === currentPath);
   if (at) return { current: at.name, list };
-  let name = NAME.test(basename(currentPath)) ? basename(currentPath) : "this-project";
-  while (list.some((p) => p.name === name)) name += ".here"; // never share a registered project's name or cache
+  // The path is part of the name: two unregistered checkouts, or one named like a registered project, never share a cache.
+  const id = createHash("sha1").update(currentPath).digest("hex").slice(0, 6);
+  let name = `${NAME.test(basename(currentPath)) ? basename(currentPath) : "this-project"}.${id}`;
+  while (list.some((p) => p.name === name)) name += "x";
   list.unshift({ name, path: currentPath });
   return { current: name, list };
 }

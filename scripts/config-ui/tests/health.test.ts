@@ -135,6 +135,14 @@ test("the all-projects view opens the who-fixes-it box and does not call a pendi
   expect(pending).not.toContain("Nothing shared is broken");
 });
 
+test("a firing alert shows under Shared in the all-projects view", () => {
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "page", summary: "box off" }] }, exporter: { state: "ok" } } };
+  const html = renderHealth(feed(own("a", "ok")), health, { mode: "all", projects: { current: "himmel", projects: [] } });
+  const shd = html.slice(html.indexOf('id="shared"'));
+  expect(shd).toContain("HostDown");
+  expect(shd).not.toContain("Nothing shared is broken");
+});
+
 test("the who-fixes-it box opens on the chosen row only", () => {
   const f = feed(own("a", "fail"), own("b", "fail"));
   expect([...renderHealth(f, null, { row: "a" }).matchAll(/class="who"/g)].length).toBe(1);

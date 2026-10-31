@@ -100,13 +100,14 @@ function brokenRow(r, open, foreign = false) {
     ${actionHtml(a)}<button class="btn" data-act="health-row" data-id="${esc(id)}" aria-expanded="${open}">${open ? "close" : "who fixes it"}</button>${who}</div>`;
 }
 
+const alertHtml = (a) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span></div>`;
+
 function brokenHtml(feed, health, view) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter(isTriage).sort((a, b) => (a.health === "fail" ? 0 : 1) - (b.health === "fail" ? 0 : 1));
   const alerts = alertsOf(health) || [];
   const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign)).join("");
-  const alertsHtml = alerts.map((a) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span></div>`).join("");
-  return rowsHtml + alertsHtml || `<div class="empty">Nothing broken.</div>`;
+  return rowsHtml + alerts.map(alertHtml).join("") || `<div class="empty">Nothing broken.</div>`;
 }
 
 // Every item checked: all rows by bundle, a result each; a bundle with a problem opens by itself.
@@ -146,12 +147,12 @@ function tilesHtml(feed, health) {
 }
 
 // All my projects: the shared rows once, then each project worst first with its own broken rows.
-function sharedPanel(feed, view) {
+function sharedPanel(feed, health, view) {
   if (!feed) return section("shared", "Shared", "Problems with the machine or himmel itself. Shown once here, never counted against a project.", nodata("the doctor feed is still running"));
-  const rows = sharedOf(feed).filter(isTriage);
+  const rows = sharedOf(feed).filter(isTriage), alerts = alertsOf(health) || []; // firing alerts watch the machine, so they belong here too
   const mini = GROUPS.map(([g, name]) => { const l = rows.filter((r) => groupOf(r) === g); return `<div class="mini"><b>${name}</b><span class="ro">${l.length ? `${l.length} to look at` : "ok"}</span></div>`; }).join("");
   return `<section id="shared" class="box" aria-labelledby="h-shared"><h2 id="h-shared">Shared</h2><p class="sub">Problems with the machine or himmel itself. Shown once here, never counted against a project.</p>
-    <div class="minis">${mini}</div>${rows.length ? rows.map((r) => brokenRow(r, view.row === r.id)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
+    <div class="minis">${mini}</div>${rows.length || alerts.length ? rows.map((r) => brokenRow(r, view.row === r.id)).join("") + alerts.map(alertHtml).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
 }
 function projectLine(p, view) {
   const c = (p.counts && p.counts.project) || { fail: 0, warn: 0 }, v = projectVerdict(c);
@@ -162,10 +163,10 @@ function projectLine(p, view) {
     <a class="btn" href="#/health?project=${encodeURIComponent(p.name)}">open ▸</a></div>${broken}</div>`;
 }
 const rank = (p) => (p.checkedAt ? ((p.counts && p.counts.project && p.counts.project.fail) || 0) * 1000 + ((p.counts && p.counts.project && p.counts.project.warn) || 0) : -1);
-function allProjectsHtml(feed, view) {
+function allProjectsHtml(feed, health, view) {
   const ps = [...((view.projects && view.projects.projects) || [])].sort((a, b) => rank(b) - rank(a) || String(a.name).localeCompare(String(b.name)));
   return `<header class="ph"><h1>Health · all my projects</h1><p>Shared problems once, then every registered project, worst first.</p></header>
-    ${sharedPanel(feed, view)}${ps.map((p) => projectLine(p, view)).join("") || `<div class="empty">No projects are registered.</div>`}`;
+    ${sharedPanel(feed, health, view)}${ps.map((p) => projectLine(p, view)).join("") || `<div class="empty">No projects are registered.</div>`}`;
 }
 
 function jobsHtml(feed) {
@@ -266,7 +267,7 @@ function searchHtml(feed) {
 
 export function renderHealth(feed, health, view = {}) {
   view = { mode: "project", tab: "broken", row: null, ...view };
-  if (view.mode === "all") return allProjectsHtml(feed, view);
+  if (view.mode === "all") return allProjectsHtml(feed, health, view);
   const name = view.project || (feed && feed.target && feed.target.project) || "this project";
   if (view.unchecked) return `<header class="ph"><h1>Health · ${esc(name)}</h1></header>${nodata(`${name} has not been checked yet; open Health in that project once`)}`;
   // The mode and the firing alerts belong to the project this UI runs in, so another project's page shows neither.

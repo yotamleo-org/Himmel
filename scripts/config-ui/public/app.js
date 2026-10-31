@@ -69,7 +69,11 @@ function route() {
   // the open tile rides the hash (#/config?tile=tracker), so a reload keeps it; any other route leaves none open.
   const asked = old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile");
   state.tile = currentPage.id === "config" && TILE_IDS.includes(asked) ? asked : null; // an unknown ?tile= opens none (nav.js TILES; slow.test.ts runs this file without its imports)
-  if (currentPage.id === "health") healthView = parseView(m[3]);
+  if (currentPage.id === "health") {
+    const was = healthView.project;
+    healthView = parseView(m[3]);
+    if (healthView.project !== was) { otherFeed = null; otherGen++; } // never show the last project's rows under this one's name
+  }
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
@@ -234,7 +238,7 @@ async function loadFeed(force) {
   };
   try {
     const r = await fetchFeed((j) => { if (gen === feedGen) toast(say(j)); }, force);
-    if (r.ok) { const f = await r.json(); if (gen === feedGen) { feed = f; paint(); } }
+    if (r.ok) { const f = await r.json(); if (gen === feedGen) { feed = f; paint(); if (currentPage.id === "health") loadProjects(); } }
     else if (gen === feedGen) toast(`re-probe failed (${r.status})`);
   } catch (_) { if (gen === feedGen) toast("re-probe failed: server unreachable"); }
 }
@@ -249,7 +253,7 @@ async function refreshFeed() {
     const r = await fetch("/api/feed", { headers: { "X-Himmel-Token": token } });
     if (r.status !== 200) return;
     const f = await r.json();
-    if (gen === feedGen && feed && f.generatedAt !== feed.generatedAt) { feed = f; paint(); }
+    if (gen === feedGen && feed && f.generatedAt !== feed.generatedAt) { feed = f; paint(); if (currentPage.id === "health") loadProjects(); }
   } catch (_) { /* quiet */ }
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFeed(); });
