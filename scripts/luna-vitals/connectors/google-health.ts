@@ -203,18 +203,23 @@ export function loadSecretsIntoEnv(root: string, names: string[]): void {
  * else in the .env file. A token line already in the .env is kept in step, because a caller that
  * loads that file into its environment would otherwise keep using the stale token (the environment
  * is read first). Returns where it went, or undefined when there was nowhere to put it.
+ * `shadowed` is true when an unlocked keyring refused the token: the keyring outranks .env, so an
+ * older token it holds keeps winning until the caller stores the new one there.
  */
-export function storeRefreshToken(root: string, token: string, envPath: string | undefined): string | undefined {
+export function storeRefreshToken(
+  root: string, token: string, envPath: string | undefined,
+): { where: string; shadowed: boolean } | undefined {
   const target = envPath ?? findEnvFile(process.cwd());
-  if (keyringUnlocked(root) && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) {
+  const unlocked = keyringUnlocked(root);
+  if (unlocked && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) {
     if (target && existsSync(target) && /^GOOGLE_HEALTH_REFRESH_TOKEN=/m.test(readFileSync(target, 'utf-8'))) {
       updateEnvFile(target, token);
     }
-    return 'the keyring';
+    return { where: 'the keyring', shadowed: false };
   }
   if (!target) return undefined;
   updateEnvFile(target, token);
-  return target;
+  return { where: target, shadowed: unlocked };
 }
 
 // ── argv helpers ──────────────────────────────────────────────────────────────
@@ -318,8 +323,15 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     // NEVER print the token; print confirmation (with where it went) + granted scope.
-    console.error(`OK: refresh token written to ${stored}`);
+    console.error(`OK: refresh token written to ${stored.where}`);
     console.error(`Granted scope: ${scope}`);
+    if (stored.shadowed) {
+      console.error(
+        '[google-health] error: the keyring refused the new token, so an older keyring token still outranks .env; ' +
+          'store it there with: himmel-secrets put --stdin GOOGLE_HEALTH_REFRESH_TOKEN',
+      );
+      process.exit(1);
+    }
   } else {
     console.error(
       `unknown command: ${cmd ?? '(none)'} — use pull|auth-url|auth-exchange`,

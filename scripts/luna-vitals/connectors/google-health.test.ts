@@ -500,7 +500,7 @@ describe('pull', () => {
 // The real scripts/lib/himmel-secrets over a stub keyring (secret-tool and busctl first on PATH).
 // Dummy values only; the station keyring and the real .env are never reached.
 describe('google-health secrets through the resolver', () => {
-  const TOUCHED = ['PATH', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'DBUS_SESSION_BUS_ADDRESS',
+  const TOUCHED = ['PATH', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_FAIL_STORE', 'DBUS_SESSION_BUS_ADDRESS',
     'GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN',
     'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY'];
   const saved: Record<string, string | undefined> = {};
@@ -516,7 +516,10 @@ describe('google-health secrets through the resolver', () => {
     const bin = join(dir, 'kbin');
     renameSync(join(bin, 'secret-tool'), join(bin, 'secret-tool.real'));
     writeFileSync(join(bin, 'secret-tool'),
-      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\nexec "$(dirname "$0")/secret-tool.real" "$@"\n');
+      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\n' +
+      // KSTUB_FAIL_STORE refuses every store, as a keyring that goes away mid-write would.
+      'case "$1" in store) [ -z "${KSTUB_FAIL_STORE:-}" ] || exit 1 ;; esac\n' +
+      'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
     chmodSync(join(bin, 'secret-tool'), 0o755);
     log = join(dir, 'keyring.log');
     Object.assign(process.env, stub.env, { KSTUB_LOG: log });
@@ -533,6 +536,7 @@ describe('google-health secrets through the resolver', () => {
   beforeEach(() => {
     for (const k of ['GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN', 'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY']) delete process.env[k];
     process.env.KSTUB_LOCKED = 'false';
+    delete process.env.KSTUB_FAIL_STORE;
     writeFileSync(stub.store, '');
     writeFileSync(log, '');
   });
@@ -561,7 +565,7 @@ describe('google-health secrets through the resolver', () => {
   test('S0-R3 keyring unlocked: the refreshed token is stored with put --stdin and no .env line is added', () => {
     const envFile = join(dir, 'unlocked.env');
     writeFileSync(envFile, 'OTHER=1\n');
-    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile);
+    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where;
     expect(where).toBe('the keyring');
     expect(stub.get('GOOGLE_HEALTH_REFRESH_TOKEN')).toBe('dummy-new-refresh');
     expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\n');
@@ -573,15 +577,23 @@ describe('google-health secrets through the resolver', () => {
   test('a token line already in the .env is kept in step with the keyring, so a loaded .env cannot shadow it', () => {
     const envFile = join(dir, 'stale.env');
     writeFileSync(envFile, 'GOOGLE_HEALTH_REFRESH_TOKEN=dummy-old-refresh\nOTHER=1\n');
-    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)).toBe('the keyring');
+    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where).toBe('the keyring');
     expect(readFileSync(envFile, 'utf8')).toBe('GOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\nOTHER=1\n');
+  });
+
+  test('an unlocked keyring that refuses the token still saves .env and says the older keyring token outranks it', () => {
+    process.env.KSTUB_FAIL_STORE = '1';
+    const envFile = join(dir, 'refused.env');
+    writeFileSync(envFile, 'OTHER=1\n');
+    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)).toEqual({ where: envFile, shadowed: true });
+    expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\nGOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\n');
   });
 
   test('S0-R3 keyring locked: today\'s .env write, nothing stored', () => {
     process.env.KSTUB_LOCKED = 'true';
     const envFile = join(dir, 'locked.env');
     writeFileSync(envFile, 'OTHER=1\n');
-    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile);
+    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where;
     expect(where).toBe(envFile);
     expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\nGOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\n');
     expect(readFileSync(stub.store, 'utf8')).toBe('');

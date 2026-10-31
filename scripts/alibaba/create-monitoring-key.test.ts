@@ -139,6 +139,20 @@ describe("create-monitoring-key secrets", () => {
       expect(readFileSync(join(root, ".env"), "utf8")).toBe("ALIBABA_QUOTA_AK=LTAIscoped-s0\nOTHER=1\n");
     });
 
+    test("no .env and a keyring that refuses a write: nothing is minted", async () => {
+      stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
+      stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");
+      process.env.KSTUB_FAIL_SK = "1";
+      const ram = fakeRam();
+      let minted = false;
+      const call = async (ak: string, sk: string, action: string, params: Record<string, string>) => {
+        if (action === "CreateAccessKey") minted = true;
+        return ram.call(ak, sk, action);
+      };
+      await expect(quiet(() => main({ root, rotate: false, call }))).rejects.toThrow("process.exit(1)");
+      expect(minted).toBe(false);
+    });
+
     test("the keyring refusing the second name restores the first, saves .env and exits non-zero", async () => {
       stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
       stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");

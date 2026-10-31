@@ -173,9 +173,13 @@ export async function main(opts: { root?: string; rotate?: boolean; call?: RamCa
 
   // 3. access key (refuse a silent second key; --rotate deletes existing first)
   // Persistence preflight FIRST: creating a key we cannot persist orphans a
-  // live credential (the secret is shown once) — check .env before minting.
+  // live credential (the secret is shown once) — check a place to keep it before minting. A .env
+  // that exists is one; an unlocked keyring is another only once it has taken a write, which is
+  // proved by storing back the pair it already serves (never a master it does not hold).
   const toKeyring = keyringUnlocked(root);
-  if (!toKeyring && !existsSync(envPath)) {
+  const keyringTakesWrites = toKeyring && heldFromKeyring
+    && putSecret(root, "ALIBABA_QUOTA_AK", ak) && putSecret(root, "ALIBABA_QUOTA_SK", sk);
+  if (!existsSync(envPath) && !keyringTakesWrites) {
     console.error(`create-monitoring-key: ${envPath} missing — refusing to mint a key that cannot be persisted; create the .env first.`);
     process.exit(1);
   }
