@@ -1,0 +1,15 @@
+# pr-size-bands.tsv: one machine-read size band per row, the single source of the PR size thresholds.
+#
+# band       soft | hard | coderabbit
+# max_lines  a PR with more changed lines (added plus deleted) than this is over the band; - = no line limit
+# max_files  a PR with more changed files than this is over the band; - = no file limit
+# action     warn | refuse | brief-refuse
+#            warn          worker-pr-open.sh prints SIZE-WARN and opens
+#            refuse        worker-pr-open.sh prints SIZE-REFUSE, exits 1 and opens nothing
+#            brief-refuse  read by gen-briefs only (slice P1); worker-pr-open.sh ignores it
+# A PR inside the soft band's limits (150-800 lines, at most 20 files) is the target: nothing happens.
+# The coderabbit row is CodeRabbit's own cap: past 300 files it skips the whole review.
+band	max_lines	max_files	action
+soft	800	20	warn
+hard	1500	40	brief-refuse
+coderabbit	-	300	refuse

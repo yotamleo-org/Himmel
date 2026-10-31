@@ -69,7 +69,7 @@ test("the kanban: every train ticket sits in its Jira version and its status col
   expect(t[7].b).toBe("rev");
   expect(t[3].b).toBe("done");
   expect(r.themes[t[1].theme]).toBe("tracker");
-  expect(r.themes[t[2].theme]).toBe("(no theme)");
+  expect(r.themes[t[2].theme]).toBe("(no sector)");
   // the running version is the earliest unreleased one with open work; the release panel counts its columns
   expect(r.versions[r.cur].n).toBe("v1.1.2");
   expect(r.versions[1].counts).toEqual({ todo: 1, prog: 2, rev: 1, ci: 0, done: 0, wont: 0 });
@@ -249,6 +249,33 @@ test("#/kanban: every version's tickets on one board, no version filter, Done hi
   expect(hidden).toContain("Left behind");
   // the theme filter still narrows it
   expect(renderKanban(r, { version: null, theme: r.themes.indexOf("tracker"), hideDone: false })).not.toContain("Orphaned work");
+});
+
+// Tickets group by the mirror's `sector:` line; a theme- label is the fallback, "no sector" the bucket for neither.
+test("a ticket with a sector and no theme label groups under its Sector; the old theme label is the fallback", () => {
+  const d = mkdtempSync(join(tmpdir(), "roadmap-sector-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  const mirror = join(d, "m");
+  mkdirSync(mirror);
+  const put = (n: number, sector: string | null, labels: string[]) => writeFileSync(join(mirror, `HIMMEL-${n}.md`),
+    ["---", `key: "HIMMEL-${n}"`, `status: "To Do"`, `statusCategory: "To Do"`, `labels: ${JSON.stringify(labels)}`, `fixVersions: ["v1.1.3"]`,
+      `updated: "2026-10-09T10:00:00.000+0000"`, `sector: ${JSON.stringify(sector)}`, "---", "", `# HIMMEL-${n}: t${n}`, ""].join("\n"));
+  put(1, "Visibility", []);
+  put(2, "Visibility", ["theme-old"]); // the sector beats the retired label
+  put(3, null, ["theme-old"]);
+  put(4, null, []);
+  writeFileSync(join(d, "m.versions.tsv"), "v1.1.3\tfalse\t\n");
+  const r = readRoadmap({ mirrorDir: mirror, workers: { state: "absent" } as never });
+  expect(Object.fromEntries(r.tickets.map((t) => [t.k, r.themes[t.theme]]))).toEqual({ 1: "Visibility", 2: "Visibility", 3: "old", 4: "(no sector)" });
+  expect(r.themes).not.toContain("(no theme)");
+  expect(r.librarian.unthemed.map((p) => p.k)).toEqual([4]);
+  expect(r.librarian.unthemed[0].proposal).toContain("--sector");
+});
+
+test("a GitHub issue with no theme gets the plan proposal, not a Jira edit of the same number", () => {
+  const r = readRoadmap({ mirrorDir: "", github: [{ number: 7, title: "t", state: "OPEN", labels: [], milestone: null }], workers: { state: "absent" } });
+  expect(r.librarian.unthemed.map((p) => p.k)).toEqual([7]);
+  expect(r.librarian.unthemed[0].proposal).not.toContain("jira edit");
 });
 
 test("kanban pages: an empty mirror shows the empty state, not a blank board", () => {

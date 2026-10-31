@@ -10,6 +10,10 @@ or action is watched from the day it lands:
   gh      every pre-commit `repo:`/`rev:` pair and the gitleaks `ver=` literal
           a workflow downloads (workflow `uses:` is Dependabot's, not scanned)
   pypi    every `pip install <pkg>==<ver>` literal in a workflow
+  literal every version literal listed in scripts/upstreams/literal-pins.json
+          (installer, runner and tool VAR=<version> lines, .nvmrc): eco gh
+          (optional tag_prefix) or node (newest LTS); a missing file or
+          literal reads UNCHECKED (HIMMEL-8282)
 
 Latest comes from the npm registry (`curl`) or `gh api` — both looked up via
 PATH so the test harness can stub them. Prints one verdict line per pin and
@@ -118,7 +122,35 @@ def discover(root):
         elif r.startswith("scripts/hooks/") and name.endswith(".sh"):
             for m in re.finditer(r"^OXLINT_VERSION=(\d+\.\d+\.\d+)\s*$", open(p).read(), re.M):
                 add("npm", "oxlint", m.group(1), r)
+    for lit in literal_pins(root):
+        add(lit["eco"], lit["key"], literal_value(root, lit), lit["file"])
     return pins, vendored
+
+
+TAG_PREFIX = {}  # gh key -> tag prefix stripped before comparing (bun-v)
+
+
+def literal_pins(root):
+    path = os.path.join(root, "scripts", "upstreams", "literal-pins.json")
+    if not os.path.exists(path):
+        return []
+    rows = json.load(open(path)).get("pins", [])
+    for row in rows:
+        if row.get("tag_prefix"):
+            TAG_PREFIX[row["key"]] = row["tag_prefix"]
+    return rows
+
+
+def literal_value(root, lit):
+    try:
+        text = open(os.path.join(root, lit["file"])).read()
+    except OSError:
+        return "?"
+    if not lit.get("var"):
+        first = text.split("\n", 1)[0].strip()
+        return first or "?"
+    m = re.search(r"^[ \t]*(?:export[ \t]+)?" + re.escape(lit["var"]) + r"=[\"']?([^\"'\s]+)", text, re.M)
+    return m.group(1) if m else "?"
 
 
 def run(cmd):
@@ -145,17 +177,34 @@ def latest_pypi(pkg):
         return None
 
 
+def latest_node(_key):
+    """Newest LTS line from the Node.js release index (never a Current-only major)."""
+    out = run(["curl", "-fsS", "--max-time", "20", "https://nodejs.org/dist/index.json"])
+    if out.returncode != 0:
+        return None
+    try:
+        releases = json.loads(out.stdout)
+        return next((r["version"] for r in releases if r.get("lts")), None)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
 def semver_key(v):
     return tuple(int(x) for x in re.findall(r"\d+", v.lstrip("vV").split("-")[0])[:4])
 
 
 def latest_gh(repo):
+    prefix = TAG_PREFIX.get(repo, "")
+
+    def strip(tag):
+        return tag[len(prefix):] if prefix and tag.startswith(prefix) else tag
+
     out = run(["gh", "api", f"repos/{repo}/releases/latest", "--jq", ".tag_name"])
-    tag = out.stdout.strip()
+    tag = strip(out.stdout.strip())
     if out.returncode == 0 and STABLE.match(tag):
         return tag
     out = run(["gh", "api", f"repos/{repo}/tags?per_page=100", "--jq", ".[].name"])
-    tags = [t for t in out.stdout.split() if STABLE.match(t)]
+    tags = [strip(t) for t in out.stdout.split() if STABLE.match(strip(t))]
     if out.returncode != 0 or not tags:
         return None
     return max(tags, key=semver_key)
@@ -184,7 +233,7 @@ def main():
 
     def check(item):
         (eco, key, current), where = item
-        latest = {"npm": latest_npm, "pypi": latest_pypi}.get(eco, latest_gh)(key)
+        latest = {"npm": latest_npm, "pypi": latest_pypi, "node": latest_node}.get(eco, latest_gh)(key)
         return eco, key, current, sorted(where), latest
 
     with ThreadPoolExecutor(8) as ex:

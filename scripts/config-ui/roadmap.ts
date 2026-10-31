@@ -14,8 +14,8 @@ const OLD_SYNC_TAG = "[leg-sync]";
 const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
 const TAIL_BYTES = 64 * 1024;
 const TREND_ROWS = 30;
-const NO_THEME = "(no theme)";
-const THEME_PREFIX = "theme-"; // the Jira label `theme-<slug>`, read before the plan overlay
+const NO_SECTOR = "(no sector)";
+const THEME_PREFIX = "theme-"; // the retired Jira label `theme-<slug>`: the fallback for a ticket with no Sector, read before the plan overlay
 const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
 const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
@@ -38,14 +38,14 @@ export type SyncOp = { k: number; marker: string; argv: string[]; why: string };
 export type Roadmap = {
   state: "ok" | "absent"; reason?: string; source: "jira" | "github";
   mirror: { dir: string; count: number; newest: string };
-  releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; themeSlugs: string[]; // themeSlugs: the label slug per theme ("" for no theme)
+  releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; // themes: the Sector groups (wire key kept), "(no sector)" for none
   plan: { state: "ok" | "absent"; reason?: string; dir?: string };
   cur: number; next: number;
   drift: { now: { drift: number; unplanned: number; unthemed: number }; trend: [string, number, number, number][] };
   librarian: { staleInProgress: Proposal[]; drift: Proposal[]; unthemed: Proposal[]; releasedOpen: Proposal[]; duplicates: DupProposal[] };
 };
 type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; workers: Section; github?: GhIssue[] };
-type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; upd: string; title: string; body: string };
+type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; sector: string; upd: string; title: string; body: string };
 
 const text = (f: string) => { try { return readFileSync(f, "utf8"); } catch { return ""; } };
 const json = <T>(s: string | undefined, d: T): T => { try { return s === undefined ? d : JSON.parse(s); } catch { return d; } };
@@ -79,8 +79,9 @@ function readMirror(dir: string): M[] {
     const body = parts.slice(2).join("---");
     const sn = json<unknown>(fm.status, "");
     const res = json<unknown>(fm.resolution, "");
+    const sector = json<unknown>(fm.sector, ""); // `sector: "Visibility"` or null; the line is absent when sectors are off
     out.push({ k, sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
-      upd: unq(fm.updated), title: /^# [A-Z]+-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
+      sector: typeof sector === "string" ? sector.trim() : "", upd: unq(fm.updated), title: /^# [A-Z]+-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
   }
   return out;
 }
@@ -95,7 +96,7 @@ function fromIssues(issues: GhIssue[]): M[] {
     const open = i.state.toUpperCase() === "OPEN";
     const live = labels.map((l) => { const s = slugOf(l).replace(/^status-/, ""); return Object.hasOwn(GH_STATUS, s) ? GH_STATUS[s] : undefined; }).find(Boolean);
     const sn = open ? live ?? "To Do" : i.stateReason?.toUpperCase() === "NOT_PLANNED" ? "Closed" : "Done";
-    return { k: i.number, sn, cat: "", res: "", fv: [i.milestone?.title ?? NO_MILESTONE], labels, upd: i.updatedAt ?? "", title: i.title, body: "" };
+    return { k: i.number, sn, cat: "", res: "", fv: [i.milestone?.title ?? NO_MILESTONE], labels, sector: "", upd: i.updatedAt ?? "", title: i.title, body: "" };
   });
 }
 function ghVersions(issues: GhIssue[]): { n: string; rel: boolean; date: string }[] {
@@ -169,7 +170,7 @@ export function readRoadmap(o: Opts): Roadmap {
   const gh = o.github;
   const mir = gh ? fromIssues(gh) : readMirror(o.mirrorDir);
   const source = gh ? "github" : "jira";
-  const empty: Roadmap = { state: "absent", source, mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_THEME], themeSlugs: [""],
+  const empty: Roadmap = { state: "absent", source, mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_SECTOR],
     plan: { state: "absent" }, cur: -1, next: -1, drift: { now: { drift: 0, unplanned: 0, unthemed: 0 }, trend: [] },
     librarian: { staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] } };
   if (!mir.length) return { ...empty, reason: gh ? "no issues in this GitHub repository" : `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
@@ -185,14 +186,14 @@ export function readRoadmap(o: Opts): Roadmap {
     else planReason = `no stage3/placement.tsv in ${o.planDir}`;
   }
   const themeOf = o.planDir ? readTheme(o.planDir) : new Map<number, string>();
-  // a ticket's Jira theme label wins; a slug that matches a plan theme shows that theme's name.
+  // a ticket's Sector wins; else its retired Jira theme label (a slug that matches a plan theme shows that theme's name); else the plan.
   const planNames = new Map([...themeOf.values()].map((n) => [slugOf(n), n] as [string, string]));
   for (const m of mir) {
     const lab = m.labels.find((l) => l.startsWith(THEME_PREFIX) && l.length > THEME_PREFIX.length);
-    if (lab) themeOf.set(m.k, planNames.get(lab.slice(THEME_PREFIX.length)) ?? lab.slice(THEME_PREFIX.length));
+    if (m.sector) themeOf.set(m.k, m.sector);
+    else if (lab) themeOf.set(m.k, planNames.get(lab.slice(THEME_PREFIX.length)) ?? lab.slice(THEME_PREFIX.length));
   }
-  const themes = [...new Set([NO_THEME, ...themeOf.values()])].sort();
-  const themeSlugs = themes.map((t) => (t === NO_THEME ? "" : slugOf(t)));
+  const themes = [...new Set([NO_SECTOR, ...themeOf.values()])].sort();
 
   // Workers: ticket number -> the last worker listed for it.
   const workers = new Map<number, Worker>();
@@ -211,7 +212,7 @@ export function readRoadmap(o: Opts): Roadmap {
     const v = un.length ? un.reduce((a, b) => (vi.get(b)! < vi.get(a)! ? b : a)) : hit.reduce((a, b) => (vi.get(b)! > vi.get(a)! ? b : a));
     const b = bucketOf(m), pv = place?.get(m.k) ?? null;
     const drift = !place ? 0 : pv !== null ? (pv !== v ? 1 : 0) : isOpen(b) ? 2 : 0;
-    const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_THEME), pv, drift: drift as 0 | 1 | 2,
+    const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_SECTOR), pv, drift: drift as 0 | 1 | 2,
       labels: m.labels, worker: isOpen(b) ? workers.get(m.k) ?? null : null };
     Object.defineProperty(t, "noted", { value: m.body, enumerable: false });
     tickets.push(t);
@@ -228,7 +229,7 @@ export function readRoadmap(o: Opts): Roadmap {
   const next = versions.findIndex((v, i) => i > cur && !v.rel && tickets.some((t) => t.v === i));
 
   const open = tickets.filter((t) => isOpen(t.b));
-  const unthemed = open.filter((t) => themes[t.theme] === NO_THEME);
+  const unthemed = open.filter((t) => themes[t.theme] === NO_SECTOR);
   const now = { drift: tickets.filter((t) => t.drift === 1).length, unplanned: open.filter((t) => t.drift === 2).length, unthemed: unthemed.length };
 
   const prop = (t: Ticket, proposal: string): Proposal => ({ k: t.k, title: t.t, proposal, needsApproval: true });
@@ -240,7 +241,9 @@ export function readRoadmap(o: Opts): Roadmap {
     staleInProgress: tickets.filter((t) => ["prog", "rev", "ci"].includes(t.b) && (!t.worker || t.worker.marker === "WRAPPED" || t.worker.marker === "HALTED"))
       .map((t) => prop(t, t.worker ? `${t.s} but its worker is ${t.worker.marker}: confirm the state, then move it back to To Do or close it` : `${t.s} with no worker: confirm someone is on it, else move it back to To Do`)),
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
-    unthemed: unthemed.map((t) => prop(t, "assign a theme in the plan (stage1 overlay)")),
+    unthemed: unthemed.map((t) => prop(t, source === "github"
+      ? "assign a theme in the plan (stage1 overlay)"
+      : `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
     releasedOpen: open.filter((t) => versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
     duplicates: [...byTitle.values()].filter((g) => g.length > 1).map((g) => ({ keys: g.map((t) => t.k).sort((a, b) => a - b), title: g[0].t,
       proposal: "same title: close all but one, linking the rest to it", needsApproval: true as const })).sort((a, b) => a.keys[0] - b.keys[0]),
@@ -248,7 +251,7 @@ export function readRoadmap(o: Opts): Roadmap {
 
   return {
     state: "ok", source, mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
-    releaseUnknown: unknown, versions, tickets, themes, themeSlugs,
+    releaseUnknown: unknown, versions, tickets, themes,
     plan: place ? { state: "ok", dir: o.planDir } : { state: "absent", reason: planReason },
     cur, next, drift: { now, trend: o.driftLog ? readTrend(o.driftLog) : [] }, librarian,
   };

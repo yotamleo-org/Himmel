@@ -42,8 +42,9 @@ jobs:
           # on exit 3 (never auto-closes on an incomplete run). Strip those
           # machine-local entries for CI so a genuinely all-current registry can
           # still reach exit 0; a real API failure on a remaining entry still
-          # trips exit 3, unchanged.
-          jq '{entries: [.entries[] | select(.mode != "checkout" and .mode != "probe")]}' \
+          # trips exit 3, unchanged. The forks block (holds and pinned
+          # branches) is carried over as is.
+          jq '{entries: [.entries[] | select(.mode != "checkout" and .mode != "probe")], forks: (.forks // [])}' \
             scripts/upstreams.json > fork-drift-ci-upstreams.json
           # The guard's exit code IS the signal (0 current / 2 drift / 3
           # incomplete); capture it without letting `set -e` abort the job.

@@ -77,10 +77,17 @@ if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null
         for (b = 0; b < k; b++) if (load[b] > span[k]) span[k] = load[b]
       }
       limit = (span[n] > target) ? span[n] : target
-      for (k = 1; k <= n; k++) if (span[k] <= limit) { r = (k < m) ? k : m; print r; exit }
+      for (k = 1; k <= n; k++) if (span[k] <= limit) { r = (k < m) ? k : m; print r " " span[k]; exit }
     }
   ' phase=1 "$ledger" phase=2 "$tmp/suites")
 fi
+
+case "$total" in
+  [1-9]*" "*)
+    # Stderr, not the GITHUB_OUTPUT lines: the plan step's log shows what the ledger predicts.
+    echo "plan-shards.sh: predicted longest shard ${total#* }s at N=${total%% *} of $n" >&2
+    total=${total%% *} ;;
+esac
 
 case "$total" in
   0) printf 'shards=[]\nabsent_shards=1\nshard_total=1\n'; exit 0 ;;

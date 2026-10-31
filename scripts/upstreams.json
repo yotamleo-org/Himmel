@@ -1,6 +1,6 @@
 {
   "_comment": "Fleet-wide registry of carried upstreams for scripts/check-plugin-drift.sh (HIMMEL-869/HIMMEL-1435). Covers the remaining shipped fleet and may deliberately overlap a detection surface when this registry supplies repair metadata: claude-obsidian is release-checked through plugin-upstreams.json AND declared here so the nightly fork-resync cadence can audit its rebase. Each entry names a TRUE upstream and how to detect that it has advanced past what himmel carries, so the goal state 'always sync + additive' (fork deltas stay strictly additive on a current upstream base) is observable. Two detection kinds, each a discriminated union on `kind`: (1) commit_head — compare a local commit to the tracked repo's default-branch HEAD. `mode: pin` takes the commit from `pinned_commit` (full or short SHA; short is resolved via gh). `mode: checkout` takes it from a local git checkout at `checkout_path` ($VAR/${VAR} expanded cross-platform by the script's python emitter; absent checkout -> UNCHECKED, never drift). Use `pin` for vendored copies (the dir is NOT a git checkout of upstream — claude-hud) and `checkout` for editable/installed git checkouts (hermes-agent). (2) tag_release — compare a local version to the tracked repo's latest STABLE version tag (highest semver via sort -V, prereleases excluded — same discipline as the claude-obsidian fork override). `mode: base` takes the version from `synced_base` (a recorded literal). `mode: probe` runs `version_command` (simple space-separated tokens) and extracts the version via `version_regex` (a pattern matching the bare version, e.g. `[0-9]+\\\\.[0-9]+\\\\.[0-9]+[0-9A-Za-z.-]*`; no capture group — grep -oE prints the whole match). Use `probe` for installed binaries/CLIs whose version is only knowable by running them (rtk). A `mode: base` entry MAY additionally declare `version_pin` — `{file, template}`, where `template` is a LITERAL string carrying a `{version}` placeholder that occurs EXACTLY ONCE in `file` (e.g. graphify's `GRAPHIFY_VERSION:-{version}` in scripts/lib/graphify-bin.sh). That field is what makes the entry AUTO-BUMPABLE by scripts/upstreams/apply-drift-bump.sh (the nightly drift-fix cadence, HIMMEL-1323): the bumper rewrites the in-repo pin literal and `synced_base` together, so the two can never diverge. A `mode: probe` entry has no in-repo pin at all — its drift is repaired by upgrading the INSTALLED tool on this machine, so it MAY instead declare `upgrade` — `{command, unattended, note}`, where `command` is an argv ARRAY (never a shell string: no shell means no injection surface) run from the repo root. `scripts/upstreams/apply-tool-upgrade.sh` runs it, then re-probes and requires the version to have STRICTLY advanced — a command that exits 0 without moving the version is a failure, not a success. `unattended` is the policy gate the nightly cadence enforces structurally: the cadence always passes `--unattended`, which refuses any entry not marked `unattended: true`, so a Tier B tool (rtk) keeps a working one-command upgrader while still requiring an operator to pull the trigger. An entry WITHOUT `version_pin` (base) or `upgrade` (probe) is reported SKIP (manual) and never touched — that is deliberate for qmd, whose in-repo pin is a fork SHA (`_qmd_fork_ref`), not a version: moving its `synced_base` alone would flip the guard to CURRENT while the fork sits unrebased, laundering the very signal the entry exists to raise. `tier` is informational only (A=proactive-adopt, B=reactive-adopt per the HIMMEL-850 audit) and appears in the guard's output so a reader can tell expected-churn (Tier B usually reads BEHIND by design) from a genuine stale pin. Installed marketplaces (obsidian-skills, openai-codex, claude-video, claude-plugins-official, ...) are NOT listed here: they are discovered dynamically from ~/.claude/plugins/known_marketplaces.json (DRIFT_KNOWN_MARKETPLACES override) so the guard auto-covers any future marketplace install, each checked as a commit_head/checkout against its source repo. Registry forks (qmd and claude-obsidian) are mechanically rebased and delta-classified by resync-fork.sh; claude-obsidian's carried delta is strictly additive as of v2.1.1-himmel.1 and its unattended audit stops without pushing. UPSTREAM_PIN vendored forks retain a manual file-level delta judgment — see the script header. The six luna-* rows cover third-party Obsidian plugin assets bundled in templates/luna-second-brain; they have no version_pin because repair is a reviewed re-vendor, so the nightly bump worker reports SKIP (manual) while detection remains automatic.",
-  "_fork_checks": "Fork defaults are discovered with gh repo list yotamleo --fork and compared to their parent's default branch, independently of release-tag checks. Optional forks: [{fork_repo, branch, hold-reason}] adds pinned branches or holds a fork default when branch is omitted. Entry fork blocks here and in scripts/plugin-upstreams.json accept the same branch and hold-reason fields. A nonempty hold-reason suppresses that branch's fork-behind action row; omit or clear it to resume checks. Repair is gh repo sync only when ahead=0 and branch names match; carried commits or differing upstream/fork branch names require /fork-resync. These are report-only checks; no fork is synced automatically.",
+  "_fork_checks": "Fork defaults are discovered with gh repo list --fork for yotamleo and for every owner in scripts/guardrails/himmel-adapters.json (each adapter row with an upstream also adds its himmel_branch, HIMMEL-8282) and compared to their parent's default branch, independently of release-tag checks. Optional forks: [{fork_repo, branch, hold-reason}] adds pinned branches or holds a fork default when branch is omitted. Entry fork blocks here and in scripts/plugin-upstreams.json accept the same branch and hold-reason fields. A nonempty hold-reason suppresses that branch's fork-behind action row; omit or clear it to resume checks. Repair is gh repo sync only when ahead=0 and branch names match; carried commits or differing upstream/fork branch names require /fork-resync. An archived fork reads ARCHIVED (read-only, not drift). These are report-only checks; the guard syncs no fork.",
   "coverage_audit": {
     "_comment": "HIMMEL-1435 zero-gap inventory across marketplace pins, plugin-upstreams overrides, vendored UPSTREAM_PIN files, this registry, and known_marketplaces dynamic discovery. Keep explicit SKIP rows for deliberately untracked carried code so absence never looks accidental.",
     "covered_elsewhere": [
@@ -9,9 +9,14 @@
       { "name": "claude-hud", "surface": "claude-hud registry row + scripts/statusline/check-hud-drift.sh vendored-tree hash" },
       { "name": "scripts/lib pinned binaries", "surface": "graphify and qmd registry rows; no other scripts/lib helper carries an upstream pin" },
       { "name": "codex companion and installed marketplaces", "surface": "known_marketplaces.json dynamic discovery" },
-      { "name": "npm/bun deps, pre-commit revs, workflow actions, gitleaks ver=, OXLINT_VERSION=", "surface": "scripts/upstreams/pin-scan.py (HIMMEL-3807) discovers them by scanning the repo, so no registry row is needed; deliberate holds in scripts/upstreams/pin-holds.json" }
+      { "name": "npm/bun deps, pre-commit revs, workflow pip literals, gitleaks ver=, OXLINT_VERSION=", "surface": "scripts/upstreams/pin-scan.py (HIMMEL-3807) discovers them by scanning the repo, so no registry row is needed; deliberate holds in scripts/upstreams/pin-holds.json" },
+      { "name": "installer, runner and tool version literals (installer-pins.sh, .nvmrc, CI runner, bun, gitleaks, Prometheus, Grafana)", "surface": "scripts/upstreams/literal-pins.json, read by pin-scan.py (HIMMEL-8282)" },
+      { "name": "workflow uses:, .github/ci-image Dockerfile and pip, obsidian-triage pip", "surface": "Dependabot (one owner per pin, HIMMEL-4258); pin-scan does not scan them" },
+      { "name": "adapter forks", "surface": "fork-behind discovery over every scripts/guardrails/himmel-adapters.json owner and himmel_branch (HIMMEL-8282)" },
+      { "name": "station-only tools (shfmt, bats, hermes-agent checkout, installed rtk)", "surface": "station probes in check-plugin-drift.sh; stripped in CI by .github/workflows/fork-drift.yml" }
     ],
     "skips": [
+      { "name": "pstack", "reason": "Owned by HIMMEL-6690; tracked there, not by this registry." },
       { "name": "claude-statusline", "reason": "Archived rollback-only subtree superseded by claude-hud; its fork is archived and re-vendor path deliberately closed (scripts/statusline/VENDORED.md)." },
       { "name": "luna optional plugin pointers", "reason": "Templater, Excalidraw, Thino, and Charts are documentation-only suggestions, not bundled assets; user-managed Obsidian installs own their updates." },
       { "name": "scripts/cr/floor-reviewer.md", "reason": "Adapted from the Apache-2.0 pr-review-toolkit code-reviewer agent (attribution in THIRD-PARTY-NOTICES.md); it is himmel's own reviewer prompt now, loaded by claude-floor-review.sh, and is deliberately not tracked for upstream drift." }
@@ -19,6 +24,8 @@
   },
   "forks": [
     { "fork_repo": "yotamleo-org/effective-html", "branch": "himmel-main", "hold-reason": "env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges (HIMMEL-7170)" },
+    { "fork_repo": "yotamleo-org/core", "branch": "dev", "hold-reason": "env-literal-ok: fork identity registry; Home Assistant voice fork held by operator ruling (HIMMEL-8333); never synced by the drift pass" },
+    { "fork_repo": "yotamleo-org/home-assistant.io", "branch": "current", "hold-reason": "env-literal-ok: fork identity registry; Home Assistant voice docs fork held by operator ruling (HIMMEL-8333); never synced by the drift pass" },
     { "fork_repo": "yotamleo/effective-html", "hold-reason": "env-literal-ok: fork identity registry; head repo of upstream plannotator/effective-html#31, keep until it merges or closes (HIMMEL-7170)" },
     { "fork_repo": "yotamleo/claude-obsidian", "hold-reason": "de-forked (HIMMEL-2925): upstream absorbed our carried delta at v2.2.0 and marketplace.json pins AgriciDaniel/claude-obsidian directly; the fork is a retired archive, not consumed (HIMMEL-6126)" },
     { "fork_repo": "yotamleo/claude-squad", "hold-reason": "fork archived and the cs integration removed (HIMMEL-929); nothing consumes it (HIMMEL-6126)" }
@@ -32,6 +39,24 @@
       "synced_base": "v3.0.1",
       "tier": "A",
       "note": "DE-FORKED in HIMMEL-2925: yotamleo/claude-obsidian carried a strictly-additive delta (PR #178 UTF-8 test-stdout guards, a README attribution banner) that upstream fully absorbed by v2.2.0 (#178 merged, #179 CRLF-frontmatter fix shipped) — resync-fork.sh then had nothing left to rebase (rc=4, conflicts against our own merged change), so the fork is retired (kept as an archive at yotamleo/claude-obsidian, not deleted) and marketplace.json pins straight to upstream. Installed from marketplace/.claude-plugin/marketplace.json at an immutable tag; keep synced_base equal to scripts/plugin-upstreams.json on every bump."
+    },
+    {
+      "name": "humanizer",
+      "kind": "commit_head",
+      "mode": "pin",
+      "tracked_repo": "blader/humanizer",
+      "pinned_commit": "225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8",
+      "tier": "B",
+      "note": "Vendored at marketplace/plugins/humanizer (VENDORED.md records the same commit). Repair is a reviewed re-copy at the new commit (HIMMEL-8282)."
+    },
+    {
+      "name": "i-have-adhd",
+      "kind": "commit_head",
+      "mode": "pin",
+      "tracked_repo": "ayghri/i-have-adhd",
+      "pinned_commit": "723af7d9afaf43eb871dbcce6129e2bf80de90d5",
+      "tier": "B",
+      "note": "Vendored at marketplace/plugins/i-have-adhd (VENDORED.md records the same commit); upstream publishes no release tag, so the row is a commit pin. Repair is a reviewed re-copy at the new commit (HIMMEL-8282)."
     },
     {
       "name": "claude-hud",
@@ -193,7 +218,7 @@
       "synced_base": "2.8.3",
       "tier": "B",
       "fork": {
-        "fork_repo": "https://github.com/yotamleo/qmd.git",
+        "fork_repo": "https://github.com/yotamleo-org/qmd.git", "identity": "env-literal-ok: the carried qmd fork",
         "branch": "main",
         "upstream_repo": "https://github.com/tobi/qmd.git",
         "pin_file": "scripts/lib/qmd-bin.sh",
