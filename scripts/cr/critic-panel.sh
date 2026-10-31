@@ -668,6 +668,43 @@ _verify_base_pin() {
     fi
 }
 
+# _fork_upstream_base <root> <base> <head> — on one of our forks
+# (origin is a scripts/guardrails/himmel-adapters.json row with an upstream)
+# the panel reviews only our authored delta, never upstream code. When the
+# head sits on upstream commits the base lacks, print the merge-base of head
+# with the upstream default branch (`refs/remotes/<upstream>/HEAD`; it must
+# descend from the base merge-base) and announce how many upstream-authored
+# commits it excludes. Prints nothing — the normal base...head review — on
+# anything else, including a missing jq, registry or upstream HEAD ref.
+_fork_upstream_base() {
+    command -v jq >/dev/null 2>&1 || return 0
+    _fk_reg="${HIMMEL_REPO:-$SCRIPT_DIR/../..}/scripts/guardrails/himmel-adapters.json"
+    [ -r "$_fk_reg" ] || return 0
+    _fk_url="$(git -C "$1" remote get-url origin 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    _fk_nwo="$(printf '%s\n' "$_fk_url" | sed -nE 's#.*github\.com[:/]([^/]+/[^/]+)$#\1#p' | sed 's#\.git$##')"
+    [ -n "$_fk_nwo" ] || return 0
+    _fk_up="$(jq -r --arg n "$_fk_nwo" '.[] | select((.nwo | ascii_downcase) == ($n | ascii_downcase)) | .upstream // empty' "$_fk_reg" 2>/dev/null)"  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    [ -n "$_fk_up" ] || return 0
+    _fk_upl="$(printf '%s' "$_fk_up" | tr '[:upper:]' '[:lower:]')"
+    _fk_remote=""
+    for _r in $(git -C "$1" remote); do
+        case "$(git -C "$1" remote get-url "$_r" 2>/dev/null | tr '[:upper:]' '[:lower:]')" in  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+            *"/$_fk_upl"|*"/$_fk_upl.git"|*":$_fk_upl"|*":$_fk_upl.git") _fk_remote="$_r"; break ;;
+        esac
+    done
+    [ -n "$_fk_remote" ] || return 0
+    _fk_bmb="$(git -C "$1" merge-base "$2" "$3" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    # Only upstream's default branch counts as upstream code: an unmerged
+    # upstream branch may hold our own commits.
+    _ref="$(git -C "$1" symbolic-ref -q "refs/remotes/$_fk_remote/HEAD")" || return 0  # swallow-ok: no upstream default known keeps the normal base...head review
+    _mb="$(git -C "$1" merge-base "$_ref" "$3" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    [ "$_mb" != "$_fk_bmb" ] || return 0
+    git -C "$1" merge-base --is-ancestor "$_fk_bmb" "$_mb" 2>/dev/null || return 0
+    _fk_n="$(git -C "$1" rev-list --count "$_fk_bmb..$_mb" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    echo "critic-panel.sh: fork PR — reviewing only our authored delta; $_fk_n upstream-authored commit(s) excluded (${_ref#refs/remotes/})" >&2
+    printf '%s\n' "$_mb"
+}
+
 # Resolve the reviewed repository + exact head before running any critic. The
 # --worktree path owns both the diff and the ledger location, so a stale caller
 # cwd cannot silently review/stamp a different checkout. Stdin mode deliberately
@@ -697,14 +734,21 @@ if [ -n "$WORKTREE" ]; then
     # capture-once reason $_head is a snapshot: re-reading the ref here would
     # reopen the window _verify_base_pin just closed. Diagnostics keep naming
     # $_base — the operator-visible intent.
-    diff_in="$(git -C "$REVIEW_ROOT" diff "${BASE_PIN:-$_base}...$_head")"
+    _range="${BASE_PIN:-$_base}...$_head"
+    _fork_mb="$(_fork_upstream_base "$REVIEW_ROOT" "${BASE_PIN:-$_base}" "$_head")"
+    _range_label="$_base...HEAD"
+    if [ -n "$_fork_mb" ]; then
+        _range="$_fork_mb..$_head"
+        _range_label="$_range"
+    fi
+    diff_in="$(git -C "$REVIEW_ROOT" diff "$_range")"
     _diff_rc=$?
     if [ "$_diff_rc" -ne 0 ]; then
-        echo "critic-panel.sh: git diff $_base...HEAD failed in $REVIEW_ROOT (rc=$_diff_rc)" >&2
+        echo "critic-panel.sh: git diff $_range_label failed in $REVIEW_ROOT (rc=$_diff_rc)" >&2
         exit 5
     fi
     if [ -z "$diff_in" ]; then
-        echo "critic-panel.sh: REFUSING empty --worktree diff (git -C $REVIEW_ROOT diff $_base...HEAD produced no output)" >&2
+        echo "critic-panel.sh: REFUSING empty --worktree diff (git -C $REVIEW_ROOT diff $_range_label produced no output)" >&2
         exit 4
     fi
 else

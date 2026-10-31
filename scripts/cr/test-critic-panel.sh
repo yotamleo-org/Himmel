@@ -1008,6 +1008,75 @@ bash "$PANEL" --worktree "$tmp/not-a-worktree" > "$tmp/wt-bad-out" 2> "$tmp/wt-b
 check "WT3: non-worktree path uses distinct exit" "$wt_bad_rc" "3"
 check_contains "WT3: non-worktree refusal is explicit" "$(cat "$tmp/wt-bad-err")" "is not a git worktree"
 
+# Test FORK: on one of our forks the panel reviews only our
+# authored delta. The branch sits on upstream commits the base lacks; those
+# upstream-authored files never reach a critic. Registry = the real one.
+FK_REPO="$tmp/fork-review"
+FK_HIMMEL="$tmp/fork-himmel"
+mkdir -p "$FK_HIMMEL/scripts/guardrails"
+cp "$HERE/../guardrails/himmel-adapters.json" "$FK_HIMMEL/scripts/guardrails/himmel-adapters.json"
+git init -q "$FK_REPO"
+git -C "$FK_REPO" config commit.gpgsign false
+git -C "$FK_REPO" config core.hooksPath .git/hooks
+git -C "$FK_REPO" checkout -q -b main
+git -C "$FK_REPO" config user.name test
+git -C "$FK_REPO" config user.email test@example.invalid
+git -C "$FK_REPO" remote add origin https://github.com/yotamleo-org/graphify.git
+git -C "$FK_REPO" remote add upstream https://github.com/Graphify-Labs/graphify.git
+printf 'base\n' > "$FK_REPO/base.txt"
+git -C "$FK_REPO" add base.txt
+git -C "$FK_REPO" commit -q -m base
+printf 'upstream code\n' > "$FK_REPO/upstream-authored.txt"
+git -C "$FK_REPO" add upstream-authored.txt
+git -C "$FK_REPO" commit -q -m upstream
+git -C "$FK_REPO" update-ref refs/remotes/upstream/v8 HEAD
+git -C "$FK_REPO" symbolic-ref refs/remotes/upstream/HEAD refs/remotes/upstream/v8
+git -C "$FK_REPO" reset -q --hard HEAD~1
+git -C "$FK_REPO" checkout -q -b feature refs/remotes/upstream/v8
+printf 'ours\n' > "$FK_REPO/our-carried.txt"
+git -C "$FK_REPO" add our-carried.txt
+git -C "$FK_REPO" commit -q -m ours
+FK_CAPTURE="$tmp/fork-panel-input"
+FK_STUB="$tmp/stub-cfp-capture.sh"
+printf '%s\n' '#!/usr/bin/env bash' "tee -a \"$FK_CAPTURE\" | python3 \"$STUB_PY\" \"\$@\"" > "$FK_STUB"
+chmod +x "$FK_STUB"
+: > "$FK_CAPTURE"
+HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND="$LEDGER_NOOP" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$FK_STUB" \
+    bash "$PANEL" --worktree "$FK_REPO" > "$tmp/fork-out" 2> "$tmp/fork-err"
+check "FORK1: fork --worktree review runs" "$?" "0"
+check_contains "FORK1: our carried file reaches the critics" "$(cat "$FK_CAPTURE")" "our-carried.txt"
+if grepq "$(cat "$FK_CAPTURE")" -F "upstream-authored.txt"; then
+    echo "FAIL - FORK1: upstream-authored commit reached the panel input"; fails=$((fails + 1))
+else
+    echo "ok - FORK1: upstream-authored commit is excluded from the panel input"
+fi
+check_contains "FORK1: the exclusion is announced" "$(cat "$tmp/fork-err")" "1 upstream-authored commit(s) excluded"
+
+# FORK2: an unmerged upstream branch that happens to contain our carried
+# commit is not upstream's code; only the upstream default branch narrows.
+git -C "$FK_REPO" update-ref refs/remotes/upstream/side HEAD
+: > "$FK_CAPTURE"
+HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND="$LEDGER_NOOP" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$FK_STUB" \
+    bash "$PANEL" --worktree "$FK_REPO" > "$tmp/fork2-out" 2> "$tmp/fork2-err"
+check "FORK2: fork review with an extra upstream branch runs" "$?" "0"
+check_contains "FORK2: our carried file still reaches the critics" "$(cat "$FK_CAPTURE")" "our-carried.txt"
+
+# FORK3: a branch holding only upstream commits narrows to an empty diff; the
+# refusal names the range that was diffed, not main...HEAD.
+git -C "$FK_REPO" checkout -q -b onlyup refs/remotes/upstream/v8
+HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND="$LEDGER_NOOP" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$FK_STUB" \
+    bash "$PANEL" --worktree "$FK_REPO" > "$tmp/fork3-out" 2> "$tmp/fork3-err"
+check "FORK3: an upstream-only fork branch refuses the empty diff" "$?" "4"
+if grepq "$(cat "$tmp/fork3-err")" -F "...HEAD"; then
+    echo "FAIL - FORK3: the refusal names main...HEAD, not the narrowed range: $(cat "$tmp/fork3-err")"; fails=$((fails + 1))
+else
+    echo "ok - FORK3: the refusal names the narrowed range"
+fi
+git -C "$FK_REPO" checkout -q feature
+
 # ── --head pins the review inputs to the caller's captured SHA ──
 # /pr-check captures branch+HEAD up front and stamps every ledger row with that
 # SHA, but the panel resolved its own head (and its --worktree diff) from LIVE

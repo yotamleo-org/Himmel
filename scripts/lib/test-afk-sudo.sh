@@ -528,6 +528,80 @@ out=$(rr 0 --cwd "$R" -- sh later.sh); id=$(rid "$out")
 printf 'echo hi\n' > "$R/later.sh"
 assert_contains "an argument that named no file at request and names one at exec reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 
+echo "== HIMMEL-8250: the file the executor hashed is the file it starts =="
+# swap-start.py <lib> <id> <target> <evil> <op>: approve <id>, but rename <evil> over <target> the instant before
+# the command is started (after every check), the swap a session that can write the directory could make.
+cat > "$tmp/swap-start.py" <<'SWAPSTART'
+import os, subprocess, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+real_popen = subprocess.Popen
+def swapping(*a, **k):
+    os.replace(sys.argv[4], sys.argv[3])
+    return real_popen(*a, **k)
+with patch.object(subprocess, "Popen", swapping):
+    sys.exit(s.main(["approve", sys.argv[2], "--from", sys.argv[5], "--chat", sys.argv[5]]))
+SWAPSTART
+swap_approve() { printf '%s\n' "$(code "$1")" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) AFK_SUDO_RUN=1 python3 -I "$tmp/swap-start.py" "$LIB" "$2" "$3" "$4" "$OP" 2>&1; }
+new_root swapargv0; cfg "$ALL" true
+printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
+out=$(rr 0 -- "$R/bin/mytool"); id=$(rid "$out")
+swap_approve 3 "$id" "$R/bin/mytool" "$R/evil" >/dev/null
+assert_eq "RED 8250: an argv0 swapped after the checks did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original argv0 ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+new_root swapscript; cfg "$ALL" true
+printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' "$R" > "$R/evil.sh"
+out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
+swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
+assert_eq "RED 8250: a script argument swapped after the checks did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original script ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+new_root samebytes; cfg "$ALL" true
+printf '#!/bin/sh\nexit 0\n' > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+out=$(rr 0 -- "$R/bin/mytool"); id=$(rid "$out")
+cp -p "$R/bin/mytool" "$R/bin/mytool.new"; mv "$R/bin/mytool.new" "$R/bin/mytool"
+assert_contains "RED 8250: an argv0 replaced by a same-bytes file (new inode) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root samebytesarg; cfg "$ALL" true
+printf 'echo hi\n' > "$R/x.sh"
+out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
+cp -p "$R/x.sh" "$R/x.sh.new"; mv "$R/x.sh.new" "$R/x.sh"
+assert_contains "RED 8250: a file argument replaced by a same-bytes file (new inode) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root swapoptarg; cfg "$ALL" true
+printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' "$R" > "$R/evil.sh"
+out=$(rr 0 --cwd "$R" -- sh -o errexit x.sh); id=$(rid "$out")
+swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
+assert_eq "RED 8250: a script after an option that takes a word, swapped after the checks, did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original script after that option ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+# swap-request.py <lib> <cwd> <target> <evil> <argv0>: file a run request, but rename <evil> over <target> between the
+# file snapshot and the argv0 snapshot, so the two frozen records of one path disagree.
+cat > "$tmp/swap-request.py" <<'SWAPREQ'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+real_collect = s.collect_files
+def racing(*a, **k):
+    out = real_collect(*a, **k)
+    os.replace(sys.argv[4], sys.argv[3])
+    return out
+s.collect_files = racing
+sys.exit(s.main(["run-request", "--session", "S1", "--ticket", "HIMMEL-8067", "--blocked-by", "classifier", "--cwd", sys.argv[2], "--", sys.argv[5]]))
+SWAPREQ
+new_root conflict; cfg "$ALL" true
+printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I "$tmp/swap-request.py" "$LIB" "$R" "$R/bin/mytool" "$R/evil" "$R/bin/mytool" </dev/null 2>&1); id=$(rid "$out")
+assert_contains "RED 8250: an argv0 and a file record of one path that disagree report changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+assert_eq "RED 8250: the file the operator was shown did not run as the swapped one" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+# The descriptors handed to the run are path-only (O_PATH): the helper opened the file as root, and a program that
+# starts before the script as the run-as user must not be able to read through them (Linux checks access at open).
+new_root leakfd; cfg "$ALL" true
+printf 'import os\nopen("%s/py-ran", "w").close()\nfor n in range(3, 40):\n    try:\n        os.lseek(n, 0, 0)\n        if os.read(n, 1):\n            open("%s/leak", "w").close()\n    except OSError:\n        pass\n' "$R" "$R" > "$R/x.py"
+out=$(rr 0 --cwd "$R" -- python3 x.py); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+assert_eq "RED 8250: control: the script started from its held descriptor ran" "yes" "$([ -e "$R/py-ran" ] && echo yes || echo no)"
+assert_eq "RED 8250: the run cannot read the helper's descriptors" "no" "$([ -e "$R/leak" ] && echo yes || echo no)"
+
 echo "== slice 1a (judge KS-j4307-1): what is hashed is what runs, and every element keeps its target =="
 new_root argv0lnk; cfg "$ALL" true
 mkdir -p "$R/real/sub"

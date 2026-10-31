@@ -382,6 +382,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	0
 scripts/handover/chief-kit/test-ack-denial.sh	2
 scripts/handover/chief-kit/test-action-zero.sh	6
 scripts/handover/chief-kit/test-append-results.sh	38
+scripts/handover/chief-kit/test-auto-go.sh	25
 scripts/handover/chief-kit/test-board.sh	52
 scripts/handover/chief-kit/test-brief-lint.sh	7
 scripts/handover/chief-kit/test-chain-graph.sh	3
@@ -610,6 +611,7 @@ scripts/hooks/test-block-destructive-commands-d.sh	68
 scripts/hooks/test-block-docker-privesc.sh	20
 scripts/hooks/test-block-edit-live-settings.sh	148
 scripts/hooks/test-block-edit-on-main.sh	4
+scripts/hooks/test-block-fork-sync-pr.sh	1
 scripts/hooks/test-block-git-stash.sh	16
 scripts/hooks/test-block-worker-bypass-scope.sh	4
 scripts/hooks/test-block-worker-write-fence.sh	22
