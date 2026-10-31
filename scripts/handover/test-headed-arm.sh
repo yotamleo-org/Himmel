@@ -2386,6 +2386,18 @@ for _m43f in headed headless; do
   check "43f $_m43f chief: the --settings profile is the lean one" "$lean43f" "lean"
 done
 
+# --- 43g: a missing chief brief refuses the chief launch. The tree's
+# scripts/ links to the real scripts but it has no docs/, so the brief is absent.
+d43g="$tmp/c43g"; mk_stub "$d43g" 1 alive
+mkdir -p "$d43g/tree/scripts"
+for _e43g in "$(cd "$HERE/.." && pwd)"/*; do ln -s "$_e43g" "$d43g/tree/scripts/"; done
+rc43g=0
+out43g=$(HIMMEL_PROFILE_SETTINGS_DIR="$d43g/profiles" HEADED_ARM_CLAUDE_CLI=true \
+  KONSOLE_CMD="$d43g/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43g/locks" HEADED_ARM_PROC="$d43g/proc" \
+  bash "$d43g/tree/scripts/handover/headed-arm.sh" --dry-run --role chief "HIMMEL-lean43g" "doc43g.md" "$d43g/signal-never" "$PAST" "$d43g/log" 2>&1) || rc43g=$?
+check "43g chief with no brief: exit 2" "$rc43g" "2"
+contains "43g chief with no brief: the refusal names the brief" "$out43g" "chief-adhd-brief.md is missing"
+
 # --- bb: HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
 # the session name via `bus bind <name> <pid>`. The bus CLI is a recording stub
 # (HEADED_ARM_BUS_CLI); the flag is consumed, never leaked into the session.

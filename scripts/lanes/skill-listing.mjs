@@ -96,7 +96,9 @@ export const requiredIdsFor = (profile) => ROLE_REQUIRES[profile] ?? [];
 
 // Skills a role never invokes, hidden from its model as
 // 'user-invocable-only'. Never list a skill that a chief doc or command tells
-// the model to invoke.
+// the model to invoke. The value is from Claude Code's settings schema
+// (2.1.316, skillOverrides): "user-invocable-only" hides it from the model but
+// keeps /name.
 export const ROLE_HIDDEN_SKILLS = {
   chief: [
     'artifact-design', 'artifact-diagramming', 'artifact-capabilities', 'plugin-authoring', 'adversarial-verify',

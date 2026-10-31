@@ -2176,3 +2176,13 @@ test('HIMMEL-4983: a profile list denies a tool only when every member does', ()
   assert.ok(!mixed.permissions?.deny, 'design may need Artifact: one member without the deny keeps every tool');
   assert.ok(!Object.hasOwn(mixed, 'disableWorkflows'));
 });
+
+test('resolveProfile hides the skills the chief never invokes as user-invocable-only; worker-impl hides none', async () => {
+  await PP.loadListingLib();
+  const skillEntries = [{ scope: 'user-skills', name: 'find-docs', countedRoutingChars: 300, chars: 311, path: '/h/.claude/skills/find-docs/SKILL.md' }];
+  const chief = resolveProfile(REG, 'chief', { installed: [], skillEntries });
+  assert.equal(chief.skillOverrides.pptx, 'user-invocable-only');
+  const worker = resolveProfile(REG, 'worker-impl', { installed: [], skillEntries });
+  assert.equal(worker.skillOverrides.pptx, 'name-only');
+  assert.ok(!Object.values(worker.skillOverrides).includes('user-invocable-only'));
+});

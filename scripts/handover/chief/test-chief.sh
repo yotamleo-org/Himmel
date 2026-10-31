@@ -232,6 +232,16 @@ check "5b launch line carries --settings <chief profile>" \
 # The lean chief carries its own 1 KB reply-style brief, not the i-have-adhd plugin.
 check "5b launch line carries --append-system-prompt-file <chief-adhd-brief.md>" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--append-system-prompt-file [^ ]*/docs/handover/chief-adhd-brief.md --autocompact ')" "1"
+# --- 5e: a missing chief brief refuses the launch line. The tree's scripts/
+# links to the real scripts but it has no docs/, so the brief is absent.
+t5e="$tmp/tree5e"; mkdir -p "$t5e/scripts"
+for _e5e in "$(cd "$HERE/../.." && pwd)"/*; do ln -s "$_e5e" "$t5e/scripts/"; done
+rc5e=0
+out5e="$(cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/defaultwork" \
+    bash "$t5e/scripts/handover/chief/chief.sh" new --bucket dryrepo5e --dry-run 2>&1)" || rc5e=$?
+check "5e chief with no brief: exit 2" "$rc5e" "2"
+check "5e chief with no brief: the refusal names the brief" \
+    "$(printf '%s\n' "$out5e" | grep -c -- 'chief-adhd-brief.md is missing')" "1"
 # The chief loads only its profile's MCP servers (no graphify).
 check "5b launch line carries --mcp-config <console.mcp.json> --strict-mcp-config" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--mcp-config [^ ]*/console.mcp.json --strict-mcp-config ')" "1"
