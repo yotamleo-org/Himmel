@@ -310,13 +310,28 @@ lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 # never a session's. list and check stay allowed. ANSI-C escapes are decoded and
 # quotes and backslashes stripped first, so $'\x72estore', 'restore' or acc\ept is
 # still the verb; so is the sourced form (config_audit_main, _ca_node, _ca_restore).
-lcv="${lc//\$\'/\'}"; lcv="${lcv//\$\"/\"}"
-while [[ "$lcv" =~ \\(x[0-9a-f]{1,2}|[0-7]{1,3}) ]]; do
+# Decoding runs on the case-kept text (\u and \U differ) and must shrink it each
+# pass; an escape that does not decode (a shell without \u) is refused.
+lcv="${cmd//$'\r'/}"; lcv="${lcv//\$\'/\'}"; lcv="${lcv//\$\"/\"}"
+while [[ "$lcv" =~ \\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}) ]]; do
     _e="${BASH_REMATCH[1]}"
-    case "$_e" in x*) _ch=$(printf %b "\\x${_e#x}") ;; *) _ch=$(printf %b "\\0${_e}") ;; esac
-    lcv="${lcv/"\\$_e"/$_ch}"
+    { case "$_e" in [xuU]*) _ch=$(printf %b "\\$_e") ;; *) _ch=$(printf %b "\\0${_e}") ;; esac; } 2>/dev/null
+    _n=${#lcv}
+    lcv="${lcv/"\\$_e"/"$_ch"}"
+    [ "${#lcv}" -lt "$_n" ] || deny "the command carries an escape (\\$_e) the guard cannot decode"
 done
 lcv=$(printf '%s' "$lcv" | tr -d "\"'\\\\" | tr '[:upper:]' '[:lower:]')
+# A command naming the audit or restore helper is spelled plainly: the shell
+# would otherwise build the verb the guard reads (a variable, $'..', $(..),
+# backticks, brace expansion). A $NAME/ path prefix is the one expansion kept.
+_ckw='(config-audit|config_audit|config-restore|_ca_(js|node|restore))'
+if [[ "$lc" =~ $_ckw ]] || [[ "$lcv" =~ $_ckw ]]; then
+    _plain="the config audit or restore helper is named with shell expansion; spell it plainly (a \$NAME/ path prefix is fine), e.g. bash \"\$HIMMEL_REPO/scripts/lib/config-audit.sh\" list"
+    _rest=$(printf '%s' "$cmd" | sed -E 's/\$[A-Za-z_][A-Za-z0-9_]*\///g')
+    case "$_rest" in *'$'*) deny "$_plain (it carries a \$ expansion)" ;; esac
+    case "$cmd" in *'`'*) deny "$_plain (it carries a backtick)" ;; esac
+    if [[ "$cmd" =~ \{[^}]*(,|\.\.)[^}]*\} ]]; then deny "$_plain (it carries a brace expansion)"; fi
+fi
 _verb=""
 if [[ "$lcv" =~ (config-audit|config_audit_main|_ca_node)[^\|\;\&]*[[:space:]](restore|accept)([^a-z0-9_-]|$) ]]; then
     _verb="${BASH_REMATCH[2]}"

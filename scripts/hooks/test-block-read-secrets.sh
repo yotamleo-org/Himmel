@@ -1539,6 +1539,8 @@ assert_rc "8401 Bash cat a backup env"           2 "$(run_case "$(j_bash "cat $C
 assert_rc "8401 Bash cat a backup himmel.conf"   2 "$(run_case "$(j_bash "cat $CAB/himmel.conf")")"
 assert_rc "8401 Bash grep -r the backups dir"    2 "$(run_case "$(j_bash 'grep -r TOKEN ~/.himmel/state/config-audit/backups')")"
 assert_rc "8401 Grep path=the config-audit dir"  2 "$(run_case "$(j_grep '/home/user/.himmel/state/config-audit')")"
+assert_rc "8401 Read the restore seed"           2 "$(run_case "$(j_read '/home/user/.himmel/secrets/config-restore.seed')")"
+assert_rc "8401 Bash cat the restore seed"       2 "$(run_case "$(j_bash 'cat ~/.himmel/secrets/config-restore.seed')")"
 assert_rc "8401 Read the audit log is allowed"   0 "$(run_case "$(j_read '/home/user/.himmel/state/config-audit/audit.jsonl')")"
 CALINK=$(mktemp -d "${TMPDIR:-/tmp}/rs-calink.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 mkdir -p "$CALINK/station/state/config-audit/backups/20261031T184732Z-d6c6"

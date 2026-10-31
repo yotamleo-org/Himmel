@@ -25,10 +25,11 @@ pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
-# run <label> <block|allow> <json>
+# run <label> <block|allow> <json>; a guard that hangs fails its row (rc 124)
+TO=""; command -v timeout >/dev/null 2>&1 && TO="timeout 10"
 run() {
     local label="$1" expect="$2" json="$3" rc got
-    printf '%s' "$json" | bash "$HOOK" >/dev/null 2>&1
+    printf '%s' "$json" | $TO bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label - expected $expect got $got"; fi
@@ -438,6 +439,20 @@ bash_case "a sourced config_audit_main list -> allow" allow ". scripts/lib/confi
 bash_case "config-audit list -> allow" allow "bash scripts/lib/config-audit.sh list"
 bash_case "config-audit check -> allow" allow "bash scripts/lib/config-audit.sh check"
 bash_case "a grep for the restore verb in the source -> allow" allow "git grep -n restore -- scripts/lib/config-audit.sh"
+echo "== the helper is spelled plainly (HIMMEL-8401 shell-parsing round) =="
+bash_case "an encoded & (\\x26) does not hang the guard -> allow" allow "printf '\\x26\\n'"
+bash_case "an encoded & (\\46) does not hang the guard -> allow" allow "printf '\\46\\n'"
+bash_case "an encoded & (\\046) does not hang the guard -> allow" allow "printf '\\046\\n'"
+bash_case "an ANSI-C & beside the helper -> block" block "bash scripts/lib/config-audit.sh \$'\\x26' list"
+bash_case "a \\u-spelled restore verb -> block" block "bash scripts/lib/config-audit.sh \$'\\u0072estore' 20261031T120000Z-ab12"
+bash_case "a \\U-spelled restore verb -> block" block "bash scripts/lib/config-audit.sh \$'\\U00000072estore' 20261031T120000Z-ab12"
+bash_case "a \${..} default as the verb -> block" block "bash scripts/lib/config-audit.sh \${v:-restore} 20261031T120000Z-ab12"
+bash_case "a \$(..) building the verb -> block" block "bash scripts/lib/config-audit.sh \$(printf rest)ore 20261031T120000Z-ab12"
+bash_case "a \$VAR holding the verb -> block" block "v=restore; bash scripts/lib/config-audit.sh \$v 20261031T120000Z-ab12"
+bash_case "a backtick building the verb -> block" block "bash scripts/lib/config-audit.sh \`printf rest\`ore 20261031T120000Z-ab12"
+bash_case "a brace expansion building the verb -> block" block "bash scripts/lib/config-audit.sh {restore,x} 20261031T120000Z-ab12"
+bash_case "node -e on the helper's JS -> block" block "node -e \"\$_CA_JS\" restore 20261031T120000Z-ab12"
+bash_case "a \$NAME/ path prefix to the helper -> allow" allow "bash \"\$HIMMEL_REPO/scripts/lib/config-audit.sh\" list"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
