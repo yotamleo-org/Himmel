@@ -139,12 +139,12 @@ describe("create-monitoring-key secrets", () => {
       expect(readFileSync(join(root, ".env"), "utf8")).toBe("ALIBABA_QUOTA_AK=LTAIscoped-s0\nOTHER=1\n");
     });
 
-    test("the keyring refusing the second name restores the first and falls back to .env", async () => {
+    test("the keyring refusing the second name restores the first, saves .env and exits non-zero", async () => {
       stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
       stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");
       writeFileSync(join(root, ".env"), "OTHER=1\n");
       process.env.KSTUB_FAIL_SK = "1";
-      await quiet(() => main({ root, rotate: false, call: fakeRam().call }));
+      await expect(quiet(() => main({ root, rotate: false, call: fakeRam().call }))).rejects.toThrow("process.exit(1)");
       // The keyring is back on the master pair, never the new AK beside the old SK.
       expect(stub.get("ALIBABA_QUOTA_AK")).toBe("dummy-s0-ak");
       expect(stub.get("ALIBABA_QUOTA_SK")).toBe("dummy-s0-sk");

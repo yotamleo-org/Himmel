@@ -254,13 +254,19 @@ export async function main(opts: { root?: string; rotate?: boolean; call?: RamCa
       console.log("Masters remain recorded in 1Password only. Done.");
       return;
     }
-    // One name stored and the other refused: put the keyring's own old value back so it never holds a mixed pair.
-    if (heldFromKeyring) for (const [name, old] of stored) putSecret(root, name, old);
+    // A name was refused. The keyring outranks .env, so a .env copy does not take effect until the
+    // keyring is fixed: put the keyring's own old value back where we can, save the minted key to
+    // .env so it is not lost, and exit non-zero, never reporting success.
+    let mixedPair = stored.length === 1 && !heldFromKeyring;
+    if (heldFromKeyring) for (const [name, old] of stored) if (!putSecret(root, name, old)) mixedPair = true;
     if (!existsSync(envPath)) {
       console.error("create-monitoring-key: the keyring refused the scoped key and there is no .env to hold it; the key was minted and is lost. Re-run with --rotate.");
       process.exit(1);
     }
-    console.error("create-monitoring-key: the keyring refused the scoped key; writing .env instead.");
+    swapIntoEnv(true);
+    console.error(`create-monitoring-key: the keyring refused the scoped key. It is saved in ${envPath}, but the keyring ${mixedPair ? "may now hold a new AK beside an old SK" : "still holds the older pair"} and outranks .env.`);
+    console.error("Fix the keyring, then store both names with: himmel-secrets put --stdin ALIBABA_QUOTA_AK, then ALIBABA_QUOTA_SK.");
+    process.exit(1);
   }
   const replaced = swapIntoEnv(true);
   console.log(`.env updated: ALIBABA_QUOTA_AK/SK now carry the SCOPED ${USER_NAME} key (${replaced.ak ? "replaced" : "appended"}).`);
