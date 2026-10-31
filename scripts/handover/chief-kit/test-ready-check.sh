@@ -1099,6 +1099,14 @@ check "disposition: only the latest row at the head counts: exit 1" "$rc" "1"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-imp","severity":"imp","verdict":"fixed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$REVHEAD" >> "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "disposition: a finding recorded again as fixed is no deferral: exit 1" "$rc" "1"
+contains "disposition: re-recorded fixed: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"other","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$REVHEAD" >> "$LEDGER"
 seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
