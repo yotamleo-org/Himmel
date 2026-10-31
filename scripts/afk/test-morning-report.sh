@@ -754,6 +754,8 @@ assert_contains "per-result counts keep never-remote" "never-remote 1" "$report"
 # shellcheck disable=SC2016  # the backticks are literal report text
 assert_contains "a run line carries run_as, argv, exit and duration" '`cron0001` /usr/bin/crontab -l, exit 0, 12 ms, as root' "$report"
 assert_contains "a slow run shows its duration in ms" "exit 0, 90500 ms, as root" "$report"
+# shellcheck disable=SC2016  # the backticks are literal report text
+assert_contains "runs point at the allowlist suggester" '`bash scripts/afk/suggest-allowlist.sh`' "$report"
 assert_contains "the never-remote refusal names its rule and argv" "never-remote disk-wipe: /usr/bin/wipefs -a /dev/sda" "$report"
 
 # Summary --------------------------------------------------------------
