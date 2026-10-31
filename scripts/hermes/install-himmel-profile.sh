@@ -42,12 +42,9 @@ for f in "$SOUL_ASSET" "$GUARD_ASSET" "$WIRE" "$SYNC"; do
 done
 
 # --- resolve hermes install root --------------------------------------------
-# Order: HERMES_HOME (explicit override) > $LOCALAPPDATA/hermes (Windows,
-# when set) > $HOME/.hermes (Linux/macOS default — upstream hermes' own
-# default config home).
+# Order: HERMES_HOME (explicit override) > $HOME/.hermes (Linux/macOS default).
 resolve_home() {
   if [ -n "${HERMES_HOME:-}" ]; then echo "$HERMES_HOME"; return; fi
-  if [ -n "${LOCALAPPDATA:-}" ]; then echo "$LOCALAPPDATA/hermes"; return; fi
   echo "$HOME/.hermes"
 }
 HOME_DIR="$(resolve_home)"
@@ -57,10 +54,8 @@ HOME_DIR="$(resolve_home)"
 resolve_cli() {
   if [ -n "${HERMES_BIN:-}" ] && [ -x "${HERMES_BIN}" ]; then echo "$HERMES_BIN"; return; fi
   if command -v hermes >/dev/null 2>&1; then command -v hermes; return; fi
-  for p in "$HOME_DIR/hermes-agent/venv/Scripts/hermes.exe" \
-           "$HOME_DIR/hermes-agent/venv/bin/hermes"; do
-    [ -x "$p" ] && { echo "$p"; return; }
-  done
+  local p="$HOME_DIR/hermes-agent/venv/bin/hermes"
+  [ -x "$p" ] && { echo "$p"; return; }
   return 1
 }
 HERMES="$(resolve_cli)" || { echo "ERR: hermes CLI not found (set HERMES_BIN)" >&2; exit 1; }
@@ -68,10 +63,8 @@ HERMES="$(resolve_cli)" || { echo "ERR: hermes CLI not found (set HERMES_BIN)" >
 # --- resolve python interpreter (hook command + wiring) ----------------------
 resolve_py() {
   if [ -n "${HERMES_PY:-}" ] && [ -x "${HERMES_PY}" ]; then echo "$HERMES_PY"; return; fi
-  for p in "$HOME_DIR/hermes-agent/venv/Scripts/python.exe" \
-           "$HOME_DIR/hermes-agent/venv/bin/python"; do
-    [ -x "$p" ] && { echo "$p"; return; }
-  done
+  local p="$HOME_DIR/hermes-agent/venv/bin/python"
+  [ -x "$p" ] && { echo "$p"; return; }
   command -v python3 >/dev/null 2>&1 && { command -v python3; return; }
   command -v python  >/dev/null 2>&1 && { command -v python; return; }
   return 1
@@ -113,20 +106,12 @@ echo "installed   : $HA_SOUL"
 
 # 5. wire himmel_agent's pre_tool_call hook -> parity_guard (full set), plus the
 #    END-side on_session_finalize chain when node and this repo are
-#    both resolvable. Windows note: the hook command is consumed by hermes, not
-#    by Git Bash, so both paths are converted to native form — an MSYS `/c/...`
-#    from `command -v` / `pwd` would not resolve there.
-to_native() {  # $1 = a path from this shell; echo it in a form hermes can spawn
-  case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*|CYGWIN*) cygpath -m "$1" 2>/dev/null || echo "$1" ;;
-    *) echo "$1" ;;
-  esac
-}
+#    both resolvable.
 NODE_BIN="$(command -v node 2>/dev/null || true)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [ -n "$NODE_BIN" ] && [ -f "$REPO_ROOT/scripts/hooks/run-hook-with-bash.js" ]; then
   "$PYBIN" "$WIRE" set "$HA_CONFIG" "$GUARD_DEST" "$PYBIN" \
-    "$(to_native "$NODE_BIN")" "$(to_native "$REPO_ROOT")"
+    "$NODE_BIN" "$REPO_ROOT"
 else
   echo "WARN: node not on PATH (or himmel checkout not found) — wiring the guard only," >&2
   echo "      no on_session_finalize end hook. Re-run with node available." >&2

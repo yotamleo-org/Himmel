@@ -428,9 +428,7 @@ fi
 
 # capture_ps_ef — `ps -ef` with the widest CMD column available. BSD-derived
 # ps (macOS) truncates the last (CMD) column to terminal width even when
-# stdout is a pipe/file; `-ww` requests unlimited width there. Not every
-# `ps` accepts `-w` (this repo's Git Bash MSYS ps rejects it) — probe by
-# trying `-ww` first and falling back to a bare `ps -ef` when it errors.
+# stdout is a pipe/file; `-ww` requests unlimited width there.
 capture_ps_ef() {
   local out
   if out=$(ps -ww -ef 2>/dev/null); then

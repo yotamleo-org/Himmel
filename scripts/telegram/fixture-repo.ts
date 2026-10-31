@@ -68,15 +68,9 @@ export const GIT_TEST_TIMEOUT_MS = 60_000;
 const RM_ATTEMPTS = 10;
 const RM_BACKOFF_MS = 100;
 
-// Normalize the trailing separator everywhere, and the CASE only on Windows,
-// so a fixture cannot be "unregistered" by its own spelling. Case-folding is
-// deliberately platform-gated: on a case-sensitive filesystem two paths that
-// differ only in case are two different directories, and folding them would
-// let a key match a directory this run never created -- the exact permission
-// this module exists to withhold.
 const key = (p: string) => {
   const norm = resolve(p).replace(/[\\/]+$/, "");
-  return process.platform === "win32" ? norm.toLowerCase() : norm;
+  return norm;
 };
 
 const created = new Set<string>();
