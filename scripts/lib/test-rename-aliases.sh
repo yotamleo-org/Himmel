@@ -327,7 +327,7 @@ done
 check "the plugin supervisor-session command alias is gone" no "$([ -e "$ROOT/marketplace/plugins/himmel-ops/commands/supervisor-session.md" ] && echo yes || echo no)"
 check "the plugin console command alias is gone" no "$([ -e "$ROOT/marketplace/plugins/himmel-ops/commands/console.md" ] && echo yes || echo no)"
 check ".claude/commands/chief.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/chief/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/chief.md" && [ -f "$ROOT/scripts/handover/chief/chief.sh" ] && echo yes || echo no)"
-check "himmel-ops chief command exists" "yes" "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/chief.md" ] && echo yes || echo no)"
+check "himmel-ops chief command dispatches with arguments" "yes" "$(grep -qxF -- "    bash \"\$REPO/scripts/handover/chief/chief.sh\" \$ARGUMENTS" "$ROOT/marketplace/plugins/himmel-ops/commands/chief.md" && echo yes || echo no)"
 
 # --- slice V5b-1: the chief launcher, waiter and budget env names, each old name still read ---
 V5B1_ROWS='CONSOLE_ARM_FOREGROUND|CHIEF_ARM_FOREGROUND|identifier|old-to-new|V5|X
