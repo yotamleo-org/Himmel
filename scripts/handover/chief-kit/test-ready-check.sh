@@ -1032,6 +1032,71 @@ seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
 
+# --- disposition: a code-changing push after a judged head, the chief's follow-up disposition row at the new head carries the deferral ---
+# seed_imp_deferral <KEY> <head>: an Important finding deferred to KEY at <head>, the row a worker leaves before the judge rules
+seed_imp_deferral() {
+    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-imp","severity":"imp","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$2" "$1" >> "$LEDGER"
+}
+# seed_disp <disposition> <head> [branch] [finding head]: the amend row cr-disposition.sh record writes at <head> for codex-imp
+seed_disp() {
+    printf '{"kind":"amend","ts":"2026-01-01T00:00:03Z","branch":"%s","head":"%s","finding_id":"codex-imp","artifact":"diff","perspective":"off","target_head":"%s","set":{"disposition":"%s"},"source":"judge:j1","attest":["ci-green","no-data-loss","no-weakened-guard"],"pr":77,"mac":"m"}\n' "${3:-$SEED_BRANCH}" "$2" "${4:-$REVHEAD}" "$1" >> "$LEDGER"
+}
+# seed_judge_go <head>: the audit row review-round.sh judge-go writes for a delta-noop GO
+seed_judge_go() {
+    printf '{"kind":"judge-go","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","status":"ok","source":"judge:j1/delta-noop-%s"}\n' "$SEED_BRANCH" "$1" "$1" >> "$LEDGER"
+}
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_judge_go "$SHA"; seed_disp follow-up:HIMMEL-50 "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "disposition: a follow-up row at the head carries the older deferral: exit 0" "$rc" "0"
+contains "disposition: follow-up row: check 7 passes" "$out" "[PASS] 7."
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_judge_go "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "disposition: the judge-go row alone does not carry the deferral: exit 1" "$rc" "1"
+contains "disposition: no follow-up row: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+rc=0; out="$(run)" || rc=$?
+check "disposition: a follow-up row at another head does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA" other
+rc=0; out="$(run)" || rc=$?
+check "disposition: a follow-up row of another branch does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp fix-here "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "disposition: a fix-here row is not a deferral: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA" "$SEED_BRANCH" deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+rc=0; out="$(run)" || rc=$?
+check "disposition: a row naming no finding of the branch does not count: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-201 "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "disposition: a follow-up to a key the body does not defer to: exit 1" "$rc" "1"
+contains "disposition: other key: the ledger key has no coverage line" "$out" "HIMMEL-201 is deferred in the CR ledger"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp fix-here "$SHA"; seed_disp follow-up:HIMMEL-50 "$SHA"; seed_disp fix-here "$SHA"
+rc=0; out="$(run)" || rc=$?
+check "disposition: only the latest row at the head counts: exit 1" "$rc" "1"
+
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"other","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$REVHEAD" >> "$LEDGER"

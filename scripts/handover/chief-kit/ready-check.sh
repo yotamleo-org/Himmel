@@ -577,11 +577,21 @@ cov_ledger_keys() {
                 and ((inchain($e.head) and (any($rows[]; .kind == "finding" and .branch == $pb and (.head | type == "string") and inchain(.head) and fk(.) == fk($f) and ._ln > $f._ln) | not))
                     or (($raised | not) and any($clean[]; . > $f._ln)
                         and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not))));
-        reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
+        def keyok: type == "string" and test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$");
+        # A disposition row written at <head> (cr-disposition.sh record) carries the deferral of a finding of <pr-branch> that is
+        # still deferred, whatever head the finding was raised at; only the latest row per finding at <head> counts, and only a
+        # follow-up:<KEY> one (fix-here is no deferral). The mac belongs to the cr-disposition check go.sh runs, not to this one.
+        ([$rows[] | select(.kind == "amend" and $pb != "" and .branch == $pb and hm(.head; $h) and (.set | type == "object") and (.set.disposition | type == "string")
+                and (.target_head | type == "string") and (.target_head | length >= 7))]
+            | group_by(fk(.) + "|" + (.target_head[0:7] | ascii_downcase)) | map(max_by(._ln))
+            | map(select(.set.disposition | test("^follow-up:[A-Za-z][A-Za-z0-9]*-[0-9]+$")) | . as $d
+                | select(any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($d) and hm(.head; $d.target_head)
+                    and (. as $f | (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and .branch == $f.branch and (.set | has("disposition") | not))) as $a ($f; . + $a.set)) | .verdict == "deferred")))
+                | .set.disposition | ltrimstr("follow-up:") | ascii_upcase)) as $dkeys
+        | ((reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
             | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
-        | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
-        | .deferred_to | ascii_upcase' "$1") || return 1
+        | [.[] | select(.verdict == "deferred" and (.deferred_to | keyok)) | .deferred_to | ascii_upcase]) + $dkeys)[]' "$1") || return 1
     printf '%s\n' "$cov_led_out" | sort -u
 }
 
