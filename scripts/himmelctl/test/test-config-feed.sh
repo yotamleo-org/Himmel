@@ -145,7 +145,7 @@ bad=$(jq -r '.rows[]|select((.id|type)!="string" or (.source|type)!="string" or 
 pass "a3 every row has the §4 fields, ids unique"
 
 # ── a4. every row says whether it is shared (machine/account) or the project's, and who fixes it ──
-bad=$(jq -r '.rows[]|select(((.scope // "")|IN("shared","project")|not) or ((.fix.by // "")|IN("configure","operator","chief")|not) or (.fix.by=="configure" and ((.fix.tile // "")|IN("secrets","review","tracker","scope")|not)))|.id' "$out")
+bad=$(jq -r '.rows[]|select(((.scope // "")|IN("shared","project")|not) or ((.fix.by // "")|IN("configure","operator","chief")|not) or (.fix.by=="configure" and ((.fix.tile // "")|IN("secrets","review","tracker","scope")|not)))|.id' "$out") || fail "a4 jq failed on $out"
 [ -z "$bad" ] || fail "rows without scope / fix.by / fix.tile: $bad"
 classify() { "$node_bin" -e 'const f=require(process.argv[1]);const [src,id]=process.argv[2].split("|");const r=f.classifyRow({source:src,id,fix:{remedy:process.argv[3]||""}});console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1" "${2:-}"; }
 [ "$(classify 'secret|secret:TELEGRAM_BOT_TOKEN')" = "shared configure secrets" ] || fail "a4 telegram token: $(classify 'secret|secret:TELEGRAM_BOT_TOKEN')"
