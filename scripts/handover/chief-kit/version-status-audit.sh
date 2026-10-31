@@ -57,7 +57,7 @@ def manifest_workers(m):
     A legs-only manifest with legacy names off is unreadable (ValueError), never an empty fleet."""
     w = m.get('workers')
     if w is None and 'legs' in m and not legacy_names_on():
-        raise ValueError('fleet manifest carries the pre-rename legs array and legacy names are off')
+        raise ValueError('fleet manifest carries the pre-rename legs array and the legacy-names switch is off')
     if w is None:
         w = m.get('legs')
     return w or []

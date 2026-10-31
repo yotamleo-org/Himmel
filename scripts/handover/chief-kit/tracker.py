@@ -147,7 +147,7 @@ def manifest_workers(m):
     """The manifest's worker array: `workers`, else the pre-rename `legs` while legacy names are on."""
     w = m.get('workers')
     if w is None and 'legs' in m and not legacy_names_on():
-        raise ValueError('fleet manifest carries the pre-rename legs array and legacy names are off')
+        raise ValueError('fleet manifest carries the pre-rename legs array and the legacy-names switch is off')
     if w is None:
         w = m.get('legs')
     return w or []

@@ -329,7 +329,7 @@ def main():
             # the worker array is `workers`; the pre-rename `legs` is read only while legacy names are on
             mworkers = mdata.get("workers")
             if mworkers is None and "legs" in mdata and not legacy_names_on():
-                raise ValueError("manifest carries the pre-rename legs array and legacy names are off")
+                raise ValueError("manifest carries the pre-rename legs array and the legacy-names switch is off")
             if mworkers is None:
                 mworkers = mdata.get("legs")
             for leg in mworkers or []:
