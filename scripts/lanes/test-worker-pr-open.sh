@@ -547,6 +547,13 @@ assert_eq "no merge base: refused (rc=1)" "1" "$rc_s5"
 contains "no merge base: says the size could not be measured" "$err_s5" "could not measure"
 not_contains "no merge base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
 
+echo "TEST: a base ref that is not fetched is refused, never read as within the bands"
+: > "$ARGV_LOG"
+err_s6=$(run_sut "$TITLE_FILE" "$BODY_FILE" --base no-such-base 2>&1 >/dev/null); rc_s6=$?
+assert_eq "unfetched base: refused (rc=1)" "1" "$rc_s6"
+contains "unfetched base: says the size could not be measured" "$err_s6" "could not measure"
+not_contains "unfetched base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

@@ -233,8 +233,8 @@ check_pr_size() {
         return 1
     fi
     if ! git rev-parse --verify -q "$base_ref" >/dev/null; then
-        echo "WARN worker-pr-open: $base_ref not found; PR size not measured" >&2
-        return 0
+        echo "ERR worker-pr-open: could not measure the PR size: $base_ref is not fetched; fetch it, then open the PR" >&2
+        return 1
     fi
     local files lines
     # A diff that cannot be taken (no merge base, shallow clone) must refuse, never read as zero.
