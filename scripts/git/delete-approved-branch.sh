@@ -15,6 +15,7 @@
 #   HIMMEL_BRANCH_APPROVALS   file (default: $HOME/.himmel/branch-delete-approvals.tsv)
 #   HIMMEL_BRANCH_DELETE_LOG  append-only delete log (default: $HOME/.himmel/branch-deletes.log)
 #   HIMMEL_DELETE_REMOTE      remote to delete from (default: origin)
+#   HIMMEL_DELETE_GH_REPO     owner/repo for the open-PR lookup (default: parsed from the remote URL)
 # ponytail: the record is a plain file the bridge writes when the operator
 # approves, so a session that can write it can approve itself; upgrade path is
 # an operator-signed record the script verifies.
@@ -52,7 +53,21 @@ if ! awk -F'\t' -v r="$ref" -v b="$branch" \
     die "refusing: approval '$ref' does not name branch '$branch'"
 fi
 
-open_prs="$(gh pr list --head "$branch" --state open --json number --jq length 2>/dev/null)" \
+# Bind the PR lookup to the repository the delete targets, never gh's inferred
+# repo or an inherited GH_REPO.
+gh_repo="${HIMMEL_DELETE_GH_REPO:-}"
+if [ -z "$gh_repo" ]; then
+    remote_url="$(git remote get-url "$REMOTE" 2>/dev/null)" \
+        || die "refusing: remote '$REMOTE' has no URL"
+    gh_repo="$(printf '%s' "$remote_url" | sed -E 's#^(git@|ssh://git@|https?://)[^/:]+[:/]##; s#\.git$##')"
+fi
+case "$gh_repo" in
+    */*/*|*[!A-Za-z0-9._/-]*|/*|*/|'') die "refusing: cannot resolve the GitHub repository of remote '$REMOTE'" ;;
+    */*) ;;
+    *) die "refusing: cannot resolve the GitHub repository of remote '$REMOTE'" ;;
+esac
+
+open_prs="$(gh pr list --repo "$gh_repo" --head "$branch" --state open --json number --jq length 2>/dev/null)" \
     || die "refusing: cannot check open PRs for '$branch' (gh failed)"
 case "$open_prs" in
     ''|*[!0-9]*) die "refusing: unreadable open-PR count '$open_prs' for '$branch'" ;;

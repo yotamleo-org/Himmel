@@ -49,10 +49,14 @@ git clone -q "$REMOTE" "$CLONE" 2>/dev/null
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 head=""
+repo=""
 while [ $# -gt 0 ]; do
     if [ "$1" = "--head" ]; then head="$2"; shift; fi
+    if [ "$1" = "--repo" ] || [ "$1" = "-R" ]; then repo="$2"; shift; fi
     shift
 done
+# the lookup must be bound to the deletion target's repository
+[ "$repo" = "fixture/repo" ] || exit 1
 [ "$head" = "gh-down" ] && exit 1
 if [ "$head" = "has-pr" ]; then echo 1; else echo 0; fi
 EOF
@@ -66,7 +70,8 @@ remote_has() { git -C "$REMOTE" show-ref --verify --quiet "refs/heads/$1"; }
 run() {
     # run <branch> <ref>; sets RC and OUT
     OUT="$(cd "$CLONE" && PATH="$BIN:$PATH" HIMMEL_BRANCH_APPROVALS="$APPROVALS" \
-        HIMMEL_BRANCH_DELETE_LOG="$LOG" bash "$SUT" "$@" 2>&1)"
+        HIMMEL_BRANCH_DELETE_LOG="$LOG" HIMMEL_DELETE_REMOTE=origin \
+        HIMMEL_DELETE_GH_REPO="${GH_REPO_OVERRIDE-fixture/repo}" bash "$SUT" "$@" 2>&1)"
     RC=$?
 }
 
@@ -88,6 +93,8 @@ expect_refused "refuses a branch with an open PR even when approved" has-pr msg-
 expect_refused "refuses a branch the approval does not name" unapproved msg-5004
 expect_refused "refuses a ref that names the branch only in a commented line" other-stale msg-9999
 expect_refused "refuses when the PR lookup fails (fail closed)" gh-down msg-5004
+
+GH_REPO_OVERRIDE="" expect_refused "refuses when the remote's repository cannot be resolved (fail closed)" stale-a msg-5004
 
 run stale-a msg-5004
 if [ "$RC" -eq 0 ] && ! remote_has stale-a; then
