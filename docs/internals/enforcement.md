@@ -6312,3 +6312,24 @@ segmentation removes the axis rather than naming the two spellings that
 exploit it. A future edit that answers a new bypass by appending one more
 spelling to a pattern is repeating the move that has failed six times —
 prefer removing the axis, and if that is genuinely impossible, say so here.
+
+## `merge-forward-check.sh --no-fetch` — the claudex merge-forward path (HIMMEL-8361)
+
+The merge-forward gate (`scripts/handover/merge-forward-check.sh`) runs `git fetch --quiet origin main`
+by default, so it sees a fresh `origin/main`. The claudex developer lane forbids `git fetch`, so on that
+lane the default path exits 2 ("cannot fetch origin main") and a red PR could not merge forward (PR 4325
+and PR 4323 stalled on this).
+
+A claudex worker passes `--no-fetch`. The check then runs **no** `git fetch`, reads the local
+`origin/main` as it stands, and REFUSEs (exit 1) unless that `origin/main` already contains the
+`--latest-sha` run (the sha is an ancestor-or-equal of it). A stale local `origin/main` therefore
+refuses rather than ALLOWs on a tip that may predate the run the verdict rests on. With no local
+`origin/main` at all the check exits 2. Every other rule (merge-base, `--pr-sha`, inherited-red) is unchanged.
+
+To merge forward a refused PR: have a lane that may fetch (a native worker or the chief) refresh the
+shared object store's `origin/main`, then re-run the check with `--no-fetch`; or hand the PR to a native
+worker, which runs the default path. The default invocation still fetches. `--chain-s2` mode always
+fetches and does not accept `--no-fetch`.
+
+Rows: `scripts/handover/test-merge-forward-check.sh` (a `PATH` git stub logs every git call, proving no
+fetch runs under `--no-fetch` and that the default path still runs one).
