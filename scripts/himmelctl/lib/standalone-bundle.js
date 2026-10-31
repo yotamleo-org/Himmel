@@ -24,6 +24,10 @@ const BUNDLE_FILES_POSIX = [
   'scripts/lib/provenance-identity.sh',
   'scripts/lib/provenance.sh',
   'scripts/lib/canon-path.sh',
+  // uninstall.sh logs each config file it removes through it.
+  'scripts/lib/config-audit.sh',
+  // config-audit.sh sources it (the station config dir and the .env path).
+  'scripts/lib/load-dotenv.sh',
   'scripts/lib/qmd-bin.sh',
   // qmd-bin.sh sources it (qmd_cmd runs under qmd_bounded).
   'scripts/lib/qmd-bounded.sh',
