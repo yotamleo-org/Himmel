@@ -62,7 +62,7 @@ const describedTokens = (e, plugin) => Math.ceil((plugin.length + 1 + e.name.len
 // plugin.json name Claude lists a strict:true plugin's skills under, which sets
 // each listing line's length; the cache DIRECTORY (entry name)
 // still selects the entries.
-export function skillListingSettings({ entries, enabledIds, requiredIds, window = WINDOW, configDir, cwd, runtimeNames = configDir === undefined ? undefined : runtimeNamesOf(configDir, cwd) }) {
+export function skillListingSettings({ entries, enabledIds, requiredIds, hiddenSkills = [], window = WINDOW, configDir, cwd, runtimeNames = configDir === undefined ? undefined : runtimeNamesOf(configDir, cwd) }) {
   if (!requiredIds.length) return {};
   const skillOverrides = {};
   let tokens = 0;
@@ -70,7 +70,9 @@ export function skillListingSettings({ entries, enabledIds, requiredIds, window 
   for (const e of entries) {
     if (e.scope !== 'plugin-skills') skillOverrides[e.name] = 'name-only';
   }
-  for (const name of Object.keys(skillOverrides)) tokens += nameOnlyTokens(name);
+  // A hidden skill leaves the listing (and the budget); the operator can still type `/name`.
+  for (const name of hiddenSkills) skillOverrides[name] = 'user-invocable-only';
+  for (const [name, v] of Object.entries(skillOverrides)) if (v === 'name-only') tokens += nameOnlyTokens(name);
   // several cached versions of one plugin can match: count each plugin skill once, largest wins
   const best = new Map();
   for (const id of enabledIds) {
@@ -91,3 +93,17 @@ export function skillListingSettings({ entries, enabledIds, requiredIds, window 
 }
 
 export const requiredIdsFor = (profile) => ROLE_REQUIRES[profile] ?? [];
+
+// Skills a role never invokes, hidden from its model as
+// 'user-invocable-only'. Never list a skill that a chief doc or command tells
+// the model to invoke. The value is from Claude Code's settings schema
+// (2.1.316, skillOverrides): "user-invocable-only" hides it from the model but
+// keeps /name.
+export const ROLE_HIDDEN_SKILLS = {
+  chief: [
+    'artifact-design', 'artifact-diagramming', 'artifact-capabilities', 'plugin-authoring', 'adversarial-verify',
+    'dataviz', 'claude-api', 'keybindings-help', 'simplify', 'security-review', 'init', 'docx', 'google-workspace',
+    'import-memory', 'morning', 'pdf', 'pptx', 'xlsx', 'skill-creator', 'workflow-authoring', 'fewer-permission-prompts',
+  ],
+};
+export const hiddenSkillsFor = (profile) => ROLE_HIDDEN_SKILLS[profile] ?? [];

@@ -77,11 +77,11 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > **the blank line before the per-worker detail is load-bearing**: a wrapped line
 > never starts with a list marker, so a marker ends the block, but prose
 > written straight under `legs:` without one is read as part of it.
-> `board:` is the published chief board artifact URL (ACTION ZERO step 12);
+> `board:` is the local chief board file's path (ACTION ZERO step 12);
 > `chief.sh next` carries it to your successor with the rest of this section.
-> `tracker:` is the roadmap-tracker artifact URL; `none` (the
+> `tracker:` is the roadmap-tracker page's local path; `none` (the
 > default) turns the tick's `tracker=` field off (`skip`), and `chief.sh next`
-> carries the URL too. An optional `tracker-plan: <dir>` line overrides the plan
+> carries the path too. An optional `tracker-plan: <dir>` line overrides the plan
 > directory (default `<handover bucket>/specs/plan/HIMMEL-3882`).
 > `epics: <KEY>=<total>[, <KEY>=<total>]` (the total is yours; the board counts
 > merged PRs citing `[<KEY>]`) and `decisions: <first?>; <second?>` (open
