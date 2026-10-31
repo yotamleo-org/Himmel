@@ -16,7 +16,7 @@
 // response (no key on this station), upgrade path: one operator-approved live read (--live) compared with the service's own figure.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const NA = 'not available';
@@ -223,6 +223,15 @@ export function buildRecord({ since, until, codexDir, ledgerFile, launchesFile, 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 function usageExit(msg) { console.error(`shift-spend: ${msg}`); process.exit(2); }
 function readJson(file) { return JSON.parse(readFileSync(file, 'utf8')); }
+// claude-api.sh writes launches.jsonl beside the credit config's ledger_path; an unreadable config means the default state dir.
+function defaultLaunches(env, home) {
+  const stateDir = join(home, '.himmel', 'state', 'api-credit');
+  try {
+    const ledger = readJson(env.HIMMEL_API_CREDIT_CONFIG || join(stateDir, 'config.json')).ledger_path;
+    if (typeof ledger === 'string' && isAbsolute(ledger)) return join(dirname(ledger), 'launches.jsonl');
+  } catch { /* no readable config: the default state dir */ }
+  return join(stateDir, 'launches.jsonl');
+}
 async function main(argv, env) {
   const opt = { live: false };
   for (let i = 0; i < argv.length; i++) {
@@ -255,7 +264,7 @@ async function main(argv, env) {
     since: opt.since, until: opt.until,
     codexDir: opt.codex || join(env.CODEX_HOME || join(home, '.codex'), 'sessions'),
     ledgerFile: opt.ledger || env.CADENCE_USAGE_LEDGER || join(home, '.himmel', 'cadence-ledger.jsonl'),
-    launchesFile: opt.launches || join(home, '.himmel', 'state', 'api-credit', 'launches.jsonl'),
+    launchesFile: opt.launches || defaultLaunches(env, home),
     openrouter,
   });
   console.log(JSON.stringify(record, null, 2));

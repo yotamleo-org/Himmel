@@ -354,6 +354,24 @@ test('cli: the launch log defaults to the api-credit state dir under HOME', () =
   assert.equal(JSON.parse(r.stdout).fields.api_cost.per_account.B, '0.420000');
 });
 
+test('cli: with HIMMEL_API_CREDIT_CONFIG set, the launch log is read beside its ledger_path, like the launcher writes it', () => {
+  const inputs = fullInputs();
+  const home = join(T, 'home-cfg');
+  const state = join(T, 'elsewhere', 'api-credit');
+  mkdirSync(state, { recursive: true });
+  mkdirSync(join(home, '.himmel', 'state', 'api-credit'), { recursive: true });
+  writeFileSync(join(home, '.himmel', 'state', 'api-credit', 'launches.jsonl'), `${launch('2026-10-31T02:00:00Z', 'A', '9.000000')}\n`);
+  writeFileSync(join(state, 'launches.jsonl'), `${launch('2026-10-31T02:00:00Z', 'B', '0.330000')}\n`);
+  writeFileSync(join(T, 'credit-config.json'), JSON.stringify({ ledger_path: join(state, 'ledger.json') }));
+  const env = { PATH: process.env.PATH, HOME: home, HIMMEL_API_CREDIT_CONFIG: join(T, 'credit-config.json') };
+  const run = (extra = []) => JSON.parse(spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL, '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, ...extra], { encoding: 'utf8', env }).stdout);
+  assert.deepEqual(run().fields.api_cost.per_account, { B: '0.330000' });
+  assert.equal(run(['--api-launches', inputs.launchesFile]).fields.api_cost.value, '1.352892', 'the explicit flag still wins');
+  // a config that cannot be read falls back to the HOME state dir
+  env.HIMMEL_API_CREDIT_CONFIG = join(T, 'no-such-config.json');
+  assert.deepEqual(run().fields.api_cost.per_account, { A: '9.000000' });
+});
+
 test('cli: a bad window is refused', () => {
   for (const args of [['--since', '2026-02-30T00:00:00Z', '--until', UNTIL], ['--since', SINCE, '--until', '2026-10-31T24:00:00Z'], ['--since', 'yesterday', '--until', UNTIL], ['--since', UNTIL, '--until', SINCE], ['--until', UNTIL]]) {
     const r = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: join(T, 'home') } });
