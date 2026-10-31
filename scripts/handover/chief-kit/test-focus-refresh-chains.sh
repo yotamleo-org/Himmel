@@ -60,6 +60,7 @@ cat >"$tmp/bin/graph" <<'EOS'
 #!/usr/bin/env bash
 echo "graph $*" >> "$FX/log"
 [ -e "$FX/graph.fail" ] && { echo "graph: boom" >&2; exit 2; }
+[ -e "$FX/graph.bad" ] && { echo 'not json'; exit 0; }
 echo '{"nodes":[],"edges":[]}'
 EOS
 cat >"$tmp/bin/dispo" <<'EOS'
@@ -156,6 +157,16 @@ rm -f "$FX/graph.fail"
 refresh
 check "the next refresh recovers" "$(out)" "focus=ok"
 check "and clears the warning" "$(st warn)" ""
+
+# --- a graph the renderer cannot read is a render WARN, and the file stays
+reset
+refresh
+cp "$CH" "$tmp/good.json"
+touch "$FX/graph.bad"
+refresh
+contains "an unreadable graph prints focus=WARN:chains render" "$(out)" "focus=WARN:chains render"
+check "and the last good focus-chains.json is byte-identical" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
+rm -f "$FX/graph.bad"
 
 # --- focus-plan set: the priority line comes from a hand-kept plan, not the registry
 reset
