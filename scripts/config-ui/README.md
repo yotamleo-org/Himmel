@@ -120,7 +120,9 @@ chief's run: every bucket (the voice chief too) counts. `GET /api/shift` (token-
 closed shift) polls `shift.ts`, which is the one writer of `shifts.jsonl` (`$HANDOVER_DIR/shifts.jsonl`, or `SHIFTS_FILE`),
 under a lock and idempotent on the shift id. The page shows Chiefs (span and PR credit), Waiting on you (links out; nothing
 here acts), Running now and Shipped, and for a closed shift the pager and Carried to the next shift. With no shift open it
-says so and names the last one.
+says so and names the last one. The route passes through the same redactor as the others, except that a value which is
+wholly a chief doc name (`HIMMEL-nextleg-2026-10-31LO-roadmap-chief`) stays readable in the chief-name fields: the
+redactor would otherwise read its 32+ letters and digits as a secret.
 
 - **The cut rule.** A shift closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
   20:00 clock cuts once it is at least 4 hours old. It is named day when it opened between 08:00 and 20:00, else night. Stamps

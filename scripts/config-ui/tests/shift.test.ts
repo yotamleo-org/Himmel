@@ -3,7 +3,8 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, rowsOf, step, tick, viewOf, type Row, type State, type View } from "../shift";
+import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, redactShift, rowsOf, step, tick, viewOf, type Row, type State, type View } from "../shift";
+import { redactDeep } from "../../himmelctl/lib/redact.js";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
 
@@ -408,4 +409,40 @@ test("GET /api/shift: a gh failure comes back as an unread PR list, not an empty
   const v = await (await getShift(s.port)).json();
   expect(v.state).toBe("open");
   expect(v.mergedUnread).toBe(true);
+});
+
+// ---- the redactor keeps a chief's doc name readable and nothing else ----
+const LONG_RUN36 = "aB3dE5gH7jK9".repeat(3); // 36 letters and digits, the redactor long-run shape
+const chiefView = (chief: string): View => ({
+  ...pageView(),
+  chiefs: [{ name: chief, bucket: "himmel", span: { start: "2026-10-27T08:00+01:00", end: null, approx: false }, prs: [] }],
+  waiting: [{ kind: "GO", ticket: null, title: "t", detail: "d", since: null, pr: null, chief }],
+  shipped: [{ number: 1, title: "x", mergedAt: "2026-10-27T09:00:00Z", chief }],
+  gap: [{ pr: 1, chiefs: [chief, chief] }],
+});
+
+test("GET /api/shift: a live chief's 40-character doc name comes back readable", async () => {
+  const { s } = boot({ chief: true });
+  const v = await (await getShift(s.port)).json();
+  expect(v.chiefs[0].name).toMatch(/^HIMMEL-nextleg-\d{4}-\d{2}-\d{2}A-roadmap-chief$/);
+  expect(v.chiefs[0].name.length).toBeGreaterThanOrEqual(32);
+});
+
+test("redactShift: a strict chief doc name passes in every chief-name field, a 32+ character random token in the same fields is still redacted", () => {
+  const real = "HIMMEL-nextleg-2026-10-31LO-roadmap-chief";
+  const ok = redactShift(chiefView(real), redactDeep);
+  expect([ok.chiefs[0].name, ok.waiting[0].chief, ok.shipped[0].chief, ...ok.gap[0].chiefs]).toEqual([real, real, real, real, real]);
+  for (const bad of ["HIMMEL-" + LONG_RUN36, "HIMMEL-nextleg-2026-10-31A-" + LONG_RUN36 + "-chief", real + "-" + LONG_RUN36]) {
+    const out = redactShift(chiefView(bad), redactDeep);
+    expect([out.chiefs[0].name, out.waiting[0].chief, out.shipped[0].chief, ...out.gap[0].chiefs]).toEqual(Array(5).fill("‹redacted›"));
+  }
+});
+
+test("redactShift: a doc name in a free-text field stays redacted", () => {
+  const real = "HIMMEL-nextleg-2026-10-31LO-roadmap-chief";
+  const v = chiefView(real);
+  v.waiting[0].title = real;
+  v.shipped[0].title = real;
+  const out = redactShift(v, redactDeep);
+  expect([out.waiting[0].title, out.shipped[0].title]).toEqual(["‹redacted›", "‹redacted›"]);
 });

@@ -24,7 +24,7 @@ import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
-import { liveBoards, readMerged, readShifts, shiftsFile, tick as tickShifts, viewOf } from "./shift";
+import { liveBoards, readMerged, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
@@ -570,7 +570,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
         const merged = await readMerged(env, root, from, win ? Date.parse(win.closed) : at + 60_000);
         const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
-        return json(redactOut(viewOf({ now: at, rows, snap, id, merged, boards })));
+        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards }), redactOut));
       }
       // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
       if (path === "/api/rollup") {

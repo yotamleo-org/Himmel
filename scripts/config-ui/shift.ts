@@ -386,6 +386,19 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
   };
 }
 
+// The redactor reads a 40-character chief doc name as a secret (a 32+ character letter-and-digit run). Every field is redacted;
+// only a value that is wholly a chief doc name, in a chief-name field, is put back.
+const CHIEF_DOC = /^[A-Z][A-Z0-9]*-[a-z]+-\d{4}-\d{2}-\d{2}[A-Z]{1,3}(?:-[a-z]+)+-chief$/;
+const keep = (orig: string | null, out: string | null): string | null => (orig !== null && orig.length <= 80 && CHIEF_DOC.test(orig) ? orig : out);
+export function redactShift(view: View, redact: <T>(v: T) => T): View {
+  const out = redact(view);
+  out.chiefs.forEach((c, i) => { c.name = keep(view.chiefs[i].name, c.name)!; });
+  out.waiting.forEach((w, i) => { w.chief = keep(view.waiting[i].chief, w.chief)!; });
+  out.shipped.forEach((p, i) => { p.chief = keep(view.shipped[i].chief, p.chief); });
+  out.gap.forEach((g, i) => { g.chiefs = [keep(view.gap[i].chiefs[0], g.chiefs[0])!, keep(view.gap[i].chiefs[1], g.chiefs[1])!]; });
+  return out;
+}
+
 // the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root
 export async function liveBoards(root: string, locks: Lock[], spans: Span[]): Promise<Board[]> {
   const out: Board[] = [];
