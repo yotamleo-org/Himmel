@@ -259,7 +259,7 @@ function problems(snap, live) {
     const is = live[n];
     if (!is || !was.present) continue;
     if (!is.present) { out.push({ file: n, path: was.path, kind: "deleted", lost: was.keys || [] }); continue; }
-    if (is.size === 0 || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
+    if ((is.size === 0 && was.size > 0) || (was.keys !== null && is.keys === null)) { out.push({ file: n, path: was.path, kind: "truncated", lost: was.keys || [] }); continue; }
     const lost = (was.keys || []).filter((k) => !(is.keys || []).includes(k));
     if (lost.length) out.push({ file: n, path: was.path, kind: "lost keys", lost });
   }

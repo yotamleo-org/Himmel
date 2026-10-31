@@ -28,6 +28,7 @@ mkdir -p "$T/home/.himmel" "$T/tg"
 printf '{"allowFrom":["%s"]}\n' "$OP" > "$T/tg/access.json"
 : > "$T/env"
 export HOME="$T/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/env" TELEGRAM_ACCESS_PATH="$T/tg/access.json" HIMMEL_TEST_FIXTURE=1
+unset HIMMEL_CONFIG_AUDIT_DIR BRIDGE_ROOT HIMMEL_CONFIG_BACKUPS_KEEP HIMMEL_CONFIG_ALERT_CMD
 CFG="$HOME/.himmel/config.json"
 
 cr() { CONFIG_RESTORE_NOW="${NOW:-$T0}" python3 -I "$CR" "$@" 2>&1; }

@@ -147,6 +147,14 @@ for sfx in ffff 0000; do
 done
 eq "4 the later backup of one second lists first" "20991231T000000Z-0000" "$(bash "$CA" list | head -n 1 | cut -d' ' -f1)" # tail-pipe-ok: list output, not a gate
 rm -rf "$STATE/backups/20991231T000000Z-ffff" "$STATE/backups/20991231T000000Z-0000"
+# A file that was empty and stays empty is healthy, not truncated.
+saved_env=$(cat "$TMP/clone/.env")
+: > "$TMP/clone/.env"
+bash "$CA" accept >/dev/null
+out=$(bash "$CA" check); rc=$?
+eq "4 an unchanged empty .env is healthy" 0 "$rc"
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+bash "$CA" accept >/dev/null
 
 # --- 5. luna-config save leaves a row and a backup ---
 before=$(wc -l < "$STATE/audit.jsonl")
