@@ -60,7 +60,7 @@ export function coreMatch(
   paths: string[], keys: string[], o: { patterns: string[]; changeClass?: ChangeClass },
 ): string[] {
   const res = o.patterns.map((p) => new RegExp(p));
-  const hit = paths.find((p) => matchesAny(res, p));
+  const hit = paths.map((p) => p.replace(/^(\.\/)+/, '')).find((p) => matchesAny(res, p));
   return keys.map((k) => {
     if (hit === undefined) return `NOT-CORE ${k}`;
     return o.changeClass ? `REVIEW ${k} ${hit} ${o.changeClass}` : `CORE ${k} ${hit}`;

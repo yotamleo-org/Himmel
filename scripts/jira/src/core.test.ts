@@ -68,6 +68,11 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
     expect(coreMatch(['docs/a.md'], ['K-1'], { patterns, changeClass: 'rename' })).toEqual(['NOT-CORE K-1']);
   });
 
+  it('reads a ./-prefixed path as the same repository path', () => {
+    expect(coreMatch(['./scripts/handover/queue-lock.sh'], ['K-1'], { patterns }))
+      .toEqual(['CORE K-1 scripts/handover/queue-lock.sh']);
+  });
+
   it('decides every key of the worker the same way', () => {
     expect(coreMatch(['scripts/handover/queue-lock.sh'], ['K-1', 'K-2'], { patterns }))
       .toEqual(['CORE K-1 scripts/handover/queue-lock.sh', 'CORE K-2 scripts/handover/queue-lock.sh']);
