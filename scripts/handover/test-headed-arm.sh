@@ -2510,7 +2510,7 @@ PGREP_EOF
 }
 td1="$tmp/td1"; mk_tdup "$td1" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
 tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td1/signal-never" "$PAST" 2>&1)"; tdrc=$?
-check "8436a a second worker on a ticket with a live worker is refused (exit 14)" "$tdrc" "14"
+check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
 contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
 td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-leg-2026-10-31" "HIMMEL-8436-N4332b-second-leg-2026-10-31"

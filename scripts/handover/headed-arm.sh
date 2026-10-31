@@ -56,7 +56,7 @@
 #
 # Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
-# macOS konsole shim, a distinct failure from 3 above; 14 another live worker
+# macOS konsole shim, a distinct failure from 3 above; 16 another live worker
 # session already holds the same ticket (dedup layer 1b); 4 no pgrep on
 # PATH (see the pgrep availability check below); 5 the claim-lock root could
 # not be created (an environment fault, never a dedup hit); 6 the claim
@@ -999,7 +999,7 @@ if [ "${HEADED_ARM_ALLOW_TICKET_DUP:-0}" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$
     if [ -n "$TICKET_RIVAL" ]; then
         echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket; a deliberate second worker needs HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell" >&2
         echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
-        exit 14
+        exit 16
     fi
 fi
 
