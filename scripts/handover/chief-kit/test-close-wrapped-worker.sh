@@ -288,6 +288,26 @@ check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+# --- 4b. a session-scratchpad clone holding unpushed commits ------------
+SCR="$W/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$SCR"
+git init -q -b main --bare "$W/scr-remote.git"
+git init -q -b main "$SCR/forkclone"
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkclone" commit -q --allow-empty -m rebased
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/forkclone\`"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone unpushed: rc 8" "$rc" "8"
+contains "scratchpad-clone unpushed: names the clone" "$out" "$SCR/forkclone"
+check "scratchpad-clone unpushed: kill never called" "$(cat "$CALLS")" ""
+git -C "$SCR/forkclone" remote add origin "$W/scr-remote.git"
+git -C "$SCR/forkclone" push -q origin main 2>/dev/null
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone pushed: no refusal -> rc 0" "$rc" "0"
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gone-clone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone already gone: no refusal -> rc 0" "$rc" "0"
+
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work
 mkcmdline 203 claude -n "$SESSION_NAME" work

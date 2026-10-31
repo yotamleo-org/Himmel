@@ -92,6 +92,9 @@
 #   7  refused - the matched session still has a live in-process subagent (an
 #      Agent-tool child, e.g. a chief's judge call), or live-subagents.sh
 #      could not prove it has none; retry once they finish
+#   8  refused - the doc names a session-scratchpad clone (/tmp/claude-<uid>/
+#      <project>/<session>/scratchpad/<clone>) holding commits on no remote;
+#      that clone dies with the session
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
@@ -193,6 +196,25 @@ if [ "$last_marker" != "WRAPPED" ]; then
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
+
+# git-env-ok: the one git call below runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
+# A clone in a session scratchpad is deleted when its session ends. A
+# WRAPPED doc that names such a clone still holding commits on no remote is losing
+# that work: refuse the close (the chief sends the worker back to push it to a
+# staging branch or move it under ~/.himmel/scratch). A clone already gone cannot
+# be checked and is skipped.
+scratch_clones=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^/[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
+while IFS= read -r sc_dir; do
+    [ -n "$sc_dir" ] && [ -d "$sc_dir/.git" ] || continue
+    sc_unpushed=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$sc_dir" rev-list -n 1 --branches --not --remotes 2>/dev/null)
+    if [ -n "$sc_unpushed" ]; then
+        echo "close-wrapped-worker: refusing - the doc names the session-scratchpad clone $sc_dir, which holds commits on no remote (e.g. $sc_unpushed); push them to a staging branch or move the clone under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
+done <<EOF
+$scratch_clones
+EOF
 
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
