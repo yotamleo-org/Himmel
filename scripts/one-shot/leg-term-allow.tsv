@@ -39,4 +39,8 @@
 ^scripts/lib/legacy-names\.sh$	\(console, leg, 	K5 legacy-name reader; leaves with HIMMEL-6647
 ^scripts/lib/worker-identity\.sh$	`legs:`|legs: line	K5 legacy-name reader; leaves with HIMMEL-6647
 .	rename-aliases	K5 rename-alias table readers; leaves with HIMMEL-6647
+^marketplace/plugins/himmel-bus/lib/edges\.mjs$	=== 'leg'	K5 reader maps a stored role leg record to worker; leaves with HIMMEL-6647
+^marketplace/plugins/himmel-bus/tests/test-identity\.mjs$	M2|role: 'leg'|'--role', 'leg'|invalid role: leg	K5 tests pin the old role spelling (alias and refusal); leave with HIMMEL-6647
+^scripts/hooks/test-guard-bus-store\.sh$	old role spelling	K5 guard test pins that the old role spelling is still refused; leaves with HIMMEL-6647
+^scripts/handover/test-bus-idle-waker\.sh$	cmdline-leg	K5 fixture file name; leaves with HIMMEL-6647
 ^scripts/config-ui/(agui(-web/src/board-model|/fleet)|tests/e2e/agui-fixtures)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys and the e2e fixture that feeds them (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647

@@ -4,9 +4,18 @@ import { basename, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { openChainFile, withChainLock } from '../../../../scripts/telegram/bus.ts';
 import * as store from './store.mjs';
+import { canonRole } from './edges.mjs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const ROLES = ['leg', 'console', 'judge', 'consult'];
+const ROLES = ['worker', 'console', 'judge', 'consult'];
+
+// A role as stored or typed -> its current name, or a refusal. The pre-rename
+// spelling maps to `worker` while the legacy-names switch is on.
+function roleOf(value) {
+  const role = canonRole(value);
+  if (!ROLES.includes(role)) throw new Error(`invalid role: ${value} (one of ${ROLES.join('|')})`);
+  return role;
+}
 const UNBOUND = { error: 'identity unbound' };
 
 function checkName(name) {
@@ -31,7 +40,7 @@ async function isClaude(proc, pid, comm) {
 }
 
 // Nearest claude ancestor (inclusive) of `pid`: {pid, start}, or null. Nearest,
-// not outermost: the console is an ancestor of every leg it launches.
+// not outermost: the console is an ancestor of every worker it launches.
 export async function nearestClaude(proc, pid) {
   for (let hops = 0; pid > 1 && hops < 128; hops++) {
     const st = await procStat(proc, pid);
@@ -51,7 +60,10 @@ async function readPeer(root, name) {
   let handle;
   try { handle = await openChainFile(peerFile(root, name), constants.O_RDONLY); }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-  try { return JSON.parse(await handle.readFile('utf8')); } finally { await handle.close(); }
+  try {
+    const peer = JSON.parse(await handle.readFile('utf8'));
+    return peer.role === undefined ? peer : { ...peer, role: roleOf(peer.role) };
+  } finally { await handle.close(); }
 }
 
 // Writes `data` to a private temp file and returns its path.
@@ -88,9 +100,9 @@ export async function loadPeers(root) {
 // an entry that was registered but never bound, with the same
 // role, console, pair and predecessor, is adopted instead of refused - it has
 // no pid, so nothing can resolve to it and re-registering grants nothing new.
-export async function register(root, name, { role, console: owner, pair, predecessor } = {}) {
+export async function register(root, name, { role: given, console: owner, pair, predecessor } = {}) {
   checkName(name);
-  if (!ROLES.includes(role)) throw new Error(`invalid role: ${role} (one of ${ROLES.join('|')})`);
+  const role = roleOf(given);
   if (role !== 'console' && !owner) throw new Error(`role ${role} needs --console`);
   for (const other of [owner, pair, predecessor]) if (other !== undefined) checkName(other);
   const peer = { n: name, role, launched: new Date().toISOString() };
@@ -173,9 +185,9 @@ export async function succeed(root, name, next) {
 
 // Console succession (spec §8.6): `name` follows `next` only if its old console
 // stamped `next` as its successor (`succeed`), is gone, or sent a record naming
-// `next`. A leg that missed a succession walks `next`'s predecessor records back
+// `next`. A worker that missed a succession walks `next`'s predecessor records back
 // to its old console: every console on that chain must have stamped its own
-// successor, or be gone or have sent the leg a record naming it; no unstamped
+// successor, or be gone or have sent the worker a record naming it; no unstamped
 // console but `next` may be live.
 export async function adopt(root, name, next, { proc = '/proc' } = {}) {
   checkName(next);

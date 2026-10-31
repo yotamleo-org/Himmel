@@ -141,7 +141,7 @@ filter() { grep -v 'arm-resume-bus-rebind' | grep -v 'would at -t'; }
 rm -f "$XDG/himmel/bus/peers/bn.json"
 at_unreg=$(arm OSTYPE=linux-gnu)
 cron_unreg=$(arm OSTYPE=darwin23 ARM_TERMINAL_APP=none)
-echo '{"role":"leg"}' > "$XDG/himmel/bus/peers/bn.json"
+echo '{"role":"worker"}' > "$XDG/himmel/bus/peers/bn.json"
 at_reg=$(arm OSTYPE=linux-gnu)
 cron_reg=$(arm OSTYPE=darwin23 ARM_TERMINAL_APP=none)
 
