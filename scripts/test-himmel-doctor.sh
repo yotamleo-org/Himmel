@@ -6120,7 +6120,8 @@ if grepq "$out" 'OK   C83-qmd-embed-backlog'; then pass "C83 complete -> OK"; el
 echo "== C83-qmd-embed-backlog: QMD_INDEX_PATH alone locates the state, as the writer does =="
 mkdir -p "$c83_t/idx"
 printf 'rc=5\nremaining=7\nlast_error=none\n' > "$c83_t/idx/reindex-state"
-out="$(PATH="$FAKEBIN:$PATH" QMD_INDEX_PATH="$c83_t/idx/index.sqlite" CLAUDE_DIR="$c83_t/claude" HOME="$c83_t/home" bash "$DOC" --only C83 --no-color 2>&1)"
+# env -u: the suite exports HIMMEL_DOCTOR_QMD_INDEX, which C83 reads first and would mask the QMD_INDEX_PATH fallback
+out="$(env -u HIMMEL_DOCTOR_QMD_INDEX PATH="$FAKEBIN:$PATH" QMD_INDEX_PATH="$c83_t/idx/index.sqlite" CLAUDE_DIR="$c83_t/claude" HOME="$c83_t/home" bash "$DOC" --only C83 --no-color 2>&1)"
 if grepq "$out" 'WARN C83-qmd-embed-backlog' && grepq "$out" -F '7 unique hashes still lack vectors'; then
     pass "C83 QMD_INDEX_PATH -> state found"
 else
