@@ -229,12 +229,15 @@ function hermesInstalled(env) {
 }
 
 // the himmel.conf keys scripts/lib/load-dotenv.sh serves (_himmel_key_class "config", minus the env-only ones), from the one key list the wizard pins to it.
-// A copy of this file run without the key list beside it (a suite's fixture checkout) reads no conf key.
+// A copy of this file run without the key list beside it (a suite's fixture checkout) reads no conf key; a list that is present but broken throws.
 const CONF_KEYS = (() => {
   try {
     return new Set(createRequire(import.meta.url)('../himmelctl/lib/config-keys.json').keys
       .filter((e) => e.class === 'config' && !e.envOnly).map((e) => e.name));
-  } catch { return new Set(); }
+  } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') throw e;   // a list that is there but unreadable or malformed stays loud
+    return new Set();
+  }
 })();
 
 export function buildCtx(repoRoot, procEnv) {
