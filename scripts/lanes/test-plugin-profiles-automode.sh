@@ -61,10 +61,11 @@ GOT=$(jq -c '.permissions.deny' "$TMP/impl.json")
 [ -n "$WANT" ] && [ "$WANT" = "$GOT" ] && ok "T2 permissions.deny is the registry's worker-impl list" || bad "T2 deny drifted: want $WANT got $GOT"
 jq -e '(.autoMode | has("hard_deny") or has("soft_deny")) or (.permissions | has("defaultMode")) or has("defaultMode")' "$TMP/impl.json" >/dev/null 2>&1 \
     && bad "T2 the settings set hard_deny, soft_deny or a permission mode" || ok "T2 no hard_deny / soft_deny / permission-mode key"
-if printf '%s\n' "$TEXT" | grep -Eiq 'bypass|any command|all commands|all scripts|everything'; then
+if grep -Eiq 'bypass|any command|all commands|all scripts|everything' <<<"$TEXT"; then
     bad "T2 a trust entry reads as a blanket allow"
 else ok "T2 no trust entry reads as a blanket allow"; fi
-printf '%s\n' "$TEXT" | grep -q 'Not covered:' && ok "T2 the tooling entries state what is not covered" || bad "T2 no Not covered clause"
+jq -e '[.autoMode.environment[] | select(. != "$defaults" and (startswith("Source control:") | not))] | length > 0 and all(contains("Not covered:"))' "$TMP/impl.json" >/dev/null 2>&1 \
+    && ok "T2 every tooling entry states what is not covered" || bad "T2 a tooling entry has no Not covered clause"
 
 # T3: a composed profile list carries the allow entries once.
 gen worker-impl,code-ui >"$TMP/composed.json"; rc=$?
