@@ -20,7 +20,7 @@ Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` /
 `READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages **and** doc
 `## Results` bullets. The chief reads your **newest marker-bearing bullet** (`tails=`):
 
-- **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; a bullet not
+- **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; one not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
   `WRAPPED` / `PARKED-USAGE` / `RESUMED` is invisible. [prose]
 - **Write every marker bullet with `append-results.sh`, never the Edit tool:**
