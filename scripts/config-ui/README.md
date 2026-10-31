@@ -35,10 +35,21 @@ the page.
 | Section | Source | `No data` means |
 |---|---|---|
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
-| What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
+| What is broken · Every item checked | two tabs: feed rows with health `fail` or `warn`, worst first, plus firing alerts, each with ONE fix action (below); and all rows grouped by bundle with a result each, a bundle with a problem open | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `workers.sh` (newest `*.fleet.json` under the handover root, status from `worker_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
+| Usage | (the worker list moved to Fleet; Usage links to it) | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `workers.sh` (newest `*.fleet.json` under the handover root, status from `worker_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
+
+**Project picker and Shared (HIMMEL-8044).** The rail carries a picker: the project this UI runs in
+(the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
+and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
+himmel itself, `project` for the rest) and a `fix.by`, classified once in `config-feed.js` `classifyRow`:
+`configure` (a setting a Configure tile writes, `fix.tile` names it: **Open in Configure**), `operator` (only
+you can run it: **Copy command**) or `chief` (**chief is on it**, no button). The all-projects view shows the
+Shared rows once, never counted in a project's own verdict, then each project worst first. `GET /api/projects`
+answers each project from its own cached feed (`~/.himmel/state/config-ui/feeds/<name>.json`, written by the UI
+that ran in it) or `not checked`; it never runs a doctor. `GET /api/feed?project=<name>` answers one of them
+(404 `not-checked` otherwise). A project's data is only as fresh as its own last UI run.
 
 The **Trends** section (HIMMEL-6969) is fed by `GET /api/rollup` (token-gated, GET
 only), which reads `~/.himmel/state/rollup/weekly.jsonl` (`$WEEKLY_ROLLUP_FILE`

@@ -19,6 +19,7 @@ import { shellLine } from "./public/render.js";
 import { acquireLock, runChild, type Lock } from "./lock";
 import { readBank, readLegs, readMode, readMonitoring, readToolHealth } from "./health-sources";
 import { readQuota } from "./quota-sources";
+import { loadFeed, readProjects, saveFeed, summarize } from "./projects";
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
@@ -462,6 +463,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     }, idleMs);
   };
 
+  // The registered projects (re-read per use, so a new registration shows) and the one this UI runs in.
+  const here = stationRoot(projectRoot);
+  const projectsNow = () => readProjects(env, here);
   // The feed: ONE background report shared by every request, cached briefly.
   // A failure is terminal for that run and never cached, so the next request retries.
   // feedLast is the newest good report, answered at once even while a newer one runs
@@ -482,7 +486,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     active++; // a running report keeps the idle timer from shutting the server down
     const onProgress = (p: Progress) => { if (!run.progress || p.i > run.progress.i) { run.progress = p; wake(run); } };
     run.promise = runFeed(env, opts.feedTimeoutMs ?? FEED_TIMEOUT_MS, onProgress)
-      .then((b) => { run.body = b; if (run.epoch === feedEpoch) feedLast = { body: b, at: now() }; }, () => { run.error = "himmelctl report --json failed or timed out"; })
+      .then((b) => { run.body = b; if (run.epoch === feedEpoch) { feedLast = { body: b, at: now() }; saveFeed(env, projectsNow().current, b); } }, () => { run.error = "himmelctl report --json failed or timed out"; })
       .finally(() => { run.done = true; run.at = now(); wake(run); active--; if (deferred && active === 0) { deferred = false; bump(); } });
     return feedRun = run;
   }
@@ -516,6 +520,15 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
+      if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
+        const { current, list } = projectsNow();
+        return json({ current, projects: list.map((p) => summarize(p, p.name === current, loadFeed(env, list, p.name))) });
+      }
+      const other = req.method === "GET" && path === "/api/feed" ? new URL(req.url).searchParams.get("project") : null;
+      if (other && other !== projectsNow().current) { // another project: its cached feed, else not checked (the doctor runs in the project it checks)
+        const c = loadFeed(env, projectsNow().list, other);
+        return c ? feedBody(c.body) : json({ state: "not-checked", project: other }, 404);
+      }
       if (req.method === "GET" && path === "/api/feed") {
         if (new URL(req.url).searchParams.get("refresh") === "1") { feedRun = null; feedLast = null; feedEpoch++; } // the refresh button waits for a probe it started: never the cached report, never a run already in flight
         return feedRoute();

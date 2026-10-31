@@ -1,6 +1,6 @@
 // thin DOM glue. All markup comes from render.js.
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
-import { renderHealth, verdict } from "/health.js";
+import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
 import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { renderWorkflow, mountWorkflow } from "/workflow.js";
@@ -26,6 +26,10 @@ let fleet = { data: null, error: null };
 // Health renders without a feed (D2): its bank and workers cards do not wait for the doctor report. So does Configure, so a
 // first-run Account never waits on the minutes-long probe; refreshFeed asks it to pick up a newer report on arrival anyway.
 let health = null; // GET /api/health, null while loading
+let projects = null; // GET /api/projects: { current, projects: [...] }, null until read (the picker waits for it)
+let otherFeed = null; // the feed of the project on the page when it is not this one: null while loading, "none" when never checked
+let healthView = { mode: "project", project: null, tab: "broken", row: null }; // #/health?view=all | project=<name> & tab= & row=
+let projectsGen = 0, otherGen = 0; // declared before route() runs: a reload at #/health calls loadProjects() from it
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
@@ -42,7 +46,7 @@ const noTracker = () => `<div class="nodata">No tracker the UI can read is confi
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
-  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => renderHealth(f, health) + (f ? renderTriage(f, state) + renderInventory(f, state) : probeStatus()), onVisit: () => { if (!health) loadHealth(); } },
+  { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
@@ -65,6 +69,7 @@ function route() {
   // the open tile rides the hash (#/config?tile=tracker), so a reload keeps it; any other route leaves none open.
   const asked = old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile");
   state.tile = currentPage.id === "config" && TILE_IDS.includes(asked) ? asked : null; // an unknown ?tile= opens none (nav.js TILES; slow.test.ts runs this file without its imports)
+  if (currentPage.id === "health") healthView = parseView(m[3]);
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
@@ -86,7 +91,57 @@ loadSources();
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
   $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("");
+    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("") + projectPicker();
+}
+
+// The rail's project picker: "All my projects" first, then each registered project with its own verdict (shared rows left out).
+function projectPicker() {
+  if (!projects) return "";
+  const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const sel = healthView.mode === "all" ? "all" : healthView.project || projects.current;
+  const word = (p) => (p.checkedAt ? projectVerdict(p.counts.project).word : "not checked");
+  const opts = projects.projects.map((p) => `<option value="${esc(p.name)}"${sel === p.name ? " selected" : ""}>${esc(p.name)} · ${word(p)}</option>`).join("");
+  return `<label class="picker"><span>Project</span><select id="proj" aria-label="Project"><option value="all"${sel === "all" ? " selected" : ""}>All my projects</option>${opts}</select></label>`;
+}
+
+// Health for the project in the picker: this UI's own feed, another project's cached one, or the all-projects view.
+function healthPage(f) {
+  const cur = projects && projects.current;
+  const other = healthView.project && cur && healthView.project !== cur;
+  const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
+  const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
+  const view = { ...healthView, projects, project: healthView.project || cur, fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none" };
+  // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
+  const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
+  return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
+}
+const healthHash = (v) => {
+  const q = new URLSearchParams();
+  if (v.mode === "all") q.set("view", "all"); else if (v.project) q.set("project", v.project);
+  if (v.tab === "all") q.set("tab", "all");
+  if (v.row) q.set("row", v.row);
+  return "#/health" + (q.size ? "?" + q : "");
+};
+async function loadProjects() {
+  const gen = ++projectsGen;
+  try {
+    const r = await fetch("/api/projects", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    if (r.ok && gen === projectsGen) projects = await r.json();
+  } catch (_) { /* the picker stays hidden */ }
+  if (gen !== projectsGen) return;
+  loadOther();
+  renderPages();
+  if (currentPage.id === "health") paint();
+}
+async function loadOther() {
+  const p = healthView.project, g = ++otherGen;
+  otherFeed = null;
+  if (!p || !projects || p === projects.current) return;
+  try {
+    const r = await fetch("/api/feed?project=" + encodeURIComponent(p), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = r.ok ? await r.json() : "none";
+    if (g === otherGen) { otherFeed = j; if (currentPage.id === "health") paint(); }
+  } catch (_) { if (g === otherGen) { otherFeed = "none"; if (currentPage.id === "health") paint(); } }
 }
 
 async function loadSources() {
@@ -399,6 +454,11 @@ document.addEventListener("drop", (e) => {
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
+  if (e.target.id === "proj") { // the rail picker: it routes, the route reads the project
+    const v = e.target.value;
+    location.hash = v === "all" ? "#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
+    return;
+  }
   if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, theme: e.target.value === "" ? null : e.target.value });
   const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
   if (rgf && rgd) {
@@ -503,11 +563,13 @@ document.addEventListener("click", (e) => {
   }
   if (b.dataset.act === "setup-verify") return void runVerify();
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
-  if (b.dataset.act === "open-config") { // a check's finding opens its row in Health's inventory
-    state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };
-    if (location.hash === "#/health") return paint(); // Health's own button: already there, so no route change repaints
-    location.hash = "#/health";
-    return;
+  if (b.dataset.act === "open-config") return void (location.hash = "#/health?row=" + encodeURIComponent(b.dataset.id)); // a check's finding opens its row on Health
+  if (b.dataset.act === "health-tile") { const t = document.getElementById(b.dataset.target); if (t) t.scrollIntoView({ block: "start" }); return; }
+  if (b.dataset.act === "health-tab" || b.dataset.act === "health-row") {
+    if (b.dataset.act === "health-tab") healthView.tab = b.dataset.tab;
+    else healthView.row = healthView.row === b.dataset.id ? null : b.dataset.id;
+    history.replaceState(null, "", location.pathname + location.search + healthHash(healthView));
+    return paint();
   }
   if (b.dataset.act === "tile") { // one group open at a time; the open one closes again. The hash keeps it across a reload.
     state.tile = state.tile === b.dataset.tile ? null : b.dataset.tile;

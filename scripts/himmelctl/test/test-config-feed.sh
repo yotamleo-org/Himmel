@@ -144,6 +144,21 @@ bad=$(jq -r '.rows[]|select((.id|type)!="string" or (.source|type)!="string" or 
 [ "$(jq '[.rows[].id]|length - (unique|length)' "$out")" -eq 0 ] || fail "duplicate row ids: $(jq -r '[.rows[].id]|group_by(.)|map(select(length>1)|.[0])|join(",")' "$out")"
 pass "a3 every row has the §4 fields, ids unique"
 
+# ── a4. every row says whether it is shared (machine/account) or the project's, and who fixes it ──
+bad=$(jq -r '.rows[]|select(((.scope // "")|IN("shared","project")|not) or ((.fix.by // "")|IN("configure","operator","chief")|not) or (.fix.by=="configure" and ((.fix.tile // "")|IN("secrets","review","tracker","scope")|not)))|.id' "$out")
+[ -z "$bad" ] || fail "rows without scope / fix.by / fix.tile: $bad"
+classify() { "$node_bin" -e 'const f=require(process.argv[1]);const [src,id]=process.argv[2].split("|");const r=f.classifyRow({source:src,id,fix:{remedy:process.argv[3]||""}});console.log([r.scope,r.by,r.tile||"-"].join(" "))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$1" "${2:-}"; }
+[ "$(classify 'secret|secret:TELEGRAM_BOT_TOKEN')" = "shared configure secrets" ] || fail "a4 telegram token: $(classify 'secret|secret:TELEGRAM_BOT_TOKEN')"
+[ "$(classify 'secret|secret:JIRA_PROJECT_KEY')" = "project configure tracker" ] || fail "a4 jira project key: $(classify 'secret|secret:JIRA_PROJECT_KEY')"
+[ "$(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')" = "shared operator -" ] || fail "a4 gh auth: $(classify 'doctor|doctor:C12-gh-auth' 'gh auth login')"
+[ "$(classify 'doctor|doctor:C12-gh-auth' '')" = "shared chief -" ] || fail "a4 an operator row with no command falls to the chief"
+[ "$(classify 'doctor|doctor:C40-qmd-vec')" = "shared chief -" ] || fail "a4 qmd-vec: $(classify 'doctor|doctor:C40-qmd-vec')"
+[ "$(classify 'doctor|doctor:C22-chain-skips')" = "project chief -" ] || fail "a4 chain skips: $(classify 'doctor|doctor:C22-chain-skips')"
+[ "$(classify 'initiative|initiative:execute')" = "project configure scope" ] || fail "a4 initiative: $(classify 'initiative|initiative:execute')"
+[ "$(classify 'lane|lane:codex')" = "shared configure review" ] || fail "a4 lane: $(classify 'lane|lane:codex')"
+[ "$(classify 'cadence|qmd-cadence')" = "shared configure scope" ] || fail "a4 cadence: $(classify 'cadence|qmd-cadence')"
+pass "a4 every row carries scope, fix.by and (for configure) fix.tile"
+
 
 # ── c. fires honesty ────────────────────────────────────────────────────────
 jq -e '.rows[]|select(.id=="doctor-cadence")|.fires.state=="yes" and (.fires.at|type)=="string"' "$out" >/dev/null || fail "doctor cadence fires != yes with a timestamp"
