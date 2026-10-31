@@ -43,11 +43,11 @@ check() {
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label - expected $expect got $got"; fi
 }
 
-# silent <label> <json> — the allow path must add zero stdout AND stderr.
+# silent <label> <json> — the allow path must exit 0 and add zero stdout AND stderr.
 silent() {
-    local out
-    out="$(printf '%s' "$2" | bash "$HOOK" 2>&1)"
-    if [ -z "$out" ]; then ok "$1"; else bad "$1 - expected no output, got: $out"; fi
+    local out rc
+    out="$(printf '%s' "$2" | bash "$HOOK" 2>&1)"; rc=$?
+    if [ "$rc" = 0 ] && [ -z "$out" ]; then ok "$1"; else bad "$1 - expected exit 0 and no output, got rc=$rc: $out"; fi
 }
 
 MARK=$'do the review\nESCALATION: one hard call, needs taste'
