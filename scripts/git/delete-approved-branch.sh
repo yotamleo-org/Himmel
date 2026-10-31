@@ -13,7 +13,7 @@
 #
 # APPROVAL RECORD: a TSV, one `<ref><TAB><branch>` per line, `#` lines ignored.
 #   HIMMEL_BRANCH_APPROVALS   file (default: $HOME/.himmel/branch-delete-approvals.tsv)
-#   HIMMEL_BRANCH_DELETE_LOG  append-only delete log (default: $HOME/.himmel/branch-deletes.log)
+#   HIMMEL_BRANCH_DELETE_LOG  append-only JSONL delete log (default: $HOME/.himmel/branch-deletes.log)
 #   HIMMEL_DELETE_REMOTE      remote to delete from (default: origin)
 # ponytail: the record is a plain file the bridge writes when the operator
 # approves, so a session that can write it can approve itself; upgrade path is
@@ -36,6 +36,9 @@ case "$branch" in
     ''|-*) die "refusing: '$branch' is not a branch name" 2 ;;
 esac
 [ -n "$ref" ] || die "usage: empty approval ref" 2
+case "$ref$branch" in
+    *[[:cntrl:]]*) die "refusing: control character in the branch or approval ref" 2 ;;
+esac
 git check-ref-format --branch "$branch" >/dev/null 2>&1 \
     || die "refusing: '$branch' is not a valid branch name" 2
 case "$branch" in
@@ -86,6 +89,10 @@ git push "$REMOTE" --delete "refs/heads/$branch" >&2 \
     || die "git push --delete failed for '$branch'" 2
 
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
-printf '%s\tdeleted\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REMOTE" "$branch" "$ref" >> "$LOG" \
+json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+host="$(hostname 2>/dev/null || echo unknown)"
+printf '{"v":1,"ts":"%s","host":"%s","source":"delete-approved-branch","kind":"delete","remote":"%s","branch":"%s","approval":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(json_escape "$host")" "$(json_escape "$REMOTE")" \
+    "$(json_escape "$branch")" "$(json_escape "$ref")" >> "$LOG" \
     || echo "delete-approved-branch: warning: could not write log $LOG" >&2
 echo "delete-approved-branch: deleted $REMOTE/$branch (approval $ref)"

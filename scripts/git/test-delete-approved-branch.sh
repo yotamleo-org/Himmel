@@ -125,7 +125,9 @@ if [ "$RC" -eq 0 ] && ! remote_has stale-a; then
 else
     fail "deletes an approved stale branch (rc=$RC, out=$OUT)"
 fi
-if grep -q 'stale-a' "$LOG" 2>/dev/null && grep -q 'msg-5004' "$LOG" 2>/dev/null; then
+if grep -q '"branch":"stale-a"' "$LOG" 2>/dev/null && grep -q '"approval":"msg-5004"' "$LOG" 2>/dev/null \
+    && grep -q '"v":1' "$LOG" && grep -q '"kind":"delete"' "$LOG" && grep -q '"source":"delete-approved-branch"' "$LOG" \
+    && grep -q '"ts":"' "$LOG" && grep -q '"host":"' "$LOG"; then
     pass "logs the delete with its approval ref"
 else
     fail "logs the delete with its approval ref (log: $(cat "$LOG" 2>/dev/null))"

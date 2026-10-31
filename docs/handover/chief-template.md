@@ -205,11 +205,6 @@ bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>`
 - **Impacted suites, not directory sweeps:** a brief names every suite
   *referencing* a changed file, with a verdict per suite. [prose]
 - **Agent consent needs quote-back**; silence is non-consent. [prose]
-- **An operator-approved stale remote branch delete** runs as
-  `bash scripts/git/delete-approved-branch.sh <branch> <approval-ref>`, never raw
-  `git push --delete` (denied). The approval record
-  (`~/.himmel/branch-delete-approvals.tsv`, `<ref><TAB><branch>`) must name the
-  branch; main, `release/*` and any branch with an open PR are refused. [prose]
 - **Shape refused:** `chief-sections/refused-shapes.md`. [prose]
 - **Never assume a lane is down:** diagnose local credential/config first. [prose]
 - **With a relay live, ack every escalation** (`ack <id>`), keep
