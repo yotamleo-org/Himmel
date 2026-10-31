@@ -4,8 +4,10 @@
 # only), so plugins under marketplace/ and plugins/ are covered too — not just
 # the packages under scripts/. The node_modules pathspec exclude is defensive:
 # `git ls-files` already omits untracked nested worktrees + dependency trees.
-# Uses npx license-checker (downloaded on first run, cached afterwards).
+# Installs license-checker independently of the inspected dependency trees.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Python-2.0 / PSF-2.0 (the PSF License; argparse 3.x relabels the SPDX id) is
 # permissive + GPL-compatible; Python-2.0 added when the
@@ -32,6 +34,9 @@ if [ ${#pkgs[@]} -eq 0 ]; then
     exit 0
 fi
 
+# Bootstrap lazily so empty/bun-only repositories still need no npm tooling.
+scanner_dir=
+trap '[ -z "$scanner_dir" ] || rm -rf "$scanner_dir"' EXIT
 fail=0
 for pkg in "${pkgs[@]}"; do
     dir=$(dirname "$pkg")
@@ -69,8 +74,22 @@ for pkg in "${pkgs[@]}"; do
             fi
         fi
     fi
+    if [ -z "$scanner_dir" ]; then
+        # prim-ok: fixed external root must not honor an inspected-tree TMPDIR
+        scanner_dir=$(mktemp -d /tmp/himmel-license-checker.XXXXXX) || exit 1
+        # Never let the inspected package's .npmrc or node_modules select the
+        # scanner. Its committed lock binds the scanner and transitive versions;
+        # installation and execution both use this independent cwd and prefix.
+        cp "$SCRIPT_DIR/license-scanner/package.json" "$SCRIPT_DIR/license-scanner/package-lock.json" "$scanner_dir/"
+        # Scanner dependencies are tooling, not shipped production dependencies.
+        if ! (cd "$scanner_dir" && npm ci --include=dev --ignore-scripts --no-audit --no-fund --prefix "$scanner_dir"); then
+            echo "ERROR: independent license-checker install failed — cannot license-check." >&2
+            exit 1
+        fi
+    fi
+    target_dir=$(cd "$dir" && pwd -P)
     echo "→ license-checker in $dir (allowed: $ALLOWED)"
-    if ! (cd "$dir" && npx --yes license-checker --production --excludePrivatePackages --onlyAllow="$ALLOWED"); then
+    if ! (cd "$scanner_dir" && "$scanner_dir/node_modules/.bin/license-checker" --start "$target_dir" --production --excludePrivatePackages --onlyAllow="$ALLOWED"); then
         fail=1
     fi
 done
