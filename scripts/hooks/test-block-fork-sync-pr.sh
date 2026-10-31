@@ -80,6 +80,10 @@ FORKCLONE="$SANDBOX/core-clone"
 git init -q "$FORKCLONE"
 git -C "$FORKCLONE" remote add origin https://github.com/yotamleo-org/core.git
 run_hook "no --repo: origin is our fork, upstream head refused" 2 "gh pr create --head home-assistant:dev -t x -b y" "$FORKCLONE"
+run_hook "cd into the fork clone first: origin is read there" 2 "cd $FORKCLONE && gh pr create --head home-assistant:dev -t x -b y"
+run_hook "relative cd into the fork clone is followed" 2 "cd core-clone; gh pr create --head home-assistant:dev -t x -b y"
+run_hook "GH_REPO prefix names the base repo" 2 "GH_REPO=yotamleo-org/core gh pr create --head home-assistant:dev -t x -b y"
+run_hook "exported GH_REPO names the base repo" 2 "export GH_REPO=yotamleo-org/core && gh pr create --head home-assistant:dev -t x -b y"
 
 # 4. Our own carried branch is allowed (3 of 3 PR commits are ours).
 GH_OURS=3 GH_TOTAL=3 run_hook "our carried branch into our fork is allowed" 0 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/fix-x -t x -b y"
@@ -87,6 +91,11 @@ GH_OURS=3 GH_TOTAL=3 run_hook "our carried branch into our fork is allowed" 0 "g
 # 5. Our branch carrying mostly upstream commits is a sync PR in disguise.
 GH_OURS=1 GH_TOTAL=40 run_hook "own branch with mostly upstream commits is refused" 2 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/sync -t x -b y"
 if grepq "$LAST_ERR" -F "39 of 40"; then pass "mostly-upstream deny counts the upstream commits"; else fail "mostly-upstream deny must say 39 of 40: $LAST_ERR"; fi
+
+# 5b. No --base: gh pr create targets the fork's default branch, so the total
+#     is counted against it, not against himmel_branch.
+GH_OURS=1 GH_TOTAL=40 run_hook "no --base: own mostly-upstream branch is refused" 2 "gh pr create --repo yotamleo-org/graphify --head himmel/sync -t x -b y"
+if grep -qF "api repos/yotamleo-org/graphify/compare/main...himmel/sync" "$GH_LOG"; then pass "no --base: total counted against the fork default branch"; else fail "no --base must compare against the fork default branch: $(cat "$GH_LOG")"; fi
 
 # 6. GitHub unreachable: a workflow guard fails open on its own infra error.
 GH_FAIL=1 run_hook "compare unavailable fails open" 0 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/fix-x -t x -b y"

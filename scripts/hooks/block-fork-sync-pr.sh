@@ -17,8 +17,10 @@
 # ALLOWED: a PR of our own carried delta, any repo that is not a registered
 # fork (himmel itself, first-party repos), every other command.
 #
-# The base repo is `--repo`/`-R`, else the cwd clone's `origin`. R2 asks the
-# GitHub compare API twice (`gh api`); a deny names the replacement,
+# The base repo is `--repo`/`-R`, else `GH_REPO`, else the `origin` of the
+# clone the command runs in (after any `cd`). R2 counts the PR's commits
+# against `--base`, else the fork's default branch, with the GitHub compare
+# API (`gh api`); a deny names the replacement,
 # `bash scripts/upstreams/resync-fork.sh --sync <fork>`.
 #
 # A workflow guard, not a security fence: it fails OPEN on its own
@@ -59,7 +61,7 @@ REGISTRY="${HIMMEL_REPO:-$HOOK_DIR/../..}/scripts/guardrails/himmel-adapters.jso
 [ -r "$REGISTRY" ] || exit 0
 
 python3 -I - "$REGISTRY" "$input" <<'PY'
-import json, re, shlex, subprocess, sys
+import json, os, re, shlex, subprocess, sys
 
 registry_path, raw = sys.argv[1], sys.argv[2]
 
@@ -132,11 +134,14 @@ def nwo_of_url(url):
     m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$", url)
     return m.group(1) if m else ""
 
+# At most four gh calls per PR; 4 x 8 s stays inside the Bash chain's 61 s.
+GH_TIMEOUT = 8
+
 def gh_ahead(repo, spec):
     try:
         p = subprocess.run(["gh", "api", f"repos/{repo}/compare/{spec}",
                             "--jq", ".ahead_by"], capture_output=True,
-                           text=True, timeout=20)
+                           text=True, timeout=GH_TIMEOUT)
         return int(p.stdout.strip()) if p.returncode == 0 else None
     except Exception:
         return None
@@ -145,7 +150,7 @@ def gh_default(repo):
     try:
         p = subprocess.run(["gh", "api", f"repos/{repo}", "--jq",
                             ".default_branch"], capture_output=True,
-                           text=True, timeout=20)
+                           text=True, timeout=GH_TIMEOUT)
         return p.stdout.strip() if p.returncode == 0 else ""
     except Exception:
         return ""
@@ -166,12 +171,21 @@ try:
 except ValueError:
     allow()
 
+gh_repo = ""
 for words in segs:
+    # A `cd`/`pushd` earlier in the command moves where origin is read.
+    if len(words) >= 2 and words[0] in ("cd", "pushd"):
+        cwd = os.path.join(cwd, os.path.expanduser(words[1]))
+        continue
+    # gh reads its default repo from GH_REPO (a prefix or an earlier export).
+    for w in words:
+        if w.startswith("GH_REPO="):
+            gh_repo = w.split("=", 1)[1]
     args = pr_create_args(words)
     if args is None:
         continue
     f = flags(args)
-    base = f.get("repo") or nwo_of_url(git("remote", "get-url", "origin"))
+    base = f.get("repo") or gh_repo or nwo_of_url(git("remote", "get-url", "origin"))
     fork = forks.get(base.lower())
     if not fork:
         continue
@@ -191,7 +205,9 @@ for words in segs:
     if not up_default:
         continue
     ours = gh_ahead(up, f"{up_default}...{base_owner}:{branch}")
-    total = gh_ahead(fork["nwo"], f"{f.get('base') or fork['himmel_branch']}...{branch}")
+    # gh pr create without --base targets the fork's default branch.
+    pr_base = f.get("base") or gh_default(fork["nwo"]) or fork["himmel_branch"]
+    total = gh_ahead(fork["nwo"], f"{pr_base}...{branch}")
     if ours is None or total is None or total <= 0:
         continue
     if ours * 2 < total:
