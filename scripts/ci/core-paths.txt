@@ -20,6 +20,7 @@
 # The release engine and the core match itself.
 ^scripts/jira/src/release/
 ^scripts/jira/src/core\.ts$
+^scripts/ci/core-paths\.txt$
 # The bus and the handover libraries.
 ^marketplace/plugins/himmel-bus/
 ^scripts/lib/(handover-path|flags)\.

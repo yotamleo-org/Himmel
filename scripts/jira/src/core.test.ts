@@ -73,6 +73,10 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
       .toEqual(['CORE K-1 scripts/handover/queue-lock.sh']);
   });
 
+  it('treats the core list itself as core', () => {
+    expect(coreMatch(['scripts/ci/core-paths.txt'], ['K-1'], { patterns })).toEqual(['CORE K-1 scripts/ci/core-paths.txt']);
+  });
+
   it('resolves .. segments before matching', () => {
     expect(coreMatch(['scripts/handover/../handover/queue-lock.sh'], ['K-1'], { patterns }))
       .toEqual(['CORE K-1 scripts/handover/queue-lock.sh']);
@@ -130,6 +134,11 @@ describe('core-paths size guard (HIMMEL-8353 C1b)', () => {
 
   it('passes exactly 2 %', () => {
     expect(sizeGuard(['^core/f[01]$'], files)).toEqual({ matched: 2, total: 100, line: null });
+  });
+
+  it('does not count tests and fixtures toward the share', () => {
+    const withTests = [...files.slice(0, 2), ...Array.from({ length: 10 }, (_, i) => `core/tests/test-${i}.sh`), ...files.slice(5)];
+    expect(sizeGuard(['^core/'], withTests).matched).toBe(2);
   });
 
   it('proceeds with a recorded reason', () => {

@@ -45,7 +45,7 @@ export function sizeGuard(
   patterns: string[], tracked: string[], reason?: string,
 ): { matched: number; total: number; line: string | null } {
   const res = patterns.map((p) => new RegExp(p));
-  const matched = tracked.filter((f) => matchesAny(res, f)).length;
+  const matched = tracked.filter((f) => !TEST_PATH.test(f) && matchesAny(res, f)).length;
   const total = tracked.length;
   if (matched <= total * MAX_CORE_SHARE) return { matched, total, line: null };
   if (!reason) {
