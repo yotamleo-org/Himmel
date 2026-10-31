@@ -227,6 +227,10 @@ silent "policy without warn_model_patterns -> opus general-purpose is silent" "$
 polset '{"blocked_model_patterns":[],"warn_model_patterns":["^sonnet$"],"min_reason_chars":10,"placeholder_reasons":[]}'
 warn "warn_model_patterns is DATA: listed sonnet -> warn" "$(agent general-purpose sonnet 'x')"
 silent "warn_model_patterns is DATA: unlisted opus -> no output" "$(agent general-purpose opus 'x')"
+polset "{\"blocked_model_patterns\":[\"$FABLE_RE\"],\"warn_model_patterns\":[\"(\"],\"min_reason_chars\":10,\"placeholder_reasons\":[]}"
+check "invalid warn regex: a blocked model is still denied (blocked is evaluated first)" block "$(agent general-purpose fable 'x')"
+check "invalid warn regex: opus general-purpose -> allow (fail-open)" allow "$(agent general-purpose opus 'x')"
+silent "invalid warn regex: opus general-purpose -> no output" "$(agent general-purpose opus 'x')"
 polset '{not json'
 check "malformed policy -> allow (fail-open)" allow "$(agent general-purpose fable 'x')"
 polset '[]'
