@@ -2365,18 +2365,18 @@ run79() { # <variant> <cmd> <bucket> [extra env...]
 }
 out79a="$(run79 in new bus79in)"
 session79a="DEMO-nextleg-${today}A-bus79-chief"
-check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
+check "79 opted-in new: register --role console, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
 check "79 opted-in new: the launch log records the registration" \
-    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as chief\$")" "1"
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
 session79b="DEMO-nextleg-${today}B-bus79-chief"
 check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
 succeed $session79b"
 check "79 opted-in next: the launch log records the registration and the stamp" \
-    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as console, stamped successor of $session79a\$")" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as chief, stamped successor of $session79a\$")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$(token_of "$out79b")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
 rm -f "$bus79/calls"

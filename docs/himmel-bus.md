@@ -42,7 +42,7 @@ Run `node marketplace/plugins/himmel-bus/bin/bus <verb>`.
 
 | Verb | Purpose |
 |---|---|
-| `register <name> --role worker\|console\|judge\|consult [--console <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |
+| `register <name> --role worker\|chief\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |
 | `bind <name> <pid>` | Bind a registered name to a live pid, once |
 | `rebind <name> <pid>` | Rebind, only when the bound pid is gone |
 | `adopt <new-chief>` | Run as the worker: adopt a successor chief, only when the old one is gone or its own record names the new one |

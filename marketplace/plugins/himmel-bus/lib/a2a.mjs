@@ -29,7 +29,7 @@ export function toA2AMessage(rec) {
 // No supportedInterfaces: an AgentInterface requires a url and no listener exists.
 // pid and start time are local proof of identity and never leave the peer file.
 export function agentCard(peer) {
-  const owner = peer.console ? ` of console ${peer.console}` : '';
+  const owner = peer.console ? ` of chief ${peer.console}` : '';
   return {
     name: peer.n,
     description: `himmel ${peer.role} session ${peer.n}${owner}`,
