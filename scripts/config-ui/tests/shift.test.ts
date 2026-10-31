@@ -424,7 +424,8 @@ test("refreshing a closed shift stays on that shift, and an unread PR list shows
   expect(renderShift(closedView, {})).toContain('href="#/shift/2026-10-27T08%3A00%2B01%3A00" data-act="refresh-shift"');
   expect(renderShift(pageView(), {})).toContain('href="#/shift" data-act="refresh-shift"');
   const unread = renderShift(pageView({ mergedUnread: true, shipped: [] }), {});
-  expect(unread).not.toContain('Shipped this shift <span class="ro">0</span>');
+  expect(unread).not.toContain("Shipped this shift <b>0</b>");
+  expect(unread).toContain("Shipped this shift</h2>");
 });
 
 test("GET /api/shift: a gh failure comes back as an unread PR list, not an empty one", async () => {
