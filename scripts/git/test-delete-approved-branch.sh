@@ -42,6 +42,10 @@ git clone -q "$REMOTE" "$CLONE" 2>/dev/null
     for b in stale-a has-pr unapproved release/1.0 other-stale gh-down; do
         git push -q origin "main:refs/heads/$b"
     done
+    # origin is written as a github.com URL (what the PR lookup parses); insteadOf
+    # sends the actual push to the mocked bare remote
+    git remote set-url origin https://github.com/fixture/repo.git
+    git config "url.$REMOTE.insteadOf" https://github.com/fixture/repo.git
 )
 
 # gh stub: `gh pr list --head <b> ...` reports one open PR for has-pr only,
@@ -71,13 +75,15 @@ run() {
     # run <branch> <ref>; sets RC and OUT
     OUT="$(cd "$CLONE" && PATH="$BIN:$PATH" HIMMEL_BRANCH_APPROVALS="$APPROVALS" \
         HIMMEL_BRANCH_DELETE_LOG="$LOG" HIMMEL_DELETE_REMOTE="${REMOTE_OVERRIDE:-origin}" \
-        HIMMEL_DELETE_GH_REPO="${GH_REPO_OVERRIDE-fixture/repo}" bash "$SUT" "$@" 2>&1)"
+        GH_REPO=other/repo bash "$SUT" "$@" 2>&1)"
     RC=$?
 }
 
 expect_refused() {
     local label="$1" branch="$2" ref="$3"
+    REMOTE_OVERRIDE="${4:-}"
     run "$branch" "$ref"
+    REMOTE_OVERRIDE=
     if [ "$RC" -ne 0 ] && remote_has "$branch"; then
         pass "$label"
     else
@@ -94,17 +100,24 @@ expect_refused "refuses a branch the approval does not name" unapproved msg-5004
 expect_refused "refuses a ref that names the branch only in a commented line" other-stale msg-9999
 expect_refused "refuses when the PR lookup fails (fail closed)" gh-down msg-5004
 
-GH_REPO_OVERRIDE="" expect_refused "refuses when the remote's repository cannot be resolved (fail closed)" stale-a msg-5004
+git -C "$CLONE" remote add plain "$REMOTE"
+expect_refused "refuses when the remote's repository cannot be resolved (fail closed)" stale-a msg-5004 plain
 
 # fetch URL names github.com/fixture/repo (the stub accepts that repo) but the
 # push URL is the mocked remote: the lookup must follow the push URL
 git -C "$CLONE" remote add split https://github.com/fixture/repo.git
 git -C "$CLONE" remote set-url --push split "$REMOTE"
-GH_REPO_OVERRIDE="" REMOTE_OVERRIDE=split expect_refused "refuses when the push URL differs from the fetch URL" stale-a msg-5004
+expect_refused "refuses when the push URL differs from the fetch URL" stale-a msg-5004 split
 
 # a non-github.com host must not be looked up against github.com
 git -C "$CLONE" remote add ghe https://ghe.example.com/fixture/repo.git
-GH_REPO_OVERRIDE="" REMOTE_OVERRIDE=ghe expect_refused "refuses a remote on a host other than github.com" stale-a msg-5004
+expect_refused "refuses a remote on a host other than github.com" stale-a msg-5004 ghe
+
+# git push reaches every push URL, so a remote with two is never checked
+git -C "$CLONE" remote add multi https://github.com/fixture/repo.git
+git -C "$CLONE" remote set-url --push multi https://github.com/fixture/repo.git
+git -C "$CLONE" remote set-url --add --push multi https://github.com/fixture/repo.git
+expect_refused "refuses a remote with more than one push URL" stale-a msg-5004 multi
 
 run stale-a msg-5004
 if [ "$RC" -eq 0 ] && ! remote_has stale-a; then

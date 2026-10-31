@@ -15,7 +15,6 @@
 #   HIMMEL_BRANCH_APPROVALS   file (default: $HOME/.himmel/branch-delete-approvals.tsv)
 #   HIMMEL_BRANCH_DELETE_LOG  append-only delete log (default: $HOME/.himmel/branch-deletes.log)
 #   HIMMEL_DELETE_REMOTE      remote to delete from (default: origin)
-#   HIMMEL_DELETE_GH_REPO     owner/repo for the open-PR lookup (default: parsed from the remote URL)
 # ponytail: the record is a plain file the bridge writes when the operator
 # approves, so a session that can write it can approve itself; upgrade path is
 # an operator-signed record the script verifies.
@@ -55,15 +54,21 @@ fi
 
 # Bind the PR lookup to the repository the delete targets, never gh's inferred
 # repo or an inherited GH_REPO.
-gh_repo="${HIMMEL_DELETE_GH_REPO:-}"
-if [ -z "$gh_repo" ]; then
-    # the push URL is what the delete reaches; only github.com is looked up
-    remote_url="$(git remote get-url --push "$REMOTE" 2>/dev/null)" \
-        || die "refusing: remote '$REMOTE' has no URL"
-    gh_repo="$(printf '%s' "$remote_url" | sed -E 's#^(git@github\.com:|ssh://git@github\.com/|https://github\.com/)##; s#\.git$##')"
-    [ "$gh_repo" != "$remote_url" ] \
-        || die "refusing: remote '$REMOTE' is not a github.com remote"
-fi
+# The remote's configured push URL(s) are read raw (url.*.insteadOf is not
+# applied); git push reaches every push URL, so exactly one must exist, and only
+# a github.com URL is looked up.
+case "$REMOTE" in
+    ''|-*) die "refusing: '$REMOTE' is not a remote name" 2 ;;
+esac
+remote_urls="$(git config --get-all "remote.$REMOTE.pushurl" 2>/dev/null)"
+[ -n "$remote_urls" ] || remote_urls="$(git config --get-all "remote.$REMOTE.url" 2>/dev/null)"
+[ -n "$remote_urls" ] || die "refusing: remote '$REMOTE' has no configured URL"
+case "$remote_urls" in
+    *$'\n'*) die "refusing: remote '$REMOTE' has more than one push URL" ;;
+esac
+gh_repo="$(printf '%s' "$remote_urls" | sed -E 's#^(git@github\.com:|ssh://git@github\.com/|https://github\.com/)##; s#\.git$##')"
+[ "$gh_repo" != "$remote_urls" ] \
+    || die "refusing: remote '$REMOTE' is not a github.com remote"
 case "$gh_repo" in
     */*/*|*[!A-Za-z0-9._/-]*|/*|*/|'') die "refusing: cannot resolve the GitHub repository of remote '$REMOTE'" ;;
     */*) ;;
