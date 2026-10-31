@@ -1,7 +1,7 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { copyCommand, esc, planHtml, renderFleetCap, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { copyCommand, esc, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
 import { TILES } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
@@ -155,8 +155,8 @@ function tileValue(id, { setup, state }) {
     return d ? d.reviewers.filter((r) => r.enabled !== false).map((r) => `${REVIEWER_NAME[r.slug] || r.slug} ${r.required ? "must pass" : "notes"}`).join(" · ") : "";
   }
   if (id === "tracker") return ok ? TRACKER_NAME[setup.commit.tracker] || "not set" : "";
-  const fc = state.fleetCap && state.fleetCap.data, vm = state.vm && state.vm.data;
-  return [fc && `fleet cap ${fc.cap}`, vm && `VM ${vm.mode}`].filter(Boolean).join(" · ");
+  const fc = state.fleetCap && state.fleetCap.data, vm = state.vm && state.vm.data, rp = state.reports && state.reports.data;
+  return [fc && `fleet cap ${fc.cap}`, vm && `VM ${vm.mode}`, rp && `report day ${rp.report_day}`].filter(Boolean).join(" · ");
 }
 
 // Only the review gate carries a recommendation, so only the Review tile can say it matches our pick.
@@ -236,9 +236,9 @@ function scopePanel({ setup, feed, state }) {
     : choices ? `<div class="setgroup"><h3>Paths</h3><p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by the path config writer after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans)}${forgeRow(choices)}</div>` : "";
   return `<p class="sub">What himmel does on its own in this install, which plugins and jobs it runs, and where its state lives. Each switch shows a dry run before it writes.</p>
     ${group(["auto-ship"])}${group(["plugins"], 3)}${group(["scheduled-jobs"])}${paths}
-    <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}</div>
+    <div class="setgroup"><h3>This machine</h3>${renderFleetCap(state.fleetCap)}${renderVm(state.vm)}${renderReports(state.reports)}</div>
     ${group(["install-answers"])}
-    <p class="foot"><b>Saved to</b> the himmel <code>.env</code> (auto-ship, fleet cap), <code>~/.himmel/himmel.conf</code> (paths), <code>~/.himmel/config.json</code> (VM), your crontab (jobs), the plugins' user-scope state · each change takes effect as its row says</p>`;
+    <p class="foot"><b>Saved to</b> the himmel <code>.env</code> (auto-ship, fleet cap), <code>~/.himmel/himmel.conf</code> (paths), <code>~/.himmel/config.json</code> (VM, reports and shifts), your crontab (jobs), the plugins' user-scope state · each change takes effect as its row says</p>`;
 }
 
 const PANELS = { secrets: secretsPanel, review: reviewPanel, tracker: trackerPanel, scope: scopePanel };

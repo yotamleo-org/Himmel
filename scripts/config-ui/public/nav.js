@@ -3,6 +3,7 @@
 // fragment (#t=<token>), never a path or query, so it never reaches a request line.
 export const PAGES = [
   { id: "shift", label: "Shift" },
+  { id: "report", label: "Morning report" },
   { id: "fleet", label: "Fleet" },
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
@@ -11,7 +12,7 @@ export const PAGES = [
   { id: "kanban", label: "Kanban" },
   { id: "workflow", label: "Workflow" },
 ];
-const CHIEF = ["shift", "config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+const CHIEF = ["shift", "report", "config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
 
 // Settings and Setup became one Configure page. The old ids (and the himmelctl install hand-off's page=setup) still land
 // on it: Setup with the Secrets tile picked. TILES are the Configure page's four groups. (app.js maps the #/setup route

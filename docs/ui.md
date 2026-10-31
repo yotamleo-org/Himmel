@@ -10,7 +10,7 @@ they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Shift, Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Shift, Morning report, Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -136,8 +136,19 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   shows the chiefs with their span and PR credit, Waiting on you (links out; nothing here acts),
   Running now and Shipped; a closed shift adds Carried to the next shift and a pager. A shift
   closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
-  20:00 clock cuts once it is at least 4 hours old, and is recorded in `shifts.jsonl` under
-  `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/config` (Configure: four group tiles, Secrets, Review,
+  20:00 clock cuts once it is at least 4 hours old (all four numbers are set on Configure, under
+  Reports and shifts), and is recorded in `shifts.jsonl` under
+  `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/report` (the Morning report page:
+  one report per day, read from the `morning-report-YYYY-MM-DD.md` files the generator writes under
+  `$HANDOVER_DIR`, with a day selector, the window the report covers, five tiles (What shipped,
+  Waits on you, Open PRs, What it spent, What runs next), a Chiefs table and a Spend per shift
+  table. Each spend column names its source and no column is a sum of another; a source that gave
+  no figure reads "not available". A day with no report says "No report was made for" that day;
+  today shows a "so far" view of the shifts closed since midnight, which is not a report and is
+  never saved. The day starts at local midnight on the station unless `report_day` is set to UTC on
+  Configure; a new setting applies from the next report on and past reports keep their window. A
+  shift whose close is written after midnight is counted in exactly one report. The page only
+  reads: `GET /api/reports` and `GET /api/report?day=YYYY-MM-DD`), `#/config` (Configure: four group tiles, Secrets, Review,
   Tracker and Project scope, one open at a time, each row with its command, when it takes
   effect and a Learn more link to the docs site, and the Check this install strip under the
   tiles. Review keeps its six read-only timeout and tier rows behind one closed "Timeouts and tiers" fold. Secrets: first the Account step, which creates the UI login once on a fresh install;

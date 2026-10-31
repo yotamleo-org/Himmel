@@ -31,6 +31,8 @@ import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
+import { optsOf, readReports, writeReports } from "./report-settings";
+import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
 import { readGate, writeGate } from "./review-gate";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
@@ -80,6 +82,7 @@ const STATIC: Record<string, [string, string]> = {
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
   "/shift.js": ["shift.js", "application/javascript; charset=utf-8"],
+  "/report.js": ["report.js", "application/javascript; charset=utf-8"],
   "/setup.js": ["setup.js", "application/javascript; charset=utf-8"],
   "/login": ["login.html", "text/html; charset=utf-8"],
   "/login.js": ["login.js", "application/javascript; charset=utf-8"],
@@ -566,7 +569,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const file = shiftsFile(env), at = now();
         const memo = new Map<string, ReturnType<typeof readMerged>>(); // one gh read per exact window within this request
         const mergedIn = (a: number, b: number) => { const k = `${a}:${b}`; if (!memo.has(k)) memo.set(k, readMerged(env, root, a, b)); return memo.get(k)!; };
-        const snap = await tickShifts({ root: handover, file, now: at, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
+        const rs = readReports(); // the shift numbers saved on Configure; an unreadable config polls with the defaults
+        const snap = await tickShifts({ root: handover, file, now: at, opts: "report_day" in rs.body ? optsOf(rs.body) : undefined, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
         const rows = readShifts(file);
         const win = id === null ? null : rows.find((r) => r.id === id);
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
@@ -574,6 +578,25 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
         return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards }), redactOut));
       }
+      // the Morning report page: the dated report files under the handover root (the generator writes them, nothing here does),
+      // one report parsed to blocks, and the "so far" view of today's closed shifts. The day is a validated date, never a path.
+      if (path === "/api/reports") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const handover = env.HANDOVER_DIR || "";
+        if (!handover) return json({ days: [], newest: null, ageHours: null, today: "", reason: "no handover root is set (HANDOVER_DIR)" });
+        const t = now(), d = new Date(t);
+        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return json({ ...listReports(handover, t, today), soFar: soFar(shiftsFile(env), today) });
+      }
+      if (path === "/api/report") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const day = new URL(req.url).searchParams.get("day") || "";
+        if (!REPORT_DAY.test(day)) return new Response("bad day", { status: 400 });
+        const handover = env.HANDOVER_DIR || "";
+        return json(redactOut(handover ? readReport(handover, day) : { state: "none", day }));
+      }
+      // the four Reports and shifts settings: the `reports` section of the himmel config, validated and saved through luna-config.js.
+      if (path === "/api/report-settings" && req.method === "GET") { const r = readReports(); return json(redactOut(r.body), r.status); }
       // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
       if (path === "/api/rollup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -658,7 +681,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
       // the fleet cap: HIMMEL_FLEET_CAP read as gate policy (config.json .policy, then the station .env); a write is refused.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -676,6 +699,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (c.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
         return json(redactOut(c.body), c.status);
       }
+      if (path === "/api/report-settings") { const r = writeReports(b as Record<string, unknown>); return json(redactOut(r.body), r.status); }
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
       if (path === "/api/setup/secret") return setupWriteRoute(() => secretWrite(b as Record<string, unknown>, { ...setupOpts, serviceMode: !!opts.noIdle, session }));
