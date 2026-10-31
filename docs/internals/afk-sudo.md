@@ -115,8 +115,10 @@ broker's pending payload, not next to the record.
   and the start (a rename over it, a link retargeted) cannot change what runs, which is the
   file the operator saw. The same is done for the script an interpreter runs: when argv[0]
   is a known interpreter (`sh`, `bash`, `python3`, `perl`, `ruby`, `node`, `php`, `lua`
-  and kin), no option before the first operand supplies the program (`-c`, `-m`, `-e`, any
-  `--` option) and that operand is a bound file, it is replaced by its held descriptor.
+  and kin) and no option before it supplies the program (`-c`, `-m`, `-e`, any `--` option),
+  the first word that is no option and names a bound file is replaced by its held descriptor
+  (a word that names no file, such as the `ignore` of `-W ignore`, is skipped; a file given
+  as an option's value before the script is taken for the script).
   Other file arguments are hashed from an open file and compared by identity, but still
   opened by path by the command. What is left: a file edited **in place** (same inode)
   between the hash and the start, which the session can do when it can write the file; an

@@ -226,17 +226,18 @@ INTERPRETERS = re.compile(r"(ba|da|z|k)?sh|python[0-9.]*|perl|ruby|node|php|lua"
 
 
 def script_operand(rec):
-    """Index in rec["argv"] of the file an interpreter runs as its script: the first operand, when
-    argv[0] is a known interpreter, no option before it supplies the program (-c, -m, -e) and the
-    operand is a bound file. Else None."""
+    """Index in rec["argv"] of the file an interpreter runs as its script: the first bound file among
+    the words that are no option, when argv[0] is a known interpreter and no option before it supplies
+    the program (-c, -m, -e) or is a long option. Words that name no file (the `ignore` of
+    `-W ignore`) are skipped. Else None."""
     argv = rec["argv"]
     if not INTERPRETERS.fullmatch(os.path.basename(argv[0])):
         return None
     for i, a in enumerate(argv[1:], 1):
         if a.startswith("--") or (a.startswith("-") and re.search(r"[cme]", a)):
             return None
-        if not a.startswith("-"):
-            return i if rec["targets"][i].startswith("file:") else None
+        if not a.startswith("-") and rec["targets"][i].startswith("file:"):
+            return i
     return None
 
 
@@ -455,7 +456,7 @@ def capture(cmd, env, cwd, stdin_path, timeout, pass_fds=()):
 def execute_run(payload, config):
     """Re-check everything the operator approved, then run it. Returns the broker's result dict."""
     rid = payload["id"]
-    held = {}  # path -> the open file the check hashed; the program (and its script) start from these descriptors
+    held, frozen = {}, {}  # path -> the open file the check hashed (the program and its script start from these descriptors), and what it was frozen as
     try:
         rec = load_record(rid)
         if rec.get("id") != rid or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
@@ -463,12 +464,14 @@ def execute_run(payload, config):
         try:  # a program, file argument or cwd that is gone or no longer a regular file has changed
             for path, sha256, ident in [(rec["argv0_path"], rec["argv0_sha256"], rec["argv0_dev_ino"])] + \
                     [(f["path"], f["sha256"], f["dev_ino"]) for f in rec["files"]]:
-                if path in held:
+                if path in held:  # one open file answers both records, which must then agree
+                    if frozen[path] != (sha256, ident):
+                        return {"result": "changed"}
                     continue
                 f = verify_open(path, sha256, ident)
                 if f is None:
                     return {"result": "changed"}
-                held[path] = f
+                held[path], frozen[path] = f, (sha256, ident)
             st = os.stat(rec["cwd"])
             if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
                 return {"result": "changed"}

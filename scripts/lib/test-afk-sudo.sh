@@ -567,6 +567,31 @@ printf 'echo hi\n' > "$R/x.sh"
 out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
 cp -p "$R/x.sh" "$R/x.sh.new"; mv "$R/x.sh.new" "$R/x.sh"
 assert_contains "RED 8250: a file argument replaced by a same-bytes file (new inode) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root swapoptarg; cfg "$ALL" true
+printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' "$R" > "$R/evil.sh"
+out=$(rr 0 --cwd "$R" -- sh -o errexit x.sh); id=$(rid "$out")
+swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
+assert_eq "RED 8250: a script after an option that takes a word, swapped after the checks, did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+# swap-request.py <lib> <cwd> <target> <evil> <argv0>: file a run request, but rename <evil> over <target> between the
+# file snapshot and the argv0 snapshot, so the two frozen records of one path disagree.
+cat > "$tmp/swap-request.py" <<'SWAPREQ'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+real_collect = s.collect_files
+def racing(*a, **k):
+    out = real_collect(*a, **k)
+    os.replace(sys.argv[4], sys.argv[3])
+    return out
+s.collect_files = racing
+sys.exit(s.main(["run-request", "--session", "S1", "--ticket", "HIMMEL-8067", "--blocked-by", "classifier", "--cwd", sys.argv[2], "--", sys.argv[5]]))
+SWAPREQ
+new_root conflict; cfg "$ALL" true
+printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I "$tmp/swap-request.py" "$LIB" "$R" "$R/bin/mytool" "$R/evil" "$R/bin/mytool" </dev/null 2>&1); id=$(rid "$out")
+assert_contains "RED 8250: an argv0 and a file record of one path that disagree report changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+assert_eq "RED 8250: the file the operator was shown did not run as the swapped one" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
 
 echo "== slice 1a (judge KS-j4307-1): what is hashed is what runs, and every element keeps its target =="
 new_root argv0lnk; cfg "$ALL" true
