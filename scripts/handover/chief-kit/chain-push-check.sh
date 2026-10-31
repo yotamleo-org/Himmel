@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Advisory per-edge single-writer check; no existing gate is flag-wrapped.
+# Advisory per-edge single-writer check; no flag gates it and no existing gate is flag-wrapped.
 # Usage: chain-push-check.sh [--repo-dir DIR] [--repo OWNER/NAME] [--base origin/main]
 #        chain-push-check.sh [--repo-dir DIR] [--repo OWNER/NAME] --pr N --peer M
 # Per peer one line: CHECKED <pr> <verdict>, CONFLICT <pr> <files>, SKIPPED <pr> <reason> or
@@ -8,19 +8,13 @@
 # skipped and none conflicts (unknown); 2: no peer could be checked, the peer list was unreadable,
 # or the request was malformed (a usage error, never the conflict status 1).
 # --pr/--peer reads both PRs' current heads, prints HEADS <n>=<sha> <m>=<sha>, reports that one
-# pair, and runs even with the chain_push_check flag off (an explicit call wants a real answer).
+# pair.
 # Every gh and git subprocess is bounded by CHAIN_PUSH_CHECK_TIMEOUT seconds (default 60).
 # Only committed HEAD is checked. merge-tree changes neither index nor worktree.
 # Peer objects must already be available locally; this check never fetches.
 # Platform guard: bash, python3, git and gh.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/flags.sh
-. "$HERE/../../lib/flags.sh" || exit 2
-himmel_flag chain_push_check
-rc=$?
-{ [ "$rc" -eq 0 ] || [ "$rc" -eq 1 ]; } || exit 2
-export CHAIN_PUSH_FLAG_RC="$rc"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh" || exit 2
 git_env_scrub
@@ -147,8 +141,6 @@ parser.add_argument('--peer', type=int)
 a = parser.parse_args()
 if (a.pr is None) != (a.peer is None) or any(n is not None and n <= 0 for n in (a.pr, a.peer)):
     parser.error('--pr and --peer take positive PR numbers and go together')  # exit 2, never the conflict status 1
-if os.environ.get('CHAIN_PUSH_FLAG_RC') == '1' and a.pr is None:
-    sys.exit(0)
 env = os.environ.copy()
 try:
     repo = a.repo or gh('repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner').stdout.strip()

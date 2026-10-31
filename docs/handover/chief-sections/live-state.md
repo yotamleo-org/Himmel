@@ -9,10 +9,23 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `livestate=DRIFT:<worker>[,…]` when it disagrees with the worker locks actually
 > held (and `livestate=MALFORMED:<worker>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
 > at handover; `chief.sh next` seeds its `legs:` block, `queue:`, `last GO:` and
-> `acked:` verbatim into the successor's own Live state (the HANDOFF holds only
+> `acked:` into the successor's own Live state (the HANDOFF holds only
 > the pointer `Live state: seeded into <successor doc>`, never a nonce), so a
 > stale line here is a stale line there too, and the successor's
-> `action-zero.sh --render-workers` keeps the seeded nonces. A per-worker detail line
+> `action-zero.sh --render-workers` keeps the seeded nonces. **Only the open workers
+> and the last GO are seeded:** a `legs:` span whose label is no longer in the fleet
+> manifest (`fleet-manifest.sh remove` at the wrap), the shift prose on that line
+> and the `prior …` chain after the first GO stay behind. `next` appends them
+> byte for byte, under a dated header, to `specs/history/chief-live-state-<your doc stem>.md`
+> in the successor's bucket (earlier content in that file stays) and the HANDOFF names
+> it (a HANDOFF that already existed is left unchanged and may not: the path is always
+> `<successor bucket>/specs/history/chief-live-state-<predecessor doc stem>.md`). The `legs:` block
+> is seeded whole in three cases: no readable manifest, a manifest row with no label, or a block
+> holding no worker span. If the history write fails, `legs:` and `last GO:` are both seeded
+> whole (a warning names the file). `last GO:` is otherwise always cut to the last GO. A malformed span of an open
+> worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. Keep your own Live
+> state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
+> past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
 > past the `legs:` block is not seeded: put what the successor needs in the
 > HANDOFF's judgement notes. A worker's nonce is
 > updated **only after** that worker's quote-back (of the fresh nonce, when one
