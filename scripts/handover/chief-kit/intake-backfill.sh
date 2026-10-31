@@ -51,6 +51,8 @@ except OSError as e:
     # without the versions there is no current version, and every ticket would be proposed to the backlog
     sys.exit('intake-backfill: cannot read %s.versions.tsv: %s' % (mirror, e.strerror))
 current = open_versions[0] if open_versions else None
+if os.environ['IB_COMMANDS'] == '1' and current is None:
+    sys.exit('intake-backfill: no open version, so there is no release to file the INTAKE requests into; --commands needs one')
 
 def field(text, name):
     m = re.search(r'^%s: (.*)$' % name, text, re.M)
@@ -64,8 +66,8 @@ tickets = []
 for path in glob.glob(mirror + '/*.md'):
     try:
         head = open(path).read(6000).split('\n---', 2)[0]
-    except OSError:
-        continue
+    except OSError as e:
+        sys.exit('intake-backfill: cannot read %s: %s' % (path, e.strerror))
     key = unq(field(head, 'key'))
     if not re.fullmatch(r'[A-Z]+-\d+', key):
         continue
@@ -73,7 +75,7 @@ for path in glob.glob(mirror + '/*.md'):
         labels = json.loads(field(head, 'labels') or '[]')
         fixv = json.loads(field(head, 'fixVersions') or '[]')
     except ValueError:
-        continue
+        sys.exit('intake-backfill: cannot parse the labels or fixVersions of %s' % path)
     tickets.append({'key': key, 'type': unq(field(head, 'type')), 'cat': unq(field(head, 'statusCategory')),
                     'prio': unq(field(head, 'priority')), 'labels': labels, 'ver': fixv, 'sector': unq(field(head, 'sector'))})
 
@@ -118,5 +120,5 @@ print('# counts by basis: %s' % (fmt(by_basis) or 'none'))
 if os.environ['IB_COMMANDS'] == '1':
     for k, v, b in rows:
         print('jira edit %s --add-labels %s' % (k, shlex.quote('proposed-' + v)))
-        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (shlex.quote(current) if current else '<release>', k, shlex.quote(v), b))
+        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (shlex.quote(current), k, shlex.quote(v), b))
 PY

@@ -86,5 +86,26 @@ spc="$(bash "$SUT" --mirror "$sp" --commands 2>&1)"
 has "a version name with a space is quoted in the label command" "$spc" "jira edit HIMMEL-801 --add-labels 'proposed-v1.2 beta'"
 has "a version name with a space is quoted in the INTAKE request" "$spc" "jira release request 'v1.2 beta' --verb INTAKE --key HIMMEL-801 --to 'v1.2 beta'"
 
+# a ticket file that cannot be read fails the run instead of dropping out of the plan
+ur="$WORK/ur/HIMMEL"; mkdir -p "$ur"; cp "$sp"/*.md "$ur"/; cp "$WORK/sp/HIMMEL.versions.tsv" "$WORK/ur/HIMMEL.versions.tsv"
+ln -s "$WORK/ur/gone" "$ur/HIMMEL-802.md"
+rc=0; urout="$(bash "$SUT" --mirror "$ur" 2>&1)" || rc=$?
+check "an unreadable ticket file exits 1 rather than yielding a short plan" "1" "$rc"
+has "and names the file" "$urout" "intake-backfill: cannot read"
+
+# a ticket whose labels cannot be parsed fails the run too
+printf -- '---\nkey: "HIMMEL-803"\ntype: "Task"\nstatusCategory: "To Do"\nlabels: [broken\nfixVersions: []\n---\n' > "$ur/HIMMEL-803.md"
+rm -f "$ur/HIMMEL-802.md"
+rc=0; bash "$SUT" --mirror "$ur" >/dev/null 2>&1 || rc=$?
+check "a ticket with unparseable labels exits 1 rather than dropping out of the plan" "1" "$rc"
+
+# with no open version there is no release to file into, so --commands refuses instead of printing a placeholder
+nov="$WORK/nov/HIMMEL"; mkdir -p "$nov"; cp "$sp"/*.md "$nov"/
+printf 'v0.9\ttrue\t2026-01-01\tfalse\n' > "$WORK/nov/HIMMEL.versions.tsv"
+rc=0; novout="$(bash "$SUT" --mirror "$nov" --commands 2>&1)" || rc=$?
+check "--commands with no open version exits 1" "1" "$rc"
+lacks "and prints no <release> placeholder command" "$novout" "<release>"
+check "the plan alone still works with no open version" "0" "$(bash "$SUT" --mirror "$nov" >/dev/null 2>&1; echo $?)"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
