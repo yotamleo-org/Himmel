@@ -1206,3 +1206,4 @@ scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	1
 scripts/luna/test-cadence-alert.sh	1
 scripts/handover/chief-kit/test-focus-refresh-chains.sh	2
+scripts/handover/chief-kit/test-intake-backfill.sh	1
