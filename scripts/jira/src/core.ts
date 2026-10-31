@@ -2,6 +2,7 @@
 // files; coreMatch reads a change against it and returns one verdict line per key.
 // Nothing else reads core-paths.txt.
 import { readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 
 export type ChangeClass = 'rename' | 'bulk';
 
@@ -33,7 +34,10 @@ export function alternativesOf(line: string): string[] {
   return inner.split('|').map((a) => line.slice(0, opens[0]) + a + line.slice(closes[0] + 1));
 }
 
-const matchesAny = (res: RegExp[], p: string): boolean => res.some((re) => re.test(p));
+// Test suites and fixtures are never core, even under a whole-directory core line.
+const TEST_PATH = /(^|\/)(test-[^/]*|[^/]*\.test\.[a-z]+|tests?\/.*|fixtures?\/.*)$/;
+
+const matchesAny =(res: RegExp[], p: string): boolean => res.some((re) => re.test(p));
 
 // Alert, not a wall: more than 2 % of tracked files matching stops the check, and an
 // explicit reason lets a legitimate widening proceed with the reason on the record.
@@ -60,7 +64,7 @@ export function coreMatch(
   paths: string[], keys: string[], o: { patterns: string[]; changeClass?: ChangeClass },
 ): string[] {
   const res = o.patterns.map((p) => new RegExp(p));
-  const hit = paths.map((p) => p.replace(/^(\.\/)+/, '')).find((p) => matchesAny(res, p));
+  const hit = paths.map((p) => posix.normalize(p)).find((p) => !TEST_PATH.test(p) && matchesAny(res, p));
   return keys.map((k) => {
     if (hit === undefined) return `NOT-CORE ${k}`;
     return o.changeClass ? `REVIEW ${k} ${hit} ${o.changeClass}` : `CORE ${k} ${hit}`;
