@@ -137,7 +137,7 @@ cmd_provision() {
     out=$(gl 900 "$install_cmd" 2>&1) || fail "claude install $PIN_VERSION: $out"
 
     # (4) the guest-local cli-proxy key, created once (generated in the guest, never on a host command line)
-    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ ! -e "$f" ]; then ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f" ) || exit 1; fi; chmod 600 "$f" || exit 1; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
+    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ ! -e "$f" ]; then ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f" ) || exit 1; [ "$(wc -c < "$f")" -eq 64 ] || { rm -f "$f"; exit 1; }; fi; chmod 600 "$f" || exit 1; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
     out=$(gx 60 "$key_cmd" 2>&1) || fail "cliproxy key: $out"
 
     # (5) an empty user settings file, only when absent

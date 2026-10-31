@@ -193,6 +193,12 @@ vm_clone_ensure() {
     case "$want_port" in
         *[!0-9]*) _vm_fail "vm_clone_ensure: port argument must be a number, got '$want_port'" ;;
     esac
+    if [ -n "$want_port" ]; then
+        want_port=$((10#$want_port))
+        if [ "$want_port" -lt 1 ] || [ "$want_port" -gt 65535 ]; then
+            _vm_fail "vm_clone_ensure: port must be between 1 and 65535, got '$want_port'"
+        fi
+    fi
     if vm_ar_vm_exists "$CLONE_NAME"; then
         if [ -n "$want_port" ]; then
             _have=$(vbox_py '
