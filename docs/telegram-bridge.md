@@ -76,7 +76,8 @@ and bucket/project (older chiefs without launch metadata show `unknown`).
 The first word also selects a chief by a unique fragment of its name, and a
 message to an armed chief that is busy is queued rather than dropped. `/chief`, the fleet verbs and `/lockdown` accept any letter
 case and the `/verb@botname` form; the auto ops stay
-strict. The older `/console` and `/consoles` still work as aliases of `/chief` and `/chiefs`.
+strict. The older `/console` and `/consoles` still work as Telegram aliases of `/chief` and `/chiefs`.
+These bridge verbs are separate from Claude Code's commands, where `/chief` is the only name (HIMMEL-8314).
 
 Each chief's first waiter arm queues a DM: “Chief <name> is live — just
 send /chief <text>”. A successor announces its new identity on its first arm;

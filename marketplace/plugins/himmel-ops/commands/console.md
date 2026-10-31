@@ -1,9 +1,0 @@
----
-description: Alias of /himmel-ops:chief.
-argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
----
-
-Alias of [`/himmel-ops:chief`](chief.md) (HIMMEL-6641). Kept so the old
-`/himmel-ops:console` spelling keeps working. Run
-`/himmel-ops:chief $ARGUMENTS` — it carries the himmel-checkout resolver, the
-`--project` derivation and the full flag reference.
