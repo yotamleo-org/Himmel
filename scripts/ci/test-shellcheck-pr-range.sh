@@ -263,6 +263,11 @@ reset; w PKGBUILD 'pkgname=zz
 . scripts/zzj/zzjlib.sh
 '; commit_case a1_name
 verdict a1_name FILES PKGBUILD scripts/zzj/zzjlib.sh
+# a1_kshrc: ...and so does any other no-shebang dotfile the hook may lint (.kshrc, .bash_logout, ...):
+# only known non-shell types lose their forward edges
+reset; w scripts/.kshrc '. scripts/zzj/zzjlib.sh
+'; commit_case a1_kshrc
+verdict a1_kshrc FILES scripts/.kshrc scripts/zzj/zzjlib.sh
 # a1_ash: ...and so does a no-shebang *.ash file
 reset; w scripts/zzx.ash '. scripts/zzj/zzjlib.sh
 '; commit_case a1_ash
@@ -292,6 +297,12 @@ reset; w scripts/zza.sh '#!/usr/bin/env bash
 echo tool
 '; commit_case a2_ext
 verdict a2_ext ALL
+# a2_dotname: ...and so is an operand whose tail names a tracked dotfile with no shebang
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+. "$ZZ_DIR/.kshrc"
+'; w scripts/.kshrc 'ZZK=1
+'; commit_case a2_dotname
+verdict a2_dotname ALL
 # a2_extglued: a variable glued in front of the extensionless name is the same dynamic shape
 reset; w scripts/zza.sh '#!/usr/bin/env bash
 . "${ZZ_DIR}zztool"

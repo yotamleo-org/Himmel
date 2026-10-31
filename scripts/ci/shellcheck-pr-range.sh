@@ -191,11 +191,15 @@ cmd_pos() {
   done
   return 0
 }
-# a file the shellcheck hook lints (identify's shell type): shell by extension or by shebang.
-# Over-inclusive on purpose (any `#!` line naming *sh): a wrong yes only widens the selection.
+# may the shellcheck hook lint this file (identify's shell type: by extension, by name such as
+# PKGBUILD or .kshrc, or by shebang)? True for everything except a file of a KNOWN non-shell type
+# with no shell shebang, so a type this list has never heard of keeps its forward edges: a wrong
+# yes only widens the selection, a wrong no would drop an edge the full sweep followed.
 is_shell() {
-  case "${1##*/}" in "PKGBUILD" | "direnvrc" | ".envrc" | ".bashrc" | ".bash_aliases" | ".bash_profile" | ".profile" | ".cshrc" | ".zshrc" | ".zshenv" | ".zprofile" | ".zlogin" | ".zlogout") return 0 ;; esac
-  case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash | *.ash | *.csh | *.tcsh) return 0 ;; esac
+  case "$1" in
+    *.md | *.markdown | *.txt | *.rst | *.json | *.jsonc | *.yml | *.yaml | *.toml | *.xml | *.html | *.htm | *.css | *.svg | *.png | *.jpg | *.jpeg | *.gif | *.ico | *.pdf | *.lock | *.tsv | *.csv | *.js | *.mjs | *.cjs | *.jsx | *.ts | *.tsx | *.py | *.rb | *.sql | *.gql | *.graphql) ;;
+    *) return 0 ;;
+  esac
   local first=
   # read-sink-ok: $1 is a path from the PR's own git diff, read for its first line only and never echoed
   IFS= read -r first < "$1"
@@ -242,14 +246,15 @@ while IFS= read -r f; do
   [ -n "$lines" ] || continue
   # a line naming no *.sh/*.bash (a bare "$VAR", jq/Python heredoc text, a .env tail)
   # adds no edge: shellcheck cannot follow it (SC1090), so no other input can change this file's
-  # verdict. It stays dynamic only when a word on it is a tracked shell file with another name shape
-  # (no extension, .bats, ...), which shellcheck could follow.
+  # verdict. It stays dynamic only when its operand names a tracked file that may be shell under
+  # another name shape (no extension, .bats, a shebang file, ...), which shellcheck could follow.
   nolit=$(printf '%s\n' "$lines" | grep -vE '[A-Za-z0-9_.+-]+\.(sh|bash)')
   lines=$(printf '%s\n' "$lines" | grep -E '[A-Za-z0-9_.+-]+\.(sh|bash)')
   if [ -n "$nolit" ]; then
     if [ -z "${shnames+x}" ]; then
       sb=$(git grep -l -I -E -e '^#!.*(sh|cbsd)' -- .) || [ "$?" -eq 1 ] || run_all "git grep failed on shebangs"
-      shnames=$({ printf '%s\n' "$sb"; printf '%s\n' "$tracked" | grep -E '(\.(bats|ksh|zsh|dash|ash|csh|tcsh)|(^|/)(PKGBUILD|direnvrc|\.envrc|\.bashrc|\.bash_aliases|\.bash_profile|\.profile|\.cshrc|\.zshrc|\.zshenv|\.zprofile|\.zlogin|\.zlogout))$'; } | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }' | sort -u)
+      # shell by shebang, or a name with no extension (PKGBUILD, .kshrc, ...), or a shell extension other than .sh/.bash
+      shnames=$({ printf '%s\n' "$sb" | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }'; printf '%s\n' "$tracked" | awk -F/ 'NF && ($NF ~ /^\.?[^.]*$/ || $NF ~ /\.(bats|ksh|zsh|dash|ash|csh|tcsh)$/) { print $NF }'; } | sort -u)
     fi
     ops=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*')
     # an operand built by a command substitution can name any file
