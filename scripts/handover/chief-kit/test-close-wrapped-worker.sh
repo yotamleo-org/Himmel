@@ -329,7 +329,14 @@ mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/broken\`"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone git cannot inspect: rc 8" "$rc" "8"
 contains "scratchpad-clone git cannot inspect: says so" "$out" "cannot inspect"
-rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone"
+# a subtree find cannot read is refused, not skipped
+mkdir -p "$SCR/unread/sub"
+chmod 000 "$SCR/unread/sub"
+mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/unread\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad dir find cannot scan: rc 8" "$rc" "8"
+chmod 755 "$SCR/unread/sub"
+rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread"
 
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work

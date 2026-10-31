@@ -205,8 +205,8 @@ fi
 # be checked and is skipped.
 # A named path may sit below the clone (a file) or above it (a parent holding
 # clones): walk up to the nearest existing directory, take the repo that contains
-# it and any repo up to three levels below it. HEAD counts too (a rebase in
-# progress leaves its commits on a detached HEAD), and a git failure refuses.
+# it and any repo up to three levels below it. --all counts a detached HEAD too (a
+# rebase in progress leaves its commits there); a scan or git failure refuses.
 sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
 scratch_paths=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
 scratch_clones=""
@@ -218,7 +218,10 @@ while IFS= read -r sc_path; do
     [ "$sc_d" != "$sc_root" ] || continue
     sc_top=$(sc_git -C "$sc_d" rev-parse --show-toplevel 2>&1) || sc_top=""
     case "$sc_top" in "$sc_root"/*) scratch_clones="$scratch_clones$sc_top"$'\n' ;; esac
-    sc_below=$(find "$sc_d" -maxdepth 3 -type d -name .git -prune)
+    if ! sc_below=$(find "$sc_d" -maxdepth 3 -type d -name .git -prune); then
+        echo "close-wrapped-worker: refusing - cannot scan $sc_d, named by the doc, for session-scratchpad clones; fix its permissions or move the clones under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
     while IFS= read -r sc_g; do
         [ -n "$sc_g" ] && scratch_clones="$scratch_clones${sc_g%/.git}"$'\n'
     done <<EOF
@@ -230,9 +233,7 @@ EOF
 scratch_clones=$(printf '%s' "$scratch_clones" | sort -u)
 while IFS= read -r sc_dir; do
     [ -n "$sc_dir" ] || continue
-    sc_head=""
-    if sc_git -C "$sc_dir" rev-parse -q --verify HEAD >/dev/null 2>&1; then sc_head=HEAD; fi
-    if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 ${sc_head:+"$sc_head"} --branches --not --remotes 2>&1); then
+    if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 --all --not --remotes 2>&1); then
         echo "close-wrapped-worker: refusing - cannot inspect the session-scratchpad clone $sc_dir the doc names (git failed: $sc_unpushed); fix it or move the clone under ~/.himmel/scratch before the close" >&2
         exit 8
     fi
