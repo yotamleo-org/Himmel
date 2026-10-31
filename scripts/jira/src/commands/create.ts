@@ -380,7 +380,12 @@ interface PlacementOptions {
   chiefOverride?: string;
   sector?: string;
   followUpOf?: string;
+  proposedVersion?: string;
+  why?: string;
 }
+
+/** The label a proposed version leaves on the ticket until the release manager confirms or moves it. */
+const proposedLabel = (v: string): string => `proposed-${labelSlug(v)}`;
 
 /** Checks the gate, backlog and chief-override flags before anything is filed; returns the override reason. */
 function checkPlacementFlags(o: PlacementOptions): string | undefined {
@@ -388,11 +393,42 @@ function checkPlacementFlags(o: PlacementOptions): string | undefined {
   if (o.backlog && (o.gate !== undefined || o.fixVersion !== undefined)) {
     throw new Error('--backlog cannot be combined with --gate or --fix-version');
   }
+  if (o.proposedVersion !== undefined) {
+    if (!o.proposedVersion.trim()) throw new Error('--proposed-version needs a version name, or `backlog`');
+    if (!/^(bug|task|story)$/i.test(o.type)) throw new Error(`--proposed-version applies to a Bug, Task or Story, not a ${o.type}`);
+    if (o.gate !== undefined || o.fixVersion !== undefined) {
+      throw new Error('--proposed-version cannot be combined with --gate or --fix-version (they already place the ticket in a version)');
+    }
+  }
+  if (o.backlog || o.proposedVersion === 'backlog') {
+    if (!o.backlog || o.proposedVersion !== 'backlog') {
+      throw new Error('the backlog is filed with --backlog --proposed-version backlog and a one-line --why (--backlog alone is not a placement; pass --proposed-version <v> to propose a version instead)');
+    }
+    if (!o.why?.trim()) throw new Error('--backlog --proposed-version backlog needs --why <one line: why this waits in the backlog>');
+  }
   const override = chiefOverrideOf(o);
   if (override === undefined) return undefined;
   const reason = checkConsoleOverride(override);
   if (o.fixVersion === undefined) throw new Error('--chief-override needs the --fix-version to admit into');
   return reason;
+}
+
+/** A proposed version other than `backlog` must be one the project has, and still open. */
+async function assertProposedVersion(o: { proposedVersion?: string; project?: string }): Promise<void> {
+  if (o.proposedVersion === undefined || o.proposedVersion === 'backlog') return;
+  const project = o.project ?? projectKey();
+  const found = (await fetchVersions(project)).find((v) => v.name === o.proposedVersion);
+  if (!found) throw new Error(`no version named "${o.proposedVersion}" in project ${project}`);
+  if (found.released || found.archived) {
+    throw new Error(`--proposed-version ${o.proposedVersion} is ${found.released ? 'released' : 'archived'}; propose an open version`);
+  }
+}
+
+/** A version inherited from a --blocks or --split-from target places the ticket, so a proposal could not be honored. */
+function assertProposalNotInherited(o: { proposedVersion?: string }, inherited: string | undefined): void {
+  if (o.proposedVersion !== undefined && inherited !== undefined) {
+    throw new Error(`--proposed-version ${o.proposedVersion} cannot be honored: --blocks/--split-from places the ticket in ${inherited}; drop --proposed-version, or pass --backlog to opt out of the inherited version`);
+  }
 }
 
 /**
@@ -409,62 +445,105 @@ function placeAtFiling(
   const type = o.type.toLowerCase();
   const isBug = type === 'bug';
   if ((!isBug && type !== 'task' && type !== 'story') || residual || o.fixVersion !== undefined) return { labels, bugDefault: false };
-  if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL])], bugDefault: false };
+  if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL, proposedLabel('backlog')])], bugDefault: false };
+  if (o.proposedVersion !== undefined) return { labels: [...new Set([...(labels ?? []), proposedLabel(o.proposedVersion)])], bugDefault: false };
   if (o.gate !== undefined || (isBug && o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
   if (o.followUpOf !== undefined) return { labels, bugDefault: false };
   const sector = 'sector: ' + (o.sector ?? 'none given');
   if (isBug) {
     throw new Error(
-      `A Bug needs a placement (${sector}): pass --backlog to file it to the backlog if it blocks no open work, ` +
+      `A Bug needs a placement (${sector}): pass --proposed-version <v> to file it with a proposed version and its INTAKE request, ` +
+        '--backlog --proposed-version backlog --why <why> if it blocks no open work, ' +
         'or --fix-version <v> / --gate critical|regression / --priority Highest to file it into a version; ' +
         'a Bug that blocks open work, such as a PR, goes into a version, then request INTAKE ' +
         '(jira release request <release> --verb INTAKE --key <key> --why <why>)',
     );
   }
   throw new Error(
-    `A ${o.type} needs a placement (${sector}): pass --backlog to file it to the backlog, ` +
+    `A ${o.type} needs a placement (${sector}): pass --proposed-version <v> to file it with a proposed version and its INTAKE request, ` +
+      '--backlog --proposed-version backlog --why <why> for the backlog, ' +
       'or --fix-version <v> / --gate critical|regression / --residual-of <key> / --follow-up-of <key> to place it',
   );
 }
 
-function queueIntakeIfUnversioned(key: string, type: string, fields: Record<string, unknown>, title: string): void {
-  if (fields['fixVersions'] || !/^(bug|task|story)$/i.test(type)) return;
-  queueBacklogIntake(key, `filed to the backlog: ${title}`);
+const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string): string => {
+  const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
+  return o.why?.trim() || `${proposed}: ${title}`;
+};
+const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
+
+interface IntakeOptions {
+  type: string;
+  proposedVersion?: string;
+  why?: string;
+  residualOf?: string;
+  followUpOf?: string;
+}
+
+/** A residual or follow-up routes itself, so its INTAKE stays best effort; every other unversioned filing must be able to queue one. */
+const intakeStrict = (o: IntakeOptions): boolean => o.residualOf === undefined && o.followUpOf === undefined;
+
+class NoReleaseDeclared extends Error {
+  constructor() {
+    super('no release is declared, so an unversioned ticket has nowhere to queue its INTAKE; declare one (jira release operator declare) or file with --fix-version');
+  }
+}
+
+/** The one declared release an INTAKE goes to; throws when the state cannot be read or the choice is not unique. */
+function intakeRelease(): string {
+  const root = releaseRoot();
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(root);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  const declared = entries.filter((d) => existsSync(join(root, d, 'release.json')));
+  if (declared.length === 0) throw new NoReleaseDeclared();
+  if (declared.length > 1) throw new Error(`${declared.length} releases are declared (${declared.join(', ')}); an INTAKE needs exactly one`);
+  return declared[0]!;
+}
+
+/** Throws unless an INTAKE with this why could be queued now, so the filing is refused before anything is created. */
+export function assertIntakeQueueable(why: string): void {
+  refuseRequest(ctxFor(intakeRelease()), { verb: 'INTAKE', key: 'NEW', from_v: null, why });
+}
+
+/** Refuses an unversioned Bug, Task or Story whose INTAKE could not be queued; runs before the POST. */
+function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
+  if (intakeOwed(o.type, fields) && intakeStrict(o)) assertIntakeQueueable(intakeWhy(o, title));
+}
+
+function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
+  if (!intakeOwed(o.type, fields)) return;
+  const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
+  try {
+    queueBacklogIntake(key, intakeWhy(o, title), toVersion, intakeStrict(o));
+  } catch (e) {
+    console.error(`Created ${key} but INTAKE not queued: ${(e as Error).message}`);
+    process.exitCode = 1;
+  }
 }
 
 /**
  * A ticket filed with no version waits in the backlog for the release
- * manager: queue an INTAKE request when exactly one release is declared.
- * Best effort: the ticket exists, so a failure only warns.
- * ponytail: with several releases declared nothing is queued, upgrade path =
- * a --release flag on create.
+ * manager: queue an INTAKE request to the one declared release. Lenient
+ * callers (a residual, edit's depth-2 drop) only warn, and stay quiet when no
+ * release is declared; strict ones rethrow so the caller can fail the run.
  */
-export function queueBacklogIntake(key: string, why: string): void {
+export function queueBacklogIntake(key: string, why: string, toVersion: string | null = null, strict = false): void {
   let release: string | undefined;
-  let root: string;
   try {
-    root = releaseRoot();
-  } catch (e) {
-    console.error(`jira: warning: INTAKE not queued for ${key}: ${(e as Error).message}`);
-    return;
-  }
-  try {
-    const declared = readdirSync(root).filter((d) => existsSync(join(root, d, 'release.json')));
-    if (declared.length === 0) return;
-    if (declared.length > 1) {
-      console.error(`jira: warning: INTAKE not queued for ${key}: ${declared.length} releases are declared (${declared.join(', ')})`);
-      return;
-    }
-    release = declared[0];
+    release = intakeRelease();
     const ctx = ctxFor(release);
     refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why });
     const r = releaseRequest(ctx, {
-      verb: 'INTAKE', key, from_v: null, to_v: null, why, evidence: {}, from: 'console',
+      verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, evidence: {}, from: 'console',
     });
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (release === undefined && (code === undefined || code === 'ENOENT')) return;
+    if (strict) throw e;
+    if (e instanceof NoReleaseDeclared) return;
     console.error(`jira: warning: INTAKE not queued for ${key} (release ${release ?? 'unknown'}): ${(e as Error).message}`);
   }
 }
@@ -585,7 +664,12 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion (also places a Bug, Task or Story without --fix-version); queues an INTAKE request when one release is declared')
+    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared')
+    .option(
+      '--proposed-version <v>',
+      'A Bug, Task or Story without --fix-version is filed with a proposed version (label proposed-<v>) and its INTAKE request queued in the same call; `backlog` needs --backlog and --why',
+    )
+    .option('--why <why>', 'One line: why the ticket waits in the backlog (required with --backlog); the INTAKE request carries it')
     .option(
       '--gate <reason>',
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
@@ -638,6 +722,8 @@ export function registerCreate(program: Command): void {
         fixVersion?: string;
         priority?: string;
         backlog?: boolean;
+        proposedVersion?: string;
+        why?: string;
         gate?: string;
         chiefOverride?: string;
         affectsVersion?: string;
@@ -662,6 +748,7 @@ export function registerCreate(program: Command): void {
           throw new Error('--over-cap needs a reason');
         }
         const overrideReason = checkPlacementFlags(options);
+        await assertProposedVersion(options);
         const fields: Record<string, unknown> = {
           project: { key: options.project ?? projectKey() },
           summary: resolveTitle(options),
@@ -723,6 +810,7 @@ export function registerCreate(program: Command): void {
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
         const inherited = await residualInheritedVersion(options, residual);
+        assertProposalNotInherited(options, inherited);
         const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
         const placed = placeAtFiling(versionOptions, labels, residual !== undefined);
@@ -753,6 +841,7 @@ export function registerCreate(program: Command): void {
         });
 
         await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
+        preflightIntake(options, fields, resolveTitle(options));
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
@@ -766,7 +855,7 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
-        queueIntakeIfUnversioned(result.key, options.type, fields, resolveTitle(options));
+        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), options);
         if (overrideReason !== undefined) {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
         }

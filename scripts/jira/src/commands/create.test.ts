@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,25 @@ import { SECTORS, resetSectorCache } from './sector.js';
 const PLAIN = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
+
+// An unversioned filing is refused unless one release can take its INTAKE, so
+// every test starts under one declared release; the INTAKE describe re-stubs.
+let baseRoot: string;
+beforeEach(async () => {
+  baseRoot = mkdtempSync(join(tmpdir(), 'create-base-'));
+  vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(baseRoot, 'state'));
+  vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(baseRoot, 'keys'));
+  vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+  vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+  writeFileSync(join(baseRoot, 'verbatim.txt'), 'R1 = v1.1.3\n');
+  const p = new Command();
+  p.exitOverride();
+  registerRelease(p);
+  await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
+});
+afterEach(() => {
+  rmSync(baseRoot, { recursive: true, force: true });
+});
 
 // A Sector and a parent epic: the home a Task, Story or Bug needs to be filed.
 const HOME = ['--sector', 'Ship loop', '--parent', 'HIMMEL-9'];
@@ -72,7 +91,7 @@ describe('create — command wiring (--summary → POST /issue payload)', () => 
       PLAIN,
       '--type',
       'Task',
-      '--backlog',
+      '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test',
       '--summary',
       'From CLI summary',
       ...HOME,
@@ -101,7 +120,7 @@ describe('create — command wiring (--summary → POST /issue payload)', () => 
       PLAIN,
       '--type',
       'Task',
-      '--backlog',
+      '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test',
       '--summary',
       'summary loses',
       '--title',
@@ -131,7 +150,7 @@ describe('create — Bug default fixVersion wiring', () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--title', 't', '--desc', PLAIN, ...HOME, ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 'the console loses a worker', '--desc', PLAIN, ...HOME, ...args]);
     const [, , body] = mockRequest.mock.calls.find((c) => c[0] === 'POST') as [
       string,
       string,
@@ -186,7 +205,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('sets no fixVersion on a Task', async () => {
     withVersions(VERSIONS);
-    const fields = await createFields(['--type', 'Task', '--backlog']);
+    const fields = await createFields(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test']);
     expect(fields.fixVersions).toBeUndefined();
   });
 });
@@ -303,13 +322,13 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
   });
 
   it('warns, and still files, a Task whose title breaks the template (HIMMEL-6968)', async () => {
-    await run(['--type', 'Task', '--backlog', '--title', 'feat(jira): add a thing', '--desc', PLAIN, ...HOME]);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--title', 'feat(jira): add a thing', '--desc', PLAIN, ...HOME]);
     expect(posted()).toBe(true);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/warning: title.*commit prefix/s));
   });
 
   it('does not warn about the title of a fitting Task (HIMMEL-6968)', async () => {
-    await run(['--type', 'Task', '--backlog', '--title', 'Ship loop: merge waits for the signed GO', '--desc', PLAIN, ...HOME]);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--title', 'Ship loop: merge waits for the signed GO', '--desc', PLAIN, ...HOME]);
     expect(posted()).toBe(true);
     expect(console.error).not.toHaveBeenCalledWith(expect.stringMatching(/warning: title/));
   });
@@ -326,7 +345,7 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
   });
 
   it('accepts a body that carries the full block', async () => {
-    await run(['--type', 'Task', '--backlog', '--desc', PLAIN, ...HOME]);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--desc', PLAIN, ...HOME]);
     expect(posted()).toBe(true);
   });
 
@@ -398,14 +417,14 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
   const errText = () => (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join('\n');
 
   it('refuses a Task with no Sector, naming the field, the valid options and the opt-out', async () => {
-    await expect(run(['--type', 'Task', '--backlog', '--parent', 'HIMMEL-9'])).rejects.toThrow(/exit 1/);
+    await expect(run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBeUndefined();
     expect(errText()).toMatch(/no Sector.*--sector.*Ship loop.*sector setup --opt-out/s);
   });
 
   it('with JIRA_SECTOR_FIELD unset, files a Task without --sector and sends no Sector field', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
-    await run(['--type', 'Task', '--backlog', '--parent', 'HIMMEL-9']);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9']);
     const body = posted()![2] as { fields: Record<string, unknown> };
     expect(Object.keys(body.fields).filter((k) => k.startsWith('customfield_'))).toEqual([]);
     expect(mockRequest.mock.calls.some((c) => String(c[1]).startsWith('/field/'))).toBe(false);
@@ -413,7 +432,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
 
   it('with JIRA_SECTOR_FIELD=none, behaves as unset; an explicit --sector is ignored with a warning', async () => {
     process.env.JIRA_SECTOR_FIELD = 'none';
-    await run(['--type', 'Task', '--backlog', '--sector', 'Ship loop', '--parent', 'HIMMEL-9']);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--sector', 'Ship loop', '--parent', 'HIMMEL-9']);
     const body = posted()![2] as { fields: Record<string, unknown> };
     expect(body.fields['customfield_10212']).toBeUndefined();
     expect(errText()).toMatch(/--sector ignored.*sector setup/);
@@ -421,7 +440,7 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
 
   it('with the field unset, still refuses a Task with neither --parent nor the standalone label', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
-    await expect(run(['--type', 'Task', '--backlog'])).rejects.toThrow(/exit 1/);
+    await expect(run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBeUndefined();
     expect(errText()).toMatch(/--parent.*--labels standalone/s);
   });
@@ -432,26 +451,26 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
       if (path.includes('/option')) return { values: [{ value: 'Billing' }] };
       return { key: 'HIMMEL-1' };
     });
-    await run(['--type', 'Task', '--backlog', '--sector', 'billing', '--parent', 'HIMMEL-9']);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--sector', 'billing', '--parent', 'HIMMEL-9']);
     const body = posted()![2] as { fields: Record<string, unknown> };
     expect(body.fields['customfield_10212']).toEqual({ value: 'Billing' });
   });
 
   it('refuses a Task with a Sector but neither --parent nor the standalone label', async () => {
-    await expect(run(['--type', 'Task', '--backlog', '--sector', 'Ship loop'])).rejects.toThrow(/exit 1/);
+    await expect(run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--sector', 'Ship loop'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBeUndefined();
     expect(errText()).toMatch(/--parent.*--labels standalone/s);
   });
 
   it('creates with a Sector and --parent, writing the Sector field', async () => {
-    await run(['--type', 'Task', '--backlog', '--sector', 'ship loop', '--parent', 'HIMMEL-9']);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--sector', 'ship loop', '--parent', 'HIMMEL-9']);
     const body = posted()![2] as { fields: Record<string, unknown> };
     expect(body.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
     expect(body.fields['parent']).toEqual({ key: 'HIMMEL-9' });
   });
 
   it('creates with a Sector and the standalone label', async () => {
-    await run(['--type', 'Task', '--backlog', '--sector', 'Ship loop', '--labels', 'standalone']);
+    await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--sector', 'Ship loop', '--labels', 'standalone']);
     expect(posted()).toBeDefined();
   });
 
@@ -1022,7 +1041,7 @@ describe('create — cap gate (HIMMEL-6485)', () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'g', '--desc', PLAIN, ...HOME, ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'the console loses a worker', '--desc', PLAIN, ...HOME, ...args]);
   };
   const created = () => {
     const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
@@ -1212,7 +1231,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   });
 
   it('files a --backlog Bug with the backlog label and no fixVersion', async () => {
-    await file('--backlog');
+    await file('--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()!['fixVersions']).toBeUndefined();
     expect(created()!['labels']).toContain('backlog');
   });
@@ -1235,8 +1254,8 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   });
 
   it('refuses --backlog together with a gate or a --fix-version', async () => {
-    await expect(file('--backlog', '--gate', 'critical')).rejects.toThrow(/--backlog/);
-    await expect(file('--backlog', '--fix-version', 'v1.1.3')).rejects.toThrow(/--backlog/);
+    await expect(file('--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--gate', 'critical')).rejects.toThrow(/--backlog/);
+    await expect(file('--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--fix-version', 'v1.1.3')).rejects.toThrow(/--backlog/);
     expect(created()).toBeUndefined();
   });
 
@@ -1395,7 +1414,7 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
   });
 
   it('files a --backlog Bug on a frozen version with no gate and no row', async () => {
-    await file('Bug', '--backlog');
+    await file('Bug', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()!['fixVersions']).toBeUndefined();
     expect(created()!['labels']).toContain('backlog');
     expect(ledger()).toEqual([]);
@@ -1528,7 +1547,7 @@ describe('create — blocker version placement', () => {
   });
 
   it('allows --backlog explicitly, labelling the Task without stamping a version', async () => {
-    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    await file('--blocks', 'HIMMEL-1620', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()?.fixVersions).toBeUndefined();
     expect(created()?.labels).toContain('backlog');
   });
@@ -1562,7 +1581,7 @@ describe('create — blocker version placement', () => {
 
   it('files a blocker of a frozen-version ticket with --backlog and no gate', async () => {
     frozen = true;
-    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    await file('--blocks', 'HIMMEL-1620', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()?.fixVersions).toBeUndefined();
     expect(created()?.labels).toContain('backlog');
   });
@@ -1579,7 +1598,7 @@ describe('create — blocker version placement', () => {
 
   it('does not copy a future version from a non-current target', async () => {
     targetVersions = [{ name: 'v1.1.4' }];
-    await file('--blocks', 'HIMMEL-1620', '--backlog');
+    await file('--blocks', 'HIMMEL-1620', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()?.fixVersions).toBeUndefined();
   });
 
@@ -1597,7 +1616,7 @@ describe('create — blocker version placement', () => {
   });
 
   it('create --blocked-by does not inherit from the blocker in the opposite direction', async () => {
-    await file('--blocked-by', 'HIMMEL-1158', '--backlog');
+    await file('--blocked-by', 'HIMMEL-1158', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(created()?.fixVersions).toBeUndefined();
   });
 
@@ -1666,6 +1685,7 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
   });
   afterEach(() => {
     vi.unstubAllEnvs();
+    process.exitCode = undefined;
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -1675,11 +1695,12 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
   });
 
   it.each([
-    ['--backlog'],
+    ['--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test'],
     ['--fix-version', 'v1.1.3'],
     ['--gate', 'critical'],
     ['--follow-up-of', 'HIMMEL-5'],
   ])('files a Task placed by %s', async (...args) => {
+    await declare();
     await file('Task', ...args);
     expect(posted()).toBe(true);
   });
@@ -1689,23 +1710,77 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(posted()).toBe(false);
   });
 
-  it('queues an INTAKE for a --backlog filing under a declared release and prints the REQ id', async () => {
+  // no ticket is filed without a version, at least a proposed one.
+  const labelsPosted = () => {
+    const call = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return (call?.[2] as { fields: { labels?: string[] } } | undefined)?.fields.labels ?? [];
+  };
+
+  it('refuses a bare --backlog and names --proposed-version backlog and --why, without POSTing', async () => {
+    await expect(file('Task', '--backlog')).rejects.toThrow(/--proposed-version backlog.*--why/s);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses --backlog --proposed-version backlog with no --why', async () => {
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog')).rejects.toThrow(/--why/);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses --proposed-version backlog without --backlog, with or without --why', async () => {
+    await expect(file('Task', '--proposed-version', 'backlog')).rejects.toThrow(/--backlog/);
+    await expect(file('Task', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass')).rejects.toThrow(/--backlog/);
+    expect(posted()).toBe(false);
+  });
+
+  it('files --backlog --proposed-version backlog --why with the backlog and proposed-backlog labels', async () => {
     await declare();
-    await file('Task', '--backlog');
+    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
+    expect(labelsPosted()).toEqual(expect.arrayContaining(['backlog', 'proposed-backlog']));
+  });
+
+  it('files --proposed-version <v> with a proposed-<v> label and no fixVersion', async () => {
+    await declare();
+    await file('Task', '--proposed-version', 'v1.1.3');
+    expect(labelsPosted()).toContain('proposed-v1.1.3');
+    const call = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    expect((call?.[2] as { fields: Record<string, unknown> }).fields['fixVersions']).toBeUndefined();
+  });
+
+  it('queues the INTAKE toward the proposed version in the same call', async () => {
+    await declare();
+    await file('Task', '--proposed-version', 'v1.1.3');
     expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
   });
 
-  it('queues no INTAKE for a placeholder title, and says so', async () => {
-    await declare();
-    await file('Task', '--backlog', '--title', 't');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /INTAKE not queued.*placeholder/.test(e))).toBe(true);
+  it('refuses a proposed version the project does not have, and --proposed-version with --fix-version', async () => {
+    await expect(file('Task', '--proposed-version', 'v9.9.9')).rejects.toThrow(/v9\.9\.9/);
+    await expect(file('Task', '--proposed-version', 'v1.1.3', '--fix-version', 'v1.1.3')).rejects.toThrow(/--proposed-version/);
+    expect(posted()).toBe(false);
   });
 
-  it('queues nothing when no release is declared', async () => {
-    await file('Task', '--backlog');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /REQ /.test(e))).toBe(false);
+  it('queues an INTAKE for a --backlog filing under a declared release and prints the REQ id', async () => {
+    await declare();
+    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
+    expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
+  });
+
+  it('refuses a placeholder title before POSTing, since no INTAKE could be queued', async () => {
+    await declare();
+    await expect(file('Task', '--proposed-version', 'v1.1.3', '--title', 't')).rejects.toThrow(/placeholder/);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses an unversioned filing before POSTing when no release is declared', async () => {
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/no release is declared/);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses an unversioned filing before POSTing when several releases are declared', async () => {
+    await declare();
+    mkdirSync(join(root, 'state', 'R2'), { recursive: true });
+    writeFileSync(join(root, 'state', 'R2', 'release.json'), '{}');
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/2 releases are declared/);
+    expect(posted()).toBe(false);
   });
 
   it('queues nothing for a ticket placed in a version', async () => {
@@ -1714,31 +1789,71 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(errs.some((e) => /REQ /.test(e))).toBe(false);
   });
 
-  it('files the ticket even when the INTAKE cannot be queued', async () => {
+  it('files the key, says the INTAKE is not queued, and exits non-zero when queueing fails after the POST', async () => {
     await declare();
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'no-keys'));
-    await file('Task', '--backlog');
+    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
     expect(posted()).toBe(true);
-    expect(errs.some((e) => /INTAKE not queued/.test(e))).toBe(true);
+    expect(errs.some((e) => /Created HIMMEL-77 but INTAKE not queued/.test(e))).toBe(true);
+    expect(process.exitCode).toBe(1);
   });
 
-  it('warns when the release state cannot be read, but stays silent when it does not exist', async () => {
+  it('refuses before POSTing when the release state cannot be read', async () => {
     writeFileSync(join(root, 'not-a-dir'), 'x');
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'not-a-dir'));
-    await file('Task', '--backlog');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /INTAKE not queued/.test(e))).toBe(true);
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow();
+    expect(posted()).toBe(false);
   });
 
-  it('warns when no release state root can be resolved', async () => {
+  const storedToV = () =>
+    readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8')
+      .split('\n').filter(Boolean).map((l) => JSON.parse(l) as { to_v: string | null });
+
+  it('stores the proposed version as the INTAKE to_v, and null for the backlog', async () => {
+    await declare();
+    await file('Task', '--proposed-version', 'v1.1.3');
+    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
+    expect(storedToV().map((r) => r.to_v)).toEqual(['v1.1.3', null]);
+  });
+
+  it.each(['--blocks', '--split-from'])('refuses --proposed-version with %s when the target carries the current version, instead of dropping the proposal', async (relation) => {
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string) =>
+      method === 'GET' && path === '/issue/HIMMEL-5?fields=project,fixVersions'
+        ? { fields: { project: { key: 'HIMMEL' }, fixVersions: [{ name: 'v1.1.3' }] } }
+        : base(method, path));
+    await expect(file('Task', '--proposed-version', 'v1.1.3', relation, 'HIMMEL-5')).rejects.toThrow(/--proposed-version.*v1\.1\.3/);
+    expect(posted()).toBe(false);
+  });
+
+  it('files the default INTAKE why from the proposed version, not the backlog', async () => {
+    await declare();
+    await file('Task', '--proposed-version', 'v1.1.3');
+    const why = readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8');
+    expect(why).toMatch(/proposed for v1\.1\.3/);
+    expect(why).not.toMatch(/filed to the backlog/);
+  });
+
+  it('refuses a released proposed version without POSTing', async () => {
+    await declare();
+    await expect(file('Task', '--proposed-version', 'v1.1.2')).rejects.toThrow(/released/);
+    expect(posted()).toBe(false);
+  });
+
+  it.each(['Epic', 'Sub-task'])('refuses --proposed-version on a %s instead of ignoring it', async (type) => {
+    await declare();
+    await expect(file(type, '--proposed-version', 'v1.1.3')).rejects.toThrow(/Bug, Task or Story/);
+    expect(posted()).toBe(false);
+  });
+
+  it('refuses before POSTing when no release state root can be resolved', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
     vi.stubEnv('USER_SLUG', '');
     // no himmel.conf and no primary-checkout .env to supply USER_SLUG
     vi.stubEnv('HOME', join(root, 'home'));
     execFileSync('git', ['init', '-q', join(root, 'repo')]);
     vi.stubEnv('GIT_DIR', join(root, 'repo', '.git'));
-    await file('Task', '--backlog');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /INTAKE not queued.*USER_SLUG/.test(e))).toBe(true);
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/USER_SLUG/);
+    expect(posted()).toBe(false);
   });
 });

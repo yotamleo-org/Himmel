@@ -64,7 +64,8 @@ case " $* " in
         [ -f "$STUB/pool.fail" ] && exit 1
         [ -f "$STUB/pool.slow" ] && exec sleep 30
         [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
-        if [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
+        if [ -f "$STUB/pool.rows" ] && [ -f "$STUB/pool.intake" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,INTAKE:3\n# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
+        elif [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
         case " $* " in *" --dispositions "*) [ ! -f "$STUB/dispositions" ] || cat "$STUB/dispositions" ;; esac ;;
 esac
@@ -486,6 +487,23 @@ stale_line '2:HIMMEL-7120,HIMMEL-6866'
 arm "$I" "$WORK/sp4.out" 4
 check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
+
+# --- (8170) versionless operator work: the pool line reads INTAKE:<m>, and the wake names the
+# candidates and the one command that files their INTAKE requests ----
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
+rm -f "$STUB/pool.fail" "$STUB/pool.slow" "$STUB/pool.partial" "$STUB/calls"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+: > "$STUB/pool.intake"
+I="$(new_inbox intake)"
+arm "$I" "$WORK/intake.out" 8
+check "(8170) an INTAKE pool short of the slots wakes the waiter (rc 0)" "0" "$rc"
+check "(8170) the wake carries the intake candidates line" "1" "$(grep -c '^# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905' "$WORK/intake.out")"
+check "(8170) the wake names the INTAKE command and the rm-run" "1" "$(grep -c '^# INTAKE: .*release request.*--verb INTAKE --key <KEY> --to v1.*rm-run' "$WORK/intake.out")"
+check "(8170) a short INTAKE pool still runs the second pass: the wake line carries dispatchable=" "1" "$(head -n1 "$WORK/intake.out" | grep -c 'dispatchable=')"
+rm -f "$STUB/pool.intake" "$STUB/pool.rows"
+I="$(new_inbox nointake)"
+arm "$I" "$WORK/nointake.out" 8
+check "(8170) a pool with no intake candidate prints no INTAKE command" "0" "$(grep -c '^# INTAKE: ' "$WORK/nointake.out")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
