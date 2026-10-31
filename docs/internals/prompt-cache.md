@@ -224,13 +224,16 @@ claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens writt
 0.6 M read) while `eval` read 91 %. Two fixes:
 
 - **Batch (`semantic-batch.mjs submit`).** The prompts of a batch share graphify's
-  fixed extraction instructions. The longest line-aligned head every prompt shares
-  goes once as a `system` block with `cache_control` `{type: ephemeral, ttl: 1h}`
+  fixed extraction instructions. The shared head, cut at the end of graphify's
+  "Now extract ..." paragraph (never later, so source text that opens every chunk
+  alike is not promoted to the system role), goes once as a `system` block with
+  `cache_control` `{type: ephemeral, ttl: 1h}`
   and each chunk goes alone as the user message. A batch runs long, and the 1 h
   write (2× input) pays back once the items share it (read 0.1×). The `custom_id`
   and the hash check still cover the whole recorded text; prefix plus chunk
   rebuilds it byte for byte. It fails closed to the unsplit prompt for a lone
-  prompt, a prefix under 4000 characters, or a prompt that is only the prefix.
+  prompt, no instruction boundary in the shared head, a prefix under 4000
+  characters, or a prompt that is only the prefix.
   The batch cost counts a 1 h write at 2× via `usage.cache_creation`.
 - **Tags.** Every `claude-api.sh` caller sets `HIMMEL_API_KIND`: `graphify` (the
   non-batch shim, whose fixed addendum now sits ahead of the chunk), `cull`

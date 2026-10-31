@@ -46,12 +46,16 @@ const refuse = (m, code = 2) => { throw new Refusal(code, m); };
 // Every chunk prompt opens with graphify's fixed extraction instructions, so the prompts of one batch share a long
 // prefix. It goes once as a cached system block and each chunk alone as the user message. A batch runs
 // long, so the block asks for the 1h tier (write 2 x input, read 0.1 x), which pays once items share it.
-// Fails closed to the unsplit prompt, which is still correct: a lone prompt, a prefix under the cache minimum, or a
-// prompt that is nothing but the prefix.
-// ponytail: the prefix is the longest line-aligned head every prompt shares and MIN_PREFIX is a flat 4000 characters
-// (about 1000 tokens, the smallest cacheable block), not read per model. Upgrade path: the per-model minimum.
+// The system block ends where graphify's instructions end (its "Now extract ..." paragraph), never later: source text
+// that happens to open every chunk alike stays in the user message and is not promoted to the system role.
+// Fails closed to the unsplit prompt, which is still correct: a lone prompt, no instruction boundary in the shared
+// head, a prefix under the cache minimum, or a prompt that is nothing but the prefix.
+// ponytail: the boundary is graphify's current wording and MIN_PREFIX is a flat 4000 characters (about 1000 tokens,
+// the smallest cacheable block), not read per model. Upgrade path: the per-model minimum, and a wording change in
+// graphify shows as an unsplit batch, never a wrong one.
 const CACHE_TTL = '1h';
 const MIN_PREFIX = 4000;
+const INSTRUCTION_END = /^Now extract the knowledge graph from the following source file[^\n]*\n\n/m;
 function sharedPrefix(texts) {
   if (texts.length < 2) return '';
   let head = texts[0];
@@ -60,7 +64,8 @@ function sharedPrefix(texts) {
     while (n < head.length && n < t.length && head[n] === t[n]) n += 1;
     head = head.slice(0, n);
   }
-  const prefix = head.slice(0, head.lastIndexOf('\n') + 1);
+  const end = INSTRUCTION_END.exec(head);
+  const prefix = end ? head.slice(0, end.index + end[0].length) : '';
   return prefix.length >= MIN_PREFIX && texts.every((t) => t.length > prefix.length) ? prefix : '';
 }
 
