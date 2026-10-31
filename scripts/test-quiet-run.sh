@@ -569,6 +569,52 @@ OUT="$KEYRING_OUT"
 assert_rc "non-suite label run of the keyring fixture succeeds" 0 "$KEYRING_RC"
 assert_eq "negative control: a non-suite label leaves it unset" "keyring=unset" "$OUT"
 
+# 19. Label "suite" runs this worktree's suites only: an argv
+# path outside the worktree is refused before anything runs, and the refusal
+# names the direct form. The argv is N4192's real one from the station's
+# classifier-denial log (2026-10-30T23:38:57Z, denied as Code from External).
+# A stub `uv` records whether it ran, so the real pyright never does.
+UVSTUB="$SCRATCH/uvstub"
+mkdir -p "$UVSTUB"
+printf '#!/bin/sh\ntouch "%s/ran"\n' "$UVSTUB" > "$UVSTUB/uv"
+chmod +x "$UVSTUB/uv"
+N4192_ARGV=(uv run --directory /tmp/himmel-8282-graphify-4576-wt --frozen pyright graphify --outputjson)
+OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- "${N4192_ARGV[@]}" 2>&1)
+RC=$?
+assert_rc "suite refuses a command run from a checkout outside the worktree" 2 "$RC"
+assert_contains "refusal names the direct form" "run it directly: uv run --directory /tmp/himmel-8282-graphify-4576-wt --frozen pyright graphify --outputjson" "$OUT"
+if [ -e "$UVSTUB/ran" ]; then
+    echo "FAIL refused suite command must not run"
+    FAILED=$((FAILED + 1))
+    rm -f "$UVSTUB/ran"
+else
+    echo "PASS refused suite command never ran"
+fi
+OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- uv run --directory=/tmp/himmel-8282-graphify-4576-wt --frozen pyright 2>&1)
+RC=$?
+assert_rc "suite refuses an --opt=/outside path too" 2 "$RC"
+OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- uv run --directory=../himmel-8282-graphify-4576-wt --frozen pyright 2>&1)
+RC=$?
+assert_rc "suite refuses an --opt=../outside path" 2 "$RC"
+assert_contains "the --opt=../ refusal names the direct form" "run it directly: uv run --directory=../himmel-8282-graphify-4576-wt" "$OUT"
+OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- git -C /tmp/himmel-8282-graphify-4576-wt status 2>&1)
+RC=$?
+assert_rc "suite refuses -C /outside" 2 "$RC"
+# A positional outside path is data (the suite-semaphore holder passes its
+# scratch pid file that way), not a checkout.
+OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- sh -c 'exit 0' "$SCRATCH/positional" 2>&1)
+RC=$?
+assert_rc "suite still runs a command given a positional outside path" 0 "$RC"
+OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- sh -c 'exit 0' x --output="$SCRATCH/out.json" --config "$SCRATCH/c.json" 2>&1)
+RC=$?
+assert_rc "suite still runs a command given an outside output or config option" 0 "$RC"
+# Negative controls: another label keeps quiet-run's generic shape, and a
+# repo suite under "suite" still runs (cases 6 and 12 cover relative and
+# absolute in-worktree paths).
+OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" pyright -- "${N4192_ARGV[@]}" 2>&1)
+RC=$?
+assert_rc "a non-suite label still runs an outside-worktree command" 0 "$RC"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All quiet-run.sh guard cases passed."

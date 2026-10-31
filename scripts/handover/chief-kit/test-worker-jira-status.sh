@@ -174,6 +174,11 @@ printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "sweep: a Done ticket's stale IDLE-HELD record is cleared by the sweep too" "$(jq -r .state "$REC")" wrapped
+reset "Done"; owned WRAPPED; jq -c '.state = "parked"' "$REC" > "$tmp/rec.t" && mv "$tmp/rec.t" "$REC"
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "sweep: a Done ticket's stale parked record is cleared by the sweep" "$(jq -r .state "$REC")" wrapped
 
 # Without a single-instance lock both runs take the snapshot and enter the funnel.
 mkdir -p "$tmp/noflock"

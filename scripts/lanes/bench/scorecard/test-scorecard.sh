@@ -348,6 +348,26 @@ G8_OUT=$(TZ=America/New_York HANDOVER_DIR="$RGL_TMP/g8" READY_GO_NOW=1790910000 
 check "rgl g8: past-midnight bullet across a DST change keeps wall-clock time" \
     "$(printf '%s\n' "$G8_OUT" | head -1)" "events=2 median_min=45 missed=0"
 
+# A usage-parked worker is a stall, not an unmarked protocol miss. Both
+# persisted spellings must keep reading through the shared marker reader.
+mkdir -p "$RGL_TMP/fleet"
+printf '# chief\n' > "$RGL_TMP/fleet/chief.md"
+for marker in PARKED-USAGE PARKED-BANK; do
+    # shellcheck disable=SC2016  # literal backticks are the LIVE lock-token shape
+    printf '%s\n' '- 10:00 LIVE — lock `fixture`, effort=high model=test' \
+        '- 10:10 WRAPPED — earlier run' "- 10:20 $marker — usage limit" \
+        > "$RGL_TMP/fleet/HIMMEL-9001-N1-parked-2026-10-31.md"
+    FLEET_OUT=$(bash "$HERE/fleet-scorecard.sh" \
+        --doc "$RGL_TMP/fleet/HIMMEL-9001-N1-parked-2026-10-31.md" \
+        --chief-doc "$RGL_TMP/fleet/chief.md" --cr-ledger "$RGL_TMP/fleet/absent-ledger" \
+        --denials "$RGL_TMP/fleet/absent-denials" --mirror "$RGL_TMP/fleet/absent-mirror" --tz UTC)
+    check_exit "fleet: $marker report succeeds" "$?" "0"
+    check "fleet: $marker counts as a stall" \
+        "$(printf '%s\n' "$FLEET_OUT" | awk -F'|' '/^## Fleet management/ {fleet=1; next} fleet && /^\| N1 / {gsub(/^ +| +$/, "", $10); print $10; exit}')" "blocked 1"
+    check "fleet: $marker is a recognised protocol marker" \
+        "$(printf '%s\n' "$FLEET_OUT" | awk -F'|' '/^## Fleet management/ {fleet=1; next} fleet && /^\| N1 / {gsub(/^ +| +$/, "", $8); print $8; exit}')" "ok"
+done
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-scorecard.sh: 0 failures"

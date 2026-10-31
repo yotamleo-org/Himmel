@@ -3014,7 +3014,9 @@ sanctioned-script path (`export "$n=1"`), a program word that hides both its
 semaphore (`scripts/lib/suite-semaphore.sh`): `HIMMEL_SUITE_SLOTS` slots
 (default 6) under `${TMPDIR:-/tmp}/himmel-suite-semaphore.d`. Only the two
 sanctioned scripts take a slot — `bash scripts/quiet-run.sh suite -- <cmd>` (any
-command) and `scripts/ci/run-shell-tests.sh` (once per sweep). A busy budget
+of this worktree's suite runners; a directory option aimed outside the worktree
+is refused with the direct form, HIMMEL-8315) and `scripts/ci/run-shell-tests.sh` (once
+per sweep). A busy budget
 exits **75**, naming each holder's pid, label and age, plus the retry shape
 `SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- <cmd>`
 (`SUITE_LOCK_WAIT=<seconds>` waits for a slot). A slot is reclaimed when its
