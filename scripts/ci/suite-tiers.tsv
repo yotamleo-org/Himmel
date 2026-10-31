@@ -330,6 +330,7 @@ scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/git/test-delete-approved-branch.sh	local	new, behaviour suite for the approved remote-branch delete script, no gate role, HIMMEL-8452
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/graphify/test-anchor-seeds.sh	pr	guard
 scripts/graphify/test-ast-update.sh	pr	guard
