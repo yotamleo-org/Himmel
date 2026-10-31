@@ -27,6 +27,9 @@ sl()  { python3 -I "$SCRIPT" "$@"; }
 # jq-free JSON probe: jget <file> <python expression over d>
 jget() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$1" "$2"; }
 
+# an operator's own timeout must not change what the ordinary writes below do
+unset SERIES_LEDGER_LOCK_TIMEOUT
+
 L="$tmp/s1.json"
 
 # --- 1. create + read ----------------------------------------------------
@@ -64,6 +67,8 @@ check "2: unknown state refuses rc 2" "$rc" 2
 contains "2: unknown state is named" "$out" bogus
 rc=0; out="$(sl add-item --ledger "$L" --key HIMMEL-2 --colour red 2>&1)" || rc=$?
 check "2: unknown option refuses rc 2" "$rc" 2
+rc=0; sl add-item --ledger "$L" --key "" >/dev/null 2>&1 || rc=$?
+check "2: empty key refuses rc 2" "$rc" 2
 check "2: refusals leave the file byte-identical" "$(cat "$L")" "$before"
 for st in authoring committed published abandoned; do
     rc=0; sl add-item --ledger "$L" --key "K-$st" --state "$st" >/dev/null 2>&1 || rc=$?
@@ -98,6 +103,8 @@ rc=0; sl set --ledger "$L" completes_ticket=maybe >/dev/null 2>&1 || rc=$?
 check "3: bad completes_ticket refuses rc 2" "$rc" 2
 rc=0; sl set --ledger "$L" --key NOPE state=authoring >/dev/null 2>&1 || rc=$?
 check "3: unknown item key refuses rc 4" "$rc" 4
+rc=0; sl set --ledger "$L" --key "" state=authoring >/dev/null 2>&1 || rc=$?
+check "3: an empty --key is an item selector, not the top level, rc 4" "$rc" 4
 check "3: refusals leave the file byte-identical" "$(cat "$L")" "$before"
 
 # --- 4. pass -------------------------------------------------------------
@@ -187,6 +194,12 @@ check "7: read of a corrupt ledger rc 1" "$rc" 1
 rc=0; out="$(sl add-item --ledger "$tmp/corrupt.json" --key X-1 2>&1)" || rc=$?
 check "7: a write to a corrupt ledger rc 1" "$rc" 1
 check "7: a corrupt ledger is left as it was" "$(cat "$tmp/corrupt.json")" '{not json'
+printf '{"sid":"m","writer":"/d.md","passes":[],"items":[{}]}\n' > "$tmp/malformed.json"
+rc=0; out="$(sl pass --ledger "$tmp/malformed.json" --from /d.md --to /e.md 2>&1)" || rc=$?
+check "7: a ledger with an item that has no key is rc 1, not a traceback" "$rc" 1
+printf '{"sid":"m","passes":[],"items":[]}\n' > "$tmp/nowriter.json"
+rc=0; out="$(sl pass --ledger "$tmp/nowriter.json" --from /d.md --to /e.md 2>&1)" || rc=$?
+check "7: a ledger with no writer is rc 1, not a traceback" "$rc" 1
 rc=0; out="$(sl bogus-verb --ledger "$L" 2>&1)" || rc=$?
 check "7: unknown verb rc 2" "$rc" 2
 

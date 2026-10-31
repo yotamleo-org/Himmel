@@ -53,7 +53,9 @@ def load(path):
         raise Refused(1, "ledger not found: %s" % path)
     except (ValueError, OSError) as e:
         raise Refused(1, "ledger unreadable (%s): %s" % (e, path))
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+    if (not isinstance(data, dict) or not isinstance(data.get("writer"), str)
+            or not isinstance(data.get("passes"), list) or not isinstance(data.get("items"), list)
+            or not all(isinstance(i, dict) and isinstance(i.get("key"), str) for i in data["items"])):
         raise Refused(1, "ledger is not a series ledger: %s" % path)
     return data
 
@@ -136,6 +138,8 @@ def cmd_create(a):
 
 
 def cmd_add_item(a):
+    if not a.key:
+        raise Refused(2, "item key must not be empty")
     state = a.state
     check_state(state)
     row = {"key": a.key, "branch": a.branch, "worktree": a.worktree, "cut_from": a.cut_from, "wip": a.wip,
@@ -155,18 +159,19 @@ def cmd_set(a):
         if "=" not in p:
             raise Refused(2, "expected field=value, got %r" % p)
         pairs.append(p.split("=", 1))
-    allowed = ITEM_FIELDS if a.key else TOP_SETTABLE
+    keyed = a.key is not None
+    allowed = ITEM_FIELDS if keyed else TOP_SETTABLE
     for field, raw in pairs:
         if field not in allowed:
             raise Refused(2, "field %r is not settable%s (settable: %s)" % (
-                field, " on an item" if a.key else " at the top level", ", ".join(allowed)))
+                field, " on an item" if keyed else " at the top level", ", ".join(allowed)))
         if field == "completes_ticket" and raw not in YES_NO:
             raise Refused(2, "completes_ticket must be yes or no, not %r" % raw)
-    values = [(f, item_value(f, r) if a.key else r) for f, r in pairs]
+    values = [(f, item_value(f, r) if keyed else r) for f, r in pairs]
     with Locked(a.ledger):
         data = load(a.ledger)
         target = data
-        if a.key:
+        if keyed:
             target = find_item(data, a.key)
             if target is None:
                 raise Refused(4, "no such item: %s" % a.key)
