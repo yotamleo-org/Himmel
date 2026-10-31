@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
+import { coreMatch, loadCorePatterns, type ChangeClass } from '../core.js';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
@@ -21,6 +23,76 @@ import { releaseRoot } from '../release/paths.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
+}
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+/** The text under the "Agent detail" heading of a markdown body, up to the next heading. */
+export function agentDetailOf(md: string): string {
+  const lines = md.split('\n');
+  // a heading inside a fenced code block is not a heading (as in lintPlainBlock)
+  let fenced = false;
+  const heading = lines.map((l) => {
+    if (/^\s{0,3}(```|~~~)/.test(l)) fenced = !fenced;
+    return !fenced && /^\s{0,3}#{1,6}\s/.test(l);
+  });
+  const start = lines.findIndex((l, i) => heading[i] && /^\s{0,3}#{1,6}\s+agent detail\b/i.test(l));
+  if (start < 0) return '';
+  const end = heading.findIndex((h, i) => i > start && h);
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+}
+
+/** The Agent detail of an ADF body: the text of every node after its "Agent detail" heading. */
+export function agentDetailOfAdf(doc: unknown): string {
+  const text = (n: unknown): string => {
+    const x = n as { text?: string; content?: Array<{ text?: string }> };
+    // block children (list items, paragraphs) are separated; inline text runs stay contiguous
+    const inline = (x.content ?? []).every((c) => c.text !== undefined);
+    return (x.text ?? '') + (x.content ?? []).map(text).join(inline ? '' : '\n');
+  };
+  const nodes = ((doc as { content?: Array<{ type?: string }> } | null)?.content ?? []);
+  const start = nodes.findIndex((n) => n.type === 'heading' && /^agent detail\b/i.test(text(n).trim()));
+  if (start < 0) return '';
+  const rest = nodes.slice(start + 1);
+  const end = rest.findIndex((n) => n.type === 'heading');
+  return (end < 0 ? rest : rest.slice(0, end)).map(text).join('\n');
+}
+
+/** Slash-bearing path tokens in a text, trailing punctuation dropped. */
+export function pathsIn(text: string): string[] {
+  const found = text.match(/[\w.@+-]+(?:\/[\w.@+-]+)+/g) ?? [];
+  return [...new Set(found.map((p) => p.replace(/[.]+$/, '')))];
+}
+
+/** CORE adds the label; REVIEW (a rename or bulk change) adds none and is left to the chief. */
+export function coreVerdict(
+  detail: string, changeClass: string | undefined,
+): { kind: 'core' | 'core-review'; path: string } | undefined {
+  const paths = pathsIn(detail);
+  if (paths.length === 0) return undefined;
+  const patterns = loadCorePatterns(join(repoRoot, 'scripts', 'ci', 'core-paths.txt'));
+  const [line] = coreMatch(paths, ['K'], { patterns, changeClass: changeClass as ChangeClass | undefined });
+  const [verdict, , path] = line!.split(' ');
+  if (verdict === 'CORE') return { kind: 'core', path: path! };
+  if (verdict === 'REVIEW') return { kind: 'core-review', path: path! };
+  return undefined;
+}
+
+type CoreVerdict = ReturnType<typeof coreVerdict>;
+
+/** The labels with core added on a CORE verdict, plus the verdict itself. */
+export function markCore(
+  detail: string, changeClass: string | undefined, labels: string[] | undefined,
+): { labels: string[] | undefined; verdict: CoreVerdict } {
+  if (changeClass !== undefined && changeClass !== 'rename' && changeClass !== 'bulk') {
+    throw new Error('create: --change-class is rename or bulk');
+  }
+  const verdict = coreVerdict(detail, changeClass);
+  return { labels: verdict?.kind === 'core' ? [...new Set([...(labels ?? []), 'core'])] : labels, verdict };
+}
+
+function printCore(verdict: CoreVerdict): void {
+  if (verdict) console.error(`${verdict.kind}: ${verdict.path}`);
 }
 
 /**
@@ -699,6 +771,7 @@ export function registerCreate(program: Command): void {
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
     .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
+    .option('--change-class <class>', 'rename or bulk: a mechanical change touching a core path adds no core label and prints core-review for the chief')
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
     .option(
       '--skeleton',
@@ -735,6 +808,7 @@ export function registerCreate(program: Command): void {
         class?: string;
         area?: string;
         project?: string;
+        changeClass?: string;
         attach: string[];
       }) => {
         if (options.skeleton) {
@@ -756,6 +830,7 @@ export function registerCreate(program: Command): void {
         };
         if (options.priority !== undefined) fields['priority'] = { name: options.priority };
         let found: string[];
+        let agentDetail = '';
         if (options.adfFile) {
           let adfBody: unknown;
           try {
@@ -766,13 +841,16 @@ export function registerCreate(program: Command): void {
           }
           fields['description'] = adfBody;
           found = lintPlainBlockAdf(adfBody);
+          agentDetail = agentDetailOfAdf(adfBody);
         } else if (options.descFile) {
           const md = readBodyFile(options.descFile, '--desc-file');
           fields['description'] = markdownToAdf(md);
           found = lintPlainBlock(md);
+          agentDetail = agentDetailOf(md);
         } else if (options.desc) {
           fields['description'] = markdownToAdf(options.desc);
           found = lintPlainBlock(options.desc);
+          agentDetail = agentDetailOf(options.desc);
         } else {
           found = lintPlainBlock('');
         }
@@ -815,6 +893,8 @@ export function registerCreate(program: Command): void {
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
         const placed = placeAtFiling(versionOptions, labels, residual !== undefined);
         labels = placed.labels;
+        const core = markCore(agentDetail, options.changeClass, labels);
+        labels = core.labels;
         // A Sector (when configured) plus an epic or the standalone label; Epic and Subtask only warn.
         const home = homeVerdict(options.type, { sector, parent: options.parent, labels }, sectors);
         if (home.action === 'refuse') {
@@ -855,6 +935,7 @@ export function registerCreate(program: Command): void {
         // has already been emitted so the caller still has it. The
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
+        printCore(core.verdict);
         queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), options);
         if (overrideReason !== undefined) {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });

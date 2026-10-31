@@ -8,9 +8,9 @@
 # led by the four answers of v5 frame 16 (a field with no input says so):
 #
 #   ## ✅ What shipped    — merged PR / commit / Done counts
-#   ## ⏳ What waits on you — open PRs + stale worktrees to act on
-#   ## 💸 What it spent   — Claude usage (not available) + this report's cost
-#   ## ▶️ What runs next  — in-flight count + first suggested step
+#   ## ⏳ What waits on you — open PRs + stale worktrees, GOs, worker questions, CI/review state
+#   ## 💸 What it spent   — Claude usage of the last 24h + this report's cost
+#   ## ▶️ What runs next  — in-flight count, release progress + first suggested step
 #   ## TL;DR            — derived counts (heuristic; --llm enriches)
 #   ## ✅ Completed       — merged PRs (gh) + commits + Done cross-ref
 #   ## 🔴 In-flight WIP   — jira In Progress correlated to worktrees/open-PRs
@@ -342,6 +342,104 @@ fi
 backlog_rows=$(printf '%s\n' "$backlog_raw" | awk -F'\t' 'NF>=3 && $1!="KEY"{print}')
 backlog_total=$(printf '%s\n' "$backlog_rows" | grep -c . || true)
 
+# Frame 16 inputs -------------------------------------------------------------
+# Three lead lines read an input of their own. Each fails open: a source that is
+# absent or errors leaves its *_ok flag 0 and the template prints the "not
+# available" line, never a zero or a guess. The empty string for a MORNING_* seam
+# means "no such input" (tests); unset means the real source.
+
+# Shift spend: the shift_spend record (scripts/api-lane/shift-spend.mjs) over the last 24h.
+spend_ok=0; spend_bank=""; spend_bank_reset=""; spend_api=""; spend_api_floor=""
+if command -v jq >/dev/null 2>&1; then
+    spend_argv=()
+    if [ "${MORNING_SHIFT_SPEND_CMD+set}" = set ]; then
+        if [ -n "$MORNING_SHIFT_SPEND_CMD" ]; then read -r -a spend_argv <<<"$MORNING_SHIFT_SPEND_CMD"; fi
+    elif [ -f "$SCRIPT_DIR/../api-lane/shift-spend.mjs" ] && command -v node >/dev/null 2>&1; then
+        spend_argv=(node "$SCRIPT_DIR/../api-lane/shift-spend.mjs")
+    fi
+    if [ ${#spend_argv[@]} -gt 0 ]; then
+        spend_until=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        # swallow-ok: no 24h-ago form (GNU or BSD date) leaves spend_since empty, so spend_ok stays 0 and the line reads not available
+        spend_since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-24H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+        # swallow-ok: a failed reader leaves spend_ok 0, so the line reads not available
+        if [ -n "$spend_since" ] && spend_json=$("${spend_argv[@]}" --since "$spend_since" --until "$spend_until" 2>/dev/null); then
+            # swallow-ok: an unparseable record leaves the row empty, so spend_ok stays 0 and the line reads not available
+            spend_row=$(printf '%s' "$spend_json" | jq -r '
+                [ (.fields.claude_bank | select(.status == "ok") | ((.seven_day.delta * 10 | round) / 10)) // "",
+                  (.fields.claude_bank | select(.status == "ok") | .seven_day.resets | select(. > 0)) // "",
+                  (.fields.api_cost | select(.status == "ok") | .value) // "",
+                  (.fields.api_cost | select(.status == "ok" and .partial == true) | "yes") // ""
+                ] | map(tostring) | join("|")' 2>/dev/null) || spend_row=""
+            IFS='|' read -r spend_bank spend_bank_reset spend_api spend_api_floor <<<"$spend_row"
+            [ -n "$spend_api" ] && spend_api=$(awk -v v="$spend_api" 'BEGIN { printf "%.2f", v }')
+            if [ -n "$spend_bank" ] || [ -n "$spend_api" ]; then spend_ok=1; fi
+        fi
+    fi
+fi
+
+# Waiting on you, workers: the newest marker bullet of each worker handover doc touched in the last 3 days.
+# READY awaits a GO; BLOCKED or FINDING is a question. A root with no such doc is no input, not a clean zero.
+waiting_dir=""
+# swallow-ok: no resolvable root leaves waiting_dir empty, so workers_ok stays 0 and the lines read not available
+if [ "${MORNING_WAITING_DIR+set}" = set ]; then waiting_dir="$MORNING_WAITING_DIR"; else waiting_dir=$(handover_root 2>/dev/null || echo ""); fi
+workers_ok=0; go_count=0; go_oldest=""; q_count=0; q_oldest=""
+if [ -n "$waiting_dir" ] && [ -d "$waiting_dir" ]; then
+    while IFS=$'\t' read -r _marker _hhmm; do
+        [ -n "$_marker" ] || continue
+        workers_ok=1
+        case "$_marker" in
+            READY)            go_count=$((go_count+1)); if [ -z "$go_oldest" ] || [[ "$_hhmm" < "$go_oldest" ]]; then go_oldest="$_hhmm"; fi ;;
+            BLOCKED|FINDING)  q_count=$((q_count+1));  if [ -z "$q_oldest" ] || [[ "$_hhmm" < "$q_oldest" ]]; then q_oldest="$_hhmm"; fi ;;
+        esac
+    done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do # gnu-ok: BSD find has -maxdepth and -mtime
+        # The bullet carries a time of day only; the doc's last-modified day dates it (the newest bullet is the last write).
+        # swallow-ok: a doc whose mtime cannot be read is skipped, so workers_ok stays 0 unless another doc reads
+        _epoch=$(stat -c %Y "$_doc" 2>/dev/null || stat -f %m "$_doc" 2>/dev/null) || continue # gnu-ok: BSD stat -f is the fallback
+        # swallow-ok: a doc whose day cannot be formed is skipped, as above
+        _day=$(date -d "@$_epoch" +%F 2>/dev/null || date -r "$_epoch" +%F 2>/dev/null) || continue # gnu-ok: BSD date -r is the fallback
+        awk -v day="$_day" '/^- [0-9][0-9]:[0-9][0-9] (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)/ { m = $3; sub(/[^A-Z-].*/, "", m); t = $2 }
+             END { if (m != "") printf "%s\t%s %s\n", m, day, t }' "$_doc" 2>/dev/null
+    done)
+fi
+
+# Waiting on you, CI and review state of the open PRs (github only).
+ci_ok=0; ci_approved=0; ci_changes=0; ci_failing=0; ci_seen=0; ci_oldest=""; ci_cap=100
+if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    # swallow-ok: a failed gh read leaves ci_ok 0, so the line reads not available
+    if open_json=$($GH_CMD pr list --state open --limit "$ci_cap" --json number,reviewDecision,statusCheckRollup,createdAt 2>/dev/null) &&
+        ci_row=$(printf '%s' "$open_json" | jq -r '
+            def failing: any(.statusCheckRollup[]?; ((.conclusion // .state // "") | IN("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE")));
+            [ ([.[] | select(.reviewDecision == "APPROVED")] | length),
+              ([.[] | select(.reviewDecision == "CHANGES_REQUESTED")] | length),
+              ([.[] | select(failing)] | length),
+              length,
+              (if length > 0 then (map(.createdAt) | min | .[0:10]) else "" end) ] | @tsv' 2>/dev/null); then
+        IFS=$'\t' read -r ci_approved ci_changes ci_failing ci_seen ci_oldest <<<"$ci_row"
+        ci_ok=1
+    fi
+fi
+
+# Release progress: done/total per unreleased version (the first three), from the tracker's fixVersion.
+release_parts=""; rel_cap=1000
+# swallow-ok: a failed versions read leaves release_parts empty, so the line reads not available
+if [ -n "$JIRA_CMD" ] && [ "$jira_ok" -eq 1 ] && vers_raw=$("${JIRA_ARGV[@]}" versions 2>/dev/null); then
+    rel_versions=$(printf '%s\n' "$vers_raw" | awk -F'\t' '$2 == "false" && $4 == "false" && $1 != "" && $1 !~ /["\\]/ && n < 3 { print $1; n++ }')
+    while IFS= read -r _ver; do
+        [ -n "$_ver" ] || continue
+        _jql="fixVersion = \"$_ver\""
+        [ -n "${JIRA_PROJECT_KEY:-}" ] && _jql="project = $JIRA_PROJECT_KEY AND $_jql"
+        # swallow-ok: a failed read skips this version, and no version left reads not available
+        _rows=$("${JIRA_ARGV[@]}" list --jql "$_jql" --limit "$rel_cap" 2>/dev/null) || continue
+        _counts=$(printf '%s\n' "$_rows" | awk -F'\t' 'NF >= 3 && $1 != "KEY" { t++; if ($3 == "Done" || $3 == "Closed") d++ } END { print d + 0, t + 0 }')
+        _done=${_counts% *}; _total=${_counts#* }
+        [ "$_total" -gt 0 ] || continue
+        [ "$_total" -ge "$rel_cap" ] && _total="$_total+"
+        release_parts="${release_parts:+$release_parts · }$_ver **$_done**/$_total done"
+    done <<EOF_VER
+$rel_versions
+EOF_VER
+fi
+
 # Deterministic judgment strings -----------------------------------------------
 
 inprog_count=$(printf '%s\n' "$inprogress_raw" | awk -F'\t' 'NF>=3 && $1!="KEY"{c++} END{print c+0}')
@@ -472,9 +570,37 @@ EOF
         printf -- '- Open PRs: not available (gh PR state unavailable)\n'
         printf -- '- Stale worktrees: not available (gh PR state unavailable)\n'
     fi
-    printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
+    if [ "$workers_ok" -eq 0 ] && [ "$ci_ok" -eq 0 ]; then
+        printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
+    else
+        if [ "$workers_ok" -eq 1 ]; then
+            printf -- '- **%s** worker(s) awaiting your GO%s\n' "$go_count" "${go_oldest:+ (oldest bullet ${go_oldest#* }, doc last written ${go_oldest% *})}"
+            printf -- '- **%s** worker question(s)%s\n' "$q_count" "${q_oldest:+ (oldest bullet ${q_oldest#* }, doc last written ${q_oldest% *})}"
+        else
+            printf -- '- Worker questions and GOs: not available (no worker handover doc found)\n'
+        fi
+        if [ "$ci_ok" -eq 1 ]; then
+            printf -- '- CI and review state: **%s** approved, **%s** changes requested, **%s** with failing checks%s%s\n' \
+                "$ci_approved" "$ci_changes" "$ci_failing" "${ci_oldest:+ (oldest open PR since $ci_oldest)}" \
+                "$([ "$ci_seen" -ge "$ci_cap" ] && printf ' (first %s open PRs only)' "$ci_cap")"
+        else
+            printf -- '- CI and review state: not available (gh open-PR state unavailable)\n'
+        fi
+        printf '\n'
+    fi
     printf '## 💸 What it spent\n\n'
-    printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
+    if [ "$spend_ok" -eq 1 ]; then
+        spend_parts=""
+        if [ -n "$spend_bank" ]; then
+            spend_parts="weekly bank **+$spend_bank** points${spend_bank_reset:+ (a reset inside the shift: an estimate)}"
+        fi
+        if [ -n "$spend_api" ]; then
+            spend_parts="${spend_parts:+$spend_parts · }API lane **${spend_api_floor:+at least }\$$spend_api**"
+        fi
+        printf -- '- Claude usage of the shift (last 24h): %s\n' "$spend_parts"
+    else
+        printf -- '- Claude usage of the shift: not available (the generator reads no usage input)\n'
+    fi
     case "$llm_status" in
         (ok)         printf -- '- This report: one bounded %s turn (--llm)\n\n' "$LLM_MODEL" ;;
         (failed)     printf -- '- This report: one %s turn (--llm) failed; heuristic used\n\n' "$LLM_MODEL" ;;
@@ -489,7 +615,11 @@ EOF
     else
         printf -- '- In-Progress tickets: not available (jira unavailable)\n'
     fi
-    printf -- '- Release progress: not available (the generator reads no release input)\n'
+    if [ -n "$release_parts" ]; then
+        printf -- '- Release progress: %s\n' "$release_parts"
+    else
+        printf -- '- Release progress: not available (the generator reads no release input)\n'
+    fi
     printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | awk 'NF{print; exit}')"
     printf '## TL;DR\n\n%s\n\n' "$tldr_final"
     printf '## ✅ Completed (%s PRs merged to main)\n\n' "$pr_count"

@@ -735,12 +735,36 @@ page_send() {  # <text> <deadline epoch>: the timeout is what is left of the bat
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
 page_denials() {
-    local leg cls n end
+    local leg cls n end rc_name
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per leg
     denial_pages "$1" "$2" | while read -r leg cls n; do
         denial_page_write "$leg" "$n" "$cls" || true
-        page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
+        # A native worker launched with Remote Control is answered from the
+        # Claude app; name its session. No such session found (claudex, unprofiled): the plain text.
+        rc_name="$(rc_session_for "$leg")"
+        if [ -n "$rc_name" ]; then
+            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $leg" "$end"
+        else
+            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
+        fi
     done
+}
+
+# rc_session_for: <worker label> - prints the Remote Control session name of the live
+# claude whose cwd is in worktree <label> (the page label is the worktree slug), or
+# nothing. Reads /proc only (CHIEF_WAIT_PROC for a suite); the name is session text
+# from a process argv, kept to a safe charset before it goes into a message.
+rc_session_for() {
+    local p cwd name
+    for p in "${CHIEF_WAIT_PROC:-/proc}"/[0-9]*; do
+        cwd="$(readlink "$p/cwd" 2>/dev/null)" || continue  # swallow-ok: a proc entry that exited or is not ours is skipped
+        case "$cwd" in */worktrees/"$1"|*/worktrees/"$1"/*) ;; *) continue ;; esac
+        name="$(tr '\0' '\n' < "$p/cmdline" 2>/dev/null | awk 'prev == "--remote-control" { print; exit } { prev = $0 }')"  # swallow-ok: an unreadable cmdline names no session, the plain page text goes out
+        case "$name" in ''|*[!A-Za-z0-9._#+-]*) continue ;; esac
+        printf '%s' "$name"
+        return 0
+    done
+    return 0
 }
 
 # capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN

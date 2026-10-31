@@ -1198,3 +1198,4 @@ scripts/luna/test-cadence-alert.sh	local	new, behaviour suite for the qmd rc-5 a
 scripts/handover/chief-kit/test-focus-refresh-chains.sh	local	behaviour suite, stubbed refresh stages, no gate role
 scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role, HIMMEL-8336
 scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM guest provisioner (stubbed VBoxManage/vmsdk), no gate role, HIMMEL-8326
+scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard

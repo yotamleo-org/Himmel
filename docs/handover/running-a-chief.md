@@ -277,6 +277,41 @@ explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
+**A core ticket builds only after a signed minerva spec (HIMMEL-8353).**
+
+- **What core means.** The operator's definition: the ship loop, the chain a
+  ticket travels from filing to merge. That is the chief, how versions are
+  kept, how work is split, and the workers. Core is not "everything
+  important". The files are listed in `scripts/ci/core-paths.txt` (minerva is
+  on it). A ticket is core when its brief's Writes match that list, or when it
+  carries the Jira label `core`.
+- **Renames and bulk changes.** A rename or bulk-mechanical change that
+  touches a core path is neither core nor not-core by default. It reads
+  `REVIEW`, and you or a judge rule it case by case, per slice.
+- **Where a signed spec lives.** The spec lives in the state repo bucket,
+  `specs/designs/<KEY>-<slug>-<date>.md`. It counts as signed once you record
+  the operator's approval with `jira release operator spec <release> --keys
+  <K,…> --spec <file> --verdict <file> --verdict <file> --decision <n>
+  --verbatim-file <f>`. The two `--verdict` files are the last-round critic
+  returns minerva saved beside the spec, `<spec>.critic-spec-r<n>.md` and
+  `<spec>.critic-plan-r<n>.md`. Editing the spec afterwards voids the
+  signature until you re-sign with `--supersedes O-<id>`.
+- **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
+  `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira
+  release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]`
+  prints `CORE`, `REVIEW` or `NOT-CORE` per key. core-check stops when the
+  list matches more than 2 % of tracked files. If core really has to grow,
+  re-run it with `--widen-reason <why>`, and the reason is printed with the
+  verdict.
+- **Bypasses.** The gen-briefs core gate, when it lands, will let some
+  tickets pass without a spec: a design leg (core by label only, with
+  docs-only Writes), a Bug, an emergency, a ticket in an operator
+  `core-bypass` record, and a ticket already in flight when the gate turns
+  on. A free-text bypass field will be refused.
+- **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
+  `jira release core-check` and `spec-check` yourself before you write a core
+  brief, and run a minerva leg for each `CORE` key without `SPEC ok`.
+
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per
 helper kind.
