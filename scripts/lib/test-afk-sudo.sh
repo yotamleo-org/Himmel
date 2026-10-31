@@ -652,6 +652,7 @@ assert_eq "a link whose target holds a .. after a non-directory is refused too" 
 assert_eq "a non-directory followed only by a slash, dot or dot-dot is refused on every Python, not bound where the kernel never lands" "BadFile BadFile BadFile" "$(bt f/) $(bt f/.) $(bt f/..)"
 ln -s f/ "$R/fs"
 assert_eq "a link to a non-directory followed by a slash is refused on every Python" "BadFile" "$(bt fs)"
+assert_eq "a .. after a non-directory then a missing name is refused on every Python" "BadFile" "$(bt f/../m)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -679,7 +680,7 @@ class NoAllow:
         if k == "ALLOW_MISSING":
             raise AttributeError(k)
         return getattr(os.path, k)
-n.os = types.SimpleNamespace(path=NoAllow())
+n.os = types.SimpleNamespace(path=NoAllow(), stat=os.stat)
 base = os.path.realpath(sys.argv[2])
 print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
 new_root tgtnoallowrun; cfg "$ALL" true
