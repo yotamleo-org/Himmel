@@ -38,7 +38,7 @@ printf '%s\n' 'run scripts/handover/console-kit/go.sh' > "$HANDOVER_DIR/tester/m
 printf '%s\n' 'open it with bash scripts/lanes/leg-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md"
 printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env" # old-term-ok
 SETTINGS="$HOME/.claude/settings.json"
-printf '%s\n' '{"permissions": {"allow": ["Bash(bash scripts/cr/clear-cr-marker.sh:*)"]}}' > "$SETTINGS" # old-term-ok
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}, "permissions": {"allow": ["Bash(bash scripts/cr/clear-cr-marker.sh:*)"]}}' > "$SETTINGS" # old-term-ok
 case "${1:-}" in
     --real-clip) cp "$2" "$LUNA_VAULT_PATH/Clippings/legacy.md" ;;
     --real-vault) cp -R "$2/." "$LUNA_VAULT_PATH/" ;;
