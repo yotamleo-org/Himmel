@@ -265,16 +265,17 @@ ts_record_write() {
 
 # ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
-    local line marker newest=""
+    local line newest=""
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
     [ -r "$1" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        if marker=$(status_marker_parse "$line"); then
-            newest=$marker
+        if status_marker_parse "$line" >/dev/null; then
+            newest=${BASH_REMATCH[3]}
+            if status_marker_is_parked "$newest"; then newest=PARKED-USAGE; fi
         elif [[ "$line" =~ $succession_re ]]; then
             newest=SUCCESSION
         fi
-    done < "$1"
+    done < <(grep '^-' "$1" 2>/dev/null)
     printf '%s\n' "$newest"
 }
 
@@ -299,7 +300,6 @@ _ts_worker_state() {
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     marker=$(ts_marker_newest "$1")
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
-    if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
@@ -307,9 +307,11 @@ _ts_worker_state() {
     fi
     case "$rc" in
         11|12) TS_LOCK_HELD=yes ;;
-        0) TS_LOCK_HELD=no; TS_WORKER_STATE=unknown; return 0 ;;
+        0) TS_LOCK_HELD=no ;;
         *) TS_WORKER_STATE=unknown; return 0 ;;
     esac
+    if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
+    if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     if [ -n "$hb" ] && hb_epoch=$(_ts_epoch_of_iso "$hb"); then
         age=$(( $(date -u +%s) - hb_epoch ))
