@@ -1301,5 +1301,17 @@ lacks "(8170) a closed versionless ticket is not an intake candidate" "$(printf 
 has "(8170) a removal ticket with a windows title (HIMMEL-8173) is not dropped by the platform filter" "$oi" "LOCAL	HIMMEL-8173"
 lacks "(8170) a mirror with no intake candidate prints no intake field" "$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --top 7)" "INTAKE"
 
+# --- (8336) the tick's --dispositions snapshot carries the intake line too, so the tick can count it ---
+od="$(runi --dispositions --top 1000)"
+has "(8336) a --dispositions run prints the intake line with the version" "$od" "# intake 4 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905 HIMMEL-913"
+
+# --- (8336) with no open version the intake line names no version, so a waiter has no --to value to read ---
+MN="$WORK/jira-mirror-nov/HIMMEL"; mkdir -p "$MN"; cp "$MI"/*.md "$MN"/
+printf 'v1.0.1\ttrue\t\n' > "$WORK/jira-mirror-nov/HIMMEL.versions.tsv"
+runn() { NEXT_DISPATCH_MIRROR="$MN" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+on="$(runn --priority-pool-only --top 7)"
+has "(8336) with no open version the intake line names the keys and no version" "$on" "# intake 2: HIMMEL-901 HIMMEL-902"
+lacks "(8336) with no open version the intake line never reads 'for no open version'" "$on" "no open version"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
