@@ -13,8 +13,6 @@ import * as store from '../lib/store.mjs';
 import * as identity from '../lib/identity.mjs';
 import * as edges from '../lib/edges.mjs';
 import { formatRecord } from '../lib/deliver.mjs';
-import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
-
 const USAGE = `usage: bus register <name> --role worker|chief|judge|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]
        bus bind <name> <pid> | rebind <name> <pid> | adopt <new-chief> | succeed <new-chief> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
@@ -188,14 +186,6 @@ async function rulings(root, { unacked, from }) {
   console.log(lines.join('\n'));
 }
 
-// --chief is canonical; --console is its pre-rename alias while the legacy-names switch is on.
-function chiefOf({ chief, console: old }) {
-  if (old === undefined) return chief;
-  if (!legacyNamesOn()) throw new Error('--console was renamed to --chief');
-  if (chief !== undefined && chief !== old) throw new Error('--console and --chief name different chiefs');
-  return old;
-}
-
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -210,7 +200,7 @@ async function main() {
   const pid = () => { if (!/^\d+$/.test(extra ?? '')) throw new Error(USAGE); return Number(extra); };
   const need = value => { if (!value) throw new Error(USAGE); return value; };
   switch (verb) {
-    case 'register': await identity.register(root, need(name), { ...values, chief: chiefOf(values) }); return;
+    case 'register': await identity.register(root, need(name), values); return;
     case 'bind': await identity.bind(root, need(name), pid()); return;
     case 'rebind': await identity.rebind(root, need(name), pid()); return;
     case 'status':

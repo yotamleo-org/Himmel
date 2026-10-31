@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { openChainFile, withChainLock } from '../../../../scripts/telegram/bus.ts';
 import * as store from './store.mjs';
 import { canonRole } from './edges.mjs';
+import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ROLES = ['worker', 'chief', 'judge', 'consult'];
@@ -102,8 +103,12 @@ export async function loadPeers(root) {
 // role, console, pair and predecessor, is adopted instead of refused - it has
 // no pid, so nothing can resolve to it and re-registering grants nothing new.
 // The chief a session belongs to is stored under `console` (the stored field is not renamed here).
-export async function register(root, name, { role: given, chief: owner, pair, predecessor } = {}) {
+// `console` is the pre-rename spelling of `chief`: read while the legacy-names switch is on.
+export async function register(root, name, { role: given, chief, console: old, pair, predecessor } = {}) {
   checkName(name);
+  if (old !== undefined && !legacyNamesOn()) throw new Error('--console was renamed to --chief');
+  if (old !== undefined && chief !== undefined && chief !== old) throw new Error('--console and --chief name different chiefs');
+  const owner = chief ?? old;
   const role = roleOf(given);
   if (role !== 'chief' && !owner) throw new Error(`role ${role} needs --chief`);
   for (const other of [owner, pair, predecessor]) if (other !== undefined) checkName(other);

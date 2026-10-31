@@ -561,6 +561,15 @@ test('M3: a stored role console record reads back as chief under the switch only
   });
 });
 
+test('M3: register reads the console option as the chief under the switch only', async t => {
+  const { root } = await fixture(t);
+  await identity.register(root, 'con', { role: 'console' });
+  const peer = await withSwitch(undefined, () => identity.register(root, 'w1', { role: 'worker', console: 'con' }));
+  assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
+  assert.equal(peer.console, 'con');
+  await withSwitch('0', () => assert.rejects(identity.register(root, 'w2', { role: 'worker', console: 'con' }), /--console was renamed to --chief/));
+});
+
 test('M3: CLI accepts --role console and --console under the switch and refuses them with it off', async t => {
   const { state, run } = await cliState(t);
   assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
