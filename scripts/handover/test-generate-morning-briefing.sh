@@ -638,12 +638,14 @@ run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 assert_contains "waiting: absent input still says not available" "Approvals, CI and review state, worker questions: not available" "$(lead_of "$(cat "$OUT_WT")")"
 MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$OPEN_JSON" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 lead=$(lead_of "$(cat "$OUT_WT")")
-assert_contains "waiting: GOs counted, the oldest picked by date before time" "**2** worker(s) awaiting your GO (oldest bullet $YDAY_D 14:05)" "$lead"
-assert_contains "waiting: questions counted with the oldest date and time" "**1** worker question(s) (oldest bullet $TODAY_D 09:30)" "$lead"
+assert_contains "waiting: GOs counted, the oldest picked by date before time" "**2** worker(s) awaiting your GO (oldest bullet 14:05, doc last written $YDAY_D)" "$lead"
+assert_contains "waiting: questions counted with the oldest time and the doc's day" "**1** worker question(s) (oldest bullet 09:30, doc last written $TODAY_D)" "$lead"
 assert_contains "waiting: review state counted"  "**1** approved, **1** changes requested" "$lead"
 assert_contains "waiting: failing checks counted with the oldest PR date" "**2** with failing checks (oldest open PR since 2026-10-29)" "$lead"
 if grepq "$lead" -F -- "Approvals, CI and review state, worker questions: not available"; then fail "waiting: computed lines replace the gap"; else pass "waiting: computed lines replace the gap"; fi
 # BSD userland (macOS): `date -r` takes epoch seconds, not a file, `date -d` and `stat -c` do not exist, `stat -f %m` does.
+# The shim stands in for BSD on a GNU host (it delegates to the real GNU tools); a real BSD host runs the fallback natively above.
+if date -d @0 +%F >/dev/null 2>&1; then # gnu-ok: this probe decides whether the host is GNU
 BSD_SHIM="$TMP_ROOT/bsd-shim"
 mkdir -p "$BSD_SHIM"
 REAL_DATE=$(command -v date)
@@ -666,7 +668,10 @@ exec "$REAL_STAT" "\$@"
 FAKE
 chmod +x "$BSD_SHIM/date" "$BSD_SHIM/stat"
 PATH="$BSD_SHIM:$PATH" MORNING_WAITING_DIR="$WAITD" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
-assert_contains "waiting: a BSD date and stat still read the worker docs" "worker(s) awaiting your GO (oldest bullet $YDAY_D 14:05)" "$(lead_of "$(cat "$OUT_WT")")"
+assert_contains "waiting: a BSD date and stat still read the worker docs" "worker(s) awaiting your GO (oldest bullet 14:05, doc last written $YDAY_D)" "$(lead_of "$(cat "$OUT_WT")")"
+else
+    pass "waiting: a BSD date and stat still read the worker docs (native BSD host: the rows above already ran the fallback)"
+fi
 MANY_OPEN=$(jq -n -c '[range(100) | {number: ., reviewDecision: "", createdAt: "2026-10-29T10:00:00Z", statusCheckRollup: []}]')
 MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$MANY_OPEN" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 assert_contains "waiting: a capped open-PR read says it saw only the first 100" "(first 100 open PRs only)" "$(lead_of "$(cat "$OUT_WT")")"

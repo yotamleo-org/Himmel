@@ -574,8 +574,8 @@ EOF
         printf -- '- Approvals, CI and review state, worker questions: not available (the generator reads no input for them)\n\n'
     else
         if [ "$workers_ok" -eq 1 ]; then
-            printf -- '- **%s** worker(s) awaiting your GO%s\n' "$go_count" "${go_oldest:+ (oldest bullet $go_oldest)}"
-            printf -- '- **%s** worker question(s)%s\n' "$q_count" "${q_oldest:+ (oldest bullet $q_oldest)}"
+            printf -- '- **%s** worker(s) awaiting your GO%s\n' "$go_count" "${go_oldest:+ (oldest bullet ${go_oldest#* }, doc last written ${go_oldest% *})}"
+            printf -- '- **%s** worker question(s)%s\n' "$q_count" "${q_oldest:+ (oldest bullet ${q_oldest#* }, doc last written ${q_oldest% *})}"
         else
             printf -- '- Worker questions and GOs: not available (no worker handover doc found)\n'
         fi
