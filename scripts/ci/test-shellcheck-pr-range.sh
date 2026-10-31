@@ -252,10 +252,17 @@ absent() {
 reset; w docs/zzrunbook.md 'reload PATH:
 
 source ~/.bashrc            # or ~/.zshrc — reload PATH
+source scripts/zzj/zzjlib.sh   # a doc line that names a .sh: the doc is no input, so it adds no edge
 '; w scripts/zzok.sh '#!/usr/bin/env bash
 echo ok
 '; commit_case a1_doc
 verdict a1_doc FILES scripts/zzok.sh
+absent a1_doc scripts/zzj/zzjlib.sh
+# a1_name: a no-shebang file the hook still lints by name (PKGBUILD) keeps its forward edges
+reset; w PKGBUILD 'pkgname=zz
+. scripts/zzj/zzjlib.sh
+'; commit_case a1_name
+verdict a1_name FILES PKGBUILD scripts/zzj/zzjlib.sh
 # a1_ext: ...and a shell file with no extension is scanned by its shebang, so its dynamic line counts
 reset; w scripts/zztool '#!/usr/bin/env bash
 . "${ZZ_DIR}zzjlib.sh"
@@ -286,6 +293,11 @@ reset; w scripts/zza.sh '#!/usr/bin/env bash
 . "${ZZ_DIR}zzjlib.sh"
 '; commit_case a2_glued
 verdict a2_glued ALL
+# a2_cmdsub: an operand built by a command substitution can name any file, so it keeps the full sweep
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+. "$(dirname "$0")/common"
+'; commit_case a2_cmdsub
+verdict a2_cmdsub ALL
 
 # merge_ref: CI's pull_request checkout is GitHub's merge ref (^1 = base branch tip, ^2 = PR head)
 # and a rerun reuses the event's STALE base.sha, so base..HEAD spans every main commit since. Shape

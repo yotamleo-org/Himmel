@@ -194,7 +194,8 @@ cmd_pos() {
 # a file the shellcheck hook lints (identify's shell type): shell by extension or by shebang.
 # Over-inclusive on purpose (any `#!` line naming *sh): a wrong yes only widens the selection.
 is_shell() {
-  case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash) return 0 ;; esac
+  case "${1##*/}" in "PKGBUILD" | "direnvrc" | ".envrc" | ".bashrc" | ".bash_aliases" | ".bash_profile" | ".profile" | ".cshrc" | ".zshrc" | ".zshenv" | ".zprofile" | ".zlogin" | ".zlogout") return 0 ;; esac
+  case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash | *.csh | *.tcsh) return 0 ;; esac
   local first=
   # read-sink-ok: $1 is a path from the PR's own git diff, read for its first line only and never echoed
   IFS= read -r first < "$1"
@@ -248,10 +249,13 @@ while IFS= read -r f; do
   if [ -n "$nolit" ]; then
     if [ -z "${shnames+x}" ]; then
       sb=$(git grep -l -I -E -e '^#!.*sh' -- .) || [ "$?" -eq 1 ] || run_all "git grep failed on shebangs"
-      shnames=$({ printf '%s\n' "$sb"; printf '%s\n' "$tracked" | grep -E '\.(bats|ksh|zsh|dash)$'; } | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }' | sort -u)
+      shnames=$({ printf '%s\n' "$sb"; printf '%s\n' "$tracked" | grep -E '(\.(bats|ksh|zsh|dash|csh|tcsh)|(^|/)(PKGBUILD|direnvrc|\.envrc|\.bashrc|\.bash_aliases|\.bash_profile|\.profile|\.cshrc|\.zshrc|\.zshenv|\.zprofile|\.zlogin|\.zlogout))$'; } | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }' | sort -u)
     fi
+    ops=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*')
+    # an operand built by a command substitution can name any file
+    grep -qE '\$\(|`' <<< "$ops" && run_all "command substitution in a source operand in $f"
     # the operand's literal tail: the word after `source`/`.`, quotes dropped, past its last `/`
-    tails=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*' | sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///')
+    tails=$(sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///' <<< "$ops")
     if [ -n "$shnames" ] && grep -qxF -e "$shnames" <<< "$tails"; then
       run_all "source line naming a shell file without a .sh/.bash name in $f"
     fi
