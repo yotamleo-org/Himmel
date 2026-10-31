@@ -394,7 +394,8 @@ verify_all() {  # sets bad and verified
     if [ "${#config_keys[@]}" -gt 0 ]; then
         # The node readers keep a trailing comment that load_dotenv drops, so they get the
         # loader's value of each key: the move is judged against what the loader reads.
-        cp "$verify_env" "$work/env.node"
+        cp "$verify_env" "$work/env.node" \
+            || bad="${bad}verify: could not build the .env the node readers compare against"$'\n'
         for key in "${config_keys[@]}"; do
             line=$(_load_dotenv_extract "$verify_env" "$key")
             [ -n "$line" ] || continue
