@@ -3337,8 +3337,10 @@ fi
 
 echo "== Case 33 (HIMMEL-8378): a retried suite's seconds are the sum of every attempt =="
 sb33=$(mktemp -d -t himmel-suite-retrysum.XXXXXX) || { fail "33: mktemp failed"; sb33=""; }
+# the runner keys the tier row by the physical path (/private/var on macOS); a failed resolve stops the case
+[ -z "$sb33" ] || sb33_phys=$(cd "$sb33" && pwd -P) || { fail "33: cannot resolve the sandbox path $sb33"; sb33_phys=""; }
+[ -z "$sb33" ] || sb33="$sb33_phys"
 if [ -n "$sb33" ]; then
-sb33=$(cd "$sb33" && pwd -P)  # the runner keys the tier row by the physical path (/private/var on macOS)
 mkdir -p "$sb33/scripts" "$sb33/flakedir" "$sb33/home"
 # Both suites spend 3 s per attempt, so a runner that times only the last attempt reports 3-4 s and the sum is 6-7 s.
 cat > "$sb33/scripts/test-quar33.sh" <<'SHEOF'
