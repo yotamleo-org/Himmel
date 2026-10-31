@@ -307,9 +307,11 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || c
 lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 # The restore writes the whole config set and accept silences the watcher; both,
 # and a new restore seed, are the operator's (Telegram bridge or their own prompt),
-# never a session's. list and check stay allowed.
-if [[ "$lc" =~ config-audit[^\|\;\&]*[[:space:]](restore|accept)([[:space:]]|$) ]] \
-   || [[ "$lc" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([[:space:]]|$) ]]; then
+# never a session's. list and check stay allowed. Quotes and backslashes are
+# stripped first, so 'restore' or acc\ept is still the verb.
+lcv=$(printf '%s' "$lc" | tr -d "\"'\\\\")
+if [[ "$lcv" =~ config-audit[^\|\;\&]*[[:space:]](restore|accept)([[:space:]]|$) ]] \
+   || [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([[:space:]]|$) ]]; then
     deny "a session runs the config ${BASH_REMATCH[1]} verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
 fi
 names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0

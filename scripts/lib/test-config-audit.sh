@@ -116,6 +116,26 @@ eq "4 an unknown id is refused" 1 "$rc"
 bash "$CA" accept >/dev/null
 out=$(bash "$CA" check); rc=$?
 eq "4 accept clears the loss" 0 "$rc"
+# A corrupt member is found before any file is written, not after the first.
+cid=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
+conf_before=$(cat "$HIMMEL_CONFIG_DIR/himmel.conf")
+printf 'HIMMEL_INITIATIVE=changed\n' >> "$HIMMEL_CONFIG_DIR/himmel.conf"
+conf_live=$(cat "$HIMMEL_CONFIG_DIR/himmel.conf")
+printf '{"tampered":1}\n' > "$STATE/backups/$cid/config.json"
+printf '{"version":1,"changed":1}\n' > "$HIMMEL_CONFIG_DIR/config.json"
+out=$(bash "$CA" restore "$cid"); rc=$?
+eq "4 a corrupt backup is refused" 1 "$rc"
+has "4 the refusal names the corrupt file" "result=corrupt id=$cid file=config.json" "$out"
+eq "4 a refused restore writes no file" "$conf_live" "$(cat "$HIMMEL_CONFIG_DIR/himmel.conf")"
+[ "$conf_before" != "$conf_live" ] || fail "4 RED control: himmel.conf differs from its backup"
+# Two backups in one second: the later one is newest, whatever its suffix.
+for sfx in ffff 0000; do
+    mkdir -p "$STATE/backups/20991231T000000Z-$sfx"
+    printf '{"ts":"2099-12-31T00:00:00Z","script":"order-%s","ms":%s,"target":"%s","files":{}}\n' \
+        "$sfx" "$([ "$sfx" = ffff ] && echo 4102444800000 || echo 4102444800001)" "$TMP/order" > "$STATE/backups/20991231T000000Z-$sfx/manifest.json"
+done
+eq "4 the later backup of one second lists first" "20991231T000000Z-0000" "$(bash "$CA" list | head -n 1 | cut -d' ' -f1)" # tail-pipe-ok: list output, not a gate
+rm -rf "$STATE/backups/20991231T000000Z-ffff" "$STATE/backups/20991231T000000Z-0000"
 
 # --- 5. luna-config save leaves a row and a backup ---
 before=$(wc -l < "$STATE/audit.jsonl")

@@ -22,7 +22,10 @@
 # load_dotenv reads, ~/.himmel/himmel.conf, himmel.conf.local and config.json
 # (plus the written file when it is none of these, e.g. a settings.json). So a
 # restore brings back every key, including keys that lived in .env before the
-# split. When a restored .env still holds behaviour or gate keys (a pre-split
+# split. A restore writes back the four set files a backup holds and nothing
+# else: it never deletes a file the backup lacks, and a settings.json copy under
+# extra/ is for recovery by hand (restoring hook wiring remotely could unwire a
+# newer guard). When a restored .env still holds behaviour or gate keys (a pre-split
 # backup), the restore runs scripts/setup/migrate-env.sh to map them forward;
 # without the operator's consent key that prints the plan and the keys keep
 # working from .env with a DEPRECATED notice.
@@ -164,7 +167,9 @@ function manifests() {
       out.push(Object.assign(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")), { id, dir }));
     } catch { /* a half-written backup is skipped */ }
   }
-  return out.sort((x, y) => (x.id < y.id ? 1 : -1));
+  // Newest first: by write time (ms), then id; ids of one second differ only by
+  // their random suffix.
+  return out.sort((x, y) => ((y.ms || 0) - (x.ms || 0)) || (x.id < y.id ? 1 : -1));
 }
 function writeFile600(p, buf) {
   const fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
@@ -195,7 +200,7 @@ function pre(target, script) {
     if (n.startsWith("extra/")) mkdir(path.join(dir, "extra"));
     writeFile600(path.join(dir, n), b);
   }
-  writeFile600(path.join(dir, "manifest.json"), JSON.stringify({ ts: now(), script, target: real(target), digest, files }, null, 1) + "\n");
+  writeFile600(path.join(dir, "manifest.json"), JSON.stringify({ ts: now(), ms: Date.now(), script, target: real(target), digest, files }, null, 1) + "\n");
   return id;
 }
 
@@ -297,11 +302,16 @@ function list() {
 function restore(id) {
   const x = manifests().find((m) => m.id === id);
   if (!ID.test(id) || !x) { console.log(`result=no-backup id=${id}`); process.exit(1); }
-  const out = [];
+  // Every member is checked before the first file is written.
+  const todo = [];
   for (const [n, p] of Object.entries(SET)) {
     if (!p || !x.files || !x.files[n] || !x.files[n].sha256) continue;
     const b = read(path.join(x.dir, n));
     if (b === null || sha(b) !== x.files[n].sha256) { console.log(`result=corrupt id=${id} file=${n}`); process.exit(1); }
+    todo.push([n, p, b]);
+  }
+  const out = [];
+  for (const [n, p, b] of todo) {
     const live = read(p);
     if (live !== null && live.equals(b)) continue;
     let real = p;
