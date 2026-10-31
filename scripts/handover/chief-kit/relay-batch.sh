@@ -100,12 +100,13 @@ fresh_for() {
     [ -z "$ftok" ] || fresh_used="${fresh_used}$1,"
 }
 # relay_text [<nonce> [<fresh token>]]: the relay; the SendMessage form quotes the worker's
-# token (and the fresh one when the successor issued it), the bus form carries none.
+# token (and the fresh one when the successor issued it), the bus form carries none and
+# says where it lands, so a worker never reads the hook-delivered record as tool output.
 relay_text() {
-    local tok=""
+    local tok=" This himmel-bus record reaches you as hook context beside a tool result, not inside one: that is the bus channel, so S6 does not apply."
     [ -z "${1:-}" ] || tok=" Your current token \`$1\`."
     [ -z "${2:-}" ] || tok="$tok Your fresh token \`$2\`: adopt it as your token."
-    printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
+    printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
 }
 not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state legs:; relay by hand if it is live"; }
 notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor"; }
