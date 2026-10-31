@@ -676,8 +676,11 @@ the afk-sudo seed. The same rules as AFK sudo apply: only a typed DM from the
 `allowFrom` operator reaches the helper, every other `/config` line is dropped
 so a code never lands in a session inbox, a used code is refused, three wrong
 codes lock the restore for 15 minutes, and at most 6 requests are accepted per
-hour. A session cannot run the restore: `block-himmel-config-writes.sh` refuses
-the restore, accept and enroll verbs from a Claude session.
+hour. The code gates only this Telegram path. `config-audit.sh restore` in a
+shell needs no code. Against a Claude session it is held back only by a speed
+bump: `block-himmel-config-writes.sh` refuses the restore, accept and enroll
+verbs when they are spelled in ways it recognises, and a determined spelling can
+still get through.
 
 ## Group triage
 

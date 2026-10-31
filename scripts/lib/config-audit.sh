@@ -53,9 +53,11 @@
 # never fails a config write); 2 usage; check exits 3 when it finds a loss.
 #
 # ponytail: the backups and this script are as writable as the files they
-# guard (same uid), so a session can plant a backup; a restore still needs the
-# operator's code and the list shows its key diff. Upgrade path: a root-owned
-# store with the restore as an afk-sudo kind.
+# guard (same uid), so a session can plant a backup. The operator's TOTP code
+# gates only the Telegram restore. This script's own restore needs no code and
+# is kept from a session only by the block-himmel-config-writes.sh speed bump.
+# The list shows each backup's key diff. Upgrade path: a root-owned store with
+# the restore as an afk-sudo kind.
 #
 # Seams (tests): HIMMEL_CONFIG_DIR (the station dir), HIMMEL_CONFIG_AUDIT_DIR,
 # HIMMEL_CONFIG_AUDIT_ENV_FILE (the .env of the set), HIMMEL_CONFIG_BACKUPS_KEEP,
