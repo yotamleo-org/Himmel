@@ -59,7 +59,7 @@ run_row() { # <id> <run_as> <exit> <argv-json> [ts] [kind]
     printf '{"event": "request", "id": "q0000001", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s", "argv": ["/opt/fixture/bin/crontab", "-l"]}\n' "$now_ts"
 } > "$LEDGER"
 
-snapshot() { find "$TMP_ROOT" -type f -print0 | sort -z | xargs -0 sha256sum; }
+snapshot() { tar -cf - -C "$TMP_ROOT" . | sha256sum; }
 
 echo "TEST: fixture ledger suggests crontab once with count 3, pacman seen once"
 before=$(snapshot)
