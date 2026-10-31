@@ -42,7 +42,9 @@
 # worker such as a consult, judge or relay, a release manager, an A/B arm or context-mode
 # launch, or the session's doc and model unreadable from its argv); 5 relaunch needed,
 # --relaunch not given; 6 the pid no longer names the session (recycled or gone, nothing
-# killed) or the old session did not exit; 7 the relaunch dry-run failed (nothing killed).
+# killed) or the old session did not exit; 7 the relaunch dry-run failed (nothing killed);
+# 8 the usage preflight refuses a launch (nothing killed). The record's profile must equal
+# the HIMMEL_WORKER_SESSION_PROFILE in the live process's environ, else exit 4.
 #
 # ponytail: relaunch loses the old session's context window (the doc carries state), upgrade path: a native toggle once claude exposes one over its session file.
 # Platform: Linux only (reads /proc), as the rest of the chief kit.
@@ -158,7 +160,7 @@ esac
 # The old session's own environment (/proc/<pid>/environ): the owning chief and the effort
 # are carried onto the relaunch; any other launch-shaping input it was started with is not
 # reproducible, so its presence refuses.
-chief=""; effort=""
+chief=""; effort=""; env_profile=""
 # An environment that cannot be read cannot be checked for the refusals below or for the
 # chief and effort to carry, so it fails closed rather than relaunching on a guess.
 if [ ! -r "$PROC/$pid/environ" ]; then
@@ -169,11 +171,19 @@ while IFS= read -r -d '' kv; do
     case "$kv" in
         HIMMEL_CONSOLE_NAME=*) chief="${kv#*=}" ;;
         WORKER_SESSION_EFFORT=*) effort="${kv#*=}" ;;
+        HIMMEL_WORKER_SESSION_PROFILE=*) env_profile="${kv#*=}" ;;
         WORKER_SESSION_AUTOCOMPACT_AB=?*|HIMMEL_WORKER_SESSION_CONTEXT_MODE=?*)
             echo "enable-remote-control: $NAME was launched with ${kv%%=*}, which a relaunch cannot restore" >&2
             exit 4 ;;
     esac
 done < "$PROC/$pid/environ"  # read-sink-ok: the path is the scanned pid's own environ under the proc dir
+# The launch record is a same-uid, unfenced file: a worker can rewrite its own line to a
+# wider profile. The profile the launcher put in the process's environment at exec cannot
+# be rewritten from inside, so the record's profile must equal it, or the relaunch is refused.
+if [ -z "$env_profile" ] || [ "$env_profile" != "$profile" ]; then
+    echo "enable-remote-control: $NAME's launch record names profile $profile but the live session was launched with ${env_profile:-no profile}; not trusting the record" >&2
+    exit 4
+fi
 
 if [ "$RELAUNCH" -ne 1 ]; then
     echo "enable-remote-control: $NAME (pid $pid) lacks Remote Control and cannot be toggled from outside; rerun with --relaunch to end it and relaunch the same name on $doc (model $model, profile $profile)" >&2
@@ -192,6 +202,21 @@ if [ -n "$effort" ]; then export WORKER_SESSION_EFFORT="$effort"; else unset -v 
 if ! "$LAUNCHER" --dry-run "${launch[@]}" >/dev/null 2>&1; then  # swallow-ok: the failure is reported on the next line and nothing is killed
     echo "enable-remote-control: the relaunch dry-run failed; $NAME was NOT ended (run the launcher with --dry-run by hand to see why)" >&2
     exit 7
+fi
+# The launcher's bank gate runs only on a real launch, after the kill, so a refused bank
+# would end the session and never relaunch it. Read the same bank now and stop first.
+# ponytail: the fleet cap is not pre-checked (only a launch-intent call can refuse it, and
+# that reserves the name the relaunch then collides with), so a slot another admission takes
+# between the kill and the relaunch still strands the worker, upgrade path: hand the
+# reservation to the launcher.
+preflight="${ENABLE_RC_PREFLIGHT:-$HERE/../../lib/usage-preflight.sh}"
+if [ -f "$preflight" ]; then
+    verdict="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE=native bash "$preflight" 2>/dev/null)"  # swallow-ok: an unreadable bank leaves the verdict empty, which the launcher decides on its own after the kill
+    case "$verdict" in
+        SKIPPED-BANK|SKIPPED-FLEET)
+            echo "enable-remote-control: usage preflight says $verdict; $NAME was NOT ended (relaunch once the bank allows a launch)" >&2
+            exit 8 ;;
+    esac
 fi
 [ -z "${ENABLE_RC_BEFORE_KILL:-}" ] || "$ENABLE_RC_BEFORE_KILL" "$pid" "$PROC"
 # The pid was matched above; confirm it still names this session right before the

@@ -38,9 +38,12 @@ printf "[%s]" "\$@" >> "$LAUNCHED"; echo >> "$LAUNCHED"
 echo "\${WORKER_SESSION_EFFORT-unset}" >> "$EFFORT"
 STUB_EOF
 chmod 755 "$WORK/kill-stub" "$WORK/launcher-stub"
+VERDICT="$WORK/preflight-verdict"
+printf '%s\n' '#!/usr/bin/env bash' 'cat "'"$VERDICT"'" 2>/dev/null || echo PROCEED' > "$WORK/preflight-stub"
+chmod 755 "$WORK/preflight-stub"
 
 # session <pid> <argv...>: a fake /proc/<pid>/cmdline, NUL-separated.
-session() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/cmdline"; printf '%s\0' PATH=/usr/bin > "$PROC/$pid/environ"; }
+session() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/cmdline"; printf '%s\0' PATH=/usr/bin HIMMEL_WORKER_SESSION_PROFILE=worker-impl > "$PROC/$pid/environ"; }
 record() { # <name> <profile> <lane> [role] [session id] [model] [extra]
     local sid="${5:+ session_id=$5}"
     printf 'headed-arm-worker: profile=%s lane=%s model=%s role=%s session=%s%s launched=2026-10-31T10:00:00Z%s\n' "$2" "$3" "${6:-claude-sonnet-5-5}" "${4:-worker}" "$1" "$sid" "${7:-}" >> "$CACHE/launch-logs/$1.log"
@@ -48,10 +51,10 @@ record() { # <name> <profile> <lane> [role] [session id] [model] [extra]
 environ() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/environ"; }
 run() { # <args...> -> sets out, rc
     rc=0
-    out="$(ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+    out="$(ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" ENABLE_RC_PREFLIGHT="$WORK/preflight-stub" \
         bash "$ERC" "$@" 2>&1)" || rc=$?
 }
-reset() { rm -f "$KILLED" "$LAUNCHED" "$DRYRUN" "$EFFORT" "$FAILDRY"; }
+reset() { rm -f "$KILLED" "$LAUNCHED" "$DRYRUN" "$EFFORT" "$FAILDRY" "$VERDICT"; }
 
 DOC="/h/HIMMEL-1-w.md"
 # --- (a) usage ---------------------------------------------------------------
@@ -115,7 +118,7 @@ record HIMMEL-7-w worker-impl native worker sid-1006
 printf '%s\n' '#!/usr/bin/env bash' 'printf "unrelated\0--version\0" > "$2/$1/cmdline"' > "$WORK/recycle-stub"
 chmod 755 "$WORK/recycle-stub"
 reset; rc=0
-out="$(ENABLE_RC_BEFORE_KILL="$WORK/recycle-stub" ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+out="$(ENABLE_RC_BEFORE_KILL="$WORK/recycle-stub" ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" ENABLE_RC_PREFLIGHT="$WORK/preflight-stub" \
     bash "$ERC" --relaunch HIMMEL-7-w /s 99999999999 /l 2>&1)" || rc=$?
 check "i: a recycled pid exits 6" "6" "$rc"
 check "i: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
@@ -181,7 +184,7 @@ check "m: the old pid was killed" "1025" "$(cat "$KILLED" 2>/dev/null)"
 # --- (n) the owning chief and WORKER_SESSION_EFFORT are carried onto the relaunch -------
 session 1026 claude --session-id sid-1026 --model claude-sonnet-5-5 -n HIMMEL-16-w "load /h/HIMMEL-16-w.md and continue"
 record HIMMEL-16-w worker-impl native worker sid-1026
-environ 1026 PATH=/usr/bin HIMMEL_CONSOLE_NAME=opsdesk WORKER_SESSION_EFFORT=high
+environ 1026 PATH=/usr/bin HIMMEL_WORKER_SESSION_PROFILE=worker-impl HIMMEL_CONSOLE_NAME=opsdesk WORKER_SESSION_EFFORT=high
 reset; run --relaunch HIMMEL-16-w /s 99999999999 /l
 check "n: relaunch exits 0" "0" "$rc"
 check "n: --chief <owner> reaches the launch" \
@@ -205,7 +208,7 @@ for envkv in WORKER_SESSION_AUTOCOMPACT_AB=200000 HIMMEL_WORKER_SESSION_CONTEXT_
     session 1029 claude --session-id sid-1029 --model claude-sonnet-5-5 -n HIMMEL-19-w "load /h/HIMMEL-19-w.md and continue"
     rm -f "$CACHE/launch-logs/HIMMEL-19-w.log"
     record HIMMEL-19-w worker-impl native worker sid-1029
-    environ 1029 PATH=/usr/bin "$envkv"
+    environ 1029 PATH=/usr/bin HIMMEL_WORKER_SESSION_PROFILE=worker-impl "$envkv"
     reset; run --relaunch HIMMEL-19-w /s 99999999999 /l
     check "o: environ ${envkv%%=*} exits 4" "4" "$rc"
     check "o: ${envkv%%=*}: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
@@ -231,10 +234,39 @@ fi
 session 1032 claude --session-id sid-1032 --model claude-sonnet-5-5 -n HIMMEL-22-w "load /h/HIMMEL-22-w.md and continue"
 record HIMMEL-22-w worker-impl native worker sid-1032
 reset; rc=0
-out="$(WORKER_SESSION_EFFORT=ambient-leak ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+out="$(WORKER_SESSION_EFFORT=ambient-leak ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" ENABLE_RC_PREFLIGHT="$WORK/preflight-stub" \
     bash "$ERC" --relaunch HIMMEL-22-w /s 99999999999 /l 2>&1)" || rc=$?
 check "p: relaunch of a session with no effort exits 0" "0" "$rc"
 check "p: the caller's ambient WORKER_SESSION_EFFORT does not reach the relaunch" "unset" "$(cat "$EFFORT" 2>/dev/null)"
+
+# --- (q) the record is same-uid and unfenced: its profile must equal the live process's ---
+session 1033 claude --session-id sid-1033 --model claude-sonnet-5-5 -n HIMMEL-23-w "load /h/HIMMEL-23-w.md and continue"
+record HIMMEL-23-w worker-impl native worker sid-1033
+reset; run --relaunch HIMMEL-23-w /s 99999999999 /l
+check "q: control: an untouched record relaunches (exit 0)" "0" "$rc"
+rm -f "$CACHE/launch-logs/HIMMEL-23-w.log"
+record HIMMEL-23-w operator native worker sid-1033
+reset; run --relaunch HIMMEL-23-w /s 99999999999 /l
+check "q: a record rewritten in place to a wider profile exits 4" "4" "$rc"
+check "q: rewritten record: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+session 1034 claude --session-id sid-1034 --model claude-sonnet-5-5 -n HIMMEL-24-w "load /h/HIMMEL-24-w.md and continue"
+record HIMMEL-24-w worker-impl native worker sid-1034
+environ 1034 PATH=/usr/bin
+reset; run --relaunch HIMMEL-24-w /s 99999999999 /l
+check "q: a live session whose environ names no profile exits 4" "4" "$rc"
+check "q: no environ profile: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+
+# --- (r) the usage preflight runs BEFORE the kill: a refused bank leaves the worker alive ---
+session 1035 claude --session-id sid-1035 --model claude-sonnet-5-5 -n HIMMEL-25-w "load /h/HIMMEL-25-w.md and continue"
+record HIMMEL-25-w worker-impl native worker sid-1035
+for verdict in SKIPPED-BANK SKIPPED-FLEET; do
+    reset; printf '%s\n' "$verdict" > "$VERDICT"; run --relaunch HIMMEL-25-w /s 99999999999 /l
+    check "r: $verdict exits 8" "8" "$rc"
+    check "r: $verdict: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+done
+reset; printf '%s\n' PROCEED > "$VERDICT"; run --relaunch HIMMEL-25-w /s 99999999999 /l
+check "r: PROCEED relaunches (exit 0)" "0" "$rc"
+check "r: PROCEED: the old pid was killed" "1035" "$(cat "$KILLED" 2>/dev/null)"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-enable-remote-control.sh"; exit 0; fi
