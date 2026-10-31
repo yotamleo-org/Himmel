@@ -12,7 +12,7 @@ const REG = JSON.parse(readFileSync(join(ROOT, 'scripts', 'lanes', 'plugin-profi
 const MP = JSON.parse(readFileSync(join(ROOT, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8'));
 const PLUGIN = join(ROOT, 'marketplace', 'plugins', 'humanizer');
 const ID = 'humanizer@himmel';
-const PIN = '225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8';
+const PIN = '0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0';
 
 test('humanizer@himmel is enabled in no base, floor or profile list', () => {
   assert.ok(!REG.base.includes(ID), 'base would put it in every worker');

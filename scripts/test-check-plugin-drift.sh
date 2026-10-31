@@ -61,11 +61,10 @@ if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should 
 # mirror feeds, even though the production parser (check-plugin-drift.sh)
 # already accepts `ref or sha`.
 if grepq "$pins" -x "plannotator-effective-html"; then ok "parser finds plannotator-effective-html SHA-only pin"; else bad "parser missing plannotator-effective-html (SHA-only pin)"; fi
-# Exact-pin consistency: obsidian-second-brain is pinned to the himmel fork's
-# e42dac79 (upstream v0.18.1 plus the lockfile advisory bumps and the no-auto-open
-# test guard), which descends from 6eccc4d0 and so carries upstream #338
-# (-fps_mode for ffmpeg 9); v0.17.0 (87fe5437) still emits the removed -vsync.
-# Update this row when re-pinning.
+# Exact-pin consistency: obsidian-second-brain is pinned straight to upstream
+# v0.20.0 (0e339f7f; the himmel fork's two carried commits are dropped),
+# which carries upstream #338 (-fps_mode for ffmpeg 9); v0.17.0 (87fe5437) still
+# emits the removed -vsync. Update this row when re-pinning.
 osb_src="$(python3 - "$MJSON" <<'PY' | tr -d '\r'
 import json, sys
 for p in json.load(open(sys.argv[1])).get("plugins", []):
@@ -75,8 +74,8 @@ PY
 )"
 osb_url="${osb_src% *}"
 osb_sha="${osb_src##* }"
-if [ "$osb_url" = "https://github.com/yotamleo-org/obsidian-second-brain.git" ]; then ok "obsidian-second-brain sourced from the himmel fork"; else bad "obsidian-second-brain url is $osb_url, expected the yotamleo-org fork (HIMMEL-7226: the lockfile advisories are fixed only there)"; fi
-if [ "$osb_sha" = "e42dac7976cdf1466f4a6d90f2de96f92e41c1f4" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, expected e42dac7976cdf1466f4a6d90f2de96f92e41c1f4 (fork commit with the patched uv.lock, carries upstream #338, ffmpeg 9 -fps_mode); update this row if re-pinned"; fi
+if [ "$osb_url" = "https://github.com/eugeniughelbur/obsidian-second-brain.git" ]; then ok "obsidian-second-brain sourced from upstream"; else bad "obsidian-second-brain url is $osb_url, expected upstream eugeniughelbur (HIMMEL-8388: the fork carried nothing upstream lacks)"; fi
+if [ "$osb_sha" = "0e339f7f600af5943042864df63eb142c0c84abf" ]; then ok "obsidian-second-brain pinned past upstream #338"; else bad "obsidian-second-brain pin is $osb_sha, expected 0e339f7f600af5943042864df63eb142c0c84abf (upstream v0.20.0, carries #338, ffmpeg 9 -fps_mode); update this row if re-pinned"; fi
 
 # 3. Every fork UPSTREAM_PIN carries the generic fields the checker reads.
 for pin in "$ROOT"/marketplace/plugins/*/UPSTREAM_PIN; do

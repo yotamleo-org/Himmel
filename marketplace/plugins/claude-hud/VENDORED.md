@@ -14,13 +14,13 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        cf95a322afd18db045175d28962650ae7392ed77  # v0.13.1 + 2 docs commits, 6 commits past 3bb6835 (HIMMEL-7394)
-pinned_upstream_tree: 766b96c41249f4a185dd8a14cf3cc4d0127d11e6  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   10f23077b82ee206b72636c8023f47a1a1d84191ce4142b1fd2b6b2e8e124bc5  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-26
+pinned_commit:        83e98cf0806d137ea94133ea4945821ede9ee420  # v0.14.1, 6 commits past cf95a32 (HIMMEL-8388)
+pinned_upstream_tree: e5d6f038055d8a3fe05bbdc2ac3c3a4de0321907  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   2e1fb80f1574f9e7bc826316011d47693230c3b4f04b4fddbed0e5be1635955b  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-31
 ```
 
-`pinned_commit` points at the **current upstream** base `cf95a32` (v0.13.1); the vendored
+`pinned_commit` points at the **current upstream** base `83e98cf` (v0.14.1); the vendored
 tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
 session-token cache split, write-only context snapshot writer) **plus** any
 dependabot lockfile bumps landed since the vendor (see **Fork delta**
@@ -71,6 +71,21 @@ protected: editing it without bumping the pin trips the guard.
   0.11.3) so `claude plugin update` picks the config up. The re-vendors below
   superseded that bump (version equalled upstream's version); `plugin.json` stays at
   `0.12.1` until a release cut changes it (plugin versions move only in the release-cut PR).
+
+- **Re-vendored to upstream v0.14.1 `83e98cf` (HIMMEL-8388, 2026-10-31, fork-drift
+  issue #2809):** +6 commits past `cf95a32`. Upstream work: the opt-in
+  `display.showLaunchDir` option that keeps the launch directory visible
+  (`src/config.ts`, `src/render/parts.ts`, README rows), file links to non-ASCII
+  paths open on Windows (`src/utils/hyperlinks.ts`, new `tests/hyperlinks.test.js`),
+  and the v0.14.0 and v0.14.1 release prep. Applied as the upstream
+  `cf95a32..83e98cf` diff minus `dist/` and `.claude-plugin/` onto the vendored
+  tree. One file needed hand work: the two new `tests/golden/expected.txt` blocks
+  were inserted by hand because the vendored file's fixture home path differs
+  from upstream's. No himmel delta was dropped. `dist/`
+  rebuilt from source (`npm ci --ignore-scripts && npm test`): 451 tests, 445 pass,
+  0 fail, 6 skipped. `plugin.json` moves 0.12.1 to 0.12.2: a PR that changes a
+  plugin bumps its version (HIMMEL-8368), which supersedes the earlier "versions
+  move only in the release-cut PR" note below.
 
 - **Re-vendored to upstream v0.13.1 `cf95a32` (HIMMEL-7394, 2026-10-26, fork-drift
   issue #2809):** +6 commits past `3bb6835`. Upstream work: every untrusted label

@@ -45,7 +45,7 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "blader/humanizer",
-      "pinned_commit": "225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8",
+      "pinned_commit": "0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
       "tier": "B",
       "note": "Vendored at marketplace/plugins/humanizer (VENDORED.md records the same commit). Repair is a reviewed re-copy at the new commit (HIMMEL-8282)."
     },
@@ -54,7 +54,7 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "ayghri/i-have-adhd",
-      "pinned_commit": "723af7d9afaf43eb871dbcce6129e2bf80de90d5",
+      "pinned_commit": "1ecea1993b7fce257ffbd686c070948b5e07eda6",
       "tier": "B",
       "note": "Vendored at marketplace/plugins/i-have-adhd (VENDORED.md records the same commit); upstream publishes no release tag, so the row is a commit pin. Repair is a reviewed re-copy at the new commit (HIMMEL-8282)."
     },
@@ -63,9 +63,9 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "jarrodwatts/claude-hud",
-      "pinned_commit": "cf95a322afd18db045175d28962650ae7392ed77",
+      "pinned_commit": "83e98cf0806d137ea94133ea4945821ede9ee420",
       "tier": "A",
-      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = cf95a32, v0.13.1 plus two docs commits (HIMMEL-7394; previously v0.13.0 3bb6835, HIMMEL-7388; v0.12.0 a759168, HIMMEL-6774; v0.11.3 5621429, HIMMEL-5929; v0.11.2 02d73c4, HIMMEL-5505; v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
+      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = 83e98cf, v0.14.1 (HIMMEL-8388; previously cf95a32 v0.13.1 plus two docs commits, HIMMEL-7394; v0.13.0 3bb6835, HIMMEL-7388; v0.12.0 a759168, HIMMEL-6774; v0.11.3 5621429, HIMMEL-5929; v0.11.2 02d73c4, HIMMEL-5505; v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
     },
     {
       "name": "hermes-agent",
@@ -202,7 +202,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.43",
+      "synced_base": "8.0.48",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "ASSET_SHA256=\"{sha256}\"" }
@@ -242,7 +242,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "mattpocock/skills",
-      "synced_base": "1.3.1",
+      "synced_base": "1.3.2",
       "tier": "B",
       "note": "ONE skill vendored verbatim at marketplace/plugins/lean-skills/skills/grilling (HIMMEL-3064); the plugin's other 10 exposed skills were invoked 0 times across 1628 local transcripts and are not carried. The upstream skill ships an agents/openai.yaml (Codex interface metadata) dropped here as harness-specific. grilling reaches himmel through inject-minerva-critic.sh's namespace-agnostic `*:grilling|grilling` matcher, which keeps routing the bare vendored name — that matcher is why de-plugining grilling needed no hook change. Tier B (reactive): one short prose skill, so BEHIND is a fine steady state; re-vendor when a release actually touches grilling/SKILL.md. No `version_pin` — same manual-repair discipline as the superpowers-skills row."
     },
@@ -266,7 +266,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "anthropics/claude-code",
-      "synced_base": "2.1.310",
+      "synced_base": "2.1.316",
       "latest_source": "release",
       "version_pin": {
         "file": "scripts/machine-setup/installer-pins.sh",

@@ -8,13 +8,13 @@
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
     "track": "release",
-    "synced_base": "skill-v4.7.0",
+    "synced_base": "skill-v4.8.0",
     "tag_prefix": "skill-v"
   },
   "obsidian-second-brain": {
     "upstream_repo": "eugeniughelbur/obsidian-second-brain",
     "track": "release",
-    "synced_base": "v0.18.1"
+    "synced_base": "v0.20.0"
   },
   "ui-ux-pro-max": {
     "upstream_repo": "nextlevelbuilder/ui-ux-pro-max-skill",
@@ -62,12 +62,12 @@
     "standalone": true,
     "upstream_repo": "mattpocock/skills",
     "track": "head",
-    "ref": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+    "ref": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d"
   },
   "coderabbit": {
     "standalone": true,
     "upstream_repo": "coderabbitai/skills",
     "track": "head",
-    "ref": "a8777050c0d9034d5de6beff3dfac9b43acb9854"
+    "ref": "778c35a36e0afd2549c3fba86ec6e64afe649df3"
   }
 }

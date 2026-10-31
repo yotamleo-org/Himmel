@@ -16,8 +16,8 @@
 # extracted (bump both together from the release notes' BEGIN SHA linux-x64 line).
 set -uo pipefail
 
-RUNNER_VERSION=2.338.0
-RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
+RUNNER_VERSION=2.338.2
+RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40
 
 md() { curl -fsS -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }
 

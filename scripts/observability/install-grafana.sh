@@ -31,14 +31,14 @@
 # himmel-doctor once a second pinned upstream binary exists.
 set -uo pipefail
 
-PROM_VER="3.15.0"
-GRAF_VER="13.2.3"
+PROM_VER="3.15.1"
+GRAF_VER="13.3.0"
 # sha256 of the upstream tarballs (prometheus: the release's sha256sums.txt;
 # grafana: dl.grafana.com's <tarball>.sha256). A mismatch aborts the install.
-PROM_SHA_AMD64="2a542df32eac02ee17b9d844fb2aa1de00dafa5476579ba8a3ba862e9d572ea0"
-PROM_SHA_ARM64="f1f90ec08e849d494ca66c611470afc50192f0355f1a61c33f2cbde02d067823"
-GRAF_SHA_AMD64="6107ad27016296aac38e0d7ffa8753ab540b5541ad27e94790f771289d733235"
-GRAF_SHA_ARM64="a2a41b960ba4c25e83140484e48813730d3c81891a128439a2a9d2df6eb3840e"
+PROM_SHA_AMD64="6a726885328ad9efebbf36e876ce2fb6225468a71fd1e7ce3ba666d5f4d97a84"
+PROM_SHA_ARM64="ceb6d21493c37ca0b4513b147642797c68cf39a0f50a444d50e1e80c74f21b26"
+GRAF_SHA_AMD64="cec8f98cc59bc1a1945833b652371a073be678c5c159a9b1695ad63c04fae5a7"
+GRAF_SHA_ARM64="07015a0c34a8cfad8b3548984a86a7afe689e1929f5f77d9ae8f7636429e67fe"
 
 HOST="127.0.0.1"
 PROM_PORT=9090

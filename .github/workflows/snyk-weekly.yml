@@ -68,7 +68,7 @@ jobs:
 
       - name: Install uv for the forks scan
         if: steps.gate.outputs.enabled == 'true'
-        run: pipx install uv==0.13.5
+        run: pipx install uv==0.13.6
 
       - name: Run the Snyk scan
         if: steps.gate.outputs.enabled == 'true' && inputs.missing_ref_probe != true
