@@ -131,8 +131,11 @@ if [ "$LABEL" = "suite" ] && QR_TOP=$(git rev-parse --show-toplevel 2>/dev/null)
         QR_REAL_TOP=$(cygpath -u "$QR_TOP" 2>/dev/null) || QR_REAL_TOP="$QR_TOP"
     fi
     for arg in "$@"; do
+        # the '..' refusal above misses `--opt=../x`, so a leading '..' after '='
+        # is caught here; every other '..' was refused before this loop.
         case "$arg" in
             --*=/*) qr_path="${arg#*=}" ;;
+            --*=..|--*=../*) qr_path=.. ;;
             /*) qr_path="$arg" ;;
             *) continue ;;
         esac
