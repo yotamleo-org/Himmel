@@ -8,7 +8,7 @@
 # network.
 #
 # Usage:
-#   usage-attribution.sh <projects-root> [--since <iso>] [--project <slug>] [--top <n>]
+#   usage-attribution.sh <projects-root> [--since <iso>] [--until <iso>] [--project <slug>] [--top <n>]
 #
 # <projects-root> is a `~/.claude/projects` directory: one subdirectory per
 # project slug, one *.jsonl file per top-level session inside each, plus (when
@@ -63,6 +63,11 @@
 # then exits 2 and reports on stderr how many transcripts were skipped, so a
 # caller cannot mistake an incomplete report for a complete one.
 #
+# --until closes the window: a counted row is in [--since, --until),
+# the upper bound EXCLUSIVE, so back-to-back shifts never count a row twice. It
+# takes the same canonical UTC form as --since, and a bound at or before --since
+# is refused rather than reported as an empty shift.
+#
 # --since is validated up front to a canonical UTC form
 # (YYYY-MM-DDTHH:MM:SS[.ffffff][Z], no timezone offset) so a genuinely
 # different format fails loudly instead of comparing wrong silently.
@@ -78,11 +83,12 @@ die() { echo "bank-attribution: $*" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 PROJECTS_ROOT="${1:-}"
-[ -n "$PROJECTS_ROOT" ] || die "usage: usage-attribution.sh <projects-root> [--since <iso>] [--project <slug>] [--top <n>]"
+[ -n "$PROJECTS_ROOT" ] || die "usage: usage-attribution.sh <projects-root> [--since <iso>] [--until <iso>] [--project <slug>] [--top <n>]"
 [ -d "$PROJECTS_ROOT" ] || die "not a directory: $PROJECTS_ROOT"
 shift
 
 SINCE=""
+UNTIL=""
 PROJECT_FILTER=""
 TOP=""
 
@@ -92,6 +98,12 @@ while [ $# -gt 0 ]; do
       SINCE="${2:-}"
       if ! [[ "$SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?Z?$ ]]; then
         die "--since must be a UTC timestamp (YYYY-MM-DDTHH:MM:SS[.fff][Z], at most 3 fractional digits, no timezone offset) -- transcript timestamps carry at most millisecond precision, and the comparison normalizes to that precision: $SINCE"
+      fi
+      shift 2 ;;
+    --until)
+      UNTIL="${2:-}"
+      if ! [[ "$UNTIL" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?Z?$ ]]; then
+        die "--until must be a UTC timestamp (YYYY-MM-DDTHH:MM:SS[.fff][Z], at most 3 fractional digits, no timezone offset): $UNTIL"
       fi
       shift 2 ;;
     --project)
@@ -107,6 +119,17 @@ while [ $# -gt 0 ]; do
     *) die "unknown argument: $1" ;;
   esac
 done
+
+# Same 3-fractional-digit form the jq compare uses, so the two bounds order
+# correctly here too ("...:05Z" vs "...:05.500Z").
+norm_bound() {
+  local t="${1%Z}" frac="000"
+  case "$t" in *.*) frac="${t#*.}000"; t="${t%%.*}" ;; esac
+  printf '%s.%s' "$t" "${frac:0:3}"
+}
+if [ -n "$SINCE" ] && [ -n "$UNTIL" ] && ! [[ "$(norm_bound "$SINCE")" < "$(norm_bound "$UNTIL")" ]]; then
+  die "--until must be later than --since: $UNTIL <= $SINCE"
+fi
 
 # shellcheck source=prim.sh
 . "$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prim.sh" || die "cannot load scripts/lib/prim.sh"
@@ -171,7 +194,9 @@ def norm_ts(s):
   end;
 
 def in_window($row):
-  ($row.timestamp == null) or ($since == "") or (norm_ts($row.timestamp) >= norm_ts($since));
+  ($row.timestamp == null)
+  or ((($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
+      and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until))));
 
 reduce inputs as $row (
   {wake: "op", afterSkill: false, pendingEvent: false, seen: {}, name: null, aititle: null, named: false, account: null,
@@ -242,7 +267,9 @@ def norm_ts(s):
   end;
 
 def in_window($row):
-  ($row.timestamp == null) or ($since == "") or (norm_ts($row.timestamp) >= norm_ts($since));
+  ($row.timestamp == null)
+  or ((($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
+      and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until))));
 
 reduce inputs as $row (
   {seen: {}, sub: {turns: 0, input: 0, cache_read: 0, cache_create: 0, output: 0}};
@@ -274,7 +301,7 @@ for slug_dir in "$PROJECTS_ROOT"/*/; do
   for f in "$slug_dir"*.jsonl; do
     [ -e "$f" ] || continue
     sid="$(basename "$f" .jsonl)"
-    if ! jq -nc --arg sid "$sid" --arg slug "$slug" --arg since "$SINCE" \
+    if ! jq -nc --arg sid "$sid" --arg slug "$slug" --arg since "$SINCE" --arg until "$UNTIL" \
          "$PASS1_MAIN_PROGRAM" "$f" >> "$SUMMARIES"; then
       echo "bank-attribution: skipped unreadable transcript (its whole contribution is dropped, not just the bad row): $f" >&2
       SKIPPED=$((SKIPPED + 1))
@@ -289,7 +316,7 @@ for slug_dir in "$PROJECTS_ROOT"/*/; do
     sid="$(basename "$(dirname "$sub_dir")")"
     for sf in "$sub_dir"/*.jsonl; do
       [ -e "$sf" ] || continue
-      if ! jq -nc --arg sid "$sid" --arg slug "$slug" --arg since "$SINCE" \
+      if ! jq -nc --arg sid "$sid" --arg slug "$slug" --arg since "$SINCE" --arg until "$UNTIL" \
            "$PASS1_SUB_PROGRAM" "$sf" >> "$SUMMARIES"; then
         echo "bank-attribution: skipped unreadable subagent transcript (its whole contribution is dropped, not just the bad row): $sf" >&2
         SKIPPED=$((SKIPPED + 1))
