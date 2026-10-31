@@ -193,14 +193,19 @@ git_subcmd_is_read() {
     esac
     # symbolic-ref is read-only ONLY in its query form (`git symbolic-ref HEAD`).
     # Given a 2nd non-flag operand (`git symbolic-ref HEAD refs/heads/x`) it
-    # REWRITES the ref — a mutating side effect. Reject that form.
+    # REWRITES the ref — a mutating side effect. Reject that form. `--delete` / `-d`
+    # (a unique long prefix, or a packed short cluster) deletes the ref: reject too.
     if [ "${g[$j]}" = "symbolic-ref" ]; then
         # A glob operand can expand into the name + value write form.
         [ "$CW_GLOB" = 1 ] && return 1
         local sj=$((j + 1)) ops=0 w
         while [ "$sj" -lt "$n" ]; do
             w="${CW[$sj]}"
-            case "$w" in -*) ;; *) ops=$((ops + 1)) ;; esac
+            case "$w" in
+                --*) guard_is_long_abbrev "delete" "$w" && return 1 ;;
+                -*) case "${w#-}" in *d*) return 1 ;; esac ;;
+                *) ops=$((ops + 1)) ;;
+            esac
             sj=$((sj + 1))
         done
         [ "$ops" -ge 2 ] && return 1   # name + value = write form

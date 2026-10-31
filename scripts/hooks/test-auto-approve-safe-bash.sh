@@ -222,6 +222,18 @@ assert "/usr/local/bin/git status"    PASS  "$(decide "$(j_bash '/usr/local/bin/
 assert "/tmp/git status"              PASS  "$(decide "$(j_bash '/tmp/git status')")"
 assert "//usr/bin/git status"         PASS  "$(decide "$(j_bash '//usr/bin/git status')")"
 assert "/usr/bin/git/ status"         PASS  "$(decide "$(j_bash '/usr/bin/git/ status')")"
+
+# symbolic-ref deletes a ref with --delete / -d (any unique long prefix, or a packed
+# short cluster); only the query form is a read.
+assert "symbolic-ref --delete"        PASS  "$(decide "$(j_bash 'git symbolic-ref --delete refs/heads/example')")"
+assert "symbolic-ref -d"              PASS  "$(decide "$(j_bash 'git symbolic-ref -d refs/heads/example')")"
+assert "symbolic-ref --del prefix"    PASS  "$(decide "$(j_bash 'git symbolic-ref --del refs/heads/example')")"
+assert "symbolic-ref -qd cluster"     PASS  "$(decide "$(j_bash 'git symbolic-ref -qd refs/heads/example')")"
+assert "abs symbolic-ref --delete"    PASS  "$(decide "$(j_bash '/usr/bin/git symbolic-ref --delete refs/heads/example')")"
+assert "abs symbolic-ref -d"          PASS  "$(decide "$(j_bash '/usr/bin/git symbolic-ref -d refs/heads/example')")"
+assert "symbolic-ref HEAD query"      ALLOW "$(decide "$(j_bash 'git symbolic-ref HEAD')")"
+assert "symbolic-ref --short query"   ALLOW "$(decide "$(j_bash 'git symbolic-ref --short HEAD')")"
+assert "symbolic-ref -q query"        ALLOW "$(decide "$(j_bash 'git symbolic-ref -q HEAD')")"
 assert "LD_PRELOAD env"           PASS  "$(decide "$(j_bash 'LD_PRELOAD=/tmp/x.so grep foo f')")"
 assert "NODE_OPTIONS env"         PASS  "$(decide "$(j_bash 'NODE_OPTIONS=--require=/tmp/x node scripts/jira/dist/index.js get X')")"
 assert "gh pr view --web"         PASS  "$(decide "$(j_bash 'gh pr view --web 1')")"
