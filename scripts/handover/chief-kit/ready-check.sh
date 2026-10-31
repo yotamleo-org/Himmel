@@ -586,7 +586,7 @@ cov_ledger_keys() {
             | group_by(fk(.) + "|" + (.target_head[0:7] | ascii_downcase)) | map(max_by(._ln))
             | map(select(.set.disposition | test("^follow-up:[A-Za-z][A-Za-z0-9]*-[0-9]+$")) | . as $d
                 | select(any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($d) and hm(.head; $d.target_head) and (replaced(.) | not)
-                    and (. as $f | (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and .branch == $f.branch and (.set | has("disposition") | not))) as $a ($f; . + $a.set)) | .verdict == "deferred")))
+                    and (. as $f | (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (.branch == null or .branch == $f.branch) and (.set | has("disposition") | not))) as $a ($f; . + $a.set)) | .verdict == "deferred")))
                 | .set.disposition | ltrimstr("follow-up:") | ascii_upcase)) as $dkeys
         | ((reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
