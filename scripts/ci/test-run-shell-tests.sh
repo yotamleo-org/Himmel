@@ -2825,6 +2825,7 @@ while IFS= read -r _l; do
   _tool="${_l#* — capability: }"; _tool="${_tool%% not on PATH*}"
   awk -F'\t' -v k="$_p" '$1 == k { f = 1 } END { exit !f }' "$fix22w" || continue
   grep -qxF "$_p" <<< "$_skips22w" && continue
+  # shellcheck disable=SC2030
   ( PATH="$_path22w"; command -v "$_tool" >/dev/null 2>&1 ) && continue
   ncap22w=$((ncap22w + 1))
 done <<< "$(grep -F "[SKIP] $sb22w/stubs/" <<< "$capl22w" | grep -F ' — capability: ' | sort -u)"
@@ -3223,6 +3224,44 @@ else
   fail "30: directrc=$directrc30 rc=$rc30 direct=[$direct30] runner=[$runner30] (want 0, keyring=unset direct, keyring=off via the runner)"
 fi
 rm -rf "$sb30"
+fi
+
+# --------------------------------------------------------------------------
+# Case 31 — listing forks no `tr` per skip-list line per suite.
+# Over the runner's real SKIP_LIST that fork is tens of thousands of processes
+# per `--list`, and Case 22-fresh makes 32 of them: the CI runner needs well
+# over 1300s for this file when it is paid, against a 1500s cap. The fixture is
+# the runner's own SKIP_LIST; a PATH shim counts every `tr` the runner starts.
+# --------------------------------------------------------------------------
+echo "== Case 31 (HIMMEL-8312): listing forks no tr per skip-list line per suite (129 before, a fixed few after) =="
+sb31=$(mktemp -d "${TMPDIR:-/tmp}/rst-case31.XXXXXX") || { fail "31: mktemp failed"; sb31=""; }
+if [ -n "$sb31" ]; then
+mkdir -p "$sb31/scripts" "$sb31/fakebin"
+for _n31 in a b c d e f; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$sb31/scripts/test-case31-$_n31.sh"
+  chmod +x "$sb31/scripts/test-case31-$_n31.sh"
+done
+real_tr31=$(command -v tr)
+printf '#!/usr/bin/env bash\necho x >> "%s/tr.calls"\nexec "%s" "$@"\n' "$sb31" "$real_tr31" > "$sb31/fakebin/tr"
+chmod +x "$sb31/fakebin/tr"
+
+# Negative control: the shim counts a direct call, so the bound below is real.
+# shellcheck disable=SC2031
+PATH="$sb31/fakebin:$PATH" tr -d x <<< "x" > /dev/null
+ctl31=$(grep -c . "$sb31/tr.calls" 2>/dev/null || true)
+rm -f "$sb31/tr.calls"
+
+# shellcheck disable=SC2031
+out31=$(PATH="$sb31/fakebin:$PATH" HIMMEL_RUNTIME_PREFLIGHT=0 bash "$RUNNER" --list "$sb31/scripts" 2>&1)
+rc31=$?
+calls31=$(grep -c . "$sb31/tr.calls" 2>/dev/null || true)
+nsuites31=$(grep -c 'test-case31-' <<< "$out31")
+if [ "$ctl31" -eq 1 ] && [ "$rc31" -eq 0 ] && [ "$nsuites31" -eq 6 ] && [ "${calls31:-0}" -le "$nsuites31" ]; then
+  pass "31: --list over 6 suites started ${calls31:-0} tr (at most one per suite; was 129 with the per-line fork)"
+else
+  fail "31: control=$ctl31 (want 1) rc=$rc31 listed=$nsuites31 (want 6) tr calls=${calls31:-0} (want at most $nsuites31): output: $out31"
+fi
+rm -rf "$sb31"
 fi
 
 rst_tally
