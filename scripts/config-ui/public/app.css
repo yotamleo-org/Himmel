@@ -220,7 +220,8 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);p
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
 /* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
 .g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}
-.htiles .tile{grid-template-columns:minmax(0,1fr)}
+.htiles .tile{grid-template-columns:minmax(0,1fr)}.htiles .tile .pill{justify-self:start;margin-top:4px}
+.fixact{white-space:nowrap}.alert .scope{margin-left:var(--s1)}
 .vhead .pills{display:flex;gap:var(--s1)}
 .pill.off{background:var(--surface-2);color:var(--muted)}.pill.scope,.scope{background:var(--note-soft);color:var(--note)}
 .scope{font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;white-space:nowrap}
