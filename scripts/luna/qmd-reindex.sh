@@ -643,7 +643,8 @@ EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)
 # Best-effort: a failed scan must not change the rc 5 this is reporting.
 remaining_hashes() {
     local out n
-    out=$(run_qmd update 2>&1) || true
+    # A recount that failed or timed out left partial output: report none of it.
+    out=$(run_qmd update 2>&1) || return 0
     # No `{…;q}`: BSD sed (macOS) rejects it; keep the first match in bash.
     n=$(sed -nE 's/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p' <<<"$out")
     printf '%s' "${n%%$'\n'*}"

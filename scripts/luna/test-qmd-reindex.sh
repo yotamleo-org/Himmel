@@ -88,6 +88,7 @@ mkdir -p "$STATE"
 #                 next reports the all-clear: a backlog larger than one session
 #   provider-503  every `qmd embed` logs failed attempts with HTTP 503 and
 #                 embeds nothing
+#   fail-recount  a `qmd update` after the first embed prints a hash count, then exits 1
 #   slow-recount  a `qmd update` after the first embed sleeps 60s (the rc 5 recount)
 #   slow-embed    every `qmd embed` prints a progress line, then sleeps 60s
 #   no-progress   every `qmd embed` ends having embedded 0 chunks, no error line
@@ -120,6 +121,10 @@ case "${1:-}" in
             fi
         fi
         if [ -e "$STATE/slow-recount" ] && grep -q '^embed' "$STATE/calls"; then sleep 60; fi
+        if [ -e "$STATE/fail-recount" ] && grep -q '^embed' "$STATE/calls"; then
+            echo "33515 unique hashes need vectors"
+            exit 1
+        fi
         echo "Indexed: 45 new, 22 updated, 14119 unchanged, 20 removed"
         echo "4 collections updated."
         if [ -e "$STATE/hash-count" ]; then
@@ -838,6 +843,15 @@ if [ "$elapsed" -le 8 ]; then
 else
     fail "session bounded by the embed budget" "took ${elapsed}s for a 2s budget"
 fi
+
+echo "TEST: a recount that fails is discarded, so the remaining count reads as unknown"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/incomplete" "$STATE/fail-recount"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "failed recount rc 5" 5 "$rc"
+assert_contains "a failed recount reads as unknown" "remaining: unknown" "$out"
+assert_not_contains "a failed recount's partial count is not reported" "33515" "$out"
 
 echo "TEST: the rc 5 recount is bounded by QMD_REINDEX_RECOUNT_SECS and reads as unknown"
 reset_state
