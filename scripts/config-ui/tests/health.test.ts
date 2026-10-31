@@ -143,6 +143,12 @@ test("a firing alert shows under Shared in the all-projects view", () => {
   expect(shd).not.toContain("Nothing shared is broken");
 });
 
+test("the What is broken tab counts the firing alerts it lists", () => {
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "page", summary: "box off" }] }, exporter: { state: "ok" } } };
+  const html = renderHealth(feed(own("a", "ok")), health, { tab: "broken" });
+  expect(html).toContain("What is broken · 1");
+});
+
 test("the who-fixes-it box opens on the chosen row only", () => {
   const f = feed(own("a", "fail"), own("b", "fail"));
   expect([...renderHealth(f, null, { row: "a" }).matchAll(/class="who"/g)].length).toBe(1);

@@ -125,7 +125,7 @@ function allHtml(feed) {
 }
 
 function tabsHtml(feed, health, view) {
-  const broken = feed ? feed.rows.filter(isTriage).length : 0, total = feed ? feed.rows.length : 0;
+  const broken = feed ? feed.rows.filter(isTriage).length + (alertsOf(health) || []).length : 0, total = feed ? feed.rows.length : 0;
   const tab = (id, label, n) => `<button class="tab" role="tab" data-act="health-tab" data-tab="${id}" aria-selected="${view.tab === id}">${label} · ${n}</button>`;
   return `<div class="tabs" role="tablist">${tab("broken", "What is broken", broken)}${tab("all", "Every item checked", total)}</div>
     <div role="tabpanel" id="tab-broken"${view.tab === "broken" ? "" : " hidden"}>${brokenHtml(feed, health, view)}</div>

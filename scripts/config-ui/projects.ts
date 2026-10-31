@@ -53,7 +53,11 @@ export function saveFeed(env: Env, name: string, body: string): void {
 }
 export function loadFeed(env: Env, list: Project[], name: string): { body: string; at: string } | null {
   if (!list.some((p) => p.name === name)) return null; // only a registered name reaches the filesystem
-  try { return { body: readFileSync(cacheFile(env, name), "utf8"), at: statSync(cacheFile(env, name)).mtime.toISOString() }; } catch { return null; }
+  try {
+    const body = readFileSync(cacheFile(env, name), "utf8");
+    if (!Array.isArray(JSON.parse(body).rows)) return null; // a cache that is not a feed is not checked, in the picker and when opened
+    return { body, at: statSync(cacheFile(env, name)).mtime.toISOString() };
+  } catch { return null; }
 }
 
 const count = (rows: Slim[]) => ({ fail: rows.filter((r) => r.health === "fail").length, warn: rows.filter((r) => r.health === "warn").length });

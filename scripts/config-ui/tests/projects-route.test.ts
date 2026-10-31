@@ -69,6 +69,9 @@ test("a malformed cache marks that project not checked and never fails the list"
   const by = Object.fromEntries((await res.json()).projects.map((p: { name: string }) => [p.name, p]));
   expect(by.luna.checkedAt).toBeNull();
   expect(by.salus.counts.project).toEqual({ fail: 0, warn: 1 });
+  const opened = await get(port, "/api/feed?project=luna"); // opening it answers as the picker does: not checked
+  expect(opened.status).toBe(404);
+  expect(await opened.json()).toMatchObject({ state: "not-checked" });
 });
 
 test("an unregistered checkout named like a registered project gets its own name and cache", () => {

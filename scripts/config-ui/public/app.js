@@ -110,6 +110,7 @@ function projectPicker() {
 
 // Health for the project in the picker: this UI's own feed, another project's cached one, or the all-projects view.
 function healthPage(f) {
+  if (healthView.project && !projects) return probeStatus(); // whose page this is waits on /api/projects: never this project's rows under another's name
   const cur = projects && projects.current;
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
