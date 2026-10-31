@@ -5,8 +5,8 @@
 # (brew's coreutils installs the latter). Sourcing this sets:
 #
 #   _TIMEOUT_BIN  absolute path of the first of `timeout`, `gtimeout` that answers
-#                 `--version` (rejects a Windows timeout.exe, which is a sleep
-#                 with /T syntax, not a command wrapper); EMPTY when neither does.
+#                 `--version` (rejects a non-GNU `timeout` that is not a
+#                 command wrapper); EMPTY when neither does.
 #
 # and prints ONE stderr line when it is empty. Resolved to an absolute path on
 # purpose: a call that overrides PATH (`PATH=$stub:$PATH cmd`) looks a bare name

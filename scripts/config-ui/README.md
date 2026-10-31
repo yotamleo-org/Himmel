@@ -35,10 +35,21 @@ the page.
 | Section | Source | `No data` means |
 |---|---|---|
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
-| What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
+| What is broken · Every item checked | two tabs: feed rows with health `fail` or `warn`, worst first, plus firing alerts, each with ONE fix action (below); and all rows grouped by bundle with a result each, a bundle with a problem open | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `workers.sh` (newest `*.fleet.json` under the handover root, status from `worker_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
+| Usage | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
+
+**Project picker and Shared (HIMMEL-8044).** The rail carries a picker: the project this UI runs in
+(the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
+and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
+himmel itself, `project` for the rest) and a `fix.by`, classified once in `config-feed.js` `classifyRow`:
+`configure` (a setting a Configure tile writes, `fix.tile` names it: **Open in Configure**), `operator` (only
+you can run it: **Copy command**) or `chief` (**chief is on it**, no button). The all-projects view shows the
+Shared rows once, never counted in a project's own verdict, then each project worst first. `GET /api/projects`
+answers each project from its own cached feed (`~/.himmel/state/config-ui/feeds/<name>.json`, written by the UI
+that ran in it) or `not checked`; it never runs a doctor. `GET /api/feed?project=<name>` answers one of them
+(404 `not-checked` otherwise). A project's data is only as fresh as its own last UI run.
 
 The **Trends** section (HIMMEL-6969) is fed by `GET /api/rollup` (token-gated, GET
 only), which reads `~/.himmel/state/rollup/weekly.jsonl` (`$WEEKLY_ROLLUP_FILE`
@@ -107,7 +118,7 @@ a document fallback reads the assigned worker's title, not sibling mentions. Led
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
 request: no static render, no republish. The page draws release panels, the drift counts and trend, the worker to Jira
 sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
-theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
+Sector); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
@@ -125,14 +136,17 @@ route, `#/workflow&w=<id>&s=<n>`.
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
   write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
 - **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
-  Jira, and the per-card theme select sets its single `theme-<slug>` label (replacing any other `theme-*` label;
-  convention in `docs/jira-projects.md`). Both go through `POST /api/roadmap/write` (token gate, same-origin and JSON
-  checks, the machine write lock, one audit row per write), body `{key, status}` or `{key, theme}` with `theme: null`
-  clearing it. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the theme slug before any
-  child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
+  Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
+  the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
+  `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
+  body `{key, status}` or `{key, sector}`. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the
+  Sector name before any child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
   incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
-- **Librarian.** Stale In Progress, version drift, unthemed, released-but-open and duplicate titles, as proposals
+- **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
+  fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
+  keep their names, the page shows Sector.
+- **Librarian.** Stale In Progress, version drift, no sector (it proposes `jira edit <key> --sector`), released-but-open and duplicate titles, as proposals
   only. A fixVersion move or a close needs operator approval or a recorded standing rule. Lane: Opus judgement,
   bulk passes on Haiku. Cadence: event-driven on MERGED/WRAPPED plus a daily sweep.
 

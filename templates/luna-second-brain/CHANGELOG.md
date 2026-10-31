@@ -8,6 +8,14 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.96] — 2026-10-31
+
+### Changed
+- `_CLAUDE.md` "pre-commit trap" names every place pre-commit keeps a stashed
+  patch: `$PRE_COMMIT_HOME`, then `$XDG_CACHE_HOME/pre-commit/`, then
+  `~/.cache/pre-commit/`, and says a variable counts only when non-empty. It
+  named only the last.
+
 ## [0.4.94] — 2026-10-30
 
 ### Changed

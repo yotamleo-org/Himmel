@@ -278,17 +278,13 @@ test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, ne
   }
 });
 
-test("HIMMEL-7573: /console stays a quiet alias that queues exactly what /chief queues", async () => {
-  const lines: string[] = []; const acks: string[][] = [];
-  for (const verb of ["/console", "/chief"]) {
-    const r = root(); const f = armInbox(r); const replies: string[] = [];
-    await handleInbound(r, say(`${verb} ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
-    lines.push(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, ""));
-    acks.push(replies);
-  }
-  expect(lines[0]).toBe("[telegram from=1 chat=1] go ahead\n");
-  expect(lines[1]).toBe(lines[0]);
-  expect(acks[1]).toEqual(acks[0]);
+test("HIMMEL-8381: /chief queues the line; the dropped /console alias queues nothing", async () => {
+  const r = root(); const f = armInbox(r); const replies: string[] = [];
+  await handleInbound(r, say(`/chief ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, "")).toBe("[telegram from=1 chat=1] go ahead\n");
+  const r2 = root(); const f2 = armInbox(r2);
+  await handleInbound(r2, say(`/console ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  expect(readFileSync(f2, "utf8")).toBe("");
 });
 
 test("/chiefs lists only fresh chiefs with heartbeat and bucket/project", async () => {

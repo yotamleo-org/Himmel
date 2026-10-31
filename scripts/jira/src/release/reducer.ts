@@ -101,6 +101,8 @@ export function scopeOk(r: Pick<RulingRow, 'authority' | 'key' | 'op'>, ops: Map
   const o = r.authority.ref ? ops.get(r.authority.ref) : undefined;
   if (!o) return false;
   if (o.kind === 'emergency') return r.op.kind === 'add' && r.op.to_v === current;
+  // The standing blocker pull only adds a blocker to the current version, and names whom it unblocks.
+  if (o.kind === 'blocker-pull') return (r.op.kind === 'add' || r.op.kind === 'move') && r.op.to_v === current && !!r.authority.blocks?.length;
   return o.kind === 'decision' && (o.keys ?? []).includes(r.key) && o.op === r.op.kind
     && (o.from_v ?? null) === r.op.from_v && (o.to_v ?? null) === r.op.to_v;
 }

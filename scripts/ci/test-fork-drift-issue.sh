@@ -186,11 +186,37 @@ cat > "$forks" <<'RPT'
   yotamleo/held@main: HELD (reviewed compatibility hold)
 RPT
 b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$forks" 2>&1)")"
-has '^| yotamleo/fast@main | fork-behind | behind=5 ahead=0 | owner/fast@main | gh repo sync yotamleo/fast --branch main |' "$b" "fork-behind: zero carried commits keeps gh repo sync action"
-has '^| yotamleo/carried@himmel/pin | fork-behind | behind=3 ahead=2 | owner/carried@main | /fork-resync |' "$b" "fork-behind: pinned branch keeps carried-commit repair and both counts"
-has '^| yotamleo/renamed@main | fork-behind | behind=6 ahead=0 | owner/renamed@trunk | /fork-resync |' "$b" "fork-behind: differing branch names keep manual repair even without carried commits"
+# A fork with no carried commits is not kept as a fork (use
+# upstream); a carried fork auto-syncs by resync-fork.sh --sync. Never a sync PR.
+has '^| yotamleo/fast@main | fork-behind | behind=5 ahead=0 | owner/fast@main | use-upstream owner/fast (no carried commits: point pins and installs at upstream, no sync) |' "$b" "fork-behind: zero carried commits says use-upstream"
+has '^| yotamleo/carried@himmel/pin | fork-behind | behind=3 ahead=2 | owner/carried@main | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo/carried |' "$b" "fork-behind: carried commits auto-sync and keep both counts"
+has '^| yotamleo/renamed@main | fork-behind | behind=6 ahead=0 | owner/renamed@trunk | use-upstream owner/renamed (no carried commits: point pins and installs at upstream, no sync) |' "$b" "fork-behind: differing branch names with zero carried commits still say use-upstream"
+hasnt 'gh repo sync' "$b" "fork-behind: no row asks for a hand sync"
 has '^### Needs update (3)' "$b" "fork-behind: held row is not actionable"
 rm -f "$forks"
+# The graphify row as the nightly reported it (issue #2809, 2026-10-31).
+real="$(mktemp "${TMPDIR:-/tmp}/fork-drift-real.XXXXXX")" || exit 1
+printf '== fork branches (upstream default-branch comparison) ==\n  yotamleo-org/graphify@himmel-main: BEHIND   (fork-behind upstream=Graphify-Labs/graphify@v8 behind=162 ahead=5 action=/fork-resync)\n' > "$real"
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$real" 2>&1)")"
+has '^| yotamleo-org/graphify@himmel-main | fork-behind | behind=162 ahead=5 | Graphify-Labs/graphify@v8 | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo-org/graphify |' "$b" "fork-behind: real graphify row auto-syncs"
+rm -f "$real"
+# A fork's default branch with no carried commits still keeps the fork when its
+# consumed branch carries commits (both graphify rows as the guard reported them, 2026-10-31).
+two="$(mktemp "${TMPDIR:-/tmp}/fork-drift-two.XXXXXX")" || exit 1
+cat > "$two" <<'RPT'
+== fork branches (upstream default-branch comparison) ==
+  yotamleo-org/graphify@himmel-main: BEHIND   (fork-behind upstream=Graphify-Labs/graphify@v8 behind=212 ahead=5 action=/fork-resync)
+  yotamleo-org/graphify@v8: BEHIND   (fork-behind upstream=Graphify-Labs/graphify@v8 behind=177 ahead=0 action=gh repo sync yotamleo-org/graphify --branch v8)
+  yotamleo/current@main: CURRENT  (fork-behind upstream=owner/current@trunk behind=0 ahead=4)
+  yotamleo/current@dev: BEHIND   (fork-behind upstream=owner/current@trunk behind=2 ahead=0 action=gh repo sync yotamleo/current --branch dev)
+  yotamleo-org/effective-html@himmel-main: HELD (env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges (HIMMEL-7170))
+  yotamleo-org/effective-html@main: BEHIND   (fork-behind upstream=plannotator/effective-html@main behind=2 ahead=0 action=gh repo sync yotamleo-org/effective-html --branch main)
+RPT
+b="$(body_of "$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$two" 2>&1)")"
+has '^| yotamleo-org/graphify@v8 | fork-behind | behind=177 ahead=0 | Graphify-Labs/graphify@v8 | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo-org/graphify |' "$b" "fork-behind: default branch of a carried fork auto-syncs, never use-upstream"
+has '^| yotamleo/current@dev | fork-behind | behind=2 ahead=0 | owner/current@trunk | auto-sync: bash scripts/upstreams/resync-fork.sh --sync yotamleo/current |' "$b" "fork-behind: a current carried branch still marks its fork carried"
+has '^| yotamleo-org/effective-html@main | fork-behind | behind=2 ahead=0 | plannotator/effective-html@main | none: another branch of yotamleo-org/effective-html is HELD, so no sync and no use-upstream until the hold lifts |' "$b" "fork-behind: a held branch keeps its fork, never use-upstream or a sync"
+rm -f "$two"
 
 rm -f "$REP"
 echo ""

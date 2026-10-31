@@ -248,6 +248,7 @@ if [ "$1" = "tool" ] && [ "$2" = "install" ]; then
   printf 'stub ref v%s\n' "$ver" > "$pkg/skills/claude/references/quickstart.md"
   cat > "$venv/bin/python" <<PYEOF
 #!/usr/bin/env bash
+[ "\$1" = -I ] && shift   # the mcp probe runs isolated
 case "\$2" in
   *__file__*)           printf '%s\n' "$pkg" ;;
   *importlib.metadata*) printf '%s\n' "$ver" ;;
@@ -484,6 +485,7 @@ make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
   printf 'claw ref content v%s\n' "$ver" > "$pkg/skills/claw/references/quickstart.md"
   cat > "$tooldir/graphifyy/bin/python" <<EOF
 #!/usr/bin/env bash
+[ "\$1" = -I ] && shift   # the mcp probe runs isolated
 case "\$2" in
   *__file__*)              printf '%s\n' "$pkg" ;;
   *importlib.metadata*)    printf '%s\r\n' "$ver" ;;
@@ -1789,6 +1791,24 @@ rc=0
 HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_mcp_import_ok' || rc=$?
 assert "probe rc 2 (unvalidated) when no interpreter is resolvable" test "$rc" -eq 2
+# An mcp.py in the caller's cwd (adopt runs inside the adopted
+# repo) must not stand in for the installed package. A real, mcp-less venv
+# python probes from a dir holding a planted mcp.py.
+probe_py3="$(command -v python3 2>/dev/null || true)"
+if [ -n "$probe_py3" ] && "$probe_py3" -m venv --without-pip "$probe_dir/venv" >/dev/null 2>&1; then
+  mkdir -p "$probe_dir/planted"
+  printf 'raise SystemExit(0)\n' > "$probe_dir/planted/mcp.py"
+  printf '#!%s/venv/bin/python\n' "$probe_dir" > "$probe_dir/graphify-mcp"
+  chmod +x "$probe_dir/graphify-mcp"
+  assert "planted mcp.py fixture exists" test -f "$probe_dir/planted/mcp.py"
+  rc=0
+  HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
+    bash -c 'cd "$2" || exit 125; . "$1/graphify-bin.sh" || exit 126; _graphify_mcp_import_ok' _ "$SCRIPT_DIR" "$probe_dir/planted" || rc=$?
+  assert "probe rc 1 when only the caller cwd carries an mcp module" test "$rc" -eq 1
+  rm -f "$probe_dir/graphify-mcp"
+else
+  echo "  skip: no python3 with venv for the planted-mcp probe" >&2
+fi
 
 echo "[test-graphify-bin] consumer wiring — setup.sh/adopt.sh source graphify-bin.sh (HIMMEL-891)"
 repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"

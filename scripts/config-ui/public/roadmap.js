@@ -1,6 +1,6 @@
 // the Roadmap page. Pure rendering, no DOM: renderRoadmap(data, ui) → HTML.
-// data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes or null.
-// Everything shown is the server's live read. With ui.writes the Kanban cards are draggable and carry a theme
+// data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes (the Sectors) or null.
+// Everything shown is the server's live read. With ui.writes the Kanban cards are draggable and carry a Sector
 // select, and app.js posts the drop or the select to /api/roadmap/write. The rest of the page proposes only.
 import { esc } from "./render.js";
 
@@ -24,21 +24,20 @@ function releasesHtml(d) {
 function filters(d, ui) {
   const sel = (name, label, items, cur) => `<label>${label} <select data-rm-filter="${name}"><option value="">all</option>${items.map((x, i) =>
     `<option value="${i}"${cur === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
-  return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Theme", d.themes, ui.theme)}</div>`;
+  return `<div class="rm-filters">${sel("version", "Version", d.versions.map((v) => v.n), ui.version)} ${sel("theme", "Sector", d.themes, ui.theme)}</div>`;
 }
 
-// one select per card; the option value is the theme's label slug ("" clears it). A slug over the write
-// route's 40-char cap is shown but disabled, so it is never offered as a write the server would refuse.
-const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Theme of HIMMEL-${t.k}">${d.themes.map((x, i) => {
-  const slug = (d.themeSlugs || [])[i] ?? "";
-  return `<option value="${esc(slug)}"${t.theme === i ? " selected" : ""}${slug.length > 40 ? " disabled" : ""}>${esc(x)}</option>`;
-}).join("")}</select>`;
+// one select per card; the option value is the Sector name, which the Jira CLI checks against the live option list. The
+// "no sector" bucket is not a Sector (the CLI cannot clear one), so it is shown but disabled unless it is the card's group.
+const NO_SECTOR = "(no sector)";
+const sectorPick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}" aria-label="Sector of HIMMEL-${t.k}">${d.themes.map((x, i) =>
+  `<option value="${x === NO_SECTOR ? "" : esc(x)}"${t.theme === i ? " selected" : x === NO_SECTOR ? " disabled" : ""}>${esc(x)}</option>`).join("")}</select>`;
 
 function cardHtml(t, d, showVersion, w) {
   const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
-  const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
+  const theme = w ? sectorPick(t, d) : esc(d.themes[t.theme]);
   return `<div class="rm-card"${w ? ` draggable="true" data-rm-card="${t.k}"` : ""}><b>${esc(t.id || "HIMMEL-" + t.k)}</b> <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
@@ -52,7 +51,7 @@ function boardHtml(d, tickets, showVersion, w) {
   }).join("")}</div>`;
 }
 
-const themeSel = (d, ui) => `<label>Theme <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
+const themeSel = (d, ui) => `<label>Sector <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
   `<option value="${i}"${ui.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
 // A refused or failed write: shown above the board, the card has already moved back (the board is redrawn from the server).
 const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st pill fail">refused</span> ${esc(ui.writeError)}</div>` : "");
@@ -60,7 +59,7 @@ const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme =
 
 // #/roadmap/<version>, one version's board.
 function versionHtml(d, ui) {
-  const back = pageHeader(ui.ver, "Tickets by status and theme.") + `<p><a href="#/roadmap">← Roadmap</a></p>`;
+  const back = pageHeader(ui.ver, "Tickets by status and sector.") + `<p><a href="#/roadmap">← Roadmap</a></p>`;
   const v = d.versions.findIndex((x) => x.n === ui.ver);
   if (v < 0) return back + `<div class="empty">${esc(ui.ver)}: no such version in the mirror.</div>`;
   const shown = byTheme(d, ui).filter((t) => t.v === v);
@@ -86,10 +85,10 @@ export function renderKanban(data, ui) {
 
 function driftHtml(d) {
   const n = d.drift.now;
-  const trend = d.drift.trend.length ? `<div class="ro">trend (drift/unplanned/unthemed, oldest first): ${d.drift.trend.map((r) => `${r[1]}/${r[2]}/${r[3]}`).map(esc).join(" → ")}</div>`
+  const trend = d.drift.trend.length ? `<div class="ro">trend (drift/unplanned/no sector, oldest first): ${d.drift.trend.map((r) => `${r[1]}/${r[2]}/${r[3]}`).map(esc).join(" → ")}</div>`
     : `<div class="nodata">no drift log rows</div>`;
   const plan = d.plan.state === "ok" ? "" : `<div class="nodata">plan absent: ${esc(d.plan.reason || "no plan dir")}; drift is not computed</div>`;
-  return `<div class="kv">drift ${n.drift} · unplanned ${n.unplanned} · unthemed ${n.unthemed}</div>${plan}${trend}`;
+  return `<div class="kv">drift ${n.drift} · unplanned ${n.unplanned} · no sector ${n.unthemed}</div>${plan}${trend}`;
 }
 
 // The version/theme filter narrows the sync and librarian lists too: a filtered-out ticket renders nowhere.
@@ -111,7 +110,7 @@ function librarianHtml(d, ui) {
     `<div class="hrow"><span class="id">${p.keys ? p.keys.map((k) => `HIMMEL-${k}`).map(esc).join(" = ") : "HIMMEL-" + esc(p.k)}</span><span class="det">${esc(p.title)}</span><span>${esc(p.proposal)}</span></div>`).join("")
     : `<div class="empty">Nothing to propose.</div>`}</div>`; };
   return `<p class="ro">Proposals only: needs operator approval (or a recorded standing rule) before any fixVersion move or close.</p>`
-    + list("Stale In Progress", l.staleInProgress) + list("Version drift", l.drift) + list("Unthemed", l.unthemed)
+    + list("Stale In Progress", l.staleInProgress) + list("Version drift", l.drift) + list("No sector", l.unthemed)
     + list("Released but open", l.releasedOpen) + list("Duplicate titles", l.duplicates);
 }
 

@@ -57,14 +57,13 @@ done
 # (bounded sed: opening line to the closing brace at column 0) rather than
 # hand-copying its logic — sourcing claude-codex itself would run its whole
 # launcher body, not just define the function. claude-codex's version calls
-# norm_path (and reads UNAME_S), so those are extracted the same way.
+# norm_path, so that is extracted the same way.
 _extracted_path_under_any="$(mktemp)"
 {
-  sed -n '/^UNAME_S=/p' "$CLAUDE_CODEX"
   sed -n '/^norm_path() {/,/^}/p' "$CLAUDE_CODEX"
   sed -n '/^path_under_any() {/,/^}/p' "$CLAUDE_CODEX"
 } > "$_extracted_path_under_any"
-for fn in 'UNAME_S=' 'norm_path() {' 'path_under_any() {'; do
+for fn in 'norm_path() {' 'path_under_any() {'; do
   if ! grep -qF "$fn" "$_extracted_path_under_any"; then
     echo "FAIL: could not extract '$fn' from $CLAUDE_CODEX (moved or renamed?)"; exit 1
   fi

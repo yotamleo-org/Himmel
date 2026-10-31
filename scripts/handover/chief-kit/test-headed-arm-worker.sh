@@ -1241,7 +1241,7 @@ not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODE
 # A claudex worker-impl worker gets the native worker's knowledge access: the same profile
 # settings, MCP allowlist (qmd), lean switch and handover root.
 _access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_MCP_CONFIG|HIMMEL_LEAN_WORKER_SESSION|HANDOVER_DIR)=' | sort; }
-rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile worker-impl --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc_x=$?
 check "dry-run --profile worker-impl: native and claudex both exit 0" "$rc/$rc_x" "0/0"
 contains "dry-run --profile worker-impl --lane claudex: carries the qmd and himmel-bus MCP allowlist" "$out_x" 'mcp=["qmd","himmel-bus"] mcp-config=/tmp/HIMMEL-9999-leg.leg-mcp.json'
@@ -2565,6 +2565,15 @@ check "tier gate (k): opus-5-5 without a Tier line is still refused with exit 2"
 contains "tier gate (k): missing-line refusal lists the four category tags" "$out" "design|unverified-finding|tier-return|operator-ruling"
 contains "tier gate (k): missing-line refusal names the operator-ruling reason" "$out" "a standing operator ruling on model choice"
 
+# A native launch that names no model runs the claude-opus-5-5
+# default, so the gate must see the resolved model, not the empty argument.
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "tier gate (l): a native launch with no model and no Tier line is refused with exit 2" "$rc" "2"
+contains "tier gate (l): no-model refusal names the CLAUDE.md sentence" "$out" "raise effort before tier"
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "tier gate (l): a native launch with no model and an opus Tier line proceeds (dry-run exit 0)" "$rc" "0"
+contains "tier gate (l): no-model dry-run report carries tier-category=design" "$out" "tier-category=design"
+
 # --- 24. FLEET_RESERVE_TTL is exported, derived from DEADLINE -
 # TTL_RECORD_PREFLIGHT stands in for usage-preflight.sh and records the TTL it
 # was called with instead of consulting the real fleet/bank state, mirroring
@@ -2857,7 +2866,7 @@ ll_line() { cat "$LL_DIR/$1.log" 2>/dev/null || true; }
 
 check "28a no launch record exists for a session that was never launched" "$([ -e "$LL_DIR/HIMMEL-3270-N1-dry.log" ] && echo present || echo none)" "none"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-3270-N1-dry "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-3270-N1-dry "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "28b --dry-run exits 0" "$rc" "0"
 check "28b --dry-run writes no launch record" "$([ -e "$LL_DIR/HIMMEL-3270-N1-dry.log" ] && echo present || echo none)" "none"
 
@@ -3976,7 +3985,7 @@ export CLAUDE_CONFIG_DIR="$tmp/home41/config"
 # consult doc); (c) --consult refuses guard-carrying/non-additive profiles even as
 # a SINGLE name, a worktree cwd, and every conflicting flag; (d) the launch ledger
 # line records role=consult with the asker and the profile list.
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile design,design-motion HIMMEL-4014-list "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile design,design-motion HIMMEL-4014-list "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "41a dry-run --profile design,design-motion: exit 0" "$rc" "0"
 contains "41a dry-run reports the composed list" "$out" "profile=design,design-motion "
 contains "41a a design member keeps the 1m context ruling" "$out" " 1m"$'\n'
@@ -4060,13 +4069,13 @@ b41="$HANDOVER_DIR/u41/r41"; mkdir -p "$b41"; fx_brief '# fixture' >"$b41/consul
 b41c="$(cd -P "$b41" && pwd -P)"
 for k41 in consult plain; do
   d41k="$tmp/c41k-$k41"; mk_launch_stubs "$d41k" "HIMMEL-4061-$k41"
-  if [ "$k41" = consult ]; then kf41="--consult --profile design-motion --chief HIMMEL-4014-chief"; else kf41="--profile design-motion"; fi
+  if [ "$k41" = consult ]; then kf41="--consult --profile design-motion --chief HIMMEL-4014-chief"; m41=""; else kf41="--profile design-motion"; m41=claude-sonnet-5-5; fi
   # shellcheck disable=SC2086  # $kf41 is a deliberate multi-word flag set
   IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
   HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d41k/konsole" PGREP_CMD="$d41k/pgrep" \
   WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d41k/locks" HEADED_ARM_PROC="$d41k/proc" \
-    bash "$SCRIPT" $kf41 "HIMMEL-4061-$k41" "$b41/consult41.md" "$d41k/signal-never" "$PAST" "$d41k/log" >/dev/null 2>&1 || true
+    bash "$SCRIPT" $kf41 "HIMMEL-4061-$k41" "$b41/consult41.md" "$d41k/signal-never" "$PAST" "$d41k/log" $m41 >/dev/null 2>&1 || true
   wait_record "$d41k" || true
 done
 k41set_consult="$(cat "$tmp/c41k-consult/HIMMEL-4061-consult.leg-settings.json" 2>/dev/null || true)"
@@ -4156,7 +4165,7 @@ for sv41 in "HEADED_ARM_WORKER_TARGET $tmp/other-target41.sh" "HEADED_ARM_WORKER
 done
 # Counter-examples: a non-consult launch keeps honouring every seam, and a consult whose
 # TARGET/PROFILES override resolves to the in-repo file (non-canonical spelling) passes.
-rc=0; out="$(HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/other-claude41" HEADED_ARM_WORKER_TARGET="$tmp/other-target41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/other-claude41" HEADED_ARM_WORKER_TARGET="$tmp/other-target41.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "41i-4142 a non-consult launch with foreign CLAUDE_BIN/TARGET still passes (exit 0)" "$rc" "0"
 not_contains "41i-4142 a non-consult launch refuses no seam" "$out" "--consult refuses"
 rc=0; out="$(HEADED_ARM_WORKER_TARGET="$HERE/../chief-kit/../headed-arm.sh" HEADED_ARM_WORKER_PROFILES="$HERE/../chief-kit/../../lanes/plugin-profiles.mjs" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
@@ -4177,7 +4186,7 @@ contains "41i-4142 the exec target is the canonical headed-arm.sh" "$out" "would
 rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "41i-4152 a consult with a PATH token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
 contains "41i-4152 the PATH-token refusal names it" "$out" "refuses a PATH token"
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 PATH=$tmp/fake4152/bin:/usr/bin:/bin" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "41i-4152 a non-consult launch with a PATH token still passes (exit 0)" "$rc" "0"
 # with HEADED_ARM_WORKER_TARGET unset, a consult's default target is canonicalised
 # too, so a script reached through a symlinked kit directory still execs the real headed-arm.sh.
@@ -4192,7 +4201,7 @@ for tok4152 in "BASH_ENV=$tmp/x.sh" "ENV=$tmp/x.sh" "BASH_FUNC_command%%=() { :;
   check "41i-4152 a consult with a '${tok4152%%=*}' token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
   contains "41i-4152 the '${tok4152%%=*}' refusal names a startup token" "$out" "refuses a bash startup token"
 done
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 BASH_ENV=$tmp/x.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 BASH_ENV=$tmp/x.sh" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "41i-4152 a non-consult launch with a startup token still passes (exit 0)" "$rc" "0"
 # a real consult launch with a hostile caller runtime: a fake bash first
 # on PATH, a BASH_ENV file defining command(), an exported command function and ENV. None of
@@ -4286,7 +4295,7 @@ for tok4159 in "LD_PRELOAD=$tmp/x.so" "LD_LIBRARY_PATH=$tmp" "LD_AUDIT=$tmp/x.so
   rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
   check "41i-4159 a consult with a '${tok4159%%=*}' token in HEADED_ARM_LAUNCHER_ENV refuses (exit 2)" "$rc" "2"
   contains "41i-4159 the '${tok4159%%=*}' refusal names a preload token" "$out" "refuses a loader or node preload token"
-  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
   check "41i-4159 a non-consult launch with a '${tok4159%%=*}' token still passes (exit 0)" "$rc" "0"
 done
 # a token that is not NAME=VALUE becomes `env`'s command operand at the
@@ -4296,7 +4305,7 @@ for tok4159 in "$tmp/evil4159" "1X=1" "FOO-BAR=1" "=1" "-i"; do
   check "41i-4159 a consult with the non-NAME=VALUE token '$tok4159' refuses (exit 2)" "$rc" "2"
   contains "41i-4159 the '$tok4159' refusal names the token shape" "$out" "refuses a token that is not NAME=VALUE"
 done
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tmp/evil4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tmp/evil4159" WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "41i-4159 a non-consult dry run with a non-NAME=VALUE token still passes (exit 0)" "$rc" "0"
 # a real consult launch (stub konsole) with a no-`=` token naming a fake binary
 # refuses before anything runs: no konsole, and the fake binary never runs.

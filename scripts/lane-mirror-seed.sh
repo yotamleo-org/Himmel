@@ -27,8 +27,7 @@ function walk(rel,ancestors=new Set(),dst) {
     s=fs.lstatSync(p);
     if(s.isSymbolicLink()) {
       link=fs.readlinkSync(p);
-      // POSIX copies preserve links; win32 retains dereferencing to avoid symlink privilege requirements.
-      if(dst && process.platform!=="win32") { fs.symlinkSync(link,dst); return; }
+      if(dst) { fs.symlinkSync(link,dst); return; }
       s=fs.statSync(p);
     }
     if(s.isDirectory()) {
@@ -38,7 +37,7 @@ function walk(rel,ancestors=new Set(),dst) {
     } else if(s.isFile()) { data=fs.readFileSync(p); }
     else { skip(rel,"special file"); return; }
   } catch(e) {
-    if(dst && link!==undefined && process.platform!=="win32") throw e;
+    if(dst && link!==undefined) throw e;
     if(["ENOENT","ENOTDIR","EACCES","EPERM","ELOOP"].includes(e.code)) {
       if(e.code==="ENOENT" && !link) { record(rel,"absent\n"); return; }
       skip(rel,e.code); return;

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
-  "cited_at": "a17b85971de23887f1f7459cffb0bba56cca2c75",
+  "cited_at": "5fdf910ecb4201d16e9f1fe628a96eafd4e6f2d6",
   "reach_kinds": {
     "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
     "clone": "it runs from your himmel clone; a starter install does not copy it",
@@ -67,22 +67,18 @@
           "title": "Starting a worker",
           "rows": [
             {
-              "k": "usage",
-              "q": "Is your Claude usage too high? (the usage preflight does not say `PROCEED`)",
-              "by": "`usage-preflight.sh`",
+              "k": "tier",
+              "q": "A top-tier worker (opus, fable) without a stated reason?",
+              "by": "`headed-arm-worker.sh`",
               "outcome": {
-                "kind": "ask",
-                "text": "Ask"
+                "kind": "refuse",
+                "text": "Refuse"
               },
-              "next": "The chief waits for your ruling.",
+              "next": "Back to the brief, which must say why.",
               "source": {
-                "file": "scripts/lib/usage-preflight.sh",
-                "line": 957,
-                "text": "emit SKIPPED-BANK"
-              },
-              "reach": {
-                "kind": "project",
-                "text": "in your project"
+                "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
+                "line": 1377,
+                "text": "launch: $DOC has no '> **Tier:** $TIER_GATE"
               }
             },
             {
@@ -96,7 +92,7 @@
               "next": "The chief waits until a worker finishes.",
               "source": {
                 "file": "scripts/lib/usage-preflight.sh",
-                "line": 757,
+                "line": 746,
                 "text": "emit SKIPPED-FLEET"
               },
               "reach": {
@@ -105,18 +101,18 @@
               }
             },
             {
-              "k": "tier",
-              "q": "A top-tier worker (opus, fable) without a stated reason?",
+              "k": "usage",
+              "q": "Is this lane's usage bank used up? (the usage preflight says `SKIPPED-BANK`)",
               "by": "`headed-arm-worker.sh`",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Back to the brief, which must say why.",
+              "next": "The launch is refused: park the ticket and retry later. A stale or unknown bank reading does not stop the launch.",
               "source": {
                 "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
-                "line": 1357,
-                "text": "launch: $DOC has no '> **Tier:** $TIER_GATE"
+                "line": 2539,
+                "text": "lane bank exhausted (park and retry later"
               }
             },
             {
@@ -186,21 +182,6 @@
               }
             },
             {
-              "k": "merged",
-              "q": "Does that branch name belong to a pull request that already merged?",
-              "by": "`_new-worktree.sh`",
-              "outcome": {
-                "kind": "refuse",
-                "text": "Refuse"
-              },
-              "next": "Pick a fresh name. Skipped with a warning when the forge cannot be reached.",
-              "source": {
-                "file": "scripts/_new-worktree.sh",
-                "line": 149,
-                "text": "maps to a merged PR — pick a fresh name"
-              }
-            },
-            {
               "k": "ceiling",
               "q": "Are too many worktrees open already?",
               "by": "`_new-worktree.sh`",
@@ -213,6 +194,21 @@
                 "file": "scripts/_new-worktree.sh",
                 "line": 130,
                 "text": "worktree ceiling reached"
+              }
+            },
+            {
+              "k": "merged",
+              "q": "Does that branch name belong to a pull request that already merged?",
+              "by": "`_new-worktree.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Pick a fresh name. Skipped with a warning when the forge cannot be reached.",
+              "source": {
+                "file": "scripts/_new-worktree.sh",
+                "line": 149,
+                "text": "maps to a merged PR — pick a fresh name"
               }
             },
             {
@@ -272,7 +268,7 @@
               "next": "`COMMIT REJECTED: message does not match conventional commit format.`",
               "source": {
                 "file": "scripts/hooks/check-commit-msg.sh",
-                "line": 191,
+                "line": 188,
                 "text": "COMMIT REJECTED: message does not match conventional commit format."
               }
             },
@@ -287,7 +283,7 @@
               "next": "No tracker? Set `TICKET_ID_REQUIRED=0` in `~/.himmel/himmel.conf`.",
               "source": {
                 "file": "scripts/hooks/check-commit-msg.sh",
-                "line": 316,
+                "line": 309,
                 "text": "Opt out entirely with TICKET_ID_REQUIRED=0 in ~/.himmel/himmel.conf"
               }
             },
@@ -338,10 +334,10 @@
         210,
         52
       ],
-      "what": "Before Claude Code runs any tool, himmel's hooks see the call. They run in order, and the first one that says no stops it before anything happens. Git gates do the same for commits and pushes.",
+      "what": "Before Claude Code runs any tool, himmel's hooks check it. Each hook that matches the tool sees the call; any one that says no stops it before anything happens. Git gates do the same for commits and pushes.",
       "loop": [
         "Claude asks to run a tool",
-        "The hooks run in order",
+        "The hooks for that tool check the call",
         "Refused: Claude reads why and changes course",
         "Allowed or asked: the call runs"
       ],
@@ -360,7 +356,7 @@
               "next": "Make a worktree first. Once, on purpose: start Claude with `EDIT_ON_MAIN_OK=1 claude`.",
               "source": {
                 "file": "scripts/hooks/block-edit-on-main.sh",
-                "line": 268,
+                "line": 269,
                 "text": "block-edit-on-main: refusing to edit"
               }
             },
@@ -375,7 +371,7 @@
               "next": "Keys stay out of Claude's context. Once: `READ_SECRETS_OK=1 claude`.",
               "source": {
                 "file": "scripts/hooks/block-read-secrets.sh",
-                "line": 697,
+                "line": 700,
                 "text": "READ_SECRETS_OK=1 claude"
               }
             },
@@ -409,7 +405,7 @@
               "next": "Runs without a prompt, even inside a pipe.",
               "source": {
                 "file": "scripts/hooks/auto-approve-safe-bash.sh",
-                "line": 1821,
+                "line": 1830,
                 "text": "\"permissionDecision\":\"allow\""
               }
             },
@@ -492,7 +488,7 @@
               "next": "The push goes through and leaves a review-owed marker, which the pull-request check reads.",
               "source": {
                 "file": "scripts/hooks/check-cr-before-push.sh",
-                "line": 970,
+                "line": 969,
                 "text": "→ code-review: marker written for ${branch}"
               },
               "reach": {
@@ -511,7 +507,7 @@
               "next": "Name the systems you tested on, such as `Platforms tested: linux`, in the branch's first commit.",
               "source": {
                 "file": "scripts/hooks/check-platforms-tested.sh",
-                "line": 216,
+                "line": 215,
                 "text": "attestation found in commit messages or PR body."
               },
               "reach": {
@@ -731,10 +727,10 @@
                 "kind": "ask",
                 "text": "Ask"
               },
-              "next": "One diff-only round is left, and it blocks only on critical findings. A fourth full round is refused.",
+              "next": "One diff-only round may follow, and it blocks only on critical findings or ones that show a flow broken today. A judge NO-GO, every finding of that round fixed, or a red CI run buys one more bounded diff-only round. A fourth full round is refused.",
               "source": {
                 "file": "scripts/cr/review-round.sh",
-                "line": 1038,
+                "line": 1134,
                 "text": "a 4th full round is refused"
               }
             },
@@ -749,7 +745,7 @@
               "next": "The review-owed marker is cleared.",
               "source": {
                 "file": "scripts/cr/clear-review-marker.sh",
-                "line": 2028,
+                "line": 2025,
                 "text": "CR clean — marker cleared for $branch"
               },
               "end": true
@@ -823,7 +819,7 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; most failed reads let the merge through with a warning, but a required reviewer it cannot read holds the merge.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; a failed read lets the merge through with a warning, except in a clone armed with the CodeRabbit app, where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review.",
       "loop": [
         "Claude asks to merge",
         "The gate reads CI, the reviewers and CodeRabbit's threads",
@@ -845,7 +841,7 @@
               "next": "Re-run the review, or fix its findings.",
               "source": {
                 "file": "scripts/lib/review-merge-gate.sh",
-                "line": 489,
+                "line": 531,
                 "text": "a hard reviewer must pass at the head"
               }
             },
@@ -860,7 +856,7 @@
               "next": "Resolve them first.",
               "source": {
                 "file": "scripts/lib/review-merge-gate.sh",
-                "line": 373,
+                "line": 381,
                 "text": "unresolved CodeRabbit review thread(s) on PR"
               }
             },
@@ -963,7 +959,7 @@
               "next": "The worker fixes the one line that failed.",
               "source": {
                 "file": "scripts/handover/chief-kit/ready-check.sh",
-                "line": 539,
+                "line": 623,
                 "text": "PR body has no '## Ticket coverage' section"
               },
               "reach": {
@@ -982,7 +978,7 @@
               "next": "A separate judge session rules GO or NO-GO on that exact commit.",
               "source": {
                 "file": "scripts/handover/chief-kit/go.sh",
-                "line": 325,
+                "line": 363,
                 "text": "refusing the plain GO for PR"
               },
               "reach": {
@@ -1027,7 +1023,7 @@
               "next": "Only the chief writes the approval file, signed for one pull request and one commit.",
               "source": {
                 "file": "scripts/handover/chief-kit/go.sh",
-                "line": 246,
+                "line": 251,
                 "text": "go: refusing - this is a chief-spawned worker"
               },
               "reach": {
@@ -1065,7 +1061,7 @@
               "next": "Only a change that declares itself the fix goes through: a `Fixes-main-red:` line in a commit, or the chief's fix approval.",
               "source": {
                 "file": "scripts/handover/merge-on-green.sh",
-                "line": 1202,
+                "line": 1248,
                 "text": "main-red gate: $1 — not merging."
               },
               "reach": {
@@ -1134,7 +1130,7 @@
               "next": "It starts its successor and writes a handoff note.",
               "source": {
                 "file": "scripts/handover/chief/chief.sh",
-                "line": 966,
+                "line": 1005,
                 "text": "fill_percent=\"${CHIEF_FILL_PERCENT:-45}\""
               },
               "reach": {
@@ -1153,7 +1149,7 @@
               "next": "It stops its own tasks first.",
               "source": {
                 "file": "scripts/handover/chief/chief.sh",
-                "line": 451,
+                "line": 463,
                 "text": "wrap refused: this session has live non-harness processes"
               },
               "reach": {
@@ -1172,7 +1168,7 @@
               "next": "The old chief wraps; the new chief carries on from step 1.",
               "source": {
                 "file": "scripts/handover/chief-kit/relay-batch.sh",
-                "line": 282,
+                "line": 336,
                 "text": "echo \"RELAYED $sent of $total\""
               },
               "reach": {

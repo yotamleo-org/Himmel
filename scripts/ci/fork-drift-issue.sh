@@ -82,6 +82,11 @@ parse_report() {
   local re_latest='latest ([^ )]+)'
   local re_fork='fork-behind upstream=([^ ]+) behind=([0-9]+) ahead=([0-9]+) action=(.+)\)$'
   : > "$wd/behind.tsv"; : > "$wd/vendored.txt"; : > "$wd/other.txt"
+  # A fork is kept when ANY of its branch rows is ahead of upstream (BEHIND or
+  # CURRENT) or HELD, so its default branch with ahead=0 never reads use-upstream.
+  local carried held
+  carried="$(sed -n 's/^  \([^@ ]*\)@[^:]*: .*fork-behind upstream=[^ ]* behind=[0-9]* ahead=[1-9][0-9]*.*/\1/p' "$REPORT" | sort -u)"
+  held="$(sed -n 's/^  \([^@ :]*\/[^@ :]*\)@[^: ]*: HELD .*/\1/p' "$REPORT" | sort -u)"
   while IFS= read -r line; do
     case "$line" in
       "== pinned remotes"*) sec=remote; continue ;;
@@ -101,7 +106,15 @@ parse_report() {
         name="${rest%%: *}"
         tgt="${BASH_REMATCH[1]}"
         cur="behind=${BASH_REMATCH[2]} ahead=${BASH_REMATCH[3]}"
-        action="${BASH_REMATCH[4]}"
+        # A sync is upkeep, never a PR. No carried commits →
+        # drop the fork for its upstream; carried → the automatic resync.
+        if printf '%s\n' "$held" | grep -qxF "${name%@*}"; then
+          action="none: another branch of ${name%@*} is HELD, so no sync and no use-upstream until the hold lifts"
+        elif [ "${BASH_REMATCH[3]}" = 0 ] && ! printf '%s\n' "$carried" | grep -qxF "${name%@*}"; then
+          action="use-upstream ${tgt%@*} (no carried commits: point pins and installs at upstream, no sync)"
+        else
+          action="auto-sync: bash scripts/upstreams/resync-fork.sh --sync ${name%@*}"
+        fi
         printf '%s|fork-behind|%s|%s|%s\n' "$name" "$cur" "$tgt" "$action" >> "$wd/behind.tsv"
         continue
       fi

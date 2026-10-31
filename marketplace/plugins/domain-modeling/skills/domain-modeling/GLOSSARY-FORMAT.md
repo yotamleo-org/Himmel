@@ -25,4 +25,4 @@ The bold headword is the canonical name. The brackets hold its aliases: other wo
 - **Keep definitions tight.** One or two sentences max. Define what it IS, not what it does.
 - **Only include terms specific to this project's context.** General programming concepts (timeouts, error types, utility patterns) don't belong even if the project uses them extensively. Before adding a term, ask: is this a concept unique to this context, or a general programming concept? Only the former belongs.
 - **Group terms under subheadings** when natural clusters emerge. Match the existing sections of `docs/glossary.md` rather than inventing new ones.
-- **Keep repo identifiers in code spans** (`/console`, `go.sh`); they are never renamed.
+- **Keep repo identifiers in code spans** (`/chief`, `go.sh`); they are never renamed.

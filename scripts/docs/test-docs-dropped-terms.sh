@@ -63,7 +63,6 @@ docs/glossary.md	| Live settings not writable | `block-edit-live-settings` (Bash
 docs/guide/installer-journey.html	<span class="d">  [ ] 2. add the vault's absolute path as a line in ~/.config/claude-glm/phi-roots</span>
 docs/guide/installer-journey.html	<span class="d">  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist</span>
 docs/guide/installer-journey.html	      term: function () { return [['d', '── PHI checklist — READ ONLY, himmelctl creates none of this ──────────────'], ['d', '  [ ] 1. drop a `.salus` marker file at the vault root (or an ancestor dir)'], ['d', '  [ ] 2. add the vault\'s absolute path as a line in ~/.config/claude-glm/phi-roots'], ['d', '  [ ] 3. add the relevant path(s)/pattern(s) to ~/.config/claude-glm/egress-denylist'], ['q', '? does this vault handle Protected Health Information (PHI)? [yes|no] (default: no)'], ['in', '> no']]; },
-docs/handover/afk-mode.md	3. **Impl:** `superpowers:subagent-driven-development`. Sequential per task: implementer subagent → spec-compliance reviewer → code-quality reviewer → fix-on-finding → next task. **Verifier cadence (Fable-5 scaffolding):** every 3 completed tasks, dispatch one fresh-context verifier subagent that re-checks the accumulated branch diff against the Phase-1 plan. Fresh-context verification beats self-critique, and the per-task reviewers see one task at a time; this is the layer that catches cross-task drift before Phase 4. **Stop-check:** before EACH subagent dispatch in this loop, run `bash scripts/afk/stop-marker.sh check` (silent; rc=0 = stop marker present, rc=1 = clear). When rc=0, finish the in-flight subagent if one is running, then halt the loop gracefully (write a `next-session-N.md` snapshot at the partial-completion point, file followup tickets for remaining tasks, and exit Phase 3). Operator-triggered via `/stop` (soft) or `/stop --hard` (also `TaskStop`s in-flight). `/stop --reset` clears the marker.
 docs/handover/afk-mode.md	[Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5)
 docs/handover/afk-mode.md	counters context-budget anxiety (Fable 5 occasionally wraps up early when
 docs/handover/afk-mode.md	written-deliverable padding (Opus 5 pads documents by default, and this
@@ -463,7 +462,7 @@ done
 # and this file's own samples. An entry whose
 # file no longer carries a call fails, so the list only shrinks.
 PWSH_CALL=$'(^|[^A-Za-z0-9_.-])["\']?(pwsh|powershell)(\\.exe)?["\']?[[:space:]]+(-[A-Za-z]+([[:space:]]|$)|[^[:space:]]*\\.ps1)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\\([[:space:]]*.(pwsh|powershell)(\\.exe)?.[,)]'
-# The last three entries are Windows-only test branches kept until the win32
+# The last two entries are Windows-only test branches kept until the win32
 # branch sweep removes them.
 PWSH_ALLOW='scripts/cr/test-cr-guarded-closure.sh
 scripts/docs/test-docs-dropped-terms.sh
@@ -472,7 +471,6 @@ scripts/hooks/test-block-bare-qmd-query.sh
 scripts/hooks/test-block-destructive-commands-a.sh
 scripts/hooks/test-block-edit-live-settings.sh
 scripts/handover/test-merge-on-green.sh
-scripts/lib/test-worktree-inuse.sh
 scripts/test-clean-garden-accounting.sh'
 
 # pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call;

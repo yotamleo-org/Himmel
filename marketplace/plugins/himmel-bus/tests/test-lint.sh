@@ -53,5 +53,17 @@ for dir in server lib; do
   esac
 done
 
+# The README names only profile ids that resolve with the legacy-names switch
+# off: the retired leg-* ids are refused as unknown profiles there.
+OLD_PROFILE='leg-(impl|bus|vm|e2e)'
+printf 'run it on the leg-bus profile\n' > "$tmp/planted-readme.md"
+if grep -qE "$OLD_PROFILE" "$tmp/planted-readme.md"; then pass "control: a planted retired profile id is detected"; else fail "control: lint missed a planted leg-bus"; fi
+grep -qE "$OLD_PROFILE" "$HERE/README.md"; rc=$?
+case "$rc" in
+  0) fail "README.md names a retired profile id:"; grep -nE "$OLD_PROFILE" "$HERE/README.md" ;;
+  1) pass "README.md names no retired profile id" ;;
+  *) fail "README.md scan failed (rc=$rc)" ;;
+esac
+
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures"; exit 1; }
 echo "all passed"

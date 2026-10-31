@@ -191,7 +191,7 @@ qmd = entries['qmd']
 assert qmd['tracked_repo'] == 'tobi/qmd'
 # re-carried the fork (launcher signal forwarding) until
 # tobi/qmd#1030 lands; an earlier change drops this block again.
-assert qmd['fork']['fork_repo'] == 'https://github.com/yotamleo/qmd.git'
+assert qmd['fork']['fork_repo'] == 'https://github.com/yotamleo-org/qmd.git'
 assert qmd['fork']['upstream_repo'] == 'https://github.com/tobi/qmd.git'
 assert qmd['fork']['pin_file'] == 'scripts/lib/qmd-bin.sh'
 assert 'version_pin' not in qmd
@@ -203,6 +203,17 @@ assert gfy['fork']['upstream_repo'] == 'https://github.com/Graphify-Labs/graphif
 assert gfy['fork']['branch'] == 'himmel-main'
 assert gfy['fork']['pin_file'] == 'scripts/lib/graphify-bin.sh'
 assert 'version_pin' not in gfy
+
+# Vendored trees pinned by commit get a commit_head row whose pin matches the
+# VENDORED.md record.
+for name in ('humanizer', 'i-have-adhd'):
+    vend = (root / 'marketplace/plugins' / name / 'VENDORED.md').read_text(encoding='utf-8')
+    e = entries[name]
+    assert e['kind'] == 'commit_head' and e['mode'] == 'pin', name
+    assert e['tracked_repo'] in vend and e['pinned_commit'] in vend, name
+# The Home Assistant forks belong to the voice add-on: held by operator ruling, never drift.
+for ha in ('yotamleo-org/core', 'yotamleo-org/home-assistant.io'):
+    assert 'HIMMEL-8333' in holds.get(ha, ''), ha + ' needs a HIMMEL-8333 hold'
 
 plugin_root = root / 'templates/luna-second-brain/.obsidian/plugins'
 community = json.load(open(root / 'templates/luna-second-brain/.obsidian/community-plugins.json', encoding='utf-8'))
@@ -786,12 +797,13 @@ SHASUM
 chmod +x "$W5C/bin/gh" "$W5C/bin/shasum"
 printf '{"plugins":[]}' >"$W5C/empty_mjson.json"
 printf '{}' >"$W5C/empty_ups.json"
+printf '[]' >"$W5C/no_adapters.json"
 if PATH="$W5C/bin:$W5C/nosha" command -v sha256sum >/dev/null 2>&1; then
   bad "sha256sum-mask setup failed - sha256sum still resolvable"
 else
   ok "sha256sum-mask: sha256sum unresolvable"
 fi
-hash_out="$(PATH="$W5C/bin:$W5C/nosha" DRIFT_MJSON="$W5C/empty_mjson.json" DRIFT_UPSTREAMS="$W5C/empty_ups.json" DRIFT_REGISTRY=/dev/null DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$W5C/scripts/check-plugin-drift.sh" 2>&1)"; hash_rc=$?
+hash_out="$(PATH="$W5C/bin:$W5C/nosha" DRIFT_MJSON="$W5C/empty_mjson.json" DRIFT_UPSTREAMS="$W5C/empty_ups.json" DRIFT_REGISTRY=/dev/null DRIFT_KNOWN_MARKETPLACES=/dev/null DRIFT_ADAPTERS="$W5C/no_adapters.json" bash "$W5C/scripts/check-plugin-drift.sh" 2>&1)"; hash_rc=$?
 if grepq "$hash_out" '^  hash-pin: CURRENT'; then ok "sha256sum absent -> shasum fallback verifies vendored fork CURRENT"; else bad "sha256sum fallback did not verify CURRENT; $(printf '%s' "$hash_out" | grep hash-pin)"; fi
 if grepq "$(printf '%s' "$hash_out" | grep 'hash-pin')" 'DRIFT'; then bad "sha256sum absent was reported as DRIFT"; else ok "sha256sum absent never reported as DRIFT"; fi
 if [ "$hash_rc" -eq 0 ]; then ok "sha256sum fallback-only run exits 0"; else bad "sha256sum fallback run rc=$hash_rc; expected 0"; fi
@@ -1296,6 +1308,7 @@ pkg="${last#https://registry.npmjs.org/}"; pkg="${pkg%/latest}"
 case "$last" in https://pypi.org/pypi/*) pkg="${last#https://pypi.org/pypi/}"; pkg="${pkg%/json}"
   ver=$(grep -E "^${pkg}=" "$PINSTATE/pypi" 2>/dev/null | head -1 | cut -d= -f2); [ -n "$ver" ] || exit 22
   printf '{"info":{"version":"%s"}}\n' "$ver"; exit 0 ;; esac
+case "$last" in https://nodejs.org/dist/index.json) [ -n "${NODE_INDEX:-}" ] || exit 22; printf '%s\n' "$NODE_INDEX"; exit 0 ;; esac
 ver=$(grep -E "^${pkg}=" "$PINSTATE/npm" 2>/dev/null | head -1 | cut -d= -f2)
 [ -n "$ver" ] || ver="${PINSTATE_DEFAULT:-}"
 [ -n "$ver" ] || exit 22
@@ -1436,6 +1449,46 @@ done < <(git -C "$ROOT" ls-files '*package.json' | grep -v -e '^node_modules/' -
 if [ -z "$cov_missing" ]; then ok "pin-scan discovers every tracked package.json directory with dependency pins"; else bad "pin-scan missed:$cov_missing"; fi
 if grepq "$cov_out" -F 'scripts/hooks/check-oxlint-complexity.sh' && grepq "$cov_out" -F 'scripts/hooks/check-oxlint-hardening.sh'; then ok "pin-scan discovers both oxlint hook pins"; else bad "oxlint hook pins not discovered"; fi
 if grepq "$cov_out" -E '^  gh:gitleaks/gitleaks v[0-9.]+ \([^)]*\.github/workflows/ci\.yml[^)]*\.pre-commit-config\.yaml'; then ok "pin-scan reads the ci.yml gitleaks literal into the same row as the hook rev"; else bad "ci.yml gitleaks pin not discovered with the hook rev; $(printf '%s' "$cov_out" | grep gitleaks)"; fi
+# Version literals outside manifests: every real installer and
+# runner pin reads a row with its real version, read from the real file.
+lit_missing=""
+for lit in 'scripts/machine-setup/installer-pins.sh NVM_TAG gh:nvm-sh/nvm' \
+           'scripts/machine-setup/installer-pins.sh NODE_VERSION node:node' \
+           'scripts/machine-setup/installer-pins.sh UV_VERSION gh:astral-sh/uv' \
+           'scripts/machine-setup/installer-pins.sh RTK_VERSION gh:rtk-ai/rtk' \
+           'scripts/ci/gcp-runner-startup.sh RUNNER_VERSION gh:actions/runner' \
+           'scripts/vm/ci-runner/guest-provision.sh RUNNER_VERSION gh:actions/runner' \
+           'scripts/ci/gcp-runner-startup.sh BUN_VERSION gh:oven-sh/bun' \
+           'scripts/cloud/setup-env.sh GL_VER gh:gitleaks/gitleaks' \
+           'scripts/observability/install-grafana.sh PROM_VER gh:prometheus/prometheus' \
+           'scripts/observability/install-grafana.sh GRAF_VER gh:grafana/grafana'; do
+  read -r lf lv lk <<< "$lit"
+  v="$(sed -n "s/^$lv=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$ROOT/$lf" | head -1)"
+  { [ -n "$v" ] && grepq "$cov_out" -E "^  $lk $v \([^)]*$lf"; } || lit_missing="$lit_missing $lf:$lv"
+done
+nvmrc="$(head -1 "$ROOT/.nvmrc")"
+grepq "$cov_out" -E "^  node:node $nvmrc \([^)]*\.nvmrc" || lit_missing="$lit_missing .nvmrc"
+if [ -z "$lit_missing" ]; then ok "pin-scan discovers every installer, runner and tool version literal"; else bad "pin-scan missed literals:$lit_missing"; fi
+# Literal rows: node compares to the newest LTS (never a Current-only major),
+# a tag_prefix is stripped, and a missing literal is UNCHECKED, never CURRENT.
+mkdir -p "$W12/lit/scripts/upstreams"
+printf '24\n' > "$W12/lit/.nvmrc"
+printf '#!/usr/bin/env bash\n  export BUN_VERSION="1.4.4"\n' > "$W12/lit/x.sh"
+cat > "$W12/lit/scripts/upstreams/literal-pins.json" <<'JSON'
+{"pins":[
+  {"file":".nvmrc","var":null,"eco":"node","key":"node"},
+  {"file":"x.sh","var":"BUN_VERSION","eco":"gh","key":"oven-sh/bun","tag_prefix":"bun-v"},
+  {"file":"x.sh","var":"GONE_VERSION","eco":"gh","key":"owner/gone"}
+]}
+JSON
+printf 'oven-sh/bun=bun-v1.5.0\n' >> "$W12/state/rel"
+lit_rc=0
+lit_out="$(PINSTATE="$W12/state" PATH="$W12/bin:$PATH" NODE_INDEX='[{"version":"v27.0.0","lts":false},{"version":"v26.13.0","lts":"Krypton"}]' \
+  python3 "$ROOT/scripts/upstreams/pin-scan.py" "$W12/lit" "" 2>&1)" || lit_rc=$?
+if [ $((lit_rc & 2)) -ne 0 ]; then ok "pin-scan: a missing literal sets the UNCHECKED exit bit"; else bad "missing literal left exit bit 2 unset (rc=$lit_rc)"; fi
+if grepq "$lit_out" -F 'node:node 24 (.nvmrc): BEHIND   (latest v26.13.0'; then ok "pin-scan: node literal compares to the newest LTS"; else bad "node literal not compared to LTS; $lit_out"; fi
+if grepq "$lit_out" -F 'gh:oven-sh/bun 1.4.4 (x.sh): BEHIND   (latest 1.5.0'; then ok "pin-scan: tag_prefix stripped before comparing"; else bad "bun tag prefix not stripped; $lit_out"; fi
+if grepq "$lit_out" -F 'gh:owner/gone ? (x.sh): ? no resolvable current version'; then ok "pin-scan: missing literal reads UNCHECKED"; else bad "missing literal not UNCHECKED; $lit_out"; fi
 rm -rf "$W12" "$PIN_EMPTY"
 
 # 13. Non-semver tag streams + git-subdir sources. Hermetic: a
@@ -1604,8 +1657,26 @@ case "$*" in
   'repo list yotamleo --fork '*)
     [ "${FORK_LIST_FAIL:-0}" = 1 ] && exit 1
     printf '[{"nameWithOwner":"yotamleo/fast"},{"nameWithOwner":"yotamleo/carried"},{"nameWithOwner":"yotamleo/held"},{"nameWithOwner":"yotamleo/current"},{"nameWithOwner":"yotamleo/renamed"}]\n' ;;
+  "repo list ${FORK_OWNER:-none} --fork "*)
+    printf '[{"nameWithOwner":"%s/%s"}]\n' "$FORK_OWNER" "${FORK_NAME:-disc}" ;;
   'api repos/yotamleo/'*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
+  "api repos/${FORK_OWNER:-none}/claude-video")
+    printf '{"default_branch":"main","parent":{"full_name":"bradautomates/claude-video"}}\n' ;;
+  "api repos/${FORK_OWNER:-none}/gone")
+    printf '{"default_branch":"main","archived":true,"parent":{"full_name":"upstream/gone"}}\n' ;;
+  "api repos/${FORK_OWNER:-none}/home-assistant.io")
+    printf '{"default_branch":"current","parent":{"full_name":"upstream/home-assistant.io"}}\n' ;;
+  "api repos/${FORK_OWNER:-none}/"*)
+    printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
+  "api repos/bradautomates/claude-video/compare/main...${FORK_OWNER:-none}:himmel-main")
+    printf '{"behind_by":22,"ahead_by":4}\n' ;;
+  'api repos/bradautomates/claude-video')
+    printf '{"default_branch":"main"}\n' ;;
+  "api repos/upstream/disc/compare/trunk...${FORK_OWNER:-none}:main")
+    printf '{"behind_by":2,"ahead_by":0}\n' ;;
+  'api repos/upstream/home-assistant.io/compare/'*)
+    printf '{"behind_by":170,"ahead_by":0}\n' ;;
   'api repos/upstream/'*/compare/*)
     case "$2" in
       repos/upstream/fast/compare/main...yotamleo:main)
@@ -1644,9 +1715,11 @@ cat > "$W17/reg.json" <<'JSON'
   {"fork_repo":"yotamleo/held","hold-reason":"reviewed compatibility hold"}
 ]}
 JSON
+printf '[]' > "$W17/no-adapters.json"
 fork_run() {
   PATH="$W17/bin:$PATH" DRIFT_MJSON="$W17/m.json" DRIFT_UPSTREAMS="$W17/u.json" \
     DRIFT_REGISTRY="$W17/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null \
+    DRIFT_ADAPTERS="${DRIFT_ADAPTERS:-$W17/no-adapters.json}" \
     bash "$W17/scripts/check-plugin-drift.sh" 2>&1
 }
 fork_out="$(fork_run)"; fork_rc=$?
@@ -1667,10 +1740,53 @@ if grepq "$fork_out" 'yotamleo/fast@himmel/registry: BEHIND.*behind=7 ahead=1'; 
 if grepq "$fork_out" 'yotamleo/offlist@himmel/pin: BEHIND.*behind=7 ahead=1'; then ok "fork-behind: plugin fork block checked outside discovered inventory"; else bad "fork-behind: plugin fork block ignored"; fi
 fork_out="$(FORK_BAD_COUNTS=1 fork_run)"; fork_rc=$?
 if grepq "$fork_out" 'yotamleo/fast@himmel/pin: .*UNCHECKED' && ! grepq "$fork_out" 'yotamleo/fast@himmel/pin: BEHIND'; then ok "fork-behind: malformed counts never claim a comparison"; else bad "fork-behind: malformed counts were trusted"; fi
+# The adapter registry names the org forks and their himmel
+# branch. Fixture row copied from the real himmel-adapters.json claude-video row.
+python3 - "$ROOT/scripts/guardrails/himmel-adapters.json" "$W17/adapters.json" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+row = next(r for r in rows if r['nwo'].endswith('/claude-video'))
+owner = row['nwo'].split('/')[0]
+rows = [row,
+        {'nwo': owner + '/gone', 'upstream': 'upstream/gone', 'himmel_branch': 'main'},
+        {'nwo': owner + '/firstparty', 'upstream': None, 'himmel_branch': 'main'}]
+json.dump(rows, open(sys.argv[2], 'w'))
+PY
+FORK_OWNER="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["nwo"].split("/")[0])' "$W17/adapters.json")"
+export FORK_OWNER
+fork_out="$(DRIFT_ADAPTERS="$W17/adapters.json" fork_run)"; fork_rc=$?
+if [ "$fork_rc" -eq 2 ]; then ok "fork-behind: adapter fork drift exits 2"; else bad "fork-behind: adapter fork drift exit $fork_rc, expected 2"; fi
+if grepq "$fork_out" "$FORK_OWNER/claude-video@himmel-main: BEHIND.*behind=22 ahead=4"; then ok "fork-behind: adapter fork checked on its himmel branch"; else bad "fork-behind: adapter fork himmel branch not checked; $fork_out"; fi
+if grepq "$fork_out" "$FORK_OWNER/disc@main: BEHIND"; then ok "fork-behind: forks of every adapter owner are discovered"; else bad "fork-behind: adapter owner forks not discovered"; fi
+if grepq "$fork_out" "$FORK_OWNER/gone@main: ARCHIVED" && ! grepq "$fork_out" "$FORK_OWNER/gone@main: BEHIND"; then ok "fork-behind: archived fork reads ARCHIVED, not drift"; else bad "fork-behind: archived fork not reported ARCHIVED"; fi
+if grepq "$fork_out" "$FORK_OWNER/firstparty"; then bad "fork-behind: first-party adapter repo checked as a fork"; else ok "fork-behind: first-party adapter repo skipped"; fi
+unset FORK_OWNER
 printf '{"entries":[]}' > "$W17/reg.json"
 printf '{}' > "$W17/u.json"
 fork_out="$(FORK_LIST_FAIL=1 fork_run)"; fork_rc=$?
 if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'fork inventory: .*UNCHECKED'; then ok "fork-behind: failed inventory alone is incomplete, not current"; else bad "fork-behind: failed inventory exit $fork_rc, expected 3"; fi
+fork_out="$(FORK_LIST_FAIL=1 DRIFT_ADAPTERS="$W17/absent.json" fork_run)"; fork_rc=$?
+if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'adapter registry .*not found.*UNCHECKED'; then ok "fork-behind: a missing adapter registry is incomplete, not skipped"; else bad "fork-behind: missing adapter registry exit $fork_rc, expected 3 UNCHECKED; $fork_out"; fi
+# The nightly workflow rebuilds the registry before the guard runs, and the
+# Home Assistant holds must survive that rebuild. Fixture: the workflow's own jq
+# expression over the real registry, and the real adapter row. Entries are
+# emptied after the rebuild: only the fork step is under test here.
+FORK_OWNER="$(python3 - "$ROOT/.github/workflows/fork-drift.yml" "$ROOT/scripts/upstreams.json" "$ROOT/scripts/guardrails/himmel-adapters.json" "$W17" <<'PY'
+import json, re, subprocess, sys
+wf, reg, adapters, w = sys.argv[1:5]
+expr = re.search(r"jq '([^']*)'\s*\\\s*\n\s*scripts/upstreams\.json", open(wf).read()).group(1)
+ci = json.loads(subprocess.run(['jq', expr, reg], capture_output=True, text=True, check=True).stdout)
+ci['entries'] = []
+json.dump(ci, open(w + '/reg.json', 'w'))
+rows = [r for r in json.load(open(adapters)) if r['nwo'].endswith('/home-assistant.io')]
+json.dump(rows, open(w + '/ha-adapters.json', 'w'))
+print(rows[0]['nwo'].split('/')[0])
+PY
+)"
+export FORK_OWNER
+fork_out="$(FORK_NAME=home-assistant.io DRIFT_ADAPTERS="$W17/ha-adapters.json" fork_run)"; fork_rc=$?
+if grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: HELD" && ! grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: BEHIND"; then ok "fork-behind: CI-rebuilt registry keeps the Home Assistant hold"; else bad "fork-behind: CI-rebuilt registry dropped the Home Assistant hold; $fork_out"; fi
+unset FORK_OWNER
 rm -rf "$W17"
 
 echo ""

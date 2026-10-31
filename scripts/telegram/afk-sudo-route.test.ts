@@ -344,13 +344,23 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
   expect(b.calls).toEqual([]);
 });
 
-test("button: a code-shaped reply to a bot message with no known prompt is consumed, however it is spaced", async () => {
-  for (const text of ["123 456", "123-456", " 123456 ", "1234567", "12 34 56"]) {
+test("button: a reply to a bot message with no known prompt holding a standalone six-digit token, or only a spaced code, is consumed", async () => {
+  for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today", "123 456", "123-456", "12 34 56", "1234567", "10-31 08"]) {
     const b = buttons();
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
     await settle();
     expect(b.calls).toEqual([]);
     expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
+  }
+});
+
+test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exist only split by spaces or hyphens inside words is ordinary text", async () => {
+  for (const text of ["do 8276 8277 next", "ticket 123-456 is done"]) {
+    const b = buttons();
+    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies).toEqual([]);
   }
 });
 
@@ -383,11 +393,12 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   }
 });
 
-test("button: a code buried in words or punctuation is consumed on a reply to a bot message and while a prompt is live", async () => {
+test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it is a standalone six-digit token", async () => {
   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
   for (const text of texts) {
+    // a reply to a bot message with no known prompt is held only for a contiguous six-digit token
     const gone = buttons();
-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text));
     const live = buttons();
     live.tap(tapOf("afk:approve:abcdefgh"));
     await settle();

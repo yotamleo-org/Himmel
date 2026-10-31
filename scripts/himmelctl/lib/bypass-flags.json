@@ -158,6 +158,14 @@
       "remedy": "FIND_ROOTWALK_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "FORK_SYNC_PR_OK",
+      "hooks": [
+        "scripts/hooks/block-fork-sync-pr.sh"
+      ],
+      "bypasses": "Lets a gh pr create that syncs upstream into one of our forks through (a fork sync is upkeep, never a PR).",
+      "remedy": "FORK_SYNC_PR_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "GIT_STASH_OK",
       "hooks": [
         "scripts/hooks/block-git-stash.sh"

@@ -19,11 +19,8 @@
 #
 # Same-shape as the P0 harness on feat/claude-p-probes
 # (scripts/probes/claude-p/common.sh there): haiku, no /tmp (rc=127 trap;
-# this repo requires probe state under scripts/, gitignored via tmp/), a
-# fixed short timeout, MSYS_NO_PATHCONV=1 around every invocation (P0
-# finding: Git Bash mangles a leading-slash arg into a Windows path before
-# claude.exe sees it — not exercised by this probe's plain-text prompt, but
-# set for consistency with every other headless call in this repo).
+# this repo requires probe state under scripts/, gitignored via tmp/) and a
+# fixed short timeout.
 #
 # ONE measured pass. Do not loop or retry this probe — record what happened.
 # billed-opt-in: HIMMEL_BILLED_OK
@@ -78,15 +75,6 @@ echo "Use the Bash tool to run exactly this command: echo probe-marker" > "$PROM
 
 OVERLAY_FILE="$OUT_DIR/overlay.json"
 echo '{}' > "$OVERLAY_FILE"
-# MSYS_NO_PATHCONV=1 (set on every invocation below, per the mandatory P0
-# convention) disables Git Bash's automatic POSIX->Windows path rewrite for
-# EVERY argv element, not just a leading-slash prompt — so a POSIX-style
-# path built by $(pwd) (e.g. /c/Users/...) reaches claude.exe unconverted
-# and it cannot find the file. cygpath -m produces the Windows-style
-# equivalent (C:/Users/...) so --settings still resolves under
-# MSYS_NO_PATHCONV. First run of this probe hit exactly this (see
-# RESULTS-3e.md methodology note) — corrected here, not papered over.
-if command -v cygpath >/dev/null 2>&1; then OVERLAY_FILE="$(cygpath -m "$OVERLAY_FILE")"; fi
 
 run_claude() {
   # $1 = output json path, $2 = stderr path, extra args (e.g. --settings ...) follow
@@ -100,7 +88,7 @@ run_claude() {
   ( cd "$SCRATCH" && { . "$REPO_ROOT/scripts/lib/native-auth-pin.sh" || exit 1; native_auth_pin_env
     [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]] &&
     # probe 3e (bank-preflight gates above)
-    timeout "$TIMEOUT_S" env MSYS_NO_PATHCONV=1 claude -p \
+    timeout "$TIMEOUT_S" claude -p \
       --output-format json --permission-mode acceptEdits --allowedTools "Bash" \
       --max-turns 2 --model "$MODEL" "$@" < "$PROMPT_FILE" > "$out" 2>"$err"; } )
 }

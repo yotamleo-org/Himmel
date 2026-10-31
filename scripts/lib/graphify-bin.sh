@@ -264,7 +264,8 @@ _graphify_mcp_import_ok() {
     [ -f "$tool_venv/bin/python" ] && py="$tool_venv/bin/python"
   fi
   [ -n "$py" ] || return 2
-  "$py" -c 'import mcp' >/dev/null 2>&1 || return 1
+  # -I: an mcp.py in the caller's cwd must not answer for the install.
+  "$py" -I -c 'import mcp' >/dev/null 2>&1 || return 1
   return 0
 }
 

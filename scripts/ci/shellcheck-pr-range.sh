@@ -13,7 +13,9 @@
 #
 # Fail-safe direction: when in doubt, lint everything (--all-files) if
 #   - the diff cannot be computed or a neighbour lookup errors,
-#   - a changed file has a source line naming no *.sh/*.bash (dynamic, uncertain),
+#   - a changed shell file has a variable-glued source name ("${D}x.sh") or a source line naming
+#     a tracked shell file without a .sh/.bash name (dynamic, uncertain); a changed non-shell
+#     file is not scanned for forward edges, and a line naming no .sh/.bash adds no edge,
 #   - .pre-commit-config.yaml, a .shellcheckrc/shellcheckrc at ANY depth (the nearest
 #     rc shadows the root one for untouched files), the CI workflow or this script changed,
 #   - a changed path contains a newline anywhere, or a neighbour path needs quoting.
@@ -189,6 +191,21 @@ cmd_pos() {
   done
   return 0
 }
+# may the shellcheck hook lint this file (identify's shell type: by extension, by name such as
+# PKGBUILD or .kshrc, or by shebang)? True for everything except a file of a KNOWN non-shell type
+# with no shell shebang, so a type this list has never heard of keeps its forward edges: a wrong
+# yes only widens the selection, a wrong no would drop an edge the full sweep followed.
+is_shell() {
+  case "$1" in
+    *.md | *.markdown | *.txt | *.rst | *.json | *.jsonc | *.yml | *.yaml | *.toml | *.xml | *.html | *.htm | *.css | *.svg | *.png | *.jpg | *.jpeg | *.gif | *.ico | *.pdf | *.lock | *.tsv | *.csv | *.js | *.mjs | *.cjs | *.jsx | *.ts | *.tsx | *.py | *.rb | *.sql | *.gql | *.graphql) ;;
+    *) return 0 ;;
+  esac
+  local first=
+  # read-sink-ok: $1 is a path from the PR's own git diff, read for its first line only and never echoed
+  IFS= read -r first < "$1"
+  case "$first" in '#!'*sh* | '#!'*cbsd*) return 0 ;; esac
+  return 1
+}
 # consumers of $1: a source/. line or a `# shellcheck source=` directive naming it
 consumers() { ( set -o pipefail; N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n" ); }
 
@@ -212,6 +229,10 @@ while IFS= read -r f; do
   cat "$list.n" >> "$list"
   # files this one sources (only if it still exists)
   [ -f "$f" ] || continue
+  # forward edges only from files the hook feeds to shellcheck; the text of any other
+  # file (README, SKILL.md, .json, .mjs) cannot change a verdict. The hook's `exclude` is not
+  # applied here: scanning an excluded vendored file only widens the selection, never narrows it.
+  is_shell "$f" || continue
   # directive targets: `# shellcheck source=<path>` names a file shellcheck follows
   grep -E -e "^[[:space:]]*#[[:space:]]*${dir_re}" "$f" 2>/dev/null | sed 's/.*source=//; s/[[:space:]].*$//' | grep -v '^/dev/null$' | while IFS= read -r d; do
     d=${d##*/}
@@ -223,8 +244,28 @@ while IFS= read -r f; do
   mark=$(printf '\001')
   lines=$(sed -E -e "/^[[:space:]]*#[[:space:]]*shellcheck[[:space:]].*source=[^[:space:]]+\.(sh|bash)([[:space:]]|\$)/{" -e ':a' -e 'n' -e '/^[[:space:]]*#/ba' -e "s/^/$mark/" -e '}' "$f" 2>/dev/null | grep -E -e "$src_re" | grep -v "^$mark" | grep -v '^[[:space:]]*#' | sed 's/[[:space:]]#.*$//' | cmd_pos)
   [ -n "$lines" ] || continue
-  # every source line must name a *.sh/*.bash, else the neighbour set is uncertain
-  printf '%s\n' "$lines" | grep -qvE '[A-Za-z0-9_.+-]+\.(sh|bash)' && run_all "dynamic source line in $f"
+  # a line naming no *.sh/*.bash (a bare "$VAR", jq/Python heredoc text, a .env tail)
+  # adds no edge: shellcheck cannot follow it (SC1090), so no other input can change this file's
+  # verdict. It stays dynamic only when its operand names a tracked file that may be shell under
+  # another name shape (no extension, .bats, a shebang file, ...), which shellcheck could follow.
+  nolit=$(printf '%s\n' "$lines" | grep -vE '[A-Za-z0-9_.+-]+\.(sh|bash)')
+  lines=$(printf '%s\n' "$lines" | grep -E '[A-Za-z0-9_.+-]+\.(sh|bash)')
+  if [ -n "$nolit" ]; then
+    if [ -z "${shnames+x}" ]; then
+      sb=$(git grep -l -I -E -e '^#!.*(sh|cbsd)' -- .) || [ "$?" -eq 1 ] || run_all "git grep failed on shebangs"
+      # shell by shebang, or a name with no extension (PKGBUILD, .kshrc, ...), or a shell extension other than .sh/.bash
+      shnames=$({ printf '%s\n' "$sb" | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }'; printf '%s\n' "$tracked" | awk -F/ 'NF && ($NF ~ /^\.?[^.]*$/ || $NF ~ /\.(bats|ksh|zsh|dash|ash|csh|tcsh)$/) { print $NF }'; } | sort -u)
+    fi
+    ops=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*')
+    # an operand built by a command substitution can name any file
+    grep -qE '\$\(|`' <<< "$ops" && run_all "command substitution in a source operand in $f"
+    # the operand's literal tail: the word after `source`/`.`, quotes dropped, past its last `/`
+    tails=$(sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///' -e 's/^(\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)//' <<< "$ops")
+    if [ -n "$shnames" ] && grep -qxF -e "$shnames" <<< "$tails"; then
+      run_all "source line naming a shell file without a .sh/.bash name in $f"
+    fi
+  fi
+  [ -n "$lines" ] || continue
   # a name glued to a variable expansion ("${D}x.sh", "$N.sh") passes the check above but is dynamic
   printf '%s\n' "$lines" | grep -qE '(\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)[A-Za-z0-9_.+-]*\.(sh|bash)' && run_all "variable-glued source name in $f"
   names=$(printf '%s\n' "$lines" | grep -oE '[A-Za-z0-9_.+-]+\.(sh|bash)')

@@ -87,6 +87,14 @@ examples:
 [`docs/internals/ponytail-convention.md`](ponytail-convention.md).
 Other code comments: keep list only, never ticket/review history (gate: `check-history-comments`, same doc).
 
+### Renaming a name
+A rename lands as one finished change: alias row first, one shared reader, writers
+and docs and tests in the same PR, stored records migrated or read-aliased, the
+removal ticket filed in the alias PR. CI refuses a retired name on added lines
+(`check-rename-diff.sh`) and a doc flag the CLI does not accept
+(`check-doc-literals.sh`) →
+[`docs/internals/rename-procedure.md`](rename-procedure.md). [prose]
+
 ### Where artifacts land
 - **Reference docs operators consume** → the owning repo's `docs/` (plugin specs
   → `plugins/<plugin>/README.md`). `templates/luna-second-brain/` is
@@ -159,6 +167,6 @@ Docs not already linked from a rule above (relative to `docs/`):
 | `internals/testing.md` | non-guessable test invocations (`bash scripts/ci/run-shell-tests.sh`, lanes, bun) |
 | `handover/afk-mode.md` | autonomous end-to-end execution of a well-scoped ticket |
 | `glossary.md` | the one definition site: chief, judge, relay, worker, dependency chain, parallel wave, arming, manual override |
-| `handover/running-a-console.md` | starting + handing over a console (`/console new\|next`), vs `/afk-shift` |
+| `handover/running-a-chief.md` | starting + handing over a chief (`/chief new\|next`), vs `/afk-shift` |
 | `internals/prompt-cache.md` | the verified prompt-cache model, audit of every cache claim, the `scripts/eval/cache-probe.sh` re-run |
 | `internals/headless-modes.md` | `claude -p` vs `claude --bg` vs headed — which fits which job, env/permission/confirm details |

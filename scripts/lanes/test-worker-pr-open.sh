@@ -489,6 +489,97 @@ contains "lookalike host: says no /pr-check record" "$err_ad5" "no /pr-check rec
 git -C "$REPO" remote set-url origin "$orig_url"
 not_contains "no PR is created for a refused open" "$(cat "$ARGV_LOG")" "pr create"
 
+echo "TEST: a sync PR on a registered fork is refused in-script (the Bash hook never sees the seam's gh call)"
+# The fork check calls `gh api` from PATH: 100 commits in the PR, ITS_OURS of
+# them ours (ahead of upstream v8 at the head, none at the merge-base mb0).
+mkdir -p "$TMP_ROOT/hookbin"
+cat > "$TMP_ROOT/hookbin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "api repos/Graphify-Labs/graphify --jq .default_branch") echo v8 ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8...mb0 "*) echo 0 ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8..."*) echo "$ITS_OURS" ;;
+  "api repos/yotamleo-org/graphify/compare/"*) printf '100\tmb0\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$TMP_ROOT/hookbin/gh"
+git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/graphify.git
+: > "$ARGV_LOG"
+err_fs=$(PATH="$TMP_ROOT/hookbin:$PATH" ITS_OURS=1 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_fs=$?
+assert_eq "fork sync PR: refused (rc=1)" "1" "$rc_fs"
+contains "fork sync PR: names the resync replacement" "$err_fs" "resync-fork.sh --sync yotamleo-org/graphify"
+not_contains "fork sync PR: no PR is created" "$(cat "$ARGV_LOG")" "pr create"
+PATH="$TMP_ROOT/hookbin:$PATH" ITS_OURS=60 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_fo=$?
+assert_eq "fork PR of our own delta: opens (rc=0)" "0" "$rc_fo"
+contains "fork PR of our own delta: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+git -C "$REPO" remote set-url origin "$orig_url"
+
+# ── PR size bands: warn past the soft max, refuse past CodeRabbit's 300-file cap ──
+size_branch() {  # <name> <file-count> <lines-per-file>: a pushed branch cut from origin/main
+    git -C "$REPO" checkout -q -b "$1" origin/main
+    local d="$REPO/sz-$1" i
+    mkdir -p "$d"
+    for ((i = 1; i <= $2; i++)); do seq "$3" > "$d/f$i"; done
+    git -C "$REPO" add "sz-$1"
+    git -C "$REPO" commit -qm "size fixture $1"
+    git -C "$REPO" push -q -u origin "$1"
+}
+
+echo "TEST: a branch of 301 changed files is refused with SIZE-REFUSE and no pr create"
+reset_ledger
+size_branch feat/himmel-3031-files301 301 1
+: > "$ARGV_LOG"
+err_s1=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s1=$?
+assert_eq "301 files: refused (rc=1)" "1" "$rc_s1"
+contains "301 files: names the count and the cap" "$err_s1" "SIZE-REFUSE files=301 cap=300"
+not_contains "301 files: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: exactly 300 files opens (the cap is over 300)"
+size_branch feat/himmel-3031-files300 300 1
+: > "$ARGV_LOG"
+err_s2=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s2=$?
+assert_eq "300 files: opens (rc=0)" "0" "$rc_s2"
+not_contains "300 files: no SIZE-REFUSE" "$err_s2" "SIZE-REFUSE"
+contains "300 files: warns on the file count" "$err_s2" "SIZE-WARN lines=300 files=300"
+contains "300 files: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: a 900-line branch warns and still opens"
+size_branch feat/himmel-3031-lines900 1 900
+: > "$ARGV_LOG"
+out_s3=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>"$TMP_ROOT/size.err"); rc_s3=$?
+assert_eq "900 lines: opens (rc=0)" "0" "$rc_s3"
+contains "900 lines: SIZE-WARN names lines and files" "$(cat "$TMP_ROOT/size.err")" "SIZE-WARN lines=900 files=1"
+contains "900 lines: stdout stays the one PR line" "$out_s3" "PR 9 "
+contains "900 lines: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: a branch inside the target band prints no size line"
+size_branch feat/himmel-3031-lines800 1 800
+: > "$ARGV_LOG"
+err_s4=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s4=$?
+assert_eq "800 lines: opens (rc=0)" "0" "$rc_s4"
+not_contains "800 lines: no SIZE- line" "$err_s4" "SIZE-"
+
+echo "TEST: a diff that cannot be measured is refused, never read as zero files"
+git -C "$REPO" checkout -q --orphan feat/himmel-3031-nomergebase
+git -C "$REPO" rm -rfq --cached . >/dev/null
+echo orphan > "$REPO/orphan-file"
+git -C "$REPO" add orphan-file
+git -C "$REPO" commit -qm "no merge base with origin/main"
+git -C "$REPO" push -q -u origin feat/himmel-3031-nomergebase
+: > "$ARGV_LOG"
+err_s5=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s5=$?
+assert_eq "no merge base: refused (rc=1)" "1" "$rc_s5"
+contains "no merge base: says the size could not be measured" "$err_s5" "could not measure"
+not_contains "no merge base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: a base ref that is not fetched is refused, never read as within the bands"
+: > "$ARGV_LOG"
+err_s6=$(run_sut "$TITLE_FILE" "$BODY_FILE" --base no-such-base 2>&1 >/dev/null); rc_s6=$?
+assert_eq "unfetched base: refused (rc=1)" "1" "$rc_s6"
+contains "unfetched base: says the size could not be measured" "$err_s6" "could not measure"
+not_contains "unfetched base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

@@ -528,6 +528,80 @@ out=$(rr 0 --cwd "$R" -- sh later.sh); id=$(rid "$out")
 printf 'echo hi\n' > "$R/later.sh"
 assert_contains "an argument that named no file at request and names one at exec reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 
+echo "== HIMMEL-8250: the file the executor hashed is the file it starts =="
+# swap-start.py <lib> <id> <target> <evil> <op>: approve <id>, but rename <evil> over <target> the instant before
+# the command is started (after every check), the swap a session that can write the directory could make.
+cat > "$tmp/swap-start.py" <<'SWAPSTART'
+import os, subprocess, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+real_popen = subprocess.Popen
+def swapping(*a, **k):
+    os.replace(sys.argv[4], sys.argv[3])
+    return real_popen(*a, **k)
+with patch.object(subprocess, "Popen", swapping):
+    sys.exit(s.main(["approve", sys.argv[2], "--from", sys.argv[5], "--chat", sys.argv[5]]))
+SWAPSTART
+swap_approve() { printf '%s\n' "$(code "$1")" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) AFK_SUDO_RUN=1 python3 -I "$tmp/swap-start.py" "$LIB" "$2" "$3" "$4" "$OP" 2>&1; }
+new_root swapargv0; cfg "$ALL" true
+printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
+out=$(rr 0 -- "$R/bin/mytool"); id=$(rid "$out")
+swap_approve 3 "$id" "$R/bin/mytool" "$R/evil" >/dev/null
+assert_eq "RED 8250: an argv0 swapped after the checks did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original argv0 ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+new_root swapscript; cfg "$ALL" true
+printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' "$R" > "$R/evil.sh"
+out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
+swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
+assert_eq "RED 8250: a script argument swapped after the checks did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original script ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+new_root samebytes; cfg "$ALL" true
+printf '#!/bin/sh\nexit 0\n' > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+out=$(rr 0 -- "$R/bin/mytool"); id=$(rid "$out")
+cp -p "$R/bin/mytool" "$R/bin/mytool.new"; mv "$R/bin/mytool.new" "$R/bin/mytool"
+assert_contains "RED 8250: an argv0 replaced by a same-bytes file (new inode) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root samebytesarg; cfg "$ALL" true
+printf 'echo hi\n' > "$R/x.sh"
+out=$(rr 0 --cwd "$R" -- sh x.sh); id=$(rid "$out")
+cp -p "$R/x.sh" "$R/x.sh.new"; mv "$R/x.sh.new" "$R/x.sh"
+assert_contains "RED 8250: a file argument replaced by a same-bytes file (new inode) reports changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+new_root swapoptarg; cfg "$ALL" true
+printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' "$R" > "$R/evil.sh"
+out=$(rr 0 --cwd "$R" -- sh -o errexit x.sh); id=$(rid "$out")
+swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
+assert_eq "RED 8250: a script after an option that takes a word, swapped after the checks, did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original script after that option ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
+# swap-request.py <lib> <cwd> <target> <evil> <argv0>: file a run request, but rename <evil> over <target> between the
+# file snapshot and the argv0 snapshot, so the two frozen records of one path disagree.
+cat > "$tmp/swap-request.py" <<'SWAPREQ'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+real_collect = s.collect_files
+def racing(*a, **k):
+    out = real_collect(*a, **k)
+    os.replace(sys.argv[4], sys.argv[3])
+    return out
+s.collect_files = racing
+sys.exit(s.main(["run-request", "--session", "S1", "--ticket", "HIMMEL-8067", "--blocked-by", "classifier", "--cwd", sys.argv[2], "--", sys.argv[5]]))
+SWAPREQ
+new_root conflict; cfg "$ALL" true
+printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
+printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I "$tmp/swap-request.py" "$LIB" "$R" "$R/bin/mytool" "$R/evil" "$R/bin/mytool" </dev/null 2>&1); id=$(rid "$out")
+assert_contains "RED 8250: an argv0 and a file record of one path that disagree report changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
+assert_eq "RED 8250: the file the operator was shown did not run as the swapped one" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+# The descriptors handed to the run are path-only (O_PATH): the helper opened the file as root, and a program that
+# starts before the script as the run-as user must not be able to read through them (Linux checks access at open).
+new_root leakfd; cfg "$ALL" true
+printf 'import os\nopen("%s/py-ran", "w").close()\nfor n in range(3, 40):\n    try:\n        os.lseek(n, 0, 0)\n        if os.read(n, 1):\n            open("%s/leak", "w").close()\n    except OSError:\n        pass\n' "$R" "$R" > "$R/x.py"
+out=$(rr 0 --cwd "$R" -- python3 x.py); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+assert_eq "RED 8250: control: the script started from its held descriptor ran" "yes" "$([ -e "$R/py-ran" ] && echo yes || echo no)"
+assert_eq "RED 8250: the run cannot read the helper's descriptors" "no" "$([ -e "$R/leak" ] && echo yes || echo no)"
+
 echo "== slice 1a (judge KS-j4307-1): what is hashed is what runs, and every element keeps its target =="
 new_root argv0lnk; cfg "$ALL" true
 mkdir -p "$R/real/sub"
@@ -645,6 +719,17 @@ new_root tgtlongdotdot; cfg "$ALL" true
 long_tree
 assert_eq "a .. after a link realpath could not lstat is refused, not popped as a plain name that falls back under PATH_MAX" "BadFile" "$(bt L/x/lnk/../../../../out)"
 assert_contains "a floor target reached by that .. fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/lnk/../../../../sh)"
+printf 'x\n' > "$R/f"
+assert_eq "a .. after a non-directory is refused, not keyed lexically where the kernel gives ENOTDIR" "BadFile" "$(bt f/x/../../L/x/lnk/../../../../out)"
+ln -s f/x/../../L/x/lnk/../../../../out "$R/fl"
+assert_eq "a link whose target holds a .. after a non-directory is refused too" "BadFile" "$(bt fl)"
+assert_eq "a non-directory followed only by a slash, dot or dot-dot is refused on every Python, not bound where the kernel never lands" "BadFile BadFile BadFile" "$(bt f/) $(bt f/.) $(bt f/..)"
+ln -s f/ "$R/fs"
+assert_eq "a link to a non-directory followed by a slash is refused on every Python" "BadFile" "$(bt fs)"
+assert_eq "a .. after a non-directory then a missing name is refused on every Python" "BadFile" "$(bt f/../m)"
+assert_eq "a .. after a non-directory reached past a missing name is refused on every Python" "BadFile" "$(bt m/../f/../m)"
+printf 'x\n' > "$R/g"
+assert_eq "a .. after a non-directory that leads to another non-directory is refused on every Python" "BadFile" "$(bt f/../g/x)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -663,7 +748,7 @@ printf 'x\n' > "$R/f"
 assert_contains "a non-directory in the way is a name that is not there, filed as none" "none:" "$(bt f/x)"
 assert_eq "a non-directory then components, joined past PATH_MAX, is refused, not keyed none" "BadFile" "$(bt "f${deep#m}")"
 new_root tgtnoallow
-assert_eq "without ALLOW_MISSING a .. after a missing name is refused and a plain missing name still lands" "None ok" "$(python3 -I -c '
+assert_eq "landing does not read ALLOW_MISSING: a .. after a missing name pops it and a plain missing name lands" "ok ok" "$(python3 -I -c '
 import os, sys, types
 sys.path.insert(0, sys.argv[1])
 import never_remote as n
@@ -672,9 +757,32 @@ class NoAllow:
         if k == "ALLOW_MISSING":
             raise AttributeError(k)
         return getattr(os.path, k)
-n.os = types.SimpleNamespace(path=NoAllow())
+n.os = types.SimpleNamespace(path=NoAllow(), lstat=os.lstat, readlink=os.readlink)
 base = os.path.realpath(sys.argv[2])
-print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+print("ok" if n.landing(os.path.join(base, "m", "..", "x")) == os.path.join(base, "x") else "bad", "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+new_root tgtnoallowrun; cfg "$ALL" true
+long_tree
+ln -s m/../L/x/lnk/../../../../out "$R/dl"
+# shellcheck disable=SC2016 # python source, not shell
+NOALLOW='import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as a, never_remote as n
+class NoAllow:
+    def __getattr__(self, k):
+        if k == "ALLOW_MISSING":
+            raise AttributeError(k)
+        return getattr(os.path, k)
+class Os:
+    path = NoAllow()
+    def __getattr__(self, k):
+        return getattr(os, k)
+a.os = n.os = Os()
+sys.exit(a.main(sys.argv[2:]))'
+led0=$(ledger)
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I -c "$NOALLOW" "$LIB" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier --cwd "$R" -- tee dl </dev/null 2>&1)
+rc=$?
+assert_contains "without ALLOW_MISSING a run request is refused, so a dangling link whose target holds missing/../.. is never keyed" "result=no-allow-missing" "$out"
+assert_eq "the no-allow-missing refusal exits 5 and writes no ledger row" "5 same" "$rc $([ "$(ledger)" = "$led0" ] && echo same || echo changed)"
 new_root tgtlongname; cfg "$ALL" true
 name=$(python3 -I -c 'print("a" * 300)')
 assert_eq "a name over 255 bytes is refused, not keyed none" "BadFile" "$(bt "$name")"
@@ -838,6 +946,9 @@ expect_rule main-history git push origin :main
 expect_rule main-history git push --delete origin main
 expect_rule main-history gh api -X DELETE repos/o/r/git/refs/heads/main
 expect_rule main-history gh repo delete o/r
+expect_rule main-history git push -d origin main
+expect_rule main-history git push -fu origin main
+expect_rule none git push -u origin feature
 expect_rule none git push origin main
 expect_rule none git push --force origin refs/heads/feat/x:refs/heads/feat/y
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
@@ -867,7 +978,15 @@ expect_rule disk-wipe env -S 'echo x; mkfs.ext4 /dev/vdb'
 expect_rule none awk 'BEGIN{print 1}'
 expect_rule none rm -rf /tmp/build/x/y
 crafted=$(printf '"a=%.0s' $(seq 1 200))x
+assert_eq "the crafted fixture is 601 characters" "601" "${#crafted}"
 expect_rule oversize true "$crafted"
+banner=$(printf '=%.0s' $(seq 1 66))
+assert_eq "the banner fixture is 66 characters" "66" "${#banner}"
+expect_rule none echo "$banner"
+expect_rule secret-read cat "$banner/etc/shadow"
+deep=$(printf 'a=%.0s' $(seq 1 65))x
+assert_eq "the deep fixture is 131 characters" "131" "${#deep}"
+expect_rule oversize true "$deep"
 
 echo "== slice 1a: limits, the busy row and the retained files =="
 new_root busyrow; cfg "$ALL" true

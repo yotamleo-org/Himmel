@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline git fixtures catch missed conflicts, false upgrades and flag-off I/O.
+# Offline git fixtures catch missed conflicts and false upgrades.
 # Platform guard: the chief kit runs under bash.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,7 +27,6 @@ class PushCheck(unittest.TestCase):
                         GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
                         GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
                         GIT_COMMITTER_NAME='Fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid')
-        self.env.pop('HIMMEL_FLAGS_TSV', None)
         self.git('init', '-q', '-b', 'main')
         (self.repo / 'shared file').write_text('top\n' + 'middle\n' * 20 + 'bottom\n')
         (self.repo / 'other').write_text('base\n')
@@ -94,12 +93,8 @@ class PushCheck(unittest.TestCase):
             data['repos/fixture/repo/pulls/%d' % pr['number']] = pr['head']['sha']
         self.fixture.write_text(json.dumps(data))
 
-    def check(self, flag='1', args=('--base', 'main'), **env):
+    def check(self, args=('--base', 'main'), **env):
         e = dict(self.env, **env)
-        if flag is None:
-            e.pop('HIMMEL_FLAG_CHAIN_PUSH_CHECK', None)
-        else:
-            e['HIMMEL_FLAG_CHAIN_PUSH_CHECK'] = flag
         # The bound keeps a hung stub from stalling the suite; main hangs here and fails the row.
         return subprocess.run(['bash', SUT, '--repo-dir', str(self.repo), '--repo', 'fixture/repo', *args],
                               env=e, text=True, capture_output=True, timeout=30)
@@ -147,14 +142,6 @@ class PushCheck(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertNotIn('FINDING', p.stdout)
 
-    def test_default_and_explicit_off_do_not_read_git_or_github(self):
-        self.fixture.unlink()
-        for flag in (None, '0'):
-            with self.subTest(flag=flag):
-                p = self.check(flag, GIT_DIR=str(self.root / 'missing'))
-                self.assertEqual(p.returncode, 0, p.stderr)
-                self.assertNotIn('FINDING', p.stdout)
-
     def test_api_failure_is_not_a_clean_result(self):
         self.fixture.write_text('{}')
         p = self.check()
@@ -168,9 +155,6 @@ class PushCheck(unittest.TestCase):
         self.fixture.write_text(json.dumps(data))
         p = self.check()
         self.assertEqual(p.returncode, 2, p.stderr)
-
-    def test_invalid_flag_is_an_error(self):
-        self.assertEqual(self.check('maybe').returncode, 2)
 
     def test_missing_overlapping_head_is_not_clean(self):
         self.responses([self.pr(16, 'f' * 40, 'missing')])
@@ -243,9 +227,9 @@ class PushCheck(unittest.TestCase):
                 self.assertEqual(p.returncode, 2, p.stderr)
                 self.assertEqual(p.stdout, '')
 
-    def test_pr_peer_mode_runs_with_the_flag_off(self):
+    def test_pr_peer_mode_reports_the_pair(self):
         self.responses([self.pr(20, self.local, 'local'), self.pr(12, self.conflict, 'conflict')])
-        p = self.check(None, args=('--pr', '20', '--peer', '12'))
+        p = self.check(args=('--pr', '20', '--peer', '12'))
         self.assertEqual(p.returncode, 1, p.stderr)
         self.assertIn('HEADS 20=', p.stdout)
 
@@ -272,22 +256,14 @@ class PushCheck(unittest.TestCase):
         env = dict(self.env, FORGE='github', CR_APP='0', WORKER_SESSION_JIRA_STATUS='0',
                    JIRA_PROJECT_KEY='HIMMEL')
         worker = Path(SUT).parents[2] / 'lanes' / 'worker-pr-open.sh'
-        for flag in ('0', '1'):
-            with self.subTest(flag=flag):
-                env['HIMMEL_FLAG_CHAIN_PUSH_CHECK'] = flag
-                lookups = self.root / 'repo-lookups'
-                if lookups.exists():
-                    lookups.unlink()
-                p = subprocess.run(['bash', str(worker), str(title), str(body)], cwd=self.repo,
-                                   env=env, text=True, capture_output=True)
-                self.assertEqual(p.returncode, 0, p.stderr)
-                self.assertEqual(p.stdout.strip(), 'PR 42 https://github.com/fixture/repo/pull/42 ' + self.local)
-                if flag == '1':
-                    self.assertIn('FINDING edge-upgraded 10', p.stderr)
-                else:
-                    self.assertNotIn('FINDING', p.stderr)
-                # PR update needs one lookup for its URL; only flag-on adds the checker lookup.
-                self.assertEqual(len(lookups.read_text().splitlines()), 1 if flag == '0' else 2)
+        lookups = self.root / 'repo-lookups'
+        p = subprocess.run(['bash', str(worker), str(title), str(body)], cwd=self.repo,
+                           env=env, text=True, capture_output=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.strip(), 'PR 42 https://github.com/fixture/repo/pull/42 ' + self.local)
+        self.assertIn('FINDING edge-upgraded 10', p.stderr)
+        # PR update needs one lookup for its URL; the checker adds one.
+        self.assertEqual(len(lookups.read_text().splitlines()), 2)
 
 
 unittest.main(verbosity=2)

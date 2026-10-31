@@ -28,6 +28,9 @@
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
 #
+# Also at open: SIZE-WARN on stderr when the diff passes the soft band, and SIZE-REFUSE
+# (exit 1) past CodeRabbit's 300 files; the thresholds live in scripts/ci/pr-size-bands.tsv.
+#
 # Success: exactly one line, `PR <number> <url> <head-sha>`.
 # Failure: the forge/gh error verbatim on stderr, non-zero exit.
 #
@@ -220,6 +223,46 @@ if [ "$(forge_detect)" = github ]; then
     fi
 fi
 
+# PR size bands (scripts/ci/pr-size-bands.tsv, one owner of the thresholds): measures the
+# real diff against origin/<base> (renames counted once) and applies the warn and refuse
+# rows. SIZE-WARN goes to stderr so stdout stays the one `PR ...` line; SIZE-REFUSE exits 1.
+check_pr_size() {
+    local bands="$HERE/../ci/pr-size-bands.tsv" base_ref="origin/$BASE"
+    if [ ! -r "$bands" ]; then
+        echo "ERR worker-pr-open: cannot read the PR size bands: $bands" >&2
+        return 1
+    fi
+    if ! git rev-parse --verify -q "$base_ref" >/dev/null; then
+        echo "ERR worker-pr-open: could not measure the PR size: $base_ref is not fetched; fetch it, then open the PR" >&2
+        return 1
+    fi
+    local files lines
+    # A diff that cannot be taken (no merge base, shallow clone) must refuse, never read as zero.
+    if ! files=$(git diff --name-only -M "$base_ref...HEAD" | wc -l | tr -d ' ') \
+        || ! lines=$(git diff --numstat -M "$base_ref...HEAD" | awk '{ if ($1 ~ /^[0-9]+$/) n += $1; if ($2 ~ /^[0-9]+$/) n += $2 } END { print n + 0 }'); then
+        echo "ERR worker-pr-open: could not measure the diff against $base_ref; refusing to open an unmeasured PR" >&2
+        return 1
+    fi
+    local band max_lines max_files action over warned=0
+    while IFS=$'\t' read -r band max_lines max_files action; do
+        case "$band" in ''|'#'*|band) continue ;; esac
+        over=0
+        case "$max_lines" in -) ;; *[!0-9]*|'') echo "ERR worker-pr-open: bad max_lines in $bands row '$band'" >&2; return 1 ;; *) [ "$lines" -gt "$max_lines" ] && over=1 ;; esac
+        case "$max_files" in -) ;; *[!0-9]*|'') echo "ERR worker-pr-open: bad max_files in $bands row '$band'" >&2; return 1 ;; *) [ "$files" -gt "$max_files" ] && over=1 ;; esac
+        [ "$over" -eq 1 ] || continue
+        case "$action" in
+            refuse)
+                echo "SIZE-REFUSE files=$files cap=$max_files: over the '$band' band in scripts/ci/pr-size-bands.tsv; split the PR" >&2
+                return 1 ;;
+            warn)
+                if [ "$warned" -eq 0 ]; then
+                    echo "SIZE-WARN lines=$lines files=$files" >&2
+                    warned=1
+                fi ;;
+        esac
+    done < "$bands"
+}
+
 existing_pr=""
 # Same separation as the create path below: a `gh`/`bb` warning on stdin's
 # stderr (even on a SUCCESSFUL lookup, rc=0) must never leak into the value
@@ -236,6 +279,8 @@ rm -f "$find_open_err"
 existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
+    # Size first: a PR CodeRabbit would skip whole is refused before anything else is checked.
+    check_pr_size || exit 1
     # Opening a PR needs a finished /pr-check: an `avail ... ok` row at this head
     # in the CR ledger (a critic responded) AND no pending cr-pending marker,
     # which only clear-review-marker.sh removes once no finding blocks (the same
@@ -247,12 +292,30 @@ if [ -z "$existing_pr" ]; then
         echo "ERR worker-pr-open: /pr-check is still pending for branch '$branch' (cr-pending marker present) — finish /pr-check until it clears the marker, then open the PR" >&2
         exit 1
     fi
+    harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
+    # A sync of a registered fork is never a PR. The PR is created below
+    # through the forge seam, which block-fork-sync-pr.sh (a Bash hook) never
+    # sees, so the same check runs here on the `gh pr create` the seam issues.
+    toplevel=$(git rev-parse --show-toplevel)
+    # A ref name holds no whitespace or control character, so a JSON string is
+    # also a valid double-quoted shell word for the hook's shlex parse.
+    # shellcheck disable=SC2016 # JS template literal, not a shell expansion
+    fork_payload=$(WT_BASE="$BASE" WT_HEAD="$branch" WT_CWD="$toplevel" node -e '
+        const e = process.env, q = JSON.stringify;
+        process.stdout.write(q({ tool_name: "Bash", cwd: e.WT_CWD,
+            tool_input: { command: `gh pr create --base ${q(e.WT_BASE)} --head ${q(e.WT_HEAD)}` } }));')
+    fork_rc=0
+    printf '%s' "$fork_payload" | HIMMEL_REPO="${harness_common:+$harness_common/..}" \
+        bash "$HERE/../hooks/block-fork-sync-pr.sh" || fork_rc=$?
+    if [ "$fork_rc" -eq 2 ]; then
+        echo "ERR worker-pr-open: refused — a sync of a registered fork is never a PR (see above)" >&2
+        exit 1
+    fi
     # A PR on a registered adopter repo (origin nwo in himmel-adapters.json, read from this
     # harness's primary checkout) has no CR ledger here: the repo's CI, the chief's judge and
     # the signed GO stand in for the record. The pending-marker hold above still applies.
     adopter_repo=0
     origin_url=$(git remote get-url origin 2>/dev/null) || origin_url="" # swallow-ok: no origin means not an adopter, the record check below applies
-    harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
     if [ -n "$harness_common" ] && [ -r "$harness_common/../scripts/guardrails/himmel-adapters.json" ] \
         && WT_URL="$origin_url" WT_REG="$harness_common/../scripts/guardrails/himmel-adapters.json" node -e '
             const m = /^(?:https:\/\/(?:[^\/@]+@)?|ssh:\/\/git@|git@)github\.com[:\/]([^\/]+\/[^\/]+?)(?:\.git)?\/?$/.exec(process.env.WT_URL || "");

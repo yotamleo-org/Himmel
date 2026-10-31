@@ -405,6 +405,35 @@ describe('jira release request refuses junk (HIMMEL-7434)', () => {
   });
 });
 
+describe('jira release pull (HIMMEL-8350)', () => {
+  const issue = (key: string, fixVersions: string[], blockedBy: string[] = []) =>
+    writeFileSync(join(root, 'mirror', `${key}.md`), [
+      '---', `key: "${key}"`, 'type: "Task"', 'status: "To Do"', 'priority: "Medium"', `fixVersions: ${JSON.stringify(fixVersions)}`,
+      'resolution: null', 'links:', '  blocks: []', `  blocked_by: ${JSON.stringify(blockedBy)}`, '  relates: []', '---', '',
+    ].join('\n'));
+
+  it('lists each blocker, files one INTAKE for it, and a re-run files none', async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    mkdirSync(join(root, 'mirror'));
+    writeFileSync(join(root, 'mirror', '.cursor.json'), JSON.stringify({ lastSync: '2026-10-21T09:00:00.000Z' }));
+    issue('K-1', ['v1'], ['K-2']);
+    issue('K-2', ['v2']);
+    const mirrorRoot = join(root, 'mirror');
+    await run('pull', 'R1', '--mirror-root', mirrorRoot, '--dry-run');
+    await run('pull', 'R1', '--mirror-root', mirrorRoot);
+    await run('pull', 'R1', '--mirror-root', mirrorRoot);
+    expect(out.slice(1)).toEqual(['PULL K-2 for K-1 from v2 to v1', 'PULL K-2 for K-1 from v2 to v1 REQ Q-R1-0001']);
+  });
+
+  it('refuses a second standing record and an unknown kind', async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    await expect(run('operator', 'standing', 'R1', '--kind', 'blocker-pull', '--decision', '385', '--verbatim-file', join(root, 'verbatim.txt')))
+      .rejects.toThrow(/already recorded/);
+    await expect(run('operator', 'standing', 'R1', '--kind', 'other', '--decision', '385', '--verbatim-file', join(root, 'verbatim.txt')))
+      .rejects.toThrow(/--kind is blocker-pull/);
+  });
+});
+
 describe('jira release under vitest (HIMMEL-7434)', () => {
   it('refuses a release state dir outside the temp dir', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '/srv/handovers/release');

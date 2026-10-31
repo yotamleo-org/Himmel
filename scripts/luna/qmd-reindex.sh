@@ -112,6 +112,14 @@
 # QMD_INDEX_PATH, default $HOME/.cache/qmd/index.sqlite) that qmd-staleness.sh
 # prefers over its MAX(mtime) proxy. Never written on any failure path.
 #
+# Where the embed ended (rc 5 or verified complete) it also writes
+# QMD_REINDEX_STATE (default: `reindex-state` beside the refresh stamp; `NAME.reindex-state`
+# for a named index) as key=value lines: ts, rc, remaining (a count or "unknown"),
+# last_error (the provider error line or "none") and summary (the line the cadence
+# alert quotes). himmel-doctor C83 and cadence-alert.sh read the default index's file
+# only (a named index keeps its own NAME.reindex-state, as C49 and C56 judge the default
+# index alone); any other start clears it.
+#
 # Exit codes:
 #   0  index refreshed and verified complete
 #   1  usage / input error
@@ -124,7 +132,11 @@
 #      (default 4) or QMD_REINDEX_EMBED_MAX_SECS (default 7200); two sessions in
 #      a row without progress stop it sooner. The log line names the cause
 #      (session cap, provider errors with their HTTP status, or no progress),
-#      the remaining hash count and the last provider error.
+#      the remaining hash count and the last provider error. QMD_REINDEX_EMBED_MAX_SECS
+#      also bounds a SESSION: each embed session gets only the budget still unspent
+#      as its deadline, so a run overshoots it by at most QMD_KILL_GRACE_SECS (5)
+#      plus the time to reap the process group (a cut session is rc 5, resumable);
+#      the rc 5 report's one hash recount adds at most QMD_REINDEX_RECOUNT_SECS (120).
 #   6  completeness assert could not READ its verifier (qmd reworded its
 #      output) — distinct from 5 on purpose; see the sentinel note below
 #   7  MODEL MISMATCH — the index holds vectors from an embed model other
@@ -153,6 +165,9 @@ QMD_INDEX_PATH="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/
 # qmd opens INDEX_PATH, so the egress gate and qmd must read the same file.
 export INDEX_PATH="$QMD_INDEX_PATH"
 QMD_REFRESH_STAMP="${QMD_REFRESH_STAMP:-$(dirname "$QMD_INDEX_PATH")/refresh-stamp}"
+# What himmel-doctor (C83) and the cadence alert read: the remaining hash count and
+# the last provider error of the last run that reached the embed verdict.
+QMD_REINDEX_STATE="${QMD_REINDEX_STATE:-$(dirname "$QMD_INDEX_PATH")/reindex-state}"
 
 # --- completeness-assert sentinels -----------------------------
 #
@@ -209,11 +224,16 @@ EOF
 # certainty) cannot split it. Group-bounded by qmd_bounded, from
 # qmd-bin.sh; an embed cut short resumes on the next fire.
 run_qmd() {
+    local secs
+    secs=$(qmd_timeout_secs)
+    # EMBED_CAP_SECS (set per embed session) is the embed time budget still unspent:
+    # it tightens the deadline, never loosens it (0 = unbounded).
+    if [ -n "${EMBED_CAP_SECS:-}" ] && { [ "$secs" -eq 0 ] || [ "$EMBED_CAP_SECS" -lt "$secs" ]; }; then secs="$EMBED_CAP_SECS"; fi
     if [ -n "$INDEX_NAME" ]; then set -- --index "$INDEX_NAME" "$@"; fi
     if [ -n "$QMD_JS" ]; then
-        qmd_bounded "$(qmd_timeout_secs)" "$QMD_BIN" "$QMD_JS" "$@"
+        qmd_bounded "$secs" "$QMD_BIN" "$QMD_JS" "$@"
     else
-        qmd_bounded "$(qmd_timeout_secs)" "$QMD_BIN" "$@"
+        qmd_bounded "$secs" "$QMD_BIN" "$@"
     fi
 }
 
@@ -230,6 +250,13 @@ run_embed() {
     local out rc attempt
     for attempt in 1 2; do
         rc=0
+        # The BUSY retry gets only the budget the first attempt left unspent.
+        if [ "$attempt" -eq 2 ] && [ -n "${EMBED_CAP_SECS:-}" ]; then
+            EMBED_CAP_SECS=$((EMBED_MAX_SECS - (SECONDS - EMBED_T0)))
+            [ "$EMBED_CAP_SECS" -ge 1 ] || return 124
+            EMBED_BUDGET_CUT=0
+            if [ "$(qmd_timeout_secs)" -eq 0 ] || [ "$EMBED_CAP_SECS" -le "$(qmd_timeout_secs)" ]; then EMBED_BUDGET_CUT=1; fi
+        fi
         out=$(run_qmd embed 2>&1) || rc=$?
         if grep -qF -- 'Another embed process is already running' <<<"$out"; then
             if [ "$attempt" -eq 1 ]; then
@@ -240,6 +267,9 @@ run_embed() {
             return 9
         fi
         relabel_hash_count <<<"$out"
+        # The embed budget cut the session (the deadline's rc 124): not a failure,
+        # the caller reports it as an incomplete embed.
+        if [ "$rc" -eq 124 ] && [ "${EMBED_BUDGET_CUT:-0}" -eq 1 ]; then return 124; fi
         # Normalize ordinary failures so an upstream rc 9 cannot impersonate BUSY.
         [ "$rc" -eq 0 ] || return 4
         return 0
@@ -398,7 +428,8 @@ case "$INDEX_NAME" in
         IDX_DESC=" --index $INDEX_NAME"
         QMD_INDEX_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$INDEX_NAME.sqlite"
         export INDEX_PATH="$QMD_INDEX_PATH"
-        QMD_REFRESH_STAMP="$(dirname "$QMD_INDEX_PATH")/$INDEX_NAME.refresh-stamp" ;;
+        QMD_REFRESH_STAMP="$(dirname "$QMD_INDEX_PATH")/$INDEX_NAME.refresh-stamp"
+        QMD_REINDEX_STATE="$(dirname "$QMD_INDEX_PATH")/$INDEX_NAME.reindex-state" ;;
 esac
 
 # --qmd-js is meaningless without an executable to pass it to: on its own it
@@ -496,6 +527,30 @@ write_refresh_stamp() {
     return 0
 }
 
+# The embed backlog record: <remaining> is a count or "unknown", <last_error> the
+# last provider error line or "none". Written only where the embed verdict is
+# known (rc 5, success); best-effort like the stamp, a failed write never changes
+# the run's own result. `summary=` is the one line the cadence alert quotes.
+write_reindex_state() { # <rc> <remaining> <last_error>
+    local dir tmp summary
+    dir=$(dirname "$QMD_REINDEX_STATE")
+    mkdir -p "$dir" 2>/dev/null || return 0
+    if [ "$2" = unknown ]; then summary="remaining hash count unknown"; else summary="$2 unique hashes still need vectors"; fi
+    [ "$1" -eq 0 ] || summary="$summary; last provider error: $3"
+    tmp="$QMD_REINDEX_STATE.tmp.$$"
+    if ! printf 'ts=%s\nrc=%s\nremaining=%s\nlast_error=%s\nsummary=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" "$2" "$3" "$summary" >"$tmp" 2>/dev/null; then
+        echo "WARN qmd-reindex: could not write $QMD_REINDEX_STATE; himmel-doctor will not show the embed backlog." >&2
+        rm -f "$tmp" 2>/dev/null || true
+        return 0
+    fi
+    # prim-ok: the temp is named by PID and takes the umask mode, like the refresh stamp
+    if ! mv -f "$tmp" "$QMD_REINDEX_STATE" 2>/dev/null; then
+        echo "WARN qmd-reindex: could not install $QMD_REINDEX_STATE; himmel-doctor will not show the embed backlog." >&2
+        rm -f "$tmp" 2>/dev/null || true
+    fi
+    return 0
+}
+
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC update"
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC embed"
@@ -513,6 +568,8 @@ echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc)$IDX_DESC)"
 # state must not survive to be read as this run's freshness. write_refresh_stamp()
 # re-installs it only once this run itself reaches verified-complete.
 rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
+# The backlog record of an earlier run is as stale as its stamp.
+rm -f "$QMD_REINDEX_STATE" 2>/dev/null || true
 
 # --- 0. embed-model precheck ------------------------------------
 # An embed pass with a configured model other than the index's would fail on a
@@ -588,25 +645,33 @@ EMBED_MAX_SESSIONS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SESSIONS:-}" 4)
 [ "$EMBED_MAX_SESSIONS" -ge 1 ] || EMBED_MAX_SESSIONS=1
 EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)
 
-# "N unique hashes still need vectors", from a fresh `qmd update` scan (the only
-# qmd command that counts them), or "unknown". Best-effort: a failed scan must
-# not change the rc 5 this is reporting.
+# The count of unique hashes that still need vectors, from a fresh `qmd update`
+# scan (the only qmd command that counts them); empty when the scan printed none.
+# Best-effort: a failed scan must not change the rc 5 this is reporting.
 remaining_hashes() {
     local out n
-    out=$(run_qmd update 2>&1) || true
+    # A recount that failed or timed out left partial output: report none of it.
+    out=$(run_qmd update 2>&1) || return 0
     # No `{…;q}`: BSD sed (macOS) rejects it; keep the first match in bash.
     n=$(sed -nE 's/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p' <<<"$out")
-    n=${n%%$'\n'*}
-    if [ -n "$n" ]; then printf '%s unique hashes still need vectors' "$n"; else printf 'unknown (the recount printed no pending-hash line)'; fi
+    printf '%s' "${n%%$'\n'*}"
 }
 
 # The rc 5 report: the cause first, then what is left and the last provider error.
 fail_incomplete() {
-    local cause="$1"
+    local cause="$1" n
+    # The recount is not an embed session, but it must not stretch the run past the
+    # embed bound by a whole command timeout: it gets its own short deadline, and a
+    # recount that does not finish reads as "unknown".
+    EMBED_CAP_SECS=$(secs_or_default "${QMD_REINDEX_RECOUNT_SECS:-}" 120)
+    [ "$EMBED_CAP_SECS" -ge 1 ] || EMBED_CAP_SECS=1
+    n=$(remaining_hashes)
+    EMBED_CAP_SECS=""
+    write_reindex_state 5 "${n:-unknown}" "${LAST_PROVIDER_ERR:-none}"
     {
         echo "ERR qmd-reindex: embed INCOMPLETE — content hashes still need vectors after the embed pass."
         echo "    cause: $cause"
-        echo "    remaining: $(remaining_hashes)"
+        if [ -n "$n" ]; then echo "    remaining: $n unique hashes still need vectors"; else echo "    remaining: unknown (the recount printed no pending-hash line)"; fi
         echo "    last provider error: ${LAST_PROVIDER_ERR:-none}"
         echo "    Vectors are lagging the lex index, which is the silently-stale state this"
         echo "    runner exists to prevent. Re-run this script, or embed by hand without the"
@@ -642,6 +707,14 @@ while :; do
         2) echo "qmd-reindex: [3/3] verifying embed completeness" ;;
         *) echo "qmd-reindex: embed session $SESSION (max $EMBED_MAX_SESSIONS)" ;;
     esac
+    # A session may not outrun the embed budget: its deadline is the budget still
+    # unspent (at least 1s; the loop below has already stopped if none is left),
+    # so the run overshoots QMD_REINDEX_EMBED_MAX_SECS by at most the kill grace
+    # (QMD_KILL_GRACE_SECS, 5s) plus the time to reap the process group.
+    EMBED_CAP_SECS=$((EMBED_MAX_SECS - (SECONDS - EMBED_T0)))
+    [ "$EMBED_CAP_SECS" -ge 1 ] || EMBED_CAP_SECS=1
+    EMBED_BUDGET_CUT=0
+    if [ "$(qmd_timeout_secs)" -eq 0 ] || [ "$EMBED_CAP_SECS" -le "$(qmd_timeout_secs)" ]; then EMBED_BUDGET_CUT=1; fi
     SESSION_RC=0
     SESSION_OUT=$(run_embed 2>&1) || SESSION_RC=$?
     if [ "$SESSION_RC" -eq 9 ]; then
@@ -649,6 +722,14 @@ while :; do
         exit 9
     fi
     printf '%s\n' "$SESSION_OUT"
+    SESSION_ERRS=$(grep -oE -- 'embed: request failed status=[0-9]+ provider=[^[:space:]]+' <<<"$SESSION_OUT" || true)
+    if [ -n "$SESSION_ERRS" ]; then
+        LAST_PROVIDER_ERR=$(sed -n '$p' <<<"$SESSION_ERRS")
+        PROVIDER_STATUSES="$PROVIDER_STATUSES $(sed -E 's/.*status=([0-9]+).*/\1/' <<<"$SESSION_ERRS" | tr '\n' ' ')"
+    fi
+    if [ "$SESSION_RC" -eq 124 ]; then
+        fail_incomplete "embed time budget reached (session $SESSION cut at ${EMBED_MAX_SECS}s; QMD_REINDEX_EMBED_MAX_SECS)"
+    fi
     if [ "$SESSION_RC" -ne 0 ]; then
         if [ "$SESSION" -eq 1 ]; then
             echo "ERR qmd-reindex: 'qmd embed' failed — lex index is fresh but vectors are NOT." >&2
@@ -663,11 +744,6 @@ while :; do
     # 141 as the pipeline status — a SUCCESSFUL match would then read as a
     # failure once the output outgrows the pipe buffer, and here that
     # inversion reports "embed INCOMPLETE" (rc=5) on a fully COMPLETE embed.
-    SESSION_ERRS=$(grep -oE -- 'embed: request failed status=[0-9]+ provider=[^[:space:]]+' <<<"$SESSION_OUT" || true)
-    if [ -n "$SESSION_ERRS" ]; then
-        LAST_PROVIDER_ERR=$(sed -n '$p' <<<"$SESSION_ERRS")
-        PROVIDER_STATUSES="$PROVIDER_STATUSES $(sed -E 's/.*status=([0-9]+).*/\1/' <<<"$SESSION_ERRS" | tr '\n' ' ')"
-    fi
     if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$SESSION_OUT"; then
         [ "$SESSION" -ge 2 ] && break
         continue    # nothing pending after session 1; session 2 still verifies it
@@ -690,6 +766,7 @@ while :; do
         fail_incomplete "session cap reached ($SESSION of $EMBED_MAX_SESSIONS sessions, $((SECONDS - EMBED_T0))s of ${EMBED_MAX_SECS}s used)"
     fi
 done
+EMBED_CAP_SECS=""
 VERIFY_OUT="$SESSION_OUT"
 if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$VERIFY_OUT"; then
     :   # complete — fall through to the success line below
@@ -726,11 +803,12 @@ fi
 # read as stale.
 stamp_then_cleanup() {
     write_refresh_stamp
+    write_reindex_state 0 0 none
     echo "qmd-reindex: [4/4] qmd cleanup"
     if ! run_qmd cleanup; then
         echo "ERR qmd-reindex: 'qmd cleanup' failed — vectors are complete but orphaned embedding chunks were NOT removed." >&2
         exit 8
     fi
 }
-if [ "$NO_CLEANUP" -eq 1 ]; then write_refresh_stamp; else stamp_then_cleanup; fi
+if [ "$NO_CLEANUP" -eq 1 ]; then write_refresh_stamp; write_reindex_state 0 0 none; else stamp_then_cleanup; fi
 echo "qmd-reindex: OK $(stamp) — index refreshed, all content hashes embedded"

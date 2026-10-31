@@ -193,13 +193,57 @@ def open_regular(path):
         os.close(fd)
 
 
-def sha256_file(path):
-    h, n = hashlib.sha256(), 0
-    with open_regular(path) as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
-            h.update(chunk)
-            n += len(chunk)
-    return h.hexdigest(), n
+def hash_open(f):
+    h = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1 << 16), b""):
+        h.update(chunk)
+    return h.hexdigest()
+
+
+def dev_ino(f):
+    st = os.fstat(f.fileno())
+    return [st.st_dev, st.st_ino]
+
+
+def path_only(f):
+    """A path-only (O_PATH) descriptor of the file f has open: it names that file for exec but cannot be read."""
+    return os.open(f"/proc/self/fd/{f.fileno()}", os.O_PATH | os.O_CLOEXEC)
+
+
+def verify_open(path, sha256, ident):
+    """Open path once and hash that open file: the file when it is the frozen one (same sha256, same
+    st_dev and st_ino), else None. The caller starts the program from this descriptor, never from the
+    path again, so a name swapped after this check is not what runs."""
+    f = open_regular(path)
+    try:
+        if dev_ino(f) == ident and hash_open(f) == sha256:
+            return f
+    except BaseException:
+        f.close()
+        raise
+    f.close()
+    return None
+
+
+# ponytail: a name list, not shebang or ELF detection; a script run by an interpreter outside it is hashed and
+# compared by path as before. upgrade path: classify argv[0] by its file instead.
+INTERPRETERS = re.compile(r"(ba|da|z|k)?sh|python[0-9.]*|perl|ruby|php|lua")
+
+
+def script_operand(rec):
+    """Index in rec["argv"] of the file an interpreter runs as its script: the first bound file among
+    the words that are no option, when argv[0] is a known interpreter and no option before it supplies
+    the program (-c, -m, -e) or is a long option. Words that name no file (the `ignore` of
+    `-W ignore`) are skipped. Else None."""
+    argv = rec["argv"]
+    if not INTERPRETERS.fullmatch(os.path.basename(argv[0])):
+        return None
+    for i, a in enumerate(argv[1:], 1):
+        if a.startswith("--") or (a.startswith("-") and re.search(r"[cme]", a)):
+            return None
+        if not a.startswith("-") and rec["targets"][i].startswith("file:"):
+            return i
+    return None
 
 
 class BadFile(Exception):
@@ -212,8 +256,8 @@ def bind_target(a, cwd):
     link moved above it or a dangling link retargeted changes it), or None for an element that
     is no path (empty, NUL, over 4096 characters, /dev/null). A pseudo-file
     (under /proc, /sys, /dev; only /dev/null is let through), a FIFO or other non-regular file, an
-    entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a strict realpath
-    fails for any reason but a missing name, such as a link past PATH_MAX that plain realpath would
+    entry that cannot be examined, and a path the kernel cannot walk (`nr.landing`: a walk that
+    fails for any reason but a missing name or a name under a non-directory, such as a link past PATH_MAX that plain realpath would
     leave as a name, or a name past NAME_MAX, a `python -c` program with a long run among them)
     raise BadFile: a run that is not bound by hash must not go ahead."""
     if not a or "\0" in a or len(a) > 4096:
@@ -271,7 +315,7 @@ def collect_files(argv, cwd, op_uid):
         except OSError as e:
             raise BadFile(a) from e
         body = head if n <= READ_CAP and (st.st_mode & 0o004 or st.st_uid == op_uid) else None
-        out.append(({"path": p, "sha256": h.hexdigest(), "bytes": n, "shown": body is not None}, body))
+        out.append(({"path": p, "sha256": h.hexdigest(), "bytes": n, "dev_ino": [st.st_dev, st.st_ino], "shown": body is not None}, body))
     return out, targets
 
 
@@ -314,6 +358,7 @@ def make_builder(spec):
     def build(rid, created, expires):
         rec = {"v": 1, "id": rid, "kind": "run", "run_as": spec["run_as"], "uid": spec["uid"], "gid": spec["gid"],
                "argv": spec["argv"], "argv0_path": spec["argv0_path"], "argv0_sha256": spec["argv0_sha256"],
+               "argv0_dev_ino": spec["argv0_dev_ino"],
                "files": [e for e, _ in spec["files"]], "targets": spec["targets"],
                "cwd": spec["cwd"], "cwd_dev_ino": spec["cwd_dev_ino"],
                "env": {"names": sorted(run_env(spec["pw"]))},
@@ -358,13 +403,13 @@ def read_copy(rid, name):
         return f.read().decode("utf-8", "replace")
 
 
-def capture(cmd, env, cwd, stdin_path, timeout):
+def capture(cmd, env, cwd, stdin_path, timeout, pass_fds=()):
     """Run cmd, keep OUT_CAP bytes of each stream (counting and hashing all of it)."""
     stdin = open(stdin_path, "rb") if stdin_path else subprocess.DEVNULL
     t0 = time.monotonic()
     try:
         proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                start_new_session=True)
+                                start_new_session=True, pass_fds=pass_fds)
     except OSError:
         return 127, {"stdout": (b"", 0, hashlib.sha256().hexdigest()), "stderr": (b"", 0, hashlib.sha256().hexdigest())}, 0
     finally:
@@ -416,16 +461,22 @@ def capture(cmd, env, cwd, stdin_path, timeout):
 def execute_run(payload, config):
     """Re-check everything the operator approved, then run it. Returns the broker's result dict."""
     rid = payload["id"]
+    held, frozen, sealed = {}, {}, []  # path -> the open file the check hashed, what it was frozen as, and the path-only fds the run starts from
     try:
         rec = load_record(rid)
         if rec.get("id") != rid or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
             return {"result": "hash-mismatch"}
         try:  # a program, file argument or cwd that is gone or no longer a regular file has changed
-            if sha256_file(os.path.realpath(rec["argv0_path"]))[0] != rec["argv0_sha256"]:
-                return {"result": "changed"}
-            for f in rec["files"]:
-                if sha256_file(f["path"])[0] != f["sha256"]:
+            for path, sha256, ident in [(rec["argv0_path"], rec["argv0_sha256"], rec["argv0_dev_ino"])] + \
+                    [(f["path"], f["sha256"], f["dev_ino"]) for f in rec["files"]]:
+                if path in held:  # one open file answers both records, which must then agree
+                    if frozen[path] != (sha256, ident):
+                        return {"result": "changed"}
+                    continue
+                f = verify_open(path, sha256, ident)
+                if f is None:
                     return {"result": "changed"}
+                held[path], frozen[path] = f, (sha256, ident)
             st = os.stat(rec["cwd"])
             if [st.st_dev, st.st_ino] != rec["cwd_dev_ino"]:
                 return {"result": "changed"}
@@ -459,7 +510,21 @@ def execute_run(payload, config):
                 return {"result": "not-in-class"}
             if config["classes"][hit[0]].get("run_as", "root") != rec["run_as"]:
                 return {"result": "bad-user"}
-        cmd = [rec["argv0_path"]] + rec["argv"][1:]
+        # Start the verified descriptors, never the paths: a name swapped after the check is not what runs.
+        # The program (and the script an interpreter runs) is named /proc/self/fd/N, which the process that
+        # execs it resolves to the same open file; the cost is that the program sees that name as argv[0].
+        # What is handed over is a path-only (O_PATH) descriptor of the verified file, never the read descriptor
+        # opened here as root: access is checked when a file is opened, so a program that starts first as the
+        # run-as user could read a root-only script through a readable one.
+        argv, fds = list(rec["argv"]), [path_only(held[rec["argv0_path"]])]
+        sealed.extend(fds)
+        argv[0] = f"/proc/self/fd/{fds[0]}"
+        i = script_operand(rec)
+        if i is not None:
+            fds.append(path_only(held[rec["targets"][i][len("file:"):]]))
+            sealed.append(fds[-1])
+            argv[i] = f"/proc/self/fd/{fds[-1]}"
+        cmd = argv
         if SEAM or rec["uid"] != 0:
             sp = setpriv_path()
             if sp:
@@ -468,9 +533,14 @@ def execute_run(payload, config):
             elif not SEAM:
                 return {"result": "no-setpriv"}
         timeout = cfg_int(run_block(config), "timeout_s", 300, 1, 1800)
-        rc, streams, ms = capture(cmd, run_env(run_pw), rec["cwd"], rec["stdin"]["copy"], timeout)
+        rc, streams, ms = capture(cmd, run_env(run_pw), rec["cwd"], rec["stdin"]["copy"], timeout, fds)
     except (OSError, KeyError, TypeError, ValueError, ab.Refused):
         return {"result": "hash-mismatch"}
+    finally:
+        for f in held.values():
+            f.close()
+        for fd in sealed:
+            os.close(fd)
     out, err = streams["stdout"], streams["stderr"]
     kept = True
     try:  # the command already ran: a result file that cannot be written must not hide that
@@ -520,6 +590,9 @@ def run_request(broker, config, args):
         return 5
     if run_block(config).get("enabled") is not True:
         print("result=run-disabled")
+        return 5
+    if getattr(os.path, "ALLOW_MISSING", None) is None:  # older than the CVE-2025-4517 posixpath fixes; untested there
+        print("result=no-allow-missing")
         return 5
     op_pw = user_pw(config.get("operator_user"))
     if op_pw is None:  # a partial config must not point the floor at root's home
@@ -575,7 +648,9 @@ def run_request(broker, config, args):
         print("result=no-setpriv")
         return 5
     st = os.stat(cwd)
-    spec = {"argv": argv, "argv0_path": argv0_path, "argv0_sha256": sha256_file(os.path.realpath(argv0_path))[0],
+    with open_regular(argv0_path) as f0:
+        argv0_sha256, argv0_dev_ino = hash_open(f0), dev_ino(f0)
+    spec = {"argv": argv, "argv0_path": argv0_path, "argv0_sha256": argv0_sha256, "argv0_dev_ino": argv0_dev_ino,
             "files": files, "targets": targets, "stdin": stdin, "cwd": cwd, "cwd_dev_ino": [st.st_dev, st.st_ino], "run_as": run_pw.pw_name,
             "uid": run_pw.pw_uid, "gid": run_pw.pw_gid, "pw": run_pw, "session": meta["session"],
             "ticket": meta["ticket"], "blocked_by": args.blocked_by, "why": meta["why"], "mode": mode}

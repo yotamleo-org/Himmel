@@ -51,6 +51,7 @@ block-bare-qmd-query.sh|||deny|||-|||-|||qmd query hello
 block-chokepoint-env-prefix.sh|||deny|||-|||-|||ARMAUTOMERGE=1 bash scripts/handover/merge-on-green.sh
 block-destructive-commands.sh|||deny|||-|||-|||rm -rf /tmp/x
 block-edit-live-settings.sh|||deny|||-|||-|||cp x ~/.claude/settings.json
+block-fork-sync-pr.sh|||deny|||-|||-|||gh pr create --repo yotamleo-org/core --head home-assistant:dev -t x -b y
 block-git-stash.sh|||deny|||-|||-|||git stash
 block-himmel-config-writes.sh|||deny|||-|||-|||cp /tmp/f ~/.himmel/config.json
 block-jira-compound-write.sh|||deny|||-|||-|||node /x/scripts/jira/dist/index.js create --type Task --title a --desc "$(cat /tmp/a.md)"
@@ -96,6 +97,27 @@ block-git-stash.sh zsh-subscript-braceless HIMMEL-5745
 block-git-stash.sh zsh-subscript-braced HIMMEL-5745
 block-git-stash.sh zsh-paramflag-indirect-empty HIMMEL-5745
 block-git-stash.sh zsh-modifier-empty-arg HIMMEL-5745
+# block-fork-sync-pr.sh is a workflow guard that tokenizes with shlex: the
+# shell-only constructs below are accepted misses behind one residual ticket.
+block-fork-sync-pr.sh bs-newline-between-words HIMMEL-8338
+block-fork-sync-pr.sh bs-newline-inside-word HIMMEL-8338
+block-fork-sync-pr.sh ansi-c-command-word HIMMEL-8338
+block-fork-sync-pr.sh hash-midword HIMMEL-8338
+block-fork-sync-pr.sh hash-after-escaped-blank HIMMEL-8338
+block-fork-sync-pr.sh hash-after-escaped-operator HIMMEL-8338
+block-fork-sync-pr.sh expansion-default-empty HIMMEL-8338
+block-fork-sync-pr.sh expansion-strip-empty HIMMEL-8338
+block-fork-sync-pr.sh expansion-indirect-empty HIMMEL-8338
+block-fork-sync-pr.sh expansion-adjacent-empty HIMMEL-8338
+block-fork-sync-pr.sh expansion-empty-arg HIMMEL-8338
+block-fork-sync-pr.sh zsh-modifier-tail-braceless HIMMEL-8338
+block-fork-sync-pr.sh zsh-modifier-tail-braced HIMMEL-8338
+block-fork-sync-pr.sh zsh-modifier-root-braceless HIMMEL-8338
+block-fork-sync-pr.sh zsh-modifier-root-braced HIMMEL-8338
+block-fork-sync-pr.sh zsh-subscript-braceless HIMMEL-8338
+block-fork-sync-pr.sh zsh-subscript-braced HIMMEL-8338
+block-fork-sync-pr.sh zsh-paramflag-indirect-empty HIMMEL-8338
+block-fork-sync-pr.sh zsh-modifier-empty-arg HIMMEL-8338
 '
 
 # block-write-into-main-checkout.sh exempts any path with a tmp/ or temp/

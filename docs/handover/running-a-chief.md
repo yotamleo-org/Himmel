@@ -220,7 +220,7 @@ It also opens a **Telegram inbox**: it creates
 `chief-kit/chief-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle chief takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so
-the operator's `/chief <session> <text>` (or the older alias `/console`) from
+the operator's `/chief <session> <text>` from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
@@ -276,6 +276,21 @@ many readers but exactly one writer per artifact. And **every dispatch names an
 explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
+
+The chief's own helper subagents (`Agent` dispatches inside the chief session)
+follow the same policy: raise *effort* before tier, and name the model per
+helper kind.
+
+| Helper kind | Model |
+|---|---|
+| Worker-brief or `legs.json` drafting, wave prep | `sonnet` |
+| Ticket audit (still open, fixed or partial) | `sonnet` |
+| Per-page docs review | `sonnet` |
+| A specified edit list ending in a machine check | `haiku`, effort medium |
+| The one hard call | `fable` |
+
+A native worker launched with no model runs `claude-opus-5-5`, so
+`headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
 
 Four pre-launch checks that each cost a chief a dead worker when skipped:
 
@@ -390,6 +405,14 @@ itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 Before dispatching a chain of PRs, `python3 scripts/handover/chief-kit/chain-graph.py --prs <n>,<n>,...`
 prints the pairwise hard and soft edges between them (read-only; `--json` for scripts, `--head PR=SHA`
 to pin a PR to an older head).
+Every `focus-refresh.sh` run regenerates `<doc dir>/focus-chains.json` from the chain registry
+(`<handover root>/<user>/himmel/chains.json`; no registry, no stage): never hand-edit that file. The
+file ends with the drain row, `<version> drain: open <n> · in-chain <n> · standalone <n> · unchained <k> <keys> ·
+dispatchable <d> · dropped {<reason> <n>, ...}`, which the FOCUS page prints under its title (unique keys;
+`open = in-chain + standalone + unchained`). A registry, graph or render failure ends the refresh
+`focus=WARN:chains <registry|graph|render>` and keeps the last good file byte for byte; `drain-unchained=<k>` in
+`focus-state` is a WARN while `k` is above 0, and a set `focus-plan:` prints `WARN priority-source plan-differs`.
+`python3 scripts/handover/chief-kit/series-ledger.py` is the one reader/writer of a series ledger under flock; `read|create|set|add-item|pass`.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 
