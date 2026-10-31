@@ -67,7 +67,7 @@ describe("reduce — dispatch on a finished job (HIMMEL-8440)", () => {
     const J = jobAttrs();
     const st = reduce([
       { t: "submit", ts: "t", job: J },
-      { t: "claim", ts: "t", jobId: J.id, daemon: "local", lease: "2026-07-05T01:00:00Z" },
+      { t: "claim", ts: "t", jobId: J.id, daemon: "local", lease: "2026-07-05T01:00:00Z" }, // t13b-ok: daemon is the claim event field
       { t: "verdict", ts: "t", jobId: J.id, conclusion: "success" },
       { t: "complete", ts: "t", jobId: J.id },
       { t: "dispatch", ts: "t", jobId: J.id, lane: "self-hosted-runner", runId: "r1" },

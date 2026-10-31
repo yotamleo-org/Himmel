@@ -87,6 +87,7 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
   const now = deps.now();
   const nowIso = new Date(now).toISOString();
   const daemon = deps.daemonId ?? "vm";
+  const owner = daemon; // t13b-ok: the claimant id every claim in this tick is made under
   const ttl = deps.leaseTtlMs ?? 15 * 60_000;
   const byName = new Map<LaneName, LaneAdapter>(deps.adapters.map((a) => [a.name, a]));
   const report: TickReport = { submitted: [], reused: [], dispatched: [], deferred: [], verdicts: [], posted: [], deadLettered: [] };
@@ -136,7 +137,7 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
       // Claim first, against the LIVE ledger: `js` is a snapshot taken before earlier
       // iterations awaited, so the job may have been claimed or finished since (a
       // local daemon completing it must not be moved back to running).
-      const nativeClaim = grantClaim(js.attrs.id, daemon, ttl, deps.now(), env, path);
+      const nativeClaim = grantClaim(js.attrs.id, owner, ttl, deps.now(), env, path);
       if (!nativeClaim.ok) continue; // claimed elsewhere or already finished
       const runId = `native-${decision.lane}-${js.attrs.id}`;
       appendEvent({ t: "dispatch", ts: nowIso, jobId: js.attrs.id, lane: decision.lane, runId }, env, path);
@@ -145,12 +146,12 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
       continue;
     }
     // Dispatched lane: claim first (single-writer lease), then fire.
-    const claim = grantClaim(js.attrs.id, daemon, ttl, deps.now(), env, path);
+    const claim = grantClaim(js.attrs.id, owner, ttl, deps.now(), env, path);
     if (!claim.ok) continue; // already claimed elsewhere — leave queued
     // Keep the claim alive while the (possibly long) dispatch is in flight, so no
     // other daemon is granted the job when the TTL lapses mid-await.
-    const keepalive = setInterval(
-      () => renewLease(js.attrs.id, daemon, ttl, deps.now(), env, path),
+    const keepalive = setInterval( // t13b-ok: renew timer, cleared in the finally below
+      () => renewLease(js.attrs.id, owner, ttl, deps.now(), env, path),
       Math.max(1, Math.floor(ttl / 3)),
     );
     let runId: string;
@@ -161,7 +162,7 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
     }
     // Re-check we still hold the claim before recording the dispatch; otherwise
     // another daemon owns the job now and a dispatch would land over its claim.
-    if (!holdsLiveClaim(readState(env, path).get(js.attrs.id), daemon, deps.now())) continue;
+    if (!holdsLiveClaim(readState(env, path).get(js.attrs.id), owner, deps.now())) continue;
     appendEvent({ t: "dispatch", ts: nowIso, jobId: js.attrs.id, lane: decision.lane, runId }, env, path);
     report.dispatched.push({ jobId: js.attrs.id, lane: decision.lane });
     laneAvail[decision.lane].inFlight += 1; // enforce cap within the tick

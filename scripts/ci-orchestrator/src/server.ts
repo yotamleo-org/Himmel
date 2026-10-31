@@ -52,6 +52,11 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   return raw ? JSON.parse(raw) : {};
 }
 
+// The caller's id as /renew and /complete read it from the request body.
+function claimantOf(body: unknown): string | undefined {
+  return (body as { daemon?: string }).daemon; // t13b-ok: daemon is the existing wire field the client sends
+}
+
 function send(res: ServerResponse, code: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(code, { "content-type": "application/json" });
@@ -126,12 +131,13 @@ export function createQueueServer(opts: ServerOptions): Server {
     if (method === "POST" && url === "/renew") {
       readBody(req)
         .then((body) => {
-          const { jobId, daemon } = body as { jobId?: string; daemon?: string };
-          if (!jobId || !daemon) {
-            send(res, 400, { error: "missing jobId/daemon" });
+          const jobId = (body as { jobId?: string }).jobId;
+          const claimant = claimantOf(body);
+          if (!jobId || !claimant) {
+            send(res, 400, { error: "missing jobId/claimant" });
             return;
           }
-          const r = renewLease(jobId, daemon, ttl, clock(), env, path);
+          const r = renewLease(jobId, claimant, ttl, clock(), env, path);
           if (!r.ok) {
             send(res, 409, { error: "not the current claimant with a live lease" });
             return;
@@ -145,19 +151,19 @@ export function createQueueServer(opts: ServerOptions): Server {
     if (method === "POST" && url === "/complete") {
       readBody(req)
         .then((body) => {
-          const { jobId, conclusion, daemon } = body as {
+          const { jobId, conclusion } = body as {
             jobId?: string;
             conclusion?: "success" | "failure" | "cancelled";
-            daemon?: string;
           };
-          if (!jobId || !conclusion || !daemon) {
-            send(res, 400, { error: "missing jobId/conclusion/daemon" });
+          const claimant = claimantOf(body);
+          if (!jobId || !conclusion || !claimant) {
+            send(res, 400, { error: "missing jobId/conclusion/claimant" });
             return;
           }
           // Only the current claimant, while its lease is live, may complete — an
           // expired holder or a done job must not overwrite the verdict.
           // Sync check + append, no await between (same critical-section rule as /claim).
-          if (!holdsLiveClaim(readState(env, path).get(jobId), daemon, clock())) {
+          if (!holdsLiveClaim(readState(env, path).get(jobId), claimant, clock())) {
             send(res, 409, { error: "not the current claimant with a live lease" });
             return;
           }

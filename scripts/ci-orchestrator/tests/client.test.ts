@@ -87,11 +87,11 @@ describe("localRoute (client-side local-exec decision, protect-local)", () => {
 });
 
 describe("completeOnVm (HIMMEL-8439)", () => {
-  test("sends the daemon id with /complete", async () => {
+  test("sends the claimant id with /complete", async () => {
     const post = vi.fn<HttpPostFn>(async () => ({ ok: true }));
     expect(await completeOnVm("http://vm:9000", "tok", "j1", "success", post, "local")).toBe("completed");
     expect(post.mock.calls[0][0]).toBe("http://vm:9000/complete");
-    expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", conclusion: "success", daemon: "local" });
+    expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", conclusion: "success", daemon: "local" }); // t13b-ok: daemon is the wire field name
   });
 
   test("a refusal or unreachable VM is reported, never thrown", async () => {
@@ -113,7 +113,7 @@ describe("holdLease (HIMMEL-8438)", () => {
       await vi.advanceTimersByTimeAsync(3500);
       expect(post).toHaveBeenCalledTimes(3);
       expect(post.mock.calls[0][0]).toBe("http://vm:9000/renew");
-      expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", daemon: "local" });
+      expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", daemon: "local" }); // t13b-ok: daemon is the wire field name
       stop();
       await vi.advanceTimersByTimeAsync(5000);
       expect(post).toHaveBeenCalledTimes(3);

@@ -61,8 +61,8 @@ export function grantClaim(
 // `now` (status "claimed", lease not yet expired). The one test /renew, /complete
 // and the scheduler's post-dispatch re-check all share, so "who may act on a job"
 // has a single definition.
-export function holdsLiveClaim(js: JobState | undefined, daemon: string, now: number): boolean {
-  return !!js && js.status === "claimed" && js.claimant === daemon && !!js.lease && Date.parse(js.lease) > now;
+export function holdsLiveClaim(js: JobState | undefined, claimant: string, now: number): boolean {
+  return !!js && js.status === "claimed" && js.claimant === claimant && !!js.lease && Date.parse(js.lease) > now;
 }
 
 // Extend `claimant`'s live lease to now+ttlMs. Refused (ok:false) for

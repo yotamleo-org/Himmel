@@ -61,11 +61,11 @@ export async function completeOnVm(
   jobId: string,
   conclusion: "success" | "failure" | "cancelled",
   post: HttpPostFn,
-  daemon = "local",
+  claimant = "local",
 ): Promise<"completed" | "refused" | "unreachable"> {
   let body: unknown;
   try {
-    body = await post(`${vmUrl}/complete`, token, { jobId, conclusion, daemon });
+    body = await post(`${vmUrl}/complete`, token, { jobId, conclusion, daemon: claimant }); // t13b-ok: daemon is the wire field name for the claimant id
   } catch {
     return "unreachable";
   }
@@ -82,10 +82,10 @@ export function holdLease(
   jobId: string,
   post: HttpPostFn,
   intervalMs: number,
-  daemon = "local",
+  claimant = "local",
 ): () => void {
-  const timer = setInterval(() => {
-    post(`${vmUrl}/renew`, token, { jobId, daemon }).catch(() => {});
+  const timer = setInterval(() => { // t13b-ok: bounded renew loop, stopped by the returned stop()
+    post(`${vmUrl}/renew`, token, { jobId, daemon: claimant }).catch(() => {}); // t13b-ok: daemon is the wire field name for the claimant id
   }, intervalMs);
   return () => clearInterval(timer);
 }

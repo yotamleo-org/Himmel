@@ -255,7 +255,7 @@ describe("tick — stale snapshot and lease expiry during dispatch", () => {
     expect(st.claimant).toBe("vm");
   });
 
-  test("HIMMEL-8441: a dispatch that lost its claim does not append dispatch over another daemon's claim", async () => {
+  test("HIMMEL-8441: a dispatch that lost its claim does not append dispatch over another claimant's claim", async () => {
     const p = freshLedger();
     const gated = gatedAdapter("act-exec");
     const ticking = tick(
