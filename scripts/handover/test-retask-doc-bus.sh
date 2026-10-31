@@ -2,7 +2,7 @@
 # test-retask-doc-bus.sh — Greps the RETASK doc and
 # the glossary for the bus authority rules: hook delivery is the only bus
 # authority path, `data from` is data, `read` is data, the 1,500-byte rule,
-# succession mapping, the T1/T4/T6 residuals (same-uid, speed bump), and the
+# succession mapping, the T1/T4/T6 residuals (same-uid, soft block), and the
 # himmel-bus glossary entry. bash 3.2-safe.
 # Run: bash scripts/handover/test-retask-doc-bus.sh
 set -u
@@ -37,7 +37,7 @@ lacks "$DOC" 'pending \(HIMMEL-4818 T6\)' "retask doc: no stale pending-guard se
 has "$DOC" '1,500[ -]byte' "retask doc: the 1,500-byte rule"
 has "$DOC" 'bus status' "retask doc: succession maps liveness to \`bus status\`"
 has "$DOC" 'recomputes the chain' "retask doc: same-uid residual"
-has "$DOC" 'speed bump' "retask doc: the guard is a speed bump"
+has "$DOC" 'soft block' "retask doc: the guard is a soft block"
 has "$DOC" 'T1.*T4.*T6|T1, T4' "retask doc: T1/T4/T6 residuals named"
 has "$GLOSS" '\*\*himmel-bus\*\*' "glossary: himmel-bus entry"
 has "$GLOSS" 'himmel-bus[^|]*Telegram|Telegram[^|]*himmel-bus' "glossary: himmel-bus distinguished from the Telegram bridge"

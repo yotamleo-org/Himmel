@@ -5881,7 +5881,7 @@ pins `marketplace/plugins/himmel-bus/lib/*.mjs`, and `bus-deliver-run.js` stays
 silent (fails closed) if one differs from its pin. `server/index.mjs` and
 `scripts/telegram/bus.ts` sit outside the pinned dirs (residual).
 
-### himmel-bus store guard — a soft block (speed bump), not a fence (HIMMEL-4829)
+### himmel-bus store guard — a soft block, not a fence (HIMMEL-4829)
 
 `guard-bus-store.sh` is a PreToolUse hook on the Bash chain and on the
 `Edit|Write|MultiEdit|NotebookEdit` chain (HIMMEL-4818 threat model T3, T5, T6).
