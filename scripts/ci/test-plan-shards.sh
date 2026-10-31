@@ -327,4 +327,36 @@ for bad in 0 -3; do
   if [ -z "$got" ] && [ "$(cat "$real_dir/step.rc")" = 0 ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad succeeds and leaves no shard_total (8 workers)"; else fail "PS21 plan step $bad: got [$got] rc $(cat "$real_dir/step.rc")"; fi
 done
 
+# PS25: the planner says what it expects the longest shard to take, on
+# stderr (stdout is the GITHUB_OUTPUT contract). Costs 500 400 300 200 100: N=3 at 500 s.
+# Grow b 2x (800): the plan is still N=3, and the longest shard is now b alone.
+size_err() { # size_err <list file> <ledger> <n> -> the planner's stderr
+  { STUB_LIST="$1" STUB_LIST_MODE=ok SUITE_DURATIONS="$2" bash "$PS/plan-shards.sh" "$3" . >/dev/null; } 2>&1
+}
+err=$(size_err "$PS/hand.list" "$PS/hand.tsv" 8)
+if [ "$err" = "plan-shards.sh: predicted longest shard 500s at N=3 of 8" ]; then pass "PS25 the plan reports its predicted longest shard"; else fail "PS25 predicted: got [$err]"; fi
+printf 'a\t500\nb\t800\nc\t300\nd\t200\ne\t100\n' > "$PS/grown.tsv"
+err=$(size_err "$PS/hand.list" "$PS/grown.tsv" 8)
+if [ "$err" = "plan-shards.sh: predicted longest shard 800s at N=3 of 8" ]; then pass "PS25 a suite grown 2x is the longest shard alone, the rest moved off it"; else fail "PS25 grown: got [$err]"; fi
+
+# PS26: the ledger header's REFRESH recipe harvests a QUARANTINE suite too.
+# Fixture: lines copied verbatim from shell-unit-shard (ubuntu-latest, 12) of PR run
+# 41169906564 (head 19aae3dce1b6, 2026-10-31), where test-chief-wait-b.sh failed rc=1 on
+# both attempts and cost 499 s against a ledger row of 265: the recipe printed only
+# [PASS]/[FAIL] timings, so that suite never reached the ledger.
+T=$(printf '\t')
+job="shell-unit-shard (ubuntu-latest, 12)${T}Run bash scripts/ci/home-canary.sh --shard 12/20 ."
+{
+  printf '%s%s2026-10-31T05:07:48.7255663Z [PASS] scripts/guardrails/test-lesson-write-fence.sh (84s)\n' "$job" "$T"
+  printf '%s%s2026-10-31T05:07:48.7255992Z [PASS] scripts/handover/chief-kit/test-chief-wait-pool.sh (125s)\n' "$job" "$T"
+  printf '%s%s2026-10-31T05:07:48.7256553Z [RETRY] scripts/handover/chief-kit/test-chief-wait-b.sh failed (rc=1); re-running it once\n' "$job" "$T"
+  printf '%s%s2026-10-31T05:07:48.7271309Z [QUARANTINE] scripts/handover/chief-kit/test-chief-wait-b.sh (rc=1, 499s) — tier quarantine, not failing the run\n' "$job" "$T"
+} > "$PS/shard12.log"
+recipe=$(grep -m1 "^#     | sed -nE '" "$SRC_ROOT/scripts/ci/suite-durations.tsv")
+recipe=${recipe#"#     | sed -nE '"}
+recipe=${recipe%"' \\"}
+got=$(sed -nE "$recipe" "$PS/shard12.log" | sort -u)
+want=$(printf 'scripts/guardrails/test-lesson-write-fence.sh\t84\nscripts/handover/chief-kit/test-chief-wait-b.sh\t499\nscripts/handover/chief-kit/test-chief-wait-pool.sh\t125')
+if [ -n "$recipe" ] && [ "$got" = "$want" ]; then pass "PS26 the REFRESH recipe harvests a quarantined suite's seconds"; else fail "PS26 recipe [$recipe]: got [$got]"; fi
+
 rst_tally
