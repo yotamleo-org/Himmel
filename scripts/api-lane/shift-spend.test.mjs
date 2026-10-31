@@ -316,7 +316,7 @@ test('cli: --live with no keys keeps both accounts in the record as unavailable 
 });
 
 test('cli: a bad window is refused', () => {
-  for (const args of [['--since', 'yesterday', '--until', UNTIL], ['--since', UNTIL, '--until', SINCE], ['--until', UNTIL]]) {
+  for (const args of [['--since', '2026-02-30T00:00:00Z', '--until', UNTIL], ['--since', SINCE, '--until', '2026-10-31T24:00:00Z'], ['--since', 'yesterday', '--until', UNTIL], ['--since', UNTIL, '--until', SINCE], ['--until', UNTIL]]) {
     const r = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: join(T, 'home') } });
     assert.equal(r.status, 2, args.join(' '));
   }

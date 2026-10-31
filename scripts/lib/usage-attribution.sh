@@ -66,7 +66,8 @@
 # --until closes the window: a counted row is in [--since, --until),
 # the upper bound EXCLUSIVE, so back-to-back shifts never count a row twice. It
 # takes the same canonical UTC form as --since, and a bound at or before --since
-# is refused rather than reported as an empty shift. scripts/api-lane/shift-spend.mjs
+# is refused rather than reported as an empty shift. A row with no timestamp has no
+# place in a closed window, so it is counted only when --until is absent. scripts/api-lane/shift-spend.mjs
 # reads the same [since, until) window for the codex, bank and API spend sources.
 #
 # --since is validated up front to a canonical UTC form
@@ -195,9 +196,10 @@ def norm_ts(s):
   end;
 
 def in_window($row):
-  ($row.timestamp == null)
-  or ((($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
-      and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until))));
+  if $row.timestamp == null then ($until == "")
+  else (($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
+       and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until)))
+  end;
 
 reduce inputs as $row (
   {wake: "op", afterSkill: false, pendingEvent: false, seen: {}, name: null, aititle: null, named: false, account: null,
@@ -268,9 +270,10 @@ def norm_ts(s):
   end;
 
 def in_window($row):
-  ($row.timestamp == null)
-  or ((($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
-      and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until))));
+  if $row.timestamp == null then ($until == "")
+  else (($since == "") or (norm_ts($row.timestamp) >= norm_ts($since)))
+       and (($until == "") or (norm_ts($row.timestamp) < norm_ts($until)))
+  end;
 
 reduce inputs as $row (
   {seen: {}, sub: {turns: 0, input: 0, cache_read: 0, cache_create: 0, output: 0}};

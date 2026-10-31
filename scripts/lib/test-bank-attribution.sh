@@ -312,6 +312,7 @@ cat > "$SLUG_DIR6/$SID_I.jsonl" <<EOF
 {"type":"assistant","sessionId":"$SID_I","isSidechain":false,"timestamp":"2026-06-01T10:00:10.000Z","requestId":"reqI2","message":{"usage":{"input_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
 {"type":"assistant","sessionId":"$SID_I","isSidechain":false,"timestamp":"2026-06-01T10:00:20.000Z","requestId":"reqI3","message":{"usage":{"input_tokens":4,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
 {"type":"assistant","sessionId":"$SID_I","isSidechain":false,"timestamp":"2026-06-01T10:00:30.000Z","requestId":"reqI4","message":{"usage":{"input_tokens":8,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
+{"type":"assistant","sessionId":"$SID_I","isSidechain":false,"requestId":"reqI5","message":{"usage":{"input_tokens":64,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
 EOF
 mkdir -p "$SLUG_DIR6/$SID_I/subagents"
 cat > "$SLUG_DIR6/$SID_I/subagents/agent-1.jsonl" <<EOF
@@ -321,11 +322,13 @@ EOF
 
 trap 'rm -rf "$ROOT" "$ROOT2" "$ROOT3" "$ROOT4" "$ROOT5" "$ROOT6"' EXIT
 
-OUT_I="$(bash "$SCRIPT" "$ROOT6" --since 2026-06-01T10:00:05Z --until 2026-06-01T10:00:20Z 2>&1)" || true
+OUT_I="$(bash "$SCRIPT" "$ROOT6" --since 2026-06-01T10:00:05Z --until 2026-06-01T10:00:20Z 2>&1)" \
+  || { echo "FAIL: --since/--until run exited non-zero" >&2; FAIL=1; }
 assert_contains "$OUT_I" "| Session-I | test-slug | n/a | 1 | 2 | 0 | 0 | 0 | 1/0/0 | 1 |" "--until: the turn before --since, the turn AT --until and the turn after are not counted"
 assert_contains "$OUT_I" "| Session-I (subagents) | test-slug | n/a | 1 | 16 | 0 | 0 | 0 | - | - |" "--until: a subagent turn after --until is not counted"
 # --until alone (no --since) bounds from the top.
-OUT_I2="$(bash "$SCRIPT" "$ROOT6" --until 2026-06-01T10:00:20Z 2>&1)" || true
+OUT_I2="$(bash "$SCRIPT" "$ROOT6" --until 2026-06-01T10:00:20Z 2>&1)" \
+  || { echo "FAIL: --until run exited non-zero" >&2; FAIL=1; }
 assert_contains "$OUT_I2" "| Session-I | test-slug | n/a | 2 | 3 | 0 | 0 | 0 | 2/0/0 | 1 |" "--until without --since counts everything before the bound"
 # a malformed bound fails loudly, like --since
 if bash "$SCRIPT" "$ROOT6" --until yesterday >/dev/null 2>&1; then

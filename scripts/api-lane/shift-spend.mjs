@@ -257,7 +257,9 @@ async function main(argv, env) {
       (opt.costFiles[m[1]] ??= []).push(m[2]);
     } else usageExit(`unknown argument: ${a}`);
   }
-  if (!ISO.test(opt.since ?? '') || !ISO.test(opt.until ?? '')) usageExit('--since and --until are required UTC timestamps (YYYY-MM-DDTHH:MM:SS[.fff]Z)');
+  // V8 rolls 2026-02-30 and T24:00:00Z over to the next day: only a stamp that round-trips is a real instant.
+  const real = (s) => ISO.test(s ?? '') && Number.isFinite(ms(s)) && new Date(ms(s)).toISOString().slice(0, 19) === s.slice(0, 19);
+  if (!real(opt.since) || !real(opt.until)) usageExit('--since and --until are required real UTC timestamps (YYYY-MM-DDTHH:MM:SS[.fff]Z)');
   if (!(ms(opt.since) < ms(opt.until))) usageExit('--until must be later than --since');
 
   const home = env.HOME || homedir();
