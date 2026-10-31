@@ -151,7 +151,11 @@ change lost nothing.
    above), and records each sweep with
    `score.py export-row <outputs-dir>`: one `results.jsonl` row carrying the
    tree's `cbs_hash` and `confighash` and the `outputs_sha256` of the bundle.
-   An `inconclusive` sweep is refused.
+   `run.sh` stamps the swept tree into `<outputs-dir>/swept.json`; export-row
+   refuses outputs with no stamp, a stamp of other hashes, or a sweep run from a
+   working tree that differed from its HEAD on a gate input. An `inconclusive`
+   sweep is refused, and the gate ignores any row whose status is not `ok` or
+   `partial`.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
    outputs (exit 1 on any mismatch), so a committed row can be checked against
    the bundle it claims.

@@ -174,6 +174,7 @@ def keep_rule(c, series, base, new, after):
 
 GATE_RECALL, GATE_FP = "panel.recall_gating", "panel.fp_rate"
 GATE_EPS = 1e-9  # float slack: two equal means must compare equal
+GATE_STATUS = ("ok", "partial")  # the sweep statuses export-row writes; an inconclusive row never counts
 
 
 def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
@@ -189,13 +190,14 @@ def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
     no-loss head mean recall_gating >= baseline mean - noise, and head mean fp_rate <= baseline mean + noise.
     keep    no-loss, a target class named, and every target class's head mean recall > its baseline max.
     Otherwise loss. Computed at check time, never stored.
-    ponytail: the noise is the spread of the baseline rows at one hash, two runs at first, upgrade = every
-    baseline row at the hash counts already, so the band tightens as sweeps accrue (spec P8)."""
+    ponytail: the noise is the spread (max - min) of the baseline rows at one hash, which only widens as
+    sweeps accrue, upgrade = a dispersion estimate (a standard-error band) once a hash has enough rows (spec P8)."""
     def side(h, skip_ids=(), skip_bundles=()):
         out, ids, bundles = [], set(skip_ids), set(skip_bundles)
         for r in rows:
             m = r.get("metrics") if isinstance(r, dict) else None
             if r.get("cbs_hash") != h or r.get("confighash") != confighash or not isinstance(m, dict) \
+                    or r.get("status") not in GATE_STATUS \
                     or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
                 continue
             if r.get("run_id") in ids or r.get("outputs_sha256") in bundles:

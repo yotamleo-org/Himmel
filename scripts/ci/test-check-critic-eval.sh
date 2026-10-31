@@ -46,7 +46,7 @@ f = sys.argv[1]
 with open(f, "a") as fh:
     for spec in sys.argv[2:]:
         rid, cbs, conf, rec, fp = spec.split(":")
-        fh.write(json.dumps({"run_id": rid, "cbs_hash": cbs, "confighash": conf,
+        fh.write(json.dumps({"run_id": rid, "cbs_hash": cbs, "confighash": conf, "status": "ok",
                              "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
                              "class_recall": {"logic": float(rec)},
                              "outputs_sha256": hashlib.sha256(rid.encode()).hexdigest()},

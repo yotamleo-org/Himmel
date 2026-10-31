@@ -11,7 +11,9 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
   score.py cbs-paths  <rev> [--repo R]     the critic behaviour set (cbs.txt) expanded at <rev>
   score.py cbs-hash   <rev> [--repo R]     64-hex over those paths and their bytes
   score.py confighash <rev> [--repo R]     the eval config at <rev>: fixture set, key, paid roster, window
-  score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one gate row (HEAD's hashes)
+  score.py stamp <outputs-dir> [--fixtures D] [--key F] [--repo R]   record the swept tree (run.sh does it)
+  score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one gate row (HEAD's hashes; refuses
+                                           outputs whose swept.json is unclean or names other hashes)
   score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R]   exit 1 unless the row re-scores so
   score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured
 
@@ -559,10 +561,43 @@ def outputs_sha256(outputs):
     return h.hexdigest()
 
 
+STAMP = "swept.json"
+
+
+def stamp(repo, outputs, fixtures, key):
+    """Write <outputs>/swept.json: the hashes of the tree run.sh sweeps (HEAD). `clean` is false when the
+    working tree differs from HEAD on any gate input, or the sweep reads other fixtures or another key."""
+    inputs = cbs_paths(repo, "HEAD") + [CBS_LIST, FIXTURES_REL, KEY_REL, CRITICS_REL]
+    dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
+    own = (os.path.realpath(fixtures) == os.path.realpath(os.path.join(repo, FIXTURES_REL))
+           and os.path.realpath(key) == os.path.realpath(os.path.join(repo, KEY_REL)))
+    rec = {"tree": _git(repo, "rev-parse", "HEAD").decode().strip(), "cbs_hash": cbs_hash(repo, "HEAD"),
+           "confighash": confighash(repo, "HEAD"), "clean": not dirty and own}
+    os.makedirs(outputs, exist_ok=True)
+    with open(os.path.join(outputs, STAMP), "w", encoding="utf-8") as fh:
+        json.dump(rec, fh, sort_keys=True)
+    return rec
+
+
+def check_stamp(repo, rev, outputs):
+    """Refuse outputs run.sh did not sweep from a clean <rev>-equivalent tree."""
+    try:
+        with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
+            rec = json.load(fh)
+    except (OSError, ValueError):
+        raise ValueError("%s has no readable %s: not a run.sh sweep" % (outputs, STAMP))
+    if not isinstance(rec, dict) or rec.get("clean") is not True:
+        raise ValueError("%s was swept from a working tree that differs from its HEAD, or other fixtures" % outputs)
+    for f, want in (("cbs_hash", cbs_hash(repo, rev)), ("confighash", confighash(repo, rev))):
+        if rec.get(f) != want:
+            raise ValueError("%s was swept at %s %s, %s is at %s" % (outputs, f, str(rec.get(f))[:12], rev, want[:12]))
+
+
 def gate_row(repo, rev, outputs):
     """The results.jsonl row of one sweep's outputs, scored against <rev>'s key and roster."""
     if not os.path.isdir(outputs):
         raise ValueError("no outputs dir: %s" % outputs)
+    check_stamp(repo, rev, outputs)
     with tempfile.NamedTemporaryFile(suffix=".json") as kf:
         kf.write(tree_key(repo, rev))
         kf.flush()
@@ -629,6 +664,10 @@ def main(argv=None):
     for name in ("cbs-paths", "cbs-hash", "confighash"):
         tree_cmds[name] = sub.add_parser(name)
         tree_cmds[name].add_argument("rev")
+    pst = sub.add_parser("stamp")
+    pst.add_argument("outputs")
+    pst.add_argument("--fixtures", default=os.path.join(HERE, "fixtures"))
+    pst.add_argument("--key", default=os.path.join(HERE, "key", "seeds.json"))
     pe = sub.add_parser("export-row")
     pe.add_argument("outputs")
     pe.add_argument("--results", default=os.path.join(HERE, "results.jsonl"))
@@ -640,7 +679,7 @@ def main(argv=None):
     pg.add_argument("base")
     pg.add_argument("head")
     pg.add_argument("--target-class", action="append", default=[], choices=CLASSES)
-    for p in list(tree_cmds.values()) + [pe, pv, pg]:
+    for p in list(tree_cmds.values()) + [pst, pe, pv, pg]:
         p.add_argument("--repo", help="the git repo the revs name (default this checkout)")
     ps.add_argument("--outputs", required=True)
     ps.add_argument("--critics", default="")
@@ -663,7 +702,7 @@ def main(argv=None):
             print("lint: %s" % p, file=sys.stderr)
         print("review-panel lint: %d seeded, %d clean, %d problem(s)" % (n_seeded, n_clean, len(problems)))
         return 1 if problems else 0
-    if a.cmd in tree_cmds or a.cmd in ("export-row", "verify-row", "gate"):
+    if a.cmd in tree_cmds or a.cmd in ("stamp", "export-row", "verify-row", "gate"):
         try:
             return tree_main(a)
         except (OSError, ValueError, KeyError) as e:
@@ -713,6 +752,11 @@ def tree_main(a):
         print(cbs_hash(repo, a.rev))
     elif a.cmd == "confighash":
         print(confighash(repo, a.rev))
+    elif a.cmd == "stamp":
+        rec = stamp(repo, a.outputs, a.fixtures, a.key)
+        if not rec["clean"]:
+            print("score.py stamp: the working tree differs from HEAD on a gate input, or the sweep reads other "
+                  "fixtures: export-row will refuse this sweep", file=sys.stderr)
     elif a.cmd == "export-row":
         row = gate_row(repo, "HEAD", a.outputs)
         if row["status"] == "inconclusive":

@@ -327,6 +327,22 @@ eq "cbs-hash: one byte changes it" "$([ "$(python3 "$SCORE" cbs-hash HEAD --repo
 printf '#!/bin/sh\n' > "$G/scripts/cr/critic-x.sh"; gg add -A; gg commit -qm critic-x
 has "cbs-paths: a new tracked critic-x.sh joins" "$(python3 "$SCORE" cbs-paths HEAD --repo "$G")" "scripts/cr/critic-x.sh"
 
+gstamp() { python3 "$SCORE" stamp "$1" --repo "$G" --fixtures "$G/scripts/eval/review-panel/fixtures" \
+    --key "$G/scripts/eval/review-panel/key/seeds.json" 2>&1; }
+out=$(python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
+eq "export-row: outputs run.sh never stamped are refused" "$rc" "2"; has "export-row: names the missing stamp" "$out" "not a run.sh sweep"
+gstamp "$O" >/dev/null
+printf '# later\n' >> "$G/scripts/cr/critic-x.sh"; gg commit -qam later-critic
+out=$(python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
+eq "export-row: a sweep stamped at an older critic tree is refused" "$rc" "2"; has "export-row: names the stale hash" "$out" "was swept at cbs_hash"
+printf '# uncommitted\n' >> "$G/scripts/cr/critic-x.sh"
+has "stamp: a dirty critic file warns" "$(gstamp "$O")" "export-row will refuse"
+python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
+eq "export-row: a sweep of a dirty tree is refused" "$rc" "2"
+gg checkout -q -- scripts/cr/critic-x.sh
+has "stamp: other fixtures warn" "$(python3 "$SCORE" stamp "$O" --repo "$G" --fixtures "$FIX" --key "$KEY" 2>&1)" "export-row will refuse"
+eq "stamp: other fixtures are unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$O/swept.json")" "False"
+gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"
 row="$(head -1 "$TMP/results.jsonl" 2>/dev/null)"
@@ -352,14 +368,14 @@ eq "verify-row: a doctored metric exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'r["outputs_sha256"]="0"*64')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a doctored outputs_sha256 exits 1" "$rc" "1"
 
-# gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic>... writes rows at B (b*) or H (h*).
+# gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
 grows() { python3 -c 'import json,sys
 f, b, h, c = sys.argv[1:5]
 with open(f, "w") as fh:
     for spec in sys.argv[5:]:
-        rid, rec, fp, lg = spec.split(":")
-        fh.write(json.dumps({"run_id": rid, "cbs_hash": b if rid[0] == "b" else h, "confighash": c, "outputs_sha256": rid,
+        rid, rec, fp, lg, st = (spec + ":ok").split(":")[:5]
+        fh.write(json.dumps({"run_id": rid, "cbs_hash": b if rid[0] == "b" else h, "confighash": c, "outputs_sha256": rid, "status": st,
                              "metrics": {"panel.recall_gating": float(rec), "panel.fp_rate": float(fp)},
                              "class_recall": {"logic": float(lg)}}) + "\n")' "$G/scripts/eval/review-panel/results.jsonl" "$B" "$H" "$C" "$@"
   gg add -A; gg commit -qm rows; }
@@ -370,6 +386,8 @@ grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.3:0.1:0.5 h2:0.3:0.1:0.5; ggate
 eq "gate: a recall drop beyond noise exits 1" "$rc" "1"; has "gate: loss" "$out" "gate: loss"
 grows b1:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; ggate
 eq "gate: one baseline row exits 1" "$rc" "1"; has "gate: unmeasured" "$out" "gate: unmeasured"
+grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5:inconclusive; ggate
+eq "gate: an inconclusive head row does not count" "$rc" "1"; has "gate: inconclusive is unmeasured" "$out" "gate: unmeasured"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
 eq "gate: a target class above the baseline max is keep" "$rc" "0"; has "gate: keep" "$out" "gate: keep"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.8 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
