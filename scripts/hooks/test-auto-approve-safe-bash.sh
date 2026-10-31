@@ -204,6 +204,24 @@ assert "git --exec-path"          PASS  "$(decide "$(j_bash 'git --exec-path=/tm
 assert "GIT_EXTERNAL_DIFF env"    PASS  "$(decide "$(j_bash 'GIT_EXTERNAL_DIFF=touch git diff HEAD~1')")"
 assert "GIT_PAGER env"            PASS  "$(decide "$(j_bash 'GIT_PAGER=sh git log')")"
 assert "PAGER env"                PASS  "$(decide "$(j_bash 'PAGER=sh git log')")"
+
+# --- the claudex preface asks for `/usr/bin/git` (it dodges the rtk
+# `rtk git` rewrite the lane classifier refuses). EXACTLY that path gets the same
+# read-only treatment as bare git; every write or exec-sink form stays PASS. ---
+assert "/usr/bin/git status"          ALLOW "$(decide "$(j_bash '/usr/bin/git status')")"
+assert "/usr/bin/git log oneline"     ALLOW "$(decide "$(j_bash '/usr/bin/git log --oneline -1')")"
+assert "/usr/bin/git -C dir diff"     ALLOW "$(decide "$(j_bash '/usr/bin/git -C /tmp diff HEAD~1')")"
+assert "/usr/bin/git push"            PASS  "$(decide "$(j_bash '/usr/bin/git push origin feat/x')")"
+assert "/usr/bin/git commit"          PASS  "$(decide "$(j_bash '/usr/bin/git commit -m x')")"
+assert "/usr/bin/git add"             PASS  "$(decide "$(j_bash '/usr/bin/git add f')")"
+assert "/usr/bin/git -c core.pager"   PASS  "$(decide "$(j_bash '/usr/bin/git -c core.pager=x log')")"
+assert "/usr/bin/git log --output"    PASS  "$(decide "$(j_bash '/usr/bin/git log --output=/tmp/clobber')")"
+assert "/usr/bin/git fwl push"        PASS  "$(decide "$(j_bash '/usr/bin/git push --force-with-lease origin feat/x')")"
+assert "/usr/bin/git GIT_PAGER env"   PASS  "$(decide "$(j_bash 'GIT_PAGER=sh /usr/bin/git log')")"
+assert "/usr/local/bin/git status"    PASS  "$(decide "$(j_bash '/usr/local/bin/git status')")"
+assert "/tmp/git status"              PASS  "$(decide "$(j_bash '/tmp/git status')")"
+assert "//usr/bin/git status"         PASS  "$(decide "$(j_bash '//usr/bin/git status')")"
+assert "/usr/bin/git/ status"         PASS  "$(decide "$(j_bash '/usr/bin/git/ status')")"
 assert "LD_PRELOAD env"           PASS  "$(decide "$(j_bash 'LD_PRELOAD=/tmp/x.so grep foo f')")"
 assert "NODE_OPTIONS env"         PASS  "$(decide "$(j_bash 'NODE_OPTIONS=--require=/tmp/x node scripts/jira/dist/index.js get X')")"
 assert "gh pr view --web"         PASS  "$(decide "$(j_bash 'gh pr view --web 1')")"

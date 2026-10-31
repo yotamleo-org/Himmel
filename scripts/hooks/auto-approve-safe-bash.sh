@@ -1359,6 +1359,11 @@ segment_is_safe() {
             # Not a read subcommand — allow ONLY a safe force-with-lease push
             # on a non-main branch; everything else falls through.
             git_push_force_with_lease_is_safe "${a[@]:$i}"; return $? ;;
+        # The claudex preface requires `/usr/bin/git` (it avoids the rtk
+        # `rtk git` rewrite the lane classifier refuses). EXACTLY that path
+        # takes the read-only test; no other absolute path, and none of the
+        # force-with-lease push allowance bare git has.
+        /usr/bin/git) git_subcmd_is_read "${a[@]:$i}"; return $? ;;
         gh)  gh_subcmd_is_read "${a[@]:$i}"; return $? ;;
         node)
             # The script node ACTUALLY runs is its first non-flag arg. It must
