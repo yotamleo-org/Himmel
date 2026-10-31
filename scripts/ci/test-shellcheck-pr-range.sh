@@ -57,6 +57,11 @@ echo hi
 w scripts/zzj-glob.sh '#!/usr/bin/env bash
 for f in scripts/zzj/*.sh; do . "$f"; done
 '
+w scripts/zzj/zzcfg.env 'ZZJ_CFG=1
+'
+w scripts/zzenv.sh '#!/usr/bin/env bash
+. scripts/zzj/zzcfg.env
+'
 git add -A && git commit -q -m base || exit 1
 BASE=$(git rev-parse HEAD)
 
@@ -181,30 +186,31 @@ rules=$("$GH" api "repos/$nwo/rules/branches/$branch" \
 '; commit_case quoted_dot
 verdict quoted_dot FILES scripts/zzq.sh scripts/zzj/zzjlib.sh
 
-# dyn_real: the genuine dynamic source line from merge-on-green.sh still forces the fallback
+# dyn_real: the bare-variable source line from merge-on-green.sh adds no edge (the
+# linter cannot follow it, SC1090)
 reset; w scripts/zzd.sh '#!/usr/bin/env bash
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo refuse >&2
 fi
 '; commit_case dyn_real
-verdict dyn_real ALL
+verdict dyn_real FILES scripts/zzd.sh
 
-# dyn_cmdsub: a dynamic source inside a double-quoted command substitution is executable, not text
+# dyn_cmdsub: a bare-variable source inside a double-quoted command substitution is executable, but names no file
 reset; w scripts/zzc.sh '#!/usr/bin/env bash
 out="$(. "$lib")"
 '; commit_case dyn_cmdsub
-verdict dyn_cmdsub ALL
+verdict dyn_cmdsub FILES scripts/zzc.sh
 
 # dyn_mixq: apostrophes inside a double-quoted span do not open a single-quoted span
 reset; w scripts/zzm.sh '#!/usr/bin/env bash
 out="'"'"'$(. "$lib")'"'"'"
 '; commit_case dyn_mixq
-verdict dyn_mixq ALL
+verdict dyn_mixq FILES scripts/zzm.sh
 # dyn_escq: an escaped quote outside a span opens nothing, so the real source after it counts
 reset; w scripts/zze.sh '#!/usr/bin/env bash
 echo \" ; . "$lib"
 '; commit_case dyn_escq
-verdict dyn_escq ALL
+verdict dyn_escq FILES scripts/zze.sh
 
 # dyn_dir: a dynamic source directly under a `# shellcheck source=<x>.sh` directive is static
 reset; w scripts/zzy.sh '#!/usr/bin/env bash
@@ -223,7 +229,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 '; commit_case dyn_stack
 verdict dyn_stack FILES scripts/zzy.sh scripts/zzj/zzjlib.sh
-# dyn_nodir: the same line with a blank line between directive and source still forces the fallback
+# dyn_nodir: the same line with a blank line between directive and source is not covered, and adds no edge
 reset; w scripts/zzy.sh '#!/usr/bin/env bash
 # shellcheck source=scripts/zzj/zzjlib.sh
 
@@ -231,7 +237,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     echo refuse >&2
 fi
 '; commit_case dyn_nodir
-verdict dyn_nodir ALL
+verdict dyn_nodir FILES scripts/zzy.sh
 
 # absent <name> <file>: the dry-run list must NOT carry <file>
 absent() {
@@ -239,6 +245,47 @@ absent() {
   out=$(bash "$SPR" --dry-run "$BASE" 2>/dev/null) || { bad "$1: dry-run failed"; return; }
   if printf '%s\n' "$out" | grep -Fxq -- "$2"; then bad "$1: list wrongly carries $2"; else ok "$1: list omits $2"; fi
 }
+
+# a1_doc: a changed non-shell file is never a shellcheck input, so its prose is not
+# scanned for source edges. Line copied from docs/hermes-runbook.md:35 (the real doc line that set
+# off the full sweep on PRs touching it); the shell file beside it is all that is linted.
+reset; w docs/zzrunbook.md 'reload PATH:
+
+source ~/.bashrc            # or ~/.zshrc — reload PATH
+'; w scripts/zzok.sh '#!/usr/bin/env bash
+echo ok
+'; commit_case a1_doc
+verdict a1_doc FILES scripts/zzok.sh
+# a1_ext: ...and a shell file with no extension is scanned by its shebang, so its dynamic line counts
+reset; w scripts/zztool '#!/usr/bin/env bash
+. "${ZZ_DIR}zzjlib.sh"
+'; commit_case a1_ext
+verdict a1_ext ALL
+# a1_rev: a changed non-shell file still selects the shell files that source it
+reset; w scripts/zzj/zzcfg.env 'ZZJ_CFG=2
+'; commit_case a1_rev
+verdict a1_rev FILES scripts/zzj/zzcfg.env scripts/zzenv.sh
+
+# a2_var: a source line naming no *.sh/*.bash (here a bare variable, copied from
+# scripts/lib/test-afk-sudo.sh:1049) adds no edge; the static source beside it still does
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+out=$( ( PATH="$STUBS/linux"; export EDITOR=nano; unset SUDO_EDITOR VISUAL; source "$INSTALL" && enable_cmd ) )
+. scripts/zzj/zzjlib.sh
+'; commit_case a2_var
+verdict a2_var FILES scripts/zza.sh scripts/zzj/zzjlib.sh
+# a2_glued / a2_ext: a variable-glued name, or an operand whose literal tail is a tracked shell
+# file with no extension, stays dynamic and keeps the full sweep
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+. "$ZZ_DIR/zztool"
+'; w scripts/zztool '#!/usr/bin/env bash
+echo tool
+'; commit_case a2_ext
+verdict a2_ext ALL
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+. "$ZZ_LIB"
+. "${ZZ_DIR}zzjlib.sh"
+'; commit_case a2_glued
+verdict a2_glued ALL
 
 # merge_ref: CI's pull_request checkout is GitHub's merge ref (^1 = base branch tip, ^2 = PR head)
 # and a rerun reuses the event's STALE base.sha, so base..HEAD spans every main commit since. Shape
