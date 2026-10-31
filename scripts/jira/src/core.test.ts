@@ -40,6 +40,13 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
     expect(out).toEqual(['CORE K-1 scripts/handover/merge-on-green.sh']);
   });
 
+  it('core-check passes --change-class through and refuses any other class', async () => {
+    await run('core-check', '--paths', 'scripts/handover/queue-lock.sh', '--change-class', 'rename', '--key', 'K-1');
+    expect(out).toEqual(['REVIEW K-1 scripts/handover/queue-lock.sh rename']);
+    await expect(run('core-check', '--paths', 'a', '--change-class', 'move', '--key', 'K-1'))
+      .rejects.toThrow(/--change-class is rename or bulk/);
+  });
+
   it('gives CORE for a ship-loop path and NOT-CORE for a docs path', () => {
     expect(coreMatch(['scripts/handover/chief-kit/gen-briefs.py'], ['K-1'], { patterns }))
       .toEqual(['CORE K-1 scripts/handover/chief-kit/gen-briefs.py']);
