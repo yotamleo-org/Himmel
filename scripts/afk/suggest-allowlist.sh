@@ -66,8 +66,8 @@ groups, n = {}, 0
 try:
     fh = open(ledger)
 except OSError:
-    print("suggest-allowlist: ledger unreadable at %s" % ledger)
-    sys.exit(0)
+    print("ERR suggest-allowlist: ledger unreadable at %s" % ledger, file=sys.stderr)
+    sys.exit(1)
 for line in fh:
     try:
         r = json.loads(line)

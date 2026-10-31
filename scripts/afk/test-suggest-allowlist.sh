@@ -26,7 +26,12 @@ assert_contains() {
 }
 assert_not_contains() {
     local name="$1" needle="$2" haystack="$3"
-    if grep -qF -- "$needle" <<< "$haystack"; then fail "$name" "unexpected: $needle"; else pass "$name"; fi
+    grep -qF -- "$needle" <<< "$haystack"
+    case $? in
+        0) fail "$name" "unexpected: $needle" ;;
+        1) pass "$name" ;;
+        *) fail "$name" "grep itself failed" ;;
+    esac
 }
 
 TMP_ROOT=$(mktemp -d -t suggest-allowlist.XXXXXX) || exit 1
@@ -100,6 +105,15 @@ assert_contains "an absent ledger says so" "no ledger" "$out"
 : > "$TMP_ROOT/empty.jsonl"
 out=$(AFK_SUDO_LEDGER="$TMP_ROOT/empty.jsonl" bash "$SCRIPT"); expect_ok $? "the empty-ledger run"
 assert_contains "an empty ledger suggests nothing" "no run in the window" "$out"
+
+echo "TEST: a ledger that exists but cannot be read fails loudly"
+err=$(AFK_SUDO_LEDGER="$TMP_ROOT" bash "$SCRIPT" 2>&1 >/dev/null); rc=$?
+if [ "$rc" -ne 0 ]; then pass "an unreadable ledger exits nonzero"; else fail "an unreadable ledger exits nonzero" "rc=$rc"; fi
+assert_contains "the reason goes to stderr" "ledger unreadable" "$err"
+
+echo "TEST: the negative matcher can detect its needle"
+ctl=$(assert_not_contains "control" "crontab" "crontab -l")
+assert_contains "assert_not_contains reports a failure when the needle is present" "FAIL: control" "$ctl"
 
 echo
 echo "===================================="
