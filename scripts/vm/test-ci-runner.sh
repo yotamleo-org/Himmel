@@ -25,9 +25,9 @@ bad() { fail=$((fail + 1)); echo "  FAIL $1"; }
 hook_case() {
     local label="$1" want="$2" ev="$3" ref="$4" json="$5" rc
     printf '%s' "$json" > "$TMP/event.json"
-    GITHUB_EVENT_NAME="$ev" GITHUB_REF="$ref" GITHUB_REPOSITORY="yotamleo/Himmel" \
+    GITHUB_EVENT_NAME="$ev" GITHUB_REF="$ref" GITHUB_REPOSITORY="yotamleo-org/Himmel" \
         GITHUB_ACTOR="${HOOK_ACTOR-yotamleo}" GITHUB_TRIGGERING_ACTOR="${HOOK_TRIG-yotamleo}" \
-        GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO="yotamleo/Himmel" \
+        GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO="yotamleo-org/Himmel" \
         bash "$HOOK" >"$TMP/hook.out" 2>&1
     rc=$?
     if [ "$rc" = "$want" ]; then
@@ -38,16 +38,16 @@ hook_case() {
 }
 
 echo "T1 job-started fork guard"
-same='{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo/Himmel"}}},"sender":{"login":"yotamleo"}}'
+same='{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo-org/Himmel"}}},"sender":{"login":"yotamleo"}}'
 fork='{"pull_request":{"head":{"repo":{"full_name":"mallory/Himmel"}}}}'
 hook_case "same-repo PR runs"            0 pull_request refs/pull/1/merge "$same"
 hook_case "fork PR refused"              1 pull_request refs/pull/1/merge "$fork"
 # 5070(a): the PR author and the event sender must be operator accounts too.
-dep='{"pull_request":{"user":{"login":"dependabot[bot]"},"head":{"repo":{"full_name":"yotamleo/Himmel"}}},"sender":{"login":"yotamleo"}}'
-own='{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo/Himmel"}}},"sender":{"login":"yotamleo"}}'
+dep='{"pull_request":{"user":{"login":"dependabot[bot]"},"head":{"repo":{"full_name":"yotamleo-org/Himmel"}}},"sender":{"login":"yotamleo"}}'
+own='{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo-org/Himmel"}}},"sender":{"login":"yotamleo"}}'
 hook_case "owner re-run of a third-party PR refused" 1 pull_request refs/pull/1/merge "$dep"
 hook_case "owner PR with owner sender runs"          0 pull_request refs/pull/1/merge "$own"
-hook_case "PR with a non-owner sender refused"       1 pull_request refs/pull/1/merge '{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo/Himmel"}}},"sender":{"login":"mallory"}}'
+hook_case "PR with a non-owner sender refused"       1 pull_request refs/pull/1/merge '{"pull_request":{"user":{"login":"yotamleo"},"head":{"repo":{"full_name":"yotamleo-org/Himmel"}}},"sender":{"login":"mallory"}}'
 hook_case "PR with no head repo refused" 1 pull_request refs/pull/1/merge '{"pull_request":{}}'
 hook_case "push to main runs"            0 push refs/heads/main '{}'
 hook_case "push to a branch refused"     1 push refs/heads/feat/x '{}'
@@ -64,15 +64,32 @@ HOOK_ACTOR=mallory HOOK_TRIG=mallory hook_case "push to main needs no owner" 0 p
 # The repository itself must be the pinned one, whatever the event says.
 printf '%s' "$same" > "$TMP/event.json"
 GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/1/merge GITHUB_REPOSITORY=mallory/Himmel \
-    GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel \
+    GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel \
     bash "$HOOK" >/dev/null 2>&1
 rc=$?
 if [ "$rc" = 1 ]; then ok "hook: other repository refused"; else bad "hook: other repository (rc=$rc)"; fi
-GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=yotamleo/Himmel \
-    GITHUB_EVENT_PATH="$TMP/missing.json" HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel \
+GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main GITHUB_REPOSITORY=yotamleo-org/Himmel \
+    GITHUB_EVENT_PATH="$TMP/missing.json" HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel \
     bash "$HOOK" >/dev/null 2>&1
 rc=$?
 if [ "$rc" = 1 ]; then ok "hook: missing event file refused"; else bad "hook: missing event file (rc=$rc)"; fi
+# The slug ci-runner.sh bakes into the guest by default must be the repository
+# the jobs really run on. GITHUB_REPOSITORY is copied from a real refusal in CI
+# ("repository yotamleo-org/Himmel is not yotamleo/Himmel").
+real_slug="yotamleo-org/Himmel"
+# shellcheck disable=SC2016 # literal text to find in ci-runner.sh
+default_slug=$(sed -n 's/^REPO="${HIMMEL_CI_RUNNER_REPO:-\([^}]*\)}".*$/\1/p' "$LOOP")
+printf '%s' '{}' > "$TMP/event.json"
+GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main GITHUB_REPOSITORY="$real_slug" \
+    GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO="$default_slug" \
+    bash "$HOOK" >"$TMP/hook.out" 2>&1
+rc=$?
+if [ "$rc" = 0 ]; then ok "hook: the ci-runner.sh default slug allows $real_slug"; else bad "hook: the ci-runner.sh default slug '$default_slug' refuses $real_slug (rc=$rc): $(cat "$TMP/hook.out")"; fi
+GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main GITHUB_REPOSITORY="yotamleo/Himmel" \
+    GITHUB_EVENT_PATH="$TMP/event.json" HIMMEL_CI_RUNNER_REPO="$default_slug" \
+    bash "$HOOK" >/dev/null 2>&1
+rc=$?
+if [ "$rc" = 1 ]; then ok "hook: the pre-10-19 slug yotamleo/Himmel is refused"; else bad "hook: the old slug was not refused (rc=$rc)"; fi
 
 # --- host loop stubs ------------------------------------------------------
 # gh stub: answers the three reads the loop makes and logs every call's argv.
@@ -130,7 +147,7 @@ EOF
 
 run_loop() {
     STUB_LOG="$TMP/log" PATH="$TMP/bin:$PATH" CI_RUNNER_VM_LIB="$TMP/vmlib.sh" \
-        HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
+        HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
         bash "$LOOP" "$@"
 }
 reset_log() { rm -rf "$TMP/log"; mkdir -p "$TMP/log"; : > "$TMP/log/gh.argv"; }
@@ -194,7 +211,7 @@ if grep -q -- "generate-jitconfig" "$TMP/log/gh.argv" && grep -q "labels\[\]=him
 else
     bad "mint call: $(grep jit "$TMP/log/gh.argv")"
 fi
-if grep -q -- "-X DELETE repos/yotamleo/Himmel/actions/runners/4242" "$TMP/log/gh.argv"; then
+if grep -q -- "-X DELETE repos/yotamleo-org/Himmel/actions/runners/4242" "$TMP/log/gh.argv"; then
     ok "runner 4242 deregistered after the job"
 else
     bad "no deregister: $(tr '\n' '|' < "$TMP/log/gh.argv")"
@@ -247,7 +264,7 @@ done
 echo "T4i R5: off during the job wait deregisters the idle runner promptly"
 reset_log
 STUB_SSH_SLEEP=20 GH_KILL=on STUB_LOG="$TMP/log" PATH="$TMP/bin:$PATH" CI_RUNNER_VM_LIB="$TMP/vmlib.sh" \
-    HIMMEL_CI_RUNNER_WATCH_SECS=1 HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
+    HIMMEL_CI_RUNNER_WATCH_SECS=1 HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
     bash "$LOOP" run --once >"$TMP/out" 2>&1 &
 loop_pid=$!
 for _ in $(seq 1 50); do grep -q himmel-ci-run-job "$TMP/log/ssh.argv" 2>/dev/null && break; sleep 0.2; done
@@ -264,7 +281,7 @@ fi
 echo "T4i2 5070(d): a guest that outlives the deregistration does not hold the loop"
 reset_log
 STUB_SSH_HARD_SLEEP=25 GH_KILL=on STUB_LOG="$TMP/log" PATH="$TMP/bin:$PATH" CI_RUNNER_VM_LIB="$TMP/vmlib.sh" \
-    HIMMEL_CI_RUNNER_WATCH_SECS=1 HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
+    HIMMEL_CI_RUNNER_WATCH_SECS=1 HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
     bash "$LOOP" run --once >"$TMP/out" 2>&1 &
 loop_pid=$!
 for _ in $(seq 1 50); do grep -q himmel-ci-run-job "$TMP/log/ssh.argv" 2>/dev/null && break; sleep 0.2; done
@@ -302,7 +319,7 @@ echo "T4e SIGTERM mid-job still deregisters and powers off"
 reset_log
 # Not through run_loop: $! must be the loop's own pid, not a wrapper subshell's.
 STUB_SSH_SLEEP=5 GH_KILL=on STUB_LOG="$TMP/log" PATH="$TMP/bin:$PATH" CI_RUNNER_VM_LIB="$TMP/vmlib.sh" \
-    HIMMEL_CI_RUNNER_REPO=yotamleo/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
+    HIMMEL_CI_RUNNER_REPO=yotamleo-org/Himmel HIMMEL_CI_RUNNER_STOP_FILE="$TMP/stop" \
     bash "$LOOP" run --once >"$TMP/out" 2>&1 &
 loop_pid=$!
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do

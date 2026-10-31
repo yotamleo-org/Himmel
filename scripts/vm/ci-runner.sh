@@ -39,7 +39,7 @@
 set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo/Himmel}"
+REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo-org/Himmel}"  # env-literal-ok: the repository this runner serves, overridable by env
 CLONE_NAME="${HIMMEL_CI_RUNNER_VM:-himmel-ci-1}"
 SOURCE_VM="ubuntu_new"
 BASE_SNAPSHOT="suite-ready-v4"
