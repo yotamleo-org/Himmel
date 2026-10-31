@@ -210,6 +210,14 @@ test('api cost: a run with no cost is counted apart, never as zero; no launch lo
   writeFileSync(file, `${launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })}\n`);
   assert.equal(costField(file, SINCE, UNTIL).status, 'not available');
   assert.equal(costField(join(T, 'gone-launches.jsonl'), SINCE, UNTIL).status, 'not available');
+  // the launcher writes 0.000000 for a failed run whose cost it never verified: that is unpriced, while a settled 0.000000 is a measured zero
+  writeFileSync(file, [launch('2026-10-31T01:00:00Z', 'A', '0.250000'), launch('2026-10-31T02:00:00Z', 'A', '0.000000', [1, 2, 3], { outcome: 'failed', rc: 1 }),
+    launch('2026-10-31T03:00:00Z', 'A', '0.000000'), launch('2026-10-31T04:00:00Z', 'A', '0.100000', [1, 2, 3], { outcome: 'failed', rc: 1 })].join('\n'));
+  const failed = costField(file, SINCE, UNTIL);
+  assert.equal(failed.value, '0.350000');
+  assert.equal(failed.runs, 3);
+  assert.equal(failed.unpriced_runs, 1);
+  assert.equal(failed.partial, true);
   // a truncated or unreadable line may belong to the shift: the total is a floor, never an unqualified measurement
   writeFileSync(file, `${launch('2026-10-31T01:00:00Z', 'A', '0.250000')}\n{"ts":"2026-10-31T02:00:00Z","cost_us\n`);
   const torn = costField(file, SINCE, UNTIL);

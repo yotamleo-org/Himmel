@@ -160,8 +160,10 @@ export function costField(file, since, until) {
     for (const [k, v] of [['input', r.input_tokens], ['cache_creation', r.cache_creation_tokens], ['cache_read', r.cache_read_tokens]]) {
       if (Number.isInteger(v) && v >= 0) tokens[k] += v;
     }
+    // claude-api.sh writes 0.000000 for a failed run whose cost it never verified: only a settled or overrun run has a measured cost.
     const cost = toMicro(r.cost_usd);
-    if (cost === null) { unpriced++; continue; }
+    const verified = r.outcome === 'settled' || r.outcome === 'overrun';
+    if (cost === null || (!verified && cost === 0n)) { unpriced++; continue; }
     const account = typeof r.account === 'string' && r.account ? r.account : '?';
     micro[account] = (micro[account] ?? 0n) + cost;
     runs++;
