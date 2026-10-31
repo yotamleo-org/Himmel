@@ -1,9 +1,8 @@
 // the Shift page. Pure rendering, no DOM: renderShift(view, ui) → HTML.
 // view = GET /api/shift (null while loading). One shift is the whole fleet between cuts, not one chief's run.
 // The page only reads: Waiting rows link out to where the action happens, and nothing here acts.
-import { esc } from "./render.js";
+import { esc, pageHeader } from "./render.js";
 
-const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
 const sec = (id, title, count, body) => `<section id="${id}" class="box sh-sec" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}${count === null ? "" : ` <span class="ro">${count}</span>`}</h2>${body}</section>`;
 const day = (iso) => String(iso || "").slice(0, 10);
 const clock = (iso) => String(iso || "").slice(11, 16);

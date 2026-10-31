@@ -2,10 +2,9 @@
 // data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes (the Sectors) or null.
 // Everything shown is the server's live read. With ui.writes the Kanban cards are draggable and carry a Sector
 // select, and app.js posts the drop or the select to /api/roadmap/write. The rest of the page proposes only.
-import { esc } from "./render.js";
+import { esc, pageHeader } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
-const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 const jira = (argv) => "jira " + argv.map((a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`)).join(" ");
 
