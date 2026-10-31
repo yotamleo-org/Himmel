@@ -193,7 +193,6 @@ prov_sha_text() { printf '%s' "$1" | _prov_sha256; }
 _prov_json_canon() {
     local out
     out=$(printf '%s' "$1" | jq -cS . 2>/dev/null) || return 1
-    out=${out%$'\r'}   # jq.exe on Windows ends its lines with CRLF
     # A value must be ONE JSON document: jq -c prints one line per document, so
     # '1 2' would otherwise become a two-line "canonical" value and corrupt the row.
     case "$out" in ''|*$'\n'*) return 1 ;; esac
@@ -238,7 +237,6 @@ _prov_refuse_symlink() {
 # (no newline) is closed first so it costs one row, not two.
 _prov_append() {
     local dir ledger tmp size row="${1:-}"
-    row=${row%$'\r'}   # jq.exe on Windows ends its lines with CRLF; a row ends at the JSON
     # a row built in a command substitution is "" when its jq failed; never append that
     [ -n "$row" ] || { _prov_err "refusing to append an empty row"; return 1; }
     dir=$(prov_dir) || return 1

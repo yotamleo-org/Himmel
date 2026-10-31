@@ -38,8 +38,7 @@
 #      when a fallback itself fails (bash copy, wrapper write, chmod).
 #
 #   2. path_dir_has_scrubbed_tool <dir> <tool>...
-#      True (rc 0) if <dir> carries any of the named tools (checked bare,
-#      .exe, .cmd for Windows).
+#      True (rc 0) if <dir> carries any of the named tools.
 #
 #   3. scrub_path <path> <tool>...
 #      Returns <path> (colon-separated) with every dir carrying any named
@@ -68,16 +67,9 @@
 # sort)` is /usr/bin on Arch, which also ships bun/uv/node -- adopting it
 # re-admits the very tool you are hiding. Name tools individually.
 
-# Executable suffix for stub files. On Windows an EXTENSIONLESS
-# file named `bash` in scope makes ShellExecute return SE_ERR_NOASSOC, which
-# pops the "Select an app to open 'bash'" picker — a modal that blocks the box
-# and, in an unattended cadence run, hangs it with nobody to dismiss it.
-# Defined ONCE here and consumed by callers (test-adopt.sh) so the writer side
-# cannot drift from the reader side in path_dir_has_scrubbed_tool below.
+# Executable suffix for stub files: empty on every supported platform. Kept as a
+# constant because callers still name their stub files through it.
 HERMETIC_EXE_SUFFIX=''
-case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-  msys*|cygwin*|win32*|MINGW*|MSYS*|CYGWIN*) HERMETIC_EXE_SUFFIX='.exe' ;;
-esac
 
 # Default `fail` for callers that do not define one.
 #
@@ -96,18 +88,13 @@ fi
 link_hermetic_tool() {
   local _tool="$1" _dest="${2:-$work/bin}" _src _dest_name
   _dest_name="${_tool}${HERMETIC_EXE_SUFFIX}"
-  # Idempotent on the COMPUTED name. Callers that re-link one stub
-  # dir guard with their own `[ -e "$stub/$tool" ]` check keyed on the
-  # UNSUFFIXED name (e.g. test-wizard-contributor-profile.sh's already_linked,
-  # whose caseC runs the same stub dir through build_path twice). Once this
-  # helper started writing `<dest>/<tool>.exe`, that caller guard stopped
-  # matching on Windows, so a second pass fell through to the fallbacks below --
-  # and where `ln -s` SUCCEEDED on the first pass (Windows with symlinks
-  # enabled, or POSIX), the wrapper write then redirects THROUGH the existing
-  # symlink into the real binary, corrupting a writable user-installed tool or
-  # aborting the suite on a protected one. That is the latent hazard
-  # the suffix change made reachable. Guarding on $_dest_name here fixes it for
-  # every caller at once, and short-circuits before any ln/write can fire.
+  # Idempotent on the COMPUTED name. Callers that re-link one stub dir (e.g.
+  # test-wizard-contributor-profile.sh's caseC, which runs the same stub dir
+  # through build_path twice) must not fall through to the fallbacks below on a
+  # second pass: where `ln -s` SUCCEEDED the first time, the wrapper write
+  # would redirect THROUGH the existing symlink into the real binary,
+  # corrupting a writable user-installed tool or aborting the suite on a
+  # protected one. Guarding here short-circuits before any ln/write can fire.
   if [ -e "$_dest/$_dest_name" ] || [ -L "$_dest/$_dest_name" ]; then
     return 0
   fi
@@ -144,8 +131,6 @@ path_dir_has_scrubbed_tool() {
   local _tool
   for _tool in "$@"; do
     [ -x "$_dir/$_tool" ] && return 0
-    [ -x "$_dir/$_tool.exe" ] && return 0
-    [ -x "$_dir/$_tool.cmd" ] && return 0
   done
   return 1
 }

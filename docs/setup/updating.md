@@ -237,7 +237,7 @@ This will:
   2. KEEP telegram pairing + bridge state (pass --purge-state to remove it):
        ~/.claude/channels/telegram
        ~/.claude/handover/bridge
-  3. remove HIMMEL-Resume-* scheduled jobs (+ HimmelTelegramBridge logon task)
+  3. remove HIMMEL-Resume-* scheduled jobs
      and the cron/at jobs the ledger recorded a cadence arm adding (exact recorded names only)
   4. uninstall installed Claude plugins from himmel-owned marketplaces
      (project/local: current project only; USER-SCOPE: affects every repo on this machine; fallback scope: project)
