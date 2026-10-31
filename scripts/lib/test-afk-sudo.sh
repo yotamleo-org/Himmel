@@ -645,6 +645,17 @@ new_root tgtlongdotdot; cfg "$ALL" true
 long_tree
 assert_eq "a .. after a link realpath could not lstat is refused, not popped as a plain name that falls back under PATH_MAX" "BadFile" "$(bt L/x/lnk/../../../../out)"
 assert_contains "a floor target reached by that .. fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/lnk/../../../../sh)"
+printf 'x\n' > "$R/f"
+assert_eq "a .. after a non-directory is refused, not keyed lexically where the kernel gives ENOTDIR" "BadFile" "$(bt f/x/../../L/x/lnk/../../../../out)"
+ln -s f/x/../../L/x/lnk/../../../../out "$R/fl"
+assert_eq "a link whose target holds a .. after a non-directory is refused too" "BadFile" "$(bt fl)"
+assert_eq "a non-directory followed only by a slash, dot or dot-dot is refused on every Python, not bound where the kernel never lands" "BadFile BadFile BadFile" "$(bt f/) $(bt f/.) $(bt f/..)"
+ln -s f/ "$R/fs"
+assert_eq "a link to a non-directory followed by a slash is refused on every Python" "BadFile" "$(bt fs)"
+assert_eq "a .. after a non-directory then a missing name is refused on every Python" "BadFile" "$(bt f/../m)"
+assert_eq "a .. after a non-directory reached past a missing name is refused on every Python" "BadFile" "$(bt m/../f/../m)"
+printf 'x\n' > "$R/g"
+assert_eq "a .. after a non-directory that leads to another non-directory is refused on every Python" "BadFile" "$(bt f/../g/x)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -663,7 +674,7 @@ printf 'x\n' > "$R/f"
 assert_contains "a non-directory in the way is a name that is not there, filed as none" "none:" "$(bt f/x)"
 assert_eq "a non-directory then components, joined past PATH_MAX, is refused, not keyed none" "BadFile" "$(bt "f${deep#m}")"
 new_root tgtnoallow
-assert_eq "without ALLOW_MISSING a .. after a missing name is refused and a plain missing name still lands" "None ok" "$(python3 -I -c '
+assert_eq "landing does not read ALLOW_MISSING: a .. after a missing name pops it and a plain missing name lands" "ok ok" "$(python3 -I -c '
 import os, sys, types
 sys.path.insert(0, sys.argv[1])
 import never_remote as n
@@ -672,9 +683,32 @@ class NoAllow:
         if k == "ALLOW_MISSING":
             raise AttributeError(k)
         return getattr(os.path, k)
-n.os = types.SimpleNamespace(path=NoAllow())
+n.os = types.SimpleNamespace(path=NoAllow(), lstat=os.lstat, readlink=os.readlink)
 base = os.path.realpath(sys.argv[2])
-print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+print("ok" if n.landing(os.path.join(base, "m", "..", "x")) == os.path.join(base, "x") else "bad", "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+new_root tgtnoallowrun; cfg "$ALL" true
+long_tree
+ln -s m/../L/x/lnk/../../../../out "$R/dl"
+# shellcheck disable=SC2016 # python source, not shell
+NOALLOW='import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as a, never_remote as n
+class NoAllow:
+    def __getattr__(self, k):
+        if k == "ALLOW_MISSING":
+            raise AttributeError(k)
+        return getattr(os.path, k)
+class Os:
+    path = NoAllow()
+    def __getattr__(self, k):
+        return getattr(os, k)
+a.os = n.os = Os()
+sys.exit(a.main(sys.argv[2:]))'
+led0=$(ledger)
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I -c "$NOALLOW" "$LIB" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier --cwd "$R" -- tee dl </dev/null 2>&1)
+rc=$?
+assert_contains "without ALLOW_MISSING a run request is refused, so a dangling link whose target holds missing/../.. is never keyed" "result=no-allow-missing" "$out"
+assert_eq "the no-allow-missing refusal exits 5 and writes no ledger row" "5 same" "$rc $([ "$(ledger)" = "$led0" ] && echo same || echo changed)"
 new_root tgtlongname; cfg "$ALL" true
 name=$(python3 -I -c 'print("a" * 300)')
 assert_eq "a name over 255 bytes is refused, not keyed none" "BadFile" "$(bt "$name")"

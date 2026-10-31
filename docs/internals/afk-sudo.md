@@ -27,7 +27,8 @@ variable exists so RED 10 can run in-suite, and the VM proof flips the constant
 itself on the disposable VM's installed copy.
 
 Check order for a run: `disabled` (top-level `enabled`), `run-not-shipped`,
-`run-disabled` (`run.enabled` is not `true`).
+`run-disabled` (`run.enabled` is not `true`), `no-allow-missing` (a Python without
+`os.path.ALLOW_MISSING`; see the binding below).
 
 ## Mode switch
 
@@ -75,17 +76,23 @@ broker's pending payload, not next to the record.
   is always closed; failures during the read-open or stream wrapping close any read fd too.
   Thus a path swap cannot trigger a device/FIFO read-open; procfs and sysfs are refused
   even through private-mount aliases.
-  "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a
-  non-directory in the way:
-  a walk past PATH_MAX in bytes, a name past 255 bytes (so a `python -c` program with a
-  slash-bearing run that long is refused too; put it in a file), a loop, a directory that cannot
-  be searched. Plain `realpath` is not enough there: it keeps a link it cannot `lstat` as a plain
-  name and a later `..` pops that name lexically, so the string it returns is not where the
-  kernel lands. That holds behind a missing name too (`install -D` creates it, then walks on
-  through the link), so the walk goes on past a missing name with `os.path.ALLOW_MISSING`, which
-  tolerates only a missing name, in link targets as well. A Python without it (before 3.14,
+  "Cannot walk" is the helper's own walk, a name at a time with `lstat` and `readlink`, link
+  targets included, failing for any reason but a missing name or a non-directory in the way, plus a `..` after a non-directory (the kernel gives `ENOTDIR`;
+  plain `realpath` pops it lexically), a non-directory followed only by `/` or `.` (`f/` is not
+  the file `f`) and a link whose target meets a non-directory: a walk past PATH_MAX in bytes, a name past 255 bytes
+  that the walk reaches, a loop, a directory that cannot be searched. So a `python -c` program
+  with a slash-bearing run that long is refused when every name before the run exists, and the
+  same word in a file argument or stdin takes the same path, so moving it into a file does not
+  help. Behind a missing name (`m/<300 bytes>`) the walk never reaches it: the element is bound
+  `none` and the floor passes the word. `realpath` is not enough: plain, it keeps a link it cannot `lstat` as a plain
+  name and a later `..` pops that name lexically, and before Python 3.13 strict and
+  `ALLOW_MISSING` alike pop a `..` after a non-directory, so the string it returns is not where the
+  kernel lands. A missing name walks on as the directory `install -D` creates, so a later `..`
+  pops it and a later link is followed. A Python without `os.path.ALLOW_MISSING` (before 3.14,
   unless the tarfile CVE-2025-4517 fix was backported; Ubuntu's `python3.12` has it from
-  3.12.3-1ubuntu0.7) refuses a `..` after a missing name instead. Through the CLI
+  3.12.3-1ubuntu0.7) predates those posixpath fixes, and the helper is tested only on one that
+  has them, so there every run request is refused as
+  `result=no-allow-missing` (exit 5, no ledger row). Through the CLI
   the floor reads the element first, so the answer is `result=never-remote rule=oversize` with
   a ledger row; `bad-file` (exit 5, no ledger row) is what a request the floor passes gets. At exec
   every element, argv[0] included, must resolve to the same target as at request, so a
@@ -142,7 +149,7 @@ in its trimmed, `key=value`, normalised, realpath and basename forms; links reso
 `..`). The `key=value` form is the text after the first `=`; a word that starts with a run
 of `=` derives the text after the whole run once, so a `====` banner is one word, not one
 form per `=`. A word that derives more than 64 forms, or whose path the kernel cannot walk (the
-same strict `realpath` test as the binding above), is refused as `rule=oversize`:
+same walk as the binding above), is refused as `rule=oversize`:
 
 | rule | refuses |
 |---|---|
@@ -177,7 +184,7 @@ every run visible afterwards.
 `stderr_bytes`, `stdout_sha256`, `duration_ms`. A refusal at request writes a row for
 `never-remote` and `not-in-class` (the helper) and for `locked`, `busy` and `rate-limited` (the
 broker) only. The other request refusals (`run-not-shipped`,
-`run-disabled`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
+`run-disabled`, `no-allow-missing`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
 `stdin-too-large`) answer on stdout and write none. After the code, the executor's result
 (`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
 `not-in-class`, `no-setpriv`, or the run itself) is the row. The ledger never holds the code, the
