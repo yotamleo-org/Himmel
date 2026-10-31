@@ -925,15 +925,18 @@ print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release
 fi
 
 # Fork defaults are discovered, not registered: a new fork is checked on the
-# next run. Registry fork blocks add pinned branches; explicit holds apply only
-# to the named branch (or the default branch when branch is omitted).
+# next run. Discovery lists the forks of yotamleo and of every owner named in
+# scripts/guardrails/himmel-adapters.json; each adapter row with an upstream adds
+# its himmel_branch. Registry fork blocks add pinned branches;
+# explicit holds apply only to the named branch (or the default branch when
+# branch is omitted). An archived fork reads ARCHIVED: read-only, not drift.
 echo ""
 echo "== fork branches (upstream default-branch comparison) =="
 if ! command -v python3 >/dev/null 2>&1; then
   echo "  ? python3 not available — fork-behind class UNCHECKED."
   incomplete=1
 else
-  python3 - "$REGISTRY" "$UPSTREAMS" <<'PY'
+  python3 - "$REGISTRY" "$UPSTREAMS" "${DRIFT_ADAPTERS:-$ROOT/scripts/guardrails/himmel-adapters.json}" <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import quote
 
@@ -967,7 +970,19 @@ def unchecked(name, reason):
 
 try:
     configs = []
-    for path in sys.argv[1:]:
+    owners = ['yotamleo']
+    adapters_path = sys.argv[3]
+    if os.path.exists(adapters_path):
+        with open(adapters_path) as f:
+            for row in json.load(f):
+                owner = repo_name(row['nwo']).split('/')[0]
+                if owner not in owners:
+                    owners.append(owner)
+                if row.get('upstream'):
+                    configs.append({'fork_repo': row['nwo'], 'branch': row.get('himmel_branch')})
+    else:
+        unchecked('fork inventory', f'adapter registry {adapters_path} not found')
+    for path in sys.argv[1:3]:
         if not os.path.exists(path) or os.path.getsize(path) == 0:
             continue
         with open(path) as f:
@@ -993,21 +1008,22 @@ except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.Sub
     unchecked('fork registry', 'could not load fork branches / holds')
     sys.exit(status)
 
-try:
-    forks = gh('repo', 'list', 'yotamleo', '--fork', '--limit', '1000', '--json', 'nameWithOwner')
-    if not isinstance(forks, list):
-        raise ValueError('invalid fork inventory')
-    for fork in forks:
-        repo = repo_name(fork['nameWithOwner'])
-        try:
-            targets.setdefault((repo, info(repo)['default_branch']), '')
-        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
-            unchecked(repo, 'fork metadata unavailable')
-    if len(forks) >= 1000:
-        unchecked('fork inventory', 'discovery limit reached; inventory may be incomplete')
-except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
-    # Still check explicitly pinned branches if discovery is unavailable.
-    unchecked('fork inventory', 'could not list yotamleo forks')
+for fork_owner in owners:
+    try:
+        forks = gh('repo', 'list', fork_owner, '--fork', '--limit', '1000', '--json', 'nameWithOwner')
+        if not isinstance(forks, list):
+            raise ValueError('invalid fork inventory')
+        for fork in forks:
+            repo = repo_name(fork['nameWithOwner'])
+            try:
+                targets.setdefault((repo, info(repo)['default_branch']), '')
+            except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+                unchecked(repo, 'fork metadata unavailable')
+        if len(forks) >= 1000:
+            unchecked('fork inventory', f'{fork_owner} discovery limit reached; inventory may be incomplete')
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        # Still check explicitly pinned branches if discovery is unavailable.
+        unchecked('fork inventory', f'could not list {fork_owner} forks')
 
 for (repo, branch), reason in sorted(targets.items()):
     name = f'{repo}@{branch}'
@@ -1015,6 +1031,9 @@ for (repo, branch), reason in sorted(targets.items()):
         print(f'  {name}: HELD ({" ".join(reason.split())})')
         continue
     try:
+        if info(repo).get('archived') is True:
+            print(f'  {name}: ARCHIVED (read-only fork, not synced; unarchive to resume checks)')
+            continue
         parent = repo_name(info(repo)['parent']['full_name'])
         base = info(parent)['default_branch']
         owner = repo.split('/')[0]

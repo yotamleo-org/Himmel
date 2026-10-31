@@ -1,0 +1,16 @@
+{
+  "_comment": "Version literals outside any manifest, read by pin-scan.py (HIMMEL-8282). var names a shell assignment VAR=<version>; var null reads the file's first line. tag_prefix is stripped from upstream tags (bun tags bun-v1.2.3). Station-only probes and Dependabot surfaces are listed in scripts/upstreams.json coverage_audit, not here.",
+  "pins": [
+    {"file": "scripts/machine-setup/installer-pins.sh", "var": "NVM_TAG", "eco": "gh", "key": "nvm-sh/nvm"},
+    {"file": "scripts/machine-setup/installer-pins.sh", "var": "NODE_VERSION", "eco": "node", "key": "node"},
+    {"file": "scripts/machine-setup/installer-pins.sh", "var": "UV_VERSION", "eco": "gh", "key": "astral-sh/uv"},
+    {"file": "scripts/machine-setup/installer-pins.sh", "var": "RTK_VERSION", "eco": "gh", "key": "rtk-ai/rtk"},
+    {"file": ".nvmrc", "var": null, "eco": "node", "key": "node"},
+    {"file": "scripts/ci/gcp-runner-startup.sh", "var": "RUNNER_VERSION", "eco": "gh", "key": "actions/runner"},
+    {"file": "scripts/vm/ci-runner/guest-provision.sh", "var": "RUNNER_VERSION", "eco": "gh", "key": "actions/runner"},
+    {"file": "scripts/ci/gcp-runner-startup.sh", "var": "BUN_VERSION", "eco": "gh", "key": "oven-sh/bun", "tag_prefix": "bun-v"},
+    {"file": "scripts/cloud/setup-env.sh", "var": "GL_VER", "eco": "gh", "key": "gitleaks/gitleaks"},
+    {"file": "scripts/observability/install-grafana.sh", "var": "PROM_VER", "eco": "gh", "key": "prometheus/prometheus"},
+    {"file": "scripts/observability/install-grafana.sh", "var": "GRAF_VER", "eco": "gh", "key": "grafana/grafana"}
+  ]
+}
