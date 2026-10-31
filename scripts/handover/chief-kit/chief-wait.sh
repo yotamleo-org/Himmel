@@ -1142,6 +1142,8 @@ ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past it
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
         entry="$(grep -nE "$ready_re" "$ldoc")"
         cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file" 2>/dev/null)"
+        # a doc shorter than its cursor was replaced: start over as a worker met for the first time
+        if [ -n "$cur" ] && [ "$cur" -gt "$(wc -l < "$ldoc")" ]; then cur=""; fi
         if [ -z "$cur" ]; then
             last="$(printf '%s\n' "$entry" | tail -n 1 | cut -d: -f1)"
             printf '%s\t%s\n' "$label" "${last:-0}" >> "$ready_file"

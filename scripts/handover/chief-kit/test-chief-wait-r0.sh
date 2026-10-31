@@ -327,6 +327,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # The flag reads a fixture registry here (the real flags.tsv gets its auto_go row in a later PR).
 printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
 export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
+unset HIMMEL_FLAG_AUTO_GO  # an override in the launching shell must not decide the flag-off row
 READY_A='- 10:00 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN'
 READY_B='- 10:30 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN'
 
@@ -366,6 +367,21 @@ check "(r0s2) the second READY follows" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbb
 check "(r0s2) a handled READY is a digest line, no wake" "N1 auto-go 2566
 N1 auto-go 2567" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0s2) no chief wake" "" "$(cat "$WORK/r0s2.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# on: a worker doc shorter than its cursor was replaced; the cursor starts over after its existing READY
+reset_stub
+fleet r0s4
+printf -- '%s\n' "$READY_A" >> "$L"
+printf 'N1\t99\n' > "$I.wait.ready"
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s4.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s4) no baseline heartbeat"
+sleep 2.5
+check "(r0s4) a stale cursor past the end does not replay the old READY" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+printf -- '%s\n' "$READY_B" >> "$L"
+wait_exit "$WPID"
+check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # off (the default): nothing is relayed and no cursor file appears
