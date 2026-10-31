@@ -505,7 +505,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       }
       if (authority.kind === 'operator') continue;
       const newer = l.operator.verified.filter((x) => x.kind === 'decision' && Date.parse(x.ts) > since
-        && scopeOk({ authority: { kind: 'operator', ref: x.id }, key: req.key, op: o.op }, ops, l.decl.current)).pop();
+        && scopeOk({ authority: { kind: 'operator', ref: x.id }, key: req.key, op: o.op }, ops, l.decl.current))
+        .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
       if (!newer) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
       authority = { kind: 'operator', ref: newer.id };
     }
