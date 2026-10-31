@@ -168,7 +168,9 @@ export function costField(file, since, until) {
   if (runs === 0 && unpriced > 0) return na('api_cost', 'the launches inside the shift carry no cost', { unpriced_runs: unpriced });
   const per_account = Object.fromEntries(Object.keys(micro).sort().map((a) => [a, dollars(micro[a])]));
   const total = Object.values(micro).reduce((a, b) => a + b, 0n);
-  return ok('api_cost', { per_account, value: dollars(total), runs, unpriced_runs: unpriced, tokens });
+  // A run that left no cost is missing from the sum: the figure is then a floor, and says so.
+  return ok('api_cost', { per_account, value: dollars(total), runs, unpriced_runs: unpriced, tokens,
+    ...(unpriced > 0 ? { partial: true, note: `at least this much: ${unpriced} run(s) in the shift carry no cost and are not in the sum` } : {}) });
 }
 
 // An error carries the reason only: never the response body, the request or the original error text.

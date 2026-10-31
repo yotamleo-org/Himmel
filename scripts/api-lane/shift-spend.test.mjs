@@ -191,6 +191,7 @@ test('api cost: launch records inside [since, until) are summed per account in m
   assert.deepEqual(f.per_account, { A: '0.928466', B: '0.100000' });
   assert.equal(f.value, '1.028466');
   assert.equal(f.runs, 3);
+  assert.equal(f.partial, undefined);
   assert.deepEqual(f.tokens, { input: 7, cache_creation: 156884, cache_read: 1318 });
 });
 
@@ -201,6 +202,9 @@ test('api cost: a run with no cost is counted apart, never as zero; no launch lo
   assert.equal(f.status, 'ok');
   assert.equal(f.value, '0.250000');
   assert.equal(f.unpriced_runs, 1);
+  // the sum leaves a run out, so it is a floor and says so; a complete sum carries no partial mark
+  assert.equal(f.partial, true);
+  assert.match(f.note, /at least/);
   assert.deepEqual(f.tokens, { input: 2, cache_creation: 1000, cache_read: 500 });
   writeFileSync(file, `${launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })}\n`);
   assert.equal(costField(file, SINCE, UNTIL).status, 'not available');
