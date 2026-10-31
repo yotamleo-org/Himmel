@@ -13,7 +13,7 @@
 // Bind localhost/LAN; the local daemon reaches it at the vmsdk-resolved address.
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { appendEvent, readState, type JobAttrs, type JobState } from "./ledger.js";
-import { grantClaim } from "./lease.js";
+import { grantClaim, holdsLiveClaim, renewLease } from "./lease.js";
 
 export type ServerOptions = {
   token: string; // required bearer token
@@ -123,15 +123,42 @@ export function createQueueServer(opts: ServerOptions): Server {
       return;
     }
 
+    if (method === "POST" && url === "/renew") {
+      readBody(req)
+        .then((body) => {
+          const { jobId, daemon } = body as { jobId?: string; daemon?: string };
+          if (!jobId || !daemon) {
+            send(res, 400, { error: "missing jobId/daemon" });
+            return;
+          }
+          const r = renewLease(jobId, daemon, ttl, clock(), env, path);
+          if (!r.ok) {
+            send(res, 409, { error: "not the current claimant with a live lease" });
+            return;
+          }
+          send(res, 200, { ok: true, lease: r.lease });
+        })
+        .catch(() => send(res, 400, { error: "bad request" }));
+      return;
+    }
+
     if (method === "POST" && url === "/complete") {
       readBody(req)
         .then((body) => {
-          const { jobId, conclusion } = body as {
+          const { jobId, conclusion, daemon } = body as {
             jobId?: string;
             conclusion?: "success" | "failure" | "cancelled";
+            daemon?: string;
           };
-          if (!jobId || !conclusion) {
-            send(res, 400, { error: "missing jobId/conclusion" });
+          if (!jobId || !conclusion || !daemon) {
+            send(res, 400, { error: "missing jobId/conclusion/daemon" });
+            return;
+          }
+          // Only the current claimant, while its lease is live, may complete — an
+          // expired holder or a done job must not overwrite the verdict.
+          // Sync check + append, no await between (same critical-section rule as /claim).
+          if (!holdsLiveClaim(readState(env, path).get(jobId), daemon, clock())) {
+            send(res, 409, { error: "not the current claimant with a live lease" });
             return;
           }
           const ts = new Date(clock()).toISOString();

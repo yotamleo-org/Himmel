@@ -13,7 +13,7 @@
 // All I/O is injected (discover, adapters, clock, reporter, gh) so tick() is
 // unit-testable with zero real minutes / VM / GitHub.
 import { appendEvent, readState, type JobAttrs, type JobState } from "./ledger.js";
-import { grantClaim } from "./lease.js";
+import { grantClaim, holdsLiveClaim, renewLease } from "./lease.js";
 import { route, type LaneAvailability, type LaneName } from "./routing.js";
 import { planSubmission } from "./dedup.js";
 import { type WorkProfile } from "./workprofile.js";
@@ -132,6 +132,12 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
     if (adapter.native) {
       // Observe-only: the native `on: pull_request` run is GitHub-scheduled; we
       // record a dispatch (status→running) and observe it via poll — no real call.
+      //
+      // Claim first, against the LIVE ledger: `js` is a snapshot taken before earlier
+      // iterations awaited, so the job may have been claimed or finished since (a
+      // local daemon completing it must not be moved back to running).
+      const nativeClaim = grantClaim(js.attrs.id, daemon, ttl, deps.now(), env, path);
+      if (!nativeClaim.ok) continue; // claimed elsewhere or already finished
       const runId = `native-${decision.lane}-${js.attrs.id}`;
       appendEvent({ t: "dispatch", ts: nowIso, jobId: js.attrs.id, lane: decision.lane, runId }, env, path);
       report.dispatched.push({ jobId: js.attrs.id, lane: decision.lane });
@@ -139,9 +145,23 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
       continue;
     }
     // Dispatched lane: claim first (single-writer lease), then fire.
-    const claim = grantClaim(js.attrs.id, daemon, ttl, now, env, path);
+    const claim = grantClaim(js.attrs.id, daemon, ttl, deps.now(), env, path);
     if (!claim.ok) continue; // already claimed elsewhere — leave queued
-    const { runId } = await adapter.dispatch(js.attrs);
+    // Keep the claim alive while the (possibly long) dispatch is in flight, so no
+    // other daemon is granted the job when the TTL lapses mid-await.
+    const keepalive = setInterval(
+      () => renewLease(js.attrs.id, daemon, ttl, deps.now(), env, path),
+      Math.max(1, Math.floor(ttl / 3)),
+    );
+    let runId: string;
+    try {
+      ({ runId } = await adapter.dispatch(js.attrs));
+    } finally {
+      clearInterval(keepalive);
+    }
+    // Re-check we still hold the claim before recording the dispatch; otherwise
+    // another daemon owns the job now and a dispatch would land over its claim.
+    if (!holdsLiveClaim(readState(env, path).get(js.attrs.id), daemon, deps.now())) continue;
     appendEvent({ t: "dispatch", ts: nowIso, jobId: js.attrs.id, lane: decision.lane, runId }, env, path);
     report.dispatched.push({ jobId: js.attrs.id, lane: decision.lane });
     laneAvail[decision.lane].inFlight += 1; // enforce cap within the tick

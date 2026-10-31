@@ -53,6 +53,43 @@ export async function claimFromVm(
   return { kind: "claimed", job, lease };
 }
 
+// Report a finished job to the VM. The daemon id is sent so the VM can refuse a
+// caller that is not the job's current claimant. Never throws.
+export async function completeOnVm(
+  vmUrl: string,
+  token: string,
+  jobId: string,
+  conclusion: "success" | "failure" | "cancelled",
+  post: HttpPostFn,
+  daemon = "local",
+): Promise<"completed" | "refused" | "unreachable"> {
+  let body: unknown;
+  try {
+    body = await post(`${vmUrl}/complete`, token, { jobId, conclusion, daemon });
+  } catch {
+    return "unreachable";
+  }
+  return (body as { ok?: boolean }).ok ? "completed" : "refused";
+}
+
+// Renew the lease on a claimed job every `intervalMs` while it runs,
+// so the VM does not re-grant it when the TTL lapses. Returns stop(); call it when
+// the job finishes. A failed or refused renew is swallowed — the VM stays the
+// authority, and /complete will refuse a lapsed holder.
+export function holdLease(
+  vmUrl: string,
+  token: string,
+  jobId: string,
+  post: HttpPostFn,
+  intervalMs: number,
+  daemon = "local",
+): () => void {
+  const timer = setInterval(() => {
+    post(`${vmUrl}/renew`, token, { jobId, daemon }).catch(() => {});
+  }, intervalMs);
+  return () => clearInterval(timer);
+}
+
 // Degrade-to-direct plan when the VM is unreachable: dispatch only the required
 // light gate directly (so required checks keep flowing), defer everything heavy
 // until the VM returns. Never drops a job (deferred work is re-derived from git).

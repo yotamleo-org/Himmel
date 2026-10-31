@@ -1,9 +1,10 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync } from "node:fs";
 import { tick, type SchedulerDeps } from "../src/scheduler.js";
-import { readState, type JobAttrs } from "../src/ledger.js";
+import { appendEvent, readState, type JobAttrs } from "../src/ledger.js";
+import { grantClaim } from "../src/lease.js";
 import { type LaneName } from "../src/routing.js";
 import { type ActMatrix } from "../src/act-matrix.js";
 import { type LaneAdapter, type PollStatus } from "../src/adapters/types.js";
@@ -180,5 +181,94 @@ describe("tick — the scheduling pass", () => {
     }
     expect(dispatchedAt).toBeGreaterThanOrEqual(0);
     expect(dispatchedAt).toBeLessThan(12); // aging eventually wins — never starves
+  });
+});
+
+// A dispatch whose promise the test resolves by hand, so the test controls what
+// happens "during the await".
+function gatedAdapter(name: LaneName): { adapter: LaneAdapter; started: Promise<void>; release: () => void } {
+  let release!: () => void;
+  let started!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const startedP = new Promise<void>((r) => (started = r));
+  const adapter: LaneAdapter = {
+    name,
+    available: async () => ({ up: true, inFlight: 0, cap: 4 }),
+    dispatch: async (j: JobAttrs) => {
+      started();
+      await gate;
+      return { runId: `${name}-${j.id}` };
+    },
+    poll: async () => ({ status: "running" }),
+  };
+  return { adapter, started: startedP, release };
+}
+
+describe("tick — stale snapshot and lease expiry during dispatch", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("HIMMEL-8440: a job completed during the scheduler's await stays done after the tick", async () => {
+    const p = freshLedger();
+    const gated = gatedAdapter("act-exec");
+    const j1 = job({ id: "j1", required: true, heavy: true, enqueuedAt: new Date(T0 - 60_000).toISOString() });
+    const j2 = job({ id: "j2", required: true, heavy: false });
+    const ticking = tick(
+      baseDeps({
+        discover: () => [j1, j2],
+        adapters: [gated.adapter, fakeAdapter("self-hosted-runner", { native: true })],
+        ledgerPath: p,
+      }),
+    );
+    await gated.started; // j1 is mid-dispatch; j2 is still in the scheduler's queued snapshot
+    expect(grantClaim("j2", "local", 900_000, T0, {}, p).ok).toBe(true);
+    appendEvent({ t: "verdict", ts: "t", jobId: "j2", conclusion: "success" }, {}, p);
+    appendEvent({ t: "complete", ts: "t", jobId: "j2" }, {}, p);
+    gated.release();
+    await ticking;
+    const st = readState({}, p).get("j2")!;
+    expect(st.status).toBe("done");
+    expect(st.conclusion).toBe("success");
+  });
+
+  test("HIMMEL-8441: a local /claim during an in-flight dispatch gets nothing, even past the TTL", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const p = freshLedger();
+    const gated = gatedAdapter("act-exec");
+    const ticking = tick(
+      baseDeps({
+        discover: () => [job({ id: "j1" })],
+        adapters: [gated.adapter],
+        now: () => Date.now(),
+        leaseTtlMs: 60_000,
+        ledgerPath: p,
+      }),
+    );
+    await gated.started;
+    await vi.advanceTimersByTimeAsync(61_000); // the original lease would have lapsed
+    expect(grantClaim("j1", "local", 60_000, Date.now(), {}, p).ok).toBe(false);
+    gated.release();
+    await ticking;
+    const st = readState({}, p).get("j1")!;
+    expect(st.status).toBe("running");
+    expect(st.claimant).toBe("vm");
+  });
+
+  test("HIMMEL-8441: a dispatch that lost its claim does not append dispatch over another daemon's claim", async () => {
+    const p = freshLedger();
+    const gated = gatedAdapter("act-exec");
+    const ticking = tick(
+      baseDeps({ discover: () => [job({ id: "j1" })], adapters: [gated.adapter], ledgerPath: p }),
+    );
+    await gated.started;
+    appendEvent({ t: "lease-expire", ts: "t", jobId: "j1" }, {}, p);
+    expect(grantClaim("j1", "local", 900_000, T0, {}, p).ok).toBe(true);
+    gated.release();
+    const report = await ticking;
+    const st = readState({}, p).get("j1")!;
+    expect(st.status).toBe("claimed");
+    expect(st.claimant).toBe("local");
+    expect(report.dispatched).toHaveLength(0);
   });
 });

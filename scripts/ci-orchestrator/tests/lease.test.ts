@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync } from "node:fs";
 import { appendEvent, type JobAttrs } from "../src/ledger.js";
-import { grantClaim } from "../src/lease.js";
+import { grantClaim, renewLease } from "../src/lease.js";
 
 function freshLedger(): string {
   return join(mkdtempSync(join(tmpdir(), "ci-lease-")), "q.jsonl");
@@ -51,5 +51,30 @@ describe("grantClaim", () => {
 
   test("an unsubmitted job cannot be claimed", () => {
     expect(grantClaim("ghost", "vm", 1000, T0, {}, freshLedger()).ok).toBe(false);
+  });
+});
+
+describe("renewLease (HIMMEL-8438)", () => {
+  test("a renewing claimant keeps the job past the TTL; a second claim gets nothing", () => {
+    const p = freshLedger();
+    const J = jobAttrs();
+    appendEvent({ t: "submit", ts: "t", job: J }, {}, p);
+    expect(grantClaim(J.id, "A", 60000, T0, {}, p).ok).toBe(true);
+    const r = renewLease(J.id, "A", 60000, T0 + 50000, {}, p);
+    expect(r.ok).toBe(true);
+    // t+61s: the ORIGINAL lease has lapsed but the renewed one (to t+110s) is live.
+    expect(grantClaim(J.id, "B", 60000, T0 + 61000, {}, p).ok).toBe(false);
+    // without a further renew it is re-granted only after the renewed lease lapses.
+    expect(grantClaim(J.id, "B", 60000, T0 + 110001, {}, p).ok).toBe(true);
+  });
+
+  test("a non-claimant, an expired lease, or an unknown job cannot renew", () => {
+    const p = freshLedger();
+    const J = jobAttrs();
+    appendEvent({ t: "submit", ts: "t", job: J }, {}, p);
+    grantClaim(J.id, "A", 60000, T0, {}, p);
+    expect(renewLease(J.id, "B", 60000, T0 + 1000, {}, p).ok).toBe(false);
+    expect(renewLease(J.id, "A", 60000, T0 + 60001, {}, p).ok).toBe(false);
+    expect(renewLease("ghost", "A", 60000, T0, {}, p).ok).toBe(false);
   });
 });
