@@ -7,4 +7,4 @@ if [ "$(uname -s)" = Darwin ]; then
   exit 0
 fi
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-exec node --test "$REPO/scripts/api-lane/claude-api.test.mjs" "$REPO/scripts/api-lane/judge-call.test.mjs" "$REPO/scripts/api-lane/bulk-call.test.mjs"
+exec node --test "$REPO/scripts/api-lane/claude-api.test.mjs" "$REPO/scripts/api-lane/judge-call.test.mjs" "$REPO/scripts/api-lane/bulk-call.test.mjs" "$REPO/scripts/api-lane/shift-spend.test.mjs"

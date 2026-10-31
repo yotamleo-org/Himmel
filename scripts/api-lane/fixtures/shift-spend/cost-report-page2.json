@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "ending_at": "2025-08-03T00:00:00Z",
+      "results": [
+        {
+          "amount": "1.5",
+          "context_window": null,
+          "cost_type": "tokens",
+          "currency": "USD",
+          "description": "Claude Haiku 5.5 Usage - Output Tokens",
+          "inference_geo": "global",
+          "model": "claude-haiku-5-5",
+          "service_tier": "standard",
+          "speed": "standard",
+          "token_type": "output_tokens",
+          "workspace_id": null
+        }
+      ],
+      "starting_at": "2025-08-02T00:00:00Z"
+    }
+  ],
+  "has_more": false,
+  "next_page": null
+}
