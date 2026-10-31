@@ -1482,8 +1482,10 @@ cat > "$W12/lit/scripts/upstreams/literal-pins.json" <<'JSON'
 ]}
 JSON
 printf 'oven-sh/bun=bun-v1.5.0\n' >> "$W12/state/rel"
+lit_rc=0
 lit_out="$(PINSTATE="$W12/state" PATH="$W12/bin:$PATH" NODE_INDEX='[{"version":"v27.0.0","lts":false},{"version":"v26.13.0","lts":"Krypton"}]' \
-  python3 "$ROOT/scripts/upstreams/pin-scan.py" "$W12/lit" "" 2>&1)"
+  python3 "$ROOT/scripts/upstreams/pin-scan.py" "$W12/lit" "" 2>&1)" || lit_rc=$?
+if [ $((lit_rc & 2)) -ne 0 ]; then ok "pin-scan: a missing literal sets the UNCHECKED exit bit"; else bad "missing literal left exit bit 2 unset (rc=$lit_rc)"; fi
 if grepq "$lit_out" -F 'node:node 24 (.nvmrc): BEHIND   (latest v26.13.0'; then ok "pin-scan: node literal compares to the newest LTS"; else bad "node literal not compared to LTS; $lit_out"; fi
 if grepq "$lit_out" -F 'gh:oven-sh/bun 1.4.4 (x.sh): BEHIND   (latest 1.5.0'; then ok "pin-scan: tag_prefix stripped before comparing"; else bad "bun tag prefix not stripped; $lit_out"; fi
 if grepq "$lit_out" -F 'gh:owner/gone ? (x.sh): ? no resolvable current version'; then ok "pin-scan: missing literal reads UNCHECKED"; else bad "missing literal not UNCHECKED; $lit_out"; fi
@@ -1753,6 +1755,7 @@ PY
 FORK_OWNER="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["nwo"].split("/")[0])' "$W17/adapters.json")"
 export FORK_OWNER
 fork_out="$(DRIFT_ADAPTERS="$W17/adapters.json" fork_run)"; fork_rc=$?
+if [ "$fork_rc" -eq 2 ]; then ok "fork-behind: adapter fork drift exits 2"; else bad "fork-behind: adapter fork drift exit $fork_rc, expected 2"; fi
 if grepq "$fork_out" "$FORK_OWNER/claude-video@himmel-main: BEHIND.*behind=22 ahead=4"; then ok "fork-behind: adapter fork checked on its himmel branch"; else bad "fork-behind: adapter fork himmel branch not checked; $fork_out"; fi
 if grepq "$fork_out" "$FORK_OWNER/disc@main: BEHIND"; then ok "fork-behind: forks of every adapter owner are discovered"; else bad "fork-behind: adapter owner forks not discovered"; fi
 if grepq "$fork_out" "$FORK_OWNER/gone@main: ARCHIVED" && ! grepq "$fork_out" "$FORK_OWNER/gone@main: BEHIND"; then ok "fork-behind: archived fork reads ARCHIVED, not drift"; else bad "fork-behind: archived fork not reported ARCHIVED"; fi
