@@ -41,8 +41,8 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
   });
 
   it('core-check passes --change-class through and refuses any other class', async () => {
-    await run('core-check', '--paths', 'scripts/handover/queue-lock.sh', '--change-class', 'rename', '--key', 'K-1');
-    expect(out).toEqual(['REVIEW K-1 scripts/handover/queue-lock.sh rename']);
+    await run('core-check', '--paths', 'scripts/handover/chief-kit/go.sh', '--change-class', 'rename', '--key', 'K-1');
+    expect(out).toEqual(['REVIEW K-1 scripts/handover/chief-kit/go.sh rename']);
     await expect(run('core-check', '--paths', 'a', '--change-class', 'move', '--key', 'K-1'))
       .rejects.toThrow(/--change-class is rename or bulk/);
   });
@@ -55,14 +55,14 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
 
   it('keeps test-*.sh suites and fixtures out of core, and puts minerva in', () => {
     expect(coreMatch(['scripts/handover/chief-kit/test-gen-briefs.sh'], ['K-1'], { patterns })).toEqual(['NOT-CORE K-1']);
-    expect(coreMatch(['marketplace/plugins/himmel-ops/scripts/test-minerva-spec-gate.sh'], ['K-1'], { patterns })).toEqual(['NOT-CORE K-1']);
+    expect(coreMatch(['marketplace/plugins/himmel-ops/scripts/test-minerva-example.sh'], ['K-1'], { patterns })).toEqual(['NOT-CORE K-1']);
     expect(coreMatch(['marketplace/plugins/himmel-ops/skills/minerva/SKILL.md'], ['K-1'], { patterns }))
       .toEqual(['CORE K-1 marketplace/plugins/himmel-ops/skills/minerva/SKILL.md']);
   });
 
   it('gives REVIEW for a rename when the old core path is passed with the new one', () => {
-    expect(coreMatch(['scripts/handover/queue-lock.sh', 'scripts/handover/queue-lock-v2.sh'], ['K-1'], { patterns, changeClass: 'rename' }))
-      .toEqual(['REVIEW K-1 scripts/handover/queue-lock.sh rename']);
+    expect(coreMatch(['scripts/handover/chief-kit/go.sh', 'scripts/handover/chief-kit/go-v2.sh'], ['K-1'], { patterns, changeClass: 'rename' }))
+      .toEqual(['REVIEW K-1 scripts/handover/chief-kit/go.sh rename']);
   });
 
   it('gives REVIEW, never CORE or NOT-CORE, for a rename or bulk change that touches a core path', () => {
@@ -74,8 +74,8 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
   });
 
   it('reads a ./-prefixed path as the same repository path', () => {
-    expect(coreMatch(['./scripts/handover/queue-lock.sh'], ['K-1'], { patterns }))
-      .toEqual(['CORE K-1 scripts/handover/queue-lock.sh']);
+    expect(coreMatch(['./scripts/handover/chief-kit/go.sh'], ['K-1'], { patterns }))
+      .toEqual(['CORE K-1 scripts/handover/chief-kit/go.sh']);
   });
 
   it('treats the core list itself as core', () => {
@@ -83,8 +83,8 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
   });
 
   it('resolves .. segments before matching', () => {
-    expect(coreMatch(['scripts/handover/../handover/queue-lock.sh'], ['K-1'], { patterns }))
-      .toEqual(['CORE K-1 scripts/handover/queue-lock.sh']);
+    expect(coreMatch(['scripts/handover/../handover/chief-kit/go.sh'], ['K-1'], { patterns }))
+      .toEqual(['CORE K-1 scripts/handover/chief-kit/go.sh']);
   });
 
   it('keeps tests and fixtures out of core even under a whole-directory core line', () => {
@@ -99,8 +99,8 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
   });
 
   it('decides every key of the worker the same way', () => {
-    expect(coreMatch(['scripts/handover/queue-lock.sh'], ['K-1', 'K-2'], { patterns }))
-      .toEqual(['CORE K-1 scripts/handover/queue-lock.sh', 'CORE K-2 scripts/handover/queue-lock.sh']);
+    expect(coreMatch(['scripts/handover/chief-kit/go.sh'], ['K-1', 'K-2'], { patterns }))
+      .toEqual(['CORE K-1 scripts/handover/chief-kit/go.sh', 'CORE K-2 scripts/handover/chief-kit/go.sh']);
   });
 });
 
