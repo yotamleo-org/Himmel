@@ -518,8 +518,10 @@ else
         MSGDIR=$(mktemp -d "${TMPDIR:-/tmp}/auto-go-bus.XXXXXX") || MSGDIR=""  # prim-ok: holds one message file and is removed right after the send
         if [ -z "$MSGDIR" ]; then
             BUS_ERR="mktemp failed"
+        elif ! printf '%s\n' "$MSG" > "$MSGDIR/msg"; then
+            rm -rf "$MSGDIR"
+            BUS_ERR="cannot write the bus message file"
         else
-            printf '%s\n' "$MSG" > "$MSGDIR/msg"
             WAIT=""; command -v timeout >/dev/null 2>&1 && WAIT="timeout 15"
             BUS_RC=0
             # shellcheck disable=SC2086  # WAIT is empty or the two words `timeout 15`
