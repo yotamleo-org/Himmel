@@ -9,7 +9,7 @@ import { scanCommandTrees } from '../skill-cost.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  skillListingSettings, DEFAULT_FRACTION, MAX_FRACTION, BUILTIN_SKILL_NAMES,
+  skillListingSettings, DEFAULT_FRACTION, MAX_FRACTION, BUILTIN_SKILL_NAMES, hiddenSkillsFor,
 } from '../skill-listing.mjs';
 import { resolveProfile, loadListingLib } from '../plugin-profiles.mjs';
 
@@ -137,6 +137,16 @@ const registry = {
   floor: [], base: [], catalog: ['lean-skills@himmel', 'frontend-design@claude-plugins-official'], gateAllow: [],
   profiles: { user: { enable: ['lean-skills@himmel'] }, bare: { enable: [] } },
 };
+
+test('hiddenSkills: the chief hides the skills it never invokes as user-invocable-only, other roles hide none', () => {
+  const s = skillListingSettings({
+    entries: [user('find-docs')], enabledIds: ['impeccable@himmel'], requiredIds: ['impeccable@himmel'],
+    hiddenSkills: hiddenSkillsFor('chief'),
+  });
+  for (const name of ['artifact-design', 'pptx', 'simplify']) assert.equal(s.skillOverrides[name], 'user-invocable-only', name);
+  assert.equal(s.skillOverrides['find-docs'], 'name-only');
+  assert.deepEqual(hiddenSkillsFor('worker-impl'), []);
+});
 
 test('resolveProfile: opts.skillEntries adds skillOverrides + budget fraction to a profile with required plugins', () => {
   const r = resolveProfile(registry, 'user', { skillEntries: [user('find-docs'), plugin('brainstorming', 200, 'lean-skills')] });
