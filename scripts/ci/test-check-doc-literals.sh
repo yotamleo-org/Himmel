@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
+# selector: tree-scan
+# Platform guard: POSIX bash 3.2+, GNU/BSD coreutils.
 #
 # Test for scripts/ci/check-doc-literals.sh.
 #

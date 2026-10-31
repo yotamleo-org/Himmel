@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard: Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard: POSIX bash 3.2+, GNU/BSD coreutils.
 #
 # check-rename-diff.sh [--registry FILE] [--warn] [<base>]
 # check-rename-diff.sh [--registry FILE] --report <dir>
