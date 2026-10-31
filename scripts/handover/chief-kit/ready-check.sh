@@ -765,8 +765,8 @@ else
         if [ -z "$p_ls" ] && plug_removed "$SHA" "$p"; then return 0; fi  # removed whole — nothing to bump
         m_ver=$(plug_manifest_ver refs/remotes/origin/main "$p")
         p_ver=$(plug_manifest_ver "$SHA" "$p")
-        if ! printf '%s\n' "$m_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \
-            || ! printf '%s\n' "$p_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+        if ! grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$m_ver" \
+            || ! grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$p_ver"; then
             bump_err="$bump_err; $p version not plain x.y.z (main '${m_ver:-none}', PR '${p_ver:-none}')"
             return 0
         fi
