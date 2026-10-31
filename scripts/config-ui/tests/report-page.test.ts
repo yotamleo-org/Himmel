@@ -36,8 +36,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function boot() {
-  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
+function boot(extra: Record<string, string> = {}) {
+  const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: process.env.HOME, HANDOVER_DIR: handover, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", ...extra } });
   stop = () => s.stop();
   return s.port;
 }
@@ -47,6 +47,25 @@ const get = (port: number, p: string) => fetch(url(port, p), { headers: { "X-Him
 const post = (port: number, body: unknown) => fetch(url(port, "/api/report-settings"), { method: "POST", headers: { "X-Himmel-Token": TOKEN, "Content-Type": "application/json", Origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(body) });
 
 const GOOD = { report_day: "utc", shift_idle_min: "90", shift_cuts: ["07:30", "19:30"], shift_min_run_h: "3" };
+
+test("the Shift page route names its next cut from the saved cut times, not the defaults", async () => {
+  seed();
+  const at = new Date(Date.now() - 2 * 60_000), p2 = (n: number) => String(n).padStart(2, "0");
+  const name = `HIMMEL-nextleg-${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}A-roadmap-chief`;
+  const docDir = join(handover, "yotamleo", "himmel"), docPath = join(docDir, `${name}.md`);
+  mkdirSync(docDir, { recursive: true });
+  writeFileSync(docPath, `# X — CHIEF (x)\n\n## Results\n- ${p2(at.getHours())}:${p2(at.getMinutes())} LIVE — up\n`);
+  const lock = join(handover, ".locks", "queue", `yotamleo__himmel__${name}.lock`);
+  mkdirSync(lock, { recursive: true });
+  writeFileSync(join(lock, "owner.json"), JSON.stringify({ session: "s", handover: docPath, heartbeat: new Date().toISOString() }));
+  const gh = join(dir, "gh.sh");
+  writeFileSync(gh, "#!/bin/sh\necho '[]'\n", { mode: 0o755 });
+  const port = boot({ SHIFTS_FILE: join(dir, "shifts.jsonl"), GH_CMD: gh });
+  expect((await post(port, GOOD)).status).toBe(200);
+  const v = await (await get(port, "/api/shift")).json();
+  expect(v.state).toBe("open");
+  expect(["07:30", "19:30"]).toContain(v.shift.nextCut.slice(11, 16));
+});
 
 test("the four settings read their defaults, then save and read back, keeping every other section", async () => {
   seed();

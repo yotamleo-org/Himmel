@@ -570,13 +570,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const memo = new Map<string, ReturnType<typeof readMerged>>(); // one gh read per exact window within this request
         const mergedIn = (a: number, b: number) => { const k = `${a}:${b}`; if (!memo.has(k)) memo.set(k, readMerged(env, root, a, b)); return memo.get(k)!; };
         const rs = readReports(); // the shift numbers saved on Configure; an unreadable config polls with the defaults
-        const snap = await tickShifts({ root: handover, file, now: at, opts: "report_day" in rs.body ? optsOf(rs.body) : undefined, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
+        const opts = "report_day" in rs.body ? optsOf(rs.body) : undefined;
+        const snap = await tickShifts({ root: handover, file, now: at, opts, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
         const rows = readShifts(file);
         const win = id === null ? null : rows.find((r) => r.id === id);
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
         const merged = await mergedIn(from, win ? Date.parse(win.closed) : at + 60_000);
         const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
-        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards }), redactOut));
+        return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards, opts }), redactOut));
       }
       // the Morning report page: the dated report files under the handover root (the generator writes them, nothing here does),
       // one report parsed to blocks, and the "so far" view of today's closed shifts. The day is a validated date, never a path.
