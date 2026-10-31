@@ -220,6 +220,10 @@ cp "$HERE/deferred-ticket-body.md" "$fx/scripts/cr/deferred-ticket-body.md"
 cat > "$fx/scripts/jira/dist/index.js" <<'STUB'
 const fs = require('fs');
 fs.appendFileSync(process.env.RECOVERY_JIRA_LOG, JSON.stringify(process.argv.slice(2)) + '\n');
+if (process.argv[2] === 'comment') {
+    fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.comment', fs.readFileSync(process.argv[process.argv.indexOf('--comment-file') + 1]));
+    process.exit(process.env.RECOVERY_JIRA_COMMENT_FAIL === '1' ? 1 : 0);
+}
 fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.body', fs.readFileSync(process.argv[process.argv.indexOf('--desc-file') + 1]));
 if (process.env.RECOVERY_JIRA_FAIL === '1') process.exit(1);
 console.log('Created HIMMEL-9500');
@@ -481,10 +485,19 @@ assert_has "$(cat "$rl1_log.body")" '   - [critic-1]: the allowlist misses a pat
 assert_has "$(cat "$rl1_log.body")" '2. critic-2 (class: unclassified)' "8425 the batch body lists a classless finding as unclassified"
 assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the batch key is remembered in .deferred-to"
 
-rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-4/; s/critic-2/critic-5/')"$'\n'
+rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-4/g; s/critic-2/critic-5/g')"$'\n'
 assert_eq "$rl1_rc" 0 "8425 a second early close on the branch succeeds ($rl1_out)"
 assert_eq "$(rl1_creates)" 1 "8425 two closes on one branch file one ticket"
 assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the second close reuses the remembered key"
+assert_has "$(tail -n 1 "$rl1_log")" '["comment","HIMMEL-9500","--comment-file",' "8425 the second close comments on the remembered ticket"
+assert_has "$(cat "$rl1_log.comment")" '1. critic-4 (class: reader-allowlist)' "8425 the reuse comment lists the second close's findings"
+assert_has "$(cat "$rl1_log.comment")" '   - [critic-4]: the allowlist misses a path [docs/guide/x.md:1]' "8425 the reuse comment carries each finding's text and location"
+rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-6/g; s/critic-2/critic-7/g')"$'\n' RECOVERY_JIRA_COMMENT_FAIL=1
+assert_eq "$rl1_rc" 6 "8425 a failed reuse comment fails closed ($rl1_out)"
+assert_has "$rl1_out" 'rerun the same command to retry the comment' "8425 a failed reuse comment names the rerun recovery"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 a failed reuse comment writes no deferred row"
+assert_eq "$(rl1_marker)" kept "8425 a failed reuse comment keeps the marker"
+assert_eq "$(rl1_creates)" 1 "8425 a failed reuse comment files no ticket"
 
 for rl1_gh in 'GH_PR_JSON=[{"number":1},{"number":2}]' GH_PR_RC=1; do
     rl1_run feat/rl1 1 "$rl1_sug" "$rl1_gh"

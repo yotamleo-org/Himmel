@@ -47,7 +47,9 @@
 # of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
 # A Suggestions-only round below the cap closes early on a change that touches
 # no CI trust path. It files ONE batch residual per branch and keeps its key in
-# <branch>.deferred-to, which every later early close reuses; the start of a
+# <branch>.deferred-to, which every later early close reuses, adding its
+# findings to that ticket as a comment (a failed comment exits 6; rerun to
+# retry it); the start of a
 # new loop's first round removes it and cr-reset.sh moves it aside. With no PR
 # title key the batch's parent is the first [KEY-n] in the branch's commit
 # subjects. A .deferred-to that cannot be removed or written exits 5, like
@@ -2107,15 +2109,19 @@ fi
 # early and SIGPIPE it.
 # An early close with no --defer-to reuses the branch's batch residual. An
 # unreadable or malformed key is not reused: a new batch replaces it.
+batch_reused=0
 if [ "$round" -lt 4 ] && ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
     # swallow-ok: an unreadable key is not reused; a new batch residual is filed instead
     batch_key="$(sed -n '1p' "$deferred_to_state" 2>/dev/null)" || batch_key=""
-    [[ $batch_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] && defer_to="$batch_key"
+    if [[ $batch_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        defer_to="$batch_key"
+        batch_reused=1
+    fi
 fi
-auto_defer=0
-if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
-    auto_defer=1
-    primary_root="$HIMMEL_ROOT"
+# The numbered finding list of a batch body or a reuse comment.
+pending_list_js='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>JSON.parse(s).pending.forEach((f,i)=>process.stdout.write((i+1)+". "+f.id+" (class: "+(f.class||"unclassified")+")\n"+(f.text?"   "+f.text+"\n":""))))'
+primary_root="$HIMMEL_ROOT"
+if [ "$pending_count" -gt 0 ]; then
     himmel_common="$(git -C "$HIMMEL_ROOT" rev-parse --git-common-dir 2>/dev/null)" || himmel_common=""
     if [ -n "$himmel_common" ]; then
         case "$himmel_common" in
@@ -2125,6 +2131,29 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
         resolved_primary="$(cd "$himmel_common/.." 2>/dev/null && pwd)" || resolved_primary=""
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
+fi
+# A reused batch ticket gets this round's findings as a comment, before any
+# ledger row points at it, so a failed comment leaves nothing to undo.
+if [ "$batch_reused" -eq 1 ] && [ "$pending_count" -gt 0 ]; then
+    batch_comment="$(mktemp -t cr-batch-comment.XXXXXX)" || exit 5
+    if ! { printf 'Findings deferred on %s at %s:\n' "$branch" "$full_head" \
+            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_comment"; then
+        rm -f "$batch_comment"
+        exit 5
+    fi
+    comment_rc=0
+    comment_out="$(JIRA_PROJECT_KEY=${defer_to%%-*} node "$primary_root/scripts/jira/dist/index.js" comment \
+        "$defer_to" --comment-file "$batch_comment" 2>&1)" || comment_rc=$?
+    rm -f "$batch_comment"
+    if [ "$comment_rc" -ne 0 ]; then
+        echo "review-round: could not add this round's findings to the batch residual $defer_to; marker remains pending. ${comment_out}" >&2
+        echo "review-round: rerun the same command to retry the comment without filing another residual" >&2
+        exit 6
+    fi
+fi
+auto_defer=0
+if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
+    auto_defer=1
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
@@ -2148,7 +2177,7 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
     batch_body="$(mktemp -t cr-batch-body.XXXXXX)" || exit 5
     if ! { cat "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
             && printf '\nFindings deferred on %s at %s:\n' "$branch" "$full_head" \
-            && printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>JSON.parse(s).pending.forEach((f,i)=>process.stdout.write((i+1)+". "+f.id+" (class: "+(f.class||"unclassified")+")\n"+(f.text?"   "+f.text+"\n":""))))'; } > "$batch_body"; then
+            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_body"; then
         rm -f "$batch_body"
         exit 5
     fi
