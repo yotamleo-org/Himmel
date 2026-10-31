@@ -604,8 +604,8 @@ fi
 # instead of arming a session that never starts.
 claude_floor_gate headed-arm.sh "$DRY_RUN" "$CLAUDE_CLI" || exit 2
 LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
-# A chief arm runs under the `console` plugin profile (the
-# floor plus lean-skills; no review toolkit). A worker arm reaches here through
+# A chief arm runs under the lean `chief` plugin profile (the
+# floor only, trimmed tools). A worker arm reaches here through
 # worker-claude-launcher.sh, which already prepends its own --settings, so only
 # --role chief adds one. Fails closed: no profile, no chief launch.
 if [ "$ROLE" = "chief" ]; then
@@ -620,7 +620,14 @@ if [ "$ROLE" = "chief" ]; then
         echo "headed-arm.sh: the chief MCP allowlist did not resolve; refusing to launch a chief with every user-level MCP server" >&2
         exit 2
     }
-    _chief_profile_args=(--settings "$_chief_profile_settings")
+    # The chief profile drops the i-have-adhd plugin; himmel's own 1 KB chief
+    # brief replaces it. A missing brief refuses, like the profile.
+    _chief_brief="$(cd "$(dirname "$0")/../.." && pwd)/docs/handover/chief-adhd-brief.md"
+    [ -f "$_chief_brief" ] || {
+        echo "headed-arm.sh: the chief brief $_chief_brief is missing; refusing to launch a chief without it" >&2
+        exit 2
+    }
+    _chief_profile_args=(--settings "$_chief_profile_settings" --append-system-prompt-file "$_chief_brief")
     [ -z "$_chief_profile_mcp" ] || _chief_profile_args+=(--mcp-config "$_chief_profile_mcp" --strict-mcp-config)
     LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
 fi
