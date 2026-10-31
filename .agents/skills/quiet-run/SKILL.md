@@ -14,6 +14,11 @@ exit status, duration, and log path (`/tmp/quiet-run-<label>-<ts>-<pid>.log`).
 `<label>` is a short slug for log naming; everything after `--` is the command.
 Grep the log if more detail is needed. See `.claude/commands/quiet-run.md`.
 
+Run a third-party tool (`uv run … pyright`, `npx`, a checkout under `/tmp`)
+directly, not under quiet-run: wrapping gets it no allow rule and hides it from
+the auto-mode classifier. Label `suite` refuses an argv path outside the
+worktree and prints the direct form (HIMMEL-8315).
+
 A background quiet-run is a live child of your session: count it (and any `tail -f`
 or `Monitor` on its log) as a live child before closing or wrapping, not just
 Agent-tool subagents. Killing it with TERM/INT/HUP reaps the whole command tree

@@ -8,7 +8,10 @@
 #
 # Examples:
 #   ./scripts/quiet-run.sh npm-install -- npm install
-#   ./scripts/quiet-run.sh pytest -- pytest -xvs tests/
+#   ./scripts/quiet-run.sh suite -- bash scripts/test-quiet-run.sh
+#
+# A third-party tool on another checkout runs directly, not through here:
+# label `suite` refuses an argv path outside the worktree.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -115,6 +118,28 @@ if [ "$LABEL" = "suite" ] && [ "${1:-}" = "bash" ]; then
                 ;;
         esac
     fi
+fi
+
+# label `suite` runs this worktree's suites only.
+# An argv path outside the worktree (`--directory /tmp/fork`, `--cwd=/x`) is a
+# tool run on another checkout: wrapping it buys no allow rule and only hides
+# the command from the auto-mode classifier, so refuse and name the direct form.
+if [ "$LABEL" = "suite" ] && QR_TOP=$(git rev-parse --show-toplevel 2>/dev/null); then
+    QR_REAL_TOP=$(cd "$QR_TOP" 2>/dev/null && pwd -P) || QR_REAL_TOP="$QR_TOP"
+    # Git-Bash prints the toplevel mixed (D:/a/repo); argv paths are POSIX.
+    if command -v cygpath >/dev/null 2>&1; then
+        QR_REAL_TOP=$(cygpath -u "$QR_TOP" 2>/dev/null) || QR_REAL_TOP="$QR_TOP"
+    fi
+    for arg in "$@"; do
+        case "$arg" in
+            --*=/*) qr_path="${arg#*=}" ;;
+            /*) qr_path="$arg" ;;
+            *) continue ;;
+        esac
+        case "$qr_path/" in "$QR_TOP"/*|"$QR_REAL_TOP"/*) continue ;; esac
+        echo "ERR quiet-run: label 'suite' runs this worktree's test suites only and '$arg' is outside it (redirect to a scratch file if the output is noisy); run it directly: $*" >&2
+        exit 2
+    done
 fi
 
 # label `suite` is a suite chokepoint -- whatever it runs (bash
