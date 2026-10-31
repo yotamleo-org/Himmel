@@ -2644,7 +2644,9 @@ check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP
 check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$doc82B")" "1"
 check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
 check "82 over budget: last GO becomes a pointer to the successor's Live state" "$(grep -c "^\*\*Last GO:\*\* over the HANDOFF size budget — read \`last GO:\` in the Live state of \`[^\`]*DEMO-nextleg-${today}B-chief.md\`$" "$handoff82A")" "1"
-check "82 the last GO line survives the fallback" "$(grep -cF "$go82" "$doc82B")" "1"
+# shellcheck disable=SC2016  # literal fixture text
+check "82 the last GO survives the fallback, without the prior-GO chain (HIMMEL-8198)" "$(grep -c '^last GO: `82:abc` KEEP-82-GO$' "$doc82B")" "1"
+check "82 the prior-GO chain is kept verbatim in the history file (HIMMEL-8198)" "$(grep -cF "$go82" "$root/tester/cap82dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
@@ -3120,5 +3122,53 @@ for _n in $(seq 10 49); do : > "$root93f40/tester/b93/ACME-nextleg-2026-09-${_n}
 rc93fa=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" chief_root "$root93f2" next --dry-run >/dev/null 2>&1 || rc93fa=$?; calls93a="$(wc -l < "$stub93/basename.calls")"
 rc93fb=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" chief_root "$root93f40" next --dry-run >/dev/null 2>&1 || rc93fb=$?; calls93b="$(wc -l < "$stub93/basename.calls")"
 check "93 the bare-next discovery forks no basename per doc (2 docs vs 42 docs, both runs rc 0)" "$rc93fa:$rc93fb:$calls93a" "0:0:$calls93b"
+
+# --- 94: `next` seeds the successor Live state with only the OPEN workers (the
+# labels the fleet manifest still lists) and the LAST GO. Closed workers' spans, the shift
+# prose and the prior-GO chain go verbatim to a history file the HANDOFF names;
+# a pool-disposition: line (read by the tick) stays.
+out94="$(chief new --bucket trim94)"
+token94="$(token_of "$out94")"
+doc94A="$root/tester/trim94/DEMO-nextleg-${today}A-chief.md"
+doc94B="$root/tester/trim94dst/DEMO-nextleg-${today}B-chief.md"
+handoff94A="$root/tester/trim94/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+hist94="$root/tester/trim94dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
+# shellcheck disable=SC2016  # backtick worker spans are literal fixture text
+legs94='legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two:22`'
+for i in $(seq 1 20); do legs94="$legs94 \`C$i:nonce-closed-$i:lock-closed-$i:$i\`"; done
+legs94="$legs94 (KA 01:4x: SHIFT-NOTE-94 closed workers wrapped and pruned)"
+# shellcheck disable=SC2016  # literal fixture text
+go94='last GO: `94:aaaa1111` (ordinary), prior `93:bbbb2222` (PRIOR-GO-94) (prior `92:cccc3333` (older))'
+awk -v legs="$legs94" -v go="$go94" '
+    /^legs:/ { print legs; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
+    /^last GO:/ { print go; next }
+    { print }' "$doc94A" > "$doc94A.new" && mv "$doc94A.new" "$doc94A"
+printf '{"legs":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
+rc94=0
+chief next --bucket trim94dst --doc "$doc94A" >/dev/null 2>&1 || rc94=$?
+live94="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc94B" 2>/dev/null)"
+check "94 next succeeds with 20 closed workers on the legs line" "$rc94" "0"
+check "94 the successor Live state carries 0 closed workers" "$(printf '%s\n' "$live94" | grep -c 'C[0-9]*:nonce-closed')" "0"
+check "94 the successor Live state keeps both open workers" "$(printf '%s\n' "$live94" | grep -c -e 'N1:n-one:lock-one:11' -e 'N2:n-two:lock-two:22')" "1"
+check "94 the shift prose is not carried" "$(printf '%s\n' "$live94" | grep -c 'SHIFT-NOTE-94')" "0"
+check "94 the pool-disposition: line is still carried" "$(printf '%s\n' "$live94" | grep -c '^pool-disposition: DEMO-94 question POOL-LINE-94$')" "1"
+# shellcheck disable=SC2016  # literal fixture text
+check "94 the successor keeps the last GO" "$(printf '%s\n' "$live94" | grep -c '^last GO: `94:aaaa1111` (ordinary)$')" "1"
+check "94 the prior-GO chain is not carried" "$(printf '%s\n' "$live94" | grep -c 'PRIOR-GO-94')" "0"
+check "94 the history file holds a closed span, the shift prose and the prior GOs verbatim" "$(grep -c -e 'C20:nonce-closed-20:lock-closed-20:20' -e 'PRIOR-GO-94' "$hist94" 2>/dev/null)" "2"
+check "94 the HANDOFF names the history file" "$(grep -cF "specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md" "$handoff94A" 2>/dev/null)" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc94A" "$token94" >/dev/null 2>&1
+
+# 94b: with no fleet manifest the open set is unknown: the legs block is seeded whole and nothing is spilled.
+out94b="$(chief new --bucket trim94b)"
+token94b="$(token_of "$out94b")"
+doc94bA="$root/tester/trim94b/DEMO-nextleg-${today}A-chief.md"
+doc94bB="$root/tester/trim94bdst/DEMO-nextleg-${today}B-chief.md"
+awk -v legs="$legs94" '/^legs:/ { print legs; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
+rm -f "${doc94bA%.md}.fleet.json"
+chief next --bucket trim94bdst --doc "$doc94bA" >/dev/null 2>&1
+check "94b with no manifest every worker span is seeded" "$(grep -c 'C20:nonce-closed-20' "$doc94bB" 2>/dev/null)" "1"
+check "94b with no manifest no history file is written" "$([ -e "$root/tester/trim94bdst/specs/history" ] && echo yes || echo no)" "no"
+HANDOVER_DIR="$root" bash "$QL" release "$doc94bA" "$token94b" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

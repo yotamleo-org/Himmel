@@ -9,10 +9,18 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `livestate=DRIFT:<worker>[,…]` when it disagrees with the worker locks actually
 > held (and `livestate=MALFORMED:<worker>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
 > at handover; `chief.sh next` seeds its `legs:` block, `queue:`, `last GO:` and
-> `acked:` verbatim into the successor's own Live state (the HANDOFF holds only
+> `acked:` into the successor's own Live state (the HANDOFF holds only
 > the pointer `Live state: seeded into <successor doc>`, never a nonce), so a
 > stale line here is a stale line there too, and the successor's
-> `action-zero.sh --render-workers` keeps the seeded nonces. A per-worker detail line
+> `action-zero.sh --render-workers` keeps the seeded nonces. **Only the open workers
+> and the last GO are seeded:** a `legs:` span whose label is no longer in the fleet
+> manifest (`fleet-manifest.sh remove` at the wrap), the shift prose on that line
+> and the `prior …` chain after the first GO stay behind. `next` writes them
+> byte for byte to `specs/history/chief-live-state-<your doc stem>.md` in the
+> successor's bucket and the HANDOFF names it; with no manifest the block is seeded
+> whole. A `pool-disposition:` line inside the block is kept. Keep your own Live
+> state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
+> past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
 > past the `legs:` block is not seeded: put what the successor needs in the
 > HANDOFF's judgement notes. A worker's nonce is
 > updated **only after** that worker's quote-back (of the fresh nonce, when one

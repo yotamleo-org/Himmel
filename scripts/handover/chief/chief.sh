@@ -1819,13 +1819,63 @@ seeded_live_field() {
     '
 }
 
-# seed_live_fields <doc> <predecessor live state>: replace each `<field>: <...>`
-# placeholder line in the doc's `## Live state` with the predecessor's value,
-# verbatim; a field the predecessor lacks keeps its placeholder.
+# The `legs:` block `next` seeds: the worker spans whose label or doc stem the
+# successor's fleet manifest still lists (a wrapped worker is off it), plus each
+# `pool-disposition:` line, which the tick reads. The shift prose and the spans of
+# wrapped workers are left out. A manifest that is absent or unreadable leaves the
+# block whole: the open set is then unknown.
+# Args: legs block (as seeded_live_field prints it), manifest.
+open_legs_block() {
+    local block="$1" manifest="$2" names spans="" span label pools seen=0
+    [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
+    names="$(jq -r '.legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; ""))' "$manifest" 2>/dev/null)" \
+        || { printf '%s\n' "$block"; return 0; }
+    # shellcheck disable=SC2016  # the backticks in the span pattern are literal
+    while IFS= read -r span; do
+        [ -n "$span" ] || continue
+        seen=1
+        label="${span#\`}"; label="${label%%:*}"
+        if printf '%s\n' "$names" | grep -Fxq -- "$label"; then spans="$spans$span "; fi
+    done < <(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`')
+    [ "$seen" -eq 1 ] || { printf '%s\n' "$block"; return 0; }  # no worker span (a placeholder or `none`): nothing to trim
+    pools="$(printf '%s\n' "$block" | grep '^pool-disposition:')" || pools=""  # swallow-ok: no pool-disposition line is the common case
+    printf '%s\n' "${spans:-none }" | sed 's/ $//'
+    [ -z "$pools" ] || printf '%s\n' "$pools"
+}
+
+# The `last GO:` value without the chain of prior GOs: everything from the first
+# `prior <pr>`, `prior \`<pr>:<sha>\`` or `(prior ...` on.
+# Args: last GO value.
+latest_go_only() {
+    printf '%s\n' "$1" | sed -E 's/(, | )?\(?prior [`0-9#].*$//'
+}
+
+# seed_live_fields <doc> <predecessor live state> <predecessor stem>: replace each
+# `<field>: <...>` placeholder line in the doc's `## Live state` with the
+# predecessor's value, verbatim; a field the predecessor lacks keeps its
+# placeholder. Two exceptions: `legs:` seeds only the open workers
+# (open_legs_block) and `last GO:` only the last GO (latest_go_only). What they
+# leave out is written byte for byte to <doc dir>/specs/history/chief-live-state-<stem>.md,
+# named in LS_HISTORY_REF for the HANDOFF; a failed write seeds both whole.
+LS_HISTORY_REF=""
 seed_live_fields() {
-    local doc="$1" live="$2"
-    SL_legs="$(seeded_live_field "$live" legs)" SL_queue="$(seeded_live_field "$live" queue)" \
-    SL_last_GO="$(seeded_live_field "$live" "last GO")" SL_acked="$(seeded_live_field "$live" acked)" awk '
+    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile
+    legs="$(seeded_live_field "$live" legs)"
+    go="$(seeded_live_field "$live" "last GO")"
+    new_legs="$(open_legs_block "$legs" "${doc%.md}.fleet.json")"
+    new_go="$(latest_go_only "$go")"
+    if [ "$new_legs" != "$legs" ] || [ "$new_go" != "$go" ]; then
+        hdir="$(dirname "$doc")/specs/history"
+        hfile="$hdir/chief-live-state-$stem.md"
+        if mkdir -p "$hdir" && { printf '# Live state trimmed by chief.sh next from %s\n\nlegs: %s\nlast GO: %s\n' "$stem" "$legs" "$go" > "$hfile"; } 2>/dev/null; then
+            LS_HISTORY_REF="$hfile"
+        else
+            err "warning: could not write the Live state history to $hfile; seeded the legs: and last GO: lines whole"
+            new_legs="$legs"; new_go="$go"
+        fi
+    fi
+    SL_legs="$new_legs" SL_queue="$(seeded_live_field "$live" queue)" \
+    SL_last_GO="$new_go" SL_acked="$(seeded_live_field "$live" acked)" awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
         f && /^(legs|queue|last GO|acked): </ {
@@ -2065,7 +2115,7 @@ cmd_next() {
         CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
-    seed_live_fields "$doc" "$predecessor_live_state"
+    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem"
     precompute_action_zero "$doc"
 
     echo "doc: $doc"
@@ -2118,7 +2168,7 @@ cmd_next() {
                 REPO "$repo" \
                 BUCKET "$bucket" \
                 KIT "$kit" \
-                LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`"
+                LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`${LS_HISTORY_REF:+; the closed workers, prior GOs and shift notes left out of that seed are kept verbatim in \`$LS_HISTORY_REF\`}"
             # Over budget: the bulky fact sections (all re-derivable) become
             # pointers; the rulings stay inline.
             [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
