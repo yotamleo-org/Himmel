@@ -580,6 +580,7 @@ rm -rf "$root"
 # must not claim nothing moved.
 root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
 sync_fixture "$root" ours.txt
+mkdir -p "$root/git/yotamleo-org/fake.git/hooks"
 printf '#!/bin/sh\nexit 1\n' > "$root/git/yotamleo-org/fake.git/hooks/pre-receive"
 chmod +x "$root/git/yotamleo-org/fake.git/hooks/pre-receive"
 out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
