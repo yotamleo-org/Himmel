@@ -28,7 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const API = 'https://api.anthropic.com';
 const ID = /^[a-f0-9]{64}$/;
 // Batch price, USD per million tokens (input, output): half the list price. Cache reads bill at 0.1 x input,
-// 5-minute cache writes at 1.25 x input.
+// 5-minute cache writes at 1.25 x input, 1h cache writes at 2 x input.
 // ponytail: a hand-kept table of the models graphify extraction uses, from the docs 2026-10-23; an unlisted model is
 // refused rather than priced by guess. Upgrade path: read the price from the provider's cost report.
 const PRICE = {
@@ -42,6 +42,27 @@ class Refusal extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 const refuse = (m, code = 2) => { throw new Refusal(code, m); };
+
+// Every chunk prompt opens with graphify's fixed extraction instructions, so the prompts of one batch share a long
+// prefix. It goes once as a cached system block and each chunk alone as the user message. A batch runs
+// long, so the block asks for the 1h tier (write 2 x input, read 0.1 x), which pays once items share it.
+// Fails closed to the unsplit prompt, which is still correct: a lone prompt, a prefix under the cache minimum, or a
+// prompt that is nothing but the prefix.
+// ponytail: the prefix is the longest line-aligned head every prompt shares and MIN_PREFIX is a flat 4000 characters
+// (about 1000 tokens, the smallest cacheable block), not read per model. Upgrade path: the per-model minimum.
+const CACHE_TTL = '1h';
+const MIN_PREFIX = 4000;
+function sharedPrefix(texts) {
+  if (texts.length < 2) return '';
+  let head = texts[0];
+  for (const t of texts.slice(1)) {
+    let n = 0;
+    while (n < head.length && n < t.length && head[n] === t[n]) n += 1;
+    head = head.slice(0, n);
+  }
+  const prefix = head.slice(0, head.lastIndexOf('\n') + 1);
+  return prefix.length >= MIN_PREFIX && texts.every((t) => t.length > prefix.length) ? prefix : '';
+}
 
 function opts(args) {
   const o = {};
@@ -119,13 +140,18 @@ async function submit(o) {
   if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
   const files = readdirSync(o.prompts ?? refuse('--prompts is required')).filter((f) => f.endsWith('.txt')).sort();
   if (files.length === 0) refuse('no prompts to submit');
-  const requests = files.map((f) => {
+  const prompts = files.map((f) => {
     const id = f.slice(0, -4);
     if (!ID.test(id)) refuse(`prompt file '${f}' is not named <sha256>.txt`);
     const text = readFileSync(join(o.prompts, f), 'utf8');
     if (createHash('sha256').update(text).digest('hex') !== id) refuse(`prompt file '${f}' does not hash to its name`);
-    return { custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort }, messages: [{ role: 'user', content: text }] } };
+    return { id, text };
   });
+  // The hash above covers the whole recorded text; the split below only changes how the same bytes are carried.
+  const prefix = sharedPrefix(prompts.map((p) => p.text));
+  const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
+    ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
+    messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
   if (typeof made.id !== 'string' || !made.id) refuse('the create reply carries no batch id', 3);
@@ -149,7 +175,11 @@ async function poll(o) {
 
 function cost(model, u) {
   const [pin, pout] = PRICE[model];
-  const inTok = (u.input_tokens ?? 0) + 1.25 * (u.cache_creation_input_tokens ?? 0) + 0.1 * (u.cache_read_input_tokens ?? 0);
+  // a cache write bills 1.25 x input at the 5-minute tier and 2 x at the 1h tier; the split is in usage.cache_creation
+  const write = u.cache_creation
+    ? 1.25 * (u.cache_creation.ephemeral_5m_input_tokens ?? 0) + 2 * (u.cache_creation.ephemeral_1h_input_tokens ?? 0)
+    : 1.25 * (u.cache_creation_input_tokens ?? 0);
+  const inTok = (u.input_tokens ?? 0) + write + 0.1 * (u.cache_read_input_tokens ?? 0);
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
 }
 
