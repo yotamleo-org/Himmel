@@ -307,6 +307,29 @@ check "scratchpad-clone pushed: no refusal -> rc 0" "$rc" "0"
 mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gone-clone\`"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone already gone: no refusal -> rc 0" "$rc" "0"
+# a clone one level deeper than scratchpad/<dir>, named by its full path, and by its parent
+mkdir -p "$SCR/gfork"
+git init -q -b main "$SCR/gfork/graphify"
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/gfork/graphify" commit -q --allow-empty -m rebased
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gfork/graphify\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone nested one level: rc 8" "$rc" "8"
+mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/gfork\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad parent naming a nested unpushed clone: rc 8" "$rc" "8"
+# commits reachable only from a detached HEAD (a rebase in progress) count
+git -C "$SCR/forkclone" checkout -q --detach
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkclone" commit -q --allow-empty -m detached
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/forkclone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone detached-HEAD commit: rc 8" "$rc" "8"
+# a clone git cannot read is refused, not waved through
+mkdir -p "$SCR/broken/.git"
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/broken\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone git cannot inspect: rc 8" "$rc" "8"
+contains "scratchpad-clone git cannot inspect: says so" "$out" "cannot inspect"
+rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone"
 
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work

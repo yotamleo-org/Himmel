@@ -197,17 +197,45 @@ if [ "$last_marker" != "WRAPPED" ]; then
     exit 4
 fi
 
-# git-env-ok: the one git call below runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
+# git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
 # A clone in a session scratchpad is deleted when its session ends. A
 # WRAPPED doc that names such a clone still holding commits on no remote is losing
 # that work: refuse the close (the chief sends the worker back to push it to a
 # staging branch or move it under ~/.himmel/scratch). A clone already gone cannot
 # be checked and is skipped.
-scratch_clones=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^/[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
+# A named path may sit below the clone (a file) or above it (a parent holding
+# clones): walk up to the nearest existing directory, take the repo that contains
+# it and any repo up to three levels below it. HEAD counts too (a rebase in
+# progress leaves its commits on a detached HEAD), and a git failure refuses.
+sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
+scratch_paths=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC" | sort -u)
+scratch_clones=""
+while IFS= read -r sc_path; do
+    [ -n "$sc_path" ] || continue
+    sc_root="${sc_path%%/scratchpad/*}/scratchpad"
+    sc_d="$sc_path"
+    while [ "$sc_d" != "$sc_root" ] && [ ! -d "$sc_d" ]; do sc_d="${sc_d%/*}"; done
+    [ "$sc_d" != "$sc_root" ] || continue
+    sc_top=$(sc_git -C "$sc_d" rev-parse --show-toplevel 2>&1) || sc_top=""
+    case "$sc_top" in "$sc_root"/*) scratch_clones="$scratch_clones$sc_top"$'\n' ;; esac
+    sc_below=$(find "$sc_d" -maxdepth 3 -type d -name .git -prune)
+    while IFS= read -r sc_g; do
+        [ -n "$sc_g" ] && scratch_clones="$scratch_clones${sc_g%/.git}"$'\n'
+    done <<EOF
+$sc_below
+EOF
+done <<EOF
+$scratch_paths
+EOF
+scratch_clones=$(printf '%s' "$scratch_clones" | sort -u)
 while IFS= read -r sc_dir; do
-    [ -n "$sc_dir" ] && [ -d "$sc_dir/.git" ] || continue
-    sc_unpushed=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
-        git -C "$sc_dir" rev-list -n 1 --branches --not --remotes 2>/dev/null)
+    [ -n "$sc_dir" ] || continue
+    sc_head=""
+    if sc_git -C "$sc_dir" rev-parse -q --verify HEAD >/dev/null 2>&1; then sc_head=HEAD; fi
+    if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 ${sc_head:+"$sc_head"} --branches --not --remotes 2>&1); then
+        echo "close-wrapped-worker: refusing - cannot inspect the session-scratchpad clone $sc_dir the doc names (git failed: $sc_unpushed); fix it or move the clone under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
     if [ -n "$sc_unpushed" ]; then
         echo "close-wrapped-worker: refusing - the doc names the session-scratchpad clone $sc_dir, which holds commits on no remote (e.g. $sc_unpushed); push them to a staging branch or move the clone under ~/.himmel/scratch before the close" >&2
         exit 8
