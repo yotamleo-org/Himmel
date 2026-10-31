@@ -929,6 +929,7 @@ scripts/lint/test-skill-lint.sh	2
 scripts/lint/test-vendored-domain-modeling.sh	0
 scripts/luna-vitals/connectors/test-pull-cadence-arm.sh	1
 scripts/luna/test-backfill-sessions.sh	4
+scripts/luna/test-cadence-alert.sh	1
 scripts/luna/test-crystallize-note.sh	2
 scripts/luna/test-fetch-health.sh	0
 scripts/luna/test-file-clipper-tickets.sh	0
