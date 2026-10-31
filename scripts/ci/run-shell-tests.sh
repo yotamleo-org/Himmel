@@ -114,7 +114,9 @@
 #                      run everything, keeping a red attributable.
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
-#                      what did not run, instead of running until morning
+#                      what did not run, instead of running until morning.
+#                      A cap overrun is rerun only if a full cap still fits
+#                      inside it, or inside HOME_CANARY_TIMEOUT when smaller
 #   SUITE_JOBS         suites run at once (default 1; on a GitHub Actions
 #                      runner the CPU count, capped at 4, except on Windows).
 #                      Each suite keeps its own log, rc, cap and retry; its
@@ -608,6 +610,15 @@ _suite_timeout_for() {
 # COVERAGE consequence is fixed instead -- see SUITE_ROTATE below, which makes
 # the truncated tail resume rather than repeat.
 SUITE_RUN_BUDGET=$(_suite_num SUITE_RUN_BUDGET "${SUITE_RUN_BUDGET:-7200}" 7200)
+
+# The rerun of a cap overrun must fit inside the run: home-canary.sh kills the
+# whole runner at HOME_CANARY_TIMEOUT (ci.yml: 3300s), so a 1500s suite that
+# overran and was rerun spent the shard and no summary printed.
+retry_budget=$SUITE_RUN_BUDGET
+case "${HOME_CANARY_TIMEOUT:-}" in
+  ''|*[!0-9]*) ;;
+  *) [ "$((10#$HOME_CANARY_TIMEOUT))" -lt "$retry_budget" ] && retry_budget=$((10#$HOME_CANARY_TIMEOUT)) ;;
+esac
 
 # Resume rotation. The walk order is `sort`ed, hence FIXED, so a
 # budget-truncated run drops the SAME tail every time: on the reference run
@@ -4540,6 +4551,11 @@ LIVEMSGS
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
   # a defect, and one rerun in the same job costs less than a red main.
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
+    if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -gt "$retry_budget" ]; then
+      printf '[NO-RETRY] %s exceeded its %ss cap; a rerun cannot finish inside the run'\''s %ss budget (%ss left)\n' \
+        "$suite" "$suite_timeout" "$retry_budget" "$(( retry_budget - (SECONDS - run_start) ))"
+      break
+    fi
     if [ "$capped" -eq 1 ]; then
       # The rerun counts it again if it overruns again: one suite, one TIMED OUT.
       timed_out=$((timed_out - 1))
