@@ -1272,5 +1272,33 @@ rh_only="$(rh --resume-only)"; rh_only_rc=$?
 check "--resume-only exits 0 (HIMMEL-6604)" "0" "$rh_only_rc"
 has "--resume-only names the worker-held RESUME row too (HIMMEL-6604)" "$rh_only" "RESUME-HELD HIMMEL-80 by live worker N8"
 
+# --- (8170) versionless operator work is INTAKE, never a bare LOW: open tickets with no fixVersion that are
+# operator-directed, a Bug of High or above, labelled scope-<current version> or held by a live worker count;
+# a residual-depth backlog ticket or a plain versionless one does not ---
+MI="$WORK/jira-mirror-intake/HIMMEL"; mkdir -p "$MI"
+M_SAVE="$M"; M="$MI"
+mk HIMMEL-901 "To Do" Medium '["operator-directed","backlog"]' '[]' '[]' "operator asked for this, no version" "Edit scripts/lib/in1.sh only."
+mk HIMMEL-902 "To Do" High '["backlog"]' '[]' '[]' "a high bug, no version" "Edit scripts/lib/in2.sh only."
+retype "$MI/HIMMEL-902.md" Bug
+mk HIMMEL-903 "To Do" Medium '["backlog","residual-depth-1"]' '[]' '[]' "a residual-depth-1 backlog ticket" "Edit scripts/lib/in3.sh only."
+mk HIMMEL-904 "To Do" Medium '["backlog"]' '[]' '[]' "a plain backlog ticket" "Edit scripts/lib/in4.sh only."
+mk HIMMEL-905 "To Do" Low '["scope-v1.0.1"]' '[]' '[]' "scoped to the current version, no fixVersion" "Edit scripts/lib/in5.sh only."
+mk HIMMEL-906 "To Do" Medium '["operator-directed"]' '["v1.0.1"]' '[]' "operator work already in the version" "Edit scripts/lib/in6.sh only."
+mk HIMMEL-907 "Done" Medium '["operator-directed"]' '[]' '[]' "operator work, closed" "Edit scripts/lib/in7.sh only."
+mk HIMMEL-8173 "To Do" Medium '[]' '["v1.0.1"]' '[]' "hook comments stop citing Windows jq.exe, MSYS and Defender rationale" "Edit scripts/lib/in8.sh only."
+M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
+runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+oi="$(runi --priority-pool-only --top 7)"
+has "(8170) a pool short of the slots with versionless operator work reads INTAKE:<m>" "$oi" "# pool=2/7,INTAKE:3"
+lacks "(8170) the pool line is not a bare LOW while INTAKE is non-zero" "$(printf '%s\n' "$oi" | grep '^# pool=')" "LOW"
+has "(8170) the intake line names operator-directed, High+ Bug and scope-label tickets with the version" "$oi" "# intake 3 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905"
+lacks "(8170) a residual-depth-1 backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-903"
+lacks "(8170) a plain versionless backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-904"
+lacks "(8170) an operator-directed ticket already in a version is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-906"
+lacks "(8170) a closed versionless ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-907"
+has "(8170) a removal ticket with a windows title (HIMMEL-8173) is not dropped by the platform filter" "$oi" "LOCAL	HIMMEL-8173"
+lacks "(8170) a mirror with no intake candidate prints no intake field" "$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --top 7)" "INTAKE"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
