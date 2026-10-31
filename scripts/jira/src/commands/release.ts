@@ -16,7 +16,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, standing, state, takeover, withdraw,
+  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -360,6 +360,16 @@ export function registerRelease(program: Command): void {
       if (o.comment) await commentLeaks(liveJira, leaks, version, frozen.date);
     });
 
+  rel.command('spec-check <keys...>')
+    .description('Per key: SPEC ok, SPEC-STALE or NO-SPEC from the signed spec records of every declared release; exit 1 unless all are SPEC ok')
+    .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
+    .action((keys: string[], o: { mirror?: string }) => {
+      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
+      const r = specCheck(process.env, keys, mirror);
+      for (const l of r.lines) console.log(l);
+      if (!r.ok) process.exitCode = 1;
+    });
+
   rel.command('request <release>')
     .description('Queue a placement request for the release manager (the chief writes these)')
     .requiredOption('--verb <verb>', 'INTAKE | REVERSION | DISCHARGE')
@@ -550,6 +560,21 @@ export function registerRelease(program: Command): void {
       if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
       const r = standing(ctxFor(release), { kind: o.kind, decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
       console.log(`${r.id} recorded; \`jira release pull ${release}\` files the INTAKE requests it covers`);
+    });
+  operator.command('spec <release>')
+    .description('Sign a minerva spec for its keys after the operator approves it')
+    .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
+    .requiredOption('--spec <path>', 'The spec file, under the state repo specs/ bucket')
+    .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
+    .action((release: string, o: { keys: string; spec: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+      const r = signSpec(ctxFor(release), {
+        keys: list(o.keys), spec: o.spec, verdicts: o.verdict, decision: o.decision,
+        verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
+      });
+      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
     });
   operator.command('takeover <release>')
     .requiredOption('--epoch <n>', 'The epoch being taken over')

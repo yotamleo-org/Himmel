@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { releaseKeyPath, releaseRoot } from './paths.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -165,6 +169,7 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       fixVersions: Array.isArray(fm.fixVersions) ? fm.fixVersions.map(String) : [],
       resolution: typeof fm.resolution === 'string' ? fm.resolution : null,
       sector: typeof fm.sector === 'string' && fm.sector ? fm.sector : null,
+      ...(typeof fm.parent === 'string' && fm.parent ? { parent: fm.parent } : {}),
     });
   }
   return { issues, sync };
@@ -316,6 +321,127 @@ export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorR
   operatorFence(ctx);
   if (!isAbsolute(o.doc)) throw new Error('release operator takeover: the successor doc must be an absolute path');
   return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
+}
+
+// --- signed minerva specs ----------------------------------------------------
+
+export type ReleaseRecord = OperatorRow & { release: string };
+
+// The verified operator rows of one kind in every declared release under releaseRoot(),
+// so a record survives its ticket moving to another release. A row past a chain break is not verified.
+export function readOperatorRecords(kind: OperatorRow['kind'], env: Record<string, string | undefined> = process.env): ReleaseRecord[] {
+  const root = releaseRoot(env);
+  if (!existsSync(root)) return [];
+  const out: ReleaseRecord[] = [];
+  for (const release of readdirSync(root).sort()) {
+    if (!existsSync(join(root, release, 'release.json'))) continue;
+    let k: Buffer;
+    try {
+      k = loadKey(releaseKeyPath(release, env));
+    } catch {
+      continue;
+    }
+    const chain = readChain<OperatorRow>(join(root, release, 'operator.jsonl'), k);
+    out.push(...chain.verified.filter((o) => o.kind === kind).map((o) => ({ ...o, release })));
+  }
+  return out;
+}
+
+const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+
+// The minerva scripts of the primary checkout, found from this module, not the caller's cwd.
+function minervaScript(name: string): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const common = execFileSync('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
+  return join(dirname(common), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
+}
+
+function runMinerva(name: string, args: string[], cwd: string): void {
+  try {
+    execFileSync('bash', [minervaScript(name), ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    const err = e as { stderr?: string; stdout?: string; message: string };
+    throw new Error(`release operator spec: ${name} refused the spec:\n${(err.stderr || err.stdout || err.message).trim()}`);
+  }
+}
+
+const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
+const DISPOSITION = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ponytail|deferred → HIMMEL-\d+)\b/;
+
+// Each verdict file's last line is its critic's verdict word; one spec critic and one plan critic.
+function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256: string }>; residuals: number } {
+  const seen = new Set<string>();
+  let residuals = 0;
+  const verdicts = paths.map((raw) => {
+    const path = resolve(raw);
+    if (!existsSync(path)) throw new Error(`release operator spec: verdict file not found: ${path}`);
+    const last = readFileSync(path, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    const m = VERDICT.exec(last);
+    if (!m) throw new Error(`release operator spec: ${path} last line is '${last}', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>`);
+    seen.add(m[1]);
+    residuals += Number(m[3] ?? 0);
+    return { path, sha256: fileSha(path) };
+  });
+  if (paths.length !== 2 || seen.size !== 2) {
+    throw new Error('release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
+  }
+  return { verdicts, residuals };
+}
+
+// Residual findings sign only when the spec's `## Critic rounds` section gives each one a
+// `- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>` line.
+function checkResiduals(specText: string, residuals: number): void {
+  if (!residuals) return;
+  const lines = specText.split('\n');
+  const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
+  const body = start < 0 ? [] : lines.slice(start + 1, (() => {
+    const end = lines.slice(start + 1).findIndex((l) => /^##?\s/.test(l));
+    return end < 0 ? lines.length : start + 1 + end;
+  })());
+  const done = new Set(body.flatMap((l) => DISPOSITION.exec(l)?.[1] ?? []));
+  if (done.size < residuals) {
+    throw new Error(`release operator spec: the verdicts carry ${residuals} residual findings and the spec's ## Critic rounds section has `
+      + `${done.size} dispositioned (one '- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>' line each)`);
+  }
+}
+
+export function signSpec(ctx: Ctx, o: {
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string;
+}): OperatorRow {
+  operatorFence(ctx);
+  if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
+  const spec = resolve(o.spec);
+  if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
+  const { verdicts, residuals } = readVerdicts(o.verdicts);
+  checkResiduals(readFileSync(spec, 'utf8'), residuals);
+  runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
+  runMinerva('minerva-trace-lint.sh', [spec, spec], dirname(spec));
+  if (o.supersedes && !readOperatorRecords('spec', ctx.env).some((r) => r.id === o.supersedes)) {
+    throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
+  }
+  return locked(ctx, (l) => appendOperator(ctx, l.k, {
+    kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: fileSha(spec), verdicts,
+    supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
+  }));
+}
+
+// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the file's sha256
+// matches, else `SPEC-STALE`; a key with no record reads its mirror parent's, one hop; else `NO-SPEC`.
+export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean } {
+  const records = readOperatorRecords('spec', env);
+  const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
+  const live = records.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
+    .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
+  const newest = (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
+  const issues = mirrorRoot ? readMirror(mirrorRoot).issues : null;
+  const lines = keys.map((k) => {
+    const parent = issues?.get(k)?.parent;
+    const r = newest(k) ?? (parent ? newest(parent) : undefined);
+    if (!r?.spec_path) return `NO-SPEC ${k}`;
+    const fresh = existsSync(r.spec_path) && fileSha(r.spec_path) === r.spec_sha256;
+    return `${fresh ? 'SPEC ok' : 'SPEC-STALE'} ${k} ${r.spec_path} ${r.id}`;
+  });
+  return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')) };
 }
 
 // --- fold: a finished ticket recorded as delivered in a version (the chief) ---------

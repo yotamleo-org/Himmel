@@ -4,8 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, pull, readMirror, rmRun, standing, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, LIVE_LOOKUP_MS, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
+  type Ctx, type JiraPort, type Judge,
 } from './engine.js';
+import { execFileSync } from 'node:child_process';
+import { Command } from 'commander';
 import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
@@ -1230,5 +1233,173 @@ describe('a blocker of a current-version ticket is pulled into the current versi
   it('the standing record is a chief act', () => {
     declared();
     expect(() => standing(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { kind: 'blocker-pull', decision: '385', verbatim: 'x' })).toThrow(/chief-spawned worker/);
+  });
+});
+
+describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
+  const specEnv = () => ({ HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys') });
+  const sctx = (env: Record<string, string> = specEnv()) => ctx(env);
+  const r2 = (): Ctx => ({ ...sctx(), release: 'R2', dir: join(root, 'release', 'R2'), keyPath: join(root, 'keys', 'R2.key') });
+  const declared = (c: Ctx = sctx()) => declare(c, { project: 'HIMMEL', versions: ['v1'], decision: '106', verbatim: 'R', mode: 'observe' });
+
+  // A spec minerva-spec-gate and minerva-trace-lint pass, with its estimate record beside it.
+  function spec(name = 'K-1-fixture-2026-10-31.md', dir = join(root, 'specs'), body: string[] = []): string {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
+    const p = join(dir, name);
+    writeFileSync(p, [
+      body[0] ?? '# K-1: a fixture design', '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture signs.', '',
+      '## Invariants', '', 'none', '', ...body.slice(1), '',
+    ].join('\n'));
+    return p;
+  }
+  function verdict(specPath: string, kind: 'spec' | 'plan', last: string): string {
+    const p = `${specPath}.critic-${kind}-r1.md`;
+    writeFileSync(p, `the critic's return\n\n${last}\n`);
+    return p;
+  }
+  const sign = (c: Ctx, keys: string[], p: string, extra: Partial<Parameters<typeof signSpec>[1]> = {}) => signSpec(c, {
+    keys, spec: p, decision: '387', verbatim: 'approve', ...extra,
+    verdicts: extra.verdicts ?? [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')],
+  });
+  const check = (keys: string[], mirrorRoot: string | null = null) => specCheck(specEnv(), keys, mirrorRoot).lines;
+
+  async function cli(...args: string[]) {
+    const { registerRelease } = await import('../commands/release.js');
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', ...args]);
+  }
+
+  it('spec-check K-1 gives SPEC ok K-1 after a spec record over a fixture spec and two CLEAN verdicts', async () => {
+    declared();
+    for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    const p = spec();
+    writeFileSync(join(root, 'verbatim.txt'), 'approve 1-5\n');
+    const out: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+    try {
+      await cli('operator', 'spec', 'R1', '--keys', 'K-1', '--spec', p, '--verdict', verdict(p, 'spec', 'SPEC CLEAN'),
+        '--verdict', verdict(p, 'plan', 'PLAN CLEAN'), '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+      await cli('spec-check', 'K-1');
+    } finally {
+      log.mockRestore();
+    }
+    expect(out.at(-1)).toBe(`SPEC ok K-1 ${p} O-R1-0002`);
+  });
+
+  it('one changed byte of the signed spec gives SPEC-STALE', () => {
+    declared();
+    const p = spec();
+    const r = sign(sctx(), ['K-1'], p);
+    writeFileSync(p, readFileSync(p, 'utf8').replace('fixture', 'fixturE'));
+    expect(check(['K-1'])).toEqual([`SPEC-STALE K-1 ${p} ${r.id}`]);
+    expect(specCheck(specEnv(), ['K-1'], null).ok).toBe(false);
+  });
+
+  it('a --supersedes re-sign clears SPEC-STALE with the new id', () => {
+    declared();
+    const p = spec();
+    const old = sign(sctx(), ['K-1'], p);
+    writeFileSync(p, `${readFileSync(p, 'utf8')}\n## Notes\n\nedited after review\n`);
+    const fresh = sign(sctx(), ['K-1'], p, { supersedes: old.id });
+    expect(fresh.supersedes).toBe(old.id);
+    expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${fresh.id}`]);
+    expect(() => sign(sctx(), ['K-1'], p, { supersedes: 'O-R1-0999' })).toThrow(/O-R1-0999 is no verified spec record/);
+  });
+
+  it('two unsuperseded records over one key: the newest decides', () => {
+    declared();
+    const a = spec('K-1-a.md');
+    const b = spec('K-1-b.md', join(root, 'specs-b'));
+    sign(sctx(), ['K-1'], a);
+    const later = sign({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, ['K-1', 'K-2'], b);
+    expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${b} ${later.id}`, `SPEC ok K-2 ${b} ${later.id}`]);
+  });
+
+  it('an uncovered key gives NO-SPEC and a non-zero result', () => {
+    declared();
+    sign(sctx(), ['K-1'], spec());
+    expect(check(['K-1', 'K-9'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /), 'NO-SPEC K-9']);
+    expect(specCheck(specEnv(), ['K-9'], null).ok).toBe(false);
+  });
+
+  it('a sub-task with no record of its own is covered by its parent\'s record, one hop', () => {
+    declared();
+    const p = spec();
+    const r = sign(sctx(), ['K-1'], p);
+    const m = join(root, 'mirror');
+    mkdirSync(m, { recursive: true });
+    writeFileSync(join(m, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-21T09:00:00.000Z' }));
+    writeFileSync(join(m, 'K-2.md'), ['---', 'key: "K-2"', 'type: "Subtask"', 'parent: "K-1"', '---', ''].join('\n'));
+    writeFileSync(join(m, 'K-3.md'), ['---', 'key: "K-3"', 'type: "Subtask"', 'parent: "K-2"', '---', ''].join('\n'));
+    expect(check(['K-2', 'K-3'], m)).toEqual([`SPEC ok K-2 ${p} ${r.id}`, 'NO-SPEC K-3']);
+    expect(check(['K-2'])).toEqual(['NO-SPEC K-2']);
+  });
+
+  it('a record in a second declared release is found', () => {
+    declared();
+    declared(r2());
+    const p = spec();
+    const r = sign(r2(), ['K-1'], p);
+    expect(r.id).toMatch(/^O-R2-/);
+    expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    expect(readOperatorRecords('spec', specEnv()).map((o) => o.release)).toEqual(['R2']);
+  });
+
+  it('a tampered chain row gives NO-SPEC', () => {
+    declared();
+    sign(sctx(), ['K-1'], spec());
+    const chain = join(root, 'release', 'R1', 'operator.jsonl');
+    writeFileSync(chain, readFileSync(chain, 'utf8').replace('"keys":["K-1"]', '"keys":["K-1","K-2"]'));
+    expect(check(['K-1', 'K-2'])).toEqual(['NO-SPEC K-1', 'NO-SPEC K-2']);
+  });
+
+  it('a worker context is refused by the fence', () => {
+    declared();
+    expect(() => sign(sctx({ ...specEnv(), HIMMEL_CONSOLE_LEG: '1' }), ['K-1'], spec())).toThrow(/chief-spawned worker/);
+  });
+
+  it('a spec failing minerva-spec-gate is refused and records nothing', () => {
+    declared();
+    const p = spec();
+    writeFileSync(p, readFileSync(p, 'utf8').replace('Estimate record: est.json', ''));
+    expect(() => sign(sctx(), ['K-1'], p)).toThrow(/minerva-spec-gate.*estimate record/s);
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+  });
+
+  it('a SPEC FINDINGS 2 verdict signs only with a critic-rounds section dispositioning both residuals', () => {
+    declared();
+    const p = spec();
+    const findings = () => [verdict(p, 'spec', 'SPEC FINDINGS 2'), verdict(p, 'plan', 'PLAN CLEAN')];
+    expect(() => sign(sctx(), ['K-1'], p, { verdicts: findings() })).toThrow(/2 residual findings.*Critic rounds/s);
+    writeFileSync(p, `${readFileSync(p, 'utf8')}\n## Critic rounds\n\n- R1: fixed in §1\n`);
+    expect(() => sign(sctx(), ['K-1'], p, { verdicts: findings() })).toThrow(/2 residual findings.*1 dispositioned/s);
+    writeFileSync(p, `${readFileSync(p, 'utf8')}- R2: deferred → HIMMEL-9000\n`);
+    expect(sign(sctx(), ['K-1'], p, { verdicts: findings() }).residuals).toBe(2);
+    expect(() => sign(sctx(), ['K-1'], p, { verdicts: [verdict(p, 'spec', 'looks fine'), verdict(p, 'plan', 'PLAN CLEAN')] }))
+      .toThrow(/last line/);
+  });
+
+  it('run from a non-himmel cwd, the verb finds the minerva scripts in the primary checkout and lints the spec in its own repository', () => {
+    declared();
+    const repo = join(root, 'state-repo');
+    mkdirSync(join(repo, 'notes'), { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    writeFileSync(join(repo, 'notes', 'only-here.md'), 'x\n');
+    const p = spec('K-1-check.md', join(repo, 'specs'), ['# K-1: a status check design',
+      '## Fact ownership', '', '| fact | existing surfaces | owner |', '|---|---|---|', '| a | `notes/only-here.md` | `notes/only-here.md` |']);
+    const away = mkdtempSync(join(tmpdir(), 'not-himmel-'));
+    const was = process.cwd();
+    process.chdir(away);
+    try {
+      expect(sign(sctx(), ['K-1'], p).spec_path).toBe(p);
+    } finally {
+      process.chdir(was);
+    }
   });
 });
