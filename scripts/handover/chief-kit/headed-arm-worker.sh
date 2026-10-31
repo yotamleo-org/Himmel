@@ -875,6 +875,9 @@ if [ "$RM" -eq 1 ]; then
     [ -z "$MODEL" ] && MODEL=claude-opus-5-5
     CLAUDE_CODE_EFFORT_LEVEL="${HIMMEL_RM_EFFORT:-high}"
 fi
+# headed-arm.sh defaults an omitted native model to this. Resolved here, before
+# the tier gate below, so a launch that names no model still meets the Opus gate.
+[ "$LANE" != "native" ] || MODEL="${MODEL:-claude-opus-5-5}"
 # The model the chief asked for, defaults applied; the check before the exec
 # refuses a native launch whose --model to claude has drifted from it.
 ASKED_MODEL="$MODEL"
@@ -1626,9 +1629,6 @@ export HEADED_ARM_REQUIRED_AUTOCOMPACT="$RESOLVED_AUTOCOMPACT"
 # the dry-run report the same way a registry-resolved value does.
 if [ "$LANE" = "native" ]; then
     EFFORT_SOURCE=""
-    # headed-arm.sh defaults an omitted model to this; the registry lookup must
-    # match the model the worker launches.
-    MODEL="${MODEL:-claude-opus-5-5}"
     # A caller-preset launcher token wins over worker_propagate_env, so the print
     # below reports it; read before the resolver appends its own token.
     # A presence flag, not -n: an empty preset is still the token the worker gets.

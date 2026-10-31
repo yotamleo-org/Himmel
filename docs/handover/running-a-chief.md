@@ -277,6 +277,21 @@ explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
+The chief's own helper subagents (`Agent` dispatches inside the chief session)
+follow the same policy: raise *effort* before tier, and name the model per
+helper kind.
+
+| Helper kind | Model |
+|---|---|
+| Worker-brief or `legs.json` drafting, wave prep | `sonnet` |
+| Ticket audit (still open, fixed or partial) | `sonnet` |
+| Per-page docs review | `sonnet` |
+| A specified edit list ending in a machine check | `haiku`, effort medium |
+| The one hard call | `opus` |
+
+A native worker launched with no model runs `claude-opus-5-5`, so
+`headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
+
 Four pre-launch checks that each cost a chief a dead worker when skipped:
 
 <!-- mem:c263127c8979 -->
