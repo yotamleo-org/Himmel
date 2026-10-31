@@ -281,13 +281,21 @@ The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per
 helper kind.
 
-| Helper kind | Model |
-|---|---|
-| Worker-brief or `legs.json` drafting, wave prep | `sonnet` |
-| Ticket audit (still open, fixed or partial) | `sonnet` |
-| Per-page docs review | `sonnet` |
-| A specified edit list ending in a machine check | `haiku`, effort medium |
-| The one hard call | `fable` |
+| Helper kind | Agent | Model | Effort |
+|---|---|---|---|
+| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` | `sonnet` | `medium` |
+| Ticket audit (still open, fixed or partial) | `general-purpose` | `sonnet` | `medium` |
+| Per-page docs review | `general-purpose` | `sonnet` | `medium` |
+| A specified edit list ending in a machine check | `general-purpose` | `haiku` | `medium` |
+| A verdict-grade judge call | `judge`, `judge-ro` | `opus` | `high` |
+| Comment cleanup (`/no-comments`) | `comment-sicko` | `sonnet` | `medium` |
+| The one hard call | `general-purpose` | `fable` | `high` |
+
+A named agent's row matches the `model:` and `effort:` lines in its
+`.claude/agents/<name>.md` frontmatter (`test-guard-agent-model.sh` checks it).
+A dispatch that sets effort to `high`, `xhigh` or `max` with no
+`EFFORT: <reason>` line in its prompt draws a warning from
+`guard-agent-model.sh` (warn only, same reason test as `TIER:`).
 
 A general-purpose helper dispatched on an Opus model with no `TIER: <reason>`
 line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never

@@ -3,6 +3,7 @@ name: judge
 description: Answers one verdict-grade question independently and returns a verdict — it does not act.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 ---
 
 You are a judge **call**: an in-process child dispatched for exactly one

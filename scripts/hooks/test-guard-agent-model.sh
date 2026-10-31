@@ -113,6 +113,107 @@ silent "general-purpose + opus-sonnet (opus-prefixed, not Opus) -> no output" "$
 silent "general-purpose + opusfake -> no output" "$(agent general-purpose opusfake 'x')"
 check "general-purpose + fable, no marker -> still denied" block "$(agent general-purpose fable 'x')"
 
+echo "== effort high or above with no EFFORT line -> warn only (exit 0 + additionalContext) =="
+# agent_e <subagent_type> <model> <effort> <prompt> — agent() plus an effort key.
+agent_e() { agent "$1" "$2" "$4" | jq -c --arg e "$3" '.tool_input.effort = $e'; }
+# ewarn <label> <json> [extra-needle]: exit 0, no permissionDecision,
+# additionalContext names the EFFORT line (and the extra needle when given).
+ewarn() {
+    local o rc ctx pd
+    o="$(printf '%s' "$2" | bash "$HOOK" 2>/dev/null)"; rc=$?
+    ctx="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null)"
+    pd="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
+    if [ "$rc" = 0 ] && [ -z "$pd" ] && case "$ctx" in *"EFFORT: <reason>"*"${3:-}"*|*"${3:-}"*"EFFORT: <reason>"*) true ;; *) false ;; esac; then
+        ok "$1"
+    else
+        bad "$1 - rc=$rc permissionDecision='$pd' ctx='$ctx'"
+    fi
+}
+EFFMARK=$'do the audit\nEFFORT: cross-file trust-path verdict'
+ewarn "sonnet + effort high, no EFFORT line -> warn" "$(agent_e general-purpose sonnet high 'x')"
+ewarn "effort xhigh -> warn" "$(agent_e general-purpose sonnet xhigh 'x')"
+ewarn "effort max -> warn" "$(agent_e general-purpose sonnet max 'x')"
+ewarn "effort HIGH (case) -> warn" "$(agent_e general-purpose sonnet HIGH 'x')"
+ewarn "no model + effort high -> warn" "$(agent_e general-purpose '' high 'x')"
+ewarn "typed agent (judge, no model) + effort high -> warn" "$(agent_e judge '' high 'x')"
+ewarn "effort high + placeholder EFFORT reason -> warn" "$(agent_e general-purpose sonnet high $'x\nEFFORT: n/a')"
+ewarn "effort high + TIER line only (not an EFFORT line) -> warn" "$(agent_e general-purpose sonnet high "$TIERMARK")"
+ewarn "opus general-purpose + effort high, no lines -> both warnings" "$(agent_e general-purpose opus high 'x')" "TIER: <reason>"
+warn "opus general-purpose + effort high + EFFORT reason -> TIER warn still fires" "$(agent_e general-purpose opus high "$EFFMARK")"
+silent "effort high + EFFORT reason -> no output" "$(agent_e general-purpose sonnet high "$EFFMARK")"
+silent "effort medium -> no output" "$(agent_e general-purpose sonnet medium 'x')"
+silent "effort low -> no output" "$(agent_e general-purpose haiku low 'x')"
+silent "effort highest (not a level) -> no output" "$(agent_e general-purpose sonnet highest 'x')"
+silent "non-string effort -> no output" '{"tool_name":"Agent","tool_input":{"model":"sonnet","effort":7,"prompt":"x"}}'
+silent "effort high on a non-Agent tool -> no output" '{"tool_name":"Write","tool_input":{"effort":"high"}}'
+check "fable + effort high, no marker -> still denied" block "$(agent_e general-purpose fable high 'x')"
+check "judge + sonnet + effort high, no marker -> still denied" block "$(agent_e judge sonnet high 'x')"
+check "fable + effort high + ESCALATION -> allow (the reason is stated)" allow "$(agent_e general-purpose fable high "$MARK")"
+
+echo "== the helper tier table agrees with the agent frontmatter (model + effort) =="
+# table_check <doc> <agents_dir>: the `| Helper kind | Agent | Model | Effort |`
+# table in <doc> names a model and a valid effort per row; every agent it names
+# (other than general-purpose) has <agents_dir>/<name>.md whose frontmatter
+# model/effort match; every agent definition in <agents_dir> has a row.
+table_check() {
+    awk -v dir="$2" '
+        function trim(s) { gsub(/[` \t]/, "", s); return s }
+        function fm(file, key,   line, n, v) {
+            n = 0; v = ""
+            while ((getline line < file) > 0) {
+                if (line == "---") { if (++n == 2) break; continue }
+                if (n == 1 && index(line, key ": ") == 1) v = substr(line, length(key) + 3)
+            }
+            close(file); return v
+        }
+        /^\| Helper kind \| Agent \| Model \| Effort \|$/ { intable = 1; seen = 1; next }
+        intable && /^\|---/ { next }
+        intable && !/^\|/ { intable = 0 }
+        intable {
+            split($0, c, "|"); model = trim(c[4]); effort = trim(c[5])
+            if (model == "") { print "row with no model: " $0; err = 1 }
+            if (effort !~ /^(low|medium|high|xhigh|max)$/) { print "row with no valid effort: " $0; err = 1 }
+            n = split(trim(c[3]), names, ",")
+            for (i = 1; i <= n; i++) {
+                a = names[i]; if (a == "general-purpose") continue
+                named[a] = 1; f = dir "/" a ".md"
+                if ((getline probe < f) <= 0) { print "row names agent " a " with no " f; err = 1; continue }
+                close(f)
+                if (fm(f, "model") != model) { print a ": frontmatter model " fm(f, "model") " vs table " model; err = 1 }
+                if (fm(f, "effort") != effort) { print a ": frontmatter effort " fm(f, "effort") " vs table " effort; err = 1 }
+            }
+        }
+        END {
+            if (!seen) { print "no Helper kind | Agent | Model | Effort table"; exit 1 }
+            cmd = "ls \"" dir "\""
+            while ((cmd | getline f) > 0) if (f ~ /\.md$/) { a = f; sub(/\.md$/, "", a); if (!(a in named)) { print "agent " a " has no table row"; err = 1 } }
+            close(cmd); exit err
+        }' "$1"
+}
+CHIEF_DOC="$HOOKS/../../docs/handover/running-a-chief.md"
+AGENTS="$HOOKS/../../.claude/agents"
+if tc_out="$(table_check "$CHIEF_DOC" "$AGENTS")"; then
+    ok "running-a-chief.md helper table matches .claude/agents frontmatter"
+else
+    bad "helper table vs frontmatter: $tc_out"
+fi
+TC="$(mktemp -d -t guard-agent-model-tc.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
+cp "$AGENTS"/*.md "$TC/"
+sed 's/^effort: .*/effort: low/' "$AGENTS/judge.md" > "$TC/judge.md"
+if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
+    bad "fixture with a mismatched judge effort passes table_check"
+else
+    ok "fixture with a mismatched judge effort fails table_check"
+fi
+cp "$AGENTS/judge.md" "$TC/judge.md"
+printf -- '---\nname: unlisted\nmodel: sonnet\neffort: medium\n---\n' > "$TC/unlisted.md"
+if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
+    bad "fixture with an agent definition missing from the table passes table_check"
+else
+    ok "fixture with an agent definition missing from the table fails table_check"
+fi
+rm -rf "$TC"
+
 echo "== judge override off its frontmatter tier (opus) =="
 if grep -q '^model: opus$' "$JUDGE"; then
     ok "judge-ro frontmatter is still model: opus"
@@ -200,7 +301,7 @@ else
 fi
 # The hook finds its policy relative to itself, so a sandboxed copy with its own
 # policy exercises the data-driven path without a test-only env seam.
-SB="$(mktemp -d)" || { echo "failed to create temporary directory" >&2; exit 1; }
+SB="$(mktemp -d -t guard-agent-model-sb.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
 trap 'rm -rf "$SB"' EXIT
 mkdir -p "$SB/hooks" "$SB/guardrails"
 cp "$HOOK" "$SB/hooks/guard-agent-model.sh"
