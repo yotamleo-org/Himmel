@@ -189,6 +189,19 @@ check "chief-spawned worker: exit 3" "$RC" "3"
 check "exit 3 writes no audit row" "$(audit_rows)" "0"
 nogo  "exit 3"
 
+# --- 2b. a shared library that cannot be loaded is exit 1, never a run without it ---------
+# a copy of auto-go.sh beside go-gate.sh and handover-path.sh but no git-clean.sh: the env
+# scrub is missing, and a run on without it would read the caller's GIT_DIR
+LIBTREE="$tmp/nolib"
+mkdir -p "$LIBTREE/scripts/handover/chief-kit" "$LIBTREE/scripts/lib"
+cp "$SCRIPT" "$LIBTREE/scripts/handover/chief-kit/auto-go.sh"
+cp "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$LIBTREE/scripts/lib/"
+OUT=$(bash "$LIBTREE/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
+check    "no git-clean.sh: exit 1" "$RC" "1"
+contains "no git-clean.sh: names the library" "$OUT" "scripts/lib/git-clean.sh"
+lacks    "no git-clean.sh: no answer given" "$OUT" "WOULD-GO"
+check    "no git-clean.sh: writes no audit row" "$(audit_rows)" "0"
+
 # --- 3. a clean READY -------------------------------------------------------------------
 run --dry-run 77 "$SHA"
 check    "clean: exit 0" "$RC" "0"

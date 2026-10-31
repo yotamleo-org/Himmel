@@ -35,7 +35,8 @@
 # Output, one line on stdout:
 #   WOULD-GO <pr> <head>                  exit 0
 #   ESCALATE auto-go <check#> <reason>    exit 10
-# Exit: 0 would-go; 1 a shared library cannot be loaded, the audit trail cannot be resolved at the
+# Exit: 0 would-go; 1 a shared library cannot be loaded (git-clean.sh, go-gate.sh, handover-path.sh)
+# or the git environment cannot be scrubbed, the audit trail cannot be resolved at the
 # start, or the WOULD-GO row cannot be written (no answer is given); 2 usage;
 # 3 a chief-spawned worker (HIMMEL_CONSOLE_LEG) or a relay (HIMMEL_CONSOLE_RELAY) - checked first,
 # before anything is read; 10 escalate. An ESCALATE whose audit row cannot be written is still
@@ -51,8 +52,9 @@
 # from; GH_CMD and JIRA_CMD replace the CLIs, as in ready-go.sh.
 #
 # ponytail: the adapter allowlists are read from the anchor's checkout, not the default branch, so
-# an edit could only widen the escalation here; upgrade path is go_adapter_entry's API read once A1b
-# writes a GO.
+# an edit there moves check 1 either way (a removed row passes where the default branch's would
+# escalate); a dry run writes no GO, so the cost is one wrong audit row; upgrade path is
+# go_adapter_entry's API read once A1b writes a GO.
 # ponytail: a series child based on its parent's branch escalates at check 2; HIMMEL-8349 D1 (local
 # stack, published at merge) means no PR is stacked, so no wait-parent answer exists.
 #
@@ -62,8 +64,9 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 # shellcheck disable=SC1091
-. "$HERE/../../lib/git-clean.sh"
-git_env_scrub
+. "$HERE/../../lib/git-clean.sh" 2>/dev/null || { echo "auto-go: cannot load scripts/lib/git-clean.sh - refusing (the git environment must be scrubbed first)" >&2; exit 1; }
+declare -F git_env_scrub >/dev/null 2>&1 || { echo "auto-go: scripts/lib/git-clean.sh defines no git_env_scrub - refusing" >&2; exit 1; }
+git_env_scrub || { echo "auto-go: cannot scrub the git environment - refusing" >&2; exit 1; }
 ANCHOR="${AUTO_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
 GH_BIN="${GH_CMD:-gh}"
 
