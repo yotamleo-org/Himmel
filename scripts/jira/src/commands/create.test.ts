@@ -14,7 +14,7 @@ vi.mock('../client.js', () => ({
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { resolveTitle, registerCreate } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOfAdf, pathsIn } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -1900,6 +1900,15 @@ describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
     await file('Moves scripts/jira/src/release/engine.ts.', '--change-class', 'rename');
     expect(labels()).not.toContain('core');
     expect(out).toContain('core-review: scripts/jira/src/release/engine.ts');
+  });
+
+  it('keeps the paths of adjacent ADF list items apart', () => {
+    const item = (t: string) => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    const doc = { content: [
+      { type: 'heading', content: [{ type: 'text', text: 'Agent detail' }] },
+      { type: 'bulletList', content: [item('docs/a.md'), item('scripts/jira/src/release/engine.ts')] },
+    ] };
+    expect(pathsIn(agentDetailOfAdf(doc))).toEqual(['docs/a.md', 'scripts/jira/src/release/engine.ts']);
   });
 
   it('an Agent detail with no core path adds no label and prints nothing', async () => {

@@ -40,8 +40,10 @@ export function agentDetailOf(md: string): string {
 /** The Agent detail of an ADF body: the text of every node after its "Agent detail" heading. */
 export function agentDetailOfAdf(doc: unknown): string {
   const text = (n: unknown): string => {
-    const x = n as { text?: string; content?: unknown[] };
-    return (x.text ?? '') + (x.content ?? []).map(text).join('');
+    const x = n as { text?: string; content?: Array<{ text?: string }> };
+    // block children (list items, paragraphs) are separated; inline text runs stay contiguous
+    const inline = (x.content ?? []).every((c) => c.text !== undefined);
+    return (x.text ?? '') + (x.content ?? []).map(text).join(inline ? '' : '\n');
   };
   const nodes = ((doc as { content?: Array<{ type?: string }> } | null)?.content ?? []);
   const start = nodes.findIndex((n) => n.type === 'heading' && /^agent detail\b/i.test(text(n).trim()));
