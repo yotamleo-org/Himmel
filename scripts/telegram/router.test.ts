@@ -127,13 +127,9 @@ test("HIMMEL-7505: /chief and /chiefs route like /console and /consoles", () => 
   for (const t of ["/chiefx foo bar", "/chiefs foo", "please /chief foo bar"]) expect(classify(t).kind).toBe("chat");
 });
 
-test("HIMMEL-7573: /console and /consoles classify exactly as /chief and /chiefs", () => {
-  for (const rest of [" foo bar baz", " just", "@mybot foo bar", "s"]) {
-    expect(classify(`/console${rest}`, "mybot")).toEqual(classify(`/chief${rest}`, "mybot"));
-  }
-  for (const rest of ["@otherbot foo bar", "s foo", "x foo bar", ""]) {
-    expect(classify(`/console${rest}`, "mybot").kind).toBe("chat");
-    expect(classify(`/chief${rest}`, "mybot").kind).toBe("chat");
+test("HIMMEL-8381: the old /console and /consoles aliases are gone and classify as chat", () => {
+  for (const t of ["/console x", "/console foo bar baz", "/console@mybot foo bar", "/consoles"]) {
+    expect(classify(t, "mybot").kind).toBe("chat");
   }
 });
 
