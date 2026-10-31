@@ -199,12 +199,19 @@ export function loadSecretsIntoEnv(root: string, names: string[]): void {
 }
 
 /**
- * Save the refreshed token: in the keyring when it is unlocked (put --stdin, no .env line), else
- * in the .env file. Returns where it went, or undefined when there was nowhere to put it.
+ * Save the refreshed token: in the keyring when it is unlocked (put --stdin, adding no .env line),
+ * else in the .env file. A token line already in the .env is kept in step, because a caller that
+ * loads that file into its environment would otherwise keep using the stale token (the environment
+ * is read first). Returns where it went, or undefined when there was nowhere to put it.
  */
 export function storeRefreshToken(root: string, token: string, envPath: string | undefined): string | undefined {
-  if (keyringUnlocked(root) && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) return 'the keyring';
   const target = envPath ?? findEnvFile(process.cwd());
+  if (keyringUnlocked(root) && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) {
+    if (target && existsSync(target) && /^GOOGLE_HEALTH_REFRESH_TOKEN=/m.test(readFileSync(target, 'utf-8'))) {
+      updateEnvFile(target, token);
+    }
+    return 'the keyring';
+  }
   if (!target) return undefined;
   updateEnvFile(target, token);
   return target;

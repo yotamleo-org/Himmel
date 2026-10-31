@@ -128,6 +128,9 @@ export async function main(opts: { root?: string; rotate?: boolean; call?: RamCa
   // Lookup order: environment, credentials directory, keyring, then the .env above.
   const held = resolveSecrets(root, ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK"]);
   const fromResolver = Boolean(held.ALIBABA_QUOTA_AK?.trim() && held.ALIBABA_QUOTA_SK?.trim());
+  // True only when neither the environment nor a credentials directory could have served the pair.
+  const heldFromKeyring = fromResolver && !process.env.ALIBABA_QUOTA_AK?.trim() && !process.env.ALIBABA_QUOTA_SK?.trim()
+    && !process.env.CREDENTIALS_DIRECTORY;
   const ak = held.ALIBABA_QUOTA_AK?.trim() || fileEnv.ALIBABA_QUOTA_AK;
   const sk = held.ALIBABA_QUOTA_SK?.trim() || fileEnv.ALIBABA_QUOTA_SK;
   if (!ak || !sk) {
@@ -226,28 +229,40 @@ export async function main(opts: { root?: string; rotate?: boolean; call?: RamCa
 
   // 4. store the scoped pair: in the keyring when it is unlocked (put --stdin, no .env line),
   // else swap it into .env (values never printed; the target was preflighted before minting).
+  const swapIntoEnv = (appendMissing: boolean): { ak: boolean; sk: boolean } => {
+    const replaced = { ak: false, sk: false };
+    const next = readFileSync(envPath, "utf8").split(/\r?\n/).map((line) => {
+      if (/^\s*ALIBABA_QUOTA_AK\s*=/.test(line)) { replaced.ak = true; return `ALIBABA_QUOTA_AK=${newAk}`; }
+      if (/^\s*ALIBABA_QUOTA_SK\s*=/.test(line)) { replaced.sk = true; return `ALIBABA_QUOTA_SK=${newSk}`; }
+      return line;
+    });
+    if (appendMissing && !replaced.ak) next.push(`ALIBABA_QUOTA_AK=${newAk}`);
+    if (appendMissing && !replaced.sk) next.push(`ALIBABA_QUOTA_SK=${newSk}`);
+    if (appendMissing || replaced.ak || replaced.sk) writeFileSync(envPath, next.join("\n"), "utf8");
+    return replaced;
+  };
   if (toKeyring) {
-    if (putSecret(root, "ALIBABA_QUOTA_AK", newAk) && putSecret(root, "ALIBABA_QUOTA_SK", newSk)) {
+    const stored: Array<[string, string]> = [];
+    for (const [name, value, old] of [["ALIBABA_QUOTA_AK", newAk, ak], ["ALIBABA_QUOTA_SK", newSk, sk]] as const) {
+      if (!putSecret(root, name, value)) break;
+      stored.push([name, old]);
+    }
+    if (stored.length === 2) {
+      // A line already in .env would still shadow the keyring where a caller loads it: keep it in step, add none.
+      if (existsSync(envPath)) swapIntoEnv(false);
       console.log(`keyring updated: ALIBABA_QUOTA_AK/SK now carry the SCOPED ${USER_NAME} key.`);
       console.log("Masters remain recorded in 1Password only. Done.");
       return;
     }
+    // One name stored and the other refused: put the keyring's own old value back so it never holds a mixed pair.
+    if (heldFromKeyring) for (const [name, old] of stored) putSecret(root, name, old);
     if (!existsSync(envPath)) {
       console.error("create-monitoring-key: the keyring refused the scoped key and there is no .env to hold it; the key was minted and is lost. Re-run with --rotate.");
       process.exit(1);
     }
     console.error("create-monitoring-key: the keyring refused the scoped key; writing .env instead.");
   }
-  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
-  const replaced = { ak: false, sk: false };
-  const next = lines.map((line) => {
-    if (/^\s*ALIBABA_QUOTA_AK\s*=/.test(line)) { replaced.ak = true; return `ALIBABA_QUOTA_AK=${newAk}`; }
-    if (/^\s*ALIBABA_QUOTA_SK\s*=/.test(line)) { replaced.sk = true; return `ALIBABA_QUOTA_SK=${newSk}`; }
-    return line;
-  });
-  if (!replaced.ak) next.push(`ALIBABA_QUOTA_AK=${newAk}`);
-  if (!replaced.sk) next.push(`ALIBABA_QUOTA_SK=${newSk}`);
-  writeFileSync(envPath, next.join("\n"), "utf8");
+  const replaced = swapIntoEnv(true);
   console.log(`.env updated: ALIBABA_QUOTA_AK/SK now carry the SCOPED ${USER_NAME} key (${replaced.ak ? "replaced" : "appended"}).`);
   console.log("Masters remain recorded in 1Password only. Done.");
 }

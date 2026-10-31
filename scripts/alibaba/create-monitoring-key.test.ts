@@ -10,7 +10,7 @@ import { stubKeyring } from "../config-ui/tests/keyring-stub";
 import { main } from "./create-monitoring-key";
 
 describe("create-monitoring-key secrets", () => {
-  const TOUCHED = ["PATH", "KSTUB_STORE", "KSTUB_LOG", "KSTUB_LOCKED", "DBUS_SESSION_BUS_ADDRESS",
+  const TOUCHED = ["PATH", "KSTUB_STORE", "KSTUB_LOG", "KSTUB_LOCKED", "KSTUB_FAIL_SK", "DBUS_SESSION_BUS_ADDRESS",
     "ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY"];
   const saved: Record<string, string | undefined> = {};
   let dir: string;
@@ -26,7 +26,10 @@ describe("create-monitoring-key secrets", () => {
     const bin = join(dir, "kbin");
     renameSync(join(bin, "secret-tool"), join(bin, "secret-tool.real"));
     writeFileSync(join(bin, "secret-tool"),
-      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\nexec "$(dirname "$0")/secret-tool.real" "$@"\n');
+      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\n' +
+      // KSTUB_FAIL_SK refuses a store of the scoped secret key, as a keyring that goes away mid-write would.
+      'case "$*" in "store "*"key ALIBABA_QUOTA_SK "*) [ -z "${KSTUB_FAIL_SK:-}" ] || exit 1 ;; esac\n' +
+      'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
     chmodSync(join(bin, "secret-tool"), 0o755);
     log = join(dir, "keyring.log");
     Object.assign(process.env, stub.env, { KSTUB_LOG: log });
@@ -43,7 +46,7 @@ describe("create-monitoring-key secrets", () => {
   });
 
   beforeEach(() => {
-    for (const k of ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY"]) delete process.env[k];
+    for (const k of ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY", "KSTUB_FAIL_SK"]) delete process.env[k];
     process.env.KSTUB_LOCKED = "false";
     writeFileSync(stub.store, "");
     writeFileSync(log, "");
@@ -53,8 +56,8 @@ describe("create-monitoring-key secrets", () => {
   // A fake RAM API: records the master pair every call was signed with.
   function fakeRam() {
     const signedWith: string[] = [];
-    const call = async (ak: string, _sk: string, action: string) => {
-      signedWith.push(ak);
+    const call = async (ak: string, sk: string, action: string) => {
+      signedWith.push(`${ak}:${sk}`);
       if (action === "ListAccessKeys") return { ok: true, status: 200, body: { AccessKeys: { AccessKey: [] } } };
       if (action === "CreateAccessKey") return { ok: true, status: 200, body: { AccessKey: { AccessKeyId: "LTAIscoped-s0", AccessKeySecret: "scoped-sk-s0" } } };
       return { ok: true, status: 200, body: {} };
@@ -79,7 +82,7 @@ describe("create-monitoring-key secrets", () => {
       writeFileSync(join(root, ".env"), "OTHER=1\n");
       const ram = fakeRam();
       await quiet(() => main({ root, rotate: false, call: ram.call }));
-      expect(ram.signedWith[0]).toBe("dummy-s0-ak");
+      expect(ram.signedWith[0]).toBe("dummy-s0-ak:dummy-s0-sk");
       const logged = readFileSync(log, "utf8");
       expect(logged).toContain("secret-tool lookup service himmel key ALIBABA_QUOTA_AK scope user");
       expect(logged).not.toContain("dummy-s0");
@@ -91,7 +94,7 @@ describe("create-monitoring-key secrets", () => {
       writeFileSync(join(root, ".env"), "ALIBABA_QUOTA_AK=dummy-dotenv-ak\nALIBABA_QUOTA_SK=dummy-dotenv-sk\n");
       const ram = fakeRam();
       await quiet(() => main({ root, rotate: false, call: ram.call }));
-      expect(ram.signedWith[0]).toBe("dummy-keyring-ak");
+      expect(ram.signedWith[0]).toBe("dummy-keyring-ak:dummy-keyring-sk");
     });
   });
 
@@ -122,10 +125,32 @@ describe("create-monitoring-key secrets", () => {
       writeFileSync(join(root, ".env"), "ALIBABA_QUOTA_AK=dummy-m-ak\nALIBABA_QUOTA_SK=dummy-m-sk\n");
       const ram = fakeRam();
       await quiet(() => main({ root, rotate: false, call: ram.call }));
-      expect(ram.signedWith[0]).toBe("dummy-m-ak");
+      expect(ram.signedWith[0]).toBe("dummy-m-ak:dummy-m-sk");
       expect(readFileSync(join(root, ".env"), "utf8")).toContain("ALIBABA_QUOTA_AK=LTAIscoped-s0");
       expect(readFileSync(join(root, ".env"), "utf8")).toContain("ALIBABA_QUOTA_SK=scoped-sk-s0");
       expect(readFileSync(stub.store, "utf8")).toBe("");
+    });
+
+    test("S0-R3b keyring unlocked: a pair line already in .env is kept in step, none is added", async () => {
+      stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
+      stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");
+      writeFileSync(join(root, ".env"), "ALIBABA_QUOTA_AK=dummy-old-ak\nOTHER=1\n");
+      await quiet(() => main({ root, rotate: false, call: fakeRam().call }));
+      expect(readFileSync(join(root, ".env"), "utf8")).toBe("ALIBABA_QUOTA_AK=LTAIscoped-s0\nOTHER=1\n");
+    });
+
+    test("the keyring refusing the second name restores the first and falls back to .env", async () => {
+      stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
+      stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");
+      writeFileSync(join(root, ".env"), "OTHER=1\n");
+      process.env.KSTUB_FAIL_SK = "1";
+      await quiet(() => main({ root, rotate: false, call: fakeRam().call }));
+      // The keyring is back on the master pair, never the new AK beside the old SK.
+      expect(stub.get("ALIBABA_QUOTA_AK")).toBe("dummy-s0-ak");
+      expect(stub.get("ALIBABA_QUOTA_SK")).toBe("dummy-s0-sk");
+      const env = readFileSync(join(root, ".env"), "utf8");
+      expect(env).toContain("ALIBABA_QUOTA_AK=LTAIscoped-s0");
+      expect(env).toContain("ALIBABA_QUOTA_SK=scoped-sk-s0");
     });
   });
 });

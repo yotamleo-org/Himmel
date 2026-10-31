@@ -570,6 +570,13 @@ describe('google-health secrets through the resolver', () => {
     expect(logged).not.toContain('dummy-new-refresh');
   });
 
+  test('a token line already in the .env is kept in step with the keyring, so a loaded .env cannot shadow it', () => {
+    const envFile = join(dir, 'stale.env');
+    writeFileSync(envFile, 'GOOGLE_HEALTH_REFRESH_TOKEN=dummy-old-refresh\nOTHER=1\n');
+    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)).toBe('the keyring');
+    expect(readFileSync(envFile, 'utf8')).toBe('GOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\nOTHER=1\n');
+  });
+
   test('S0-R3 keyring locked: today\'s .env write, nothing stored', () => {
     process.env.KSTUB_LOCKED = 'true';
     const envFile = join(dir, 'locked.env');
