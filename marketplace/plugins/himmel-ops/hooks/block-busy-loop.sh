@@ -10,9 +10,13 @@
 # a himmel checkout. It sources nothing and its message names no repo script,
 # because an adopter repo has neither. This file is the only copy of the rule.
 #
+# A `;` inside a quoted span is blanked before matching, so a loop head such
+# as `while [ "$x" != ";" ]` is still read as one head.
+#
 # ponytail: the match is textual over the whole command, so a heredoc body or
-# a quoted string that holds a whole busy loop is refused too; a real shell
-# tokenizer would tell data from code if that ever bites.
+# a quoted string that holds a whole busy loop is refused too, and a
+# backslash-escaped quote can shift the quoted spans; a real shell tokenizer
+# would tell data from code if that ever bites.
 #
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 denies, and
 # stderr is shown to Claude. Each deny appends one JSONL row (ts, session_id,
@@ -38,8 +42,18 @@ cmd=${rest#*$'\n'}
 
 [ "$tool" = "Bash" ] || exit 0
 
+QUOTED_RE="^([^'\"]*)('[^']*'|\"[^\"]*\")(.*)$"
+text=""
+rest=$cmd
+while [[ $rest =~ $QUOTED_RE ]]; do
+    span=${BASH_REMATCH[2]}
+    text+=${BASH_REMATCH[1]}${span//;/ }
+    rest=${BASH_REMATCH[3]}
+done
+text+=$rest
+
 BUSY_LOOP_RE='(^|[^[:alnum:]_-])(while|until)[[:space:]][^;]*[;[:space:]]+do[[:space:]]+(:|true)[[:space:];]*done([^[:alnum:]_]|$)'
-[[ $cmd =~ $BUSY_LOOP_RE ]] || exit 0
+[[ $text =~ $BUSY_LOOP_RE ]] || exit 0
 loop=${BASH_REMATCH[2]}
 body=${BASH_REMATCH[3]}
 

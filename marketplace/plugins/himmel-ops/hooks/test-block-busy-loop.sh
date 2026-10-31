@@ -26,7 +26,7 @@ j_bash() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '
 run_case() {
     rm -f "$LOG"
     ERR=$(cd "$2" && printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
-        CLAUDE_PROJECT_DIR="$2" BUSY_LOOP_LOG="$LOG" ${3:+"$3"} \
+        CLAUDE_PROJECT_DIR="$2" BUSY_LOOP_LOG="$LOG" BUSY_LOOP_BYPASS=0 ${3:+"$3"} \
         sh -c "${plugin_cmd:-exit 0}" 2>&1 >/dev/null)
     RC=$?
 }
@@ -68,6 +68,9 @@ run_case "$(j_bash "until pgrep -f clear-review-marker.sh && false; do :; done")
 assert_eq "deny: do : loop" 2 "$RC"
 run_case "$(j_bash "while true; do true; done")" "$TMP/repo"
 assert_eq "deny: do true loop" 2 "$RC"
+# shellcheck disable=SC2016  # the payload is literal shell text, not expanded here
+run_case "$(j_bash 'while [ "$x" != ";" ]; do :; done')" "$TMP/repo"
+assert_eq "deny: quoted ; in the loop head" 2 "$RC"
 run_case "$(j_bash "while kill -0 1234; do sleep 2; done")" "$TMP/repo"
 assert_eq "allow: sleep in the body" 0 "$RC"
 run_case "$(j_bash "for x in a b; do :; done")" "$TMP/repo"
