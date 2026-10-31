@@ -204,15 +204,18 @@ else
 fi
 TC="$(mktemp -d -t guard-agent-model-tc.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
 trap 'rm -rf "$TC"' EXIT
-cp "$AGENTS"/*.md "$TC/"
-sed 's/^effort: .*/effort: low/' "$AGENTS/judge.md" > "$TC/judge.md"
+tc_setup_fail() { echo "table_check fixture setup failed: $1" >&2; exit 1; }
+cp "$AGENTS"/*.md "$TC/" || tc_setup_fail "copy agents"
+sed 's/^effort: .*/effort: low/' "$AGENTS/judge.md" > "$TC/judge.md" || tc_setup_fail "write judge effort low"
+grep -q '^effort: low$' "$TC/judge.md" || tc_setup_fail "judge effort low not written"
 if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
     bad "fixture with a mismatched judge effort passes table_check"
 else
     ok "fixture with a mismatched judge effort fails table_check"
 fi
-cp "$AGENTS/judge.md" "$TC/judge.md"
-printf -- '---\nname: unlisted\nmodel: sonnet\neffort: medium\n---\n' > "$TC/unlisted.md"
+cp "$AGENTS/judge.md" "$TC/judge.md" || tc_setup_fail "restore judge"
+table_check "$CHIEF_DOC" "$TC" >/dev/null || tc_setup_fail "restored fixture does not pass table_check"
+printf -- '---\nname: unlisted\nmodel: sonnet\neffort: medium\n---\n' > "$TC/unlisted.md" || tc_setup_fail "write unlisted agent"
 if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
     bad "fixture with an agent definition missing from the table passes table_check"
 else
