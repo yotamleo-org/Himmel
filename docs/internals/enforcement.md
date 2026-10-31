@@ -3066,13 +3066,13 @@ hook cannot evaluate (missing `jq`, unparseable JSON, non-Bash tool) — a
 workflow nudge, not a security fence. Bypass: `QUIET_RUN_BYPASS=1`
 (launching shell, session-sticky). Spec: `scripts/hooks/test-require-quiet-run.sh`.
 <!-- mem:24954dff2210 -->
-Two wait shapes that never end are also refused (HIMMEL-4970): `until ! pgrep
+A wait shape that never ends is also refused (HIMMEL-4970): `until ! pgrep
 -f <pat>` / `while pgrep -f <pat>` whose `<pat>` occurs in the same command
 (the harness runs every Bash call as `<shell> -c "... eval '<command>'"`, so
-the wrapper shell self-matches; a bracketed `[c]lear-cr-marker.sh` does not),
-and a `while`/`until ...; do :; done` (or `do true`) loop with no `sleep`. The
-deny names `tail --pid=<pid> -f /dev/null`, the task's own output file, and
-the bracket trick.
+the wrapper shell self-matches; a bracketed `[c]lear-cr-marker.sh` does not).
+The deny names `tail --pid=<pid> -f /dev/null`, the task's own output file, and
+the bracket trick. The sleepless busy loop moved to the plugin hook
+`block-busy-loop.sh` (next section).
 `scripts/quiet-run.sh` itself (HIMMEL-2967) fails closed on any argv element
 with a `..` path component and, for the label `suite` when argv is
 `bash <path> …`, requires `<path>` to be a git-tracked `test-*.sh` — closing the
@@ -3083,6 +3083,23 @@ outside one (no `.git` discoverable) it prints a skip note and lets the
 command through unchecked, since there is no tracked-vs-untracked distinction
 to enforce; any OTHER `git rev-parse` failure (git absent, a transient error)
 still fails closed.
+
+### `block-busy-loop.sh` — plugin sleepless busy-loop deny (HIMMEL-8124)
+
+Fires on Bash, from the himmel-ops plugin lane
+(`marketplace/plugins/himmel-ops/hooks/block-busy-loop.sh`, wired as
+`${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh`), so it fires in an adopter
+repo too, not only a himmel checkout. A himmel session keeps it through the
+user-scope plugin. Denies a `while`/`until ...; do :; done` (or `do true`)
+loop with no `sleep`, which spins a core at 100 % CPU (split out of
+`require-quiet-run.sh`, HIMMEL-4970). The deny names a `sleep N` body and
+`tail --pid=<pid> -f /dev/null`, and no repo script. Each deny appends one
+JSONL row (`ts`, `session_id`, `decision`, `loop`, `body`) to `BUSY_LOOP_LOG`
+(default `~/.claude/busy-loop-guard/denials.jsonl`). The match is textual, so
+a heredoc or quoted string holding a whole busy loop is refused as well. Fails
+OPEN on a missing `jq`, an unparseable payload or a non-Bash tool. Bypass:
+`BUSY_LOOP_BYPASS=1` (launching shell, session-sticky). Spec: the `8124` and
+`4970 busy` rows of `scripts/hooks/test-require-quiet-run.sh`.
 
 ### `block-docker-privesc.sh` — root-equivalent container guard (HIMMEL-441)
 
