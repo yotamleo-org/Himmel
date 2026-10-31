@@ -3195,6 +3195,11 @@ if [ "$rc29b" -eq 1 ] && [ "$runs29b" = 2 ]; then
 else
   fail "29b: rc=$rc29b runs=$runs29b (want rc 1 and exactly 2 runs) output: $out29b"
 fi
+if grepq "$out29b" -E '\[CAP EXCEEDED\] [^ ]*test-capstuck\.sh \(ran [0-9]+s, cap 2s\).*the cap applies per attempt'; then
+  pass "29b-note: a capped rerun's [CAP EXCEEDED] line says ran is the sum of attempts and the cap is per attempt"
+else
+  fail "29b-note: no per-attempt wording on the rerun's [CAP EXCEEDED] line: $out29b"
+fi
 if grepq "$out29b" -E "$real29"; then
   pass "29c: the final CAP EXCEEDED line keeps the shape CI printed for test-adopt.sh"
 else
@@ -3328,6 +3333,47 @@ if grepq "$step32" -E '^          HOME_CANARY_TIMEOUT: "[0-9]+"$'; then
   pass "32d: ci.yml's shard run step sets the HOME_CANARY_TIMEOUT the runner budgets its reruns against"
 else
   fail "32d: ci.yml's shard run step no longer sets HOME_CANARY_TIMEOUT"
+fi
+
+echo "== Case 33 (HIMMEL-8378): a retried suite's seconds are the sum of every attempt =="
+sb33=$(mktemp -d -t himmel-suite-retrysum.XXXXXX) || { fail "33: mktemp failed"; sb33=""; }
+# the runner keys the tier row by the physical path (/private/var on macOS); a failed resolve stops the case
+[ -z "$sb33" ] || sb33_phys=$(cd "$sb33" && pwd -P) || { fail "33: cannot resolve the sandbox path $sb33"; sb33_phys=""; }
+[ -z "$sb33" ] || sb33="$sb33_phys"
+if [ -n "$sb33" ]; then
+mkdir -p "$sb33/scripts" "$sb33/flakedir" "$sb33/home"
+# Both suites spend 3 s per attempt, so a runner that times only the last attempt reports 3-4 s and the sum is 6-7 s.
+cat > "$sb33/scripts/test-quar33.sh" <<'SHEOF'
+#!/usr/bin/env bash
+sleep 3
+exit 1
+SHEOF
+cat > "$sb33/flakedir/test-flake33.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$SUM33_DIR/flake.runs"
+sleep 3
+[ "$(wc -l < "$SUM33_DIR/flake.runs")" -ge 2 ] && exit 0
+exit 1
+SHEOF
+chmod +x "$sb33/scripts/test-quar33.sh" "$sb33/flakedir/test-flake33.sh"
+printf '# fixture tiers\n%s\tquarantine\tflakes\n' "$sb33/scripts/test-quar33.sh" > "$sb33/tiers.tsv"  # a suite outside the repo root keeps its absolute path as the tier key
+# Real run 41185890791 (shell-unit-shard 5, main, 2026-10-31) printed, for a suite that failed both attempts:
+#   [QUARANTINE] scripts/handover/chief-kit/test-chief-wait-b.sh (rc=1, 509s) — tier quarantine, not failing the run
+out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_TIERS_TSV="$sb33/tiers.tsv" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/scripts" 2>&1); rc33=$?
+dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[QUARANTINE\] .*test-quar33\.sh (rc=1, \([0-9][0-9]*\)s) — tier quarantine, not failing the run$/\1/p')
+if [ "$rc33" -eq 0 ] && [ -n "$dur33" ] && [ "$dur33" -ge 6 ]; then
+  pass "33a: a quarantined suite that failed both attempts reports both attempts' seconds (${dur33}s)"
+else
+  fail "33a: rc=$rc33 dur='$dur33' (want rc 0 and a [QUARANTINE] line of at least 6s) output: $out33"
+fi
+out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/flakedir" 2>&1); rc33=$?
+dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[FLAKE\] .*test-flake33\.sh (first run rc=1, passed on retry, \([0-9][0-9]*\)s)$/\1/p')
+if [ "$rc33" -eq 0 ] && [ -n "$dur33" ] && [ "$dur33" -ge 6 ]; then
+  pass "33b: a flaked suite reports both attempts' seconds (${dur33}s)"
+else
+  fail "33b: rc=$rc33 dur='$dur33' (want rc 0 and a [FLAKE] line of at least 6s) output: $out33"
+fi
+rm -rf "$sb33"
 fi
 
 rst_tally

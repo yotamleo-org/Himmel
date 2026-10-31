@@ -4418,11 +4418,13 @@ _suite_attempts() {
   _attempt=1
   first_rc=""
   first_log=""
+  _prior_secs=0
   while :; do
   log=$(mktemp)
   # Derived, not a second mktemp: same directory, same lifetime, one less fork.
   rcfile="$log.rc"
-  start=$SECONDS
+  # A retry starts the clock back by the seconds attempt 1 spent, so dur is the sum of every attempt.
+  start=$((SECONDS - _prior_secs))
 
   # Run the suite as a background job in its OWN process group (`set -m`), and
   # arm a watchdog beside it. `timeout` did the timing before, and it group-
@@ -4567,6 +4569,7 @@ LIVEMSGS
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
     first_rc=$rc
+    _prior_secs=$((SECONDS - start))
     first_capped=$capped
     first_log="$log"
     _attempt=2
@@ -4668,17 +4671,20 @@ ${suite_key#"$tier_repo_root"/}
       else
         assertions_passing=0
       fi
+      # dur sums every attempt and the cap applies to each one, so a rerun's line says so.
+      cap_note=""
+      [ "$_attempt" -ne 2 ] || cap_note=" (ran is the sum of 2 attempts; the cap applies per attempt)"
       if [ "$assertions_passing" -eq 1 ]; then
         cap_exceeded_clean=$((cap_exceeded_clean + 1))
         failed_suites="${failed_suites}  ${suite} (CAP EXCEEDED after ${dur}s, cap ${suite_timeout}s — no exit status observed, assertions passing)
 "
-        printf '[CAP EXCEEDED] %s (ran %ss, cap %ss) — killed by the runner'"'"'s watchdog at the cap, no exit status observed, assertions passing\n' \
-          "$suite" "$dur" "$suite_timeout"
+        printf '[CAP EXCEEDED] %s (ran %ss, cap %ss) — killed by the runner'"'"'s watchdog at the cap, no exit status observed, assertions passing%s\n' \
+          "$suite" "$dur" "$suite_timeout" "$cap_note"
       else
         failed_suites="${failed_suites}  ${suite} (CAP EXCEEDED after ${dur}s, cap ${suite_timeout}s — no exit status observed)
 "
-        printf '[CAP EXCEEDED] %s (ran %ss, cap %ss) — killed by the runner'"'"'s watchdog at the cap, no exit status observed\n' \
-          "$suite" "$dur" "$suite_timeout"
+        printf '[CAP EXCEEDED] %s (ran %ss, cap %ss) — killed by the runner'"'"'s watchdog at the cap, no exit status observed%s\n' \
+          "$suite" "$dur" "$suite_timeout" "$cap_note"
       fi
       echo '----- last 100 lines (output at termination) -----'
     else

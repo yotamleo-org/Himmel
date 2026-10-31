@@ -383,7 +383,7 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
 scripts/handover/chief-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-chief-wait-b.sh	quarantine	cap-exceeded flakes, HIMMEL-6547; second half of test-chief-wait.sh, HIMMEL-6742
+scripts/handover/chief-kit/test-chief-wait-b.sh	quarantine	cap-exceeded flakes, HIMMEL-6547; second half of test-chief-wait.sh, HIMMEL-6742; its 4 stale u4959 rows are fixed (HIMMEL-8378) but it leaves quarantine only after one measured passing CI attempt and a cap row sized at 2x or more (509 s is one attempt against the default 600 s cap)
 scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh, HIMMEL-7386
 scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh, HIMMEL-6538; stays local (HIMMEL-8228): it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
 scripts/handover/chief-kit/test-chief-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
