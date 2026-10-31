@@ -255,7 +255,7 @@ while IFS= read -r f; do
     # an operand built by a command substitution can name any file
     grep -qE '\$\(|`' <<< "$ops" && run_all "command substitution in a source operand in $f"
     # the operand's literal tail: the word after `source`/`.`, quotes dropped, past its last `/`
-    tails=$(sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///' <<< "$ops")
+    tails=$(sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///' -e 's/^(\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)//' <<< "$ops")
     if [ -n "$shnames" ] && grep -qxF -e "$shnames" <<< "$tails"; then
       run_all "source line naming a shell file without a .sh/.bash name in $f"
     fi

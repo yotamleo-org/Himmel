@@ -288,6 +288,13 @@ reset; w scripts/zza.sh '#!/usr/bin/env bash
 echo tool
 '; commit_case a2_ext
 verdict a2_ext ALL
+# a2_extglued: a variable glued in front of the extensionless name is the same dynamic shape
+reset; w scripts/zza.sh '#!/usr/bin/env bash
+. "${ZZ_DIR}zztool"
+'; w scripts/zztool '#!/usr/bin/env bash
+echo tool
+'; commit_case a2_extglued
+verdict a2_extglued ALL
 reset; w scripts/zza.sh '#!/usr/bin/env bash
 . "$ZZ_LIB" # read-sink-ok: fixture text, never executed
 . "${ZZ_DIR}zzjlib.sh"
