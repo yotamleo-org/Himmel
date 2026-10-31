@@ -307,13 +307,25 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || c
 lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 # The restore writes the whole config set and accept silences the watcher; both,
 # and a new restore seed, are the operator's (Telegram bridge or their own prompt),
-# never a session's. list and check stay allowed. Quotes and backslashes are
-# stripped first, so 'restore' or acc\ept is still the verb.
-lcv=$(printf '%s' "$lc" | tr -d "\"'\\\\")
-if [[ "$lcv" =~ config-audit[^\|\;\&]*[[:space:]](restore|accept)([^a-z0-9_-]|$) ]] \
-   || [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([^a-z0-9_-]|$) ]]; then
-    deny "a session runs the config ${BASH_REMATCH[1]} verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
+# never a session's. list and check stay allowed. ANSI-C escapes are decoded and
+# quotes and backslashes stripped first, so $'\x72estore', 'restore' or acc\ept is
+# still the verb; so is the sourced form (config_audit_main, _ca_node, _ca_restore).
+lcv="${lc//\$\'/\'}"; lcv="${lcv//\$\"/\"}"
+while [[ "$lcv" =~ \\(x[0-9a-f]{1,2}|[0-7]{1,3}) ]]; do
+    _e="${BASH_REMATCH[1]}"
+    case "$_e" in x*) _ch=$(printf %b "\\x${_e#x}") ;; *) _ch=$(printf %b "\\0${_e}") ;; esac
+    lcv="${lcv/"\\$_e"/$_ch}"
+done
+lcv=$(printf '%s' "$lcv" | tr -d "\"'\\\\" | tr '[:upper:]' '[:lower:]')
+_verb=""
+if [[ "$lcv" =~ (config-audit|config_audit_main|_ca_node)[^\|\;\&]*[[:space:]](restore|accept)([^a-z0-9_-]|$) ]]; then
+    _verb="${BASH_REMATCH[2]}"
+elif [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([^a-z0-9_-]|$) ]]; then
+    _verb="${BASH_REMATCH[1]}"
+elif [[ "$lcv" =~ (^|[^a-z0-9_])_ca_restore([^a-z0-9_]|$) ]]; then
+    _verb=restore
 fi
+[ -z "$_verb" ] || deny "a session runs the config $_verb verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
 names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
 # rm/mv/unlink as a command word: every such command denies below, so the row is
 # written from deny(). The first word naming a guarded file is the row's path.

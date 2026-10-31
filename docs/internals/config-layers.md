@@ -195,7 +195,9 @@ config loud and recoverable:
   backup holds the whole set together: the `.env`, `himmel.conf`,
   `himmel.conf.local` and `config.json`. A restore therefore brings back keys
   that lived in `.env` before the split. The 10 newest backups per file are kept
-  (`HIMMEL_CONFIG_BACKUPS_KEEP`).
+  (`HIMMEL_CONFIG_BACKUPS_KEEP`). Each backup holds a copy of the `.env`, so
+  `block-read-secrets.sh` refuses a session's read of the backups (by the
+  spelled and the resolved path), and every uninstall removes them.
 - **The audit log** `~/.himmel/state/config-audit/audit.jsonl` has one row per
   write: time, pid, session, script, file, action, before/after sha256 and the
   added, removed and changed key NAMES. It never holds a value. A session's
@@ -219,6 +221,11 @@ session, so a session can read the seed or plant a backup. The TOTP defends
 against a forged or hijacked Telegram sender, not against a hostile same-uid
 session. Upgrade path: a root-owned store with the restore as an afk-sudo kind
 (after HIMMEL-8066's root helper).
+
+ponytail: a planted newest backup becomes the watcher's "newest good backup"
+suggestion, and `list` names a changed key only as "values differ", so the
+operator cannot tell a planted value from a real one before restoring. Upgrade
+path: the same root-owned store, whose backups a session cannot write.
 
 ## Secrets: the keyring resolver
 

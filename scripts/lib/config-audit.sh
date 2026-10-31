@@ -86,7 +86,7 @@ const E = process.env;
 const [verb, ...argv] = process.argv.slice(1);
 const STATE = E.CA_STATE, BACK = path.join(STATE, "backups");
 const KEEP = Math.max(1, parseInt(E.HIMMEL_CONFIG_BACKUPS_KEEP || "10", 10) || 10);
-const SET = { env: E.CA_ENV, "himmel.conf": E.CA_CONF, "himmel.conf.local": E.CA_LOCAL, "config.json": E.CA_JSON };
+const SET = { ".env": E.CA_ENV, "himmel.conf": E.CA_CONF, "himmel.conf.local": E.CA_LOCAL, "config.json": E.CA_JSON };
 const ID = /^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$/;
 const sha = (b) => b === null ? null : crypto.createHash("sha256").update(b).digest("hex");
 const read = (p) => { try { return fs.readFileSync(p); } catch { return null; } };
@@ -461,7 +461,7 @@ _ca_restore() {
         case "$n" in "restored "*) ;; *) continue ;; esac
         f="${n#restored * }"
         _ca_node post "$bid" "$f" restore --script "$script" --pid "$$" || echo "config-audit: WARN: no audit row for $f" >&2
-        case "$n" in "restored env "*) _ca_map_forward ;; esac
+        case "$n" in "restored .env "*) _ca_map_forward ;; esac
     done <<EOF
 $out
 EOF

@@ -57,10 +57,10 @@ printf 'JIRA_API_TOKEN=%s\n' "$CANARY" > "$TMP/clone/.env"
 # --- 1. audited write: a row with key names, a backup of the whole set ---
 id=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
 case "$id" in [0-9]*T[0-9]*Z-*) pass "1 pre prints a backup id" ;; *) fail "1 pre printed '$id'" ;; esac
-for f in env himmel.conf config.json manifest.json; do
+for f in .env himmel.conf config.json manifest.json; do
     if [ -f "$STATE/backups/$id/$f" ]; then pass "1 the backup holds $f"; else fail "1 the backup lacks $f"; fi
 done
-eq "1 a backup file is mode 600" 600 "$(stat -c %a "$STATE/backups/$id/env" 2>/dev/null || stat -f %Lp "$STATE/backups/$id/env")"
+eq "1 a backup file is mode 600" 600 "$(stat -c %a "$STATE/backups/$id/.env" 2>/dev/null || stat -f %Lp "$STATE/backups/$id/.env")"
 printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"40","ARMAUTOMERGE":"%s"}}\n' "$CANARY" > "$HIMMEL_CONFIG_DIR/config.json"
 bash "$CA" post "$id" "$HIMMEL_CONFIG_DIR/config.json" write --script test >/dev/null
 row=$(tail -n 1 "$STATE/audit.jsonl" 2>/dev/null)
