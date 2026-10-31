@@ -14,7 +14,7 @@
 # The checks run in this order and the FIRST failure is the refusal:
 #   1. a lane the chief does not merge for: the worker is a native leg of the manifest (a claudex,
 #      unknown-lane or unlisted worker escalates) and this repo is not a registered adapter or
-#      adopted repo (scripts/guardrails/himmel-{adapters,adopted}.json)
+#      adopted repo (scripts/guardrails/himmel-{adapters,adopted}.json; both files must be readable)
 #   2. live head: the PR is OPEN, headRefOid == <head>, and its base is the default branch
 #   3. ready-go.sh <pr> <head> prints READY-GO PASS (ready-check: head, CI, threads, CR-ledger ok row,
 #      trailers, ticket ids, coverage)
@@ -35,10 +35,11 @@
 # Output, one line on stdout:
 #   WOULD-GO <pr> <head>                  exit 0
 #   ESCALATE auto-go <check#> <reason>    exit 10
-# Exit: 0 would-go; 1 a shared library cannot be loaded, or the audit trail cannot be resolved or
-# written (no answer is given); 2 usage;
+# Exit: 0 would-go; 1 a shared library cannot be loaded, the audit trail cannot be resolved at the
+# start, or the WOULD-GO row cannot be written (no answer is given); 2 usage;
 # 3 a chief-spawned worker (HIMMEL_CONSOLE_LEG) or a relay (HIMMEL_CONSOLE_RELAY) - checked first,
-# before anything is read; 10 escalate.
+# before anything is read; 10 escalate. An ESCALATE whose audit row cannot be written is still
+# answered (a refusal is safe): exit 10, with a warning on stderr.
 #
 # Audit trail: <handover root>/<user>/<bucket>/auto-go.jsonl, append-only, one row per run:
 #   {ts, pr, head, worker, checks:[{n, result[, reason]}], qid:null, delta:null, go_file:null,
@@ -168,7 +169,7 @@ LANE="${LEG%%$'\t'*}"; WORKER_DOC="${LEG#*$'\t'}"
 NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""  # swallow-ok: an empty name escalates at check 1 on the next line
 [ -n "$NWO" ] || fail 1 "cannot read this repo's name (gh repo view failed)"
 for list in himmel-adapters.json himmel-adopted.json; do
-    [ -e "$ANCHOR/scripts/guardrails/$list" ] || continue
+    [ -e "$ANCHOR/scripts/guardrails/$list" ] || fail 1 "scripts/guardrails/$list is missing: whether $NWO is an adapter or adopted repo cannot be shown"
     listed=$(jq -r --arg n "$NWO" 'if type == "array" then ([.[] | select(type == "object" and ((.nwo // "") | ascii_downcase) == ($n | ascii_downcase))] | length | tostring) else "bad" end' \
         "$ANCHOR/scripts/guardrails/$list" 2>/dev/null) || listed=bad
     case "$listed" in

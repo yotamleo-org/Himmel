@@ -19,7 +19,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${AUTO_GO_UNDER_TEST:-$HERE/auto-go.sh}"
-unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME GH_CMD 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/auto-go-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
@@ -219,6 +219,12 @@ run --dry-run 77 "$SHA";  esc "check 1 adopted repo (case-insensitive, merge_all
 reset
 printf 'not json\n' > "$ANCHOR/scripts/guardrails/himmel-adopted.json"
 run --dry-run 77 "$SHA";  esc "check 1 unreadable allowlist" 1
+reset
+rm -f "$ANCHOR/scripts/guardrails/himmel-adapters.json"
+run --dry-run 77 "$SHA";  esc "check 1 a missing allowlist file (eligibility cannot be shown)" 1
+reset
+rm -f "$ANCHOR/scripts/guardrails/himmel-adopted.json"
+run --dry-run 77 "$SHA";  esc "check 1 a missing adopted allowlist file" 1
 reset
 STUB_NWO=other/repo run --dry-run 77 "$SHA"
 check "check 1 a repo outside the allowlists passes" "$RC" "0"
