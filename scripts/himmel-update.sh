@@ -811,8 +811,7 @@ sync_agent_clis() {
 # already-armed cadence firing the OLD format until a manual `arm --force`.
 # This surfaces that right after the pull. Advisory; never fails the update.
 # *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
-# cadence_user_home (emitter parity — USERPROFILE via cygpath before $HOME on
-# Windows Git-Bash — a bare $HOME would probe the MSYS dir).
+# cadence_user_home (emitter parity).
 report_cadence_stale() {
     local label bat_dir rearm ver uh
     uh="$(cadence_user_home)"

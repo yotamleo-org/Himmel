@@ -420,8 +420,7 @@ bash "$REPO_ROOT/scripts/lib/wire-pretooluse-hooks.sh" --sessionstart "$_user_se
 if ! bash "$REPO_ROOT/scripts/lib/detect-hook-dup.sh" "$_user_settings" "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT"; then
   : # detect-hook-dup is advisory-only; never fail setup on it.
 fi
-# cc-codex launches a bash script, so one Bash shim serves Git Bash and
-# WSL; no PowerShell twin is needed.
+# cc-codex launches a bash script, so one Bash shim serves it.
 bash "$REPO_ROOT/scripts/shell/himmel-offload-shims.sh" install \
   || echo "  WARNING: offload shim install failed; setup continues." >&2
 echo ""

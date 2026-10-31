@@ -241,24 +241,10 @@ fi
 
 CFG="${HOME}/.config/claude-codex"
 
-# Windows path-form normalization: on Git Bash the physical
-# cwd is /c/Users/... while operator-written guard roots may be C:\Users\... or
-# C:/Users/... — same NTFS directory, zero prefix overlap, guard fails OPEN.
-# Normalize BOTH sides: cygpath -u unifies the drive form, then lowercase
-# (NTFS is case-insensitive). No-op on non-Windows (case stays significant).
-UNAME_S="$(uname -s 2>/dev/null)"
+# Path form both sides of a guard-root comparison pass through (case stays
+# significant).
 norm_path() { # $1 path -> normalized on stdout
-  _np="$1"
-  case "$UNAME_S" in
-    MINGW*|MSYS*|CYGWIN*)
-      if command -v cygpath >/dev/null 2>&1; then
-        _np="$(cygpath -u "$_np" 2>/dev/null)" || _np="$1"
-      fi
-      # shellcheck disable=SC1003  # tr '\\' is a literal backslash arg, not a quote escape
-      _np="$(printf '%s' "$_np" | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
-      ;;
-  esac
-  printf '%s' "$_np"
+  printf '%s' "$1"
 }
 
 path_under_any() { # $1 path, $2 listfile

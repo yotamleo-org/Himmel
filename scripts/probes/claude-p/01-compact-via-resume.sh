@@ -27,7 +27,7 @@ timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
   --permission-mode dontAsk --output-format json "Say B" > "$OUT_DIR/01-b.json" 2>"$OUT_DIR/01-b.err"
 echo "01b rc=$?"
 
-MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
+timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
   --permission-mode dontAsk --output-format json "/compact" > "$OUT_DIR/01-c.json" 2>"$OUT_DIR/01-c.err"
 echo "01c rc=$?"
 
@@ -49,7 +49,7 @@ if [ "$BOUNDARY_COUNT" = "0" ] && printf '%s' "$RESULT_C" | grep -qiE 'not enoug
   timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
     --permission-mode dontAsk --output-format json "Say C" > "$OUT_DIR/01-d.json" 2>"$OUT_DIR/01-d.err"
   echo "01d rc=$?"
-  MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
+  timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --resume "$SID" \
     --permission-mode dontAsk --output-format json "/compact" > "$OUT_DIR/01-e.json" 2>"$OUT_DIR/01-e.err"
   echo "01e rc=$?"
   JSONL="$(find_jsonl)"

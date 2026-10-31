@@ -268,11 +268,11 @@ _hud_write_index_checkpoint() {
 # Why this is not a one-line glob: the old version ran
 #   cat "$HOME/.claude/projects"/*/*.jsonl | timeout 10 jq -s ...
 # which has two fatal flaws once a few hundred sessions accumulate:
-#   1. The glob expands to hundreds of paths — on Windows/MSYS that overflows
-#      the ~32KB argv limit, so `cat` dies with "Argument list too long",
+#   1. The glob expands to hundreds of paths, which can overflow the argv
+#      limit, so `cat` dies with "Argument list too long",
 #      stderr is swallowed, jq slurps empty input, and every field sums to 0
 #      (the "all = 0" bug).
-#   2. Even on Linux/macOS it re-reads the entire, ever-growing history (100s
+#   2. It re-reads the entire, ever-growing history (100s
 #      of MB) every refresh — far slower than the 10s timeout, which then
 #      kills it and again writes 0.
 # This version scans with `find` (streams, no argv limit), recomputes only the

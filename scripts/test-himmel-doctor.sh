@@ -435,9 +435,7 @@ echo "== C1-guardrail: --fix re-bakes the stale guardrail node (faked Linux unam
 t="$(mktemp -d)"
 write_guardrail_settings "$t/claude" "$t/gone/node"
 PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --fix --no-color >/dev/null 2>&1
-# On a Windows host with a faked-Linux uname, setup-hooks.sh bakes a /c/...
-# node path that node's fs.existsSync can't see, so the post-fix re-check may
-# still FAIL here — the honest assertion is just that the STALE path is gone.
+# The assertion is just that the STALE path is gone.
 if grep -q "$t/gone/node" "$t/claude/settings.json"; then
     fail "--fix -> stale node path still present in settings.json"
 else
