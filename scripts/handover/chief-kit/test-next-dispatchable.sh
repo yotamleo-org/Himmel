@@ -1313,5 +1313,154 @@ on="$(runn --priority-pool-only --top 7)"
 has "(8336) with no open version the intake line names the keys and no version" "$on" "# intake 2: HIMMEL-901 HIMMEL-902"
 lacks "(8336) with no open version the intake line never reads 'for no open version'" "$on" "no open version"
 
+# --- (8349 slice 1) stacked_series: tickets that share files list as one SERIES row, behind the flag ---
+TAB=$'\t'
+export HIMMEL_CONFIG_DIR="$WORK/no-conf"   # the operator's own himmel.conf never decides a fixture's flag
+cat > "$WORK/classify-s" <<'EOF'
+#!/usr/bin/env bash
+for k in "$@"; do
+    case "$k" in
+        HIMMEL-841) printf '%s\tCLOUD-OK\tstub\n' "$k" ;;
+        HIMMEL-842) printf '%s\tHOOK-BYPASS\tstub\n' "$k" ;;
+        HIMMEL-845) printf '%s\tBLOCKED\tstub\n' "$k" ;;
+        *) printf '%s\tLOCAL-NATIVE\tstub\n' "$k" ;;
+    esac
+done
+EOF
+chmod +x "$WORK/classify-s"
+newmir() { # <name>: a fresh one-version mirror, M points at it
+    M="$WORK/s-$1/HIMMEL"; mkdir -p "$M"
+    printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\n' > "$WORK/s-$1/HIMMEL.versions.tsv"
+}
+runs() { # <mirror dir> <flag value> args...: the script under test with stacked_series set
+    local mir="$1" flag="$2"; shift 2
+    HIMMEL_FLAG_STACKED_SERIES="$flag" NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" "$@" 2>/dev/null
+}
+APP='Edit scripts/config-ui/app.js please.'
+
+# three To Do UI tickets sharing app.js: one SERIES row, not 1 listed and 2 dropped
+newmir ui
+mk HIMMEL-801 "To Do" High '[]' '["v1.0.1"]' '[]' "ui one" "$APP"
+mk HIMMEL-802 "To Do" High '[]' '["v1.0.1"]' '[]' "ui two" "$APP"
+mk HIMMEL-803 "To Do" High '[]' '["v1.0.1"]' '[]' "ui three" "$APP"
+UI="$M"
+on="$(runs "$UI" 1 --dispositions --why)"
+has "(8349) three tickets sharing app.js list as one SERIES LOCAL row" "$on" "SERIES${TAB}LOCAL${TAB}HIMMEL-801,HIMMEL-802,HIMMEL-803${TAB}High${TAB}v1.0.1${TAB}files=scripts/config-ui/app.js"
+lacks "(8349) a series member has no ordinary row" "$on" "LOCAL${TAB}HIMMEL-802${TAB}"
+lacks "(8349) the head has no ordinary row either" "$on" "LOCAL${TAB}HIMMEL-801${TAB}"
+lacks "(8349) a series member is not dropped as a collision" "$on" "held by listed"
+tp="$(runs "$UI" 1 --top 1)"
+has "(8349) a full list still lets the colliding tickets join the series" "$tp" "SERIES${TAB}LOCAL${TAB}HIMMEL-801,HIMMEL-802,HIMMEL-803${TAB}"
+pp="$(runs "$UI" 1 --priority-pool-only --top 5)"
+has "(8349) --priority-pool-only lists the series row too" "$pp" "SERIES${TAB}LOCAL${TAB}HIMMEL-801,HIMMEL-802,HIMMEL-803${TAB}"
+has "(8349) the drop line counts the series members as listed" "$on" "# dropped from v1.0.1: 0 of 3 To Do"
+has "(8349) --dispositions says listed SERIES for a member" "$on" "# disposition HIMMEL-803 listed SERIES HIMMEL-801"
+[ "$(printf '%s\n' "$on" | grep -c "^SERIES")" = 1 ] && pass "(8349) exactly one SERIES row" || fail "(8349) SERIES row count is not 1"
+
+# flag off: today's output, byte for byte, whether the flag is unset-by-default or set to 0
+off="$(runs "$UI" 0 --dispositions --why)"
+dflt="$(NEXT_DISPATCH_MIRROR="$UI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" --dispositions --why 2>/dev/null)"
+[ "$off" = "$dflt" ] && pass "(8349) flag off equals the default output" || fail "(8349) flag 0 differs from the default"
+lacks "(8349) flag off prints no SERIES row" "$off" "SERIES"
+has "(8349) flag off lists the head alone" "$off" "LOCAL${TAB}HIMMEL-801${TAB}"
+has "(8349) flag off still drops the second with the collision reason" "$off" "# drop HIMMEL-802 collision scripts/config-ui/app.js held by listed HIMMEL-801"
+has "(8349) flag off still drops the third with the collision reason" "$off" "# drop HIMMEL-803 collision scripts/config-ui/app.js held by listed HIMMEL-801"
+
+# the cap holds at 4
+newmir cap
+for n in 811 812 813 814 815; do mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "cap $n" "Edit scripts/lib/cap.sh now."; done
+cp_="$(runs "$M" 1 --why)"
+has "(8349) a series stops at 4 items" "$cp_" "SERIES${TAB}LOCAL${TAB}HIMMEL-811,HIMMEL-812,HIMMEL-813,HIMMEL-814${TAB}"
+has "(8349) the fifth colliding ticket drops as today" "$cp_" "# drop HIMMEL-815 collision scripts/lib/cap.sh held by listed HIMMEL-811"
+
+# a candidate that would join two series is dropped
+newmir two
+mk HIMMEL-821 "To Do" High '[]' '["v1.0.1"]' '[]' "x one" "Edit scripts/lib/x.sh now."
+mk HIMMEL-822 "To Do" High '[]' '["v1.0.1"]' '[]' "x two" "Edit scripts/lib/x.sh now."
+mk HIMMEL-823 "To Do" High '[]' '["v1.0.1"]' '[]' "y one" "Edit scripts/lib/y.sh now."
+mk HIMMEL-824 "To Do" High '[]' '["v1.0.1"]' '[]' "y two" "Edit scripts/lib/y.sh now."
+mk HIMMEL-825 "To Do" High '[]' '["v1.0.1"]' '[]' "both" "Edit scripts/lib/x.sh and scripts/lib/y.sh now."
+tw="$(runs "$M" 1 --why)"
+has "(8349) two independent series each get a row" "$tw" "SERIES${TAB}LOCAL${TAB}HIMMEL-821,HIMMEL-822${TAB}"
+has "(8349) the second series row" "$tw" "SERIES${TAB}LOCAL${TAB}HIMMEL-823,HIMMEL-824${TAB}"
+has "(8349) a candidate colliding with two series is dropped" "$tw" "# drop HIMMEL-825 collision"
+lacks "(8349) a candidate colliding with two series joins neither" "$tw" "HIMMEL-821,HIMMEL-822,HIMMEL-825"
+
+# a later-version ticket never rides an earlier version's series
+newmir ver
+mk HIMMEL-831 "To Do" High '[]' '["v1.0.1"]' '[]' "now" "Edit scripts/lib/z.sh now."
+mk HIMMEL-832 "To Do" High '[]' '["v1.0.2"]' '[]' "later" "Edit scripts/lib/z.sh now."
+vr="$(runs "$M" 1 --why)"
+lacks "(8349) a later-version ticket does not join" "$vr" "SERIES"
+lacks "(8349) a later-version ticket is not listed with it" "$vr" "HIMMEL-832${TAB}"
+has "(8349) the earlier-version ticket lists alone" "$vr" "LOCAL${TAB}HIMMEL-831${TAB}"
+
+# lane and hook: a CLOUD member makes the series LOCAL, a hook member makes it hook, a BLOCKED one never joins
+newmir lane
+mk HIMMEL-841 "To Do" High '[]' '["v1.0.1"]' '[]' "cloud head" "Edit scripts/lib/h.sh now."
+mk HIMMEL-842 "To Do" High '[]' '["v1.0.1"]' '[]' "hook member" "Edit scripts/lib/h.sh now."
+mk HIMMEL-843 "To Do" High '[]' '["v1.0.1"]' '[]' "local member" "Edit scripts/lib/h.sh now."
+mk HIMMEL-845 "To Do" High '[]' '["v1.0.1"]' '[]' "blocked member" "Edit scripts/lib/h.sh now."
+ln_="$(runs "$M" 1 --why)"
+has "(8349) a CLOUD head with other members is a LOCAL series, hook when a member needs it" "$ln_" "SERIES${TAB}LOCAL${TAB}HIMMEL-841,HIMMEL-842,HIMMEL-843${TAB}High${TAB}v1.0.1${TAB}files=scripts/lib/h.sh${TAB}hook"
+lacks "(8349) a BLOCKED ticket is never in a series" "$ln_" "HIMMEL-845,"
+lacks "(8349) a BLOCKED ticket is not a member" "$ln_" ",HIMMEL-845"
+has "(8349) a BLOCKED ticket drops on its classification" "$ln_" "# drop HIMMEL-845 classification BLOCKED"
+nc_="$(runs "$M" 1 --no-classify)"
+has "(8349) unclassified members keep the LOCAL? lane" "$nc_" "SERIES${TAB}LOCAL?${TAB}HIMMEL-841,HIMMEL-842,HIMMEL-843,HIMMEL-845${TAB}"
+
+# STACKABLE: a candidate colliding only with one live series worker's Writes
+newmir stk
+mk HIMMEL-851 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js" "$APP"
+mk HIMMEL-852 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js and an open PR file" "Edit scripts/config-ui/app.js and scripts/lib/pr-held.sh."
+mk HIMMEL-853 "To Do" High '[]' '["v1.0.1"]' '[]' "free ticket" "Edit scripts/lib/free-s.sh."
+SM="$M"
+mkdoc() { # <path> <series items> <extra Writes>: a live worker doc; items 0 = a plain (non-series) worker
+    {
+        printf '# live\n'
+        if [ "$2" -gt 0 ]; then
+            printf '> **Series:**\n'
+            local k=1
+            while [ "$k" -le "$2" ]; do printf '> %d. HIMMEL-79%d branch=feat/x-s%d base=main completes-ticket=no\n' "$k" "$k" "$k"; k=$((k + 1)); done
+        fi
+        printf '> **Writes:** scripts/config-ui/app.js %s\n' "$3"
+    } > "$1"
+}
+mkfleet() { # <fleet file> <label:doc> ...
+    local f="$1" first=1; shift
+    printf '{"schema":1,"legs":[' > "$f"
+    for p in "$@"; do [ "$first" = 1 ] || printf ',' >> "$f"; first=0; printf '{"doc":"%s","label":"%s"}' "${p#*:}" "${p%%:*}" >> "$f"; done
+    printf ']}\n' >> "$f"
+}
+mkdoc "$WORK/HIMMEL-790-N5-series.md" 2 ""
+mkfleet "$WORK/fleet-s.json" "N5:$WORK/HIMMEL-790-N5-series.md"
+st="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --why)"
+has "(8349) a candidate colliding only with a live series worker is STACKABLE" "$st" "STACKABLE HIMMEL-851 on N5 (2/4)"
+lacks "(8349) a STACKABLE candidate has no dispatch row" "$st" "LOCAL${TAB}HIMMEL-851${TAB}"
+lacks "(8349) a STACKABLE candidate is not told as an ordinary collision" "$st" "# drop HIMMEL-851 collision"
+has "(8349) a free ticket still lists beside a series worker" "$st" "LOCAL${TAB}HIMMEL-853${TAB}"
+has "(8349) a candidate also held by an open PR still drops" "$st" "# drop HIMMEL-852 collision"
+lacks "(8349) a candidate also held by an open PR is not STACKABLE" "$st" "STACKABLE HIMMEL-852"
+stoff="$(runs "$SM" 0 --workers-from "$WORK/fleet-s.json" --why)"
+lacks "(8349) flag off prints no STACKABLE row" "$stoff" "STACKABLE"
+has "(8349) flag off drops it with the collision reason" "$stoff" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N5"
+
+mkdoc "$WORK/HIMMEL-791-N6-plain.md" 0 ""
+mkfleet "$WORK/fleet-plain.json" "N6:$WORK/HIMMEL-791-N6-plain.md"
+sp="$(runs "$SM" 1 --workers-from "$WORK/fleet-plain.json" --why)"
+lacks "(8349) a collision with a non-series live worker is not STACKABLE" "$sp" "STACKABLE"
+has "(8349) a collision with a non-series live worker still drops" "$sp" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N6"
+
+mkdoc "$WORK/HIMMEL-792-N7-full.md" 4 ""
+mkfleet "$WORK/fleet-full.json" "N7:$WORK/HIMMEL-792-N7-full.md"
+sf="$(runs "$SM" 1 --workers-from "$WORK/fleet-full.json" --why)"
+lacks "(8349) a full (4/4) series worker takes no STACKABLE" "$sf" "STACKABLE"
+has "(8349) a full series worker still holds the file" "$sf" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N7"
+
+mkdoc "$WORK/HIMMEL-793-N8-two.md" 0 ""
+mkfleet "$WORK/fleet-two.json" "N5:$WORK/HIMMEL-790-N5-series.md" "N8:$WORK/HIMMEL-793-N8-two.md"
+s2="$(runs "$SM" 1 --workers-from "$WORK/fleet-two.json" --why)"
+lacks "(8349) a collision with a series worker and another worker is not STACKABLE" "$s2" "STACKABLE"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
