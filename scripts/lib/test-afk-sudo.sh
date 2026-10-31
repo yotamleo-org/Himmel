@@ -650,6 +650,8 @@ assert_eq "a .. after a non-directory is refused, not keyed lexically where the 
 ln -s f/x/../../L/x/lnk/../../../../out "$R/fl"
 assert_eq "a link whose target holds a .. after a non-directory is refused too" "BadFile" "$(bt fl)"
 assert_eq "a non-directory followed only by a slash, dot or dot-dot is refused on every Python, not bound where the kernel never lands" "BadFile BadFile BadFile" "$(bt f/) $(bt f/.) $(bt f/..)"
+ln -s f/ "$R/fs"
+assert_eq "a link to a non-directory followed by a slash is refused on every Python" "BadFile" "$(bt fs)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"

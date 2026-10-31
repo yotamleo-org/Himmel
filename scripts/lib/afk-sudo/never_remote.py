@@ -38,7 +38,7 @@ def landing(p):
     run_request refuses there outright, as a dangling link whose target holds missing/../.. would still be skipped."""
     try:
         real = os.path.realpath(p, strict=True)
-        os.lstat(p)  # before 3.13 a strict realpath skips `f/`, `f/.` and `f/..` after a file; the kernel does not
+        os.stat(p)  # before 3.13 a strict realpath skips `f/`, `f/.` and `f/..` after a file (a link to one too)
         return real
     except FileNotFoundError:
         allow = getattr(os.path, "ALLOW_MISSING", None)
