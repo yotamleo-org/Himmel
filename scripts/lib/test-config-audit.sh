@@ -185,6 +185,17 @@ lacks "4 a policy key config.json sets is not said to still work" "they still wo
 printf '%s\n' "$pol_saved" > "$HIMMEL_CONFIG_DIR/config.json"
 printf '%s\n' "$saved_env" > "$TMP/clone/.env"
 bash "$CA" accept >/dev/null
+# An unreadable config.json is reported as such: load_policy fails closed on it.
+printf '{"policy":\n' > "$HIMMEL_CONFIG_DIR/config.json"
+printf '%s\nCR_REQUIRE_CROSS_MODEL=0\n' "$saved_env" > "$TMP/clone/.env"
+badid=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+out=$(bash "$CA" restore "$badid" --script test-restore 2>&1)
+has "4 an unreadable config.json is named" "config.json cannot be read" "$out"
+lacks "4 a policy key beside an unreadable config.json is not said to still work" "they still work" "$out"
+printf '%s\n' "$pol_saved" > "$HIMMEL_CONFIG_DIR/config.json"
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+bash "$CA" accept >/dev/null
 
 # --- 5. luna-config save leaves a row and a backup ---
 before=$(wc -l < "$STATE/audit.jsonl")

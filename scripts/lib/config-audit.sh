@@ -434,7 +434,7 @@ EOF
 # A restored .env that still holds behaviour or gate keys came from before the
 # split: map them forward. migrate-env.sh asks for consent and verifies itself.
 _ca_map_forward() {
-    local envf conf pol key moved="" clash="" pclash="" wins=""
+    local envf conf pol key pv moved="" clash="" pclash="" punread="" wins=""
     envf="$(_ca_env_file)"
     conf="$(_himmel_config_dir)/himmel.conf"
     pol="$(_himmel_policy_dir)/config.json" || pol=""
@@ -443,9 +443,12 @@ _ca_map_forward() {
     for key in $(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*=.*/\2/p' "$envf"); do
         case "$(_himmel_key_class "$key")" in config|policy) moved="$moved $key" ;; *) continue ;; esac
         grep -q "^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}${key}[[:space:]]*=" "$conf" 2>/dev/null && clash="$clash $key"
-        # load_policy reads config.json .policy before .env; only the key name is kept.
-        [ "$(_himmel_key_class "$key")" = policy ] && [ -f "$pol" ] \
-            && [ -n "$(_himmel_policy_json "$pol" "$key")" ] && pclash="$pclash $key"
+        # load_policy reads config.json .policy before .env and fails closed on a file it
+        # cannot parse; only the key name is kept.
+        if [ "$(_himmel_key_class "$key")" = policy ] && [ -f "$pol" ]; then
+            if ! pv="$(_himmel_policy_json "$pol" "$key")"; then punread=1
+            elif [ -n "$pv" ]; then pclash="$pclash $key"; fi
+        fi
     done
     [ -z "$clash" ] || wins="himmel.conf still sets ${clash# }"
     [ -z "$pclash" ] || wins="${wins:+$wins and the live }config.json still sets ${pclash# }"
@@ -453,6 +456,8 @@ _ca_map_forward() {
     echo "restore: the restored .env predates the split (${moved# }); mapping forward through migrate-env.sh"
     if bash "$_CA_DIR/../setup/migrate-env.sh" --env "$envf" </dev/null >/dev/null 2>&1; then
         echo "restore: migrate-env.sh moved them"
+    elif [ -n "$punread" ]; then
+        echo "restore: migrate-env.sh left them in .env, and the live config.json cannot be read, so load_policy fails closed on it; the operator repairs it at a prompt"
     elif [ -n "$wins" ]; then
         echo "restore: migrate-env.sh left them in .env, and the live $wins, which wins over .env; the operator resolves each at a prompt"
     else
