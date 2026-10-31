@@ -7,11 +7,12 @@ import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 // chief, and a worker is always one end of it. Nothing else is allowed,
 // so a declaration only counts when both endpoints hold the role it requires.
 
-// A stored record from before the rename carries the old role name: `leg` reads
-// as `worker` and `console` as `chief` while the legacy-names switch is on, and as
+// `console` and `chief` are one role. Writers still store `console` (a reader that
+// predates `chief` drops a record whose role it does not know), so a stored `console`
+// reads as `chief` whatever the legacy-names switch says. A stored record from before
+// the worker rename carries `leg`: it reads as `worker` while the switch is on, and as
 // an unknown role (no edge) when it is off.
-const RENAMED = { leg: 'worker', console: 'chief' };
-export const canonRole = value => (Object.hasOwn(RENAMED, value) && legacyNamesOn() ? RENAMED[value] : value);
+export const canonRole = value => (value === 'console' ? 'chief' : value === 'leg' && legacyNamesOn() ? 'worker' : value);
 const role = (peers, name) => canonRole(peers[name]?.role);
 const PAIRED = ['worker', 'judge', 'consult'];
 

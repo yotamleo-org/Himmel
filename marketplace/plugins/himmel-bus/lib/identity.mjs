@@ -10,14 +10,16 @@ import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ROLES = ['worker', 'chief', 'judge', 'consult'];
 
-// A role as stored or typed -> its current name, or a refusal. The pre-rename
-// spellings (`leg`, `console`) map to `worker` and `chief` while the legacy-names
-// switch is on.
+// A role as stored or typed -> its current name, or a refusal. `console` is `chief`;
+// the pre-rename `leg` maps to `worker` while the legacy-names switch is on.
 function roleOf(value) {
   const role = canonRole(value);
   if (!ROLES.includes(role)) throw new Error(`invalid role: ${value} (one of ${ROLES.join('|')})`);
   return role;
 }
+// What a record stores for a role. A chief is still stored as `console` until the
+// fleet that reads records has turned over; the reader above accepts both spellings.
+const stored = role => (role === 'chief' ? 'console' : role);
 const UNBOUND = { error: 'identity unbound' };
 
 function checkName(name) {
@@ -81,7 +83,7 @@ async function update(root, name, change) {
     const peer = await readPeer(root, name);
     if (!peer) throw new Error(`unknown session: ${name}`);
     const next = await change(peer);
-    const path = await temp(root, name, next);
+    const path = await temp(root, name, { ...next, role: stored(next.role) });
     try { await rename(path, peerFile(root, name)); } catch (error) { await unlink(path).catch(() => {}); throw error; }
     return next;
   });
@@ -116,7 +118,7 @@ export async function register(root, name, { role: given, chief, console: old, p
   if (owner) peer.console = owner;
   if (pair) peer.pair = pair;
   if (predecessor) peer.predecessor = predecessor;
-  const path = await temp(root, name, peer);
+  const path = await temp(root, name, { ...peer, role: stored(peer.role) });
   try { await link(path, peerFile(root, name)); }
   catch (error) {
     if (error.code !== 'EEXIST') throw error;

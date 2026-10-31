@@ -373,7 +373,7 @@ do_arm() {
     if [ "$bus_opt" -eq 2 ]; then
         bus_warn "$log" "bus profile probe failed for $session - launching unbound: $bus_probe_out"
     elif [ "$bus_opt" -eq 0 ]; then
-        bus_args=(register "$session" --role chief)
+        bus_args=(register "$session" --role console)
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"

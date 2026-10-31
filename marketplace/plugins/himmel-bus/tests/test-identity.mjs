@@ -511,26 +511,30 @@ test('M2: CLI accepts --role leg under the switch and refuses it with the switch
   assert.equal(run('0', 'register', 'w3', '--role', 'worker', '--chief', 'con').status, 0);
 });
 
-// The chief half of the rename: `chief` / `--chief` are canonical, `console` /
-// `--console` read as aliases while the legacy-names switch is on.
+// The chief half of the rename, reader stage: `chief` / `--chief` are accepted and
+// canonical, a stored `console` reads as `chief`, and writers still STORE `console`
+// so a reader that predates `chief` keeps every record. `--console` reads as an alias
+// of `--chief` while the legacy-names switch is on.
 async function cliState(t) {
   const state = await mkdtemp(join(tmpdir(), 'bus-cli-'));
   t.after(() => rm(state, { recursive: true, force: true }));
   const run = (switchValue, ...args) => spawnSync(process.execPath, [cli, ...args],
     { env: { ...process.env, XDG_STATE_HOME: state, HIMMEL_LEGACY_NAMES: switchValue }, encoding: 'utf8' });
-  return { state, run };
+  const raw = async name => JSON.parse(await readFile(join(state, 'himmel/bus/peers', `${name}.json`), 'utf8'));
+  return { state, run, raw };
 }
 
 test('M3: CLI registers role chief, --chief and --pair <worker>, the documented command', async t => {
-  const { state, run } = await cliState(t);
+  const { state, run, raw } = await cliState(t);
   assert.equal(run('0', 'register', 'con', '--role', 'chief').status, 0);
   assert.equal(run('0', 'register', 'w1', '--role', 'worker', '--chief', 'con').status, 0);
   const judge = run('0', 'register', 'j1', '--role', 'judge', '--chief', 'con', '--pair', 'w1');
   assert.equal(judge.status, 0, judge.stderr);
   assert.equal(run('0', 'register', 'con2', '--role', 'chief', '--predecessor', 'con').status, 0);
-  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
+  assert.equal((await raw('con')).role, 'console');
   const root = await store.busRoot({ stateHome: state });
   const peers = await identity.loadPeers(root);
+  assert.equal(peers.con.role, 'chief');
   assert.equal(edges.check(peers, 'w1', 'con').ok, true);
   assert.equal(edges.check(peers, 'j1', 'w1').ok, true);
   assert.equal(edges.check(peers, 'con2', 'con').ok, true);
@@ -539,26 +543,40 @@ test('M3: CLI registers role chief, --chief and --pair <worker>, the documented 
   assert.match(missing.stderr, /needs --chief/);
 });
 
-test('M3: a stored role console record reads back as chief under the switch only', async t => {
+test('M3: a stored role console record reads back as chief, switch on or off', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'new', { role: 'chief' });
   await writeFile(join(root, 'peers', 'oldcon.json'),
     JSON.stringify({ n: 'oldcon', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
   await oldRecord(root, 'oldw', { role: 'worker', console: 'oldcon' });
-  await withSwitch(undefined, async () => {
-    const peers = await identity.loadPeers(root);
-    assert.equal(peers.oldcon.role, 'chief');
-    assert.equal(edges.check(peers, 'oldw', 'oldcon').ok, true);
-    await identity.register(root, 'succ', { role: 'chief', predecessor: 'oldcon' });
-    assert.equal((await identity.succeed(root, 'oldcon', 'succ')).successor, 'succ');
-  });
-  await writeFile(join(root, 'peers', 'oldcon2.json'),
-    JSON.stringify({ n: 'oldcon2', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
-  await withSwitch('0', async () => {
-    assert.equal(edges.check({ c: { n: 'c', role: 'console' }, w: { n: 'w', role: 'worker', console: 'c' } }, 'w', 'c').ok, false);
-    await assert.rejects(identity.status(root, 'oldcon2'), /invalid role: console/);
-    await assert.rejects(identity.register(root, 'again', { role: 'console' }), /invalid role: console/);
-  });
+  for (const value of [undefined, '0']) {
+    await withSwitch(value, async () => {
+      const peers = await identity.loadPeers(root);
+      assert.equal(peers.oldcon.role, 'chief');
+      assert.equal(edges.check(peers, 'oldw', 'oldcon').ok, true);
+      assert.equal(await identity.status(root, 'oldcon'), 'unbound');
+    });
+  }
+  assert.equal(edges.check({ c: { n: 'c', role: 'console' }, w: { n: 'w', role: 'worker', console: 'c' } }, 'w', 'c').ok, true);
+  await identity.register(root, 'succ', { role: 'chief', predecessor: 'oldcon' });
+  assert.equal((await identity.succeed(root, 'oldcon', 'succ')).successor, 'succ');
+});
+
+test('M3: a reader that predates the chief role still reads every record this code writes', async t => {
+  // The role check of the reader before this change: console, no chief.
+  const OLD_ROLES = ['worker', 'console', 'judge', 'consult'];
+  const oldReader = text => { const role = JSON.parse(text).role; if (!OLD_ROLES.includes(role)) throw new Error(`invalid role: ${role}`); return role; };
+  const { root } = await fixture(t);
+  const live = await fakeProc(t, chain);
+  await bound(root, live);
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+  await identity.register(root, 'j', { role: 'judge', chief: 'con', pair: 'worker' });
+  await identity.register(root, 'c', { role: 'consult', chief: 'con' });
+  await identity.succeed(root, 'con', 'new');
+  const names = ['con', 'worker', 'new', 'j', 'c'];
+  const seen = {};
+  for (const name of names) seen[name] = oldReader(await readFile(join(root, 'peers', `${name}.json`), 'utf8'));
+  assert.deepEqual(seen, { con: 'console', worker: 'worker', new: 'console', j: 'judge', c: 'consult' });
+  assert.equal(JSON.parse(await readFile(join(root, 'peers', 'con.json'), 'utf8')).successor, 'new');
 });
 
 test('M3: register reads the console option as the chief under the switch only', async t => {
@@ -570,10 +588,11 @@ test('M3: register reads the console option as the chief under the switch only',
   await withSwitch('0', () => assert.rejects(identity.register(root, 'w2', { role: 'worker', console: 'con' }), /--console was renamed to --chief/));
 });
 
-test('M3: CLI accepts --role console and --console under the switch and refuses them with it off', async t => {
-  const { state, run } = await cliState(t);
+test('M3: CLI accepts --role console always and --console under the switch only', async t => {
+  const { state, run, raw } = await cliState(t);
   assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
-  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
+  assert.equal((await raw('con')).role, 'console');
+  assert.equal(run('0', 'register', 'con3', '--role', 'console').status, 0);
   assert.equal(run('1', 'register', 'w1', '--role', 'worker', '--console', 'con').status, 0);
   const root = await store.busRoot({ stateHome: state });
   assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
@@ -581,7 +600,4 @@ test('M3: CLI accepts --role console and --console under the switch and refuses 
   const off = run('0', 'register', 'w3', '--role', 'worker', '--console', 'con');
   assert.notEqual(off.status, 0);
   assert.match(off.stderr, /--console was renamed to --chief/);
-  const offRole = run('0', 'register', 'con3', '--role', 'console');
-  assert.notEqual(offRole.status, 0);
-  assert.match(offRole.stderr, /invalid role: console/);
 });

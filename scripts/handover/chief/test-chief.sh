@@ -2365,7 +2365,7 @@ run79() { # <variant> <cmd> <bucket> [extra env...]
 }
 out79a="$(run79 in new bus79in)"
 session79a="DEMO-nextleg-${today}A-bus79-chief"
-check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role chief"
+check "79 opted-in new: register --role console, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
 check "79 opted-in new: the launch log records the registration" \
@@ -2373,7 +2373,7 @@ check "79 opted-in new: the launch log records the registration" \
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
 session79b="DEMO-nextleg-${today}B-bus79-chief"
-check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role chief --predecessor $session79a
+check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
 succeed $session79b"
 check "79 opted-in next: the launch log records the registration and the stamp" \
     "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as chief, stamped successor of $session79a\$")" "1"
@@ -2899,7 +2899,7 @@ s88a="DEMO-nextleg-${today}A-bus88-chief"
 out88a="$(print88 in new bus88in)"
 paste88 "$out88a"
 check "88 opted-in new: the pasted line registers the chief, then binds the pid claude runs as" \
-    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role chief
+    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role console
 bind $s88a $(pid88)"
 check "88 opted-in new: claude gets HIMMEL_BUS_NAME and no other HIMMEL_BUS_*" \
     "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=$s88a extra=<unset>"
@@ -2907,7 +2907,7 @@ s88b="DEMO-nextleg-${today}B-bus88-chief"
 out88b="$(print88 in next bus88in)"
 paste88 "$out88b"
 check "88 opted-in next: register carries --predecessor <outgoing session>" \
-    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role chief --predecessor $s88a"
+    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role console --predecessor $s88a"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88b.md" "$(token_of "$out88b")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88a.md" "$(token_of "$out88a")" >/dev/null 2>&1
 out88c="$(print88 out new bus88out)"
@@ -2918,7 +2918,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88out/$s88a.md" "$(toke
 out88d="$(print88 in new bus88fail)"
 paste88 "$out88d" BUS88_FAIL=1
 check "88 failed register: no bind, claude starts unbound" \
-    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role chief|bus_name=<unset> extra=<unset>"
+    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
 # a broken profile probe is not an opt-out: the printed line runs claude unbound and chief.sh says so
 out88e="$(print88 broken new bus88probe)"
