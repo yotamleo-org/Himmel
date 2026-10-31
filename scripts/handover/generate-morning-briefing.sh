@@ -524,8 +524,9 @@ fi
 
 # ISO-8601 with an offset to epoch seconds: shifts store their times so, gh stores UTC.
 # shellcheck disable=SC2016 # a jq program: $t, $e and $o are jq variables, not shell ones
-jq_ep='def ep: . as $t | ($t[0:19] + "Z" | fromdateiso8601) as $e | ($t[19:]) as $o
-    | if ($o == "Z" or $o == "") then $e
+jq_ep='def ep: capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})(:(?<s>[0-9]{2}))?(?<z>Z|[+-][0-9]{2}:[0-9]{2})?$") as $m
+    | (($m.d + ":" + ($m.s // "00") + "Z") | fromdateiso8601) as $e | ($m.z // "Z") as $o
+    | if $o == "Z" then $e
       else ((($o[1:3] | sub("^0"; "") | if . == "" then 0 else tonumber end) * 3600) + (($o[4:6] | sub("^0"; "") | if . == "" then 0 else tonumber end) * 60)) as $s
         | if $o[0:1] == "+" then $e - $s else $e + $s end end;'
 

@@ -825,6 +825,15 @@ if [ "$night_prs" = "2" ]; then pass "prs: the PR merged at the close time count
 assert_contains "prs: the bar names both windows" "Spend per shift covers each shift over its own [opened, closed)" "$prs"
 assert_contains "prs: the report window is named" "The tiles, Completed and Chiefs cover 2026-10-29 00:00 to 2026-10-30 00:00" "$prs"
 
+echo "TEST: shift times stored to the minute (no seconds, the real shift.ts form) still name the shift and count its PRs"
+SH_FILE2M="$SH_DIR/shifts2m.jsonl"
+{ jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_DAY"; jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_EVE"; } > "$SH_FILE2M"
+FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2M" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-min.md" --since-date 2026-10-28 >/dev/null
+prsm=$(cat "$SH_DIR/prs-min.md")
+day_prs_m=$(cell "2026-10-28T08:00+01:00" 4 "$prsm"); night_prs_m=$(cell "2026-10-28T20:00+01:00" 4 "$prsm")
+if [ "$day_prs_m" = "1" ]; then pass "prs: a minute-form day shift counts only the PR merged inside it"; else fail "prs: a minute-form day shift counts only the PR merged inside it" "got '$day_prs_m'"; fi
+if [ "$night_prs_m" = "2" ]; then pass "prs: a minute-form night shift counts the PR merged at the day's close"; else fail "prs: a minute-form night shift counts the PR merged at the day's close" "got '$night_prs_m'"; fi
+
 echo "TEST: spend per shift shows a source mark per column, sums no column, and reads not available for a missing source"
 FAKE_SPEND_SH="$TMP_ROOT/shift-spend-per-shift.sh"
 cat >"$FAKE_SPEND_SH" <<'FAKE'
