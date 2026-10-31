@@ -3255,7 +3255,7 @@ rm -f "$sb31/tr.calls"
 out31=$(PATH="$sb31/fakebin:$PATH" HIMMEL_RUNTIME_PREFLIGHT=0 bash "$RUNNER" --list "$sb31/scripts" 2>&1)
 rc31=$?
 calls31=$(grep -c . "$sb31/tr.calls" 2>/dev/null || true)
-nsuites31=$(grep -c 'test-case31-' <<< "$out31")
+nsuites31=$(grep -c '^\[RUN \] .*test-case31-' <<< "$out31")
 if [ "$ctl31" -eq 1 ] && [ "$rc31" -eq 0 ] && [ "$nsuites31" -eq 6 ] && [ "${calls31:-0}" -le "$nsuites31" ]; then
   pass "31: --list over 6 suites started ${calls31:-0} tr (at most one per suite; was 129 with the per-line fork)"
 else
