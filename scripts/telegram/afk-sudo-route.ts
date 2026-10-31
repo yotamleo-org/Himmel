@@ -105,6 +105,8 @@ const CODE_REPLY = /^\s*(\d{6})\s*$/;
 // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
 // anywhere in the text. Used only to decide a message must not be forwarded.
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
+// Any letter: a reply to a bot message carrying one is words, not a bare code.
+const HAS_LETTER = /\p{L}/u;
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -150,10 +152,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // A message holding a code is still a code, wherever it sits in the text, and an
       // inbox is readable by the sessions that can run the helper. Consume it, never
       // pass it on: a reply to a bot message whose prompt is gone (the map is in
-      // memory, so a restart forgets it), or any message sent while a prompt waits.
+      // memory, so a restart forgets it) when the text is only a code, or any
+      // message sent while a prompt waits. A reply with words around its numbers
+      // ("do 8276 8277 next") to a bot message is ordinary text.
       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? null;
-        if (msg.reply_to_bot === true || waiting) {
+        if ((msg.reply_to_bot === true && !HAS_LETTER.test(msg.text)) || waiting) {
           void deps.reply(msg.chat_id, waiting
             ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});

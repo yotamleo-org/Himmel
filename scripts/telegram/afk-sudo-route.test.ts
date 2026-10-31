@@ -354,6 +354,16 @@ test("button: a code-shaped reply to a bot message with no known prompt is consu
   }
 });
 
+test("button: HIMMEL-8365 a reply to a non-sudo bot message with words and numbers is ordinary text", async () => {
+  for (const text of ["do 8276 8277 next", "ship 123456 and 654321 today", "ticket 123-456 is done"]) {
+    const b = buttons();
+    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies).toEqual([]);
+  }
+});
+
 test("button: while a code prompt is live, a code-shaped message sent without replying is consumed, not forwarded", async () => {
   for (const text of ["123456", "123 456", "123-456"]) {
     const b = buttons();
@@ -383,11 +393,12 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   }
 });
 
-test("button: a code buried in words or punctuation is consumed on a reply to a bot message and while a prompt is live", async () => {
+test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it holds no words", async () => {
   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
   for (const text of texts) {
+    // with words around it, a reply to a bot message with no known prompt is ordinary text
     const gone = buttons();
-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(!/\p{L}/u.test(text));
     const live = buttons();
     live.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
