@@ -181,7 +181,12 @@ rgit checkout -q -b trust "$JUDGED"
 printf 'y\n' >> "$READY_REPO/scripts/ci/x.sh"; rgit add -A && rgit commit -qm trust
 NTRUST=$(rgit rev-parse HEAD)
 rgit checkout -q -
-ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST"
+# a second docs-only push after NDOC, on its own branch: NDOC is then an intermediate head between JUDGED and NDOC2
+rgit checkout -q -b docs2 "$NDOC"
+printf 'again\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs2
+NDOC2=$(rgit rev-parse HEAD)
+rgit checkout -q -
+ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2"
 cp "$LEDGER" "$tmp/ledger.base"
 
 CHIEF="$tmp/chief.md"
@@ -518,8 +523,18 @@ STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NTRUST READY_STUB_HEAD=$NTRUST run 77 "$
 check    "A1b a trust-path delta writes no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NTRUST.md" ] && echo yes || echo no)" "no"
 gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b a NO-GO at the head beats a carried GO" 5
+# a NO-GO by another qid at the judged head, or at a head between the judged head and this one, also refuses the carry
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b a NO-GO by another qid at the judged head refuses the carry" 5
+check    "A1b a NO-GO at the judged head: no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NDOC.md" ] && echo yes || echo no)" "no"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO by another qid at an intermediate head refuses the carry" 5
+check    "A1b a NO-GO at an intermediate head: no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NDOC2.md" ] && echo yes || echo no)" "no"
 
 # 8g. the act can fail after the checks: go.sh refuses, or the bus does not deliver
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC"
+contains "A1b go.sh refuses after a carry: the answer names the no-op record it left" "$OUT" "delta no-op record for qj"
 gofresh; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"; run 77 "$SHA"
 check    "A1b go.sh refuses: exit 10" "$RC" "10"
 contains "A1b go.sh refuses: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "

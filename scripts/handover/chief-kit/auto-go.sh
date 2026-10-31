@@ -25,7 +25,9 @@
 #      GO") and for a docs PR (every changed file under docs/ or a *.md file; decision 286).
 #      Then one verdict qid under verdicts/ must rule `**GO** for head <head>` for this PR
 #      (go-gate.sh's go_trust_verdict: signed, this PR, no NO-GO at the head), or a GO at an
-#      earlier head of this PR must carry: delta-class.sh <judged> <head> prints `none`. Every
+#      earlier head of this PR must carry: delta-class.sh <judged> <head> prints `none` (which means
+#      no trust path and no prior finding line was touched, not that the change is trivial), and no
+#      qid may hold a NO-GO for this PR at that judged head or at a head after it. Every
 #      qid that names this PR or head is read; a NO-GO at the head, or a verdict that is unsigned,
 #      unparsed or names another PR, refuses. Anything else needs no verdict (an ordinary GO)
 #   6. cr-disposition.sh check is clean
@@ -376,6 +378,23 @@ else
     GO_QID=$(printf '%s' "$GOQIDS" | head -n 1)
     # no GO at the head: a GO at an earlier head of this PR carries when the delta classifies none
     if [ -z "$GO_QID" ]; then
+        # no carry while ANY qid holds a NO-GO for this PR at an earlier GO's head or at a head after it
+        # (an unresolvable head counts as after: a read that fails refuses)
+        nogo_after() { # <judged head>: refuses (fail 5) on a NO-GO for this PR at it or at a descendant of it
+            local nq nf nh nrc
+            while IFS= read -r nq; do
+                [ -n "$nq" ] || continue
+                while IFS= read -r nf; do
+                    [ -n "$nf" ] || continue
+                    # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+                    while IFS= read -r nh; do
+                        [ -n "$nh" ] || continue
+                        if [ "$nh" = "$1" ]; then nrc=0; else nrc=0; git merge-base --is-ancestor "$1" "$nh" 2>/dev/null || nrc=$?; fi  # swallow-ok: rc 1 is not-after; any other rc refuses below
+                        case "$nrc" in 1) ;; *) fail 5 "verdict $nq holds a NO-GO for head ${nh:0:8} of PR $PR, at or after the judged head ${1:0:8}: a GO does not carry past it" ;; esac
+                    done < <(sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p' "$nf" 2>/dev/null)
+                done < <(grep -lx -e "pr: ${PR}" "$VERDICTS/$nq"/*.md 2>/dev/null)
+            done <<< "$QIDS"
+        }
         while IFS= read -r q; do
             [ -n "$q" ] || continue
             # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
@@ -383,6 +402,7 @@ else
             while IFS= read -r jh; do
                 [ -n "$jh" ] && [ "$jh" != "$SHA" ] || continue
                 go_trust_verdict "$ROOT" "$q" "$jh" "$ANCHOR" "$PR" >/dev/null || continue
+                nogo_after "$jh"
                 DC=$(bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
                 LAST_DC="$DC"
                 if [ "$DC" = none ]; then GO_QID="$q"; CARRY_FROM="$jh"; break 2; fi
@@ -460,10 +480,16 @@ GO_RC=0
 GO_OUT=$(bash "$HERE/go.sh" --model auto-go --effort script ${GO_QID:+--trust-reviewed "$GO_QID"} "$PR" "$SHA" 2>&1) || GO_RC=$?
 if [ "$GO_RC" -ne 0 ]; then
     GO_WHY=$(printf '%s\n' "$GO_OUT" | grep -m1 -E '^go: ') || GO_WHY=$(first_line "$GO_OUT")  # swallow-ok: no go: line falls back to the first output line
-    fail 9 "go.sh exit $GO_RC: $GO_WHY"
+    fail 9 "go.sh exit $GO_RC: $GO_WHY${CARRY_FROM:+ (the delta no-op record for $GO_QID at ${SHA:0:8}, written before go.sh ran, stays under verdicts/$GO_QID)}"
 fi
 GO_FILE="${GO_OUT##*$'\n'}"
-case "$GO_FILE" in */.locks/go/"$PR.$SHA") ;; *) fail 9 "go.sh exited 0 but printed no GO file path for PR $PR at $SHA" ;; esac
+case "$GO_FILE" in
+    */.locks/go/"$PR.$SHA") ;;
+    *)  # go.sh succeeded, so a GO file may stand: name it in the answer and the audit row
+        GO_SEEN=$(printf '%s\n' "$GO_OUT" | grep -m1 -E "/\.locks/go/${PR}\.${SHA}\$") || GO_SEEN=".locks/go/$PR.$SHA"  # swallow-ok: no such line falls back to the relative path
+        A_GOFILE="$GO_SEEN"
+        fail 9 "go.sh exited 0 but its last line is not the GO file path for PR $PR at $SHA; a GO file may exist at .locks/go/$PR.$SHA ($GO_SEEN)" ;;
+esac
 [ -f "$GO_FILE" ] || fail 9 "go.sh printed $GO_FILE but no such file exists"
 A_GOFILE="$GO_FILE"
 
