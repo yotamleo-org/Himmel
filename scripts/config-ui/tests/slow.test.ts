@@ -235,3 +235,53 @@ test("a server idle after a feed still exits on time (an in-flight report does n
   await sleep(2000);
   expect(idled).toBe(true);
 });
+
+// the Health picker lives in the rail only on the Health page, and a refreshed feed re-reads it (no route change).
+type PickerHarness = { pages: () => string; refresh: () => Promise<void>; seed: (f: object) => void; go: (hash: string) => void; setFail: (n: number) => void };
+async function pickerHarness(hash: string, run: (h: PickerHarness) => Promise<void>) {
+  const { parseView, projectVerdict } = await import("../public/health.js");
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8")
+    .replace(/^import .*$/gm, "").concat("\nglobalThis.__refresh = refreshFeed;\nglobalThis.__seed = (f) => { feed = f; };\nglobalThis.__route = route;\n");
+  let fail = 0, pages = "";
+  const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
+  const pagesEl = { textContent: "", hidden: false, focus() {}, setSelectionRange() {}, set innerHTML(v: string) { pages = v; }, get innerHTML() { return pages; } };
+  const loc = { hash, pathname: "/", search: "" };
+  const g = globalThis as Record<string, unknown>;
+  const names = ["render", "renderNav", "renderHeader", "renderHealth", "renderInventory", "renderProbe", "parseView", "projectVerdict", "parseLanding", "navLinks", "fleetDot", "healthDot", "verdict", "document", "location", "history", "fetch", "addEventListener", "__refresh", "__seed", "__route"];
+  const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
+  const json = (b: object) => Promise.resolve({ status: 200, ok: true, json: async () => b });
+  Object.assign(g, {
+    render: () => "", renderNav: () => "", renderHeader: () => "", renderHealth: () => "", renderInventory: () => "", renderProbe: () => "", parseView, projectVerdict,
+    parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }), verdict: () => ({ cls: "off", word: "No data" }),
+    document: { querySelector: (q: string) => (q === "#pages" ? pagesEl : el()), querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
+    location: loc, history: { replaceState() {} }, addEventListener() {},
+    fetch: (url: string) => url === "/api/projects" ? json({ current: "himmel", projects: [{ name: "himmel", checkedAt: "2026-10-31T00:00:00Z", counts: { project: { fail, warn: 0 } } }] })
+      : url === "/api/feed" ? json({ generatedAt: "2" }) : new Promise(() => {}),
+  });
+  try {
+    new Function(src)();
+    await sleep(20);
+    await run({ pages: () => pages, refresh: g.__refresh as () => Promise<void>, seed: g.__seed as (f: object) => void,
+      go: (h) => { loc.hash = h; (g.__route as () => void)(); }, setFail: (n) => { fail = n; } });
+  } finally { for (const n of names) { if (saved[n] === undefined) delete g[n]; else g[n] = saved[n]; } }
+}
+
+test("page: a refreshed feed changes the picker's verdict word with no route change", async () => {
+  await pickerHarness("#/health", async (h) => {
+    expect(h.pages()).toContain("himmel · All clear");
+    h.seed({ generatedAt: "1" });
+    h.setFail(1);
+    await h.refresh();
+    await sleep(20);
+    expect(h.pages()).toContain("himmel · Act now");
+    expect(h.pages()).not.toContain("All clear");
+  });
+});
+
+test("page: the picker is gone from the rail once the reader leaves Health", async () => {
+  await pickerHarness("#/health", async (h) => {
+    expect(h.pages()).toContain('id="proj"');
+    h.go("#/config");
+    expect(h.pages()).not.toContain('id="proj"');
+  });
+});
