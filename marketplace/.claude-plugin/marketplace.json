@@ -407,7 +407,7 @@
         "url": "https://github.com/BuilderIO/skills.git",
         "sha": "f1e12a1b75f342e0b49ebaf182b05168f4fa7b96"
       },
-      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing (HIMMEL-4068). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha fecf1ffac181 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[BuilderIO/skills, MIT, vendor + attribution only, no carried delta] Builder.io skills: all upstream skills load, including visual-plan and visual-recap. strict:true because upstream ships a plugin.json: strict:false plus a marketplace skills list is a manifest conflict that loads nothing (HIMMEL-4068). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha f1e12a1b75f3 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "strict": true,
       "author": {
         "name": "BuilderIO",
@@ -530,7 +530,7 @@
         "url": "https://github.com/anthropics/skills.git",
         "sha": "ca45fc496a3436251f191354091d557da31c15b5"
       },
-      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it, HIMMEL-4068), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha dbd4588f9e10 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-reference profile (HIMMEL-4012).",
+      "description": "[anthropics/skills, mixed per skill LICENSE.txt: Apache-2.0 for the design skills, source-available for docx/pdf/pptx/xlsx, vendor + attribution only, no carried delta] anthropics/skills: the whole upstream skills/ dir loads (a marketplace skills list cannot subset it, HIMMEL-4068), including the source-available docx/pdf/pptx/xlsx; the design ones are theme-factory, brand-guidelines, canvas-design. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha ca45fc496a34 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-reference profile (HIMMEL-4012).",
       "strict": false,
       "author": {
         "name": "anthropics",
@@ -545,7 +545,7 @@
         "url": "https://github.com/Nutlope/hallmark.git",
         "sha": "4f6a46c6dc325d40ab268c93e25c7b96676ebccd"
       },
-      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (operator ruling: trial, not core). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 7ec868225c6c per himmel supply-chain policy (HIMMEL-3069). Design kit, design-trial profile (HIMMEL-4012).",
+      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (operator ruling: trial, not core). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 4f6a46c6dc32 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-trial profile (HIMMEL-4012).",
       "strict": false,
       "author": {
         "name": "Nutlope",
@@ -575,7 +575,7 @@
         "url": "https://github.com/higgsfield-ai/skills.git",
         "sha": "4d0757471a704dac8729ea3c2ef0f3f330e0d9b6"
       },
-      "description": "[higgsfield-ai/skills, MIT, vendor + attribution only, no carried delta] Higgsfield image and video generation skills; they drive the `higgsfield` CLI through Bash (the operator installs the CLI and signs in: `npm i -g @higgsfield/cli`, `higgsfield auth login`); the skills' own `curl | sh` CLI bootstrap is unpinned and must never be run, install only by npm. No MCP. higgsfield-websites (public site deploy) is deliberately not listed. Every prompt and uploaded file goes to Higgsfield; block-agent-native-egress.sh denies a higgsfield Bash call for salus. strict:true with its seven skill dirs listed, exactly as upstream's own marketplace entry does: upstream keeps them at the repo root (no skills/ dir) and its plugin.json declares no components, so the list is the only thing that loads them. The install shape is unproven here until the operator station check. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 9b13ee6c7410 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen add-on (HIMMEL-7826).",
+      "description": "[higgsfield-ai/skills, MIT, vendor + attribution only, no carried delta] Higgsfield image and video generation skills; they drive the `higgsfield` CLI through Bash (the operator installs the CLI and signs in: `npm i -g @higgsfield/cli`, `higgsfield auth login`); the skills' own `curl | sh` CLI bootstrap is unpinned and must never be run, install only by npm. No MCP. higgsfield-websites (public site deploy) is deliberately not listed. Every prompt and uploaded file goes to Higgsfield; block-agent-native-egress.sh denies a higgsfield Bash call for salus. strict:true with its seven skill dirs listed, exactly as upstream's own marketplace entry does: upstream keeps them at the repo root (no skills/ dir) and its plugin.json declares no components, so the list is the only thing that loads them. The install shape is unproven here until the operator station check. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 4d0757471a70 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen add-on (HIMMEL-7826).",
       "strict": true,
       "skills": [
         "./higgsfield-generate",
