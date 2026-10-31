@@ -593,6 +593,14 @@ printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
 out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I "$tmp/swap-request.py" "$LIB" "$R" "$R/bin/mytool" "$R/evil" "$R/bin/mytool" </dev/null 2>&1); id=$(rid "$out")
 assert_contains "RED 8250: an argv0 and a file record of one path that disagree report changed" "result=changed" "$(approve_r 3 "$id" "$(code 3)")"
 assert_eq "RED 8250: the file the operator was shown did not run as the swapped one" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+# The descriptors handed to the run are path-only (O_PATH): the helper opened the file as root, and a program that
+# starts before the script as the run-as user must not be able to read through them (Linux checks access at open).
+new_root leakfd; cfg "$ALL" true
+printf 'import os\nopen("%s/py-ran", "w").close()\nfor n in range(3, 40):\n    try:\n        os.lseek(n, 0, 0)\n        if os.read(n, 1):\n            open("%s/leak", "w").close()\n    except OSError:\n        pass\n' "$R" "$R" > "$R/x.py"
+out=$(rr 0 --cwd "$R" -- python3 x.py); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+assert_eq "RED 8250: control: the script started from its held descriptor ran" "yes" "$([ -e "$R/py-ran" ] && echo yes || echo no)"
+assert_eq "RED 8250: the run cannot read the helper's descriptors" "no" "$([ -e "$R/leak" ] && echo yes || echo no)"
 
 echo "== slice 1a (judge KS-j4307-1): what is hashed is what runs, and every element keeps its target =="
 new_root argv0lnk; cfg "$ALL" true

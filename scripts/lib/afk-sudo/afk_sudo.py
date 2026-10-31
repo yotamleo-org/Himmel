@@ -205,6 +205,11 @@ def dev_ino(f):
     return [st.st_dev, st.st_ino]
 
 
+def path_only(f):
+    """A path-only (O_PATH) descriptor of the file f has open: it names that file for exec but cannot be read."""
+    return os.open(f"/proc/self/fd/{f.fileno()}", os.O_PATH | os.O_CLOEXEC)
+
+
 def verify_open(path, sha256, ident):
     """Open path once and hash that open file: the file when it is the frozen one (same sha256, same
     st_dev and st_ino), else None. The caller starts the program from this descriptor, never from the
@@ -222,7 +227,7 @@ def verify_open(path, sha256, ident):
 
 # ponytail: a name list, not shebang or ELF detection; a script run by an interpreter outside it is hashed and
 # compared by path as before. upgrade path: classify argv[0] by its file instead.
-INTERPRETERS = re.compile(r"(ba|da|z|k)?sh|python[0-9.]*|perl|ruby|node|php|lua")
+INTERPRETERS = re.compile(r"(ba|da|z|k)?sh|python[0-9.]*|perl|ruby|php|lua")
 
 
 def script_operand(rec):
@@ -456,7 +461,7 @@ def capture(cmd, env, cwd, stdin_path, timeout, pass_fds=()):
 def execute_run(payload, config):
     """Re-check everything the operator approved, then run it. Returns the broker's result dict."""
     rid = payload["id"]
-    held, frozen = {}, {}  # path -> the open file the check hashed (the program and its script start from these descriptors), and what it was frozen as
+    held, frozen, sealed = {}, {}, []  # path -> the open file the check hashed, what it was frozen as, and the path-only fds the run starts from
     try:
         rec = load_record(rid)
         if rec.get("id") != rid or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
@@ -508,11 +513,16 @@ def execute_run(payload, config):
         # Start the verified descriptors, never the paths: a name swapped after the check is not what runs.
         # The program (and the script an interpreter runs) is named /proc/self/fd/N, which the process that
         # execs it resolves to the same open file; the cost is that the program sees that name as argv[0].
-        argv, fds = list(rec["argv"]), [held[rec["argv0_path"]].fileno()]
+        # What is handed over is a path-only (O_PATH) descriptor of the verified file, never the read descriptor
+        # opened here as root: access is checked when a file is opened, so a program that starts first as the
+        # run-as user could read a root-only script through a readable one.
+        argv, fds = list(rec["argv"]), [path_only(held[rec["argv0_path"]])]
+        sealed.extend(fds)
         argv[0] = f"/proc/self/fd/{fds[0]}"
         i = script_operand(rec)
         if i is not None:
-            fds.append(held[rec["targets"][i][len("file:"):]].fileno())
+            fds.append(path_only(held[rec["targets"][i][len("file:"):]]))
+            sealed.append(fds[-1])
             argv[i] = f"/proc/self/fd/{fds[-1]}"
         cmd = argv
         if SEAM or rec["uid"] != 0:
@@ -529,6 +539,8 @@ def execute_run(payload, config):
     finally:
         for f in held.values():
             f.close()
+        for fd in sealed:
+            os.close(fd)
     out, err = streams["stdout"], streams["stderr"]
     kept = True
     try:  # the command already ran: a result file that cannot be written must not hide that

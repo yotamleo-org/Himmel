@@ -111,19 +111,25 @@ broker's pending payload, not next to the record.
   script it sources, an interpreter's imports, a config it reads) is not bound. The executor
   opens argv[0] once (`open_regular`), compares the open file's `st_dev` and `st_ino` with the
   frozen record, hashes that open file, and starts the program from the same descriptor,
-  named `/proc/self/fd/N` and passed through `pass_fds`: a name swapped between the check
-  and the start (a rename over it, a link retargeted) cannot change what runs, which is the
-  file the operator saw. The same is done for the script an interpreter runs: when argv[0]
-  is a known interpreter (`sh`, `bash`, `python3`, `perl`, `ruby`, `node`, `php`, `lua`
-  and kin) and no option before it supplies the program (`-c`, `-m`, `-e`, any `--` option),
+  named `/proc/self/fd/N` and passed through `pass_fds` as a path-only (`O_PATH`)
+  descriptor made from the open file: a name swapped between the check and the start (a
+  rename over it, a link retargeted) cannot change what runs, which is the file the operator
+  saw. The descriptor is path-only because the open file was opened as root, and Linux checks
+  access when a file is opened: a read descriptor passed on would let a program that starts
+  first as the run-as user (a startup hook under its home) read a root-only script. The same
+  is done for the script an interpreter runs: when argv[0] is a known interpreter (`sh`,
+  `bash`, `python3`, `perl`, `ruby`, `php`, `lua` and kin; not `node`, whose loader resolves
+  the main script's real path itself, so a renamed-away or planted `<path> (deleted)` name
+  still runs other code) and no option before it supplies the program (`-c`, `-m`, `-e`, any `--` option),
   the first word that is no option and names a bound file is replaced by its held descriptor
   (a word that names no file, such as the `ignore` of `-W ignore`, is skipped; a file given
   as an option's value before the script is taken for the script).
   Other file arguments are hashed from an open file and compared by identity, but still
   opened by path by the command. What is left: a file edited **in place** (same inode)
   between the hash and the start, which the session can do when it can write the file; an
-  interpreter outside the name list, or one given its script after `-e`-style options,
-  re-opens the script by path; and the program sees `/proc/self/fd/N` as its argv[0], so a
+  interpreter outside the name list (`node` among them), or one given its script after
+  `-e`-style options, re-opens the script by path; `sh` started as `/proc/self/fd/N` is not
+  named `sh`, so where `/bin/sh` is bash it runs outside bash's POSIX mode; and the program sees `/proc/self/fd/N` as its argv[0], so a
   multi-call binary that picks its applet from argv[0] does not find it. A script run this
   way sees its own location as `/proc/self/fd/N` too: a shell script's `$0` and a Python
   script's `__file__` (a script that finds sibling files from either looks in the wrong
