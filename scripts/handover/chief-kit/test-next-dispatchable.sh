@@ -1460,6 +1460,15 @@ lacks "(8349) a BLOCKED candidate is not offered as STACKABLE" "$sb" "STACKABLE 
 has "(8349) a BLOCKED candidate drops on its classification" "$sb" "# drop HIMMEL-845 classification BLOCKED"
 has "(8349) the classifiable candidate is still offered" "$sb" "STACKABLE HIMMEL-851 on N5 (2/4)"
 
+# a Series block that names no item has an unknown count: it offers no room, and --resume-only lists no STACKABLE row
+printf '# live\n> **Series:**\n> **Writes:** scripts/config-ui/app.js\n' > "$WORK/HIMMEL-794-N9-empty.md"
+mkfleet "$WORK/fleet-empty.json" "N9:$WORK/HIMMEL-794-N9-empty.md"
+se="$(runs "$SM" 1 --workers-from "$WORK/fleet-empty.json" --why)"
+lacks "(8349) a Series block with no parseable item offers no STACKABLE room" "$se" "STACKABLE"
+has "(8349) an unreadable-count series worker still holds the file" "$se" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N9"
+sr="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --priority-pool-only --resume-only)"
+lacks "(8349) --priority-pool-only --resume-only lists no STACKABLE row" "$sr" "STACKABLE"
+
 mkdoc "$WORK/HIMMEL-791-N6-plain.md" 0 ""
 mkfleet "$WORK/fleet-plain.json" "N6:$WORK/HIMMEL-791-N6-plain.md"
 sp="$(runs "$SM" 1 --workers-from "$WORK/fleet-plain.json" --why)"

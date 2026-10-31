@@ -736,8 +736,9 @@ if workers_from and os.path.isfile(workers_from):
             mine = [f for i in starts for f in scope_paths(block(i))]
             held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
             sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
-            if sl:  # a series worker: its brief carries a Series block, one numbered line per item
-                series_workers[worker.get('label', '?')] = max(1, len(set(SERIES_ITEM_RE.findall(block(sl[0])))))
+            items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
+            if items:  # a series worker: its brief carries a Series block, one numbered line per item. A block that names no item has an unknown count, so it offers no room
+                series_workers[worker.get('label', '?')] = len(items)
             if os.environ.get('ND_WHY') == '1':
                 for f in dict.fromkeys(mine):
                     if not concrete(f):
@@ -1188,8 +1189,8 @@ if pool_only:
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
     flush_rows()
-    emit_stackable()
     if not resume_only:
+        emit_stackable()
         intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
         print_intake(intake)
