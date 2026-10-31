@@ -2045,7 +2045,8 @@ for (const o of findings.values()) {
       perspective: o.perspective || "off",
       fu_class: severity === "imp" ? fuClass : "polish",
       fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
-      class: typeof o.class === "string" ? o.class.trim() : ""
+      class: typeof o.class === "string" ? o.class.trim() : "",
+      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
     else if (!resolved && verdict !== "fixed") blocking.push(id);
@@ -2057,7 +2058,8 @@ for (const o of findings.values()) {
     artifact: o.artifact || "diff",
     perspective: o.perspective || "off",
     fu_class: "polish",
-    class: typeof o.class === "string" ? o.class.trim() : ""
+    class: typeof o.class === "string" ? o.class.trim() : "",
+    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
   });
   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
            reason === e.DEFER_REASON) {
@@ -2146,7 +2148,7 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
     batch_body="$(mktemp -t cr-batch-body.XXXXXX)" || exit 5
     if ! { cat "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
             && printf '\nFindings deferred on %s at %s:\n' "$branch" "$full_head" \
-            && printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>JSON.parse(s).pending.forEach((f,i)=>process.stdout.write((i+1)+". "+f.id+" (class: "+(f.class||"unclassified")+")\n")))'; } > "$batch_body"; then
+            && printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>JSON.parse(s).pending.forEach((f,i)=>process.stdout.write((i+1)+". "+f.id+" (class: "+(f.class||"unclassified")+")\n"+(f.text?"   "+f.text+"\n":""))))'; } > "$batch_body"; then
         rm -f "$batch_body"
         exit 5
     fi
@@ -2217,18 +2219,28 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
             amend_rc=5
             break
         fi
+        if ! finding_text="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).text||""))')"; then
+            amend_rc=5
+            break
+        fi
         class_args=()
         body_file="$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md"
         body_tmp=""
+        class_line=""
         if [ -n "$finding_class" ]; then
             class_args=(--class "$finding_class")
         else
             echo "review-round: finding $finding_id has no class id; omitting --class" >&2
+            class_line='class: unclassified'
+        fi
+        if [ -n "$class_line" ] || [ -n "$finding_text" ]; then
             if ! body_tmp="$(mktemp -t cr-residual-body.XXXXXX)"; then
                 amend_rc=5
                 break
             fi
-            if ! { cat "$body_file" && printf '\nclass: unclassified\n'; } > "$body_tmp"; then
+            if ! { cat "$body_file" \
+                    && { [ -z "$class_line" ] || printf '\n%s\n' "$class_line"; } \
+                    && { [ -z "$finding_text" ] || printf '\nFinding on %s at %s:\n%s\n' "$branch" "$full_head" "$finding_text"; }; } > "$body_tmp"; then
                 rm -f "$body_tmp"
                 amend_rc=5
                 break

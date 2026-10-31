@@ -293,7 +293,7 @@ for recovery_spec in 'sug polish' 'imp hardening'; do
     assert_lacks "$recovery_out" 'create --type Task' "$recovery_class recovery does not print a raw-create command"
 done
 # A missing class is recorded in the body, never invented as a class label.
-printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"sug"}\n' \
+printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-unclassified","severity":"sug","text":"- [critic-unclassified]: a gap [a.sh:3]"}\n' \
     "$recovery_head" > "$recovery_git/cr-critic-scores.jsonl"
 printf 'pending\n' > "$recovery_git/cr-pending/recovery"
 : > "$recovery_log"
@@ -304,6 +304,7 @@ recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] recovery' 
 assert_eq "$recovery_rc" 0 "classless recovery files without inventing a class label"
 assert_lacks "$(cat "$recovery_log")" '"--class"' "classless recovery omits the class option"
 assert_has "$(cat "$recovery_log.body")" 'class: unclassified' "classless recovery records classification in the body"
+assert_has "$(cat "$recovery_log.body")" '- [critic-unclassified]: a gap [a.sh:3]' "8425 a per-finding residual body carries the finding's text and location"
 assert_has "$(cat "$recovery_git/cr-critic-scores.jsonl")" '"deferred_to":"HIMMEL-9500"' "classless recovery records the created ticket"
 if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "classless recovery clears the marker"; else pass "classless recovery clears the marker"; fi
 
@@ -441,7 +442,7 @@ mkdir -p "$rl1_repo"
 rl1_git="$rl1_repo/.git"
 rl1_log="$tmp/rl1-jira.log"
 : > "$rl1_log"
-rl1_sug='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-1","severity":"sug","class":"reader-allowlist"}
+rl1_sug='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-1","severity":"sug","class":"reader-allowlist","text":"- [critic-1]: the allowlist\nmisses a path [docs/guide/x.md:1]"}
 {"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-2","severity":"nit"}
 '
 rl1_crit='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-3","severity":"crit","class":"reader-allowlist"}
@@ -476,6 +477,7 @@ assert_has "$rl1_args" '"--title","Review follow-ups for feat/rl1"' "8425 the ba
 assert_has "$rl1_args" '"--residual-of","HIMMEL-700"' "8425 with no PR and two keys the parent is the first commit's key"
 assert_has "$rl1_args" '"--fu-class","polish"' "8425 the batch carries its most severe class"
 assert_has "$(cat "$rl1_log.body")" '1. critic-1 (class: reader-allowlist)' "8425 the batch body lists the first finding with its class"
+assert_has "$(cat "$rl1_log.body")" '   - [critic-1]: the allowlist misses a path [docs/guide/x.md:1]' "8425 the batch body carries each finding's text and location on one line"
 assert_has "$(cat "$rl1_log.body")" '2. critic-2 (class: unclassified)' "8425 the batch body lists a classless finding as unclassified"
 assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the batch key is remembered in .deferred-to"
 
