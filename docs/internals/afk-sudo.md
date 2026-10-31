@@ -139,14 +139,16 @@ The code is spent whatever happens next: a refusal after the code still consumed
 it. Five rules, each a membership test on one word set built from every argv element,
 the whitespace-split words of each element, the file copies and the stdin (each word also
 in its trimmed, `key=value`, normalised, realpath and basename forms; links resolve before
-`..`). A word that derives more than 64 forms, or whose path the kernel cannot walk (the
+`..`). The `key=value` form is the text after the first `=`; a word that starts with a run
+of `=` derives the text after the whole run once, so a `====` banner is one word, not one
+form per `=`. A word that derives more than 64 forms, or whose path the kernel cannot walk (the
 same strict `realpath` test as the binding above), is refused as `rule=oversize`:
 
 | rule | refuses |
 |---|---|
 | `disk-wipe` | mkfs/wipefs/blkdiscard/partitioners, block devices, `rm` of `/`, a top-level directory or home (or a `/*` glob of one), btrfs subvolume delete of `/` |
 | `secret-read` | `/etc/shadow`, ssh and gpg keys, the Claude credentials and channel `.env`, `.env`, `totp.seed`, secret-tool/gh token/himmel-secrets reads |
-| `main-history` | a force push or delete naming main/master, deleting `refs/heads/main`, `gh repo delete` |
+| `main-history` | a force push or delete naming main/master (`--force*`, `--delete`, a `+` or `:` refspec, or a short-flag cluster carrying `f` or `d`: `-f`, `-d`, `-fu`, `-df`), deleting `refs/heads/main`, `gh repo delete` |
 | `approval-system` | `/etc/himmel`, the libexec dir, state and ledger dirs, sudoers, visudo, this installer |
 | `guards-off` | settings files and `scripts/hooks` outside a worktree, `hooks.json`, `--dangerously-skip-permissions`, `HIMMEL_*_OK=1` and `*_BYPASS*=1`, stopping the telegram bridge |
 
