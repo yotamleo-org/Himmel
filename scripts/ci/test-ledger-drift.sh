@@ -145,11 +145,11 @@ fi
 # The seconds count, not only the suite: alone in a log, its 499 s is the slowest (and only) shard.
 mkdir -p "$SUITE_LOCK_SANDBOX/quar1" || fail "LD5q: cannot create the one-suite dir"
 tail -n 1 "$SUITE_LOCK_SANDBOX/quar/run-39927689757.log" > "$SUITE_LOCK_SANDBOX/quar1/run-1.log" || fail "LD5q: cannot write the one-suite log"
-out_q1=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/quar1" --ledger "$FX/matching-ledger.tsv" --shards 1 2>&1)
-if grepq "$out_q1" -F 'suites=1 shards=1 slowest=499s'; then
+out_q1=$(bash "$LD" --logs "$SUITE_LOCK_SANDBOX/quar1" --ledger "$FX/matching-ledger.tsv" --shards 1 2>&1); rc_q1=$?
+if [ "$rc_q1" -eq 0 ] && grepq "$out_q1" -F 'suites=1 shards=1 slowest=499s'; then
   pass "LD5q: a lone [QUARANTINE] line is measured at its 499 s"
 else
-  fail "LD5q: expected suites=1 shards=1 slowest=499s from a lone [QUARANTINE] line; got: $out_q1"
+  fail "LD5q: expected suites=1 shards=1 slowest=499s from a lone [QUARANTINE] line with rc 0; rc=$rc_q1 got: $out_q1"
 fi
 
 echo "== LD6: the workflow is scheduled and never runs on a PR or a push =="
