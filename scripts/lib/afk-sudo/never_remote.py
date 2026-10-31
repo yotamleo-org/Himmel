@@ -7,8 +7,8 @@ may only ADD patterns (`never_remote_extra`).
 One word set per request: every argv element and its whitespace-split words, the words
 of each file argument and stdin, each also in its trimmed, `key=value`, path-normalised,
 realpath'd and basename forms (links resolve before `..`, as the kernel opens a path).
-A word that derives more than MAX_FORMS forms, or whose path the kernel cannot walk (`landing`: a strict realpath that
-fails for any reason but a missing name), is refused as `oversize`. Every rule is a membership test on that set, so
+A word that derives more than MAX_FORMS forms, or whose path the kernel cannot walk (`landing`: a walk that fails for
+any reason but a missing name or a name under a non-directory), is refused as `oversize`. Every rule is a membership test on that set, so
 there is no shell syntax or word order to model and no shape list to keep closing.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
@@ -20,6 +20,7 @@ allowlist with classes from suggest-allowlist (slice 3), which removes free-form
 import fnmatch
 import os
 import re
+import stat
 
 TRIM = "\"'`;&|(){}<>,"
 HOME_FORMS = ("~", "$HOME", "${HOME}")
@@ -27,54 +28,58 @@ MAX_FORMS = 64
 
 
 def landing(p):
-    """Where the kernel lands for the absolute path p, or None when the walk fails. A strict realpath asks the
-    kernel at every step; non-strict realpath treats a link it cannot lstat (path past PATH_MAX, a name past
-    NAME_MAX, EACCES) as a plain name (and pops it lexically on a later `..`), so its string is not where the
-    kernel lands. A non-directory in the way is a path that is simply not there (`_under_file`).
-    A missing name is not: a later link that fails would be skipped by a plain realpath (`install -D` creates the
-    missing name, then walks on), so the walk goes on past it with ALLOW_MISSING, which tolerates a missing name
-    and fails on every other error, link targets included. A Python without ALLOW_MISSING (before 3.14, unless
-    the tarfile CVE-2025-4517 fix was backported) cannot do that: it refuses a `..` after a missing name, and
-    run_request refuses there outright, as a dangling link whose target holds missing/../.. would still be skipped."""
+    """Where the kernel lands for the absolute path p, or None when the walk fails. The walk is done here, a name at a
+    time with lstat and readlink as the kernel does it, because realpath's is not: non-strict it keeps a link it cannot
+    lstat (path past PATH_MAX, a name past NAME_MAX, EACCES) as a plain name and pops it lexically on a later `..`, and
+    before 3.13 strict and ALLOW_MISSING alike pop a `..` after a non-directory, where the kernel gives ENOTDIR.
+    A missing name walks on as the directory `install -D` creates, so a later `..` pops it and a later link is
+    followed. A name under a non-directory is never reached and stays lexical (`f/x`). None: a `..` after a
+    non-directory, a non-directory followed only by `/` or `.` (`f/` is not the file `f`), a link target that meets a
+    non-directory, more than 40 links, and every other error."""
+    path, todo, depth, links, bare = "/", p.split("/")[::-1], 0, 0, None
     try:
-        os.stat(p)  # the kernel's walk first: before 3.13 a strict realpath skips `/`, `.` and `..` after a file
-        return os.path.realpath(p, strict=True)
-    except FileNotFoundError:
-        allow = getattr(os.path, "ALLOW_MISSING", None)
-        if allow is not None:
-            try:
-                return os.path.realpath(p, strict=allow)
-            except OSError:
+        while todo:
+            name = todo.pop()
+            if name is None:  # the end of a link target
+                depth -= 1
+                continue
+            if name in ("", ".", ".."):
+                mode = _mode(path)
+                if mode == 0 or mode > 0 and stat.S_ISDIR(mode):
+                    path = os.path.dirname(path) if name == ".." else path
+                elif name == ".." or depth:
+                    return None
+                elif mode > 0:
+                    bare = path
+                continue
+            new = os.path.join(path, name)
+            mode = _mode(new)
+            if mode < 0 and depth:
                 return None
-        return None if ".." in p.split("/") else os.path.realpath(p)
-    except NotADirectoryError:
-        return _under_file(p)
+            if mode <= 0 or not stat.S_ISLNK(mode):
+                path = new
+                continue
+            links += 1
+            if links > 40:
+                return None
+            target = os.readlink(new)
+            todo += [None] + target.split("/")[::-1]
+            depth += 1
+            if target.startswith("/"):
+                path = "/"
     except OSError:
         return None
+    return None if path == bare else path
 
 
-def _under_file(p):
-    """The landing of an absolute p whose walk meets a non-directory: the strict landing of the longest prefix that
-    resolves, a file, then the names after it, which the kernel never reaches and so stay lexical. None when a `..`
-    follows the file (a plain realpath pops it lexically; once the file becomes a directory the kernel walks it),
-    when only `/` or `.` follows it (`f/` normalises to the file, which the kernel never opens) or when the walk
-    fails inside a link target, so a link to such a path is refused too."""
-    parts = p.split("/")
-    lo, hi = 1, len(parts)  # parts[:lo] resolves (the root), parts[:hi] does not; a walk that resolves stays resolved
+def _mode(path):
+    """lstat's st_mode of path; 0 for a missing name, -1 for a name under a non-directory; any other error raises."""
     try:
-        while hi - lo > 1:
-            mid = (lo + hi) // 2
-            try:
-                os.path.realpath("/".join(parts[:mid]) or "/", strict=True)
-                lo = mid
-            except OSError:
-                hi = mid
-        base = os.path.realpath("/".join(parts[:lo]) or "/", strict=True)
-        if os.path.isdir(base) or ".." in parts[lo:] or set(parts[lo:]) <= {"", "."}:
-            return None
-    except OSError:
-        return None
-    return os.path.normpath(os.path.join(base, *parts[lo:]))
+        return os.lstat(path).st_mode
+    except FileNotFoundError:
+        return 0
+    except NotADirectoryError:
+        return -1
 
 DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdisk", "parted", "luksFormat", "luksErase")
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",

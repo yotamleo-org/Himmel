@@ -653,6 +653,9 @@ assert_eq "a non-directory followed only by a slash, dot or dot-dot is refused o
 ln -s f/ "$R/fs"
 assert_eq "a link to a non-directory followed by a slash is refused on every Python" "BadFile" "$(bt fs)"
 assert_eq "a .. after a non-directory then a missing name is refused on every Python" "BadFile" "$(bt f/../m)"
+assert_eq "a .. after a non-directory reached past a missing name is refused on every Python" "BadFile" "$(bt m/../f/../m)"
+printf 'x\n' > "$R/g"
+assert_eq "a .. after a non-directory that leads to another non-directory is refused on every Python" "BadFile" "$(bt f/../g/x)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -671,7 +674,7 @@ printf 'x\n' > "$R/f"
 assert_contains "a non-directory in the way is a name that is not there, filed as none" "none:" "$(bt f/x)"
 assert_eq "a non-directory then components, joined past PATH_MAX, is refused, not keyed none" "BadFile" "$(bt "f${deep#m}")"
 new_root tgtnoallow
-assert_eq "without ALLOW_MISSING a .. after a missing name is refused and a plain missing name still lands" "None ok" "$(python3 -I -c '
+assert_eq "landing does not read ALLOW_MISSING: a .. after a missing name pops it and a plain missing name lands" "ok ok" "$(python3 -I -c '
 import os, sys, types
 sys.path.insert(0, sys.argv[1])
 import never_remote as n
@@ -680,9 +683,9 @@ class NoAllow:
         if k == "ALLOW_MISSING":
             raise AttributeError(k)
         return getattr(os.path, k)
-n.os = types.SimpleNamespace(path=NoAllow(), stat=os.stat)
+n.os = types.SimpleNamespace(path=NoAllow(), lstat=os.lstat, readlink=os.readlink)
 base = os.path.realpath(sys.argv[2])
-print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+print("ok" if n.landing(os.path.join(base, "m", "..", "x")) == os.path.join(base, "x") else "bad", "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
 new_root tgtnoallowrun; cfg "$ALL" true
 long_tree
 ln -s m/../L/x/lnk/../../../../out "$R/dl"
