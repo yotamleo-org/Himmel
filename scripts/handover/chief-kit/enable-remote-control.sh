@@ -27,7 +27,8 @@
 # ENABLE_RC_LAUNCHER (default headed-arm-worker.sh beside this script).
 #
 # Exit codes: 0 enabled/relaunched/already on; 2 usage; 3 no live session by that
-# name; 4 ineligible (claudex, unprofiled or no launch record); 5 relaunch needed,
+# name; 4 ineligible (claudex, unprofiled, no launch record, or the session's doc
+# and model unreadable from its argv); 5 relaunch needed,
 # --relaunch not given; 6 the old session did not exit.
 #
 # ponytail: relaunch loses the old session's context window (the doc carries state), upgrade path: a native toggle once claude exposes one over its session file.
