@@ -502,6 +502,10 @@ imports, so its suite runs in CI without an install.
   direct landing on Kanban shows the plain-words empty state, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Morning report e2e (`report.e2e.ts`, same opt-in suite): over a two-day fixture the
+  Morning report page selects the newest day, switches to the earlier one and says so for a
+  day with no report; the four Reports and shifts settings show their defaults on Configure,
+  save, and land in the himmel config. `E2E_SHOTS=<dir>` saves a screenshot of each frame.
 - Configure e2e (`settings.e2e.ts`, journey J3, same opt-in suite): Configure is
   the one rail entry (it replaced Settings and Setup; `#/setup` and the install
   hand-off's `page=setup` land on it with the Secrets tile open) with four tiles
