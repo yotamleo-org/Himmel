@@ -11,7 +11,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo request ID...      --session S --ticket T --cwd DIR -- ARGV...   (allowlisted class, root)
   afk-sudo run-request        --session S --ticket T --blocked-by B [--as USER] [--cwd DIR] [--why W] -- ARGV...
                               (stdin of this process is the command's stdin, at most 64 KiB)
-  afk-sudo approve ID --from SENDER --chat CHAT      (the code is read from stdin)
+  afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
   afk-sudo deny ID --from SENDER --chat CHAT
   afk-sudo status ID  |  run-status ID
   afk-sudo run-result ID [--stream stdout|stderr]
@@ -27,6 +27,13 @@ after the code is accepted.
 A session reaches `run-request` through scripts/lib/afk-run (sudo -n, then it polls run-status and
 relays the captured output and exit status); scripts/lib/afk-sudo-request does the same for `request`.
 
+Root alone tells the operator what a request is: once a request is filed, this helper sends the facts
+message through the notice bot (its token in the root-only /etc/himmel/afk-sudo/notice-bot.env, which no
+session can read), with a 4-character nonce. The approval is `NONCE CODE`: a code typed in reply to a
+look-alike message, sent by a session through the bridge bot, carries no valid nonce and approves nothing.
+No notice bot, or a notice that cannot be sent, refuses the request. After a run root sends the result
+(exit status, duration, the last stderr lines redacted, never stdout) the same way.
+
 Prints `result=<word> …` lines. Exit 0 ok, 5 refused, 2 usage.
 Test seam: AFK_SUDO_ROOT (a sandbox root), AFK_SUDO_NOW (epoch seconds) and AFK_SUDO_RUN=1 (the
 run kind on) are honoured only when euid != 0; there the files must be owned by the caller
@@ -38,6 +45,7 @@ import ctypes
 import errno
 import hashlib
 import hmac
+import html
 import json
 import os
 import pwd
@@ -55,8 +63,8 @@ import approval_broker as ab  # noqa: E402
 import never_remote as nr  # noqa: E402
 
 RUN_TIMEOUT_S = 120
-# The run kind is compiled off: a config edit cannot turn it on, only a release that flips this.
-RUN_KIND_SHIPPED = False
+# The run kind ships on (slice 1b, with the root-sent notice); run.enabled in the station config still gates it.
+RUN_KIND_SHIPPED = True
 SEAM = os.geteuid() != 0 and bool(os.environ.get("AFK_SUDO_ROOT"))
 ROOT = os.environ["AFK_SUDO_ROOT"] if SEAM else "/"
 OWNER = os.geteuid() if SEAM else 0
@@ -67,6 +75,7 @@ LEDGER = os.path.join(ROOT, "var/log/himmel/afk-sudo.jsonl")
 RECORDS = os.path.join(STATE, "records")
 FILES = os.path.join(STATE, "files")
 RESULTS = os.path.join(STATE, "results")
+NOTICE_ENV = os.path.join(ROOT, "etc/himmel/afk-sudo/notice-bot.env")
 
 FIXED_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 READ_CAP = 64 * 1024
@@ -568,6 +577,287 @@ def execute(payload, config):
         return 127
 
 
+# --- the notice bot: root tells the operator what a request is ---
+TOKEN_RE = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")
+API_RE = re.compile(r"https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?")
+MSG_CAP = 3500
+EL_CAP, EL_KEEP = 120, 100
+ARGS_SHOWN = 10
+SCRIPT_LINES, LINE_KEEP = 10, 100
+
+
+def notice_token():
+    """The notice bot's token from the root-only notice-bot.env; "" when the file is missing or holds
+    none. A file a non-root user could read is unsafe-perms."""
+    if not os.path.lexists(NOTICE_ENV):
+        return ""
+    ab.check_safe(NOTICE_ENV, OWNER, secret=True)
+    with open(NOTICE_ENV) as f:
+        for line in f:
+            k, _, v = line.partition("=")
+            if k.strip() == "TELEGRAM_BOT_TOKEN":
+                v = v.strip().strip("\"'")
+                return v if TOKEN_RE.fullmatch(v) else ""
+    return ""
+
+
+def curl_path():
+    if SEAM and os.environ.get("AFK_SUDO_CURL"):
+        return os.environ["AFK_SUDO_CURL"]
+    for d in FIXED_PATH.split(":"):
+        c = os.path.join(d, "curl")
+        if os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def api_base(config):
+    v = config.get("telegram_api")
+    return v.rstrip("/") if isinstance(v, str) and API_RE.fullmatch(v) else "https://api.telegram.org"
+
+
+def curl_q(s):
+    """A curl config-file string: quoted, with \\ " and line breaks escaped."""
+    s = str(s).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return f'"{s}"'
+
+
+def tg_send(config, token, method, fields, document=None):
+    """One Bot API call as root. Everything goes to curl on stdin (-K -): the URL holding the token and
+    every field, the nonce among them, since a root process's argv is world-readable. -q skips any
+    .curlrc. True when the API answers ok."""
+    curl = curl_path()
+    if not curl:
+        return False
+    lines = [f"url = {curl_q(api_base(config) + '/bot' + token + '/' + method)}"]
+    if document:
+        lines += [f"form-string = {curl_q(k + '=' + str(v))}" for k, v in fields]
+        lines.append(f"form = {curl_q('document=@' + document[0] + ';filename=' + document[1])}")
+    else:
+        lines += [f"data-urlencode = {curl_q(k + '=' + str(v))}" for k, v in fields]
+    try:
+        p = subprocess.run([curl, "-q", "-sS", "-m", "10", "-K", "-"], input="\n".join(lines) + "\n", capture_output=True,
+                           text=True, env={"PATH": FIXED_PATH, "LANG": "C.UTF-8"}, cwd="/", timeout=30)
+        return json.loads(p.stdout or "{}").get("ok") is True
+    except (OSError, ValueError, AttributeError, subprocess.TimeoutExpired):
+        return False
+
+
+def esc(s, keep=None):
+    """Text as the operator must read it, HTML-escaped: a control character as \\xNN, anything outside
+    ASCII as \\u{XXXX} (a look-alike shows as what it is). Returns (text, cut chars, non-ASCII seen)."""
+    s = str(s)
+    cut = len(s) - keep if keep is not None and len(s) > keep else 0
+    out, wide = [], False
+    for ch in (s[:keep] if cut else s):
+        o = ord(ch)
+        if o < 0x20 or o == 0x7F:
+            out.append(f"\\x{o:02X}")
+        elif o > 0x7E:
+            out.append(f"\\u{{{o:04X}}}")
+            wide = True
+        else:
+            out.append(ch)
+    return html.escape("".join(out), quote=False), cut, wide
+
+
+def elem(s, cap, keep):
+    """One element, wrapped in ⟦⟧ so its ends are visible; (text, was it cut)."""
+    t, cut, wide = esc(s, keep if len(str(s)) > cap else None)
+    return f"⟦{t}⟧" + (f"…(+{cut} chars)" if cut else "") + (" non-ASCII" if wide else ""), bool(cut)
+
+
+def argv0_script(rec, bodies):
+    """Whether argv[0] is a script ("#!") whose text the record shows."""
+    return any(p == rec.get("argv0_path") and b.startswith("#!") for p, b in bodies)
+
+
+def script_texts(rec, bodies, stdin_text):
+    """(label, text) for what a shell or interpreter would run: the -c/-e program, every shown file
+    body (argv[0]'s only when it is a script, never a binary), and the stdin."""
+    argv, out = rec["argv"], []
+    if INTERPRETERS.fullmatch(os.path.basename(argv[0])):
+        for i, a in enumerate(argv[1:-1], 1):
+            if a.startswith("-") and not a.startswith("--") and re.search(r"[ce]", a):
+                out.append((f"{a} program", argv[i + 1]))
+                break
+    out += [(f"file {path}", body) for path, body in bodies if path != rec.get("argv0_path") or body.startswith("#!")]
+    if stdin_text:
+        out.append(("stdin", stdin_text))
+    return out
+
+
+def user_writable(path):
+    """Whether a user other than root can change the file in place (owner or group/other write bit).
+    Informational: the record binds the inode, and an in-place edit is the residual the notice flags."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    return st.st_uid != 0 or bool(st.st_mode & 0o022)
+
+
+def file_marks(rec, i, argv0_shown):
+    """` ⚠️ NOT SHOWN, user-writable` for argv element i when it is argv[0] or a bound file argument.
+    A root-owned argv[0] that is not shown (a system binary) gets no mark."""
+    if i == 0:
+        path = rec.get("argv0_path")
+        shown = argv0_shown or not (path and user_writable(path))
+    else:
+        targets = rec.get("targets") or []
+        t = targets[i] if i < len(targets) else ""
+        if not t.startswith("file:"):
+            return ""
+        path = t[len("file:"):]
+        shown = next((f["shown"] for f in rec.get("files", []) if f["path"] == path), True)
+    marks = ([] if shown else ["NOT SHOWN"]) + (["user-writable"] if path and user_writable(path) else [])
+    return f" ⚠️ <b>{', '.join(marks)}</b>" if marks else ""
+
+
+def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
+    """The facts message (HTML, at most MSG_CAP) and whether anything was cut (the full request is
+    then attached)."""
+    rid, root = rec["id"], rec["run_as"] == "root"
+    left = max(1, round((rec["expires"] - now()) / 60))
+    noun = "sudo" if rec["kind"] == "sudo" else ("ROOT run" if root else "run")
+    cwd, cut = elem(rec["cwd"], EL_CAP, EL_KEEP)
+    head = [f"{'🔐⚠️' if root else '🔐'} AFK {noun} {rid} · expires {time.strftime('%H:%MZ', time.gmtime(rec['expires']))} "
+            f"({left} min) · nonce <b>{nonce}</b>",
+            "Mode: ALL (any command, TOTP)" if mode == "all" else f"Mode: allowlist · class {esc(cls)[0]}",
+            "Run as: <b>⚠️ ROOT</b>" if root else f"Run as: {esc(rec['run_as'])[0]}",
+            f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}",
+            f"cwd: {cwd}"]
+    body, script0 = [f"argv ({len(rec['argv'])}):"], argv0_script(rec, bodies)
+    for i, a in enumerate(rec["argv"][:ARGS_SHOWN]):
+        t, c = elem(a, EL_CAP, EL_KEEP)
+        cut |= c
+        body.append(f"[{i}] {t}" + (f" sha256 {rec['argv0_sha256'][:8]}" if i == 0 and rec.get("argv0_sha256") else "")
+                    + file_marks(rec, i, script0))
+    if len(rec["argv"]) > ARGS_SHOWN:
+        body.append(f"…(+{len(rec['argv']) - ARGS_SHOWN} args)")
+        cut = True
+    nstdin = rec.get("stdin", {}).get("bytes", 0)
+    body.append(f"stdin: {nstdin} bytes" if nstdin else "stdin: none")
+    targets = rec.get("targets") or []
+    if script0 or INTERPRETERS.fullmatch(os.path.basename(rec["argv"][0])) or any(t.startswith("file:") for t in targets[1:]):
+        body.append("⚠️ SHELL: the effect is the script below, read it")
+    room = SCRIPT_LINES
+    for label, text in script_texts(rec, bodies, stdin_text):
+        lines = text.splitlines() or [""]
+        body.append(f"{esc(label, EL_KEEP)[0]}:")
+        for line in lines[:room]:
+            t, c = elem(line, LINE_KEEP, LINE_KEEP)
+            cut |= c
+            body.append(t)
+        if len(lines) > room:
+            body.append(f"…(+{len(lines) - room} lines)")
+            cut = True
+        room = max(0, room - len(lines))
+    if rec.get("blocked_by"):
+        body.append(f"Blocked by (claim): {esc(rec['blocked_by'])[0]}")
+    if rec.get("why"):
+        body.append(f"Why (claim): <i>{esc(rec['why'], 300)[0]}</i>")
+    tail = [f"hash {digest[:8]} {digest[8:16]}…"] if digest else []
+    text = "\n".join(head + body + tail)
+    if len(text) > MSG_CAP - 40:
+        text, cut = "\n".join(head + ["argv and script: see the attached request"] + tail), True
+    if cut:
+        text = "TRUNCATED, full request attached\n" + text
+    return text, cut
+
+
+def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodies=(), stdin_text=""):
+    """Send the facts message (and the full request when it was cut) through the notice bot. A notice
+    that cannot be sent withdraws the request: the operator must never approve what they were not shown.
+    The full request goes first, so the nonce (in the facts message) is never out while it may still fail."""
+    rid = rec["id"]
+    text, cut = facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
+    op = int(config["operator_id"])
+    ok = True
+    if cut:
+        doc = os.path.join(FILES, rid, "request.json")
+        for d in (FILES, os.path.dirname(doc)):
+            private_dir(d)
+        full = {"record": rec, "files": {p: b for p, b in bodies}, "stdin": stdin_text}
+        write_private(doc, json.dumps(full, indent=1, sort_keys=True).encode())
+        ok = tg_send(config, token, "sendDocument", [("chat_id", op)], (doc, f"{rid}.json"))
+    ok = ok and tg_send(config, token, "sendMessage", [("chat_id", op), ("parse_mode", "HTML"), ("text", text)])
+    if not ok:
+        broker.withdraw(rid, "notice-failed")
+    return ok
+
+
+def run_bodies(rec):
+    """(path, text) of every file the record shows, and the stdin text."""
+    bodies = [(f["path"], read_copy(rec["id"], f"f{i}")) for i, f in enumerate(rec["files"]) if f["shown"]]
+    return bodies, (read_copy(rec["id"], "stdin") if rec["stdin"]["copy"] else "")
+
+
+# The same shapes as scripts/hooks/log-classifier-denial.sh redact(), line by line as sed reads them;
+# test-afk-sudo.sh holds the two to the same output.
+_KEY = r"([Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|" \
+       r"[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Aa][Ss][Ss]|[Pp][Ww][Dd])"
+_SP = r"[ \t\r\f\v]"
+_SEP = r"([\\\"']?" + _SP + r"*[:=]" + _SP + r"*"
+REDACT = [(re.compile(a), b) for a, b in (
+    (r"gh[pousr]_[A-Za-z0-9]{20,}", "[REDACTED]"),
+    (r"github_pat_[A-Za-z0-9_]{20,}", "[REDACTED]"),
+    (r"sk-ant-[A-Za-z0-9_-]{20,}", "[REDACTED]"),
+    (r"AKIA[0-9A-Z]{16}", "[REDACTED]"),
+    (r"xox[baprs]-[A-Za-z0-9-]{10,}", "[REDACTED]"),
+    (r"[0-9]{8,10}:[A-Za-z0-9_-]{35}", "[REDACTED]"),
+    (r"([Bb]earer) [A-Za-z0-9._-]{20,}", r"\1 [REDACTED]"),
+    (_KEY + _SEP + r")\"[^\\\"]*\"", r'\1\2"[REDACTED]"'),
+    (_KEY + _SEP + r")'[^']*'", r"\1\2'[REDACTED]'"),
+    (_KEY + _SEP + r"[\\\"']?)[^ \t\r\f\v\\\"']+", r"\1\2[REDACTED]"),
+    (r"(--[a-z-]*(password|passwd|token|secret|api-?key)[a-z-]*)" + _SP + r"+[^ \t\r\f\v-][^ \t\r\f\v]*", r"\1 [REDACTED]"),
+    (r"(^|" + _SP + r")-p[^ \t\r\f\v-][^ \t\r\f\v]*", r"\1-p[REDACTED]"))]
+PEM_BEGIN = re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----")
+PEM_END = re.compile(r"-----END[A-Z ]*PRIVATE KEY-----")
+
+
+def redact(s):
+    out, inkey = [], False
+    for line in s.split("\n"):
+        for rx, rep in REDACT:
+            line = rx.sub(rep, line)
+        if not inkey and PEM_BEGIN.search(line):
+            if PEM_END.search(line):
+                out.append(re.sub(r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*-----END[A-Z ]*PRIVATE KEY-----", "[REDACTED-PEM]", line, count=1))
+                continue
+            out.append(re.sub(r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*", "[REDACTED-PEM]", line, count=1))
+            inkey = True
+            continue
+        if inkey:
+            inkey = not PEM_END.search(line)
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def send_result(config, rid, res, secs):
+    """Root's result message: the exit status and duration, on a failure the last 3 stderr lines
+    (redacted), never stdout; a refusal after the code says so. Best effort: the run already happened."""
+    token = notice_token()
+    if not token:
+        return
+    if res["result"] != "ran":
+        text = f"⛔ {rid} not run: {esc(res['result'])[0]}"
+    else:
+        rc = res["exit"]
+        secs = res["duration_ms"] / 1000 if "duration_ms" in res else secs
+        text = f"{'✅' if rc == 0 else '⚠️'} ran {rid} exit {rc} ({secs:.1f} s)"
+        if rc != 0:
+            try:
+                with open(os.path.join(RESULTS, rid + ".json")) as f:
+                    err = base64.b64decode(json.load(f)["stderr_b64"]).decode("utf-8", "replace")
+            except (OSError, ValueError, KeyError):
+                err = ""
+            text += "".join("\n" + elem(line, LINE_KEEP, LINE_KEEP)[0]
+                            for line in [x for x in redact(err).split("\n") if x.strip()][-3:])
+    tg_send(config, token, "sendMessage", [("chat_id", int(config["operator_id"])), ("parse_mode", "HTML"), ("text", text)])
+
+
 def blocked_by(v):
     if not BLOCKED_BY.fullmatch(v):
         raise argparse.ArgumentTypeError("classifier, hook:<guard>, prompt or operator-step")
@@ -604,15 +894,15 @@ def run_request(broker, config, args):
     if mode == "all":
         want = args.run_as or config.get("operator_user")
         run_pw = user_pw(want) if want in ("root", config.get("operator_user")) else None
-        argv = cmd
+        argv, cls = cmd, None
     else:
         hit = match_class(config, cmd)
         if not hit:
             refuse_row(dict(meta, cwd=clean(args.cwd, 500)), "not-in-class")
             print("result=not-in-class")
             return 5
-        argv = hit[1]
-        want = config["classes"][hit[0]].get("run_as", "root")
+        argv, cls = hit[1], hit[0]
+        want = config["classes"][cls].get("run_as", "root")
         run_pw = user_pw(want) if want in ("root", config.get("operator_user")) else None
     if run_pw is None:
         print("result=bad-user")
@@ -647,6 +937,10 @@ def run_request(broker, config, args):
     if not SEAM and run_pw.pw_uid != 0 and not setpriv_path():
         print("result=no-setpriv")
         return 5
+    token = notice_token()
+    if not token:
+        print("result=no-notice-bot")
+        return 5
     st = os.stat(cwd)
     with open_regular(argv0_path) as f0:
         argv0_sha256, argv0_dev_ino = hash_open(f0), dev_ino(f0)
@@ -657,11 +951,18 @@ def run_request(broker, config, args):
     window = cfg_int(run_block(config), "ttl_s", 900, 30, 3600)
     shown = clean(" ".join(argv), 300)
     broker.retain = prune
-    rid, expires = broker.request("run", shown, make_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window)
+    rid, expires, nonce = broker.request("run", shown, make_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window)
+    try:
+        rec = load_record(rid)
+        ok = send_notice(broker, config, token, rec, nonce, mode, cls, rec_hash(rec), *run_bodies(rec))
+    except BaseException:
+        broker.withdraw(rid, "notice-failed")
+        raise
+    if not ok:
+        print(f"result=notice-failed id={rid}")
+        return 5
+    # The facts and the nonce went to the operator from root; the requester learns the id only.
     print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
-    print(f"text=AFK run request {rid} as {run_pw.pw_name}: {shown} | cwd {cwd} | session {meta['session']} | "
-          f"ticket {meta['ticket']} | blocked by {args.blocked_by} | expires in {window} s. "
-          f"Reply: approve {rid} <code>  or  deny {rid}")
     return 0
 
 
@@ -742,17 +1043,41 @@ def main(argv):
                 return 5
             name, run = hit
             meta.update({"class": name, "argv": run})
-            shown = " ".join(run)
-            rid, expires = broker.request("sudo", shown, {"argv": run}, meta)
+            token = notice_token()
+            if not token:
+                print("result=no-notice-bot")
+                return 5
+            rid, expires, nonce = broker.request("sudo", " ".join(run), {"argv": run}, meta)
+            rec = {"id": rid, "kind": "sudo", "run_as": "root", "argv": run, "cwd": meta["cwd"],
+                   "session": meta["session"], "ticket": meta["ticket"], "expires": expires}
+            try:
+                ok = send_notice(broker, config, token, rec, nonce, "allowlist", name)
+            except BaseException:
+                broker.withdraw(rid, "notice-failed")
+                raise
+            if not ok:
+                print(f"result=notice-failed id={rid}")
+                return 5
             print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
-            print(f"text=AFK sudo request {rid}: {shown} | cwd {meta['cwd']} | session {meta['session']} | "
-                  f"ticket {meta['ticket']} | expires in {int(config.get('window_s', 120))} s. "
-                  f"Reply: approve {rid} <code>  or  deny {rid}")
         elif args.verb == "run-request":
             return run_request(broker, config, args)
         elif args.verb == "approve":
-            code = sys.stdin.readline().strip()
-            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config))
+            # `NONCE CODE` (the code may hold a space: `K7QF 123 456`), or the two run together.
+            toks = sys.stdin.readline().split()
+            if len(toks) >= 2:
+                nonce, code = toks[0], "".join(toks[1:])
+            elif toks and len(toks[0]) > ab.DIGITS:
+                nonce, code = toks[0][:-ab.DIGITS], toks[0][-ab.DIGITS:]
+            elif toks and not toks[0].isdigit():
+                nonce, code = toks[0], ""
+            else:
+                nonce, code = "", toks[0] if toks else ""
+            t0 = time.monotonic()
+            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config), nonce)
+            try:
+                send_result(config, args.id, res, time.monotonic() - t0)
+            except (ab.Refused, OSError, ValueError, KeyError, TypeError):
+                pass  # the command already ran (or was refused after the code); the reply below still says so
             if res["result"] != "ran":
                 print(f"result={res['result']} id={args.id}" + (f" rule={res['rule']}" if "rule" in res else ""))
                 return 5

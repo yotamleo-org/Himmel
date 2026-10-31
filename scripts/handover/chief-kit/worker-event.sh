@@ -15,7 +15,14 @@
 #                        A WRAPPED whose worker doc names no PR (a research worker) skips wrap-merged:
 #                        close-wrapped-worker.sh --fleet <manifest> <worker doc> closes it, which
 #                        itself refuses unless the worker's queue lock is free and its tail is WRAPPED.
-#   anything else     -> ESCALATE (READY and FINDING need a judge or the chief)
+#   READY <pr> <head> -> with the auto_go flag on: auto-go.sh --doc <doc> --fleet <manifest>
+#                        --worker <label> --dry-run <pr> <head>, its answer passed on. Until the
+#                        scripted GO writes a file (a later auto-go.sh slice) a WOULD-GO answer
+#                        prints `WOULD-GO <pr> <head> dry-run, no GO written` and exits 10, so
+#                        the chief still gives the GO; ESCALATE auto-go <n> <reason> is passed
+#                        on as is. Any other auto-go exit is `ESCALATE auto-go-error rc=<n> ...`.
+#                        Flag off: ESCALATE marker-READY, as before.
+#   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
 #   station back to main: ` station=pending log=<file>` is appended at once, its
@@ -33,7 +40,7 @@
 # marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG.
+# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -45,6 +52,9 @@ if [ -n "${LE_CLOSE:-}" ]; then CLOSE=("$LE_CLOSE"); else CLOSE=(bash "$HERE/clo
 if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
+if [ -n "${LE_AUTOGO:-}" ]; then AUTOGO=("$LE_AUTOGO"); else AUTOGO=(bash "$HERE/auto-go.sh"); fi
+# the auto_go flag (scripts/lib/flags.sh): an unregistered flag reads as off
+auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
 
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
@@ -71,6 +81,7 @@ marker="${line%%[^A-Za-z-]*}"
 
 case "$marker" in
     MERGED|WRAPPED) ;;
+    READY) auto_go_on || escalate "marker-READY" ;;
     *) escalate "marker-${marker:-none}" ;;
 esac
 
@@ -115,6 +126,18 @@ EOF
     stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+fi
+
+if [ "$marker" = READY ]; then
+    [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
+    rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"
+    aout="$("${AUTOGO[@]}" --doc "$DOC" --fleet "$FLEET" --worker "$label" --dry-run "$rpr" "$rhead" 2>&1)"; arc=$?
+    afirst="$(printf '%s\n' "$aout" | grep -m1 '[^[:space:]]')" || afirst=""
+    case "$arc:$afirst" in
+        0:"WOULD-GO $rpr $rhead") echo "WOULD-GO $rpr $rhead dry-run, no GO written"; exit 10 ;;
+        10:"ESCALATE auto-go "*) echo "$afirst"; exit 10 ;;
+    esac
+    escalate "auto-go-error rc=$arc $(printf '%s' "$aout" | tr '\n' ' ')"
 fi
 
 pr=""

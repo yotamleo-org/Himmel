@@ -10,9 +10,8 @@
 # caught here rather than in a downstream fixture's confusing red.
 #
 # Platform guard: POSIX bash 3.2+. Pure shell over a scratch dir.
-# The library under test is itself sourced only by shell suites, and
-# HERMETIC_EXE_SUFFIX carries the .exe-suffix half of its behaviour, which these
-# cases exercise through that variable.
+# The library under test is itself sourced only by shell suites; these cases
+# name their stub files through HERMETIC_EXE_SUFFIX, the same constant it uses.
 #
 # Usage: bash scripts/lib/test-hermetic-path.sh
 set -uo pipefail
@@ -68,25 +67,12 @@ echo "[test-hermetic-path] the built dir actually RESOLVES its tools"
 # named `command` and fail for a reason that has nothing to do with the library.
 # Starting the shell as `bash` also proves the dir can bootstrap an interpreter,
 # which is the property the whole floor exists for.
-# The library falls back to COPYING bash where `ln -s` is refused
-# (MSYS without the symlink privilege). A copied bash.exe cannot load msys-2.0.dll
-# from a dir that does not hold it, so no shell can start under $d1 alone and
-# every case below fails for that reason, not for the one it names. Probe the
-# bootstrap once: a host where the built dir cannot start bash SKIPs the cases
-# that start it (three here, one in the composition section below), a host where
-# it can (every POSIX one) runs them.
-hermetic_bash_boots=0
-if env PATH="$d1" bash -c ':' >/dev/null 2>&1; then hermetic_bash_boots=1; fi
-if [ "$hermetic_bash_boots" -eq 1 ]; then
-  check "bash resolves under the built dir alone" \
-    env PATH="$d1" bash -c 'command -v bash >/dev/null'
-  check "sed resolves under the built dir alone" \
-    env PATH="$d1" bash -c 'command -v sed >/dev/null'
-  check "an unlinked tool does NOT resolve there" \
-    env PATH="$d1" bash -c '! command -v awk >/dev/null'
-else
-  echo "  SKIP the built dir cannot bootstrap bash on this host (a copied bash cannot load its runtime libs) (HIMMEL-3182)"
-fi
+check "bash resolves under the built dir alone" \
+  env PATH="$d1" bash -c 'command -v bash >/dev/null'
+check "sed resolves under the built dir alone" \
+  env PATH="$d1" bash -c 'command -v sed >/dev/null'
+check "an unlinked tool does NOT resolve there" \
+  env PATH="$d1" bash -c '! command -v awk >/dev/null'
 
 echo "[test-hermetic-path] build_hermetic_bin creates a dir that does not exist yet"
 d2="$tmpdir/nested/deeper"
@@ -113,12 +99,6 @@ check "the missing tool leaves no poisoned stub behind" \
 echo "[test-hermetic-path] hermetic_path_excludes"
 # A dir carrying a fake 'bun' stands in for the distro that co-locates it.
 withbun="$tmpdir/withbun"; mkdir -p "$withbun"
-# Name the fixture through HERMETIC_EXE_SUFFIX, the same variable the READER
-# (path_dir_has_scrubbed_tool) consults. The library header requires exactly
-# this so the writer side cannot drift from the reader side; a hard-coded bare
-# name would still be found today (the reader checks bare BEFORE .exe/.cmd) but
-# would stop resembling a real scrubbed tool on Windows. No-op on POSIX, where
-# the suffix is empty.
 printf '#!/bin/sh\nexit 0\n' > "$withbun/bun$HERMETIC_EXE_SUFFIX"
 chmod +x "$withbun/bun$HERMETIC_EXE_SUFFIX"
 # Meta-control: the negative cases below are only meaningful if the function is
@@ -176,12 +156,8 @@ echo "[test-hermetic-path] the documented composition is safe end to end"
 d3="$tmpdir/d3"
 build_hermetic_bin "$d3" sed
 composed="$d3:$(scrub_path "$withbun" bun)"
-if [ "$hermetic_bash_boots" -eq 1 ]; then
-  check "composed PATH resolves the interpreter" \
-    env PATH="$composed" bash -c 'command -v bash >/dev/null'
-else
-  echo "  SKIP composed PATH resolves the interpreter: the built dir cannot bootstrap bash on this host (HIMMEL-3182)"
-fi
+check "composed PATH resolves the interpreter" \
+  env PATH="$composed" bash -c 'command -v bash >/dev/null'
 check "composed PATH excludes the scrubbed tool" hermetic_path_excludes "$composed" bun
 
 echo "[test-hermetic-path] HIMMEL-2538: PATH splitting must not glob-expand a segment"

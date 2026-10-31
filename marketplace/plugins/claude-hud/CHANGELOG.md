@@ -4,6 +4,16 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-31
+
+### Fixed
+- On Windows, Ctrl+click on the project name or a changed file now opens paths with non-ASCII characters, such as `D:\桌面\project`. Windows decoded the percent-encoded link with the system code page and opened nothing (#839, #840).
+
+## [0.14.0] - 2026-10-30
+
+### Added
+- `display.showLaunchDir` option. Once Claude moves deeper than `pathLevels` shows, the project path starts with the directory Claude Code was launched in, e.g. `my-repo › src`. Off by default (#835, #836).
+
 ## [0.13.1] - 2026-10-26
 
 ### Fixed

@@ -10,14 +10,16 @@
 # remove), one sudoers rule letting <login> run exactly that
 # installed copy (checked with visudo -cf before it is moved into place), the
 # ledger /var/log/himmel/afk-sudo.jsonl, the state dir, and on first install the
-# TOTP seed, printed ONCE as an otpauth URI for the authenticator app.
+# TOTP seed, printed ONCE as an otpauth URI for the authenticator app, and an empty
+# root-only notice-bot.env for the notice bot's token (the bot root sends each request's
+# facts and nonce through; no request is filed while it is empty).
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
-# allowlist, mode allowlist and the run kind off (the run kind is also compiled
-# off until a release flips it); enabling it is a separate `sudoedit` by the operator.
+# allowlist, mode allowlist and the run kind off (run.enabled false; the compiled
+# switch RUN_KIND_SHIPPED is on since slice 1b); enabling it is a separate `sudoedit` by the operator.
 # A session talks to the installed helper through scripts/lib/afk-run (run kind) or
 # scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the
-# seed, the state and the ledger.
+# seed, notice-bot.env, the state and the ledger.
 set -uo pipefail
 
 LIBEXEC=/usr/local/libexec/himmel
@@ -25,6 +27,8 @@ SUDOERS=/etc/sudoers.d/himmel-afk-sudo
 CONFIG=/etc/himmel/afk-sudo.json
 SEED=/etc/himmel/afk-sudo/totp.seed
 LEDGER=/var/log/himmel/afk-sudo.jsonl
+NOTICE_ENV=/etc/himmel/afk-sudo/notice-bot.env
+ROOT_GROUP=root
 
 # --- hints for the operator's next step ---
 # Bash builtins plus uname only, so a test can source this file under a stubbed
@@ -78,7 +82,7 @@ src=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || die "cannot resolve the sou
 case "${1:-}" in
     --uninstall)
         rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py" || die "uninstall failed"
-        echo "removed the helper and the sudoers rule; kept $CONFIG, $SEED, the state and $LEDGER"
+        echo "removed the helper and the sudoers rule; kept $CONFIG, $SEED, $NOTICE_ENV, the state and $LEDGER"
         exit 0 ;;
     --user) [ $# -eq 2 ] || usage; user=$2 ;;
     *) usage ;;
@@ -108,6 +112,15 @@ if [ ! -e "$SEED" ]; then
     echo "Add this to your authenticator app now; it is not shown again:"
     echo "$uri"
     if command -v qrencode >/dev/null 2>&1; then qrencode -t ansiutf8 "$uri"; else qr_hint; fi
+fi
+
+if [ ! -e "$NOTICE_ENV" ]; then
+    install -m 0600 -o root -g "$ROOT_GROUP" /dev/null "$NOTICE_ENV" || die "cannot create $NOTICE_ENV"
+    echo "Created an empty $NOTICE_ENV: sudo and run requests are refused while it is empty."
+    echo "The notice bot is a SECOND bot, not the Telegram bridge's: root alone sends each request's facts and nonce through it."
+    echo "  1. In Telegram, ask @BotFather for /newbot and copy the token."
+    echo "  2. Open the new bot's chat and send it /start, so it may message you."
+    echo "  3. sudoedit $NOTICE_ENV and add the line TELEGRAM_BOT_TOKEN=<token>."
 fi
 
 printf '%s ALL=(root) NOPASSWD: %s\n' "$user" "$LIBEXEC/afk-sudo" > "$tmp" || die "cannot write the sudoers rule"

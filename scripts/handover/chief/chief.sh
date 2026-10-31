@@ -386,7 +386,7 @@ do_arm() {
                     bus_warn "$log" "bus succeed failed for $session - workers adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
                 fi
             fi
-            bus_note "$log" "registered $session as console$bus_stamp"
+            bus_note "$log" "registered $session as chief$bus_stamp"
         else
             bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
         fi

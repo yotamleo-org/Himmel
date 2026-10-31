@@ -31,7 +31,7 @@
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
 # that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
-# open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line; an empty
+# open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line (`# intake <m>: <keys>` with no open version; --dispositions prints it too, for the tick's INTAKE=); an empty
 # pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, collision-checked against held files), never dispatched from here.
 #
@@ -153,6 +153,11 @@ if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
 
+stacked=0
+# shellcheck source=scripts/lib/flags.sh
+# shellcheck disable=SC1091
+if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/dev/null; then stacked=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
+export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
@@ -194,6 +199,10 @@ OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
 OWN_WRITER_RE = re.compile(r'\bthis worker\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
 TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
+SERIES_LEAD = '> **Series:**'
+SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
+SERIES_CAP = 4
+stacked = os.environ.get('ND_STACKED') == '1'  # the stacked_series flag, read by the shell wrapper
 
 def clean_scope(rest):
     m = SCOPE_END_RE.search(rest)
@@ -691,6 +700,7 @@ if pool_only:
 
 # held files: live workers, open PRs, --held
 held = []
+series_workers = {}  # label -> item count, for a live worker whose brief carries a Series block (stacked_series only)
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
@@ -725,6 +735,10 @@ if workers_from and os.path.isfile(workers_from):
             starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
             mine = [f for i in starts for f in scope_paths(block(i))]
             held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
+            sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
+            items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
+            if items:  # a series worker: its brief carries a Series block, one numbered line per item. A block that names no item has an unknown count, so it offers no room
+                series_workers[worker.get('label', '?')] = len(items)
             if os.environ.get('ND_WHY') == '1':
                 for f in dict.fromkeys(mine):
                     if not concrete(f):
@@ -841,6 +855,20 @@ for i in issues.values():
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
 
+def stackable_on(i):
+    # (worker label, items) when every file the ticket collides on is held by ONE live series worker with room; else None.
+    # A holder that is an open PR, the --held list or a second worker, or an unread PR / worker set, keeps the drop.
+    if pr_unknown or pr_files_unknown or workers_unknown:
+        return None
+    holders = {who for _, who in held_hits(i)}
+    if len(holders) != 1:
+        return None
+    who = next(iter(holders))
+    label = who[len('live worker '):] if who.startswith('live worker ') else None
+    count = series_workers.get(label)
+    return (label, count) if count is not None and count < SERIES_CAP else None
+
+stackable_rows = []
 free = []
 for i in cands:
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
@@ -848,6 +876,10 @@ for i in cands:
         continue
     hit = held_hit(i)
     if hit:
+        stack = stackable_on(i) if stacked else None
+        if stack:
+            stackable_rows.append((i, 'STACKABLE %s on %s (%d/%d)' % (i['key'], stack[0], stack[1], SERIES_CAP), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
+            continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
         soft = soft_overlap(i, held_hits(i))
         if soft is None:
             drop(i, 'collision %s held by %s' % hit)
@@ -898,8 +930,88 @@ def picked_hit(i):
             if blocks(f, h, False):
                 return f, k
     return None
+
+def picked_hits(i):
+    return [(f, k) for f in i['files'] for h, k in picked if blocks(f, h, False)]
 emitted = []
 lane_of = {}  # key -> how a listed ticket was listed
+
+# stacked_series: a row is held back until the pass ends, so a later candidate can join the series its head opened.
+# With the flag off every row prints at once, as it always did.
+out_buf = []
+
+def say(text):
+    if stacked:
+        out_buf.append(text)
+    else:
+        print(text)
+
+def flush_rows():
+    for t in out_buf:
+        print(t() if callable(t) else t)
+    del out_buf[:]
+
+series = {}     # head key -> {'keys', 'files', 'hook', 'row', 'prio', 'ver', 'lane'}
+series_of = {}  # key -> the head key of the series it sits in (a free row is a series of one until another joins)
+
+def series_text(h):
+    s = series[h]
+    if len(s['keys']) == 1:
+        return s['row']
+    return '\t'.join(['SERIES', 'LOCAL?' if s['lane'] == 'LOCAL?' else 'LOCAL', ','.join(s['keys']), s['prio'], s['ver'], 'files=' + (','.join(s['files']) or '-')] + (['hook'] if s['hook'] else []))
+
+def list_free(i, lane, c, row):
+    # a collision-free row is listed; with stacked_series it is also the head of a series others may join
+    picked.extend((f, i['key']) for f in i['files'])
+    emitted.append(i)
+    lane_of[i['key']] = lane
+    if i['key'] in soft_rows:
+        say('# SOFT %s for %s' % (soft_rows[i['key']], i['key']))
+    if not stacked:
+        print(row)
+        return
+    series[i['key']] = {'keys': [i['key']], 'files': list(i['files']), 'hook': c == 'HOOK-BYPASS', 'row': row,
+                        'prio': i['prio'] or '-', 'ver': ','.join(i['ver']) or '-', 'lane': lane}
+    series_of[i['key']] = i['key']
+    out_buf.append(lambda h=i['key']: series_text(h))
+
+def join_series(i, lane, c):
+    # True when the ticket joins the series of the listed row it collides with: every listed ticket it collides with is in that
+    # one series, the series has room (cap 4), the ticket's version is the head's or earlier, and no soft-edge note rides on it
+    hits = picked_hits(i)
+    heads = {series_of.get(k) for _, k in hits}
+    if not hits or None in heads or len(heads) != 1 or i['key'] in soft_rows:
+        return False
+    h = next(iter(heads))
+    s = series[h]
+    if len(s['keys']) >= SERIES_CAP or rank(i)[0] > rank(issues[h])[0]:
+        return False
+    s['keys'].append(i['key'])
+    s['files'] += [f for f in i['files'] if f not in s['files']]
+    s['hook'] = s['hook'] or c == 'HOOK-BYPASS'
+    s['lane'] = 'LOCAL?' if lane == 'LOCAL?' else 'LOCAL'  # a series is native-only: a CLOUD member makes it LOCAL
+    picked.extend((f, i['key']) for f in i['files'])
+    emitted.append(i)
+    series_of[i['key']] = h
+    for k in s['keys']:
+        lane_of[k] = 'SERIES ' + h
+    return True
+
+def intake_keys():
+    # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
+    return sorted((i['key'] for i in issues.values()
+                   if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
+                   and not any(l.startswith('residual-depth-') for l in i['labels'])
+                   and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
+                   and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
+                        or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
+                        or (first_ver is not None and 'proposed-' + first_ver in i['labels']))),
+                  key=lambda k: int(k.split('-')[1]))
+
+def print_intake(intake):
+    # no open version: the line names no version, so a reader has no --to value to take from it
+    if intake:
+        print('# intake %d%s: %s' % (len(intake), (' for ' + first_ver) if first_ver else '', ' '.join(intake)))
 
 def drop_summary():
     # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
@@ -960,18 +1072,18 @@ def emit_resume(rows):
             break
         if i['merged']:
             lane_of[i['key']] = 'MERGED-NOT-CLOSED'
-            print('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
+            say('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
             n += 1
             continue
         if not resume_only:
             hit = picked_hit(i)
             if hit:
-                print('RESUME-HELD %s by listed %s' % (i['key'], hit[1]))
+                say('RESUME-HELD %s by listed %s' % (i['key'], hit[1]))
                 continue
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'
-        print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
+        say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
@@ -1002,6 +1114,30 @@ if classified and top > len(resume):
         for part in pool.map(classify, halves):
             cls_cache.update(part)
 
+seen = set()  # keys emit_free has already judged
+
+def row_class(i):
+    # (lane, class) of a classified row, or None after dropping a BLOCKED or unclassified one
+    c = cls_cache.get(i['key'])
+    if classified:
+        if c is None or c == 'BLOCKED':
+            drop(i, 'classification ' + (('BLOCKED: ' + reasons.get(i['key'], '')[:160]).rstrip(': ') if c else 'none (cloud-route gave no verdict)'))
+            return None
+        return ('CLOUD' if c == 'CLOUD-OK' else 'LOCAL'), c
+    return 'LOCAL?', ''
+
+def emit_stackable():
+    # STACKABLE rows for the candidates that could join a live series worker, after the same proof and classification
+    # gates a dispatch row passes; one that fails them drops for that reason instead
+    ok = [t for t in stackable_rows if not proof_refuse(t[0])]
+    if classified:
+        classify_new([t[0] for t in ok])
+    for i, row, reason in ok:
+        if row_class(i) is None:
+            continue
+        drop(i, reason)
+        print(row)
+
 def emit_free(rows):
     # Classify only the slots still open, then walk on in further batches so BLOCKED rows
     # in an early batch do not leave the list short while later candidates are dispatchable.
@@ -1014,29 +1150,36 @@ def emit_free(rows):
         if classified:
             classify_new(batch)
         for i in batch:
-            c = cls_cache.get(i['key'])
-            if classified:
-                if c is None or c == 'BLOCKED':
-                    drop(i, 'classification ' + (('BLOCKED: ' + reasons.get(i['key'], '')[:160]).rstrip(': ') if c else 'none (cloud-route gave no verdict)'))
-                    continue
-                lane = 'CLOUD' if c == 'CLOUD-OK' else 'LOCAL'
-            else:
-                lane, c = 'LOCAL?', ''
+            seen.add(i['key'])
+            rc = row_class(i)
+            if rc is None:
+                continue
+            lane, c = rc
             # one writer per file: a listed ticket holds its files against the rest of the list
             hit = picked_hit(i)
             if hit:
-                drop(i, 'collision %s held by listed %s' % hit)
+                if not (stacked and join_series(i, lane, c)):
+                    drop(i, 'collision %s held by listed %s' % hit)
                 continue
-            picked.extend((f, i['key']) for f in i['files'])
-            emitted.append(i)
-            lane_of[i['key']] = lane
-            if i['key'] in soft_rows:
-                print('# SOFT %s for %s' % (soft_rows[i['key']], i['key']))
-            print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
+            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
             if n >= top:
                 break
         if n >= top:
+            break
+    while stacked and n >= top:
+        # the list is full, but a ticket that joins a listed series takes no slot: still offer it the join. A join widens the
+        # series' files, so scan again until a pass joins nobody
+        late = [i for i in rows if i['key'] not in seen and i['key'] not in why and picked_hit(i) and not proof_refuse(i)]
+        if classified:
+            classify_new(late)
+        joined = False
+        for i in late:
+            rc = row_class(i)
+            if rc is not None and join_series(i, *rc):  # a ticket that cannot join stays below --top, as before
+                seen.add(i['key'])
+                joined = True
+        if not joined:
             break
 
 if pool_only:
@@ -1045,19 +1188,12 @@ if pool_only:
         emit_resume([i for i in resume if tier_of(i) == t])
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
+    flush_rows()
     if not resume_only:
-        # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
-        intake = sorted((i['key'] for i in issues.values()
-                         if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
-                         and not any(l.startswith('residual-depth-') for l in i['labels'])
-                         and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
-                         and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
-                              or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
-                              or (first_ver is not None and 'proposed-' + first_ver in i['labels']))),
-                        key=lambda k: int(k.split('-')[1]))
+        emit_stackable()
+        intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
-        if intake:
-            print('# intake %d for %s: %s' % (len(intake), first_ver or 'no open version', ' '.join(intake)))
+        print_intake(intake)
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
@@ -1069,9 +1205,14 @@ if pool_only:
     sys.exit(0)
 emit_resume(resume)
 if resume_only:
+    flush_rows()
     warn_missing()
     sys.exit(0)
 emit_free(free)
+flush_rows()
+emit_stackable()
 warn_missing()
 drop_summary()
+if os.environ.get('ND_DISPO') == '1':
+    print_intake(intake_keys())  # the tick counts INTAKE= from the snapshot (HIMMEL-8336)
 PY

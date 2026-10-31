@@ -1825,8 +1825,7 @@ Steps: (1) stop the telegram bun bridge (`bun supervisor.ts --kill`),
 (2) remove telegram pairing + bridge state (`~/.claude/channels/telegram/`
 incl. token + `access.json`, `~/.claude/handover/bridge/`); local delete
 does NOT revoke the bot token; revoke via @BotFather when decommissioning,
-(3) remove `HIMMEL-Resume-*` scheduled jobs + the `HimmelTelegramBridge`
-logon task, (4) uninstall each installed Claude plugin at its own scope as
+(3) remove `HIMMEL-Resume-*` scheduled jobs, (4) uninstall each installed Claude plugin at its own scope as
 reported by `claude plugin list --json`, with project-scope rows limited to
 the current project; the recorded install profile supplies only a fallback
 scope when enumeration is unavailable,

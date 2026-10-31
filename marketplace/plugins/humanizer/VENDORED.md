@@ -1,7 +1,7 @@
 # Vendored files in humanizer@himmel
 
 Inventory for humanizer@himmel (HIMMEL-5857). Source: `blader/humanizer`,
-pinned at `225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8` (commit of 2026-09-27,
+pinned at `0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0` (commit of 2026-10-28,
 skill version 3.1.0), MIT, (c) 2025 Siqi Chen.
 
 | path | upstream path | deviation |

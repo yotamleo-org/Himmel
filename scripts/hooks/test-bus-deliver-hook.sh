@@ -43,7 +43,7 @@ import * as store from '__REPO__/marketplace/plugins/himmel-bus/lib/store.mjs';
 import * as identity from '__REPO__/marketplace/plugins/himmel-bus/lib/identity.mjs';
 const [verb, ...a] = process.argv.slice(2);
 const root = await store.busRoot();
-if (verb === 'register') await identity.register(root, a[0], a[1] === 'console' ? { role: 'console' } : { role: a[1], console: a[2], ...(a[3] ? { pair: a[3] } : {}) });
+if (verb === 'register') await identity.register(root, a[0], a[1] === 'chief' ? { role: 'chief' } : { role: a[1], chief: a[2], ...(a[3] ? { pair: a[3] } : {}) });
 if (verb === 'bind') await identity.bind(root, a[0], Number(a[1]));
 if (verb === 'append') {
   const rec = JSON.parse(a[1]);
@@ -91,7 +91,7 @@ run_as() {
 post() { printf '{"hook_event_name":"PostToolUse","session_id":"s1","tool_name":"Bash"%s}' "${1:-}" > "$WORK/in.post"; echo "$WORK/in.post"; }
 ctx() { printf '%s' "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).hookSpecificOutput.additionalContext)}catch{}})'; }
 
-h register con console
+h register con chief
 h register leg1 worker con
 h register judge1 judge con leg1
 WORKER_SESSION_PID="$(start_session leg1)"; h bind leg1 "$WORKER_SESSION_PID"

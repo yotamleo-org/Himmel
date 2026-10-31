@@ -2672,7 +2672,7 @@ case "${MCP_NAMES_JSON:-}" in
             BUS_ROLE=worker
             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
             [ "$CONSULT" -eq 1 ] && BUS_ROLE=consult
-            BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --console "$BUS_CHIEF")
+            BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --chief "$BUS_CHIEF")
             # WORKER_SESSION_BUS_PAIR: the worker a judge or consult was launched for (spec 3c).
             [ "$BUS_ROLE" != worker ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
             if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then

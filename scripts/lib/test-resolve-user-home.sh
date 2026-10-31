@@ -3,10 +3,9 @@
 #
 # Covers resolve_user_home + default_vault, extracted
 # verbatim from scripts/luna/pipeline-cadence.sh. Pins
-# the fallback chain: LUNA_VAULT_PATH override wins over everything; the
-# USERPROFILE+cygpath branch (Windows Git-Bash); plain $HOME fallback when
-# USERPROFILE is unset (POSIX hosts); /tmp as the last-resort floor when both
-# are unset. Never touches the real HOME/USERPROFILE/LUNA_VAULT_PATH — every
+# the fallback chain: LUNA_VAULT_PATH override wins over everything; plain
+# $HOME next; /tmp as the last-resort floor when it is unset. Never touches the
+# real HOME/LUNA_VAULT_PATH — every
 # case runs in a subshell with its own env so it cannot leak into (or read
 # from) the operator's real environment or the live luna vault.
 
@@ -36,39 +35,14 @@ assert_eq() {
 
 echo "[test-resolve-user-home] resolve_user_home"
 
-# USERPROFILE set + cygpath present -> cygpath -u "$USERPROFILE" wins over $HOME.
-_fake_bin="$(mktemp -d -t resolve-user-home.XXXXXX)"
-cat > "$_fake_bin/cygpath" <<'EOF'
-#!/bin/sh
-# Fake cygpath -u: mimics the real tool's Windows->POSIX path translation
-# closely enough to prove USERPROFILE is what got fed to it.
-case "$2" in
-  'C:\Users\fakeop') printf '/c/Users/fakeop\n' ;;
-  *) exit 1 ;;
-esac
-EOF
-chmod +x "$_fake_bin/cygpath"
-assert_eq "USERPROFILE + cygpath present: cygpath -u wins over \$HOME" \
-  "$(PATH="$_fake_bin:$PATH" USERPROFILE='C:\Users\fakeop' HOME=/home/mismatched resolve_user_home)" \
-  '/c/Users/fakeop'
-rm -rf "$_fake_bin"
-
-# USERPROFILE set but cygpath NOT on PATH -> falls through to the $HOME branch,
-# unchanged (this is the POSIX/no-cygpath shape, not the Windows one).
-_empty_path="$(mktemp -d -t resolve-user-home.XXXXXX)"
-assert_eq "USERPROFILE set, no cygpath: falls through to \$HOME" \
-  "$(PATH="$_empty_path" USERPROFILE='C:\Users\fakeop' HOME=/home/plainhome resolve_user_home)" \
-  '/home/plainhome'
-rm -rf "$_empty_path"
-
-# USERPROFILE unset -> plain $HOME fallback (the POSIX host case).
-assert_eq "USERPROFILE unset: plain \$HOME fallback" \
-  "$(env -u USERPROFILE HOME=/home/posixuser bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; resolve_user_home')" \
+# $HOME is the answer.
+assert_eq "plain \$HOME" \
+  "$(HOME=/home/posixuser bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; resolve_user_home')" \
   '/home/posixuser'
 
-# Both unset -> /tmp last-resort floor.
-assert_eq "both HOME and USERPROFILE unset: /tmp floor" \
-  "$(env -u USERPROFILE -u HOME bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; resolve_user_home')" \
+# HOME unset -> /tmp last-resort floor.
+assert_eq "HOME unset: /tmp floor" \
+  "$(env -u HOME bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; resolve_user_home')" \
   '/tmp'
 
 echo "[test-resolve-user-home] default_vault"
@@ -82,7 +56,7 @@ assert_eq "LUNA_VAULT_PATH override wins" \
 # resolve_user_home (plain $HOME branch here — the resolver itself is
 # covered above).
 assert_eq "no LUNA_VAULT_PATH: falls back to <home>/Documents/luna" \
-  "$(env -u USERPROFILE -u LUNA_VAULT_PATH HOME=/home/posixuser bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; default_vault')" \
+  "$(env -u LUNA_VAULT_PATH HOME=/home/posixuser bash -c '. "'"$SCRIPT_DIR"'/resolve-user-home.sh"; default_vault')" \
   '/home/posixuser/Documents/luna'
 
 echo

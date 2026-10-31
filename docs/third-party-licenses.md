@@ -266,7 +266,7 @@ SOFTWARE.
 
 Added 2026-10-16 (HIMMEL-5857). `marketplace/plugins/humanizer/`, one skill
 (`humanizer`) sourced from `blader/humanizer` at pinned commit
-`225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8`. The `SKILL.md` header names the
+`0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0`. The `SKILL.md` header names the
 pin and its one deviation (an added `disable-model-invocation: true`
 frontmatter line). Opt-in, off in every profile (eval:
 [`tool-adoption/humanizer.md`](tool-adoption/humanizer.md)).
@@ -443,7 +443,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:platform-design-skills | — | — | MIT | — |
 | plugin:diagram-design | — | — | MIT | — |
 | plugin:builder-visual | — | — | MIT | — |
-| plugin:higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 9b13ee6c7410ffb9c7bedf7e29ae6f3092ff0852 |
+| plugin:higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 4d0757471a704dac8729ea3c2ef0f3f330e0d9b6 |
 | plugin:frontend-slides | — | — | MIT | — |
 | plugin:design-dna | — | — | MIT | — |
 | plugin:anydesign | — | — | MIT | — |

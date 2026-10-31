@@ -225,7 +225,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # Match the variable name literally in the source.
 # shellcheck disable=SC2016
 check "(r0m) bound under stop guard" 1 "$(grep -cE 'timeout -k 5 ([1-9][0-9]|1[0-9][0-9]|2[0-8][0-9]) bash "\$leg_event_cmd"' "$WAIT")"
-check "(r0n) header names relay bound" 1 "$(sed -n 214,219p "$WAIT" | grep -c 'relay')"
+check "(r0n) header names relay bound" 1 "$(sed -n 219,224p "$WAIT" | grep -c 'relay')"
 
 # --- (r0o) silent failures, SIGKILL and output-bearing failures keep the rc ---
 for event_rc in 7 137; do
@@ -322,6 +322,98 @@ wait_exit "$WPID"
 check "(r0r) re-armed waiter starts with N2" "N2 WRAPPED — done" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
 contains "(r0r) later worker wraps across re-arm" "$(cat "$WORK/r0r-rearm.out")" "absorbed since last wake: wraps=1 (N2)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0s) the READY cursor: with auto_go on, every new READY bullet reaches worker-event once ---
+# The flag reads a fixture registry here (the real flags.tsv gets its auto_go row in a later PR).
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$WORK/flags.tsv"
+export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$WORK/no-conf"
+unset HIMMEL_FLAG_AUTO_GO  # an override in the launching shell must not decide the flag-off row
+READY_A='- 10:00 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN'
+READY_B='- 10:30 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN'
+
+# on: a READY then a LIVE inside one sample (tails= stays LIVE) still reaches worker-event, once
+reset_stub
+fleet r0s
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s) no baseline heartbeat"
+printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
+wait_exit "$WPID"
+check "(r0s) the READY wakes the chief" "0" "$rc"
+check "(r0s) one worker-event call" "1" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0s) the call carries the READY bullet, labelled" "N1 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
+contains "(r0s) the wake names the escalation" "$(head -n 1 "$WORK/r0s.out")" "WAKE worker-event ESCALATE auto-go 3 not-ready rc=10 out=$I.wait.le-N1"
+# a re-armed waiter does not relay the same bullet again
+reset_stub
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s-rearm.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s) no re-arm heartbeat"
+sleep 2.5
+check "(r0s) the same READY is not relayed twice" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0s) no wake on a re-arm" "" "$(cat "$WORK/r0s-rearm.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# on: two READY bullets (a series) are relayed one per pass, oldest first
+reset_stub
+fleet r0s2
+printf 'HANDLED auto-go N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s2.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s2) no baseline heartbeat"
+printf -- '%s\n%s\n- 10:31 LIVE — next item\n' "$READY_A" "$READY_B" >> "$L"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.2" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0s2) the first READY goes first" "N1 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(r0s2) the second READY follows" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+check "(r0s2) a handled READY is a digest line, no wake" "N1 auto-go 2566
+N1 auto-go 2567" "$(cat "$I.wait.digest" 2>/dev/null)"
+check "(r0s2) no chief wake" "" "$(cat "$WORK/r0s2.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# on: a worker doc shorter than its cursor was replaced; the cursor starts over after its existing READY
+reset_stub
+fleet r0s4
+printf -- '%s\n' "$READY_A" >> "$L"
+printf 'N1\t99\n' > "$I.wait.ready"
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s4.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s4) no baseline heartbeat"
+sleep 2.5
+check "(r0s4) a stale cursor past the end does not replay the old READY" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+printf -- '%s\n' "$READY_B" >> "$L"
+wait_exit "$WPID"
+check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# on: a pending READY of N1 must not leave N2's cursor unset, or N2's later READY would count as history
+reset_stub
+fleet r0s5
+printf 'HANDLED auto-go N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s5.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s5) no baseline heartbeat"
+L2="$WORK/r0s5/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M.new" && mv "$M.new" "$M"
+printf -- '%s\n%s\n' "$READY_A" "$READY_B" >> "$L"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.1" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+printf -- '- 10:40 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN\n' >> "$L2"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.3" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0s5) N2's READY, written while N1's backlog drained, is relayed" "N2 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# off (the default): nothing is relayed and no cursor file appears
+reset_stub
+fleet r0s3
+start "$I" "$WORK/r0s3.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s3) no baseline heartbeat"
+printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
+sleep 2.5
+check "(r0s3) flag off: no worker-event call" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0s3) flag off: no wake" "" "$(cat "$WORK/r0s3.out")"
+check "(r0s3) flag off: no cursor file" "no" "$([ -e "$I.wait.ready" ] && echo yes || echo no)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR
+
 export PATH="$relay_path"
 if [ "${1:-}" = --wrap-relay ]; then
     if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

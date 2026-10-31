@@ -140,15 +140,19 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/config` (Configure: four group tiles, Secrets, Review,
   Tracker and Project scope, one open at a time, each row with its command, when it takes
   effect and a Learn more link to the docs site, and the Check this install strip under the
-  tiles. Secrets: first the Account step, which creates the UI login once on a fresh install;
+  tiles. Review keeps its six read-only timeout and tier rows behind one closed "Timeouts and tiers" fold. Secrets: first the Account step, which creates the UI login once on a fresh install;
   which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
   (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login.
   Tracker: the Jira connection and the commit rules, tracker and ticket-id-required. Project scope: the
   handover root and luna vault path, each with a dry-run before it changes. Roadmap and Kanban only
   appear when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
-  All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
-  cards from the weekly roll-up, see below; then What is broken and Every item checked as two tabs, the checks grouped by bundle; the rail's project picker
+  All clear / Needs a look / Act now, under four tiles, Checks, Usage, Scheduled jobs and Search & graph; a tile
+  opens its panel, one at a time, and Checks opens by itself only when something is wrong. The Checks panel holds
+  What is broken and Every item checked as two tabs, the checks grouped by bundle; each failing row and each firing
+  alert has one answer to who fixes it, and a chief row says **chief is on it** only while a chief session is live
+  (**for the chief · none running** when none is). There is no Project mode card on Health. A Trends section with
+  Velocity, Cost and Health cards from the weekly roll-up follows, see below; the rail's project picker
   switches to another registered project or to **All my projects**, where the Shared problems (the machine, not a
   project) show once above each project worst first; a legacy Inventory stays below until its tests move), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and

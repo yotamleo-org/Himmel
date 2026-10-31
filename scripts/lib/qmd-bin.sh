@@ -3,14 +3,13 @@
 #
 # Resolver for the qmd CLI. qmd ships as a Claude plugin (path stub at
 # ~/.claude/plugins/cache/qmd/qmd/<v>/bin/qmd) AND as a bun-installed
-# binary (~/.bun/install/global/...). On Windows the plugin stub
-# references a missing dist/cli/qmd.js and shadows the bun shim on
-# Git Bash $PATH, so plain `qmd` fails with:
+# binary (~/.bun/install/global/...). The plugin stub can reference a missing
+# dist/cli/qmd.js and shadow the bun shim on $PATH, so plain `qmd` fails with:
 #   error: Module not found "...claude/plugins/cache/qmd/.../dist/cli/qmd.js"
-# Real Git Bash terminals resolve qmd correctly; only Claude Code's
-# Bash tool sees the broken plugin-cache PATH prepend. This helper
-# picks the working invoker by preferring the canonical bun install
-# when present, honoring BUN_INSTALL for relocated bun roots.
+# Real terminals resolve qmd correctly; only Claude Code's Bash tool sees the
+# broken plugin-cache PATH prepend. This helper picks the working invoker by
+# preferring the canonical bun install when present, honoring BUN_INSTALL for
+# relocated bun roots.
 #
 # scripts/lib/fix-qmd-stub.sh patches the broken plugin-cache stub at
 # source, which fixes plain `qmd` for call sites that don't
@@ -22,8 +21,7 @@
 # machines (zombie `qmd mcp` stdio node processes hold locks) and bun blocks
 # the postinstall script. The proven recipe (done by hand on the primary
 # machine, now automated here): clone the repo to a stable dir, `bun install
-# && bun run build` in the clone, then a directory junction (Windows) /
-# symlink (POSIX) at ~/.bun/install/global/node_modules/@tobilu/qmd pointing
+# && bun run build` in the clone, then a symlink at ~/.bun/install/global/node_modules/@tobilu/qmd pointing
 # at the clone -- bun's stock global shims then transparently serve the
 # clone from the same path every other consumer (qmd_cmd, has_qmd, the
 # fix-qmd-stub patched stub) already resolves. qmd_install() is idempotent:
@@ -204,36 +202,10 @@ qmd_install_hint() {
   printf '%s\n' \
     "git clone $(_qmd_fork_repo) $fork_dir" \
     "(cd $fork_dir && git fetch origin $ref && git checkout $ref && bun install && bun run build)" \
-    "link $fork_dir over $global_dir (Windows: mklink /J; POSIX: ln -s) -- or re-run qmd_install"
+    "link $fork_dir over $global_dir (ln -s) -- or re-run qmd_install"
 }
 
-# True on Git Bash / MSYS / Cygwin.
-_qmd_is_windows() {
-  case "$(uname -s 2>/dev/null || echo)" in
-    MINGW*|MSYS*|CYGWIN*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-# Windows-native absolute path for a POSIX path, for native tools (mklink,
-# fsutil) invoked via cmd. Falls back to the input unchanged when cygpath is
-# unavailable.
-_qmd_win_path() {
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w -- "$1" 2>/dev/null || printf '%s\n' "$1"
-  else
-    printf '%s\n' "$1"
-  fi
-}
-
-# Canonical form of an EXISTING directory, comparable across a Windows
-# junction traversal: `cd + pwd -P` resolves the reparse point, but MSYS can
-# print the result through a different mount-table alias than a direct `cd`
-# to the same real location (e.g. .../AppData/Local/Temp/... resolving as
-# /tmp/... through a junction but /c/Users/.../Temp/... directly) -- the two
-# forms are NOT string-equal even though they name the same directory.
-# cygpath -w normalizes both back to one Windows path, which is alias-free.
-# POSIX has no such aliasing, so plain `pwd -P` is enough there.
+# Canonical form of an EXISTING directory (`cd + pwd -P`).
 _qmd_canonical_dir() {
   local real
   # CDPATH= is load-bearing (public-PR CR, sibling of the _qmd_abs_path site
@@ -242,11 +214,7 @@ _qmd_canonical_dir() {
   # the capture becomes TWO lines and can resolve somewhere else entirely.
   real="$(CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)" || return 1
   [ -n "$real" ] || return 1
-  if _qmd_is_windows; then
-    _qmd_win_path "$real"
-  else
-    printf '%s\n' "$real"
-  fi
+  printf '%s\n' "$real"
 }
 
 # True if the bun-global @tobilu/qmd path already resolves to the fork clone
@@ -287,40 +255,24 @@ _qmd_version_ge() {
   [ "$a3" -ge "$m3" ] 2>/dev/null
 }
 
-# True if $1 is a symlink (POSIX) or a Windows directory junction / reparse
-# point. Read-only probe -- never mutates.
+# True if $1 is a symlink. Read-only probe -- never mutates.
 _qmd_is_link() {
-  [ -L "$1" ] && return 0
-  if _qmd_is_windows && [ -d "$1" ]; then
-    MSYS_NO_PATHCONV=1 fsutil reparsepoint query "$(_qmd_win_path "$1")" >/dev/null 2>&1
-    return $?
-  fi
-  return 1
+  [ -L "$1" ]
 }
 
-# Remove a CONFIRMED link, never the directory it points at: Windows'
-# native rmdir on a junction deletes only the reparse point (verified --
-# the target's contents survive); `rm -f` on a POSIX symlink is likewise
-# link-only. Never call this on a real (non-link) directory. On failure the
-# tool's output is captured in _QMD_LINK_ERR for the caller's ERROR message
-# (CR: >/dev/null swallowed the actionable rmdir/mklink diagnostics).
+# Remove a CONFIRMED link, never the directory it points at: `rm -f` on a
+# symlink is link-only. Never call this on a real (non-link) directory. On
+# failure the tool's output is captured in _QMD_LINK_ERR for the caller's
+# ERROR message (CR: >/dev/null swallowed the actionable rm/ln diagnostics).
 _qmd_remove_link() {
-  if _qmd_is_windows; then
-    _QMD_LINK_ERR=$(MSYS_NO_PATHCONV=1 cmd /c rmdir "$(_qmd_win_path "$1")" 2>&1)
-  else
-    _QMD_LINK_ERR=$(rm -f -- "$1" 2>&1)
-  fi
+  _QMD_LINK_ERR=$(rm -f -- "$1" 2>&1)
 }
 
-# Create a directory junction ($2 -> $1 on Windows) or a symlink (POSIX).
+# Create a symlink $2 -> $1.
 # $1 = target (the fork clone), $2 = link path (the bun-global @tobilu/qmd
 # dir). On failure the tool's output is captured in _QMD_LINK_ERR.
 _qmd_link() {
-  if _qmd_is_windows; then
-    _QMD_LINK_ERR=$(MSYS_NO_PATHCONV=1 cmd /c mklink /J "$(_qmd_win_path "$2")" "$(_qmd_win_path "$1")" 2>&1)
-  else
-    _QMD_LINK_ERR=$(ln -s -- "$1" "$2" 2>&1)
-  fi
+  _QMD_LINK_ERR=$(ln -s -- "$1" "$2" 2>&1)
 }
 
 # Deterministic backup name for an existing REAL directory at $1: never a
@@ -736,7 +688,7 @@ _qmd_bun_js() {
 }
 
 # Resolve the bun-global @tobilu/qmd package DIRECTORY (parent of dist/cli/
-# qmd.js above) -- this is the path qmd_install() junctions/symlinks onto
+# qmd.js above) -- this is the path qmd_install() symlinks onto
 # the fork clone so bun's stock global shims serve it.
 _qmd_global_dir() {
   local bun_root="${BUN_INSTALL:-$HOME/.bun}"
@@ -918,10 +870,9 @@ qmd_cmd() {
 }
 
 # _qmd_abs_path <path>
-# Echo <path> as an absolute path. Already-absolute input (POSIX or Windows
-# drive form) passes straight through; anything else is resolved against the
-# CURRENT cwd by canonicalizing its directory. rc 1 when that directory does
-# not resolve, so a caller can refuse rather than pin something unusable.
+# Echo <path> as an absolute path, resolved against the CURRENT cwd by
+# canonicalizing its directory. rc 1 when that directory does not resolve, so
+# a caller can refuse rather than pin something unusable.
 # bash 3.2-safe, no realpath dependency (macOS ships none).
 _qmd_abs_path() {
   local p="$1" d b
@@ -931,19 +882,12 @@ _qmd_abs_path() {
     # path on some POSIX systems and simply wrong on all of them. Unreachable
     # from qmd_pinned_invocation, but this is a general-purpose resolver.
     /) printf '/\n'; return 0 ;;
-    # DRIVE-LETTER form only. A `C:\…` / `C:/…` operand is returned verbatim
-    # because `pwd -P` would hand back the MSYS form (`/c/…`) and silently
-    # CHANGE the shape of a token that gets baked into a .bat — a different bug
-    # than the one below. _qmd_canonical_dir carries _qmd_win_path for that
-    # conversion; this resolver has no such need today, since the only absolute
-    # inputs it actually receives are POSIX-form (see below).
-    [A-Za-z]:[/\\]*) printf '%s\n' "$p"; return 0 ;;
   esac
   # POSIX-absolute operands fall THROUGH to the canonicalization below rather
   # than returning early (public-PR CR, CodeRabbit Major). They used to return
   # verbatim, which made the `pwd -P` fix below dead code on the ONLY path that
   # matters: qmd_pinned_invocation feeds this `command -v bun` / `command -v qmd`
-  # output, and that is always absolute (measured here: /c/Users/…/.bun/bin/bun).
+  # output, and that is always absolute (e.g. /home/<user>/.bun/bin/bun).
   # So the physical-resolution guarantee this function advertises applied to
   # exactly the operand shape production never passes it.
   d="$(dirname -- "$p")"
@@ -979,7 +923,7 @@ _qmd_abs_path() {
 # rc 0 on success, 127 when nothing resolves.
 #
 # WHY THIS IS SEPARATE FROM qmd_cmd: qmd_cmd is an INVOKER -- it runs qmd now,
-# in this shell, under this PATH. A scheduler (schtasks/cron) fires with a
+# in this shell, under this PATH. A scheduler (cron/launchd) fires with a
 # MINIMAL PATH carrying neither bun's bin dir nor qmd's, so a cadence cannot
 # call an invoker; it has to BAKE an absolute invocation into the runner it
 # generates. This is that: qmd_cmd's PREFERENCE ORDER, resolved to absolute
@@ -987,15 +931,14 @@ _qmd_abs_path() {
 # not a drop-in for the cadence.)
 #
 # The preference order is the whole point. A bare `command -v qmd` picks up the
-# broken Claude-plugin stub that shadows the bun shim on Git Bash $PATH inside a
+# broken Claude-plugin stub that shadows the bun shim on $PATH inside a
 # Claude Code session -- which is exactly where an operator arms the cadence
 # from -- and bakes THAT into the runner, so every unattended fire dies with
 # `Module not found ... dist/cli/qmd.js` in a log nobody reads.
 #
 # Two lines, not one string: the caller must be able to quote each token
 # separately. Joining them would break the moment a bun root or the user
-# profile contains a space (`C:\Program Files\...`), which is the common case
-# on Windows.
+# profile contains a space.
 #
 # EVERY returned token is canonicalized to an absolute path. Two ways a relative
 # one can otherwise leak out: a relative entry on $PATH makes `command -v`

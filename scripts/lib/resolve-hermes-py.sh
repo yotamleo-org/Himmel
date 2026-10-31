@@ -13,8 +13,8 @@
 # Source this file, then call `resolve_hermes_py [CHECKOUT_DIR]`:
 #   py="$(resolve_hermes_py "$src")" || { echo "no hermes py"; exit 1; }
 # CHECKOUT_DIR is the hermes-agent checkout that owns venv/ (optional). When
-# omitted it is derived from HERMES_HOME, else %LOCALAPPDATA%/hermes on Windows
-# and $HOME/.hermes on POSIX, tolerating HERMES_HOME pointing
+# omitted it is derived from HERMES_HOME, else $HOME/.hermes, tolerating
+# HERMES_HOME pointing
 # straight at the checkout (venv/ or .hermes/bin/ at the root). A
 # PM-managed install (.hermes/bin/hermes, Python 3.14 dependency generations)
 # resolves through the launcher's `--print-runtime-command`; the legacy venv is
@@ -52,10 +52,8 @@ resolve_hermes_py() {
         if [ -n "$rt" ] && [ -x "$rt" ]; then printf '%s\n' "$rt"; return 0; fi
     fi
 
-    # 4) Probe both venv layouts (Windows Scripts/, POSIX bin/).
-    if   [ -x "$src/venv/Scripts/python.exe" ]; then printf '%s\n' "$src/venv/Scripts/python.exe"; return 0
-    elif [ -x "$src/venv/bin/python" ];        then printf '%s\n' "$src/venv/bin/python";        return 0
-    fi
+    # 4) Probe the venv layout.
+    if [ -x "$src/venv/bin/python" ]; then printf '%s\n' "$src/venv/bin/python"; return 0; fi
     return 1
 }
 
@@ -76,20 +74,10 @@ _hermes_src_dir() {
     local src="${1:-}"
     if [ -z "$src" ]; then
         local root="${HERMES_HOME:-}"
-        # Default root, per-platform. This used to be
-        # ${LOCALAPPDATA:-$HOME/AppData/Local}/hermes unconditionally — a
-        # WINDOWS path on every host — so on any POSIX box that had not
-        # exported HERMES_HOME the resolver looked under ~/AppData/Local,
-        # found nothing, and returned 1. That is what made the bridge's triage
-        # fail open with "hermes interpreter not found" on the Linux station
-        # (2026-09-05), recovered there with an Environment=HERMES_HOME
-        # drop-in that this default makes unnecessary. LOCALAPPDATA is the
-        # marker of a Windows host, so keep the Windows default INSIDE that
-        # branch: a Git-Bash/WSL operator with hermes under %LOCALAPPDATA%
-        # resolves exactly as before. Elsewhere hermes installs to ~/.hermes.
-        if [ -z "$root" ]; then
-            if [ -n "${LOCALAPPDATA:-}" ]; then root="$LOCALAPPDATA/hermes"; else root="$HOME/.hermes"; fi
-        fi
+        # Default root: hermes installs to ~/.hermes, so a host that has not
+        # exported HERMES_HOME still resolves (without this default the bridge's
+        # triage failed open with "hermes interpreter not found", 2026-09-05).
+        [ -n "$root" ] || root="$HOME/.hermes"
         src="$root/hermes-agent"
         # Tolerate HERMES_HOME pointing straight at the checkout (venv/ at root).
         [ -d "$src/venv" ] || [ -x "$src/.hermes/bin/hermes" ] \

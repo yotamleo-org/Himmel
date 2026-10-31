@@ -51,7 +51,7 @@ _vault_name_valid() { # <name>  -> 0 valid / 1 invalid
 
 resolve_vault_root() { # <config_json> <registry_json> [<dry_run>]
   local config="$1" registry="$2" dry_run="${3:-false}"
-  local cfg_vault_path has_vault cfg_vault reg conv def up
+  local cfg_vault_path has_vault cfg_vault reg conv def
 
   # Fail-closed: skip if the config exists but is not a valid JSON OBJECT —
   # invalid JSON, an empty file, or a non-object (null/false/[]/"str"/42). A
@@ -123,17 +123,6 @@ resolve_vault_root() { # <config_json> <registry_json> [<dry_run>]
     printf '%s\n' "$conv"
     return 0
   fi
-  # Windows: $HOME (MSYS) can differ from the USERPROFILE Windows path; honor a
-  # real vault under the USERPROFILE form too before declaring "no vault". The
-  # HOME-form string is returned unchanged — the hook reconciles it to the
-  # Windows form (end-session-wiki.sh) just as it did before this guard.
-  if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-    up="$(cygpath -u "$USERPROFILE" 2>/dev/null)"
-    if [ -n "$up" ] && [ -d "$up/Documents/luna/.obsidian" ]; then
-      printf '%s\n' "$conv"
-      return 0
-    fi
-  fi
-  printf ''                                                      # no configured/real luna vault => skip
+  printf ''                                                    # no configured/real luna vault => skip
   return 0
 }

@@ -54,7 +54,7 @@ allow() { # allow <label> <json> [ENV=val ...]  — allow must be rc 0 AND silen
 [ -f "$HOOK" ] || { bad "hook not found: $HOOK"; echo "Summary: $pass passed, $fail failed"; exit 1; }
 
 echo "== T3: registration verbs and env =="
-deny "bus register x --role console" "$(bash_json 'bus register x --role console')"
+deny "bus register x --role chief" "$(bash_json 'bus register x --role chief')"
 deny "bus bind x 1" "$(bash_json 'bus bind x 1')"
 deny "bus rebind x 1" "$(bash_json 'bus rebind x 1')"
 deny "path-qualified bin/bus register" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus register x --role worker')"
@@ -128,7 +128,7 @@ allow "bus/ token under an ordinary cwd" "$(cwd_json 'cat bus/readme.txt' '/tmp'
 
 echo "== trust-judge j2355b: continuations, bare bus token, in-command cd, XDG =="
 deny "backslash-newline continuation splits bus from the verb" \
-    "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role console \\\nregister legX')"
+    "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role chief \\\nregister legX')"
 deny "a verb word split across a continuation (bash joins it with no space)" \
     "$(bash_json $'bus reg\\\nister legX')"
 deny "bus split across a continuation: no literal bus in the raw JSON (verb)" \
@@ -356,8 +356,8 @@ deny  "a process substitution between bus and the verb" "$(bash_json 'bus <(:) r
 deny  "an open substitution with a body between bus and the verb" "$(bash_json 'bus $(echo a b) register x')"
 deny  "a quoted open substitution with a body between bus and the verb" "$(bash_json 'bus "$(cat f)" register x')"
 deny  "a bus word inside a closed body still pairs with a verb after it (a pop never lowers seen)" "$(bash_json 'echo $(bus status) register')"
-deny  "a quoted paren in a subshell does not hide the verb" "$(bash_json "( bus --summary ')' register legX --role console )")"
-deny  "a quoted paren in a command substitution does not hide the verb" "$(bash_json 'echo "$(bus --summary '"')'"' register legX --role console)"')"
+deny  "a quoted paren in a subshell does not hide the verb" "$(bash_json "( bus --summary ')' register legX --role chief )")"
+deny  "a quoted paren in a command substitution does not hide the verb" "$(bash_json 'echo "$(bus --summary '"')'"' register legX --role chief)"')"
 deny  "an escaped paren in a backtick body does not hide the verb" "$(bash_json 'echo `bus --summary \) bind x 1`')"
 deny  "a nested substitution between bus and the verb" "$(bash_json 'bus $(echo $(date) x) register y')"
 

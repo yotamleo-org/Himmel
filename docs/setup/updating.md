@@ -237,7 +237,7 @@ This will:
   2. KEEP telegram pairing + bridge state (pass --purge-state to remove it):
        ~/.claude/channels/telegram
        ~/.claude/handover/bridge
-  3. remove HIMMEL-Resume-* scheduled jobs (+ HimmelTelegramBridge logon task)
+  3. remove HIMMEL-Resume-* scheduled jobs
      and the cron/at jobs the ledger recorded a cadence arm adding (exact recorded names only)
   4. uninstall installed Claude plugins from himmel-owned marketplaces
      (project/local: current project only; USER-SCOPE: affects every repo on this machine; fallback scope: project)
@@ -397,11 +397,10 @@ The himmel *plugins* depend on **how the marketplace was registered**:
   **github** source. There `autoUpdate` pulls a separate Claude-managed clone from
   GitHub, so *plugin* updates arrive without pulling your working checkout, but
   the core hooks and commands still run from your checkout and **still need a
-  pull**. Plugin versions change only in a release cut, and Claude Code
-  replaces its cached copy only when the version differs, so a plugin change
-  on `main` reaches this install with the next release. A fresh install
-  between releases gets `main`'s content under the last release's version;
-  pin the marketplace source to a release tag to get exactly a release.
+  pull**. Every PR that changes a plugin bumps that plugin's version
+  (HIMMEL-8368), and Claude Code replaces its cached copy only when the version
+  differs, so a plugin change on `main` reaches this install as soon as it
+  merges. Pin the marketplace source to a release tag to get exactly a release.
 
 Either way: **a `git pull` is required for the full update; `autoUpdate` never
 covers the core hooks.**

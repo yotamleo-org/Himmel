@@ -230,6 +230,20 @@ test("the card names each reviewer, its order, required or optional, and the rat
   expect(html).toContain('data-act="review-gate-save"');
 });
 
+test("the six timeout and tier rows sit in one closed Timeouts and tiers fold and nowhere else", () => {
+  const names = ["CR_PROFILE", "CR_REQUIRE_CROSS_MODEL", "CR_FLOOR_FALLBACK", "CRITIC_PANEL_TIERS", "CRITIC_TIMEOUT_SECS", "CRITIC_PARALLEL"];
+  const env = names.map((name) => ({ name, value: null, default: "fixture", means: "fixture" }));
+  const html: string = renderReviewGate({ data: { ...data, env }, error: null, draft: null, msg: null });
+  const folds = html.match(/<details\b[^>]*>[\s\S]*?<\/details>/g) || [];
+  expect(folds.length).toBe(1);
+  expect(folds[0]).toMatch(/^<details(?![^>]*\bopen\b)[^>]*>\s*<summary[^>]*>Timeouts and tiers<\/summary>/);
+  for (const n of names) {
+    const row = `<span class="id">${n}</span>`;
+    expect(folds[0]).toContain(row);
+    expect(html.split(row).length - 1).toBe(1);
+  }
+});
+
 test("the card shows the loading and error states", () => {
   expect(renderReviewGate(null)).toContain("loading");
   expect(renderReviewGate({ data: null, error: "boom" })).toContain("boom");

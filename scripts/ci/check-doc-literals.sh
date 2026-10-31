@@ -43,7 +43,7 @@ accept_table() {
     # `bus <verb>`, or a table cell opening with a verb only the bus has (adopt, status, send ... also name other tools' verbs)
     local cmd_bus="(((^|[^A-Za-z0-9_-])bus )(register|bind|rebind|adopt|succeed|status|peers|send|wait|unread|gc)|$bt(register|bind|rebind|succeed|unread))([^A-Za-z0-9_.-]|\$)"
     # name | source | command ERE | accepted flags | accepted roles | refused flags
-    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker console judge consult${t}-" # old-term-ok: the bus parser's current vocabulary
+    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --chief --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker chief judge consult${t}-" # old-term-ok: --console is the parser's read alias under HIMMEL_LEGACY_NAMES
     printf '%s\n' "tick.sh${t}scripts/handover/chief-kit/tick.sh${t}(^|[^A-Za-z0-9_-])tick\\.sh([^A-Za-z0-9_-]|\$)${t}--burn --doc --emit-fp --handover-dir --help --pool-dispositions --pool-stale --ready-dir --ready-mismatch --repo --token --verbose --workers --workers-from${t}-${t}-"
     printf '%s\n' "board.mjs${t}scripts/handover/chief-kit/board.mjs${t}(^|[^A-Za-z0-9_-])board\\.mjs([^A-Za-z0-9_-]|\$)${t}--changed --doc --json --out --repo --view --workers${t}-${t}-"
     printf '%s\n' "chief.sh${t}scripts/handover/chief/chief.sh${t}(^|[^A-Za-z0-9_-])chief\\.sh([^A-Za-z0-9_-]|\$)${t}--arm --bucket --context --date --deadline-min --doc --dry-run --help --model --name --no-relay-on-live --prefix --project --relay-on-live${t}-${t}-"

@@ -35,6 +35,7 @@ node "$REPO/scripts/api-lane/grant-snapshot.mjs" "$ACCOUNT" "$BEFORE" || exit 2
 WORK="$(tmpdir)" || exit 2
 trap 'rm -rf "$WORK"' EXIT
 OUT="$WORK/out.json"
+export HIMMEL_API_KIND=probe # gitleaks:allow (a run-kind label, not a key)
 (cd "$WORK" && ANTHROPIC_API_KEY="$KEY" HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$ACCOUNT" HIMMEL_API_KEY_ID="$KEY_ID" \
   HIMMEL_API_JOB_ID="measure-credit-$(date +%s)" HIMMEL_API_TOOLS="" \
   bash "$REPO/scripts/api-lane/claude-api.sh" -p "Reply with the single word: ok" \

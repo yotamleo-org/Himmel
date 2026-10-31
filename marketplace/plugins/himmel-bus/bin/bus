@@ -13,13 +13,12 @@ import * as store from '../lib/store.mjs';
 import * as identity from '../lib/identity.mjs';
 import * as edges from '../lib/edges.mjs';
 import { formatRecord } from '../lib/deliver.mjs';
-
-const USAGE = `usage: bus register <name> --role worker|console|judge|consult [--console <c>] [--pair <worker>] [--predecessor <old>]
-       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | succeed <new-console> | status <name> | peers
+const USAGE = `usage: bus register <name> --role worker|chief|judge|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]
+       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-chief> | succeed <new-chief> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
        bus unread <name>   (count of undelivered records; read-only, for the idle waker)
-       bus status [--unacked] [--for <console>] | gc`;
+       bus status [--unacked] [--for <chief>] | gc`;
 
 // Same limits as the MCP server's `send` (spec §4).
 const MAX_BODY = 64 * 1024, INLINE_CAP = 1500, MAX_SUMMARY = 300;
@@ -115,7 +114,7 @@ async function wait(root, timeoutArg) {
   if (!Number.isSafeInteger(seconds) || seconds > WAIT_MAX_S) throw new Error(`--timeout must be at most ${WAIT_MAX_S} seconds`);
   const me = await caller(root);
   const peers = await identity.loadPeers(root);
-  const owner = peers[me]?.role === 'console' ? undefined : peers[me]?.console;
+  const owner = peers[me]?.role === 'chief' ? undefined : peers[me]?.console;
   const deadline = Date.now() + seconds * 1000;
   for (;;) {
     if (await store.pending(root, me)) {
@@ -191,7 +190,7 @@ async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
-      role: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
+      role: { type: 'string' }, chief: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
       re: { type: 'string' }, summary: { type: 'string' }, doc: { type: 'string' },
       unacked: { type: 'boolean' }, for: { type: 'string' }, timeout: { type: 'string' },
     },
@@ -236,7 +235,7 @@ async function main() {
       }
       const before = (await identity.loadPeers(root))[me.name]?.console;
       await identity.adopt(root, me.name, need(name));
-      console.log(`adopted: ${me.name} console ${before} -> ${name}`);
+      console.log(`adopted: ${me.name} chief ${before} -> ${name}`);
       return;
     }
     default: throw new Error(USAGE);

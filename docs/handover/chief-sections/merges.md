@@ -144,10 +144,14 @@ fresh bytes when that is all the gap is. A diverged anchor, a dirty tree
 that blocks the pull or an unreadable `origin` still exits 21: fix the primary
 checkout by hand.
 
-Plugin versions change only in the release cut, the PR that changes the root
-`VERSION` file; `check-plugin-drift.sh --bump-required`, ready-check item 9
-and the merge-on-green recheck refuse a version change in any other PR. The
-release-cut PR raises the version of every plugin changed since the last tag
+A PR that changes a plugin bumps that plugin's `plugin.json` version above
+`main`'s (HIMMEL-8368), so `himmel-update` refreshes the station at once;
+`check-plugin-drift.sh --bump-required`, ready-check item 9 and the
+merge-on-green recheck refuse a plugin change without the bump, and a bump with
+no other change in that plugin. Two PRs bumping one plugin from the same base
+collide on the version line: the second merges `main` and bumps above it. The
+release-cut PR (the one that changes the root `VERSION` file) raises the
+version of every plugin changed since the last tag
 (`git diff --name-only <last tag> HEAD -- marketplace/plugins/`), each strictly
 above `main`'s, in the same commit as the `VERSION` change (the pre-commit hook
 sees one commit at a time); the gates check that every plugin the cut touches

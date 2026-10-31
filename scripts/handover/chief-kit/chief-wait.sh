@@ -82,6 +82,11 @@
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
 #                               the relay absorbed anything, and the digest clears.
+#                               With the auto_go flag on, the relay also hands every new
+#                               READY bullet of a manifest worker to worker-event once, after
+#                               any wrap, even when a LIVE bullet follows it inside one
+#                               sample: <inbox>.wait.ready keeps a line cursor per worker. A
+#                               worker met for the first time starts after its existing READYs.
 #   WAKE resolve <worker> pr=<n> threads=<id,...>  with --workers-from: a worker doc whose newest
 #                               marker bullet is `BLOCKED resolve <pr> <PRRT_ ids>` (its
 #                               resolve call was denied). Once per bullet; the chief
@@ -230,6 +235,7 @@
 #   <inbox>.wait.r0      the bullets the relay already handled or woke for
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
+#   <inbox>.wait.ready   with auto_go on: `<label><TAB><line>`, the last READY bullet handed on.
 #   <inbox>.handover     handover mode: while it is fresh (younger
 #                        than CHIEF_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
@@ -804,7 +810,8 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
-    [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to ${intake_ver} --why <why>\`, then run the rm-run once for the batch"
+    [ "$intake_ver" != "no open version" ] || intake_ver=""  # an older dispatcher's line for no open version: nothing to file into
+    [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to $(printf '%q' "$intake_ver") --why <why>\`, then run the rm-run once for the batch"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
 # pool_watch_wake: even a full fleet, or a failed tick sample, may have silently dropped
@@ -1116,6 +1123,46 @@ if [ -r "$inbox.wait.r0-next" ]; then
 fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
+
+# The READY cursor. With the auto_go flag on, every READY bullet a worker
+# writes reaches worker-event once, even when a LIVE bullet follows inside the same sample (tails=
+# then never shows the READY). $ready_file holds one `<label><TAB><line>` row per worker: the line
+# of the last READY bullet already handed on. A worker met for the first time starts after the
+# READY bullets it already has, so a waiter never replays history. The flag is read every sample
+# (an unregistered flag reads as off). Flag off: nothing here reads or writes a file.
+ready_file="$inbox.wait.ready"
+ready_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY([^A-Za-z]|$)'
+ready_label=""; ready_line=""; ready_bullet=""
+auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
+ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past its worker's cursor
+    local label ldoc cur last entry
+    ready_label=""
+    auto_go_on || return 1
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -f "$ldoc" ] || continue
+        entry="$(grep -nE "$ready_re" "$ldoc")"
+        cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file" 2>/dev/null)"
+        # a doc shorter than its cursor was replaced: start over as a worker met for the first time
+        if [ -n "$cur" ] && [ "$cur" -gt "$(wc -l < "$ldoc")" ]; then cur=""; fi
+        if [ -z "$cur" ]; then
+            last="$(printf '%s\n' "$entry" | tail -n 1 | cut -d: -f1)"
+            printf '%s\t%s\n' "$label" "${last:-0}" >> "$ready_file"
+            continue
+        fi
+        # one pick per call, but every later worker is still visited so its cursor is set
+        [ -z "$ready_label" ] || continue
+        entry="$(printf '%s\n' "$entry" | awk -F: -v c="$cur" '$1 + 0 > c { print; exit }')"
+        [ -n "$entry" ] || continue
+        ready_label="$label"; ready_line="${entry%%:*}"; ready_bullet="${entry#*:}"
+    done <<EOF
+$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+    [ -n "$ready_label" ]
+}
+ready_advance() { # <label> <line>: the cursor moves once the bullet was handed on
+    { awk -F'\t' -v l="$1" '$1 != l' "$ready_file" 2>/dev/null; printf '%s\t%s\n' "$1" "$2"; } | atomic_write "$ready_file"
+}
+
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     local cands label marker ldoc bullet sum line stem out rc outf what pr
     r0_handled=""
@@ -1130,14 +1177,21 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             $1 == last { past = 1 }
             END { printf "%s", before }
         ' )"
+    # a READY past its cursor comes after any WRAPPED or MERGED worker
+    if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     while read -r label marker; do
         [ -n "$label" ] || continue
         ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
-        bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
+        if [ "$marker" = READY ]; then
+            bullet="$ready_bullet"
+        else
+            bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
+        fi
         [ -n "$bullet" ] || continue
         sum="$label $marker $(printf '%s\n' "$bullet" | cksum | cut -d' ' -f1)"
-        grep -qxF "$sum" "$r0_file" 2>/dev/null && continue
+        # a READY is keyed by its cursor line, not by $r0_file
+        [ "$marker" = READY ] || { grep -qxF "$sum" "$r0_file" 2>/dev/null && continue; }
         line="$(printf '%s\n' "$bullet" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?//; s/^\*\*//' | r0_scrub)"
         if [[ $label =~ ^N[0-9]+$ ]]; then
             line="$label $line"
@@ -1159,13 +1213,14 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         printf '%s\n' "$out" > "$outf" 2>/dev/null
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' "$sum" >> "$r0_file"
+            [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
             r0_handled=1
             r0_fold="$r0_fold $label"
             what="$(printf '%s\n' "$out" | sed -n 's/^HANDLED \([a-z-]*\).*/\1/p' | head -n 1)"
             [ "$what" = noop ] && break
             pr=""
             if [ "$what" != close-wrapped ]; then
-                pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
+                pr="$(printf '%s\n' "$line" | grep -oE '(MERGED|READY) #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
                 [ -n "$pr" ] || pr="$(grep -oE '^- .*(READY|PR) #?[0-9]+' "$ldoc" | tail -n 1 | grep -oE '[0-9]+$')"
             fi
             [ -z "$pr" ] || r0_fold="$r0_fold #$pr"
@@ -1180,6 +1235,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 break ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
+        [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
         printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
         return 0
     done <<EOF

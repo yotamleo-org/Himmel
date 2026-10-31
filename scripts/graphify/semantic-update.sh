@@ -441,7 +441,16 @@ spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEN
 if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
   echo "claude-api shim: WARN: run spend $spent is past the planned cap $GRAPHIFY_SEMANTIC_RUN_CAP USD; the call goes on" >&2
 fi
-{ cat; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } | "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
+in="$here/lane-in.$$"
+cat > "$in" || { rm -f "$in"; echo "claude-api shim: could not capture the prompt; not dispatching this chunk" >&2; exit 1; }
+# The addendum is fixed text, so it goes ahead of the chunk, right after graphify's instructions, where every call
+# shares it; when graphify's "Now extract" line is not found it is appended at the end as before.
+mark="$(grep -n -m1 '^Now extract the knowledge graph from the following source file' "$in" | cut -d: -f1)"
+if [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
+  { head -n $((mark - 1)) "$in"; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; printf '\n\n---\n'; tail -n +"$mark" "$in"; }
+else
+  { cat "$in"; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; }
+fi | HIMMEL_API_KIND=graphify "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
   --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out" 2> "$err"
 rc=${PIPESTATUS[1]}
 cat "$err" >&2
@@ -454,7 +463,7 @@ if [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
 elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
 elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
-cat "$out"; rm -f "$out" "$err"
+cat "$out"; rm -f "$out" "$err" "$in"
 exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"

@@ -73,11 +73,11 @@ skip_section() { printf '  SKIP  %s: %s\n' "$1" "$2"; }
 # ago <days>: a touch -t stamp <days> back (GNU or BSD date).
 ago() { local s=$(( $(date +%s) - $1 * 86400 )); date -d "@$s" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$s" +%Y%m%d%H%M.%S; }
 
-"$BUS" register con --role console
-"$BUS" register legA --role worker --console con
-"$BUS" register legB --role worker --console con
-"$BUS" register other --role console
-"$BUS" register otherLeg --role worker --console other
+"$BUS" register con --role chief
+"$BUS" register legA --role worker --chief con
+"$BUS" register legB --role worker --chief con
+"$BUS" register other --role chief
+"$BUS" register otherLeg --role worker --chief other
 printf 'rule one\n' > "$tmp/body"
 
 echo "== send: identity and stamping =="
@@ -192,7 +192,7 @@ out=$("$BUS" status legA 2>&1)
 case "$out" in live|gone) pass "bus status <name> keeps its live/gone meaning" ;; *) fail "status name: $out" ;; esac
 
 echo "== wait (HIMMEL-4831) =="
-"$BUS" register waiter --role worker --console con >/dev/null 2>&1
+"$BUS" register waiter --role worker --chief con >/dev/null 2>&1
 t0=$(date +%s)
 out=$(as waiter wait --timeout 1 2>&1); rc=$?
 t1=$(date +%s)
@@ -217,18 +217,18 @@ out=$(as waiter wait --timeout 99999999999999999999999999 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'at most 86400 seconds' <<< "$out"; then pass "wait refuses a --timeout beyond the cap"; else fail "huge timeout (rc=$rc): $out"; fi
 
 echo "== succession adopt + unread (HIMMEL-6127) =="
-"$BUS" register con2 --role console --predecessor con >/dev/null 2>&1
+"$BUS" register con2 --role chief --predecessor con >/dev/null 2>&1
 printf 'your console is now con2\n' > "$tmp/relay"
 as con send legA "$tmp/relay" >/dev/null 2>&1
 out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'no edge to legA' <<< "$out"; then pass "without adopt the successor has no edge to the worker"; else fail "pre-adopt send (rc=$rc): $out"; fi
 out=$(as legA adopt con2 2>&1); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA chief con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
 out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the worker"; else fail "post-adopt send (rc=$rc): $out"; fi
-"$BUS" register con3 --role console --predecessor con2 >/dev/null 2>&1
+"$BUS" register con3 --role chief --predecessor con2 >/dev/null 2>&1
 out=$(as legA succeed con3 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && grep -q 'legA is not a console' <<< "$out"; then pass "succeed from a worker is refused (HIMMEL-7262)"; else fail "worker succeed (rc=$rc): $out"; fi
+if [ "$rc" -ne 0 ] && grep -q 'legA is not a chief' <<< "$out"; then pass "succeed from a worker is refused (HIMMEL-7262)"; else fail "worker succeed (rc=$rc): $out"; fi
 out=$(as con succeed con3 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && grep -q 'con3 does not succeed con' <<< "$out"; then pass "succeed names only the caller's own successor"; else fail "wrong-predecessor succeed (rc=$rc): $out"; fi
 out=$(as con2 succeed con3 2>&1); rc=$?
@@ -236,17 +236,17 @@ if [ "$rc" -eq 0 ] && [ "$out" = "stamped: con2 successor con3" ]; then pass "a 
 out=$(as legA peers 2>&1)
 if grep -q '^con2\b' <<< "$out" && ! grep -q '^con\b' <<< "$out"; then pass "the worker's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
 if grep -qx 'con2 (gone)' <<< "$out"; then pass "peers marks a peer whose process is gone"; else fail "gone peer not marked: $out"; fi
-"$BUS" register legL --role worker --console con2 >/dev/null 2>&1
+"$BUS" register legL --role worker --chief con2 >/dev/null 2>&1
 sleep 60 & live_pid=$!
 node "$tmp/repoint.mjs" legL "$live_pid" "$(cut -d' ' -f22 "/proc/$live_pid/stat")"
 out=$(as con2 peers 2>&1)
 kill "$live_pid" 2>/dev/null; wait "$live_pid" 2>/dev/null
 if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the worker"; else fail "successor peers: $out"; fi
 if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
-"$BUS" register legU --role worker --console con2 >/dev/null 2>&1
+"$BUS" register legU --role worker --chief con2 >/dev/null 2>&1
 if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
 else skip_section "status --unacked, wait, succession adopt" "$NOPROC_WHY"; fi
-"$BUS" register idler --role worker --console con >/dev/null 2>&1
+"$BUS" register idler --role worker --chief con >/dev/null 2>&1
 if [ "$HAVE_PROC" = 1 ]; then
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi

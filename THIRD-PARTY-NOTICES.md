@@ -76,7 +76,7 @@ license file:
 - 12 of 15 `skills/` directories from [`obra/superpowers`](https://github.com/obra/superpowers)
   @ 7.0.1 — `LICENSE.superpowers` (MIT, © 2025 Jesse Vincent).
 - `skills/grilling` from [`mattpocock/skills`](https://github.com/mattpocock/skills)
-  @ 1.3.1 — `LICENSE.mattpocock-skills` (MIT, © 2026 Matt Pocock).
+  @ 1.3.2 — `LICENSE.mattpocock-skills` (MIT, © 2026 Matt Pocock).
 
 `skills/context7-mcp` is himmel-authored (MIT, no upstream). See
 `marketplace/plugins/lean-skills/README.md` and `VENDORED.md` for the

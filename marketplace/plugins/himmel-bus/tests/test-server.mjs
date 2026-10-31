@@ -46,11 +46,11 @@ async function run() {
       await symlink(`/usr/bin/${comm}`, join(proc, String(pid), 'exe'));
     }
     const root = await store.busRoot({ stateHome: state });
-    await identity.register(root, 'con', { role: 'console' });
-    await identity.register(root, 'con2', { role: 'console' });
-    await identity.register(root, 'worker', { role: 'worker', console: 'con' });
-    await identity.register(root, 'sib', { role: 'worker', console: 'con' });
-    await identity.register(root, 'leg3', { role: 'worker', console: 'con2' });
+    await identity.register(root, 'con', { role: 'chief' });
+    await identity.register(root, 'con2', { role: 'chief' });
+    await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
+    await identity.register(root, 'sib', { role: 'worker', chief: 'con' });
+    await identity.register(root, 'leg3', { role: 'worker', chief: 'con2' });
     for (const [name, pid] of [['con', 100], ['con2', 150], ['worker', 200], ['sib', 210], ['leg3', 220]]) await identity.bind(root, name, pid, { proc });
     return { root, proc };
   }

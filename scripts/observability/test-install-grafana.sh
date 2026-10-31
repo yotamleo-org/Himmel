@@ -153,7 +153,7 @@ run install
 assert_eq "mismatch rc" 1 "$RC"
 assert_contains "mismatch named" "sha256 mismatch for prometheus" "$OUT"
 assert_eq "no unit written" "no" "$([ -e "$HOME_DIR/$UNIT_REL/himmel-observability-prometheus.service" ] && echo yes || echo no)"
-assert_eq "no tree unpacked" "no" "$([ -e "$HOME_DIR/$DATA_REL/prometheus-3.15.0" ] && echo yes || echo no)"
+assert_eq "no tree unpacked" "no" "$([ -e "$HOME_DIR/$DATA_REL/prometheus-3.15.1" ] && echo yes || echo no)"
 assert_not_contains "nothing enabled" "enable" "$(cat "$LOG")"
 
 echo "case 3: services that never answer fail the install"

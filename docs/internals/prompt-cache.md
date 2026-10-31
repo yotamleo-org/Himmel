@@ -214,6 +214,39 @@ while no background task or Monitor is running. Bound:
 Re-measure with the `idle-gap` command below over the worker transcripts of the
 24 h after it ships.
 
+<a id="direct-api-prefix"></a>
+
+## Direct API calls: a cached prefix (HIMMEL-8403)
+
+`scripts/api-lane/cache-report.mjs` groups `launches.jsonl` by kind, model and
+organization. On 2026-10-31 the untagged `other | sonnet` group (graphify's
+claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens written,
+0.6 M read) while `eval` read 91 %. Two fixes:
+
+- **Batch (`semantic-batch.mjs submit`).** The prompts of a batch share graphify's
+  fixed extraction instructions. The shared head, cut at the end of graphify's
+  "Now extract ..." paragraph (never later, so source text that opens every chunk
+  alike is not promoted to the system role), goes once as a `system` block with
+  `cache_control` `{type: ephemeral, ttl: 1h}`
+  and each chunk goes alone as the user message. A batch runs long, and the 1 h
+  write (2× input) pays back once the items share it (read 0.1×, or 0.05× on
+  Sonnet 5.5 and Opus 5.5). The `custom_id`
+  and the hash check still cover the whole recorded text; prefix plus chunk
+  rebuilds it byte for byte. It fails closed to the unsplit prompt for a lone
+  prompt, no instruction boundary in the shared head, a prefix under 4000
+  characters, or a prompt that is only the prefix.
+  The batch cost counts a 1 h write at 2× via `usage.cache_creation`.
+- **Tags.** Every `claude-api.sh` caller sets `HIMMEL_API_KIND`: `graphify` (the
+  non-batch shim, whose fixed addendum now sits ahead of the chunk), `cull`
+  (steering cull), `probe` (credit measurement), `eval`, `judge`, `bulk`,
+  `critic`. A call without one still logs `other`.
+
+`ponytail:` the non-batch graphify path still misses: the CLI caches on block
+boundaries and graphify sends one text block, so reordering alone cannot make a
+different chunk hit. Upgrade path: carry the instructions as a system prompt
+(`--append-system-prompt-file` on the claude-api.sh allowlist) after a quality
+proof.
+
 ## Re-run
 
 ```bash

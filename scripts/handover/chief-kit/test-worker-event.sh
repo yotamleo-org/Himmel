@@ -274,4 +274,44 @@ run "WRAPPED N999"
 contains "14 a label that is only a prefix of the closed one still escalates" "$out" "ESCALATE not-in-manifest N999"
 : > "$W/doc"
 
+# 15. READY: with the auto_go flag on it goes to auto-go.sh (a stub through LE_AUTOGO) as a dry run
+H40=0780b95dcad44fe293c7798066626cd52bb2dce0
+cat > "$W/autogo" <<'EOF3'
+#!/usr/bin/env bash
+echo "autogo $*" >> "$LE_CALLS"
+[ -z "${LE_AUTOGO_OUT:-}" ] || echo "$LE_AUTOGO_OUT"
+exit "${LE_AUTOGO_RC:-0}"
+EOF3
+chmod +x "$W/autogo"
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$W/flags.tsv"
+export HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo"
+unset HIMMEL_FLAG_AUTO_GO
+
+run "READY 2553 $H40 GREEN N2088"
+check "15a flag off: rc" "$rc" 10
+check "15a flag off: ESCALATE marker-READY, as before" "$out" "ESCALATE marker-READY"
+check "15a flag off: auto-go not run" "$calls" ""
+
+export HIMMEL_FLAG_AUTO_GO=1
+LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
+check "15b WOULD-GO still goes to the chief: rc" "$rc" 10
+check "15b WOULD-GO line" "$out" "WOULD-GO 2553 $H40 dry-run, no GO written"
+check "15b auto-go got the dry run for the worker" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N2088 --dry-run 2553 $H40"
+
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 3 ready-go did not print READY-GO PASS" run "READY 2553 $H40 GREEN N2088"
+check "15c an auto-go escalation is passed on: rc" "$rc" 10
+check "15c an auto-go escalation is passed on" "$out" "ESCALATE auto-go 3 ready-go did not print READY-GO PASS"
+
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"
+check "15d another auto-go exit: rc" "$rc" 10
+contains "15d another auto-go exit is an error, never a retryable -failed" "$out" "ESCALATE auto-go-error rc=3 auto-go: refusing"
+
+LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "N2088 READY 2553 $H40 GREEN"
+check "15e a label-first READY routes the same" "$out" "WOULD-GO 2553 $H40 dry-run, no GO written"
+
+run "READY 2553 abc N2088"
+contains "15f a READY with no full head" "$out" "ESCALATE ready-unparsed"
+check "15f auto-go not run" "$calls" ""
+unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
