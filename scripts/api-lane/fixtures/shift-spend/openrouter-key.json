@@ -1,0 +1,22 @@
+{
+  "data": {
+    "byok_usage": 17.38,
+    "byok_usage_daily": 17.38,
+    "byok_usage_monthly": 17.38,
+    "byok_usage_weekly": 17.38,
+    "creator_user_id": "user_2dHFtVWx2n56w6HkM0000000000",
+    "expires_at": "2027-12-31T23:59:59Z",
+    "include_byok_in_limit": false,
+    "is_free_tier": false,
+    "is_management_key": false,
+    "is_provisioning_key": false,
+    "label": "sk-or-v1-au7...890",
+    "limit": 100,
+    "limit_remaining": 74.5,
+    "limit_reset": "monthly",
+    "usage": 25.5,
+    "usage_daily": 3.25,
+    "usage_monthly": 25.5,
+    "usage_weekly": 12.75
+  }
+}
