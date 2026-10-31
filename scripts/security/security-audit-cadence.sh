@@ -364,6 +364,7 @@ cmd_arm() {
     entry="${time#*:} ${time%:*} * * $day ${entry//%/\\%} # $TASK_NAME"
     if [ "$dry" -eq 1 ]; then printf 'DRY security-audit: %s\n' "$entry"; return 0; fi
     mkdir -p "$RUNNER_DIR" || return 4
+    # shellcheck disable=SC2016  # generated runner variables stay literal
     {
         printf '#!/usr/bin/env bash\n'
         printf 'export PATH=%q\n' "$PATH"
@@ -372,7 +373,9 @@ cmd_arm() {
             [ -z "$value" ] || printf 'export %s=%q\n' "$name" "$value"
         done
         printf 'cd %q || exit 2\n' "$root"
-        printf '%q %q run >> %q 2>&1\n' "$(command -v bash)" "$root/scripts/security/security-audit-cadence.sh" "$RUNNER_DIR/last-run.log"
+        printf 'log=%q\n' "$RUNNER_DIR/last-run.log"
+        printf '%q %q run >> "$log" 2>&1\n' "$(command -v bash)" "$root/scripts/security/security-audit-cadence.sh"
+        printf '_rc=$?\nprintf "[exit rc=%%s]\\n" "$_rc" >> "$log"\nexit "$_rc"\n'
     } > "$runner" || return 4
     chmod 700 "$runner" || return 4
     { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - || return 4
@@ -380,10 +383,26 @@ cmd_arm() {
 }
 
 cmd_status() {
+    local entry="" line count=0 duplicate="" minute hour dom month dow rest log mtime last
     cron_read || return 1
-    if [ -n "$(cron_entry)" ]; then printf 'ARMED %s\n' "$(cron_entry)"
-    else printf 'not armed %s\n' "$TASK_NAME"; fi
-    [ ! -f "$RUNNER_DIR/last-run.log" ] || printf 'last run: %s\n' "$RUNNER_DIR/last-run.log"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        [ "$count" -ne 0 ] || entry="$line"
+        count=$((count + 1))
+    done <<< "$(cron_entry)"
+    if [ "$count" -gt 0 ]; then
+        read -r minute hour dom month dow rest <<< "$entry"
+        [ "$count" -le 1 ] || duplicate=" [DUPLICATE: $count cron entries]"
+        printf 'ARMED      %s (cron: %s %s %s %s %s)%s\n' "$TASK_NAME" "$minute" "$hour" "$dom" "$month" "$dow" "$duplicate"
+        log="$RUNNER_DIR/last-run.log"
+        if [ -f "$log" ]; then
+            mtime=$(date -r "$log" '+%Y-%m-%d %H:%M' 2>/dev/null \
+                || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log" 2>/dev/null || printf '?')
+            last=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r') # read-sink-ok: this cadence runner's own log
+            printf '  run log    %s (last write: %s)\n' "$log" "$mtime"
+            [ -z "$last" ] || printf '             last line: %s\n' "$last"
+        else printf '  run log    %s (absent — task has not fired yet)\n' "$log"; fi
+    else printf 'not armed  %s\n' "$TASK_NAME"; fi
     return 0
 }
 

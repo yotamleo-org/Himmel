@@ -355,6 +355,57 @@ esac
                        capture_output=True, timeout=20)
         self.assertFalse((self.root / 'INJECTED').exists())
 
+    def runner_payload(self):
+        primary = self.root / 'primary'
+        payload = primary / 'scripts' / 'security' / 'security-audit-cadence.sh'
+        payload.parent.mkdir(parents=True)
+        payload.write_text('#!/bin/sh\nprintf "fixture run\\n"\nexit "${AUDIT_TEST_RC:-0}"\n')
+        self.executable('git', '#!/bin/sh\nprintf "%s/primary/.git\\n" "$HOME"\n')
+
+    # The real generated runner must preserve failure and expose it to cadence probes.
+    def test_runner_status_contract(self):
+        self.runner_payload()
+        self.run_audit('arm', '--time', '09:00')
+        runner = self.root / 'runner' / 'security-audit-cadence.sh'
+        for rc in (0, 2):
+            proc = subprocess.run(['bash', str(runner)], env=dict(self.env, AUDIT_TEST_RC=str(rc)),
+                                  text=True, capture_output=True, timeout=20)
+            self.assertEqual(proc.returncode, rc, proc.stdout + proc.stderr)
+            self.assertEqual((self.root / 'runner' / 'last-run.log').read_text().splitlines()[-1],
+                             f'[exit rc={rc}]')
+            status = self.run_audit('status')
+            self.assertRegex(status, r'^ARMED\s+HIMMEL-SecurityAudit \(cron: 00 09 \* \* 1\)')
+            self.assertRegex(status, r'  run log\s+.* \(last write: \d{4}-\d\d-\d\d \d\d:\d\d\)')
+            self.assertIn(f'last line: [exit rc={rc}]', status)
+        entry = (self.root / 'cron').read_text()
+        (self.root / 'cron').write_text(entry + entry)
+        self.assertIn('[DUPLICATE: 2 cron entries]', self.run_audit('status'))
+
+    # Installer probes must judge the real status, not an invented healthy fixture.
+    def test_installer_cadence_probe(self):
+        repo = SCRIPT.parents[2]
+        manifest = json.loads((repo / 'scripts/install/manifest.json').read_text())
+        item = next((row for row in manifest['items'] if row['id'] == 'cadence-runs-security-audit'), None)
+        self.assertIsNotNone(item, 'registry cadence needs its installer probe')
+        self.runner_payload()
+        self.run_audit('arm')
+        runner = self.root / 'runner' / 'security-audit-cadence.sh'
+        code = '''const {runProbe} = require(process.argv[1]);
+const item = JSON.parse(process.argv[2]);
+console.log(JSON.stringify(runProbe(item, {repoRoot: process.argv[3], scope: 'user', env: process.env})));'''
+        for rc, expected in ((0, 'present'), (2, 'degraded')):
+            proc = subprocess.run(['bash', str(runner)], env=dict(self.env, AUDIT_TEST_RC=str(rc)),
+                                  text=True, capture_output=True, timeout=20)
+            self.assertEqual(proc.returncode, rc)
+            result = subprocess.run(['node', '-e', code, str(repo / 'scripts/himmelctl/lib/probes.js'),
+                                     json.dumps(item), str(repo)], env=self.env,
+                                    text=True, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = json.loads(result.stdout)
+            self.assertEqual(actual['actual'], expected, actual)
+            if rc:
+                self.assertIn('failing', actual['detail'])
+
     # Schedule management must preserve unrelated cron entries and start unarmed.
     def test_schedule(self):
         self.assertIn('not armed', self.run_audit('status'))
