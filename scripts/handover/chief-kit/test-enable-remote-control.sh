@@ -40,7 +40,7 @@ STUB_EOF
 chmod 755 "$WORK/kill-stub" "$WORK/launcher-stub"
 
 # session <pid> <argv...>: a fake /proc/<pid>/cmdline, NUL-separated.
-session() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/cmdline"; }
+session() { local pid="$1"; shift; mkdir -p "$PROC/$pid"; printf '%s\0' "$@" > "$PROC/$pid/cmdline"; printf '%s\0' PATH=/usr/bin > "$PROC/$pid/environ"; }
 record() { # <name> <profile> <lane> [role] [session id] [model] [extra]
     local sid="${5:+ session_id=$5}"
     printf 'headed-arm-worker: profile=%s lane=%s model=%s role=%s session=%s%s launched=2026-10-31T10:00:00Z%s\n' "$2" "$3" "${6:-claude-sonnet-5-5}" "${4:-worker}" "$1" "$sid" "${7:-}" >> "$CACHE/launch-logs/$1.log"
@@ -210,6 +210,31 @@ for envkv in WORKER_SESSION_AUTOCOMPACT_AB=200000 HIMMEL_WORKER_SESSION_CONTEXT_
     check "o: environ ${envkv%%=*} exits 4" "4" "$rc"
     check "o: ${envkv%%=*}: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
 done
+
+# --- (p) an environment that cannot be read fails closed; an ambient effort is not inherited ---
+session 1030 claude --session-id sid-1030 --model claude-sonnet-5-5 -n HIMMEL-20-w "load /h/HIMMEL-20-w.md and continue"
+record HIMMEL-20-w worker-impl native worker sid-1030
+rm -f "$PROC/1030/environ"
+reset; run --relaunch HIMMEL-20-w /s 99999999999 /l
+check "p: a missing environ exits 4" "4" "$rc"
+check "p: missing environ: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+session 1031 claude --session-id sid-1031 --model claude-sonnet-5-5 -n HIMMEL-21-w "load /h/HIMMEL-21-w.md and continue"
+record HIMMEL-21-w worker-impl native worker sid-1031
+chmod 000 "$PROC/1031/environ"
+if [ -r "$PROC/1031/environ" ]; then
+    echo "SKIP: p: chmod 000 still readable here (running as root?)"
+else
+    reset; run --relaunch HIMMEL-21-w /s 99999999999 /l
+    check "p: an unreadable environ exits 4" "4" "$rc"
+    check "p: unreadable environ: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+fi
+session 1032 claude --session-id sid-1032 --model claude-sonnet-5-5 -n HIMMEL-22-w "load /h/HIMMEL-22-w.md and continue"
+record HIMMEL-22-w worker-impl native worker sid-1032
+reset; rc=0
+out="$(WORKER_SESSION_EFFORT=ambient-leak ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+    bash "$ERC" --relaunch HIMMEL-22-w /s 99999999999 /l 2>&1)" || rc=$?
+check "p: relaunch of a session with no effort exits 0" "0" "$rc"
+check "p: the caller's ambient WORKER_SESSION_EFFORT does not reach the relaunch" "unset" "$(cat "$EFFORT" 2>/dev/null)"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-enable-remote-control.sh"; exit 0; fi

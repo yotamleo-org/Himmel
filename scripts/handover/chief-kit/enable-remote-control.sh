@@ -159,17 +159,21 @@ esac
 # are carried onto the relaunch; any other launch-shaping input it was started with is not
 # reproducible, so its presence refuses.
 chief=""; effort=""
-if [ -r "$PROC/$pid/environ" ]; then
-    while IFS= read -r -d '' kv; do
-        case "$kv" in
-            HIMMEL_CONSOLE_NAME=*) chief="${kv#*=}" ;;
-            WORKER_SESSION_EFFORT=*) effort="${kv#*=}" ;;
-            WORKER_SESSION_AUTOCOMPACT_AB=?*|HIMMEL_WORKER_SESSION_CONTEXT_MODE=?*)
-                echo "enable-remote-control: $NAME was launched with ${kv%%=*}, which a relaunch cannot restore" >&2
-                exit 4 ;;
-        esac
-    done < "$PROC/$pid/environ"  # read-sink-ok: the path is the scanned pid's own environ under the proc dir
+# An environment that cannot be read cannot be checked for the refusals below or for the
+# chief and effort to carry, so it fails closed rather than relaunching on a guess.
+if [ ! -r "$PROC/$pid/environ" ]; then
+    echo "enable-remote-control: cannot read $NAME's environment (pid $pid); not relaunching on a guess" >&2
+    exit 4
 fi
+while IFS= read -r -d '' kv; do
+    case "$kv" in
+        HIMMEL_CONSOLE_NAME=*) chief="${kv#*=}" ;;
+        WORKER_SESSION_EFFORT=*) effort="${kv#*=}" ;;
+        WORKER_SESSION_AUTOCOMPACT_AB=?*|HIMMEL_WORKER_SESSION_CONTEXT_MODE=?*)
+            echo "enable-remote-control: $NAME was launched with ${kv%%=*}, which a relaunch cannot restore" >&2
+            exit 4 ;;
+    esac
+done < "$PROC/$pid/environ"  # read-sink-ok: the path is the scanned pid's own environ under the proc dir
 
 if [ "$RELAUNCH" -ne 1 ]; then
     echo "enable-remote-control: $NAME (pid $pid) lacks Remote Control and cannot be toggled from outside; rerun with --relaunch to end it and relaunch the same name on $doc (model $model, profile $profile)" >&2
@@ -182,7 +186,9 @@ fi
 launch=(--profile "$profile" --lane native)
 [ -z "$chief" ] || launch+=(--chief "$chief")
 launch+=("$NAME" "$doc" "$SIGNAL" "$DEADLINE" "$LOG" "$model")
-if [ -n "$effort" ]; then export WORKER_SESSION_EFFORT="$effort"; fi
+# The relaunch gets the OLD session's effort or none: an ambient value in the caller's
+# shell must not stand in for it.
+if [ -n "$effort" ]; then export WORKER_SESSION_EFFORT="$effort"; else unset -v WORKER_SESSION_EFFORT; fi
 if ! "$LAUNCHER" --dry-run "${launch[@]}" >/dev/null 2>&1; then  # swallow-ok: the failure is reported on the next line and nothing is killed
     echo "enable-remote-control: the relaunch dry-run failed; $NAME was NOT ended (run the launcher with --dry-run by hand to see why)" >&2
     exit 7
