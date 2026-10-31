@@ -25,7 +25,8 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     naming the workers still out. Both are informational (LIVE went on the
     predecessor's `RELAYED` line). Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing
-    chief started with `chief.sh next --relay-on-live` gets `WAKE relay-on-live
+    chief using `chief.sh next` (relay-on-live by default unless
+    `--no-relay-on-live`, and it needs `--doc`) gets `WAKE relay-on-live
     successor=<session>`, then `relay-batch.sh`'s SENDMESSAGE lines and its
     closing `RELAYED <n> of <m>` line, once the successor's lock is held fresh;
     send each SENDMESSAGE line first (n counts them), then the `RELAYED` line to
@@ -112,10 +113,12 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     progress: a sample (tick, then usage) can take about 4 min (twice the 120 s
     timeout, plus a 5 s kill grace each), and a Telegram line waits for it. The
     wrap relay refreshes the heartbeat before each `worker-event.sh` call (up to
-    95 s each), so a pass over several wraps never ages it past one call. `state=exited exit=<reason>` is
-    a waiter that stopped (`wake-telegram`, `wake-tick`, `signal-TERM` …); a
-    `state=waiting` or `state=sampling` heartbeat older than about 5 min is one
-    that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
+    245 s including kill grace). It attempts at most one wrap per sample before
+    servicing the inbox; later workers wait for the next sample. This keeps each
+    relay call under the heartbeat consumers' 300 s floor. `state=exited
+    exit=<reason>` is a waiter that stopped (`wake-telegram`, `wake-tick`,
+    `signal-TERM` …); a `state=waiting` or `state=sampling` heartbeat older than
+    about 5 min is one that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
     non-zero or produced no TICK line (it runs under a 120 s timeout, so a hung
     tick cannot hold the Telegram path forever). A second waiter on the same
     inbox is refused (exit 3, naming the live pid). Measured: a
@@ -159,12 +162,23 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     hand; run any other bounded script as `timeout 90` in the foreground.** Armed
     with both `--doc` and `--workers-from`, the waiter is the script relay (R0): a
     worker whose `tails=` turns `WRAPPED` or whose `acts=` turns `MERGED` is
-    wrapped by `timeout 90 worker-event.sh --doc --fleet` on a line built from that
-    worker's bullet, with no wake. `HANDLED` lands in `<inbox>.wait.digest`; a
+    wrapped by `timeout -k 5 240 worker-event.sh --doc --fleet` on a line built from
+    that worker's bullet, with no wake. The 240 s bound allows a slow close and
+    refresh without exceeding heartbeat consumers' limits; tracker/focus work
+    that exceeds it escalates. WRAPPED workers with a PR take the wrap path too.
+    A Telegram line waits for at most one relay attempt (including a retryable
+    refusal) before the inbox is serviced.
+    `HANDLED` lands in `<inbox>.wait.digest`; a
     refusal that only means "not yet" (lock still held, tail not yet `WRAPPED`,
-    subtree alive) is retried next sample. Anything else wakes you once per
-    bullet with `WAKE worker-event <its line> out=<file>` plus the tick line: read
-    the out file and finish that wrap by hand (`wrapping.md`). Every WAKE block
+    subtree alive) stays retryable. The next sample starts after that worker,
+    using an atomically saved label in `<inbox>.wait.r0-next` even after a
+    waiter re-arm; a missing or stale label leaves plain candidate order.
+    A standing refusal cannot starve later workers. Anything else wakes you once per
+    bullet with `WAKE worker-event <its first non-blank line> rc=<n> out=<file>` plus the
+    tick line. A silent timeout writes `ESCALATE relay-timeout <label> rc=<n>
+    limit=240s` to both the wake and the out file; another silent failure names
+    `relay-failed`, its label and rc. Read the out file and finish that wrap by hand
+    (`wrapping.md`). Every WAKE block
     ends with `absorbed since last wake: wraps=<n> (<labels>) merged=<n> (#<pr>,…)`
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
