@@ -48,6 +48,9 @@ fi
 if [ -n "${STUB_MODEL_CAPTURE:-}" ]; then
   printf '%s\t%s' "${HERMES_ONESHOT_MODEL:-}" "${HERMES_ONESHOT_PROVIDER:-}" > "$STUB_MODEL_CAPTURE"
 fi
+if [ -n "${STUB_CWD_CAPTURE:-}" ]; then
+  pwd -P > "$STUB_CWD_CAPTURE"
+fi
 printf '%s' "${STUB_RESPONSE:-}"
 exit "${STUB_RC:-0}"
 EOF
@@ -537,6 +540,22 @@ captured2="$(cat "$work/model-capture2" 2>/dev/null)"
 expected2="$(printf 'some-other-model\t')"
 [ "$captured2" = "$expected2" ] \
     || fail "override model: expected '$expected2' (model<TAB>, no forced provider), got '$captured2'"
+echo "  ok" >&2
+
+# 16. The hermes reviewer starts from a scratch cwd, never the reviewed
+#     checkout, and the scratch dir is gone once the review ends.
+echo "test: hermes reviewer starts outside the reviewed checkout" >&2
+STUB_CWD_CAPTURE="$work/cwd-capture" \
+    run_critic '{"passed": true, "security_concerns": [], "logic_errors": [], "architectural_mismatches": [], "suggestions": [], "summary": "ok"}' >/dev/null
+rc=$?
+[ "$rc" -eq 0 ] || fail "reviewer cwd: expected exit 0, got $rc"
+reviewer_cwd="$(cat "$work/cwd-capture" 2>/dev/null)"
+repo_real="$(cd "$repo" && pwd -P)"
+[ -n "$reviewer_cwd" ] || fail "reviewer cwd: the stub recorded no cwd"
+case "$reviewer_cwd/" in
+    "$repo_real"/*) fail "reviewer cwd: the reviewer ran inside the reviewed checkout ($reviewer_cwd)" ;;
+esac
+[ ! -d "$reviewer_cwd" ] || fail "reviewer cwd: scratch dir left behind ($reviewer_cwd)"
 echo "  ok" >&2
 
 echo "PASS: all hermes-critic.sh tests passed." >&2

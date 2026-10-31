@@ -259,10 +259,18 @@ echo "  ok" >&2
 # the caller's cwd -- from a worktree that is <cwd>/hermes, absent, rc=1. Runs
 # the REAL -c snippet under a real python3 against a fake hermes_cli checkout
 # whose main() records sys.argv[0]; the caller cwd deliberately holds no hermes.
+# The checkout is installed the legacy way: a venv whose site-packages .pth
+# points at it, like the editable install. HERMES_HOME points at an empty
+# root so the real ~/.hermes checkout can never be picked up.
 echo "test: argv[0] is an absolute existing launcher (HIMMEL-3639)" >&2
 py3="$(command -v python3 || command -v python || true)"
-if [ -z "$py3" ]; then
-    echo "  skip: no python3 on PATH" >&2
+legacy_py=""
+no_hermes="$stub_dir/no-hermes"
+if [ -n "$py3" ] && "$py3" -m venv --without-pip "$stub_dir/legacy-venv" >/dev/null 2>&1; then
+    legacy_py="$stub_dir/legacy-venv/bin/python"
+fi
+if [ -z "$legacy_py" ]; then
+    echo "  skip: no python3 with venv on PATH" >&2
 else
     fake_co="$stub_dir/fake-checkout"
     mkdir -p "$fake_co/hermes_cli" "$stub_dir/elsewhere"
@@ -271,14 +279,15 @@ else
     cat > "$fake_co/hermes_cli/main.py" <<'PYEOF'
 import os, sys
 def main():
-    with open(os.environ["ARGV0_CAPTURE"], "w") as fh:
-        fh.write(sys.argv[0])
+    if os.environ.get("ARGV0_CAPTURE"):
+        with open(os.environ["ARGV0_CAPTURE"], "w") as fh:
+            fh.write(sys.argv[0])
+    print("LEGACY-MAIN isolated=%d" % sys.flags.isolated)
 PYEOF
-    real_py_stub="$stub_dir/real-python"
-    printf '#!/usr/bin/env bash\nPYTHONPATH="%s" exec "%s" "$@"\n' "$fake_co" "$py3" > "$real_py_stub"
-    chmod +x "$real_py_stub"
+    purelib="$("$legacy_py" -I -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+    printf '%s\n' "$fake_co" > "$purelib/hermes-checkout.pth"
     argv0_cap="$stub_dir/argv0"
-    ( cd "$stub_dir/elsewhere" && ARGV0_CAPTURE="$argv0_cap" HERMES_PY="$real_py_stub" bash "$INVOKE" "x" >/dev/null 2>&1 ) \
+    ( cd "$stub_dir/elsewhere" && ARGV0_CAPTURE="$argv0_cap" HERMES_PY="$legacy_py" HERMES_HOME="$no_hermes" bash "$INVOKE" "x" >/dev/null 2>&1 ) \
         || fail "argv[0]: invoke.sh exited non-zero"
     got="$(cat "$argv0_cap" 2>/dev/null)"
     [ "$got" = "$fake_co/hermes" ] || fail "argv[0]: expected the absolute launcher '$fake_co/hermes', got '$got'"
@@ -297,8 +306,19 @@ if [ -n "$real_py" ] && "$real_py" -c 'import sys' >/dev/null 2>&1; then
     : > "$pm/hermes-agent/hermes_cli/__init__.py"
     printf 'import os\nos.environ["PM_BOOTSTRAPPED"] = "1"\n' > "$pm/hermes-agent/hermes_bootstrap.py"
     printf 'def get_default_hermes_root():\n    return "/nonexistent"\n' > "$pm/hermes-agent/hermes_constants.py"
-    printf 'import os, sys\ndef main():\n    print("PM-MAIN bootstrapped=" + os.environ.get("PM_BOOTSTRAPPED", "no") + " argv=" + " ".join(sys.argv[1:]))\n' > "$pm/hermes-agent/hermes_cli/main.py"
-    printf '#!/bin/sh\nprintf '"'"'["%s", "-I"]\\n'"'"' "%s"\n' '%s' "$real_py" > "$pm/hermes-agent/.hermes/bin/hermes"
+    printf 'import os, sys\ndef main():\n    print("PM-MAIN bootstrapped=" + os.environ.get("PM_BOOTSTRAPPED", "no") + " isolated=%%d" %% sys.flags.isolated + " argv=" + " ".join(sys.argv[1:]))\n' > "$pm/hermes-agent/hermes_cli/main.py"
+    # The launcher's answer is copied from a real PM-managed install
+    # (`~/.hermes/hermes-agent/.hermes/bin/hermes --print-runtime-command` on
+    # a linux station) with the home prefix written as @HOME@; only its
+    # interpreter and checkout paths are swapped for this fixture's.
+    cat > "$stub_dir/pm-runtime-command" <<'RTEOF'
+["@HOME@/.hermes/tools/python-3.14.9+20261021-linux-x64/bin/python3", "-I", "-c", "import os, sys, runpy; os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); os.environ.pop('VIRTUAL_ENV', None); sys.path.insert(0, '@HOME@/.hermes/hermes-agent'); sys._hermes_pin_default_home = True; import hermes_bootstrap; os.environ.get('HERMES_HOME') or os.environ.__setitem__('HERMES_HOME', str(__import__('hermes_constants').get_default_hermes_root())); runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)"]
+RTEOF
+    rt_line="$(cat "$stub_dir/pm-runtime-command")"
+    rt_line="${rt_line//@HOME@\/.hermes\/tools\/python-3.14.9+20261021-linux-x64\/bin\/python3/$real_py}"
+    rt_line="${rt_line//@HOME@\/.hermes\/hermes-agent/$pm/hermes-agent}"
+    printf '%s\n' "$rt_line" > "$stub_dir/pm-runtime-command"
+    printf '#!/bin/sh\ncat "%s"\n' "$stub_dir/pm-runtime-command" > "$pm/hermes-agent/.hermes/bin/hermes"
     chmod +x "$pm/hermes-agent/.hermes/bin/hermes"
     out="$(HERMES_PY="" HERMES_HOME="$pm" bash "$INVOKE" "ping" 2>"$stub_dir/pm.err")" \
         || fail "PM layout: non-zero exit ($(cat "$stub_dir/pm.err"))"
@@ -306,6 +326,43 @@ if [ -n "$real_py" ] && "$real_py" -c 'import sys' >/dev/null 2>&1; then
         *"PM-MAIN bootstrapped=1"*"-z ping"*) echo "  ok: launcher interpreter + bootstrap + checkout on sys.path" >&2 ;;
         *) fail "PM layout: hermes_cli.main did not run bootstrapped (got: $out)" ;;
     esac
+
+    # A reviewer can be started inside the checkout under review, so modules
+    # planted there must never take part in startup. The upstream launcher
+    # above runs its interpreter with -I; the reviewer launch must be isolated
+    # the same way, in BOTH layouts, and a missing trusted install must fail
+    # visibly instead of loading the plants.
+    echo "test: modules planted in the caller cwd never load" >&2
+    reviewed="$stub_dir/reviewed"
+    plant_marker="$stub_dir/planted-ran"
+    mkdir -p "$reviewed/hermes_cli"
+    : > "$reviewed/hermes_cli/__init__.py"
+    printf 'import os\nopen(os.environ["PLANT_MARKER"], "a").write("hermes_bootstrap\\n")\n' > "$reviewed/hermes_bootstrap.py"
+    printf 'import os\nopen(os.environ["PLANT_MARKER"], "a").write("hermes_constants\\n")\ndef get_default_hermes_root():\n    return "/nonexistent"\n' > "$reviewed/hermes_constants.py"
+    printf 'import os\ndef main():\n    open(os.environ["PLANT_MARKER"], "a").write("hermes_cli.main\\n")\n    print("PLANTED-MAIN")\n' > "$reviewed/hermes_cli/main.py"
+    out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="" HERMES_HOME="$pm" bash "$INVOKE" "ping" 2>"$stub_dir/plant-pm.err")" \
+        || fail "planted (PM): non-zero exit ($(cat "$stub_dir/plant-pm.err"))"
+    [ ! -e "$plant_marker" ] || fail "planted (PM): reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"
+    case "$out" in
+        *"PM-MAIN bootstrapped=1 isolated=1"*) echo "  ok: PM layout loads only the trusted install, isolated" >&2 ;;
+        *) fail "planted (PM): trusted reviewer did not start isolated (got: $out)" ;;
+    esac
+    if [ -n "$legacy_py" ]; then
+        out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="$legacy_py" HERMES_HOME="$no_hermes" bash "$INVOKE" "ping" 2>"$stub_dir/plant-legacy.err")" \
+            || fail "planted (legacy venv): non-zero exit ($(cat "$stub_dir/plant-legacy.err"))"
+        [ ! -e "$plant_marker" ] || fail "planted (legacy venv): reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"
+        case "$out" in
+            *"LEGACY-MAIN isolated=1"*) echo "  ok: legacy venv loads only the trusted install, isolated" >&2 ;;
+            *) fail "planted (legacy venv): trusted reviewer did not start isolated (got: $out)" ;;
+        esac
+    fi
+    out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="$real_py" HERMES_HOME="$no_hermes" bash "$INVOKE" "ping" 2>"$stub_dir/plant-none.err")"
+    rc=$?
+    [ ! -e "$plant_marker" ] || fail "no trusted install: reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"
+    [ "$rc" -ne 0 ] || fail "no trusted install: expected a non-zero exit, got 0 (out: $out)"
+    grep -q "hermes exited $rc" "$stub_dir/plant-none.err" \
+        || fail "no trusted install: failure not reported on stderr ($(cat "$stub_dir/plant-none.err"))"
+    echo "  ok: no trusted install fails visibly (rc $rc)" >&2
 fi
 
 # 7. Optional live smoke (one NIM free-tier call) — opt-in only.

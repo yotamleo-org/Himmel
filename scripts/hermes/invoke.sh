@@ -346,9 +346,14 @@ if [ -n "$profile" ]; then
     fi
 fi
 
+# -I (isolated mode, as upstream's own launcher runs it): the caller cwd and
+# PYTHON* env never reach sys.path, so a module planted in the checkout a
+# reviewer is started from cannot shadow hermes. Imports resolve
+# from the interpreter's own site-packages (legacy venv) or the trusted
+# checkout inserted below (PM-managed); neither found fails visibly.
 run_hermes() {
     HERMES_PROMPT_FILE="$pf_native" HERMES_ONESHOT_MODEL="$model" HERMES_ONESHOT_PROVIDER="$provider" HERMES_ONESHOT_PROFILE="$profile_arg" HERMES_ONESHOT_TOOLSETS="$toolsets" HIMMEL_HERMES_SRC="$hermes_src" \
-    "$py" -c '
+    "$py" -I -c '
 import os, sys, io
 with io.open(os.environ["HERMES_PROMPT_FILE"], encoding="utf-8") as fh:
     prompt = fh.read()

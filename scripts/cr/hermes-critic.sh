@@ -391,7 +391,20 @@ run_hermes_review() {
     local args=()
     [ -n "$m" ] && args=(--model "$m")
     [ "$(hermes_family)" = "codex" ] && args=(${args[@]+"${args[@]}"} --provider openai-codex)
+    # Like the claude route, the reviewer starts from a scratch cwd, never the
+    # reviewed checkout, whose files are untrusted input. This
+    # runs in a command substitution, so the cd stays scoped to this review.
+    local scratch_dir hrc
+    scratch_dir="$(tmpdir)"
+    if [ -z "$scratch_dir" ] || [ ! -d "$scratch_dir" ]; then
+        echo "hermes-critic.sh: could not create the reviewer scratch cwd — refusing the hermes route" >&2
+        return 1
+    fi
+    cd "$scratch_dir" || { rm -rf "$scratch_dir"; return 1; }
     bash "$INVOKE" ${args[@]+"${args[@]}"} --prompt-file "$pack_file" 2>"$err_file"
+    hrc=$?
+    rm -rf "$scratch_dir"
+    return $hrc
 }
 
 case "$route" in
