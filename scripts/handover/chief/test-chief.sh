@@ -2369,7 +2369,7 @@ check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/ca
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
 check "79 opted-in new: the launch log records the registration" \
-    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as chief\$")" "1"
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
 session79b="DEMO-nextleg-${today}B-bus79-chief"
