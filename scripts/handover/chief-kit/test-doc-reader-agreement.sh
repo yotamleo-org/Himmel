@@ -365,9 +365,9 @@ m1a_vsa()  { env VSA_GH_CMD="$M1A/bin/gh-empty" HIMMEL_LEGACY_NAMES="$2" bash "$
 m1a_row() { # <name> <function> <legs-output-grep> <switch-off legs grep>: old = new, the workers form survives the switch, the old form is refused
     local name="$1" fn="$2" want="$3" refused="$4" old new off twin
     old="$("$fn" legs 1)"; new="$("$fn" workers 1)"; off="$("$fn" legs 0)"; twin="$("$fn" workers 0)"
-    if [ "$old" = "$new" ] && printf '%s\n' "$new" | grep -Eq -- "$want"; then pass "m1a: $name reads an old legs manifest as its workers twin"; else fail "m1a: $name old=[$old] new=[$new] want /$want/"; fi
+    if [ "$old" = "$new" ] && grep -Eq -- "$want" <<< "$new"; then pass "m1a: $name reads an old legs manifest as its workers twin"; else fail "m1a: $name old=[$old] new=[$new] want /$want/"; fi
     if [ "$twin" = "$new" ]; then pass "m1a: $name reads the workers manifest with HIMMEL_LEGACY_NAMES=0"; else fail "m1a: $name workers manifest changes with the switch off: [$twin] vs [$new]"; fi
-    if printf '%s\n' "$off" | grep -Eq -- "$refused" && [ "$off" != "$new" ]; then pass "m1a: $name refuses the old legs manifest with HIMMEL_LEGACY_NAMES=0"; else fail "m1a: $name still reads legs with the switch off: [$off] want /$refused/"; fi
+    if grep -Eq -- "$refused" <<< "$off" && [ "$off" != "$new" ]; then pass "m1a: $name refuses the old legs manifest with HIMMEL_LEGACY_NAMES=0"; else fail "m1a: $name still reads legs with the switch off: [$off] want /$refused/"; fi
 }
 m1a_row handoff-facts m1a_hf '^- N901: LIVE' 'unavailable'
 m1a_row close-wrapped-worker m1a_cw '^sweep: closed=1 refused=0 skipped=1$' '^sweep: closed=0 refused=0 skipped=0$'
