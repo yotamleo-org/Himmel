@@ -572,7 +572,9 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", 
     results.jsonl, which export-row writes between sweeps), or the sweep reads other fixtures or another key, runs
     another panel command than the tree's critic-panel.sh, another tier set than the gate's roster, or a
     subset of the cases. recheck (run.sh, after the panel loop) keeps `clean` only when the earlier stamp was
-    clean and HEAD and both hashes are unchanged, so a tree edited during the sweep is caught."""
+    clean and HEAD and both hashes are unchanged, so a tree edited during the sweep is caught. `rechecked` is
+    true only after the recheck, so a sweep interrupted mid-loop (its outputs possibly mixed with an earlier
+    sweep's) is refused."""
     inputs = cbs_paths(repo, "HEAD") + [REL, CRITICS_REL, ":(exclude)" + RESULTS]
     dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
     def same(path, rel):
@@ -580,7 +582,7 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", 
     own = (same(fixtures, FIXTURES_REL) and same(key, KEY_REL) and tiers == ROSTER_TIER and not only
            and (panel is None or same(panel, PANEL_REL)))
     rec = {"tree": _git(repo, "rev-parse", "HEAD").decode().strip(), "cbs_hash": cbs_hash(repo, "HEAD"),
-           "confighash": confighash(repo, "HEAD"), "clean": not dirty and own}
+           "confighash": confighash(repo, "HEAD"), "clean": not dirty and own, "rechecked": recheck}
     if recheck:
         try:
             with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
@@ -607,6 +609,9 @@ def check_stamp(repo, rev, outputs):
     for f, want in (("cbs_hash", cbs_hash(repo, rev)), ("confighash", confighash(repo, rev))):
         if rec.get(f) != want:
             raise ValueError("%s was swept at %s %s, %s is at %s" % (outputs, f, str(rec.get(f))[:12], rev, want[:12]))
+    # A stamp without the key predates the recheck (the first baseline sweeps); only an explicit false refuses.
+    if rec.get("rechecked") is False:
+        raise ValueError("%s was never re-stamped after its panel loop: an interrupted sweep" % outputs)
 
 
 def gate_row(repo, rev, outputs):

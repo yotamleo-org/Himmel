@@ -383,7 +383,10 @@ gstamp "$O" >/dev/null
 eq "stamp --recheck: an unchanged clean tree stays clean" "$(gstamp "$O" --recheck)" ""
 printf 'n\n' > "$G/notes.txt"; gg add notes.txt; gg commit -qm moved
 has "stamp --recheck: a HEAD moved during the sweep warns" "$(gstamp "$O" --recheck)" "export-row will refuse"
-gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
+gstamp "$O" >/dev/null
+out=$(python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
+eq "export-row: a sweep interrupted before its re-stamp is refused" "$rc" "2"; has "export-row: names the missing re-stamp" "$out" "never re-stamped"
+gstamp "$O" --recheck >/dev/null; gstamp "$O5" >/dev/null; gstamp "$O5" --recheck >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"
 row="$(head -1 "$TMP/results.jsonl" 2>/dev/null)"

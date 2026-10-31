@@ -158,7 +158,8 @@ change lost nothing.
    `REVIEW_PANEL_CMD` other than the tree's `critic-panel.sh`, or with
    `--tiers` other than `paid`, or over an `--only` subset. `run.sh` re-stamps
    after the panel loop (`stamp --recheck`), so a gate input edited during the
-   sweep, or a moved HEAD, also leaves it unclean. An `inconclusive` sweep is
+   sweep, or a moved HEAD, also leaves it unclean, and a sweep interrupted before
+   that re-stamp is refused. An `inconclusive` sweep is
    refused, and the gate ignores any row whose status is not `ok`: a `partial`
    sweep scores fewer cases, so its rates are not comparable.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
