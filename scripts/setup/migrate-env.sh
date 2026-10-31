@@ -19,7 +19,9 @@
 # load_dotenv and load_policy, the Jira CLI's config, handover-root and release
 # readers, the lanes resolver) with the keys only in .env, then only in their
 # new place; any difference names the key and reader and removes no line.
-# Every gate-policy key is compared, moved or not.
+# Every gate-policy key is compared, moved or not. A behaviour key whose .env
+# line has an inline comment stays (the loader drops the comment, the node
+# readers keep it), and the plan names it.
 #
 # A key whose ~/.himmel side (himmel.conf or config.json .policy) already held
 # a different value is the operator's to settle: the apply names both sides,
@@ -137,13 +139,23 @@ if [ -n "$secrets" ]; then
     esac
 fi
 
-config_keys=() policy_keys=() secret_keys=() plan="" stay_secrets=""
+config_keys=() policy_keys=() secret_keys=() plan="" stay_secrets="" commented=" "
+# The shell loader drops an unquoted trailing comment and the node readers keep it,
+# so such a line would read differently after the move: it stays.
+has_inline_comment() {  # <key>
+    local line ext
+    line=$(awk -v k="$1" '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } { i = index($0, "=")
+        n = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n) } i && n == k { print substr($0, i + 1); exit }' "$envfile")
+    ext=$(_load_dotenv_extract "$envfile" "$1")
+    [ "$(_load_dotenv_trim "$line")" != "$(_load_dotenv_trim "${ext#*=}")" ]
+}
 for key in $names; do
     if ! is_owned "$key"; then plan="$plan  $key stays (not himmel's, left in place)"$'\n'; continue; fi
     case "$(_himmel_key_class "$key")" in
         config)
             # An env-only key has no himmel.conf reader: it stays in .env, as in migrate-env-config.sh.
             if _himmel_env_only_key "$key"; then plan="$plan  $key stays (env-only: no himmel.conf reader)"$'\n'
+            elif has_inline_comment "$key"; then commented="$commented$key "; plan="$plan  $key stays (its .env line has an inline comment the readers do not agree on; remove the comment to move it)"$'\n'
             else config_keys[${#config_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/himmel.conf"$'\n'; fi ;;
         policy) policy_keys[${#policy_keys[@]}]="$key"; plan="$plan  $key → ~/.himmel/config.json .policy"$'\n' ;;
         *)
@@ -330,7 +342,13 @@ done
 
 # --- copy ---
 if [ "${#config_keys[@]}" -gt 0 ]; then
-    if ! out=$(bash "$HERE/migrate-env-config.sh" --env "$envfile" 2>&1); then
+    # The copy step takes every behaviour key it finds, so the commented ones are left out of its input.
+    awk -v skip="$commented" '{ l = $0; sub(/\r$/, "", l) }
+        l !~ /^[[:space:]]*#/ { i = index(l, "="); n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n)
+            if (i && index(skip, " " n " ")) next }
+        { print }' "$envfile" > "$work/env.copy" \
+        || { echo "migrate-env: could not stage .env for the copy; no lines were removed from .env." >&2; exit 1; }
+    if ! out=$(bash "$HERE/migrate-env-config.sh" --env "$work/env.copy" 2>&1); then
         printf '%s\n' "$out" >&2
         echo "migrate-env: behaviour keys not copied; no lines were removed from .env." >&2
         restore_hint
@@ -392,17 +410,8 @@ verify_all() {  # sets bad and verified
             || bad="${bad}verify: load_policy failed reading .env before the move"$'\n'
     fi
     if [ "${#config_keys[@]}" -gt 0 ]; then
-        # The node readers keep a trailing comment that load_dotenv drops, so they get the
-        # loader's value of each key: the move is judged against what the loader reads.
-        cp "$verify_env" "$work/env.node" \
-            || bad="${bad}verify: could not build the .env the node readers compare against"$'\n'
-        for key in "${config_keys[@]}"; do
-            line=$(_load_dotenv_extract "$verify_env" "$key")
-            [ -n "$line" ] || continue
-            set_line "$work/env.node" "$key" "$line" "$work/env.node.new" && mv -f "$work/env.node.new" "$work/env.node" \
-                || bad="${bad}verify: could not build the .env the node readers compare against"$'\n'
-        done
-        if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$work/env.node" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
+        # Each node reader is compared against its own value read from the real .env.
+        if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$verify_env" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
             bad="$bad$(printf '%s\n' "$nodeout" | grep -E '^(MISMATCH|verify:) ')"$'\n'
             [ -n "$(printf '%s' "$bad" | tr -d '\n')" ] || bad="${bad}verify: the node readers failed to run"$'\n'
         fi

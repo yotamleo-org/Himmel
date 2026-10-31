@@ -73,8 +73,9 @@ cp "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/prim.sh" "$REPO/scripts
 cp "$REPO"/scripts/lanes/resolve.mjs "$REPO"/scripts/lanes/probe.mjs "$REPO"/scripts/lanes/bank-status-core.mjs \
     "$REPO"/scripts/lanes/profile-managed.cjs "$FX/scripts/lanes/"
 cp "$REPO/docs/setup/himmel-config.example.json" "$FX/docs/setup/"
-mkdir -p "$FX/scripts/himmelctl/lib"
-cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$FX/scripts/himmelctl/lib/"
+if ! mkdir -p "$FX/scripts/himmelctl/lib" || ! cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$FX/scripts/himmelctl/lib/"; then
+    fail "fixture copy of config-keys.json failed"
+fi
 fxput "$FX/.env.example" '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\n'
 # The Jira CLI readers, from their real source with the types stripped.
 strip_ts() {
@@ -260,13 +261,19 @@ lacks "JIRA_EMAIL leaves .env" "JIRA_EMAIL=" "$envnow"
 lacks "SNYK_ORG_ID leaves .env" "SNYK_ORG_ID=" "$envnow"
 has "JIRA_EMAIL reaches himmel.conf" "JIRA_EMAIL=ops@example.net" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
 
-# A chat id with a trailing comment migrates too.
+# A key whose line has an inline comment stays: the loader drops the comment and the
+# node readers keep it, so a move would change what they read.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nTELEGRAM_CHAT_ID=1234567 # note\n' "$TMP/handovers"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s # archive\nTELEGRAM_CHAT_ID=1234567 # note\nJIRA_EMAIL=ops@example.net\n' "$TMP/handovers"
 chmod 600 "$TMP/st/.env"
 apply_tty y
-if [ "$rc" = 0 ]; then pass "a chat id with a trailing comment migrates"; else fail "a chat id with a trailing comment exited $rc: $out"; fi
-lacks "a chat id with a trailing comment leaves .env" "TELEGRAM_CHAT_ID=" "$(cat "$TMP/st/.env")"
+if [ "$rc" = 0 ]; then pass "a plain key still moves beside commented ones"; else fail "the commented-line run exited $rc: $out"; fi
+envnow=$(cat "$TMP/st/.env")
+has "a commented HANDOVER_DIR stays in .env" "HANDOVER_DIR=$TMP/handovers # archive" "$envnow"
+has "a commented chat id stays in .env" "TELEGRAM_CHAT_ID=1234567 # note" "$envnow"
+has "the report names the commented key" "  HANDOVER_DIR stays (its .env line has an inline comment" "$out"
+lacks "a commented key is not copied to himmel.conf" "HANDOVER_DIR" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+lacks "the plain key leaves .env" "JIRA_EMAIL=" "$envnow"
 
 # The keep-list holds secrets only: a behaviour key on it still moves.
 rm -rf "$HOME/.himmel" "$HOME/.config"
