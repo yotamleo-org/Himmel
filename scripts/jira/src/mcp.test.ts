@@ -356,6 +356,14 @@ describe('MCP tool happy-path routing', () => {
     expect(out).toBe('HIMMEL-1 edited');
   });
 
+  it('edit with a sector → PUT /issue/<key> writes the Sector field', async () => {
+    const { deps, request } = mockDeps({});
+    await tool('edit').handler({ key: 'HIMMEL-1', sector: 'ship loop' }, deps);
+    const put = request.mock.calls.find((c) => c[0] === 'PUT') as unknown[];
+    expect(put[1]).toBe('/issue/HIMMEL-1');
+    expect((put[2] as { fields: Record<string, unknown> }).fields['customfield_10212']).toEqual({ value: 'Ship loop' });
+  });
+
   it('edit with no editable field throws (mirrors buildEditFields)', async () => {
     const { deps } = mockDeps({});
     await expect(tool('edit').handler({ key: 'HIMMEL-1' }, deps)).rejects.toThrow(

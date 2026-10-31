@@ -272,6 +272,12 @@ test("a ticket with a sector and no theme label groups under its Sector; the old
   expect(r.librarian.unthemed[0].proposal).toContain("--sector");
 });
 
+test("a GitHub issue with no theme gets the plan proposal, not a Jira edit of the same number", () => {
+  const r = readRoadmap({ mirrorDir: "", github: [{ number: 7, title: "t", state: "OPEN", labels: [], milestone: null }], workers: { state: "absent" } });
+  expect(r.librarian.unthemed.map((p) => p.k)).toEqual([7]);
+  expect(r.librarian.unthemed[0].proposal).not.toContain("jira edit");
+});
+
 test("kanban pages: an empty mirror shows the empty state, not a blank board", () => {
   const r = readRoadmap({ mirrorDir: "/nonexistent/mirror", workers: { state: "absent" } });
   expect(renderKanban(r, { hideDone: false })).toContain("no Jira mirror");

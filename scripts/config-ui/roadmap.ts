@@ -241,7 +241,9 @@ export function readRoadmap(o: Opts): Roadmap {
     staleInProgress: tickets.filter((t) => ["prog", "rev", "ci"].includes(t.b) && (!t.worker || t.worker.marker === "WRAPPED" || t.worker.marker === "HALTED"))
       .map((t) => prop(t, t.worker ? `${t.s} but its worker is ${t.worker.marker}: confirm the state, then move it back to To Do or close it` : `${t.s} with no worker: confirm someone is on it, else move it back to To Do`)),
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
-    unthemed: unthemed.map((t) => prop(t, `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
+    unthemed: unthemed.map((t) => prop(t, source === "github"
+      ? "assign a theme in the plan (stage1 overlay)"
+      : `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
     releasedOpen: open.filter((t) => versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
     duplicates: [...byTitle.values()].filter((g) => g.length > 1).map((g) => ({ keys: g.map((t) => t.k).sort((a, b) => a - b), title: g[0].t,
       proposal: "same title: close all but one, linking the rest to it", needsApproval: true as const })).sort((a, b) => a.keys[0] - b.keys[0]),
