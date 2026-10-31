@@ -27,7 +27,7 @@ const prevLabel = () => "earlier shift";
 function header(v) {
   const s = v.shift;
   const closed = s.closed !== null;
-  const when = closed ? `${stamp(s.opened)} to ${stamp(s.closed)} (${esc(s.zone)}), ${dur(s.minutes)}, closed by ${s.why === "cut" ? "the clock cut" : "an idle hour"}` : `opened ${stamp(s.opened)} (${esc(s.zone)}), ${dur(s.minutes)} so far; next cut ${clock(s.nextCut)}`;
+  const when = closed ? `${esc(stamp(s.opened))} to ${esc(stamp(s.closed))} (${esc(s.zone)}), ${dur(s.minutes)}, closed by ${s.why === "cut" ? "the clock cut" : "an idle hour"}` : `opened ${esc(stamp(s.opened))} (${esc(s.zone)}), ${dur(s.minutes)} so far; next cut ${clock(s.nextCut)}`;
   return `<h2 class="sh-title">${esc(nameLabel(s.name))}${closed ? " · closed" : ""}</h2><p class="sub">${when}</p>`;
 }
 
@@ -73,7 +73,7 @@ function carriedHtml(v, ui) {
   return `<ul class="sh-list">${v.carried.map((c) => `<li>${ticketLink(c.ticket)} ${esc(c.title)} <span class="pill">${esc(c.stage)}</span> ${prRef(c.pr, ui)}</li>`).join("")}</ul>`;
 }
 
-const links = (ui, v) => `<p class="sub"><a href="#/shift${v && v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}" data-act="refresh-shift">refresh</a> · See also <a href="#/morning-report">Morning report</a> · <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
+const links = (ui, v) => `<p class="sub"><a href="#/shift${v && v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}" data-act="refresh-shift">refresh</a> · See also <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 
 export function renderShift(v, ui) {
   const page = pageHeader("Shift", "One shift is the whole fleet between cuts: what is running, what waits on you, what shipped.");
@@ -81,7 +81,7 @@ export function renderShift(v, ui) {
   if (v.reason) return page + `<div class="nodata">${esc(v.reason)}</div>`;
   if (!v.shift) {
     const l = v.last;
-    const line = l ? `Last shift: <a href="#/shift/${encodeURIComponent(l.id)}">${esc(nameLabel(l.name))}, ${esc(stamp(l.opened))} to ${esc(stamp(l.closed))}</a>, ${l.chiefs} chief${l.chiefs === 1 ? "" : "s"}${l.shipped === null ? "" : `, ${l.shipped} shipped`}.` : "No shift has been recorded yet.";
+    const line = l ? `Last shift: <a href="#/shift/${encodeURIComponent(l.id)}">${esc(nameLabel(l.name))}, ${esc(stamp(l.opened))} to ${esc(stamp(l.closed))}</a>, ${l.chiefs} chief${l.chiefs === 1 ? "" : "s"}${l.shipped === null ? "" : `, ${esc(l.shipped)} shipped`}.` : "No shift has been recorded yet.";
     return page + `<section id="sh-none" class="box"><h2>No shift is open</h2><p class="sub">A shift opens when a chief goes live.</p><p>${line}</p></section>${links(ui)}`;
   }
   const closed = v.shift.closed !== null;

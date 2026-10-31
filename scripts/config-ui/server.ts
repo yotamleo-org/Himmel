@@ -564,11 +564,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const id = new URL(req.url).searchParams.get("id");
         if (id !== null && !/^[0-9T:+\-Z]{10,40}$/.test(id)) return new Response("bad shift id", { status: 400 });
         const file = shiftsFile(env), at = now();
-        const snap = await tickShifts({ root: handover, file, now: at, merged: (a, b) => readMerged(env, root, a, b), boards: (locks, spans) => liveBoards(handover, locks, spans) });
+        const memo = new Map<string, ReturnType<typeof readMerged>>(); // one gh read per exact window within this request
+        const mergedIn = (a: number, b: number) => { const k = `${a}:${b}`; if (!memo.has(k)) memo.set(k, readMerged(env, root, a, b)); return memo.get(k)!; };
+        const snap = await tickShifts({ root: handover, file, now: at, merged: mergedIn, boards: (locks, spans) => liveBoards(handover, locks, spans) });
         const rows = readShifts(file);
         const win = id === null ? null : rows.find((r) => r.id === id);
         const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
-        const merged = await readMerged(env, root, from, win ? Date.parse(win.closed) : at + 60_000);
+        const merged = await mergedIn(from, win ? Date.parse(win.closed) : at + 60_000);
         const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
         return json(redactShift(viewOf({ now: at, rows, snap, id, merged, boards }), redactOut));
       }

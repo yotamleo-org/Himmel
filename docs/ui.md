@@ -17,8 +17,9 @@ they almost always mean the first one.
 ## The config UI (`himmelctl ui`)
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
-same data as `himmelctl report --json`. Shift, Health, Tool health, Fleet, Workflow and the
-inventory only display. What can change something is on Configure and the Roadmap and
+same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
+inventory only display. Shift never changes configuration; its poll, `GET /api/shift`, only
+records a closed shift in `shifts.jsonl`. What can change something is on Configure and the Roadmap and
 Kanban boards; the table after the switches maps every action to its route. A switch shows its
 dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 

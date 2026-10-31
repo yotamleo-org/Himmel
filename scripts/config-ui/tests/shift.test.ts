@@ -226,6 +226,20 @@ test("the Shift page escapes what boards and PR titles carry", () => {
   expect(html).toContain("&lt;img");
 });
 
+test("the Shift page escapes a persisted stamp and shipped count that carry markup", () => {
+  const bad = "<img src=x onerror=1>";
+  const rows = [row("2026-10-27T08:00+01:00", { closed: bad })];
+  const closedHtml = renderShift(viewOf({ now: T("2026-10-29T00:00+01:00"), rows: [{ ...rows[0], opened: bad, closed: bad }], snap: snap(null), id: bad, merged: [], boards: [] }), {});
+  const idle = viewOf({ now: T("2026-10-27T22:00+01:00"), rows: [row("2026-10-27T08:00+01:00")], snap: snap(null), id: null, merged: [], boards: [] });
+  const idleHtml = renderShift({ ...idle, last: { ...idle.last!, shipped: bad as unknown as number } }, {});
+  for (const html of [closedHtml, idleHtml]) expect(html).not.toContain("<img src=x");
+  expect(idleHtml).toContain("&lt;img");
+});
+
+test("the Shift page links nowhere that does not exist yet", () => {
+  expect(renderShift(pageView(), {})).not.toContain("morning-report");
+});
+
 test("a closed shift draws the pager and Carried to the next shift", () => {
   const v = viewOf({ now: T("2026-10-29T00:00+01:00"), rows: [row("2026-10-26T20:00+01:00"), row("2026-10-27T08:00+01:00", { carried: [{ ticket: "HIMMEL-7", title: "left over", stage: "in review", pr: 30 }] })], snap: snap(null), id: "2026-10-27T08:00+01:00", merged: [], boards: [] });
   const html = renderShift(v, {});
@@ -256,10 +270,10 @@ function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: 
   }
   writeFileSync(join(dir, "prs.json"), JSON.stringify(opts.prs ?? []));
   const gh = join(dir, "gh.sh");
-  writeFileSync(gh, opts.ghFails ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
+  writeFileSync(gh, opts.ghFails ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\necho x >> " + join(dir, "gh-calls") + "\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
   const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } });
   cleanups.push(() => s.stop());
-  return { s, file };
+  return { s, file, dir };
 }
 const getShift = (port: number, q = "", init: RequestInit = { headers: { "X-Himmel-Token": TOKEN } }) => fetch("http://127.0.0.1:" + port + "/api/shift" + q, init);
 
@@ -278,6 +292,15 @@ test("GET /api/shift: a chief holding a lock opens a shift and the PRs gh lists 
   expect(v.shipped.map((p: { number: number }) => p.number)).toEqual([77]);
   expect(v.buckets).toEqual(["himmel"]);
   expect(readShifts(file)).toEqual([]); // still open: nothing is written until it closes
+});
+
+test("GET /api/shift reads an already open shift's merged PRs once per request", async () => {
+  const { s, dir } = boot({ chief: true, prs: [] });
+  const calls = () => readFileSync(join(dir, "gh-calls"), "utf8").trim().split("\n").length;
+  await (await getShift(s.port)).json(); // the first poll opens the shift
+  const before = calls();
+  await (await getShift(s.port)).json();
+  expect(calls() - before).toBe(1);
 });
 
 test("GET /api/shift?id=: a closed shift comes back with its record and the merges inside its window only", async () => {
