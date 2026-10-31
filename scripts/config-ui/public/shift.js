@@ -11,7 +11,9 @@ const stamp = (iso) => (iso ? `${day(iso)} ${clock(iso)}` : "");
 const dur = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min` : `${min} min`);
 const nameLabel = (n) => (n === "night" ? "Night shift" : "Day shift");
 const ticketLink = (k) => (k ? `<a href="#/roadmap">${esc(k)}</a>` : "");
-const prRef = (n) => (n === null || n === undefined ? "" : `<a class="ro" href="#/fleet">#${esc(n)}</a>`);
+// Fleet is not a console route: the app passes the Fleet page's own link (it carries the token), this is the bare page
+const fleetOf = (ui) => esc((ui && ui.fleet) || "/agui/");
+const prRef = (n, ui) => (n === null || n === undefined ? "" : `<a class="ro" href="${fleetOf(ui)}">#${esc(n)}</a>`);
 const none = (what) => `<div class="empty">${esc(what)}</div>`;
 
 function pager(v) {
@@ -36,22 +38,23 @@ function tiles(v) {
 }
 
 function chiefsHtml(v) {
+  const closedAt = v.shift && v.shift.closed; // a chief still running at the close ends there, not "now"
   if (!v.chiefs.length) return none("No chief has run in this shift.");
   const byBucket = new Map();
   for (const c of v.chiefs) byBucket.set(c.bucket, [...(byBucket.get(c.bucket) || []), c]);
-  const rows = v.chiefs.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.bucket)}</td><td>${esc(clock(c.span.start))} to ${c.span.end ? esc(clock(c.span.end)) : "now"}${c.span.approx ? ` <span class="ro" title="no LIVE bullet: the span starts at the predecessor's end">approx</span>` : ""}</td><td>${c.prs.length} PR${c.prs.length === 1 ? "" : "s"}</td></tr>`).join("");
+  const rows = v.chiefs.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.bucket)}</td><td>${esc(clock(c.span.start))} to ${c.span.end ? esc(clock(c.span.end)) : closedAt ? esc(clock(closedAt)) : "now"}${c.span.approx ? ` <span class="ro" title="no LIVE bullet: the span starts at the predecessor's end">approx</span>` : ""}</td><td>${c.prs.length} PR${c.prs.length === 1 ? "" : "s"}</td></tr>`).join("");
   const gap = v.gap.length ? `<p class="sub">${v.gap.map((g) => `#${esc(g.pr)} merged in the hand-over between ${esc(g.chiefs[0])} and ${esc(g.chiefs[1])}: credited to both, counted once`).join("; ")}.</p>` : "";
   return `<p class="sub">${byBucket.size} bucket${byBucket.size === 1 ? "" : "s"}: ${[...byBucket.keys()].map(esc).join(", ")}</p><table class="data"><thead><tr><th>Chief</th><th>Bucket</th><th>Span</th><th>PR credit</th></tr></thead><tbody>${rows}</tbody></table>${gap}`;
 }
 
-function waitingHtml(v) {
+function waitingHtml(v, ui) {
   if (!v.waiting.length) return none("Nothing is waiting on you.");
-  return `<ul class="sh-list">${v.waiting.map((w) => `<li><span class="pill ${w.kind === "GO" ? "ok" : "warn"}">${esc(w.kind)}</span> ${ticketLink(w.ticket)} ${esc(w.detail || w.title)} ${prRef(w.pr)}${w.chief ? ` <span class="ro">${esc(w.chief)}</span>` : ""}${w.since ? ` <span class="ro">since ${esc(clock(w.since))}</span>` : ""}</li>`).join("")}</ul><p class="sub">Answer these where they live: <a href="#/fleet">Fleet</a>.</p>`;
+  return `<ul class="sh-list">${v.waiting.map((w) => `<li><span class="pill ${w.kind === "GO" ? "ok" : "warn"}">${esc(w.kind)}</span> ${ticketLink(w.ticket)} ${esc(w.detail || w.title)} ${prRef(w.pr, ui)}${w.chief ? ` <span class="ro">${esc(w.chief)}</span>` : ""}${w.since ? ` <span class="ro">since ${esc(clock(w.since))}</span>` : ""}</li>`).join("")}</ul><p class="sub">Answer these where they live: <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 }
 
-function runningHtml(v) {
+function runningHtml(v, ui) {
   if (!v.running.length) return none("Nothing is running.");
-  return `<ul class="sh-list">${v.running.map((r) => `<li><span class="pill">${esc(r.stage)}</span> ${ticketLink(r.ticket)} ${esc(r.title)} ${prRef(r.pr)}</li>`).join("")}</ul>`;
+  return `<ul class="sh-list">${v.running.map((r) => `<li><span class="pill">${esc(r.stage)}</span> ${ticketLink(r.ticket)} ${esc(r.title)} ${prRef(r.pr, ui)}</li>`).join("")}</ul>`;
 }
 
 const SHOWN = 20; // the longest list shows its newest rows; "show all" opens the rest
@@ -60,15 +63,15 @@ function shippedHtml(v, ui) {
   const all = ui && ui.all;
   const rows = all ? v.shipped : v.shipped.slice(0, SHOWN);
   const more = v.shipped.length > SHOWN ? `<p><a href="#/shift${v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}${all ? "" : "?all=1"}">${all ? "show fewer" : `show all ${v.shipped.length}`}</a></p>` : "";
-  return `<ul class="sh-list">${rows.map((p) => `<li><a class="ro" href="#/fleet">#${esc(p.number)}</a> ${esc(p.title)} <span class="ro">${esc(clock(p.mergedAt))}${p.chief ? ` · ${esc(p.chief)}` : ""}</span></li>`).join("")}</ul>${more}`;
+  return `<ul class="sh-list">${rows.map((p) => `<li><a class="ro" href="${fleetOf(ui)}">#${esc(p.number)}</a> ${esc(p.title)} <span class="ro">${esc(clock(p.mergedAt))}${p.chief ? ` · ${esc(p.chief)}` : ""}</span></li>`).join("")}</ul>${more}`;
 }
 
-function carriedHtml(v) {
+function carriedHtml(v, ui) {
   if (!v.carried.length) return none("Nothing carried over.");
-  return `<ul class="sh-list">${v.carried.map((c) => `<li>${ticketLink(c.ticket)} ${esc(c.title)} <span class="pill">${esc(c.stage)}</span> ${prRef(c.pr)}</li>`).join("")}</ul>`;
+  return `<ul class="sh-list">${v.carried.map((c) => `<li>${ticketLink(c.ticket)} ${esc(c.title)} <span class="pill">${esc(c.stage)}</span> ${prRef(c.pr, ui)}</li>`).join("")}</ul>`;
 }
 
-const links = `<p class="sub"><a href="#/shift" data-act="refresh-shift">refresh</a> · See also <a href="#/morning-report">Morning report</a> · <a href="#/roadmap">Roadmap</a> · <a href="#/fleet">Fleet</a>.</p>`;
+const links = (ui) => `<p class="sub"><a href="#/shift" data-act="refresh-shift">refresh</a> · See also <a href="#/morning-report">Morning report</a> · <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 
 export function renderShift(v, ui) {
   const page = pageHeader("Shift", "One shift is the whole fleet between cuts: what is running, what waits on you, what shipped.");
@@ -77,16 +80,16 @@ export function renderShift(v, ui) {
   if (!v.shift) {
     const l = v.last;
     const line = l ? `Last shift: <a href="#/shift/${encodeURIComponent(l.id)}">${esc(nameLabel(l.name))}, ${esc(stamp(l.opened))} to ${esc(stamp(l.closed))}</a>, ${l.chiefs} chief${l.chiefs === 1 ? "" : "s"}${l.shipped === null ? "" : `, ${l.shipped} shipped`}.` : "No shift has been recorded yet.";
-    return page + `<section id="sh-none" class="box"><h2>No shift is open</h2><p class="sub">A shift opens when any chief or worker takes a queue lock.</p><p>${line}</p></section>${links}`;
+    return page + `<section id="sh-none" class="box"><h2>No shift is open</h2><p class="sub">A shift opens when a chief goes live.</p><p>${line}</p></section>${links(ui)}`;
   }
   const closed = v.shift.closed !== null;
   const head = `<section class="box sh-head">${header(v)}${pager(v)}${tiles(v)}</section>`;
   const body = [
     sec("sh-chiefs", closed ? "Chiefs" : "Chiefs this shift", v.chiefs.length, chiefsHtml(v)),
-    closed ? "" : sec("sh-waiting", "Waiting on you", v.waiting.length, waitingHtml(v)),
-    closed ? "" : sec("sh-running", "Running now", v.running.length, runningHtml(v)),
+    closed ? "" : sec("sh-waiting", "Waiting on you", v.waiting.length, waitingHtml(v, ui)),
+    closed ? "" : sec("sh-running", "Running now", v.running.length, runningHtml(v, ui)),
     sec("sh-shipped", closed ? "Shipped" : "Shipped this shift", v.shipped.length, shippedHtml(v, ui)),
-    closed ? sec("sh-carried", "Carried to the next shift", v.carried.length, carriedHtml(v)) : "",
+    closed ? sec("sh-carried", "Carried to the next shift", v.carried.length, carriedHtml(v, ui)) : "",
   ].join("");
-  return page + head + body + links;
+  return page + head + body + links(ui);
 }

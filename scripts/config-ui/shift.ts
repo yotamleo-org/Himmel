@@ -24,7 +24,7 @@ export const DEFAULTS: Opts = { idleMin: 60, cuts: ["08:00", "20:00"], minHours:
 export type Lock = { bucket: string; role: "chief" | "worker"; at: number };
 export type Obs = { now: number; locks: Lock[]; lastEnd: number | null; chiefLiveAt: number | null };
 export type Open = { opened: number; lastHeld: number; buckets: string[]; offsetMin: number };
-export type State = { open: Open | null; closedAt: number | null };
+export type State = { open: Open | null; closedAt: number | null; at?: number }; // at: the time of the poll last applied
 export type Span = { name: string; bucket: string; start: number; end: number | null; approx: boolean };
 export type Gap = { pr: number; chiefs: [string, string] };
 export type Chief = { name: string; bucket: string; span: { start: string; end: string | null; approx: boolean }; prs: number[] };
@@ -50,6 +50,7 @@ export function nameOf(opened: number, offMin: number, o: Opts): "day" | "night"
 }
 
 // the first cut time at or after opened + minHours
+// ponytail: the zone offset is fixed when a shift opens, so a shift that spans a clock change cuts an hour off local 08:00 or 20:00, upgrade to the offset in force at each cut when a shift is seen to straddle one
 export function nextCut(opened: number, offMin: number, o: Opts): number {
   const from = opened + o.minHours * 60 * MIN;
   const dayStart = Math.floor((from + offMin * MIN) / DAY) * DAY - offMin * MIN; // local midnight at or before `from`
@@ -82,7 +83,8 @@ export function step(st: State, obs: Obs, o: Opts, offMin: number): { state: Sta
   const cutAt = nextCut(open.opened, open.offsetMin, o);
   const idleDue = !held && now - lastHeld >= idleMs;
   if (idleDue && (now < cutAt || lastHeld + idleMs <= cutAt)) return { state: { open: null, closedAt: lastHeld }, closed: rowOf(open, lastHeld, "idle", o) };
-  if (now >= cutAt) return { state: { open: { ...open, opened: cutAt, offsetMin: offMin }, closedAt: st.closedAt }, closed: rowOf(open, cutAt, "cut", o) };
+  // a cut hands over to a successor only when something is held: an idle fleet's last release is before the cut, so a successor would close before it opened
+  if (now >= cutAt) return { state: held ? { open: { ...open, opened: cutAt, offsetMin: offMin }, closedAt: st.closedAt } : { open: null, closedAt: cutAt }, closed: rowOf(open, cutAt, "cut", o) };
   return { state: { open, closedAt: st.closedAt } };
 }
 
@@ -227,12 +229,13 @@ const appendRow = (file: string, row: Row): "added" | "exists" => {
 export const appendShift = (file: string, row: Row) => withLock(file, () => appendRow(file, row));
 
 // ---- the poll: the Shift route and the report generator call this, nothing else writes ----
-export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[]>; boards?: (locks: Lock[], spans: Span[]) => Promise<Board[]> };
+// merged resolves null when the PR list could not be read: a shift is never closed on a list that may be missing PRs
+export type Tick = { root: string; file: string; now: number; opts?: Opts; merged: (fromMs: number, toMs: number) => Promise<Pr[] | null>; boards?: (locks: Lock[], spans: Span[]) => Promise<Board[]> };
 export type Snapshot = { state: State; spans: Span[]; locks: Lock[]; offsetMin: number };
 
 const stateFile = (file: string) => `${file}.state.json`;
 const readState = (file: string): State => {
-  try { const s = JSON.parse(readFileSync(stateFile(file), "utf8")); if (s && typeof s === "object") return { open: s.open ?? null, closedAt: s.closedAt ?? null }; } catch { /* first run */ }
+  try { const s = JSON.parse(readFileSync(stateFile(file), "utf8")); if (s && typeof s === "object") return { open: s.open ?? null, closedAt: s.closedAt ?? null, at: typeof s.at === "number" ? s.at : undefined }; } catch { /* first run */ }
   return { open: null, closedAt: null };
 };
 
@@ -253,18 +256,21 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   return withLock(t.file, () => {
     let st = readState(t.file);
     const closed: Row[] = [];
+    // this poll read the fleet before it waited for the lock: if a later poll was applied meanwhile, applying this one would move the last release backwards
+    if (st.at !== undefined && t.now < st.at) return { state: st, spans, locks, offsetMin, closed };
     for (let i = 0; i < 8; i++) { // a long gap between polls can pass several cuts
       const r = step(st, obs, o, offsetMin);
+      if (r.closed && prs === null) return { state: st, spans, locks, offsetMin, closed }; // nothing is written: the next poll closes it with the PRs
       st = r.state;
       if (!r.closed) break;
       const off = (r.closed.zone[0] === "-" ? -1 : 1) * (Number(r.closed.zone.slice(1, 3)) * 60 + Number(r.closed.zone.slice(4, 6)));
-      const full = { ...r.closed, carried: r.closed.why === "cut" ? carried : [], ...chiefsOf(spans, prs, Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
+      const full = { ...r.closed, carried: r.closed.why === "cut" ? carried : [], ...chiefsOf(spans, prs ?? [], Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
       appendRow(t.file, full);
       closed.push(full);
     }
     mkdirSync(dirname(t.file), { recursive: true });
     const tmp = `${stateFile(t.file)}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(st));
+    writeFileSync(tmp, JSON.stringify({ ...st, at: t.now }));
     renameSync(tmp, stateFile(t.file));
     return { state: st, spans, locks, offsetMin, closed };
   });
@@ -276,11 +282,11 @@ export const shiftsFile = (env: Record<string, string | undefined>) => env.SHIFT
 export const MERGED_LIMIT = 200;
 // The bounds go out in UTC (Z is an offset, and a "+" in a search qualifier would need encoding); the half-open [opened, closed) is applied after.
 const utc = (ms: number) => new Date(Math.floor(ms / MIN) * MIN).toISOString().replace(".000Z", "Z");
-export function readMerged(env: Record<string, string | undefined>, cwd: string, from: number, to: number): Promise<Pr[]> {
+export function readMerged(env: Record<string, string | undefined>, cwd: string, from: number, to: number): Promise<Pr[] | null> {
   return new Promise((done) => {
     execFile(env.GH_CMD || "gh", ["pr", "list", "--state", "merged", "--search", `merged:${utc(from)}..${utc(to)}`, "--limit", String(MERGED_LIMIT), "--json", "number,title,mergedAt,headRefName"],
       { cwd, env: env as NodeJS.ProcessEnv, timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (err, out) => {
-        try { const j = err ? null : JSON.parse(String(out)); done(Array.isArray(j) ? j.filter((p) => p && typeof p.number === "number" && typeof p.mergedAt === "string") : []); } catch { done([]); }
+        try { const j = err ? null : JSON.parse(String(out)); done(Array.isArray(j) ? j.filter((p) => p && typeof p.number === "number" && typeof p.mergedAt === "string") : null); } catch { done(null); }
       });
   });
 }

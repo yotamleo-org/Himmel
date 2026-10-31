@@ -54,7 +54,7 @@ const PAGES = [
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
-  { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, shiftUi), onVisit: () => loadShift() },
+  { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];

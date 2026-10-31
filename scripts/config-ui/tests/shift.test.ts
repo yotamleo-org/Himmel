@@ -3,7 +3,7 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULTS, appendShift, attribute, chiefSpans, iso, mergedIn, nameOf, readLocks, readShifts, rowsOf, step, viewOf, type Row, type State, type View } from "../shift";
+import { DEFAULTS, appendShift, attribute, chiefSpans, iso, mergedIn, nameOf, readLocks, readShifts, rowsOf, step, tick, viewOf, type Row, type State, type View } from "../shift";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
 
@@ -214,6 +214,8 @@ test("the Shift page with no open shift says so and names the last shift", () =>
   const html = renderShift(viewOf({ now: T("2026-10-27T22:00+01:00"), rows, snap: snap(null), id: null, merged: [], boards: [] }), {});
   expect(html).toContain("No shift is open");
   expect(html).toContain("2026-10-27");
+  expect(html).toContain("A shift opens when a chief goes live.");
+  expect(html).not.toContain("takes a queue lock");
   expect(html).not.toContain('id="sh-waiting"');
 });
 
@@ -291,4 +293,54 @@ test("GET /api/shift with no open shift and no locks is the empty state naming t
   const v = await (await getShift(s.port)).json();
   expect(v.state).toBe("idle");
   expect(v.last.id).toBe("2026-10-27T08:00+01:00");
+});
+
+// ---- the poll under failure and overlap ----
+const writeState = (file: string, open: { opened: number; lastHeld: number }, at?: number) =>
+  writeFileSync(file + ".state.json", JSON.stringify({ open: { ...open, buckets: ["himmel"], offsetMin: OFF }, closedAt: null, at }));
+
+test("a shift cut while the fleet is idle opens no successor, so nothing closes before it opened", () => {
+  const st: State = { open: { opened: T("2026-10-27T08:00+01:00"), lastHeld: T("2026-10-27T19:30+01:00"), buckets: ["himmel"], offsetMin: OFF }, closedAt: null };
+  const r = step(st, { now: T("2026-10-27T21:00+01:00"), locks: [], lastEnd: null, chiefLiveAt: null }, DEFAULTS, OFF);
+  expect(r.closed?.closed).toBe("2026-10-27T20:00+01:00");
+  expect(r.closed?.why).toBe("cut");
+  expect(r.state.open).toBeNull();
+  const again = step(r.state, { now: T("2026-10-27T22:00+01:00"), locks: [], lastEnd: null, chiefLiveAt: null }, DEFAULTS, OFF);
+  expect(again.closed).toBeUndefined();
+});
+
+test("a failed merged-PR read closes no shift, and the next good read records its PRs", async () => {
+  const dir = tmp(), file = join(dir, "shifts.jsonl");
+  writeState(file, { opened: T("2026-10-27T08:00+01:00"), lastHeld: T("2026-10-27T10:00+01:00") });
+  const now = T("2026-10-27T12:00+01:00"); // idle for two hours: the close is due
+  await tick({ root: dir, file, now, merged: async () => null });
+  expect(readShifts(file)).toEqual([]);
+  const r = await tick({ root: dir, file, now, merged: async () => [{ number: 5, mergedAt: "2026-10-27T09:00:00Z" }] });
+  expect(r.closed.length).toBe(1);
+  expect(readShifts(file).length).toBe(1);
+});
+
+test("a poll older than the last one applied leaves the shift's last release where it was", async () => {
+  const dir = tmp(), file = join(dir, "shifts.jsonl");
+  const lock = join(dir, ".locks", "queue", "yotamleo__himmel__HIMMEL-9-w.lock");
+  mkdirSync(lock, { recursive: true });
+  writeFileSync(join(lock, "owner.json"), JSON.stringify({ session: "s", handover: join(dir, "yotamleo", "himmel", "HIMMEL-9-w.md"), heartbeat: "2026-10-27T10:00:00Z" }));
+  const later = T("2026-10-27T12:00+01:00");
+  writeState(file, { opened: T("2026-10-27T08:00+01:00"), lastHeld: later }, later);
+  const r = await tick({ root: dir, file, now: T("2026-10-27T11:59+01:00"), merged: async () => [] });
+  expect(r.state.open?.lastHeld).toBe(later);
+});
+
+test("the Shift page's PR and Fleet links go to the Fleet page it is given, not to a route that does not exist", () => {
+  const html = renderShift(pageView(), { fleet: "/agui/#t=abc" });
+  expect(html).toContain('href="/agui/#t=abc"');
+  expect(html).not.toContain('href="#/fleet"');
+});
+
+test("a closed shift's continuing chief ends at the close, not at now", () => {
+  const chief = { name: "HIMMEL-nextleg-2026-10-27A-roadmap-chief", bucket: "himmel", span: { start: "2026-10-27T08:00+01:00", end: null, approx: false }, prs: [] };
+  const v = viewOf({ now: T("2026-10-29T00:00+01:00"), rows: [row("2026-10-27T08:00+01:00", { chiefs: [chief] })], snap: snap(null), id: "2026-10-27T08:00+01:00", merged: [], boards: [] });
+  const html = renderShift(v, {});
+  expect(html).not.toContain("to now");
+  expect(html).toContain("to 20:00");
 });
