@@ -423,8 +423,11 @@ export function signSpec(ctx: Ctx, o: {
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
     throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
   }
-  if (o.supersedes && !readOperatorRecords('spec', ctx.env).some((r) => r.id === o.supersedes)) {
-    throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
+  if (o.supersedes) {
+    const old = readOperatorRecords('spec', ctx.env).find((r) => r.id === o.supersedes);
+    if (!old) throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
+    const dropped = (old.keys ?? []).filter((k) => !o.keys.includes(k));
+    if (dropped.length) throw new Error(`release operator spec: --keys must keep every key of ${o.supersedes}; missing ${dropped.join(', ')}`);
   }
   return locked(ctx, (l) => appendOperator(ctx, l.k, {
     kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,

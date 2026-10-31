@@ -1316,6 +1316,14 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     expect(check(['K-1'])).toEqual(['NO-SPEC K-1']);
   });
 
+  it('a --supersedes re-sign that drops a key of the record it replaces is refused', () => {
+    declared();
+    const p = spec();
+    const r = sign(sctx(), ['K-1', 'K-2'], p);
+    expect(() => sign(sctx(), ['K-1'], p, { supersedes: r.id })).toThrow(/K-2/);
+    expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`, `SPEC ok K-2 ${p} ${r.id}`]);
+  });
+
   it('one changed byte of the signed spec gives SPEC-STALE', () => {
     declared();
     const p = spec();
