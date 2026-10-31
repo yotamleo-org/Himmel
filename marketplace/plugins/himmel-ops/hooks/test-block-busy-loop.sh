@@ -56,6 +56,7 @@ busy_payload='{"session_id":"s-busy","tool_name":"Bash","tool_input":{"command":
 run_case "$busy_payload" "$TMP/repo"
 assert_eq "adopter: busy loop denied" 2 "$RC"
 assert_contains "adopter: deny names sleep" "sleep" "$ERR"
+assert_contains "adopter: deny names a portable pid wait" "kill -0" "$ERR"
 case "$ERR" in
     *scripts/*|*quiet-run*|*QUIET_RUN*)
         echo "FAIL adopter: deny names a himmel script: $ERR"
@@ -71,6 +72,9 @@ assert_eq "deny: do true loop" 2 "$RC"
 # shellcheck disable=SC2016  # the payload is literal shell text, not expanded here
 run_case "$(j_bash 'while [ "$x" != ";" ]; do :; done')" "$TMP/repo"
 assert_eq "deny: quoted ; in the loop head" 2 "$RC"
+# shellcheck disable=SC2016  # the payload is literal shell text, not expanded here
+run_case "$(j_bash 'while [ "$x" = "a\";b" ]; do :; done')" "$TMP/repo"
+assert_eq "deny: escaped quote and ; inside a quoted span" 2 "$RC"
 run_case "$(j_bash "while kill -0 1234; do sleep 2; done")" "$TMP/repo"
 assert_eq "allow: sleep in the body" 0 "$RC"
 run_case "$(j_bash "for x in a b; do :; done")" "$TMP/repo"

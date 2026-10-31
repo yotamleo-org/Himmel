@@ -3093,7 +3093,7 @@ repo too, not only a himmel checkout. A himmel session keeps it through the
 user-scope plugin. Denies a `while`/`until ...; do :; done` (or `do true`)
 loop with no `sleep`, which spins a core at 100 % CPU (split out of
 `require-quiet-run.sh`, HIMMEL-4970). The deny names a `sleep N` body and
-`tail --pid=<pid> -f /dev/null`, and no repo script. Each deny appends one
+the portable pid wait `while kill -0 <pid>; do sleep 1; done`, and no repo script. Each deny appends one
 JSONL row (`ts`, `session_id`, `decision`, `loop`, `body`) to `BUSY_LOOP_LOG`
 (default `~/.claude/busy-loop-guard/denials.jsonl`). The match is textual, so
 a heredoc or quoted string holding a whole busy loop is refused as well. Fails

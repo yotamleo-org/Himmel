@@ -15,8 +15,8 @@
 #
 # ponytail: the match is textual over the whole command, so a heredoc body or
 # a quoted string that holds a whole busy loop is refused too, and a
-# backslash-escaped quote can shift the quoted spans; a real shell tokenizer
-# would tell data from code if that ever bites.
+# backslash-escaped quote outside any quotes can shift the quoted spans; a
+# real shell tokenizer would tell data from code if that ever bites.
 #
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 denies, and
 # stderr is shown to Claude. Each deny appends one JSONL row (ts, session_id,
@@ -42,13 +42,13 @@ cmd=${rest#*$'\n'}
 
 [ "$tool" = "Bash" ] || exit 0
 
-QUOTED_RE="^([^'\"]*)('[^']*'|\"[^\"]*\")(.*)$"
+QUOTED_RE="^([^'\"]*)('[^']*'|\"([^\"\\\\]|\\\\.)*\")(.*)$"
 text=""
 rest=$cmd
 while [[ $rest =~ $QUOTED_RE ]]; do
     span=${BASH_REMATCH[2]}
     text+=${BASH_REMATCH[1]}${span//;/ }
-    rest=${BASH_REMATCH[3]}
+    rest=${BASH_REMATCH[4]}
 done
 text+=$rest
 
@@ -68,7 +68,7 @@ fi
 {
     printf 'busy-loop guard: sleepless busy loop refused.\n\n'
     printf 'A %s loop whose body is only "%s" spins a core at 100%% CPU. Put a\n' "$loop" "$body"
-    printf '"sleep N" in the body, or wait on a pid: tail --pid=<pid> -f /dev/null\n\n'
+    printf '"sleep N" in the body, or wait on a pid: while kill -0 <pid>; do sleep 1; done\n\n'
     printf 'Bypass: BUSY_LOOP_BYPASS=1 <launching shell>; a per-call prefix does not work.\n'
 } >&2
 exit 2
