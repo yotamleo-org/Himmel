@@ -15,6 +15,7 @@ marketplace/plugins/himmel-bus/tests/test-lint.sh	local	behaviour suite, 0 catch
 marketplace/plugins/himmel-guard/test-himmel-guard-hermetic.sh	pr	guard
 marketplace/plugins/himmel-guard/test-himmel-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	pr	guard
+marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh	pr	guard
 marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -104,6 +105,7 @@ scripts/ci/test-check-actions-pinned.sh	pr	static-gate
 scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
+scripts/ci/test-check-doc-literals.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
 scripts/ci/test-check-flags.sh	pr	trust-path
 scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
@@ -114,6 +116,7 @@ scripts/ci/test-check-macos-nightly-health.sh	pr	trust-path
 scripts/ci/test-check-manifest-coverage.sh	pr	static-gate
 scripts/ci/test-check-no-secrets.sh	pr	guard
 scripts/ci/test-check-removal-ratchets.sh	pr	trust-path
+scripts/ci/test-check-rename-diff.sh	pr	trust-path
 scripts/ci/test-check-run-timelines.sh	pr	trust-path
 scripts/ci/test-check-vacuous-path-assert.sh	pr	trust-path
 scripts/ci/test-ci-container-jobs.sh	pr	trust-path

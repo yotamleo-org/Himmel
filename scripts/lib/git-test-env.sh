@@ -47,10 +47,9 @@
 # GIT_CONFIG_COUNT names N entries but some index < N is missing its KEY or
 # VALUE. THE ACTOR WAS NOT IDENTIFIED: environment variables cannot cross
 # processes, so the ticket's "a racing `git -c` from a sibling process writes
-# our git env" hypothesis is impossible, and six spawn paths were probed for
-# an empty-value drop (bash->git, node->git, powershell->git,
-# node->powershell->git, python subprocess->git, git->pre-commit-hook->git) --
-# all six preserved it. So this is a DEFENSE at the one chokepoint every
+# our git env" hypothesis is impossible, and the spawn paths probed for an
+# empty-value drop (bash->git, node->git, python subprocess->git,
+# git->pre-commit-hook->git) all preserved it. So this is a DEFENSE at the one chokepoint every
 # suite already routes through (git_test_env_pin_perf / git_test_env_append),
 # not a diagnosis: it repairs the symptom regardless of what caused it.
 #
@@ -231,7 +230,7 @@ git_test_env_pin_perf() {
   # inherit the pinned path and run `git init` against it). The allocating
   # caller calls git_test_env_cleanup from its own EXIT trap after its children
   # finish; this sourced library never installs or replaces a caller's trap.
-  local _tmpl_dir _tmpl_val _pid
+  local _tmpl_dir _pid
   # prim-ok: this sourced lib never installs a trap or sources a lib, and the himmel-git-empty-template. prefix is a scripts/tmp-reap.sh FAMILIES entry that tmpdir's prim. prefix would leave unreaped
   if _tmpl_dir=$(mktemp -d "${TMPDIR:-/tmp}/himmel-git-empty-template.XXXXXX" 2>/dev/null); then
     _pid=${BASHPID:-}
@@ -241,15 +240,7 @@ git_test_env_pin_perf() {
       _GIT_TEST_ENV_TEMPLATE_DIRS=()
     fi
     _GIT_TEST_ENV_TEMPLATE_DIRS+=("$_tmpl_dir")
-    _tmpl_val="$_tmpl_dir"
-    # Mixed form (C:/Users/...), same convention as
-    # scripts/hooks/test-ci-doc-invariants.sh's `cygpath -m` -- git on
-    # Windows accepts a POSIX-style path here too, but the mixed form is the
-    # local idiom for a path handed to git config.
-    if command -v cygpath >/dev/null 2>&1; then
-      _tmpl_val=$(cygpath -m "$_tmpl_dir" 2>/dev/null) || _tmpl_val="$_tmpl_dir"
-    fi
-    git_test_env_append init.templateDir "$_tmpl_val"
+    git_test_env_append init.templateDir "$_tmpl_dir"
   else
     git_test_env_append init.templateDir ''
   fi

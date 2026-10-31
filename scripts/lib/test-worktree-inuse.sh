@@ -80,67 +80,9 @@ else
 fi
 rm -rf "$t2_dir.worktree-inuse-probe"
 
-# ── T3: worktree_in_use on a genuinely held tree (Windows-gated) ────────────
-# A native Windows process holding a directory is the only thing MEASURED to
-# block the rename probe (see worktree-inuse.sh's own repro table) — an MSYS
-# bash holder does not, so this case is not constructible on other platforms.
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-        PWSH=$(command -v pwsh || command -v powershell || true)
-        if [ -z "$PWSH" ]; then
-            echo "  SKIP: T3 — no pwsh/powershell on PATH, cannot hold a directory natively"
-        else
-            t3_dir="$TMPDIR_ROOT/t3-wt"
-            mkdir -p "$t3_dir"
-            # Ready marker lives OUTSIDE the worktree (a sibling path): an
-            # extra untracked file INSIDE it would perturb the very rename
-            # behaviour under test. cygpath -m (not a bare argv pass) so a
-            # native pwsh.exe gets the real Windows path, not MSYS's naive
-            # /tmp -> C:\tmp argv mangling (a different, wrong root).
-            ready="$t3_dir.test-ready"
-            ready_win=$(cygpath -m "$ready" 2>/dev/null || printf '%s' "$ready")
-            rm -f "$ready"
-            ( cd "$t3_dir" && "$PWSH" -NoProfile -Command "New-Item -ItemType File '$ready_win' | Out-Null; Start-Sleep 30" ) &
-            HOLDER=$!
-            tries=0
-            while [ ! -f "$ready" ] && [ "$tries" -lt 100 ]; do
-                sleep 0.1
-                tries=$((tries + 1))
-            done
-            if [ ! -f "$ready" ]; then
-                fail "T3: the pwsh holder never signaled ready — cannot exercise the in-use case"
-            else
-                if worktree_in_use "$t3_dir"; then
-                    pass "T3: a directory held by a native process is reported in-use"
-                else
-                    fail "T3: a directory held by a native process was NOT reported in-use"
-                fi
-                if [ "$WORKTREE_INUSE_RESULT" = "in-use-skipped" ]; then
-                    pass "T3: result is in-use-skipped"
-                else
-                    fail "T3: result was '$WORKTREE_INUSE_RESULT', expected in-use-skipped"
-                fi
-                if [ -d "$t3_dir" ]; then
-                    pass "T3: the held directory survives the probe"
-                else
-                    fail "T3: the held directory is gone after the probe"
-                fi
-            fi
-            # ALWAYS kill the holder, pass or fail, or the suite leaves an
-            # orphan pwsh process behind.
-            kill "$HOLDER" 2>/dev/null
-            wait "$HOLDER" 2>/dev/null
-        fi
-        ;;
-    *)
-        echo "  SKIP: T3 — not Windows; a held cwd blocks neither rename nor rmdir on POSIX (HIMMEL-2227)"
-        ;;
-esac
-
 # ── T6-T10: the /proc-based live-holder detector on Linux ─────
-# The rename probe (T3, above) is Windows-only in what it can catch: on POSIX
-# a process's cwd blocks neither the rename nor the rmdir, so it always
-# reports "free to remove" there, holder or not. These rows exercise the
+# On POSIX a process's cwd blocks neither the rename nor the rmdir, so the
+# rename probe always reports "free to remove" there, holder or not. These rows exercise the
 # separate /proc scan that now runs BEFORE that probe on Linux.
 case "$(uname -s)" in
     Linux)

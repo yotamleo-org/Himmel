@@ -73,7 +73,7 @@ import { goalOf, renderUserBoard } from './board-user.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = 'usage: board.mjs --doc <console doc> [--workers "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed] [--view user]';
+const USAGE = 'usage: board.mjs --doc <console doc> [--workers "<worker doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed] [--view user]';
 const rawArgs = process.argv.slice(2);
 // --changed (Ask 1) is the one chief step that both re-renders
 // and says whether the render moved: a boolean flag, pulled out before the
@@ -249,7 +249,7 @@ if (opt.workers === undefined && existsSync(manifestPath)) {
     try {
         manifestDocs = execFileSync('bash', [join(HERE, 'fleet-manifest.sh'), 'list', manifestPath],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
-    } catch { console.error(`board: warning: fleet manifest unreadable (${manifestPath}); falling back to the Live-state leg scan`); }
+    } catch { console.error(`board: warning: fleet manifest unreadable (${manifestPath}); falling back to the Live-state worker scan`); }
 }
 // --changed folds this in: the tick fingerprint only moves with a lock or tail, so a worker
 // added to the manifest before it holds a lock would otherwise read UNCHANGED.
@@ -280,7 +280,7 @@ if (opt.workers !== undefined || manifestDocs) {
     }
     legFiles = [...byLabel.values()];
 }
-if (labelFailure) console.error(`board: warning: leg labels unavailable — ${labelFailure}; the board renders the unavailable state, not an empty fleet`);
+if (labelFailure) console.error(`board: warning: worker labels unavailable — ${labelFailure}; the board renders the unavailable state, not an empty fleet`);
 const liveLabels = [...new Set(liveEntries.map((e) => labelOf(e.stem)).filter(Boolean))];
 primeDescriptions(legFiles);
 const legInfo = new Map();
@@ -573,7 +573,7 @@ if (opt.view === 'user') {
     process.exit(0);
 }
 
-// One compact card per live leg: a 25-worker fleet must fit the 15 KB page. The description
+// One compact card per live worker: a 25-worker fleet must fit the 15 KB page. The description
 // The description takes its bytes out of the bullet's clip, so a card never grows past its budget.
 const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, l.desc ? Math.max(40, 108 - Math.min(l.desc.length, 60)) : 130) : '<i>no handover bullet yet</i>'}</p>${l.desc ? `<p class="ds">${safe(l.desc, 60)}</p>` : ''}</li>`;
 const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${legs.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${legs.filter((l) => l.phase === p).length}</b></li>`).join('\n');
@@ -581,7 +581,7 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
         : l.phase === 'READY-TO-OPEN' ? 'READY-TO-OPEN — awaiting PR open'
             : l.phase === 'BLOCKED' ? 'BLOCKED — needs a ruling'
-                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — ' + (l.closeNote || 'close the leg window')
+                : l.phase === 'WRAPPED, window still open' ? 'WRAPPED, window still open — ' + (l.closeNote || 'close the worker window')
                     : l.tail === 'FINDING' ? 'FINDING — needs a ruling'
                         : '';
     // A lost/stale lock is its own rendered signal, never displaced by the tail/phase
@@ -598,8 +598,8 @@ const orphanField = /(?:^|\s)orphans-wip=(\S*)/.exec(tickLine);
 const orphanMatch = orphanField && /^([1-9]\d*)(?::(\S+))?$/.exec(orphanField[1]);
 const orphanRows = !orphanMatch ? ''
     : orphanMatch[2]
-        ? orphanMatch[2].split(',').filter((k) => /^[A-Z][A-Z0-9]*-\d+$/.test(k)).map((k) => `<li data-orphan="${esc(k)}"><b>${esc(k)}</b> in work, no leg, no open PR — dispatch as RESUME</li>`).join('\n')
-        : `<li data-orphans="${esc(orphanMatch[1])}"><b>${esc(orphanMatch[1])} tickets</b> in work, no leg, no open PR — run next-dispatchable.sh</li>`;
+        ? orphanMatch[2].split(',').filter((k) => /^[A-Z][A-Z0-9]*-\d+$/.test(k)).map((k) => `<li data-orphan="${esc(k)}"><b>${esc(k)}</b> in work, no worker, no open PR — dispatch as RESUME</li>`).join('\n')
+        : `<li data-orphans="${esc(orphanMatch[1])}"><b>${esc(orphanMatch[1])} tickets</b> in work, no worker, no open PR — run next-dispatchable.sh</li>`;
 const epicRows = epics.map((e) => {
     const pct = e.merged === '?' ? 0 : Math.min(100, Math.round((e.merged / Math.max(1, e.total)) * 100));
     return `<li data-epic="${esc(e.key)}" data-merged="${e.merged}" data-total="${e.total}"><b>${esc(e.key)}</b> ${e.merged}/${e.total}<div class="bar"><i style="width:${pct}%"></i></div></li>`;
@@ -772,7 +772,7 @@ const explorationSection = (() => {
 // ledger reads "worker failures unavailable"; never fatal; not part of the fingerprint.
 const failuresSection = (() => {
     const title = '<h2>Failure classes — this shift</h2>';
-    const unavailable = `<section data-failures="?">${title}<p class="none">leg failures unavailable</p></section>`;
+    const unavailable = `<section data-failures="?">${title}<p class="none">worker failures unavailable</p></section>`;
     const jsonRows = (path, start) => {
         if (!existsSync(path)) return [];
         const rows = [];
@@ -816,7 +816,7 @@ const failuresSection = (() => {
         if (existsSync(inboxPath)) inbox = readFileSync(inboxPath, 'utf8').split('\n').filter((l) => l.startsWith('- ')).length;
         const inboxLine = `<p class="sub">memory inbox: ${inbox} pending</p>`;
         trend.failures = { since: start, memory_inbox: inbox, classes: [] };
-        if (!sorted.length) return `<section data-failures="0">${title}<p class="none">no leg failures this shift</p>${inboxLine}</section>`;
+        if (!sorted.length) return `<section data-failures="0">${title}<p class="none">no worker failures this shift</p>${inboxLine}</section>`;
         const toolHealth = readToolHealth(process.env, new URLSearchParams({ since: start }));
         const rates = toolHealth.class_rates || {}, counts = toolHealth.class_counts || {};
         const rateOf = (cls, c) => (typeof rates[cls] === 'number' && counts[cls] === c.events ? rates[cls] : null);
@@ -1053,7 +1053,7 @@ const archiveHtml = `<!doctype html>
 <body>
 <h1>Supervisor Session Board — archive</h1>
 <p>${safe(consoleName)} · rendered ${stamp} · local only, never published · one item per line: grep it</p>
-<h2>Done legs</h2>
+<h2>Done workers</h2>
 <ul>
 ${doneLegs.map((l) => `<li data-archive-worker="${esc(l.label)}">${esc(l.label)} ${esc(l.ticket || '-')} ${esc(l.phase)}${l.prNum ? ` PR #${l.prNum}` : ''} — ${safe(l.last || 'no handover bullet', 400)}</li>`).join('\n')}
 </ul>
@@ -1106,13 +1106,13 @@ li[data-over="1"] { color:var(--warn); font-weight:600; }
 <main>
 <h1>Supervisor Session Board</h1>
 <p class="sub">${safe(consoleName)} · rendered ${stamp}${lastGo ? ` · last GO ${safe(lastGo)}` : ''}${queueLine ? ` · queue ${safe(queueLine)}` : ''}</p>
-<p class="sub" data-archive="${doneLegs.length}">${doneLegs.length} done leg${doneLegs.length === 1 ? '' : 's'} and the merged PRs are in ${safe(basename(archivePath))} (local, not published)</p>
+<p class="sub" data-archive="${doneLegs.length}">${doneLegs.length} done worker${doneLegs.length === 1 ? '' : 's'} and the merged PRs are in ${safe(basename(archivePath))} (local, not published)</p>
 ${fp ? '' : '<p class="banner">tick unavailable — this board has no state fingerprint and will read STALE until it is re-rendered.</p>'}
-${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels unavailable — ${safe(labelFailure)}; the legs below may be missing or incomplete, not an empty fleet.</p>` : ''}
+${labelFailure ? `<p class="banner" data-banner="labels-unavailable">worker labels unavailable — ${safe(labelFailure)}; the workers below may be missing or incomplete, not an empty fleet.</p>` : ''}
 <div class="grid">
 <section>
 <h2>Fleet</h2>
-${fleetOk ? `<div class="fleet" data-fleet="${fleetLive}/${fleetCap}">${fleetLive}<small>/${fleetCap} legs live</small></div>${idle ? `<div class="idle" data-idle="${idle}">${idle} idle slot${idle === 1 ? '' : 's'} — underfilled</div>` : ''}` : '<p class="none">fleet unavailable</p>'}
+${fleetOk ? `<div class="fleet" data-fleet="${fleetLive}/${fleetCap}">${fleetLive}<small>/${fleetCap} workers live</small></div>${idle ? `<div class="idle" data-idle="${idle}">${idle} idle slot${idle === 1 ? '' : 's'} — underfilled</div>` : ''}` : '<p class="none">fleet unavailable</p>'}
 ${pool ? `<p class="sub" data-pool="${poolSig}">Current version: ${pool.open} open · ${pool.in_flight} in flight · ${pool.dispositioned} dispositioned · ${pool.undispositioned} undispositioned</p>` : '<p class="none">version pool unavailable</p>'}
 <p class="sub">subscription usage budget ${safe(usage || '?')} · gql ${safe(field.gql || '?')}</p>
 ${bankLiftLine}
@@ -1231,11 +1231,11 @@ const needOf = ({ l, m }) => {
     const readyB = [...(legInfo.get(l.label)?.bullets || [])].reverse().find((b) => markerOf(b) === 'READY') || '';
     const head = (/READY\s+#?\d{2,}\s+([0-9a-f]{7,40})\b/.exec(readyB) || [])[1];
     const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/chief-kit/go.sh ${l.prNum} ${head}` : null]
-        : m.state === 'blocked' ? ['unblock', 'clear the BLOCKED leg', null]
+        : m.state === 'blocked' ? ['unblock', 'clear the BLOCKED worker', null]
             : m.state === 'needs-decision' ? ['decide', 'rule on the FINDING', null]
-                : l.lostLock ? ['act', `lock ${l.lock.toLowerCase()}: re-arm or wrap the leg`, null]
+                : l.lostLock ? ['act', `lock ${l.lock.toLowerCase()}: re-arm or wrap the worker`, null]
                     : l.phase === 'READY-TO-OPEN' ? ['act', 'open the PR', null]
-                        : ['act', 'close the leg window', null];
+                        : ['act', 'close the worker window', null];
     return { leg: l.label, verb, action: action.slice(0, 90), detail: redact(l.last || ''), command, since: isoOf(m.lastAt ?? NaN) };
 };
 const needsYou = legRows.filter(({ l }) => l.needs).map(needOf).sort((a, b) => String(a.since).localeCompare(String(b.since)));
@@ -1325,7 +1325,7 @@ const succession = (() => {
     const silent = Math.max(0, liveLegs.length - accepts.length);
     const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;
     const recommendation = liveAt === null ? 'succession still running: no LIVE bullet yet'
-        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
+        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps`}${silent ? `; re-brief the ${silent} silent worker${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
     return [{ tool: 'chief-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
         turns, eq, legs_quoted: accepts.length, legs_silent: silent, target: SUCCESSION_TARGET, pass, recommendation }];
 })();
@@ -1348,8 +1348,8 @@ const countState = (s) => legsOut.filter((l) => l.state === s).length;
 const cards = {
     velocity: { recommendation: countState('ready-for-go') ? `${mergedToday} merged today; ${countState('ready-for-go')} READY wait for GO: judge them first`
         : countState('in-review') ? `${mergedToday} merged today; ${countState('in-review')} in review: keep /pr-check and CI moving`
-            : mergedToday ? `${mergedToday} merged today; nothing waits for GO` : 'none merged today: check what the live legs are stuck on' },
-    health: { recommendation: needsYou.length ? `${needsYou.length} leg${needsYou.length === 1 ? '' : 's'} need you: start with ${needsYou[0].leg} (${needsYou[0].verb})`
+            : mergedToday ? `${mergedToday} merged today; nothing waits for GO` : 'none merged today: check what the live workers are stuck on' },
+    health: { recommendation: needsYou.length ? `${needsYou.length} worker${needsYou.length === 1 ? '' : 's'} need you: start with ${needsYou[0].leg} (${needsYou[0].verb})`
         : ciOut.red ? `${ciOut.red} open PR${ciOut.red === 1 ? '' : 's'} red: triage the CI`
             : bankOut.week_pct !== null && bankOut.week_pct >= 85 ? `weekly budget at ${bankOut.week_pct} %: hold new dispatches`
                 : idle ? `${idle} idle slot${idle === 1 ? '' : 's'}: dispatch the next ticket` : 'fleet healthy: nothing to do' },

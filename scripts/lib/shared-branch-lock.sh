@@ -67,16 +67,15 @@
 # "free" would not be.
 #
 # NO AUTO-STEAL, NO PID-LIVENESS PROBING: this file deliberately does not
-# try to detect a crashed holder itself. Windows-native PIDs under MSYS bash
-# do not map cleanly onto the POSIX pid space `kill -0` expects, so that check
-# belongs to the cross-namespace reconciler (reconcile-workers.sh). Acquire
+# try to detect a crashed holder itself; that check belongs to the
+# cross-namespace reconciler (reconcile-workers.sh). Acquire
 # records SHARED_BRANCH_LOCK_HOLDER_PID when its dispatcher supplies one;
 # otherwise it preserves the historical diagnostic fallback of this shell's
 # pid. Stale locks are cleared by the reconciler or an explicit release.
 #
 # TTL RECLAMATION (acquire-wait only): reclamation is driven by
 # the acquired_epoch owner.json records at acquire time -- a timestamp WE
-# wrote -- never by pid liveness, for the reason the note above gives. An
+# wrote -- never by pid liveness, per the note above. An
 # unknown age (no owner.json, unparseable epoch, clock moved backwards) is
 # never stale: the safe direction is to keep waiting, since a false "stale"
 # steals a LIVE holder's lock while a false "fresh" only costs a wait. `acquire`
