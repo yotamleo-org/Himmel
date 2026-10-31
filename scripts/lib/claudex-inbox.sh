@@ -33,13 +33,56 @@ inbox_with_lock() (
     "$@" "$name"
 )
 
+# Provenance gate: anyone who can append the synced vault can
+# write an inbox line and copy a RETASK token into it, so a line is delivered
+# only when its sha256 is in a chief sent-record ledger inbox-send.sh wrote
+# before appending it, on a record naming this session as the recipient. A
+# ledger is trusted only when it, its directory and its base are owned by this
+# uid, none is a symlink, and neither the file nor its directory is group- or
+# world-writable. Exit 1 when a trusted ledger, or a directory of ours that
+# may hold one, cannot be read. The bases are
+# HIMMEL_CONSOLE_RUNDIR, $XDG_RUNTIME_DIR/himmel-chief and
+# ${TMPDIR:-/tmp}/himmel-chief-<uid>, so a sender whose environment picked
+# another default (cron has no XDG_RUNTIME_DIR) is still found.
+# ponytail: same-uid local writers can still write the ledger; HMAC with a key outside reach of the session would close it.
+inbox_ledger_shas() { # <session>
+    local base f d rc=0
+    for base in "${HIMMEL_CONSOLE_RUNDIR:-}" "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-chief}" "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"; do
+        [ -n "$base" ] && [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || continue
+        for d in "$base" "$base"/*; do
+            [ -d "$d" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
+            # A directory of ours we cannot search may hide a ledger: hold.
+            if [ ! -r "$d" ] || [ ! -x "$d" ]; then rc=1; continue; fi
+            f="$d/inbox-sent.log"
+            [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ] || continue
+            # Both paths must print; a failed probe trusts nothing.
+            [ "$(find "$f" "$d" -maxdepth 0 ! -perm /022 2>/dev/null | wc -l)" -eq 2 ] || continue
+            INBOX_LEDGER_TO="$1" awk '$5 == ENVIRON["INBOX_LEDGER_TO"] { print $4 }' "$f" 2>/dev/null || rc=1
+        done
+    done
+    return "$rc"
+}
+
+# Alerts the chief (cadence-alert.sh's chief-readable alert file, plus one
+# operator Telegram per session until cleared). Never fails the delivery.
+inbox_alert() { # <summary> <inbox> <cause> <do>
+    local here
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+    bash "$here/../luna/cadence-alert.sh" fail claudex-inbox "$1" "$2" "$3" "$4" \
+        </dev/null >/dev/null 2>&1 || true
+}
+
 inbox_peek() {
-    local name="$1" root inbox size cursor
+    local name="$1" root inbox size cursor raw partial line sha pool kept refused nl
     inbox_bullets=""
     inbox_cursor_file=""
     inbox_cursor_size=""
+    inbox_refused=0
+    inbox_name="$name"
+    inbox_path=""
     root="$(handover_root 2>/dev/null)" || return 1
     inbox="$root/inbox/$name.md"
+    inbox_path="$inbox"
     size="$(wc -c < "$inbox" 2>/dev/null | tr -d '[:space:]')"
     case "$size" in ''|*[!0-9]*) return 1 ;; esac
     inbox_cursor_file="$root/inbox/.cursor/$name"
@@ -56,8 +99,48 @@ inbox_peek() {
     # Read the prefix first so a large delta cannot SIGPIPE an upstream tail.
     # 10# forces base-10: a leading-zero value (e.g. "08") in a corrupted or
     # hand-recovered cursor file would otherwise be misparsed as an invalid
-    # octal literal and abort delivery (CodeRabbit).
-    inbox_bullets="$(head -c "$size" "$inbox" 2>/dev/null | tail -c "$((10#$size - 10#$cursor))")" || return 1
+    # octal literal and abort delivery (CodeRabbit). The trailing x keeps the
+    # final newline that command substitution would strip.
+    raw="$(head -c "$size" "$inbox" 2>/dev/null | tail -c "$((10#$size - 10#$cursor))" && printf x)" || return 1
+    raw="${raw%x}"
+    nl='
+'
+    # A line still being written stays pending: its hash would not match yet,
+    # and dropping it would lose the genuine ruling for good.
+    case "$raw" in
+        *"$nl") ;;
+        *)
+            partial="${raw##*"$nl"}"
+            raw="${raw%"$partial"}"
+            inbox_cursor_size="$(( 10#$size - $(printf '%s' "$partial" | wc -c) ))"
+            if [ -z "$raw" ]; then
+                inbox_cursor_size=""
+                return 0
+            fi
+            ;;
+    esac
+    if ! pool="$nl$(inbox_ledger_shas "$name")$nl"; then
+        # An unreadable ledger proves nothing either way: hold every line.
+        inbox_cursor_size=""
+        inbox_alert "holding inbox delivery for $name: a chief sent-ledger is unreadable" "$inbox" \
+            "an inbox-sent.log under the ledger bases cannot be read" \
+            "restore the ledger's read access (chmod 600); held rulings then deliver"
+        return 0
+    fi
+    kept=""
+    refused=0
+    while IFS= read -r line; do
+        [ -n "${line//[[:space:]]/}" ] || continue
+        sha="$(printf '%s' "$line" | sha256sum)" || return 1
+        case "$pool" in
+            *"$nl${sha%% *}$nl"*) kept="${kept:+$kept$nl}$line" ;;
+            *) refused=$((refused + 1)) ;;
+        esac
+    done <<EOF
+$raw
+EOF
+    inbox_bullets="$kept"
+    inbox_refused="$refused"
 }
 
 inbox_commit() {
@@ -67,6 +150,13 @@ inbox_commit() {
     # prim-ok: already a same-directory mktemp + rename with the rc checked; the hook-sourced lib stays free of a prim.sh dependency.
     if printf '%s\n' "$inbox_cursor_size" > "$tmp" && mv -f "$tmp" "$inbox_cursor_file"; then
         inbox_cursor_size=""
+        # Alert once per committed drop, never on a delivery that will retry.
+        if [ "${inbox_refused:-0}" -gt 0 ]; then
+            inbox_alert "refused $inbox_refused unrecorded inbox line(s) for $inbox_name" "$inbox_path" \
+                "no chief sent-ledger record for this session: forged, copied from another inbox, or older than the ledger" \
+                "run inbox-audit.sh on the inbox; resend a genuine ruling with inbox-send.sh"
+            inbox_refused=0
+        fi
     else
         rm -f "$tmp"
         return 1
