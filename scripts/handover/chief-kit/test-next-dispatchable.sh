@@ -1295,6 +1295,7 @@ mk HIMMEL-913 "To Do" Medium '["backlog","proposed-v1.0.1"]' '[]' '[]' "filed wi
 mk HIMMEL-914 "To Do" Medium '["backlog","proposed-backlog"]' '[]' '[]' "filed to the backlog with INTAKE queued" "Edit scripts/lib/in14.sh only."
 mk HIMMEL-915 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows installer fails after removal of a device" "Edit scripts/lib/in15.sh only."
 mk HIMMEL-916 "To Do" Medium '["backlog","proposed-v1.2.0"]' '[]' '[]' "proposed to a later version, INTAKE queued toward it" "Edit scripts/lib/in16.sh only."
+mk HIMMEL-917 "To Do" Medium '["operator-directed","backlog","proposed-v1.2.0"]' '[]' '[]' "operator work already proposed to a later version" "Edit scripts/lib/in17.sh only."
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
 runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
@@ -1312,6 +1313,7 @@ lacks "(8170) a residual-depth-1 backlog ticket is not an intake candidate" "$(p
 lacks "(8170) a plain versionless backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-904"
 lacks "(8170) a ticket proposed to the backlog is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-914"
 lacks "(8170) a ticket proposed to a version other than the earliest open one is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-916"
+lacks "(8170) an operator-directed ticket proposed to another version is not an intake candidate either" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-917"
 lacks "(8170) an operator-directed ticket already in a version is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-906"
 lacks "(8170) a closed versionless ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-907"
 has "(8170) a removal ticket with a windows title (HIMMEL-8173) is not dropped by the platform filter" "$oi" "LOCAL	HIMMEL-8173"
