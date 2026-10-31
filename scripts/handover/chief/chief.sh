@@ -1048,9 +1048,13 @@ launch_cmd() {
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
         || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
+    # himmel's 1 KB chief brief replaces the dropped i-have-adhd plugin.
+    local chief_brief
+    chief_brief="$(cd "$HERE/../../.." && pwd)/docs/handover/chief-adhd-brief.md"
+    [ -f "$chief_brief" ] || { err "the chief brief $chief_brief is missing; refusing to print a chief launch without it"; exit 2; }
     local claude_cmd
-    claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
-        "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
+    claude_cmd="$(printf '%s claude --settings %q --model %q %s--append-system-prompt-file %q --autocompact %s -n %s "load %s and continue"' \
+        "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$chief_brief" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted chief on the bus, so the line runs claude
     # through chief-bus-exec.sh, which registers and binds it first; a line
     # pasted after that file is gone runs claude directly.
@@ -1493,7 +1497,7 @@ cmd_new() {
         FILL_SIGNAL "$fill_signal" \
         FILL_PERCENT "$fill_percent" \
         RELEASE_TOKEN "$release_token" \
-        BOARD_URL "none yet — publish it at ACTION ZERO step 12" \
+        BOARD_URL "none yet — render it locally at ACTION ZERO step 12" \
         TRACKER_URL "none" \
         CARRIED_LIVE_STATE "epics: none
 decisions: none" \
@@ -1959,14 +1963,14 @@ cmd_next() {
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction
     predecessor_direction="$(direction_block "$predecessor_doc" | sed '/./,$!d')"
-    # The chief board's artifact URL rides on the `board:` line
+    # The chief board's local path rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
-    # updates the same artifact instead of minting a new one.
+    # re-renders the same file.
     predecessor_board="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^board:[[:space:]]*//p' | head -n 1)"
     case "$predecessor_board" in
-        ""|"none yet"*) predecessor_board="none yet — publish it at ACTION ZERO step 12" ;;
+        ""|"none yet"*) predecessor_board="none yet — render it locally at ACTION ZERO step 12" ;;
     esac
-    # The roadmap tracker's URL rides on `tracker:` the same way.
+    # The roadmap tracker's path rides on `tracker:` the same way.
     predecessor_tracker="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^tracker:[[:space:]]*//p' | head -n 1)"
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"

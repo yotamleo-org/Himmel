@@ -233,7 +233,7 @@ test("the default path prices the Skill listing of the real worker-impl, console
   const data = read(env);
   const skill = (p: string) => data.profiles.find((x: any) => x.profile === p).tools.find((t: any) => t.tool === "Skill");
   for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
-  expect(skill("console-judge").listing_tokens).toBeLessThan(skill("chief").listing_tokens);
+  expect(skill("chief").listing_tokens).toBeLessThan(skill("worker-impl").listing_tokens);
   expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
 });
 
