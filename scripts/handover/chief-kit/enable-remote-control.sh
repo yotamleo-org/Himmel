@@ -109,7 +109,8 @@ fi
 
 [ -z "${ENABLE_RC_BEFORE_KILL:-}" ] || "$ENABLE_RC_BEFORE_KILL" "$pid" "$PROC"
 # The pid was matched above; confirm it still names this session right before the
-# kill, so a pid recycled by an unrelated process in between is never signalled.
+# kill, which shrinks the window in which an unrelated process could hold a recycled pid.
+# ponytail: the check and the kill are two steps, so a pid recycled in the microseconds between them is still signalled, upgrade path: pidfd_send_signal once a helper that can open a pidfd is a dependency here.
 if ! tr '\0' '\n' < "$PROC/$pid/cmdline" 2>/dev/null | awk -v n="$NAME" 'p == "-n" && $0 == n { f = 1 } { p = $0 } END { exit !f }'; then  # swallow-ok: an unreadable cmdline means the pid is gone or reused; not killing is the safe answer
     echo "enable-remote-control: pid $pid no longer names session $NAME; not killing" >&2
     exit 6

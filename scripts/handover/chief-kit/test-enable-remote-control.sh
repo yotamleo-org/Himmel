@@ -32,7 +32,7 @@ record() { # <name> <profile> <lane>
 }
 run() { # <args...> -> sets out, rc
     rc=0
-    out="$(ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+    out="$(ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
         bash "$ERC" "$@" 2>&1)" || rc=$?
 }
 reset() { rm -f "$KILLED" "$LAUNCHED"; }
