@@ -23,6 +23,8 @@
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/(console|chief)-kit/go\.sh$
+# The scripted GO: auto-go.sh repeats the chief's GO checks and, from slice A1b, writes the GO.
+^scripts/handover/chief-kit/auto-go\.sh$
 # The merge-forward gate and the flag-free planner and graph it runs (the flag-reading planner wrapper stays off).
 ^scripts/handover/merge-forward-check\.sh$
 ^scripts/handover/chief-kit/chain-plan-core\.sh$

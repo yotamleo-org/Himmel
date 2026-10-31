@@ -368,6 +368,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	pr	guard
 scripts/handover/chief-kit/test-ack-denial.sh	pr	trust-path
 scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-auto-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	pr	trust-path

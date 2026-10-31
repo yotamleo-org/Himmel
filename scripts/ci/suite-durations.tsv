@@ -379,6 +379,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	0
 scripts/handover/chief-kit/test-ack-denial.sh	1
 scripts/handover/chief-kit/test-action-zero.sh	7
 scripts/handover/chief-kit/test-append-results.sh	30
+scripts/handover/chief-kit/test-auto-go.sh	25
 scripts/handover/chief-kit/test-board.sh	42
 scripts/handover/chief-kit/test-brief-lint.sh	14
 scripts/handover/chief-kit/test-chain-graph.sh	4
