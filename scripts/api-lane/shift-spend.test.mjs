@@ -143,7 +143,8 @@ test('claude bank: start, end and peak of both windows from the cadence ledger, 
   const recover = claudeBankField(join(T, 'recover.jsonl'), SINCE, UNTIL);
   assert.deepEqual(recover.seven_day, { start: 40, end: 45, peak: 45, delta: 45, resets: 1 });
   assert.equal(recover.value, 45);
-  assert.match(recover.note, /lower bound/);
+  assert.match(recover.note, /estimate/);
+  assert.match(recover.note, /account change/);
   // a null or empty utilization is a missing reading, never a measured zero
   writeFileSync(join(T, 'nulls.jsonl'), [ledgerRow('2026-10-31T01:00:00Z', null, '5.0'), ledgerRow('2026-10-31T02:00:00Z', '', '6.0')].join('\n'));
   assert.equal(claudeBankField(join(T, 'nulls.jsonl'), SINCE, UNTIL).status, 'not available');

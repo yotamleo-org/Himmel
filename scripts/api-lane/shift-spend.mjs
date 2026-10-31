@@ -133,7 +133,7 @@ export function claudeBankField(file, since, until) {
   };
   const seven_day = span('seven_day');
   return ok('claude_bank', { five_hour: span('five_hour'), seven_day, samples: inside.length, value: seven_day.delta,
-    note: 'readings exist only where a launch preflighted the bank; a fall between two readings is read as a window reset (or an account change), and the reading after it counts in full; use between the last reading before a reset and the reset is unobserved, so a figure with resets is a lower bound' });
+    note: 'readings exist only where a launch preflighted the bank; a fall between two readings is read as a window reset (or an account change), and the reading after it counts in full; use between the last reading before a reset and the reset is unobserved, and a fall caused by an account change adds a reading no one used, so a figure with resets is an estimate, not an exact burn' });
 }
 
 // ---- API lane dollars (our own launch records) ------------------------------------------------
