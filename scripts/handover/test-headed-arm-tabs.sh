@@ -139,7 +139,7 @@ PAST=$(( $(date +%s) - 100 ))
 # arm <dir> <name> [extra env NAME=VALUE...] - one launch, returns its rc.
 arm() {
   local d="$1" name="$2"; shift 2
-  env KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_QDBUS="$d/qdbus" \
+  env HEADED_ARM_ALLOW_TICKET_DUP=1 KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_QDBUS="$d/qdbus" \
     HEADED_ARM_LAUNCHER="$d/claude" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d/locks" \
     HEADED_ARM_PROC="$d/proc" "$@" \
     bash "$SCRIPT" "$name" "doc-$name.md" "$d/signal-never" "$PAST" "$d/log" > "$d/out.$name" 2>&1

@@ -125,6 +125,7 @@ assert_deny "HIMMEL_POLICY_FOLLOWS_HOME= on usage-preflight.sh" "$(j "HIMMEL_POL
 
 # The worker launcher.
 assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh" "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
+assert_deny "HEADED_ARM_ALLOW_TICKET_DUP= on headed-arm-worker.sh" "$(j "HEADED_ARM_ALLOW_TICKET_DUP=1 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_FLEET_CAP= on headed-arm-worker.sh"            "$(j "HIMMEL_FLEET_CAP=99 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_POLICY_FOLLOWS_HOME= on headed-arm-worker.sh"  "$(j "HIMMEL_POLICY_FOLLOWS_HOME=1 HOME=/tmp/h bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 
