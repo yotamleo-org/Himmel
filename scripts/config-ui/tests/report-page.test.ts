@@ -102,6 +102,21 @@ test("so far lists the shifts closed today, straight from shifts.jsonl", async (
   expect(list.soFar.shifts.map((s) => [s.id, s.chiefs, s.prs])).toEqual([[row.id, 1, 2]]);
 });
 
+test("with report_day utc a close at 00:10+01:00 is the previous UTC day, and an impossible report file name is not listed", async () => {
+  seed();
+  writeFileSync(join(handover, "morning-report-2026-99-99.md"), "x");
+  writeFileSync(join(handover, "morning-report-2026-10-27.md"), "# Morning Report\n");
+  const today = new Date().toISOString().slice(0, 10);
+  const row = (id: string, closed: string) => JSON.stringify({ id, name: "night", opened: closed, closed, why: "cut", zone: "+01:00", minutes: 1, chiefs: [], carried: [] });
+  // 00:10+01:00 on the date `today` is 23:10Z the day before, so it is not a close of the UTC day `today`
+  writeFileSync(join(handover, "shifts.jsonl"), row("a", `${today}T00:10:00+01:00`) + "\n");
+  const port = boot();
+  expect((await post(port, { ...GOOD, report_day: "utc" })).status).toBe(200);
+  const list = await (await get(port, "/api/reports")).json() as { days: string[]; soFar: { shifts: { id: string }[] } };
+  expect(list.days).toEqual(["2026-10-27"]);
+  expect(list.soFar.shifts.map((s) => s.id)).toEqual([]);
+});
+
 test("report_day utc makes today the UTC date, local the station's", async () => {
   seed();
   const port = boot();

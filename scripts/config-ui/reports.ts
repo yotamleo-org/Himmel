@@ -62,7 +62,7 @@ export function parseReport(md: string, day: string): ReportView {
 
 export function listReports(dir: string, now: number, today: string): ReportList {
   let days: string[] = [];
-  try { days = readdirSync(dir).map((f) => FILE.exec(f)?.[1]).filter((d): d is string => !!d).sort().reverse(); } catch { /* no root */ }
+  try { days = readdirSync(dir).map((f) => FILE.exec(f)?.[1]).filter((d): d is string => !!d && DAY.test(d)).sort().reverse(); } catch { /* no root */ }
   const newest = days[0] ?? null;
   let ageHours: number | null = null;
   if (newest) { try { ageHours = Math.round((now - statSync(join(dir, `morning-report-${newest}.md`)).mtimeMs) / 3_600_000); } catch { /* raced a delete */ } }
@@ -78,8 +78,10 @@ export function readReport(dir: string, day: string): ReportView {
 }
 
 // "So far": the closed shifts whose close falls on `day`, straight from the record.
-export function soFar(shiftsFile: string, day: string): SoFar {
+export function soFar(shiftsFile: string, day: string, utc = false): SoFar {
   let rows: Row[] = [];
   try { rows = readShifts(shiftsFile); } catch { /* no record yet */ }
-  return { day, shifts: rows.filter((r) => r.closed.slice(0, 10) === day).map((r) => ({ id: r.id, name: r.name, opened: r.opened, closed: r.closed, why: r.why, chiefs: r.chiefs.length, prs: new Set(r.chiefs.flatMap((c) => c.prs)).size })) };
+  // A close is stored in the station's zone, so its date prefix is the station day; with report_day utc the day is the UTC date of the instant.
+  const dayOf = (closed: string) => { const t = Date.parse(closed); return utc && !Number.isNaN(t) ? new Date(t).toISOString().slice(0, 10) : closed.slice(0, 10); };
+  return { day, shifts: rows.filter((r) => dayOf(r.closed) === day).map((r) => ({ id: r.id, name: r.name, opened: r.opened, closed: r.closed, why: r.why, chiefs: r.chiefs.length, prs: new Set(r.chiefs.flatMap((c) => c.prs)).size })) };
 }
