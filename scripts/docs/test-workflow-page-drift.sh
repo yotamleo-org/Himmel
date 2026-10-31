@@ -15,8 +15,11 @@
 #              in the code: scripts/, marketplace/ or .claude/, tests excluded.
 #   3. ORDER — in a chain the page shows as an order, rows citing the same file
 #              follow that file's line order.
-#   4. FACTS — each stated behaviour: the code still holds the lines that make
-#              it true, and the page says it (and not its known wrong wording).
+#   4. FACTS — each stated behaviour: the code still holds the lines that state
+#              it, and the page says it (and not its known wrong wording). A
+#              fact pins an executable line where one carries the behaviour,
+#              else the script's own contract comment: this guards the page's
+#              wording, it does not run the code.
 #   5. CONTROL — on a temp copy, a script name the tree lacks fails case 1,
 #              the ceiling check moved after the merged-PR check fails case 3,
 #              and a changed chief hand-over threshold fails case 4.
@@ -145,13 +148,14 @@ FACTS = [
       "from origin/<default branch>, or your local default branch when there is no remote"],
      []),
     ("launch refuses only an exhausted bank", "scripts/handover/chief-kit/headed-arm-worker.sh",
-     ["Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.",
+     ['if [ "$preflight_token" = SKIPPED-BANK ]',
+      "Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.",
       "lane bank exhausted (park and retry later", "fleet-size cap reached",
       "claude-opus-*", "claude-fable-*"],
      ["SKIPPED-BANK", "A stale or unknown bank reading does not stop the launch", "(opus, fable)"],
      ["does not say PROCEED", "The chief waits for your ruling"]),
     ("an unreadable reviewer holds only in an armed clone", "scripts/lib/review-merge-gate.sh",
-     ["fail OPEN", "armed clone an unreadable CR ledger holds every hard or required critic"],
+     ["- failing open\" >&2; }", "armed clone an unreadable CR ledger holds every hard or required critic"],
      ["only in a clone armed with the CodeRabbit app does a required reviewer it cannot read hold the merge"],
      ["but a required reviewer it cannot read holds the merge"]),
     ("three full review rounds, then one delta round", "scripts/cr/review-round.sh",
