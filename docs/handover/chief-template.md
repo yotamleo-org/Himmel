@@ -91,12 +91,10 @@ Run these, in order, and write the result as the first bullet under
     and is never a GO: read `chief-sections/voice-lines.md` first.
 12. **Render the chief board (local only):**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
-    or `UNCHANGED <path>`; record that local path on `board:` below. Never publish
-    it: the chief profile denies the `Artifact` tool. Roadmap tracker (if `tracker:` set):
-    `chief-sections/board-tracker.md`.
-13. **Never call `AskUserQuestion`:** a blocking prompt hangs this session and every
-    worker waiting on it. The tool stays in the toolset for operator-at-station
-    sessions only; decide with a stated default in plain text instead.
+    or `UNCHANGED <path>`; record that path on `board:` below. Never publish it
+    (`Artifact` is denied). Tracker (if `tracker:` set): `chief-sections/board-tracker.md`.
+13. **Never call `AskUserQuestion`:** it hangs you and every waiting worker;
+    decide on a stated default instead.
 
 ## Live state
 
