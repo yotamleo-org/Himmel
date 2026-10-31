@@ -106,6 +106,16 @@ test('buildCtx reads only the behaviour keys from himmel.conf, as load_dotenv do
   assert.equal(env.CR_REQUIRE_CROSS_MODEL, undefined, 'a policy key in himmel.conf is not read');
   assert.equal(env.CR_PROFILE, 'from-conf', 'a behaviour key is read');
 });
+test('buildCtx reads every config key of the shared key list from himmel.conf, not only a short copy', () => {
+  const repo = makeTmpDir('lanes-repo-');
+  const home = makeTmpDir('lanes-home-');
+  mkdirSync(join(home, '.himmel'));
+  writeFileSync(join(home, '.himmel', 'himmel.conf'), 'JIRA_EMAIL=ops@example.invalid\nSNYK_ORG_ID=org-1\nFIRECRAWL_BASE_URL=https://fc.example.invalid\n');
+  const { env } = buildCtx(repo, { HOME: home });
+  assert.equal(env.JIRA_EMAIL, 'ops@example.invalid', 'a config key outside the old short list is read');
+  assert.equal(env.SNYK_ORG_ID, 'org-1');
+  assert.equal(env.FIRECRAWL_BASE_URL, undefined, 'an env-only key in himmel.conf is not read');
+});
 test('buildCtx installed.hermes accepts only a real interpreter, matching resolve-hermes-py.sh', () => {
   const repo = makeTmpDir('lanes-repo-');
   const home = makeTmpDir('lanes-hermes-');
