@@ -118,7 +118,7 @@ a document fallback reads the assigned worker's title, not sibling mentions. Led
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
 request: no static render, no republish. The page draws release panels, the drift counts and trend, the worker to Jira
 sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
-theme); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
+Sector); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
 hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
@@ -136,14 +136,17 @@ route, `#/workflow&w=<id>&s=<n>`.
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
   write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
 - **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
-  Jira, and the per-card theme select sets its single `theme-<slug>` label (replacing any other `theme-*` label;
-  convention in `docs/jira-projects.md`). Both go through `POST /api/roadmap/write` (token gate, same-origin and JSON
-  checks, the machine write lock, one audit row per write), body `{key, status}` or `{key, theme}` with `theme: null`
-  clearing it. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the theme slug before any
-  child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
+  Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
+  the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
+  `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
+  body `{key, status}` or `{key, sector}`. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the
+  Sector name before any child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
   incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
-- **Librarian.** Stale In Progress, version drift, unthemed, released-but-open and duplicate titles, as proposals
+- **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
+  fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
+  keep their names, the page shows Sector.
+- **Librarian.** Stale In Progress, version drift, no sector (it proposes `jira edit <key> --sector`), released-but-open and duplicate titles, as proposals
   only. A fixVersion move or a close needs operator approval or a recorded standing rule. Lane: Opus judgement,
   bulk passes on Haiku. Cadence: event-driven on MERGED/WRAPPED plus a daily sweep.
 

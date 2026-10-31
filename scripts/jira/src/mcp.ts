@@ -347,6 +347,7 @@ export function createTools(): JiraTool[] {
             'REPLACE the issue labels with this comma-separated set (full-replace: ' +
               'existing labels not listed are removed)',
           ),
+          sector: str('Sector (single-select custom field; unknown option refused)'),
         },
         required: ['key'],
         additionalProperties: false,
@@ -359,14 +360,19 @@ export function createTools(): JiraTool[] {
         } else if (args.desc !== undefined && description === undefined) {
           description = args.desc as string;
         }
-        const fields = buildEditFields({
-          priority: args.priority as string | undefined,
-          severity: args.severity as string | undefined,
-          title: args.title as string | undefined,
-          description,
-          parent: args.parent as string | undefined,
-          labels: args.labels as string | undefined,
-        });
+        const sector = args.sector as string | undefined;
+        const fields = buildEditFields(
+          {
+            priority: args.priority as string | undefined,
+            severity: args.severity as string | undefined,
+            title: args.title as string | undefined,
+            description,
+            parent: args.parent as string | undefined,
+            labels: args.labels as string | undefined,
+            sector,
+          },
+          sector !== undefined ? await sectorOptions(deps.request) : [],
+        );
         await deps.request('PUT', `/issue/${key}`, { fields });
         return `${key} edited`;
       },
@@ -428,7 +434,7 @@ export function createTools(): JiraTool[] {
         properties: {
           key: str('Issue key'),
           readiness: str('Readiness 0-4'),
-          theme: str('Theme option name'),
+          theme: str('Legacy Theme option name; refused when HIMMEL_LEGACY_NAMES is off (set the Sector with edit instead)'),
           goals: str('Comma-separated goals: G1..G7, North Star, off, win'),
           impact: str('Impact 1-5'),
           alignment: str('Alignment 0.2-1.0 (default: derived from goals)'),

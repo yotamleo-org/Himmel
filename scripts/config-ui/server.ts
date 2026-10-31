@@ -376,7 +376,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
-  // a Kanban drop or theme select, written to Jira by the CLI under the same write lock and audit as an action.
+  // a Kanban drop or Sector select, written to Jira by the CLI under the same write lock and audit as an action.
   async function roadmapWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);

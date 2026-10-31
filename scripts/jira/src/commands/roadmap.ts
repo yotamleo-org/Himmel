@@ -155,6 +155,11 @@ export function buildRoadmapFields(ids: RoadmapIds, o: RoadmapSetOptions): Recor
   const f: Record<string, unknown> = {};
   if (o.readiness !== undefined) f[ids.readiness] = num(o.readiness, 'readiness', 0, 4, true);
   if (o.theme !== undefined) {
+    // The Theme field is a legacy name: gate it the way scripts/lib/legacy-names.sh does
+    // (on unless HIMMEL_LEGACY_NAMES is 0, false, no or off; scripts/jira cannot import that lib across its build root).
+    if (/^(0|false|no|off)$/i.test(process.env.HIMMEL_LEGACY_NAMES ?? '')) {
+      throw new Error('--theme: themes are retired and legacy names are off; set the Sector instead: jira edit <key> --sector "<sector>"');
+    }
     const theme = THEMES.find((t) => t.toLowerCase() === o.theme!.trim().toLowerCase());
     if (!theme) throw new Error(`--theme: unknown theme "${o.theme}" (one of: ${THEMES.join(', ')})`);
     f[ids.theme] = { value: theme };
@@ -379,7 +384,7 @@ export function registerRoadmap(program: Command): void {
     .command('set <key>')
     .description('Set roadmap fields on an issue, then recompute ROI')
     .option('--readiness <0-4>', 'Readiness rubric score (integer 0-4)')
-    .option('--theme <name>', `Theme (${THEMES.join(', ')})`)
+    .option('--theme <name>', `Legacy Theme (${THEMES.join(', ')}); refused when HIMMEL_LEGACY_NAMES is off, use edit --sector`)
     .option('--goals <list>', 'Comma-separated goals: G1..G7, North Star, off, win')
     .option('--impact <1-5>', 'Impact 1-5')
     .option('--alignment <n>', 'Alignment 0.2-1.0 (default: derived from --goals)')
