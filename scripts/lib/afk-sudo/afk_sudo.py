@@ -1276,6 +1276,11 @@ def disable_config(config):
         os.unlink(tmp)
         raise
     os.replace(tmp, CONFIG)
+    dfd = os.open(os.path.dirname(CONFIG), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
 
 
 def lockdown(config, args):
@@ -1291,14 +1296,20 @@ def lockdown(config, args):
     denied, failed = [], False
     try:
         broker = ab.Broker(STATE, LEDGER, SEED, op, config.get("window_s", 120), OWNER, now)
+        # Read and deny under one lock, as Broker.deny does, so no approve can take the request in between.
         fd = broker._locked()
         try:
-            pending = broker._load().get("pending")
+            s = broker._load()
+            pending = s["pending"]
+            if pending:
+                broker._finish(s, pending["id"], "denied")
+                s["pending"] = None
+                broker._spend(s, now())
+                broker._save(s)
+                broker._row("deny", "denied", pending["meta"], id=pending["id"], sender=op)
+                denied.append(pending["id"])
         finally:
             os.close(fd)
-        if pending:
-            broker.deny(pending["id"], op, op)
-            denied.append(pending["id"])
     except (ab.Refused, OSError, ValueError, KeyError, TypeError):
         failed = True
     ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "locked", "sender": args.sender, "denied": denied,

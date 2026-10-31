@@ -1499,6 +1499,28 @@ assert_eq "slice 4: the config reads enabled false after the race" "False -" "$(
 assert_eq "slice 4: a file at the old fixed temp name is left alone" "stale" "$(cat "$R/etc/himmel/afk-sudo.json.lockdown.tmp")"
 assert_eq "slice 4: no temporary file of the lockdown is left behind" "1" "$(find "$R/etc/himmel" -maxdepth 1 -name '*tmp*' | wc -l | tr -d ' ')"
 
+echo "== slice 4: the pending request is read and denied under one broker lock, and the rename is synced =="
+new_root lockdown-lock
+req 0 > /dev/null
+# shellcheck disable=SC2016 # python source, not shell
+LOCKPROBE='import os, stat, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+locks, dirsyncs, real_lock, real_fsync = [0], [0], s.ab.Broker._locked, os.fsync
+def counted(self):
+    locks[0] += 1
+    return real_lock(self)
+def synced(fd):
+    if stat.S_ISDIR(os.fstat(fd).st_mode):
+        dirsyncs[0] += 1
+    return real_fsync(fd)
+s.ab.Broker._locked = counted
+s.os.fsync = synced
+rc = s.main(["lockdown", "--from", sys.argv[2], "--chat", sys.argv[2]])
+print(f"locks={locks[0]} dirsyncs={dirsyncs[0]} rc={rc}")'
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + 1)) python3 -I -c "$LOCKPROBE" "$LIB" "$OP" 2>&1 | tail -n 1)
+assert_eq "slice 4: lockdown takes the broker lock once for the read and the deny, and syncs the config directory" "locks=1 dirsyncs=1 rc=0" "$out"
+
 echo "== slice 4: lockdown can only narrow =="
 new_root lockdown-sender
 out=$(req 0); id=$(rid "$out")
