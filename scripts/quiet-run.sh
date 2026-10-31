@@ -122,7 +122,7 @@ fi
 
 # label `suite` runs this worktree's suites only.
 # A directory option aimed outside the worktree (`--directory /tmp/fork`,
-# `--cwd=/x`, `-C /x`) is a tool run on another checkout: wrapping it buys no
+# `--cwd=/x`, `-C /x`; the names below) is a tool run on another checkout: wrapping it buys no
 # allow rule and only hides the command from the auto-mode classifier, so
 # refuse and name the direct form. `bash <test-*.sh>` was vetted above and a
 # positional path is data, so neither is checked here.
@@ -138,9 +138,9 @@ if [ "$LABEL" = "suite" ] && [ "${1:-}" != "bash" ] && QR_TOP=$(git rev-parse --
         # the '..' refusal above misses `--opt=../x`, so a leading '..' after '='
         # is caught here; every other '..' was refused before this loop.
         case "$arg" in
-            --*=/*) qr_path="${arg#*=}" ;;
-            --*=..|--*=../*) qr_path=.. ;;
-            /*) case "$qr_prev" in --?*|-C) qr_path="$arg" ;; esac ;;
+            --directory=/*|--cwd=/*|--dir=/*|--project=/*|--prefix=/*|--work-tree=/*) qr_path="${arg#*=}" ;;
+            --directory=..*|--cwd=..*|--dir=..*|--project=..*|--prefix=..*|--work-tree=..*) qr_path=.. ;;
+            /*) case "$qr_prev" in --directory|--cwd|--dir|--project|--prefix|--work-tree|-C) qr_path="$arg" ;; esac ;;
         esac
         qr_prev="$arg"
         [ -n "$qr_path" ] || continue

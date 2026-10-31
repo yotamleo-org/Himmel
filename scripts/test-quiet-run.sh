@@ -605,6 +605,9 @@ assert_rc "suite refuses -C /outside" 2 "$RC"
 OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- sh -c 'exit 0' "$SCRATCH/positional" 2>&1)
 RC=$?
 assert_rc "suite still runs a command given a positional outside path" 0 "$RC"
+OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- sh -c 'exit 0' x --output="$SCRATCH/out.json" --config "$SCRATCH/c.json" 2>&1)
+RC=$?
+assert_rc "suite still runs a command given an outside output or config option" 0 "$RC"
 # Negative controls: another label keeps quiet-run's generic shape, and a
 # repo suite under "suite" still runs (cases 6 and 12 cover relative and
 # absolute in-worktree paths).
