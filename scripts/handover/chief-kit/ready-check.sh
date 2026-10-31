@@ -549,7 +549,7 @@ cov_linked() {
 # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
 cov_ledger_keys() {
     [ -f "$1" ] || return 0
-    cov_led_out=$(jq -R -n -r --arg h "$2" --arg pb "${3:-}" '
+    cov_led_out=$(jq -R -n -r --arg h "$2" --arg pb "${3:-}" --argjson pr "${PR:-0}" '
         def hm($x; $y): ($x | type == "string") and ($y | type == "string") and ($x | length >= 7) and ($y | length >= 7) and (($x | ascii_downcase) as $a | ($y | ascii_downcase) as $b | ($a | startswith($b)) or ($b | startswith($a)));
         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
@@ -578,21 +578,42 @@ cov_ledger_keys() {
                     or (($raised | not) and any($clean[]; . > $f._ln)
                         and (any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($f) and ._ln > $f._ln) | not))));
         def keyok: type == "string" and test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$");
-        # A disposition row written at <head> (cr-disposition.sh record) carries the deferral of a finding of <pr-branch> that is
-        # still deferred, whatever head the finding was raised at; only the latest row per finding at <head> counts, and only a
-        # follow-up:<KEY> one (fix-here is no deferral). The mac belongs to the cr-disposition check go.sh runs, not to this one.
-        ([$rows[] | select(.kind == "amend" and $pb != "" and .branch == $pb and hm(.head; $h) and (.set | type == "object") and (.set.disposition | type == "string")
-                and (.target_head | type == "string") and (.target_head | length >= 7))]
-            | group_by(fk(.) + "|" + (.target_head[0:7] | ascii_downcase)) | map(max_by(._ln))
+        # A disposition row (cr-disposition.sh record) counts only where cr-disposition.sh check reads it: the full <head>, this PR
+        # number and branch, a Critical or Important finding of the branch at its exact head that is still deferred, and the latest
+        # such row per finding. The jq side prints these as D lines; the shell side verifies each mac before a key is taken.
+        ([$rows[] | select(.kind == "amend" and $pb != "" and .branch == $pb and .head == $h and .pr == $pr and (.set | type == "object") and (.set.disposition | type == "string")
+                and (.target_head | type == "string") and (.target_head | test("^[0-9a-f]{40}$")))]
+            | group_by(fk(.) + "|" + .target_head) | map(max_by(._ln))
             | map(select(.set.disposition | test("^follow-up:[A-Za-z][A-Za-z0-9]*-[0-9]+$")) | . as $d
-                | select(any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($d) and hm(.head; $d.target_head) and (replaced(.) | not)
-                    and (. as $f | (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (.branch == null or .branch == $f.branch) and (.set | has("disposition") | not))) as $a ($f; . + $a.set)) | .verdict == "deferred")))
-                | .set.disposition | ltrimstr("follow-up:") | ascii_upcase)) as $dkeys
+                | select(any($rows[]; .kind == "finding" and .branch == $pb and fk(.) == fk($d) and .head == $d.target_head and (replaced(.) | not)
+                    and (. as $f | (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (.branch == null or .branch == $f.branch))) as $a ($f; . + $a.set))
+                        | ((.severity // "") | tostring | ascii_downcase | IN("crit", "critical", "imp", "important")) and .verdict == "deferred"))))) as $cands
         | ((reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
             (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
             | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
-        | [.[] | select(.verdict == "deferred" and (.deferred_to | keyok)) | .deferred_to | ascii_upcase]) + $dkeys)[]' "$1") || return 1
-    printf '%s\n' "$cov_led_out" | sort -u
+        | [.[] | select(.verdict == "deferred" and (.deferred_to | keyok)) | .deferred_to | ascii_upcase] | map(["K", .] | @tsv))
+            + ($cands | map(["D", .finding_id, .target_head, .set.disposition, ((.source // "-") | tostring | if . == "" then "-" else . end),
+                ((.attest // []) | if type == "array" then map(tostring) | join(",") else "-" end | if . == "" then "-" else . end), ((.mac // "-") | tostring | if . == "" then "-" else . end)] | @tsv)))[]' "$1") || return 1
+    cov_led_keys_out=$(printf '%s\n' "$cov_led_out" | awk -F'\t' '$1 == "K" { print $2 }')
+    cov_disp_rows=$(printf '%s\n' "$cov_led_out" | awk -F'\t' '$1 == "D"')
+    if [ -n "$cov_disp_rows" ]; then
+        # The mac is the one cr-disposition.sh disp_mac builds, from the same go_msg_mac, so a row passes here only if it passes there.
+        cov_gg="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/lib/go-gate.sh"
+        # shellcheck source=scripts/lib/go-gate.sh
+        # shellcheck disable=SC1091
+        if . "$cov_gg" 2>/dev/null && declare -F go_msg_mac >/dev/null 2>&1; then
+            while IFS=$'\t' read -r _ cov_fid cov_fh cov_dp cov_src cov_att cov_mac; do
+                [ "$cov_att" = "ci-green,no-data-loss,no-weakened-guard" ] || continue
+                cov_want=$(go_msg_mac himmel-disposition-v1 "$PR|$2|${3:-}|$cov_fid|$cov_fh|$cov_dp|$cov_src|$cov_att") || cov_want="" # swallow-ok: an unsignable row yields no key, so the body deferral fails below
+                [ -n "$cov_want" ] && [ "$cov_want" = "$cov_mac" ] || continue
+                cov_led_keys_out="$cov_led_keys_out
+$(printf '%s' "${cov_dp#follow-up:}" | tr '[:lower:]' '[:upper:]')"
+            done <<EOF
+$cov_disp_rows
+EOF
+        fi
+    fi
+    printf '%s\n' "$cov_led_keys_out" | sed '/^$/d' | sort -u
 }
 
 cov_shape_help() {
