@@ -301,19 +301,16 @@ effort guidance, including the chief's own wake-up budget, is in
   release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]`
   prints `CORE`, `REVIEW` or `NOT-CORE` per key. core-check stops when the
   list matches more than 2 % of tracked files. If core really has to grow,
-  re-run it with `--widen-reason <why>`, and the reason goes on the record.
-- **Bypasses and the log.** These arrive with the gen-briefs gate (slice C2).
-  Some tickets pass without a spec: a design leg (core by label only, with
+  re-run it with `--widen-reason <why>`, and the reason is printed with the
+  verdict.
+- **Bypasses.** The gen-briefs core gate, when it lands, will let some
+  tickets pass without a spec: a design leg (core by label only, with
   docs-only Writes), a Bug, an emergency, a ticket in an operator
-  `core-bypass` record, and a ticket already in flight when the gate turned
-  on. A free-text bypass field is refused. Every decision on a core ticket
-  writes one row to `<bucket>/core-gate.jsonl`. Your `REVIEW` rulings go
-  there too, with the reason.
-- **WARN until `core_gate` turns on.** The gate ships off. With the flag off,
-  gen-briefs still writes a core brief, adding a `Core gate: WARN` line and a
-  `warn` log row. Read those rows and run a minerva leg for each real core
-  ticket. With the flag on, gen-briefs refuses a core build brief without
-  `SPEC ok` and names the key and the missing spec.
+  `core-bypass` record, and a ticket already in flight when the gate turns
+  on. A free-text bypass field will be refused.
+- **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
+  `jira release core-check` and `spec-check` yourself before you write a core
+  brief, and run a minerva leg for each `CORE` key without `SPEC ok`.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per
