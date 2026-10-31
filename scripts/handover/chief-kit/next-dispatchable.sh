@@ -877,9 +877,8 @@ for i in cands:
     if hit:
         stack = stackable_on(i) if stacked else None
         if stack:
-            drop(i, 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP))
-            stackable_rows.append('STACKABLE %s on %s (%d/%d)' % (i['key'], stack[0], stack[1], SERIES_CAP))
-            continue
+            stackable_rows.append((i, 'STACKABLE %s on %s (%d/%d)' % (i['key'], stack[0], stack[1], SERIES_CAP), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
+            continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
         soft = soft_overlap(i, held_hits(i))
         if soft is None:
             drop(i, 'collision %s held by %s' % hit)
@@ -919,8 +918,6 @@ def classify(batch):
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
-for row in stackable_rows:
-    print(row)
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
@@ -1128,6 +1125,18 @@ def row_class(i):
         return ('CLOUD' if c == 'CLOUD-OK' else 'LOCAL'), c
     return 'LOCAL?', ''
 
+def emit_stackable():
+    # STACKABLE rows for the candidates that could join a live series worker, after the same proof and classification
+    # gates a dispatch row passes; one that fails them drops for that reason instead
+    ok = [t for t in stackable_rows if not proof_refuse(t[0])]
+    if classified:
+        classify_new([t[0] for t in ok])
+    for i, row, reason in ok:
+        if row_class(i) is None:
+            continue
+        drop(i, reason)
+        print(row)
+
 def emit_free(rows):
     # Classify only the slots still open, then walk on in further batches so BLOCKED rows
     # in an early batch do not leave the list short while later candidates are dispatchable.
@@ -1157,16 +1166,20 @@ def emit_free(rows):
                 break
         if n >= top:
             break
-    if stacked and n >= top:
-        # the list is full, but a ticket that joins a listed series takes no slot: still offer it the join
+    while stacked and n >= top:
+        # the list is full, but a ticket that joins a listed series takes no slot: still offer it the join. A join widens the
+        # series' files, so scan again until a pass joins nobody
         late = [i for i in rows if i['key'] not in seen and i['key'] not in why and picked_hit(i) and not proof_refuse(i)]
         if classified:
             classify_new(late)
+        joined = False
         for i in late:
-            seen.add(i['key'])
             rc = row_class(i)
-            if rc is not None:
-                join_series(i, *rc)  # a ticket that cannot join stays below --top, as before
+            if rc is not None and join_series(i, *rc):  # a ticket that cannot join stays below --top, as before
+                seen.add(i['key'])
+                joined = True
+        if not joined:
+            break
 
 if pool_only:
     # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
@@ -1175,6 +1188,7 @@ if pool_only:
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
     flush_rows()
+    emit_stackable()
     if not resume_only:
         intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
@@ -1195,6 +1209,7 @@ if resume_only:
     sys.exit(0)
 emit_free(free)
 flush_rows()
+emit_stackable()
 warn_missing()
 drop_summary()
 if os.environ.get('ND_DISPO') == '1':

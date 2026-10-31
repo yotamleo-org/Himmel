@@ -1409,6 +1409,14 @@ has "(8349) a BLOCKED ticket drops on its classification" "$ln_" "# drop HIMMEL-
 nc_="$(runs "$M" 1 --no-classify)"
 has "(8349) unclassified members keep the LOCAL? lane" "$nc_" "SERIES${TAB}LOCAL?${TAB}HIMMEL-841,HIMMEL-842,HIMMEL-843,HIMMEL-845${TAB}"
 
+# a join widens the series' files: a ticket that only now collides with the series is offered the join too, with the list full
+newmir late
+mk HIMMEL-861 "To Do" High '[]' '["v1.0.1"]' '[]' "head on x" "Edit scripts/lib/x.sh now."
+mk HIMMEL-862 "To Do" High '[]' '["v1.0.1"]' '[]' "on y only" "Edit scripts/lib/y.sh now."
+mk HIMMEL-863 "To Do" High '[]' '["v1.0.1"]' '[]' "bridges x and y" "Edit scripts/lib/x.sh and scripts/lib/y.sh now."
+lt="$(runs "$M" 1 --top 1)"
+has "(8349) a join that widens the series lets a later ticket join it" "$lt" "SERIES${TAB}LOCAL${TAB}HIMMEL-861,HIMMEL-863,HIMMEL-862${TAB}"
+
 # STACKABLE: a candidate colliding only with one live series worker's Writes
 newmir stk
 mk HIMMEL-851 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js" "$APP"
@@ -1444,6 +1452,13 @@ lacks "(8349) a candidate also held by an open PR is not STACKABLE" "$st" "STACK
 stoff="$(runs "$SM" 0 --workers-from "$WORK/fleet-s.json" --why)"
 lacks "(8349) flag off prints no STACKABLE row" "$stoff" "STACKABLE"
 has "(8349) flag off drops it with the collision reason" "$stoff" "# drop HIMMEL-851 collision scripts/config-ui/app.js held by live worker N5"
+
+# a candidate the classifier would call BLOCKED is not offered as STACKABLE
+M="$SM"; mk HIMMEL-845 "To Do" High '[]' '["v1.0.1"]' '[]' "blocked wants app.js" "$APP"
+sb="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --why)"
+lacks "(8349) a BLOCKED candidate is not offered as STACKABLE" "$sb" "STACKABLE HIMMEL-845"
+has "(8349) a BLOCKED candidate drops on its classification" "$sb" "# drop HIMMEL-845 classification BLOCKED"
+has "(8349) the classifiable candidate is still offered" "$sb" "STACKABLE HIMMEL-851 on N5 (2/4)"
 
 mkdoc "$WORK/HIMMEL-791-N6-plain.md" 0 ""
 mkfleet "$WORK/fleet-plain.json" "N6:$WORK/HIMMEL-791-N6-plain.md"
