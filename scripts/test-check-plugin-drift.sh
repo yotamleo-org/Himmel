@@ -1892,7 +1892,7 @@ PY
 )"
 export FORK_OWNER
 fork_out="$(FORK_NAME=home-assistant.io DRIFT_ADAPTERS="$W17/ha-adapters.json" fork_run)"; fork_rc=$?
-if grepq "$fork_out" "== fork branches" && ! grepq "$fork_out" 'fork (inventory|registry): .*UNCHECKED' && ! grepq "$fork_out" "home-assistant.io"; then ok "fork-behind: CI-rebuilt registry lists no Home Assistant fork"; else bad "fork-behind: a Home Assistant fork is listed or the fork section aborted (adapter row and discovery); $fork_out"; fi
+if grepq "$fork_out" "== fork branches" && ! grepq "$fork_out" -E 'fork (inventory|registry): .*UNCHECKED' && ! grepq "$fork_out" "home-assistant.io"; then ok "fork-behind: CI-rebuilt registry lists no Home Assistant fork"; else bad "fork-behind: a Home Assistant fork is listed or the fork section aborted (adapter row and discovery); $fork_out"; fi
 unset FORK_OWNER
 rm -rf "$W17"
 
