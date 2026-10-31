@@ -4,6 +4,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { keyringUnlocked, putSecret, resolveSecrets } from '../../lib/resolve-secrets.mjs';
 import { MAPPINGS } from './map/table';
 import { extractRows, pointDate } from './map/shape';
 import { aggregateRows, deriveRestingHeartRate, deriveSleep, type SleepWarning } from './map/derive';
@@ -186,6 +188,28 @@ function updateEnvFile(envPath: string, refreshToken: string): void {
   writeFileSync(envPath, content, 'utf-8');
 }
 
+const SECRET_NAMES = ['GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN'];
+
+/**
+ * Put each name the one resolver serves (environment, credentials directory, keyring) into
+ * process.env. This reader has no .env of its own: the caller's loaded environment is the last layer.
+ */
+export function loadSecretsIntoEnv(root: string, names: string[]): void {
+  for (const [name, value] of Object.entries(resolveSecrets(root, names))) process.env[name] = value;
+}
+
+/**
+ * Save the refreshed token: in the keyring when it is unlocked (put --stdin, no .env line), else
+ * in the .env file. Returns where it went, or undefined when there was nowhere to put it.
+ */
+export function storeRefreshToken(root: string, token: string, envPath: string | undefined): string | undefined {
+  if (keyringUnlocked(root) && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) return 'the keyring';
+  const target = envPath ?? findEnvFile(process.cwd());
+  if (!target) return undefined;
+  updateEnvFile(target, token);
+  return target;
+}
+
 // ── argv helpers ──────────────────────────────────────────────────────────────
 
 /** Same flag() helper as cli.ts: last occurrence wins. */
@@ -217,6 +241,9 @@ function requireEnvCfg(): { clientId: string; clientSecret: string; refreshToken
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === 'pull' || cmd === 'auth-url' || cmd === 'auth-exchange') {
+    loadSecretsIntoEnv(fileURLToPath(new URL('../../..', import.meta.url)), SECRET_NAMES);
+  }
 
   if (cmd === 'pull') {
     const from = flag(rest, 'from');
@@ -276,16 +303,15 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     const { refreshToken, scope } = await exchangeCode({ clientId, clientSecret, code });
-    const resolvedEnvPath = envPath ?? findEnvFile(process.cwd());
-    if (!resolvedEnvPath) {
+    const stored = storeRefreshToken(fileURLToPath(new URL('../../..', import.meta.url)), refreshToken, envPath);
+    if (!stored) {
       console.error(
         '[google-health] error: could not find .env file (walked up from cwd); pass --env-path',
       );
       process.exit(1);
     }
-    updateEnvFile(resolvedEnvPath, refreshToken);
-    // NEVER print the token; print confirmation (with resolved path) + granted scope.
-    console.error(`OK: refresh token written to ${resolvedEnvPath}`);
+    // NEVER print the token; print confirmation (with where it went) + granted scope.
+    console.error(`OK: refresh token written to ${stored}`);
     console.error(`Granted scope: ${scope}`);
   } else {
     console.error(

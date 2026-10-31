@@ -5,10 +5,14 @@
 import { expect, test } from "bun:test";
 import {
   MIN_PROBE_GAP_S, markerPath, shouldProbe, basicAuthHeader, buildPromQueryUrl,
-  runProbe, parseDotenv,
+  runProbe, parseDotenv, loadAlibabaEnv,
 } from "./alibaba-probe-once";
 import type { QuotaGaugeRecord } from "./quota-gauge";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { afterAll, beforeAll, describe } from "bun:test";
+import { writeFileSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { stubKeyring } from "../config-ui/tests/keyring-stub";
 
 const NOW_MS = Date.parse("2026-07-04T12:00:00Z");
 
@@ -226,3 +230,59 @@ test("runProbe appended (ok, garbled body): ONE invisible row + one stderr line"
 // skip-429 (125), skip-error (139), appended (162) — and every FetchResult
 // shape (ok/rate_limited/error) is exercised the same way via fetchJson
 // returns in those same tests.
+
+// Rows S0-R1 and S0-R2 of the secrets-resolver slice: the real scripts/lib/himmel-secrets over a stub keyring.
+// Dummy values only; the station keyring and the real .env are never reached.
+describe("loadAlibabaEnv looks in the keyring before .env", () => {
+  const TOUCHED = ["PATH", "KSTUB_STORE", "KSTUB_LOCKED", "DBUS_SESSION_BUS_ADDRESS",
+    "ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY"];
+  const saved: Record<string, string | undefined> = {};
+  let dir: string;
+  let stub: ReturnType<typeof stubKeyring>;
+
+  beforeAll(() => {
+    for (const k of TOUCHED) saved[k] = process.env[k];
+    dir = mkdtempSync(join(tmpdir(), "abp-test-"));
+    stub = stubKeyring(dir);
+    Object.assign(process.env, stub.env, { KSTUB_LOCKED: "false" });
+    for (const k of ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY"]) delete process.env[k];
+    // Suite guard: secret-tool and busctl must resolve to the stub, or the run aborts.
+    for (const tool of ["secret-tool", "busctl"]) {
+      const where = Bun.which(tool, { PATH: process.env.PATH }) ?? "";
+      if (!where.startsWith(join(dir, "kbin"))) throw new Error(`${tool} resolves to ${where}, not the stub dir`);
+    }
+  });
+  afterAll(() => {
+    for (const k of TOUCHED) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("S0-R1 a pair held only in the keyring, no .env line, is served", () => {
+    stub.put("ALIBABA_QUOTA_AK", "dummy-s0-ak");
+    stub.put("ALIBABA_QUOTA_SK", "dummy-s0-sk");
+    const root = mkdtempSync(join(dir, "root-"));
+    writeFileSync(join(root, ".env"), "ALIBABA_QUOTA_PROM_URL=https://prom.example\n");
+    const env = loadAlibabaEnv(root);
+    expect(env.ALIBABA_QUOTA_AK).toBe("dummy-s0-ak");
+    expect(env.ALIBABA_QUOTA_SK).toBe("dummy-s0-sk");
+    expect(env.ALIBABA_QUOTA_PROM_URL).toBe("https://prom.example");
+  });
+
+  test("S0-R2 a pair in both the keyring and .env resolves to the keyring value", () => {
+    writeFileSync(stub.store, "");
+    stub.put("ALIBABA_QUOTA_AK", "dummy-keyring-ak");
+    stub.put("ALIBABA_QUOTA_SK", "dummy-keyring-sk");
+    const root = mkdtempSync(join(dir, "root-"));
+    writeFileSync(join(root, ".env"), "ALIBABA_QUOTA_AK=dummy-dotenv-ak\nALIBABA_QUOTA_SK=dummy-dotenv-sk\n");
+    const env = loadAlibabaEnv(root);
+    expect(env.ALIBABA_QUOTA_AK).toBe("dummy-keyring-ak");
+  });
+
+  test("an exported value still beats the keyring", () => {
+    process.env.ALIBABA_QUOTA_AK = "dummy-exported-ak";
+    try {
+      const root = mkdtempSync(join(dir, "root-"));
+      expect(loadAlibabaEnv(root).ALIBABA_QUOTA_AK).toBe("dummy-exported-ak");
+    } finally { delete process.env.ALIBABA_QUOTA_AK; }
+  });
+});

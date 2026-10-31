@@ -4,8 +4,10 @@ import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, mk
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { stubKeyring } from '../../config-ui/tests/keyring-stub';
 
 const jiraDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+const libDir = join(jiraDir, '..', 'lib');
 
 // The CLI reads credentials from its own install path, never the cwd.
 // A fixture install (<root>/scripts/jira/dist + a <root>/.env) is run from an
@@ -24,6 +26,10 @@ describe('CLI .env resolution from an unrelated cwd', () => {
     cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
     cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
+    // The built client imports the shared secrets helper from scripts/lib. The resolver itself is
+    // not installed here, so this fixture never reaches a keyring (the rows below use their own).
+    mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+    cpSync(join(libDir, 'resolve-secrets.mjs'), join(root, 'scripts', 'lib', 'resolve-secrets.mjs'));
     writeFileSync(
       join(root, '.env'),
       'JIRA_BASE_URL=https://fixture.invalid\nJIRA_EMAIL=dummy@example.invalid\n' +
@@ -104,5 +110,72 @@ describe('CLI .env resolution from an unrelated cwd', () => {
       `project=${want} AND status in ("To Do","Planning","Ready","In Progress") ORDER BY created DESC`,
     );
     expect(request.auth).toBe(`Basic ${Buffer.from(`dummy@example.invalid:${token}`).toString('base64')}`);
+  });
+});
+
+// Rows S0-R0 and S0-R2 of the secrets-resolver slice: the install carries the real resolver, run over a stub
+// keyring (secret-tool and busctl first on PATH). Dummy values only; no row reaches the station keyring.
+describe('CLI credentials from the keyring', () => {
+  let dir: string;
+  let root: string;
+  let stub: ReturnType<typeof stubKeyring>;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'jira-keyring-'));
+    stub = stubKeyring(dir);
+    // Suite guard: secret-tool and busctl must resolve to the stub dir, or the suite aborts.
+    for (const tool of ['secret-tool', 'busctl']) {
+      const where = spawnSync('bash', ['-c', `command -v ${tool}`], { encoding: 'utf8', env: stub.env }).stdout.trim();
+      if (!where.startsWith(join(dir, 'kbin'))) throw new Error(`${tool} resolves to ${where}, not the stub dir`);
+    }
+    root = join(dir, 'install');
+    const installed = join(root, 'scripts', 'jira');
+    mkdirSync(installed, { recursive: true });
+    cpSync(join(jiraDir, 'dist'), join(installed, 'dist'), { recursive: true });
+    cpSync(join(jiraDir, 'package.json'), join(installed, 'package.json'));
+    symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
+    mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+    for (const f of ['resolve-secrets.mjs', 'himmel-secrets', 'load-dotenv.sh']) {
+      cpSync(join(libDir, f), join(root, 'scripts', 'lib', f));
+    }
+  });
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  function authFor(dotenv: string): string {
+    const project = mkdtempSync(join(dir, 'project-'));
+    const home = mkdtempSync(join(dir, 'home-'));
+    expect(spawnSync('git', ['init', '--quiet', project], { encoding: 'utf8' }).status).toBe(0);
+    writeFileSync(join(project, '.env'), 'JIRA_PROJECT_KEY=PROJECT\n');
+    writeFileSync(join(root, '.env'), `JIRA_BASE_URL=https://fixture.invalid\n${dotenv}`);
+    const preload = join(home, 'fetch.mjs');
+    writeFileSync(preload,
+      'globalThis.fetch = async (url, init) => {\n' +
+      '  console.log(JSON.stringify({ auth: init.headers.Authorization }));\n' +
+      '  return new Response(JSON.stringify({ issues: [] }));\n' +
+      '};\n');
+    const run = spawnSync(process.execPath, [
+      '--import', pathToFileURL(preload).href,
+      join(root, 'scripts', 'jira', 'dist', 'index.js'), 'list',
+    ], { cwd: project, env: { ...stub.env, HOME: home }, encoding: 'utf8', timeout: 30000 });
+    expect(run.error).toBeUndefined();
+    expect(run.status).toBe(0);
+    return JSON.parse(run.stdout).auth;
+  }
+  const basic = (email: string, token: string): string => `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`;
+
+  it('S0-R0 serves a pair held only in the keyring, with no .env line and nothing exported', () => {
+    writeFileSync(stub.store, '');
+    stub.put('JIRA_EMAIL', 'kr@example.invalid');
+    stub.put('JIRA_API_TOKEN', 'dummy-s0-token');
+    expect(authFor('')).toBe(basic('kr@example.invalid', 'dummy-s0-token'));
+  });
+
+  it('S0-R2 a token in both the keyring and .env resolves to the keyring value', () => {
+    writeFileSync(stub.store, '');
+    stub.put('JIRA_EMAIL', 'kr@example.invalid');
+    stub.put('JIRA_API_TOKEN', 'dummy-keyring-token');
+    expect(authFor('JIRA_EMAIL=dotenv@example.invalid\nJIRA_API_TOKEN=dummy-dotenv-token\n'))
+      .toBe(basic('kr@example.invalid', 'dummy-keyring-token'));
   });
 });
