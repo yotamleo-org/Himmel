@@ -159,7 +159,9 @@ const LEDGER = [
   { ts: "2026-10-05T02:30:00Z", worker: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
 ];
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
-const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Usage", "Trends", "How good are our reviewers?", "Search and graph freshness"];
+// the strip, the one open tile panel, then trends and reviewers; Checks opens by itself only when something is wrong (Q5).
+const SECTIONS = ["Is this project working right now?", "Checks", "Trends", "How good are our reviewers?"];
+const SECTIONS_CALM = SECTIONS.filter((s) => s !== "Checks");
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
@@ -167,6 +169,7 @@ async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await page.locator("#verdict .word").waitFor();
 }
 const verdictWord = (page: Page) => page.locator("#verdict .word");
+const openTile = (page: Page, tile: string) => page.locator(`[data-act="health-tile"][data-tile="${tile}"]`).click();
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await openConfig(page);
@@ -185,13 +188,15 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await openHealth(page);
+  await openTile(page, "usage");
   await page.reload();
   await page.locator("#verdict .word").waitFor();
   expect(errors).toEqual([]);
+  await expect(page.locator("#bank")).toBeVisible(); // tile=usage rides the hash, so the reload keeps the panel open
   await expect(page.locator("#bank")).not.toContainText("loading");
 });
 
-test("health: the seven sections appear in spec order", async ({ page }) => {
+test("health: the strip, the open Checks panel, then trends and reviewers, in spec order", async ({ page }) => {
   await openHealth(page);
   expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Inventory"]); // Health ends with the legacy Inventory section
 });
@@ -216,15 +221,19 @@ test("health: the verdict names its inputs; cadence jobs and search rows come fr
   await openHealth(page);
   await expect(verdictWord(page)).toHaveText("Act now");
   await expect(page.locator("#verdict")).toContainText("1 fail · 1 warn");
+  await openTile(page, "jobs");
+  await expect(page.locator("#broken")).toHaveCount(0); // one panel open at a time
   await expect(page.locator("#jobs")).toContainText("luna-pipeline");
   await expect(page.locator("#jobs")).toContainText("armed e2e");
   await expect(page.locator("#jobs")).toContainText("ran-e2e-evidence");
+  await openTile(page, "search");
   await expect(page.locator("#search")).toContainText("qmd-binary");
   await expect(page.locator("#search")).toContainText("C45-e2e-hit");
 });
 
 test("health: bank card shows the newest row with bank numbers; I2 the ledger is never appended; the card follows the fixture", async ({ page }) => {
   await openHealth(page, {}, { ledger: LEDGER });
+  await openTile(page, "usage");
   const bank = page.locator("#bank");
   await expect(bank).toContainText("Last subscription usage budget preflight");
   await expect(bank).toContainText("PROCEED");
@@ -246,10 +255,18 @@ test("health: refresh re-probes the doctor feed inside the server's 30 s cache a
   await expect(verdictWord(page)).toHaveText("Act now");
 });
 
+test("health: refresh re-reads the Fleet census, so a chief row follows a chief starting or stopping (HIMMEL-8031)", async ({ page }) => {
+  await openHealth(page, { clean: true });
+  let reads = 0; // the page's own Fleet read was sent before this listener; only a read the refresh sends counts
+  page.on("request", (r) => { if (new URL(r.url()).pathname === "/api/agui/fleet") reads++; });
+  await page.locator('[data-act="refresh-health"]').click();
+  await expect.poll(() => reads).toBeGreaterThan(0);
+});
+
 test("health: with the feed pending the verdict is No data and the bank still renders (D2)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
-  await page.evaluate(() => { location.hash = "#/health"; });
+  await page.evaluate(() => { location.hash = "#/health?tile=usage"; });
   await expect(verdictWord(page)).toHaveText("No data");
   await expect(page.locator("#bank")).toContainText("86.0");
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
@@ -317,10 +334,11 @@ test("health: every source absent leaves No data cards that name the source; ver
   await openHealth(page, { clean: true });
   await expect(verdictWord(page)).toHaveText("All clear");
   await expect(page.locator("#verdict")).toContainText("alerts not checked");
+  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS_CALM, "Inventory"]); // nothing wrong, so no panel opens by itself
+  await openTile(page, "usage");
   await expect(page.locator("#bank .nodata")).toContainText("bank-preflight ledger");
   await expect(page.locator("#usage")).toContainText("open Fleet");
-  await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running");
-  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Inventory"]); // Health ends with the legacy Inventory section
+  await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running"); // Health ends with the legacy Inventory section
 });
 
 test("health: at 390 px the page does not scroll horizontally", async ({ page }) => {
