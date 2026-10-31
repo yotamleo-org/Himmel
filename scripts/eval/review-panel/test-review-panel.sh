@@ -402,8 +402,8 @@ eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCOR
 eq "export-row: the panel's recall_gating" "$(rget metrics/panel.recall_gating)" "0.3333"
 eq "export-row: the panel's class recall" "$(rget class_recall/toctou)" "1.0"
 eq "export-row: a 64-hex outputs bundle hash" "$(rget outputs_sha256 | tr -d '\n' | wc -c | tr -d ' ')" "64"
-python3 "$SCORE" export-row "$O5" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
-eq "export-row: an inconclusive sweep is refused" "$rc" "2"
+out=$(python3 "$SCORE" export-row "$O5" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
+eq "export-row: an inconclusive sweep is refused" "$rc" "2"; has "export-row: names the inconclusive status" "$out" "is inconclusive"
 eq "export-row: and writes no row" "$(grep -c . "$TMP/results.jsonl")" "1"
 python3 "$SCORE" verify-row "$row" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: the exported row matches its outputs" "$rc" "0"
