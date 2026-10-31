@@ -533,8 +533,13 @@ check    "A1b a NO-GO at an intermediate head: no no-op record" "$([ -e "$VDIR/q
 
 # 8g. the act can fail after the checks: go.sh refuses, or the bus does not deliver
 gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
-STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
 contains "A1b go.sh refuses after a carry: the answer names the no-op record it left" "$OUT" "delta no-op record for qj"
+# a retry that finds the no-op record the failed attempt left still honours a NO-GO recorded since
+rm -rf "$HANDOVER_DIR/.locks"
+verdict qn "**NO-GO** for head \`$NDOC\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
+contains "A1b retry over a left no-op record: ESCALATE auto-go 5" "$OUT" "ESCALATE auto-go 5 "
 gofresh; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"; run 77 "$SHA"
 check    "A1b go.sh refuses: exit 10" "$RC" "10"
 contains "A1b go.sh refuses: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "
