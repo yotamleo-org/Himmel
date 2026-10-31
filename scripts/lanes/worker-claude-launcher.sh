@@ -146,7 +146,16 @@ _session_id="${WORKER_SESSION_ID:-}"
 # session name. Set by headed-arm-worker.sh on native launches only; unset or
 # empty adds nothing (clause 3).
 _remote_control="${WORKER_SESSION_REMOTE_CONTROL:-}"
-[ -z "$_remote_control" ] || PRE+=(--remote-control "$_remote_control")
+if [ -n "$_remote_control" ]; then
+    # A lane launcher (claudex, openrouter, deepseek) is not a Remote Control endpoint:
+    # refuse rather than hand it a flag it would misread or drop.
+    case "${CLAUDE_BIN##*/}" in
+        claude-codex|claude-openrouter|claude-deepseek)
+            echo "worker-claude-launcher: refusing to launch: WORKER_SESSION_REMOTE_CONTROL is set but the lane launcher ${CLAUDE_BIN##*/} is not a Remote Control endpoint (native lane only)" >&2
+            exit 2 ;;
+    esac
+    PRE+=(--remote-control "$_remote_control")
+fi
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")
     # The consult is confined only if the FINAL argv carries
