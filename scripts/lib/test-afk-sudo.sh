@@ -1452,6 +1452,63 @@ assert_eq "RED HIMMEL-7686: a grant file not root-only gives no allow" "" "$(gho
 
 open_regular_tests
 
+echo "== HIMMEL-8067 slice 4: lockdown turns the station off and denies the pending request =="
+# enabled_of: the config's "enabled" and "mode" as `<enabled> <mode>`, from the sandbox file.
+enabled_of() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1] + "/etc/himmel/afk-sudo.json")); print(c.get("enabled"), c.get("mode", "-"))' "$R"; }
+new_root lockdown
+out=$(req 0); id=$(rid "$out")
+assert_contains "slice 4: a request is pending before the lockdown" "result=pending" "$out"
+out=$(h 1 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: lockdown answers locked" "result=locked" "$out"
+assert_contains "slice 4: lockdown names the request it denied" "denied=$id" "$out"
+assert_eq "slice 4: the config now reads enabled false" "False -" "$(enabled_of)"
+assert_eq "slice 4: the config file keeps its mode" "0o644" "$(python3 -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$R/etc/himmel/afk-sudo.json")"
+assert_contains "slice 4: the config keeps the class list" "systemctl-restart" "$(cat "$R/etc/himmel/afk-sudo.json")"
+assert_contains "slice 4: the pending request reads denied" "result=denied id=$id" "$(h 2 status "$id")"
+out=$(h 3 mode)
+assert_contains "slice 4: mode reports the station disabled" "enabled=false" "$out"
+out=$(req 4)
+assert_contains "slice 4: a new request is refused disabled" "result=disabled" "$out"
+assert_contains "slice 4: the ledger has a lockdown row" '"event": "lockdown"' "$(ledger)"
+assert_contains "slice 4: the lockdown row names the denied id" "\"denied\": [\"$id\"]" "$(ledger)"
+assert_contains "slice 4: the pending request has its own deny row" '"event": "deny"' "$(ledger)"
+assert_eq "slice 4: nothing ran" "0" "$(runs)"
+
+echo "== slice 4: lockdown with nothing pending, and on an already-off station =="
+new_root lockdown-idle
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: an idle station locks down" "result=locked" "$out"
+assert_eq "slice 4: an idle station reads enabled false" "False -" "$(enabled_of)"
+out=$(h 1 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: a second lockdown is still locked" "result=locked" "$out"
+new_root lockdown-off false
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: an already-off station answers locked" "result=locked" "$out"
+
+echo "== slice 4: lockdown can only narrow =="
+new_root lockdown-sender
+out=$(req 0); id=$(rid "$out")
+out=$(h 1 lockdown --from 999 --chat 999)
+assert_contains "slice 4: another sender's lockdown is refused" "result=not-operator" "$out"
+out=$(h 1 lockdown --from "$OP" --chat 999)
+assert_contains "slice 4: a lockdown from another chat is refused" "result=not-operator" "$out"
+assert_eq "slice 4: a refused lockdown leaves the station on" "True -" "$(enabled_of)"
+assert_contains "slice 4: a refused lockdown leaves the request pending" "result=pending" "$(h 2 status "$id")"
+for extra in "--enable" "--enabled=true" "--mode=all" "--all" "true"; do
+    # shellcheck disable=SC2086
+    out=$(h 3 lockdown --from "$OP" --chat "$OP" $extra); rc=$?
+    assert_absent "slice 4: lockdown $extra does not lock or change anything" "result=locked" "$out"
+    assert_eq "slice 4: lockdown $extra leaves the station on" "True -" "$(enabled_of)"
+done
+new_root lockdown-off2 false
+out=$(h 0 lockdown --enable --from "$OP" --chat "$OP")
+assert_absent "slice 4: lockdown --enable never turns a station on" "result=locked" "$out"
+assert_eq "slice 4: an off station stays off after lockdown --enable" "False -" "$(enabled_of)"
+new_root lockdown-all
+python3 -I -c 'import json, sys; p = sys.argv[1] + "/etc/himmel/afk-sudo.json"; c = json.load(open(p)); c["mode"] = "all"; json.dump(c, open(p, "w"))' "$R"
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_eq "slice 4: lockdown leaves the mode alone and only switches the station off" "False all" "$(enabled_of)"
+
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"
 # shellcheck disable=SC2016 # the install.sh text is matched literally, $LIBEXEC included

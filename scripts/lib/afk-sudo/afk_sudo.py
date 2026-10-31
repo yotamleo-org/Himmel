@@ -14,6 +14,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
   afk-sudo deny ID --from SENDER --chat CHAT
   afk-sudo status ID  |  run-status ID
+  afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies the pending request; takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
   afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W]   (the command's bytes on stdin)
   afk-sudo grant-spend        --session S --sha256 H --cwd DIR
@@ -1255,6 +1256,58 @@ def grant_spend(config, args):
     return 0 if res == "granted" else 5
 
 
+def disable_config(config):
+    """Rewrite the station config with `enabled: false`, atomically, keeping its owner and mode. Narrowing only."""
+    st = os.lstat(CONFIG)
+    config["enabled"] = False
+    tmp = CONFIG + ".lockdown.tmp"
+    if os.path.lexists(tmp):
+        os.unlink(tmp)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchmod(fd, st.st_mode & 0o777)
+        if os.geteuid() == 0:
+            os.fchown(fd, st.st_uid, st.st_gid)
+        with os.fdopen(fd, "w") as f:
+            json.dump(config, f, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        os.unlink(tmp)
+        raise
+    os.replace(tmp, CONFIG)
+
+
+def lockdown(config, args):
+    """HIMMEL-8067 slice 4: switch the station off and deny the pending request. Works on an already-off station;
+    takes no argument that could turn anything on, and the only thing it writes is `enabled: false`."""
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now()))
+    op = config.get("operator_id")
+    if not isinstance(op, int) or isinstance(op, bool) or args.sender != op or args.chat != op:
+        ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "not-operator", "sender": args.sender, "chat": args.chat}, OWNER)
+        print("result=not-operator")
+        return 5
+    disable_config(config)
+    denied, failed = [], False
+    try:
+        broker = ab.Broker(STATE, LEDGER, SEED, op, config.get("window_s", 120), OWNER, now)
+        fd = broker._locked()
+        try:
+            pending = broker._load().get("pending")
+        finally:
+            os.close(fd)
+        if pending:
+            broker.deny(pending["id"], op, op)
+            denied.append(pending["id"])
+    except (ab.Refused, OSError, ValueError, KeyError, TypeError):
+        failed = True
+    ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "locked", "sender": args.sender, "denied": denied,
+                           "deny_failed": failed}, OWNER)
+    print("result=locked" + (f" denied={denied[0]}" if denied else "") + (" deny=failed" if failed else ""))
+    return 5 if failed else 0
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="afk-sudo")
     sub = p.add_subparsers(dest="verb", required=True)
@@ -1280,9 +1333,10 @@ def main(argv):
     gs.add_argument("--session", required=True)
     gs.add_argument("--sha256", required=True)
     gs.add_argument("--cwd", required=True)
-    for verb in ("approve", "deny"):
+    for verb in ("approve", "deny", "lockdown"):
         a = sub.add_parser(verb)
-        a.add_argument("id")
+        if verb != "lockdown":
+            a.add_argument("id")
         a.add_argument("--from", dest="sender", type=int, required=True)
         a.add_argument("--chat", type=int, required=True)
     for verb in ("status", "run-status"):
@@ -1306,7 +1360,10 @@ def main(argv):
             print(f"result=mode mode={mode_of(config)} enabled={str(config.get('enabled') is True).lower()} "
                   f"run_enabled={str(run_enabled(config)).lower()}")
             return 0
-        if config.get("enabled") is not True:
+        if args.verb == "lockdown":
+            return lockdown(config, args)
+        # status and run-status only read an outcome, so they still answer on a station that was locked down.
+        if config.get("enabled") is not True and args.verb not in ("status", "run-status"):
             print("result=disabled")
             return 5
         if args.verb == "run-result":
