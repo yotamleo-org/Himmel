@@ -207,13 +207,81 @@ new_root() {
     printf '{"enabled": %s, "operator_id": %s, "window_s": 120, "classes": {"systemctl-restart": {"argv": ["%s/bin/systemctl", "restart", "{unit}"], "unit": ["himmel-test.service"]}}}\n' \
         "${2:-true}" "$OP" "$R" > "$R/etc/himmel/afk-sudo.json"
     chmod 0644 "$R/etc/himmel/afk-sudo.json"
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$R/etc/himmel/afk-sudo/notice-bot.env"
+    chmod 0600 "$R/etc/himmel/afk-sudo/notice-bot.env"
     : > "$R/ran.log"
+    rm -rf "$TG" "$tmp/tg-fail"; mkdir -p "$TG"
 }
+
+# The notice bot's token, built at run time so no token-shaped literal sits in this file. The root helper
+# sends through curl; in the seam AFK_SUDO_CURL names this fake, which records every call (the -K - config
+# on stdin, the argv, any attached file) as one JSON file in $TG and answers ok (not ok once $tmp/tg-fail exists;
+# when it names a method, only that method fails).
+NTOK="$((7000000000 + RANDOM)):$(python3 -I -c 'import secrets; print(secrets.token_urlsafe(26)[:35])')"
+BTOK="123:SECRETTOKEN"
+TG="$tmp/tg"
+mkdir -p "$tmp/fakecurl"
+cat > "$tmp/fakecurl/curl" <<FAKETG
+#!/usr/bin/env python3
+import json, os, re, sys
+d, failf = "$TG", "$tmp/tg-fail"
+FAKETG
+cat >> "$tmp/fakecurl/curl" <<'FAKETG'
+unq = lambda s: re.sub(r'\\(.)', lambda m: {"n": "\n", "t": "\t", "r": "\r"}.get(m.group(1), m.group(1)), s)
+cfg = sys.stdin.read() if "-K" in sys.argv else ""
+rec = {"argv": sys.argv[1:], "url": "", "data": {}, "form": {}}
+pairs = [(m.group(1), unq(m.group(2))) for m in re.finditer(r'^\s*([a-z-]+)\s*=\s*"((?:[^"\\]|\\.)*)"\s*$', cfg, re.M)]
+pairs += [(a.lstrip("-"), b) for a, b in zip(sys.argv[1:], sys.argv[2:]) if a in ("--data-urlencode", "--url")]
+for k, v in pairs:
+    if k == "url":
+        rec["url"] = v
+    elif k in ("data-urlencode", "data"):
+        a, _, b = v.partition("="); rec["data"][a] = b
+    elif k in ("form", "form-string"):
+        a, _, b = v.partition("=")
+        rec["form"][a] = open(b[1:].split(";")[0]).read() if k == "form" and b.startswith("@") else b
+fail = os.path.exists(failf) and open(failf).read().strip() in rec["url"]
+n = len(os.listdir(d))
+json.dump(rec, open(os.path.join(d, "%03d.json" % n), "w"))
+print(json.dumps({"ok": not fail, "result": {"message_id": 100 + n}}))
+FAKETG
+chmod +x "$tmp/fakecurl/curl"
+export AFK_SUDO_CURL="$tmp/fakecurl/curl"
+# tg <bot> <method> <field>: the field of the last call that bot made with that method (bot notice|bridge).
+tg() { python3 -I -c 'import glob, json, sys
+tok = {"notice": sys.argv[2], "bridge": sys.argv[3]}[sys.argv[4]]
+rows = [json.load(open(f)) for f in sorted(glob.glob(sys.argv[1] + "/*.json"))]
+rows = [r for r in rows if ("/bot" + tok + "/" + sys.argv[5]) in r["url"]]
+r = rows[-1] if rows else {}
+v = r.get("data", {}).get(sys.argv[6], r.get("form", {}).get(sys.argv[6], ""))
+sys.stdout.write(v)' "$TG" "$NTOK" "$BTOK" "$@"; }
+# tg_by <bot>: every payload that bot sent or could read back (all its calls, argv included), one JSON per line.
+tg_by() { python3 -I -c 'import glob, json, sys
+tok = {"notice": sys.argv[2], "bridge": sys.argv[3]}[sys.argv[4]]
+for f in sorted(glob.glob(sys.argv[1] + "/*.json")):
+    r = json.load(open(f))
+    if "/bot" + tok + "/" in r["url"]:
+        print(json.dumps(r, ensure_ascii=False))' "$TG" "$NTOK" "$BTOK" "$1"; }
+# tg_argv: the argv of every recorded call, one per line.
+tg_argv() { python3 -I -c 'import glob, json, sys
+for f in sorted(glob.glob(sys.argv[1] + "/*.json")):
+    print(" ".join(json.load(open(f))["argv"]))' "$TG"; }
+# notice_nonce: the nonce the operator reads in the notice-bot chat (the last facts message).
+notice_nonce() { tg notice sendMessage text | sed -n 's/.*nonce <b>\([^<]*\)<\/b>.*/\1/p' | head -1; }
+# state_nonce <id>: the nonce root holds for a pending id (empty when none).
+state_nonce() { python3 -I -c 'import json, sys
+try:
+    p = json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["pending"] or {}
+except OSError:
+    p = {}
+print(p.get("nonce", "") if p.get("id") == sys.argv[2] else "")' "$R" "$1"; }
 
 # h <now-offset> <verb> [args...]: run the helper in the current sandbox.
 h() { local off="$1"; shift; AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + off)) python3 -I "$HELPER" "$@" 2>&1; }
-# approve <now-offset> <id> <code> [from]: the code goes on stdin, never argv.
-approve() { printf '%s\n' "$3" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" approve "$2" --from "${4:-$OP}" --chat "${4:-$OP}" 2>&1; }
+# approve <now-offset> <id> <code> [from]: the operator's `<nonce> <code>` reply goes on stdin, never argv;
+# the nonce is the one root holds for the id. approve_raw <now-offset> <id> <line> sends the line as given.
+approve_raw() { printf '%s\n' "$3" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" approve "$2" --from "${4:-$OP}" --chat "${4:-$OP}" 2>&1; }
+approve() { approve_raw "$1" "$2" "$(state_nonce "$2") $3" "${4:-}"; }
 # code <now-offset>: the TOTP the operator's authenticator shows at that time.
 code() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; print(b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' "$LIB" "$R/etc/himmel/afk-sudo/totp.seed" $((T0 + $1)); }
 req() { h "$1" request --session S1 --ticket HIMMEL-8066 --cwd /work -- systemctl restart himmel-test.service; }
@@ -243,7 +311,7 @@ echo "== a valid code runs the command once and writes the ledger =="
 new_root valid
 out=$(req 0); id=$(rid "$out"); c=$(code 3)
 assert_contains "the request is pending with an id" "result=pending" "$out"
-assert_contains "the request text names the command" "himmel-test.service" "$out"
+assert_contains "the notice-bot message names the command" "himmel-test.service" "$(tg notice sendMessage text)"
 out=$(approve 3 "$id" "$c")
 assert_contains "a valid code runs the command" "result=ran" "$out"
 assert_contains "the command's own exit status is reported" "exit=7" "$out"
@@ -365,6 +433,8 @@ req_out=$(PATH="$FAKE:$PATH" TELEGRAM_ENV="$tmp/bridge.env" CURL_ARGS="$tmp/curl
     bash "$REPO_ROOT/scripts/lib/afk-sudo-request" --session s --ticket T -- /usr/bin/true 2>&1)
 assert_contains "the request still waits and reports the run" "request abcdefgh ran, exit 0" "$req_out"
 args=$(cat "$tmp/curl.args" 2>/dev/null)
+assert_contains "slice 1b: the bridge message holds the id only" "text=AFK sudo abcdefgh: read the notice-bot message, then approve" "$args"
+assert_absent "slice 1b: the bridge message no longer carries the request facts (root sends them)" "text=AFK sudo request" "$args"
 assert_contains "the notice carries an inline keyboard" "reply_markup=" "$args"
 assert_contains "the Approve button's callback data names the request" "afk:approve:abcdefgh" "$args"
 assert_contains "the Deny button's callback data names the request" "afk:deny:abcdefgh" "$args"
@@ -386,7 +456,7 @@ for how in deny burn expire; do
     assert_contains "nothing ran after $how" "0" "$(runs)"
 done
 
-echo "== slice 1a: the run kind is compiled off; mode falls back to allowlist =="
+echo "== the run kind is shipped (slice 1b); mode falls back to allowlist =="
 me=$(id -un)
 ALL='"mode": "all", '
 # cfg <mode member or empty> <run.enabled> [extra members, leading comma]: rewrite the sandbox config.
@@ -402,13 +472,11 @@ approve_r() { AFK_SUDO_RUN=1 approve "$@"; }
 cfg_class_user() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); c["classes"]["systemctl-restart"]["run_as"] = sys.argv[2]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json" "$1"; }
 # cfg_drop_operator: remove operator_user from the sandbox config (a partial config).
 cfg_drop_operator() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); del c["operator_user"]; json.dump(c, open(sys.argv[1], "w"))' "$R/etc/himmel/afk-sudo.json"; }
-if grep -q '^RUN_KIND_SHIPPED = False$' "$HELPER"; then pass "the helper compiles RUN_KIND_SHIPPED as False"; else fail "RUN_KIND_SHIPPED is not the compiled False"; fi
+if grep -q '^RUN_KIND_SHIPPED = True$' "$HELPER"; then pass "slice 1b compiles RUN_KIND_SHIPPED as True"; else fail "RUN_KIND_SHIPPED is not the compiled True"; fi
 new_root notshipped; cfg "$ALL" true
 out=$(h 0 run-request --session S1 --ticket T --blocked-by classifier -- true </dev/null)
-assert_contains "RED 10: mode all and run.enabled true still refuse the run kind on an installed helper" "result=run-not-shipped" "$out"
-assert_contains "the mode verb reports the run kind as off" "run_enabled=false" "$(h 1 mode)"
-out=$(rr 2 -- true)
-assert_contains "the seam opt-in lets the run kind through" "result=pending" "$out"
+assert_contains "slice 1b: mode all and run.enabled true file a run request without the seam opt-in" "result=pending" "$out"
+assert_contains "the mode verb reports the run kind as on" "run_enabled=true" "$(h 1 mode)"
 new_root runoff; cfg "$ALL" false
 assert_contains "run.enabled false refuses the run kind" "result=run-disabled" "$(rr 0 -- true)"
 for m in '' '"mode": "ALL", ' '"mode": 1, ' '"mode": "allowlist", '; do
@@ -543,7 +611,7 @@ def swapping(*a, **k):
 with patch.object(subprocess, "Popen", swapping):
     sys.exit(s.main(["approve", sys.argv[2], "--from", sys.argv[5], "--chat", sys.argv[5]]))
 SWAPSTART
-swap_approve() { printf '%s\n' "$(code "$1")" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) AFK_SUDO_RUN=1 python3 -I "$tmp/swap-start.py" "$LIB" "$2" "$3" "$4" "$OP" 2>&1; }
+swap_approve() { printf '%s %s\n' "$(state_nonce "$2")" "$(code "$1")" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) AFK_SUDO_RUN=1 python3 -I "$tmp/swap-start.py" "$LIB" "$2" "$3" "$4" "$OP" 2>&1; }
 new_root swapargv0; cfg "$ALL" true
 printf '#!/bin/sh\ntouch "%s/ran-orig"\n' "$R" > "$R/bin/mytool"; chmod 0755 "$R/bin/mytool"
 printf '#!/bin/sh\ntouch "%s/ran-evil"\n' "$R" > "$R/evil"; chmod 0755 "$R/evil"
@@ -815,9 +883,16 @@ out=$(rr 0 --cwd "$R" -- cat "$R/elf.bin")
 assert_contains "a small binary file (a word with / and NUL) given as an absolute path is filed" "result=pending" "$out"
 
 echo "== slice 1a: the executor re-checks what can move after the request =="
+cat > "$tmp/exec-notshipped.py" <<'EXECNS'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+s.RUN_KIND_SHIPPED = False  # a release that turns the run kind back off
+print(s.execute_run({"id": sys.argv[2], "hash": s.rec_hash(s.load_record(sys.argv[2]))}, json.load(open(s.CONFIG)))["result"])
+EXECNS
 new_root exshipped; cfg "$ALL" true
 out=$(rr 0 -- true); id=$(rid "$out")
-assert_contains "exec time: a run filed in the seam is refused when the run kind is no longer shipped" "result=run-not-shipped" "$(approve 3 "$id" "$(code 3)")"
+assert_contains "exec time: a run filed while shipped is refused once the run kind is no longer shipped" "run-not-shipped" "$(AFK_SUDO_ROOT="$R" python3 -I "$tmp/exec-notshipped.py" "$LIB" "$id")"
 new_root exdisabled; cfg "$ALL" true
 out=$(rr 0 -- true); id=$(rid "$out")
 cfg "$ALL" false
@@ -1023,8 +1098,8 @@ if [ "$1" = run-status ] && [ ! -e "$FAKE_R/polled.$2" ]; then
     : > "$FAKE_R/polled.$2"
     case "${FAKE_ACTION:-approve}" in
         approve)
-            python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; print(b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' \
-                "$FAKE_LIB" "$FAKE_R/etc/himmel/afk-sudo/totp.seed" "$now" | run_helper "$now" approve "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
+            python3 -I -c 'import json, sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; p = json.load(open(sys.argv[4]))["pending"] or {}; print(p.get("nonce", ""), b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' \
+                "$FAKE_LIB" "$FAKE_R/etc/himmel/afk-sudo/totp.seed" "$now" "$FAKE_R/var/lib/himmel/afk-sudo/state.json" | run_helper "$now" approve "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
         deny) run_helper "$now" deny "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
         expire) now=$((now + 1000)) ;;
     esac
@@ -1037,7 +1112,8 @@ chmod +x "$FAKE2/sudo"
 # ar <now-offset> <afk-run args>: sets ARRC, ARLAST (the last stderr line); FAKE_ACTION picks what the operator does.
 ar() {
     local off=$1; shift
-    PATH="$FAKE2:$PATH" FAKE_R="$R" FAKE_LIB="$LIB" FAKE_HELPER="$HELPER" FAKE_OP="$OP" FAKE_NOW=$((T0 + off)) \
+    PATH="$FAKE2:$tmp/fakecurl:$PATH" TELEGRAM_ENV="${AR_TGENV:-$tmp/no-bridge.env}" \
+        FAKE_R="$R" FAKE_LIB="$LIB" FAKE_HELPER="$HELPER" FAKE_OP="$OP" FAKE_NOW=$((T0 + off)) \
         AFK_RUN_POLL_S=1 AFK_RUN_BUSY_EVERY_S=1 AFK_RUN_WAIT_S=2 \
         bash "$REPO_ROOT/scripts/lib/afk-run" "$@" > "${AR_OUT:-$tmp/ar.out}" 2> "$tmp/ar.err" < /dev/null
     ARRC=$?
@@ -1083,6 +1159,173 @@ assert_eq "a busy helper exits 76" 76 "$ARRC"
 assert_contains "a busy run says nothing was filed" "afk-run: status=busy, nothing filed" "$ARLAST"
 if [ -x "$REPO_ROOT/scripts/lib/afk-run" ]; then pass "afk-run is executable"; else fail "afk-run is not executable"; fi
 
+# other_nonce <nonce>: a well-formed nonce that is not this one.
+other_nonce() { if [ "$1" = ZZZZ ]; then echo YYYY; else echo ZZZZ; fi; }
+
+echo "== slice 1b: the approval is bound to the nonce root sent (RED 7) =="
+new_root nonce; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+n=$(notice_nonce)
+if [[ $n =~ ^[0-9A-HJKMNP-TV-Z]{4}$ ]]; then pass "the notice-bot message carries a 4-character nonce"; else fail "the notice-bot message carries a 4-character nonce" "$n"; fi
+assert_eq "the notice nonce is the one root holds" "$(state_nonce "$id")" "$n"
+assert_absent "the requester's output never holds the nonce" "nonce" "$out"
+c=$(code 3)
+out=$(AFK_SUDO_RUN=1 approve_raw 3 "$id" "$(other_nonce "$n") $c")
+assert_contains "RED 7: the right code with a wrong nonce is bad-nonce" "result=bad-nonce" "$out"
+assert_absent "RED 7: a bad nonce runs nothing" '"event": "run"' "$(ledger)"
+assert_contains "RED 7: the bad nonce is ledgered as a code-check refusal" '"result": "bad-nonce"' "$(ledger)"
+assert_absent "the ledger never holds the nonce" "\"$n\"" "$(ledger)"
+assert_contains "the request ends on a bad nonce" "result=denied:bad-nonce" "$(h 4 run-status "$id")"
+out=$(rr 40 -- true); id=$(rid "$out"); n=$(notice_nonce)
+out=$(AFK_SUDO_RUN=1 approve_raw 41 "$id" "$n $c")
+assert_contains "the code a bad nonce exposed is spent" "result=replay" "$out"
+out=$(rr 80 -- true); id=$(rid "$out"); n=$(notice_nonce)
+out=$(AFK_SUDO_RUN=1 approve_raw 81 "$id" "$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]') $(code 81)")
+assert_contains "the right nonce (any case) and code run the request" "result=ran" "$out"
+new_root noncelock; cfg "$ALL" true
+for k in 1 2 3; do
+    out=$(rr $((k * 40)) -- true); id=$(rid "$out")
+    AFK_SUDO_RUN=1 approve_raw $((k * 40 + 1)) "$id" "$(other_nonce "$(notice_nonce)") $(code $((k * 40 + 1)))" >/dev/null
+done
+assert_contains "three wrong nonces lock as three wrong codes do" "result=locked" "$(rr 200 -- true)"
+
+echo "== slice 1b: the bridge bot never holds the nonce (RED 8) =="
+printf 'TELEGRAM_BOT_TOKEN=%s\n' "$BTOK" > "$tmp/bridge.env"
+new_root bridge; cfg "$ALL" true
+FAKE_ACTION=none AR_TGENV="$tmp/bridge.env" ar 3 "${AR[@]}" -- true
+id=$(printf '%s\n' "$ARLAST" | sed -n 's/.* id=\([a-z2-7]\{8\}\)$/\1/p')
+n=$(notice_nonce)
+assert_eq "a run request was filed and is pending" "pending" "$(printf '%s\n' "$ARLAST" | sed -n 's/^afk-run: status=\([a-z]*\).*/\1/p')"
+if [ -n "$n" ]; then pass "root sent the facts notice with a nonce"; else fail "root sent the facts notice with a nonce"; fi
+bridge=$(tg_by bridge)
+assert_contains "the bridge bot sent the control message" "afk:approve:$id" "$bridge"
+assert_eq "the control message holds the id only" "AFK run $id: read the notice-bot message, then approve" "$(tg bridge sendMessage text)"
+# editMessageReplyMarkup and forwardMessage return the bridge bot's own message, and a callback's
+# message.text is that message's text: everything the bridge token can read back is in $bridge.
+assert_absent "RED 8: nothing the bridge token sent or can read back holds the nonce" "$n" "$bridge"
+assert_absent "RED 8: the requester's stdout never holds the nonce" "$n" "$(cat "$tmp/ar.out")"
+assert_absent "RED 8: the requester's stderr never holds the nonce" "$n" "$(cat "$tmp/ar.err")"
+assert_absent "the notice-bot token never appears in curl's argv" "$NTOK" "$(tg_argv)"
+assert_absent "the bridge token never appears in curl's argv" "$BTOK" "$(tg_argv)"
+assert_absent "the notice-bot message carries no buttons" "reply_markup" "$(tg_by notice)"
+lookalike=$(other_nonce "$n")
+out=$(AFK_SUDO_RUN=1 approve_raw 4 "$id" "$lookalike $(code 4)")
+assert_contains "RED 8: the nonce from a look-alike sent through the bridge bot is refused" "result=bad-nonce" "$out"
+out=$(rr 40 -- true); id=$(rid "$out")
+out=$(AFK_SUDO_RUN=1 approve_raw 41 "$id" "$(other_nonce "$(notice_nonce)") $(code 41)")
+assert_contains "RED 8: a guessed nonce is refused" "result=bad-nonce" "$out"
+assert_eq "RED 8: nothing ran" "" "$(ledger | grep '"event": "run"')"
+
+echo "== slice 1b: a long request fits the budget and attaches the full record (RED 9) =="
+new_root long; cfg "$ALL" true
+long=(); for k in $(seq -w 1 30); do long+=("arg$k-$(printf 'x%.0s' $(seq 1 200))"); done
+out=$(rr 0 -- echo "${long[@]}"); id=$(rid "$out")
+text=$(tg notice sendMessage text); n=$(notice_nonce)
+len=$(printf '%s' "$text" | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
+if [ "$len" -gt 0 ] && [ "$len" -le 3500 ]; then pass "RED 9: the facts message is at most 3500 characters ($len)"; else fail "RED 9: the facts message is at most 3500 characters" "$len"; fi
+assert_contains "RED 9: the first line says it is truncated" "TRUNCATED, full request attached" "$(printf '%s\n' "$text" | head -1)"
+assert_contains "RED 9: a cut element says how much was cut" "…(+106 chars)" "$text"
+assert_contains "RED 9: a cut argv says how many elements were cut" "…(+21 args)" "$text"
+doc=$(tg notice sendDocument document)
+assert_contains "RED 9: the document is attached" "\"id\": \"$id\"" "$doc"
+assert_contains "RED 9: the document holds the last element in full" "${long[29]}" "$doc"
+if [ -n "$n" ] && [[ $doc != *"$n"* ]]; then pass "RED 9: the document holds no nonce"; else fail "RED 9: the document holds no nonce" "nonce=$n"; fi
+
+echo "== slice 1b: what the facts message shows =="
+new_root facts; cfg "$ALL" true
+printf 'echo hi\n' > "$R/x.sh"
+out=$(rr 0 --as root --why 'needs <root>' -- sh "$R/x.sh" $'tab\there' 'ⅽurl'); id=$(rid "$out")
+text=$(tg notice sendMessage text)
+assert_contains "a root run has the ROOT title" "🔐⚠️ AFK ROOT run $id" "$text"
+assert_contains "a root run says so in bold on its own line" "Run as: <b>⚠️ ROOT</b>" "$text"
+assert_contains "the mode is on its own line" "Mode: ALL (any command, TOTP)" "$text"
+assert_contains "a shell run warns and shows the script" "⚠️ SHELL: the effect is the script below, read it" "$text"
+assert_contains "the script text is shown" "⟦echo hi⟧" "$text"
+assert_contains "a control character is escaped" '⟦tab\x09here⟧' "$text"
+assert_contains "a non-ASCII look-alike is escaped and flagged" '⟦\u{217D}url⟧ non-ASCII' "$text"
+assert_contains "a claim is labelled and escaped" "Why (claim): <i>needs &lt;root&gt;</i>" "$text"
+assert_contains "a user-writable file argument is marked" "⟦$R/x.sh⟧ ⚠️ <b>user-writable</b>" "$text"
+assert_absent "a root-owned argv[0] is not marked" "sha256 $(sha256sum /usr/bin/sh | cut -c1-8) ⚠️" "$text"
+new_root factsbig; cfg "$ALL" true
+head -c 70000 /dev/zero | tr '\0' a > "$R/big"
+out=$(rr 0 -- cat "$R/big")
+assert_contains "a file argument over 64 KiB is marked NOT SHOWN, user-writable" "⟦$R/big⟧ ⚠️ <b>NOT SHOWN, user-writable</b>" "$(tg notice sendMessage text)"
+new_root factsargv0; cfg "$ALL" true
+printf '#!/bin/sh\necho hi\n' > "$R/tool"; chmod 0755 "$R/tool"
+out=$(rr 0 -- "$R/tool")
+assert_contains "a user-writable argv[0] is marked" "⚠️ <b>user-writable</b>" "$(tg notice sendMessage text | grep '^\[0\]')"
+assert_contains "a script run as argv[0] warns" "⚠️ SHELL: the effect is the script below, read it" "$(tg notice sendMessage text)"
+assert_contains "a script run as argv[0] is shown" "⟦echo hi⟧" "$(tg notice sendMessage text)"
+assert_eq "the facts message is sent as HTML" "HTML" "$(tg notice sendMessage parse_mode)"
+assert_eq "the facts message goes to the operator" "$OP" "$(tg notice sendMessage chat_id)"
+assert_eq "a short request attaches nothing" "" "$(tg notice sendDocument document)"
+new_root factsbin; cfg "$ALL" true
+cp /usr/bin/true "$R/tbin"
+out=$(rr 0 -- "$R/tbin")
+assert_contains "a user-writable binary argv[0] is marked NOT SHOWN, user-writable" "⚠️ <b>NOT SHOWN, user-writable</b>" "$(tg notice sendMessage text | grep '^\[0\]')"
+new_root factscwd; cfg "$ALL" true
+longcwd="$R/$(printf 'd%.0s' $(seq 130))"; mkdir -p "$longcwd"
+out=$(rr 0 --cwd "$longcwd" -- systemctl restart himmel-test.service)
+assert_contains "a cut cwd marks the message truncated" "TRUNCATED, full request attached" "$(tg notice sendMessage text)"
+assert_contains "a cut cwd attaches the full request" "$longcwd" "$(tg notice sendDocument document)"
+new_root factsallow; cfg '' true
+out=$(rr 0 -- systemctl restart himmel-test.service)
+assert_contains "allowlist mode names the class" "Mode: allowlist · class systemctl-restart" "$(tg notice sendMessage text)"
+new_root factssudo
+out=$(req 0); id=$(rid "$out")
+assert_contains "the sudo kind's notice comes from root too, with a nonce" "nonce <b>$(state_nonce "$id")</b>" "$(tg notice sendMessage text)"
+out=$(approve 3 "$id" "$(code 3)")
+assert_contains "the sudo kind approves with nonce and code" "result=ran" "$out"
+
+echo "== slice 1b: a notice that cannot be sent ends the request =="
+new_root noticefail; cfg "$ALL" true
+: > "$tmp/tg-fail"
+out=$(rr 0 -- true)
+assert_contains "a failed notice send refuses the request" "result=notice-failed" "$out"
+assert_contains "a failed notice send is ledgered" '"result": "notice-failed"' "$(ledger)"
+rm -f "$tmp/tg-fail"
+assert_contains "a failed notice leaves nothing pending" "result=pending" "$(rr 1 -- true)"
+new_root docfail; cfg "$ALL" true
+printf 'sendDocument' > "$tmp/tg-fail"
+out=$(rr 0 -- printf '%s\n' $(seq 30))
+rm -f "$tmp/tg-fail"
+assert_contains "a failed attachment refuses the request" "result=notice-failed" "$out"
+assert_eq "a failed attachment sends no nonce" "" "$(tg notice sendMessage text)"
+new_root nobot; cfg "$ALL" true
+: > "$R/etc/himmel/afk-sudo/notice-bot.env"
+assert_contains "an empty notice-bot.env refuses a run request" "result=no-notice-bot" "$(rr 0 -- true)"
+chmod 0644 "$R/etc/himmel/afk-sudo/notice-bot.env"; printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$R/etc/himmel/afk-sudo/notice-bot.env"
+assert_contains "a world-readable notice-bot.env is refused" "result=unsafe-perms" "$(rr 1 -- true)"
+
+echo "== slice 1b: root sends the result, with redacted stderr =="
+new_root result; cfg "$ALL" true
+out=$(rr 0 -- true); id=$(rid "$out")
+approve_r 3 "$id" "$(code 3)" >/dev/null
+assert_contains "a clean run's result message" "✅ ran $id exit 0 (" "$(tg notice sendMessage text)"
+gh_fixture="ghp_$(printf 'a%.0s' $(seq 1 36))"
+out=$(rr 40 -- sh -c "echo out-not-sent; echo l1 >&2; echo l2 >&2; echo l3 >&2; echo token=$gh_fixture >&2; exit 2"); id=$(rid "$out")
+approve_r 43 "$id" "$(code 43)" >/dev/null
+text=$(tg notice sendMessage text)
+assert_contains "a failed run's result message" "⚠️ ran $id exit 2 (" "$text"
+assert_contains "it carries the last 3 stderr lines" "l2" "$text"
+assert_absent "only the last 3" "l1" "$text"
+assert_absent "a secret in stderr is redacted" "$gh_fixture" "$text"
+assert_absent "stdout is never sent" "out-not-sent" "$text"
+
+echo "== slice 1b: the stderr redaction matches log-classifier-denial.sh's redact() =="
+# Fixtures are built at run time (no token-shaped literal in the file); each goes through the hook's own
+# redact() (cut out of the hook and sourced) and the port.
+sed -n '/^redact() {/,/^}/p' "$REPO_ROOT/scripts/hooks/log-classifier-denial.sh" > "$tmp/redact.sh"
+fx=("ghp_$(printf 'b%.0s' $(seq 1 36))" "github_pat_$(printf 'C%.0s' $(seq 1 30))" "sk-ant-api03-$(printf 'd%.0s' $(seq 1 30))"
+    "AKIA$(printf 'E%.0s' $(seq 1 16))" "xoxb-$(printf '1%.0s' $(seq 1 12))-abc" "${NTOK}" "Bearer $(printf 'f%.0s' $(seq 1 24))"
+    "password=hunter2x" "api_key: 'k$(printf 'g%.0s' $(seq 1 20))'" "--token $(printf 'h%.0s' $(seq 1 20))" "mysql -pS3cretpw"
+    "x -----BEGIN RSA PRIVATE"" KEY----- abc -----END RSA PRIVATE"" KEY----- y" "ls -la /tmp")
+for f in "${fx[@]}"; do
+    hook=$(bash -c '. "$1" && redact "$2"' _ "$tmp/redact.sh" "$f")
+    port=$(printf '%s' "$f" | python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as s; sys.stdout.write(s.redact(sys.stdin.read()))' "$LIB" 2>&1)
+    assert_eq "redact port agrees with the hook: ${f:0:12}" "$hook" "$port"
+done
+
 open_regular_tests
 
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
@@ -1093,6 +1336,9 @@ assert_contains "install.sh installs never_remote.py" 'never_remote.py" "$LIBEXE
 assert_contains "install.sh removes never_remote.py on uninstall" 'rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py"' "$(cat "$INSTALL")"
 assert_contains "the default config ships mode allowlist" '"mode": "allowlist"' "$(cat "$INSTALL")"
 assert_contains "the default config ships the run block off" '"run": {"enabled": false' "$(cat "$INSTALL")"
+# shellcheck disable=SC2016 # matched literally, as above
+assert_contains "slice 1b: install.sh creates an empty root 0600 notice-bot.env" 'install -m 0600 -o root -g "$ROOT_GROUP" /dev/null "$NOTICE_ENV"' "$(cat "$INSTALL")"
+assert_contains "slice 1b: install.sh says runs stay refused while notice-bot.env is empty" "run requests are refused while it is empty" "$(cat "$INSTALL")"
 
 echo "== install.sh prints hints that work on this platform =="
 INSTALL="$LIB/install.sh"

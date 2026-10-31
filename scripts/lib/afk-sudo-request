@@ -5,9 +5,11 @@
 #   afk-sudo-request --session S --ticket T -- ARGV...
 #
 # Asks the root helper (sudo -n, the one NOPASSWD rule install.sh writes) to
-# open a request, sends the helper's request text to the operator's Telegram DM,
-# then waits for the operator's `approve <id> <code>` or `deny <id>`, which the
-# bridge hands to the helper. Nothing runs here: the helper runs the command.
+# open a request. Root sends the request's facts and a nonce through its own
+# notice bot; this script sends only the id and the Approve / Deny buttons
+# through the bridge bot, then waits for the operator's `approve <id> <nonce>
+# <code>` or `deny <id>`, which the bridge hands to the helper. Nothing runs
+# here: the helper runs the command.
 #
 # Exit: the command's own exit status once it ran; 3 denied (or a failed code
 # check); 4 expired; 5 refused (disabled, off the allowlist, busy, locked,
@@ -38,7 +40,8 @@ fi
 id=$(field id "$out")
 operator=$(field operator "$out")
 expires=$(field expires "$out")
-text=$(printf '%s\n' "$out" | sed -n 's/^text=//p')
+# The id only: the facts and the nonce come from root's notice bot, which no session can drive.
+text="AFK sudo $id: read the notice-bot message, then approve"
 
 # Approve / Deny buttons: a tap on Approve only makes the bridge ask
 # for the code, so the TOTP check stays the helper's. The id is the helper's own

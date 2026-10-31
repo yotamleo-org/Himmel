@@ -26,29 +26,43 @@ function fake(installed = true) {
 const dm = (text: string, extra: Record<string, unknown> = {}) => ({ from: OP, chat_id: OP, text, forwarded: false, caption: false, ...extra });
 const settle = () => new Promise((r) => setTimeout(r, 5));
 
-test("parse: approve with a code, deny, a spaced code and an uppercase verb", () => {
-  expect(parseAfkSudo("approve abcdefgh 123456")).toEqual({ verb: "approve", id: "abcdefgh", code: "123456" });
-  expect(parseAfkSudo("Approve ABCDEFGH 123 456")).toEqual({ verb: "approve", id: "abcdefgh", code: "123456" });
+test("parse: approve with a nonce and a code, deny, a spaced code and an uppercase verb", () => {
+  expect(parseAfkSudo("approve abcdefgh K7QF 123456")).toEqual({ verb: "approve", id: "abcdefgh", code: "K7QF123456" });
+  expect(parseAfkSudo("Approve ABCDEFGH k7qf 123 456")).toEqual({ verb: "approve", id: "abcdefgh", code: "k7qf123456" });
   expect(parseAfkSudo("deny abcdefgh")).toEqual({ verb: "deny", id: "abcdefgh", code: "" });
   expect(parseAfkSudo("approve abcdefgh")).toEqual({ verb: "approve", id: "abcdefgh", code: "" });
   expect(parseAfkSudo("please approve the PR")).toBeNull();
   expect(parseAfkSudo("approve abc 123456")).toBeNull();
 });
 
-test("the operator's typed DM approve reaches the helper with the code on stdin, never in argv", async () => {
+test("the operator's typed DM approve reaches the helper with the nonce and code on stdin, never in argv", async () => {
   const { deps, calls, replies } = fake();
-  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh 123456"))).toBe(true);
+  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh K7QF 123456"))).toBe(true);
   await settle();
-  expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+  expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF123456\n" }]);
   expect(calls[0].args.join(" ")).not.toContain("123456");
-  expect(replies[0]).toContain("result=ran");
+  expect(calls[0].args.join(" ")).not.toContain("K7QF");
+  expect(replies[0]).toContain("approved; the result comes from the notice bot");
+});
+
+test("a ran approve is acknowledged without the helper's argv; a refusal shows its result line", async () => {
+  const ran = fake();
+  makeAfkSudoGate(ran.deps)(dm("approve abcdefgh K7QF 123456"));
+  await settle();
+  expect(ran.replies[0]).not.toContain("argv=");
+  expect(ran.replies[0]).not.toContain("systemctl");
+  const bad = fake();
+  bad.deps.runHelper = async () => ({ code: 5, stdout: "result=bad-nonce id=abcdefgh\n" });
+  makeAfkSudoGate(bad.deps)(dm("approve abcdefgh ZZZZ 123456"));
+  await settle();
+  expect(bad.replies[0]).toBe("⚠️ afk-sudo approve abcdefgh: result=bad-nonce id=abcdefgh");
 });
 
 test("an approve line with trailing words is consumed, so the code never reaches a session", async () => {
   const { deps, calls } = fake();
-  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh 123456 please"))).toBe(true);
+  expect(makeAfkSudoGate(deps)(dm("approve abcdefgh K7QF 123456 please"))).toBe(true);
   await settle();
-  expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456please\n" }]);
+  expect(calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF123456please\n" }]);
 });
 
 test("an approve line with a mistyped id and a code is consumed, and never reaches the helper or a session", async () => {
@@ -245,32 +259,47 @@ function buttons(opts: { operator?: number | null; promptId?: number | null; all
 const tapOf = (data: string, extra: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: OP, chat_id: OP, data, ...extra });
 const reply = (text: string, to: number, extra: Record<string, unknown> = {}) => dm(text, { reply_to_message_id: to, ...extra });
 
-test("button: an Approve tap asks for the code with a prompt and never reaches the helper", async () => {
+test("button: an Approve tap asks for the nonce and code with a prompt and never reaches the helper", async () => {
   const b = buttons();
   expect(b.tap(tapOf("afk:approve:abcdefgh"))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.sent).toEqual([{ chat: OP, text: "Code for abcdefgh:" }]);
+  expect(b.sent).toEqual([{ chat: OP, text: "Nonce and code for abcdefgh (from the notice-bot message):" }]);
   expect(b.answers.length).toBe(1);
 });
 
-test("button: the six-digit reply to that prompt approves with the code on stdin, never in argv or logs", async () => {
+test("button: the nonce-and-code reply to that prompt approves with both on stdin, never in argv or logs", async () => {
+  for (const text of ["K7QF 123456", " k7qf123 456 ", "K7QF 123-456"]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(b.gate(reply(text, 77))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: `${text.trim().slice(0, 4)} 123456\n` }]);
+    expect([...b.replies, ...b.sent.map((s) => s.text), ...b.answers, ...b.logs].join("\n")).not.toContain("123456");
+  }
+});
+
+test("button: a bare six-digit reply to the prompt (no nonce) never reaches the helper and keeps the prompt alive", async () => {
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
   expect(b.gate(reply("123456", 77))).toBe(true);
   await settle();
-  expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
-  expect([...b.replies, ...b.sent.map((s) => s.text), ...b.answers, ...b.logs].join("\n")).not.toContain("123456");
+  expect(b.calls).toEqual([]);
+  expect(b.replies.at(-1)).toContain("nonce");
+  expect(b.gate(reply("K7QF 123456", 77))).toBe(true);
+  await settle();
+  expect(b.calls.length).toBe(1);
 });
 
 test("button: a prompt is single use", async () => {
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  b.gate(reply("123456", 77));
+  b.gate(reply("K7QF 123456", 77));
   await settle();
-  expect(b.gate(reply("654321", 77))).toBe(true);
+  expect(b.gate(reply("K7QF 654321", 77))).toBe(true);
   await settle();
   expect(b.calls.length).toBe(1);
   expect(b.replies.at(-1)).toContain("already used");
@@ -365,7 +394,7 @@ test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exi
 });
 
 test("button: while a code prompt is live, a code-shaped message sent without replying is consumed, not forwarded", async () => {
-  for (const text of ["123456", "123 456", "123-456"]) {
+  for (const text of ["123456", "123 456", "123-456", "K7QF 123456"]) {
     const b = buttons();
     b.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
@@ -376,9 +405,11 @@ test("button: while a code prompt is live, a code-shaped message sent without re
     expect([...b.replies, ...b.logs].join("\n")).not.toContain("456");
   }
   // Without a live prompt, a bare code is held rather than forwarded.
-  const none = buttons();
-  expect(none.gate(dm("123456"))).toBe(true);
-  expect(none.replies.at(-1)).toContain("held");
+  for (const text of ["123456", "K7QF 123456", "k7qf123456"]) {
+    const none = buttons();
+    expect(none.gate(dm(text))).toBe(true);
+    expect(none.replies.at(-1)).toContain("held");
+  }
   const late = buttons();
   late.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
@@ -422,9 +453,9 @@ test("button: the typed approve line still reaches the helper while a prompt is 
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  expect(b.gate(dm("approve ijklmnop 123456"))).toBe(true);
+  expect(b.gate(dm("approve ijklmnop K7QF 123456"))).toBe(true);
   await settle();
-  expect(b.calls).toEqual([{ args: ["approve", "ijklmnop", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+  expect(b.calls).toEqual([{ args: ["approve", "ijklmnop", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF123456\n" }]);
 });
 
 test("poller: ingest then the real delivery mapping carries reply_to_bot into the gate", async () => {
@@ -465,17 +496,17 @@ test("handleInbound: a six-digit reply to a bot message after a restart never la
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
-test("button: a reply that is not exactly six digits is consumed, tells the operator, and keeps the prompt alive", async () => {
+test("button: a reply that is not a nonce and six digits is consumed, tells the operator, and keeps the prompt alive", async () => {
   const b = buttons();
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  for (const t of ["12345", "1234567", "hello", "123 456 ok"]) {
+  for (const t of ["12345", "1234567", "hello", "123 456 ok", "K7Q 123456", "K7QF 12345"]) {
     expect(b.gate(reply(t, 77))).toBe(true);
   }
   await settle();
   expect(b.calls).toEqual([]);
-  expect(b.replies.length).toBe(4);
-  expect(b.gate(reply("123456", 77))).toBe(true);
+  expect(b.replies.length).toBe(6);
+  expect(b.gate(reply("K7QF 123456", 77))).toBe(true);
   await settle();
   expect(b.calls.length).toBe(1);
 });
@@ -485,11 +516,11 @@ test("button: a reply after the prompt window is consumed but never reaches the 
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
   b.tick(151_000);
-  expect(b.gate(reply("123456", 77))).toBe(true);
+  expect(b.gate(reply("K7QF 123456", 77))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
   expect(b.replies[0]).toContain("expired");
-  expect(b.gate(reply("654321", 77))).toBe(true);
+  expect(b.gate(reply("K7QF 654321", 77))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
 });
@@ -499,7 +530,7 @@ test("button: a reply that is forwarded, from another chat or from another sende
     const b = buttons();
     b.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
-    b.gate(reply("123456", 77, extra));
+    b.gate(reply("K7QF 123456", 77, extra));
     await settle();
     expect(b.calls).toEqual([]);
   }
@@ -515,9 +546,9 @@ test("button: when the prompt cannot be sent nothing is remembered", async () =>
 
 test("button: the typed approve line keeps working beside the buttons", async () => {
   const b = buttons();
-  expect(b.gate(dm("approve abcdefgh 123456"))).toBe(true);
+  expect(b.gate(dm("approve abcdefgh K7QF 123456"))).toBe(true);
   await settle();
-  expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "123456\n" }]);
+  expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF123456\n" }]);
 });
 
 test("dispatch: callback_query updates reach the tap gate with the sender and chat; malformed ones are skipped", () => {

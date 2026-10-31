@@ -9,7 +9,9 @@
 # writes), then polls it until the operator approves or denies it with a TOTP code. The
 # helper freezes the argv and runs exactly that once; nothing runs here. The command's
 # captured stdout goes to this stdout, its stderr to this stderr, and the exit status is
-# its own. There is no Telegram notice from this script in slice 1a.
+# its own. Root sends the facts and a nonce through its notice bot; once a request is
+# filed this script sends the operator only the id and the Approve / Deny buttons through
+# the bridge bot (the bot the operator replies to), skipped when no bridge token is set.
 #
 # Exit: the command's own status once it ran (a signal death -N becomes 128+N);
 # 3 denied or burned; 4 expired; 5 refused (never-remote, run kind off, bad user, helper
@@ -20,7 +22,8 @@
 # (no id when nothing was filed).
 #
 # Timing env vars, also the test seams: AFK_RUN_WAIT_S (540, total wait), AFK_RUN_POLL_S (3),
-# AFK_RUN_BUSY_EVERY_S (15, how often a busy helper is asked again).
+# AFK_RUN_BUSY_EVERY_S (15, how often a busy helper is asked again). TELEGRAM_ENV names the bridge
+# bot's .env (default ~/.claude/channels/telegram/.env); AFK_TELEGRAM_API overrides the Bot API base.
 set -uo pipefail
 
 HELPER=/usr/local/libexec/himmel/afk-sudo
@@ -94,6 +97,23 @@ poll() {  # poll <id> <deadline in $SECONDS>
     done
 }
 
+# control <id> <operator>: the id-only control message with the Approve / Deny buttons, sent by
+# the bridge bot. The URL holding the token goes to curl on stdin, never argv.
+control() {
+    local id=$1 op=$2 env token api=${AFK_TELEGRAM_API:-https://api.telegram.org}
+    [[ $op =~ ^[0-9]+$ ]] || return 0
+    env=${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}
+    token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$env" 2>/dev/null | tr -d '"'"'"' \r' | grep -m1 .)
+    [ -n "$token" ] || return 0
+    printf 'url = "%s/bot%s/sendMessage"\n' "$api" "$token" \
+        | curl -sS -m 10 -o /dev/null -K - \
+            --data-urlencode "chat_id=$op" \
+            --data-urlencode "text=AFK run $id: read the notice-bot message, then approve" \
+            --data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}" \
+            > /dev/null \
+        || echo "afk-run: the Telegram control message failed; approve $id from the notice-bot message's id" >&2
+}
+
 if [ "${1:-}" = wait ]; then
     [ $# -eq 2 ] && [[ $2 =~ ^[a-z2-7]{8}$ ]] || usage
     poll "$2" $((SECONDS + WAIT_S))
@@ -129,6 +149,7 @@ while :; do
         pending)
             id=$(word id "$out")
             [[ $id =~ ^[a-z2-7]{8}$ ]] || end_with 5 "refused:bad-helper-reply"
+            control "$id" "$(word operator "$out")"
             echo "afk-run: filed request $id, waiting for the operator" >&2
             poll "$id" "$end" ;;
         busy)

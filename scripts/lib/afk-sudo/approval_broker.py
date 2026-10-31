@@ -32,6 +32,14 @@ MAX_PER_HOUR = 6
 BUSY_ROW_S = 600
 KEEP_DONE = 20
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
+# Crockford base32: no I, L, O or U, so a nonce read off a phone screen has one spelling.
+NONCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+NONCE_LEN = 4
+
+
+def norm_nonce(s):
+    """The nonce as typed, read the Crockford way: any case, O as 0, I and L as 1."""
+    return (s or "").upper().replace("O", "0").replace("I", "1").replace("L", "1")
 
 
 class Refused(Exception):
@@ -157,7 +165,11 @@ class Broker:
         return quiet
 
     def request(self, kind, display, payload, meta, window_s=None):
-        """Open the one pending slot; returns (id, expires). Raises Refused.
+        """Open the one pending slot; returns (id, expires, nonce). Raises Refused.
+
+        The nonce is held in the state file only (never a ledger row, never the requester's output):
+        the caller sends it to the operator through the root-only notice bot, and approve() needs it
+        beside the code, so a code typed in reply to a look-alike message approves nothing.
 
         `payload` may be a callable f(rid, created, expires) -> (payload, meta_extra), run once the id
         and the window are known and before anything is saved."""
@@ -183,22 +195,47 @@ class Broker:
             if callable(payload):
                 payload, extra = payload(rid, int(t), int(t + window))
                 meta.update(extra)
+            nonce = "".join(secrets.choice(NONCE_ALPHABET) for _ in range(NONCE_LEN))
             s["requests"].append(t)
-            s["pending"] = {"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta, "expires": t + window}
+            s["pending"] = {"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta,
+                            "expires": t + window, "nonce": nonce}
             self._save(s)
             self._row("request", "pending", meta, id=rid)
             if self.retain:
                 self.retain(set(s["done"]) | {rid})
-            return rid, int(t + window)
+            return rid, int(t + window), nonce
         finally:
             os.close(fd)
+
+    def withdraw(self, rid, result):
+        """End a pending request the operator was never shown (its notice could not be sent)."""
+        fd = self._locked()
+        try:
+            s = self._load()
+            p = s["pending"]
+            if p and p["id"] == rid:
+                self._finish(s, rid, result)
+                s["pending"] = None
+                self._spend(s, self.now())
+                self._save(s)
+                self._row("notice", result, p["meta"], id=rid)
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _nonce_ok(p, nonce):
+        """A pending request with no nonce fails closed."""
+        want = p.get("nonce") or ""
+        return bool(want) and hmac.compare_digest(want.encode(), norm_nonce(nonce).encode())
 
     def _sender_ok(self, rid, sender, chat, meta):
         if int(sender) != self.operator_id or int(chat) != self.operator_id:
             self._refuse("code-check", "not-operator", meta, id=rid, sender=int(sender), chat=int(chat))
 
-    def approve(self, rid, code, sender, chat, executor):
-        """Check the code; on success run executor(payload) once. Returns (pending, exit)."""
+    def approve(self, rid, code, sender, chat, executor, nonce=""):
+        """Check the nonce and the code; on success run executor(payload) once. Returns (pending, result).
+        A wrong nonce counts as a wrong code (towards the lockout) and ends the request; a valid code
+        sent with it is spent, since it was typed where a look-alike may have read it."""
         fd = self._locked()
         try:
             s, t = self._load(), self.now()
@@ -234,8 +271,12 @@ class Broker:
                     self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", "no-pending", meta, id=rid)
-            if hit is None or hit <= s["last_step"]:
+            result = None
+            if not self._nonce_ok(p, nonce):
+                result = "bad-nonce"
+            elif hit is None or hit <= s["last_step"]:
                 result = "no-code" if not code else "replay" if hit is not None else "wrong-code"
+            if result:
                 if result != "replay":
                     s["wrong"] += 1
                     if s["wrong"] >= MAX_WRONG:
@@ -243,6 +284,8 @@ class Broker:
                 self._finish(s, rid, "denied:" + result)
                 s["pending"] = None
                 self._spend(s, t)
+                if spend:
+                    self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", result, p["meta"], id=rid)
             s["wrong"], s["pending"] = 0, None
