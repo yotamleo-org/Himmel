@@ -13,8 +13,10 @@ bash scripts/quiet-run.sh $ARGUMENTS
 
 Examples:
 - `/quiet-run npm-install -- npm install` (in scripts/jira/)
-- `/quiet-run pytest -- pytest -xvs tests/`
 - `/quiet-run build -- npm run build`
+- `/quiet-run suite -- bash scripts/test-quiet-run.sh` (a repo suite)
+
+Wrapping gets a command no allow rule: only `suite -- bash <listed dir>/test-*.sh` is pre-approved, and anything else reaches the auto-mode classifier. Run a third-party tool (`uv run … pyright`, `npx`, a checkout under `/tmp`) directly, redirecting noisy output to a scratch file. Label `suite` refuses a directory option aimed outside the worktree (`--directory /tmp/x`, `--cwd=/x`, `-C /x`) and prints the direct form (HIMMEL-8315).
 
 Convention: `<label>` is a short slug for log-file naming (`/tmp/quiet-run-<label>-<ts>-<pid>.log`). Use the same label across runs of the "same" command so logs are easy to find.
 

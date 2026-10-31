@@ -7,7 +7,7 @@
 # `Proceed?` so nothing is installed: the answers cache is written before it.
 #   J4  canary typed at the masked prompt: not in the transcript, store holds it
 #       at 0600, answers say set, a re-run keeps the store byte-identical.
-#   J6  an existing .env is reused (placeholder shown, set key kept untouched);
+#   J6  an existing .env is reused (config keys excluded, set secret kept untouched);
 #       a work-tree .env that git does not ignore is refused, nothing written.
 #   CLAUDECODE=1 refuses the step.
 #   loadProfile refuses a value (anything but a status) under `secrets`.
@@ -87,7 +87,7 @@ grep -qF "set (from himmel-env)" "$c/transcript2" || fail "j4: re-run did not sh
 grep -qF "$canary" "$c/transcript2" && fail "j4: re-run transcript shows the canary"
 echo "ok: J4 re-run — kept, store byte-identical"
 
-# ── J6a: reuse an existing .env, show a placeholder ─────────────────────────
+# ── J6a: reuse an existing .env, exclude config keys ───────────────────────
 mkdir -p "$t/j6a/himmel"
 printf 'JIRA_BASE_URL=<your-jira-url>\nJIRA_EMAIL=ops@example.com\nJIRA_API_TOKEN=fixture-secret-sentinel\n' > "$t/j6a/pre.env"
 c="$t/j6a"; mkdir -p "$c/home" "$c/himmel" "$c/proj" "$c/cache"
@@ -100,14 +100,13 @@ rc=0
     HIMMEL_LUNA_CONFIG_PATH="$c/cache/luna-config.json" HIMMELCTL_REPO_ROOT="$c/himmel" HIMMELCTL_INTERACTIVE=1 \
     python3 "$driver" "$c/transcript" "$c/rules.json" -- "$node_bin" "$wizard" install ) >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] || fail "j6a: wizard exited $rc, want 0"
-grep -qF "JIRA_BASE_URL" "$c/transcript" || fail "j6a: JIRA_BASE_URL not listed"
-grep -qF "placeholder" "$c/transcript" || fail "j6a: the placeholder value was not reported as 'placeholder'"
+grep -qF "JIRA_BASE_URL [" "$c/transcript" && fail "j6a: config-class JIRA_BASE_URL was prompted as a secret"
 grep -qF "ops@example.com" "$c/transcript" && fail "j6a: a stored value was printed"
 [ "$(answers '.secrets.JIRA_API_TOKEN')" = "kept" ] || fail "j6a: JIRA_API_TOKEN not 'kept'"
 [ "$(answers '.secrets.JIRA_EMAIL')" = "null" ] || fail "j6a: config-class JIRA_EMAIL must not be collected as a secret"
-[ "$(answers '.secrets.JIRA_BASE_URL')" = "skipped" ] || fail "j6a: placeholder JIRA_BASE_URL not 'skipped' by default"
+[ "$(answers '.secrets.JIRA_BASE_URL')" = "null" ] || fail "j6a: config-class JIRA_BASE_URL must not be collected as a secret"
 [ "$(sha_of "$c/himmel/.env")" = "$sum_pre" ] || fail "j6a: accepting the defaults changed the existing .env"
-echo "ok: J6 existing .env reused, placeholder reported, defaults leave it byte-identical"
+echo "ok: J6 existing .env reused, config keys excluded, defaults leave it byte-identical"
 
 # ── J6b: a work-tree .env that git does not ignore is refused ───────────────
 c="$t/j6b"; mkdir -p "$c/home" "$c/himmel" "$c/proj" "$c/cache"

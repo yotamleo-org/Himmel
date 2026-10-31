@@ -8,7 +8,10 @@
 #
 # Examples:
 #   ./scripts/quiet-run.sh npm-install -- npm install
-#   ./scripts/quiet-run.sh pytest -- pytest -xvs tests/
+#   ./scripts/quiet-run.sh suite -- bash scripts/test-quiet-run.sh
+#
+# A third-party tool on another checkout runs directly, not through here:
+# label `suite` refuses a directory option aimed outside the worktree.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -115,6 +118,31 @@ if [ "$LABEL" = "suite" ] && [ "${1:-}" = "bash" ]; then
                 ;;
         esac
     fi
+fi
+
+# label `suite` runs this worktree's suites only.
+# A directory option aimed outside the worktree (`--directory /tmp/fork`,
+# `--cwd=/x`, `-C /x`; the names below) is a tool run on another checkout: wrapping it buys no
+# allow rule, so refuse and name the direct form. `bash <test-*.sh>` was vetted above and a
+# positional path is data, so neither is checked here.
+if [ "$LABEL" = "suite" ] && [ "${1:-}" != "bash" ] && QR_TOP=$(git rev-parse --show-toplevel 2>/dev/null); then
+    QR_REAL_TOP=$(cd "$QR_TOP" 2>/dev/null && pwd -P) || QR_REAL_TOP="$QR_TOP"
+    qr_prev=""
+    for arg in "$@"; do
+        qr_path=""
+        # the '..' refusal above misses `--opt=../x`, so a leading '..' after '='
+        # is caught here; every other '..' was refused before this loop.
+        case "$arg" in
+            --directory=/*|--cwd=/*|--dir=/*|--project=/*|--prefix=/*|--work-tree=/*) qr_path="${arg#*=}" ;;
+            --directory=..*|--cwd=..*|--dir=..*|--project=..*|--prefix=..*|--work-tree=..*) qr_path=.. ;;
+            /*) case "$qr_prev" in --directory|--cwd|--dir|--project|--prefix|--work-tree|-C) qr_path="$arg" ;; esac ;;
+        esac
+        qr_prev="$arg"
+        [ -n "$qr_path" ] || continue
+        case "$qr_path/" in "$QR_TOP"/*|"$QR_REAL_TOP"/*) continue ;; esac
+        echo "ERR quiet-run: label 'suite' runs this worktree's test suites only and '$arg' is outside it (redirect to a scratch file if the output is noisy); run it directly: $*" >&2
+        exit 2
+    done
 fi
 
 # label `suite` is a suite chokepoint -- whatever it runs (bash

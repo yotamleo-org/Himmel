@@ -60,7 +60,7 @@ Steps:
    suite are ours) and `--no-publish` (keep the HTML report local — this is
    a local on-demand check, not something to publish to claude.ai):
    ```bash
-   # on-demand eval, bank-preflighted, explicit permission mode (HIMMEL-2931)
+   # on-demand eval, usage-preflighted, explicit permission mode (HIMMEL-2931)
    claude plugin eval marketplace/plugins/<plugin> --case <suite> --trust-plugin --no-publish <resolved-grant-and-scaffold-from-step-2>
    ```
    Substitute `<plugin>`, `<suite>`, and the resolved flags from step 2 (drop

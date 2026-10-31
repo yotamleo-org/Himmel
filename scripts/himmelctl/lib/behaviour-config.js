@@ -2,8 +2,8 @@
 // scripts/himmelctl/lib/behaviour-config.js — behaviour-config keys
 // (HIMMEL_INITIATIVE, HANDOVER_DIR, commit rules) live in the tracked config
 // file ~/.himmel/himmel.conf, not the clone .env. Reads layer the same way
-// scripts/lib/load-dotenv.sh does: himmel.conf.local, then himmel.conf, then the
-// legacy clone .env (still honoured until scripts/setup/migrate-env-config.sh
+// scripts/lib/load-dotenv.sh does: himmel.conf.local, selected station profile
+// (JIRA_BASE_URL only), himmel.conf, then the legacy clone .env (still honoured until scripts/setup/migrate-env-config.sh
 // has moved the key). Writes go to himmel.conf only.
 
 const fs = require('fs');
@@ -11,12 +11,27 @@ const os = require('os');
 const path = require('path');
 const probesLib = require('./probes.js');
 
-function confPath() {
-  return path.join(os.homedir(), '.himmel', 'himmel.conf');
+function confPath({ home = os.homedir(), env = process.env } = {}) {
+  return path.join(env.HIMMEL_CONFIG_DIR || path.join(home, '.himmel'), 'himmel.conf');
 }
 
-function confLocalPath() {
-  return `${confPath()}.local`;
+function confLocalPath(options) {
+  return `${confPath(options)}.local`;
+}
+
+function configFiles(options = {}, key) {
+  const conf = confPath(options);
+  const local = confLocalPath(options);
+  const env = options.env || process.env;
+  const name = env.HIMMEL_PROFILE || (readParsed(local) || {}).HIMMEL_PROFILE;
+  let profile;
+  if (key === 'JIRA_BASE_URL' && name && !name.startsWith('.') && /^[A-Za-z0-9._-]+$/.test(name)) {
+    try {
+      const target = path.resolve(path.dirname(conf), fs.readlinkSync(conf));
+      profile = path.join(path.dirname(target), 'profiles', `${name}.conf`);
+    } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'EINVAL') throw e; }
+  }
+  return [local, profile, conf].filter(Boolean);
 }
 
 // Absent file -> null. Any other read error rethrows: an unreadable file must
@@ -35,20 +50,20 @@ function readParsed(file) {
 
 // { value, file } for KEY from the first layer that sets it non-empty;
 // { value: '', file: confPath() } when none does (file = where a set lands).
-function readConfigVar(key, legacyEnvFile) {
-  for (const file of [confLocalPath(), confPath(), legacyEnvFile]) {
+function readConfigVar(key, legacyEnvFile, options) {
+  for (const file of [...configFiles(options, key), legacyEnvFile]) {
     if (!file) continue;
     const parsed = readParsed(file);
     if (parsed && parsed[key]) return { value: parsed[key], file };
   }
-  return { value: '', file: confPath() };
+  return { value: '', file: confPath(options) };
 }
 
 // Every layer file that sets KEY non-empty, highest precedence first. An empty
 // value reads as unset, so clearing a key means blanking it in each of these.
-function layersSetting(key, legacyEnvFile) {
+function layersSetting(key, legacyEnvFile, options) {
   const files = [];
-  for (const file of [confLocalPath(), confPath(), legacyEnvFile]) {
+  for (const file of [...configFiles(options, key), legacyEnvFile]) {
     if (!file) continue;
     const parsed = readParsed(file);
     if (parsed && parsed[key]) files.push(file);

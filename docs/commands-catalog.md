@@ -42,7 +42,7 @@ catalog needs a checkout.
 3. **Plugin commands:** the plugins in the base set (`handover`, `himmel-ops`,
    `qmd`, `lean-skills`, `i-have-adhd`, per `scripts/lanes/plugin-profiles.json`)
    carry their own commands. `/handover-setup` comes from `handover`;
-   `/chief`, `/console`, `/supervisor-session`, `/cloud-route`, `/fanout`,
+   `/chief`, `/cloud-route`, `/fanout`,
    `/himmel-doctor`, `/himmel-update`, `/himmel-update-all`,
    `/memory-compound` and `/minerva` come from `himmel-ops`. Some of them act
    on the himmel download rather than on your project: `/himmel-update`
@@ -92,11 +92,15 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > [marketplace/plugins/i-have-adhd/README.md](../marketplace/plugins/i-have-adhd/README.md).
 
 > **Not itemized: `marketplace/plugins/pstack/skills/`**.
-> Seven vendored `cursor/plugins` pstack skills, all `disable-model-invocation: true`
+> Ten vendored `cursor/plugins` pstack skills at `4dd1d058`, all `disable-model-invocation: true`
 > (`/correct`, `/blast-radius`, `/create-verification-skill`,
 > `/maintain-verification-skill`, `/benchmark-checklist`,
-> `principle-explain-the-number`, `/in-your-own-words`): typed by the operator,
-> no `commands/` directory, on in the interactive `user` profile only. See
+> `principle-explain-the-number`, `/in-your-own-words`, `/statechart`,
+> `/create-formal-verification-skill`, `/maintain-formal-verification-skill`):
+> typed by the operator, no `commands/` directory, on in the interactive `user`
+> profile only (HIMMEL-6690, HIMMEL-8218). Statechart includes its runtime and
+> optional Java/TLC prerequisites; missing prerequisites stop the check. A himmel-generated
+> lockfile pins its test-only npm dependencies for repository audit, not runtime installation. See
 > [marketplace/plugins/pstack/README.md](../marketplace/plugins/pstack/README.md).
 
 > **Not itemized: `marketplace/plugins/humanizer/skills/`**.
@@ -144,8 +148,6 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 | Command | Description | Notes |
 |---|---|---|
 | /chief | Himmel checkout; start or hand over a chief. | A chief dispatches implementation workers as separate sessions, rules on their questions via the RETASK channel, gates merges with GO, and arms its successor at 45 % fill — it implements nothing itself. `new` writes the chief doc from the console template and acquires the queue lock on it; `next` writes the successor stub + this session's HANDOFF skeleton. Distinct from /afk-shift (one session, in-process subagents, no lock or successor). Also shipped by the himmel-ops plugin so it runs from any repo (`--project`). |
-| /supervisor-session | Alias of /chief. | Permanent alias; same arguments and behaviour as /chief. |
-| /console | Alias of /chief. | Thin alias kept for the old spelling; same arguments and behaviour as /chief. On Telegram the bridge verb is `/chief`; `/console` is kept as its alias. |
 | /handover-arm-resume | Schedule a timed claude relaunch on a handover. | Arm the OS scheduler to relaunch claude at the given time with the given handover. Dedup-guarded. Direct at/crontab invoke. |
 | /handover-commit | Commit *.md changes in an external handover root. |  |
 | /handover-flush | Session-end sweep across handover/* branches. |  |

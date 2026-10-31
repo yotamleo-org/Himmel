@@ -20,6 +20,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const manifest = require('./secrets-manifest.json');
+const behaviourConfig = require('./behaviour-config.js');
+const configNames = new Set(require('./config-keys.json').keys.filter((k) => k.class === 'config' && !k.envOnly).map((k) => k.name));
 
 const PLACEHOLDER = /^(?:<.*>|your[_-].*|changeme|change[_-]me|xxx+|todo|replace[_-]?me)$/i;
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -117,7 +119,7 @@ function fileDetect(name, ctx) {
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
   if (file) {
-    const v = readEnvKey(file, name);
+    const v = configNames.has(name) ? behaviourConfig.readConfigVar(name, file, ctx).value : readEnvKey(file, name);
     if (usable(v)) return { status: 'set', source: 'store' };
     if (v !== '') return { status: 'placeholder', source: 'store' };
   }
@@ -166,6 +168,12 @@ function fileWrite(name, value, ctx) {
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
   if (!file) refuse('secret has no writable file store (card entry)');
+  if (name === 'JIRA_BASE_URL') {
+    const target = behaviourConfig.readConfigVar(name, undefined, ctx).file;
+    const files = value === null ? behaviourConfig.layersSetting(name, file, ctx) : [target];
+    for (const config of files) behaviourConfig.upsertConfEntries(config, value === null ? [] : [[name, value]], [name]);
+    return { ok: true, path: target, tightened: false, ...(value === null ? { removed: files.length > 0 } : {}) };
+  }
   const dir = path.dirname(file);
   if (value === null && !fs.existsSync(file)) return { ok: true, path: file, tightened: false, removed: false };
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

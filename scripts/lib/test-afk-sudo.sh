@@ -838,6 +838,9 @@ expect_rule main-history git push origin :main
 expect_rule main-history git push --delete origin main
 expect_rule main-history gh api -X DELETE repos/o/r/git/refs/heads/main
 expect_rule main-history gh repo delete o/r
+expect_rule main-history git push -d origin main
+expect_rule main-history git push -fu origin main
+expect_rule none git push -u origin feature
 expect_rule none git push origin main
 expect_rule none git push --force origin refs/heads/feat/x:refs/heads/feat/y
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
@@ -867,7 +870,15 @@ expect_rule disk-wipe env -S 'echo x; mkfs.ext4 /dev/vdb'
 expect_rule none awk 'BEGIN{print 1}'
 expect_rule none rm -rf /tmp/build/x/y
 crafted=$(printf '"a=%.0s' $(seq 1 200))x
+assert_eq "the crafted fixture is 601 characters" "601" "${#crafted}"
 expect_rule oversize true "$crafted"
+banner=$(printf '=%.0s' $(seq 1 66))
+assert_eq "the banner fixture is 66 characters" "66" "${#banner}"
+expect_rule none echo "$banner"
+expect_rule secret-read cat "$banner/etc/shadow"
+deep=$(printf 'a=%.0s' $(seq 1 65))x
+assert_eq "the deep fixture is 131 characters" "131" "${#deep}"
+expect_rule oversize true "$deep"
 
 echo "== slice 1a: limits, the busy row and the retained files =="
 new_root busyrow; cfg "$ALL" true

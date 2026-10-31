@@ -543,12 +543,14 @@ each bridged var's own comment there names its bridging reader.
 #### The .env split: what moves, what stays, and a mismatch
 
 - **Moves to `~/.himmel/himmel.conf`:** every key the tables below mark
-  `himmel.conf`, the non-secret Jira identifiers (`JIRA_EMAIL`,
-  `JIRA_PROJECT_KEY`, `JIRA_PROJECTS`, `JIRA_CLOUD_ID`) included.
+  `himmel.conf`, the Jira site URL `JIRA_BASE_URL` and non-secret identifiers
+  (`JIRA_EMAIL`, `JIRA_PROJECT_KEY`, `JIRA_PROJECTS`, `JIRA_CLOUD_ID`) included.
+  The URL can also be set in an active station profile; `.local` and non-empty
+  process values take precedence. Its legacy `.env` fallback lasts one release.
 - **Moves to `~/.himmel/config.json` `.policy`:** `CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 - **Stays in `.env`:** the secrets, until the keyring work (HIMMEL-7147,
-  HIMMEL-7576) is complete: API tokens, `JIRA_BASE_URL`, the Telegram keys and
+  HIMMEL-7576) is complete: API tokens, the Telegram keys and
   every key not yet classified as config, plus other tools' keys. Only a
   himmel secret that nothing in the checkout reads moves, to
   `~/.config/secrets/himmel.env`. Never empty `.env`: Jira, Telegram and the
@@ -629,7 +631,8 @@ for the future API lane and is not exported by these loaders.
 | `USER_SLUG` | slugified `git user.name` | `himmel.conf` | handover bucket + worktree naming (`scripts/lib/user-slug.sh`) |
 | `HANDOVER_DIR` | inline `<repo>/handovers/` | `himmel.conf` | `scripts/lib/handover-path.sh` — external handover state repo (Mode B) |
 | `HANDOVER_DIRECT_MAIN` / `HANDOVER_PR_AUTO` / `HANDOVER_PR_BASE` | branched-PR flow ON | env | handover PR flow (`.claude/commands/handover-pr-open.md`) |
-| `JIRA_BASE_URL` / `JIRA_API_TOKEN` | — | `.env` | the Jira CLI (`scripts/jira/`); with the two identifiers below, these four are all it needs — no cloud ID |
+| `JIRA_BASE_URL` | — | `himmel.conf` (or active station profile / `.local`; `.env` fallback for one release) | the Jira / Confluence CLI's destination; only set operator-trusted URLs, since requests send credentials there |
+| `JIRA_API_TOKEN` | — | OS keyring or legacy `.env` | the Jira CLI (`scripts/jira/`); with the URL and two identifiers below, these four are all it needs — no cloud ID |
 | `JIRA_EMAIL` / `JIRA_PROJECT_KEY` | — | `himmel.conf` | the Jira CLI's non-secret identifiers |
 | `JIRA_PROJECTS`, `JIRA_CLOUD_ID` | optional | `himmel.conf` | Jira CLI extras; `JIRA_CLOUD_ID` only for the optional Atlassian MCP |
 | `JIRA_BOARD_ID`, `JIRA_SEVERITY_FIELD` | optional | `.env` | Jira CLI extras |

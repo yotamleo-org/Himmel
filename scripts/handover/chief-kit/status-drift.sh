@@ -183,7 +183,7 @@ docs_all=""
 if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swallow-ok: no handover root means no second-owner scan
 [ -z "$DOCS" ] || [ ! -d "$DOCS" ] || docs_all=$(find "$DOCS" -maxdepth 4 -type f -name '*-N*.md' 2>/dev/null) # swallow-ok: an unreadable tree narrows the TWO-OWNERS scan only
 
-is_owner_state() { case "$1" in live|idle|IDLE-HELD) return 0 ;; *) return 1 ;; esac; }
+is_owner_state() { case "$1" in live|idle|IDLE-HELD|parked) return 0 ;; *) return 1 ;; esac; }
 
 # 0 when a comment on the ticket names a PR that gh reports OPEN and whose title's first [KEY]
 # is this ticket. The pr list above only sees this repo, so a ticket whose PR lives elsewhere
@@ -266,7 +266,7 @@ while IFS= read -r key; do
     wstate=none
     [ -z "$doc" ] || wstate=$(ts_worker_state "$doc")
 
-    if { [ "$rstate" = live ] || [ "$rstate" = idle ]; } && { [ "$wstate" = wrapped ] || [ "$wstate" = unknown ]; }; then
+    if { [ "$rstate" = live ] || [ "$rstate" = idle ] || [ "$rstate" = parked ]; } && { [ "$wstate" = wrapped ] || [ "$wstate" = unknown ]; }; then
         add WORKER-STALE "$key" "record=$rstate but the doc/lock says $wstate" "$FUNNEL --event sweep" "$SWEEP_FIX"
     fi
 

@@ -76,7 +76,7 @@ assert_has "forced secret failure prints a length" "length " "$probe_out"
 assert_has "forced secret failure prints a short hash" "sha256 " "$probe_out"
 
 # Reclassifying only the named service identifiers makes the config layers usable.
-identifiers='JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
+identifiers='JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
 GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
 VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
 for k in $identifiers; do
@@ -111,7 +111,7 @@ for k in TELEGRAM_CHAT_ID TELEGRAM_GROUP_CHAT_ID; do
     out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
     assert_eq_fp "$k loads from himmel.conf" "[dummy-config|rc=0]" "$out"
 done
-for k in JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
+for k in FIRECRAWL_BASE_URL WHISPER_MODEL; do
     reset
     assert_eq_fp "$k is config" "config" "$(run '_himmel_key_class "$k"')"
     printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
@@ -241,6 +241,8 @@ printf 'CR_PROFILE=from-lab\n' > "$VAULT/.himmel/profiles/lab.conf"
 plink
 assert_eq_fp "(p) DEFAULT applies with no station profile" "[from-default|]" "$(pload)"
 assert_eq_fp "(p) a named profile overrides DEFAULT" "[from-lab|]" "$(HIMMEL_PROFILE=lab pload)"
+printf 'JIRA_BASE_URL=https://profile.example\n' >> "$VAULT/.himmel/profiles/lab.conf"
+assert_eq_fp "(p) a profile serves the Jira site URL without .env" "[https://profile.example]" "$(HIMMEL_PROFILE=lab run 'unset JIRA_BASE_URL; load_dotenv JIRA_BASE_URL; printf "[%s]" "${JIRA_BASE_URL-}"')"
 printf 'HANDOVER_DIR=/lab/handovers\n' >> "$VAULT/.himmel/profiles/lab.conf"
 assert_eq_fp "(p) a profile adds keys DEFAULT lacks" "[from-lab|/lab/handovers]" "$(HIMMEL_PROFILE=lab pload)"
 printf 'HIMMEL_PROFILE=lab\n' > "$HOME/.himmel/himmel.conf.local"

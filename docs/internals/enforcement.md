@@ -3014,7 +3014,9 @@ sanctioned-script path (`export "$n=1"`), a program word that hides both its
 semaphore (`scripts/lib/suite-semaphore.sh`): `HIMMEL_SUITE_SLOTS` slots
 (default 6) under `${TMPDIR:-/tmp}/himmel-suite-semaphore.d`. Only the two
 sanctioned scripts take a slot — `bash scripts/quiet-run.sh suite -- <cmd>` (any
-command) and `scripts/ci/run-shell-tests.sh` (once per sweep). A busy budget
+of this worktree's suite runners; a directory option aimed outside the worktree
+is refused with the direct form, HIMMEL-8315) and `scripts/ci/run-shell-tests.sh` (once
+per sweep). A busy budget
 exits **75**, naming each holder's pid, label and age, plus the retry shape
 `SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- <cmd>`
 (`SUITE_LOCK_WAIT=<seconds>` waits for a slot). A slot is reclaimed when its
@@ -4005,9 +4007,6 @@ checkout workers branch from having pulled the merge. Spec:
 
 ### `block-worker-askuserquestion.sh` — chief-spawned worker AskUserQuestion deny (HIMMEL-2923)
 
-The old path `block-leg-askuserquestion.sh` sources this file, so settings that
-still name it run the same hook.
-
 Fires on `AskUserQuestion`, keyed on `HIMMEL_CONSOLE_LEG=1` (set by the
 chief's launcher, `scripts/handover/chief-kit/headed-arm-worker.sh`,
 HIMMEL-2919). A worker launched headed by a chief runs in a window nobody
@@ -4023,9 +4022,6 @@ correctly so: a judge is read-only and evidence-gathering, so it has no one
 to ask either.
 
 ### `guard-worker-wakeup.sh` — chief-spawned worker ScheduleWakeup deny (HIMMEL-3034)
-
-The old path `guard-leg-wakeup.sh` sources this file, so settings that still
-name it run the same hook.
 
 Fires on `ScheduleWakeup`, keyed on `HIMMEL_CONSOLE_LEG=1` (same gate and
 launcher export as `block-worker-askuserquestion.sh`). A worker waits with ONE

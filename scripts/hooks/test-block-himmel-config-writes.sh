@@ -345,6 +345,54 @@ bash_case "sed -i on a relative project file -> block" block "sed -i s/1/0/ .him
 bash_case "cat a project file -> allow" allow "cat $PROJ"
 bash_case "grep a project file -> allow" allow "grep -n CR_ .himmel/project.conf"
 
+echo "== station config destinations (HIMMEL-8244 / HIMMEL-7550) =="
+# These files now choose where authenticated Jira requests go. Removing any
+# station-path check must fail a direct write, patch, or Bash mutation row.
+unset HIMMEL_CONFIG_DIR
+mkdir -p "$T/station/profiles"
+printf 'JIRA_BASE_URL=https://fixture.example.invalid\n' > "$T/station/himmel.conf"
+ln -s "$T/station/himmel.conf" "$HOME/.himmel/himmel.conf"
+ln -s "$T/station" "$T/station-alias"
+for station in "$HOME/.himmel/himmel.conf" "$HOME/.himmel/himmel.conf.local" "$T/station/himmel.conf" "$T/station/profiles/lab.conf" "$T/station-alias/profiles/lab.conf"; do
+    for ft in Write Edit MultiEdit NotebookEdit; do
+        file_case "$ft station $station -> block" block "$ft" "$station"
+    done
+    for verb in 'Add File' 'Update File' 'Delete File' 'Move to'; do
+        patch_case "apply_patch $verb station $station -> block" block "*** Begin Patch${NL}*** $verb: $station${NL}*** End Patch"
+    done
+    # Bash's existing text-matching ceiling does not resolve symlink aliases;
+    # file tools and patch headers above do resolve them.
+    if [ "$station" != "$T/station-alias/profiles/lab.conf" ]; then
+        bash_case "station redirect $station -> block" block "echo x > $station"
+        bash_case "station tee $station -> block" block "tee $station"
+        bash_case "station sed $station -> block" block "sed -i s/a/b/ $station" # gnu-ok: fixture payload, never executed
+        bash_case "station cp $station -> block" block "cp $T/x $station"
+        run "malformed station $station -> block" block "{not json $station"
+    fi
+    bash_case "station cat $station -> allow" allow "cat $station"
+    file_case "Read station $station -> allow" allow Read "$station"
+done
+file_case "relative station local -> block" block Write .himmel/himmel.conf.local
+file_case "relative station profile -> block" block Write .himmel/profiles/lab.conf
+file_case "unrelated himmel.conf -> allow" allow Write "$T/unrelated/himmel.conf"
+bash_case "unrelated himmel.conf -> allow" allow "cp x $T/unrelated/himmel.conf"
+HIMMEL_CONFIG_DIR="$T/custom-conf"; export HIMMEL_CONFIG_DIR
+mkdir -p "$HIMMEL_CONFIG_DIR/profiles"
+file_case "custom config directory local -> block" block Write "$HIMMEL_CONFIG_DIR/himmel.conf.local"
+file_case "custom config directory profile -> block" block Edit "$HIMMEL_CONFIG_DIR/profiles/lab.conf"
+bash_case "custom config directory redirect -> block" block "echo x > $HIMMEL_CONFIG_DIR/himmel.conf"
+unset HIMMEL_CONFIG_DIR
+# The sanctioned writer remains callable, but is not a shell-text bypass.
+bash_case "himmelctl config set remains allowed" allow "himmelctl config set tracker.teamMode on"
+bash_case "himmelctl with an appended station write -> block" block "himmelctl config set tracker.teamMode on; echo x > $HOME/.himmel/himmel.conf"
+repo_root="${HOOKS%/scripts/hooks}"
+if HOME="$T/config-set-home" HIMMELCTL_REPO_ROOT="$T/repo" node "$repo_root/scripts/himmelctl/bin.js" config set tracker.teamMode on >"$T/config-set.out" 2>&1 \
+    && grep -q '^HIMMEL_TRACKER_TEAM_MODE=on$' "$T/config-set-home/.himmel/himmel.conf"; then
+    ok "himmelctl config set writes station config"
+else
+    bad "himmelctl config set did not write station config"
+fi
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"

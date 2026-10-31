@@ -66,8 +66,11 @@
 # Plain settings that once rode along in .env (HIMMEL-8165)
 # TELEGRAM_CHAT_ID=0
 # TELEGRAM_GROUP_CHAT_ID=0
-# The next three are NOT read from this file: their readers take the checkout .env or the process
-# environment only (JIRA_BASE_URL is a credential destination). Listed so the key set is complete.
+# Jira sends credentials to this trusted station URL. Process env, .local and the
+# selected profile outrank this default; .env is a one-release fallback.
+# Agent writes to station config and profiles are guarded; project.conf cannot set this URL.
 # JIRA_BASE_URL=https://dummy.atlassian.net
+# The next two are NOT read from this file: checkout .env or process env only.
+# Listed so the key set is complete.
 # FIRECRAWL_BASE_URL=https://dummy.example.invalid
 # WHISPER_MODEL=/dummy/whisper/ggml-small.bin

@@ -4,8 +4,7 @@
 # calling AskUserQuestion is denied — nobody answers in that window. Covers:
 # marker+tool -> deny, marker unset -> allow, marker+other tool -> allow,
 # malformed/empty stdin -> allow (fail-open; a hook crash must never lock an
-# operator out). The old path block-leg-askuserquestion.sh forwards here and
-# denies the same; HIMMEL_WORKER=1 alone is not the worker marker.
+# operator out). HIMMEL_WORKER=1 alone is not the worker marker.
 #
 # bash 3.2-safe. Platform guard: plain env var + jq checks, no git/path work.
 set -uo pipefail

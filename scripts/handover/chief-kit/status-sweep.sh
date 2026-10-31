@@ -175,14 +175,14 @@ outside_repo() {
     return 1
 }
 
-# done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live, idle or IDLE-HELD
+# done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live, idle, IDLE-HELD or parked
 # while its doc/lock says the worker ended: the funnel skips a Done ticket's move but
 # refreshes that record.
 done_record_stale() {
     local doc rstate
     ts_record_read "$1" || return 1
     rstate=$(jq -r '.state // ""' <<<"$TS_REC")
-    case "$rstate" in live|idle|IDLE-HELD) ;; *) return 1 ;; esac
+    case "$rstate" in live|idle|IDLE-HELD|parked) ;; *) return 1 ;; esac
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
     [ -n "$doc" ] || return 1
     case "$(ts_worker_state "$doc")" in wrapped|unknown) return 0 ;; esac

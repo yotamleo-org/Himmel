@@ -1,7 +1,7 @@
 {
   "name": "pstack",
   "version": "0.1.2",
-  "description": "[himmel vendor] Seven opt-in skills from cursor/plugins pstack, pinned at 99743e9c: /correct, /blast-radius, /create-verification-skill, /maintain-verification-skill, /benchmark-checklist, principle-explain-the-number, /in-your-own-words. All disable-model-invocation. No hooks, agents or autonomy.",
+  "description": "[himmel vendor] Ten opt-in skills from cursor/plugins pstack, pinned at 4dd1d058, including statechart and create/maintain-formal-verification-skill. All disable-model-invocation. No hooks, agents or autonomy; statechart is VM-only with optional Java/TLC prerequisites.",
   "author": {
     "name": "Lauren Tan (upstream) / yotamleo (vendor)"
   },
