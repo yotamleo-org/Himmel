@@ -30,11 +30,13 @@ def landing(p):
     """Where the kernel lands for the absolute path p, or None when the walk fails. A strict realpath asks the
     kernel at every step; non-strict realpath treats a link it cannot lstat (path past PATH_MAX, a name past
     NAME_MAX, EACCES) as a plain name (and pops it lexically on a later `..`), so its string is not where the
-    kernel lands. A non-directory in the way is a path that is simply not there: its lexical form is its landing.
+    kernel lands. A non-directory in the way is a path that is simply not there: its lexical form is its landing,
+    unless a `..` follows (the kernel gives ENOTDIR, a plain realpath pops it lexically), which is refused.
     A missing name is not: a later link that fails would be skipped by a plain realpath (`install -D` creates the
     missing name, then walks on), so the walk goes on past it with ALLOW_MISSING, which tolerates a missing name
     and fails on every other error, link targets included. A Python without ALLOW_MISSING (before 3.14, unless
-    the tarfile CVE-2025-4517 fix was backported) cannot do that: it refuses a `..` after a missing name."""
+    the tarfile CVE-2025-4517 fix was backported) cannot do that: it refuses a `..` after a missing name, and
+    run_request refuses there outright, as a dangling link whose target holds missing/../.. would still be skipped."""
     try:
         return os.path.realpath(p, strict=True)
     except FileNotFoundError:
@@ -44,11 +46,11 @@ def landing(p):
                 return os.path.realpath(p, strict=allow)
             except OSError:
                 return None
-        return None if ".." in p.split("/") else os.path.realpath(p)
     except NotADirectoryError:
-        return os.path.realpath(p)
+        pass
     except OSError:
         return None
+    return None if ".." in p.split("/") else os.path.realpath(p)
 
 DISK_CMDS = ("mkfs", "mkfs.*", "wipefs", "blkdiscard", "sgdisk", "sfdisk", "fdisk", "parted", "luksFormat", "luksErase")
 DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/dev/mmcblk*", "/dev/md*", "/dev/dm-*",

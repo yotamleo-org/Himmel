@@ -521,6 +521,9 @@ def run_request(broker, config, args):
     if run_block(config).get("enabled") is not True:
         print("result=run-disabled")
         return 5
+    if getattr(os.path, "ALLOW_MISSING", None) is None:  # nr.landing cannot walk past a missing name to bind it
+        print("result=no-allow-missing")
+        return 5
     op_pw = user_pw(config.get("operator_user"))
     if op_pw is None:  # a partial config must not point the floor at root's home
         print("result=bad-user")

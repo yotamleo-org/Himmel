@@ -645,6 +645,8 @@ new_root tgtlongdotdot; cfg "$ALL" true
 long_tree
 assert_eq "a .. after a link realpath could not lstat is refused, not popped as a plain name that falls back under PATH_MAX" "BadFile" "$(bt L/x/lnk/../../../../out)"
 assert_contains "a floor target reached by that .. fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/lnk/../../../../sh)"
+printf 'x\n' > "$R/f"
+assert_eq "a .. after a non-directory is refused, not keyed lexically where the kernel gives ENOTDIR" "BadFile" "$(bt f/x/../../L/x/lnk/../../../../out)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -675,6 +677,25 @@ class NoAllow:
 n.os = types.SimpleNamespace(path=NoAllow())
 base = os.path.realpath(sys.argv[2])
 print(n.landing(os.path.join(base, "m", "..", "x")), "ok" if n.landing(os.path.join(base, "m", "x")) == os.path.join(base, "m", "x") else "bad")' "$LIB" "$R")"
+new_root tgtnoallowrun; cfg "$ALL" true
+long_tree
+ln -s m/../L/x/lnk/../../../../out "$R/dl"
+# shellcheck disable=SC2016 # python source, not shell
+NOALLOW='import os, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as a, never_remote as n
+class NoAllow:
+    def __getattr__(self, k):
+        if k == "ALLOW_MISSING":
+            raise AttributeError(k)
+        return getattr(os.path, k)
+class Os:
+    path = NoAllow()
+    def __getattr__(self, k):
+        return getattr(os, k)
+a.os = n.os = Os()
+sys.exit(a.main(sys.argv[2:]))'
+assert_contains "without ALLOW_MISSING a run request is refused, so a dangling link whose target holds missing/../.. is never keyed" "result=no-allow-missing" "$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I -c "$NOALLOW" "$LIB" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier --cwd "$R" -- tee dl </dev/null 2>&1)"
 new_root tgtlongname; cfg "$ALL" true
 name=$(python3 -I -c 'print("a" * 300)')
 assert_eq "a name over 255 bytes is refused, not keyed none" "BadFile" "$(bt "$name")"
