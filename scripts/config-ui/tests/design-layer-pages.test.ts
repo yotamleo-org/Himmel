@@ -25,6 +25,8 @@ test("the main-column grid carries the mockup body size, and the group panel is 
   expect(css).toMatch(/(^|\n)\.pg\{[^}]*display:grid[^}]*\}/);
   expect(css).toMatch(/(^|\n)\.pg\{[^}]*gap:var\(--s3\)[^}]*\}/);
   expect(css).toMatch(/(^|\n)\.pg\{[^}]*font-size:var\(--fs-base\)[^}]*\}/);
+  // the grid gap alone spaces its sections: the global section margin is reset inside it
+  expect(css).toMatch(/(^|\n|,)\.pg>section[,{][^}]*margin:0/);
   expect(css).toMatch(/(^|\n)\.p\{[^}]*border-left:4px solid var\(--gc/);
   expect(css).not.toMatch(/\.sh-tile[\s{,.]/);
 });

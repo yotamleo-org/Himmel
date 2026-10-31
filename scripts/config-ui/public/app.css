@@ -135,7 +135,7 @@ div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr
 /* The mockup main column: one grid at the mockup body size (a page opts in with <div class="pg">); an unboxed
    section whose h2 is the muted section line; the group panel, with the group colour (--gc) as its left edge. */
 .pg{display:grid;gap:var(--s3);align-content:start;min-width:0;font-size:var(--fs-base)}
-.pg>.ph,.pg>.tiles,.pg>p,.sec>.tiles,.sec>.sub,.p>.sub{margin:0}
+.pg>.ph,.pg>.tiles,.pg>p,.pg>section,.sec>.tiles,.sec>.sub,.p>.sub{margin:0}
 .sec{display:grid;gap:var(--s2);min-width:0}
 .sec>h2,.p>h2,.p-h>h2{font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
 .p{display:grid;gap:var(--s2);padding:var(--s3) var(--s4);border:1px solid var(--rule);border-left:4px solid var(--gc,var(--accent));border-radius:10px;background:var(--surface);min-width:0;overflow-wrap:anywhere}
