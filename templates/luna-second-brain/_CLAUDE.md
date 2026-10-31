@@ -283,8 +283,8 @@ must apply this contract itself.
   hooks instead: run `bash scripts/hooks/install-nostash-hooks.sh` once per
   clone (`.git/hooks` is not versioned); `pre-commit install` would replace
   them. If a rollback already happened, pre-commit keeps the stashed patch in
-  its cache dir to recover from: `$PRE_COMMIT_HOME` if set, else
-  `$XDG_CACHE_HOME/pre-commit/` if set, else `~/.cache/pre-commit/`.
+  its cache dir to recover from: `$PRE_COMMIT_HOME` if non-empty, else
+  `$XDG_CACHE_HOME/pre-commit/` if non-empty, else `~/.cache/pre-commit/`.
 - Other vault traps (commit STALLs, upgrade-withheld edits, clip audits,
   search quirks): `docs/vault-troubleshooting.md`.
 
