@@ -201,9 +201,10 @@
 #   23  plugin-bump recheck: the PR changes a file under
 #       marketplace/plugins/ and `check-plugin-drift.sh --bump-required`, run
 #       from the freshly fetched base tip's own copy against the certified PR
-#       head, refuses it against the live base (a non-release PR changed a
-#       plugin version, or a release cut is not above a version a sibling cut
-#       already landed). Also when the file list, the base or head
+#       head, refuses it against the live base (a PR changed a plugin without
+#       raising its version above the base's, or bumped one with no other
+#       plugin change, or a release cut is not above a version already
+#       landed). Also when the file list, the base or head
 #       fetch, the checker blobs or the scratch repo cannot be read, a checker
 #       blob is empty, the checker exits 0 without its fixed
 #       success line (empty or unrelated output), or the fetched
@@ -1452,9 +1453,9 @@ elif [ "$mr_conc" != success ]; then
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went
-# green against whatever the base was when it ran. Plugin versions change only
-# in a release cut; a sibling cut that raised the same plugin to the same
-# version and merged afterwards leaves this cut green yet shipping a second
+# green against whatever the base was when it ran. A PR that changes a plugin
+# bumps its version; a sibling that raised the same plugin to the
+# same version and merged afterwards leaves this PR green yet shipping a second
 # content under that version, and the job body itself is PR-editable. This is the one
 # place that sees the live base, so it re-runs `check-plugin-drift.sh
 # --bump-required` here: the checker comes from a freshly fetched base tip
@@ -1540,10 +1541,13 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
     fi
     # Exit 0 alone is no verdict (a newline-only or shebang-only
     # blob exits 0 too). Require one of the checker's fixed success lines,
-    # whole-line, in its output; empty or unrelated output fails closed.
+    # whole-line, in its output; empty or unrelated output fails closed. The
+    # legacy "no plugin version changed outside a release cut" line stays so an
+    # older base-tip checker still reads as a verdict.
     bp_pfx="check-plugin-drift --bump-required: "
     case $'\n'"$bp_out"$'\n' in
-        *$'\n'"${bp_pfx}no plugin version changed outside a release cut"$'\n'* \
+        *$'\n'"${bp_pfx}every changed plugin carries a version bump above the base"$'\n'* \
+        | *$'\n'"${bp_pfx}no plugin version changed outside a release cut"$'\n'* \
         | *$'\n'"${bp_pfx}release cut: every changed plugin version is above the base"$'\n'* \
         | *$'\n'"${bp_pfx}no plugin files changed"$'\n'*) ;;
         *) bump_refuse "the base-tip checker exited 0 without its success line, so it gave no verdict on PR #$pr_num" "phase=checker-blob no-success-line=1 base=$bp_base" ;;

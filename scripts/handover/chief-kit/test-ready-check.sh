@@ -1499,12 +1499,12 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
 check "own-checkout .env: exit 0" "$rc" "0"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
-# --- 9. plugin versions change only in a release cut (a PR that changes
-# the root VERSION file). Any other PR must leave every version as it is at the
-# merge-base, so a version main moved since is never its problem; a release cut
-# is re-checked against the CURRENT origin/main, since two cuts can raise a
-# plugin to the same version with different content and mergeStateStatus stays
-# CLEAN, so check 1 cannot see it. Fixture: a
+# --- 9. a PR that changes a plugin bumps that plugin's version above the
+# CURRENT origin/main's; a bump with no other plugin change is
+# refused; a release cut (a PR that changes the root VERSION file) raises every
+# plugin it touches above main. Two PRs can raise a plugin to the same version
+# with different content and mergeStateStatus stays CLEAN, so check 1 cannot
+# see it. Fixture: a
 # bare origin; WORK builds history and pushes each PR head to refs/pull/77/head;
 # CLONE (what run() cds into) is cloned BEFORE main moves, so its origin/main is
 # stale and has none of the PR objects — check 9 must fetch both.
@@ -1542,6 +1542,10 @@ PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
 PR_REL_SAME=$(pr_head 0.4.71 from-pr release)
 PR_REL_AHEAD=$(pr_head 0.4.72 from-pr release)
 PR_PRE=$(pr_head 0.4.71-alpha from-pr release)
+PR_NEW_BUMP=$(pr_head 0.4.72 from-pr)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+write_plugin 0.4.72 base "chore: pr bumps only the manifest"
+PR_BUMP_ONLY=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q -B pr "$BASE_OID"
 git -C "$WORK" rm -rq "$PLUG"
 git -C "$WORK" commit -q -m "fix: pr removes the plugin, still listed"
@@ -1550,6 +1554,15 @@ printf '{"plugins":[]}\n' > "$WORK/marketplace/.claude-plugin/marketplace.json"
 git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr removes the plugin"
 PR_DEL=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+mkdir -p "$WORK/docs"
+git -C "$WORK" mv "$PLUG/body.txt" docs/body.txt
+git -C "$WORK" commit -q -m "fix: pr moves a plugin file out, no bump"
+PR_MOVE=$(git -C "$WORK" rev-parse HEAD)
+printf '{"name":"demo","version":"0.4.72"}\n' > "$WORK/$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "fix: pr moves a plugin file out and bumps"
+PR_MOVE_BUMP=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q -B pr "$BASE_OID"
 git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
 git -C "$WORK" commit -q -m "fix: pr drops only the manifest"
@@ -1566,6 +1579,13 @@ printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin
 git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr touches bad"
 PR_BAD=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+mkdir -p "$WORK/$BADP/.claude-plugin"
+printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
+printf 'x\n' > "$WORK/$BADP/body.txt"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "fix: pr introduces bad (not a release)"
+PR_BAD_NEW=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q main
 write_plugin 0.4.71 from-main "feat: main shipped 0.4.71"
 mkdir -p "$WORK/$BADP/.claude-plugin"
@@ -1574,27 +1594,62 @@ git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "feat: main bad manifest"
 git -C "$WORK" push -q origin main
 
-run_bump() {  # <pr head> <files> -> sets rc/out
+run_bump() {  # <pr head> <files> [renames "new old" lines] [renames-unreadable flag] -> sets rc/out
     git -C "$WORK" push -q -f origin "$1:refs/pull/$PR/head"
     local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
     SHA="$1"; REPO="$CLONE"; LEDGER="$CLONE/.git/cr-critic-scores.jsonl"
     reset_stubs
     STUB_FILES="$2"
+    STUB_RENAMES="${3:-}"
+    STUB_RENAMES_FAIL="${4:-}"
     rc=0; out="$(run)" || rc=$?
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 
-# RED: main moved the plugin to 0.4.71 after this PR branched; the PR edits the
-# plugin and leaves the version alone, so it passes with no merge of main.
+# A PR that changes a plugin bumps that plugin's version above the
+# CURRENT origin/main's. Main moved the plugin to 0.4.71 after this PR branched.
+# RED: the PR edits the plugin and leaves the version alone.
 run_bump "$PR_UNBUMPED" "$PLUG/body.txt"
-contains "plugin edit, version untouched, main moved: check 9 passes" "$out" "[PASS] 9."
-notcontains "plugin edit, version untouched, main moved: no check fails" "$out" "[FAIL]"
+check "plugin edit, version untouched: exit 1" "$rc" "1"
+contains "plugin edit, version untouched: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin edit, version untouched: names the plugin" "$out" "demo"
 
+# Bumped to the version main already ships: two contents under one version.
 run_bump "$PR_SAME" "$PLUG/body.txt"
-check "version change outside a release cut: exit 1" "$rc" "1"
-contains "version change outside a release cut: check 9 fails" "$out" "[FAIL] 9."
-contains "version change outside a release cut: names the plugin" "$out" "demo"
-contains "version change outside a release cut: says why" "$out" "outside a release cut"
+check "plugin edit bumped to main's version: exit 1" "$rc" "1"
+contains "plugin edit bumped to main's version: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin edit bumped to main's version: names the plugin" "$out" "demo"
+contains "plugin edit bumped to main's version: says why" "$out" "bump above main"
+
+# DoD: a plugin file changed AND the version bumped above main passes.
+run_bump "$PR_NEW_BUMP" "$PLUG/body.txt"
+contains "plugin edit bumped above main: check 9 passes" "$out" "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
+notcontains "plugin edit bumped above main: no check fails" "$out" "[FAIL]"
+
+# A plugin the PR introduces but main now ships is judged against main too (here
+# main's manifest carries no readable version, so the check fails closed).
+run_bump "$PR_BAD_NEW" "$BADP/.claude-plugin/plugin.json"
+check "new plugin main already ships: exit 1" "$rc" "1"
+contains "new plugin main already ships: check 9 fails" "$out" "[FAIL] 9."
+
+# A file moved out of the plugin is a change to the plugin: the PR file list names
+# only the destination, the plugin path is its previous_filename.
+run_bump "$PR_MOVE" "docs/body.txt" "docs/body.txt $PLUG/body.txt"
+check "plugin file moved out, no bump: exit 1" "$rc" "1"
+contains "plugin file moved out, no bump: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin file moved out, no bump: names the plugin" "$out" "demo"
+run_bump "$PR_MOVE_BUMP" "docs/body.txt
+$PLUG/.claude-plugin/plugin.json" "docs/body.txt $PLUG/body.txt"
+contains "plugin file moved out and bumped: check 9 passes" "$out" "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
+run_bump "$PR_MOVE" "docs/body.txt" "docs/body.txt $PLUG/body.txt" 1
+check "renamed-from paths unreadable: exit 1" "$rc" "1"
+contains "renamed-from paths unreadable: check 9 fails closed" "$out" "[FAIL] 9."
+
+# DoD: a bump with no other file change in the plugin is refused.
+run_bump "$PR_BUMP_ONLY" "$PLUG/.claude-plugin/plugin.json"
+check "bump with no plugin change: exit 1" "$rc" "1"
+contains "bump with no plugin change: check 9 fails" "$out" "[FAIL] 9."
+contains "bump with no plugin change: says why" "$out" "no other file of demo changed"
 
 run_bump "$PR_REL_SAME" "$PLUG/body.txt"
 check "release cut same-version-as-main: exit 1" "$rc" "1"

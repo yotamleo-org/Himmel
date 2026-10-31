@@ -101,7 +101,7 @@ repos:
         pass_filenames: false
 
       - id: plugin-version-bump-required
-        name: a plugin version changes only in a release cut (a root VERSION change)
+        name: a plugin change bumps that plugin's version (a bump alone is refused)
         entry: bash scripts/check-plugin-drift.sh --bump-required
         language: system
         files: ^marketplace/plugins/

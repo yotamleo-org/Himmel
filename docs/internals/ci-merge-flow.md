@@ -122,13 +122,16 @@ deliberate merge commit, never a rebase and never a force-push.
 3. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
    gate or e2e proof pinned to a sha) is re-taken after the merge.
 
-A sibling's plugin bump is not a reason. Plugin versions change only in the release cut,
-the PR that changes the root `VERSION` file; a feature PR never changes a `plugin.json`
-version, so two PRs editing one plugin from the same base both pass
-`plugin-version-bump` and neither needs a merge of main. The merge-on-green recheck runs
-the base-tip checker against the live base. It refuses a plugin version change outside a
-release cut, and a release cut that leaves a plugin it changes at or below the base's
-version, so two release cuts never ship different contents under one version.
+A sibling's plugin bump IS a reason for the plugin it bumped (HIMMEL-8368). A PR that
+changes a plugin bumps that plugin's `plugin.json` version above the base's, so two PRs
+bumping one plugin from the same base collide on the version line (or merge clean to the
+same number): the second merges main and bumps above it. `plugin-version-bump`, the
+ready-check item 9 and the merge-on-green recheck (which runs the base-tip checker against
+the live base) refuse a plugin change whose version is not above the base's, a version
+bump with no other change in that plugin, and a release cut that leaves a plugin it
+changes at or below the base's version, so two contents never ship under one version.
+A PR open across this change that edits a plugin must bump it; a sibling's bump on an
+unrelated plugin is no reason to merge main.
 
 Each merge-in costs a full round: a fresh CI run (PR median about 22 min, p90 about 36),
 a CodeRabbit delta on the new range, a fresh `READY` and a fresh `GO` at the new head.

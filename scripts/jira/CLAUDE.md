@@ -37,11 +37,15 @@ helpers (HIMMEL-437).
   shared by the CLI and MCP `create` (HIMMEL-6223). Sector is opt-in: the field
   id is config and the options are read live, never hardcoded; `jira sector
   setup` creates it (HIMMEL-6277).
-- `create` refuses a Task, Story or Bug with no placement: `--backlog`, `--fix-version`,
+- `create` refuses a Task, Story or Bug with no placement: `--proposed-version <v>`
+  (labels `proposed-<v>` and files the INTAKE request in the same call; the backlog is
+  `--backlog --proposed-version backlog --why <line>`), `--fix-version`,
   `--gate`, `--residual-of`, `--follow-up-of` or an inherited blocker version (a Bug may
   also be Highest). A ticket filed with no version queues an INTAKE request to the one
   declared release, on stderr (`jira release request`); a Bug that blocks open work goes
-  into a version, then needs a requested INTAKE (HIMMEL-7152).
+  into a version, then needs a requested INTAKE (HIMMEL-7152, HIMMEL-8170). Open tickets
+  that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
+  proposed version for each (dry run; `--commands` adds the lines for one rm-run).
 - Verify every `create`/`move` by checking the printed `Created HIMMEL-N`.
 - `JIRA_PROJECT_KEY` is required at runtime — no `HIMMEL` fallback.
 
