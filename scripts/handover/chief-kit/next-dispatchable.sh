@@ -564,7 +564,7 @@ platform_re = load_platform_re()
 # a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
 # removal verb (after an optional `prefix:`), says removal, or says `stop <gerund>` ("stop citing"); a removal verb elsewhere
 # ("Windows service stops unexpectedly") is a bug report on the dropped platform and stays dropped
-REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:(?:remove|drop|delete|retire|strip|purge)\b|removal\b)|\bremoval of\b|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
+REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:(?:remove|drop|delete|retire|strip|purge)\b|removal\b)|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
 
 def platform_dropped(i):
     return bool(platform_re.search(i['title'])) and 'windows-removal' not in i['labels'] and not REMOVAL_RE.search(i['title'])

@@ -1293,14 +1293,17 @@ retype "$MI/HIMMEL-911.md" Bug
 mk HIMMEL-912 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service crashes after device removal" "Edit scripts/lib/in12.sh only."
 mk HIMMEL-913 "To Do" Medium '["backlog","proposed-v1.0.1"]' '[]' '[]' "filed with a proposed version, INTAKE queued" "Edit scripts/lib/in13.sh only."
 mk HIMMEL-914 "To Do" Medium '["backlog","proposed-backlog"]' '[]' '[]' "filed to the backlog with INTAKE queued" "Edit scripts/lib/in14.sh only."
+mk HIMMEL-915 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows installer fails after removal of a device" "Edit scripts/lib/in15.sh only."
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
 runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
-oi="$(runi --priority-pool-only --top 7)"
+oi="$(runi --priority-pool-only --top 7)"; oi_rc=$?
+check "(8170) the intake dispatch exits 0" "0" "$oi_rc"
 has "(8170) a pool short of the slots with versionless operator work reads INTAKE:<m>" "$oi" "# pool=3/7,INTAKE:4"
 lacks "(8170) the pool line is not a bare LOW while INTAKE is non-zero" "$(printf '%s\n' "$oi" | grep '^# pool=')" "LOW"
 lacks "(8170) a windows title with a removal verb elsewhere in it is still dropped" "$oi" "LOCAL	HIMMEL-909"
 lacks "(8170) a windows title that only mentions removal is still dropped" "$oi" "LOCAL	HIMMEL-912"
+lacks "(8170) a bug that reports a failure after the removal of a device is still dropped" "$oi" "LOCAL	HIMMEL-915"
 lacks "(8170) a versionless High bug on the dropped platform is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-911"
 has "(8170) a title that opens with a removal verb is kept" "$oi" "LOCAL	HIMMEL-910"
 has "(8170) the intake line names operator-directed, High+ Bug, scope-label and proposed-version tickets with the version" "$oi" "# intake 4 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905 HIMMEL-913"

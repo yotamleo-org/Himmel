@@ -424,6 +424,13 @@ async function assertProposedVersion(o: { proposedVersion?: string; project?: st
   }
 }
 
+/** A version inherited from a --blocks or --split-from target places the ticket, so a proposal could not be honored. */
+function assertProposalNotInherited(o: { proposedVersion?: string }, inherited: string | undefined): void {
+  if (o.proposedVersion !== undefined && inherited !== undefined) {
+    throw new Error(`--proposed-version ${o.proposedVersion} cannot be honored: --blocks/--split-from places the ticket in ${inherited}; drop --proposed-version, or pass --backlog to opt out of the inherited version`);
+  }
+}
+
 /**
  * A Bug, Task or Story is placed at filing. A gated one, or a Highest Bug,
  * takes the active version (bugDefault); --backlog, --fix-version, --gate,
@@ -459,7 +466,10 @@ function placeAtFiling(
   );
 }
 
-const intakeWhy = (o: { why?: string }, title: string): string => o.why?.trim() || `filed to the backlog: ${title}`;
+const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string): string => {
+  const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
+  return o.why?.trim() || `${proposed}: ${title}`;
+};
 const intakeOwed = (type: string, fields: Record<string, unknown>): boolean => !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
 interface IntakeOptions {
@@ -800,6 +810,7 @@ export function registerCreate(program: Command): void {
         }
         if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
         const inherited = await residualInheritedVersion(options, residual);
+        assertProposalNotInherited(options, inherited);
         const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
         if (options.backlog) labels = [...new Set([...(labels ?? []), BACKLOG_LABEL])];
         const placed = placeAtFiling(versionOptions, labels, residual !== undefined);

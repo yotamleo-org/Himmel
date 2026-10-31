@@ -1816,6 +1816,24 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(storedToV().map((r) => r.to_v)).toEqual(['v1.1.3', null]);
   });
 
+  it.each(['--blocks', '--split-from'])('refuses --proposed-version with %s when the target carries the current version, instead of dropping the proposal', async (relation) => {
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string) =>
+      method === 'GET' && path === '/issue/HIMMEL-5?fields=project,fixVersions'
+        ? { fields: { project: { key: 'HIMMEL' }, fixVersions: [{ name: 'v1.1.3' }] } }
+        : base(method, path));
+    await expect(file('Task', '--proposed-version', 'v1.1.3', relation, 'HIMMEL-5')).rejects.toThrow(/--proposed-version.*v1\.1\.3/);
+    expect(posted()).toBe(false);
+  });
+
+  it('files the default INTAKE why from the proposed version, not the backlog', async () => {
+    await declare();
+    await file('Task', '--proposed-version', 'v1.1.3');
+    const why = readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8');
+    expect(why).toMatch(/proposed for v1\.1\.3/);
+    expect(why).not.toMatch(/filed to the backlog/);
+  });
+
   it('refuses a released proposed version without POSTing', async () => {
     await declare();
     await expect(file('Task', '--proposed-version', 'v1.1.2')).rejects.toThrow(/released/);
