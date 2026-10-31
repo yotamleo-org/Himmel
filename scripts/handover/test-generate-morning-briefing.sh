@@ -64,10 +64,11 @@ FAKE_GH="$TMP_ROOT/gh-fake.sh"
 cat >"$FAKE_GH" <<'FAKE'
 #!/usr/bin/env bash
 # The open-PR CI and review query (reviewDecision): FAKE_GH_PR_OPEN, else the call fails.
-if printf '%s ' "$@" | grep -q -- 'reviewDecision'; then
-    [ -n "${FAKE_GH_PR_OPEN:-}" ] || exit 1
-    printf '%s\n' "$FAKE_GH_PR_OPEN"; exit 0
-fi
+case " $* " in
+    *reviewDecision*)
+        [ -n "${FAKE_GH_PR_OPEN:-}" ] || exit 1
+        printf '%s\n' "$FAKE_GH_PR_OPEN"; exit 0 ;;
+esac
 case "$1 $2" in
     "pr list")
         # --search present => merged date query; else the all-state PR map.

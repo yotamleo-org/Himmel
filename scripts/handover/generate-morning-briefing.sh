@@ -391,7 +391,7 @@ if [ -n "$waiting_dir" ] && [ -d "$waiting_dir" ]; then
             READY)            go_count=$((go_count+1)); if [ -z "$go_oldest" ] || [[ "$_hhmm" < "$go_oldest" ]]; then go_oldest="$_hhmm"; fi ;;
             BLOCKED|FINDING)  q_count=$((q_count+1));  if [ -z "$q_oldest" ] || [[ "$_hhmm" < "$q_oldest" ]]; then q_oldest="$_hhmm"; fi ;;
         esac
-    done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do
+    done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do # gnu-ok: BSD find has -maxdepth and -mtime
         awk '/^- [0-9][0-9]:[0-9][0-9] (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)/ { m = $3; sub(/[^A-Z-].*/, "", m); t = $2 }
              END { if (m != "") printf "%s\t%s\n", m, t }' "$_doc" 2>/dev/null
     done)
