@@ -64,7 +64,7 @@ case " $* " in
         [ -f "$STUB/pool.fail" ] && exit 1
         [ -f "$STUB/pool.slow" ] && exec sleep 30
         [ -f "$STUB/pool.partial" ] && { printf 'LOCAL\tHIMMEL-9099\tMedium\tv1\tcut short\tfiles=z.sh\n'; exit 124; }
-        if [ -f "$STUB/pool.rows" ] && [ -f "$STUB/pool.intake" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,INTAKE:3\n# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
+        if [ -f "$STUB/pool.rows" ] && [ -f "$STUB/pool.intake" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,INTAKE:3\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"; if [ -s "$STUB/pool.intake" ]; then cat "$STUB/pool.intake"; else echo '# intake 3 for v1: HIMMEL-901 HIMMEL-902 HIMMEL-905'; fi
         elif [ -f "$STUB/pool.rows" ]; then cat "$STUB/pool.rows"; printf '# pool=%s/7,LOW\n' "$(wc -l < "$STUB/pool.rows" | tr -d ' ')"
         else printf '# pool=0/7,LOW\nPOOL-EMPTY\n'; fi
         case " $* " in *" --dispositions "*) [ ! -f "$STUB/dispositions" ] || cat "$STUB/dispositions" ;; esac ;;
@@ -504,6 +504,17 @@ rm -f "$STUB/pool.intake" "$STUB/pool.rows"
 I="$(new_inbox nointake)"
 arm "$I" "$WORK/nointake.out" 8
 check "(8170) a pool with no intake candidate prints no INTAKE command" "0" "$(grep -c '^# INTAKE: ' "$WORK/nointake.out")"
+
+# --- (8336) no open version: the intake line names the keys, and the wake prints no --to command ----
+for form in 'no-version-line:# intake 2: HIMMEL-901 HIMMEL-902' 'old-line:# intake 2 for no open version: HIMMEL-901 HIMMEL-902'; do
+    printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+    printf '%s\n' "${form#*:}" > "$STUB/pool.intake"
+    I="$(new_inbox "nov-${form%%:*}")"
+    arm "$I" "$WORK/nov-${form%%:*}.out" 8
+    check "(8336) $form: the wake names the intake keys" "1" "$(grep -c '^# intake 2.*HIMMEL-901 HIMMEL-902' "$WORK/nov-${form%%:*}.out")"
+    check "(8336) $form: the wake prints no INTAKE command and no --to value" "0" "$(grep -c -e '^# INTAKE: ' -e '--to ' "$WORK/nov-${form%%:*}.out")"
+done
+rm -f "$STUB/pool.intake" "$STUB/pool.rows"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

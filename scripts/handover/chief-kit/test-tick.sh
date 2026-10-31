@@ -3164,6 +3164,23 @@ chmod +x "$W/pd-classify"
 pd_tick="$(NEXT_DISPATCH_MIRROR="$PD" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TOKEN='' bash "$SUT" --doc "$pd_doc" 2>/dev/null)"
 contains 'a real tick uses the shared pool interpretation with PR ownership and chief decisions' "$pd_tick" ' pool=3/1/2/1 '
 
+# --- (8336) INTAKE=<n> and chains=STALE:<n>/<m>: versionless operator work the pool cannot show, and a
+# focus-chains.json that still lists Done steps. Each field is absent when there is nothing to say.
+PDI="$W/pdi-mirror/HIMMEL"; mkdir -p "$PDI" "$W/ic-dir"
+cp "$PD"/*.md "$PDI"/; cp "$W/pd-mirror/HIMMEL.versions.tsv" "$W/pdi-mirror/HIMMEL.versions.tsv"
+ic_doc="$W/ic-dir/HIMMEL-8336-chief.md"; cp "$pd_doc" "$ic_doc"
+ic_tick() { NEXT_DISPATCH_MIRROR="$PDI" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_STATE_DIR="$W/ic-state" TOKEN='' bash "$SUT" --doc "$ic_doc" 2>/dev/null; }
+not_contains 'with no versionless operator ticket the tick prints no INTAKE= (HIMMEL-8336)' "$(ic_tick)" ' INTAKE='
+not_contains 'with no focus-chains.json the tick prints no chains= (HIMMEL-8336)' "$(ic_tick)" ' chains='
+sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
+sed -e 's/^statusCategory: "x"/statusCategory: "Done"/' -e 's/904/906/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-906.md"
+rm -rf "$W/ic-state"
+contains 'a versionless operator-directed ticket shows as INTAKE=<n> beside pool= (HIMMEL-8336)' "$(ic_tick)" ' INTAKE=1 '
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"HIMMEL-904"}]},{"drain":"x"}]\n' > "$W/ic-dir/focus-chains.json"
+contains 'a focus-chains.json that lists a Done step shows chains=STALE:<done>/<steps> (HIMMEL-8336)' "$(ic_tick)" ' chains=STALE:1/3'
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"}]}]\n' > "$W/ic-dir/focus-chains.json"
+not_contains 'a focus-chains.json with no Done step prints no chains= (HIMMEL-8336)' "$(ic_tick)" ' chains='
+
 # The pool snapshot classifies every version ticket (140 s on a 23-worker fleet),
 # so a slow one never holds the tick: it reads ? until the detached snapshot lands, then counts.
 # The kit is the real one, file by file, but its next-dispatchable.sh sleeps 8 s on the pool call.

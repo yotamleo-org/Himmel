@@ -803,7 +803,7 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
     fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
-    intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
+    intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^ :][^ :]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
     [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to ${intake_ver} --why <why>\`, then run the rm-run once for the batch"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
