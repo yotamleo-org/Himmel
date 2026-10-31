@@ -17,6 +17,10 @@
 #     fallback. Without one, a refusal prints `ERROR: vm-clone: <reason>` and
 #     exits 1.
 #
+# Callers of vm_clone_ensure: after-report.sh, ci-runner.sh, provenance-roundtrip.sh,
+# chief-kit/vm-runner.sh (all take the allocator's port) and claudex-guest.sh (the one
+# caller that passes a fixed port: himmel-claudex on 2229).
+#
 # Globals (in / out)
 #   in : SOURCE_VM  the base VM the clones link to          (vm_clone_ensure)
 #        GUEST_USER the guest login                          (vm_ssh, vm_scp)
