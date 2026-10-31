@@ -135,7 +135,10 @@ wait
 check "5: F11 the ledger is valid JSON" "$(python3 -I -c 'import json,sys; json.load(open(sys.argv[1])); print("valid")' "$C" 2>&1)" valid
 check "5: F11 every concurrent add-item landed" "$(jget "$C" 'len(d["items"])')" "$n"
 check "5: F11 every key is distinct" "$(jget "$C" 'len({x["key"] for x in d["items"]})')" "$n"
-leftover="$(find "$tmp" -maxdepth 1 -name 'conc.json.*' ! -name 'conc.json.lock' | wc -l | tr -d ' ')"
+leftover=0
+for f in "$tmp"/conc.json.*; do
+    [ -e "$f" ] && [ "$f" != "$tmp/conc.json.lock" ] && leftover=$((leftover+1))
+done
 check "5: F11 no temp file is left behind" "$leftover" 0
 # two writers of different verbs at once: an add-item and a set must both apply
 D="$tmp/mix.json"
