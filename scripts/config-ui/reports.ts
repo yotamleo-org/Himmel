@@ -14,7 +14,9 @@ export type ReportView =
 export type ReportList = { days: string[]; newest: string | null; ageHours: number | null; today: string };
 export type SoFar = { day: string; shifts: { id: string; name: string; opened: string; closed: string; why: string; chiefs: number; prs: number }[] };
 
-export const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+// A day is a real calendar date: 2026-99-99 has the shape but is not one.
+export const DAY = { test: (s: string) => { const t = Date.parse(`${s}T00:00:00Z`); return DAY_SHAPE.test(s) && !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s; } };
 const FILE = /^morning-report-(\d{4}-\d{2}-\d{2})\.md$/;
 
 const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());

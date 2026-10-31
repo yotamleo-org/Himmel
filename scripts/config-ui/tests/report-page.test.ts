@@ -87,6 +87,7 @@ test("the report routes list the dated files, read one day, and answer none for 
   expect(one.sections[0].title).toBe("✅ What shipped");
   expect(await (await get(port, "/api/report?day=2026-10-25")).json()).toEqual({ state: "none", day: "2026-10-25" });
   expect((await get(port, "/api/report?day=../../etc/passwd")).status).toBe(400);
+  expect((await get(port, "/api/report?day=2026-99-99")).status).toBe(400);
   expect((await fetch(url(port, "/api/report?day=2026-10-27"))).status).toBe(401);
 });
 
@@ -99,6 +100,15 @@ test("so far lists the shifts closed today, straight from shifts.jsonl", async (
   const list = await (await get(port, "/api/reports")).json() as { today: string; soFar: { shifts: { id: string; prs: number; chiefs: number }[] } };
   expect(list.today).toBe(today);
   expect(list.soFar.shifts.map((s) => [s.id, s.chiefs, s.prs])).toEqual([[row.id, 1, 2]]);
+});
+
+test("report_day utc makes today the UTC date, local the station's", async () => {
+  seed();
+  const port = boot();
+  const local = new Date(), localDay = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  expect(((await (await get(port, "/api/reports")).json()) as { today: string }).today).toBe(localDay);
+  expect((await post(port, { ...GOOD, report_day: "utc" })).status).toBe(200);
+  expect(((await (await get(port, "/api/reports")).json()) as { today: string }).today).toBe(new Date().toISOString().slice(0, 10));
 });
 
 test("Configure shows the four settings with their values, and the save button", () => {

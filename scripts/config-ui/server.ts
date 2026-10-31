@@ -585,7 +585,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const handover = env.HANDOVER_DIR || "";
         if (!handover) return json({ days: [], newest: null, ageHours: null, today: "", reason: "no handover root is set (HANDOVER_DIR)" });
         const t = now(), d = new Date(t);
-        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const rs = readReports(); // report_day utc cuts the day at UTC midnight; local (and an unreadable config) at the station's
+        const today = "report_day" in rs.body && rs.body.report_day === "utc" ? d.toISOString().slice(0, 10)
+          : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         return json({ ...listReports(handover, t, today), soFar: soFar(shiftsFile(env), today) });
       }
       if (path === "/api/report") {

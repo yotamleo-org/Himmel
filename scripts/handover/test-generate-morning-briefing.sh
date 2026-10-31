@@ -856,6 +856,22 @@ echo "TEST: the Chiefs section lists each chief of the counted shifts with its s
 assert_contains "chiefs: heading"     "## 👥 Chiefs" "$sp"
 assert_contains "chiefs: a chief row" "IC-roadmap-chief" "$sp"
 
+echo "TEST: a report that could not be written does not claim its shifts"
+SH_FILE3="$SH_DIR/shifts3.jsonl"
+printf '%s\n' "$ROW_DAY" > "$SH_FILE3"
+: > "$SH_DIR/not-a-dir"
+SHIFTS_FILE="$SH_FILE3" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/not-a-dir/r.md" >/dev/null 2>&1 || true
+SHIFTS_FILE="$SH_FILE3" MORNING_TODAY=2026-10-30 run_script --since "$MARKER" --out "$SH_DIR/after-failed.md" >/dev/null
+assert_contains "shifts: a shift whose report failed to write is counted by the next report" "2026-10-28T08:00:00+01:00" "$(cat "$SH_DIR/after-failed.md")"
+
+echo "TEST: the Waiting snapshot is the last clock cut's, not a later idle close's empty one"
+SH_FILE4="$SH_DIR/shifts4.jsonl"
+WAIT_CUT=$(jq -c '. + {waiting:[{kind:"go",ticket:"HIMMEL-1",title:"ship the thing",chief:"IC-roadmap-chief",since:null}]}' <<<"$ROW_DAY")
+WAIT_IDLE=$(jq -c '. + {waiting:[]}' <<<"$ROW_NIGHT")
+printf '%s\n%s\n' "$WAIT_CUT" "$WAIT_IDLE" > "$SH_FILE4"
+SHIFTS_FILE="$SH_FILE4" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/wait.md" >/dev/null
+assert_contains "waiting snapshot: the cut's row is shown" "ship the thing" "$(cat "$SH_DIR/wait.md")"
+
 # Summary --------------------------------------------------------------
 
 echo

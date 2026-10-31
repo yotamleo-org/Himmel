@@ -468,7 +468,7 @@ fi
 # ledger beside the record (shifts.reported.tsv, id TAB report day) is that memory, so a re-run of a
 # day keeps its shifts and a re-run of an older day takes none that were written since.
 # The empty string for SHIFTS_FILE / MORNING_SHIFT_CMD means "no such input" (tests); unset means the real source.
-shifts_ok=0; shifts_json="[]"; shifts_n=0; shifts_why=""
+shifts_ok=0; shifts_json="[]"; shifts_n=0; shifts_why=""; ledger_new=""; ledger=""
 shifts_file=""
 if [ "${SHIFTS_FILE+set}" = set ]; then
     shifts_file="$SHIFTS_FILE"
@@ -498,6 +498,7 @@ else
         # swallow-ok: an unreadable record leaves no ids, and the section reads not available
         all_ids=$(jq -r '.id // empty' "$shifts_file" 2>/dev/null | awk '!seen[$0]++') || all_ids=""
         ledger_latest=""
+        ledger_new=""   # claimed here, written to the ledger only after the report is on disk
         [ -f "$ledger" ] && ledger_latest=$(cut -f2 "$ledger" | sort | tail -1)
         counted=""
         [ -f "$ledger" ] && counted=$(awk -F'\t' -v d="$today" '$2 == d { print $1 }' "$ledger")
@@ -507,7 +508,7 @@ else
                 [ -n "$_id" ] || continue
                 if [ -f "$ledger" ] && awk -F'\t' -v id="$_id" '$1 == id { f = 1 } END { exit !f }' "$ledger"; then continue; fi
                 counted="${counted:+$counted$'\n'}$_id"
-                [ "$DRY_RUN" -eq 0 ] && printf '%s\t%s\n' "$_id" "$today" >>"$ledger"
+                ledger_new="${ledger_new}$_id"$'\t'"$today"$'\n'
             done <<<"$all_ids"
         fi
         ids_json=$(printf '%s\n' "$counted" | jq -R 'select(. != "")' | jq -sc '.')
@@ -550,9 +551,9 @@ fi
 # The Waiting rows snapshotted at the cut that closed the last counted shift, labelled with that time.
 waiting_snap=""; waiting_snap_at=""
 if [ "$shifts_n" -gt 0 ]; then
-    waiting_snap_at=$(jq -r '[ .[] | select(.waiting != null) ] | last | .closed // empty' <<<"$shifts_json")
+    waiting_snap_at=$(jq -r '[ .[] | select(.waiting != null and .why != "idle") ] | last | .closed // empty' <<<"$shifts_json")
     if [ -n "$waiting_snap_at" ]; then
-        waiting_snap=$(jq -r '[ .[] | select(.waiting != null) ] | last | .waiting[]? |
+        waiting_snap=$(jq -r '[ .[] | select(.waiting != null and .why != "idle") ] | last | .waiting[]? |
             "  - \(.kind) \(.ticket // "") \(.title) (\(.chief))"' <<<"$shifts_json")
     fi
 fi
@@ -955,5 +956,7 @@ fi
 
 mkdir -p "$(dirname "$OUT_FILE")"
 printf '%s\n' "$briefing" > "$OUT_FILE"
+# The shifts this report counted are claimed only now that it is on disk, so a failed write leaves them for the next day.
+[ -n "$ledger_new" ] && printf '%s' "$ledger_new" >>"$ledger"
 echo "briefing: wrote $OUT_FILE ($pr_count PRs, $commit_count commits, ${#ticket_keys[@]} ticket keys)"
 exit 0
