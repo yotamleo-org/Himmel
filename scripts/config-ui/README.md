@@ -113,6 +113,32 @@ unknown. Lane comes only from launch metadata, never from a model name;
 a document fallback reads the assigned worker's title, not sibling mentions. Ledger overrides:
 `HIMMEL_EVAL_RUNS_LEDGER`, `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
+## Shift page (`#/shift`)
+
+First in the rail, with a badge counting the rows that wait on you. A shift is the whole fleet between cuts, never one
+chief's run: every bucket (the voice chief too) counts. `GET /api/shift` (token-gated, GET only; `?id=<opened>` picks a
+closed shift) polls `shift.ts`, which is the one writer of `shifts.jsonl` (`$HANDOVER_DIR/shifts.jsonl`, or `SHIFTS_FILE`),
+under a lock and idempotent on the shift id. The page shows Chiefs (span and PR credit), Waiting on you (links out; nothing
+here acts), Running now and Shipped, and for a closed shift the pager and Carried to the next shift. With no shift open it
+says so and names the last one. The route passes through the same redactor as the others, except that a value which is
+wholly a chief doc name (`HIMMEL-nextleg-2026-10-31LO-roadmap-chief`) stays readable in the chief-name fields: the
+redactor would otherwise read its 32+ letters and digits as a secret.
+
+- **The cut rule.** A shift closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
+  20:00 clock cuts once it is at least 4 hours old. It is named day when it opened between 08:00 and 20:00, else night. Stamps
+  are ISO 8601 with the offset in force when the shift opened; the window is half open, `[opened, closed)`, so a PR merged at
+  the close instant belongs to the next shift. The id is the opened stamp. A clock cut opens the next shift only if something
+  was held at the cut; an idle fleet leaves none open until a chief goes live.
+- **Merged PRs.** `gh pr list --search merged:<opened>..<closed> --limit 200` (the board's 60 was too few: 49 PRs merged in one
+  real night). `GH_CMD` overrides `gh`. A page that comes back full is split by time until every PR is read. A failed `gh` read
+  closes nothing: the close waits for the next poll that can read it, so a shift is never written without its PR credit, and the
+  page says the list could not be read instead of showing an empty Shipped. A poll older than the last one applied is ignored.
+  A chief counts as live only while its own doc holds a queue lock.
+- **Attribution.** A PR is credited to the chief whose span holds its merge; a merge in a hand-over gap is named for both and
+  counted once. A chief's span is its first LIVE to its last WRAPPED or HALTED stamp; a doc that never wrapped and holds no queue lock ends at its last stamp, so it is not credited with later merges. A closed shift also records its total merged count, so the last-shift line counts PRs no chief span holds.
+- **The release record is derived.** `queue-lock` keeps no release record, so the last release is the newest lock heartbeat or
+  WRAPPED stamp seen (`ponytail:` in `shift.ts`).
+
 ## Roadmap page (`#/roadmap`)
 
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
