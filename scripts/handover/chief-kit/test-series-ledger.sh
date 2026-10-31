@@ -52,6 +52,11 @@ check "1: second create leaves the file" "$(cat "$L")" "$before"
 rc=0; out="$(sl create --ledger "$tmp/bad.json" --sid s2 --completes-ticket maybe --writer /docs/a.md 2>&1)" || rc=$?
 check "1: bad completes-ticket refuses rc 2" "$rc" 2
 check "1: bad create writes nothing" "$([ -e "$tmp/bad.json" ] && echo yes || echo no)" no
+rc=0; sl create --ledger "$tmp/bad.json" --sid s2 --completes-ticket no --writer "" >/dev/null 2>&1 || rc=$?
+check "1: an empty writer refuses rc 2" "$rc" 2
+rc=0; sl create --ledger "$tmp/bad.json" --sid "" --completes-ticket no --writer /docs/a.md >/dev/null 2>&1 || rc=$?
+check "1: an empty sid refuses rc 2" "$rc" 2
+check "1: refused creates write nothing" "$([ -e "$tmp/bad.json" ] && echo yes || echo no)" no
 
 # --- 2. add-item ---------------------------------------------------------
 rc=0; sl add-item --ledger "$L" --key HIMMEL-1 --branch series/s1/HIMMEL-1 --writes a.js,b.js >/dev/null 2>&1 || rc=$?
@@ -113,6 +118,9 @@ rc=0; out="$(sl pass --ledger "$L" --from /docs/not-the-writer.md --to /docs/b.m
 check "4: pass from a non-writer refuses rc 4" "$rc" 4
 contains "4: refusal names the writer" "$out" /docs/a.md
 check "4: writer unchanged after refusal" "$(jget "$L" 'd["writer"]')" /docs/a.md
+rc=0; sl pass --ledger "$L" --from /docs/a.md --to "" >/dev/null 2>&1 || rc=$?
+check "4: pass to an empty writer refuses rc 2" "$rc" 2
+check "4: writer unchanged after the empty-writer refusal" "$(jget "$L" 'd["writer"]')" /docs/a.md
 rc=0; sl pass --ledger "$L" --from /docs/a.md --to /docs/b.md >/dev/null 2>&1 || rc=$?
 check "4: pass from the writer rc 0" "$rc" 0
 check "4: writer moved" "$(jget "$L" 'd["writer"]')" /docs/b.md

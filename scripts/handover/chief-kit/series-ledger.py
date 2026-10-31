@@ -130,6 +130,8 @@ def cmd_read(a):
 def cmd_create(a):
     if a.completes_ticket not in YES_NO:
         raise Refused(2, "completes-ticket must be yes or no, not %r" % a.completes_ticket)
+    if not a.sid or not a.writer:
+        raise Refused(2, "sid and writer must not be empty")
     with Locked(a.ledger):
         if os.path.exists(a.ledger):
             raise Refused(4, "ledger already exists: %s" % a.ledger)
@@ -181,6 +183,8 @@ def cmd_set(a):
 
 
 def cmd_pass(a):
+    if not a.to_doc:
+        raise Refused(2, "the new writer must not be empty")
     with Locked(a.ledger):
         data = load(a.ledger)
         if data["writer"] != a.from_doc:
