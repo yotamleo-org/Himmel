@@ -6,9 +6,8 @@
 # snapshot reads back exactly, a missing/stale/malformed one fails LOUD with
 # an empty stdout, and one session never reads another session's snapshot.
 #
-# Fixtures are placed via the script's own --cache-path resolver so the suite
-# stays platform-neutral (the HUD hashes a Windows path under Git Bash and a
-# POSIX path elsewhere). The end-to-end proof against a REAL running HUD is
+# Fixtures are placed via the script's own --cache-path resolver, so the suite
+# hashes the same path the HUD does. The end-to-end proof against a REAL running HUD is
 # recorded in the PR body, not here - a hermetic suite must not
 # depend on a live statusline.
 set -uo pipefail

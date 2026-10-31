@@ -46,7 +46,7 @@ OPENROUTER_HAIKU="${OPENROUTER_HAIKU:-anthropic/claude-haiku-5.5}"
 OPENROUTER_SONNET="${OPENROUTER_SONNET:-anthropic/claude-sonnet-5.5}"
 OPENROUTER_OPUS="${OPENROUTER_OPUS:-anthropic/claude-opus-5.5}"
 # ponytail: offline synchronous Claude catalog snapshot (2026-10-02), refresh this allowlist
-# and its PowerShell twin when adopting a newly listed OpenRouter Claude slug.
+# when adopting a newly listed OpenRouter Claude slug.
 validate_tier() { # $1 env name, $2 slug; exact membership rejects malformed input.
   case "$2" in
     anthropic/claude-sonnet-5.5|anthropic/claude-opus-5.5|\

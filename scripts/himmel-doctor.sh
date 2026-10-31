@@ -4049,9 +4049,7 @@ check_c52_graphify_ollama() {
         command -v "$uv_bin" >/dev/null 2>&1 && tooldir="$("$uv_bin" tool dir 2>/dev/null)"
         venv="${tooldir:-$HOME/.local/share/uv/tools}/graphifyy"
     fi
-    for c in "$venv/bin/python" "$venv/Scripts/python.exe"; do
-        [ -x "$c" ] && { py="$c"; break; }
-    done
+    [ -x "$venv/bin/python" ] && py="$venv/bin/python"
     if [ -z "$py" ]; then
         emit OK C52-graphify-ollama "no uv graphifyy venv -- [ollama] extra check skipped"
         return 0

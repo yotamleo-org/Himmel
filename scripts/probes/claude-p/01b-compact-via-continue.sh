@@ -47,7 +47,7 @@ if ! check_continued_sid "Say B" "$OUT_DIR/01b-b.json"; then
   exit 1
 fi
 
-MSYS_NO_PATHCONV=1 timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --continue \
+timeout "$TIMEOUT_S" claude -p --model "$MODEL" --max-turns 1 --continue \
   --permission-mode dontAsk --output-format json "/compact" \
   > "$OUT_DIR/01b-c.json" 2>"$OUT_DIR/01b-c.err"
 echo "01b-c rc=$?"

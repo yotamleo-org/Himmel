@@ -128,8 +128,7 @@ config_dir() {
   printf '%s\n' "$d"
 }
 
-# Node's path.resolve() form of a path, which is what the HUD hashes: a Windows
-# drive path under Git Bash, the POSIX path everywhere else.
+# Node's path.resolve() form of a path, which is what the HUD hashes.
 native_path() {
   local p="$1" d
   # The HUD hashes path.resolve() output, which is always absolute. Canonicalise
@@ -140,10 +139,7 @@ native_path() {
   if d=$(cd "$(dirname "$p")" 2>/dev/null && pwd); then
     p="$d/$(basename "$p")"
   fi
-  case "$(uname -s 2>/dev/null || echo unknown)" in
-    MINGW*|MSYS*|CYGWIN*) cygpath -w "$p" ;;
-    *) printf '%s\n' "$p" ;;
-  esac
+  printf '%s\n' "$p"
 }
 
 # Portable mtime in epoch seconds: GNU stat (Git Bash/Linux) first, then

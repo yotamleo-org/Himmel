@@ -24,35 +24,15 @@ if [ "$GUARDRAIL_MODE" = "__next__" ]; then
   echo "setup-hooks: --guardrail-mode requires a value (global|project)" >&2; exit 2
 fi
 
-is_windows() {
-  case "$(uname -s 2>/dev/null || echo)" in
-    *MINGW*|*MSYS*|*CYGWIN*|*NT*) return 0 ;; *) return 1 ;;
-  esac
-}
-
-# Absolute native path to node (baked into the hook commands + used to run the
-# module). cygpath -m yields the C:/… form node/execFileSync can execute.
+# Absolute path to node (baked into the hook commands + used to run the module).
 resolve_node() {
   local n
   n=$(command -v node 2>/dev/null) || return 1
-  if is_windows && command -v cygpath >/dev/null 2>&1; then cygpath -m "$n" 2>/dev/null && return 0; fi
   printf '%s\n' "$n"
 }
 
-# Absolute native path to a real bash for the wrapper's GUARDRAIL_BASH — a bare
-# `bash` on Windows may resolve to the WSL System32 stub and fail the guardrail
-# closed, so prefer git-bash.exe by absolute path.
+# Absolute path to a real bash for the wrapper's GUARDRAIL_BASH.
 resolve_bash() {
-  local b c
-  if is_windows; then
-    for c in "C:/Program Files/Git/bin/bash.exe" "C:/Program Files/Git/usr/bin/bash.exe" \
-             "C:/Program Files (x86)/Git/bin/bash.exe"; do
-      [ -x "$c" ] && { printf '%s\n' "$c"; return 0; }
-    done
-    b=$(command -v bash 2>/dev/null || echo)
-    if [ -n "$b" ] && command -v cygpath >/dev/null 2>&1; then cygpath -m "$b" 2>/dev/null && return 0; fi
-    printf '%s\n' "${b:-bash}"; return 0
-  fi
   command -v bash 2>/dev/null || printf 'bash\n'
 }
 
