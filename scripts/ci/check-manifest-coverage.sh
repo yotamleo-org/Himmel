@@ -35,6 +35,7 @@ MIN_SECONDS=$((MIN_DAYS * 86400))
 # prefix|reason — a manifest under a prefix is deliberately not watched.
 EXEMPT=(
   "marketplace/plugins/claude-hud|vendored tree, moves on a re-vendor (its VENDORED.md)"
+  "marketplace/plugins/pstack/skills/statechart/scripts|pinned upstream vendor, moves only on re-vendor (pstack/VENDORED.md)"
   "scripts/lanes/bench/fixtures|benchmark fixtures, never installed"
 )
 

@@ -84,6 +84,11 @@ TLC 1.7.4 SHA-256 (same pin as upstream):
 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`.
 Node 22.18–22.x or 23.6+, Bun 1.1.5+, or Deno 2+ runs the TypeScript entry point.
 `fast-check` 4.5.3 is an upstream test-only dependency, not installed by vendoring.
+The manifest-coverage gate excludes only `skills/statechart/scripts/` from
+Dependabot ownership, following the pinned claude-hud precedent: this upstream
+manifest changes only with a reviewed re-vendor, not an independent bot bump.
+The adjacent non-vendored package negative control remains subject to coverage;
+production npm audit and the complete hash inventory still apply.
 
 Run the local drift/profile/prerequisite check with:
 
