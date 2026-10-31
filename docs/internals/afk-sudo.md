@@ -48,13 +48,15 @@ L, O or U; typed in any case, O read as 0, I and L as 1). It lives only in the r
 file. Root sends the notice: the id, the expiry, the nonce, the mode (`ALL` or the class
 name), run-as, session and ticket, the cwd, every argv element as written (argv[0] with
 the first 8 hex of its sha256; a glued `key=/path` element or a directory is never
-presented as bound), stdin, the text of a shell `-c` program or a shown script file, the
+presented as bound), stdin, the text of a shell `-c` program or a shown script file (argv[0]
+included when it is a `#!` script), the
 `blocked_by` and `why` claims, and the record hash. argv[0] or a file argument that a
 non-root user can change in place (not owned by root, or group- or world-writable) is
 marked `user-writable`; a file argument whose body is not shown (over 64 KiB, or one the
-operator could not read) is marked `NOT SHOWN`. Text is escaped and each element is
-framed (`⟦…⟧`) with control and non-ASCII characters shown as escapes. When the message would
-pass Telegram's limit it is cut, and the whole request goes as a `<id>.json` document beside
+operator could not read), and a user-writable argv[0] that is not a shown script, is marked
+`NOT SHOWN`. Text is escaped and each element is
+framed (`⟦…⟧`) with control and non-ASCII characters shown as escapes. When an element (the cwd included) or the message would
+pass its limit it is cut, and the whole request goes as a `<id>.json` document beside
 it. If either send fails the request is withdrawn (`result=notice-failed`, a `notice` ledger
 row, the step spent): the operator never approves what they were not shown.
 

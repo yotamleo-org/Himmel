@@ -14,8 +14,8 @@
 # root-only notice-bot.env for the notice bot's token (the bot root sends each request's
 # facts and nonce through; no request is filed while it is empty).
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
-# allowlist, mode allowlist and the run kind off (the run kind is also compiled
-# off until a release flips it); enabling it is a separate `sudoedit` by the operator.
+# allowlist, mode allowlist and the run kind off (run.enabled false; the compiled
+# switch RUN_KIND_SHIPPED is on since slice 1b); enabling it is a separate `sudoedit` by the operator.
 # A session talks to the installed helper through scripts/lib/afk-run (run kind) or
 # scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the

@@ -1252,9 +1252,20 @@ new_root factsargv0; cfg "$ALL" true
 printf '#!/bin/sh\necho hi\n' > "$R/tool"; chmod 0755 "$R/tool"
 out=$(rr 0 -- "$R/tool")
 assert_contains "a user-writable argv[0] is marked" "⚠️ <b>user-writable</b>" "$(tg notice sendMessage text | grep '^\[0\]')"
+assert_contains "a script run as argv[0] warns" "⚠️ SHELL: the effect is the script below, read it" "$(tg notice sendMessage text)"
+assert_contains "a script run as argv[0] is shown" "⟦echo hi⟧" "$(tg notice sendMessage text)"
 assert_eq "the facts message is sent as HTML" "HTML" "$(tg notice sendMessage parse_mode)"
 assert_eq "the facts message goes to the operator" "$OP" "$(tg notice sendMessage chat_id)"
 assert_eq "a short request attaches nothing" "" "$(tg notice sendDocument document)"
+new_root factsbin; cfg "$ALL" true
+cp /usr/bin/true "$R/tbin"
+out=$(rr 0 -- "$R/tbin")
+assert_contains "a user-writable binary argv[0] is marked NOT SHOWN, user-writable" "⚠️ <b>NOT SHOWN, user-writable</b>" "$(tg notice sendMessage text | grep '^\[0\]')"
+new_root factscwd; cfg "$ALL" true
+longcwd="$R/$(printf 'd%.0s' $(seq 130))"; mkdir -p "$longcwd"
+out=$(rr 0 --cwd "$longcwd" -- systemctl restart himmel-test.service)
+assert_contains "a cut cwd marks the message truncated" "TRUNCATED, full request attached" "$(tg notice sendMessage text)"
+assert_contains "a cut cwd attaches the full request" "$longcwd" "$(tg notice sendDocument document)"
 new_root factsallow; cfg '' true
 out=$(rr 0 -- systemctl restart himmel-test.service)
 assert_contains "allowlist mode names the class" "Mode: allowlist · class systemctl-restart" "$(tg notice sendMessage text)"

@@ -667,16 +667,21 @@ def elem(s, cap, keep):
     return f"⟦{t}⟧" + (f"…(+{cut} chars)" if cut else "") + (" non-ASCII" if wide else ""), bool(cut)
 
 
+def argv0_script(rec, bodies):
+    """Whether argv[0] is a script ("#!") whose text the record shows."""
+    return any(p == rec.get("argv0_path") and b.startswith("#!") for p, b in bodies)
+
+
 def script_texts(rec, bodies, stdin_text):
     """(label, text) for what a shell or interpreter would run: the -c/-e program, every shown file
-    body but the program's own, and the stdin."""
+    body (argv[0]'s only when it is a script, never a binary), and the stdin."""
     argv, out = rec["argv"], []
     if INTERPRETERS.fullmatch(os.path.basename(argv[0])):
         for i, a in enumerate(argv[1:-1], 1):
             if a.startswith("-") and not a.startswith("--") and re.search(r"[ce]", a):
                 out.append((f"{a} program", argv[i + 1]))
                 break
-    out += [(f"file {path}", body) for path, body in bodies if path != rec.get("argv0_path")]
+    out += [(f"file {path}", body) for path, body in bodies if path != rec.get("argv0_path") or body.startswith("#!")]
     if stdin_text:
         out.append(("stdin", stdin_text))
     return out
@@ -692,10 +697,12 @@ def user_writable(path):
     return st.st_uid != 0 or bool(st.st_mode & 0o022)
 
 
-def file_marks(rec, i):
-    """` ⚠️ NOT SHOWN, user-writable` for argv element i when it is argv[0] or a bound file argument."""
+def file_marks(rec, i, argv0_shown):
+    """` ⚠️ NOT SHOWN, user-writable` for argv element i when it is argv[0] or a bound file argument.
+    A root-owned argv[0] that is not shown (a system binary) gets no mark."""
     if i == 0:
-        path, shown = rec.get("argv0_path"), True
+        path = rec.get("argv0_path")
+        shown = argv0_shown or not (path and user_writable(path))
     else:
         targets = rec.get("targets") or []
         t = targets[i] if i < len(targets) else ""
@@ -713,25 +720,26 @@ def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
     rid, root = rec["id"], rec["run_as"] == "root"
     left = max(1, round((rec["expires"] - now()) / 60))
     noun = "sudo" if rec["kind"] == "sudo" else ("ROOT run" if root else "run")
+    cwd, cut = elem(rec["cwd"], EL_CAP, EL_KEEP)
     head = [f"{'🔐⚠️' if root else '🔐'} AFK {noun} {rid} · expires {time.strftime('%H:%MZ', time.gmtime(rec['expires']))} "
             f"({left} min) · nonce <b>{nonce}</b>",
             "Mode: ALL (any command, TOTP)" if mode == "all" else f"Mode: allowlist · class {esc(cls)[0]}",
             "Run as: <b>⚠️ ROOT</b>" if root else f"Run as: {esc(rec['run_as'])[0]}",
             f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}",
-            f"cwd: {elem(rec['cwd'], EL_CAP, EL_KEEP)[0]}"]
-    cut, body = False, [f"argv ({len(rec['argv'])}):"]
+            f"cwd: {cwd}"]
+    body, script0 = [f"argv ({len(rec['argv'])}):"], argv0_script(rec, bodies)
     for i, a in enumerate(rec["argv"][:ARGS_SHOWN]):
         t, c = elem(a, EL_CAP, EL_KEEP)
         cut |= c
         body.append(f"[{i}] {t}" + (f" sha256 {rec['argv0_sha256'][:8]}" if i == 0 and rec.get("argv0_sha256") else "")
-                    + file_marks(rec, i))
+                    + file_marks(rec, i, script0))
     if len(rec["argv"]) > ARGS_SHOWN:
         body.append(f"…(+{len(rec['argv']) - ARGS_SHOWN} args)")
         cut = True
     nstdin = rec.get("stdin", {}).get("bytes", 0)
     body.append(f"stdin: {nstdin} bytes" if nstdin else "stdin: none")
     targets = rec.get("targets") or []
-    if INTERPRETERS.fullmatch(os.path.basename(rec["argv"][0])) or any(t.startswith("file:") for t in targets[1:]):
+    if script0 or INTERPRETERS.fullmatch(os.path.basename(rec["argv"][0])) or any(t.startswith("file:") for t in targets[1:]):
         body.append("⚠️ SHELL: the effect is the script below, read it")
     room = SCRIPT_LINES
     for label, text in script_texts(rec, bodies, stdin_text):
