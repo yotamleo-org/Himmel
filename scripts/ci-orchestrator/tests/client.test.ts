@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from "vitest";
-import { claimFromVm, degradeToDirect, localRoute, type HttpPostFn } from "../src/client.js";
+import { claimFromVm, completeOnVm, holdLease, degradeToDirect, localRoute, type HttpPostFn } from "../src/client.js";
 import { type JobAttrs } from "../src/ledger.js";
 import { type LaneAvailability } from "../src/routing.js";
 import { type ActMatrix } from "../src/act-matrix.js";
@@ -83,5 +83,42 @@ describe("localRoute (client-side local-exec decision, protect-local)", () => {
       githubUp: true,
     });
     expect(d.lane).toBe("local-exec");
+  });
+});
+
+describe("completeOnVm (HIMMEL-8439)", () => {
+  test("sends the claimant id with /complete", async () => {
+    const post = vi.fn<HttpPostFn>(async () => ({ ok: true }));
+    expect(await completeOnVm("http://vm:9000", "tok", "j1", "success", post, "local")).toBe("completed");
+    expect(post.mock.calls[0][0]).toBe("http://vm:9000/complete");
+    expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", conclusion: "success", daemon: "local" }); // t13b-ok: daemon is the wire field name
+  });
+
+  test("a refusal or unreachable VM is reported, never thrown", async () => {
+    const refuse: HttpPostFn = async () => ({ error: "not the claimant" });
+    expect(await completeOnVm("http://vm:9000", "tok", "j1", "success", refuse, "local")).toBe("refused");
+    const down: HttpPostFn = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    expect(await completeOnVm("http://vm:9000", "tok", "j1", "success", down, "local")).toBe("unreachable");
+  });
+});
+
+describe("holdLease (HIMMEL-8438)", () => {
+  test("renews on an interval while the job runs and stops when told", async () => {
+    vi.useFakeTimers();
+    try {
+      const post = vi.fn<HttpPostFn>(async () => ({ ok: true }));
+      const stop = holdLease("http://vm:9000", "tok", "j1", post, 1000, "local");
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(post).toHaveBeenCalledTimes(3);
+      expect(post.mock.calls[0][0]).toBe("http://vm:9000/renew");
+      expect(post.mock.calls[0][2]).toEqual({ jobId: "j1", daemon: "local" }); // t13b-ok: daemon is the wire field name
+      stop();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(post).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

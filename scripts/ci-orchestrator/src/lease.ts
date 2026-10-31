@@ -56,3 +56,30 @@ export function grantClaim(
   appendEvent({ t: "claim", ts: new Date(now).toISOString(), jobId, daemon: claimant, lease }, env, path);
   return { ok: true, lease };
 }
+
+// True iff `daemon` is the job's current claimant AND its claim is still live at
+// `now` (status "claimed", lease not yet expired). The one test /renew, /complete
+// and the scheduler's post-dispatch re-check all share, so "who may act on a job"
+// has a single definition.
+export function holdsLiveClaim(js: JobState | undefined, claimant: string, now: number): boolean {
+  return !!js && js.status === "claimed" && js.claimant === claimant && !!js.lease && Date.parse(js.lease) > now;
+}
+
+// Extend `claimant`'s live lease to now+ttlMs. Refused (ok:false) for
+// an unknown job, a non-claimant, or a lease that already lapsed — a lapsed lease
+// may already have been granted elsewhere, so it can never be revived. Synchronous
+// for the same reason as grantClaim.
+export function renewLease(
+  jobId: string,
+  claimant: string,
+  ttlMs: number,
+  now: number,
+  env: Record<string, string | undefined> = process.env,
+  path?: string,
+): ClaimResult {
+  const js = readState(env, path).get(jobId);
+  if (!holdsLiveClaim(js, claimant, now)) return { ok: false, heldBy: js?.claimant };
+  const lease = new Date(now + ttlMs).toISOString();
+  appendEvent({ t: "lease-renew", ts: new Date(now).toISOString(), jobId, lease }, env, path);
+  return { ok: true, lease };
+}

@@ -111,6 +111,9 @@ export function reduce(events: CiEvent[]): Map<string, JobState> {
         }
         break;
       case "dispatch":
+        // Only a queued or claimed job can start running: a dispatch appended from a
+        // stale snapshot must not move a finished job back.
+        if (js.status !== "queued" && js.status !== "claimed") break;
         js.status = "running";
         js.lane = e.lane;
         js.runId = e.runId;
