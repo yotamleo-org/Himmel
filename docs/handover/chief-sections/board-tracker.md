@@ -75,7 +75,9 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
     Render a later version the same way to its own file, without `--plan-dir`.
     The tracker stays local like the board: open each rendered file, never
-    publish it. Without a `<out>.published` stamp file the tick reads plain `ok`.
+    publish it. Delete a leftover `<out>.published` stamp from the old publish
+    flow: with it, every render reads `tracker=REPUBLISH:<age>`; without it the
+    tick reads plain `ok`.
 
     **What a version page shows.** Columns are the Jira statuses of the
     version's open tickets (To Do, In Progress, In Review, IN CI), except that a
