@@ -344,8 +344,8 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
   expect(b.calls).toEqual([]);
 });
 
-test("button: a reply to a bot message with no known prompt holding a standalone six-digit token is consumed, with or without words", async () => {
-  for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today"]) {
+test("button: a reply to a bot message with no known prompt holding a standalone six-digit token, or only a spaced code, is consumed", async () => {
+  for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today", "123 456", "123-456", "12 34 56", "1234567", "10-31 08"]) {
     const b = buttons();
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
     await settle();
@@ -354,8 +354,8 @@ test("button: a reply to a bot message with no known prompt holding a standalone
   }
 });
 
-test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exist only split by spaces or hyphens is ordinary text", async () => {
-  for (const text of ["do 8276 8277 next", "10-31 08", "ticket 123-456 is done", "12 34 56", "1234567"]) {
+test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exist only split by spaces or hyphens inside words is ordinary text", async () => {
+  for (const text of ["do 8276 8277 next", "ticket 123-456 is done"]) {
     const b = buttons();
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
     await settle();
@@ -432,7 +432,7 @@ test("poller: ingest then the real delivery mapping carries reply_to_bot into th
   const { deps, calls } = fake();
   const ran: string[] = [];
   const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
-  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
+  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123 456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
   await ingestBatch(r, (i) => handleInbound(r, inboundToDelivered(i), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true));
   await settle();
   expect(calls.length).toBe(0);

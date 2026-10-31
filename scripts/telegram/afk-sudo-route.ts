@@ -105,10 +105,14 @@ const CODE_REPLY = /^\s*(\d{6})\s*$/;
 // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
 // anywhere in the text. Used only to decide a message must not be forwarded.
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
-// Six contiguous digits standing alone. A reply to a bot message is held only for
-// this shape; numbers that are six digits only once spaces or hyphens are
-// ignored ("do 8276 8277 next", "10-31 08") are ordinary text.
+// A reply to a bot message is held for six contiguous digits standing alone
+// (CODE_TOKEN) and for a text that is nothing but digits, spaces and hyphens
+// totalling six or seven ("123 456", "12 34 56", "1234567"). Numbers inside words
+// that are six digits only once spaces or hyphens are ignored ("do 8276 8277 next",
+// "ticket 123-456 is done") are ordinary text.
 const CODE_TOKEN = /(?<!\d)\d{6}(?!\d)/u;
+const CODE_ONLY = /^\d{6,7}$/u;
+const heldAsCode = (text: string): boolean => CODE_TOKEN.test(text) || CODE_ONLY.test(text.replace(/[\s-]/gu, ""));
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -155,10 +159,11 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // inbox is readable by the sessions that can run the helper. Consume it, never
       // pass it on: a reply to a bot message whose prompt is gone (the map is in
       // memory, so a restart forgets it) when it holds a standalone six-digit token,
-      // whatever words surround it, or any message sent while a prompt waits.
+      // whatever words surround it, or is only a spaced or hyphenated code, or any
+      // message sent while a prompt waits.
       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? null;
-        if ((msg.reply_to_bot === true && CODE_TOKEN.test(msg.text)) || waiting) {
+        if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting) {
           void deps.reply(msg.chat_id, waiting
             ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
