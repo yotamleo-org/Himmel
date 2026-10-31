@@ -195,11 +195,11 @@ cmd_pos() {
 # Over-inclusive on purpose (any `#!` line naming *sh): a wrong yes only widens the selection.
 is_shell() {
   case "${1##*/}" in "PKGBUILD" | "direnvrc" | ".envrc" | ".bashrc" | ".bash_aliases" | ".bash_profile" | ".profile" | ".cshrc" | ".zshrc" | ".zshenv" | ".zprofile" | ".zlogin" | ".zlogout") return 0 ;; esac
-  case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash | *.csh | *.tcsh) return 0 ;; esac
+  case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash | *.ash | *.csh | *.tcsh) return 0 ;; esac
   local first=
   # read-sink-ok: $1 is a path from the PR's own git diff, read for its first line only and never echoed
   IFS= read -r first < "$1"
-  case "$first" in '#!'*sh*) return 0 ;; esac
+  case "$first" in '#!'*sh* | '#!'*cbsd*) return 0 ;; esac
   return 1
 }
 # consumers of $1: a source/. line or a `# shellcheck source=` directive naming it
@@ -248,8 +248,8 @@ while IFS= read -r f; do
   lines=$(printf '%s\n' "$lines" | grep -E '[A-Za-z0-9_.+-]+\.(sh|bash)')
   if [ -n "$nolit" ]; then
     if [ -z "${shnames+x}" ]; then
-      sb=$(git grep -l -I -E -e '^#!.*sh' -- .) || [ "$?" -eq 1 ] || run_all "git grep failed on shebangs"
-      shnames=$({ printf '%s\n' "$sb"; printf '%s\n' "$tracked" | grep -E '(\.(bats|ksh|zsh|dash|csh|tcsh)|(^|/)(PKGBUILD|direnvrc|\.envrc|\.bashrc|\.bash_aliases|\.bash_profile|\.profile|\.cshrc|\.zshrc|\.zshenv|\.zprofile|\.zlogin|\.zlogout))$'; } | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }' | sort -u)
+      sb=$(git grep -l -I -E -e '^#!.*(sh|cbsd)' -- .) || [ "$?" -eq 1 ] || run_all "git grep failed on shebangs"
+      shnames=$({ printf '%s\n' "$sb"; printf '%s\n' "$tracked" | grep -E '(\.(bats|ksh|zsh|dash|ash|csh|tcsh)|(^|/)(PKGBUILD|direnvrc|\.envrc|\.bashrc|\.bash_aliases|\.bash_profile|\.profile|\.cshrc|\.zshrc|\.zshenv|\.zprofile|\.zlogin|\.zlogout))$'; } | awk -F/ 'NF && $NF !~ /\.(sh|bash)$/ { print $NF }' | sort -u)
     fi
     ops=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*')
     # an operand built by a command substitution can name any file

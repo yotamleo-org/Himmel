@@ -263,6 +263,10 @@ reset; w PKGBUILD 'pkgname=zz
 . scripts/zzj/zzjlib.sh
 '; commit_case a1_name
 verdict a1_name FILES PKGBUILD scripts/zzj/zzjlib.sh
+# a1_ash: ...and so does a no-shebang *.ash file
+reset; w scripts/zzx.ash '. scripts/zzj/zzjlib.sh
+'; commit_case a1_ash
+verdict a1_ash FILES scripts/zzx.ash scripts/zzj/zzjlib.sh
 # a1_ext: ...and a shell file with no extension is scanned by its shebang, so its dynamic line counts
 reset; w scripts/zztool '#!/usr/bin/env bash
 . "${ZZ_DIR}zzjlib.sh"
