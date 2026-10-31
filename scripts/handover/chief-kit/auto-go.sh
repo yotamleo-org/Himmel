@@ -172,7 +172,7 @@ LANE="${LEG%%$'\t'*}"; WORKER_DOC="${LEG#*$'\t'}"
 NWO=$("$GH_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""  # swallow-ok: an empty name escalates at check 1 on the next line
 [ -n "$NWO" ] || fail 1 "cannot read this repo's name (gh repo view failed)"
 for list in himmel-adapters.json himmel-adopted.json; do
-    [ -e "$ANCHOR/scripts/guardrails/$list" ] || fail 1 "scripts/guardrails/$list is missing: whether $NWO is an adapter or adopted repo cannot be shown"
+    [ -f "$ANCHOR/scripts/guardrails/$list" ] || fail 1 "scripts/guardrails/$list is missing: whether $NWO is an adapter or adopted repo cannot be shown"
     listed=$(jq -r --arg n "$NWO" 'if type == "array" then ([.[] | select(type == "object" and ((.nwo // "") | ascii_downcase) == ($n | ascii_downcase))] | length | tostring) else "bad" end' \
         "$ANCHOR/scripts/guardrails/$list" 2>/dev/null) || listed=bad
     case "$listed" in
@@ -220,6 +220,7 @@ for key in $KEYS; do
         esac
     done
 done
+[ -f "$DOC" ] || fail 4 "the chief doc $DOC is not a regular file"
 [ -r "$DOC" ] || fail 4 "cannot read the chief doc $DOC"
 HOLDS=$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { s = 0 }
              s && /^[[:space:]]*([-*+][[:space:]]+)?merge-hold:/ { sub(/^[^:]*:[[:space:]]*/, ""); print }' "$DOC") \
@@ -232,6 +233,7 @@ for tok in $(printf '%s\n' "$HOLDS" | tr -d '`' | tr ',;' '  '); do
         [ "$tok" = "$key" ] && fail 4 "the chief doc's Live state holds $key (merge-hold:)"
     done
 done
+[ -f "$WORKER_DOC" ] || fail 4 "the worker's brief $WORKER_DOC is not a regular file"
 [ -r "$WORKER_DOC" ] || fail 4 "cannot read the worker's brief $WORKER_DOC"
 BRIEF_RC=0
 grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_RC=$?

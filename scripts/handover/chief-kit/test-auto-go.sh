@@ -65,7 +65,7 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-    "repo view --json nameWithOwner"*) printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
+    "repo view --json nameWithOwner"*) [ "${STUB_NWO_FAIL:-0}" = 1 ] && exit 1; printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
     "repo view --json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
     "pr view "*"--json state,headRefOid,baseRefName"*)
         [ "${STUB_VIEW_FAIL:-0}" = 1 ] && exit 1
@@ -141,7 +141,7 @@ write_fixtures() {
     printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s","added":"2026-10-31T00:00:00Z"}]}\n' "$WORKER" "${1:-native}" > "$FLEET"
 }
 reset() {
-    unset STUB_NWO STUB_VIEW_FAIL STUB_PR_STATE STUB_PR_HEAD STUB_PR_BASE STUB_TITLE STUB_FILE STUB_COMMIT_MSG \
+    unset STUB_NWO STUB_NWO_FAIL STUB_VIEW_FAIL STUB_PR_STATE STUB_PR_HEAD STUB_PR_BASE STUB_TITLE STUB_FILE STUB_COMMIT_MSG \
           STUB_COMMITS_FAIL STUB_JIRA_FAIL STUB_LABELS_HIMMEL_1 STUB_LABELS_HIMMEL_2 2>/dev/null || true
     export READY_STUB_HEAD="$SHA"
     cp "$tmp/ledger.base" "$LEDGER"
@@ -241,6 +241,9 @@ run --dry-run 77 "$SHA";  esc "check 1 a missing adopted allowlist file" 1
 reset
 STUB_NWO=other/repo run --dry-run 77 "$SHA"
 check "check 1 a repo outside the allowlists passes" "$RC" "0"
+reset; STUB_NWO_FAIL=1 run --dry-run 77 "$SHA";  esc "check 1 gh cannot name the repo" 1
+mkdir -p "$tmp/briefdir"
+reset; rawrun --doc "$CHIEF" --fleet "$tmp/briefdir" --worker N1 --dry-run 77 "$SHA";  esc "check 1 a fleet manifest that is a directory" 1
 reset
 
 # --- 4/2. check 2: the live head ---------------------------------------------------------------
@@ -282,6 +285,9 @@ reset; write_fixtures native "" '> **Merge:** chief'; run --dry-run 77 "$SHA";  
 reset; mkdir -p "$tmp/briefdir"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$tmp/briefdir" > "$FLEET"
 run --dry-run 77 "$SHA";  esc "check 4 a brief that grep cannot read" 4
+# the chief doc is read by awk, and GNU awk skips a directory operand with rc 0: test -r alone read that as "no merge-hold"
+reset; rawrun --doc "$tmp/briefdir" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA";  esc "check 4 a chief doc that is a directory" 4
+reset; rawrun --doc "$tmp/no-such-chief.md" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA";  esc "check 4 a missing chief doc" 4
 reset
 
 # --- 4/5. check 5 is slice A1b; a trust-path hit already escalates here -----------------------------------
@@ -327,6 +333,7 @@ check    "check 7 not listed is check7=not-in-plan" "$(last_row | jq -r '.checks
 printf 'not json\n' > "$tmp/graph.json"
 run --graph "$tmp/graph.json" --dry-run 77 "$SHA";  esc "check 7 unreadable graph" 7
 run --graph "$tmp/no-such-graph.json" --dry-run 77 "$SHA";  esc "check 7 missing graph file" 7
+run --graph "$tmp/briefdir" --dry-run 77 "$SHA";  esc "check 7 a chain graph that is a directory" 7
 graph_with
 printf '{"headRefOid":"%s","state":"OPEN"}\n' "$SHA2" > "$tmp/gc/head-77.json"
 run --graph "$tmp/graph.json" --dry-run 77 "$SHA";  esc "check 7 go-check REFUSE (the graph is stale against the live head)" 7
