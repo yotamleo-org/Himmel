@@ -6090,6 +6090,38 @@ out="$(PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c56_t/claude" HOME="$c56_t/home" bash 
 if grepq "$out" 'C56-qmd-orphans'; then fail "C56 no index -> $(printf '%s' "$out" | grep -A1 C56)"; else pass "C56 no index -> silent"; fi
 rm -rf "$c56_t"
 
+# --- C83-qmd-embed-backlog: the last reindex's remaining hashes + provider error ---
+# qmd-reindex.sh writes `reindex-state` beside the index (key=value
+# lines); the fixture below is the file a stubbed incomplete embed leaves (the
+# error line is the fork's real per-attempt log line). Seam: HIMMEL_DOCTOR_QMD_REINDEX_STATE.
+c83_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c83.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c83_t/home" "$c83_t/claude"
+c83_run() { PATH="$FAKEBIN:$PATH" HIMMEL_DOCTOR_QMD_REINDEX_STATE="$c83_t/reindex-state" CLAUDE_DIR="$c83_t/claude" HOME="$c83_t/home" bash "$DOC" --only C83 --no-color 2>&1; }
+echo "== C83-qmd-embed-backlog: incomplete embed -> WARN with remaining count and last provider error =="
+printf 'ts=2026-10-31T01:05:00Z\nrc=5\nremaining=370\nlast_error=embed: request failed status=503 provider=DeepInfra\nsummary=370 unique hashes still need vectors; last provider error: embed: request failed status=503 provider=DeepInfra\n' > "$c83_t/reindex-state"
+out="$(c83_run)"
+if grepq "$out" 'WARN C83-qmd-embed-backlog' && grepq "$out" -F '370 unique hashes still lack vectors' && grepq "$out" -F 'status=503 provider=DeepInfra' && grepq "$out" -F 'qmd-reindex.sh'; then
+    pass "C83 incomplete embed -> WARN naming the count, the provider error and the fix"
+else
+    fail "C83 incomplete embed -> $(printf '%s' "$out" | grep -A1 C83)"
+fi
+echo "== C83-qmd-embed-backlog: unknown count and no provider error -> WARN =="
+printf 'rc=5\nremaining=unknown\nlast_error=none\n' > "$c83_t/reindex-state"
+out="$(c83_run)"
+if grepq "$out" 'WARN C83-qmd-embed-backlog' && grepq "$out" -F 'remaining hash count unknown' && grepq "$out" -F 'last provider error: none'; then
+    pass "C83 unknown count -> WARN"
+else
+    fail "C83 unknown count -> $(printf '%s' "$out" | grep -A1 C83)"
+fi
+echo "== C83-qmd-embed-backlog: complete run -> OK; no state file -> silent =="
+printf 'rc=0\nremaining=0\nlast_error=none\n' > "$c83_t/reindex-state"
+out="$(c83_run)"
+if grepq "$out" 'OK   C83-qmd-embed-backlog'; then pass "C83 complete -> OK"; else fail "C83 complete -> $(printf '%s' "$out" | grep -A1 C83)"; fi
+rm -f "$c83_t/reindex-state"
+out="$(c83_run)"
+if grepq "$out" 'C83-qmd-embed-backlog'; then fail "C83 no state -> $(printf '%s' "$out" | grep -A1 C83)"; else pass "C83 no state -> silent"; fi
+rm -rf "$c83_t"
+
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs pin ------
 # Fixture fork clone (a throwaway git repo: commit A older, B newer), a fixture
 # stamp file and a fixture QMD_FORK_REF; the live station fork is never read.

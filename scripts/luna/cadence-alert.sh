@@ -22,6 +22,10 @@
 # ~/.himmel/state/cadence-alert-send-failed), which himmel-doctor C33 reports
 # as a WARN until a later send is delivered.
 #
+# A `qmd-reindex` `rc-5` with no <cause> quotes the `summary=` line of qmd-reindex.sh's
+# reindex-state file (the remaining hash count and the last provider error) as the
+# cause; CADENCE_ALERT_QMD_STATE names that file (default: beside the qmd index).
+#
 # Seams: CADENCE_ALERT_FILE (default ~/.himmel/state/cadence-alerts.log),
 # CADENCE_ALERT_DEDUPE_DIR (default ~/.himmel/state/cadence-alert-sent),
 # CADENCE_ALERT_SEND_CMD (default vault-stall-alert.sh; called with one
@@ -64,6 +68,15 @@ case "${1:-}" in
     fail)
         worker="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
         send_rc=0
+        # A qmd-reindex rc 5 (embed incomplete) quotes the runner's own one-line
+        # summary: the remaining hash count and the last provider error.
+        if [ -z "${5:-}" ] && [ "$worker" = qmd-reindex ] && [ "$reason" = rc-5 ]; then
+            qmd_state="${CADENCE_ALERT_QMD_STATE:-$(dirname "${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-${HOME:-}/.cache}/qmd/index.sqlite}}")/reindex-state}"
+            qmd_sum="$(sed -n 's/^summary=//p' "$qmd_state" 2>/dev/null | head -1)"
+            if [ -n "$qmd_sum" ]; then
+                set -- "$1" "$2" "$3" "$4" "$qmd_sum" "${6:-bash scripts/luna/qmd-reindex.sh}"
+            fi
+        fi
         cause="${5:-unknown, see log}" todo="${6:-read the log}"
         cause="${cause//$'\n'/ }" todo="${todo//$'\n'/ }"
         mkdir -p "$(dirname "$alert_file")" "$dedupe_dir" 2>/dev/null

@@ -3249,6 +3249,34 @@ check_c56_qmd_orphans() {
     fi
 }
 
+# --- C83-qmd-embed-backlog: what the last reindex left un-embedded, and why ---
+# qmd-reindex.sh writes `reindex-state` (key=value: rc, remaining, last_error)
+# beside the index where its embed ends incomplete (rc 5) or verified complete;
+# any other start removes it. WARN on an incomplete embed with the remaining
+# unique-hash count and the last provider error (HTTP status + provider), OK on a
+# complete one, silent with no state (qmd unused, or the last run died earlier).
+# Test seam: HIMMEL_DOCTOR_QMD_REINDEX_STATE (default: beside HIMMEL_DOCTOR_QMD_INDEX).
+check_c83_qmd_embed_backlog() {
+    local idx="${HIMMEL_DOCTOR_QMD_INDEX:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
+    local f="${HIMMEL_DOCTOR_QMD_REINDEX_STATE:-$(dirname "$idx")/reindex-state}"
+    local rc remaining err ts
+    [ -f "$f" ] || return 0
+    rc="$(sed -n 's/^rc=//p' "$f" | head -1)"
+    remaining="$(sed -n 's/^remaining=//p' "$f" | head -1)"
+    err="$(sed -n 's/^last_error=//p' "$f" | head -1)"
+    ts="$(sed -n 's/^ts=//p' "$f" | head -1)"
+    if [ "$rc" = 0 ]; then
+        emit OK C83-qmd-embed-backlog "the last qmd reindex${ts:+ ($ts)} embedded every content hash"
+        return 0
+    fi
+    case "$remaining" in
+        ''|*[!0-9]*) remaining="remaining hash count unknown" ;;
+        *) remaining="$remaining unique hashes still lack vectors" ;;
+    esac
+    emit WARN C83-qmd-embed-backlog "the last qmd reindex${ts:+ ($ts)} ended with its embed incomplete: $remaining; last provider error: ${err:-none}" \
+        "bash scripts/luna/qmd-reindex.sh   # resumes the embed; the cause is in ~/.claude/qmd-cadence/qmd-reindex.log"
+}
+
 # --- C72-design-mcp-auth: design profile MCP logins ---
 # The design profile needs context7 and builder-visual's agent-native-dispatch
 # logged in once per machine; a worker cannot answer the OAuth prompt, so
@@ -5080,6 +5108,7 @@ run_check C79 check_c79_plugin_cache_drift
 run_check C80 check_c80_status_drift
 run_check C81 check_c81_hook_layers
 run_check C82 check_c82_mcp_sources
+run_check C83 check_c83_qmd_embed_backlog
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
