@@ -68,6 +68,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -1260,10 +1261,8 @@ def disable_config(config):
     """Rewrite the station config with `enabled: false`, atomically, keeping its owner and mode. Narrowing only."""
     st = os.lstat(CONFIG)
     config["enabled"] = False
-    tmp = CONFIG + ".lockdown.tmp"
-    if os.path.lexists(tmp):
-        os.unlink(tmp)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    # A name of its own per call (mkstemp is O_EXCL, mode 0600): two lockdowns at once never share a file.
+    fd, tmp = tempfile.mkstemp(prefix=".afk-sudo.", suffix=".tmp", dir=os.path.dirname(CONFIG))
     try:
         os.fchmod(fd, st.st_mode & 0o777)
         if os.geteuid() == 0:

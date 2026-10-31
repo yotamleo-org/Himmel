@@ -1485,6 +1485,20 @@ new_root lockdown-off false
 out=$(h 0 lockdown --from "$OP" --chat "$OP")
 assert_contains "slice 4: an already-off station answers locked" "result=locked" "$out"
 
+echo "== slice 4: concurrent lockdowns do not share a temporary file =="
+new_root lockdown-race
+printf 'stale' > "$R/etc/himmel/afk-sudo.json.lockdown.tmp"
+for n in 1 2 3 4 5 6 7 8; do
+    ( h 0 lockdown --from "$OP" --chat "$OP" > "$tmp/ld-race.$n" ) &
+done
+wait
+RACE_OK=0
+for n in 1 2 3 4 5 6 7 8; do grep -q '^result=locked' "$tmp/ld-race.$n" && RACE_OK=$((RACE_OK+1)); done
+assert_eq "slice 4: eight parallel lockdowns all answer locked" "8" "$RACE_OK"
+assert_eq "slice 4: the config reads enabled false after the race" "False -" "$(enabled_of)"
+assert_eq "slice 4: a file at the old fixed temp name is left alone" "stale" "$(cat "$R/etc/himmel/afk-sudo.json.lockdown.tmp")"
+assert_eq "slice 4: no temporary file of the lockdown is left behind" "1" "$(find "$R/etc/himmel" -maxdepth 1 -name '*tmp*' | wc -l | tr -d ' ')"
+
 echo "== slice 4: lockdown can only narrow =="
 new_root lockdown-sender
 out=$(req 0); id=$(rid "$out")
