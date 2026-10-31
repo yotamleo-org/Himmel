@@ -286,7 +286,7 @@ chains_registry() { # print the registry path when it resolves
 }
 chains_fail() { # <registry|graph|render> <detail file> - the run goes on with the last good file
     CHAINS_WARN="chains $1"
-    # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set
+    # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set. read-sink-ok: the detail file is one of this script's own stage files
     echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
 }
 chains_reg=$(chains_registry) || chains_reg=""
