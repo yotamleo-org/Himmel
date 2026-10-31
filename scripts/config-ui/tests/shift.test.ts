@@ -446,3 +446,14 @@ test("redactShift: a doc name in a free-text field stays redacted", () => {
   const out = redactShift(v, redactDeep);
   expect([out.waiting[0].title, out.shipped[0].title]).toEqual(["‹redacted›", "‹redacted›"]);
 });
+
+test("redactShift: a doc-name shape that also carries a token shape, a prefix before a valid name, or more than 80 characters stays redacted", () => {
+  const real = "HIMMEL-nextleg-2026-10-31LO-roadmap-chief";
+  const aws = "AK" + "IA" + "ABCDEFGHIJKLMNOP"; // an access-key shape built at run time
+  const fields = (v: View) => [v.chiefs[0].name, v.waiting[0].chief, v.shipped[0].chief, ...v.gap[0].chiefs];
+  const viaToken = fields(redactShift(chiefView(aws + "-nextleg-2026-10-31A-roadmap-chief"), redactDeep));
+  for (const f of viaToken) expect(f).not.toContain(aws);
+  for (const bad of ["abc " + real, "Zx-" + real, "HIMMEL-nextleg-2026-10-31A-" + "roadmap-".repeat(10) + "chief"]) {
+    for (const f of fields(redactShift(chiefView(bad), redactDeep))) expect(f).not.toContain("roadmap-chief");
+  }
+});

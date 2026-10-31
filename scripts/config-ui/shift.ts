@@ -16,6 +16,7 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { findDoc, readBoardFile } from "./agui/board";
 import { acquireLock } from "./lock";
+import { REDACTED } from "../himmelctl/lib/redact.js";
 
 export type Opts = { idleMin: number; cuts: string[]; minHours: number };
 // the three numbers live on Configure (the Morning report build); these are the mockup's defaults
@@ -387,9 +388,10 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
 }
 
 // The redactor reads a 40-character chief doc name as a secret (a 32+ character letter-and-digit run). Every field is redacted;
-// only a value that is wholly a chief doc name, in a chief-name field, is put back.
+// only a value that is wholly a chief doc name, in a chief-name field, is put back. A real name collapses to one redacted
+// run; a value that also hit a token shape or a literal comes out fragmented, so it is not put back.
 const CHIEF_DOC = /^[A-Z][A-Z0-9]*-[a-z]+-\d{4}-\d{2}-\d{2}[A-Z]{1,3}(?:-[a-z]+)+-chief$/;
-const keep = (orig: string | null, out: string | null): string | null => (orig !== null && orig.length <= 80 && CHIEF_DOC.test(orig) ? orig : out);
+const keep = (orig: string | null, out: string | null): string | null => (orig !== null && out === REDACTED && orig.length <= 80 && CHIEF_DOC.test(orig) ? orig : out);
 export function redactShift(view: View, redact: <T>(v: T) => T): View {
   const out = redact(view);
   out.chiefs.forEach((c, i) => { c.name = keep(view.chiefs[i].name, c.name)!; });
