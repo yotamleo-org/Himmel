@@ -10,14 +10,14 @@ they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Shift, Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
 ## The config UI (`himmelctl ui`)
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
-same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
+same data as `himmelctl report --json`. Shift, Health, Tool health, Fleet, Workflow and the
 inventory only display. What can change something is on Configure and the Roadmap and
 Kanban boards; the table after the switches maps every action to its route. A switch shows its
 dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:

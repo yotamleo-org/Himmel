@@ -113,6 +113,26 @@ unknown. Lane comes only from launch metadata, never from a model name;
 a document fallback reads the assigned worker's title, not sibling mentions. Ledger overrides:
 `HIMMEL_EVAL_RUNS_LEDGER`, `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
+## Shift page (`#/shift`)
+
+First in the rail, with a badge counting the rows that wait on you. A shift is the whole fleet between cuts, never one
+chief's run: every bucket (the voice chief too) counts. `GET /api/shift` (token-gated, GET only; `?id=<opened>` picks a
+closed shift) polls `shift.ts`, which is the one writer of `shifts.jsonl` (`$HANDOVER_DIR/shifts.jsonl`, or `SHIFTS_FILE`),
+under a lock and idempotent on the shift id. The page shows Chiefs (span and PR credit), Waiting on you (links out; nothing
+here acts), Running now and Shipped, and for a closed shift the pager and Carried to the next shift. With no shift open it
+says so and names the last one.
+
+- **The cut rule.** A shift closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
+  20:00 clock cuts once it is at least 4 hours old. It is named day when it opened between 08:00 and 20:00, else night. Stamps
+  are ISO 8601 with the offset in force when the shift opened; the window is half open, `[opened, closed)`, so a PR merged at
+  the close instant belongs to the next shift. The id is the opened stamp.
+- **Merged PRs.** `gh pr list --search merged:<opened>..<closed> --limit 200` (the board's 60 was too few: 49 PRs merged in one
+  real night). `GH_CMD` overrides `gh`.
+- **Attribution.** A PR is credited to the chief whose span holds its merge; a merge in a hand-over gap is named for both and
+  counted once. A chief's span is its first LIVE to its last WRAPPED or HALTED stamp.
+- **The release record is derived.** `queue-lock` keeps no release record, so the last release is the newest lock heartbeat or
+  WRAPPED stamp seen (`ponytail:` in `shift.ts`).
+
 ## Roadmap page (`#/roadmap`)
 
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every

@@ -24,6 +24,7 @@ import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
+import { liveBoards, readMerged, readShifts, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
@@ -78,6 +79,7 @@ const STATIC: Record<string, [string, string]> = {
   "/tool-health.js": ["tool-health.js", "application/javascript; charset=utf-8"],
   "/roadmap.js": ["roadmap.js", "application/javascript; charset=utf-8"],
   "/workflow.js": ["workflow.js", "application/javascript; charset=utf-8"],
+  "/shift.js": ["shift.js", "application/javascript; charset=utf-8"],
   "/setup.js": ["setup.js", "application/javascript; charset=utf-8"],
   "/login": ["login.html", "text/html; charset=utf-8"],
   "/login.js": ["login.js", "application/javascript; charset=utf-8"],
@@ -552,6 +554,23 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/bank") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readQuota(env, now())));
+      }
+      // the Shift page: the fleet's current shift (or a closed one, ?id=<opened, ISO with offset>). shift.ts is the one writer of
+      // shifts.jsonl; this route polls it and never appends itself. PRs come from gh, both bounds, [opened, closed).
+      if (path === "/api/shift") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const handover = env.HANDOVER_DIR || "";
+        if (!handover) return json({ state: "none", reason: "no handover root is set (HANDOVER_DIR)" });
+        const id = new URL(req.url).searchParams.get("id");
+        if (id !== null && !/^[0-9T:+\-Z]{10,40}$/.test(id)) return new Response("bad shift id", { status: 400 });
+        const file = shiftsFile(env), at = now();
+        const snap = await tickShifts({ root: handover, file, now: at, merged: (a, b) => readMerged(env, root, a, b), boards: (locks, spans) => liveBoards(handover, locks, spans) });
+        const rows = readShifts(file);
+        const win = id === null ? null : rows.find((r) => r.id === id);
+        const from = win ? Date.parse(win.opened) : snap.state.open?.opened ?? (rows.length ? Date.parse(rows[rows.length - 1].opened) : at - 86_400_000);
+        const merged = await readMerged(env, root, from, win ? Date.parse(win.closed) : at + 60_000);
+        const boards = id === null ? await liveBoards(handover, snap.locks, snap.spans) : [];
+        return json(redactOut(viewOf({ now: at, rows, snap, id, merged, boards })));
       }
       // the weekly roll-up as three trend cards, read from the file weekly-rollup.py wrote. Never recomputed here.
       if (path === "/api/rollup") {
