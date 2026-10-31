@@ -116,7 +116,9 @@
 # QMD_REINDEX_STATE (default: `reindex-state` beside the refresh stamp; `NAME.reindex-state`
 # for a named index) as key=value lines: ts, rc, remaining (a count or "unknown"),
 # last_error (the provider error line or "none") and summary (the line the cadence
-# alert quotes). himmel-doctor C83 and cadence-alert.sh read it; any other start clears it.
+# alert quotes). himmel-doctor C83 and cadence-alert.sh read the default index's file
+# only (a named index keeps its own NAME.reindex-state, as C49 and C56 judge the default
+# index alone); any other start clears it.
 #
 # Exit codes:
 #   0  index refreshed and verified complete
@@ -133,7 +135,8 @@
 #      the remaining hash count and the last provider error. QMD_REINDEX_EMBED_MAX_SECS
 #      also bounds a SESSION: each embed session gets only the budget still unspent
 #      as its deadline, so a run overshoots it by at most QMD_KILL_GRACE_SECS (5)
-#      plus the time to reap the process group (a cut session is rc 5, resumable).
+#      plus the time to reap the process group (a cut session is rc 5, resumable);
+#      the rc 5 report's one hash recount adds at most QMD_REINDEX_RECOUNT_SECS (120).
 #   6  completeness assert could not READ its verifier (qmd reworded its
 #      output) — distinct from 5 on purpose; see the sentinel note below
 #   7  MODEL MISMATCH — the index holds vectors from an embed model other
@@ -649,8 +652,13 @@ remaining_hashes() {
 # The rc 5 report: the cause first, then what is left and the last provider error.
 fail_incomplete() {
     local cause="$1" n
-    EMBED_CAP_SECS=""   # the recount is not an embed session
+    # The recount is not an embed session, but it must not stretch the run past the
+    # embed bound by a whole command timeout: it gets its own short deadline, and a
+    # recount that does not finish reads as "unknown".
+    EMBED_CAP_SECS=$(secs_or_default "${QMD_REINDEX_RECOUNT_SECS:-}" 120)
+    [ "$EMBED_CAP_SECS" -ge 1 ] || EMBED_CAP_SECS=1
     n=$(remaining_hashes)
+    EMBED_CAP_SECS=""
     write_reindex_state 5 "${n:-unknown}" "${LAST_PROVIDER_ERR:-none}"
     {
         echo "ERR qmd-reindex: embed INCOMPLETE — content hashes still need vectors after the embed pass."

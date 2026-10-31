@@ -88,6 +88,7 @@ mkdir -p "$STATE"
 #                 next reports the all-clear: a backlog larger than one session
 #   provider-503  every `qmd embed` logs failed attempts with HTTP 503 and
 #                 embeds nothing
+#   slow-recount  a `qmd update` after the first embed sleeps 60s (the rc 5 recount)
 #   slow-embed    every `qmd embed` prints a progress line, then sleeps 60s
 #   no-progress   every `qmd embed` ends having embedded 0 chunks, no error line
 #   tail-once     the first verify pass finds a small tail; the
@@ -118,6 +119,7 @@ case "${1:-}" in
                 exit 1
             fi
         fi
+        if [ -e "$STATE/slow-recount" ] && grep -q '^embed' "$STATE/calls"; then sleep 60; fi
         echo "Indexed: 45 new, 22 updated, 14119 unchanged, 20 removed"
         echo "4 collections updated."
         if [ -e "$STATE/hash-count" ]; then
@@ -835,6 +837,21 @@ if [ "$elapsed" -le 8 ]; then
     pass "the session stopped within budget + grace + slack (${elapsed}s for a 2s budget; the stub sleeps 60s)"
 else
     fail "session bounded by the embed budget" "took ${elapsed}s for a 2s budget"
+fi
+
+echo "TEST: the rc 5 recount is bounded by QMD_REINDEX_RECOUNT_SECS and reads as unknown"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/slow-embed" "$STATE/slow-recount"
+t0=$SECONDS
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=2 QMD_KILL_GRACE_SECS=1 QMD_REINDEX_RECOUNT_SECS=2 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+elapsed=$((SECONDS - t0))
+assert_rc "slow recount rc 5" 5 "$rc"
+assert_contains "a recount cut at its bound reads as unknown" "remaining: unknown" "$out"
+if [ "$elapsed" -le 14 ]; then
+    pass "the whole run stayed within budget + grace + recount bound + slack (${elapsed}s; the stubs sleep 60s)"
+else
+    fail "recount bounded" "took ${elapsed}s for a 2s budget and a 2s recount bound"
 fi
 
 echo "TEST: a failing qmd cleanup exits 8, distinct from embed (4/5/6) failures"

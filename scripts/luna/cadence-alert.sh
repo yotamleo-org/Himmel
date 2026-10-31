@@ -73,6 +73,9 @@ case "${1:-}" in
         if [ -z "${5:-}" ] && [ "$worker" = qmd-reindex ] && [ "$reason" = rc-5 ]; then
             qmd_state="${CADENCE_ALERT_QMD_STATE:-$(dirname "${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-${HOME:-}/.cache}/qmd/index.sqlite}}")/reindex-state}"
             qmd_sum="$(sed -n 's/^summary=//p' "$qmd_state" 2>/dev/null | head -1)"
+            # Only an rc-5 record describes this failure: the default index's
+            # state after a clean run (or a failed named-index run) is not it.
+            [ "$(sed -n 's/^rc=//p' "$qmd_state" 2>/dev/null | head -1)" = 5 ] || qmd_sum=""
             if [ -n "$qmd_sum" ]; then
                 set -- "$1" "$2" "$3" "$4" "$qmd_sum" "${6:-bash scripts/luna/qmd-reindex.sh}"
             fi

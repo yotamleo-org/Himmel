@@ -45,6 +45,10 @@ assert_has "A3 another rc keeps the default cause" "Cause: unknown, see log" "$m
 msg=$(alert graphmap-luna rc-5 /tmp/g.log)
 assert_has "A4 another worker keeps the default cause" "Cause: unknown, see log" "$msg"
 
+printf 'ts=2026-10-31T01:05:00Z\nrc=0\nremaining=0\nlast_error=none\nsummary=0 unique hashes still need vectors\n' >"$TMP/clean-state"
+msg=$(STATE_FILE=clean-state alert qmd-reindex rc-5 /tmp/q.log)
+assert_has "A6 a clean run's state is not quoted for an rc-5 alert" "Cause: unknown, see log" "$msg"
+
 msg=$(STATE_FILE=absent alert qmd-reindex rc-5 /tmp/q.log)
 assert_has "A5 no state file keeps the default cause" "Cause: unknown, see log" "$msg"
 
