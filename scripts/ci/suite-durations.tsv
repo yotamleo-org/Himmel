@@ -136,6 +136,7 @@ scripts/ci/test-cancel-superseded-runs.sh	2
 scripts/ci/test-check-ci-install-locks.sh	26
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	5
+scripts/ci/test-check-critic-eval.sh	4
 scripts/ci/test-check-doc-literals.sh	1
 scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-flags.sh	20
