@@ -1857,3 +1857,54 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(posted()).toBe(false);
   });
 });
+
+// A core ticket is marked core when it is filed: the Agent detail's paths go to coreMatch.
+describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
+  let out: string[];
+  const body = (detail: string) => PLAIN.replace(/## Agent detail\n[^\n]*$/, `## Agent detail\n${detail}`);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    out = [];
+    vi.spyOn(console, 'log').mockImplementation((s: unknown) => { out.push(String(s)); });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  });
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  const file = async (detail: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'the console loses a worker', '--desc', body(detail), ...HOME, '--fix-version', 'v1.1.3', ...args]);
+  };
+  const labels = () => {
+    const call = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return (call?.[2] as { fields: { labels?: string[] } }).fields.labels ?? [];
+  };
+
+  it('an Agent detail naming scripts/jira/src/release/engine.ts adds the core label', async () => {
+    await file('Edits `scripts/jira/src/release/engine.ts` and its suite.');
+    expect(labels()).toContain('core');
+    expect(out).toContain('core: scripts/jira/src/release/engine.ts');
+  });
+
+  it('a rename touching a core path adds no label and prints core-review for the chief', async () => {
+    await file('Moves scripts/jira/src/release/engine.ts.', '--change-class', 'rename');
+    expect(labels()).not.toContain('core');
+    expect(out).toContain('core-review: scripts/jira/src/release/engine.ts');
+  });
+
+  it('an Agent detail with no core path adds no label and prints nothing', async () => {
+    await file('Edits docs/internals/enforcement.md only.');
+    expect(labels()).not.toContain('core');
+    expect(out.filter((l) => l.startsWith('core'))).toEqual([]);
+  });
+});
