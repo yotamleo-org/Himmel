@@ -43,7 +43,9 @@ helpers (HIMMEL-437).
   `--gate`, `--residual-of`, `--follow-up-of` or an inherited blocker version (a Bug may
   also be Highest). A ticket filed with no version queues an INTAKE request to the one
   declared release, on stderr (`jira release request`); a Bug that blocks open work goes
-  into a version, then needs a requested INTAKE (HIMMEL-7152, HIMMEL-8170).
+  into a version, then needs a requested INTAKE (HIMMEL-7152, HIMMEL-8170). Open tickets
+  that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
+  proposed version for each (dry run; `--commands` adds the lines for one rm-run).
 - Verify every `create`/`move` by checking the printed `Created HIMMEL-N`.
 - `JIRA_PROJECT_KEY` is required at runtime — no `HIMMEL` fallback.
 
