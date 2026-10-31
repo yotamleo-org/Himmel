@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { withSettingsLock } from '../lib/settings-lock.mjs';
+import configAudit from '../lib/config-audit.cjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // The event keys whose hook arrays this tool OWNS. Any other event key is
@@ -822,7 +823,9 @@ async function main() {
         return;
       }
 
+      const auditId = configAudit.pre(settingsPath, 'wire-hook-bash.mjs');
       writeFileSync(settingsPath, output, 'utf8');
+      configAudit.post(auditId, settingsPath, 'write', 'wire-hook-bash.mjs');
       process.stdout.write(`wire-hook-bash: rewrote ${changed} hook command(s) in ${settingsPath}; permissions unchanged\n`);
     });
   } catch (error) {

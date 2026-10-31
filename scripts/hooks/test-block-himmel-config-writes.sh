@@ -393,6 +393,41 @@ else
     bad "himmelctl config set did not write station config"
 fi
 
+echo "== a refused rm/mv leaves an audit row (HIMMEL-8401) =="
+AUDIT="$HOME/.himmel/state/config-audit/audit.jsonl"
+rm -f "$AUDIT"
+run "rm of the config -> block" block "$(jq -nc --arg c "rm $CFG" '{tool_name:"Bash",session_id:"s-8401",tool_input:{command:$c}}')"
+cfg_real=$(cd "$HOME/.himmel" && pwd -P)/config.json
+if [ -f "$AUDIT" ] && jq -e --arg f "$cfg_real" 'select(.action=="denied-rm" and .file==$f and .denied==true and .session=="s-8401" and .script=="block-himmel-config-writes.sh")' "$AUDIT" >/dev/null 2>&1; then
+    ok "rm refusal wrote a denied-rm row for the config"
+else
+    bad "rm refusal wrote no denied-rm row ($(cat "$AUDIT" 2>/dev/null))"
+fi
+if grep -q 'rm /' "$AUDIT" 2>/dev/null; then bad "audit row carries the command text"; else ok "audit row carries no command text"; fi
+if [ -f "$CFG" ]; then ok "config still present after the refused rm"; else bad "config gone after the refused rm"; fi
+# himmel.conf is a symlink here (set up above); the row names its realpath.
+bash_case "mv of himmel.conf -> block" block "mv $HOME/.himmel/himmel.conf $T/x"
+conf_real=$(cd "$HOME/.himmel" && readlink himmel.conf 2>/dev/null || echo "$HOME/.himmel/himmel.conf")
+if jq -e --arg f "$(cd "$(dirname "$conf_real")" && pwd -P)/himmel.conf" 'select(.action=="denied-mv" and .file==$f)' "$AUDIT" >/dev/null 2>&1; then
+    ok "mv refusal wrote a denied-mv row for himmel.conf"
+else
+    bad "mv refusal wrote no denied-mv row ($(cat "$AUDIT" 2>/dev/null))"
+fi
+n_before=$(wc -l 2>/dev/null < "$AUDIT" || echo 0)
+bash_case "cat of the config -> allow (no row)" allow "cat $CFG"
+bash_case "redirect over the config -> block (no rm row)" block "echo x > $CFG"
+n_after=$(wc -l 2>/dev/null < "$AUDIT" || echo 0)
+if [ "$n_before" = "$n_after" ]; then ok "a read or a non-rm write adds no audit row"; else bad "audit rows grew from $n_before to $n_after"; fi
+
+echo "== the restore verbs are the operator's (HIMMEL-8401) =="
+bash_case "session config-audit restore -> block" block "bash scripts/lib/config-audit.sh restore 20261031T120000Z-ab12"
+bash_case "session config-audit accept -> block" block "bash scripts/lib/config-audit.sh --script x accept"
+bash_case "session config-restore restore -> block" block "python3 scripts/telegram/config-restore.py restore 20261031T120000Z-ab12 --from 1 --chat 1"
+bash_case "session config-restore enroll -> block" block "python3 scripts/telegram/config-restore.py enroll --force"
+bash_case "config-audit list -> allow" allow "bash scripts/lib/config-audit.sh list"
+bash_case "config-audit check -> allow" allow "bash scripts/lib/config-audit.sh check"
+bash_case "a grep for the restore verb in the source -> allow" allow "git grep -n restore -- scripts/lib/config-audit.sh"
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"

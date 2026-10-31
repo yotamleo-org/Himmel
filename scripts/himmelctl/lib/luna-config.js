@@ -41,6 +41,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const provLib = require('./provenance.js');
+// Every save leaves an audit row and a backup of the station set.
+const configAudit = require('../../lib/config-audit.cjs');
 
 const CURRENT_VERSION = 1;
 
@@ -576,6 +578,7 @@ function save(doc) {
   fs.mkdirSync(dir, { recursive: true });
 
   const existed = fs.existsSync(p);
+  const auditId = configAudit.pre(p, 'himmelctl luna-config');
   let prior = null;
   // an existing file that cannot be read as a JSON object has an unknown
   // pre-state: recording its sections as created would claim ownership of
@@ -666,6 +669,7 @@ function save(doc) {
     removeTempBestEffort(tmp);
     throw new Error(`luna-config: refusing to save ${p} — rename from ${tmp} failed: ${err.message} (HIMMEL-2176)`);
   }
+  configAudit.post(auditId, p, existed ? 'write' : 'create', 'himmelctl luna-config');
   if (preKnown) recordSections(p, prior, doc, !existed);
 }
 

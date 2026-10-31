@@ -1240,6 +1240,8 @@ c16_setup() {
     mkdir -p "$c16_t/scripts/himmelctl" "$c16_t/home" "$c16_t/claude" "$c16_t/cache"
     ln -s "$REPO_ROOT/scripts/lib" "$c16_t/scripts/lib"
     printf '{"role":"adopter"}' > "$c16_t/cache/install-profile.json"
+    # A policy file, so C74-policy (FAIL without one on an installed station) does not move with the profile.
+    mkdir -p "$c16_t/home/.himmel"; printf '{"policy":{}}' > "$c16_t/home/.himmel/config.json"
     # Stub status: like the real one, rc=2 when there is no install profile.
     cat > "$c16_t/scripts/himmelctl/bin.js" <<'JS'
 const fs = require('fs'), path = require('path');
@@ -7251,6 +7253,24 @@ mkdir -p "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'safe default'; then pass "C74 unreadable .env -> WARN unchecked"; else fail "C74 unreadable env -> $(printf '%s' "$out" | head -4)"; fi
 rmdir "$c74_t/env"
+echo "== C74-config-split: config.json gone on an installed station -> FAIL (HIMMEL-8401) =="
+c74_reset
+mkdir -p "$c74_t/home/.claude/himmel"
+printf '{}\n' > "$c74_t/home/.claude/himmel/install-profile.json"
+out="$(c74_run)"
+if grepq "$out" -F 'FAIL C74-policy' && grepq "$out" -F 'installed station' && grepq "$out" -F 'config-audit.sh list'; then pass "C74 installed station without config.json -> FAIL naming the restore"; else fail "C74 installed no policy -> $(printf '%s' "$out" | head -6)"; fi
+rm -rf "$c74_t/home/.claude/himmel"
+echo "== C74-config-keys: a key lost since the snapshot -> WARN naming the key, never the value (HIMMEL-8401) =="
+c74_reset
+printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+printf 'JIRA_EMAIL=planted-dummy-value-74\nHANDOVER_DIR=/planted-74\n' > "$c74_conf"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-config-keys'; then pass "C74-config-keys with no loss -> OK"; else fail "C74-config-keys no loss -> $(printf '%s' "$out" | head -6)"; fi
+HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_t/env" bash "$REPO_ROOT/scripts/lib/config-audit.sh" accept >/dev/null 2>&1
+printf 'HANDOVER_DIR=/planted-74\n' > "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-config-keys' && grepq "$out" -F 'JIRA_EMAIL' && ! grepq "$out" -F 'planted-'; then pass "C74-config-keys lost JIRA_EMAIL -> WARN naming the key only"; else fail "C74-config-keys lost key -> $(printf '%s' "$out" | head -8)"; fi
 rm -rf "$c74_t"
 
 # --- C75-keyring: keyring state and the layer serving each manifest secret ---

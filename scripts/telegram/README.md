@@ -635,6 +635,35 @@ A stolen phone gives an attacker your Telegram but not your authenticator code.
 A stolen phone that also holds the authenticator lets them approve only a request
 a session has already opened, and only for an allowlisted command.
 
+## Station config restore — `/config backups` / `/config restore <id> <code>`
+
+Every station config write is backed up and logged (`scripts/lib/config-audit.sh`;
+see [config layers](../../docs/internals/config-layers.md#the-config-audit-log-backups-and-restore)).
+When the watcher finds a deleted, truncated or key-losing config file, it alerts
+your DM and every armed chief inbox, naming the file, the lost keys and the
+newest backup that still holds them. From Telegram:
+
+- `/config backups` lists the backups, newest first, with a key-name diff
+  against the live set. It never prints a value.
+- `/config restore <backup id> <code>` puts that backup's set back. `<code>` is
+  the 6-digit code from your authenticator app. The restore backs up the
+  live set first and writes an audit row.
+
+Enroll once at the station, in a plain terminal (not through a Claude session,
+so the seed never reaches a transcript):
+
+```sh
+python3 scripts/telegram/config-restore.py enroll   # prints the otpauth URI ONCE
+```
+
+The seed is `~/.himmel/secrets/config-restore.seed` (mode 600), separate from
+the afk-sudo seed. The same rules as AFK sudo apply: only a typed DM from the
+`allowFrom` operator reaches the helper, every other `/config` line is dropped
+so a code never lands in a session inbox, a used code is refused, three wrong
+codes lock the restore for 15 minutes, and at most 6 requests are accepted per
+hour. A session cannot run the restore: `block-himmel-config-writes.sh` refuses
+the restore, accept and enroll verbs from a Claude session.
+
 ## Group triage
 
 Plain group/channel chat is fronted by a cheap classifier before the bridge
@@ -793,6 +822,8 @@ measured history of failing purely with ambient load.
 | `run-prompt.md` | the prompt contract handed to each bounded run |
 | `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use |
 | `afk-sudo-route.ts` | hands the operator's `approve`/`deny` lines to the root afk-sudo helper (HIMMEL-8066) |
+| `config-restore-route.ts` | hands the operator's `/config backups`/`restore` lines to `config-restore.py`; runs the 60 s config watcher pass (HIMMEL-8401) |
+| `config-restore.py` | TOTP-gated station config restore (`enroll` / `list` / `restore`) |
 
 Bot: `@<your-bot-username>`. Token: `~/.claude/channels/telegram/.env`
 (`TELEGRAM_BOT_TOKEN=`). Logs + pidfile: `~/.claude/channels/telegram/`.

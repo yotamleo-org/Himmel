@@ -3731,11 +3731,20 @@ for _ix in "$_ix_conf" "$_ix_conf_local" "$_ix_conf_json"; do
     fail_step "[8/8] config file ${M_ID[$_ix]}: refused a suspicious path ('$_cf')"
   elif [ ! -e "$_cf" ] && [ ! -L "$_cf" ]; then
     echo "  absent, skipping: $_cf"
-  elif guarded run rm -f -- "$_cf"; then
-    [ "$DRY_RUN" -eq 0 ] && echo "  removed: $_cf"
   else
-    echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
-    fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+    # The removal leaves an audit row and a backup of the set.
+    _ca_id=""
+    [ "$DRY_RUN" -eq 1 ] || _ca_id=$(bash "$SCRIPT_DIR/lib/config-audit.sh" pre "$_cf" --script uninstall.sh 2>/dev/null) || _ca_id=""
+    if guarded run rm -f -- "$_cf"; then
+      if [ "$DRY_RUN" -eq 0 ]; then
+        echo "  removed: $_cf"
+        bash "$SCRIPT_DIR/lib/config-audit.sh" post "$_ca_id" "$_cf" rm --script uninstall.sh --pid "$$" 2>/dev/null \
+          || echo "  WARN: no config audit row for $_cf" >&2
+      fi
+    else
+      echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
+      fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+    fi
   fi
 done
 echo ""

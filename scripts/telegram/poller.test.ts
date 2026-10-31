@@ -8,6 +8,7 @@ import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
 import type { TriageVerdict } from "./triage";
+import { makeConfigRestoreGate } from "./config-restore-route";
 
 const root = () => mkdtempSync(join(tmpdir(), "poller-"));
 const allowAll = () => true;
@@ -2251,6 +2252,28 @@ test("handleInbound routes a DM + operator + typed + enabled /arm to the auto fi
   expect(fired.length).toBe(1);
   expect(fired[0].route.op).toBe("arm-resume");
   expect(ran).toBe(false);
+});
+
+test("handleInbound: a /config restore line with its code never reaches an inbox or a run (HIMMEL-8401)", async () => {
+  for (const msg of [
+    { from: 5, chat_id: 5, text: "/config restore 20261031T120000Z-ab12 123456", forwarded: false, caption: false },
+    // Not eligible (forwarded, or from a group): still consumed, the helper never runs.
+    { from: 5, chat_id: 5, text: "/config restore 20261031T120000Z-ab12 123456", forwarded: true, caption: false },
+    { from: 9, chat_id: -50, text: "/config restore 20261031T120000Z-ab12 123456", forwarded: false, caption: false },
+  ]) {
+    const r = root(); const fired: any[] = []; const ran: string[] = []; const calls: string[][] = [];
+    const configRestore = makeConfigRestoreGate({
+      access: () => ({ allowFrom: ["5"] }), enrolled: () => true,
+      run: async (args) => { calls.push(args); return { code: 0, stdout: "result=restored\n" }; },
+      reply: async () => {}, log: () => {},
+    });
+    await handleInbound(r, { ...msg, ts: Math.floor(Date.now() / 1000) }, async (s) => { ran.push(s); },
+      { ...autoGate([], fired), configRestore }, async () => "spawn" as never, () => true);
+    await new Promise((res) => setTimeout(res, 5));
+    expect(ran).toEqual([]);
+    expect(readdirSync(r).filter((d) => d !== "outbox")).toEqual([]);
+    expect(calls.flat()).not.toContain("123456");
+  }
 });
 
 test("autoGate.authorize composition: operator + allowlisted-chat only (CR S1 self-sufficiency)", () => {
