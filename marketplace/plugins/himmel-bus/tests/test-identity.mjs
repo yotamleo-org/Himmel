@@ -563,7 +563,7 @@ test('M3: a stored role console record reads back as chief under the switch only
 
 test('M3: register reads the console option as the chief under the switch only', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
+  await identity.register(root, 'con', { role: 'chief' });
   const peer = await withSwitch(undefined, () => identity.register(root, 'w1', { role: 'worker', console: 'con' }));
   assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
   assert.equal(peer.console, 'con');
