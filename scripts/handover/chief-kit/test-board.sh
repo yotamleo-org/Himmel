@@ -1040,7 +1040,8 @@ if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes byte
 
 # --- the text a chief reads and copies says worker; the wire keys (leg:, legs:)
 # keep their names and are pinned by the --json rows and the legs: fixture above.
-usage_txt="$(node "$SUT" --help 2>&1)"
+usage_txt="$(node "$SUT" --help 2>&1)"; rc=$?
+same 'the usage line exits 2 (a usage error)' "rc=$rc" 'rc=2'
 contains 'usage line names the <worker doc> placeholder (HIMMEL-8309)' "$usage_txt" '--workers "<worker doc> ..."'
 lacks 'usage line carries no leg (HIMMEL-8309)' "$usage_txt" 'leg'
 contains 'fleet counter reads workers live (HIMMEL-8309)' "$lhtml" '<small>/15 workers live</small>'
@@ -1117,7 +1118,8 @@ for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
 done
 
 # --- the need actions and the health line say worker; the leg: key stays.
-BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" run --out "$W/n5-json-board.html" --json "$W/n5-board.json" >/dev/null
+BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" run --out "$W/n5-json-board.html" --json "$W/n5-board.json" >/dev/null; rc=$?
+same '--json: the worker-wording render exits 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$W/n5-board.json" 2>/dev/null)"
 jcheck '--json: a BLOCKED worker need reads clear the BLOCKED worker, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N7" && n.action === "clear the BLOCKED worker")'
 jcheck '--json: a still-open WRAPPED worker need reads close the worker window, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N5" && n.action === "close the worker window")'
