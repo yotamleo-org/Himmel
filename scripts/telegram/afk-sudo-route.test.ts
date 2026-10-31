@@ -563,3 +563,65 @@ test("dispatch: callback_query updates reach the tap gate with the sender and ch
   dispatchAfkCallbacks(updates, (tap) => { seen.push(tap); return true; });
   expect(seen).toEqual([{ callback_id: "c1", from: OP, chat_id: OP, data: "afk:deny:abcdefgh" }]);
 });
+
+test("slice 4: the operator's typed /afk-lockdown reaches the helper with no argument but the sender and chat", async () => {
+  for (const text of ["/afk-lockdown", "  /afk-lockdown  ", "/AFK-Lockdown", "/afk-lockdown@himmel_bot"]) {
+    const { deps, calls, replies } = fake();
+    deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=locked denied=abcdefgh\n" }; };
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([{ args: ["lockdown", "--from", String(OP), "--chat", String(OP)], stdin: "" }]);
+    expect(replies).toEqual(["✅ afk-sudo lockdown: result=locked denied=abcdefgh"]);
+  }
+});
+
+test("slice 4: /afk-lockdown with anything after it never reaches the helper, so no argument can turn anything on", async () => {
+  for (const text of ["/afk-lockdown --enable", "/afk-lockdown enable", "/afk-lockdown all", "/afk-lockdown\n--mode=all", "/afk-lockdown true"]) {
+    const { deps, calls, replies } = fake();
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(replies[0]).toContain("takes no arguments");
+  }
+});
+
+test("slice 4: /afk-lockdown from a forwarded message, a group or another sender is consumed and runs nothing", async () => {
+  for (const extra of [{ forwarded: true }, { caption: true }, { from: 999, chat_id: 999 }, { chat_id: -100123 }]) {
+    const { deps, calls, logs } = fake();
+    expect(makeAfkSudoGate(deps)(dm("/afk-lockdown", extra))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(logs[0]).toContain("lockdown refused");
+  }
+});
+
+test("slice 4: a refused lockdown shows the helper's result line", async () => {
+  const { deps, replies } = fake();
+  deps.runHelper = async () => ({ code: 5, stdout: "result=not-operator\n" });
+  makeAfkSudoGate(deps)(dm("/afk-lockdown"));
+  await settle();
+  expect(replies).toEqual(["⚠️ afk-sudo lockdown: result=not-operator"]);
+});
+
+test("slice 4: with no installed helper /afk-lockdown is not consumed, and similar text is left alone", async () => {
+  const off = fake(false);
+  expect(makeAfkSudoGate(off.deps)(dm("/afk-lockdown"))).toBe(false);
+  const on = fake();
+  for (const text of ["/afk-lockdowns", "/afk-lockdown-now", "please /afk-lockdown", "afk-lockdown"]) {
+    expect(makeAfkSudoGate(on.deps)(dm(text))).toBe(false);
+  }
+  await settle();
+  expect(on.calls).toEqual([]);
+});
+
+test("slice 4: handleInbound consumes /afk-lockdown, so it never reaches an inbox or run", async () => {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  const { deps, calls } = fake();
+  const ran: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps) };
+  await handleInbound(r, dm("/afk-lockdown"), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
+  await settle();
+  expect(calls.length).toBe(1);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+});
