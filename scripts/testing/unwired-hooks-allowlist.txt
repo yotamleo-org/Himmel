@@ -21,16 +21,6 @@ guardrail-skip-in-himmel.js|module required by guardrail-block.mjs, himmel-updat
 guardrail-block.mjs|CLI invoked by himmel-doctor.sh, himmel-update.sh and himmelctl, not a registered hook
 simulate-memory-edit.js|module required by guard-memory-capture.sh
 narrow-allow.mjs|operator-run settings narrowing chokepoint (HIMMEL-1513), invoked by hand
-block-leg-askuserquestion.sh|old-path forwarder to block-worker-askuserquestion.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-console-compact-reinject.sh|old-path forwarder to chief-compact-reinject.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-console-precompact-snapshot.sh|old-path forwarder to chief-precompact-snapshot.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-guard-console-dispatch.sh|old-path forwarder to guard-chief-dispatch.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-guard-console-foreground.sh|old-path forwarder to guard-chief-foreground.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-guard-leg-cache-ttl.sh|old-path forwarder to guard-worker-cache-ttl.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-guard-leg-context-handoff.sh|old-path forwarder to guard-worker-context-handoff.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-guard-leg-wakeup.sh|old-path forwarder to guard-worker-wakeup.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-notify-console-on-prompt.sh|old-path forwarder to notify-chief-on-prompt.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
-stop-console-idle-guard.sh|old-path forwarder to stop-chief-idle-guard.sh for settings not yet re-pasted; HIMMEL-6647 deletes it
 #
 # Shipped unwired on purpose, activation is an operator step:
 block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
