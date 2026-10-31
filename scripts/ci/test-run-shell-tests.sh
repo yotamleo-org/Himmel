@@ -3294,7 +3294,7 @@ else
 fi
 
 rm -f "$sb32/stuck.runs"
-out32=$(CAP32_DIR="$sb32" SUITE_RUN_BUDGET=3 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT='' SUITE_RUN_BUDGET=3 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
 runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
 if [ "$rc32" -eq 1 ] && [ "$runs32" = 1 ] && grepq "$out32" '\[NO-RETRY\] [^ ]*test-stuck32\.sh'; then
   pass "32b: SUITE_RUN_BUDGET bounds the rerun the same way"
@@ -3303,7 +3303,7 @@ else
 fi
 
 rm -f "$sb32/stuck.runs"
-out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=60 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=60 SUITE_RUN_BUDGET=7200 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
 runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
 if [ "$rc32" -eq 1 ] && [ "$runs32" = 2 ] && ! grepq "$out32" '\[NO-RETRY\]'; then
   pass "32c: control — a rerun that fits the budget still happens"
