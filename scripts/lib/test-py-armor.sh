@@ -11,8 +11,6 @@
 #   2. PY_ARMOR_BIN reroutes to an alternate interpreter.
 #   3. py_armor_capture fills PY_ARMOR_OUT (incl. multi-line) + relays rc;
 #      empty output yields rc=0 + PY_ARMOR_OUT="" (stale value reset).
-#   3b. Degraded mode (no GNU timeout, Windows-ish uname) warns ONCE on
-#      stderr — never silently unbounded where the wedge class lives.
 #   4. Hang armor half 1: a TERM-ignoring interpreter is SIGKILLed within
 #      the (-k) bound instead of wedging forever.
 #   5. Hang armor half 2: an orphan child holding stdout does NOT stall
@@ -108,32 +106,6 @@ chmod +x "$tmpdir/bin/python3"
 # Seed a stale value first — capture must RESET it, not leak it through.
 out="$(run_with_fakes -- 'PY_ARMOR_OUT=stale-from-last-call; py_armor_capture -c "x"; printf "rc=%s out=[%s]" "$?" "$PY_ARMOR_OUT"')"
 assert "rc=0 and PY_ARMOR_OUT empty (stale value cleared)" test "$out" = "rc=0 out=[]"
-
-echo "[test-py-armor] degraded armor warns ONCE on stderr (Windows-ish uname, no GNU timeout)"
-cat > "$tmpdir/bin/python3" <<'EOF'
-#!/usr/bin/env bash
-echo "FAKEPY3 $*"
-EOF
-chmod +x "$tmpdir/bin/python3"
-cat > "$tmpdir/bin/timeout" <<'EOF'
-#!/usr/bin/env bash
-echo "fake timeout: definitely not the GNU flavor"
-EOF
-chmod +x "$tmpdir/bin/timeout"
-cat > "$tmpdir/bin/uname" <<'EOF'
-#!/usr/bin/env bash
-echo MINGW64_NT-10.0-fake
-EOF
-chmod +x "$tmpdir/bin/uname"
-run_with_fakes -- 'py_armor -c "x"; py_armor -c "y"' >"$tmpdir/warn.out" 2>"$tmpdir/warn.err"
-assert "WARN emitted on stderr" grep -q 'WARN py-armor: GNU timeout unavailable' "$tmpdir/warn.err"
-assert "WARN fires once per process (probe cached)" \
-  test "$(grep -c 'WARN py-armor' "$tmpdir/warn.err")" -eq 1
-assert "stdout contract untouched (no WARN on stdout)" \
-  bash -c '! grep -q "WARN py-armor" "$1"' _ "$tmpdir/warn.out"
-assert "python still dispatched unbounded" grep -q '^FAKEPY3 ' "$tmpdir/warn.out"
-# Remove the fakes — the hang-armor cases below need the REAL GNU timeout.
-rm -f "$tmpdir/bin/timeout" "$tmpdir/bin/uname"
 
 if timeout --version 2>/dev/null | grep -qi coreutils; then
   echo "[test-py-armor] hang armor: TERM-ignoring interpreter gets SIGKILLed (bounded)"

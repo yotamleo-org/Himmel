@@ -31,29 +31,13 @@ NOREG="$SB/none.json" # nonexistent registry
 # phantom vault. dry-run + a real .obsidian marker still resolve the convention.
 mkcfg '{"enabled":true}'
 FAKEHOME="$SB/fakehome"; mkdir -p "$FAKEHOME/Documents"
-# USERPROFILE='' also disables the Windows USERPROFILE-form fallback so the test
-# is hermetic on a real Windows box (which has its own ~/Documents/luna vault).
 check "undeclared + no real luna vault -> skip" "" \
-  "$(HOME="$FAKEHOME" USERPROFILE='' LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
+  "$(HOME="$FAKEHOME" LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
 check "undeclared + dry-run -> convention path" "$FAKEHOME/Documents/luna" \
-  "$(HOME="$FAKEHOME" USERPROFILE='' LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG" true)"
+  "$(HOME="$FAKEHOME" LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG" true)"
 mkdir -p "$FAKEHOME/Documents/luna/.obsidian"
 check "undeclared + real luna vault (.obsidian) -> convention path" "$FAKEHOME/Documents/luna" \
-  "$(HOME="$FAKEHOME" USERPROFILE='' LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
-
-# Windows USERPROFILE-form fallback: when $HOME (MSYS) has no
-# vault but a real one exists under the USERPROFILE Windows-form path, the
-# convention is honored and the resolver returns the HOME-form (the hook
-# reconciles). cygpath-gated — only meaningful on Windows Git Bash.
-if command -v cygpath >/dev/null 2>&1; then
-    mkcfg '{"enabled":true}'
-    FH2="$SB/fakehome2"; mkdir -p "$FH2/Documents"
-    UP_WIN="$(cygpath -w "$SB/upwin" 2>/dev/null)"
-    UP_U="$(cygpath -u "$UP_WIN" 2>/dev/null)"
-    mkdir -p "$UP_U/Documents/luna/.obsidian"
-    check "undeclared + USERPROFILE-form real vault -> conv (HOME form)" "$FH2/Documents/luna" \
-      "$(HOME="$FH2" USERPROFILE="$UP_WIN" LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
-fi
+  "$(HOME="$FAKEHOME" LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
 
 mkcfg '{"vault_path":"/tmp/explicit"}'
 check "vault_path wins" "/tmp/explicit" \

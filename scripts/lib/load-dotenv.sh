@@ -94,9 +94,8 @@ _load_dotenv_primary_for() {  # $1 = candidate root dir
         dir_phys=$(cd "$dir" && pwd -P)
         toplevel=$(cd "$dir" && git rev-parse --show-toplevel 2>/dev/null) || toplevel=""
         # Re-resolve git's toplevel through bash cd+pwd -P so it lands in the
-        # same physical (MSYS on Windows) form as dir_phys — git for Windows
-        # prints a drive-letter path that never string-equals a bash pwd, and on
-        # macOS /tmp → /private/tmp must resolve identically on both sides.
+        # same physical form as dir_phys — on macOS /tmp → /private/tmp must
+        # resolve identically on both sides.
         [ -n "$toplevel" ] && toplevel=$(cd "$toplevel" 2>/dev/null && pwd -P)
         gitdir=$(cd "$dir" && git rev-parse --git-dir 2>/dev/null) || gitdir=""
         if [ -n "$primary" ] && [ -n "$toplevel" ] && [ "$toplevel" = "$dir_phys" ] \
