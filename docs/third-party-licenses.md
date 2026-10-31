@@ -217,16 +217,21 @@ docs reviewer cites it as its NIT-only generic layer. Its licence is the same
 
 ## Vendored plugin: `pstack` (MIT, Lauren Tan)
 
-Added 2026-10-15 (HIMMEL-5803). `marketplace/plugins/pstack/`, seven skills
+Added 2026-10-15 (HIMMEL-5803), expanded 2026-10-30 (HIMMEL-6690,
+HIMMEL-8218). `marketplace/plugins/pstack/`, ten skills
 (`correct`, `blast-radius`, `create-verification-skill`,
 `maintain-verification-skill`, `benchmark-checklist`,
-`principle-explain-the-number`, `in-your-own-words`) sourced from
-`cursor/plugins` at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path `pstack/`. Every file
-names the pin and its deviations; the `unslop`, `no-comments` and
-`comment-sicko` files above are re-synced to the same pin (HIMMEL-5812). Never
+`principle-explain-the-number`, `in-your-own-words`, `statechart`,
+`create-formal-verification-skill`, `maintain-formal-verification-skill`),
+including statechart's runtime, tests and fixtures, plus the Claude Code harness
+mapping, sourced from `cursor/plugins` at pinned commit
+`4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path `pstack/`. The inventory and
+per-file hashes in `marketplace/plugins/pstack/VENDORED.md` record the pin and
+deviations. The separate `unslop`, `no-comments` and `comment-sicko` copies
+above remain at `99743e9c` (HIMMEL-5812). Never
 sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every worker
 profile (registry row: [`tool-adoption/registry.md`](tool-adoption/registry.md)).
-The same pin also feeds a take-parts digest of six principles restated in our
+The earlier pin also fed a take-parts digest of six principles restated in our
 wording; the digest itself vendors no files (HIMMEL-5810:
 [`tool-adoption/pstack-principles-digest.md`](tool-adoption/pstack-principles-digest.md)).
 

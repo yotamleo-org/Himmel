@@ -4,7 +4,7 @@ description: "Generate a project-local verification skill that drives your app t
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/create-verification-skill/SKILL.md at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: generated-skill path `.cursor/skills/` is `.claude/skills/`, the directory Claude discovers. -->
+<!-- Vendored from cursor/plugins pstack/skills/create-verification-skill/SKILL.md at 4dd1d05818d19792e7cd6e818f1667f95f7e1dbe (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: generated-skill path `.cursor/skills/` is `.claude/skills/`, the directory Claude discovers. -->
 
 # Create a verification skill
 
