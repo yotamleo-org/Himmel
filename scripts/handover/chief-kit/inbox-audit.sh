@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # inbox-audit.sh — Per-shift audit for inbox-send.sh's
-# chief-side sent-record: every token-quoting bullet in an inbox must have
-# a matching ledger line, or it is unaccounted for — either forged (a
-# chief relay is barred from --token, so a token bullet
-# with no record was never sent by this script) or lost to an exit-4
-# ledger-write failure (see inbox-send.sh header). Read-only: writes
-# nothing, only reports.
+# chief-side sent-record: every line in an inbox must have a matching ledger
+# line, or it is unaccounted for — forged, since inbox-send.sh records every
+# bullet before it appends one, or older than the ledger (a reboot clears the
+# runtime dir it lives in). Read-only: writes nothing, only reports.
 #
 # PLATFORM GUARD: audits the
 # Linux/konsole-only ledger inbox-send.sh writes (see its own header); no
@@ -17,14 +15,15 @@
 #   accepts a ledger line from either <sent-log-dir>/inbox-sent.log
 #   directly or <sent-log-dir>/<sender>/inbox-sent.log one level down.
 #
-# A token bullet matches ^- [0-9][0-9]:[0-9][0-9] \[[^]]*\] from= ; for each,
-# the sha256 of the line (no trailing newline) must equal the 4th
-# whitespace-separated field of some ledger line. Prints "AUDIT ok" and
-# exits 0 when every token bullet is matched; otherwise prints one
+# Every non-blank line is audited, whatever its shape or field order: a
+# shape match let a forged bullet with from= before the token pass.
+# The sha256 of the line (no trailing newline) must equal the
+# 4th whitespace-separated field of some ledger line. Prints "AUDIT ok" and
+# exits 0 when every line is matched; otherwise prints one
 # "AUDIT UNMATCHED <line>" per miss and exits 1. A missing inbox file or
 # sent-log dir, an inbox that cannot be read (e.g. a permission change), or a
-# sha256sum failure is a usage error, exit 2 — this audit exists to catch
-# forgery, so it fails closed rather than reporting a false "AUDIT ok". A
+# sha256sum or grep failure is a usage error, exit 2 — this audit exists to
+# catch forgery, so it fails closed rather than reporting a false "AUDIT ok". A
 # final inbox line with no trailing newline is still audited.
 #
 # bash 3.2-safe, shellcheck-clean, no arrays — matches inbox-send.sh's
@@ -52,20 +51,19 @@ ledger_shas="$(cat "$sent_dir"/inbox-sent.log "$sent_dir"/*/inbox-sent.log 2>/de
 unmatched=0
 read_failed=0
 while IFS= read -r line || [ -n "$line" ]; do
-    printf '%s' "$line" | grep -E '^- [0-9][0-9]:[0-9][0-9] \[[^]]*\] from=' >/dev/null
-    classify_rc=$?
-    if [ "$classify_rc" -gt 1 ]; then
-        printf 'inbox-audit: cannot classify line, aborting: %s\n' "$line" >&2
-        exit 2
-    fi
-    [ "$classify_rc" -eq 0 ] || continue
+    [ -n "${line//[[:space:]]/}" ] || continue
     if ! sha="$(printf '%s' "$line" | sha256sum)"; then
         printf 'inbox-audit: cannot hash line, aborting: %s\n' "$line" >&2
         exit 2
     fi
     sha="${sha%% *}"
-    matched_sha="$(printf '%s\n' "$ledger_shas" | grep -xF "$sha")"
-    if [ -z "$matched_sha" ]; then
+    printf '%s\n' "$ledger_shas" | grep -qxF "$sha"
+    match_rc=$?
+    if [ "$match_rc" -gt 1 ]; then
+        printf 'inbox-audit: cannot match line, aborting: %s\n' "$line" >&2
+        exit 2
+    fi
+    if [ "$match_rc" -eq 1 ]; then
         printf 'AUDIT UNMATCHED %s\n' "$line"
         unmatched=1
     fi

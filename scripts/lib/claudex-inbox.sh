@@ -33,13 +33,50 @@ inbox_with_lock() (
     "$@" "$name"
 )
 
+# Provenance gate: anyone who can append the synced vault can
+# write an inbox line and copy a RETASK token into it, so a line is delivered
+# only when its sha256 is in a chief sent-record ledger inbox-send.sh wrote
+# before appending it. A ledger is trusted only when it, its directory and
+# its base are owned by this uid and none is a symlink; the bases are
+# HIMMEL_CONSOLE_RUNDIR, $XDG_RUNTIME_DIR/himmel-chief and
+# ${TMPDIR:-/tmp}/himmel-chief-<uid>, so a sender whose environment picked
+# another default (cron has no XDG_RUNTIME_DIR) is still found.
+# ponytail: same-uid local writers can still write the ledger; HMAC with a key outside reach of the session would close it.
+inbox_ledger_shas() {
+    local base f d
+    for base in "${HIMMEL_CONSOLE_RUNDIR:-}" "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-chief}" "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"; do
+        [ -n "$base" ] && [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || continue
+        for f in "$base"/inbox-sent.log "$base"/*/inbox-sent.log; do
+            d="${f%/*}"
+            [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
+            awk '{ print $4 }' "$f" 2>/dev/null
+        done
+    done
+}
+
+# Alerts the chief (cadence-alert.sh's chief-readable alert file, plus one
+# operator Telegram per session until cleared). Never fails the delivery.
+inbox_alert_refused() { # <name> <count> <inbox>
+    local here
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+    bash "$here/../luna/cadence-alert.sh" fail claudex-inbox \
+        "refused $2 unrecorded inbox line(s) for $1" "$3" \
+        "no chief sent-ledger record: forged, or older than the ledger" \
+        "run inbox-audit.sh on the inbox; resend a genuine ruling with inbox-send.sh" \
+        </dev/null >/dev/null 2>&1 || true
+}
+
 inbox_peek() {
-    local name="$1" root inbox size cursor
+    local name="$1" root inbox size cursor raw partial line sha pool kept refused nl
     inbox_bullets=""
     inbox_cursor_file=""
     inbox_cursor_size=""
+    inbox_refused=0
+    inbox_name="$name"
+    inbox_path=""
     root="$(handover_root 2>/dev/null)" || return 1
     inbox="$root/inbox/$name.md"
+    inbox_path="$inbox"
     size="$(wc -c < "$inbox" 2>/dev/null | tr -d '[:space:]')"
     case "$size" in ''|*[!0-9]*) return 1 ;; esac
     inbox_cursor_file="$root/inbox/.cursor/$name"
@@ -56,8 +93,41 @@ inbox_peek() {
     # Read the prefix first so a large delta cannot SIGPIPE an upstream tail.
     # 10# forces base-10: a leading-zero value (e.g. "08") in a corrupted or
     # hand-recovered cursor file would otherwise be misparsed as an invalid
-    # octal literal and abort delivery (CodeRabbit).
-    inbox_bullets="$(head -c "$size" "$inbox" 2>/dev/null | tail -c "$((10#$size - 10#$cursor))")" || return 1
+    # octal literal and abort delivery (CodeRabbit). The trailing x keeps the
+    # final newline that command substitution would strip.
+    raw="$(head -c "$size" "$inbox" 2>/dev/null | tail -c "$((10#$size - 10#$cursor))" && printf x)" || return 1
+    raw="${raw%x}"
+    nl='
+'
+    # A line still being written stays pending: its hash would not match yet,
+    # and dropping it would lose the genuine ruling for good.
+    case "$raw" in
+        *"$nl") ;;
+        *)
+            partial="${raw##*"$nl"}"
+            raw="${raw%"$partial"}"
+            inbox_cursor_size="$(( 10#$size - $(printf '%s' "$partial" | wc -c) ))"
+            if [ -z "$raw" ]; then
+                inbox_cursor_size=""
+                return 0
+            fi
+            ;;
+    esac
+    pool="$nl$(inbox_ledger_shas)$nl"
+    kept=""
+    refused=0
+    while IFS= read -r line; do
+        [ -n "${line//[[:space:]]/}" ] || continue
+        sha="$(printf '%s' "$line" | sha256sum)" || return 1
+        case "$pool" in
+            *"$nl${sha%% *}$nl"*) kept="${kept:+$kept$nl}$line" ;;
+            *) refused=$((refused + 1)) ;;
+        esac
+    done <<EOF
+$raw
+EOF
+    inbox_bullets="$kept"
+    inbox_refused="$refused"
 }
 
 inbox_commit() {
@@ -67,6 +137,11 @@ inbox_commit() {
     # prim-ok: already a same-directory mktemp + rename with the rc checked; the hook-sourced lib stays free of a prim.sh dependency.
     if printf '%s\n' "$inbox_cursor_size" > "$tmp" && mv -f "$tmp" "$inbox_cursor_file"; then
         inbox_cursor_size=""
+        # Alert once per committed drop, never on a delivery that will retry.
+        if [ "${inbox_refused:-0}" -gt 0 ]; then
+            inbox_alert_refused "$inbox_name" "$inbox_refused" "$inbox_path"
+            inbox_refused=0
+        fi
     else
         rm -f "$tmp"
         return 1

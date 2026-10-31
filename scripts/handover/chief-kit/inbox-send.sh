@@ -39,13 +39,12 @@
 # from=<sender session>, falling back to from=unknown, and is never refused
 # on this account.
 #
-# Exit 4: the inbox append succeeded and the token bullet was
-# delivered, but the chief-side sent-record ledger write that follows it
-# failed (cannot secure/create the per-sender ledger directory, or cannot
-# write the ledger line). The message is delivered either way — this is not
-# a retry cue, it is the detection gap itself: scripts/handover/chief-kit/
-# inbox-audit.sh will name this bullet as UNMATCHED on the next per-shift
-# audit, same as a genuinely forged one.
+# Exit 4: the chief-side sent-record ledger write failed (cannot
+# secure/create the per-sender ledger directory, hash the bullet, or write the
+# ledger line). Nothing reached the inbox or the --doc mirror: the ledger is
+# written FIRST because scripts/lib/claudex-inbox.sh delivers only a line with
+# a ledger record, so an unrecorded bullet would be dropped as
+# forged. Safe to retry once the ledger directory is fixed.
 #
 # bash 3.2-safe, shellcheck-clean. Linux/konsole-only lane (claudex workers run
 # on Linux today, same as headed-arm-worker.sh's sibling in this directory).
@@ -185,6 +184,50 @@ else
     bullet="- ${stamp} from=${author:-unknown} ${text}"
 fi
 
+# Record EVERY bullet, token or not, in a per-sender sent-record ledger
+# outside the vault, BEFORE any write that a reader could see. The claudex
+# inbox hook delivers only lines with a record here, and inbox-audit.sh names
+# any inbox line without one: anyone who can append the synced vault can copy
+# a token, but cannot write this uid-owned ledger. The ledger
+# keeps a digest of the token, never the token itself.
+ledger_base="${HIMMEL_CONSOLE_RUNDIR:-}"
+if [ -z "$ledger_base" ]; then
+    # Same per-uid convention as chief.sh (scripts/handover/chief/
+    # chief.sh lines 18-19, 430-440): prefer a systemd-provided,
+    # already-owned XDG_RUNTIME_DIR, else the uid-qualified /tmp path.
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then
+        ledger_base="$XDG_RUNTIME_DIR/himmel-chief"
+    else
+        ledger_base="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
+    fi
+fi
+ledger_dir="$ledger_base/${author:-unknown}"
+# Same lock-dir hardening shape as the --doc lock directory below:
+# mkdir -m at creation only sets the mode once, so a pre-existing or
+# symlinked directory is checked and re-chmod'd explicitly every time.
+# shellcheck disable=SC2174 # Only the final, per-sender directory is ours.
+if ! mkdir -m 700 -p "$ledger_dir" || [ -L "$ledger_dir" ] || [ ! -O "$ledger_dir" ] || ! chmod 700 "$ledger_dir"; then
+    printf 'inbox-send: NOT sent — cannot secure ledger directory %s\n' "$ledger_dir" >&2
+    exit 4
+fi
+tok_field="-"
+if [ -n "$token" ]; then
+    tok_field="$(printf '%s' "$token" | sha256sum)" || {
+        printf 'inbox-send: NOT sent — cannot hash the token\n' >&2
+        exit 4
+    }
+    tok_field="sha256:${tok_field%% *}"
+fi
+sha="$(printf '%s' "$bullet" | sha256sum)" || {
+    printf 'inbox-send: NOT sent — cannot hash the bullet\n' >&2
+    exit 4
+}
+sha="${sha%% *}"
+if ! printf '%s %s %s %s\n' "$stamp" "${author:-unknown}" "$tok_field" "$sha" >> "$ledger_dir/inbox-sent.log"; then
+    printf 'inbox-send: NOT sent — cannot write ledger %s\n' "$ledger_dir/inbox-sent.log" >&2
+    exit 4
+fi
+
 if [ -n "$doc" ]; then
     # All mirror writers use the canonical doc path as the lock key. Keep
     # lock artifacts outside the vault, in a private per-user temp directory.
@@ -258,48 +301,5 @@ if [ -n "$doc" ]; then
 fi
 
 printf '%s\n' "$bullet" >> "$inbox" || exit 2
-
-# record every token bullet in a per-sender sent-record ledger,
-# so a per-shift audit (inbox-audit.sh) can name any token bullet in an
-# inbox that has no matching record — i.e. one this script never sent. Only
-# for token bullets: a no-token bullet carries no RETASK authority to forge,
-# so there is nothing here worth recording. Runs AFTER the inbox append
-# above: a ledger failure must never block delivery of a bullet the chief
-# already committed to sending (see exit 4 above).
-if [ -n "$token" ]; then
-    ledger_base="${HIMMEL_CONSOLE_RUNDIR:-}"
-    if [ -z "$ledger_base" ]; then
-        # Same per-uid convention as chief.sh (scripts/handover/chief/
-        # chief.sh lines 18-19, 430-440): prefer a systemd-provided,
-        # already-owned XDG_RUNTIME_DIR, else the uid-qualified /tmp path.
-        if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then
-            ledger_base="$XDG_RUNTIME_DIR/himmel-chief"
-        else
-            ledger_base="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
-        fi
-    fi
-    ledger_dir="$ledger_base/${author:-unknown}"
-    # Same lock-dir hardening shape as the --doc lock directory above:
-    # mkdir -m at creation only sets the mode once, so a pre-existing or
-    # symlinked directory is checked and re-chmod'd explicitly every time.
-    # shellcheck disable=SC2174 # Only the final, per-sender directory is ours.
-    if ! mkdir -m 700 -p "$ledger_dir" || [ -L "$ledger_dir" ] || [ ! -O "$ledger_dir" ]; then
-        printf 'inbox-send: bullet delivered but NOT recorded — cannot secure ledger directory %s\n' "$ledger_dir" >&2
-        exit 4
-    fi
-    if ! chmod 700 "$ledger_dir"; then
-        printf 'inbox-send: bullet delivered but NOT recorded — cannot secure ledger directory %s\n' "$ledger_dir" >&2
-        exit 4
-    fi
-    sha="$(printf '%s' "$bullet" | sha256sum)" || {
-        printf 'inbox-send: bullet delivered but NOT recorded — cannot hash the bullet\n' >&2
-        exit 4
-    }
-    sha="${sha%% *}"
-    if ! printf '%s %s %s %s\n' "$stamp" "$author" "$token" "$sha" >> "$ledger_dir/inbox-sent.log"; then
-        printf 'inbox-send: bullet delivered but NOT recorded — cannot write ledger %s\n' "$ledger_dir/inbox-sent.log" >&2
-        exit 4
-    fi
-fi
 
 printf 'inbox-send: appended to %s\n' "$inbox"
