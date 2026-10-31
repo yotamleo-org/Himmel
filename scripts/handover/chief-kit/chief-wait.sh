@@ -283,6 +283,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 # shellcheck source=../../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 2
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$REPO/scripts/lib/legacy-names.sh" || exit 2
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: chief-wait.sh <inbox-file> [tick.sh args...]" >&2
@@ -1155,7 +1159,7 @@ ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past it
         [ -n "$entry" ] || continue
         ready_label="$label"; ready_line="${entry%%:*}"; ready_bullet="${entry#*:}"
     done <<EOF
-$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     [ -n "$ready_label" ]
 }
@@ -1181,7 +1185,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     while read -r label marker; do
         [ -n "$label" ] || continue
-        ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
+        ldoc="$(jq -r --arg l "$label" "$JQ_W"'W[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         if [ "$marker" = READY ]; then
             bullet="$ready_bullet"
@@ -1266,7 +1270,7 @@ resolve_wake() {
         printf 'WAKE resolve %s pr=%s threads=%s\n' "$label" "$pr" "$ids"
         return 0
     done <<EOF
-$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     return 1
 }

@@ -74,6 +74,15 @@ done
 if [ "$digest" -eq 1 ] && { [ "$print_only" -ne 0 ] || [ -n "$nonces$pids" ]; }; then usage; exit 2; fi
 [ -f "$doc" ] || { echo "live-state: no such chief doc: $doc" >&2; exit 1; }
 
+# The manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`.
+# The Live state line is `workers:`; the pre-rename `legs:` line is read only while legacy names
+# are on, and `workers:` wins when a doc carries both. The block is rendered under the key the doc has.
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+live_key=workers
+if ! awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && /^workers:/ { f = 1 } END { exit !f }' "$doc" && legacy_names_on; then live_key=legs; fi
+
 # Rendering and digest share tick.sh's section and wrapped-workers boundaries.
 block_awk='
     digest && !status && tolower($0) ~ /^(status:|\*\*status:\*\*)/ { status = $0 }
@@ -94,7 +103,7 @@ block_awk='
     digest && s && /^head:/ && !head { head = $0 }
     digest && s && /^queue:/ && !queue { queue = $0 }
     digest && s && /^lock:/ && !lock { lock = $0 }
-    s && /^legs:/ { f = 1; if (digest) workers = $0; else print; next }
+    s && index($0, k ":") == 1 { f = 1; if (digest) workers = $0; else print; next }
     f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f {
         if (digest) { line = $0; sub(/^[[:space:]]+/, "", line); workers = workers " " line }
@@ -105,7 +114,7 @@ block_awk='
             if (!seen) exit 1
             if (status) print status
             if (head) print head
-            print (workers ? workers : "legs: unavailable")
+            print (workers ? workers : k ": unavailable")
             print (queue ? queue : "queue: unavailable")
             if (lock) print lock
             print "open rulings: " count + 0
@@ -114,16 +123,16 @@ block_awk='
         }
     }'
 if [ "$digest" -eq 1 ]; then
-    awk -v digest=1 "$block_awk" "$doc"
+    awk -v digest=1 -v k="$live_key" "$block_awk" "$doc"
     exit $?
 fi
 
 manifest="${doc%.md}.fleet.json"
 [ -f "$manifest" ] || { echo "live-state: no fleet manifest: $manifest" >&2; exit 1; }
-rows="$(jq -r '.legs[] | [.label, .doc, ((.lane // "") | if . == "" then "unknown" else . end), ((.lockless == true) | tostring)] | @tsv' "$manifest" 2>/dev/null)" \
+rows="$(jq -r "$JQ_W"'W[] | [.label, .doc, ((.lane // "") | if . == "" then "unknown" else . end), ((.lockless == true) | tostring)] | @tsv' "$manifest" 2>/dev/null)" \
     || { echo "live-state: unreadable fleet manifest: $manifest" >&2; exit 1; }
-old_block="$(awk "$block_awk" "$doc")"
-[ -n "$old_block" ] || { echo "live-state: no legs: line under '## Live state' in $doc" >&2; exit 1; }
+old_block="$(awk -v k="$live_key" "$block_awk" "$doc")"
+[ -n "$old_block" ] || { echo "live-state: no $live_key: line under '## Live state' in $doc" >&2; exit 1; }
 
 entry_re='`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`'
 old_entries="$(printf '%s\n' "$old_block" | grep -oE "$entry_re" | tr -d '`')"
@@ -170,8 +179,8 @@ if [ -n "$missing" ]; then
     exit 1
 fi
 
-prose="$(printf '%s\n' "$old_block" | sed -E "s/^legs:[[:space:]]*//; s/$entry_re//g" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//; s/^none$//; s/^none //')"
-if [ -n "$new_entries" ]; then new_line="legs: $new_entries$prose"; else new_line="legs: none${prose:+ $prose}"; fi
+prose="$(printf '%s\n' "$old_block" | sed -E "s/^${live_key}:[[:space:]]*//; s/$entry_re//g" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//; s/^none$//; s/^none //')"
+if [ -n "$new_entries" ]; then new_line="$live_key: $new_entries$prose"; else new_line="$live_key: none${prose:+ $prose}"; fi
 new_line="$(printf '%s' "$new_line" | sed -E 's/ +$//')"
 # The lockless section follows the legs: line; a stale `lockless:` line is replaced.
 [ -z "$lockless_rows" ] || new_line="$new_line"$'\n'"lockless: ${lockless_rows%; }"
@@ -190,10 +199,10 @@ fi
 doc_lock "$doc" live-state || true
 tmp="$(mktemp "$doc.XXXXXX")" || { echo "live-state: cannot create a temp file next to $doc" >&2; exit 1; }
 chmod --reference="$doc" "$tmp" 2>/dev/null  # gnu-ok: Linux-only kit; the rewrite keeps the doc mode
-if ! NL="$new_line" awk '
+if ! NL="$new_line" awk -v k="$live_key" '
     $0 == "## Live state" { s = 1; print; next }
     s && /^## / { s = 0 }
-    s && /^legs:/ { f = 1; print ENVIRON["NL"]; next }
+    s && index($0, k ":") == 1 { f = 1; print ENVIRON["NL"]; next }
     s && /^lockless:/ { f = 0; next }
     f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f { next }

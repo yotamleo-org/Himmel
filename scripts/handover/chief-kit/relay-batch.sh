@@ -82,6 +82,10 @@ rol="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${sender}.md.relay-o
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
 # shellcheck source=../../lib/prim.sh
@@ -200,19 +204,22 @@ else
     [ "$crc" -le 1 ] || { echo "relay-batch: process census failed (rc=$crc)" >&2; exit 1; }
 fi
 
-# The legs: block of ## Live state: the legs: line plus the lines wrapped under it.
+# The worker block of ## Live state: the `workers:` line plus the lines wrapped under it. The
+# pre-rename `legs:` line is read only while legacy names are on; `workers:` wins when both exist.
+live_key=workers
+if ! awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && /^workers:/ { f = 1 } END { exit !f }' "$doc" && legacy_names_on; then live_key=legs; fi
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state
-entries="$(awk '
+entries="$(awk -v k="$live_key" '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
-    s && /^legs:/ { b = 1; print; next }
+    s && index($0, k ":") == 1 { b = 1; print; next }
     b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
     b { print }
 ' "$doc" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`')"
 if [ -z "$entries" ]; then
     echo "relay-batch: no worker entries in $doc ## Live state" >&2
     # manifest workers missing from Live state are still relayed or reported below.
-    if [ -f "$manifest" ] && jq -e '.legs | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
+    if [ -f "$manifest" ] && jq -e "$JQ_W"'W | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
 fi
 
 # the claudex set comes from the manifest's per-worker lane. --claudex, when
@@ -222,7 +229,7 @@ if [ -n "$claudex" ]; then
     live_labels="$(printf '%s\n' "$entries" | cut -d: -f1)"
     mclaudex=""
     if [ -f "$manifest" ]; then
-        mclaudex="$(jq -r '.legs[] | select(.lane == "claudex" and (.lockless == true | not)) | .label' "$manifest" 2>/dev/null \
+        mclaudex="$(jq -r "$JQ_W"'W[] | select(.lane == "claudex" and (.lockless == true | not)) | .label' "$manifest" 2>/dev/null \
             | grep -Fx -f <(printf '%s\n' "$live_labels") | sort -u | tr '\n' ',')"
     fi
     given="$(printf '%s\n' "${claudex//,/$'\n'}" | awk 'NF' | sort -u | tr '\n' ',')"
@@ -240,7 +247,7 @@ while IFS=: read -r label nonce _lock _pid; do
         # A live, locked worker is never a lockless row: the label is matched against the
         # locked rows only (lockless is the boolean true; anything else is locked and
         # visible). Two locked rows under one label are ambiguous, so nothing is sent.
-        mrows="$(jq -r --arg l "$label" '.legs[] | select(.label == $l and (.lockless == true | not)) | [.doc, ((.lane // "") | if . == "" then "unknown" else . end)] | @tsv' "$manifest" 2>/dev/null)"
+        mrows="$(jq -r --arg l "$label" "$JQ_W"'W[] | select(.label == $l and (.lockless == true | not)) | [.doc, ((.lane // "") | if . == "" then "unknown" else . end)] | @tsv' "$manifest" 2>/dev/null)"
         nrows=0; [ -z "$mrows" ] || nrows="$(printf '%s\n' "$mrows" | wc -l | tr -d ' ')"
         if [ "$nrows" -gt 1 ]; then
             echo "UNRESOLVED $label ($nrows manifest rows share the label, nothing sent) — relay by hand"
@@ -249,7 +256,7 @@ while IFS=: read -r label nonce _lock _pid; do
         IFS=$'\t' read -r ldoc lane <<EOR
 $mrows
 EOR
-        if [ -z "$ldoc" ] && jq -e --arg l "$label" 'any(.legs[]; .label == $l)' "$manifest" >/dev/null 2>&1; then
+        if [ -z "$ldoc" ] && jq -e --arg l "$label" "$JQ_W"'any(W[]; .label == $l)' "$manifest" >/dev/null 2>&1; then
             echo "UNRESOLVED $label (the only manifest row for the label is lockless, nothing sent) — relay by hand"
             continue
         fi
@@ -300,7 +307,7 @@ EOF
 total="$(printf '%s\n' "$entries" | awk 'NF' | wc -l | tr -d ' ')"
 if [ -f "$manifest" ]; then
     total=0
-    mrows="$(jq -r '.legs[] | select(.lockless == true | not) | [.label, ((.lane // "") | if . == "" then "unknown" else . end), .doc] | @tsv' "$manifest" 2>/dev/null)"
+    mrows="$(jq -r "$JQ_W"'W[] | select(.lockless == true | not) | [.label, ((.lane // "") | if . == "" then "unknown" else . end), .doc] | @tsv' "$manifest" 2>/dev/null)"
     while IFS=$'\t' read -r mlabel mlane mdoc; do
         [ -n "$mlabel" ] || continue
         if wrapped "$mdoc"; then continue; fi
@@ -327,7 +334,7 @@ EOFR
 if [ -f "$manifest" ]; then
     # lockless watched rows hold no queue lock and no token, so there is
     # nothing to relay; they are listed so the successor watches them by mechanism.
-    lrows="$(jq -r '.legs[] | select(.lockless == true) | "LOCKLESS \(.label) lane=\((.lane // "") | if . == "" then "unknown" else . end) doc=\(.doc)"' "$manifest" 2>/dev/null)"
+    lrows="$(jq -r "$JQ_W"'W[] | select(.lockless == true) | "LOCKLESS \(.label) lane=\((.lane // "") | if . == "" then "unknown" else . end) doc=\(.doc)"' "$manifest" 2>/dev/null)"
     if [ -n "$lrows" ]; then
         echo "== lockless watched rows (no relay; the successor's tick judges them by tail marker) =="
         printf '%s\n' "$lrows"

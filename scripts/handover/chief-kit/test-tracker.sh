@@ -766,6 +766,18 @@ render >/dev/null
 fmhtml="$(cat "$out" 2>/dev/null)"
 rm -f "$bk/test-console.fleet.json"
 contains 'a worker in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
+# the same manifest under the workers key reads; with HIMMEL_LEGACY_NAMES=0 the old legs key is skipped and workers still reads
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
+rm -f "$out"; render >/dev/null
+contains 'a workers-key fleet manifest lists its worker as live' "$(cat "$out" 2>/dev/null)" '"7":["N57","LIVE"'
+rm -f "$out"; HIMMEL_LEGACY_NAMES=0 render >/dev/null; wrc=$?
+equals 'a workers-key fleet manifest renders with HIMMEL_LEGACY_NAMES=0 (exit status)' "$wrc" 0
+contains 'a workers-key fleet manifest still lists its worker with HIMMEL_LEGACY_NAMES=0' "$(cat "$out" 2>/dev/null)" '"7":["N57","LIVE"'
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
+rm -f "$out"; HIMMEL_LEGACY_NAMES=0 render >/dev/null; lrc=$?
+equals 'a legs-key fleet manifest renders with HIMMEL_LEGACY_NAMES=0 (exit status)' "$lrc" 0
+not_contains 'a legs-key fleet manifest is skipped with HIMMEL_LEGACY_NAMES=0' "$(cat "$out" 2>/dev/null)" '"7":["N57","LIVE"'
+rm -f "$bk/test-console.fleet.json"
 
 # --- parity: the hero's per-bucket counts for the version worked on equal a live JQL count.
 # The fixture is copied from the real environment on 2026-10-18: four mirror frontmatters, the `jira list` rows for

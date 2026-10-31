@@ -32,6 +32,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 usage() { echo "usage: handoff-facts.sh <head|bank|workers|prs|summary|queue|lastgo> <chief doc> [--repo <path>]" >&2; exit 2; }
 [ "$#" -ge 2 ] || usage
@@ -78,7 +82,7 @@ case "$field" in
     workers|legs)
         manifest="${doc%.md}.fleet.json"
         if [ ! -f "$manifest" ]; then echo "none — no fleet manifest"; exit 0; fi
-        if ! rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
+        if ! rows="$(jq -r "$JQ_W"'W[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
             echo "unavailable — manifest unreadable (jq missing or malformed): $manifest"; exit 0
         fi
         n=0

@@ -99,6 +99,10 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 KILL="${KILL_BIN:-kill}"
 CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
@@ -141,7 +145,7 @@ if [ "$SWEEP_MODE" -eq 1 ]; then
         usage
         exit 2
     fi
-    sweep_docs=$(jq -r '.legs[]?.doc // empty' "$FLEET_MANIFEST" 2>/dev/null) || { echo "close-wrapped-worker: cannot read fleet manifest $FLEET_MANIFEST" >&2; exit 1; }
+    sweep_docs=$(jq -r "$JQ_W"'W[]?.doc // empty' "$FLEET_MANIFEST" 2>/dev/null) || { echo "close-wrapped-worker: cannot read fleet manifest $FLEET_MANIFEST" >&2; exit 1; }
     sw_check=""
     [ "$CHECK_MODE" -eq 1 ] && sw_check="--check"
     sw_closed=0; sw_refused=0; sw_skipped=0
@@ -297,7 +301,7 @@ if [ -r "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/environ" ]; then
         | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
 fi
 if [ -z "$worker_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] \
-    && [ "$(jq -r --arg d "$DOC" '[.legs[]? | select(.doc == $d) | .lane // "unknown"] | first // empty' "$FLEET_MANIFEST" 2>/dev/null)" = claudex ]; then
+    && [ "$(jq -r --arg d "$DOC" "$JQ_W"'[W[]? | select(.doc == $d) | .lane // "unknown"] | first // empty' "$FLEET_MANIFEST" 2>/dev/null)" = claudex ]; then
     worker_cfg="$HOME/.claude-codex"
 fi
 WORKER_SESSION_CONFIG_DIR="${worker_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"

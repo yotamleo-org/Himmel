@@ -142,6 +142,7 @@ printf '# c\n\n## Live state\n\nlegs: `N61:n11:tok-one:11`\n' > "$con11"
 bash "$FM" add "${con11%.md}.fleet.json" "$d1" >/dev/null 2>&1
 before11="$(cat "$con11")"
 cp -R "$HERE/.." "$tmp/kitcopy" 2>/dev/null
+mkdir -p "$tmp/lib" && cp "$HERE/../../lib/legacy-names.sh" "$tmp/lib/"   # live-state.sh sources ../../lib/legacy-names.sh
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/kitcopy/queue-lock.sh"
 bash "$tmp/kitcopy/chief-kit/live-state.sh" "$con11" >/dev/null 2>&1; rc=$?
 check '11. a lock status failure refuses' 1 "$rc"
@@ -272,6 +273,34 @@ case "$(LIVESTATE_BUDGET_BYTES=200 budget_tick)" in *'ACTION livestate-over-budg
 check '20. trailing blank lines of the Live state count toward the budget' flagged "$r"
 case "$(LIVESTATE_BUDGET_BYTES=100000 budget_tick)" in *'livestate-over-budget'*) r=flagged ;; *) r=silent ;; esac
 check '20. a Live state under the budget is not flagged' silent "$r"
+
+# 21. M1a: `workers:` first, the pre-rename `legs:` line and `.legs` array still read,
+#     `workers:` wins when a doc carries both, and HIMMEL_LEGACY_NAMES=0 drops the old spelling.
+wk="$HANDOVER_DIR/b/HIMMEL-nextleg-M1A-chief.md"
+wm="${wk%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111` note\nqueue: none\n\n## Results\n' > "$wk"
+cp "$wk" "$tmp/wk-before"
+bash "$SCRIPT" "$wk" >/dev/null 2>&1; rc=$?
+check '21. a workers: doc over a workers manifest renders' 0 "$rc"
+check '21. the render keeps the workers: line and leaves no legs: line' "$(cat "$tmp/wk-before")" "$(cat "$wk")"
+check '21. --digest reads the workers: line' 'workers: `N61:nonce-61:tok-one:111` note' "$(bash "$SCRIPT" "$wk" --digest 2>/dev/null | grep '^workers:')"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:tok-one:111`\nqueue: none\n\n## Results\n' > "$wk"
+bash "$SCRIPT" "$wk" >/dev/null 2>&1; rc=$?
+check '21. an old legs: doc over a workers manifest renders' 0 "$rc"
+check '21. that render leaves exactly one worker line, the legs: one' 1 "$(grep -c '^legs:' "$wk")"
+printf '# c\n\n## Live state\n\nlegs: `N99:old:old:1`\nworkers: `N61:nonce-61:tok-one:111`\nqueue: none\n\n## Results\n' > "$wk"
+out="$(bash "$SCRIPT" "$wk" --print 2>/dev/null)"
+case "$out" in 'workers: `N61:nonce-61:tok-one:111`'*) r=workers ;; *) r="[$out]" ;; esac
+check '21. a doc with both lines renders from workers: (it wins)' workers "$r"
+check '21. a doc with both lines digests the workers: line' 'workers: `N61:nonce-61:tok-one:111`' "$(bash "$SCRIPT" "$wk" --digest 2>/dev/null | grep '^workers:')"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:tok-one:111`\nqueue: none\n\n## Results\n' > "$wk"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" "$wk" --print >/dev/null 2>&1; rc=$?
+check '21. with HIMMEL_LEGACY_NAMES=0 an old legs manifest is refused' 1 "$rc"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" "$wk" --print >/dev/null 2>&1; rc=$?
+check '21. with HIMMEL_LEGACY_NAMES=0 an old legs: line is not read' 1 "$rc"
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }
