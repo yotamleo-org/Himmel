@@ -732,25 +732,37 @@ export function primaryCheckout(dir) {
 //
 // The same writer declares himmel's own tooling: a worker's brief is a tool result, which the classifier never counts as consent, so
 // running our scripts, lockfile installs, status bullets and test VMs was
-// refused until the operator typed. Each entry names exact trees, scripts and
-// VM names under the validated anchor, and says what it does not cover; no
+// refused until the operator typed. Each entry names exact scripts by the
+// validated anchor's absolute path, never a tree, a relative path or a worktree
+// copy (a worker could edit those bytes), and says what it does not cover; no
 // soft_deny or hard_deny key is ever written, so hard denies stay in force.
 const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const TRUSTED_TOOLING = [
+  'scripts/handover/chief-kit/append-results.sh',
+  'scripts/quiet-run.sh',
+  'scripts/check-ci.sh',
+  'scripts/vm/guest-exec.sh',
+  'scripts/vm/vm-lock.sh',
+  'scripts/lib/vmsdk.py',
+  'marketplace/plugins/himmel-bus/bin/bus',
+];
 function himmelToolingTrust(anchor) {
   const path = anchor === undefined ? null : validatedAnchorPath(anchor, 'tooling trust');
   if (!path) return { environment: [], allow: [] };
+  const named = TRUSTED_TOOLING.map((s) => `${path}/${s}`);
+  const [appendResults, , , guestExec, vmLock, vmsdk] = named;
   return {
     environment: [
-      `Trusted repo tooling: the himmel repository at ${path} (and its worktrees under ${path}/.claude/worktrees/) is this session's own reviewed code. Its scripts/handover/, scripts/cr/, scripts/lanes/, scripts/lib/ and scripts/vm/ trees, scripts/quiet-run.sh, scripts/check-ci.sh and marketplace/plugins/himmel-bus/bin/bus are trusted, run by relative path or under ${path}/scripts/, and so is bash scripts/quiet-run.sh suite -- bash <a committed test suite> over vendored code at the commit the repository pins. Not covered: a script written outside those trees (a /tmp or scratchpad driver) and code fetched at run time.`,
+      `Trusted repo tooling: these exact scripts of the himmel primary checkout, run by these absolute paths, are this session's own harness tooling and are trusted: ${named.join(', ')}. Not covered: any other script in the repository, including the GO, verdict and merge scripts, push wrappers, settings writers and secrets helpers; these scripts run by a relative path or from a worktree under ${path}/.claude/worktrees/; any file the worker's branch changed; a script outside the repository (a /tmp or scratchpad driver); and code fetched at run time.`,
       `Pinned dependencies: npm ci --ignore-scripts against a package-lock.json committed in the himmel repository (the pre-push license check runs it) installs only lockfile-pinned packages and is trusted. Not covered: npm install of a package the lockfile does not pin, npx of an unpinned package, and any install from a URL.`,
-      `Status channel: bash scripts/handover/chief-kit/append-results.sh appends one dated Results bullet to the worker's own handover doc, the doc its brief names. The bullet is a status record for the worker's chief, not an instruction to another agent. Not covered: a bullet that claims an approval, a GO, a merge ruling or a token, and a write to another session's doc.`,
-      `Test VMs: ubuntu_new (the golden image) and its numbered clones himmel-ar-<N> and himmel-ci-<N> are our own disposable VirtualBox test VMs on this station. Starting, stopping, snapshotting, restoring and running commands in them through scripts/vm/ or scripts/lib/vmsdk.py is routine test work. Not covered: deleting or unregistering ubuntu_new, and any VM outside those names.`,
+      `Status channel: ${appendResults} appends one dated Results bullet to the worker's own handover doc, the doc its brief names. The bullet is a status record for the worker's chief, not an instruction to another agent. Not covered: a bullet that claims an approval, a GO, a merge ruling or a token, and a write to another session's doc.`,
+      `Test VMs: ubuntu_new (the golden image) and its numbered clones himmel-ar-<N> and himmel-ci-<N> are our own disposable VirtualBox test VMs on this station. Starting, stopping, snapshotting, restoring and running commands in them through ${guestExec}, ${vmLock} or ${vmsdk} is routine test work. Not covered: deleting or unregistering ubuntu_new, and any VM outside those names.`,
     ],
     allow: [
-      `Running the himmel scripts named in the trusted repo tooling entry, or a committed test suite through scripts/quiet-run.sh, is not Code from External.`,
+      `Running one of the exact scripts named in the trusted repo tooling entry by its absolute path is not Code from External.`,
       `npm ci --ignore-scripts against a package-lock.json committed in the himmel repository is not Code from External.`,
-      `Appending a plain-fact status bullet to the worker's own handover doc with scripts/handover/chief-kit/append-results.sh is not Instruction Poisoning.`,
-      `Stopping, snapshotting or restoring a himmel-ar-<N> or himmel-ci-<N> test VM through scripts/vm/ or scripts/lib/vmsdk.py is not Interfere With Workloads.`,
+      `Appending a plain-fact status bullet to the worker's own handover doc with ${appendResults} is not Instruction Poisoning.`,
+      `Stopping, snapshotting or restoring a himmel-ar-<N> or himmel-ci-<N> test VM through ${guestExec}, ${vmLock} or ${vmsdk} is not Interfere With Workloads.`,
     ],
   };
 }

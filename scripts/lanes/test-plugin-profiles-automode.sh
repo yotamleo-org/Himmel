@@ -32,38 +32,45 @@ gen worker-impl >"$TMP/impl.json"; rc=$?
 # ~/.himmel/state/classifier-denials.jsonl (the 2026-10-27..31 census rows),
 # with the station checkout path written as ANCHOR and the handover root as
 # HANDOVER. Columns: classifier tag | command head | the himmel tool the trust
-# text must name for that shape.
+# text must name for that shape (ANCHOR = this tree's primary checkout).
 cat >"$TMP/refused.tsv" <<'E'
-Instruction Poisoning	bash ANCHOR/scripts/handover/chief-kit/append-results.sh HANDOVER	scripts/handover/chief-kit/append-results.sh
-Code from External	bash scripts/quiet-run.sh suite -- bash marketplace/plugins/	scripts/quiet-run.sh
+Instruction Poisoning	bash ANCHOR/scripts/handover/chief-kit/append-results.sh HANDOVER	ANCHOR/scripts/handover/chief-kit/append-results.sh
+Code from External	bash scripts/quiet-run.sh suite -- bash marketplace/plugins/	ANCHOR/scripts/quiet-run.sh
 Code from External	/usr/bin/git push origin fix/himmel-8288-	npm ci --ignore-scripts
-Interfere With Workloads	python ANCHOR/scripts/lib/vm	himmel-ar-
+Interfere With Workloads	python ANCHOR/scripts/lib/vm	ANCHOR/scripts/lib/vmsdk.py
 E
 TEXT=$(jq -r '((.autoMode.environment // []) + (.autoMode.allow // []))[]' "$TMP/impl.json" 2>/dev/null)
 while IFS="$(printf '\t')" read -r tag head needle; do
+    needle="${needle//ANCHOR/$ANCHOR}"
     case "$TEXT" in
         *"$needle"*) ok "T1 $tag shape is named in the trust text ($needle) for: $head" ;;
         *) bad "T1 $tag shape is not named in the trust text ($needle) for: $head" ;;
     esac
 done <"$TMP/refused.tsv"
-case "$TEXT" in
-    *"$ANCHOR/scripts/"*) ok "T1 the trust text names the anchor's absolute scripts path" ;;
-    *) bad "T1 the trust text does not name $ANCHOR/scripts/" ;;
-esac
 jq -e '.autoMode.allow[0] == "$defaults" and .autoMode.environment[0] == "$defaults"' "$TMP/impl.json" >/dev/null 2>&1 \
     && ok "T1 both lists keep the classifier defaults first" || bad "T1 \$defaults missing from environment or allow"
 
 # T2: no hard deny is removed or overridden. The deny list is the registry's,
 # the generated file carries no soft_deny / hard_deny / permission-mode key,
-# and no entry is a blanket allow.
+# no entry is a blanket allow, and the paths named are exactly the expected
+# anchor-absolute scripts (a tree, a relative path or an added script fails).
 WANT=$(jq -c '.profiles["worker-impl"].denyTools' "$HERE/plugin-profiles.json")
 GOT=$(jq -c '.permissions.deny' "$TMP/impl.json")
 [ -n "$WANT" ] && [ "$WANT" = "$GOT" ] && ok "T2 permissions.deny is the registry's worker-impl list" || bad "T2 deny drifted: want $WANT got $GOT"
-jq -e '(.autoMode | has("hard_deny") or has("soft_deny")) or (.permissions | has("defaultMode")) or has("defaultMode")' "$TMP/impl.json" >/dev/null 2>&1 \
-    && bad "T2 the settings set hard_deny, soft_deny or a permission mode" || ok "T2 no hard_deny / soft_deny / permission-mode key"
-if grep -Eiq 'bypass|any command|all commands|all scripts|everything' <<<"$TEXT"; then
-    bad "T2 a trust entry reads as a blanket allow"
-else ok "T2 no trust entry reads as a blanket allow"; fi
+jq -e '(.autoMode | type == "object") and ((.autoMode | has("hard_deny") or has("soft_deny")) | not) and (((.permissions // {}) | has("defaultMode")) | not) and (has("defaultMode") | not)' "$TMP/impl.json" >/dev/null 2>&1 \
+    && ok "T2 no hard_deny / soft_deny / permission-mode key" || bad "T2 the settings set hard_deny, soft_deny or a permission mode, or could not be read"
+grep -Eiq 'bypass|any command|all commands|all scripts|all of scripts|everything|reviewed' <<<"$TEXT"; rc=$?
+[ -n "$TEXT" ] && [ "$rc" = 1 ] && ok "T2 no trust entry reads as a blanket allow" || bad "T2 a trust entry reads as a blanket allow (grep rc=$rc)"
+TOOLING=$(jq -r '((.autoMode.environment // []) + (.autoMode.allow // []))[] | select(startswith("Source control:") | not)' "$TMP/impl.json" 2>/dev/null)
+GOT_PATHS=$(grep -oE '[A-Za-z0-9._/-]*/[A-Za-z0-9._/-]*' <<<"$TOOLING" | sed 's/\.$//' | sort -u)
+WANT_PATHS=$(printf '%s\n' /tmp "$ANCHOR/.claude/worktrees/" "$ANCHOR/marketplace/plugins/himmel-bus/bin/bus" \
+    "$ANCHOR/scripts/check-ci.sh" "$ANCHOR/scripts/handover/chief-kit/append-results.sh" "$ANCHOR/scripts/lib/vmsdk.py" \
+    "$ANCHOR/scripts/quiet-run.sh" "$ANCHOR/scripts/vm/guest-exec.sh" "$ANCHOR/scripts/vm/vm-lock.sh" | sort -u)
+[ -n "$GOT_PATHS" ] && [ "$GOT_PATHS" = "$WANT_PATHS" ] && ok "T2 the trust text names exactly the expected anchor-absolute paths" \
+    || bad "T2 named paths drifted: got [$(printf '%s' "$GOT_PATHS" | tr '\n' ' ')]"
+jq -e '[.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] | length == 1 and all(test("Not covered:.*GO, verdict and merge scripts.*push wrappers.*settings writers.*secrets helpers.*worktree.*branch changed"))' "$TMP/impl.json" >/dev/null 2>&1 \
+    && ok "T2 the tooling entry excludes GO, verdict, merge, push, settings and secrets scripts, worktree copies and branch-changed files" \
+    || bad "T2 the tooling entry's Not covered clause misses a required exclusion"
 jq -e '[.autoMode.environment[] | select(. != "$defaults" and (startswith("Source control:") | not))] | length > 0 and all(contains("Not covered:"))' "$TMP/impl.json" >/dev/null 2>&1 \
     && ok "T2 every tooling entry states what is not covered" || bad "T2 a tooling entry has no Not covered clause"
 
