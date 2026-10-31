@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
+  JudgeReplyError, LIVE_LOOKUP_MS, pull, readMirror, rmRun, standing, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
-import type { IssueSnap, OperatorRow } from './types.js';
-import { breakStaleLock, withLockAsync } from './ledger.js';
+import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
+import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
   fv = new Map<string, string[]>();
@@ -44,16 +44,17 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string; type?: string; blockedBy?: string[] }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), [
-      '---', `key: "${i.key}"`, 'type: "Task"', `status: "${i.status ?? 'To Do'}"`,
+      '---', `key: "${i.key}"`, `type: "${i.type ?? 'Task'}"`, `status: "${i.status ?? 'To Do'}"`,
       ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
       ...(i.sector ? [`sector: "${i.sector}"`] : []),
       `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
+      'links:', '  blocks: []', `  blocked_by: ${JSON.stringify(i.blockedBy ?? [])}`, '  relates: []',
       '---', '', `# ${i.key}`, '',
     ].join('\n'));
   }
@@ -1023,5 +1024,199 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
     const o = operatorDecision(ctx(), { decision: '243', keys, op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
     const viaOperator: Judge = async (input) => (await admitAll(input)).map((d) => ({ ...d, authority: 'operator' as const, ref: o.id }));
     expect(rulings(await rmRun(ctx(), viaOperator))).toHaveLength(21);
+  });
+});
+
+describe('a blocker of a current-version ticket is pulled into the current version (HIMMEL-8350)', () => {
+  const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
+  const noJudge: Judge = async () => { throw new Error('the judge must not be called for a blocker pull'); };
+  const declared = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  // K-1 sits in v1 (the current version) and waits on K-2, which lives in v2.
+  const scene = (extra: Parameters<typeof mirror>[0] = [], blocker: string[] = ['v2'], lastSync?: string) => {
+    mirror([{ key: 'K-1', fixVersions: ['v1'], blockedBy: ['K-2'] }, { key: 'K-2', fixVersions: blocker, sector: 'Ship loop' }, ...extra], lastSync);
+    jira.fv.set('K-1', ['v1']);
+    jira.fv.set('K-2', blocker);
+  };
+  const rulingRows = () => readChain<RulingRow>(join(ctx().dir, 'rulings.jsonl'), loadKey(ctx().keyPath)).verified;
+
+  it('queues one INTAKE for a v-next blocker, and a second run queues none', () => {
+    declared();
+    scene();
+    const out = pull(ctx());
+    expect(out.current).toBe('v1');
+    expect(out.filed).toHaveLength(1);
+    expect(out.filed[0]).toMatchObject({ key: 'K-2', verb: 'INTAKE', from_v: 'v2', to_v: 'v1', evidence: { blocks: ['K-1'], rule: 'blocker-pull' } });
+    expect(out.filed[0].why).toContain('O-R1-blocker-pull');
+    expect(pull(ctx()).filed).toEqual([]);
+    expect(state(ctx()).requests.open).toEqual(['Q-R1-0001']);
+  });
+
+  it('the RM admits it under the standing rule with no model call, and Jira moves the blocker', async () => {
+    declared();
+    scene();
+    pull(ctx());
+    const lines = await rmRun(ctx(), noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-2 move v2→v1 ADMIT current sector=Ship loop — blocker-pull: /));
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    expect(rulingRows().at(-1)?.authority).toEqual({ kind: 'operator', ref: 'O-R1-blocker-pull', blocks: ['K-1'] });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+  });
+
+  it('a blocker in the backlog is added, not moved', async () => {
+    declared();
+    scene([], []);
+    expect(pull(ctx()).filed[0]).toMatchObject({ key: 'K-2', from_v: null, to_v: 'v1' });
+    expect(await rmRun(ctx(), noJudge)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-2 add backlog→v1 ADMIT /));
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+  });
+
+  it('two blocked tickets that share a blocker file one request naming both', () => {
+    declared();
+    scene([{ key: 'K-3', fixVersions: ['v1'], status: 'In Progress', blockedBy: ['K-2'] }]);
+    const out = pull(ctx());
+    expect(out.filed).toHaveLength(1);
+    expect(out.filed[0].evidence).toEqual({ blocks: ['K-1', 'K-3'], rule: 'blocker-pull' });
+  });
+
+  it('files nothing for a blocker already in the version, a Done or Epic blocker, or a blocked ticket outside the version', () => {
+    declared();
+    mirror([
+      { key: 'K-1', fixVersions: ['v1'], blockedBy: ['K-4', 'K-5', 'K-6'] },
+      { key: 'K-4', fixVersions: ['v1'] },
+      { key: 'K-5', fixVersions: ['v2'], status: 'Done', category: 'Done', resolution: 'Done' },
+      { key: 'K-6', fixVersions: ['v2'], type: 'Epic' },
+      { key: 'K-7', fixVersions: ['v2'], blockedBy: ['K-8'] },
+      { key: 'K-8', fixVersions: ['v2'] },
+      { key: 'K-9', fixVersions: ['v1'], status: 'Done', category: 'Done', resolution: 'Done', blockedBy: ['K-8'] },
+    ]);
+    const out = pull(ctx());
+    expect(out.filed).toEqual([]);
+    expect(out.skipped).toEqual(['K-6']);
+  });
+
+  it('files at most max requests per run and defers the rest to the next', () => {
+    declared();
+    mirror([
+      { key: 'K-1', fixVersions: ['v1'], blockedBy: ['K-2', 'K-3'] },
+      { key: 'K-2', fixVersions: ['v2'] },
+      { key: 'K-3', fixVersions: ['v2'] },
+    ]);
+    const first = pull(ctx(), { max: 1 });
+    expect(first.filed.map((r) => r.key)).toEqual(['K-2']);
+    expect(first.deferred.map((r) => r.key)).toEqual(['K-3']);
+    expect(pull(ctx(), { max: 1 }).filed.map((r) => r.key)).toEqual(['K-3']);
+  });
+
+  it('a dry run lists the rows and files nothing', () => {
+    declared();
+    scene();
+    expect(pull(ctx(), { dryRun: true })).toMatchObject({ filed: [], rows: [{ key: 'K-2', blocks: ['K-1'], from_v: 'v2', to_v: 'v1' }] });
+    expect(state(ctx()).requests.open).toEqual([]);
+  });
+
+  it('a blocker that reached the version before the ruling is a no-op, not a ruling', async () => {
+    declared();
+    scene();
+    pull(ctx());
+    scene([], ['v1']);
+    const lines = await rmRun(ctx(), noJudge);
+    expect(lines).toEqual([expect.stringMatching(/^NOOP Q-R1-0001: K-2 is already in v1/)]);
+    expect(rulingRows()).toEqual([]);
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+  });
+
+  it('refuses when a blocked ticket no longer waits on the blocker, and does not re-file it', async () => {
+    declared();
+    scene();
+    pull(ctx());
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'], sector: 'Ship loop' }]);
+    expect(await rmRun(ctx(), noJudge)).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: .*blocker-pull: K-1 .*K-2/)]);
+    scene();
+    expect(pull(ctx()).filed).toEqual([]);
+  });
+
+  it('a newer operator record that keeps the blocker where it is wins (CONFLICT), and the refusal is not re-asked', async () => {
+    declared();
+    scene();
+    const keep = operatorDecision(at('2026-10-21T11:00:00.000Z'), { decision: '390', keys: ['K-2'], op: 'keep', from_v: 'v2', to_v: 'v2', verbatim: 'K-2 stays in v2' });
+    pull(ctx());
+    expect(await rmRun(ctx(), noJudge)).toEqual([expect.stringMatching(new RegExp(`^REFUSED Q-R1-0001: .*CONFLICT K-2: ${keep.id} \\(newer\\) .*K-1`))]);
+    expect(jira.fv.get('K-2')).toEqual(['v2']);
+    expect(pull(ctx()).filed).toEqual([]);
+  });
+
+  it('supersedes an older operator-authority ruling of the blocker', async () => {
+    declared();
+    scene();
+    const old = operatorDecision(at('2026-10-21T09:00:00.000Z'), { decision: '300', keys: ['K-2'], op: 'add', from_v: null, to_v: 'v2', verbatim: 'K-2 to v2' });
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v2', why: 'operator placement', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const prior = admit(q.req, { op: { kind: 'add', from_v: null, to_v: 'v2' }, authority: { kind: 'operator', ref: old.id } });
+    await apply(ctx(rmEnv), prior.id);
+    leaseRelease(ctx(rmEnv));
+    scene([], ['v2'], '2026-10-21T11:00:00.000Z');
+    pull(ctx());
+    const lines = await rmRun(ctx(), noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0002 Q-R1-0002 INTAKE K-2 move v2→v1 ADMIT /));
+    expect(rulingRows().find((r) => r.id === 'R-R1-0002')?.supersedes).toEqual([prior.id]);
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+  });
+
+  it('the emergency path is untouched: an emergency INTAKE goes to the judge and is ruled under O-R1-emergency', async () => {
+    declared();
+    scene([{ key: 'K-9', fixVersions: [], type: 'Bug' }]);
+    pull(ctx());
+    request(ctx(), { verb: 'INTAKE', key: 'K-9', from_v: null, to_v: 'v1', why: 'red main', evidence: {}, from: 'console' });
+    const seen: string[] = [];
+    const judge: Judge = async (input) => {
+      seen.push(...input.requests.map((q) => q.key));
+      return input.requests.map((q) => ({
+        req: q.req, outcome: 'ADMIT', op: 'add' as const, from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'red main',
+        authority: 'operator' as const, ref: 'O-R1-emergency',
+      }));
+    };
+    const lines = await rmRun(ctx(), judge);
+    expect(seen).toEqual(['K-9']);
+    expect(lines.filter((l) => l.startsWith('RULING '))).toHaveLength(2);
+    expect(rulingRows().find((r) => r.key === 'K-9')?.authority).toEqual({ kind: 'operator', ref: 'O-R1-emergency' });
+  });
+
+  it('a Highest bug blocking nothing is not a pull row', () => {
+    declared();
+    mirror([{ key: 'K-9', fixVersions: [], type: 'Bug' }]);
+    expect(pull(ctx())).toMatchObject({ rows: [], filed: [] });
+  });
+
+  it('a judge cannot cite the standing record without blocks, or for a version other than the current one', () => {
+    declared();
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    expect(() => admit(q.req, { authority: { kind: 'operator', ref: 'O-R1-blocker-pull' } })).toThrow(/does not cover K-2/);
+    expect(() => admit(q.req, { op: { kind: 'add', from_v: null, to_v: 'v2' }, authority: { kind: 'operator', ref: 'O-R1-blocker-pull', blocks: ['K-1'] } }))
+      .toThrow(/does not cover K-2/);
+  });
+
+  it('a release without the standing record files nothing until the chief records it', () => {
+    declared();
+    scene();
+    const c = ctx();
+    const k = loadKey(c.keyPath);
+    const path = join(c.dir, 'operator.jsonl');
+    const kept = readChain<OperatorRow>(path, k).verified.filter((r) => r.id !== 'O-R1-blocker-pull').map(({ prev: _p, mac: _m, ...r }) => r);
+    rmSync(path);
+    for (const r of kept) appendChain(path, k, r);
+    expect(() => pull(ctx())).toThrow(/no standing blocker-pull record/);
+
+    const row = standing(ctx(), { kind: 'blocker-pull', decision: '385', verbatim: 'blockers are fixed in the current version' });
+    expect(row).toMatchObject({ id: 'O-R1-blocker-pull', kind: 'blocker-pull', decision: '385' });
+    expect(() => standing(ctx(), { kind: 'blocker-pull', decision: '385', verbatim: 'again' })).toThrow(/already recorded/);
+    expect(pull(ctx()).filed).toHaveLength(1);
+  });
+
+  it('the standing record is a chief act', () => {
+    declared();
+    expect(() => standing(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { kind: 'blocker-pull', decision: '385', verbatim: 'x' })).toThrow(/chief-spawned worker/);
   });
 });
