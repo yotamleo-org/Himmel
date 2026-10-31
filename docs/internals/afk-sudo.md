@@ -3,21 +3,23 @@
 `scripts/lib/afk-sudo/` is the root helper that runs one privileged command after
 the operator approves it with a TOTP code (HIMMEL-8066). Slice 1a of HIMMEL-8067
 adds a second kind, `run`, which freezes one argv, shows it to the operator and
-runs exactly that once. The helper is Linux-only: safe file validation needs `O_PATH`,
-`/proc/self/fd` and `fstatfs`. It changes nothing on the station until slice 1b flips
-the compiled switch below.
+runs exactly that once. Slice 1b adds root's notice bot and a nonce bound to each request
+(HIMMEL-8078 part 1) and turns the run kind on. The helper is Linux-only: safe file
+validation needs `O_PATH`, `/proc/self/fd` and `fstatfs`.
 
 Files: `afk_sudo.py` (the helper, installed as `/usr/local/libexec/himmel/afk-sudo`),
 `approval_broker.py` (the pending slot, TOTP, ledger), `never_remote.py` (the floor),
 `install.sh`, and the session-side CLI `scripts/lib/afk-run`. Tests:
 `scripts/lib/test-afk-sudo.sh`.
 
-## Off until a release says so
+## The compiled switch
 
-`RUN_KIND_SHIPPED = False` is a constant in `afk_sudo.py`. While it is false every
+`RUN_KIND_SHIPPED` is a constant in `afk_sudo.py`. While it is false every
 `run-request` answers `result=run-not-shipped`, whatever the config says, and an
 approved record that somehow exists re-checks it at exec time. A config edit cannot
-flip it: only a himmel release plus a re-install does. Slice 1a ships it `False`.
+flip it: only a himmel release plus a re-install does. Slice 1a shipped it `False`;
+slice 1b ships it `True`, now that every request reaches the operator through root's
+notice bot. The config still keeps the kind off until `run.enabled` is `true`.
 
 The unit tests need the run kind on without editing the constant. The helper
 therefore also honours `AFK_SUDO_RUN=1`, but only inside the test seam
@@ -28,7 +30,54 @@ itself on the disposable VM's installed copy.
 
 Check order for a run: `disabled` (top-level `enabled`), `run-not-shipped`,
 `run-disabled` (`run.enabled` is not `true`), `no-allow-missing` (a Python without
-`os.path.ALLOW_MISSING`; see the binding below).
+`os.path.ALLOW_MISSING`; see the binding below), then the request checks, the last of
+which are `no-setpriv` and `no-notice-bot`.
+
+## The notice bot and the nonce (slice 1b, HIMMEL-8078 part 1)
+
+A session could put any text into the bridge bot's chat, so a look-alike request message
+cannot be ruled out there. The facts therefore come from a second bot whose token only
+root can read, `/etc/himmel/afk-sudo/notice-bot.env` (`TELEGRAM_BOT_TOKEN=<token>`, root
+0600). `install.sh` creates it empty and prints the steps: `/newbot` at @BotFather, send the
+new bot `/start`, then `sudoedit` the file. While the file is missing or holds no token,
+every `request` and `run-request` answers `result=no-notice-bot` (exit 5, no ledger row). A
+file another user can read is `unsafe-perms`.
+
+When a request is filed, the broker draws a nonce: four Crockford base32 characters (no I,
+L, O or U; typed in any case, O read as 0, I and L as 1). It lives only in the root state
+file. Root sends the notice: the id, the expiry, the nonce, the mode (`ALL` or the class
+name), run-as, session and ticket, the cwd, every argv element as written (argv[0] with
+the first 8 hex of its sha256; a glued `key=/path` element or a directory is never
+presented as bound), stdin, the text of a shell `-c` program or a shown script file (argv[0]
+included when it is a `#!` script), the
+`blocked_by` and `why` claims, and the record hash. argv[0] or a file argument that a
+non-root user can change in place (not owned by root, or group- or world-writable) is
+marked `user-writable`; a file argument whose body is not shown (over 64 KiB, or one the
+operator could not read), and a user-writable argv[0] that is not a shown script, is marked
+`NOT SHOWN`. Text is escaped and each element is
+framed (`⟦…⟧`) with control and non-ASCII characters shown as escapes. When an element (the cwd included) or the message would
+pass its limit it is cut, and the whole request goes first as a `<id>.json` document, so
+the nonce is never sent while the attachment may still fail. If either send fails the request is withdrawn (`result=notice-failed`, a `notice` ledger
+row, the step spent): the operator never approves what they were not shown.
+
+The nonce applies to **both kinds**, sudo and run (the operator's default of 10-30, Q3).
+The approve line is `approve <id> <nonce> <code>`; the helper reads `NONCE CODE` on stdin
+(the two may also run together, the last six characters being the code). A wrong or
+missing nonce is refused as `bad-nonce`: it counts as a wrong code towards the lockout, ends
+the request, and spends the code's step, since the code was typed where a look-alike may
+have read it. The nonce is never in curl's argv (root's command line is world-readable),
+the ledger, the requester's output or the attached document. The token and every Bot API
+parameter reach curl on stdin (`-K -`).
+
+The bridge bot sends only the id and the Approve / Deny buttons: `afk-sudo-request` and
+`afk-run` no longer forward any request text. An Approve tap asks for the nonce and the
+code; a typed or replied `NONCE CODE` pair is held like a bare code, never forwarded to a
+session (a session can call the helper's `approve` itself).
+
+After an approve, root sends the result through the notice bot: `ran <id> exit <n>
+(<s> s)`, and on a non-zero exit the last three stderr lines, redacted (the hook's
+`redact()` patterns, ported line by line, plus PEM blocks); never stdout. A refusal after
+the code says `not run: <result>`. The bridge acknowledges a ran approve without the argv.
 
 ## Mode switch
 
@@ -203,6 +252,12 @@ only stops a request that names them. The operator's read of the notice (mode, r
 argv, script text, hash) stays the main control; the ledger and the morning report make
 every run visible afterwards.
 
+What the nonce does not close: anyone who reads the operator's notice-bot chat (a stolen,
+unlocked phone) and also holds the authenticator can approve the request that notice
+names. The nonce binds a code to the one request root described; it does not stop a
+session from filing a misleading but truthful request (a script whose effect the operator
+misreads), which is why the notice shows the script text and marks a shell.
+
 ## Ledger
 
 `/var/log/himmel/afk-sudo.jsonl` rows gain `kind`, `run_as`, `hash`, `blocked_by`,
@@ -212,10 +267,12 @@ every run visible afterwards.
 `never-remote` and `not-in-class` (the helper) and for `locked`, `busy` and `rate-limited` (the
 broker) only. The other request refusals (`run-not-shipped`,
 `run-disabled`, `no-allow-missing`, `bad-user`, `bad-cwd`, `bad-file`, `no-such-command`, `no-setpriv`,
-`stdin-too-large`) answer on stdout and write none. After the code, the executor's result
+`stdin-too-large`, `no-notice-bot`) answer on stdout and write none. A notice that cannot be
+sent writes a `notice` row (`notice-failed`). A wrong nonce writes a `code-check` row
+(`bad-nonce`). After the code, the executor's result
 (`hash-mismatch`, `changed`, `run-not-shipped`, `run-disabled`, `never-remote`, `bad-user`,
 `not-in-class`, `no-setpriv`, or the run itself) is the row. The ledger never holds the code, the
-seed, any output or a stdin body. A `busy` refusal writes one row per session per 10
+nonce, the seed, any output or a stdin body. A `busy` refusal writes one row per session per 10
 minutes.
 
 ## Spent steps (HIMMEL-8078 part 2)
@@ -243,8 +300,11 @@ again by the helper on every call, so it takes effect on the next verb:
    `run-disabled` when it is approved. The sudo-class kind is unaffected.
 3. `"enabled": false`: every verb except `mode` answers `result=disabled`, `approve` and
    `deny` included, so a pending request can no longer be approved and runs out its expiry.
-4. `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`: removes the helper, the floor
-   module and the sudoers rule. The config, the seed, the state and the ledger stay.
+4. Empty `/etc/himmel/afk-sudo/notice-bot.env` (`sudoedit`): no request of either kind is
+   filed (`no-notice-bot`). A pending one can still be approved with the nonce already sent.
+5. `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`: removes the helper, the floor
+   module and the sudoers rule. The config, the seed, `notice-bot.env`, the state and the
+   ledger stay.
 
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
 The narrowing-only `/afk-lockdown` Telegram verb is slice S4, not built.
@@ -272,5 +332,7 @@ line is `afk-run: status=ran:<exit>|denied|expired|refused:<result>|pending|busy
 with ` id=<id>` when one exists. Timing: `AFK_RUN_WAIT_S` (540), `AFK_RUN_POLL_S` (3),
 `AFK_RUN_BUSY_EVERY_S` (15); they are also the test seams.
 
-Not in slice 1a: the Telegram notice for a run request, the user-writable-argv0 marker
-in it, and enabling anything. Slice 1b adds those and flips the constant.
+Once a request is filed, `afk-run` sends the bridge bot's id-only message with the Approve /
+Deny buttons (token from `TELEGRAM_ENV`, default `~/.claude/channels/telegram/.env`, passed
+to curl on stdin; skipped without a token; `AFK_TELEGRAM_API` overrides the Bot API base).
+The facts and the nonce come only from root's notice bot.

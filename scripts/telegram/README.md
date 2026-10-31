@@ -579,14 +579,21 @@ After that the bridge can bounce itself.
 Semantics + threat model: [`docs/internals/enforcement.md`](../../docs/internals/enforcement.md).
 Where each knob is set: [`docs/configuration.md`](../../docs/configuration.md).
 
-## AFK sudo approval — `approve <id> <code>` / `deny <id>` (default OFF)
+## AFK sudo approval — `approve <id> <nonce> <code>` / `deny <id>` (default OFF)
 
 An AFK session that needs one privileged command asks for it with
-`scripts/lib/afk-sudo-request --session S --ticket T -- systemctl restart x.service`.
-The request reaches your Telegram DM with the command, cwd, session, ticket and an
-8-letter id. Reply with `approve <id> <code>` (the 6-digit code from your
-authenticator app) or `deny <id>`. The command runs once, as root, only if
-a valid code arrives inside the 2-minute window.
+`scripts/lib/afk-sudo-request --session S --ticket T -- systemctl restart x.service`
+(or `scripts/lib/afk-run` for the `run` kind). Root sends the facts (the command, cwd,
+session, ticket, the 8-letter id and a 4-character nonce) through a second bot, the
+**notice bot**, whose token only root can read. This bot sends you only the id with
+Approve / Deny buttons. Tap Approve and answer the prompt with `<nonce> <code>`
+(the nonce from the notice-bot message, the 6-digit code from your authenticator app),
+or type `approve <id> <nonce> <code>`; `deny <id>` or the Deny button refuses. The
+command runs once, only if the right nonce and a valid code arrive inside the window.
+Root then sends the result (exit status, and on failure the last redacted stderr lines)
+through the notice bot. A session can write to this bot's chat but never to the notice
+bot's, so a request message without the right nonce cannot get anything approved.
+Detail: [`docs/internals/afk-sudo.md`](../../docs/internals/afk-sudo.md).
 
 The code is checked by a root-owned helper, never by the bridge or the session.
 The helper is `/usr/local/libexec/himmel/afk-sudo`, installed from
@@ -601,7 +608,12 @@ never does:
 ```sh
 sudo bash scripts/lib/afk-sudo/install.sh --user "$USER"   # prints the otpauth URI ONCE
 sudoedit /etc/himmel/afk-sudo.json
+sudoedit /etc/himmel/afk-sudo/notice-bot.env              # TELEGRAM_BOT_TOKEN=<notice bot token>
 ```
+
+The notice bot is a new bot from @BotFather (`/newbot`), not this bridge's bot. Send it
+`/start` once so it may message you. While `notice-bot.env` is empty, every request is
+refused (`result=no-notice-bot`).
 
 ```json
 {
@@ -622,18 +634,21 @@ sudoedit /etc/himmel/afk-sudo.json
   the `allowFrom` operator in your private chat with the bot reaches the helper.
   Every other `approve`/`deny` line is dropped, so a code never lands in a
   session inbox.
-- One request is pending at a time. A wrong id, a wrong code or a missing code
-  burns it, a used code is never accepted again, three wrong codes lock the
-  helper for 15 minutes, and at most 6 requests are accepted per hour.
+- One request is pending at a time. A wrong id, a wrong or missing nonce, a wrong
+  code or a missing code burns it, a used code is never accepted again, three wrong
+  codes or nonces lock the helper for 15 minutes, and at most 6 requests are accepted
+  per hour.
 - Every request, code check and exit status goes to the append-only ledger
-  `/var/log/himmel/afk-sudo.jsonl`. The ledger never holds the code. The
+  `/var/log/himmel/afk-sudo.jsonl`. The ledger never holds the code or the nonce. The
   morning report's `afk_sudo` section summarises the last 24 h.
-- Off switch: set `"enabled": false`, or `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`,
+- Off switch: set `"enabled": false` (or `"run": {"enabled": false}` for the `run`
+  kind only), empty `notice-bot.env`, or `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`,
   which removes the helper and its sudoers rule and keeps the ledger.
 
 A stolen phone gives an attacker your Telegram but not your authenticator code.
 A stolen phone that also holds the authenticator lets them approve only a request
-a session has already opened, and only for an allowlisted command.
+a session has already opened, and only for an allowlisted command (in `"mode": "all"`,
+any command the notice shows).
 
 ## Group triage
 

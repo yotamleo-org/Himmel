@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
 
-// Operator `approve <id> <code>` / `deny <id>` -> the root afk-sudo helper.
+// Operator `approve <id> <nonce> <code>` / `deny <id>` -> the root afk-sudo helper.
 // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
-// root-owned by install.sh) checks the TOTP code and runs the one allowlisted
-// command; this route only decides whether a line may reach it.
+// root-owned by install.sh) checks the request's nonce (sent only through root's
+// notice bot) and the TOTP code, then runs the one approved command; this route
+// only decides whether a line may reach it.
 //
 // Off by default: while the helper is not installed, nothing is consumed and the
 // bridge behaves as before. Once installed, every afk-sudo-shaped line is
@@ -18,9 +19,9 @@ import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } fr
 // Buttons: the request DM carries Approve / Deny inline buttons
 // (callback data `afk:approve:<id>` / `afk:deny:<id>`). A Deny tap runs the same
 // deny call at once. An Approve tap NEVER reaches the helper: it only sends a
-// ForceReply prompt and remembers prompt-message -> id; the six-digit reply to
-// that prompt is the same helper approve call as the typed line, so the TOTP
-// check stays the helper's. A tap needs the sender in allowFrom, in their own
+// ForceReply prompt and remembers prompt-message -> id; the `NONCE CODE` reply to
+// that prompt is the same helper approve call as the typed line, so the nonce
+// and TOTP checks stay the helper's. A tap needs the sender in allowFrom, in their own
 // private chat, AND equal to the helper's operator id.
 
 export const AFK_SUDO_HELPER = "/usr/local/libexec/himmel/afk-sudo";
@@ -28,6 +29,8 @@ const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
 // An approve with a malformed id but a code-shaped run of six digits.
 const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 
+// `code` holds everything after the id, spaces removed: the nonce and the code run
+// together ("K7QF123456"); the helper splits the last six characters off as the code.
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
 export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
 export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
@@ -79,7 +82,7 @@ export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000
 export function parseAfkSudo(text: string): AfkSudoLine | null {
   const m = LINE.exec(text);
   if (!m) return null;
-  // Anything after the id is the code; the helper refuses one that is not six digits.
+  // Anything after the id is the nonce and the code; the helper refuses a wrong pair.
   const rest = m[3].replace(/\s+/g, "");
   return { verb: m[1].toLowerCase() as "approve" | "deny", id: m[2].toLowerCase(), code: m[1].toLowerCase() === "approve" ? rest : "" };
 }
@@ -90,18 +93,24 @@ function eligible(access: Access, msg: AfkSudoMsg): boolean {
     && msg.chat_id === msg.from && isAllowed(access, msg.from);
 }
 
-// One helper call, fired not awaited; the code goes on stdin only.
+// One helper call, fired not awaited; the nonce and code go on stdin only. A ran
+// approve is acknowledged without the helper's argv line: the command and its
+// redacted output come from root's notice bot, which no session can drive.
 function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny", id: string, code: string, from: number, chat_id: number): void {
   const args = [verb, id, "--from", String(from), "--chat", String(chat_id)];
   void deps.runHelper(args, verb === "approve" ? `${code}\n` : "")
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
-      return deps.reply(chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo ${verb} ${id}: ${first}`);
+      const said = verb === "approve" && res.code === 0 && first.startsWith("result=ran ")
+        ? "approved; the result comes from the notice bot" : first;
+      return deps.reply(chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo ${verb} ${id}: ${said}`);
     })
     .catch((e) => deps.log(`[afk-sudo] ${verb} ${id} failed: ${e}`));
 }
 
-const CODE_REPLY = /^\s*(\d{6})\s*$/;
+// The prompt reply: the notice's four-character nonce, then the six-digit code.
+const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
+const BARE_CODE = /^\s*\d{6}\s*$/;
 // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
 // anywhere in the text. Used only to decide a message must not be forwarded.
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
@@ -132,11 +141,11 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
   }
   const m = CODE_REPLY.exec(msg.text);
   if (!m) {
-    say(`⚠️ afk-sudo: reply with the 6-digit code only, nothing ran`);
+    say(`⚠️ afk-sudo: reply with the nonce and the 6-digit code (e.g. K7QF 123456), nothing ran`);
     return true;
   }
   prompts.use(msg.chat_id, msg.reply_to_message_id!);
-  runVerb(deps, "approve", p.id, m[1], msg.from, msg.chat_id);
+  runVerb(deps, "approve", p.id, `${m[1]} ${m[2]}${m[3]}`, msg.from, msg.chat_id);
   return true;
 }
 
@@ -165,16 +174,18 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         const waiting = prompts?.live(msg.chat_id) ?? null;
         if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting) {
           void deps.reply(msg.chat_id, waiting
-            ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
+            ? `⚠️ afk-sudo: reply to the "Nonce and code for ${waiting}" message with the nonce and the code, nothing ran`
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
           return true;
         }
       }
       // Holding is not helper authorization: operator group messages, including
       // trusted anonymous admins, must not carry a bare code into an inbox either.
+      // A `NONCE CODE` pair is held the same way: a session can call the helper's
+      // approve itself, so the pair must never reach an inbox.
       // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
       // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && CODE_REPLY.test(msg.text)
+      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text))
         && msg.forwarded === false && msg.caption === false
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
@@ -213,7 +224,7 @@ export function makeAfkSudoCallback(deps: AfkSudoCallbackDeps, prompts: AfkSudoP
       runVerb(deps, "deny", id, "", tap.from, tap.chat_id);
       return true;
     }
-    void deps.prompt(tap.chat_id, `Code for ${id}:`)
+    void deps.prompt(tap.chat_id, `Nonce and code for ${id} (from the notice-bot message):`)
       .then((mid) => {
         if (mid != null) prompts.add(tap.chat_id, mid, id);
         answer(tap.callback_id, mid != null ? "Reply with the code" : "Could not ask for the code");
