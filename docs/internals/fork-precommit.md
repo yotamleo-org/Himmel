@@ -79,7 +79,7 @@ From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
 | home-assistant.io | current | HTML | none | `.editorconfig` | yes |
 | hermes-agent | main | Python | none | eslint, prettier | yes |
-| codex-plugin-cc, claude-obsidian, claude-video | main | JS / Python | none | none | yes |
+| codex-plugin-cc, claude-obsidian | main | JS / Python | none | none | yes |
 | caveman | main | Go | none | `.editorconfig` | yes |
 | codex | main | Rust | none | prettier | yes |
 | effective-html, obsidian-skills | main | HTML / none | none | none | none |
