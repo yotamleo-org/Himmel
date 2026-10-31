@@ -10,6 +10,8 @@
 # Usage: bash scripts/ci/test-check-rename-diff.sh
 # shellcheck disable=SC2016  # fixture lines are literal text, nothing should expand
 set -uo pipefail
+# the gate reads this hook variable as its tip; an inherited one would aim the fixtures elsewhere
+unset PRE_COMMIT_TO_REF
 
 GATE="$(cd "$(dirname "$0")" && pwd)/check-rename-diff.sh"
 
@@ -108,6 +110,33 @@ out=$(cd "$repo" && bash "$GATE" --registry "$tmp/absent.tsv" "$base" 2>&1); rc=
 if [ "$rc" -eq 2 ]; then pass "missing registry (rc=2)"; else fail "missing registry: rc=$rc $out"; fi
 out=$(cd "$repo" && bash "$GATE" --registry "$reg" no-such-ref 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "unknown base (rc=2)"; else fail "unknown base: rc=$rc $out"; fi
+
+echo "== a broken scan is an error, never a finding =="
+mkdir -p "$tmp/badbin"
+printf '#!/bin/sh\nexit 2\n' > "$tmp/badbin/awk"
+chmod +x "$tmp/badbin/awk"
+git -C "$repo" checkout -q -B case "$base"
+printf 'export ZZOLD_ONE=1\n' > "$repo/boom.sh"
+git -C "$repo" add -A && git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "boom"
+out=$(cd "$repo" && PATH="$tmp/badbin:$PATH" bash "$GATE" --registry "$reg" --warn "$base" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "failing awk exits 2 even with --warn (rc=2)"; else fail "failing awk, range: want rc=2 got rc=$rc: $out"; fi
+out=$(cd "$repo" && PATH="$tmp/badbin:$PATH" bash "$GATE" --registry "$reg" --report "$tmp/badreport" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "failing awk exits 2 in report mode (rc=2)"; else fail "failing awk, report: want rc=2 got rc=$rc: $out"; fi
+
+# a git grep that prints a hit and then dies must not read as "found hits"
+mkdir -p "$tmp/badgit"
+{
+    printf '#!/bin/sh\n'
+    printf 'for a in "$@"; do\n'
+    printf '    if [ "$a" = grep ]; then echo "x.sh:1:export ZZOLD_ONE=1"; exit 128; fi\n'
+    printf 'done\n'
+    printf 'exec "$REAL_GIT" "$@"\n'
+} > "$tmp/badgit/git"
+chmod +x "$tmp/badgit/git"
+REAL_GIT=$(command -v git)
+export REAL_GIT
+out=$(cd "$repo" && PATH="$tmp/badgit:$PATH" bash "$GATE" --registry "$reg" --report "$tmp/badreport2" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a dying git grep exits 2 in report mode (rc=2)"; else fail "dying git grep, report: want rc=2 got rc=$rc: $out"; fi
 
 echo "== --report <dir> lists hits across the whole tree =="
 git -C "$repo" checkout -q -B case "$base"

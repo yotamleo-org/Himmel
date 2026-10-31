@@ -69,9 +69,10 @@ git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || { echo "check-doc-literals
 
 table="$(accept_table)"
 
-rc=0
+# awk prints one line per finding and always exits 0, so any non-zero status of the
+# pipeline (git, xargs, awk) is a broken scan; a finding is a non-empty output.
 # shellcheck disable=SC2016  # the awk program is single-quoted on purpose
-git -C "$root" -c core.quotePath=false ls-files -z -- 'docs/*.md' ':(glob)marketplace/**/SKILL.md' '.claude/commands/*.md' \
+out=$(git -C "$root" -c core.quotePath=false ls-files -z -- 'docs/*.md' ':(glob)marketplace/**/SKILL.md' '.claude/commands/*.md' \
     | { while IFS= read -r -d '' f; do
             case "$f" in docs/migration/*|docs/release/*) continue ;; esac
             [ -f "$root/$f" ] && printf '%s\0' "$f"
@@ -100,6 +101,8 @@ index($0, "old-term-ok") > 0 { next }
         # every occurrence of the command on the line starts its own invocation
         while (match(rest, cre[c])) {
             after = substr(rest, RSTART + RLENGTH)
+            # a separator the match consumed (a closing backtick, `;`, `|`, `&`) ends the invocation
+            if (substr(rest, RSTART + RLENGTH - 1, 1) ~ /[`;|&]/) after = ""
             rest = after
             seg = after
             if (match(seg, / \| |&&|\|\||;|`/)) seg = substr(seg, 1, RSTART - 1)
@@ -117,8 +120,8 @@ function scan(c, seg,   t, flag, val, vals, nv, v, pre) {
             bad++
             continue
         }
-        if (flag == "--role" && hasroles[c] && match(t, /^[ ]+[^ ]+/)) {
-            val = substr(t, RSTART, RLENGTH); sub(/^[ ]+/, "", val)
+        if (flag == "--role" && hasroles[c] && match(t, /^(=|[ ]+)[^ ]+/)) {
+            val = substr(t, RSTART, RLENGTH); sub(/^(=|[ ]+)/, "", val)
             gsub(/\001/, "|", val)
             sub(/[]`,.)].*$/, "", val)
             if (val ~ /^</ || val == "") continue
@@ -133,19 +136,15 @@ function scan(c, seg,   t, flag, val, vals, nv, v, pre) {
         }
     }
 }
-END { if (bad) exit 1 }') || rc=$?
-
-# xargs reports an awk that exited 1-125 (a finding) as 123.
-[ "$rc" -eq 123 ] && rc=1
-case "$rc" in
-    0) exit 0 ;;
-    1)
-        if [ "$warn" -eq 1 ]; then
-            echo "check-doc-literals: doc literal(s) the CLI refuses (report mode, not failing). Fix the doc or the accept row; see docs/internals/rename-procedure.md." >&2
-            exit 0
-        fi
-        echo "check-doc-literals: doc literal(s) the CLI refuses. Fix the doc, or update the accept row in this script with the parser; see docs/internals/rename-procedure.md." >&2
-        exit 1
-        ;;
-    *) echo "check-doc-literals: scan failed (rc=$rc)" >&2; exit 2 ;;
-esac
+')
+)
+rc=$?
+[ "$rc" -eq 0 ] || { echo "check-doc-literals: scan failed (rc=$rc)" >&2; exit 2; }
+[ -n "$out" ] || exit 0
+printf '%s\n' "$out"
+if [ "$warn" -eq 1 ]; then
+    echo "check-doc-literals: doc literal(s) the CLI refuses (report mode, not failing). Fix the doc or the accept row; see docs/internals/rename-procedure.md." >&2
+    exit 0
+fi
+echo "check-doc-literals: doc literal(s) the CLI refuses. Fix the doc, or update the accept row in this script with the parser; see docs/internals/rename-procedure.md." >&2
+exit 1

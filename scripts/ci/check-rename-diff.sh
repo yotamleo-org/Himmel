@@ -138,19 +138,18 @@ BEGIN {
         shown_text = text
         if (length(shown_text) > 160) shown_text = substr(shown_text, 1, 160) "..."
         printf "%s:%s: %s -> %s: %s\n", path, ln, shown[mr[a]], N[mr[a]], shown_text
-        hits++
     }
 }
-END { if (hits) exit 1 }
 '
 
 if [ -n "$report" ]; then
     mkdir -p "$report" || { echo "check-rename-diff: cannot create $report" >&2; exit 2; }
+    # git grep exits 1 when nothing matches (fine); the matcher exits 0 even with hits,
+    # so any non-zero status of the pipeline is a broken scan.
     rc=0
-    { git -c core.quotePath=false grep -I -n --no-color -e . || [ $? -eq 1 ]; } \
+    { git -c core.quotePath=false grep -I -n --no-color -e .; g=$?; [ "$g" -le 1 ]; } \
         | awk -v registry="$registry" "$matcher" > "$report/hits.txt" || rc=$?
-    # awk rc 1 is "found hits" (the point of a report); anything else is a failure.
-    [ "$rc" -le 1 ] || { echo "check-rename-diff: scan failed (rc=$rc)" >&2; exit 2; }
+    [ "$rc" -eq 0 ] || { echo "check-rename-diff: scan failed (rc=$rc)" >&2; exit 2; }
     awk '{ p = $0; sub(/:[0-9]+: .*/, "", p); c[p]++ } END { for (p in c) printf "%d\t%s\n", c[p], p }' "$report/hits.txt" \
         | sort -t "$(printf '\t')" -k1,1nr -k2,2 > "$report/by-file.tsv"
     hits=$(wc -l < "$report/hits.txt" | tr -d ' ')
@@ -170,24 +169,20 @@ git rev-parse --verify -q "$base^{commit}" >/dev/null || { echo "check-rename-di
 
 # Added lines as "path:line:text". A file header sits between its `diff --git`
 # line and its first hunk, so an added source line reading `++ b/x` is content.
-rc=0
-git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "$base...$tip" \
+out=$(git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=AMR "$base...$tip" \
     | awk '
         /^diff --git / { inhdr = 1; next }
         inhdr && /^\+\+\+ / { file = $0; sub(/^\+\+\+ b\//, "", file); next }
         /^@@ / { inhdr = 0; lineno = $0; sub(/^@@ -[0-9,]+ \+/, "", lineno); sub(/[, ].*/, "", lineno); lineno += 0; next }
         /^\+/ && !inhdr { printf "%s:%d:%s\n", file, lineno++, substr($0, 2) }' \
-    | awk -v registry="$registry" "$matcher" || rc=$?
-
-case "$rc" in
-    0) exit 0 ;;
-    1)
-        if [ "$warn" -eq 1 ]; then
-            echo "check-rename-diff: retired name(s) on added lines (report mode, not failing). Use the new name, or add 'old-term-ok: <reason>' on the line; see docs/internals/rename-procedure.md." >&2
-            exit 0
-        fi
-        echo "check-rename-diff: retired name(s) on added lines. Use the new name, or add 'old-term-ok: <reason>' on the line; see docs/internals/rename-procedure.md." >&2
-        exit 1
-        ;;
-    *) echo "check-rename-diff: scan failed (rc=$rc)" >&2; exit 2 ;;
-esac
+    | awk -v registry="$registry" "$matcher")
+rc=$?
+[ "$rc" -eq 0 ] || { echo "check-rename-diff: scan failed (rc=$rc)" >&2; exit 2; }
+[ -n "$out" ] || exit 0
+printf '%s\n' "$out"
+if [ "$warn" -eq 1 ]; then
+    echo "check-rename-diff: retired name(s) on added lines (report mode, not failing). Use the new name, or add 'old-term-ok: <reason>' on the line; see docs/internals/rename-procedure.md." >&2
+    exit 0
+fi
+echo "check-rename-diff: retired name(s) on added lines. Use the new name, or add 'old-term-ok: <reason>' on the line; see docs/internals/rename-procedure.md." >&2
+exit 1

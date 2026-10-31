@@ -55,6 +55,7 @@ run_case "retired tick flag" 1 docs/a.md 'run `bash scripts/handover/chief-kit/t
 run_case "unknown board flag in a fence" 1 docs/a.md 'node scripts/handover/chief-kit/board.mjs --doc d.md --nope x'
 run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me' # old-term-ok: the refused flag
 run_case "bus send with an unknown flag" 1 docs/a.md 'bus send chief body.md --urgent'
+run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=worker'
 run_case "flag in a SKILL.md" 1 marketplace/plugins/x/skills/y/SKILL.md 'run chief.sh --nope'
 run_case "flag in a slash command" 1 .claude/commands/z.md 'run gen-briefs --nope'
 run_case "flag on append-results.sh" 1 docs/handover/worker-preface.md 'bash scripts/handover/chief-kit/append-results.sh --force doc text'
@@ -67,6 +68,9 @@ run_case "flag after && belongs to the next command" 0 docs/a.md 'tick.sh --doc 
 run_case "flag after a closing backtick is prose" 0 docs/a.md 'see `tick.sh` and the --nope notes'
 run_case "--flag=value form" 0 docs/a.md 'chief.sh next --model=opus --bucket himmel'
 run_case "role placeholder is skipped" 0 docs/a.md 'bus register x --role <role>'
+run_case "--role=value form, accepted value" 0 docs/a.md 'bus register x --role=judge'
+run_case "a closing backtick ends the bus invocation" 0 docs/a.md 'run `bus status` and read the --nope notes'
+run_case "a closing backtick ends the gen-briefs invocation" 0 docs/a.md 'run `gen-briefs` and read the --nope notes'
 run_case "another tool named like a suffix" 0 docs/a.md 'bash test-tick.sh --nope'
 run_case "old-term-ok marker skips the line" 0 docs/a.md 'headed-arm-worker.sh --console me <!-- old-term-ok: shows the refusal -->'
 run_case "history dirs are not scanned" 0 docs/migration/old.md 'tick.sh --nope x'
@@ -75,6 +79,17 @@ run_case "non-doc paths are not scanned" 0 scripts/x.sh 'tick.sh --nope x'
 echo "== --warn reports and exits 0 =="
 run_case "warn mode prints the finding" 0 docs/a.md 'tick.sh --nope x' --warn
 case "$LAST_OUT" in *--nope*) pass "warn output carries the finding" ;; *) fail "warn output carries the finding: $LAST_OUT" ;; esac
+
+echo "== a broken scan is an error, never a finding =="
+mkdir -p "$tmp/badbin"
+printf '#!/bin/sh\nexit 2\n' > "$tmp/badbin/awk"
+chmod +x "$tmp/badbin/awk"
+git -C "$repo" rm -rfq --ignore-unmatch . >/dev/null 2>&1
+mkdir -p "$repo/docs"
+printf 'tick.sh --doc d\n' > "$repo/docs/a.md"
+git -C "$repo" add -A
+out=$(PATH="$tmp/badbin:$PATH" bash "$GATE" --root "$repo" --warn 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "failing awk exits 2 even with --warn (rc=2)"; else fail "failing awk: want rc=2 got rc=$rc: $out"; fi
 
 echo "== declared accept lists match each CLI's own source =="
 sorted() { tr ' ' '\n' | grep -E '^--' | sort | uniq | tr '\n' ' '; }
