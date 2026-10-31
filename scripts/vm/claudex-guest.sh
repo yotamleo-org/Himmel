@@ -131,8 +131,11 @@ cmd_provision() {
     settings_cmd='export PATH="$HOME/.local/bin:$PATH"; cd "$HOME/himmel" && mkdir -p "$HOME/.config/himmel" && node scripts/lanes/plugin-profiles.mjs worker-impl > "$HOME/.config/himmel/worker-settings.json.tmp" && mv "$HOME/.config/himmel/worker-settings.json.tmp" "$HOME/.config/himmel/worker-settings.json"'
     out=$(gl 120 "$settings_cmd" 2>&1) || fail "worker-impl settings file: $out"
 
-    # (8) --status exits non-zero until the operator has logged in, so only its 401 line is a failure here
-    out=$(gl 120 "$LANE_ENV --status" 2>&1)
+    # (8) --status exits non-zero until the operator has logged in, so its exit code proves
+    # nothing; the echoed marker proves the command ran to the end (no ssh failure or timeout),
+    # and only the 401 line is a provisioning failure
+    out=$(gl 120 "$LANE_ENV --status; echo \"lane-status-exit: \$?\"" 2>&1)
+    grep -q '^lane-status-exit: ' <<< "$out" || fail "cli-proxy-lane --status did not run to the end on $VM: $out"
     if grep -q 'HTTP 401' <<< "$out"; then
         fail "cli-proxy key mismatch: the proxy answers HTTP 401 to the guest key (see $VM ~/.cli-proxy-api/config.yaml api-keys vs ~/.config/himmel/cliproxy.key)"
     fi
@@ -150,6 +153,7 @@ cmd_status() {
     # liveness only: the exit code, never the probe's output
     pf=$(gl 120 "$GUEST_ENV && { bash scripts/claude-codex --preflight-only >/dev/null 2>&1; echo \"preflight-exit: \$?\"; }" 2>&1)
     tail -n 1 <<< "$pf"
+    grep -q '^preflight-exit: ' <<< "$pf" || fail "the claude-codex preflight on $VM did not run to the end: $pf"
     [ "$rc" -eq 0 ] && [ "$version" = "$PIN_VERSION" ] || fail "claude on $VM is '${version:-none}', expected $PIN_VERSION"
 }
 

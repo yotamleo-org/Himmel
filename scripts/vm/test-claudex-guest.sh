@@ -143,6 +143,7 @@ new_world() { # fresh fake guest + station VirtualBox state; claudex-base presen
     cat > "$GH/himmel/scripts/setup/cli-proxy-lane.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "cli-proxy-lane $* key-len=${#CLIPROXY_API_KEY}" >> "$GUEST_TOOL_LOG"
+[ "$1" = --status ] && [ -e "$GUEST_STATUS_FILE.kill" ] && kill -9 "$PPID"
 [ "$1" = --status ] && cat "$GUEST_STATUS_FILE"
 exit 0
 EOS
@@ -274,6 +275,14 @@ printf 'running:     OK but UNAUTHENTICATED (HTTP 401) -> CLIPROXY_API_KEY doesn
 run_cg provision himmel-claudex
 check "R5c a 401 status line fails provision" rc_nonzero
 check "R5c the failure names the key mismatch" out_has "key mismatch"
+
+# --- a --status that dies before finishing (ssh drop, timeout, crash) is a failure, not "logged out" ---
+new_world
+touch "$GUEST_STATUS_FILE.kill"
+run_cg provision himmel-claudex
+check "provision fails when --status does not run to the end" rc_nonzero
+check "that failure says --status did not finish" out_has "did not run to the end"
+rm -f "$GUEST_STATUS_FILE.kill"
 
 # --- R5d: ~/Documents/github/himmel already a directory is refused and left alone ---
 new_world
