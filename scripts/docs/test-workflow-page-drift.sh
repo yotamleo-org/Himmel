@@ -111,7 +111,7 @@ if case == "flags":
 if case == "order":
     data = json.loads(read(data_rel))
     # (node, chain title): the chains the page shows as a sequence.
-    ORDERED = {("build", "Starting the worktree"), ("build", "Committing")}
+    ORDERED = {("build", "Starting the worktree"), ("build", "Committing"), ("plan", "Starting a worker")}
     for n in data["nodes"]:
         for c in n["chains"]:
             if (n["id"], c["title"]) not in ORDERED:
@@ -137,9 +137,9 @@ if case == "order":
 # the page row and update the fact with it.
 FACTS = [
     ("hooks run side by side in an install", "scripts/lib/wire-pretooluse-hooks.sh",
-     ["each as its own matcher stanza"],
-     ["Every hook sees the call; any one that says no stops it"],
-     ["run in order", "the first one that says no"]),
+     ["each as its own matcher stanza", "stanza: { matcher: $matcher"],
+     ["Each hook checks the tools it is registered for; any one that says no stops the call"],
+     ["run in order", "the first one that says no", "Every hook sees the call", "Every hook checks the call"]),
     ("worktree: ceiling, then merged PR", "scripts/_new-worktree.sh",
      ["(feat|fix|chore|docs|refactor|test)/", "HIMMEL_WORKTREE_CEILING",
       "uniqueness-vs-merged-PR check skipped (forge unreachable)",
@@ -156,13 +156,16 @@ FACTS = [
      ["does not say PROCEED", "The chief waits for your ruling"]),
     ("an unreadable reviewer holds only in an armed clone", "scripts/lib/review-merge-gate.sh",
      ["- failing open\" >&2; }", "armed clone an unreadable CR ledger holds every hard or required critic"],
-     ["only in a clone armed with the CodeRabbit app does a required reviewer it cannot read hold the merge"],
-     ["but a required reviewer it cannot read holds the merge"]),
+     ["where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review"],
+     ["but a required reviewer it cannot read holds the merge", "does a required reviewer it cannot read hold the merge"]),
     ("three full review rounds, then one delta round", "scripts/cr/review-round.sh",
      ["After three full rounds the only round left is ONE delta round",
       "A 4th full round and a second delta are refused.",
-      "The delta round blocks only on Critical or escape-class"],
-     ["Three full rounds used already?", "critical or escape-class findings", "A fourth full round is refused"],
+      "The delta round blocks only on Critical or escape-class",
+      "one more delta round per reviewed head", "every one is recorded fixed there",
+      "A CI-red reviewed head (delta round spent or not) buys ONE bounded delta"],
+     ["Three full rounds used already?", "critical or escape-class findings", "A fourth full round is refused",
+      "A judge NO-GO, every finding of that round fixed, or a red CI run buys one more bounded diff-only round"],
      []),
     ("chief hands over at 45 %", "scripts/handover/chief/chief.sh",
      ['fill_percent="${CHIEF_FILL_PERCENT:-45}"'],
@@ -215,7 +218,8 @@ run_case "4. FACTS: every stated behaviour matches the code" facts
 C="$TMP/copy"
 copy_ok=1
 for f in $DATA_REL $PAGE_REL scripts/_new-worktree.sh scripts/handover/chief/chief.sh \
-    scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh; do
+    scripts/hooks/check-commit-msg.sh scripts/hooks/check-worktree-isolation.sh \
+    scripts/handover/chief-kit/headed-arm-worker.sh scripts/lib/usage-preflight.sh; do
   mkdir -p "$C/$(dirname "$f")" && cp "$ROOT/$f" "$C/$f" 2>/dev/null || copy_ok=0
 done
 mut() { python3 -I -c 'import sys; p,a,b=sys.argv[1:4]; s=open(p,encoding="utf-8").read(); open(p,"w",encoding="utf-8").write(s.replace(a,b,1))' "$@"; }

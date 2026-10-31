@@ -67,18 +67,18 @@
           "title": "Starting a worker",
           "rows": [
             {
-              "k": "usage",
-              "q": "Is this lane's usage bank used up? (the usage preflight says `SKIPPED-BANK`)",
+              "k": "tier",
+              "q": "A top-tier worker (opus, fable) without a stated reason?",
               "by": "`headed-arm-worker.sh`",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "The launch is refused: park the ticket and retry later. A stale or unknown bank reading does not stop the launch.",
+              "next": "Back to the brief, which must say why.",
               "source": {
                 "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
-                "line": 2539,
-                "text": "lane bank exhausted (park and retry later"
+                "line": 1377,
+                "text": "launch: $DOC has no '> **Tier:** $TIER_GATE"
               }
             },
             {
@@ -101,18 +101,18 @@
               }
             },
             {
-              "k": "tier",
-              "q": "A top-tier worker (opus, fable) without a stated reason?",
+              "k": "usage",
+              "q": "Is this lane's usage bank used up? (the usage preflight says `SKIPPED-BANK`)",
               "by": "`headed-arm-worker.sh`",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Back to the brief, which must say why.",
+              "next": "The launch is refused: park the ticket and retry later. A stale or unknown bank reading does not stop the launch.",
               "source": {
                 "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
-                "line": 1377,
-                "text": "launch: $DOC has no '> **Tier:** $TIER_GATE"
+                "line": 2539,
+                "text": "lane bank exhausted (park and retry later"
               }
             },
             {
@@ -334,10 +334,10 @@
         210,
         52
       ],
-      "what": "Before Claude Code runs any tool, himmel's hooks check it. Every hook sees the call; any one that says no stops it before anything happens. Git gates do the same for commits and pushes.",
+      "what": "Before Claude Code runs any tool, himmel's hooks check it. Each hook checks the tools it is registered for; any one that says no stops the call before anything happens. Git gates do the same for commits and pushes.",
       "loop": [
         "Claude asks to run a tool",
-        "Every hook checks the call",
+        "The hooks for that tool check the call",
         "Refused: Claude reads why and changes course",
         "Allowed or asked: the call runs"
       ],
@@ -727,7 +727,7 @@
                 "kind": "ask",
                 "text": "Ask"
               },
-              "next": "One diff-only round may follow, and it blocks only on critical or escape-class findings. A fourth full round is refused.",
+              "next": "One diff-only round may follow, and it blocks only on critical or escape-class findings. A judge NO-GO, every finding of that round fixed, or a red CI run buys one more bounded diff-only round. A fourth full round is refused.",
               "source": {
                 "file": "scripts/cr/review-round.sh",
                 "line": 1134,
@@ -819,7 +819,7 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; most failed reads let the merge through with a warning, and only in a clone armed with the CodeRabbit app does a required reviewer it cannot read hold the merge.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; a failed read lets the merge through with a warning, except in a clone armed with the CodeRabbit app, where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review.",
       "loop": [
         "Claude asks to merge",
         "The gate reads CI, the reviewers and CodeRabbit's threads",
