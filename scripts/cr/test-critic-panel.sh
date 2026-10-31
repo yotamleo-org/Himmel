@@ -1028,6 +1028,7 @@ printf 'upstream code\n' > "$FK_REPO/upstream-authored.txt"
 git -C "$FK_REPO" add upstream-authored.txt
 git -C "$FK_REPO" commit -q -m upstream
 git -C "$FK_REPO" update-ref refs/remotes/upstream/v8 HEAD
+git -C "$FK_REPO" symbolic-ref refs/remotes/upstream/HEAD refs/remotes/upstream/v8
 git -C "$FK_REPO" reset -q --hard HEAD~1
 git -C "$FK_REPO" checkout -q -b feature refs/remotes/upstream/v8
 printf 'ours\n' > "$FK_REPO/our-carried.txt"
@@ -1049,6 +1050,16 @@ else
     echo "ok - FORK1: upstream-authored commit is excluded from the panel input"
 fi
 check_contains "FORK1: the exclusion is announced" "$(cat "$tmp/fork-err")" "1 upstream-authored commit(s) excluded"
+
+# FORK2: an unmerged upstream branch that happens to contain our carried
+# commit is not upstream's code; only the upstream default branch narrows.
+git -C "$FK_REPO" update-ref refs/remotes/upstream/side HEAD
+: > "$FK_CAPTURE"
+HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND="$LEDGER_NOOP" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$FK_STUB" \
+    bash "$PANEL" --worktree "$FK_REPO" > "$tmp/fork2-out" 2> "$tmp/fork2-err"
+check "FORK2: fork review with an extra upstream branch runs" "$?" "0"
+check_contains "FORK2: our carried file still reaches the critics" "$(cat "$FK_CAPTURE")" "our-carried.txt"
 
 # ── --head pins the review inputs to the caller's captured SHA ──
 # /pr-check captures branch+HEAD up front and stamps every ledger row with that

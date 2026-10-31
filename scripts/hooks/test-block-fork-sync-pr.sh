@@ -84,6 +84,7 @@ run_hook "cd into the fork clone first: origin is read there" 2 "cd $FORKCLONE &
 run_hook "relative cd into the fork clone is followed" 2 "cd core-clone; gh pr create --head home-assistant:dev -t x -b y"
 run_hook "GH_REPO prefix names the base repo" 2 "GH_REPO=yotamleo-org/core gh pr create --head home-assistant:dev -t x -b y"
 run_hook "exported GH_REPO names the base repo" 2 "export GH_REPO=yotamleo-org/core && gh pr create --head home-assistant:dev -t x -b y"
+GH_REPO=yotamleo-org/core run_hook "GH_REPO in the session env names the base repo" 2 "gh pr create --head home-assistant:dev -t x -b y"
 
 # 4. Our own carried branch is allowed (3 of 3 PR commits are ours).
 GH_OURS=3 GH_TOTAL=3 run_hook "our carried branch into our fork is allowed" 0 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/fix-x -t x -b y"

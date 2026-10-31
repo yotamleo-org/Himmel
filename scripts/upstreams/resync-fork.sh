@@ -97,7 +97,7 @@
 # `upstream`). A sync is upkeep, never a PR, a judge or a review of upstream
 # code: no carried commits → `use-upstream <upstream>` (rc 3, nothing synced);
 # carried → `gh repo sync` of the fork's default branch when it is not the
-# himmel branch, then our commits rebased onto the upstream default branch and
+# himmel branch and upstream has a branch of that name, then our commits rebased onto the upstream default branch and
 # pushed straight to the himmel branch (--force-with-lease), the old tip kept
 # as refs/tags/himmel-presync/<branch>-<sha12> so SHA pins stay reachable. A
 # conflict stops, names the paths and pushes nothing (rc 4). Already on
@@ -222,7 +222,11 @@ sync_fork() {
     echo "resync-fork: --dry-run — no gh repo sync, nothing pushed"; return 0
   fi
   if [ "$def" != "$branch" ]; then
-    gh repo sync "$nwo" --branch "$def" || { echo "resync-fork: gh repo sync $nwo --branch $def failed" >&2; return 2; }
+    if git -C "$dir" rev-parse -q --verify "refs/remotes/upstream/$def" >/dev/null; then
+      gh repo sync "$nwo" --branch "$def" || { echo "resync-fork: gh repo sync $nwo --branch $def failed" >&2; return 2; }
+    else
+      echo "resync-fork: $nwo@$def has no upstream counterpart in $upstream; left as is"
+    fi
   fi
   git -C "$dir" push -q --atomic --force-with-lease="refs/heads/$branch:$old" fork \
     "HEAD:refs/heads/$branch" "$old:refs/tags/himmel-presync/$branch-${old:0:12}" \

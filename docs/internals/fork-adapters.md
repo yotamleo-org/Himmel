@@ -55,5 +55,7 @@ Syncing a fork with its upstream is upkeep, never a PR (HIMMEL-8334):
   commits.
 - The judge, the signed GO and CodeRabbit cover only our carried changes. A PR
   to a fork carries only our own authored delta, and the critic panel diffs a
-  fork PR from its upstream merge-base, so upstream-authored commits are never
-  reviewed.
+  fork PR from its merge-base with the upstream default branch, so
+  upstream-authored commits are never reviewed. The panel reads that branch
+  from `refs/remotes/<upstream>/HEAD` (`git remote set-head upstream -a`);
+  without it the whole PR is reviewed.

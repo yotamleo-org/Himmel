@@ -171,7 +171,7 @@ try:
 except ValueError:
     allow()
 
-gh_repo = ""
+gh_repo = os.environ.get("GH_REPO", "")
 for words in segs:
     # A `cd`/`pushd` earlier in the command moves where origin is read.
     if len(words) >= 2 and words[0] in ("cd", "pushd"):

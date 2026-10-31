@@ -671,11 +671,11 @@ _verify_base_pin() {
 # _fork_upstream_base <root> <base> <head> — on one of our forks
 # (origin is a scripts/guardrails/himmel-adapters.json row with an upstream)
 # the panel reviews only our authored delta, never upstream code. When the
-# head sits on upstream commits the base lacks, print the newest merge-base of
-# head with an upstream remote ref (it must descend from the base merge-base)
-# and announce how many upstream-authored commits it excludes. Prints nothing
-# — the normal base...head review — on anything else, including a missing jq
-# or registry.
+# head sits on upstream commits the base lacks, print the merge-base of head
+# with the upstream default branch (`refs/remotes/<upstream>/HEAD`; it must
+# descend from the base merge-base) and announce how many upstream-authored
+# commits it excludes. Prints nothing — the normal base...head review — on
+# anything else, including a missing jq, registry or upstream HEAD ref.
 _fork_upstream_base() {
     command -v jq >/dev/null 2>&1 || return 0
     _fk_reg="${HIMMEL_REPO:-$SCRIPT_DIR/../..}/scripts/guardrails/himmel-adapters.json"
@@ -694,18 +694,15 @@ _fork_upstream_base() {
     done
     [ -n "$_fk_remote" ] || return 0
     _fk_bmb="$(git -C "$1" merge-base "$2" "$3" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
-    _fk_best=""; _fk_n=0
-    for _ref in $(git -C "$1" for-each-ref --format='%(refname)' "refs/remotes/$_fk_remote/"); do
-        case "$_ref" in */HEAD) continue ;; esac
-        _mb="$(git -C "$1" merge-base "$_ref" "$3" 2>/dev/null)" || continue  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
-        [ "$_mb" != "$_fk_bmb" ] || continue
-        git -C "$1" merge-base --is-ancestor "$_fk_bmb" "$_mb" 2>/dev/null || continue
-        _c="$(git -C "$1" rev-list --count "$_fk_bmb..$_mb" 2>/dev/null)" || continue  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
-        if [ "$_c" -gt "$_fk_n" ]; then _fk_best="$_mb"; _fk_n="$_c"; _fk_ref="${_ref#refs/remotes/}"; fi
-    done
-    [ -n "$_fk_best" ] || return 0
-    echo "critic-panel.sh: fork PR — reviewing only our authored delta; $_fk_n upstream-authored commit(s) excluded ($_fk_ref)" >&2
-    printf '%s\n' "$_fk_best"
+    # Only upstream's default branch counts as upstream code: an unmerged
+    # upstream branch may hold our own commits.
+    _ref="$(git -C "$1" symbolic-ref -q "refs/remotes/$_fk_remote/HEAD")" || return 0  # swallow-ok: no upstream default known keeps the normal base...head review
+    _mb="$(git -C "$1" merge-base "$_ref" "$3" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    [ "$_mb" != "$_fk_bmb" ] || return 0
+    git -C "$1" merge-base --is-ancestor "$_fk_bmb" "$_mb" 2>/dev/null || return 0
+    _fk_n="$(git -C "$1" rev-list --count "$_fk_bmb..$_mb" 2>/dev/null)" || return 0  # swallow-ok: fork detection is best effort; a failure keeps the normal base...head review
+    echo "critic-panel.sh: fork PR — reviewing only our authored delta; $_fk_n upstream-authored commit(s) excluded (${_ref#refs/remotes/})" >&2
+    printf '%s\n' "$_mb"
 }
 
 # Resolve the reviewed repository + exact head before running any critic. The

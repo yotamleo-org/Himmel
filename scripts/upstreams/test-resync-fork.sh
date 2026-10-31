@@ -576,6 +576,23 @@ assert_contains "$(cat "$root/gh.log")" "repo sync yotamleo-org/fake --branch ma
 case "$(cat "$root/gh.log")" in *"pr create"*) fail "--sync opened a PR" ;; *) pass "--sync never opens a PR" ;; esac
 rm -rf "$root"
 
+# The fork's default branch (main) has no upstream counterpart (upstream
+# default v8): gh repo sync would fail, so it is skipped and the push happens.
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+git -C "$root/git/Up/fake.git" branch -q -m main v8
+git -C "$root/git/Up/fake.git" symbolic-ref HEAD refs/heads/v8
+old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)" != "$old_tip" ]; then
+  pass "--sync: a fork default with no upstream counterpart still pushes the rebase"
+else
+  fail "--sync: default with no upstream counterpart: rc=$rc or nothing pushed; $out"
+fi
+case "$(cat "$root/gh.log")" in *"repo sync"*) fail "--sync ran gh repo sync for a default upstream lacks" ;; *) pass "--sync skips gh repo sync when upstream lacks the fork default" ;; esac
+assert_contains "$out" "no upstream counterpart" "--sync says the fork default was left as is"
+rm -rf "$root"
+
 root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
 sync_fixture "$root" a.txt
 old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
