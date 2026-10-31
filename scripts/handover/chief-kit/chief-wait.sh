@@ -1149,14 +1149,15 @@ ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past it
             printf '%s\t%s\n' "$label" "${last:-0}" >> "$ready_file"
             continue
         fi
+        # one pick per call, but every later worker is still visited so its cursor is set
+        [ -z "$ready_label" ] || continue
         entry="$(printf '%s\n' "$entry" | awk -F: -v c="$cur" '$1 + 0 > c { print; exit }')"
         [ -n "$entry" ] || continue
         ready_label="$label"; ready_line="${entry%%:*}"; ready_bullet="${entry#*:}"
-        return 0
     done <<EOF
 $(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
-    return 1
+    [ -n "$ready_label" ]
 }
 ready_advance() { # <label> <line>: the cursor moves once the bullet was handed on
     { awk -F'\t' -v l="$1" '$1 != l' "$ready_file" 2>/dev/null; printf '%s\t%s\n' "$1" "$2"; } | atomic_write "$ready_file"

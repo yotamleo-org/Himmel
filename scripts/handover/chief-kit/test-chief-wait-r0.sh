@@ -384,6 +384,23 @@ wait_exit "$WPID"
 check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# on: a pending READY of N1 must not leave N2's cursor unset, or N2's later READY would count as history
+reset_stub
+fleet r0s5
+printf 'HANDLED auto-go N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s5.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s5) no baseline heartbeat"
+L2="$WORK/r0s5/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M.new" && mv "$M.new" "$M"
+printf -- '%s\n%s\n' "$READY_A" "$READY_B" >> "$L"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.1" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+printf -- '- 10:40 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN\n' >> "$L2"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.3" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0s5) N2's READY, written while N1's backlog drained, is relayed" "N2 READY 2568 cccccccccccccccccccccccccccccccccccccccc GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # off (the default): nothing is relayed and no cursor file appears
 reset_stub
 fleet r0s3
