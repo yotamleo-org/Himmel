@@ -32,7 +32,8 @@
 # high, xhigh or max and whose prompt has no `EFFORT: <reason>` line (same
 # reason-quality test) gets one additionalContext line; it joins the TIER warn
 # when both fire. A dispatch a deny or an ESCALATION rescue already handles gets
-# no effort warn. A missing or non-string `effort` warns on nothing.
+# no effort warn. A missing or non-string `effort` warns on nothing, and so does
+# an effort equal to the named agent's own `effort:` frontmatter (judge at high).
 # ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
 #
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
@@ -73,12 +74,24 @@ policy="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/../guardrails/agent-model-pol
 
 input=$(cat)
 
+# The named agent's own `effort:` frontmatter (.claude/agents/<name>.md beside
+# this hook): a dispatch passing that same effort is not an override, so no
+# EFFORT warn. Only a plain [a-z0-9-] name is looked up (no path, no plugin ns).
+agent_effort=""
+agent_name=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | strings' 2>/dev/null || true)  # swallow-ok: a failed read means no frontmatter lookup, so the warn still fires
+case "$agent_name" in
+    ''|*[!a-z0-9-]*) ;;
+    *) agent_md="$(dirname "$0")/../../.claude/agents/$agent_name.md"
+       [ -f "$agent_md" ] && [ -r "$agent_md" ] \
+           && agent_effort=$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^effort:/ { sub(/^effort:[ \t]*/, ""); v = $0 } END { print v }' "$agent_md") ;;
+esac
+
 # One line: kind <TAB> eflag <TAB> status <TAB> model <TAB> effort <TAB> reason.
 # eflag: effort = the EFFORT warn applies, - = it does not. status: none = no
 # ESCALATION line, weak = only unusable reasons, ok = a usable reason. Fields
 # before the last are never empty (an empty model/effort is "-"; read collapses
 # empty tabs). A plain allow is the single word "allow".
-verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
+verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agent_effort" '
     def s: if type == "string" then . else "" end;
     def clean: gsub("[\\p{Cc}]"; " ") | gsub("^ +| +$"; "");
     def norm: ascii_downcase | gsub("[^a-z0-9]+"; " ") | gsub("^ +| +$"; "");
@@ -100,7 +113,8 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
     | ($ti.effort | s | ascii_downcase | clean) as $e
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*EFFORT:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $egood
-    | ($tool == "Agent" and ($e | test("^(high|xhigh|max)$")) and ($egood | length) == 0) as $ewarn
+    | ($tool == "Agent" and ($e | test("^(high|xhigh|max)$")) and ($egood | length) == 0
+       and $e != ($fe | ascii_downcase | clean)) as $ewarn
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"

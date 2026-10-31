@@ -135,7 +135,12 @@ ewarn "effort xhigh -> warn" "$(agent_e general-purpose sonnet xhigh 'x')"
 ewarn "effort max -> warn" "$(agent_e general-purpose sonnet max 'x')"
 ewarn "effort HIGH (case) -> warn" "$(agent_e general-purpose sonnet HIGH 'x')"
 ewarn "no model + effort high -> warn" "$(agent_e general-purpose '' high 'x')"
-ewarn "typed agent (judge, no model) + effort high -> warn" "$(agent_e judge '' high 'x')"
+ewarn "judge + effort max (frontmatter says high) -> warn" "$(agent_e judge '' max 'x')"
+ewarn "judge-ro + effort max (frontmatter says high) -> warn" "$(agent_e judge-ro '' max 'x')"
+ewarn "comment-sicko + effort high (frontmatter says medium) -> warn" "$(agent_e comment-sicko '' high 'x')"
+ewarn "path-shaped agent name + effort high -> warn (no frontmatter lookup)" "$(agent_e ../agents/judge '' high 'x')"
+silent "judge + effort high (its own frontmatter effort) -> no output" "$(agent_e judge '' high 'x')"
+silent "judge-ro + opus + effort high (its own frontmatter effort) -> no output" "$(agent_e judge-ro opus high 'x')"
 ewarn "effort high + placeholder EFFORT reason -> warn" "$(agent_e general-purpose sonnet high $'x\nEFFORT: n/a')"
 ewarn "effort high + TIER line only (not an EFFORT line) -> warn" "$(agent_e general-purpose sonnet high "$TIERMARK")"
 ewarn "opus general-purpose + effort high, no lines -> both warnings" "$(agent_e general-purpose opus high 'x')" "TIER: <reason>"
@@ -198,6 +203,7 @@ else
     bad "helper table vs frontmatter: $tc_out"
 fi
 TC="$(mktemp -d -t guard-agent-model-tc.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
+trap 'rm -rf "$TC"' EXIT
 cp "$AGENTS"/*.md "$TC/"
 sed 's/^effort: .*/effort: low/' "$AGENTS/judge.md" > "$TC/judge.md"
 if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
@@ -212,7 +218,6 @@ if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
 else
     ok "fixture with an agent definition missing from the table fails table_check"
 fi
-rm -rf "$TC"
 
 echo "== judge override off its frontmatter tier (opus) =="
 if grep -q '^model: opus$' "$JUDGE"; then
@@ -302,7 +307,7 @@ fi
 # The hook finds its policy relative to itself, so a sandboxed copy with its own
 # policy exercises the data-driven path without a test-only env seam.
 SB="$(mktemp -d -t guard-agent-model-sb.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
-trap 'rm -rf "$SB"' EXIT
+trap 'rm -rf "$TC" "$SB"' EXIT
 mkdir -p "$SB/hooks" "$SB/guardrails"
 cp "$HOOK" "$SB/hooks/guard-agent-model.sh"
 SHIPPED_HOOK="$HOOK"; HOOK="$SB/hooks/guard-agent-model.sh"

@@ -295,7 +295,9 @@ A named agent's row matches the `model:` and `effort:` lines in its
 `.claude/agents/<name>.md` frontmatter (`test-guard-agent-model.sh` checks it).
 A dispatch that sets effort to `high`, `xhigh` or `max` with no
 `EFFORT: <reason>` line in its prompt draws a warning from
-`guard-agent-model.sh` (warn only, same reason test as `TIER:`).
+`guard-agent-model.sh` (warn only, same reason test as `TIER:`). An effort equal
+to the named agent's own `effort:` frontmatter, such as `judge` at `high`, draws
+no warning.
 
 A general-purpose helper dispatched on an Opus model with no `TIER: <reason>`
 line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
