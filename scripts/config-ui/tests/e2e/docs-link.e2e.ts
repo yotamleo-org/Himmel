@@ -34,5 +34,5 @@ test("J2. the console reads the shared tokens: light and dark values, system fon
   expect(await token(page, "--ok")).toBe("#7FD1A0");
   const fonts = await page.evaluate(() => getComputedStyle(document.querySelector(".rail .brand")!).fontFamily);
   expect(fonts).not.toMatch(/Plex/i);
-  expect(await page.locator(".rail .brand").innerText()).toMatch(/^Himmel/);
+  expect(await page.locator(".rail .brand").innerText()).toMatch(/^himmel/);
 });
