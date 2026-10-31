@@ -151,7 +151,14 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
     // Keep the claim alive while the (possibly long) dispatch is in flight, so no
     // other daemon is granted the job when the TTL lapses mid-await.
     const keepalive = setInterval( // t13b-ok: renew timer, cleared in the finally below
-      () => renewLease(js.attrs.id, owner, ttl, deps.now(), env, path),
+      () => {
+        try {
+          renewLease(js.attrs.id, owner, ttl, deps.now(), env, path);
+        } catch {
+          // A failed renew must not escape the timer: the post-dispatch re-check
+          // decides whether the dispatch is recorded, and tick() surfaces ledger errors.
+        }
+      },
       Math.max(1, Math.floor(ttl / 3)),
     );
     let runId: string;

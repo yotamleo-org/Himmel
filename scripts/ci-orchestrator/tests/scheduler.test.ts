@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { appendFileSync, mkdtempSync } from "node:fs";
 import { tick, type SchedulerDeps } from "../src/scheduler.js";
 import { appendEvent, readState, type JobAttrs } from "../src/ledger.js";
 import { grantClaim } from "../src/lease.js";
@@ -253,6 +253,27 @@ describe("tick — stale snapshot and lease expiry during dispatch", () => {
     const st = readState({}, p).get("j1")!;
     expect(st.status).toBe("running");
     expect(st.claimant).toBe("vm");
+  });
+
+  test("a renew that throws inside the keepalive timer does not escape as an uncaught error", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const p = freshLedger();
+    const gated = gatedAdapter("act-exec");
+    const ticking = tick(
+      baseDeps({
+        discover: () => [job({ id: "j1" })],
+        adapters: [gated.adapter],
+        now: () => Date.now(),
+        leaseTtlMs: 60_000,
+        ledgerPath: p,
+      }),
+    );
+    const settled = ticking.catch((e: unknown) => e);
+    await gated.started;
+    appendFileSync(p, "not json\n"); // the next readState inside the timer throws
+    await vi.advanceTimersByTimeAsync(61_000);
+    gated.release();
+    expect(await settled).toBeInstanceOf(SyntaxError); // surfaced by tick, not by the timer
   });
 
   test("HIMMEL-8441: a dispatch that lost its claim does not append dispatch over another claimant's claim", async () => {
