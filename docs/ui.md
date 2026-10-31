@@ -147,8 +147,12 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   Tracker: the Jira connection and the commit rules, tracker and ticket-id-required. Project scope: the
   handover root and luna vault path, each with a dry-run before it changes. Roadmap and Kanban only
   appear when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
-  All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
-  cards from the weekly roll-up, see below; then What is broken and Every item checked as two tabs, the checks grouped by bundle; the rail's project picker
+  All clear / Needs a look / Act now, under four tiles, Checks, Usage, Scheduled jobs and Search & graph; a tile
+  opens its panel, one at a time, and Checks opens by itself only when something is wrong. The Checks panel holds
+  What is broken and Every item checked as two tabs, the checks grouped by bundle; each failing row and each firing
+  alert has one answer to who fixes it, and a chief row says **chief is on it** only while a chief session is live
+  (**for the chief · none running** when none is). There is no Project mode card on Health. A Trends section with
+  Velocity, Cost and Health cards from the weekly roll-up follows, see below; the rail's project picker
   switches to another registered project or to **All my projects**, where the Shared problems (the machine, not a
   project) show once above each project worst first; a legacy Inventory stays below until its tests move), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and

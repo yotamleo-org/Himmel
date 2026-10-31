@@ -29,7 +29,7 @@ let fleet = { data: null, error: null };
 let health = null; // GET /api/health, null while loading
 let projects = null; // GET /api/projects: { current, projects: [...] }, null until read (the picker waits for it)
 let otherFeed = null; // the feed of the project on the page when it is not this one: null while loading, "none" when never checked
-let healthView = { mode: "project", project: null, tab: "broken", row: null }; // #/health?view=all | project=<name> & tab= & row=
+let healthView = { mode: "project", project: null, tab: "broken", row: null, tile: null }; // #/health?view=all | project=<name> & tab= & row= & tile=
 let projectsGen = 0, otherGen = 0; // declared before route() runs: a reload at #/health calls loadProjects() from it
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
@@ -123,16 +123,24 @@ function healthPage(f) {
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
   const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
-  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none" };
+  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none", chief: chiefLive() };
   // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
   const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
   return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
+}
+// Is a chief session live? true/false from the fleet read, undefined until it lands (the row then says only "for the chief").
+// Liveness as Fleet reads it (fleet-model.ts isLive). ponytail: any live chief on this station counts for the project this
+// UI runs in; upgrade path: a project field on each fleet row, matched against projects.current.
+function chiefLive() {
+  if (!fleet.data || fleet.data.census === "unavailable") return undefined;
+  return (fleet.data.sessions || []).some((s) => s.role === "console" && s.live !== false && s.state !== "wrapped" && s.lock !== "released");
 }
 const healthHash = (v) => {
   const q = new URLSearchParams();
   if (v.mode === "all") q.set("view", "all"); else if (v.project) q.set("project", v.project);
   if (v.tab === "all") q.set("tab", "all");
   if (v.row) q.set("row", v.row);
+  if (v.tile) q.set("tile", v.tile);
   return "#/health" + (q.size ? "?" + q : "");
 };
 async function loadProjects() {
@@ -172,6 +180,7 @@ async function loadFleet() {
     fleet = r.ok ? { data: await r.json(), error: null } : { data: null, error: r.status === 401 ? "the token was refused" : `the server answered ${r.status}` };
   } catch (_) { fleet = { data: null, error: "server unreachable" }; }
   renderPages();
+  if (currentPage.id === "health" && (feed || otherFeed)) paint(); // a chief row says whether a chief is live, so it waits on this read
   // the rail's Shift badge counts Waiting rows on every page: read the shift after a fleet read that worked, at most once a minute
   if (fleet.data && currentPage.id !== "shift" && Date.now() - shiftAt > 60_000) loadShift();
 }
@@ -592,11 +601,12 @@ document.addEventListener("click", (e) => {
     return void saveSecret(b.dataset.name, "remove", null);
   }
   if (b.dataset.act === "setup-verify") return void runVerify();
-  if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
+  if (b.dataset.act === "refresh-health") { loadHealth(); loadFleet(); return void loadFeed(true); } // the verdict reads the doctor feed too; a chief row reads the Fleet census
   if (b.dataset.act === "open-config") return void (location.hash = "#/health?row=" + encodeURIComponent(b.dataset.id)); // a check's finding opens its row on Health
-  if (b.dataset.act === "health-tile") { const t = document.getElementById(b.dataset.target); if (t) t.scrollIntoView({ block: "start" }); return; }
-  if (b.dataset.act === "health-tab" || b.dataset.act === "health-row") {
-    if (b.dataset.act === "health-tab") healthView.tab = b.dataset.tab;
+  if (b.dataset.act === "health-tab" || b.dataset.act === "health-row" || b.dataset.act === "health-tile") {
+    // one tile panel open at a time; the open tile closes it again (tile=none keeps a self-opened Checks shut on reload)
+    if (b.dataset.act === "health-tile") healthView.tile = b.getAttribute("aria-expanded") === "true" ? "none" : b.dataset.tile;
+    else if (b.dataset.act === "health-tab") healthView.tab = b.dataset.tab;
     else healthView.row = healthView.row === b.dataset.id ? null : b.dataset.id;
     history.replaceState(null, "", location.pathname + location.search + healthHash(healthView));
     return paint();

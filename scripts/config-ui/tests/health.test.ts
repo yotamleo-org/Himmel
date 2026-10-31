@@ -43,10 +43,12 @@ test("renderHealth escapes every feed, ledger and alert string", () => {
   expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;</span>');
 });
 
-test("renderHealth with no feed and no health still renders every section", () => {
+// Frame 9: with no feed yet the strip says No data and every tile names the source it waits for; no panel opens.
+test("renderHealth with no feed and no health still renders the strip, the tiles and the trends", () => {
   const html = renderHealth(null, null);
-  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(
-    ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Usage", "Trends", "How good are our reviewers?", "Search and graph freshness"]);
+  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Is this project working right now?", "Trends", "How good are our reviewers?"]);
+  expect([...html.matchAll(/data-act="health-tile"/g)].length).toBe(4);
+  expect(html).toContain("waiting for the doctor feed");
   expect(html).not.toContain('id="workers"'); // the worker list lives on Fleet (Q2)
   expect(html).toContain("No data");
 });
@@ -65,15 +67,12 @@ test("each monitoring source's failure is rendered on its own, even when the oth
   expect(bothOk).not.toContain("unreachable");
 });
 
-// the resolver's tracker/forge answer is shown as one row.
-test("renderHealth shows the project mode row from the resolver", () => {
+// Q4: Health is per project through the picker; the Project mode facts card stays on Configure ▸ Tracker.
+test("the Health page draws no Project mode card", () => {
   const gone = { state: "absent" };
-  const mode = { state: "ok", tracker: "local", forge: "local-git", idRequired: "1" };
-  const html = renderHealth(null, { bank: gone, monitoring: gone, mode });
-  expect(html).toContain("tracker=local forge=local-git");
-  expect(renderHealth(null, { bank: gone, monitoring: gone, mode: { state: "error", reason: "project-mode: invalid TRACKER='x'" } }))
-    .toContain("project-mode: invalid TRACKER=&#39;x&#39;");
-  expect(renderHealth(null, null)).toContain('id="mode"');
+  const html = renderHealth(null, { bank: gone, monitoring: gone, mode: { state: "ok", tracker: "local", forge: "local-git", idRequired: "1" } });
+  expect(html).not.toContain('id="mode"');
+  expect(html).not.toContain("tracker=local");
 });
 
 // the fail/warn/ok pills in a Health row share one width and centre their text, so the ids line up.
@@ -92,7 +91,7 @@ const shared = (id: string, health: string, fix: object = {}) => r(id, health, {
 test("the page opens on the current project, all-projects only when asked", () => {
   expect(parseView("")).toMatchObject({ mode: "project", project: null, tab: "broken" });
   expect(parseView("view=all")).toMatchObject({ mode: "all" });
-  expect(parseView("project=luna&tab=all&row=x")).toEqual({ mode: "project", project: "luna", tab: "all", row: "x" });
+  expect(parseView("project=luna&tab=all&row=x")).toEqual({ mode: "project", project: "luna", tab: "all", row: "x", tile: "checks" });
   expect(parseView("tab=bogus").tab).toBe("broken");
 });
 
@@ -110,9 +109,50 @@ test("every failing row has exactly one fix action, first match winning", () => 
   const html = renderHealth(feed(own("c", "fail", { by: "configure", tile: "secrets" }), own("o", "fail", { by: "operator", remedy: "run-it" }), own("h", "warn")), null);
   for (const id of ["c", "o", "h"]) {
     const row = html.split('<div class="hrow br"').find((x) => x.includes(`data-id="${id}"`))!;
-    expect([...row.matchAll(/Open in Configure|Copy command|chief is on it/g)].length).toBe(1);
+    expect([...row.matchAll(/class="fixact[ "]/g)].length).toBe(1);
   }
   expect(html).toContain('href="#/config?tile=secrets"');
+});
+
+// Q1 build note: "chief is on it" needs a live chief; with none it reads "for the chief · none running", never a button.
+test("a chief row says whether a chief is running, and never carries a button", () => {
+  const f = feed(own("h", "warn"));
+  const row = (chief: unknown) => { const html = renderHealth(f, null, { chief }); return html.slice(html.indexOf('<div class="hrow br"')); };
+  expect(row(true)).toContain("chief is on it");
+  expect(row(false)).toContain("for the chief · none running");
+  expect(row(false)).not.toContain("chief is on it");
+  expect(row(undefined)).toContain("for the chief");
+  expect(row(undefined)).not.toContain("chief is on it");
+  for (const c of [true, false, undefined]) expect(row(c)).not.toMatch(/Open in Configure|Copy command/);
+});
+
+// Q1: alerts use the same three answers; a firing alert is the chief's, with no button.
+test("a firing alert carries one who-fixes-it answer, the chief's", () => {
+  const health = { bank: { state: "absent" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "warn", summary: "box off" }] }, exporter: { state: "ok" } } };
+  const html = renderHealth(feed(own("a", "ok")), health, { chief: true });
+  const alert = html.slice(html.indexOf('<div class="alert"'));
+  expect([...alert.matchAll(/class="fixact[ "]/g)].length).toBe(1);
+  expect(alert).toContain("chief is on it");
+});
+
+// Frames 1, 4, 5, 8: four tiles, one panel open at a time; Checks opens by itself only when something is wrong (Q5).
+test("one tile panel is open at a time, and Checks opens by itself only on a problem", () => {
+  const h2s = (html: string) => [...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1]);
+  const bad = feed(own("a", "fail"), r("cadence:qmd", "ok", { source: "cadence", scope: "shared" }), r("qmd-index", "ok", { bundle: "search", scope: "shared" }));
+  expect(h2s(renderHealth(bad, null))).toEqual(["Is this project working right now?", "Checks", "Trends", "How good are our reviewers?"]);
+  const calm = feed(own("a", "ok"));
+  expect(h2s(renderHealth(calm, null))).toEqual(["Is this project working right now?", "Trends", "How good are our reviewers?"]);
+  expect(renderHealth(calm, null)).toContain("nothing broken");
+  expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).toContain("Scheduled jobs");
+  expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).not.toContain("Checks");
+  expect(renderHealth(bad, null, { tile: "jobs" })).toContain("cadence:qmd");
+  expect(renderHealth(bad, null, { tile: "search" })).toContain("qmd-index");
+  expect(renderHealth(bad, null, { tile: "usage" })).toContain("open Fleet");
+  expect(renderHealth(bad, null, { tile: "usage" })).toMatch(/aria-expanded="true"[^>]*data-tile="usage"|data-tile="usage"[^>]*aria-expanded="true"/);
+  expect(parseView("tile=usage").tile).toBe("usage");
+  expect(parseView("tab=all").tile).toBe("checks");
+  expect(parseView("row=x").tile).toBe("checks");
+  expect(parseView("tile=bogus").tile).toBeNull();
 });
 
 test("another project's rows never offer this UI's Configure, nor its mode and alerts", () => {
@@ -158,7 +198,7 @@ test("the who-fixes-it box opens on the chosen row only", () => {
 test("Every item checked lists all rows with a result, and a problem bundle opens by itself", () => {
   const f = feed(own("a", "ok"), own("b", "fail"), r("c", "ok", { scope: "project", bundle: "search" }));
   const html = renderHealth(f, null, { tab: "all" });
-  const all = html.slice(html.indexOf('id="tab-all"'), html.indexOf('id="jobs"'));
+  const all = html.slice(html.indexOf('id="tab-all"'), html.indexOf('id="trends"'));
   expect([...all.matchAll(/<tr><td><span class="pill/g)].length).toBe(3);
   expect(all).toMatch(/<details class="bundle" open><summary><b>guards<\/b>/);
   expect(all).toMatch(/<details class="bundle"><summary><b>search<\/b>/);
@@ -183,8 +223,8 @@ test("a shared failure shows once under Shared and is in neither project's own c
   expect(html).toContain('href="#/health?project=luna"');
 });
 
-test("Usage points the worker list at Fleet", () => {
-  const html = renderHealth(null, { bank: { state: "absent" }, monitoring: { state: "absent" } }, { fleetHref: "/agui/?t=x" });
+test("the Usage panel points the worker list at Fleet", () => {
+  const html = renderHealth(null, { bank: { state: "absent" }, monitoring: { state: "absent" } }, { fleetHref: "/agui/?t=x", tile: "usage" });
   expect(html).toContain("open Fleet");
   expect(html).toContain('href="/agui/?t=x"');
 });

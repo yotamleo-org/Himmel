@@ -32,20 +32,33 @@ Read-only: every value is rendered from its owner and nothing is re-measured.
 answers `ok`, `absent` or `error` on its own, so one missing source never blanks
 the page.
 
-| Section | Source | `No data` means |
+The page is built from the v2 mockup (HIMMEL-8031). The top section, **Is this project working right now?**,
+holds the verdict strip (the word, its inputs, `checked N ago`, the fail/warn/shared/ok counts) and four tiles:
+Checks, Usage, Scheduled jobs and Search & graph. A tile opens its panel under the strip, one at a time; the open
+tile closes it again. Checks opens by itself only when the verdict is Act now or Needs a look. The open tile rides
+the hash (`#/health?tile=checks|usage|jobs|search`; `tile=none` keeps a self-opened Checks shut; `tab=all` or
+`row=` open Checks). With no feed yet each tile says `waiting for the doctor feed`. Trends and How good are our
+reviewers? always follow. The Project mode card is gone from Health: the tracker and forge facts live on
+Configure ▸ Tracker.
+
+| Panel (tile) | Source | `No data` means |
 |---|---|---|
-| Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
-| What is broken · Every item checked | two tabs: feed rows with health `fail` or `warn`, worst first, plus firing alerts, each with ONE fix action (below); and all rows grouped by bundle with a result each, a bundle with a problem open | feed still running |
-| Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Usage | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
-| Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
+| Is this project working right now? (the strip) | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
+| Checks: What is broken · Every item checked | two tabs: feed rows with health `fail` or `warn`, worst first, plus firing alerts, each with ONE fix action (below); and all rows grouped by bundle with a result each, a bundle with a problem open | feed still running |
+| Scheduled jobs (shared) | feed rows with `source: cadence`; the tile reads `a of n armed` | no cadence rows declared |
+| Usage (shared) | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the tile reads `Claude X % of 5h · Y % of week`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
+| Search & graph | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 **Project picker and Shared (HIMMEL-8044).** The rail carries a picker: the project this UI runs in
 (the page opens on it), the other registered projects (`~/.claude/handover/registry.json`, `repos{name:{path}}`),
 and **All my projects** (`#/health?view=all`). Every feed row carries a `scope` (`shared` for the machine or
 himmel itself, `project` for the rest) and a `fix.by`, classified once in `config-feed.js` `classifyRow`:
 `configure` (a setting a Configure tile writes, `fix.tile` names it: **Open in Configure**), `operator` (only
-you can run it: **Copy command**) or `chief` (**chief is on it**, no button). The all-projects view shows the
+you can run it: **Copy command**) or `chief` (no button). A chief row reads **chief is on it** only while the
+Fleet read finds a live chief session, **for the chief · none running** when it finds none, and **for the
+chief** until the read lands or on another project's page. A firing alert carries the same chief answer and a
+`shared` tag. Any live chief on the station counts for the project this UI runs in (no fleet row names its
+project yet). The all-projects view shows the
 Shared rows once, never counted in a project's own verdict, then each project worst first. `GET /api/projects`
 answers each project from its own cached feed (`~/.himmel/state/config-ui/feeds/<name>.json`, written by the UI
 that ran in it) or `not checked`; it never runs a doctor. `GET /api/feed?project=<name>` answers one of them
