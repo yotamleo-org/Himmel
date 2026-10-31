@@ -5,6 +5,7 @@ import { renderToolHealth } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { renderWorkflow, mountWorkflow } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
+import { renderShift } from "/shift.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -44,6 +45,8 @@ const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writ
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
+let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read; shiftAt throttles the rail badge's reads
+const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
@@ -51,6 +54,7 @@ const PAGES = [
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
+  { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
@@ -78,6 +82,9 @@ function route() {
   let ver = null;
   if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
   roadmapUi.ver = ver;
+  shiftUi.id = null;
+  shiftUi.all = new URLSearchParams(m[3] || "").get("all") === "1";
+  if (currentPage.id === "shift" && m[2]) { try { shiftUi.id = decodeURIComponent(m[2]); } catch (_) { shiftUi.id = m[2]; } }
   if (unmountPage) { unmountPage(); unmountPage = null; } // the branch below can replace #main without a paint
   renderPages();
   loadFleet();
@@ -94,8 +101,9 @@ loadSources();
 // The rail (nav.js, shared with the AG-UI page): Config and Health are routes here, Fleet is /agui/.
 function renderPages() {
   const dots = { fleet: fleetDot(fleet.data, fleet.error), health: healthDot(verdict(feed, health)) };
+  const waiting = shift && shift.state === "open" ? shift.waiting.length : 0; // the Shift entry's badge: rows waiting on the operator
   $("#pages").innerHTML = navLinks({ here: "console", token, current: currentPage.id, sources }).map((l) =>
-    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}</a>`).join("") + (currentPage.id === "health" ? projectPicker() : "");
+    `<a href="${l.href}"${l.current ? ' aria-current="page"' : ""}${l.external ? ' target="_blank" rel="noopener noreferrer"' : ""}>${l.label}${dots[l.id] ? `<span class="st-dot ${dots[l.id].cls}" title="${dots[l.id].title}"></span>` : ""}${l.id === "shift" && waiting ? `<span class="sh-badge" title="${waiting} waiting on you">${waiting}</span>` : ""}</a>`).join("") + (currentPage.id === "health" ? projectPicker() : "");
 }
 
 // The rail's project picker, drawn on the Health page only (only Health reloads /api/projects): "All my projects" first, then each registered project with its own verdict (shared rows left out).
@@ -164,6 +172,8 @@ async function loadFleet() {
     fleet = r.ok ? { data: await r.json(), error: null } : { data: null, error: r.status === 401 ? "the token was refused" : `the server answered ${r.status}` };
   } catch (_) { fleet = { data: null, error: "server unreachable" }; }
   renderPages();
+  // the rail's Shift badge counts Waiting rows on every page: read the shift after a fleet read that worked, at most once a minute
+  if (fleet.data && currentPage.id !== "shift" && Date.now() - shiftAt > 60_000) loadShift();
 }
 
 function paint() {
@@ -407,6 +417,20 @@ async function loadToolHealth() {
   toolHealth = data;
   if (currentPage.id === "toolhealth") paint();
 }
+// the open shift, or the closed one named by shiftUi.id; read live, only the newest call may land.
+async function loadShift() {
+  const gen = ++shiftGen;
+  shiftAt = Date.now();
+  let data;
+  try {
+    const r = await fetch("/api/shift" + (shiftUi.id ? "?id=" + encodeURIComponent(shiftUi.id) : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    data = r.ok ? await r.json() : { reason: `shift failed (${r.status})` };
+  } catch (_) { data = { reason: "server unreachable" }; }
+  if (gen !== shiftGen) return;
+  shift = data;
+  renderPages();
+  if (currentPage.id === "shift") paint();
+}
 // read live on every load; only the newest call may paint.
 async function loadRoadmap() {
   const gen = ++roadmapGen;
@@ -548,6 +572,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
+  if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();

@@ -1457,30 +1457,18 @@ contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
 PATH="$W/bin:$PATH" node "$SUT" --doc "$B/nope.md" >/dev/null 2>&1; rc=$?
 contains 'a missing console doc is an error (rc 1)' "rc=$rc" 'rc=1'
 
-# --- the first publish to a carried URL must not put the live page in the chief's context
-# An unviewed publish is refused and the refusal returns the whole live page (about 23k
-# tokens for a 46 KB FOCUS/tracker page), and `Artifact read` costs the same, so the docs
-# send that first read+publish to a haiku subagent.
+# --- the board and tracker stay local: the chief profile denies Artifact
 DOCS="$HERE/../../../docs/handover"
 BT="$(tr '\n' ' ' < "$DOCS/chief-sections/board-tracker.md" | tr -s ' ')"
 CT="$(tr '\n' ' ' < "$DOCS/chief-template.md" | tr -s ' ')"
-BT_BOARD="${BT%%Keep the roadmap tracker current*}"
 BT_TRACKER="${BT#*Keep the roadmap tracker current}"
-contains 'board-tracker.md: the board publish goes to a haiku subagent' "$BT_BOARD" 'goes to a haiku subagent'
-contains 'board-tracker.md: the board subagent is dispatched with model haiku' "$BT_BOARD" 'model: haiku'
-contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD" 'effort medium'
-contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
-contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
-contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
-contains 'board-tracker.md: names the measured parent-context cost of a delegated publish' "$BT" 'measured: a haiku-delegated publish adds about 1.4k-2.7k tokens'
-contains 'board-tracker.md: the measured cost is under the 5k limit' "$BT" 'under the 5k limit'
+contains 'board-tracker.md: the board stays local' "$BT" 'the board stays LOCAL'
+contains 'board-tracker.md: the tracker stays local' "$BT_TRACKER" 'The tracker stays local like the board'
 # shellcheck disable=SC2016  # literal backticks in the needle
-lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
+lacks 'board-tracker.md: no Artifact publish step' "$BT" 'with the `Artifact` tool'
+contains 'chief-template.md step 12: the board is rendered local only' "$CT" 'Render the chief board (local only)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-lacks 'board-tracker.md: tracker URL no longer says the console reads it first' "$BT" 'must `Artifact read` it first, exactly as for `board:`'
-contains 'chief-template.md step 12: the first publish to a carried URL goes to a medium-effort haiku subagent' "$CT" 'goes to a medium-effort haiku subagent'
-# shellcheck disable=SC2016  # literal backticks in the needle
-lacks 'chief-template.md step 12: no bare Artifact read in the console context' "$CT" 'must `Artifact read` it first'
+lacks 'chief-template.md step 12: no Artifact publish step' "$CT" 'publish the file with the `Artifact` tool'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'

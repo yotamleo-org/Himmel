@@ -266,7 +266,7 @@ INPUT
 ); rcE=$?
 set -e
 [ "$rcE" -eq 0 ] || fail "case e: vault=none run should succeed (got rc=$rcE): $outE"
-grepq "$outE" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor|none] (default: none)' \
+grepq "$outE" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,security-audit,doctor|none] (default: none)' \
   || fail "case e: vault=none should still ask cadences, offering ONLY the requires:'none' rows (got: $outE)"
 grepq "$outE" -F -- '"drift-fix": "off"' \
   || fail "case e: declining drift-fix (Enter, no recommended default) should record off (got: $outE)"

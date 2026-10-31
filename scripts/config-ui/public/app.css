@@ -238,3 +238,12 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .picker{display:grid;gap:4px;margin:var(--s3) 0 0;font:600 10.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .picker select{font:var(--fs-sm) var(--font-ui);text-transform:none;letter-spacing:0;color:var(--ink);background:var(--surface);border:1px solid var(--rule-strong);border-radius:6px;padding:6px 8px;min-width:0;width:100%}
 @media (max-width:900px){.minis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* the Shift page (shift.js): scoped to .sh-* */
+.sh-head .sh-title{font:600 var(--fs-md) var(--font-ui);margin:0}
+.sh-pager{display:flex;gap:var(--s3);align-items:center;margin:var(--s2) 0;font-size:var(--fs-sm)}
+.sh-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--s2);margin-top:var(--s2)}
+.sh-tile{display:grid;gap:2px}
+.sh-tile b{font:600 var(--fs-xl) var(--font-ui)}
+.sh-tile span{color:var(--muted);font-size:var(--fs-xs)}
+.sh-list{list-style:none;margin:0;padding:0;display:grid;gap:var(--s2)}
+.sh-badge{margin-left:var(--s1);font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--beta-soft);color:var(--beta)}

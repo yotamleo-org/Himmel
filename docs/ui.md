@@ -10,7 +10,7 @@ they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Shift, Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -18,7 +18,8 @@ they almost always mean the first one.
 
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
 same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
-inventory only display. What can change something is on Configure and the Roadmap and
+inventory only display. Shift never changes configuration; its poll, `GET /api/shift`, only
+records a closed shift in `shifts.jsonl`. What can change something is on Configure and the Roadmap and
 Kanban boards; the table after the switches maps every action to its route. A switch shows its
 dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 
@@ -130,7 +131,13 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
   `<chief doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
   reaches the page within about 5 s; with no such file the server builds it as before.
-- **Pages** (the left rail): `#/config` (Configure: four group tiles, Secrets, Review,
+- **Pages** (the left rail): `#/shift` (the Shift page, first in the rail, with a badge counting
+  the rows that wait on you: a shift is the whole fleet between cuts, never one chief's run. It
+  shows the chiefs with their span and PR credit, Waiting on you (links out; nothing here acts),
+  Running now and Shipped; a closed shift adds Carried to the next shift and a pager. A shift
+  closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
+  20:00 clock cuts once it is at least 4 hours old, and is recorded in `shifts.jsonl` under
+  `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/config` (Configure: four group tiles, Secrets, Review,
   Tracker and Project scope, one open at a time, each row with its command, when it takes
   effect and a Learn more link to the docs site, and the Check this install strip under the
   tiles. Secrets: first the Account step, which creates the UI login once on a fresh install;
