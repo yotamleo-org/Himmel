@@ -7,6 +7,7 @@
 # a suite with no row, a row with no suite (stale), a duplicate row, a malformed row (not three fields),
 # an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
+scripts/security/test-security-audit-cadence.sh	local	behaviour suite, new (HIMMEL-8281)
 marketplace/plugins/pstack/test-vendor.sh	pr	static-gate
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window

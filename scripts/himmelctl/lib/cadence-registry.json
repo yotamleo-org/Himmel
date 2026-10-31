@@ -42,6 +42,14 @@
       "recommended": false
     },
     {
+      "id": "security-audit",
+      "label": "weekly security findings audit",
+      "script": "scripts/security/security-audit-cadence.sh",
+      "description": "weekly read-only diff of existing GitHub, Snyk, Arnica and CodeRabbit findings; optional sources skip without scanning or paid calls (HIMMEL-8281)",
+      "requires": "none",
+      "recommended": false
+    },
+    {
       "id": "doctor",
       "label": "himmel-doctor daily check",
       "script": "scripts/doctor-cadence.sh",
