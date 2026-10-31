@@ -307,6 +307,19 @@ run_cg status himmel-claudex
 check "status fails when --status exits 2" rc_nonzero
 rm -f "$GUEST_STATUS_FILE.exit2"
 
+# --- provision and create take the vm-lock on himmel-claudex: a held lock refuses both before any guest command ---
+new_world
+HOLD_READY="$WORK/lock-held"; rm -f "$HOLD_READY"
+HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_VM_LOCK_WAIT=0 bash -c '. "$1/scripts/vm/vm-lock.sh"; vm_lock_acquire_waiting himmel-claudex && : > "$2" && exec sleep 60' _ "$REPO_ROOT" "$HOLD_READY" &
+HOLD_PID=$!
+n=0; until [ -e "$HOLD_READY" ] || [ "$n" -ge 100 ]; do sleep 0.1; n=$((n + 1)); done
+run_cg provision himmel-claudex
+check "provision refuses while the vm-lock on himmel-claudex is held" rc_nonzero
+check "that refusal ran no guest command" no_guest_cmd
+run_cg create himmel-claudex
+check "create refuses while the vm-lock on himmel-claudex is held" rc_nonzero
+kill "$HOLD_PID" 2>/dev/null; wait "$HOLD_PID" 2>/dev/null
+
 # --- R5d: ~/Documents/github/himmel already a directory is refused and left alone ---
 new_world
 mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himmel/marker"

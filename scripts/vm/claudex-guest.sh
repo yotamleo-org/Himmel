@@ -82,8 +82,9 @@ lane_status() {
     LANE_OUT=$(grep -v '^lane-status-exit: ' <<< "$raw")
 }
 
-cmd_create() {
-    vm_env_init
+# take_vm_lock: hold the vm-lock on himmel-claudex until this process exits, so create and
+# provision never interleave on the one guest.
+take_vm_lock() {
     vm_lock_acquire_waiting "$VM"
     case "$?" in
         0) ;;
@@ -91,6 +92,11 @@ cmd_create() {
         *) fail "could not acquire the vm-lock on '$VM'" ;;
     esac
     trap 'vm_lock_release "$VM"' EXIT
+}
+
+cmd_create() {
+    vm_env_init
+    take_vm_lock
     # shellcheck disable=SC2034  # SOURCE_VM, CLONE_NAME and PORT are the globals vm-clone.sh reads
     SOURCE_VM=ubuntu_new
     # shellcheck disable=SC2034
@@ -111,6 +117,7 @@ cmd_create() {
 cmd_provision() {
     local out rc scan hits link_cmd install_cmd key_cmd settings_cmd
     vm_env_init
+    take_vm_lock
     has_base_snapshot || fail "$VM has no $BASE_SNAPSHOT snapshot — run 'claudex-guest.sh create $VM' first"
 
     # (1) the guest must hold no secret file before anything is cloned or installed
@@ -130,7 +137,7 @@ cmd_provision() {
     out=$(gl 900 "$install_cmd" 2>&1) || fail "claude install $PIN_VERSION: $out"
 
     # (4) the guest-local cli-proxy key, created once (generated in the guest, never on a host command line)
-    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ ! -e "$f" ]; then ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f" ) || exit 1; fi; chmod 600 "$f"; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
+    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ ! -e "$f" ]; then ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f" ) || exit 1; fi; chmod 600 "$f" || exit 1; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
     out=$(gx 60 "$key_cmd" 2>&1) || fail "cliproxy key: $out"
 
     # (5) an empty user settings file, only when absent
