@@ -926,6 +926,41 @@ canon=$(guard_canon_path "$MV_SCR/gfork/../../../../../mv-primfeat/newfile.txt")
 out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
 if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .. path into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch .. into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
 
+# A scratch dir whose git setup leads into a primary checkout borrows nothing.
+# Each shape reaches the same primary-feature verdict (rc=2) a direct hit would.
+MV_SCR_LN="$MV_SCR/gfork/lnk"
+mkdir -p "$MV_SCR_LN"
+ln -s "$MV_PRIMFEAT_C/.git" "$MV_SCR_LN/.git"
+MV_SCR_LN_C=$(cd "$MV_SCR_LN" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_LN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad dir with a symlinked .git into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch symlinked .git -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_SCR_CD="$MV_SCR/gfork/commondir"
+mkdir -p "$MV_SCR_CD/.git"
+printf 'ref: refs/heads/feat/y\n' > "$MV_SCR_CD/.git/HEAD"
+printf '%s\n' "$MV_PRIMFEAT_C/.git" > "$MV_SCR_CD/.git/commondir"
+MV_SCR_CD_C=$(cd "$MV_SCR_CD" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_CD_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .git dir with a commondir file into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch commondir -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_SCR_CW="$MV_SCR/gfork/coreworktree"
+mkdir -p "$MV_SCR_CW"
+git -C "$MV_SCR_CW" init -q -b main
+GITID -C "$MV_SCR_CW" commit -q --allow-empty -m init
+git -C "$MV_SCR_CW" checkout -q -b feat/w
+git -C "$MV_SCR_CW" config core.worktree "$MV_PRIMFEAT_C"
+MV_SCR_CW_C=$(cd "$MV_SCR_CW" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_CW_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with core.worktree set -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch core.worktree -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
+# (the helper is missing), where the real tree allows the same clone.
+MV_NOAP="$FIX/noap/scripts/guardrails"
+mkdir -p "$MV_NOAP"
+cp "$LIB" "$MV_NOAP/lib.sh"
+out=$( ( . "$MV_NOAP/lib.sh"; TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt" ) ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone refused when adopted-primary.sh is missing -> rc=2"; else fail "main_checkout_verdict: missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
+
 git -C "$MV_MAIN" worktree remove --force "$MV_WT" 2>/dev/null || true
 git -C "$PC_PRIMARY" worktree remove --force "$PC_WT" 2>/dev/null || true
 rm -rf "$FIX"

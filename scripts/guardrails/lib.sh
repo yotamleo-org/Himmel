@@ -1103,11 +1103,13 @@ _MCV_ROOT=""
 # is refused as before: a repo outside that layout, a linked worktree (its `.git`
 # is a file), the CLAUDE_PROJECT_DIR checkout, a `.himmel-dev` checkout, and a
 # registered adopter primary. Callers pass an already-canonical path, so a symlink
-# or `..` that leads into a primary checkout never reaches this layout match.
+# or `..` that leads into a primary checkout never reaches this layout match. A
+# scratch dir whose git setup points elsewhere (symlinked `.git`, a `commondir`
+# file, `core.worktree`) is refused too, and so is any git or helper error.
 _scratch_clone_exempt() {
     local repo="$1" uid base rest seg proj_dir proj_primary
     uid=$(id -u 2>/dev/null) || return 1
-    [ -d "$repo/.git" ] || return 1
+    [ -d "$repo/.git" ] && [ ! -L "$repo/.git" ] && [ ! -e "$repo/.git/commondir" ] || return 1
     for base in "${TMPDIR:-}" /tmp; do
         base="${base%/}"
         [ -n "$base" ] || continue
@@ -1128,14 +1130,40 @@ _scratch_clone_exempt() {
             [ -z "$proj_dir" ] || proj_primary=$(primary_checkout_root "$proj_dir" 2>/dev/null) || proj_primary=""
             { [ "$repo" = "$proj_dir" ] || [ "$repo" = "$proj_primary" ]; } && return 1
         fi
-        local ap
+        _scratch_clone_self_contained "$repo" || return 1
+        # Only adopted-primary.sh's own "no match" (exit 1) lets the clone through:
+        # a match, a usage error, a crash or a missing helper all refuse.
+        local ap aprc=0
         ap="$(cd -P -- "$(dirname "${BASH_SOURCE[0]}")/../handover/chief-kit" 2>/dev/null && pwd -P)/adopted-primary.sh"
-        if [ -f "$ap" ] && bash "$ap" "$repo" >/dev/null 2>&1; then
-            return 1
-        fi
+        [ -f "$ap" ] || return 1
+        bash "$ap" "$repo" >/dev/null 2>&1 || aprc=$?
+        [ "$aprc" -eq 1 ] || return 1
         return 0
     done
     return 1
+}
+
+# _scratch_clone_self_contained REPO — true only when git itself resolves REPO's
+# git dir, common dir and work tree to REPO's own, and no core.worktree redirects
+# the work tree. Evaluated on every call; any git error refuses. This is what keeps
+# a scratch dir whose git setup leads into another checkout (a symlinked `.git`, a
+# `commondir` file, a `core.worktree`) from borrowing the exemption.
+_scratch_clone_self_contained() {
+    local repo="$1" out gd gcd wt cw cwrc=0
+    out=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$repo" rev-parse --path-format=absolute --git-dir --git-common-dir --show-toplevel 2>/dev/null) || return 1
+    { IFS= read -r gd; IFS= read -r gcd; IFS= read -r wt; } <<EOF
+$out
+EOF
+    [ -n "$gd" ] && [ -n "$gcd" ] && [ -n "$wt" ] || return 1
+    gd=$(cd -P -- "$gd" 2>/dev/null && pwd -P) || return 1
+    gcd=$(cd -P -- "$gcd" 2>/dev/null && pwd -P) || return 1
+    wt=$(cd -P -- "$wt" 2>/dev/null && pwd -P) || return 1
+    [ "$gd" = "$repo/.git" ] && [ "$gcd" = "$repo/.git" ] && [ "$wt" = "$repo" ] || return 1
+    cw=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$repo" config --get core.worktree 2>/dev/null) || cwrc=$?
+    [ "$cwrc" -eq 1 ] && [ -z "$cw" ] || return 1
+    return 0
 }
 
 main_checkout_verdict_set() {

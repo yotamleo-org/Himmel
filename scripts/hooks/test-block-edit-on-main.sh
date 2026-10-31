@@ -187,6 +187,20 @@ assert_rc "T3d scratchpad symlink into a primary still blocks (HIMMEL-8443)" 2 \
     "$(rc_of "$SCR/linkprim/foo.js" TMPDIR="$SANDBOX")"
 assert_rc "T3d scratchpad .. path into a primary still blocks (HIMMEL-8443)" 2 \
     "$(rc_of "$SCR/gfork/../../../../../featrepo/foo.js" TMPDIR="$SANDBOX")"
+# A scratch dir whose git setup leads into a primary checkout borrows no exemption.
+mkdir -p "$SCR/gfork/lnk"
+ln -s "$SANDBOX/featrepo/.git" "$SCR/gfork/lnk/.git"
+mkdir -p "$SCR/gfork/cdir/.git"
+printf 'ref: refs/heads/feat/x\n' > "$SCR/gfork/cdir/.git/HEAD"
+printf '%s\n' "$SANDBOX/featrepo/.git" > "$SCR/gfork/cdir/.git/commondir"
+mkrepo "$SCR/gfork/cw" feat/c
+git -C "$SCR/gfork/cw" config core.worktree "$SANDBOX/featrepo"
+assert_rc "T3d scratchpad dir with a symlinked .git into a primary blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/lnk/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/cdir/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad clone with core.worktree set blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/cw/foo.js" TMPDIR="$SANDBOX")"
 
 # T4: file not inside any git repo → ALLOW
 if [ "$SANDBOX_IN_REPO" -eq 0 ]; then

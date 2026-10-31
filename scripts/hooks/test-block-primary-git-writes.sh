@@ -1022,6 +1022,16 @@ deny "feature-branch primary outside the scratch roots: remote add"  "$W" "git -
 deny "himmel primary: remote add (TMPDIR set)"                       "$W" "git -C $P remote add upstream https://example.invalid/r.git"
 deny "scratch clone carrying .himmel-dev: remote add"                "$W" "git -C $SCR/gfork/himmelish remote add upstream https://example.invalid/r.git"
 deny "scratch symlink into the primary: remote add"                  "$W" "git -C $SCR/linkprim remote add upstream https://example.invalid/r.git"
+mkdir -p "$SCR/gfork/lnk"
+ln -s "$FIX/featprim/.git" "$SCR/gfork/lnk/.git"
+mkdir -p "$SCR/gfork/cdir/.git"
+printf 'ref: refs/heads/feat/y\n' > "$SCR/gfork/cdir/.git/HEAD"
+printf '%s\n' "$FIX/featprim/.git" > "$SCR/gfork/cdir/.git/commondir"
+mkrepo "$SCR/gfork/cw" feat/c
+git -C "$SCR/gfork/cw" config core.worktree "$FIX/featprim"
+deny "scratch dir with a symlinked .git into a primary: remote add"  "$W" "git -C $SCR/gfork/lnk remote add upstream https://example.invalid/r.git"
+deny "scratch .git dir with a commondir file: remote add"            "$W" "git -C $SCR/gfork/cdir remote add upstream https://example.invalid/r.git"
+deny "scratch clone with core.worktree set: remote add"              "$W" "git -C $SCR/gfork/cw remote add upstream https://example.invalid/r.git"
 unset TMPDIR
 
 echo "== DENY: unparseable input fails CLOSED in direct-exec mode (adversarial review S6) =="
