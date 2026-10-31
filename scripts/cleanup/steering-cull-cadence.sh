@@ -149,7 +149,7 @@ ${files}
 Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines> — <why>. LOW = a line that is duplicated, derivable from the repo, or a stale pointer. MEDIUM = anything that changes behaviour or needs judgement."
     if [ "$backend" = "claude-api" ]; then
         # the lane owns --tools/--allowedTools: HIMMEL_API_TOOLS=Read is its Read-only grant.
-        ( cd "$repo" && HIMMEL_API_TOOLS=Read "$claude" -p "$prompt" \
+        ( cd "$repo" && HIMMEL_API_TOOLS=Read HIMMEL_API_KIND=cull "$claude" -p "$prompt" \
             --model sonnet --output-format json --permission-mode plan --max-budget-usd "${STEERING_CULL_API_BUDGET_USD:-0.50}" ) > "$out" 2> "$STATE_DIR/last-run.err"
     else
         ( cd "$repo" && "$claude" -p "$prompt" \

@@ -38,6 +38,7 @@ EOF
 cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
+echo "lane-kind=\${HIMMEL_API_KIND-UNSET}" >> "$WS/calls.log"
 echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
 if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
   echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
@@ -75,7 +76,7 @@ echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
   claude --help > "$WS/claude-help.out" 2>&1
   for _ in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
-    printf 'extract this' | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+    printf '%b' "\${GRAPHIFY_STUB_PROMPT:-extract this}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
   done
 fi
@@ -483,6 +484,21 @@ grep -qx 'lane-tools=' "$WS/calls.log"; g37t=$?
 grep -q -- 'primary\|shim' "$WS/claude-help.out" || fail "T37 shim --help output missing (positive control)"
 grep -q json-schema "$WS/claude-help.out"; h37=$?
 case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
+
+echo "T37b: the lane call is tagged kind=graphify and the fixed addendum sits between graphify's instructions and the chunk (HIMMEL-8403)"
+C37B="$WS/c37b"; new_corpus "$C37B"; : > "$WS/calls.log"; : > "$WS/claude.out"
+TAIL37B='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK BODY'
+out=$(GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37b --corpus-root "$C37B" --corpus-class himmel-code --backend claude-api); rc=$?
+lane=$(grep '^lane ' "$WS/calls.log" | head -1)
+[ "$rc" -eq 0 ] && pass "T37b exit 0" || fail "T37b exit 0 (got $rc): $out"
+grep -qx 'lane-kind=graphify' "$WS/calls.log" && pass "T37b lane kind is graphify" || fail "T37b kind: $(grep lane-kind "$WS/calls.log")"
+ADD37B="$(sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d' | tr '\n' ' ')"
+[ "${#ADD37B}" -gt 200 ] && pass "T37b positive control: the addendum text was read from the script" || fail "T37b addendum text not read from the script (${#ADD37B} chars)"
+# the expected prompt: instructions, "---", the whole addendum, "---", then graphify's own request and the chunk, unchanged
+EXP37B="$( { printf 'SCHEMA TEXT\n\n---\n'; sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } | tr '\n' ' ')"
+GOT37B="${lane#*stdin=}"; GOT37B="${GOT37B% | cwdcorpus=*}"
+if [ "$GOT37B" = "$EXP37B" ]; then pass "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk"
+else fail "T37b forwarded prompt differs from the expected one: got [$GOT37B] want [$EXP37B]"; fi
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"

@@ -140,7 +140,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/config` (Configure: four group tiles, Secrets, Review,
   Tracker and Project scope, one open at a time, each row with its command, when it takes
   effect and a Learn more link to the docs site, and the Check this install strip under the
-  tiles. Secrets: first the Account step, which creates the UI login once on a fresh install;
+  tiles. Review keeps its six read-only timeout and tier rows behind one closed "Timeouts and tiers" fold. Secrets: first the Account step, which creates the UI login once on a fresh install;
   which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
   (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login.

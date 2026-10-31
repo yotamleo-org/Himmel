@@ -10,10 +10,10 @@ estimates, make wins visible. Vendored verbatim from
 | Field | Value |
 |---|---|
 | source | `https://github.com/ayghri/i-have-adhd` |
-| commit | `723af7d9afaf43eb871dbcce6129e2bf80de90d5` |
+| commit | `1ecea1993b7fce257ffbd686c070948b5e07eda6` |
 | license | MIT, Copyright (c) 2026 Ayoub Ghriss (`LICENSE`, copied verbatim) |
 | vendored | 2026-10-11 (HIMMEL-5239) |
-| upstream version | `0.4.1`; local manifest `0.4.2` (version-bump gate, always-on.ps1 dropped with Windows); no release tag, so the pin is a commit and there is no `scripts/upstreams.json` row |
+| upstream version | `0.4.1`; local manifest `0.4.3` (version-bump gate, always-on.ps1 dropped with Windows); no release tag, so the pin is a commit, watched by the `commit_head` row in `scripts/upstreams.json` |
 | taken, byte for byte | `hooks/hooks.json`, `hooks/always-on.mjs`, `hooks/always-on.sh`, `skills/i-have-adhd/SKILL.md`, `LICENSE` |
 | left out | `skills/i-have-adhd/agents/` (Codex/Gemini interface metadata), `.codex-plugin`, `.agents`, `.cursor`, `.opencode`, `extensions/`, `gemini`/`qwen`/`kimi` manifests, `evals/`, `scripts/`, `tests/`, `.github/` (translations and CI), `package.json`, `AGENTS.md`, `GEMINI.md` |
 

@@ -27,13 +27,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = 'https://api.anthropic.com';
 const ID = /^[a-f0-9]{64}$/;
-// Batch price, USD per million tokens (input, output): half the list price. Cache reads bill at 0.1 x input,
-// 5-minute cache writes at 1.25 x input.
+// Batch price, USD per million tokens (input, output, cache-read multiplier of input): half the list price. Cache reads
+// bill at 0.1 x input (0.05 x on Sonnet 5.5 and Opus 5.5), 5-minute cache writes at 1.25 x input, 1h cache writes at 2 x.
 // ponytail: a hand-kept table of the models graphify extraction uses, from the docs 2026-10-23; an unlisted model is
 // refused rather than priced by guess. Upgrade path: read the price from the provider's cost report.
 const PRICE = {
-  'claude-sonnet-5-5': [1, 5], 'claude-sonnet-5': [1, 5], 'claude-sonnet-4-6': [1.5, 7.5],
-  'claude-haiku-5-5': [0.05, 0.25], 'claude-opus-5-5': [2, 10],
+  'claude-sonnet-5-5': [1, 5, 0.05], 'claude-sonnet-5': [1, 5], 'claude-sonnet-4-6': [1.5, 7.5],
+  'claude-haiku-5-5': [0.05, 0.25], 'claude-opus-5-5': [2, 10, 0.05],
 };
 const ALIAS = { sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5', opus: 'claude-opus-5-5' };
 const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -42,6 +42,32 @@ class Refusal extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 const refuse = (m, code = 2) => { throw new Refusal(code, m); };
+
+// Every chunk prompt opens with graphify's fixed extraction instructions, so the prompts of one batch share a long
+// prefix. It goes once as a cached system block and each chunk alone as the user message. A batch runs
+// long, so the block asks for the 1h tier (write 2 x input, read a tenth or less), which pays once items share it.
+// The system block ends where graphify's instructions end (its "Now extract ..." paragraph), never later: source text
+// that happens to open every chunk alike stays in the user message and is not promoted to the system role.
+// Fails closed to the unsplit prompt, which is still correct: a lone prompt, no instruction boundary in the shared
+// head, a prefix under the cache minimum, or a prompt that is nothing but the prefix.
+// ponytail: the boundary is graphify's current wording and MIN_PREFIX is a flat 4000 characters (about 1000 tokens,
+// the smallest cacheable block), not read per model. Upgrade path: the per-model minimum, and a wording change in
+// graphify shows as an unsplit batch, never a wrong one.
+const CACHE_TTL = '1h';
+const MIN_PREFIX = 4000;
+const INSTRUCTION_END = /^Now extract the knowledge graph from the following source file[^\n]*\n\n/m;
+function sharedPrefix(texts) {
+  if (texts.length < 2) return '';
+  let head = texts[0];
+  for (const t of texts.slice(1)) {
+    let n = 0;
+    while (n < head.length && n < t.length && head[n] === t[n]) n += 1;
+    head = head.slice(0, n);
+  }
+  const end = INSTRUCTION_END.exec(head);
+  const prefix = end ? head.slice(0, end.index + end[0].length) : '';
+  return prefix.length >= MIN_PREFIX && texts.every((t) => t.length > prefix.length) ? prefix : '';
+}
 
 function opts(args) {
   const o = {};
@@ -119,13 +145,18 @@ async function submit(o) {
   if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
   const files = readdirSync(o.prompts ?? refuse('--prompts is required')).filter((f) => f.endsWith('.txt')).sort();
   if (files.length === 0) refuse('no prompts to submit');
-  const requests = files.map((f) => {
+  const prompts = files.map((f) => {
     const id = f.slice(0, -4);
     if (!ID.test(id)) refuse(`prompt file '${f}' is not named <sha256>.txt`);
     const text = readFileSync(join(o.prompts, f), 'utf8');
     if (createHash('sha256').update(text).digest('hex') !== id) refuse(`prompt file '${f}' does not hash to its name`);
-    return { custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort }, messages: [{ role: 'user', content: text }] } };
+    return { id, text };
   });
+  // The hash above covers the whole recorded text; the split below only changes how the same bytes are carried.
+  const prefix = sharedPrefix(prompts.map((p) => p.text));
+  const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
+    ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
+    messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
   if (typeof made.id !== 'string' || !made.id) refuse('the create reply carries no batch id', 3);
@@ -148,8 +179,12 @@ async function poll(o) {
 }
 
 function cost(model, u) {
-  const [pin, pout] = PRICE[model];
-  const inTok = (u.input_tokens ?? 0) + 1.25 * (u.cache_creation_input_tokens ?? 0) + 0.1 * (u.cache_read_input_tokens ?? 0);
+  const [pin, pout, readMult = 0.1] = PRICE[model];
+  // a cache write bills 1.25 x input at the 5-minute tier and 2 x at the 1h tier; the split is in usage.cache_creation
+  const write = u.cache_creation
+    ? 1.25 * (u.cache_creation.ephemeral_5m_input_tokens ?? 0) + 2 * (u.cache_creation.ephemeral_1h_input_tokens ?? 0)
+    : 1.25 * (u.cache_creation_input_tokens ?? 0);
+  const inTok = (u.input_tokens ?? 0) + write + readMult * (u.cache_read_input_tokens ?? 0);
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
 }
 

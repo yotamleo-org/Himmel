@@ -10,7 +10,7 @@ metadata:
   version: "3.1.0"
 disable-model-invocation: true
 ---
-<!-- Vendored from blader/humanizer SKILL.md at 225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8 (MIT, (c) 2025 Siqi Chen). Deviations: one added frontmatter line, disable-model-invocation: true (HIMMEL-5857); body otherwise byte-identical. See ../../VENDORED.md. -->
+<!-- Vendored from blader/humanizer SKILL.md at 0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0 (MIT, (c) 2025 Siqi Chen). Deviations: one added frontmatter line, disable-model-invocation: true (HIMMEL-5857); body otherwise byte-identical. See ../../VENDORED.md. -->
 
 # Humanizer: remove AI writing patterns
 

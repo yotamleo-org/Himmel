@@ -290,11 +290,11 @@ SS="$ROOT/scripts/ci/gcp-runner-startup.sh"
 if grep -q '^chown root:root /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$SS" && grep -q '^chmod 755 /usr/local/lib/himmel/job-started-hook.sh || exit 1$' "$SS"; then ok "fork guard hook chown/chmod fail closed"; else bad "hook chown/chmod can fail silently"; fi
 if grep -q '^systemctl enable --now atd' "$SS" && ! grep '^systemctl enable --now atd' "$SS" | grep -q '|| true' && grep -q '^systemctl is-active --quiet atd || exit 1$' "$SS"; then ok "a failed atd start fails the startup"; else bad "atd start failure is swallowed"; fi
 # Fixture: the checksum line of the pinned release's notes, copied from the real
-# `gh api repos/actions/runner/releases/latest --jq .body` (v2.338.0).
-fixture='- actions-runner-linux-x64-2.338.0.tar.gz <!-- BEGIN SHA linux-x64 -->af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32<!-- END SHA linux-x64 -->'
+# `gh api repos/actions/runner/releases/latest --jq .body` (v2.338.2).
+fixture='- actions-runner-linux-x64-2.338.2.tar.gz <!-- BEGIN SHA linux-x64 -->baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40<!-- END SHA linux-x64 -->'
 fix_sha="$(sed -n 's/.*BEGIN SHA linux-x64 -->\([0-9a-f]\{64\}\)<!--.*/\1/p' <<< "$fixture")"
 pin_ver="$(sed -n 's/^RUNNER_VERSION=\([0-9.]*\)$/\1/p' "$SS")"; pin_sha="$(sed -n 's/^RUNNER_SHA256=\([0-9a-f]\{64\}\)$/\1/p' "$SS")"
-if [ "$pin_ver" = 2.338.0 ] && [ -n "$pin_sha" ] && [ "$pin_sha" = "$fix_sha" ]; then ok "startup script pins the runner version and the release's sha256"; else bad "runner pin: ver='$pin_ver' sha='$pin_sha'"; fi
+if [ "$pin_ver" = 2.338.2 ] && [ -n "$pin_sha" ] && [ "$pin_sha" = "$fix_sha" ]; then ok "startup script pins the runner version and the release's sha256"; else bad "runner pin: ver='$pin_ver' sha='$pin_sha'"; fi
 if ! grep -q 'releases/latest' "$SS"; then ok "startup script no longer resolves the latest runner release"; else bad "startup script still resolves releases/latest"; fi
 ck="$(grep -n 'sha256sum -c' "$SS" | head -1 | cut -d: -f1)"; tx="$(grep -n 'tar -xz' "$SS" | head -1 | cut -d: -f1)"
 if [ -n "$ck" ] && [ -n "$tx" ] && [ "$ck" -lt "$tx" ] && grep 'sha256sum -c' "$SS" | grep -q '|| exit 1$'; then ok "the tarball checksum is verified, fail closed, before extract"; else bad "checksum check missing or after extract (ck=$ck tx=$tx)"; fi

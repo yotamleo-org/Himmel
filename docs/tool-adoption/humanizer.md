@@ -12,7 +12,7 @@ HIMMEL-5857, 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt
 
 | Item | Finding |
 |---|---|
-| Source | `https://github.com/blader/humanizer`, pinned `225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8` (2026-09-27, merge of PR 300) |
+| Source | `https://github.com/blader/humanizer`, pinned `0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0` (2026-10-28, merge of PR 307) |
 | License | MIT, (c) 2025 Siqi Chen. Permissive for vendoring |
 | Activity | 97 commits, 54 in the last 60 days. Skill version 3.1.0 |
 | What runs | Nothing. One prompt file (`SKILL.md`, 32 KB). Upstream also carries a validator script and CI files; none are vendored |

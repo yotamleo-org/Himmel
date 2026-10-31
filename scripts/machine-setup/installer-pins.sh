@@ -18,21 +18,21 @@ NVM_INSTALL_SHA256="48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af0
 # node — exact patch release (its major must equal .nvmrc); sha256 of the
 # linux-x64 .tar.xz and of the bin/node inside it. This release also drops the emSign
 # ECC G3 root from node's bundled CA store.
-NODE_VERSION="24.22.1"
-NODE_TARBALL_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
-NODE_BIN_SHA256="e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb"
+NODE_VERSION="26.13.0"
+NODE_TARBALL_SHA256="d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997"
+NODE_BIN_SHA256="0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b"
 
 # uv — GHSA-hq85-5cpj-mr62 is fixed from 0.13.4.
-UV_VERSION="0.13.5"
-UV_SHA256="f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f"
+UV_VERSION="0.13.6"
+UV_SHA256="f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645"
 
 # Claude Code — the native binary, checksum from the release manifest.
-CLAUDE_VERSION="2.1.310"
-CLAUDE_LINUX_X64_SHA256="b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56"
+CLAUDE_VERSION="2.1.316"
+CLAUDE_LINUX_X64_SHA256="fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824"
 
 # RTK — the versioned .deb, never the mutable rtk_amd64.deb alias.
-RTK_VERSION="1.0.1"
-RTK_DEB_SHA256="b7f7ed3ce136aa842f56599b5ca88b956bd788a111ec7bd085909f9aeb0d1bc4"
+RTK_VERSION="1.1.0"
+RTK_DEB_SHA256="21c4a2e30879ce49ebd939fa338c99208871ba591da9feeb483f2ed266fe7163"
 
 # bun — the version is .bun-version; a version without a row here is refused.
 bun_sha256() {

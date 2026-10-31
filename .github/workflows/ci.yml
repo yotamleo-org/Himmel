@@ -590,7 +590,7 @@ jobs:
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-      CLAUDE_CLI_VERSION: '2.1.310'
+      CLAUDE_CLI_VERSION: '2.1.316'
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -1437,7 +1437,7 @@ jobs:
             dir: plugins/himmel-jira
           - pkg: himmel-bus
             dir: marketplace/plugins/himmel-bus
-            node: '24.22.1'
+            node: '26.13.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
@@ -2113,8 +2113,8 @@ jobs:
       - name: Put pinned uv on PATH (Linux — requirements-resolve suite)
         if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
         run: |
-          ver=0.13.5
-          sha=f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
+          ver=0.13.6
+          sha=f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645
           curl -sSfL "https://github.com/astral-sh/uv/releases/download/${ver}/uv-x86_64-unknown-linux-gnu.tar.gz" -o "$RUNNER_TEMP/uv.tgz"
           echo "${sha}  $RUNNER_TEMP/uv.tgz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/uv-bin"

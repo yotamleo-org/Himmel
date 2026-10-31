@@ -554,8 +554,8 @@ Opt-in: set `"observability": {"grafana": true}` in `~/.himmel/config.json`, the
 `bash scripts/observability/install-grafana.sh install|status|uninstall` directly).
 Until opted in the item reads n/a, never red. macOS is deferred.
 
-It installs nothing as root. Pinned upstream tarballs (Prometheus 3.15.0,
-Grafana 13.2.3; amd64 and arm64) are downloaded to
+It installs nothing as root. Pinned upstream tarballs (Prometheus 3.15.1,
+Grafana 13.3.0; amd64 and arm64) are downloaded to
 `${XDG_DATA_HOME:-~/.local/share}/himmel/observability`, verified against the
 sha256 pins in the script (a mismatch aborts before anything is installed), and
 run as three systemd **user** units, all bound to loopback:
