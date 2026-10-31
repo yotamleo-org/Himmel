@@ -267,6 +267,9 @@ printf '# c\n\n## Live state\n\nlegs: none %s\nqueue: none\nlast GO: none\nacked
 budget_tick() { TICK_DOCTOR_TTL_MIN=0 TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$budget_doc" --token test-token --workers "$d1" 2>/dev/null; }
 case "$(LIVESTATE_BUDGET_BYTES=200 budget_tick)" in *'ACTION livestate-over-budget='*'/200:'*) r=flagged ;; *) r=silent ;; esac
 check '20. a Live state over LIVESTATE_BUDGET_BYTES is flagged by the tick' flagged "$r"
+{ printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: none\n'; seq 1 300 | sed 's/.*//'; printf '## Results\n'; } > "$budget_doc"
+case "$(LIVESTATE_BUDGET_BYTES=200 budget_tick)" in *'ACTION livestate-over-budget='*'/200:'*) r=flagged ;; *) r=silent ;; esac
+check '20. trailing blank lines of the Live state count toward the budget' flagged "$r"
 case "$(LIVESTATE_BUDGET_BYTES=100000 budget_tick)" in *'livestate-over-budget'*) r=flagged ;; *) r=silent ;; esac
 check '20. a Live state under the budget is not flagged' silent "$r"
 

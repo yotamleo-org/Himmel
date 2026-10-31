@@ -1824,14 +1824,16 @@ seeded_live_field() {
 # `pool-disposition:` line, which the tick reads. The shift prose and the spans of
 # wrapped workers are left out. A span of an open worker is kept even when it is
 # malformed, so the tick reads MALFORMED rather than DRIFT. A manifest that is
-# absent or unreadable leaves the block whole: the open set is then unknown.
+# absent, unreadable or holds a row with no label leaves the block whole: the open
+# set is then unknown.
 # Args: legs block (as seeded_live_field prints it), manifest.
 open_legs_block() {
     local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
     # shellcheck disable=SC2016  # the backticks in the span patterns are literal
     local entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
-    names="$(jq -r '.legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; ""))' "$manifest" 2>/dev/null)" \
+    # a row with no label cannot be matched to its span: the open set is unknown, so the block stays whole
+    names="$(jq -r 'if any(.legs[]; (.label // "") == "") then error("row without a label") else .legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; "")) end' "$manifest" 2>/dev/null)" \
         || { printf '%s\n' "$block"; return 0; }
     # shellcheck disable=SC2016
     while IFS= read -r span; do

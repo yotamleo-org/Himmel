@@ -2229,7 +2229,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
     decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
-    livestate_bytes="$(printf '%s\n' "$live_state_body" | wc -c | tr -d '[:space:]')"
+    # counted from the doc, heading and trailing blank lines included: $live_state_body came through a command substitution, which drops them
+    livestate_bytes="$(LC_ALL=C awk '$0 == "## Live state" { f = 1; n = length($0) + 1; next } f && /^## / { exit } f { n += length($0) + 1 } END { print n + 0 }' "$console_doc")"
 fi
 
 # the luna vault's commit health. vault-status.sh owns the derivation
