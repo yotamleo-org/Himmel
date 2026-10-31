@@ -31,7 +31,7 @@
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
-# that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or held by a worker or
+# that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<version> (not proposed-backlog), or held by a worker or
 # open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line; an empty
 # pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, collision-checked against held files), never dispatched from here.
@@ -1062,7 +1062,8 @@ if pool_only:
                          if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
                          and not any(l.startswith('residual-depth-') for l in i['labels'])
                          and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
-                              or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner)),
+                              or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
+                              or any(l.startswith('proposed-') and l != 'proposed-backlog' for l in i['labels']))),
                         key=lambda k: int(k.split('-')[1]))
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
         if intake:

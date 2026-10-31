@@ -303,11 +303,14 @@ placed at filing, never defaulted silently. `--proposed-version <v>` files it wi
 `proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
 same call (HIMMEL-8170); `--backlog` alone is refused: it needs `--proposed-version backlog`
 and a one-line `--why`, and then files the `backlog` label with no fixVersion.
-`--proposed-version` cannot be combined with `--fix-version` or `--gate`, and a named
-version must exist. The same rule covers a Task or Story, so no ticket is filed
-without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) keeps its own routing.
-`next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>` and
-worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
+`--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
+Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
+is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) keeps its own routing.
+An unversioned create is refused before the POST when no release can take the INTAKE (no release declared, several
+declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
+says `Created <KEY> but INTAKE not queued` and exits 1.
+`next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<version>`
+(not `proposed-backlog`) and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
 `# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
 `--priority Highest` or a valid `--gate`
 (see the intake gate below) sets the earliest unreleased, unarchived version from the

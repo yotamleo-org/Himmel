@@ -195,9 +195,9 @@ process_item() {
       pending="true"
       new_name="$n_slug"
     else
-      local jtype="Story" parent="" bl="--backlog"
+      local jtype="Story" parent="" placed=1
       case "$type" in
-        epic) jtype="Epic"; bl="" ;;
+        epic) jtype="Epic"; placed=0 ;;
         task)
           jtype="Task"
           local epic_dir
@@ -211,6 +211,9 @@ process_item() {
       status="$(extract_status "$plan")"
       local slug
       slug="${n_slug#\#*-}"
+      # A Story or Task is filed to the backlog with a why (its INTAKE is queued); an Epic needs no placement.
+      local bl=()
+      [ "$placed" -eq 1 ] && bl=(--backlog --proposed-version backlog --why "the v1 to v2 handover migration retro-filed this item, $slug")
 
       log "  jira create --type $jtype ${parent:+--parent $parent} --title '$slug'"
       if [ "$DRY_RUN" -eq 0 ]; then
@@ -237,13 +240,13 @@ The v2 handover layout names every item after its Jira key.
 Created by migrate-v1-to-v2.sh from $dir. No further work is expected beyond the rename.
 BODY
         if [ -n "$parent" ]; then
-          out="$(jira create --type "$jtype" --parent "$parent" --sector "Planning & tracking" ${bl:+"$bl"} --title "$slug" --desc-file "$body" 2>&1)" || {
+          out="$(jira create --type "$jtype" --parent "$parent" --sector "Planning & tracking" ${bl[@]+"${bl[@]}"} --title "$slug" --desc-file "$body" 2>&1)" || {
             rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2
           }
         else
-          out="$(jira create --type "$jtype" --sector "Planning & tracking" --labels standalone ${bl:+"$bl"} --title "$slug" --desc-file "$body" 2>&1)" || {
+          out="$(jira create --type "$jtype" --sector "Planning & tracking" --labels standalone ${bl[@]+"${bl[@]}"} --title "$slug" --desc-file "$body" 2>&1)" || {
             rm -f "$body"
             echo "ERR: jira create failed for $dir: $out" >&2
             return 2
