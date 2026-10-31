@@ -195,7 +195,10 @@ cmd_pos() {
 # Over-inclusive on purpose (any `#!` line naming *sh): a wrong yes only widens the selection.
 is_shell() {
   case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash) return 0 ;; esac
-  head -n 1 "$1" 2>/dev/null | grep -qE '^#!.*sh'
+  local first=
+  IFS= read -r first < "$1"
+  case "$first" in '#!'*sh*) return 0 ;; esac
+  return 1
 }
 # consumers of $1: a source/. line or a `# shellcheck source=` directive naming it
 consumers() { ( set -o pipefail; N="$1" awk '{ c = $0; sub(/^[^:]*:[0-9]+:/, "", c); if (index(c, ENVIRON["N"])) { sub(/:.*/, ""); print } }' "$list.g" | sort -u > "$list.n" ); }
@@ -248,7 +251,7 @@ while IFS= read -r f; do
     fi
     # the operand's literal tail: the word after `source`/`.`, quotes dropped, past its last `/`
     tails=$(printf '%s\n' "$nolit" | grep -oE '(^|[;&|{(![:space:]])(source|\.)[[:space:]]+[^[:space:];&|)]*' | sed -E -e 's/^.*(source|\.)[[:space:]]+//' -e "s/[\"']//g" -e 's/.*\///')
-    if [ -n "$shnames" ] && printf '%s\n' "$tails" | grep -qxF -e "$shnames"; then
+    if [ -n "$shnames" ] && grep -qxF -e "$shnames" <<< "$tails"; then
       run_all "source line naming a shell file without a .sh/.bash name in $f"
     fi
   fi
