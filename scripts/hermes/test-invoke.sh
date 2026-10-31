@@ -356,13 +356,18 @@ RTEOF
             *) fail "planted (legacy venv): trusted reviewer did not start isolated (got: $out)" ;;
         esac
     fi
-    out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="$real_py" HERMES_HOME="$no_hermes" bash "$INVOKE" "ping" 2>"$stub_dir/plant-none.err")"
-    rc=$?
-    [ ! -e "$plant_marker" ] || fail "no trusted install: reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"
-    [ "$rc" -ne 0 ] || fail "no trusted install: expected a non-zero exit, got 0 (out: $out)"
-    grep -q "hermes exited $rc" "$stub_dir/plant-none.err" \
-        || fail "no trusted install: failure not reported on stderr ($(cat "$stub_dir/plant-none.err"))"
-    echo "  ok: no trusted install fails visibly (rc $rc)" >&2
+    # An empty venv, not the host python: a host site-packages may carry hermes.
+    if "$real_py" -m venv --without-pip "$stub_dir/empty-venv" >/dev/null 2>&1; then
+        out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="$stub_dir/empty-venv/bin/python" HERMES_HOME="$no_hermes" bash "$INVOKE" "ping" 2>"$stub_dir/plant-none.err")"
+        rc=$?
+        [ ! -e "$plant_marker" ] || fail "no trusted install: reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"
+        [ "$rc" -ne 0 ] || fail "no trusted install: expected a non-zero exit, got 0 (out: $out)"
+        grep -q "hermes exited $rc" "$stub_dir/plant-none.err" \
+            || fail "no trusted install: failure not reported on stderr ($(cat "$stub_dir/plant-none.err"))"
+        echo "  ok: no trusted install fails visibly (rc $rc)" >&2
+    else
+        echo "  skip: no python3 with venv for the no-trusted-install row" >&2
+    fi
 fi
 
 # 7. Optional live smoke (one NIM free-tier call) — opt-in only.
