@@ -518,8 +518,8 @@ rm -rf "$nolib"
 
 # a pgrep -f wait whose pattern occurs in its own command text
 # self-matches the wrapper shell and never ends. Pid waits and the [c]lear
-# bracket trick stay allowed. The sleepless `do :; done` rows run the plugin
-# hook, below (8124).
+# bracket trick stay allowed. The sleepless `do :; done` deny lives in the
+# himmel-ops plugin: marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh.
 run_case "$(j_bash "until ! pgrep -f 'check-ci.sh 2152' >/dev/null; do sleep 5; done; echo done")"
 assert_rc "4970 until ! pgrep -f self-match" 2 "$RC"
 assert_contains "4970 self-match names the pid wait" "tail --pid" "$ERR"
@@ -547,61 +547,6 @@ run_case "$(j_bash "while kill -0 123; do sleep 1; done; while pgrep -f foo; do 
 assert_rc "4970 deny: self-match in a later loop" 2 "$RC"
 run_case "$(j_bash "while pgrep -xf foo; do sleep 1; done")"
 assert_rc "4970 allow: pgrep -x exact match cannot self-match" 0 "$RC"
-
-# 8124. An adopter repo gets the busy-loop guard from the himmel-ops plugin:
-# run the INSTALLED hooks.json command with CLAUDE_PLUGIN_ROOT on the plugin
-# dir and CLAUDE_PROJECT_DIR on a fixture repo that is not himmel. An entry
-# that points at $CLAUDE_PROJECT_DIR/scripts/hooks/ is an --optional no-op
-# there and reads as allow.
-PLUGIN_DIR="$(cd "$(dirname "$0")/../../marketplace/plugins/himmel-ops" && pwd)"
-adopter=$(mktemp -d "${TMPDIR:-/tmp}/busy-loop-adopter.XXXXXX") || exit 1
-git init -q "$adopter/repo"
-plugin_cmd=$(jq -r '.hooks.PreToolUse[].hooks[].command | select(contains("block-busy-loop.sh"))' "$PLUGIN_DIR/hooks/hooks.json")
-run_plugin_case() {
-    rm -f "$adopter/deny.jsonl"
-    ERR=$(cd "$adopter/repo" && printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
-        CLAUDE_PROJECT_DIR="$adopter/repo" BUSY_LOOP_LOG="$adopter/deny.jsonl" ${2:+"$2"} \
-        sh -c "${plugin_cmd:-exit 0}" 2>&1 >/dev/null)
-    RC=$?
-}
-busy_payload='{"session_id":"s-8124","tool_name":"Bash","tool_input":{"command":"until [ -f /tmp/x ]; do :; done"}}'
-run_plugin_case "$busy_payload"
-assert_rc "8124 plugin busy loop denied in an adopter repo" 2 "$RC"
-assert_contains "8124 plugin deny names sleep" "sleep" "$ERR"
-case "$ERR" in
-    *scripts/*|*quiet-run*|*QUIET_RUN*)
-        echo "FAIL 8124 plugin deny names a himmel script: $ERR"
-        FAILED=$((FAILED + 1)) ;;
-    *) echo "PASS 8124 plugin deny names no himmel script" ;;
-esac
-rows=$(jq -c 'select(.session_id == "s-8124" and .decision == "deny" and .loop == "until" and .body == ":")' "$adopter/deny.jsonl" 2>/dev/null | wc -l | tr -d ' ')
-assert_rc "8124 plugin deny writes one JSONL row with the session_id" 1 "$rows"
-run_plugin_case "$(j_bash "until pgrep -f clear-review-marker.sh && false; do :; done")"
-assert_rc "4970 busy do : loop" 2 "$RC"
-run_plugin_case "$(j_bash "while true; do true; done")"
-assert_rc "4970 busy do true loop" 2 "$RC"
-run_plugin_case "$(j_bash "while kill -0 1234; do sleep 2; done")"
-assert_rc "8124 plugin allow: sleep in the body" 0 "$RC"
-run_plugin_case "$(j_bash "for x in a b; do :; done")"
-assert_rc "4970 allow: finite for do :" 0 "$RC"
-[ -e "$adopter/deny.jsonl" ] && rows=present || rows=absent
-assert_rc "8124 plugin allow writes no row" absent "$rows"
-run_plugin_case "$busy_payload" BUSY_LOOP_BYPASS=1
-assert_rc "8124 plugin bypass BUSY_LOOP_BYPASS=1" 0 "$RC"
-
-# In a himmel session the project chain's require-quiet-run.sh no longer
-# refuses a busy loop and the plugin hook does: one deny, one JSONL row.
-himmel_root="$(cd "$(dirname "$0")/../.." && pwd)"
-run_case "$busy_payload"
-assert_rc "8124 himmel chain: require-quiet-run.sh leaves the busy loop to the plugin" 0 "$RC"
-rm -f "$adopter/deny.jsonl"
-RC=$(cd "$himmel_root" && printf '%s' "$busy_payload" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
-    CLAUDE_PROJECT_DIR="$himmel_root" BUSY_LOOP_LOG="$adopter/deny.jsonl" \
-    sh -c "${plugin_cmd:-exit 0}" >/dev/null 2>&1; echo $?)
-assert_rc "8124 himmel chain: plugin hook denies" 2 "$RC"
-rows=$(wc -l <"$adopter/deny.jsonl" 2>/dev/null | tr -d ' ')
-assert_rc "8124 himmel chain: one JSONL row" 1 "${rows:-0}"
-rm -rf "$adopter"
 
 # 7370. The refusal teaches what to do instead of appending a redirect/pipe to
 # see the RED/FAIL line: quiet-run prints the log path, Read that file.

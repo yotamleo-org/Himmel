@@ -44,6 +44,7 @@ marketplace/plugins/himmel-bus/tests/test-cli.sh	21
 marketplace/plugins/himmel-bus/tests/test-lint.sh	0
 marketplace/plugins/himmel-guard/test-himmel-guard.sh	0
 marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	9
+marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh	1
 marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	0
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	0
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	0

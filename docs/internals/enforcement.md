@@ -3098,8 +3098,8 @@ JSONL row (`ts`, `session_id`, `decision`, `loop`, `body`) to `BUSY_LOOP_LOG`
 (default `~/.claude/busy-loop-guard/denials.jsonl`). The match is textual, so
 a heredoc or quoted string holding a whole busy loop is refused as well. Fails
 OPEN on a missing `jq`, an unparseable payload or a non-Bash tool. Bypass:
-`BUSY_LOOP_BYPASS=1` (launching shell, session-sticky). Spec: the `8124` and
-`4970 busy` rows of `scripts/hooks/test-require-quiet-run.sh`.
+`BUSY_LOOP_BYPASS=1` (launching shell, session-sticky). Spec:
+`marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh`.
 
 ### `block-docker-privesc.sh` — root-equivalent container guard (HIMMEL-441)
 
