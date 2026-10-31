@@ -1197,3 +1197,4 @@ scripts/handover/test-windows-arms-dropped.sh	pr	static-gate
 scripts/luna/test-cadence-alert.sh	local	new, behaviour suite for the qmd rc-5 alert cause, no gate role, HIMMEL-7610
 scripts/handover/chief-kit/test-focus-refresh-chains.sh	local	behaviour suite, stubbed refresh stages, no gate role
 scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role, HIMMEL-8336
+scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541
