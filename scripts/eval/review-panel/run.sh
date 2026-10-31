@@ -119,7 +119,7 @@ if git -C "$scratch" rev-parse --git-dir >/dev/null 2>&1; then
     exit 2
 fi
 
-python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" || exit 2
+python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" || exit 2
 
 for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch; do
     [ -e "$patch" ] || continue

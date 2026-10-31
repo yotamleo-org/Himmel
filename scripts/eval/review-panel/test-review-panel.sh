@@ -283,6 +283,7 @@ eq "run: CRITICS_JSON pins the swept tree's critics.json" "$([ -n "$cj" ] && cmp
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
 eq "run: --model reaches the row" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["model"])' "$TMP/run-ledger.jsonl")" "stub-critic"
 eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["codex.recall"])' "$TMP/run-ledger.jsonl")" "0.0"
+eq "run: a sweep through a stub panel is stamped unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run1/swept.json" 2>&1)" "False"
 # run.sh refuses before any panel call when the lint fails.
 mkdir -p "$TMP/badfix"; cp "$FIX"/case-*.patch "$TMP/badfix/"; printf '+# injected defect\n' >> "$TMP/badfix/case-05.patch"
 : > "$TMP/stublog/tiers"
@@ -327,8 +328,8 @@ eq "cbs-hash: one byte changes it" "$([ "$(python3 "$SCORE" cbs-hash HEAD --repo
 printf '#!/bin/sh\n' > "$G/scripts/cr/critic-x.sh"; gg add -A; gg commit -qm critic-x
 has "cbs-paths: a new tracked critic-x.sh joins" "$(python3 "$SCORE" cbs-paths HEAD --repo "$G")" "scripts/cr/critic-x.sh"
 
-gstamp() { python3 "$SCORE" stamp "$1" --repo "$G" --fixtures "$G/scripts/eval/review-panel/fixtures" \
-    --key "$G/scripts/eval/review-panel/key/seeds.json" 2>&1; }
+gstamp() { local o="$1"; shift; python3 "$SCORE" stamp "$o" --repo "$G" --fixtures "$G/scripts/eval/review-panel/fixtures" \
+    --key "$G/scripts/eval/review-panel/key/seeds.json" "$@" 2>&1; }
 out=$(python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" 2>&1); rc=$?
 eq "export-row: outputs run.sh never stamped are refused" "$rc" "2"; has "export-row: names the missing stamp" "$out" "not a run.sh sweep"
 gstamp "$O" >/dev/null
@@ -342,6 +343,9 @@ eq "export-row: a sweep of a dirty tree is refused" "$rc" "2"
 gg checkout -q -- scripts/cr/critic-x.sh
 has "stamp: other fixtures warn" "$(python3 "$SCORE" stamp "$O" --repo "$G" --fixtures "$FIX" --key "$KEY" 2>&1)" "export-row will refuse"
 eq "stamp: other fixtures are unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$O/swept.json")" "False"
+has "stamp: another tier set warns" "$(gstamp "$O" --tiers free)" "export-row will refuse"
+has "stamp: another panel command warns" "$(gstamp "$O" --panel "$TMP/stub-panel.sh")" "export-row will refuse"
+has "stamp: a subset sweep warns" "$(gstamp "$O" --only case-01)" "export-row will refuse"
 gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"

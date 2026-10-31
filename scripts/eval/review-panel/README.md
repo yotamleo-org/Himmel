@@ -153,7 +153,9 @@ change lost nothing.
    tree's `cbs_hash` and `confighash` and the `outputs_sha256` of the bundle.
    `run.sh` stamps the swept tree into `<outputs-dir>/swept.json`; export-row
    refuses outputs with no stamp, a stamp of other hashes, or a sweep run from a
-   working tree that differed from its HEAD on a gate input. An `inconclusive`
+   working tree that differed from its HEAD on a gate input, through a
+   `REVIEW_PANEL_CMD` other than the tree's `critic-panel.sh`, or with
+   `--tiers` other than `paid`, or over an `--only` subset. An `inconclusive`
    sweep is refused, and the gate ignores any row whose status is not `ok` or
    `partial`.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
