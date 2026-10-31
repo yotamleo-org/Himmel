@@ -572,6 +572,7 @@ printf 'touch "%s/ran-orig"\n' "$R" > "$R/x.sh"; printf 'touch "%s/ran-evil"\n' 
 out=$(rr 0 --cwd "$R" -- sh -o errexit x.sh); id=$(rid "$out")
 swap_approve 3 "$id" "$R/x.sh" "$R/evil.sh" >/dev/null
 assert_eq "RED 8250: a script after an option that takes a word, swapped after the checks, did not run" "no" "$([ -e "$R/ran-evil" ] && echo yes || echo no)"
+assert_eq "RED 8250: the original script after that option ran instead" "yes" "$([ -e "$R/ran-orig" ] && echo yes || echo no)"
 # swap-request.py <lib> <cwd> <target> <evil> <argv0>: file a run request, but rename <evil> over <target> between the
 # file snapshot and the argv0 snapshot, so the two frozen records of one path disagree.
 cat > "$tmp/swap-request.py" <<'SWAPREQ'
