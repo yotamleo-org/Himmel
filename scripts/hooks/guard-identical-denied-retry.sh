@@ -75,6 +75,22 @@ case "$count" in
 esac
 [ "$count" -ge 2 ] || exit 0
 
+# The operator approved exactly these bytes once (afk-sudo grant); root wrote a
+# marker named by their sha256 in a root-owned directory. The repeat is then the sanctioned
+# retry, so leave it to approval-grant-check.sh, which asks root to spend the grant.
+# AFK_GRANT_DIR is the test seam.
+marks="${AFK_GRANT_DIR:-/var/lib/himmel/afk-grants}"
+if [ -d "$marks" ] && command -v sha256sum >/dev/null 2>&1; then
+    sha=$(printf '%s' "$cmd" | sha256sum 2>/dev/null) || sha=''  # swallow-ok: no hash means no exemption
+    sha=${sha%% *}
+    if [ "${#sha}" -eq 64 ]; then
+        for m in "$marks/$sha".*; do
+            if [ -f "$m" ] && [ ! -L "$m" ]; then exit 0; fi
+            break
+        done
+    fi
+fi
+
 msg="Refusing a repeat: this exact command was already denied $count times in this session. Retrying the same bytes will be denied again. Stop and use the stuck-playbook instead (skill himmel-ops:stuck-playbook, docs/internals/stuck-playbook.md): rewrite the command as one different literal command, or route the blocker to the chief."
 reason=$(printf '%s' "$msg" | jq -Rs . 2>/dev/null) || exit 0 # swallow-ok: fail-open hook, no encoder means no deny
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"

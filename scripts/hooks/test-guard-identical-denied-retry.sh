@@ -145,6 +145,17 @@ f="$TMP/t8.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
 n=$((n + 1)); tu "t$n" "$C" >>"$f"   # the in-flight call itself: tool_use with no result yet
 run "$f" "$C"; expect_deny "the in-flight tool_use row does not hide the denials"
 
+echo "== HIMMEL-7686: an operator grant for these bytes =="
+mkdir -p "$TMP/marks"
+f="$TMP/t10.jsonl"; : >"$f"; denied_n "$f" 2 "$C"
+: >"$TMP/marks/$(printf '%s' "$C" | sha256sum | cut -d' ' -f1).abcdefgh"
+AFK_GRANT_DIR="$TMP/marks" run "$f" "$C"; expect_allow "a root grant marker for these bytes lets the retry through to the grant check"
+AFK_GRANT_DIR="$TMP/marks" run "$f" "$C "; expect_allow "other bytes are a different command anyway"
+f="$TMP/t10b.jsonl"; : >"$f"; denied_n "$f" 2 "echo other"
+AFK_GRANT_DIR="$TMP/marks" run "$f" "echo other"; expect_deny "a marker for other bytes leaves the repeat denied"
+ln -s /dev/null "$TMP/marks/$(printf '%s' "echo other" | sha256sum | cut -d' ' -f1).zzzzzzzz"
+AFK_GRANT_DIR="$TMP/marks" run "$f" "echo other"; expect_deny "a symlinked marker leaves the repeat denied"
+
 echo "== fixtures from the trajectory eval =="
 FIX="$(cd "$(dirname "$0")/../eval/lane-quality/fixtures/trajectory" && pwd)"
 run "$FIX/denial-repeated.jsonl" "bash lq-work/test-widget.sh"

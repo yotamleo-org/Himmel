@@ -282,10 +282,53 @@ running in the same 30-second step. Deny, burn and a failed code check spend the
 current step; an expiry spends the step the request ran out in (not the lazy detection
 time). All writes keep the maximum step.
 
+## The `grant` kind (HIMMEL-7686)
+
+A grant lets one Bash call the permission classifier refused run once in the worker's own
+session, after the operator approves it. Nothing runs as root: root only records the
+approval, and the worker's retry passes the classifier for that one call.
+
+1. The classifier refuses a Bash call. `scripts/hooks/approval-grant-request.sh`
+   (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
+   `sudo -n afk-sudo grant-request --session S --cwd D --why <reason>`. It prints nothing
+   and exits 0 on every path.
+2. Root refuses a secret read or another never-remote shape before any notice is sent.
+   Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
+   kind), freezes the record and sends the operator the full command, the cwd, the bound
+   files and the classifier's reason, labelled as a claim. The notice is built from root's
+   record, never from the classifier-denial log.
+3. The operator replies `NONCE CODE`. Root writes the grant
+   `/var/lib/himmel/afk-sudo/grants/<id>.json` (root, 0600), with an expiry of now plus
+   `grant.ttl_s`, and an empty marker `/var/lib/himmel/afk-grants/<sha256>.<id>` (root,
+   0644, in a root 0755 directory).
+4. The worker retries the same bytes. `scripts/hooks/approval-grant-check.sh`, the last
+   member of the PreToolUse Bash chain, finds a marker for the hash and asks
+   `sudo -n afk-sudo grant-spend --session S --sha256 H --cwd D`. Under a lock, root
+   removes the grant before it checks anything, so the grant is spent whatever the answer.
+   It then checks the session, the cwd's dev/inode, every bound file and the floor.
+   Only `result=granted` gives an `allow`.
+
+The marker is only a hint that saves a sudo call on every other Bash command. A marker
+with no root grant behind it allows nothing, and a grant file that is not root-only
+answers `unsafe-perms`. The guards in the chain still run: a deny from any of them wins
+over the allow, and an ask from any of them still asks. `guard-identical-denied-retry.sh`
+does not refuse a repeat while a marker exists for those bytes.
+
+Residuals (ponytail: the grant binds the bytes and the files the command names, not what
+it loads at run time, such as a package an `npx` call downloads; the upgrade path is the
+run kind's frozen argv for anything that needs more):
+
+- An ask from another chain member on the retry still spends the grant.
+- The worker learns of the approval from the operator or the chief, or by polling
+  `sudo -n afk-sudo status <id>`. Nothing tells it directly.
+- A request is filed only while `grant.enabled` is true. The helper keeps its own cap
+  (one pending request, `max_per_hour`).
+
 ## Config keys
 
 `mode`, `operator_user`, `max_per_hour` (default 6, max 30), `run.enabled` (default
 false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
+`grant.enabled` (default false), `grant.ttl_s` (default 900, 30 to 3600),
 `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install and never rewrites an existing config.
 
@@ -298,6 +341,8 @@ again by the helper on every call, so it takes effect on the next verb:
    answers `not-in-class` when it is approved.
 2. `"run": {"enabled": false}`: no run request is filed, and a pending one answers
    `run-disabled` when it is approved. The sudo-class kind is unaffected.
+   `"grant": {"enabled": false}` does the same for the grant kind, and every `grant-spend`
+   then answers `grant-disabled`, so a live grant and its marker allow nothing.
 3. `"enabled": false`: every verb except `mode` answers `result=disabled`, `approve` and
    `deny` included, so a pending request can no longer be approved and runs out its expiry.
 4. Empty `/etc/himmel/afk-sudo/notice-bot.env` (`sudoedit`): no request of either kind is
@@ -311,7 +356,8 @@ The narrowing-only `/afk-lockdown` Telegram verb is slice S4, not built.
 
 ## Verbs
 
-`request` (sudo kind, allowlist), `run-request`, `approve`, `deny`, `status`
+`request` (sudo kind, allowlist), `run-request`, `grant-request` (the command's bytes on
+stdin), `grant-spend`, `approve`, `deny`, `status`
 (`run-status` is an alias), `run-result ID [--stream stdout|stderr]` and `mode`
 (`result=mode mode=… enabled=… run_enabled=…`, the effective flag; answered before the
 `enabled` check).

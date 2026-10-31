@@ -15,7 +15,16 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo deny ID --from SENDER --chat CHAT
   afk-sudo status ID  |  run-status ID
   afk-sudo run-result ID [--stream stdout|stderr]
+  afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W]   (the command's bytes on stdin)
+  afk-sudo grant-spend        --session S --sha256 H --cwd DIR
   afk-sudo mode
+
+The grant kind (HIMMEL-7686; `"grant": {"enabled": true}` in the station config, off by default) lets one
+classifier-refused Bash command skip the classifier once. scripts/hooks/approval-grant-request.sh files the
+refused command's exact bytes; root freezes them with every file they name and sends the notice, and an approved
+code writes a root-only grant plus a root-owned hash-only marker. scripts/hooks/approval-grant-check.sh, the
+last PreToolUse Bash member, spends it on the byte-identical retry in the same session and cwd and returns
+allow only on `result=granted`; every other hook still runs, and a deny from any of them wins.
 
 The run kind (`run-request`) is mode-switched by the station config: `"mode": "allowlist"`
 (the default, also any other or absent value) runs only an argv a class names, as the class's
@@ -43,6 +52,7 @@ import argparse
 import base64
 import ctypes
 import errno
+import fcntl
 import hashlib
 import hmac
 import html
@@ -51,6 +61,7 @@ import os
 import pwd
 import re
 import selectors
+import shlex
 import shutil
 import signal
 import stat
@@ -76,6 +87,11 @@ RECORDS = os.path.join(STATE, "records")
 FILES = os.path.join(STATE, "files")
 RESULTS = os.path.join(STATE, "results")
 NOTICE_ENV = os.path.join(ROOT, "etc/himmel/afk-sudo/notice-bot.env")
+GRANTS = os.path.join(STATE, "grants")
+# World-readable, root-owned: one empty `<sha256>.<id>` per live grant, so the PreToolUse check calls sudo only
+# for a command that has one. A marker is a hint, never the authority: the root-only grant in GRANTS is.
+MARKS = os.path.join(ROOT, "var/lib/himmel/afk-grants")
+SHA_RE = re.compile(r"[0-9a-f]{64}")
 
 FIXED_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 READ_CAP = 64 * 1024
@@ -114,6 +130,18 @@ def run_shipped():
 
 def run_enabled(config):
     return run_shipped() and run_block(config).get("enabled") is True
+
+
+def grant_block(config):
+    return config["grant"] if isinstance(config.get("grant"), dict) else {}
+
+
+def grant_enabled(config):
+    return grant_block(config).get("enabled") is True
+
+
+def grant_ttl(config):
+    return cfg_int(grant_block(config), "ttl_s", 900, 30, 3600)
 
 
 def match_class(config, argv):
@@ -564,9 +592,103 @@ def execute_run(payload, config):
             "stderr_sha256": err[2], "duration_ms": ms, "result_kept": kept}
 
 
+# --- the grant kind: one classifier skip for one exact command ---
+def cmd_words(cmd):
+    """The command's words as a POSIX shell splits them (plain whitespace on unbalanced quotes). The hash binds
+    the exact bytes; the words only find the files the command names, for the binding and the floor."""
+    try:
+        return shlex.split(cmd)
+    except ValueError:
+        return cmd.split()
+
+
+def category(why):
+    """The classifier's bracketed category (`[Code from External]`), the only part of its reason a ledger row keeps."""
+    m = re.match(r"\[[^\]\n]{1,60}\]", why)
+    return m.group(0) if m else ""
+
+
+def make_grant_builder(spec):
+    """The payload builder for a grant request: writes the frozen record and the file copies."""
+    def build(rid, created, expires):
+        rec = {"v": 1, "id": rid, "kind": "grant", "cmd": spec["cmd"], "cmd_sha256": spec["sha"], "words": spec["words"],
+               "files": [e for e, _ in spec["files"]], "targets": spec["targets"], "cwd": spec["cwd"],
+               "cwd_dev_ino": spec["cwd_dev_ino"], "session": spec["session"], "ticket": spec["ticket"],
+               "blocked_by": spec["why"], "created": created, "expires": expires}
+        digest = rec_hash(rec)
+        for d in (RECORDS, FILES, os.path.join(FILES, rid)):
+            private_dir(d)
+        for i, (_, body) in enumerate(spec["files"]):
+            if body is not None:
+                write_private(os.path.join(FILES, rid, f"f{i}"), body)
+        write_private(os.path.join(RECORDS, rid + ".json"), json.dumps(rec, sort_keys=True).encode())
+        extra = {"hash": digest, "cmd_sha256": spec["sha"], "cmd_bytes": len(spec["raw"]), "blocked_by": category(spec["why"])}
+        return {"kind": "grant", "id": rid, "hash": digest}, extra
+    return build
+
+
+def execute_grant(payload, config):
+    """The code was accepted: write the root-only grant and its marker. Nothing runs here; the worker runs its
+    own command, as itself, under every hook."""
+    rid = payload["id"]
+    try:
+        rec = load_record(rid)
+        if rec.get("id") != rid or rec.get("kind") != "grant" or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
+            return {"result": "hash-mismatch"}
+        if not grant_enabled(config):
+            return {"result": "grant-disabled"}
+        t = int(now())
+        grant = {k: rec[k] for k in ("id", "cmd", "cmd_sha256", "words", "files", "targets", "cwd", "cwd_dev_ino", "session", "ticket")}
+        grant.update(granted=t, expires=t + grant_ttl(config))
+        private_dir(GRANTS)
+        write_private(os.path.join(GRANTS, rid + ".json"), json.dumps(grant, sort_keys=True).encode())
+        os.makedirs(MARKS, mode=0o755, exist_ok=True)
+        ab.check_safe(MARKS, OWNER, kind="dir")
+        fd = os.open(os.path.join(MARKS, f"{rec['cmd_sha256']}.{rid}"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        os.fchmod(fd, 0o644)
+        os.close(fd)
+    except (OSError, KeyError, TypeError, ValueError, ab.Refused):
+        return {"result": "grant-failed"}
+    return {"result": "granted", "expires": grant["expires"], "cmd_sha256": rec["cmd_sha256"]}
+
+
+def drop_grant(rid, g):
+    os.unlink(os.path.join(GRANTS, rid + ".json"))
+    sha = g.get("cmd_sha256") if isinstance(g, dict) else None
+    if isinstance(sha, str) and SHA_RE.fullmatch(sha):
+        try:
+            os.unlink(os.path.join(MARKS, f"{sha}.{rid}"))
+        except FileNotFoundError:
+            pass
+
+
+def verify_grant(g, config):
+    """Re-check a claimed grant as the run kind re-checks a run: the cwd, every bound file and every word's
+    target are what the operator approved, and the floor still passes. "granted" or the refusal."""
+    op_pw = user_pw(config.get("operator_user"))
+    if op_pw is None:
+        return "bad-user"
+    try:
+        st = os.stat(g["cwd"])
+        if [st.st_dev, st.st_ino] != g["cwd_dev_ino"]:
+            return "changed"
+        files, targets = collect_files(g["words"], g["cwd"], op_pw.pw_uid)
+        if [[e["path"], e["sha256"], e["dev_ino"]] for e, _ in files] != \
+                [[f["path"], f["sha256"], f["dev_ino"]] for f in g["files"]] or targets != g["targets"]:
+            return "changed"
+    except (OSError, BadFile, KeyError, TypeError):
+        return "changed"
+    texts = [b.decode("utf-8", "replace") for _, b in files if b is not None] + [g["cmd"]]
+    extra = config.get("never_remote_extra")
+    rule = nr.check(g["words"], texts, g["cwd"], op_pw.pw_dir, extra if isinstance(extra, list) else [])
+    return f"never-remote rule={rule}" if rule else "granted"
+
+
 def execute(payload, config):
     if payload.get("kind") == "run":
         return execute_run(payload, config)
+    if payload.get("kind") == "grant":
+        return execute_grant(payload, config)
     try:
         return subprocess.run(payload["argv"], cwd="/", env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -766,12 +888,61 @@ def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
     return text, cut
 
 
-def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodies=(), stdin_text=""):
+def grant_facts(rec, nonce, ttl, digest, bodies):
+    """The grant notice (HTML, at most MSG_CAP) and whether anything was cut (the full request is then attached).
+    Built from root's frozen record only, never from the classifier-denial log."""
+    rid, cmd = rec["id"], rec["cmd"]
+    left = max(1, round((rec["expires"] - now()) / 60))
+    cwd, cut = elem(rec["cwd"], EL_CAP, EL_KEEP)
+    head = [f"🔓 AFK grant {rid} · expires {time.strftime('%H:%MZ', time.gmtime(rec['expires']))} ({left} min) · nonce <b>{nonce}</b>",
+            f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}",
+            f"cwd: {cwd}",
+            f"Approving lets this exact command skip the permission classifier once, in this session and cwd, within "
+            f"{max(1, ttl // 60)} min of the code. Guards still run."]
+    lines = cmd.splitlines() or [""]
+    body = [f"command ({len(cmd.encode())} bytes, sha256 {rec['cmd_sha256'][:8]}):"]
+    for line in lines[:SCRIPT_LINES]:
+        t, c = elem(line, 300, 300)
+        cut |= c
+        body.append(t)
+    if len(lines) > SCRIPT_LINES:
+        body.append(f"…(+{len(lines) - SCRIPT_LINES} lines)")
+        cut = True
+    for f in rec["files"]:
+        marks = ([] if f["shown"] else ["NOT SHOWN"]) + (["user-writable"] if user_writable(f["path"]) else [])
+        t, c = elem(f["path"], EL_CAP, EL_KEEP)
+        cut |= c
+        body.append(f"file {t} sha256 {f['sha256'][:8]}" + (f" ⚠️ <b>{', '.join(marks)}</b>" if marks else ""))
+    room = SCRIPT_LINES
+    for path, text in bodies:
+        flines = text.splitlines() or [""]
+        body.append(f"{esc('file ' + path, EL_KEEP)[0]}:")
+        for line in flines[:room]:
+            t, c = elem(line, LINE_KEEP, LINE_KEEP)
+            cut |= c
+            body.append(t)
+        if len(flines) > room:
+            body.append(f"…(+{len(flines) - room} lines)")
+            cut = True
+        room = max(0, room - len(flines))
+    if rec.get("blocked_by"):
+        body.append(f"Refused by (claim): {esc(rec['blocked_by'], 300)[0]}")
+    tail = [f"hash {digest[:8]} {digest[8:16]}…"]
+    text = "\n".join(head + body + tail)
+    if len(text) > MSG_CAP - 40:
+        text, cut = "\n".join(head + ["command and files: see the attached request"] + tail), True
+    if cut:
+        text = "TRUNCATED, full request attached\n" + text
+    return text, cut
+
+
+def send_notice(broker, config, token, rec, nonce, mode, cls, digest=None, bodies=(), stdin_text="", built=None):
     """Send the facts message (and the full request when it was cut) through the notice bot. A notice
     that cannot be sent withdraws the request: the operator must never approve what they were not shown.
-    The full request goes first, so the nonce (in the facts message) is never out while it may still fail."""
+    The full request goes first, so the nonce (in the facts message) is never out while it may still fail.
+    `built` is a (text, cut) another kind made instead of facts()."""
     rid = rec["id"]
-    text, cut = facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
+    text, cut = built or facts(rec, nonce, mode, cls, digest, bodies, stdin_text)
     op = int(config["operator_id"])
     ok = True
     if cut:
@@ -841,7 +1012,10 @@ def send_result(config, rid, res, secs):
     token = notice_token()
     if not token:
         return
-    if res["result"] != "ran":
+    if res["result"] == "granted":
+        text = (f"✅ grant {rid} live until {time.strftime('%H:%MZ', time.gmtime(res['expires']))}: the worker's next "
+                "byte-identical call in that session and cwd skips the classifier once")
+    elif res["result"] != "ran":
         text = f"⛔ {rid} not run: {esc(res['result'])[0]}"
     else:
         rc = res["exit"]
@@ -966,6 +1140,118 @@ def run_request(broker, config, args):
     return 0
 
 
+def grant_request(broker, config, args):
+    """File one grant request for the command bytes on stdin; prints the result lines and returns the exit code."""
+    if not grant_enabled(config):
+        print("result=grant-disabled")
+        return 5
+    if getattr(os.path, "ALLOW_MISSING", None) is None:
+        print("result=no-allow-missing")
+        return 5
+    op_pw = user_pw(config.get("operator_user"))
+    if op_pw is None:
+        print("result=bad-user")
+        return 5
+    raw = sys.stdin.buffer.read(READ_CAP + 1)
+    if len(raw) > READ_CAP:
+        print("result=command-too-large")
+        return 5
+    try:
+        cmd = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        print("result=bad-command")
+        return 5
+    words = cmd_words(cmd)
+    if not words:
+        print("result=usage")
+        return 2
+    cwd, sha = args.cwd, hashlib.sha256(raw).hexdigest()
+    meta = {"session": clean(args.session), "ticket": clean(args.ticket), "kind": "grant", "cwd": clean(cwd, 500), "cmd_sha256": sha}
+    if not cwd.startswith("/") or not os.path.isdir(cwd):
+        print("result=bad-cwd")
+        return 5
+    try:
+        (files, targets), unbound = collect_files(words, cwd, op_pw.pw_uid), False
+    except BadFile:
+        files, targets, unbound = [], [], True  # the floor still reads the words
+    texts = [b.decode("utf-8", "replace") for _, b in files if b is not None] + [cmd]
+    extra = config.get("never_remote_extra")
+    rule = nr.check(words, texts, cwd, op_pw.pw_dir, extra if isinstance(extra, list) else [])
+    if rule:
+        refuse_row(meta, "never-remote", rule=rule)
+        print(f"result=never-remote rule={rule}")
+        return 5
+    if unbound:
+        print("result=bad-file")
+        return 5
+    token = notice_token()
+    if not token:
+        print("result=no-notice-bot")
+        return 5
+    st = os.stat(cwd)
+    spec = {"cmd": cmd, "raw": raw, "sha": sha, "words": words, "files": files, "targets": targets, "cwd": cwd,
+            "cwd_dev_ino": [st.st_dev, st.st_ino], "session": meta["session"], "ticket": meta["ticket"], "why": clean(args.why, 300)}
+    ttl = grant_ttl(config)
+    broker.retain = prune
+    rid, expires, nonce = broker.request("grant", f"grant {sha[:12]}", make_grant_builder(spec),
+                                         {k: meta[k] for k in ("session", "ticket", "cwd")}, ttl)
+    try:
+        rec = load_record(rid)
+        bodies = [(f["path"], read_copy(rid, f"f{i}")) for i, f in enumerate(rec["files"]) if f["shown"]]
+        ok = send_notice(broker, config, token, rec, nonce, None, None, bodies=bodies,
+                         built=grant_facts(rec, nonce, ttl, rec_hash(rec), bodies))
+    except BaseException:
+        broker.withdraw(rid, "notice-failed")
+        raise
+    if not ok:
+        print(f"result=notice-failed id={rid}")
+        return 5
+    print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
+    return 0
+
+
+def grant_spend(config, args):
+    """Spend the one live grant for these command bytes, session and cwd. Prints `result=granted id=…` only when
+    the grant is root's, unexpired, and the cwd, every bound file and the floor still agree. A matching grant is
+    spent before it is checked, so a refused one is gone too."""
+    if not SHA_RE.fullmatch(args.sha256):
+        print("result=bad-hash")
+        return 5
+    if not grant_enabled(config):
+        print("result=grant-disabled")
+        return 5
+    hit, rid = None, None
+    if os.path.lexists(GRANTS):
+        ab.check_safe(GRANTS, OWNER, kind="dir", secret=True)
+        fd = os.open(os.path.join(GRANTS, ".lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            t = now()
+            for name in sorted(os.listdir(GRANTS)):
+                gid = name[:-len(".json")]
+                if not name.endswith(".json") or not ID_RE.fullmatch(gid):
+                    continue
+                path = os.path.join(GRANTS, name)
+                ab.check_safe(path, OWNER, secret=True)
+                with open(path) as f:
+                    g = json.load(f)
+                if not isinstance(g, dict) or g.get("id") != gid or not isinstance(g.get("expires"), int) or g["expires"] <= t:
+                    drop_grant(gid, g)
+                    continue
+                if g.get("cmd_sha256") == args.sha256 and g.get("session") == args.session and g.get("cwd") == args.cwd:
+                    drop_grant(gid, g)  # one use: spent before the checks below
+                    hit, rid = g, gid
+                    break
+        finally:
+            os.close(fd)
+    res = verify_grant(hit, config) if hit else "no-grant"
+    ab.append_row(LEDGER, {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now())), "event": "grant-spend",
+                           "result": res.split(" ")[0], "id": rid, "session": clean(args.session), "cwd": clean(args.cwd, 500),
+                           "cmd_sha256": args.sha256}, OWNER)
+    print(f"result={res}" + (f" id={rid}" if rid else ""))
+    return 0 if res == "granted" else 5
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="afk-sudo")
     sub = p.add_subparsers(dest="verb", required=True)
@@ -982,6 +1268,15 @@ def main(argv):
     q.add_argument("--cwd", default="/")
     q.add_argument("--why", default="")
     q.add_argument("cmd", nargs=argparse.REMAINDER)
+    gr = sub.add_parser("grant-request")
+    gr.add_argument("--session", required=True)
+    gr.add_argument("--ticket", default="")
+    gr.add_argument("--cwd", required=True)
+    gr.add_argument("--why", default="")
+    gs = sub.add_parser("grant-spend")
+    gs.add_argument("--session", required=True)
+    gs.add_argument("--sha256", required=True)
+    gs.add_argument("--cwd", required=True)
     for verb in ("approve", "deny"):
         a = sub.add_parser(verb)
         a.add_argument("id")
@@ -1061,6 +1356,10 @@ def main(argv):
             print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
         elif args.verb == "run-request":
             return run_request(broker, config, args)
+        elif args.verb == "grant-request":
+            return grant_request(broker, config, args)
+        elif args.verb == "grant-spend":
+            return grant_spend(config, args)
         elif args.verb == "approve":
             # `NONCE CODE` (the code may hold a space: `K7QF 123 456`), or the two run together.
             toks = sys.stdin.readline().split()
@@ -1078,6 +1377,9 @@ def main(argv):
                 send_result(config, args.id, res, time.monotonic() - t0)
             except (ab.Refused, OSError, ValueError, KeyError, TypeError):
                 pass  # the command already ran (or was refused after the code); the reply below still says so
+            if res["result"] == "granted":
+                print(f"result=granted id={args.id} expires={res['expires']}")
+                return 0
             if res["result"] != "ran":
                 print(f"result={res['result']} id={args.id}" + (f" rule={res['rule']}" if "rule" in res else ""))
                 return 5

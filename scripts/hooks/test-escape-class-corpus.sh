@@ -66,6 +66,7 @@ read-clamp.sh|||exempt|||-|||-|||-
 require-quiet-run.sh|||exempt|||-|||-|||-
 check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 allow-thread-resolve.sh|||exempt|||-|||-|||-
+approval-grant-check.sh|||exempt|||-|||-|||-
 '
 # Exempt rows (each is printed as EXEMPT on every run, never skipped silently):
 #   read-clamp.sh, require-quiet-run.sh — workflow NUDGES, not security fences;
@@ -77,6 +78,9 @@ allow-thread-resolve.sh|||exempt|||-|||-|||-
 #   allow-thread-resolve.sh — an allow-only hook: it never denies, and any shape
 #     but its one anchored resolve command gets no decision, so there is no
 #     protected action to wrap in a splitter-misreading construct.
+#   approval-grant-check.sh — allow-only too: it allows only the exact
+#     bytes root holds a live one-use grant for, so a reshaped command has another
+#     hash and gets no decision.
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='
