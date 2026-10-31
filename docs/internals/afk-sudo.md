@@ -122,8 +122,12 @@ broker's pending payload, not next to the record.
   between the hash and the start, which the session can do when it can write the file; an
   interpreter outside the name list, or one given its script after `-e`-style options,
   re-opens the script by path; and the program sees `/proc/self/fd/N` as its argv[0], so a
-  multi-call binary that picks its applet from argv[0] does not find it. A same-bytes file
-  with a new inode now reports `changed`.
+  multi-call binary that picks its applet from argv[0] does not find it. A script run this
+  way sees its own location as `/proc/self/fd/N` too: a shell script's `$0` and a Python
+  script's `__file__` (a script that finds sibling files from either looks in the wrong
+  place and fails); Python's `sys.path[0]` is still the real directory, because Python
+  resolves the link. The operator's notice for such a script should say so. A same-bytes
+  file with a new inode now reports `changed`.
 - Files up to 64 KiB are copied to `STATE/files/<id>/` so the floor scans their text; a
   larger file is hashed only (`shown: false`). A file the operator could not read
   themselves (not world-readable, not theirs) is hashed and never copied. File bodies
