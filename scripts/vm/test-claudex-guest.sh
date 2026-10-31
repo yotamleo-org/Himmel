@@ -48,7 +48,7 @@ case "$1" in
         while read -r n; do [ -n "$n" ] && printf '"%s" {00000000-0000-0000-0000-000000000000}\n' "$n"; done < "$FAKE_VBOX_STATE/vms" ;;
     showvminfo)
         f="$FAKE_VBOX_STATE/fwd-$2"
-        [ -f "$f" ] && printf 'name="%s"\nForwarding(0)="ssh,tcp,127.0.0.1,%s,,22"\n' "$2" "$(cat "$f")" ;;
+        [ -f "$f" ] && printf 'name="%s"\nForwarding(0)="ssh,tcp,127.0.0.1,%s,,22"\n' "$2" "$(cat "$f")" ;; # read-sink-ok: a test stub reading its own state dir under the suite's temp dir
     clonevm)
         name=""
         while [ "$#" -gt 0 ]; do [ "$1" = --name ] && name="$2"; shift; done
