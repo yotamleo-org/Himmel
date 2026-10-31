@@ -307,6 +307,32 @@ check "9e Terminal.app: exit 0" "$rc" "0"
 check "9e Terminal.app: osascript is not used" "$([ -e "$tmp/osa15.log" ] && echo called)" ""
 contains "9e Terminal.app: open -a is used" "$(cat "$tmp/open15.log" 2>/dev/null)" "-a Terminal"
 
+# --- 10. the launcher never hands claude's session marker to the app (SCRUM-2)
+# A real `open -a` passes ITS OWN environment to an app it starts, and that app
+# keeps it for life. Launched from a claude Bash tool, iTerm would then open
+# every later tab with CLAUDE_CODE_CHILD_SESSION=1 - transcripts off for every
+# claude started there. Both launch paths must run with the markers cleared.
+mk_env_stub() { # mk_env_stub <bindir> <name> <env-log> - records its env, runs the .command
+    mkdir -p "$1"
+    cat > "$1/$2" <<STUB
+#!/usr/bin/env bash
+env | grep -E '^(CLAUDE_CODE_CHILD_SESSION|CLAUDE_PID|CLAUDECODE|CLAUDE_CODE_SESSION_ID)=' >> "$3"
+echo seen >> "$3"
+for a in "\$@"; do case "\$a" in *.command) env -i "\$a" >/dev/null 2>&1 & ;; esac; done; exit 0
+STUB
+    chmod +x "$1/$2"
+}
+b16="$tmp/b16"; mk_env_stub "$b16" open "$tmp/env16.log"
+CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=4242 CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=s1 \
+    run_shim "$b16" -- --separate --workdir "$wd" -e true >/dev/null
+check "10a open -a was called" "$(grep -c seen "$tmp/env16.log" 2>/dev/null)" "1"
+not_contains "10a open -a gets no claude session marker" "$(cat "$tmp/env16.log" 2>/dev/null)" "CLAUDE"
+b17="$tmp/b17"; mk_env_stub "$b17" osascript "$tmp/env17.log"
+CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=4242 CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=s1 ITERM_SESSION_ID="w2t0p0:ABC-123" ARM_TERMINAL_APP=iTerm \
+    run_shim "$b17" -- --separate --workdir "$wd" -e true >/dev/null
+check "10b osascript was called" "$(grep -c seen "$tmp/env17.log" 2>/dev/null)" "1"
+not_contains "10b osascript gets no claude session marker" "$(cat "$tmp/env17.log" 2>/dev/null)" "CLAUDE"
+
 echo
 [ "$fails" -eq 0 ] && { echo "All konsole-macos.sh cases passed."; exit 0; }
 echo "$fails FAILED"; exit 1
