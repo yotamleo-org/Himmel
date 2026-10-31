@@ -564,7 +564,7 @@ platform_re = load_platform_re()
 # a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
 # removal verb (after an optional `prefix:`), says removal, or says `stop <gerund>` ("stop citing"); a removal verb elsewhere
 # ("Windows service stops unexpectedly") is a bug report on the dropped platform and stays dropped
-REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:remove|drop|delete|retire|strip|purge)\b|\bremoval\b|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
+REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:(?:remove|drop|delete|retire|strip|purge)\b|removal\b)|\bremoval of\b|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
 
 def platform_dropped(i):
     return bool(platform_re.search(i['title'])) and 'windows-removal' not in i['labels'] and not REMOVAL_RE.search(i['title'])
@@ -1059,7 +1059,7 @@ if pool_only:
     if not resume_only:
         # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
         intake = sorted((i['key'] for i in issues.values()
-                         if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key'])
+                         if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
                          and not any(l.startswith('residual-depth-') for l in i['labels'])
                          and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
                               or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner)),

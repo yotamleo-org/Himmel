@@ -1288,6 +1288,9 @@ mk HIMMEL-907 "Done" Medium '["operator-directed"]' '[]' '[]' "operator work, cl
 mk HIMMEL-8173 "To Do" Medium '[]' '["v1.0.1"]' '[]' "hook comments stop citing Windows jq.exe, MSYS and Defender rationale" "Edit scripts/lib/in8.sh only."
 mk HIMMEL-909 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service stops unexpectedly" "Edit scripts/lib/in9.sh only."
 mk HIMMEL-910 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Remove the WSL station triage" "Edit scripts/lib/in10.sh only."
+mk HIMMEL-911 "To Do" High '["backlog"]' '[]' '[]' "Windows installer crashes on start" "Edit scripts/lib/in11.sh only."
+retype "$MI/HIMMEL-911.md" Bug
+mk HIMMEL-912 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service crashes after device removal" "Edit scripts/lib/in12.sh only."
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
 runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
@@ -1295,6 +1298,8 @@ oi="$(runi --priority-pool-only --top 7)"
 has "(8170) a pool short of the slots with versionless operator work reads INTAKE:<m>" "$oi" "# pool=3/7,INTAKE:3"
 lacks "(8170) the pool line is not a bare LOW while INTAKE is non-zero" "$(printf '%s\n' "$oi" | grep '^# pool=')" "LOW"
 lacks "(8170) a windows title with a removal verb elsewhere in it is still dropped" "$oi" "LOCAL	HIMMEL-909"
+lacks "(8170) a windows title that only mentions removal is still dropped" "$oi" "LOCAL	HIMMEL-912"
+lacks "(8170) a versionless High bug on the dropped platform is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-911"
 has "(8170) a title that opens with a removal verb is kept" "$oi" "LOCAL	HIMMEL-910"
 has "(8170) the intake line names operator-directed, High+ Bug and scope-label tickets with the version" "$oi" "# intake 3 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905"
 lacks "(8170) a residual-depth-1 backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-903"
