@@ -5,23 +5,14 @@
 # (PR #266/#269), so every script on the resume-critical path shares
 # one armor instead of each carrying (or forgetting) its own copy.
 #
-# WHY: on Windows, `python3` can resolve to the Microsoft Store
-# WindowsApps stub, which intermittently WEDGES instead of running
-# (observed live 2026-06-10). Two failure modes, each needing its own
-# half of the armor:
-#   1. The stub IGNORES SIGTERM — plain `timeout 10` waited on it
-#      forever; only `timeout -k` (SIGKILL escalation) killed it
-#      (rc=137 at 15s). So: GNU `timeout -k 5 10 python3 ...`. Only
-#      GNU coreutils timeout can wrap a command — Windows System32
-#      timeout.exe cannot — so the flavor is probed once per process.
-#      Plain python3 where GNU timeout is unavailable (macOS default).
-#      That degraded mode is SILENT on macOS (no Store stub there, so
-#      unbounded python is the expected/safe default) but warns ONCE per
-#      process on stderr under MINGW/MSYS/CYGWIN — on Windows a failed
-#      probe usually means System32 timeout.exe shadows coreutils on
-#      PATH, i.e. the armor is off exactly where the wedge class lives.
-#      stderr only; no adopter stdout contract is touched.
-#   2. The wedged stub can spawn an ORPHAN child that inherits the
+# WHY: `python3` can intermittently WEDGE instead of running (observed live
+# 2026-06-10). Two failure modes, each needing its own half of the armor:
+#   1. The wedged interpreter IGNORES SIGTERM — plain `timeout 10` waited on
+#      it forever; only `timeout -k` (SIGKILL escalation) killed it
+#      (rc=137 at 15s). So: GNU `timeout -k 5 10 python3 ...`. The GNU
+#      coreutils flavor is probed once per process. Plain python3 where
+#      GNU timeout is unavailable (macOS default), silently.
+#   2. The wedged interpreter can spawn an ORPHAN child that inherits the
 #      caller's stdout AND stderr fds. timeout kills the stub, but the
 #      orphan keeps those fds open and a `$(python3 ...)` (or
 #      `$(python3 ... 2>&1)`) command substitution waits on EOF forever
@@ -54,14 +45,9 @@
 # Knobs (env / caller-set; all optional):
 #   PY_ARMOR_BIN          interpreter (default python3). E.g.
 #                         `PY_ARMOR_BIN=python py_armor_capture ...`
-#                         for plain-python fallback branches — the
-#                         WindowsApps stub ships python.exe too.
+#                         for plain-python fallback branches.
 #   PY_ARMOR_TIMEOUT      seconds before SIGTERM (default 10)
 #   PY_ARMOR_KILL_AFTER   seconds after SIGTERM before SIGKILL (default 5)
-#
-# NOTE: when a kill fires, the orphan may still hold the temp file
-# open; on Windows the rm then fails silently and the file leaks into
-# $TMPDIR. Harmless — a leaked temp file beats a wedged session.
 #
 # bash 3.2-compatible (no mapfile / associative arrays / namerefs).
 
@@ -74,16 +60,6 @@ _py_armor_have_gnu_timeout() {
             _PY_ARMOR_HAVE_GNU_TIMEOUT=yes
         else
             _PY_ARMOR_HAVE_GNU_TIMEOUT=no
-            # Degrading to bare python3 is the exact hang class this lib
-            # exists for — never do it silently where the wedge lives.
-            # Warn once per process (the probe result is cached), stderr
-            # only. Gated to Windows-ish unames: on macOS no-coreutils is
-            # the expected default and the Store-stub wedge cannot occur.
-            case "$(uname -s 2>/dev/null)" in
-                MINGW*|MSYS*|CYGWIN*)
-                    echo "WARN py-armor: GNU timeout unavailable — python calls are UNBOUNDED (System32 timeout.exe shadowing coreutils on PATH?)" >&2
-                    ;;
-            esac
         fi
     fi
     [ "$_PY_ARMOR_HAVE_GNU_TIMEOUT" = "yes" ]

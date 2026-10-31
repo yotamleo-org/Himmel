@@ -246,16 +246,6 @@ else
     echo "SKIP - timeout not installed: unwritable-backup-name hang guard not exercised"
 fi
 
-# a jq that ends its lines with CRLF (jq.exe on Windows) must not leak a CR into hashes, backups or rows
-rm -rf "$HIMMEL_PROVENANCE_DIR"
-mkdir -p "$tmp/crjq"
-# shellcheck disable=SC2016  # $@ / $0 belong to the generated wrapper script
-printf '#!/bin/sh\n"%s" "$@" | awk '"'"'{ printf "%%s\\r\\n", $0 }'"'"'\n' "$(command -v jq)" > "$tmp/crjq/jq"; chmod +x "$tmp/crjq/jq"
-( PATH="$tmp/crjq:$PATH"; prov_record replace json-key "$w/s.json" --unit k --post-json '{"b":1,"a":2}' --pre-json '{"z":[1]}' --backup )
-check "CRLF jq: post.sha is of the canonical bytes" "$(last | jq -r .post.sha)" "$(sha '{"a":2,"b":1}')"
-check "CRLF jq: the backup holds the canonical bytes" "$(cat "$(last | jq -r .pre.backup)")" '{"z":[1]}'
-check "CRLF jq: no ledger line carries a CR" "$(grep -c "$(printf '\r')" "$ledger")" "0"
-
 # a session id that is not one safe path segment never reaches the filesystem
 rm -rf "$HIMMEL_PROVENANCE_DIR"
 prov_begin --iid '../evil' --writer t

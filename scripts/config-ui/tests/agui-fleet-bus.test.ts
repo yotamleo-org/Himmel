@@ -20,8 +20,8 @@ async function boot(seed: boolean) {
   let root = "";
   if (seed) {
     root = await busRoot({ stateHome: state });
-    await register(root, FLEET.console.name, { role: "console" });
-    await register(root, FLEET.worker.name, { role: "consult", console: FLEET.console.name });
+    await register(root, FLEET.console.name, { role: "chief" });
+    await register(root, FLEET.worker.name, { role: "consult", chief: FLEET.console.name });
     const t = Date.now() - 60_000;
     const rec = (o: Record<string, unknown>) => ({ t, b: "x", c: 0, ...o });
     await append(root, FLEET.worker.name, rec({ i: "M1", f: FLEET.console.name, r: FLEET.worker.name, c: 1, b: "GO 1 abc", t: t + 1 }));

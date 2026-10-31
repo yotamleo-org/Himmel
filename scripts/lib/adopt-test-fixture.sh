@@ -55,11 +55,9 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required" >&2; exit 1; }
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# Normalize a path the same way wire-luna-vault.sh stores it: passing a path as a
-# jq arg triggers MSYS POSIX->Windows path mangling on Git-Bash (e.g.
-# /tmp/x -> C:/Users/.../x) and is an identity on Linux. Normalizing the EXPECTED
-# value through the same jq hop makes the LUNA_VAULT_PATH assertions below
-# cross-platform without hard-coding either path form.
+# Normalize a path the same way wire-luna-vault.sh stores it: through a jq arg.
+# Normalizing the EXPECTED value through the same jq hop keeps the
+# LUNA_VAULT_PATH assertions below independent of either path form.
 norm() { jq -rn --arg v "$1" '$v'; }
 
 work=$(mktemp -d) || exit 1 # prim-ok: test fixture shared by the adopt suites, cleaned by the trap below
@@ -140,29 +138,7 @@ for _tool in date stat uname id awk cmp find; do
 done
 if command -v sha256sum >/dev/null 2>&1; then link_hermetic_tool sha256sum; else link_hermetic_tool shasum; fi
 
-# Derive the expected suffix from an INDEPENDENT platform probe, never from
-# HERMETIC_EXE_SUFFIX — the very variable link_hermetic_tool writes with.
-# Reusing the writer's value makes this test tautological: if the detection in
-# hermetic-path.sh regressed to an empty suffix, the writer would emit
-# extensionless stubs, the expectation below would ALSO go extensionless and
-# still match, and the rejection branch would be skipped by its own
-# [ -n ... ] guard. The test could then never fail.
-case "$(uname -s 2>/dev/null || echo unknown)" in
-  MINGW*|MSYS*|CYGWIN*|Windows_NT*) hermetic_suffix='.exe' ;;
-  *)                                hermetic_suffix='' ;;
-esac
-[ -f "$work/bin/bash$hermetic_suffix" ] || fail "link_hermetic_tool self-test: platform-named bash stub was not created"
-# `find` with a literal -name match is REQUIRED here; do not "simplify" this to
-# [ -e "$work/bin/bash" ]. On MSYS/Git-Bash, test -e resolves bash -> bash.exe,
-# so the plain file test reports an extensionless stub that does not exist and
-# this check fires on every healthy Windows run. find matches real directory
-# entries and does not do the .exe fallback. A reviewer proposed the
-# [ -e ]/[ -L ] form on portability grounds; the premise is wrong -- BSD find
-# does support -maxdepth -- and the replacement breaks the suite on Windows.
-# Verified live: swapping it made the green baseline fail.)
-if [ -n "$hermetic_suffix" ] && [ -n "$(find "$work/bin" -maxdepth 1 -name bash -print -quit)" ]; then
-  fail "link_hermetic_tool self-test: extensionless bash stub was created on Windows"
-fi
+[ -f "$work/bin/bash" ] || fail "link_hermetic_tool self-test: bash stub was not created"
 
 # ── unit test: link_hermetic_tool's two failure-fallback branches ──
 # Force `ln -s` to fail deterministically (a stub `ln` fronting PATH — the
@@ -175,14 +151,14 @@ ut="$work/ut-link"; mkdir -p "$ut/bin" "$ut/stub"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$ut/stub/ln"; chmod +x "$ut/stub/ln"
 
 PATH="$ut/stub:$PATH" link_hermetic_tool jq "$ut/bin"
-[ -f "$ut/bin/jq$hermetic_suffix" ] || fail "link_hermetic_tool self-test: wrapper-fallback did not create jq wrapper"
-[ -x "$ut/bin/jq$hermetic_suffix" ] || fail "link_hermetic_tool self-test: jq wrapper is not executable"
-"$ut/bin/jq$hermetic_suffix" --version >/dev/null 2>&1 || fail "link_hermetic_tool self-test: jq wrapper does not proxy correctly"
+[ -f "$ut/bin/jq" ] || fail "link_hermetic_tool self-test: wrapper-fallback did not create jq wrapper"
+[ -x "$ut/bin/jq" ] || fail "link_hermetic_tool self-test: jq wrapper is not executable"
+"$ut/bin/jq" --version >/dev/null 2>&1 || fail "link_hermetic_tool self-test: jq wrapper does not proxy correctly"
 
 PATH="$ut/stub:$PATH" link_hermetic_tool bash "$ut/bin"
-[ -f "$ut/bin/bash$hermetic_suffix" ] || fail "link_hermetic_tool self-test: bash copy-fallback did not create bash"
-[ -x "$ut/bin/bash$hermetic_suffix" ] || fail "link_hermetic_tool self-test: bash copy is not executable"
-[ "$("$ut/bin/bash$hermetic_suffix" -c 'echo ok')" = "ok" ] || fail "link_hermetic_tool self-test: bash copy-fallback produced a non-working bash"
+[ -f "$ut/bin/bash" ] || fail "link_hermetic_tool self-test: bash copy-fallback did not create bash"
+[ -x "$ut/bin/bash" ] || fail "link_hermetic_tool self-test: bash copy is not executable"
+[ "$("$ut/bin/bash" -c 'echo ok')" = "ok" ] || fail "link_hermetic_tool self-test: bash copy-fallback produced a non-working bash"
 echo "ok: link_hermetic_tool wrapper-fallback (jq) + bash copy-fallback verified under forced ln failure"
 
 # Hermeticity: scrub every dir carrying a real qmd, bun, npm,

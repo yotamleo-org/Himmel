@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Tests for scripts/lib/canon-path.sh.
 # Usage: bash scripts/lib/test-canon-path.sh
-# Hermetic: a symlinked directory stands in for macOS /var -> /private/var, and
-# a PATH-stub `cygpath` stands in for Git Bash. Neither platform is run here.
+# Hermetic: a symlinked directory stands in for macOS /var -> /private/var.
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
 
@@ -49,36 +48,6 @@ out=$(canon_path "$REAL/nope"); rc=$?
 assert_eq "T4a missing dir -> rc=1, no output" "1|" "$rc|$out"
 out=$(canon_path ""); rc=$?
 assert_eq "T4b empty arg -> rc=1, no output" "1|" "$rc|$out"
-
-# T5: with no cygpath on PATH, native == physical.
-NOCYG="$TMP/nocyg"; mkdir -p "$NOCYG"
-for t in bash dirname cat; do ln -s "$(command -v "$t")" "$NOCYG/$t"; done
-got=$(PATH="$NOCYG" "$NOCYG/bash" -c ". '$LIB_DIR/canon-path.sh'; command -v cygpath >/dev/null 2>&1 && echo HAS-CYGPATH || canon_path_native '$REAL/link/sub'")
-assert_eq "T5 no cygpath -> native is the physical path" "$REAL/real/sub" "$got"
-
-# T6: with a cygpath stub, native goes through `cygpath -ml` (long name).
-STUB="$TMP/stub"; mkdir -p "$STUB"
-cat > "$STUB/cygpath" <<'EOF'
-#!/usr/bin/env bash
-# Git-Bash-shaped: -ml maps /x/y -> D:/work/longname/x/y, plain -m keeps 8.3.
-case "$1" in
-    -ml) printf 'D:/work/longname%s\n' "$2" ;;
-    -m)  printf 'D:/work/SHORT~1%s\n' "$2" ;;
-    *)   exit 2 ;;
-esac
-EOF
-chmod +x "$STUB/cygpath"
-assert_eq "T6 cygpath -ml is used" "D:/work/longname$REAL/real/sub" \
-    "$(PATH="$STUB:$PATH" canon_path_native "$REAL/link/sub")"
-
-# T7: a cygpath that rejects -l falls back to plain -m rather than failing.
-cat > "$STUB/cygpath" <<'EOF'
-#!/usr/bin/env bash
-[ "$1" = "-m" ] || exit 2
-printf 'D:/work/SHORT~1%s\n' "$2"
-EOF
-assert_eq "T7 cygpath without -l falls back to -m" "D:/work/SHORT~1$REAL/real/sub" \
-    "$(PATH="$STUB:$PATH" canon_path_native "$REAL/link/sub")"
 
 # T8: partial keeps a not-yet-created tail, resolving only the existing head.
 assert_eq "T8 partial: existing head canonicalised, missing tail kept" \

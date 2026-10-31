@@ -31,12 +31,16 @@ export function projectVerdict(counts) {
 }
 export const countRows = (rows) => ({ fail: rows.filter((r) => r.health === "fail").length, warn: rows.filter((r) => r.health === "warn").length });
 
-// #/health?view=all | project=<name> | (none = the project this UI runs in), with tab= and row= riding along.
+// #/health?view=all | project=<name> | (none = the project this UI runs in), with tab=, row= and tile= riding along.
+// tile null = let the page pick (Checks when something is wrong, Q5); "none" = the operator closed it.
+const TILES = ["checks", "usage", "jobs", "search", "none"];
 export function parseView(query) {
   const q = new URLSearchParams(query || "");
   const tab = q.get("tab") === "all" ? "all" : "broken";
   const mode = q.get("view") === "all" ? "all" : "project";
-  return { mode, project: mode === "project" ? q.get("project") || null : null, tab, row: q.get("row") || null };
+  const row = q.get("row") || null;
+  const tile = TILES.includes(q.get("tile")) ? q.get("tile") : tab === "all" || row ? "checks" : null;
+  return { mode, project: mode === "project" ? q.get("project") || null : null, tab, row, tile };
 }
 
 const TILE_NAME = { secrets: "Secrets", review: "Review", tracker: "Tracker", scope: "Project scope" };
@@ -49,10 +53,13 @@ export function fixAction(r, foreign = false) {
   if (fix.by === "operator" && fix.remedy) return { kind: "copy", cmd: fix.remedy };
   return { kind: "chief" };
 }
-const actionHtml = (a) => a.kind === "configure" ? `<a class="btn primary" href="#/config?tile=${esc(a.tile)}">Open in Configure</a>`
-  : a.kind === "copy" ? `<button class="btn" data-act="copy" data-cmd="${esc(a.cmd)}">Copy command</button>`
-  : a.kind === "elsewhere" ? `<span class="chief">set in that project's own UI</span>`
-  : `<span class="chief">chief is on it</span>`;
+// chief = is a chief session live for this project (true/false), or unknown (another project, or the fleet not read yet).
+// Only a live one may say "on it"; none of the three is a button.
+const chiefLabel = (chief) => (chief === true ? "chief is on it" : chief === false ? "for the chief · none running" : "for the chief");
+const actionHtml = (a, chief) => a.kind === "configure" ? `<a class="fixact btn primary" href="#/config?tile=${esc(a.tile)}">Open in Configure</a>`
+  : a.kind === "copy" ? `<button class="fixact btn" data-act="copy" data-cmd="${esc(a.cmd)}">Copy command</button>`
+  : a.kind === "elsewhere" ? `<span class="fixact chief">set in that project's own UI</span>`
+  : `<span class="fixact chief">${esc(chiefLabel(chief))}</span>`;
 
 const nodata = (what) => `<div class="nodata">No data: ${esc(what)}</div>`;
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
@@ -60,11 +67,17 @@ const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-
 const groupOf = (r) => (r.source === "cadence" ? "job" : r.bundle === "search" ? "srch" : "chk");
 const sharedOf = (feed) => ((feed && feed.rows) || []).filter((r) => r.scope === "shared");
 
-function verdictHtml(feed, health) {
+const agoText = (iso, now) => {
+  const s = Math.round((now - Date.parse(iso)) / 1000);
+  return !Number.isFinite(s) ? "" : s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+};
+function verdictHtml(feed, health, now) {
   const v = verdict(feed, health);
   const shared = feed ? sharedOf(feed).filter(isTriage).length : 0;
-  const inputs = !feed ? "the doctor feed is still running" : `${v.fail} fail · ${v.warn} warn · ${v.alerts ? `alerts: ${v.alerts.length} firing` : "alerts not checked"}`;
-  const pills = feed ? `<span class="pills"><span class="pill fail">${v.fail} fail</span><span class="pill warn">${v.warn} warn</span>${shared ? `<span class="pill scope">${shared} shared</span>` : ""}</span>` : "";
+  const ago = feed && feed.generatedAt ? agoText(feed.generatedAt, now) : "";
+  const inputs = !feed ? "the doctor feed is still running" : `${v.fail} fail · ${v.warn} warn · ${v.alerts ? `alerts: ${v.alerts.length} firing` : "alerts not checked"}${ago ? ` · checked ${ago}` : ""}`;
+  const n = (h) => ((feed && feed.rows) || []).filter((r) => r.health === h).length;
+  const pills = feed ? `<span class="pills"><span class="pill fail">${v.fail} fail</span><span class="pill warn">${v.warn} warn</span>${shared ? `<span class="pill scope">${shared} shared</span>` : ""}<span class="pill ok">${n("ok")} ok</span>${n("off") ? `<span class="pill off">${n("off")} off</span>` : ""}</span>` : "";
   const m = health && health.monitoring;
   // Each source's failure shows on its own: a responding exporter makes the roll-up "ok" while Prometheus errors.
   const srcErrs = ["prometheus", "exporter"].filter((k) => m && m[k] && m[k].state === "error")
@@ -75,39 +88,32 @@ function verdictHtml(feed, health) {
     <button class="btn" data-act="refresh-health">refresh</button></div>${mon}`;
 }
 
-// The resolver's answer (scripts/lib/project-mode.*), shown as it came: tracker and forge on one row.
-function modeHtml(health) {
-  const m = health && health.mode;
-  let body;
-  if (!m) body = nodata(health ? "server did not report the mode" : "loading");
-  else if (m.state === "ok") body = `<div class="kv">tracker=${esc(m.tracker)} forge=${esc(m.forge)}</div>
-      <div class="ro">ticket ID required: ${m.idRequired === "0" ? "no" : "yes"} · set with TRACKER / FORGE or git config himmel.tracker / himmel.forge</div>`;
-  else body = `<div class="nodata">${esc(m.reason || "mode unresolved")}</div>`;
-  return `<div class="card" id="mode"><h3>Project mode</h3>${body}</div>`;
-}
-
-const whoText = (a, r) => a.kind === "configure" ? `You, in Configure → ${TILE_NAME[a.tile]}. The setting is written there.`
+const whoText = (a, chief) => a.kind === "configure" ? `You, in Configure → ${TILE_NAME[a.tile]}. The setting is written there.`
   : a.kind === "elsewhere" ? `You, in Configure → ${TILE_NAME[a.tile]}, in the UI that runs in that project. This UI's Configure writes its own project.`
   : a.kind === "copy" ? "You, in your terminal. Only the operator can run this; the chief session cannot."
-  : "The chief session. Nothing for you to do; it shows here until the check passes.";
+  : chief === false ? "The chief session, and none is running for this project. Nothing for you to press; the next chief picks it up, and the row leaves this list when a later doctor run finds it ok."
+  : "The chief session works every new doctor warn. Nothing for you to press; the row leaves this list when a later doctor run finds it ok.";
 
 // one broken row: pill, id, scope tag, what it found, its single fix action, and a "Who fixes it" box that opens on the row.
-function brokenRow(r, open, foreign = false) {
+function brokenRow(r, open, foreign = false, chief) {
   const a = fixAction(r, foreign), id = r.id;
-  const who = open ? `<div class="who"><b>Who fixes it</b><p>${esc(whoText(a, r))}</p>${a.kind === "copy" ? `<code class="remedy">${esc(a.cmd)}</code>` : ""}</div>` : "";
+  const who = open ? `<div class="who"><b>Who fixes it</b><p>${esc(whoText(a, chief))}</p>${a.kind === "copy" ? `<code class="remedy">${esc(a.cmd)}</code>` : ""}</div>` : "";
   return `<div class="hrow br" data-id="${esc(id)}"><span class="st ${esc(r.health)}">${esc(r.health)}</span><span class="id">${esc(id)}</span>
     ${r.scope === "shared" ? `<span class="scope">shared</span>` : ""}<span class="det">${esc(r.installed && r.installed.detail)}</span>
-    ${actionHtml(a)}<button class="btn" data-act="health-row" data-id="${esc(id)}" aria-expanded="${open}">${open ? "close" : "who fixes it"}</button>${who}</div>`;
+    ${actionHtml(a, chief)}<button class="btn" data-act="health-row" data-id="${esc(id)}" aria-expanded="${open}">${open ? "close" : "who fixes it"}</button>${who}</div>`;
 }
 
-const alertHtml = (a) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span></div>`;
+// Q1: an alert gets the same answer as a row, and the chief fixes alerts (Grafana is where you read one, not where it is fixed).
+const alertHtml = (a, chief) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span>
+  <span class="scope">shared</span><span class="fixact chief">${esc(chiefLabel(chief))}</span></div>`;
 
 function brokenHtml(feed, health, view) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter(isTriage).sort((a, b) => (a.health === "fail" ? 0 : 1) - (b.health === "fail" ? 0 : 1));
   const alerts = alertsOf(health) || [];
-  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign)).join("");
-  return rowsHtml + alerts.map(alertHtml).join("") || `<div class="empty">Nothing broken.</div>`;
+  const chief = view.foreign ? undefined : view.chief;
+  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign, chief)).join("");
+  return rowsHtml + alerts.map((a) => alertHtml(a, chief)).join("") || `<div class="empty">Nothing broken.</div>`;
 }
 
 // Every item checked: all rows by bundle, a result each; a bundle with a problem opens by itself.
@@ -132,18 +138,30 @@ function tabsHtml(feed, health, view) {
     <div role="tabpanel" id="tab-all"${view.tab === "all" ? "" : " hidden"}>${allHtml(feed)}</div>`;
 }
 
-// four group tiles; each scrolls to its panel. Counts come from the rows, never invented.
-const GROUPS = [["chk", "Checks", "broken"], ["use", "Usage", "usage"], ["job", "Scheduled jobs", "jobs"], ["srch", "Search & graph", "search"]];
-function tilesHtml(feed, health) {
+// four group tiles (frame 1); a tile opens its panel under the strip, one at a time. Counts come from the rows, never invented.
+const GROUPS = [["chk", "Checks", "checks"], ["use", "Usage", "usage"], ["job", "Scheduled jobs", "jobs"], ["srch", "Search & graph", "search"]];
+const worst = (rows) => (rows.some((r) => r.health === "fail") ? "fail" : rows.some((r) => r.health === "warn") ? "warn" : "ok");
+function tileVal(g, feed, health) {
   const rows = (feed && feed.rows) || [];
-  const val = (g) => {
-    if (g === "use") { const b = health && health.bank && health.bank.state === "ok" ? health.bank.row : null; return b ? `${b.verdict} · 5h ${b.five_hour} %` : "no reading"; }
-    if (!feed) return "waiting";
-    const l = rows.filter((r) => groupOf(r) === g), c = countRows(l);
-    return c.fail + c.warn ? `${c.fail} fail · ${c.warn} warn` : `${l.length} ok`;
-  };
-  return `<div class="tiles htiles">${GROUPS.map(([g, name, target]) =>
-    `<button type="button" class="tile g-${g}" data-act="health-tile" data-target="${target}"><span class="tname">${name}</span><span class="tval">${esc(val(g))}</span></button>`).join("")}</div>`;
+  if (g === "use") {
+    const b = health && health.bank && health.bank.state === "ok" ? health.bank.row : null;
+    return b ? [`Claude ${b.five_hour} % of 5h · ${b.seven_day} % of week`, String(b.verdict || "").toLowerCase(), b.verdict === "PROCEED" ? "ok" : "warn"] : ["no preflight row yet", "no data", "off"];
+  }
+  if (!feed) return ["waiting for the doctor feed", "no data", "off"];
+  if (g === "chk") {
+    const v = verdict(feed, health), c = countRows(rows);
+    const alerts = v.alerts && v.alerts.length ? ` · alerts: ${v.alerts.length} firing` : "";
+    return [`${rows.length} items · ${c.fail + c.warn ? `${c.fail} fail · ${c.warn} warn` : "nothing broken"}${alerts}`, v.word.toLowerCase(), v.cls];
+  }
+  const l = rows.filter((r) => groupOf(r) === g), c = countRows(l), w = worst(l);
+  if (g === "job") return l.length ? [`${l.filter((r) => r.health !== "off").length} of ${l.length} armed`, w, w] : ["no jobs declared", "none", "off"];
+  return l.length ? [`${l.length} checked`, c.fail + c.warn ? `${c.fail + c.warn} to look at` : "fresh", w] : ["doctor reports no search rows", "no data", "off"];
+}
+function tilesHtml(feed, health, open) {
+  return `<div class="tiles htiles">${GROUPS.map(([g, name, id]) => {
+    const [val, word, cls] = tileVal(g, feed, health);
+    return `<button type="button" class="tile g-${g}" data-act="health-tile" data-tile="${id}" aria-expanded="${open === id}"><span class="tname">${esc(name)}</span><span class="tval">${esc(val)}</span><span class="pill ${esc(cls)}">${esc(word)}</span></button>`;
+  }).join("")}</div>`;
 }
 
 // All my projects: the shared rows once, then each project worst first with its own broken rows.
@@ -152,12 +170,12 @@ function sharedPanel(feed, health, view) {
   const rows = sharedOf(feed).filter(isTriage), alerts = alertsOf(health) || []; // firing alerts watch the machine, so they belong here too
   const mini = GROUPS.map(([g, name]) => { const l = rows.filter((r) => groupOf(r) === g); return `<div class="mini"><b>${name}</b><span class="ro">${l.length ? `${l.length} to look at` : "ok"}</span></div>`; }).join("");
   return `<section id="shared" class="box" aria-labelledby="h-shared"><h2 id="h-shared">Shared</h2><p class="sub">Problems with the machine or himmel itself. Shown once here, never counted against a project.</p>
-    <div class="minis">${mini}</div>${rows.length || alerts.length ? rows.map((r) => brokenRow(r, view.row === r.id)).join("") + alerts.map(alertHtml).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
+    <div class="minis">${mini}</div>${rows.length || alerts.length ? rows.map((r) => brokenRow(r, view.row === r.id, false, view.chief)).join("") + alerts.map((a) => alertHtml(a, view.chief)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
 }
 function projectLine(p, view) {
   const c = (p.counts && p.counts.project) || { fail: 0, warn: 0 }, v = projectVerdict(c);
   const head = p.checkedAt ? `<span class="pill ${v.cls}">${esc(v.word)}</span>` : `<span class="pill off">not checked</span>`;
-  const broken = (p.broken || []).map((r) => brokenRow(r, view.row === r.id, !p.current)).join("");
+  const broken = (p.broken || []).map((r) => brokenRow(r, view.row === r.id, !p.current, p.current ? view.chief : undefined)).join("");
   return `<div class="box prj" data-project="${esc(p.name)}"><div class="phead"><b>${esc(p.name)}</b>${p.current ? `<span class="scope">this UI</span>` : ""}${head}
     <span class="ro">${p.checkedAt ? `${c.fail} fail · ${c.warn} warn · checked ${esc(String(p.checkedAt).slice(0, 16).replace("T", " "))}` : "no cached check yet: open Health in that project once"}</span>
     <a class="btn" href="#/health?project=${encodeURIComponent(p.name)}">open ▸</a></div>${broken}</div>`;
@@ -270,17 +288,22 @@ export function renderHealth(feed, health, view = {}) {
   if (view.mode === "all") return allProjectsHtml(feed, health, view);
   const name = view.project || (feed && feed.target && feed.target.project) || "this project";
   if (view.unchecked) return `<header class="ph"><h1>Health · ${esc(name)}</h1></header>${nodata(`${name} has not been checked yet; open Health in that project once`)}`;
-  // The mode and the firing alerts belong to the project this UI runs in, so another project's page shows neither.
+  // The firing alerts belong to the project this UI runs in, so another project's page does not show them.
   const own = view.foreign ? health && { ...health, monitoring: null } : health;
-  const modeCard = view.foreign ? `<div class="card" id="mode"><h3>Project mode</h3>${nodata("read in that project's own UI")}</div>` : modeHtml(health);
+  // Q5: with no tile chosen, Checks opens by itself only on a problem; tile=none means the operator closed it.
+  const v = verdict(feed, own), open = view.tile || (feed && (v.cls === "fail" || v.cls === "warn") ? "checks" : "none");
+  const sharedTag = `<span class="scope">shared</span>`;
+  const panel = {
+    checks: () => section("broken", "Checks", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, own, view)),
+    usage: () => section("usage", "Usage", "Read-only: the newest bank-preflight ledger row and the subscription usage budget windows.", sharedTag + bankHtml(health) + quotaHtml(health) + fleetLink(view)),
+    jobs: () => section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", sharedTag + jobsHtml(feed)),
+    search: () => section("search", "Search & graph", "From the doctor's search rows.", searchHtml(feed)),
+  }[open];
   return [
-    `<header class="ph"><h1>Health · ${esc(name)}</h1><p>Is himmel healthy here, what is broken and who fixes it, from the doctor feed and the monitoring tier.</p></header>`,
-    section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, own) + tilesHtml(feed, health) + modeCard),
-    section("broken", "What is broken, and what do I do", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, own, view)),
-    section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
-    section("usage", "Usage", "Read-only: the newest bank-preflight ledger row and the subscription usage budget windows.", bankHtml(health) + quotaHtml(health) + fleetLink(view)),
+    `<header class="ph"><h1>Health · ${esc(name)}</h1><p>Is himmel working here, what is broken and who fixes it, from the doctor feed and the monitoring tier.</p></header>`,
+    section("verdict", "Is this project working right now?", "One word, from the doctor feed and any firing alerts. A tile opens its panel.", verdictHtml(feed, own, view.now ?? Date.now()) + tilesHtml(feed, own, open)),
+    panel ? panel() : "",
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
     section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health)),
-    section("search", "Search and graph freshness", "From the doctor's search rows.", searchHtml(feed)),
   ].join("\n");
 }

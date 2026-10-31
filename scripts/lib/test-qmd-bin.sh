@@ -726,9 +726,7 @@ assert "real-dir: global path now links to the fork" \
 
 # -- existing STALE LINK (pointing elsewhere): removed + replaced, the old
 #    target's contents survive (link-only removal, never recursive). Reuse
-#    the module's OWN _qmd_link (junction on Windows / symlink on POSIX) to
-#    create the fixture, so the test stays correct on either platform without
-#    reimplementing the OS branch. -------------------------------------------
+#    the module's OWN _qmd_link to create the fixture. -----------------------
 stalelink_home="$id2/stalelink"
 mkdir -p "$stalelink_home/.bun/install/global/node_modules/@tobilu" "$stalelink_home/elsewhere"
 echo "elsewhere content" > "$stalelink_home/elsewhere/marker.txt"
@@ -1045,15 +1043,9 @@ assert "CDPATH set -> resolved path still ends at the requested file" \
 # so a future edit could drop it here and the whole suite would still pass.
 #
 # Pinned by EQUALITY, not by line count — the first draft of this test used
-# `wc -l` like its sibling above and passed with the guard DELETED. On Windows
-# the canonical form goes through `cygpath -w`, which COLLAPSES the stray
-# newline rather than choking on it: the two-line capture comes back as one
-# entirely plausible single path with the directory spliced onto itself,
-#   C:\…\Temp\tmp.X\target\tmp\tmp.X\target
-# which is nonexistent but perfectly well-formed. Measured, guard removed:
-# 1 line, wrong path, assertion green. Comparing the relative operand against
-# the ABSOLUTE one — which never consults CDPATH — catches that shape and the
-# plain two-line POSIX shape both.
+# `wc -l` like its sibling above and passed with the guard DELETED. Comparing
+# the relative operand against the ABSOLUTE one — which never consults CDPATH —
+# catches a collapsed or spliced path and the plain two-line shape both.
 # shellcheck disable=SC2016
 cdp_can="$(cd "$cdp_dir" && CDPATH="$cdp_dir" "$(command -v bash)" -c '. "$1/qmd-bin.sh"; _qmd_canonical_dir "target"' _ "$SCRIPT_DIR" 2>/dev/null)"
 # shellcheck disable=SC2016
@@ -1077,18 +1069,9 @@ echo "[test-qmd-bin] _qmd_abs_path resolves through a symlink to the physical pa
 sym_root="$tmpdir/symprobe"
 mkdir -p "$sym_root/real/target"
 : > "$sym_root/real/target/file.js"
-# `ln -s` EXIT CODE is not enough to conclude a symlink exists. Without
-# privileges (or CYGWIN/MSYS winsymlinks), MSYS ln quietly falls back to COPYING
-# the directory and still exits 0 — measured on this host. The copy is a second
-# real directory, so the comparison below would compare two unrelated physical
-# paths and fail for a reason that has nothing to do with `pwd -P`. Require the
-# thing itself, not the command's opinion of it.
-#
-# Three outcomes, kept DISTINCT: a real symlink runs the
-# assertions; a non-symlink at the link path is the documented MSYS copy and
-# SKIPs; NOTHING at the link path is a genuine setup failure and FAILS. Folding
-# the last into the SKIP branch is the same defect this file keeps finding —
-# a setup that never happened would read as "this host cannot symlink" forever.
+# `ln -s` EXIT CODE is not enough to conclude a symlink exists; require the
+# thing itself, not the command's opinion of it. A link that did not appear is
+# a setup failure and FAILS.
 ln -s "$sym_root/real/target" "$sym_root/link" 2>/dev/null || true
 if [ -L "$sym_root/link" ]; then
   # shellcheck disable=SC2016
@@ -1109,17 +1092,8 @@ if [ -L "$sym_root/link" ]; then
   sym_via_abs="$("$(command -v bash)" -c '. "$1/qmd-bin.sh"; _qmd_abs_path "$2"' _ "$SCRIPT_DIR" "$sym_root/link/file.js" 2>/dev/null)"
   assert "_qmd_abs_path on an ABSOLUTE symlinked path equals the physical resolution" \
     test "$sym_via_abs" = "$sym_real"
-elif [ -e "$sym_root/link" ]; then
-  # Unprivileged Windows cannot create real symlinks; CI (ubuntu shell-unit)
-  # can, so the assertion is not lost — it just does not run here. Announced
-  # rather than silently skipped, so a permanently-skipping test cannot
-  # masquerade as green.
-  echo "  SKIP: this host produced a copy, not a symlink (unprivileged MSYS ln) — covered on the ubuntu shell-unit runner"
 else
-  # Neither a symlink NOR a copy — ln did not produce anything. That is a
-  # broken fixture, not a platform limitation, so it must not wear the SKIP.
-  assert "symlink fixture was created (neither a symlink nor the MSYS copy appeared)" \
-    test -e "$sym_root/link"
+  assert "symlink fixture was created" test -L "$sym_root/link"
 fi
 
 # qmd_bin_desc — the shared human-readable invocation form (public-PR CR).

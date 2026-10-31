@@ -11,18 +11,10 @@
 #
 # Sourced, not executed. bash 3.2-safe; no side effects.
 
-# Cross-platform user-home resolution (generalized from
-# default_vault). On Windows Git-Bash $HOME can be the MSYS home
-# (/home/<user>) while Claude Code's config (~/.claude) and the luna vault live
-# under the Windows user profile, so prefer USERPROFILE via cygpath BEFORE
-# $HOME. POSIX hosts have USERPROFILE unset and fall straight through to $HOME,
-# unchanged. /tmp is the last-resort floor when both are unset.
+# User-home resolution (generalized from default_vault): $HOME, with /tmp as
+# the last-resort floor when it is unset.
 resolve_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
 # Default vault resolution (cross-platform). Honors
