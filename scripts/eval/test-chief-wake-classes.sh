@@ -45,6 +45,11 @@ check "worker-READY: 2 requests, 500, escalate, mech 250" 'grep -qx "KIND worker
 check "bg:leg-event.sh is relay-only" 'grep -qx "KIND bg:leg-event.sh wakes=1 reqs=1 eq=250 escalate=0 relay_eq=250 mech_eq=0" "$TMP/a.out"'
 check "worker-other is relay-only" 'grep -qx "KIND worker-other wakes=1 reqs=1 eq=250 escalate=0 relay_eq=250 mech_eq=0" "$TMP/a.out"'
 
+echo "2a. a waiter output file with an invalid byte"
+printf '\377\nWAKE tick acts=none\n' >"$TMP/fx/wait.out"
+cw --date 2026-10-19 --exclude B >"$TMP/f.out" 2>"$TMP/f.err"; rc=$?
+check "still exits 0 and reads waiter:tick" '[ "$rc" = 0 ] && grep -q "^KIND waiter:tick wakes=1 " "$TMP/f.out"'
+
 echo "3. console selection"
 cw --date 2026-10-19 >"$TMP/b.out" 2>&1
 check "without --exclude both consoles count (B adds a wake)" 'grep -qx "consoles=2 A,B" "$TMP/b.out" && grep -q "^CLASS ALL wakes=6 " "$TMP/b.out"'

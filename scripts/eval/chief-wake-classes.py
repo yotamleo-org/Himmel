@@ -75,11 +75,12 @@ def wake_kind(txt):
         of = re.search(r"<output-file>(.*?)</output-file>", txt)
         kind = "unknown"
         try:
-            for line in open(of.group(1)):
-                if line.startswith("WAKE "):
-                    kind = line.split()[1]
-                    break
-        except (AttributeError, OSError):
+            with open(of.group(1), encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if line.startswith("WAKE "):
+                        kind = line.split()[1]
+                        break
+        except (AttributeError, OSError, IndexError):
             pass
         return "waiter:" + kind
     return "bg:" + name
