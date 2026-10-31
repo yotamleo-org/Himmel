@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync, lstatSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, lstatSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { resolveProfile } from '../plugin-profiles.mjs';
@@ -160,6 +161,41 @@ for (const [name, env, message] of [
     assert.match(result.stderr, message);
   });
 }
+
+test('CLI replay skips missing or invalid TLC without starting replay', {
+  skip: !process.env.CI && 'CI-only replay prerequisite verification',
+}, () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pstack-replay-'));
+  try {
+    const marker = join(scratch, 'replay-started');
+    const probe = join(scratch, 'probe.mjs');
+    writeFileSync(probe, `import { appendFileSync } from 'node:fs';
+import { basename } from 'node:path';
+if (['statechart.ts', 'worker.ts', 'java.ts'].includes(basename(process.argv[1] ?? '')))
+  appendFileSync(${JSON.stringify(marker)}, process.argv[1] + '\\n');
+`);
+    const invalidJar = join(scratch, 'invalid.jar');
+    writeFileSync(invalidJar, 'not a TLC jar');
+    for (const jar of [undefined, invalidJar]) {
+      const env = { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(probe).href}` };
+      delete env.NODE_TEST_CONTEXT;
+      if (jar === undefined) delete env.TLA2TOOLS;
+      else env.TLA2TOOLS = jar;
+      const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--test', '--test-reporter=tap',
+        join(PLUGIN, 'skills/statechart/scripts/test/cli.test.ts')], {
+        encoding: 'utf8', timeout: 30000, env,
+      });
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /# SKIP CLI replay requires an absolute TLA2TOOLS path/);
+      if (jar !== undefined) assert.match(result.stdout, /SHA-256 mismatch/);
+      assert.match(result.stdout, /# fail 0\b/);
+      assert.equal(existsSync(marker), false, 'a replay process must not start');
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
 
 test('plugin.json keeps the release-managed version 0.1.2', () => {
   assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.2');

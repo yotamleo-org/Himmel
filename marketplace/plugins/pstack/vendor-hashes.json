@@ -69,7 +69,7 @@
     },
     "skills/maintain-formal-verification-skill/SKILL.md": {
       "upstream": "0c96f54293542d3818b68754562b338073958781a9684454611dca37592e2d2c",
-      "vendored": "10fea88f9c9035e4cbff239fd12d2a68d7fe3c817e24cd5c7b112d1aa2f17285",
+      "vendored": "f62941f532a609ddce473213a23e8fea338ae93761e78e9ff183ac2847859e23",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -298,7 +298,7 @@
     },
     "skills/statechart/scripts/test/cli.test.ts": {
       "upstream": "8a3b028dafe2065029a66242f7a3832d18058e772a0dfc1b2c170511ffee8e07",
-      "vendored": "8a3b028dafe2065029a66242f7a3832d18058e772a0dfc1b2c170511ffee8e07",
+      "vendored": "071e1f19944c11bbb5f19261b8754b82fe63fe9015e1d30d1ec1b8b1c8abd500",
       "upstreamExecutable": false,
       "executable": false
     },

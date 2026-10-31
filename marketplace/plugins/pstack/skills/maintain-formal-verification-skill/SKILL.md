@@ -23,7 +23,7 @@ A check can be both updated and bug: the update makes the verification describe 
 
 ## Edit scope
 
-Edit only the verification: models, harnesses, property files, and the verify skill itself. Never edit product code during a run, unless the user asks you to. When a property fails on the current code, do not weaken the property or the model to make it pass. Report the failure.
+Edit only the verification: models, harnesses, property files, and the verify skill itself. Never edit product code in the user's working tree during a run, unless they ask you to. The mutation check in step 5 may edit only a disposable copy, which must be discarded. When a property fails on the current code, do not weaken the property or the model to make it pass. Report the failure.
 
 ## Pass
 
@@ -40,7 +40,7 @@ Edit only the verification: models, harnesses, property files, and the verify sk
 4. **Update from the code, not from the result.** Change the model or harness so that each changed part again points to code that a reviewer can open, and keep one indivisible step in the code as one step in the verification. Write the update from the code before you rerun, and do not shape it by what makes the check pass. Change a property only for a promise that changed on purpose. Write down the old wording, the new wording, and the evidence. Keep the bounds unless the change makes them wrong. If you must reduce a bound, say so in the report.
 
 5. **Rerun and judge each result.**
-   - **Pass:** the check can now pass on a description that has lost the ability to fail. Break the new code the way the property guards against, such as removing a new check or reordering a new step, and confirm that the check catches it. Then drop the break.
+   - **Pass:** the check can now pass on a description that has lost the ability to fail. In a disposable copy outside the user's working tree, break the new code the way the property guards against, such as removing a new check or reordering a new step, and confirm that the check catches it. Then discard the mutation and remove the disposable copy. Never mutate the user's product working tree unless they explicitly ask.
    - **Fail:** replay the counterexample against the real code, step by step. If a step cannot happen in the code, the verification is wrong. Fix the verification, and say what was wrong. If every step can happen, it is a bug. Name the commit that introduced it, tell the counterexample as a sequence of steps in the code's own words, and state the harm in one sentence. If a cheap test or reproduction against the real code shows the bug, add it to the report as evidence. Do not commit it to the product code.
 
 6. **Update the verify skill.** Update the code that each check covers, the commands, the bounds, the assumptions, and the sync commit. Set the sync commit to the commit that you checked. Do not move the sync commit for a blocked check, and say so in the report. Then follow the verify skill once as the next agent would, so that you know its steps still run.

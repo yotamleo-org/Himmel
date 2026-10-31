@@ -39,7 +39,9 @@ Provision Java 11+ and `tla2tools.jar` 1.7.4 on that VM, then set **absolute**
 The runnable entry point is
 `marketplace/plugins/pstack/skills/statechart/scripts/statechart`.
 It returns 0 when the checked rules hold, 1 when a rule breaks, and 2 when a
-prerequisite or check fails. Without absolute prerequisite paths it stops with
+prerequisite or check fails. The launcher returns 127 if no supported TypeScript
+runtime is available; interruption returns 130 for SIGINT or 143 for SIGTERM.
+Without absolute prerequisite paths it stops with
 `Set TLA2TOOLS to an absolute path` or `Set JAVA to an absolute path`; an absent
 file or a jar hash mismatch also stops it. The vendored runtime never installs
 or downloads tools. A missing prerequisite is not a passing check.

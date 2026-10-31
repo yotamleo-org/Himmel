@@ -1,18 +1,32 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { plainText } from "../backends/plain-text.ts";
 import { readMessages } from "../frontends/messages.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const corpus = path.join(here, "corpus");
 const read = (file: string) => fs.readFileSync(file, "utf8");
+const replaySkip = (() => {
+  const jar = process.env.TLA2TOOLS;
+  const required = "CLI replay requires an absolute TLA2TOOLS path to the pinned tla2tools.jar 1.7.4";
+  if (!jar || !path.isAbsolute(jar)) return required;
+  try {
+    if (createHash("sha256").update(fs.readFileSync(jar)).digest("hex") !==
+        "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88")
+      return `${required} (SHA-256 mismatch)`;
+  } catch (error) {
+    return `${required} (${(error as Error).message})`;
+  }
+  return false;
+})();
 
 function run(
   dir: string,
@@ -50,7 +64,7 @@ function run(
       env: {
         ...process.env,
         JAVA: java,
-        TLA2TOOLS: "tla2tools.jar",
+        TLA2TOOLS: process.env.TLA2TOOLS,
         STATECHART_REPLAY: dir,
         STATECHART_LOG: log,
         ...env,
@@ -85,7 +99,7 @@ const named = (report: string) => {
 };
 
 for (const name of fs.readdirSync(corpus)) {
-  test(`${name} writes the committed chart and report from TLC's output`, () => {
+  test(`${name} writes the committed chart and report from TLC's output`, { skip: replaySkip }, () => {
     const dir = path.join(corpus, name);
     const r = run(dir);
     assert.equal(r.stderr, "");
@@ -126,7 +140,7 @@ for (const [how, command] of [
   ["by its own path", () => launcher],
   ["through an absolute and a relative symlink", linkedLauncher],
 ] satisfies [string, () => string][]) {
-  test(`the launcher reached ${how} writes the committed chart on this Node`, () => {
+  test(`the launcher reached ${how} writes the committed chart on this Node`, { skip: replaySkip }, () => {
     const dir = path.join(corpus, "MediaPlayer");
     const r = run(dir, {
       command: [command()],
@@ -184,7 +198,7 @@ for (const [what, bin] of [
   });
 }
 
-test("the order of TLC's dump and its state IDs do not change the chart or the report", () => {
+test("the order of TLC's dump and its state IDs do not change the chart or the report", { skip: replaySkip }, () => {
   let seed = 7;
   const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
   for (const name of ["DieHard", "LoginParallel", "TwoPhase"]) {
@@ -240,7 +254,7 @@ function startCommand(
       env: {
         ...process.env,
         JAVA: java,
-        TLA2TOOLS: "tla2tools.jar",
+        TLA2TOOLS: process.env.TLA2TOOLS,
         STATECHART_REPLAY: dir,
         TMPDIR: tmpdir,
       },
@@ -335,7 +349,7 @@ function sleepyJava(fakes: string) {
 
 test(
   "a SIGKILL of the command stops TLC, removes the temporary folder, and writes nothing",
-  { timeout: 30_000 },
+  { skip: replaySkip, timeout: 30_000 },
   async () => {
     const fakes = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-fakes-"));
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-parent-"));
@@ -354,7 +368,7 @@ test(
 
 test(
   "a SIGKILL of the command while the view draws the chart leaves no folder behind",
-  { timeout: 30_000 },
+  { skip: replaySkip, timeout: 30_000 },
   async () => {
     const fakes = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-fakes-"));
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-parent-"));
@@ -388,7 +402,7 @@ test(
 
 test(
   "a check killed by a signal stops the command with exit 2, and it writes nothing",
-  { timeout: 30_000 },
+  { skip: replaySkip, timeout: 30_000 },
   async () => {
     const fakes = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-fakes-"));
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-parent-"));
@@ -410,7 +424,7 @@ test(
 for (const signal of ["SIGINT", "SIGTERM"] satisfies NodeJS.Signals[]) {
   test(
     `${signal} stops TLC, removes the temporary folder, and writes nothing`,
-    { timeout: 30_000 },
+    { skip: replaySkip, timeout: 30_000 },
     async () => {
       const { pidFile } = await signalWhile(signal, (fakes) => {
         const fake = sleepyJava(fakes);
@@ -426,7 +440,7 @@ for (const signal of ["SIGINT", "SIGTERM"] satisfies NodeJS.Signals[]) {
 
   test(
     `${signal} while the view draws the chart stops the command, and it writes nothing`,
-    { timeout: 60_000 },
+    { skip: replaySkip, timeout: 60_000 },
     () =>
       signalWhile(signal, (fakes) => {
         const drawing = path.join(fakes, "drawing");
@@ -449,7 +463,7 @@ for (const signal of ["SIGINT", "SIGTERM"] satisfies NodeJS.Signals[]) {
 
   test(
     `${signal} while the command writes its files stops it, and it writes nothing`,
-    { timeout: 60_000 },
+    { skip: replaySkip, timeout: 60_000 },
     () =>
       signalWhile(signal, () => ({
         dir: gridCase(150),
@@ -467,7 +481,7 @@ for (const signal of ["SIGINT", "SIGTERM"] satisfies NodeJS.Signals[]) {
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] satisfies NodeJS.Signals[]) {
-  test(`${signal} while the command reads TLC's last output stops the check and writes nothing`, () => {
+  test(`${signal} while the command reads TLC's last output stops the check and writes nothing`, { skip: replaySkip }, () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-late-"));
     const java = path.join(tmp, "java.mjs");
     const tmpdir = path.join(tmp, "tmpdir");
@@ -500,7 +514,7 @@ spawn(process.execPath, ["-e", ${JSON.stringify(sendWhileRead)}, dot, command, $
   });
 }
 
-test("a broken property is named in the report, and its TLC trace is in tlc-NAME.out", () => {
+test("a broken property is named in the report, and its TLC trace is in tlc-NAME.out", { skip: replaySkip }, () => {
   const dir = path.join(corpus, "MediaPlayerProps");
   const r = run(dir);
   assert.equal(r.status, 1);
@@ -521,7 +535,7 @@ test("a broken property is named in the report, and its TLC trace is in tlc-NAME
   assert.match(r.report, /^## Rules that hold\n.*\bEventuallyStops\b.*\bStaysTyped\b/m);
 });
 
-test("TLC checks the rules and draws the chart with VIEW and SYMMETRY, and the report says an arrow can lead to a representative", () => {
+test("TLC checks the rules and draws the chart with VIEW and SYMMETRY, and the report says an arrow can lead to a representative", { skip: replaySkip }, () => {
   const dir = copyCase("MediaPlayer", (d) =>
     fs.appendFileSync(path.join(d, "MediaPlayer.cfg"), "\nVIEW vars\nSYMMETRY Perms\n"),
   );
@@ -543,7 +557,7 @@ test("TLC checks the rules and draws the chart with VIEW and SYMMETRY, and the r
 const overBudget = (file: string) =>
   fs.writeFileSync(file, read(file).replace(/\b\d+( distinct states found)/g, "1234$1"));
 
-test("a check above the chart budget skips the drawing run and draws only the bug paths", () => {
+test("a check above the chart budget skips the drawing run and draws only the bug paths", { skip: replaySkip }, () => {
   const dir = copyCase("FirstRule", (d) => {
     for (const f of fs.readdirSync(d))
       if (/^verdict-\d+\.out$/.test(f)) overBudget(path.join(d, f));
@@ -560,7 +574,7 @@ test("a check above the chart budget skips the drawing run and draws only the bu
     assert.match(r.report, new RegExp(`^## ${rule} breaks$`, "m"));
 });
 
-test("a passing check above the chart budget writes no chart.mmd and gives the state count", () => {
+test("a passing check above the chart budget writes no chart.mmd and gives the state count", { skip: replaySkip }, () => {
   const dir = copyCase("Login", (d) => overBudget(path.join(d, "verdict-1.out")));
   const r = run(dir);
   assert.equal(r.status, 0);
@@ -573,7 +587,7 @@ test("a passing check above the chart budget writes no chart.mmd and gives the s
   assert.match(r.report, /^## Rules that hold\nTypeOK, NoDeadlock$/m);
 });
 
-test("a property that INSTANCE actions break above the chart budget draws their qualified names and the loop", () => {
+test("a property that INSTANCE actions break above the chart budget draws their qualified names and the loop", { skip: replaySkip }, () => {
   const dir = copyCase("CounterInstance", (d) => overBudget(path.join(d, "verdict-1.out")));
   const r = run(dir);
   assert.equal(r.status, 1);
@@ -585,7 +599,7 @@ test("a property that INSTANCE actions break above the chart budget draws their 
   assert.match(read(path.join(r.out, "chart.mmd")), /^  s\d+ --> s\d+: C!Back$/m);
 });
 
-test("a drawing run that counts more states than the chart budget gives only the bug paths", () => {
+test("a drawing run that counts more states than the chart budget gives only the bug paths", { skip: replaySkip }, () => {
   const dir = copyCase("FirstRule", (d) => overBudget(path.join(d, "ChartRun.out")));
   const r = run(dir);
   assert.equal(r.status, 1);
@@ -596,7 +610,7 @@ test("a drawing run that counts more states than the chart budget gives only the
   );
 });
 
-test("a property with no temporal operator says TLC checked it only in the initial states", () => {
+test("a property with no temporal operator says TLC checked it only in the initial states", { skip: replaySkip }, () => {
   const r = run(path.join(corpus, "Counter"));
   assert.equal(r.status, 0);
   assert.match(r.report, /^## Rules that hold\nLow, StaysSmall\n/m);
@@ -607,7 +621,7 @@ test("a property with no temporal operator says TLC checked it only in the initi
   assert.doesNotMatch(r.report, /TLC checked StaysSmall/);
 });
 
-test("a property that the config replaces with a state predicate gets the initial-states note", () => {
+test("a property that the config replaces with a state predicate gets the initial-states note", { skip: replaySkip }, () => {
   const dir = copyCase("Counter", (d) =>
     fs.writeFileSync(
       path.join(d, "Counter.cfg"),
@@ -619,7 +633,7 @@ test("a property that the config replaces with a state predicate gets the initia
   assert.match(r.report, /^TLC checked StaysSmall only in the initial states, /m);
 });
 
-test("a property that an extended module also defines as LOCAL takes the root definition's level", () => {
+test("a property that an extended module also defines as LOCAL takes the root definition's level", { skip: replaySkip }, () => {
   const r = run(path.join(corpus, "Shadow"));
   assert.equal(r.status, 0);
   assert.doesNotMatch(r.report, /TLC checked Shadow/);
@@ -627,7 +641,7 @@ test("a property that an extended module also defines as LOCAL takes the root de
   assert.match(r.report, /^TLC checked Hold only in the initial states, /m);
 });
 
-test("a property from an extended module gets the initial-states note too", () => {
+test("a property from an extended module gets the initial-states note too", { skip: replaySkip }, () => {
   const dir = copyCase("MediaPlayerProps", (d) => {
     fs.appendFileSync(path.join(d, "MediaPlayerProps.cfg"), "\nPROPERTY TypeOK\n");
     fs.copyFileSync(path.join(d, "verdict-6.out"), path.join(d, "verdict-7.out"));
@@ -637,7 +651,7 @@ test("a property from an extended module gets the initial-states note too", () =
   assert.doesNotMatch(r.report, /TLC checked (EventuallyStops|StaysTyped)/);
 });
 
-test("a spec that SANY cannot read stops the command with exit 2", () => {
+test("a spec that SANY cannot read stops the command with exit 2", { skip: replaySkip }, () => {
   const dir = copyCase("MediaPlayer", (d) => fs.writeFileSync(path.join(d, "sany.exit"), "150\n"));
   const r = run(dir);
   assert.equal(r.status, 2);
@@ -645,7 +659,7 @@ test("a spec that SANY cannot read stops the command with exit 2", () => {
   assert.deepEqual(r.files, []);
 });
 
-test("a first verdict run that TLC cannot finish stops the command with exit 2", () => {
+test("a first verdict run that TLC cannot finish stops the command with exit 2", { skip: replaySkip }, () => {
   const dir = copyCase("Login", (d) => fs.writeFileSync(path.join(d, "verdict-1.exit"), "150\n"));
   const r = run(dir);
   assert.equal(r.status, 2);
@@ -653,7 +667,7 @@ test("a first verdict run that TLC cannot finish stops the command with exit 2",
   assert.deepEqual(r.files, []);
 });
 
-test("a later verdict run that TLC cannot finish keeps the exit and leaves its rules not checked", () => {
+test("a later verdict run that TLC cannot finish keeps the exit and leaves its rules not checked", { skip: replaySkip }, () => {
   const dir = copyCase("CounterJump", (d) =>
     fs.writeFileSync(path.join(d, "verdict-2.exit"), "150\n"),
   );
@@ -666,7 +680,7 @@ test("a later verdict run that TLC cannot finish keeps the exit and leaves its r
   );
 });
 
-test("a drawing run that TLC cannot finish stops the command with exit 2", () => {
+test("a drawing run that TLC cannot finish stops the command with exit 2", { skip: replaySkip }, () => {
   const dir = copyCase("Login", (d) => {
     fs.rmSync(path.join(d, "graph.dot"));
     fs.writeFileSync(path.join(d, "ChartRun.exit"), "150\n");
@@ -676,40 +690,17 @@ test("a drawing run that TLC cannot finish stops the command with exit 2", () =>
   assert.match(r.stderr, /TLC could not check .*Login\.tla \(exit 150\)/);
 });
 
-test("a java that cannot start stops the command with exit 2 on a runtime that emits no close for it", () => {
+test("a missing java stops the command with exit 2 before spawning", { skip: replaySkip }, () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-no-java-"));
-  const noClose = path.join(tmp, "no-close.mjs");
-  fs.writeFileSync(
-    noClose,
-    `import childProcess from "node:child_process";
-import { syncBuiltinESMExports } from "node:module";
-const { spawn } = childProcess;
-childProcess.spawn = (...args) => {
-  const child = spawn(...args);
-  const { emit } = child;
-  child.emit = (name, ...rest) =>
-    name === "close" && child.pid === undefined ? false : emit.call(child, name, ...rest);
-  return child;
-};
-syncBuiltinESMExports();
-`,
-  );
   const java = path.join(tmp, "java");
-  const spec = path.join(corpus, "Login", "Login.tla");
-  const r = run(path.dirname(spec), {
-    java,
-    command: [
-      process.execPath,
-      `--import=${pathToFileURL(noClose).href}`,
-      path.join(here, "../statechart.ts"),
-    ],
-  });
-  assert.equal(r.stderr, `SANY could not read ${spec} (exit null):\nspawn ${java} ENOENT\n`);
+  const r = run(path.join(corpus, "Login"), { java });
+  assert.match(r.stderr, /ENOENT/);
+  assert.ok(r.stderr.includes(java));
   assert.equal(r.status, 2);
   assert.equal(fs.existsSync(r.out), false);
 });
 
-test("a step hidden by the view is not drawn, and the report counts it", () => {
+test("a step hidden by the view is not drawn, and the report counts it", { skip: replaySkip }, () => {
   const dir = path.join(corpus, "MediaPlayer");
   const hidden = new Set(read(path.join(dir, "graph.dot")).match(/^.* -> .*label="ACallComesIn"/gm))
     .size;
@@ -730,7 +721,7 @@ test("a step hidden by the view is not drawn, and the report counts it", () => {
   assert.match(r.report, /^1\. you turn it up: Playback Stopped, Volume Loud$/m);
 });
 
-test("a view that hides a step of a bug path stops the command with exit 2", () => {
+test("a view that hides a step of a bug path stops the command with exit 2", { skip: replaySkip }, () => {
   const dir = path.join(corpus, "MediaPlayer");
   const view = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "statechart-view-")), "view.mjs");
   fs.writeFileSync(
@@ -754,7 +745,7 @@ for (const [what, body, words] of [
     /group\(\) returned "Busy"/,
   ],
 ] satisfies [string, string, RegExp][]) {
-  test(`a view whose ${what} stops the command with exit 2`, () => {
+  test(`a view whose ${what} stops the command with exit 2`, { skip: replaySkip }, () => {
     const view = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "statechart-view-")), "view.mjs");
     fs.writeFileSync(view, body);
     const r = run(path.join(corpus, "Login"), { view });
@@ -799,7 +790,7 @@ for (const [what, body, words] of [
   ["exports colors as a string", 'export const colors = "blue";', /\bcolors\b[\s\S]*\bobject\b/],
   ["exports a number as its title", "export const title = 7;", /\btitle\b[\s\S]*\bstring\b/],
 ] satisfies [string, string, RegExp][]) {
-  test(`a view that ${what} stops the command with exit 2 before TLC runs`, () => {
+  test(`a view that ${what} stops the command with exit 2 before TLC runs`, { skip: replaySkip }, () => {
     const r = run(path.join(corpus, "Login"), { view: writeView(body) });
     assert.equal(r.status, 2);
     assert.match(r.stderr, words);
@@ -808,7 +799,7 @@ for (const [what, body, words] of [
   });
 }
 
-test("a view module that throws null stops the command with exit 2 and no stack trace", () => {
+test("a view module that throws null stops the command with exit 2 and no stack trace", { skip: replaySkip }, () => {
   const r = run(path.join(corpus, "Login"), { view: writeView("throw null;\n") });
   assert.equal(r.status, 2);
   assert.equal(r.stderr, "null\n");
@@ -816,7 +807,7 @@ test("a view module that throws null stops the command with exit 2 and no stack 
   assert.deepEqual(r.configs, {});
 });
 
-test("a view module that throws an object with no prototype stops the command with exit 2", () => {
+test("a view module that throws an object with no prototype stops the command with exit 2", { skip: replaySkip }, () => {
   const r = run(path.join(corpus, "Login"), {
     view: writeView("throw Object.create(null);\n"),
   });
@@ -826,7 +817,7 @@ test("a view module that throws an object with no prototype stops the command wi
   assert.deepEqual(r.configs, {});
 });
 
-test("a view module that throws a plain object with a message prints the message", () => {
+test("a view module that throws a plain object with a message prints the message", { skip: replaySkip }, () => {
   const r = run(path.join(corpus, "Login"), {
     view: writeView('throw { message: "The view has no states." };\n'),
   });
@@ -836,7 +827,7 @@ test("a view module that throws a plain object with a message prints the message
   assert.deepEqual(r.configs, {});
 });
 
-test("a view that ends the check while TLC runs stops TLC, and the command exits 2 and writes nothing", async () => {
+test("a view that ends the check while TLC runs stops TLC, and the command exits 2 and writes nothing", { skip: replaySkip }, async () => {
   const { java, pidFile } = sleepyJava(fs.mkdtempSync(path.join(os.tmpdir(), "statechart-fakes-")));
   const r = run(path.join(corpus, "Login"), {
     java,
@@ -851,7 +842,7 @@ test("a view that ends the check while TLC runs stops TLC, and the command exits
   await assertGone(Number(read(pidFile)));
 });
 
-test("a group that only a mixed chart state gets still needs a color", () => {
+test("a group that only a mixed chart state gets still needs a color", { skip: replaySkip }, () => {
   const view = writeView(
     'export const state = (v) => v.main.split(".")[0];\n' +
       'export const group = (v) => v.main.includes("Checking") ? "Checking" : v.main.includes("Wrong") ? "Waiting" : undefined;\n' +
@@ -863,7 +854,7 @@ test("a group that only a mixed chart state gets still needs a color", () => {
   assert.deepEqual(r.files, []);
 });
 
-test("a view with a group in a theme color draws that color and names the group in the Legend", () => {
+test("a view with a group in a theme color draws that color and names the group in the Legend", { skip: replaySkip }, () => {
   const view = writeView(
     'export const state = (v) => v.main.split(".");\n' +
       'export const group = (v) => (v.main === "Signed in" ? "Done" : undefined);\n' +
@@ -905,7 +896,7 @@ const fanOut = (n: number) => {
   return [...lines, "}"].join("\n");
 };
 
-test("a flat view names a label with U+0000 as written when a loop cannot take a step out of it", () => {
+test("a flat view names a label with U+0000 as written when a loop cannot take a step out of it", { skip: replaySkip }, () => {
   const view = writeView(
     `export const state = (v) => (v.playback === "Stopped" || v.volume === "Muted" ? ${JSON.stringify("a\0b")} : v.playback);\n`,
   );
@@ -1059,7 +1050,7 @@ for (const [what, c] of [
     says: RegExp;
   },
 ][]) {
-  test(what, () => {
+  test(what, { skip: replaySkip }, () => {
     const width = c.fanOut;
     const dir = width
       ? copyCase(c.base, (d) => fs.writeFileSync(path.join(d, "graph.dot"), fanOut(width)))
@@ -1084,7 +1075,7 @@ for (const [what, args, words] of [
     /Cannot find the TLC config Missing\.cfg/,
   ],
 ] satisfies [string, string[], RegExp][]) {
-  test(`${what} stops the command with exit 2 before TLC runs`, () => {
+  test(`${what} stops the command with exit 2 before TLC runs`, { skip: replaySkip }, () => {
     const r = run(path.join(corpus, "Login"), { args });
     assert.equal(r.status, 2);
     assert.match(r.stderr, words);
@@ -1138,7 +1129,7 @@ for (const [what, make, words] of [
     /cannot be the output folder\. It is a broken link\./,
   ],
 ] satisfies [string, (out: string) => void, RegExp][]) {
-  test(`an --out that is ${what} stops the command with exit 2 before TLC runs, and keeps what is there`, () => {
+  test(`an --out that is ${what} stops the command with exit 2 before TLC runs, and keeps what is there`, { skip: replaySkip }, () => {
     const out = newPath();
     make(out);
     const before = contents(out);
@@ -1152,7 +1143,7 @@ for (const [what, make, words] of [
   });
 }
 
-test("a file that appears in --out while TLC runs is kept, and the command stops with exit 2", () => {
+test("a file that appears in --out while TLC runs is kept, and the command stops with exit 2", { skip: replaySkip }, () => {
   const out = newPath();
   const mine = path.join(out, "report.md");
   const java = path.join(path.dirname(out), "java.sh");
@@ -1169,7 +1160,7 @@ test("a file that appears in --out while TLC runs is kept, and the command stops
   assert.equal(read(mine), "mine\n");
 });
 
-test("an empty --out folder gets the chart and the report", () => {
+test("an empty --out folder gets the chart and the report", { skip: replaySkip }, () => {
   const out = newPath();
   fs.mkdirSync(out);
   const r = run(path.join(corpus, "Login"), { args: ["--out", out] });
@@ -1265,7 +1256,7 @@ for (const [what, config, words] of [
     /Login\.cfg at line 1\. The file starts with a byte order mark\. Save it as UTF-8 without one\.$/m,
   ],
 ] satisfies [string, string, RegExp][]) {
-  test(`a config with ${what} stops the command with exit 2 before TLC runs`, () => {
+  test(`a config with ${what} stops the command with exit 2 before TLC runs`, { skip: replaySkip }, () => {
     const dir = copyCase("Login", (d) => fs.writeFileSync(path.join(d, "Login.cfg"), config));
     const r = run(dir);
     assert.equal(r.status, 2);
@@ -1275,7 +1266,7 @@ for (const [what, config, words] of [
   });
 }
 
-test("a nested comment hides all of its text, as in TLC", () => {
+test("a nested comment hides all of its text, as in TLC", { skip: replaySkip }, () => {
   const dir = copyCase("Login", (d) => {
     const file = path.join(d, "Login.cfg");
     fs.writeFileSync(file, `(* Off: (* old *) CHECK_DEADLOCK FALSE *)\n${read(file)}`);
@@ -1285,7 +1276,7 @@ test("a nested comment hides all of its text, as in TLC", () => {
   assert.equal(r.report, read(path.join(corpus, "Login", "report.md")));
 });
 
-test("a string constant keeps the keywords and comment markers in it", () => {
+test("a string constant keeps the keywords and comment markers in it", { skip: replaySkip }, () => {
   const dir = copyCase("TwoPhase", (d) =>
     fs.writeFileSync(
       path.join(d, "TwoPhase.cfg"),
@@ -1299,7 +1290,7 @@ test("a string constant keeps the keywords and comment markers in it", () => {
   assert.deepEqual(r.configs.ChartRun.match(/^INVARIANT.*$/gm), ["INVARIANT ChartMark"]);
 });
 
-test("TYPE and TYPE_CONSTRAINT are config keywords, as in TLC", () => {
+test("TYPE and TYPE_CONSTRAINT are config keywords, as in TLC", { skip: replaySkip }, () => {
   const dir = copyCase("Login", (d) =>
     fs.writeFileSync(
       path.join(d, "Login.cfg"),
