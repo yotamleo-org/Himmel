@@ -57,9 +57,12 @@ fi
 # repo or an inherited GH_REPO.
 gh_repo="${HIMMEL_DELETE_GH_REPO:-}"
 if [ -z "$gh_repo" ]; then
-    remote_url="$(git remote get-url "$REMOTE" 2>/dev/null)" \
+    # the push URL is what the delete reaches; only github.com is looked up
+    remote_url="$(git remote get-url --push "$REMOTE" 2>/dev/null)" \
         || die "refusing: remote '$REMOTE' has no URL"
-    gh_repo="$(printf '%s' "$remote_url" | sed -E 's#^(git@|ssh://git@|https?://)[^/:]+[:/]##; s#\.git$##')"
+    gh_repo="$(printf '%s' "$remote_url" | sed -E 's#^(git@github\.com:|ssh://git@github\.com/|https://github\.com/)##; s#\.git$##')"
+    [ "$gh_repo" != "$remote_url" ] \
+        || die "refusing: remote '$REMOTE' is not a github.com remote"
 fi
 case "$gh_repo" in
     */*/*|*[!A-Za-z0-9._/-]*|/*|*/|'') die "refusing: cannot resolve the GitHub repository of remote '$REMOTE'" ;;
@@ -67,7 +70,7 @@ case "$gh_repo" in
     *) die "refusing: cannot resolve the GitHub repository of remote '$REMOTE'" ;;
 esac
 
-open_prs="$(gh pr list --repo "$gh_repo" --head "$branch" --state open --json number --jq length 2>/dev/null)" \
+open_prs="$(GH_HOST=github.com gh pr list --repo "$gh_repo" --head "$branch" --state open --json number --jq length 2>/dev/null)" \
     || die "refusing: cannot check open PRs for '$branch' (gh failed)"
 case "$open_prs" in
     ''|*[!0-9]*) die "refusing: unreadable open-PR count '$open_prs' for '$branch'" ;;

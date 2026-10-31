@@ -70,7 +70,7 @@ remote_has() { git -C "$REMOTE" show-ref --verify --quiet "refs/heads/$1"; }
 run() {
     # run <branch> <ref>; sets RC and OUT
     OUT="$(cd "$CLONE" && PATH="$BIN:$PATH" HIMMEL_BRANCH_APPROVALS="$APPROVALS" \
-        HIMMEL_BRANCH_DELETE_LOG="$LOG" HIMMEL_DELETE_REMOTE=origin \
+        HIMMEL_BRANCH_DELETE_LOG="$LOG" HIMMEL_DELETE_REMOTE="${REMOTE_OVERRIDE:-origin}" \
         HIMMEL_DELETE_GH_REPO="${GH_REPO_OVERRIDE-fixture/repo}" bash "$SUT" "$@" 2>&1)"
     RC=$?
 }
@@ -95,6 +95,16 @@ expect_refused "refuses a ref that names the branch only in a commented line" ot
 expect_refused "refuses when the PR lookup fails (fail closed)" gh-down msg-5004
 
 GH_REPO_OVERRIDE="" expect_refused "refuses when the remote's repository cannot be resolved (fail closed)" stale-a msg-5004
+
+# fetch URL names github.com/fixture/repo (the stub accepts that repo) but the
+# push URL is the mocked remote: the lookup must follow the push URL
+git -C "$CLONE" remote add split https://github.com/fixture/repo.git
+git -C "$CLONE" remote set-url --push split "$REMOTE"
+GH_REPO_OVERRIDE="" REMOTE_OVERRIDE=split expect_refused "refuses when the push URL differs from the fetch URL" stale-a msg-5004
+
+# a non-github.com host must not be looked up against github.com
+git -C "$CLONE" remote add ghe https://ghe.example.com/fixture/repo.git
+GH_REPO_OVERRIDE="" REMOTE_OVERRIDE=ghe expect_refused "refuses a remote on a host other than github.com" stale-a msg-5004
 
 run stale-a msg-5004
 if [ "$RC" -eq 0 ] && ! remote_has stale-a; then
