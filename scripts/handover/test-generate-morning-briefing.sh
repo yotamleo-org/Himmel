@@ -629,8 +629,8 @@ printf '## Results\n- 08:00 FINDING — z\n- 09:00 RESOLVED — z\n- 10:00 WRAPP
 # A second GO from today at an EARLIER time of day than yesterday's: only the date tells which waits longer.
 printf '## Results\n- 09:10 LIVE — w\n- 09:15 READY 78 def GREEN\n' > "$WAITD/u/repo/d.md"
 TODAY_D=$(date +%F)
-YDAY_STAMP=$(date -d '1 day ago' +%Y%m%d%H%M 2>/dev/null || date -v-1d +%Y%m%d%H%M)
-YDAY_D=$(date -d '1 day ago' +%F 2>/dev/null || date -v-1d +%F)
+YDAY_STAMP=$(date -d '1 day ago' +%Y%m%d%H%M 2>/dev/null || date -v-1d +%Y%m%d%H%M) # gnu-ok: paired with the BSD date -v form
+YDAY_D=$(date -d '1 day ago' +%F 2>/dev/null || date -v-1d +%F) # gnu-ok: paired with the BSD date -v form
 touch -t "$YDAY_STAMP" "$WAITD/u/repo/a.md"
 OPEN_JSON='[{"number":1,"reviewDecision":"APPROVED","createdAt":"2026-10-29T10:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]},{"number":2,"reviewDecision":"CHANGES_REQUESTED","createdAt":"2026-10-30T10:00:00Z","statusCheckRollup":[{"conclusion":"FAILURE"}]},{"number":3,"reviewDecision":"","createdAt":"2026-10-31T10:00:00Z","statusCheckRollup":[{"state":"ERROR"}]}]'
 OUT_WT="$TMP_ROOT/waiting.md"
