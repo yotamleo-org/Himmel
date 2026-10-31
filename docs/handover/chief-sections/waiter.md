@@ -203,3 +203,5 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     invalid) stays as the fallback for an absolute spelling. The chief never
     re-spells the command to dodge a refusal: it sends the operator the exact
     line and holds.
+
+    **A classifier-refused native worker.** The `DENIAL-PAGE` Telegram names the Remote Control session to open (the worker's session name) when that worker runs with `--remote-control`: the operator answers from the Claude app, in the worker's own window. A native `--profile` launch carries the flag by default; claudex never does. For a native worker that lacks it, `bash <kit>/enable-remote-control.sh [--relaunch] <session-name> <signal-file> <deadline-epoch> <log>` reports it (exit 5 plans the relaunch and ends nothing; `--relaunch` ends that session and relaunches the same name on the same doc, model and profile, destroying its context window).

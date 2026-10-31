@@ -2189,6 +2189,17 @@ EOF_CS_FILES
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
     [ "$CONSULT" -eq 1 ] && worker_propagate_env WORKER_SESSION_PROFILE_NO_SETTING_SOURCES 1
     export HEADED_ARM_LAUNCHER="$WORKER_SESSION_SHIM"
+    # A native worker is reachable from the Claude app by its session
+    # name; the shim turns this into `--remote-control <name>`. Claudex is out (its
+    # proxy endpoint makes it ineligible), as are a consult (read-only, confined)
+    # and a headless --bg session. An ambient value is dropped first so no excluded
+    # launch inherits one. ponytail: reaches a profiled launch only (the shim is the
+    # only flag seam), --no-profile native keeps a plain claude.
+    worker_env_drop_token WORKER_SESSION_REMOTE_CONTROL
+    unset -v WORKER_SESSION_REMOTE_CONTROL
+    if [ "$LANE" = "native" ] && [ "$CONSULT" -eq 0 ] && [ "$HEADLESS" -eq 0 ]; then
+        worker_propagate_env WORKER_SESSION_REMOTE_CONTROL "$NAME"
+    fi
     # A consult's launcher is the entry beside the canonical shim:
     # an absolute `#!/bin/bash -p` that strips the bash startup variables and
     # exported functions, then runs the shim on the pinned PATH. headed-arm.sh
@@ -2355,9 +2366,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # absent and the dry-run report is byte-identical to the earlier
     # one, matching the argv guarantee it describes.
     if [ -n "$PROFILE" ]; then
-        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s prompt=%s\n' \
+        # ` remote-control=<name>` ends this line (not a new line, so the
+        # report keeps its line count) only when the shim will pass --remote-control.
+        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s prompt=%s%s\n' \
             "$PROFILE" "$PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_PREFACE" "$PROFILE_CONTRACT" "$HIMMEL_LEAN_WORKER_SESSION" \
-            "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT" "$WORKER_LAUNCH_IDENTITY"
+            "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT" "$WORKER_LAUNCH_IDENTITY" \
+            "${WORKER_SESSION_REMOTE_CONTROL:+ remote-control=$WORKER_SESSION_REMOTE_CONTROL}"
     fi
     # Printed ONLY for an Opus/Fable model that cleared the tier gate above;
     # absent for Sonnet/Haiku, matching the argv-report guarantee pattern above.
