@@ -1,0 +1,35 @@
+# core-paths.txt — HIMMEL-8353: the ship loop, the files a change to which needs a signed minerva spec first.
+#
+# Core is the ship loop: how a ticket travels from one side of the workflow to the other
+# (the chief, version keeping, work splitting, the workers, the lock). It is NOT "everything
+# important": test-*.sh suites and fixtures stay out. Operator ruling 10-31 on HIMMEL-8353.
+#
+# One anchored extended regex per line, same format as ci-trust-paths.txt. A line holds at most
+# one group, prefix(a|b|...)suffix, with no nesting: core.test.ts splits each line into its
+# alternatives and requires every alternative to match a tracked file, so a renamed core file
+# fails the suite instead of silently leaving the list. This file holds no test and no fixture
+# path, and the size guard (core.ts) stops when it matches more than 2 % of tracked files.
+# A rename or bulk-mechanical change that touches these paths is REVIEW, never auto-decided.
+
+# Dispatch and launch.
+^scripts/handover/chief-kit/(gen-briefs|next-dispatchable|headed-arm-worker|brief-lint)\.
+# Merge and GO.
+^scripts/handover/merge-on-green\.sh$
+^scripts/handover/chief-kit/(go|ready-check|verdict-go)\.
+^scripts/cr/(pr-check-[a-z0-9]+|review-round)\.
+# The release engine and the core match itself.
+^scripts/jira/src/release/
+^scripts/jira/src/core\.ts$
+# The bus and the handover libraries.
+^marketplace/plugins/himmel-bus/
+^scripts/lib/(handover-path|flags)\.
+# Hooks and settings.
+^scripts/hooks/lib/
+^\.claude/settings\.json$
+# The lock.
+^scripts/handover/queue-lock\.sh$
+# Minerva produces the signed spec the gate requires, so it is core (operator 10-31).
+^marketplace/plugins/himmel-ops/skills/minerva/
+^marketplace/plugins/himmel-ops/commands/minerva\.md$
+^marketplace/plugins/himmel-ops/scripts/minerva-(spec-gate|trace-lint)\.sh$
+^marketplace/plugins/himmel-ops/hooks/inject-minerva-critic\.sh$

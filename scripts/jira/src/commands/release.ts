@@ -20,6 +20,7 @@ import {
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
+import { coreMatch, loadCorePatterns, sizeGuard } from '../core.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
@@ -368,6 +369,26 @@ export function registerRelease(program: Command): void {
       const r = specCheck(process.env, keys, mirror);
       for (const l of r.lines) console.log(l);
       if (!r.ok) process.exitCode = 1;
+    });
+
+  rel.command('core-check')
+    .description('Per key: CORE, REVIEW or NOT-CORE from scripts/ci/core-paths.txt (a rename or bulk change touching core is REVIEW)')
+    .requiredOption('--paths <paths>', 'Comma-separated paths the change writes')
+    .requiredOption('--key <keys...>', 'Ticket key(s) of the worker')
+    .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
+    .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
+    .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
+    .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string }) => {
+      if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
+        throw new Error('release core-check: --change-class is rename or bulk');
+      }
+      const patterns = loadCorePatterns(o.corePaths ?? join(repoRoot, 'scripts', 'ci', 'core-paths.txt'));
+      const tracked = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+        .split('\n').filter(Boolean);
+      const guard = sizeGuard(patterns, tracked, o.widenReason);
+      if (guard.line) console.log(guard.line);
+      const paths = o.paths.split(',').map((p) => p.trim()).filter(Boolean);
+      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass })) console.log(l);
     });
 
   rel.command('request <release>')
