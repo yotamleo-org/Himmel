@@ -3182,7 +3182,7 @@ seed94() {
     awk -v legs="$legs" '/^legs:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
     if [ "$man" = - ]; then rm -f "${A%.md}.fleet.json"; else printf '%s\n' "$man" > "${A%.md}.fleet.json"; fi
     if [ -n "$pre" ]; then mkdir -p "${h%/*}"; printf '%s\n' "$pre" > "$h"; fi
-    chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1
+    if ! chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1; then echo "FAIL - seed94 $b: chief next failed"; fails=$((fails+1)); fi
     HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
 }
 man94="{\"legs\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
@@ -3190,15 +3190,13 @@ man94="{\"legs\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\"
 # 94c: a manifest jq cannot read leaves the block whole and spills nothing.
 seed94 trim94c "$legs94" '{not json'
 doc94cB="$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md"
-check "94c a malformed manifest seeds every worker span" "$(grep -c 'C20:nonce-closed-20' "$doc94cB" 2>/dev/null)" "1"
-check "94c a malformed manifest seeds the open worker span too" "$(grep -cF 'N1:n-one:lock-one:11' "$doc94cB" 2>/dev/null)" "1"
+check "94c a malformed manifest seeds the complete legs block" "$(grep -Fxc "$legs94" "$doc94cB" 2>/dev/null)" "1"
 check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
 
 # 94f: a manifest row with no label cannot be matched to its span, so the block stays whole.
 seed94 trim94f "$legs94" "{\"legs\":[{\"doc\":\"$root/x/DEMO-1-N1-worker.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 doc94fB="$root/tester/trim94fdst/DEMO-nextleg-${today}B-chief.md"
-check "94f a manifest row with no label keeps the open worker's span" "$(grep -cF 'N1:n-one:lock-one:11' "$doc94fB" 2>/dev/null)" "1"
-check "94f a manifest row with no label seeds the block whole" "$(grep -c 'C20:nonce-closed-20' "$doc94fB" 2>/dev/null)" "1"
+check "94f a manifest row with no label seeds the complete legs block" "$(grep -Fxc "$legs94" "$doc94fB" 2>/dev/null)" "1"
 
 # 94d: a malformed span of an open worker is kept (the tick reads MALFORMED), a closed worker's is dropped.
 # shellcheck disable=SC2016  # literal fixture text

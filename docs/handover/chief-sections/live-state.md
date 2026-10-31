@@ -18,7 +18,9 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > and the `prior …` chain after the first GO stay behind. `next` appends them
 > byte for byte, under a dated header, to `specs/history/chief-live-state-<your doc stem>.md`
 > in the successor's bucket (earlier content in that file stays) and the HANDOFF names
-> it; with no readable manifest the block is seeded whole. A malformed span of an open
+> it (a HANDOFF that already existed is left unchanged and may not: the path is always
+> `<successor bucket>/specs/history/chief-live-state-<predecessor doc stem>.md`); with no
+> readable manifest, or a manifest row with no label, the block is seeded whole. A malformed span of an open
 > worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. Keep your own Live
 > state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
 > past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
