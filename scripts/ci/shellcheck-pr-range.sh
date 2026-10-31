@@ -196,6 +196,7 @@ cmd_pos() {
 is_shell() {
   case "$1" in *.sh | *.bash | *.bats | *.ksh | *.zsh | *.dash) return 0 ;; esac
   local first=
+  # read-sink-ok: $1 is a path from the PR's own git diff, read for its first line only and never echoed
   IFS= read -r first < "$1"
   case "$first" in '#!'*sh*) return 0 ;; esac
   return 1
