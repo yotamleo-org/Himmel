@@ -166,8 +166,14 @@ tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n
 window exists); :held = reported only. chief-wait.sh wakes when it appears or
 changes. Env seam: TICK_KILL_BIN.
 
-workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held; an idle-warned lock still reads
-FRESH/STALE here -- the IDLE-HELD? flag belongs to the sweep and the exit code),
+workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held),
+IDLE-HELD (held, but its readable session transcript has no activity for TICK_IDLE_MIN
+minutes, default 45, and no armed task/Monitor or unfinished foreground Bash/Agent;
+missing activity evidence never changes the lock state). This is not a reclaim
+signal: ownership checks still treat it as held. The stable workers= label wakes
+chief-wait once on transition, not on growing age. The sweep's IDLE-HELD? uses
+heartbeat age alone and cannot distinguish a long foreground suite.
+Other worker states:
 CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
 session process is still alive in the census -- the window is sitting there
 finished but not yet closed; chief-wait.sh wakes on this the same way it
@@ -828,6 +834,9 @@ go_stale_min=$((10#$go_stale_min))
 hold_min="${TICK_HOLD_MIN:-20}"
 case "$hold_min" in ''|*[!0-9]*) hold_min=20 ;; esac
 hold_min=$((10#$hold_min))
+idle_min="${TICK_IDLE_MIN:-45}"
+case "$idle_min" in ''|*[!0-9]*|??????????*) idle_min=45 ;; esac
+idle_min=$((10#$idle_min))
 
 # launch_dir_default: the chief work dir the <name>.launch.log files live in.
 launch_dir_default() {
@@ -881,9 +890,11 @@ leg_forked() {
     grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
-# leg_cachettl <candidate names, comma list>: only warn on a known idle
-# transcript with no running wait. Mirror guard-worker-cache-ttl.sh's task signal;
-# factoring it out would change the Stop hook as well as this read-only view.
+# leg_cachettl <candidate names, comma list> [idle seconds]: only warn on a
+# old transcript with no running background wait. Leaves leg_idle_seconds and
+# leg_foreground_running for the held-lock warning to exempt foreground work.
+# Mirror guard-worker-cache-ttl.sh's task signal; factoring it out would change
+# the Stop hook as well as this read-only view.
 leg_cachettl() {
     local dir cand f newest="" stamp epoch running
     local dirs=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
@@ -909,11 +920,18 @@ leg_cachettl() {
         # Title/cost rows have no timestamp; their write time is still activity.
         epoch="$(stat -c %Y "$newest" 2>/dev/null)" || return 1  # gnu-ok: Linux-only kit; swallow-ok: missing write time cannot establish idleness
     fi
-    [ $(( $(date +%s) - epoch )) -ge 3000 ] || return 1
+    leg_idle_seconds=$(( $(date +%s) - epoch ))
+    [ "$leg_idle_seconds" -ge "${2:-3000}" ] || return 1
     running="$(jq -R -r '
-        fromjson? // empty
-        | ( (.toolUseResult? | objects | (.backgroundTaskId // .taskId) | strings | "S " + .),
-            (.toolUseResult? | objects | .task_id | strings | "E " + .),
+        fromjson? // null
+        | if type != "object" then "X" else
+          ( (select(.type == "assistant") | .message.content? | arrays | .[] | objects
+              | select(.type == "tool_use" and (.name == "Bash" or .name == "Agent"))
+              | .id | strings | "S foreground:" + .),
+            (select(.type == "user") | .message.content? | arrays | .[] | objects
+              | select(.type == "tool_result") | .tool_use_id | strings | "E foreground:" + .),
+            (.toolUseResult? | objects | (.backgroundTaskId // .taskId) | strings | "S background:" + .),
+            (.toolUseResult? | objects | .task_id | strings | "E background:" + .),
             ( ( if .type == "user" then (.message.content | strings)
                 elif .type == "queue-operation" then (.content | strings)
                 elif .type == "attachment" then (.attachment.prompt? | strings)
@@ -921,13 +939,22 @@ leg_cachettl() {
               | split("<task-notification>")[1:][]
               | select(contains("<status>"))
               | capture("<task-id>(?<id>[^<]+)</task-id>").id
-              | "E " + . ) )
+              | "E background:" + . ) ) end
     ' "$newest" 2>/dev/null | awk '
+        $1 == "X" { bad = 1 }
         $1 == "S" { s[$2] = 1 }
         $1 == "E" { e[$2] = 1 }
-        END { n = 0; for (k in s) if (!(k in e)) n++; print n }
+        END {
+            n = 0; f = 0
+            for (k in s) if (!(k in e)) {
+                if (k ~ /^foreground:/) f++; else n++
+            }
+            # Unknown rows suppress idleness, not the existing cache advisory.
+            print n " " (bad ? 1 : f)
+        }
     ')" || return 1
-    [ "$running" = 0 ]
+    leg_foreground_running="${running#* }"
+    [ "${running%% *}" = 0 ]
 }
 
 # leg_effort_mismatch <doc> <label>: succeeds only when the effort the
@@ -1088,8 +1115,15 @@ for leg in $WORKERS_SPLIT; do
     fi
     case "$lock_status" in
         FRESH|STALE|NOLOCK)
-            if [ "$tail_status" != WRAPPED ] && leg_cachettl "$leg_cands"; then
-                cachettl_summary="$(csv_add "$cachettl_summary" "$label")"
+            if [ "$tail_status" != WRAPPED ] && leg_cachettl "$leg_cands" "$(( idle_min < 50 ? idle_min * 60 : 3000 ))"; then
+                if [ "$leg_idle_seconds" -ge 3000 ]; then
+                    cachettl_summary="$(csv_add "$cachettl_summary" "$label")"
+                fi
+                # Display only: the lock remains held for all ownership checks.
+                # A stable label lets chief-wait wake once, never on a growing age.
+                if [ "$lock_status" != NOLOCK ] && [ "$leg_idle_seconds" -ge "$(( idle_min * 60 ))" ] && [ "$leg_foreground_running" = 0 ]; then
+                    leg_label_state=IDLE-HELD
+                fi
             fi ;;
     esac
     legs_summary="$(csv_add "$legs_summary" "$label:$leg_label_state")"
@@ -1115,7 +1149,7 @@ done
 [ -n "$acts_summary" ] || acts_summary=none
 
 # cross-reference the chief doc's own `## Live state`
-# `legs:` line against the lock status just computed above (legs_summary),
+# `legs:` line against the ownership status just computed above (leg_candmap),
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
 # "unknown" (doc given but no `## Live state`/`legs:` line found -- e.g. a
@@ -1222,7 +1256,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         live_spans="$(legs_line_spans entries "$legs_line")"
         live_legs="$(printf '%s\n' "$live_spans" | sed -E 's/:.*$//')"
         malformed_legs="$(legs_line_spans malformed "$legs_line")"
-        held_legs="$(printf '%s\n' "$legs_summary" | tr ',' '\n' | awk -F: '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
+        held_legs="$(printf '%s' "$leg_candmap" | awk -F'\t' '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
         # the worker set this tick watches is the --workers arm, and Live
         # state is the chief's own record; the two are supplied separately and
         # can disagree. A worker Live state names that the arm does not is UNARMED --
