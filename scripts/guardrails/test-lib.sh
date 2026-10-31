@@ -981,16 +981,20 @@ done
 # A clone of a local path hard-links the source's objects, so it is refused; the
 # same clone made with --no-hardlinks is an ordinary scratch clone and is exempt.
 MV_HL="$MV_SCR/gfork/localclone"
-git clone -q "$MV_PRIMFEAT_C" "$MV_HL" >/dev/null 2>&1
-MV_HL_C=$(cd "$MV_HL" && pwd -P)
-out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_HL_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone of a local path with hard-linked objects -> rc=2 (refuse)"; else fail "main_checkout_verdict: hard-linked local clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+if git clone -q "$MV_PRIMFEAT_C" "$MV_HL" >/dev/null 2>&1 && MV_HL_C=$(cd "$MV_HL" && pwd -P); then
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_HL_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone of a local path with hard-linked objects -> rc=2 (refuse)"; else fail "main_checkout_verdict: hard-linked local clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+else
+    fail "main_checkout_verdict fixture: the local clone for the hard-link row failed - the row would test a missing clone"
+fi
 
 MV_NH="$MV_SCR/gfork/nohardlinks"
-git clone -q --no-hardlinks "$MV_PRIMFEAT_C" "$MV_NH" >/dev/null 2>&1
-MV_NH_C=$(cd "$MV_NH" && pwd -P)
-out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_NH_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone made with --no-hardlinks -> rc=0"; else fail "main_checkout_verdict: --no-hardlinks clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+if git clone -q --no-hardlinks "$MV_PRIMFEAT_C" "$MV_NH" >/dev/null 2>&1 && MV_NH_C=$(cd "$MV_NH" && pwd -P); then
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_NH_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone made with --no-hardlinks -> rc=0"; else fail "main_checkout_verdict: --no-hardlinks clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+else
+    fail "main_checkout_verdict fixture: the --no-hardlinks clone failed - the row would test a missing clone"
+fi
 
 # A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
 # (the helper is missing), where the real tree allows the same clone.
