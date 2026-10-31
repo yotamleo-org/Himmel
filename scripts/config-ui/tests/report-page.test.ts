@@ -102,6 +102,18 @@ test("so far lists the shifts closed today, straight from shifts.jsonl", async (
   expect(list.soFar.shifts.map((s) => [s.id, s.chiefs, s.prs])).toEqual([[row.id, 1, 2]]);
 });
 
+test("the reports list passes a stored shift name through the redactor like the other routes", async () => {
+  seed();
+  const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const secret = "q7Zx".repeat(10); // a 40-character letter-and-digit run, which the redactor reads as a secret
+  const row = { id: `${today}T08:00+00:00`, name: secret, opened: `${today}T00:30+00:00`, closed: `${today}T08:00+00:00`, why: "cut", zone: "+00:00", minutes: 450, chiefs: [], carried: [] };
+  writeFileSync(join(handover, "shifts.jsonl"), JSON.stringify(row) + "\n");
+  const port = boot();
+  const text = await (await get(port, "/api/reports")).text();
+  expect(text).not.toContain(secret);
+  expect(text).toContain(row.id);
+});
+
 test("with report_day utc a close at 00:10+01:00 is the previous UTC day, and an impossible report file name is not listed", async () => {
   seed();
   writeFileSync(join(handover, "morning-report-2026-99-99.md"), "x");

@@ -589,7 +589,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const utc = "report_day" in rs.body && rs.body.report_day === "utc";
         const today = utc ? d.toISOString().slice(0, 10)
           : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        return json({ ...listReports(handover, t, today), soFar: soFar(shiftsFile(env), today, utc) });
+        return json(redactOut({ ...listReports(handover, t, today), soFar: soFar(shiftsFile(env), today, utc) }));
       }
       if (path === "/api/report") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
