@@ -1016,6 +1016,8 @@ FK_HIMMEL="$tmp/fork-himmel"
 mkdir -p "$FK_HIMMEL/scripts/guardrails"
 cp "$HERE/../guardrails/himmel-adapters.json" "$FK_HIMMEL/scripts/guardrails/himmel-adapters.json"
 git init -q "$FK_REPO"
+git -C "$FK_REPO" config commit.gpgsign false
+git -C "$FK_REPO" config core.hooksPath .git/hooks
 git -C "$FK_REPO" checkout -q -b main
 git -C "$FK_REPO" config user.name test
 git -C "$FK_REPO" config user.email test@example.invalid
