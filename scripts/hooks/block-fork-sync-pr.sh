@@ -134,17 +134,21 @@ def nwo_of_url(url):
     m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$", url)
     return m.group(1) if m else ""
 
-# At most four gh calls per PR; 4 x 8 s stays inside the Bash chain's 61 s.
+# At most five gh calls per PR; 5 x 8 s stays inside the Bash chain's 61 s.
 GH_TIMEOUT = 8
 
-def gh_ahead(repo, spec):
+def gh_compare(repo, spec, jq=".ahead_by"):
     try:
         p = subprocess.run(["gh", "api", f"repos/{repo}/compare/{spec}",
-                            "--jq", ".ahead_by"], capture_output=True,
+                            "--jq", jq], capture_output=True,
                            text=True, timeout=GH_TIMEOUT)
-        return int(p.stdout.strip()) if p.returncode == 0 else None
+        return p.stdout.split() if p.returncode == 0 else []
     except Exception:
-        return None
+        return []
+
+def gh_ahead(repo, spec):
+    out = gh_compare(repo, spec)
+    return int(out[0]) if len(out) == 1 and out[0].isdigit() else None
 
 def gh_default(repo):
     try:
@@ -204,12 +208,21 @@ for words in segs:
     up_default = gh_default(up)
     if not up_default:
         continue
-    ours = gh_ahead(up, f"{up_default}...{base_owner}:{branch}")
     # gh pr create without --base targets the fork's default branch.
     pr_base = f.get("base") or gh_default(fork["nwo"]) or fork["himmel_branch"]
-    total = gh_ahead(fork["nwo"], f"{pr_base}...{branch}")
-    if ours is None or total is None or total <= 0:
+    pr = gh_compare(fork["nwo"], f"{pr_base}...{branch}",
+                    "[.ahead_by, .merge_base_commit.sha] | @tsv")
+    if len(pr) != 2 or not pr[0].isdigit():
         continue
+    total, mb = int(pr[0]), pr[1]
+    # Ours in the PR = our commits on the branch minus those already at the
+    # merge-base, so carried commits the base holds do not count.
+    up_ref = f"{up.split('/', 1)[0]}:{up_default}"
+    ours_head = gh_ahead(fork["nwo"], f"{up_ref}...{branch}")
+    ours_base = gh_ahead(fork["nwo"], f"{up_ref}...{mb}")
+    if ours_head is None or ours_base is None or total <= 0:
+        continue
+    ours = max(ours_head - ours_base, 0)
     if ours * 2 < total:
         deny(fork, f"{total - ours} of {total} commits on {branch} are upstream-authored")
 allow()

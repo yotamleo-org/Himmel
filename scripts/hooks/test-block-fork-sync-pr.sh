@@ -28,9 +28,11 @@ trap 'rm -rf "$SANDBOX"' EXIT
 mkdir -p "$SANDBOX/himmel/scripts/guardrails"
 cp "$REAL_REGISTRY" "$SANDBOX/himmel/scripts/guardrails/himmel-adapters.json"
 export HIMMEL_REPO="$SANDBOX/himmel"
-unset FORK_SYNC_PR_OK
+unset FORK_SYNC_PR_OK GH_REPO GH_FAIL GH_OURS GH_BASE_OURS GH_TOTAL
 
-# gh stub: answers default_branch and compare ahead_by from env, logs calls.
+# gh stub: answers default_branch and the fork's compare calls from env, logs
+# calls. GH_OURS = branch commits not on upstream v8, GH_BASE_OURS = the same
+# for the PR merge-base (mb0), GH_TOTAL = the PR's commit count.
 mkdir -p "$SANDBOX/bin"
 cat > "$SANDBOX/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -39,8 +41,9 @@ echo "$*" >> "$GH_LOG"
 case "$*" in
   "api repos/Graphify-Labs/graphify --jq .default_branch") echo v8 ;;
   "api repos/yotamleo-org/graphify --jq .default_branch") echo main ;;
-  "api repos/Graphify-Labs/graphify/compare/"*) echo "${GH_OURS:-0}" ;;
-  "api repos/yotamleo-org/graphify/compare/"*) echo "${GH_TOTAL:-0}" ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8...mb0 "*) echo "${GH_BASE_OURS:-0}" ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8..."*) echo "${GH_OURS:-0}" ;;
+  "api repos/yotamleo-org/graphify/compare/"*) printf '%s\tmb0\n' "${GH_TOTAL:-0}" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -97,6 +100,10 @@ if grepq "$LAST_ERR" -F "39 of 40"; then pass "mostly-upstream deny counts the u
 #     is counted against it, not against himmel_branch.
 GH_OURS=1 GH_TOTAL=40 run_hook "no --base: own mostly-upstream branch is refused" 2 "gh pr create --repo yotamleo-org/graphify --head himmel/sync -t x -b y"
 if grep -qF "api repos/yotamleo-org/graphify/compare/main...himmel/sync" "$GH_LOG"; then pass "no --base: total counted against the fork default branch"; else fail "no --base must compare against the fork default branch: $(cat "$GH_LOG")"; fi
+
+# 5c. Carried commits already on the base are not the PR's: 51 of ours on the
+#     branch minus 50 already at the merge-base leaves 1 of 41 PR commits.
+GH_OURS=51 GH_BASE_OURS=50 GH_TOTAL=41 run_hook "carried commits already on the base do not count as the PR's" 2 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/sync -t x -b y"
 
 # 6. GitHub unreachable: a workflow guard fails open on its own infra error.
 GH_FAIL=1 run_hook "compare unavailable fails open" 0 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/fix-x -t x -b y"

@@ -102,7 +102,8 @@
 # as refs/tags/himmel-presync/<branch>-<sha12> so SHA pins stay reachable. A
 # conflict stops, names the paths and pushes nothing (rc 4). Already on
 # upstream → rc 1. Unregistered repo, or a default branch or himmel branch
-# that does not resolve → rc 2. Synced (or --dry-run audited) → rc 0.
+# that does not resolve, or a clone, fetch, gh repo sync or push failure → rc 2.
+# Synced (or --dry-run audited) → rc 0.
 # Seams: RESYNC_GIT_BASE (default https://github.com), RESYNC_WORK_DIR
 # (default $HOME/.himmel/fork-resync).
 #
@@ -132,7 +133,7 @@ usage() {
   echo "  --push     push the rebased branch to fork_repo when clean + additive" >&2
   echo "  exit: 0 clean+additive | 1 already on target | 2 usage/registry/refs" >&2
   echo "        | 3 SKIP no fork block | 4 conflicted/non-additive or pin-literal (PIN_FILE_MISSING/PIN_NOT_FOUND/PIN_AMBIGUOUS)" >&2
-  echo "  --sync exit: 0 synced | 1 already contains upstream | 2 usage/unregistered/refs | 3 use-upstream | 4 conflicted" >&2
+  echo "  --sync exit: 0 synced | 1 already contains upstream | 2 usage/unregistered/refs/clone/fetch/gh/push | 3 use-upstream | 4 conflicted" >&2
 }
 
 NAME=""
