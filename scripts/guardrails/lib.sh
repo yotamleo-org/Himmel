@@ -1160,11 +1160,12 @@ EOF
     gcd=$(cd -P -- "$gcd" 2>/dev/null && pwd -P) || return 1
     wt=$(cd -P -- "$wt" 2>/dev/null && pwd -P) || return 1
     [ "$gd" = "$repo/.git" ] && [ "$gcd" = "$repo/.git" ] && [ "$wt" = "$repo" ] || return 1
-    # Nothing inside .git may be a symlink or a hard-linked file (config, index, HEAD,
-    # refs, hooks, objects ... could all lead into another checkout). The loose-object
-    # and pack files below objects/ are skipped: `git clone` hard-links them, and the
-    # objects directory itself is still checked.
-    odd=$(find "$repo/.git" -path "$repo/.git/objects/*/*" -prune -o \( -type l -o \( -type f -links +1 \) \) -print 2>/dev/null) || return 1
+    # Nothing inside .git may be a symlink or a hard-linked file: config, index, HEAD,
+    # refs, hooks, info and objects entries could all alias a file of another
+    # checkout, and no path under .git is skipped. A `git clone` of a local path
+    # hard-links the source's objects, so such a clone is refused; clone from a URL
+    # or with `--no-hardlinks` to get the exemption.
+    odd=$(find "$repo/.git" \( -type l -o \( -type f -links +1 \) \) -print 2>/dev/null) || return 1
     [ -z "$odd" ] || return 1
     cw=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
         git -C "$repo" config --get core.worktree 2>/dev/null) || cwrc=$?

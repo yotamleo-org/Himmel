@@ -955,7 +955,7 @@ if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with core
 
 # Anything inside .git that is a symlink or a hard link to a primary's own file
 # (config, index, refs, hooks, objects ...) is refused too.
-for MV_KIND in config index refs hooks objects config-hardlink; do
+for MV_KIND in config index refs hooks objects config-hardlink objects-info-hardlink objects-fanout-symlink; do
     MV_D="$MV_SCR/gfork/dotgit-$MV_KIND"
     mkdir -p "$MV_D"
     git -C "$MV_D" init -q -b main
@@ -970,11 +970,27 @@ for MV_KIND in config index refs hooks objects config-hardlink; do
         hooks)           rm -rf "$MV_D/.git/hooks";     ln -s "$MV_PRIMFEAT_C/.git/hooks" "$MV_D/.git/hooks" ;;
         objects)         rm -rf "$MV_D/.git/objects";   ln -s "$MV_PRIMFEAT_C/.git/objects" "$MV_D/.git/objects" ;;
         config-hardlink) rm "$MV_D/.git/config";        ln "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/config" ;;
+        objects-info-hardlink)   mkdir -p "$MV_D/.git/objects/info"; ln "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/objects/info/shared" ;;
+        objects-fanout-symlink)  mkdir -p "$MV_D/.git/objects/ab";   ln -s "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/objects/ab/evil" ;;
     esac
     MV_D_C=$(cd "$MV_D" && pwd -P)
     out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_D_C/newfile.txt"); rc=$?
     if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with .git/$MV_KIND leading into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch .git/$MV_KIND into primary -> expected rc=2 got rc=$rc out=[$out]"; fi
 done
+
+# A clone of a local path hard-links the source's objects, so it is refused; the
+# same clone made with --no-hardlinks is an ordinary scratch clone and is exempt.
+MV_HL="$MV_SCR/gfork/localclone"
+git clone -q "$MV_PRIMFEAT_C" "$MV_HL" >/dev/null 2>&1
+MV_HL_C=$(cd "$MV_HL" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_HL_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone of a local path with hard-linked objects -> rc=2 (refuse)"; else fail "main_checkout_verdict: hard-linked local clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_NH="$MV_SCR/gfork/nohardlinks"
+git clone -q --no-hardlinks "$MV_PRIMFEAT_C" "$MV_NH" >/dev/null 2>&1
+MV_NH_C=$(cd "$MV_NH" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_NH_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone made with --no-hardlinks -> rc=0"; else fail "main_checkout_verdict: --no-hardlinks clone -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 # A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
 # (the helper is missing), where the real tree allows the same clone.
