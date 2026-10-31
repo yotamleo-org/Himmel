@@ -309,8 +309,8 @@ is filed without at least a proposed version; a residual (`--residual-of`, `--fo
 An unversioned create is refused before the POST when no release can take the INTAKE (no release declared, several
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
 says `Created <KEY> but INTAKE not queued` and exits 1.
-`next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<version>`
-(not `proposed-backlog`) and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
+`next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
+and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
 `# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
 `--priority Highest` or a valid `--gate`
 (see the intake gate below) sets the earliest unreleased, unarchived version from the
