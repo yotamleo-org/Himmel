@@ -294,11 +294,13 @@ if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
     if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
         chains_fail registry "$stage/chains.err"
     elif ! members=$(python3 -I -c 'import json, sys
-print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err") || [ -z "$members" ]; then
+print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err"); then
         chains_fail registry "$stage/chains.err"
-    elif ! bounded 120 "${CGRAPH[@]}" --keys "$members" --json > "$stage/chain-graph.json" 2> "$stage/chains.err"; then
+    elif [ -n "$members" ] && ! bounded 120 "${CGRAPH[@]}" --keys "$members" --json > "$stage/chain-graph.json" 2> "$stage/chains.err"; then
         chains_fail graph "$stage/chains.err"
     else
+        # a registry with no chains is valid: the graph of no members is empty and the file holds the drain row alone
+        [ -n "$members" ] || echo '{"nodes":[],"edges":[]}' > "$stage/chain-graph.json"
         # swallow-ok: the dispositions are best effort; without them the drain line leaves out the dispatchable and dropped parts
         bounded 60 "${DISPO[@]}" --mirror "$MIR" --doc "$DOC" --dispositions > "$stage/dispositions.txt" 2>/dev/null || rm -f "$stage/dispositions.txt"
         set -- --graph "$stage/chain-graph.json" --registry "$chains_reg" --mirror "$MIR" --version "$VER" --drain --out "$stage/focus-chains.json"

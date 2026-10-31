@@ -226,7 +226,7 @@ python3 -I -c 'import json, sys
 json.dump({"schema": "himmel.chain-registry/1", "chains": [
     {"id": "first-chain", "goal": "The first shared chain", "members": ["HIMMEL-9021", "HIMMEL-9022", "HIMMEL-9023"]},
     {"id": "second-chain", "goal": "The second shared chain", "members": ["HIMMEL-9023"]}]}, open(sys.argv[1], "w"))' "$W/reg3.json"
-printf '# disposition HIMMEL-9022 listed LOCAL\n# disposition HIMMEL-9023 blocker HIMMEL-9022\n# disposition HIMMEL-9024 collision scripts/x.sh held by open PR 5\n# disposition HIMMEL-9025 collision scripts/y.sh held by open PR 6\n# disposition HIMMEL-9026 in-flight owned by N1\n' > "$W/dispo.txt"
+printf '# disposition HIMMEL-9022 listed LOCAL\n# disposition HIMMEL-9023 blocker HIMMEL-9022\n# disposition HIMMEL-9024 collision scripts/x.sh held by open PR 5\n# disposition HIMMEL-9025 collision scripts/y.sh held by open PR 6\n# disposition HIMMEL-9026 in-flight owned by N1\n# disposition HIMMEL-9027 collision scripts/z.sh held by open PR 7\n' > "$W/dispo.txt"
 # drain_of <file>: the drain line of a rendered file, or nothing
 drain_of() { python3 -I -c 'import json, sys
 print(" ".join(c["drain"] for c in json.load(open(sys.argv[1])) if "drain" in c))' "$1"; }
@@ -239,6 +239,11 @@ same 'a dispositions file adds the dispatchable count and the drops by reason' "
     'v1.1.3 drain: open 5 · in-chain 2 · standalone 1 · unchained 2 HIMMEL-9025 HIMMEL-9026 · dispatchable 1 · dropped {blocker 1, collision 2, in-flight 1}'
 same 'the chains stay first in the file and the drain is the last row' "$(python3 -I -c 'import json, sys
 r = json.load(open(sys.argv[1])); print(len(r), "drain" in r[-1], all("steps" in c for c in r[:-1]))' "$W/drain-full.json")" '3 True True'
+# a mirror file whose metadata cannot be read must not leave a ticket out of the totals
+cp -r "$M3" "$W/mirror4"
+printf -- '---\nkey: "HIMMEL-9029"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"\n---\n' > "$W/mirror4/HIMMEL-9029.md"
+python3 -I "$SUT" --graph "$W/graph.json" --mirror "$W/mirror4" --registry "$W/reg3.json" --version v1.1.3 --drain --out "$W/drain-bad.json" >/dev/null 2>&1; rc=$?
+same 'malformed mirror metadata fails the drain render (exit 2)' "$rc" 2
 same 'a render with no --drain writes no drain row' "$(drain_of "$W/planted.json")" ''
 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$M3" --registry "$W/reg3.json" --version v1.1.3 --out "$W/drain-off.json" >/dev/null 2>&1
 same 'a render with --version but no --drain writes no drain row' "$(drain_of "$W/drain-off.json")" ''

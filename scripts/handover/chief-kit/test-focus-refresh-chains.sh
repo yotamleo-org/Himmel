@@ -158,6 +158,16 @@ refresh
 check "the next refresh recovers" "$(out)" "focus=ok"
 check "and clears the warning" "$(st warn)" ""
 
+# --- a registry with no chains is valid: the old chains go and the drain row stays
+reset
+refresh
+printf '{"schema":"himmel.chain-registry/1","chains":[]}\n' > "$REGISTRY"
+refresh
+check "an empty registry prints ok" "$(out)" "focus=ok"
+check "and the file holds no chain row" "$(python3 -I -c 'import json, sys
+print(sum(1 for c in json.load(open(sys.argv[1])) if "steps" in c))' "$CH")" 0
+contains "and the drain row stays" "$(drain_of "$CH")" "drain: open 3"
+
 # --- a graph the renderer cannot read is a render WARN, and the file stays
 reset
 refresh

@@ -84,7 +84,7 @@ def open_tickets(mirror, version):
         try:
             versions, labels = json.loads(f.get('fixVersions', '[]')), json.loads(f.get('labels', '[]'))
         except ValueError:
-            continue
+            raise ValueError('malformed fixVersions or labels in %s' % name)  # totals over a skipped ticket would undercount
         if version in versions:
             out[name[:-3]] = labels
     return out
@@ -101,11 +101,13 @@ def drain_line(mirror, version, members, dispositions=None):
     if dispositions is not None:
         listed, dropped = 0, {}
         for l in dispositions.splitlines():
-            m = re.match(r'# disposition HIMMEL-\d+ (\S+)', l)
-            if m and m.group(1) == 'listed':
+            m = re.match(r'# disposition (HIMMEL-\d+) (\S+)', l)
+            if not m or m.group(1) not in opened:  # the dispositions cover the earliest unreleased version, not necessarily this one
+                continue
+            if m.group(2) == 'listed':
                 listed += 1
-            elif m:
-                dropped[m.group(1)] = dropped.get(m.group(1), 0) + 1
+            else:
+                dropped[m.group(2)] = dropped.get(m.group(2), 0) + 1
         line += ' · dispatchable %d · dropped {%s}' % (listed, ', '.join('%s %d' % (r, dropped[r]) for r in sorted(dropped)))
     return line
 
