@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { stubKeyring } from "../config-ui/tests/keyring-stub";
 // The Alibaba key bootstrap has no bun runner of its own: CI runs `bun test scripts/telegram`, so
 // importing its suite here is what runs it on every PR.
-import "../alibaba/create-monitoring-key.test";
+import "../alibaba/create-monitoring-key.test.ts";
 
 const NOW_MS = Date.parse("2026-07-04T12:00:00Z");
 
