@@ -42,10 +42,26 @@ while [ $# -gt 0 ]; do
         *) echo 'usage: version-status-audit.sh [--mirror DIR] [--workers-from MANIFEST] [--owners "KEY ..."]' >&2; exit 2 ;;
     esac
 done
-export VSA_MIRROR="$mirror" VSA_WORKERS_FROM="$workers_from" VSA_OWNERS="$owners"
+VSA_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib"
+export VSA_MIRROR="$mirror" VSA_WORKERS_FROM="$workers_from" VSA_OWNERS="$owners" VSA_LIB
 
 exec python3 -I - <<'PY'
 import json, os, re, subprocess, sys
+
+sys.path.insert(0, os.environ['VSA_LIB'])
+from env_alias import legacy_names_on
+
+
+def manifest_workers(m):
+    """The manifest's worker array: `workers`, else the pre-rename `legs` while legacy names are on.
+    A legs-only manifest with legacy names off is unreadable (ValueError), never an empty fleet."""
+    w = m.get('workers')
+    if w is None and 'legs' in m and not legacy_names_on():
+        raise ValueError('fleet manifest carries the pre-rename legs array and the legacy-names switch is off')
+    if w is None:
+        w = m.get('legs')
+    return w or []
+
 
 mirror = os.environ['VSA_MIRROR']
 STARTED = {'in progress', 'in review', 'in ci'}
@@ -104,7 +120,7 @@ MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|H
 workers_unknown = (bool(workers_from) and not os.path.isfile(workers_from)) or (not workers_from and not os.environ.get('VSA_OWNERS', '').split())  # manifest named but missing, or neither manifest nor owners: ownership coverage unknown
 if workers_from and os.path.isfile(workers_from):
     try:
-        for worker in json.load(open(workers_from)).get('legs', []):
+        for worker in manifest_workers(json.load(open(workers_from))):
             doc = worker.get('doc', '')
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()

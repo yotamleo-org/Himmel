@@ -21,8 +21,10 @@
 # unless there is actually new content to format.
 #
 # Fail OPEN, always exit 0: a broken inbox (missing handover root, unreadable
-# session name, no jq) must never block a tool call — this is delivery, not
-# a security fence (scripts/hooks/CLAUDE.md's fail-open-vs-closed rule).
+# session name, no jq) must never block a tool call (scripts/hooks/CLAUDE.md's
+# fail-open-vs-closed rule). The CONTENT is gated the other way: inbox_peek
+# drops, and alerts on, any line with no chief sent-ledger record,
+# so a forged inbox line is never delivered.
 set -uo pipefail
 
 CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"

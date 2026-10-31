@@ -34,6 +34,9 @@ trap 'rm -rf "$WORK"' EXIT
 HANDOVER_DIR="$WORK/handover-root"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
+# Every send writes a ledger line: keep the early cases off the
+# station's real ledger. The ledger cases below use their own RUNDIR.
+export HIMMEL_CONSOLE_RUNDIR="$WORK/rundir-early"
 
 SESSION="HIMMEL-2788-test-worker"
 INBOX="$HANDOVER_DIR/inbox/$SESSION.md"
@@ -297,26 +300,62 @@ else
     fail "--token send writes exactly one ledger line matching the bullet's sha256 (rc=$rc lines=$ledger_lines sha=$ledger_sha expected=$expected_sha out='$out')"
 fi
 
-# Case 15: a no-token send from the same sender does not touch the ledger.
-before_lines="$ledger_lines"
-send_rc15=0
-bash "$SCRIPT" "$SESSION28" untoked-followup >/dev/null 2>&1 || send_rc15=$?
-after_lines="$(wc -l < "$LEDGER" 2>/dev/null | tr -d '[:space:]')"
-if [ "$send_rc15" -eq 0 ] && [ "$after_lines" = "$before_lines" ]; then
-    pass "a no-token send writes no ledger line"
+# Case 14b: the ledger never holds the token in plaintext.
+if [ -s "$LEDGER" ] && ! grep -qF 'lt1' "$LEDGER"; then
+    pass "the sent ledger holds no plaintext token"
 else
-    fail "a no-token send writes no ledger line (rc=$send_rc15 before=$before_lines after=$after_lines)"
+    fail "the sent ledger holds no plaintext token (ledger='$(cat "$LEDGER" 2>/dev/null)')"
 fi
 
-# Case 15b: a session that never sends --token gets no ledger file/dir.
+# Case 15: a no-token send is recorded too — delivery is gated
+# on a record, so an unrecorded narrowing would be dropped as forged.
 CMDLINE_NEVER="$WORK/cmdline-never-toked"
 printf 'claude\0-n\0HIMMEL-2980-never-toked-sender\0' > "$CMDLINE_NEVER"
-send_rc15b=0
-CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" bash "$SCRIPT" "$SESSION28" untoked-new-sender >/dev/null 2>&1 || send_rc15b=$?
-if [ "$send_rc15b" -eq 0 ] && [ ! -e "$RUNDIR/HIMMEL-2980-never-toked-sender" ]; then
-    pass "a no-token send creates no ledger file/dir for its sender"
+NEVER_LEDGER="$RUNDIR/HIMMEL-2980-never-toked-sender/inbox-sent.log"
+send_rc15=0
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" bash "$SCRIPT" "$SESSION28" untoked-new-sender >/dev/null 2>&1 || send_rc15=$?
+# shellcheck disable=SC2119 # sha256_hex reads stdin here, by design
+expected_sha="$(tail -n1 "$INBOX28" 2>/dev/null | tr -d '\n' | sha256_hex)"
+if [ "$send_rc15" -eq 0 ] && [ "$(tail -n1 "$NEVER_LEDGER" 2>/dev/null | awk '{print $3, $4, $5}')" = "- $expected_sha $SESSION28" ]; then
+    pass "a no-token send writes one ledger line with no token digest, bound to its recipient"
 else
-    fail "a no-token send creates no ledger file/dir for its sender (rc=$send_rc15b)"
+    fail "a no-token send writes one ledger line with no token digest, bound to its recipient (rc=$send_rc15 ledger='$(cat "$NEVER_LEDGER" 2>/dev/null)')"
+fi
+if [ -n "$(find "$NEVER_LEDGER" -maxdepth 0 ! -perm /077 2>/dev/null)" ]; then
+    pass "the ledger file is private to its owner"
+else
+    fail "the ledger file is private to its owner (mode='$(stat -c %a "$NEVER_LEDGER" 2>/dev/null)')"
+fi
+
+# Case 15b: a ledger failure sends nothing — the inbox is untouched.
+before_inbox="$(wc -c < "$INBOX28" | tr -d '[:space:]')"
+: > "$WORK/not-a-dir"
+send_rc15b=0
+HIMMEL_CONSOLE_RUNDIR="$WORK/not-a-dir" bash "$SCRIPT" "$SESSION28" unrecordable >/dev/null 2>&1 || send_rc15b=$?
+after_inbox="$(wc -c < "$INBOX28" | tr -d '[:space:]')"
+if [ "$send_rc15b" -eq 4 ] && [ "$before_inbox" = "$after_inbox" ]; then
+    pass "a ledger failure exits 4 and appends nothing"
+else
+    fail "a ledger failure exits 4 and appends nothing (rc=$send_rc15b before=$before_inbox after=$after_inbox)"
+fi
+
+# Case 15c: a ledger the reader would distrust (symlinked base or file) is
+# refused at send time, never written and then dropped at delivery.
+mkdir -p "$WORK/real-base"
+ln -s "$WORK/real-base" "$WORK/link-base"
+send_rc15c=0
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" HIMMEL_CONSOLE_RUNDIR="$WORK/link-base" \
+    bash "$SCRIPT" "$SESSION28" via-link-base >/dev/null 2>&1 || send_rc15c=$?
+mkdir -p "$WORK/file-base/HIMMEL-2980-never-toked-sender"
+: > "$WORK/real-ledger"
+ln -s "$WORK/real-ledger" "$WORK/file-base/HIMMEL-2980-never-toked-sender/inbox-sent.log"
+send_rc15d=0
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" HIMMEL_CONSOLE_RUNDIR="$WORK/file-base" \
+    bash "$SCRIPT" "$SESSION28" via-link-file >/dev/null 2>&1 || send_rc15d=$?
+if [ "$send_rc15c" -eq 4 ] && [ "$send_rc15d" -eq 4 ] && ! grep -qF 'via-link' "$INBOX28"; then
+    pass "a symlinked ledger base or file exits 4 and appends nothing"
+else
+    fail "a symlinked ledger base or file exits 4 and appends nothing (base_rc=$send_rc15c file_rc=$send_rc15d)"
 fi
 
 # Case 16: a relay-refused --token send (rc 3) writes no ledger line.

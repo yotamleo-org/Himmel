@@ -86,10 +86,33 @@ test("app.css carries the mockups' shared components", () => {
   expect(css).toMatch(/(^|[\s,}])\.pill[,{][^}]*border-radius:999px/);
 });
 
-test("the shell keeps live version identity under the Himmel brand, not above the page", () => {
+// The rest of the component set the approved mockups (Configure, Health v2, Shift v3, Tool
+// health v9, Board v4) share, so a page moved onto the layer needs no page-local copy of any of them.
+test("app.css carries the mockups' full shared component set", () => {
+  const css = read(join(PUBLIC, "app.css"));
+  const rule = (sel: string) => new RegExp(`(^|[\\s,}])${sel.replace(/[.]/g, "\\.")}[\\s{,:]`);
+  for (const sel of [".eyebrow", ".legend", ".tag", ".seg", ".o", ".o.on", ".subh", ".acts", ".foot", ".ex", ".key", ".ok-t", ".warn-t", ".bad-t", ".bars", ".bar", ".bar .track", ".btn.solid", ".btn.quiet", ".tile .num"]) {
+    expect(css, sel).toMatch(rule(sel));
+  }
+  expect(read(join(PUBLIC, "theme.css")), ".dot").toMatch(rule(".dot"));
+  // The mockup tab: monospace label, the group colour (--gc) as its underline.
+  expect(css).toMatch(/(^|\n)\.tab\{[^}]*font:[^;]*var\(--font-mono\)/);
+  expect(css).toMatch(/\.tab\[aria-selected="true"\]\{[^}]*border-bottom-color:var\(--gc,var\(--accent\)\)/);
+  // The mockup main column: --s4 around, --s5 below.
+  expect(css).toMatch(/(^|\n)main\{[^}]*padding:var\(--s4\) var\(--s4\) var\(--s5\)/);
+});
+
+test("the page header is one shared render helper, not a page-local copy", async () => {
+  const { pageHeader } = await import("../public/render.js");
+  expect(pageHeader("Shift", "a <b> sub")).toBe('<header class="ph"><h1>Shift</h1><p>a &lt;b&gt; sub</p></header>');
+  for (const f of ["roadmap.js", "shift.js"]) expect(read(join(PUBLIC, f)), f).not.toMatch(/const pageHeader\s*=/);
+});
+
+test("the shell keeps live version identity under the lowercase himmel brand, with no rail footer", () => {
   const html = read(join(PUBLIC, "index.html"));
   expect(html).not.toMatch(/<body>\s*<header/);
-  expect(html).toMatch(/<div class="brand">Himmel\s*<header class="top" id="top">[\s\S]*?<\/header>[\s\S]*?<\/div>/);
+  expect(html).toMatch(/<div class="brand">himmel\s*<header class="top" id="top">[\s\S]*?<\/header>[\s\S]*?<\/div>/);
+  expect(html).not.toContain("railfoot");
   const header = renderHeader({ himmel: { version: "1.1.3", describe: "v1.1.3", commit: "0123456789abcdef", checkout: "/test/himmel" } });
   expect(header).toContain('class="ver"');
   expect(header).toContain("himmel 1.1.3 · v1.1.3");

@@ -32,6 +32,12 @@
 # bash 3.2-safe; needs jq.
 set -uo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+
 usage() { echo "usage: succession-tracker.sh <chief doc> --successor <session> [--relayed <label>[,<label>...]]" >&2; exit 2; }
 [ "$#" -ge 3 ] || usage
 doc="$1"; shift
@@ -48,12 +54,15 @@ done
 case "$successor" in *[!A-Za-z0-9_.-]*) echo "succession-tracker.sh: --successor must be a session name (letters, digits, . _ -)" >&2; exit 2 ;; esac
 manifest="${doc%.md}.fleet.json"
 
-# The legs: block of ## Live state (the legs: line plus the lines wrapped under it).
+# The worker block of ## Live state (the `workers:` line plus the lines wrapped under it). The
+# pre-rename `legs:` line is read only while legacy names are on; `workers:` wins when both exist.
+live_key=workers
+if ! awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && /^workers:/ { f = 1 } END { exit !f }' "$doc" && legacy_names_on; then live_key=legs; fi
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state / the bullet
-block="$(awk '
+block="$(awk -v k="$live_key" '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
-    s && /^legs:/ { b = 1; print; next }
+    s && index($0, k ":") == 1 { b = 1; print; next }
     b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
     b { print }
 ' "$doc")"
@@ -84,7 +93,7 @@ done <<EOS
 $spans
 EOS
 # shellcheck disable=SC2016
-rest="$(printf '%s\n' "$block" | sed -E 's/`[^`]*`/ /g; s/^legs://')"
+rest="$(printf '%s\n' "$block" | sed -E -e 's/`[^`]*`/ /g' -e "s/^${live_key}://")"
 # shellcheck disable=SC2016
 case "$rest" in *'`'*) malformed="${malformed}${malformed:+ }unbalanced-backtick" ;; esac
 set -f
@@ -103,7 +112,7 @@ entries="$(printf '%s' "$entries" | awk 'NF && !seen[$0]++')"
 # A manifest worker the Live state does not list still counts as inherited (relay-batch.sh reports
 # the same workers as NOT-IN-LIVE-STATE), so a dropped entry cannot make the set read complete.
 if [ -n "$entries" ] && [ -f "$manifest" ]; then
-    if ! mlabels="$(jq -r '.legs[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"; then
+    if ! mlabels="$(jq -r "$JQ_W"'W[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"; then
         echo "INCOMPLETE 0/0 (fleet manifest $manifest is unreadable: cannot cross-check the workers)"
         exit 1
     fi
@@ -139,7 +148,7 @@ while IFS= read -r label; do
     [ -n "$label" ] || continue
     ldoc=""
     if [ -f "$manifest" ]; then
-        ldoc="$(jq -r --arg l "$label" '[.legs[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
+        ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
     fi
     state="$(worker_state "$ldoc")"
     if [ "$state" = own ]; then

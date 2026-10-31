@@ -101,6 +101,11 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // Allows the one audited review-thread resolve call as a literal command, so
   // the classifier never denies it; no decision on any other command.
   'allow-thread-resolve.sh',
+  // Allows one Bash call the operator approved by Telegram TOTP, only when the
+  // root afk-sudo helper spends a live one-use grant for its exact bytes,
+  // session and cwd; no decision otherwise. Last, so a deny from
+  // any member above still wins.
+  'approval-grant-check.sh',
   // PreToolUse `PowerShell` chain.
   'block-read-secrets.sh',
   'block-destructive-commands.sh',

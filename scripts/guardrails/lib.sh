@@ -1094,6 +1094,85 @@ main_checkout_verdict() {
 # memo survives between targets; a `$(main_checkout_verdict ...)` forks first
 # and drops it.
 _MCV_ROOT=""
+
+# _scratch_clone_exempt REPO — true when REPO (canonical, no
+# trailing slash) is a standalone clone inside a session scratchpad, i.e. it sits
+# at <tmp>/claude-<uid>/<project>/<session>/scratchpad/<something> under
+# $TMPDIR or /tmp, and is NOT himmel's own checkout. A worker doing fork upkeep
+# clones the fork there; that clone is not a protected checkout. Everything else
+# is refused as before: a repo outside that layout, a linked worktree (its `.git`
+# is a file), the CLAUDE_PROJECT_DIR checkout, a `.himmel-dev` checkout, and a
+# registered adopter primary. Callers pass an already-canonical path, so a symlink
+# or `..` that leads into a primary checkout never reaches this layout match. A
+# scratch dir whose git setup points elsewhere (symlinked `.git`, a `commondir`
+# file, `core.worktree`) is refused too, and so is any git or helper error.
+_scratch_clone_exempt() {
+    local repo="$1" uid base rest seg proj_dir proj_primary
+    uid=$(id -u 2>/dev/null) || return 1
+    [ -d "$repo/.git" ] && [ ! -L "$repo/.git" ] && [ ! -e "$repo/.git/commondir" ] || return 1
+    for base in "${TMPDIR:-}" /tmp; do
+        base="${base%/}"
+        [ -n "$base" ] || continue
+        base=$(cd -P -- "$base" 2>/dev/null && pwd -P) || continue
+        case "$repo" in
+            "$base/claude-$uid/"*) ;;
+            *) continue ;;
+        esac
+        rest="${repo#"$base/claude-$uid/"}"
+        # <project>/<session>/scratchpad/<clone> — exactly those leading segments
+        seg="${rest%%/*}"; [ -n "$seg" ] || continue; rest="${rest#*/}"
+        seg="${rest%%/*}"; [ -n "$seg" ] && [ "$seg" != "$rest" ] || continue; rest="${rest#*/}"
+        [ "${rest%%/*}" = scratchpad ] && [ "${rest#*/}" != "$rest" ] && [ -n "${rest#*/}" ] || continue
+        [ ! -e "$repo/.himmel-dev" ] || return 1
+        if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+            proj_dir=$(cd -P -- "$CLAUDE_PROJECT_DIR" 2>/dev/null && pwd -P) || proj_dir=""
+            proj_primary=""
+            [ -z "$proj_dir" ] || proj_primary=$(primary_checkout_root "$proj_dir" 2>/dev/null) || proj_primary=""
+            { [ "$repo" = "$proj_dir" ] || [ "$repo" = "$proj_primary" ]; } && return 1
+        fi
+        _scratch_clone_self_contained "$repo" || return 1
+        # Only adopted-primary.sh's own "no match" (exit 1) lets the clone through:
+        # a match, a usage error, a crash or a missing helper all refuse.
+        local ap aprc=0
+        ap="$(cd -P -- "$(dirname "${BASH_SOURCE[0]}")/../handover/chief-kit" 2>/dev/null && pwd -P)/adopted-primary.sh"
+        [ -f "$ap" ] || return 1
+        bash "$ap" "$repo" >/dev/null 2>&1 || aprc=$?
+        [ "$aprc" -eq 1 ] || return 1
+        return 0
+    done
+    return 1
+}
+
+# _scratch_clone_self_contained REPO — true only when git itself resolves REPO's
+# git dir, common dir and work tree to REPO's own, and no core.worktree redirects
+# the work tree. Evaluated on every call; any git error refuses. This is what keeps
+# a scratch dir whose git setup leads into another checkout (a symlinked `.git`, a
+# `commondir` file, a `core.worktree`) from borrowing the exemption.
+_scratch_clone_self_contained() {
+    local repo="$1" out gd gcd wt cw cwrc=0 odd
+    out=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$repo" rev-parse --path-format=absolute --git-dir --git-common-dir --show-toplevel 2>/dev/null) || return 1
+    { IFS= read -r gd; IFS= read -r gcd; IFS= read -r wt; } <<EOF
+$out
+EOF
+    [ -n "$gd" ] && [ -n "$gcd" ] && [ -n "$wt" ] || return 1
+    gd=$(cd -P -- "$gd" 2>/dev/null && pwd -P) || return 1
+    gcd=$(cd -P -- "$gcd" 2>/dev/null && pwd -P) || return 1
+    wt=$(cd -P -- "$wt" 2>/dev/null && pwd -P) || return 1
+    [ "$gd" = "$repo/.git" ] && [ "$gcd" = "$repo/.git" ] && [ "$wt" = "$repo" ] || return 1
+    # Nothing inside .git may be a symlink or a hard-linked file: config, index, HEAD,
+    # refs, hooks, info and objects entries could all alias a file of another
+    # checkout, and no path under .git is skipped. A `git clone` of a local path
+    # hard-links the source's objects, so such a clone is refused; clone from a URL
+    # or with `--no-hardlinks` to get the exemption.
+    odd=$(find "$repo/.git" \( -type l -o \( -type f -links +1 \) \) -print 2>/dev/null) || return 1
+    [ -z "$odd" ] || return 1
+    cw=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
+        git -C "$repo" config --get core.worktree 2>/dev/null) || cwrc=$?
+    [ "$cwrc" -eq 1 ] && [ -z "$cw" ] || return 1
+    return 0
+}
+
 main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
@@ -1108,6 +1187,11 @@ main_checkout_verdict_set() {
             return 0
             ;;
     esac
+
+    if _scratch_clone_exempt "$repo_real"; then
+        _MCV_ROOT="$repo_real"
+        return 0
+    fi
 
     local branch_rc=0
     is_on_main "$repo_real" || branch_rc=$?

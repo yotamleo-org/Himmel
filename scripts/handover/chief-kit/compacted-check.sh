@@ -37,6 +37,9 @@ if [ "$#" -ne 2 ]; then
     exit 64
 fi
 DOC="$1"; SNAPDIR="$2"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
 
 sha_of() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
@@ -77,13 +80,18 @@ snap_field() {
 # The last real COMPACTED bullet: a `- ` bullet naming COMPACTED with all three
 # mandatory segments, so a prose bullet that merely mentions the word is never
 # picked. Backticks are stripped up front.
-bullet="$(grep -E '^- .*COMPACTED.* legs: .*, queue: .*, last GO: ' "$DOC" 2>/dev/null | tail -n 1 | tr -d '`')"
+# A bullet already in a doc's history says `legs:`; the pre-rename word is read only while legacy names are on.
+wk_re=workers; if legacy_names_on; then wk_re='(workers|legs)'; fi
+bullet="$(grep -E "^- .*COMPACTED.* $wk_re: .*, queue: .*, last GO: " "$DOC" 2>/dev/null | tail -n 1 | tr -d '`')"
 if [ -z "$bullet" ]; then
     echo "G11 LOSS bullet: no COMPACTED bullet found in $DOC"
     exit 1
 fi
 
-rest="${bullet#* legs: }"
+case "$bullet" in
+    *" workers: "*) rest="${bullet#* workers: }" ;;
+    *) rest="${bullet#* legs: }" ;;
+esac
 b_workers="${rest%%, queue: *}"
 rest="${rest#*, queue: }"
 b_queue="${rest%%, last GO: *}"

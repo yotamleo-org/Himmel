@@ -1629,6 +1629,43 @@ check "60 the re-rendered workers line keeps the seeded nonce with the held lock
 HANDOVER_DIR="$root" bash "$QL" release "$leg60" "$leg60tok" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$doc60A" "$token60a" >/dev/null 2>&1
 
+# --- 60w: the same seeding from a predecessor that already says `workers:` over a `workers` manifest;
+# wrapped_open_prs_section reads a `workers` manifest too.
+out60w="$(chief new --bucket wlivesrc)"
+token60w="$(token_of "$out60w")"
+doc60wA="$root/tester/wlivesrc/DEMO-nextleg-${today}A-chief.md"
+doc60wB="$root/tester/wlivedst/DEMO-nextleg-${today}B-chief.md"
+# shellcheck disable=SC2016  # backtick worker span, literal fixture text
+fixture60w='workers: `N9:nonce-fixture-60w:lock-fixture-60w:42424`'
+awk -v workers_line="$fixture60w" '
+    $0 == "## Live state" { print; print ""; print workers_line; print "queue: N9"; print "last GO: `#999:deadbeef00`"; print "acked: none"; skip = 1; next }
+    skip && /^## / { skip = 0 }
+    skip { next }
+    { print }
+' "$doc60wA" > "$doc60wA.new" && mv "$doc60wA.new" "$doc60wA"
+printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60wA%.md}.fleet.json"
+rc60w=0
+chief next --bucket wlivedst --doc "$doc60wA" >/dev/null 2>&1 || rc60w=$?
+check "60w next succeeds against a doc with a workers: Live state line" "$rc60w" "0"
+live60w="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60wB" 2>/dev/null)"
+# shellcheck disable=SC2016  # literal fixture text
+check "60w successor Live state seeds the predecessor's workers value verbatim" \
+    "$(printf '%s\n' "$live60w" | grep -c '^\(workers\|legs\): `N9:nonce-fixture-60w:lock-fixture-60w:42424`$')" "1"
+check "60w successor Live state keeps no placeholder workers line" \
+    "$(printf '%s\n' "$live60w" | grep -c '^\(legs\|workers\): <')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$doc60wA" "$token60w" >/dev/null 2>&1
+
+out6w="$(chief new --bucket wnextrepo)"
+token6w="$(token_of "$out6w")"
+handoff6wA="$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/wnextrepo/DEMO-1-N9-wrapped.md"
+printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/wnextrepo/DEMO-2-N8-closed.md"
+printf '{"workers":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/wnextrepo/DEMO-1-N9-wrapped.md" "$root/tester/wnextrepo/DEMO-2-N8-closed.md" > "$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
+chief next --bucket wnextrepo >/dev/null
+check "60w handoff carries a WRAPPED worker with an open PR from a workers manifest" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6wA")" "1"
+check "60w handoff omits a WRAPPED worker whose PR is closed, from a workers manifest" "$(grep -c '^- PR #77' "$handoff6wA")" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief.md" "$token6w" >/dev/null 2>&1
+
 # --- 60b: the chief board's artifact URL rides on the
 # `board:` line of `## Live state` and `next` seeds the successor's own line
 # with it, so the successor updates the same artifact. Controls: a fresh

@@ -868,6 +868,142 @@ if [ "$rc" -eq 0 ] && [ "$out" = "$MV_SW_C" ]; then pass "main_checkout_verdict:
 out=$(main_checkout_verdict "$HOME/nowhere/file.txt"); rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "main_checkout_verdict: path in no repo -> rc=0, no output"; else fail "main_checkout_verdict: no repo -> expected rc=0+empty got rc=$rc out=[$out]"; fi
 
+# A standalone clone inside the session scratchpad
+# (<tmp>/claude-<uid>/<project>/<session>/scratchpad/...) is not a protected
+# checkout. TMPDIR=$FIX pins the temp root to the fixture so the layout is built
+# here, never under the real /tmp.
+MV_SCR="$FIX/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$MV_SCR"
+MV_SCR_FEAT="$MV_SCR/gfork/feat"
+mkdir -p "$MV_SCR_FEAT"
+git -C "$MV_SCR_FEAT" init -q -b main
+GITID -C "$MV_SCR_FEAT" commit -q --allow-empty -m init
+git -C "$MV_SCR_FEAT" checkout -q -b feat/z
+MV_SCR_FEAT_C=$(cd "$MV_SCR_FEAT" && pwd -P)
+MV_SCR_MAIN="$MV_SCR/gfork/onmain"
+mkdir -p "$MV_SCR_MAIN"
+git -C "$MV_SCR_MAIN" init -q -b main
+GITID -C "$MV_SCR_MAIN" commit -q --allow-empty -m init
+MV_SCR_MAIN_C=$(cd "$MV_SCR_MAIN" && pwd -P)
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on a feature branch -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on feature -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/.single-writer"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: .single-writer in a scratchpad clone -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone .single-writer -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_MAIN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on main -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on main -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+# Refuse rows: these stay denied with the same TMPDIR.
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_PRIMFEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: clone outside the scratch roots, TMPDIR set -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch primary-feature with TMPDIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_MAIN_C/a.txt"); rc=$?
+if [ "$rc" -eq 1 ]; then pass "main_checkout_verdict: on-main clone outside the scratch roots, TMPDIR set -> rc=1 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch main with TMPDIR -> expected rc=1 got rc=$rc out=[$out]"; fi
+
+MV_SCR_HD="$MV_SCR/gfork/himmelish"
+mkdir -p "$MV_SCR_HD"
+git -C "$MV_SCR_HD" init -q -b main
+GITID -C "$MV_SCR_HD" commit -q --allow-empty -m init
+git -C "$MV_SCR_HD" checkout -q -b feat/h
+: > "$MV_SCR_HD/.himmel-dev"
+MV_SCR_HD_C=$(cd "$MV_SCR_HD" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_HD_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone carrying the .himmel-dev marker stays denied -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" CLAUDE_PROJECT_DIR="$MV_SCR_FEAT_C" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the session's own project checkout stays denied even under the scratchpad -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# A symlink or `..` inside the scratchpad that resolves into a primary checkout
+# is canonicalised by the caller first, so the verdict sees the real repo.
+ln -sfn "$MV_PRIMFEAT_C" "$MV_SCR/linkprim"
+canon=$(guard_canon_path "$MV_SCR/linkprim/newfile.txt")
+out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad symlink into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch symlink into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+
+canon=$(guard_canon_path "$MV_SCR/gfork/../../../../../mv-primfeat/newfile.txt")
+out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .. path into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch .. into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+
+# A scratch dir whose git setup leads into a primary checkout borrows nothing.
+# Each shape reaches the same primary-feature verdict (rc=2) a direct hit would.
+MV_SCR_LN="$MV_SCR/gfork/lnk"
+mkdir -p "$MV_SCR_LN"
+ln -s "$MV_PRIMFEAT_C/.git" "$MV_SCR_LN/.git"
+MV_SCR_LN_C=$(cd "$MV_SCR_LN" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_LN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad dir with a symlinked .git into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch symlinked .git -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_SCR_CD="$MV_SCR/gfork/commondir"
+mkdir -p "$MV_SCR_CD/.git"
+printf 'ref: refs/heads/feat/y\n' > "$MV_SCR_CD/.git/HEAD"
+printf '%s\n' "$MV_PRIMFEAT_C/.git" > "$MV_SCR_CD/.git/commondir"
+MV_SCR_CD_C=$(cd "$MV_SCR_CD" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_CD_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .git dir with a commondir file into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch commondir -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_SCR_CW="$MV_SCR/gfork/coreworktree"
+mkdir -p "$MV_SCR_CW"
+git -C "$MV_SCR_CW" init -q -b main
+GITID -C "$MV_SCR_CW" commit -q --allow-empty -m init
+git -C "$MV_SCR_CW" checkout -q -b feat/w
+git -C "$MV_SCR_CW" config core.worktree "$MV_PRIMFEAT_C"
+MV_SCR_CW_C=$(cd "$MV_SCR_CW" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_CW_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with core.worktree set -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch core.worktree -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# Anything inside .git that is a symlink or a hard link to a primary's own file
+# (config, index, refs, hooks, objects ...) is refused too.
+for MV_KIND in config index refs hooks objects config-hardlink objects-info-hardlink objects-fanout-symlink; do
+    MV_D="$MV_SCR/gfork/dotgit-$MV_KIND"
+    mkdir -p "$MV_D"
+    git -C "$MV_D" init -q -b main
+    printf 'x\n' > "$MV_D/f.txt"
+    git -C "$MV_D" add f.txt
+    GITID -C "$MV_D" commit -q -m init
+    git -C "$MV_D" checkout -q -b feat/q
+    case "$MV_KIND" in
+        config)          rm "$MV_D/.git/config";        ln -s "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/config" ;;
+        index)           rm -f "$MV_D/.git/index";      ln -s "$MV_PRIMFEAT_C/.git/index" "$MV_D/.git/index" ;;
+        refs)            rm -rf "$MV_D/.git/refs";      ln -s "$MV_PRIMFEAT_C/.git/refs" "$MV_D/.git/refs" ;;
+        hooks)           rm -rf "$MV_D/.git/hooks";     ln -s "$MV_PRIMFEAT_C/.git/hooks" "$MV_D/.git/hooks" ;;
+        objects)         rm -rf "$MV_D/.git/objects";   ln -s "$MV_PRIMFEAT_C/.git/objects" "$MV_D/.git/objects" ;;
+        config-hardlink) rm "$MV_D/.git/config";        ln "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/config" ;;
+        objects-info-hardlink)   mkdir -p "$MV_D/.git/objects/info"; ln "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/objects/info/shared" ;;
+        objects-fanout-symlink)  mkdir -p "$MV_D/.git/objects/ab";   ln -s "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/objects/ab/evil" ;;
+    esac
+    MV_D_C=$(cd "$MV_D" && pwd -P)
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_D_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with .git/$MV_KIND leading into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch .git/$MV_KIND into primary -> expected rc=2 got rc=$rc out=[$out]"; fi
+done
+
+# A clone of a local path hard-links the source's objects, so it is refused; the
+# same clone made with --no-hardlinks is an ordinary scratch clone and is exempt.
+MV_HL="$MV_SCR/gfork/localclone"
+if git clone -q "$MV_PRIMFEAT_C" "$MV_HL" >/dev/null 2>&1 && MV_HL_C=$(cd "$MV_HL" && pwd -P); then
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_HL_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone of a local path with hard-linked objects -> rc=2 (refuse)"; else fail "main_checkout_verdict: hard-linked local clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+else
+    fail "main_checkout_verdict fixture: the local clone for the hard-link row failed - the row would test a missing clone"
+fi
+
+MV_NH="$MV_SCR/gfork/nohardlinks"
+if git clone -q --no-hardlinks "$MV_PRIMFEAT_C" "$MV_NH" >/dev/null 2>&1 && MV_NH_C=$(cd "$MV_NH" && pwd -P); then
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_NH_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone made with --no-hardlinks -> rc=0"; else fail "main_checkout_verdict: --no-hardlinks clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+else
+    fail "main_checkout_verdict fixture: the --no-hardlinks clone failed - the row would test a missing clone"
+fi
+
+# A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
+# (the helper is missing), where the real tree allows the same clone.
+MV_NOAP="$FIX/noap/scripts/guardrails"
+mkdir -p "$MV_NOAP"
+cp "$LIB" "$MV_NOAP/lib.sh"
+out=$( ( . "$MV_NOAP/lib.sh"; TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt" ) ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone refused when adopted-primary.sh is missing -> rc=2"; else fail "main_checkout_verdict: missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
+
 git -C "$MV_MAIN" worktree remove --force "$MV_WT" 2>/dev/null || true
 git -C "$PC_PRIMARY" worktree remove --force "$PC_WT" 2>/dev/null || true
 rm -rf "$FIX"

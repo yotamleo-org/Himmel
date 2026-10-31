@@ -60,6 +60,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 # The launch line below is PASTED by an operator, and the terminal
 # they paste it into was itself spawned from a claude session -- so
@@ -555,7 +559,7 @@ wrapped_open_prs_section() { # <predecessor doc>
     printf '## Wrapped with open PR\n\n'
     printf 'The successor dispositions each entry below (relaunch, GO or close) BEFORE its first dispatch.\n\n'
     open="$(bash "$facts" prs "$doc" --repo "$repo" 2>/dev/null | sed -n 's/^#\([0-9][0-9]*\) .*/\1/p')" || { open=""; lookup_failed=1; }
-    if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
+    if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r "$JQ_W"'W[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -f "$ldoc" ] || continue
             [ "$(worker_tail_status "$ldoc")" = WRAPPED ] || continue
@@ -1816,7 +1820,7 @@ carried_residual_must() {
 # prefix: for `legs:`, the whole block tick.sh reads (the wrapped lines up to
 # a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
 seeded_live_field() {
-    printf '%s\n' "$1" | awk -v k="$2:" -v block="$([ "$2" = legs ] && echo 1)" '
+    printf '%s\n' "$1" | awk -v k="$2:" -v block="$({ [ "$2" = legs ] || [ "$2" = workers ]; } && echo 1)" '
         !f && index($0, k) == 1 { f = 1; sub(/^[^:]*:[[:space:]]*/, ""); print; if (!block) exit; next }
         f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { exit }
         f { print }
@@ -1837,7 +1841,7 @@ open_legs_block() {
     local entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
     # a row with no label cannot be matched to its span: the open set is unknown, so the block stays whole
-    names="$(jq -r 'if any(.legs[]; (.label // "") == "") then error("row without a label") else .legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; "")) end' "$manifest" 2>/dev/null)" \
+    names="$(jq -r "$JQ_W"'if any(W[]; (.label // "") == "") then error("row without a label") else W[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; "")) end' "$manifest" 2>/dev/null)" \
         || { printf '%s\n' "$block"; return 0; }
     # shellcheck disable=SC2016
     while IFS= read -r span; do
@@ -1870,8 +1874,12 @@ latest_go_only() {
 # for the HANDOFF; a failed write seeds both whole.
 LS_HISTORY_REF=""
 seed_live_fields() {
-    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile sep=""
-    legs="$(seeded_live_field "$live" legs)"
+    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile sep="" wkey=workers
+    # the predecessor's worker line is `workers:`; the pre-rename `legs:` is read only while legacy
+    # names are on, and `workers:` wins when it has both. The successor's own line keeps the
+    # name its template ships.
+    if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then wkey=legs; fi
+    legs="$(seeded_live_field "$live" "$wkey")"
     go="$(seeded_live_field "$live" "last GO")"
     new_legs="$(open_legs_block "$legs" "${doc%.md}.fleet.json")"
     new_go="$(latest_go_only "$go")"
@@ -1879,19 +1887,19 @@ seed_live_fields() {
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
         [ ! -s "$hfile" ] || sep=$'\n'
-        if mkdir -p "$hdir" && { printf '%s# Live state trimmed by chief.sh next from %s at %s\n\nlegs: %s\nlast GO: %s\n' "$sep" "$stem" "$(date -u +%Y-%m-%dT%H:%MZ)" "$legs" "$go" >> "$hfile"; } 2>/dev/null; then
+        if mkdir -p "$hdir" && { printf '%s# Live state trimmed by chief.sh next from %s at %s\n\n%s: %s\nlast GO: %s\n' "$sep" "$stem" "$(date -u +%Y-%m-%dT%H:%MZ)" "$wkey" "$legs" "$go" >> "$hfile"; } 2>/dev/null; then
             LS_HISTORY_REF="$hfile"
         else
             err "warning: could not write the Live state history to $hfile; seeded the legs: and last GO: lines whole"
             new_legs="$legs"; new_go="$go"
         fi
     fi
-    SL_legs="$new_legs" SL_queue="$(seeded_live_field "$live" queue)" \
+    SL_workers="$new_legs" SL_queue="$(seeded_live_field "$live" queue)" \
     SL_last_GO="$new_go" SL_acked="$(seeded_live_field "$live" acked)" awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
-        f && /^(legs|queue|last GO|acked): </ {
-            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : name)]
+        f && /^(workers|legs|queue|last GO|acked): </ {
+            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : (name == "legs" ? "workers" : name))]
             if (v != "") { print name ": " v; next }
         }
         { print }' "$doc" > "$doc.seed" || { rm -f "$doc.seed"; err "could not seed the Live state into $doc"; exit 1; }

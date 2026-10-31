@@ -14,6 +14,9 @@ const READ_ONLY = {
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// The mockups' page header: the page title and its one-line purpose.
+export const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
+
 // One compact command control; the full command is available on hover and to the existing copy handler.
 export const copyCommand = (command, label = "copy command") => `<button class="btn" type="button" data-act="copy" data-cmd="${esc(command)}" title="${esc(command)}">${esc(label)}</button>`;
 

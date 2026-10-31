@@ -2609,6 +2609,7 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['guard-identical-denied-retry.sh', 'fail-open by design: it may only deny the precisely counted third identical command'],
   ['guard-bus-store.sh', 'speed bump, not a fence (HIMMEL-4829): a starved skip is acceptable'],
   ['allow-thread-resolve.sh', 'allow-only, never denies: a starved skip leaves no decision, which is the default'],
+  ['approval-grant-check.sh', 'allow-only, never denies (HIMMEL-7686): a starved skip leaves no decision, so the classifier refuses as before'],
   ['block-fork-sync-pr.sh', 'workflow guard, fails open on its own infra errors: a starved skip lets one sync PR through'],
 ]);
 

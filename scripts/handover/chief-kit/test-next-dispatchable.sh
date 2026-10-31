@@ -171,6 +171,22 @@ lg="$(run --workers-from "$WORK/fleet-gone.json")"
 has "an unreadable worker doc is reported in the header" "$lg" "live workers unknown"
 lacks "a readable manifest is not reported unknown" "$out" "live workers unknown"
 
+# a workers-array manifest reads like the pre-rename legs one; workers wins when both exist; the switch drops the old name
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORKER" > "$WORK/fleet-w.json"
+ow="$(run --workers-from "$WORK/fleet-w.json")"
+has "a workers manifest still lists a free ticket" "$ow" "HIMMEL-1	"
+lacks "a workers manifest excludes a ticket colliding with a live worker's scope" "$ow" "HIMMEL-4	"
+lacks "a workers manifest is not reported unknown" "$ow" "live workers unknown"
+printf '{"schema":1,"legs":[{"doc":"%s/gone.md","label":"N2"}],"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORK" "$WORKER" > "$WORK/fleet-both.json"
+ob="$(run --workers-from "$WORK/fleet-both.json")"
+lacks "a manifest with both arrays reads the workers one (HIMMEL-4 excluded)" "$ob" "HIMMEL-4	"
+lacks "a manifest with both arrays is not reported unknown" "$ob" "live workers unknown"
+off="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet.json")"
+has "with HIMMEL_LEGACY_NAMES=0 a legs-only manifest is reported unknown" "$off" "live workers unknown"
+offw="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet-w.json")"
+lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest still excludes HIMMEL-4" "$offw" "HIMMEL-4	"
+lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest is not reported unknown" "$offw" "live workers unknown"
+
 # root files and plugins/ take part in the collision check
 M4="$WORK/m4/HIMMEL"; mkdir -p "$M4"
 M_SAVE="$M"; M="$M4"
@@ -331,7 +347,8 @@ pw0="$(run --workers-from "$WORK/fleet.json")"; pw0_rc=$?
 lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit"
+NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
+cp "$(dirname "$SUT")/../../lib/env_alias.py" "$NF/scripts/lib/env_alias.py"
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
 NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
 [ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"

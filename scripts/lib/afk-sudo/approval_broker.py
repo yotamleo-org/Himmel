@@ -297,7 +297,8 @@ class Broker:
             os.close(fd)
         res = executor(p["payload"])
         # An executor returns the exit status (int), or a dict {"result", "exit", ...ledger extras}:
-        # "ran" is a run, anything else a refusal made after the code was accepted.
+        # "ran" is a run, "granted" a grant written (the grant kind runs nothing), anything else a refusal made
+        # after the code was accepted.
         if not isinstance(res, dict):
             res = {"result": "ran", "exit": res}
         extra = {k: v for k, v in res.items() if k not in ("result", "exit")}
@@ -308,6 +309,10 @@ class Broker:
                 self._finish(s, rid, f"ran:{res['exit']}")
                 self._save(s)
                 self._row("run", "ran", p["meta"], id=rid, exit=res["exit"], **extra)
+            elif res["result"] == "granted":
+                self._finish(s, rid, "granted")
+                self._save(s)
+                self._row("grant", "granted", p["meta"], id=rid, **extra)
             else:
                 self._finish(s, rid, "refused:" + res["result"])
                 self._save(s)

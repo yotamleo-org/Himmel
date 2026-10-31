@@ -128,6 +128,25 @@ printf '# chief\n\n- 11:00 note: the COMPACTED bullet format is described above\
 rc=0; out="$(bash "$SCRIPT" "$d10" "$s1" 2>&1)" || rc=$?
 check    "10: prose bullets after the real one are ignored (rc 0)" "$rc" 0
 
+# --- 10b. M1a: a `workers:` bullet reads, and so does a `legs:` one already in history ---------
+NEWB="- COMPACTED 12:00 — workers: \`$WORKERS\`, queue: 12,13, last GO: 12:abc1234"
+d10b="$tmp/d10b.md"; mk_doc "$d10b" "$NEWB"
+rc=0; out="$(bash "$SCRIPT" "$d10b" "$s1" 2>&1)" || rc=$?
+check    "10b: a workers: bullet matching the snap rc 0" "$rc" 0
+contains "10b: a workers: bullet prints G11 ok" "$out" "G11 ok"
+d10c="$tmp/d10c.md"; mk_doc "$d10c" "- COMPACTED 12:00 — workers: \`$WORKERS\`, queue: 13,12, last GO: none"
+rc=0; out="$(bash "$SCRIPT" "$d10c" "$s1" 2>&1)" || rc=$?
+check    "10b: a corrupted workers: bullet rc 1" "$rc" 1
+contains "10b: a corrupted workers: bullet names the queue loss" "$out" "G11 LOSS queue"
+d10d="$tmp/d10d.md"; printf '# chief\n\n## Results\n%s\n%s\n' "$GOOD" "$NEWB" > "$d10d"
+rc=0; out="$(bash "$SCRIPT" "$d10d" "$s1" 2>&1)" || rc=$?
+check    "10b: a legs: bullet in history followed by a workers: one reads the newest (rc 0)" "$rc" 0
+rc=0; out="$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" "$d1" "$s1" 2>&1)" || rc=$?
+check    "10b: with HIMMEL_LEGACY_NAMES=0 a legs: bullet is not a COMPACTED bullet (rc 1)" "$rc" 1
+contains "10b: the refused legs: bullet reads as no bullet" "$out" "G11 LOSS bullet"
+rc=0; out="$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" "$d10b" "$s1" 2>&1)" || rc=$?
+check    "10b: with HIMMEL_LEGACY_NAMES=0 a workers: bullet still reads (rc 0)" "$rc" 0
+
 # --- 11. usage ---------------------------------------------------------------
 rc=0; out="$(bash "$SCRIPT" 2>&1)" || rc=$?
 check    "11: no args rc 64" "$rc" 64
