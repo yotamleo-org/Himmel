@@ -344,8 +344,8 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
   expect(b.calls).toEqual([]);
 });
 
-test("button: a code-shaped reply to a bot message with no known prompt is consumed, however it is spaced", async () => {
-  for (const text of ["123 456", "123-456", " 123456 ", "1234567", "12 34 56"]) {
+test("button: a reply to a bot message with no known prompt holding a standalone six-digit token is consumed, with or without words", async () => {
+  for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today"]) {
     const b = buttons();
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
     await settle();
@@ -354,8 +354,8 @@ test("button: a code-shaped reply to a bot message with no known prompt is consu
   }
 });
 
-test("button: HIMMEL-8365 a reply to a non-sudo bot message with words and numbers is ordinary text", async () => {
-  for (const text of ["do 8276 8277 next", "ship 123456 and 654321 today", "ticket 123-456 is done"]) {
+test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exist only split by spaces or hyphens is ordinary text", async () => {
+  for (const text of ["do 8276 8277 next", "10-31 08", "ticket 123-456 is done", "12 34 56", "1234567"]) {
     const b = buttons();
     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
     await settle();
@@ -393,12 +393,12 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   }
 });
 
-test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it holds no words", async () => {
+test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it is a standalone six-digit token", async () => {
   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
   for (const text of texts) {
-    // with words around it, a reply to a bot message with no known prompt is ordinary text
+    // a reply to a bot message with no known prompt is held only for a contiguous six-digit token
     const gone = buttons();
-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(!/\p{L}/u.test(text));
+    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text));
     const live = buttons();
     live.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
@@ -432,7 +432,7 @@ test("poller: ingest then the real delivery mapping carries reply_to_bot into th
   const { deps, calls } = fake();
   const ran: string[] = [];
   const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
-  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123 456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
+  await ingestUpdates(r, [{ update_id: 1, message: { message_id: 5, chat: { id: OP }, from: { id: OP }, text: "123456", reply_to_message: { message_id: 40, from: { id: 99, is_bot: true } } } }]);
   await ingestBatch(r, (i) => handleInbound(r, inboundToDelivered(i), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true));
   await settle();
   expect(calls.length).toBe(0);
