@@ -130,6 +130,7 @@ scripts/ci/test-cancel-superseded-runs.sh	1
 scripts/ci/test-check-ci-install-locks.sh	30
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	4
+scripts/ci/test-check-doc-literals.sh	1
 scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-flags.sh	15
 scripts/ci/test-check-hardcoded-env-values.sh	1
@@ -140,6 +141,7 @@ scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-manifest-coverage.sh	6
 scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-removal-ratchets.sh	2
+scripts/ci/test-check-rename-diff.sh	1
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-container-jobs.sh	2

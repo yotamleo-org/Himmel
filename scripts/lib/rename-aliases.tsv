@@ -13,6 +13,8 @@
 # the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
 # permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout),
 # cap (alias_env_cap, a numeric ceiling: the narrower value wins and a non-numeric one fails closed).
+# scripts/ci/check-rename-diff.sh reads the direction column as the mode, per kind: prose and path and directory
+# rows scan when fail, identifier and marker rows when old-to-new, env and env-prefix rows always; keep rows are exempt.
 # First match wins: the R1 block below lists every exact name above the prefix that would swallow it, then the
 # identifier rows follow alphabetically. scripts/lib/test-rename-aliases.sh pins the R1 block.
 old	new	kind	direction	slice	remove-at
