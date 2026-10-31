@@ -1029,6 +1029,10 @@ printf 'ref: refs/heads/feat/y\n' > "$SCR/gfork/cdir/.git/HEAD"
 printf '%s\n' "$FIX/featprim/.git" > "$SCR/gfork/cdir/.git/commondir"
 mkrepo "$SCR/gfork/cw" feat/c
 git -C "$SCR/gfork/cw" config core.worktree "$FIX/featprim"
+mkrepo "$SCR/gfork/cfgln" feat/c
+rm -f "$SCR/gfork/cfgln/.git/config"
+ln -s "$FIX/featprim/.git/config" "$SCR/gfork/cfgln/.git/config"
+deny "scratch clone with .git/config symlinked into a primary: remote add" "$W" "git -C $SCR/gfork/cfgln remote add upstream https://example.invalid/r.git"
 deny "scratch dir with a symlinked .git into a primary: remote add"  "$W" "git -C $SCR/gfork/lnk remote add upstream https://example.invalid/r.git"
 deny "scratch .git dir with a commondir file: remote add"            "$W" "git -C $SCR/gfork/cdir remote add upstream https://example.invalid/r.git"
 deny "scratch clone with core.worktree set: remote add"              "$W" "git -C $SCR/gfork/cw remote add upstream https://example.invalid/r.git"

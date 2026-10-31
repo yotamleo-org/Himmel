@@ -1149,7 +1149,7 @@ _scratch_clone_exempt() {
 # a scratch dir whose git setup leads into another checkout (a symlinked `.git`, a
 # `commondir` file, a `core.worktree`) from borrowing the exemption.
 _scratch_clone_self_contained() {
-    local repo="$1" out gd gcd wt cw cwrc=0
+    local repo="$1" out gd gcd wt cw cwrc=0 odd
     out=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
         git -C "$repo" rev-parse --path-format=absolute --git-dir --git-common-dir --show-toplevel 2>/dev/null) || return 1
     { IFS= read -r gd; IFS= read -r gcd; IFS= read -r wt; } <<EOF
@@ -1160,6 +1160,12 @@ EOF
     gcd=$(cd -P -- "$gcd" 2>/dev/null && pwd -P) || return 1
     wt=$(cd -P -- "$wt" 2>/dev/null && pwd -P) || return 1
     [ "$gd" = "$repo/.git" ] && [ "$gcd" = "$repo/.git" ] && [ "$wt" = "$repo" ] || return 1
+    # Nothing inside .git may be a symlink or a hard-linked file (config, index, HEAD,
+    # refs, hooks, objects ... could all lead into another checkout). The loose-object
+    # and pack files below objects/ are skipped: `git clone` hard-links them, and the
+    # objects directory itself is still checked.
+    odd=$(find "$repo/.git" -path "$repo/.git/objects/*/*" -prune -o \( -type l -o \( -type f -links +1 \) \) -print 2>/dev/null) || return 1
+    [ -z "$odd" ] || return 1
     cw=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
         git -C "$repo" config --get core.worktree 2>/dev/null) || cwrc=$?
     [ "$cwrc" -eq 1 ] && [ -z "$cw" ] || return 1

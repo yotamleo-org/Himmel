@@ -953,6 +953,29 @@ MV_SCR_CW_C=$(cd "$MV_SCR_CW" && pwd -P)
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_CW_C/newfile.txt"); rc=$?
 if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with core.worktree set -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch core.worktree -> expected rc=2 got rc=$rc out=[$out]"; fi
 
+# Anything inside .git that is a symlink or a hard link to a primary's own file
+# (config, index, refs, hooks, objects ...) is refused too.
+for MV_KIND in config index refs hooks objects config-hardlink; do
+    MV_D="$MV_SCR/gfork/dotgit-$MV_KIND"
+    mkdir -p "$MV_D"
+    git -C "$MV_D" init -q -b main
+    printf 'x\n' > "$MV_D/f.txt"
+    git -C "$MV_D" add f.txt
+    GITID -C "$MV_D" commit -q -m init
+    git -C "$MV_D" checkout -q -b feat/q
+    case "$MV_KIND" in
+        config)          rm "$MV_D/.git/config";        ln -s "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/config" ;;
+        index)           rm -f "$MV_D/.git/index";      ln -s "$MV_PRIMFEAT_C/.git/index" "$MV_D/.git/index" ;;
+        refs)            rm -rf "$MV_D/.git/refs";      ln -s "$MV_PRIMFEAT_C/.git/refs" "$MV_D/.git/refs" ;;
+        hooks)           rm -rf "$MV_D/.git/hooks";     ln -s "$MV_PRIMFEAT_C/.git/hooks" "$MV_D/.git/hooks" ;;
+        objects)         rm -rf "$MV_D/.git/objects";   ln -s "$MV_PRIMFEAT_C/.git/objects" "$MV_D/.git/objects" ;;
+        config-hardlink) rm "$MV_D/.git/config";        ln "$MV_PRIMFEAT_C/.git/config" "$MV_D/.git/config" ;;
+    esac
+    MV_D_C=$(cd "$MV_D" && pwd -P)
+    out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_D_C/newfile.txt"); rc=$?
+    if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone with .git/$MV_KIND leading into a primary -> rc=2 (refuse)"; else fail "main_checkout_verdict: scratch .git/$MV_KIND into primary -> expected rc=2 got rc=$rc out=[$out]"; fi
+done
+
 # A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
 # (the helper is missing), where the real tree allows the same clone.
 MV_NOAP="$FIX/noap/scripts/guardrails"

@@ -195,6 +195,11 @@ printf 'ref: refs/heads/feat/x\n' > "$SCR/gfork/cdir/.git/HEAD"
 printf '%s\n' "$SANDBOX/featrepo/.git" > "$SCR/gfork/cdir/.git/commondir"
 mkrepo "$SCR/gfork/cw" feat/c
 git -C "$SCR/gfork/cw" config core.worktree "$SANDBOX/featrepo"
+mkrepo "$SCR/gfork/cfgln" feat/c
+rm -f "$SCR/gfork/cfgln/.git/config"
+ln -s "$SANDBOX/featrepo/.git/config" "$SCR/gfork/cfgln/.git/config"
+assert_rc "T3d scratchpad clone with .git/config symlinked into a primary blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/cfgln/foo.js" TMPDIR="$SANDBOX")"
 assert_rc "T3d scratchpad dir with a symlinked .git into a primary blocks (HIMMEL-8443)" 2 \
     "$(rc_of "$SCR/gfork/lnk/foo.js" TMPDIR="$SANDBOX")"
 assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks (HIMMEL-8443)" 2 \
