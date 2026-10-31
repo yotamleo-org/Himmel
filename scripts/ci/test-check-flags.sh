@@ -114,6 +114,27 @@ expect_rc "a variable-rooted path is followed against the root too" "$t" 1 "forb
 printf '#!/usr/bin/env bash\necho "see scripts/handover/chief-kit/user.sh"\n' > "$t/scripts/cr/gate.sh"
 expect_rc "a gate that only names the helper is clean" "$t" 0
 
+# a settings.json `Bash(...:*)` allow row is a permission, not a source or exec reach
+t="$(tree allowrow)"
+printf '^\\.claude/settings\\.json$\n' >> "$t/scripts/ci/ci-trust-paths.txt"
+mkdir -p "$t/.claude"
+printf '{\n  "permissions": {\n    "allow": [\n      "Bash(bash scripts/handover/chief-kit/user.sh:*)",\n      "Bash(bash scripts/handover/chief-kit/other.sh:*)"\n    ]\n  }\n}\n' > "$t/.claude/settings.json"
+expect_rc "a helper that only a settings.json allow row names may read a flag" "$t" 0
+# the same file's hook command is a real exec: its helper still fails, the allow-row-only one does not
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/handover/chief-kit/other.sh"
+printf '{\n  "hooks": {\n    "command": "cd . && bash scripts/handover/chief-kit/other.sh"\n  },\n  "permissions": {\n    "allow": [\n      "Bash(bash scripts/handover/chief-kit/user.sh:*)"\n    ]\n  }\n}\n' > "$t/.claude/settings.json"
+expect_rc "a settings.json hook command that execs a flag-reading helper still fails" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/other.sh (reached from .claude/settings.json)"
+grep -q 'user.sh (reached' "$WORK/out"; case $? in 1) pass "the allow-row-only helper is not reported" ;; *) fail "the allow-row-only helper must not be reported" ;; esac
+# a gate script that execs a helper still fails with an allow row for that helper present
+printf '#!/usr/bin/env bash\nexec bash scripts/handover/chief-kit/user.sh\n' > "$t/scripts/cr/gate.sh"
+expect_rc "a gate script that execs the helper still fails when an allow row names it too" "$t" 1 "forbidden: alpha read in scripts/handover/chief-kit/user.sh (reached from scripts/cr/gate.sh)"
+# a flag read inside settings.json itself (a trust path) still fails
+t="$(tree allowrow-read)"
+printf '^\\.claude/settings\\.json$\n' >> "$t/scripts/ci/ci-trust-paths.txt"
+mkdir -p "$t/.claude"
+printf '{\n  "note": "himmel_flag alpha",\n  "permissions": {\n    "allow": [\n      "Bash(bash scripts/handover/chief-kit/user.sh:*)"\n    ]\n  }\n}\n' > "$t/.claude/settings.json"
+expect_rc "a flag read inside a ci-trust-paths file still fails" "$t" 1 "forbidden: alpha read in .claude/settings.json"
+
 t="$(tree trust)"
 mkdir -p "$t/scripts/trusted"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/trusted/x.sh"
