@@ -51,7 +51,7 @@ done
 [ -r "$registry" ] || { echo "check-rename-diff: cannot read registry $registry" >&2; exit 2; }
 
 # The matcher reads "path:line:text" records on stdin and prints one
-# "path:line: old -> new: text" per hit; awk exits 1 when there is one.
+# "path:line: old -> new: text" per hit and always exits 0, so a finding is non-empty output.
 # shellcheck disable=SC2016  # the awk program is single-quoted on purpose
 matcher='
 function blank(n) { return substr(SP, 1, n) }
