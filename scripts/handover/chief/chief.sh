@@ -1970,7 +1970,7 @@ cmd_next() {
     case "$predecessor_board" in
         ""|"none yet"*) predecessor_board="none yet — render it locally at ACTION ZERO step 12" ;;
     esac
-    # The roadmap tracker's URL rides on `tracker:` the same way.
+    # The roadmap tracker's path rides on `tracker:` the same way.
     predecessor_tracker="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^tracker:[[:space:]]*//p' | head -n 1)"
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"

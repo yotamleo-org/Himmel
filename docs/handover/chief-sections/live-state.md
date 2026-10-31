@@ -81,7 +81,7 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `chief.sh next` carries it to your successor with the rest of this section.
 > `tracker:` is the roadmap-tracker page's local path; `none` (the
 > default) turns the tick's `tracker=` field off (`skip`), and `chief.sh next`
-> carries the URL too. An optional `tracker-plan: <dir>` line overrides the plan
+> carries the path too. An optional `tracker-plan: <dir>` line overrides the plan
 > directory (default `<handover bucket>/specs/plan/HIMMEL-3882`).
 > `epics: <KEY>=<total>[, <KEY>=<total>]` (the total is yours; the board counts
 > merged PRs citing `[<KEY>]`) and `decisions: <first?>; <second?>` (open
