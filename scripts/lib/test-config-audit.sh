@@ -173,6 +173,18 @@ lacks "4 a conflicting key is not said to still work" "they still work" "$out"
 printf '%s\n' "$conf_saved" > "$HIMMEL_CONFIG_DIR/himmel.conf"
 printf '%s\n' "$saved_env" > "$TMP/clone/.env"
 bash "$CA" accept >/dev/null
+# A restored legacy .env policy key that the live config.json .policy sets is named as a conflict.
+pol_saved=$(cat "$HIMMEL_CONFIG_DIR/config.json")
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' > "$HIMMEL_CONFIG_DIR/config.json"
+printf '%s\nCR_REQUIRE_CROSS_MODEL=0\n' "$saved_env" > "$TMP/clone/.env"
+polid=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+out=$(bash "$CA" restore "$polid" --script test-restore 2>&1)
+has "4 a legacy policy key the live config.json sets is named as a conflict" "config.json still sets CR_REQUIRE_CROSS_MODEL" "$out"
+lacks "4 a policy key config.json sets is not said to still work" "they still work" "$out"
+printf '%s\n' "$pol_saved" > "$HIMMEL_CONFIG_DIR/config.json"
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+bash "$CA" accept >/dev/null
 
 # --- 5. luna-config save leaves a row and a backup ---
 before=$(wc -l < "$STATE/audit.jsonl")

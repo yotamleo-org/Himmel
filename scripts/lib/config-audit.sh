@@ -434,21 +434,27 @@ EOF
 # A restored .env that still holds behaviour or gate keys came from before the
 # split: map them forward. migrate-env.sh asks for consent and verifies itself.
 _ca_map_forward() {
-    local envf conf key moved="" clash=""
+    local envf conf pol key moved="" clash="" pclash="" wins=""
     envf="$(_ca_env_file)"
     conf="$(_himmel_config_dir)/himmel.conf"
+    pol="$(_himmel_policy_dir)/config.json" || pol=""
     [ -f "$envf" ] || return 0
     # shellcheck disable=SC2013 # the sed prints identifiers, one name per word
     for key in $(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*=.*/\2/p' "$envf"); do
         case "$(_himmel_key_class "$key")" in config|policy) moved="$moved $key" ;; *) continue ;; esac
         grep -q "^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}${key}[[:space:]]*=" "$conf" 2>/dev/null && clash="$clash $key"
+        # load_policy reads config.json .policy before .env; only the key name is kept.
+        [ "$(_himmel_key_class "$key")" = policy ] && [ -f "$pol" ] \
+            && [ -n "$(_himmel_policy_json "$pol" "$key")" ] && pclash="$pclash $key"
     done
+    [ -z "$clash" ] || wins="himmel.conf still sets ${clash# }"
+    [ -z "$pclash" ] || wins="${wins:+$wins and the live }config.json still sets ${pclash# }"
     [ -n "$moved" ] || return 0
     echo "restore: the restored .env predates the split (${moved# }); mapping forward through migrate-env.sh"
     if bash "$_CA_DIR/../setup/migrate-env.sh" --env "$envf" </dev/null >/dev/null 2>&1; then
         echo "restore: migrate-env.sh moved them"
-    elif [ -n "$clash" ]; then
-        echo "restore: migrate-env.sh left them in .env, and the live himmel.conf still sets ${clash# }, which wins over .env; the operator resolves each at a prompt"
+    elif [ -n "$wins" ]; then
+        echo "restore: migrate-env.sh left them in .env, and the live $wins, which wins over .env; the operator resolves each at a prompt"
     else
         echo "restore: migrate-env.sh left them in .env (they still work, with a DEPRECATED notice); the operator runs it at a prompt"
     fi

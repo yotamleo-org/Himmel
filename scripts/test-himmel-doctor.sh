@@ -7287,7 +7287,7 @@ printf 'JIRA_EMAIL=planted-dummy-value-74\nHANDOVER_DIR=/planted-74\n' > "$c74_c
 HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_t/env" bash "$REPO_ROOT/scripts/lib/config-audit.sh" accept >/dev/null 2>&1
 rm -f "$c74_conf.local"
 out="$(c74_run)"
-if grepq "$out" -F 'himmel.conf.local: deleted; newest good backup:' && ! grepq "$out" -F "backup: $c74_conf.local"; then pass "C74-config-keys deleted empty file -> WARN with its fields in place"; else fail "C74-config-keys empty loss -> $(printf '%s' "$out" | head -8)"; fi
+if grepq "$out" -E '^WARN C74-config-keys: (.*; )?himmel\.conf\.local: deleted; newest good backup: -$' && ! grepq "$out" -F "backup: $c74_conf.local"; then pass "C74-config-keys deleted empty file -> WARN with its fields in place"; else fail "C74-config-keys empty loss -> $(printf '%s' "$out" | head -8)"; fi
 rm -rf "$c74_t"
 
 # --- C75-keyring: keyring state and the layer serving each manifest secret ---
