@@ -104,6 +104,18 @@ run_hook "a command after a heredoc terminator is still checked" 2 "cat <<'EOF'
 It's a note
 EOF
 $WRAPPED"
+run_hook "a heredoc a shell reads as its script is parsed (bash <<EOF)" 2 "bash <<'EOF'
+$WRAPPED
+EOF"
+run_hook "a heredoc piped into a shell is parsed (cat <<EOF | bash)" 2 "cat <<'EOF' | bash
+$WRAPPED
+EOF"
+run_hook "a heredoc for bash -s is parsed" 2 "bash -s <<'EOF'
+$WRAPPED
+EOF"
+run_hook "a heredoc for a bash -c script is data" 0 "bash -c cat <<'EOF'
+$WRAPPED
+EOF"
 run_hook "an unterminated << is not a heredoc: the later command is checked" 2 "echo \"a << b\"; $WRAPPED"
 
 # 2d. Fail closed: a command that names gh pr create and cannot be parsed.

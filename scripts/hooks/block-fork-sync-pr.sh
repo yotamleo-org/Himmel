@@ -30,7 +30,8 @@
 # denies only on a positive match (scripts/hooks/CLAUDE.md, failure direction).
 # A command that names `gh pr create` and cannot be parsed is the exception:
 # it is refused, since its base repo cannot be read. `bash -c`, `sh -c` and
-# `eval` scripts are unwrapped (three levels); heredoc bodies are skipped as data.
+# `eval` scripts are unwrapped (three levels); heredoc bodies are skipped as data
+# unless a shell reads them as its script (`bash <<EOF`, `cat <<EOF | bash`).
 # ponytail: sees `gh pr create` only; a raw `gh api .../pulls` POST is not
 # parsed, upgrade path = parse gh api POST bodies if one is ever seen.
 # ponytail: one unwrap round; xargs, `$(...)` substitution and `python -c` are
@@ -108,22 +109,40 @@ def segments(text):
 
 HEREDOC = re.compile(r"(?<!<)<<(-?)\s*(['\"]?)([A-Za-z_]\w*)\2")
 
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_C = re.compile(r"-[a-z]*c[a-z]*")
+
+def feeds_shell(line):
+    """True when a shell with no -c word reads the heredoc this line opens as
+    its script: `bash <<EOF`, `bash -s <<EOF`, `cat <<EOF | bash`. A line that
+    will not parse keeps its body, so the guard still sees it."""
+    try:
+        for words in segments(line):
+            rest = [w for w in words if not re.fullmatch(r"\w+=.*", w)]
+            if (rest and rest[0].rsplit("/", 1)[-1] in SHELLS
+                    and not any(SHELL_C.fullmatch(w) for w in rest[1:])):
+                return True
+    except ValueError:
+        return True
+    return False
+
 def strip_heredocs(text):
-    """Drop heredoc bodies (data, not shell): keep each opener line and the
-    commands after its terminator. A `<<` with no terminator is not a heredoc,
-    so the text is returned whole."""
+    """Drop heredoc bodies (data, not shell) unless a shell reads the body as
+    its script: keep each opener line and the commands after its terminator. A
+    `<<` with no terminator is not a heredoc, so the text is returned whole."""
     out, pending = [], []
     for line in text.split("\n"):
         if pending:
-            tabs, delim = pending[0]
+            tabs, delim, keep = pending[0]
             if (line.lstrip("\t") if tabs else line) == delim:
                 pending.pop(0)
+            if keep:
+                out.append(line)
             continue
         out.append(line)
-        pending = [(m.group(1) == "-", m.group(3)) for m in HEREDOC.finditer(line)]
+        keep = bool(HEREDOC.search(line)) and feeds_shell(line)
+        pending = [(m.group(1) == "-", m.group(3), keep) for m in HEREDOC.finditer(line)]
     return text if pending else "\n".join(out)
-
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 
 def wrapped_scripts(words):
     """Script texts a wrapper runs as one word: `bash -c '<s>'`, `sh -c`,
@@ -139,7 +158,7 @@ def wrapped_scripts(words):
         yield rest[1]
     elif name in SHELLS:
         for j in range(1, len(rest) - 1):
-            if re.fullmatch(r"-[a-z]*c[a-z]*", rest[j]):
+            if SHELL_C.fullmatch(rest[j]):
                 yield rest[j + 1]
                 break
 
