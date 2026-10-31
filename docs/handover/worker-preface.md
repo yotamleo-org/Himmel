@@ -22,7 +22,7 @@ Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` /
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; a bullet not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
-  `WRAPPED` / `PARKED-BANK` / `RESUMED` is invisible. [prose]
+  `WRAPPED` / `PARKED-USAGE` / `RESUMED` is invisible. [prose]
 - **Write every marker bullet with `append-results.sh`, never the Edit tool:**
   `bash /absolute/repo/scripts/handover/chief-kit/append-results.sh /absolute/handover.md "<MARKER> …"`
   Use the brief's literal absolute paths; no variable, loop or xargs around a

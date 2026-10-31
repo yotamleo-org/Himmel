@@ -380,7 +380,7 @@ direct store writes are another matter.
   undelivered tail records leaves a valid chain and is not detected. A same-uid
   process that recomputes the chain is undetected; only a dedicated uid
   (phase 2) closes it.
-- **The store guard is a soft block (speed bump), not a fence.**
+- **The store guard is a soft block, not a fence.**
   `scripts/hooks/guard-bus-store.sh` is wired as a PreToolUse hook on the Bash
   chain and on the file-edit tools (HIMMEL-4818 T6). It denies a Bash command
   that names the bus root, calls `bus register|bind|rebind`, or assigns a

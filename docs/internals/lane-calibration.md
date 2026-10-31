@@ -35,7 +35,7 @@ the smaller of account credit and the key's `limit_remaining` is available.
 `usage-preflight.sh` selects this gate via `CADENCE_USAGE_LANE=openrouter`
 (or `WORKER_SESSION_LANE=openrouter`), reusing the balance helper and the same floor:
 `PROCEED` at/above the floor, `SKIPPED-BANK` below it, `BANK-UNKNOWN` when
-unmeasurable. Tick's `bank=openrouter:<verdict>` reports that lane verdict;
+unmeasurable. Tick's `usage=openrouter:<verdict>` reports that lane verdict;
 its separate `or=` reading remains informational. Native and claudex usage budget
 paths are unchanged.
 
@@ -84,7 +84,7 @@ the union of the members' required ids. Role/non-additive profiles refuse as
 members. `headed-arm-worker.sh --consult` is a judge-shaped, plugin-scoped session
 with `Edit`/`Write`/`NotebookEdit` denied and a single `append-results.sh` Bash
 allow on its own doc; Bash runs in Claude Code's sandbox, writes confined to the doc file plus temp dirs, reads open; it launches with `--setting-sources ""` so no user/project/local scope's write roots load, with their hooks, deny/ask and env carried instead. Each consult's launch
-line in `launch-logs/<session>.log` carries `role=consult` and `console=` (the chief that launched it); consult
+line in `launch-logs/<session>.log` carries `role=consult` and `chief=` (the chief that launched it); consult
 cost is joined later from the session transcript, not written at launch.
 
 `worker-impl` is the profile a worker gets from
@@ -702,7 +702,7 @@ the relay ceiling**.
 | `telegram` | 0 | 32,541 first-turn, #680 | keep 45,000 |
 | `lane-impl`, `lane-review`, `lane-content`, `bare` (each) | 0 | none | keep 45,000 each |
 | `chief-relay`, `console-judge` (each) | 0 | none | keep 35,000 each |
-| `user`, `design`, `console` (each) | 0 | none | keep 50,000 each |
+| `user`, `design`, `chief` (each) | 0 | none | keep 50,000 each |
 | `design-motion`, `design-3d`, `design-imagegen`, `design-a11y`, `design-diagram`, `design-slides`, `design-reference`, `design-trial` (each) | 0 | none | keep 50,000 each |
 | `operator` | 0 | null sentinel, no budget | unchanged |
 
@@ -1023,9 +1023,9 @@ fallback to the full set) and the profile is picked from the role:
 
 | Launch path | Profile |
 |---|---|
-| `chief.sh` arm / `headed-arm.sh --role chief` | `console` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
+| `chief.sh` arm / `headed-arm.sh --role chief` | `chief` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
 | `arm-resume.sh`, `schedule-resume.sh` | from the resumed doc via `scripts/lanes/role-profile.sh`; `--profile <name>` overrides (arm-resume) |
-| `hop.sh` | `HOP_PROFILE`, else `console` / `worker-impl` from the caller's role env, else `user` |
+| `hop.sh` | `HOP_PROFILE`, else `chief` / `worker-impl` from the caller's role env, else `user` |
 | worker brief (`headed-arm-worker.sh`) | `--profile` / `WORKER_SESSION_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
 | `generate-morning-briefing.sh --llm`, `cr/hermes-critic.sh` | `bare` (floor plugins only) |
 
