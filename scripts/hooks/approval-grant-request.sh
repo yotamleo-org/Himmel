@@ -9,7 +9,7 @@
 # Root then binds every file the command names, runs the never-remote floor (a secret read
 # is refused before any notice), freezes the record and sends the operator the full command
 # through the root-only notice bot. Nothing here reads or forwards the classifier-denial log
-# (log-classifier-denial.sh's input_head / reason_tag never leave the host); the notice is
+# (the command head and reason fields log-classifier-denial.sh writes never leave the host); the notice is
 # built from root's frozen record. The operator's `NONCE CODE` reply is the only way a grant
 # is written; approval-grant-check.sh then lets the byte-identical retry through once.
 #
