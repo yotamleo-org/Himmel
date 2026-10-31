@@ -787,6 +787,7 @@ scripts/lanes/test-launch-site-profiles.sh	local	behaviour suite, 0 catches in t
 scripts/lanes/test-worker-cost-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-worker-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-profile-settings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/lanes/test-plugin-profiles-automode.sh	pr	guard
 scripts/lanes/tests/test-worker-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/tests/test-stop-worker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lib/test-api-credit-state.sh	pr	trust-path

@@ -566,7 +566,7 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...forkTrustSettings(opts.forkNwos), ...listingSettings(registry, [name], enabledPlugins, opts) };
+    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts) };
   }
   const permissions = { ...(mcpAllow.length ? { allow: mcpAllow } : {}), ...denyOf(spec) };
   return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...disableOf(spec), ...listingSettings(registry, [name], enabledPlugins, opts) };
@@ -621,7 +621,9 @@ function composeProfiles(registry, list, opts) {
   const deny = (resolved[0].permissions?.deny ?? []).filter((t) => resolved.every((r) => r.permissions?.deny?.includes(t)));
   const permissions = { ...(allow.length ? { allow } : {}), ...(deny.length ? { deny } : {}) };
   const environment = [...new Set(resolved.flatMap((r) => r.autoMode?.environment ?? []))];
-  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...(resolved.every((r) => r.disableWorkflows) ? { disableWorkflows: true } : {}), ...(environment.length ? { autoMode: { environment } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
+  const autoAllow = [...new Set(resolved.flatMap((r) => r.autoMode?.allow ?? []))];
+  const autoMode = { ...(environment.length ? { environment } : {}), ...(autoAllow.length ? { allow: autoAllow } : {}) };
+  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...(resolved.every((r) => r.disableWorkflows) ? { disableWorkflows: true } : {}), ...(Object.keys(autoMode).length ? { autoMode } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
 }
 
 // opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
@@ -727,16 +729,43 @@ export function primaryCheckout(dir) {
 // fix is an autoMode.environment entry, read only from user, managed or --settings
 // scope (never project settings), so it rides the resolved worker --settings file.
 // Exact owner/repo names only: no org wildcard, nothing outside yotamleo-org.
+//
+// The same writer declares himmel's own tooling: a worker's brief is a tool result, which the classifier never counts as consent, so
+// running our scripts, lockfile installs, status bullets and test VMs was
+// refused until the operator typed. Each entry names exact trees, scripts and
+// VM names under the validated anchor, and says what it does not cover; no
+// soft_deny or hard_deny key is ever written, so hard denies stay in force.
 const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
-export function forkTrustSettings(nwos) {
-  if (!Array.isArray(nwos) || nwos.length === 0) return {};
-  for (const n of nwos) {
+function himmelToolingTrust(anchor) {
+  const path = anchor === undefined ? null : validatedAnchorPath(anchor, 'tooling trust');
+  if (!path) return { environment: [], allow: [] };
+  return {
+    environment: [
+      `Trusted repo tooling: the himmel repository at ${path} (and its worktrees under ${path}/.claude/worktrees/) is this session's own reviewed code. Its scripts/handover/, scripts/cr/, scripts/lanes/, scripts/lib/ and scripts/vm/ trees, scripts/quiet-run.sh, scripts/check-ci.sh and marketplace/plugins/himmel-bus/bin/bus are trusted, run by relative path or under ${path}/scripts/, and so is bash scripts/quiet-run.sh suite -- bash <a committed test suite> over vendored code at the commit the repository pins. Not covered: a script written outside those trees (a /tmp or scratchpad driver) and code fetched at run time.`,
+      `Pinned dependencies: npm ci --ignore-scripts against a package-lock.json committed in the himmel repository (the pre-push license check runs it) installs only lockfile-pinned packages and is trusted. Not covered: npm install of a package the lockfile does not pin, npx of an unpinned package, and any install from a URL.`,
+      `Status channel: bash scripts/handover/chief-kit/append-results.sh appends one dated Results bullet to the worker's own handover doc, the doc its brief names. The bullet is a status record for the worker's chief, not an instruction to another agent. Not covered: a bullet that claims an approval, a GO, a merge ruling or a token, and a write to another session's doc.`,
+      `Test VMs: ubuntu_new (the golden image) and its numbered clones himmel-ar-<N> and himmel-ci-<N> are our own disposable VirtualBox test VMs on this station. Starting, stopping, snapshotting, restoring and running commands in them through scripts/vm/ or scripts/lib/vmsdk.py is routine test work. Not covered: deleting or unregistering ubuntu_new, and any VM outside those names.`,
+    ],
+    allow: [
+      `Running the himmel scripts named in the trusted repo tooling entry, or a committed test suite through scripts/quiet-run.sh, is not Code from External.`,
+      `npm ci --ignore-scripts against a package-lock.json committed in the himmel repository is not Code from External.`,
+      `Appending a plain-fact status bullet to the worker's own handover doc with scripts/handover/chief-kit/append-results.sh is not Instruction Poisoning.`,
+      `Stopping, snapshotting or restoring a himmel-ar-<N> or himmel-ci-<N> test VM through scripts/vm/ or scripts/lib/vmsdk.py is not Interfere With Workloads.`,
+    ],
+  };
+}
+export function autoModeTrustSettings(nwos, anchor) {
+  const forks = Array.isArray(nwos) ? nwos : [];
+  for (const n of forks) {
     if (typeof n !== 'string' || !FORK_NWO_RE.test(n) || n.includes('..')) {
       throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo-org/<repo> name`);
     }
   }
-  const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
-  return { autoMode: { environment: ['$defaults', ...lines] } };
+  const lines = [...new Set(forks)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
+  const tooling = himmelToolingTrust(anchor);
+  const environment = [...lines, ...tooling.environment];
+  if (environment.length === 0) return {};
+  return { autoMode: { environment: ['$defaults', ...environment], ...(tooling.allow.length ? { allow: ['$defaults', ...tooling.allow] } : {}) } };
 }
 
 // The nwo list from the fork registry (scripts/guardrails/himmel-adapters.json,
